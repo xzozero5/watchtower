@@ -1,0 +1,11 @@
+{
+  "candidates": [
+    {
+      "content": { "role": "model", "parts": [{ "text": "Summary for [NAME_1]." }] },
+      "finishReason": "STOP",
+      "index": 0
+    }
+  ],
+  "usageMetadata": { "promptTokenCount": 30, "candidatesTokenCount": 9, "totalTokenCount": 39 },
+  "modelVersion": "fixture-model-light"
+}
