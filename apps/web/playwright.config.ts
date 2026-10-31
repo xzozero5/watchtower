@@ -18,7 +18,13 @@ export default defineConfig({
     {
       name: 'chromium',
       // PW_CHANNEL=msedge (or chrome) uses an installed browser instead of Playwright's download.
-      use: { ...devices['Desktop Chrome'], channel: process.env.PW_CHANNEL || undefined },
+      // PW_EXECUTABLE_PATH points at a preinstalled Chromium whose revision differs from the pinned
+      // Playwright (e.g. a cloud dev container), so no browser download is needed.
+      use: {
+        ...devices['Desktop Chrome'],
+        channel: process.env.PW_CHANNEL || undefined,
+        launchOptions: { executablePath: process.env.PW_EXECUTABLE_PATH || undefined },
+      },
     },
   ],
   webServer: {
