@@ -108,7 +108,7 @@ describe('reversibility of 0004', () => {
        VALUES ($1, $2, $3, now() + interval '1 day')`,
       [ticket, contact, hash('revert')],
     );
-    expect(await migrateDown(owner(), { steps: 1 })).toEqual(['0004_portal']);
+    expect(await migrateDown(owner(), { steps: 2 })).toEqual(['0005_security', '0004_portal']);
     expect(
       await scalar<string | null>(
         owner(),
@@ -122,7 +122,7 @@ describe('reversibility of 0004', () => {
       ]),
     ).toBe('1');
 
-    expect(await migrateUp(owner())).toEqual(['0004_portal']);
+    expect(await migrateUp(owner())).toEqual(['0004_portal', '0005_security']);
     expect(
       await scalar<string>(app, 'SELECT count(*)::text AS value FROM portal_access_token'),
     ).toBe('0');
