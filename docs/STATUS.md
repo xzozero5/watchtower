@@ -42,6 +42,13 @@ snapshot สั้นสำหรับ cold start อยู่ที่ `HANDOF
 - ไม่ยืนยัน: —
 
 
+## 2026-10-31 22:25 (Asia/Bangkok) — frontend-dev + main thread — T-003
+- ทำอะไร: `apps/web` Next.js + Tailwind + TanStack Query, `/health`, API URL ตอน runtime, design tokens ใน `packages/ui` พร้อม contrast test, three-pane เปล่า, command palette stub, i18n TH/EN, Dockerfile, ใช้โลโก้ PNG และ palette จาก `docs/brand/README.md`
+- ไฟล์ที่แตะ: `apps/web/**`, `packages/ui/**`, `eslint.config.mjs`, root `package.json`, `turbo.json`, `.prettierignore`, `pnpm-lock.yaml`
+- test: main thread รันซ้ำหลัง merge แบบ `--force`: lint, typecheck, test (web 60, ui 121, shared 6, channels 2, db 1, ai 1), build, e2e 22 passed ด้วย `PW_CHANNEL=msedge`; เปิดหน้าจอจริงดู dark/light + ⌘K ถูกต้อง `[TESTED]` · docker image รายงานโดย frontend-dev ยังไม่ได้ตรวจซ้ำ (จะตรวจตอน compose ครบหลัง T-002)
+- ค้าง: PWA manifest/service worker ยังไม่ทำ ตาม ADR-001 ต้องมี → ย้ายไป T-006 · ไม่มี `eslint-plugin-jsx-a11y` เพราะ peer ไม่รองรับ ESLint 10 ใช้ axe ใน e2e แทน
+- ไม่ยืนยัน: สี link/focus และ surface ที่ palette ไม่ได้กำหนด `[ASSUMED]` · ภาษาเริ่มต้น `en` `[ASSUMED]` · e2e ใช้ Edge บนเครื่องนี้ CI ต้อง `playwright install` (ดาวน์โหลดจาก `cdn.playwright.dev` ตอน dev/CI เท่านั้น) และยังไม่ได้ทดสอบบน Linux `[UNVERIFIED 80%]`
+
 ## 2026-10-31 21:50 (Asia/Bangkok) — architect + main thread — T-001
 - ทำอะไร: monorepo pnpm + Turborepo, placeholder 5 package, boundary lint, `docs/04-ARCHITECTURE.md` ร่าง, ADR-002
 - ไฟล์ที่แตะ: root config, `tools/eslint/`, `packages/*`, `docs/04-ARCHITECTURE.md`, `docs/decisions/ADR-002-boundary-enforcement.md`, PRD §12
