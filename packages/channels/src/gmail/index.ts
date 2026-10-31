@@ -1,6 +1,7 @@
 export * from './adapter.js';
 export * from './classify.js';
 export * from './fake.js';
+export * from './fake-mime.js';
 export * from './html.js';
 export * from './live.js';
 export * from './mime.js';

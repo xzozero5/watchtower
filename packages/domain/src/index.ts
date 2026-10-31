@@ -3,6 +3,7 @@ import { REOPEN_WINDOW_DAYS } from '@watchtower/shared';
 import { assertAssignableStaff, nextRoundRobin, peekRoundRobin, takeTurn } from './assignment.js';
 import { readAutonomyState, setAiSwitch, setIntentAutonomy } from './autonomy/state.js';
 import { findOrCreateContactByEmail } from './contacts.js';
+import { ingestInbound } from './inbound/ingest.js';
 import { resolveIntent } from './intents.js';
 import { NO_NOTIFIER, type TicketNotifier } from './notifier.js';
 import { enqueueJob } from './outbox.js';
@@ -38,6 +39,34 @@ export {
   type FindOrCreateContactInput,
 } from './contacts.js';
 export { DOMAIN_ERROR_CODES, DomainError, isDomainError, type DomainErrorCode } from './errors.js';
+export {
+  UNIDENTIFIED_ORG_ID,
+  UNIDENTIFIED_ORG_NAME,
+  ensureSenderContact,
+  lookupSender,
+  type SenderLookup,
+  type SenderVia,
+} from './inbound/identity.js';
+export { ingestInbound, ruleClassification, ticketSubject } from './inbound/ingest.js';
+export {
+  HEURISTIC_WINDOW_DAYS,
+  findTicketForMessage,
+  joinability,
+  normalizeSubject,
+  type NoMatch,
+  type TicketMatch,
+} from './inbound/match.js';
+export {
+  THREAD_CANDIDATE_KINDS,
+  type AutomatedVerdict,
+  type IngestInboundInput,
+  type IngestOutcome,
+  type InboundAttachment,
+  type NormalisedInboundMessage,
+  type ThreadCandidate,
+  type ThreadCandidateKind,
+  type ThreadMatchKind,
+} from './inbound/types.js';
 export { resolveIntent } from './intents.js';
 export { NO_NOTIFIER, type TicketNotifier } from './notifier.js';
 export { enqueueJob, type OutboxRequest } from './outbox.js';
@@ -185,6 +214,8 @@ export interface Domain {
     readonly takeTurn: typeof takeTurn;
   };
   readonly outbox: { readonly enqueue: typeof enqueueJob };
+  /** Received messages (ADR-009): used by the worker's `ingest` consumer. */
+  readonly inbound: { readonly ingest: typeof ingestInbound };
 }
 
 export function createDomain(options: DomainOptions): Domain {
@@ -231,5 +262,6 @@ export function createDomain(options: DomainOptions): Domain {
     },
     assignment: { assertAssignableStaff, nextRoundRobin, peekRoundRobin, takeTurn },
     outbox: { enqueue: enqueueJob },
+    inbound: { ingest: ingestInbound },
   };
 }
