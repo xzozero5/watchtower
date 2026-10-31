@@ -4,13 +4,14 @@ import { useEffect } from 'react';
 
 /** True for Ctrl+K and Cmd+K, with no Shift or Alt. */
 export function isPaletteShortcut(
-  event: Pick<KeyboardEvent, 'key' | 'ctrlKey' | 'metaKey' | 'shiftKey' | 'altKey'>,
+  event: Pick<KeyboardEvent, 'key' | 'code' | 'ctrlKey' | 'metaKey' | 'shiftKey' | 'altKey'>,
 ): boolean {
   return (
     (event.ctrlKey || event.metaKey) &&
     !event.shiftKey &&
     !event.altKey &&
-    event.key.toLowerCase() === 'k'
+    // The physical key too, so the shortcut also works on a Thai keyboard layout.
+    (event.key.toLowerCase() === 'k' || event.code === 'KeyK')
   );
 }
 

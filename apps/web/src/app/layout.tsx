@@ -2,8 +2,8 @@ import '@fontsource-variable/inter';
 import '@fontsource-variable/noto-sans-thai';
 import './globals.css';
 
-import { themeInitScript } from '@watchtower/ui';
-import type { Metadata } from 'next';
+import { COLOR_TOKENS, themeInitScript } from '@watchtower/ui';
+import type { Metadata, Viewport } from 'next';
 import { cookies, headers } from 'next/headers';
 import type { ReactNode } from 'react';
 
@@ -19,6 +19,14 @@ async function currentLocale() {
   const [cookieStore, headerStore] = await Promise.all([cookies(), headers()]);
   return negotiateLocale(cookieStore.get(LOCALE_COOKIE)?.value, headerStore.get('accept-language'));
 }
+
+// Browser chrome follows the OS theme, with the colours from the design tokens.
+export const viewport: Viewport = {
+  themeColor: [
+    { media: '(prefers-color-scheme: light)', color: COLOR_TOKENS.light.background },
+    { media: '(prefers-color-scheme: dark)', color: COLOR_TOKENS.dark.background },
+  ],
+};
 
 export async function generateMetadata(): Promise<Metadata> {
   const messages = getMessages(await currentLocale());

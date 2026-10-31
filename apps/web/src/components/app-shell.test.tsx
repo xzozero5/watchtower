@@ -1,17 +1,16 @@
-import { fireEvent, screen, within } from '@testing-library/react';
+import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { resetPreferencesCache } from '@/lib/preferences';
-import { renderApp } from '@/test-utils';
-
-import { AppShell } from './app-shell';
+import { renderWorkspace } from '@/test-utils';
+import { workspaceApi } from '@/test/scenarios';
 
 const refresh = vi.fn();
-vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh }) }));
+const replace = vi.fn();
+vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh, replace }) }));
 
 beforeEach(() => {
-  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('{}', { status: 200 })));
   localStorage.clear();
   resetPreferencesCache();
 });
@@ -19,31 +18,42 @@ beforeEach(() => {
 afterEach(() => {
   vi.unstubAllGlobals();
   refresh.mockReset();
+  replace.mockReset();
   document.documentElement.removeAttribute('data-theme');
   document.documentElement.removeAttribute('data-density');
   document.cookie = 'wt-locale=; Max-Age=0; Path=/';
 });
 
-describe('AppShell', () => {
-  it('shows the three panes, each with an empty state', () => {
-    renderApp(<AppShell />);
+async function openWorkspace(options: Parameters<typeof renderWorkspace>[0] = {}) {
+  const view = renderWorkspace(options);
+  await screen.findByRole('region', { name: options.locale === 'th' ? 'คิวงาน' : 'Queue' });
+  return view;
+}
+
+describe('AppShell for staff', () => {
+  it('shows the three panes: the queue with tickets, an empty conversation, the AI placeholder', async () => {
+    workspaceApi();
+    await openWorkspace();
     const queue = screen.getByRole('region', { name: 'Queue' });
     const conversation = screen.getByRole('region', { name: 'Conversation' });
     const assistant = screen.getByRole('region', { name: 'AI assistant' });
 
-    expect(within(queue).getByText('No tickets yet')).toBeVisible();
+    expect(await within(queue).findByText('Cannot log in')).toBeVisible();
     expect(within(conversation).getByText('Select a ticket')).toBeVisible();
-    expect(within(assistant).getByText('Nothing to investigate')).toBeVisible();
+    expect(within(assistant).getByText('The AI assistant is not switched on yet')).toBeVisible();
+    expect(within(assistant).getByText(/arrives in Phase 1/)).toBeVisible();
   });
 
-  it('keeps the panes in reading order so they stack correctly on a narrow screen', () => {
-    renderApp(<AppShell />);
-    const names = screen.getAllByRole('region').map((region) => region.getAttribute('id'));
-    expect(names).toEqual(['pane-queue', 'pane-conversation', 'pane-assistant']);
+  it('keeps the panes in reading order so they stack correctly on a narrow screen', async () => {
+    workspaceApi();
+    await openWorkspace();
+    const ids = screen.getAllByRole('region').map((region) => region.getAttribute('id'));
+    expect(ids).toEqual(['pane-queue', 'pane-conversation', 'pane-assistant']);
   });
 
-  it('has a main landmark, a banner and a skip link', () => {
-    renderApp(<AppShell />);
+  it('has a main landmark, a banner and a skip link', async () => {
+    workspaceApi();
+    await openWorkspace();
     expect(screen.getByRole('main')).toBeInTheDocument();
     expect(screen.getByRole('banner')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Skip to the conversation' })).toHaveAttribute(
@@ -52,32 +62,51 @@ describe('AppShell', () => {
     );
   });
 
-  it('renders the whole screen in Thai', () => {
-    renderApp(<AppShell />, { locale: 'th' });
-    expect(screen.getByRole('region', { name: 'คิวงาน' })).toBeInTheDocument();
+  it('renders the whole screen in Thai', async () => {
+    workspaceApi();
+    await openWorkspace({ locale: 'th' });
     expect(screen.getByRole('region', { name: 'บทสนทนา' })).toBeInTheDocument();
     expect(screen.getByRole('region', { name: 'ผู้ช่วย AI' })).toBeInTheDocument();
-    expect(screen.queryByText('No tickets yet')).not.toBeInTheDocument();
+    expect(screen.getByText('ผู้ช่วย AI ยังไม่เปิดใช้งาน')).toBeInTheDocument();
+    expect(screen.queryByText('Select a ticket')).not.toBeInTheDocument();
   });
 
   it('lists severity P1 to P4, each with icon, code and label', async () => {
     const user = userEvent.setup();
-    renderApp(<AppShell />);
+    workspaceApi();
+    await openWorkspace();
     await user.click(screen.getByText('Severity key'));
+    const key = screen.getByText('Severity key').closest('details');
+    if (!key) throw new Error('severity key not found');
     for (const [code, label] of [
       ['P1', 'Critical'],
       ['P2', 'High'],
       ['P3', 'Medium'],
       ['P4', 'Low'],
     ] as const) {
-      expect(screen.getByText(code)).toBeVisible();
-      expect(screen.getByText(label)).toBeVisible();
+      expect(within(key).getByText(code)).toBeVisible();
+      expect(within(key).getByText(label)).toBeVisible();
     }
+  });
+
+  it('shows who is signed in and signs out, then the gate sends the browser to the login page', async () => {
+    const user = userEvent.setup();
+    const api = workspaceApi({ overrides: { 'POST /v1/auth/logout': { status: 204 } } });
+    await openWorkspace();
+    expect(screen.getByText('Alex Agent')).toBeVisible();
+
+    await user.click(screen.getByRole('button', { name: 'Sign out' }));
+
+    await waitFor(() => {
+      expect(replace).toHaveBeenCalledWith('/login');
+    });
+    expect(api.callsTo('/v1/auth/logout', 'POST')).toHaveLength(1);
   });
 
   it('opens the command palette with Ctrl+K and from the button', async () => {
     const user = userEvent.setup();
-    renderApp(<AppShell />);
+    workspaceApi();
+    await openWorkspace();
     fireEvent.keyDown(document.body, { key: 'k', ctrlKey: true });
     expect(await screen.findByRole('dialog', { name: 'Command palette' })).toBeInTheDocument();
     await user.keyboard('{Escape}');
@@ -89,10 +118,11 @@ describe('AppShell', () => {
 
   it('changes the theme from the palette and from the select', async () => {
     const user = userEvent.setup();
-    renderApp(<AppShell />);
+    workspaceApi();
+    await openWorkspace();
 
     fireEvent.keyDown(document.body, { key: 'k', ctrlKey: true });
-    await user.type(await screen.findByRole('combobox'), 'dark');
+    await user.type(await screen.findByRole('combobox', { name: 'Command palette' }), 'dark');
     await user.keyboard('{Enter}');
     expect(document.documentElement).toHaveAttribute('data-theme', 'dark');
     expect(screen.getByRole('combobox', { name: 'Theme' })).toHaveValue('dark');
@@ -106,9 +136,144 @@ describe('AppShell', () => {
 
   it('switches language by saving a cookie and refreshing the server render', async () => {
     const user = userEvent.setup();
-    renderApp(<AppShell />);
+    workspaceApi();
+    await openWorkspace();
     await user.selectOptions(screen.getByRole('combobox', { name: 'Language' }), 'th');
     expect(document.cookie).toContain('wt-locale=th');
     expect(refresh).toHaveBeenCalledTimes(1);
+  });
+
+  it('opens the keyboard map with ? and closes it with Escape', async () => {
+    const user = userEvent.setup();
+    workspaceApi();
+    await openWorkspace();
+    await user.keyboard('?');
+    const dialog = await screen.findByRole('dialog', { name: 'Keyboard shortcuts' });
+    expect(within(dialog).getByText('Next ticket')).toBeVisible();
+    expect(within(dialog).getByText('Previous ticket')).toBeVisible();
+    expect(within(dialog).getByText('Approve the draft')).toBeVisible();
+    // The AI draft keys are listed but marked as not available yet.
+    expect(within(dialog).getAllByText('coming soon')).toHaveLength(3);
+
+    await user.keyboard('{Escape}');
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('does not open the keyboard map while typing a question mark in a field', async () => {
+    const user = userEvent.setup();
+    workspaceApi();
+    await openWorkspace();
+    await user.type(screen.getByRole('searchbox', { name: 'Search tickets' }), '?');
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('opens the keyboard map from the palette', async () => {
+    const user = userEvent.setup();
+    workspaceApi();
+    await openWorkspace();
+    fireEvent.keyDown(document.body, { key: 'k', ctrlKey: true });
+    await user.type(await screen.findByRole('combobox', { name: 'Command palette' }), 'shortcuts');
+    await user.keyboard('{Enter}');
+    expect(await screen.findByRole('dialog', { name: 'Keyboard shortcuts' })).toBeInTheDocument();
+  });
+});
+
+describe('AI assistant drawer (768 to 1023 px)', () => {
+  // jsdom applies no CSS, so these tests cover the behaviour (state, focus, keys); the e2e tests
+  // check the layout at real widths.
+  it('opens from a button, moves focus into the drawer, closes with Escape and returns focus', async () => {
+    const user = userEvent.setup();
+    workspaceApi();
+    await openWorkspace();
+    const toggle = screen.getByRole('button', { name: 'AI assistant' });
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    expect(toggle).toHaveAttribute('aria-controls', 'pane-assistant');
+
+    await user.click(toggle);
+    expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    const close = screen.getByRole('button', { name: 'Close the AI assistant' });
+    expect(close).toHaveFocus();
+    // A plain region, not a dialog: the conversation stays readable and reachable.
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+
+    await user.keyboard('{Escape}');
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    expect(toggle).toHaveFocus();
+  });
+
+  it('closes with its own button', async () => {
+    const user = userEvent.setup();
+    workspaceApi();
+    await openWorkspace();
+    await user.click(screen.getByRole('button', { name: 'AI assistant' }));
+    await user.click(screen.getByRole('button', { name: 'Close the AI assistant' }));
+    expect(screen.getByRole('button', { name: 'AI assistant' })).toHaveAttribute(
+      'aria-expanded',
+      'false',
+    );
+  });
+
+  it('is hidden by CSS from 1024 px up and only between 768 and 1023 px', async () => {
+    workspaceApi();
+    await openWorkspace();
+    expect(screen.getByRole('button', { name: 'AI assistant' }).className).toContain(
+      'md:max-lg:inline-flex',
+    );
+    expect(document.getElementById('pane-assistant')?.className).toContain('md:max-lg:hidden');
+  });
+
+  it('is not offered to a customer', async () => {
+    workspaceApi({ role: 'client' });
+    await openWorkspace();
+    expect(screen.queryByRole('button', { name: 'AI assistant' })).not.toBeInTheDocument();
+  });
+});
+
+describe('shortcuts on a Thai keyboard layout', () => {
+  it('J and K move through the queue by physical key, and ? opens the map', async () => {
+    workspaceApi();
+    await openWorkspace();
+    await screen.findByText('Cannot log in');
+
+    // Thai layout: the physical J key types a different character.
+    fireEvent.keyDown(document.body, { key: '\u0e48', code: 'KeyJ' });
+    expect(await screen.findByRole('button', { name: /OPS-1/ })).toHaveAttribute(
+      'aria-current',
+      'true',
+    );
+    fireEvent.keyDown(document.body, { key: '\u0e48', code: 'KeyJ' });
+    expect(screen.getByRole('button', { name: /OPS-2/ })).toHaveAttribute('aria-current', 'true');
+    fireEvent.keyDown(document.body, { key: '\u0e41', code: 'KeyK' });
+    expect(screen.getByRole('button', { name: /OPS-1/ })).toHaveAttribute('aria-current', 'true');
+
+    fireEvent.keyDown(document.body, { key: '\u0e22', code: 'Slash', shiftKey: true });
+    expect(await screen.findByRole('dialog', { name: 'Keyboard shortcuts' })).toBeInTheDocument();
+  });
+
+  it('the command palette opens with Ctrl+K on the physical key too', async () => {
+    workspaceApi();
+    await openWorkspace();
+    fireEvent.keyDown(document.body, { key: '\u0e46', code: 'KeyK', ctrlKey: true });
+    expect(await screen.findByRole('dialog', { name: 'Command palette' })).toBeInTheDocument();
+  });
+});
+
+describe('AppShell for a customer', () => {
+  it('shows two panes and no AI assistant, and no staff-only filters', async () => {
+    const user = userEvent.setup();
+    workspaceApi({ role: 'client' });
+    renderWorkspace();
+    await screen.findByRole('region', { name: 'Queue' });
+
+    expect(screen.queryByRole('region', { name: 'AI assistant' })).not.toBeInTheDocument();
+    expect(screen.getAllByRole('region').map((region) => region.id)).toEqual([
+      'pane-queue',
+      'pane-conversation',
+    ]);
+    expect(await screen.findByText('Customer subject 1')).toBeVisible();
+
+    await user.click(screen.getByRole('button', { name: /Filters/ }));
+    expect(screen.queryByLabelText('Assignee')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Overdue only')).not.toBeInTheDocument();
   });
 });

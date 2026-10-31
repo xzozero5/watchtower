@@ -1,0 +1,525 @@
+import { screen, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import type { TimelineEntry } from '@watchtower/shared';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+import { renderWorkspace } from '@/test-utils';
+import { makeClientTicket, makeMessage, makeTicket, uuid } from '@/test/fixtures';
+import { apiError } from '@/test/mock-api';
+import { workspaceApi } from '@/test/scenarios';
+
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({ refresh: vi.fn(), replace: vi.fn() }),
+}));
+
+beforeEach(() => {
+  localStorage.clear();
+});
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
+
+async function openTicket(key = 'OPS-1', options: Parameters<typeof renderWorkspace>[0] = {}) {
+  window.history.replaceState(null, '', `/?ticket=${key}`);
+  const view = renderWorkspace(options);
+  const conversation = await screen.findByRole('region', { name: 'Conversation' });
+  return { ...view, conversation };
+}
+
+const ticket1 = makeTicket(1, { subject: 'Cannot log in' });
+
+function replyResult(ticket = ticket1) {
+  return {
+    status: 201,
+    json: {
+      message: makeMessage(50, ticket, {
+        direction: 'outbound',
+        sender: { type: 'user', id: uuid(900), name: 'Alex Agent' },
+      }),
+      ticket,
+    },
+  };
+}
+
+describe('timeline', () => {
+  const entries: TimelineEntry[] = [
+    makeMessage(1, ticket1, { bodyText: 'I cannot sign in to the portal.' }),
+    makeMessage(2, ticket1, {
+      direction: 'outbound',
+      sender: { type: 'user', id: uuid(900), name: 'Alex Agent' },
+      bodyText: 'Please try resetting your password.',
+      deliveryStatus: 'failed',
+    }),
+    makeMessage(3, ticket1, {
+      direction: 'internal',
+      visibility: 'internal',
+      sender: { type: 'user', id: uuid(901), name: 'Sam Support' },
+      bodyText: 'Looks like the SSO config. Do not tell the customer yet.',
+    }),
+    {
+      kind: 'event',
+      id: uuid(3000),
+      ticketId: ticket1.id,
+      ticketKey: ticket1.key,
+      type: 'ticket.status_changed',
+      actor: { type: 'user', id: uuid(900), name: 'Alex Agent' },
+      visibility: 'public',
+      payload: { from: 'open', to: 'resolved' },
+      createdAt: '2026-11-02T03:00:00.000Z',
+    },
+  ];
+
+  it('tells a public reply from an internal note by words, icon and border', async () => {
+    workspaceApi({ tickets: [ticket1], timelines: { 'OPS-1': entries } });
+    const { conversation } = await openTicket();
+    const timeline = await within(conversation).findByRole('list', { name: 'Messages and events' });
+
+    const messages = within(timeline).getAllByRole('article');
+    expect(messages.map((message) => message.getAttribute('data-message-kind'))).toEqual([
+      'customer',
+      'reply',
+      'internal',
+    ]);
+    const [customer, reply, note] = messages;
+    if (!customer || !reply || !note) throw new Error('messages missing');
+
+    expect(within(customer).getByText('Customer message')).toBeVisible();
+    expect(within(reply).getByText('Public reply')).toBeVisible();
+    expect(within(note).getByText('Internal note')).toBeVisible();
+    expect(
+      within(note).getByText('Only your team can see this. It is never sent to the customer.'),
+    ).toBeVisible();
+    // The distinction is not colour alone: an icon in each label, a dashed border on the note.
+    for (const message of messages) {
+      expect(message.querySelector('header svg')).not.toBeNull();
+    }
+    expect(note).toHaveClass('border-dashed');
+    expect(reply).not.toHaveClass('border-dashed');
+    expect(reply).toHaveAccessibleName('Public reply');
+    expect(note).toHaveAccessibleName('Internal note');
+  });
+
+  it('shows a delivery failure in words and system events as a sentence', async () => {
+    workspaceApi({ tickets: [ticket1], timelines: { 'OPS-1': entries } });
+    const { conversation } = await openTicket();
+    expect(
+      await within(conversation).findByText('Could not be delivered to the customer'),
+    ).toBeVisible();
+    expect(within(conversation).getByText(/Status changed from Open to Resolved/)).toBeVisible();
+    expect(within(conversation).getByText(/by Alex Agent/)).toBeVisible();
+  });
+
+  it('shows message text as text, never as markup', async () => {
+    workspaceApi({
+      tickets: [ticket1],
+      timelines: {
+        'OPS-1': [makeMessage(1, ticket1, { bodyText: '<img src=x onerror=alert(1)> hi' })],
+      },
+    });
+    const { conversation } = await openTicket();
+    expect(await within(conversation).findByText('<img src=x onerror=alert(1)> hi')).toBeVisible();
+    expect(conversation.querySelector('img[src="x"]')).toBeNull();
+  });
+
+  it('says when there are no messages yet', async () => {
+    workspaceApi({ tickets: [ticket1], timelines: { 'OPS-1': [] } });
+    await openTicket();
+    expect(await screen.findByText('No messages yet')).toBeVisible();
+  });
+
+  it('says so, with a retry, when the messages cannot be loaded', async () => {
+    const user = userEvent.setup();
+    let fail = true;
+    workspaceApi({
+      tickets: [ticket1],
+      overrides: {
+        'GET /v1/tickets/:id/timeline': () =>
+          fail
+            ? apiError(500, 'unknown')
+            : {
+                json: {
+                  entries: [makeMessage(1, ticket1, { bodyText: 'Now it works' })],
+                  nextCursor: null,
+                },
+              },
+      },
+    });
+    await openTicket();
+    expect(await screen.findByText('The messages could not be loaded')).toBeVisible();
+    fail = false;
+    await user.click(screen.getByRole('button', { name: 'Try again' }));
+    expect(await screen.findByText('Now it works')).toBeVisible();
+  });
+
+  it('follows every page of a long conversation', async () => {
+    workspaceApi({
+      tickets: [ticket1],
+      overrides: {
+        'GET /v1/tickets/:id/timeline': ({ url }) =>
+          url.searchParams.get('cursor') === 'p2'
+            ? {
+                json: {
+                  entries: [makeMessage(2, ticket1, { bodyText: 'Second page message' })],
+                  nextCursor: null,
+                },
+              }
+            : {
+                json: {
+                  entries: [makeMessage(1, ticket1, { bodyText: 'First page message' })],
+                  nextCursor: 'p2',
+                },
+              },
+      },
+    });
+    await openTicket();
+    expect(await screen.findByText('First page message')).toBeVisible();
+    expect(await screen.findByText('Second page message')).toBeVisible();
+  });
+});
+
+describe('conversation states', () => {
+  it('shows a skeleton while loading, and "not found" for a ticket that is not there', async () => {
+    workspaceApi({ tickets: [ticket1] });
+    await openTicket('OPS-404');
+    expect(await screen.findByText('Ticket not found')).toBeVisible();
+    expect(screen.getByText('It does not exist, or you do not have access to it.')).toBeVisible();
+  });
+
+  it('offers a retry when the ticket cannot be loaded', async () => {
+    workspaceApi({
+      tickets: [ticket1],
+      overrides: { 'GET /v1/tickets/:id': apiError(500, 'unknown') },
+    });
+    await openTicket();
+    expect(await screen.findByText('The ticket could not be loaded')).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Try again' })).toBeVisible();
+  });
+});
+
+describe('composer: reply', () => {
+  it('sends a public reply with the CSRF token and clears the box', async () => {
+    const user = userEvent.setup();
+    const api = workspaceApi({
+      tickets: [ticket1],
+      overrides: { 'POST /v1/tickets/:id/replies': replyResult() },
+    });
+    await openTicket();
+    const box = await screen.findByRole('textbox', { name: 'Public reply' });
+
+    expect(screen.getByText('The customer will read this. It is sent by Portal.')).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Send reply' })).toBeDisabled();
+    await user.type(box, 'We are looking into it.');
+    await user.click(screen.getByRole('button', { name: 'Send reply' }));
+
+    expect(await screen.findByText('Reply sent.')).toBeVisible();
+    const post = api.callsTo('/v1/tickets/OPS-1/replies', 'POST');
+    expect(post).toHaveLength(1);
+    expect(post[0]?.body).toEqual({ body: 'We are looking into it.' });
+    expect(post[0]?.headers.get('x-csrf-token')).toBe('csrf-token-for-tests');
+    expect(box).toHaveValue('');
+    // The timeline was asked for again so the new message appears.
+    await waitFor(() => {
+      expect(api.callsTo('/v1/tickets/OPS-1/timeline').length).toBeGreaterThanOrEqual(2);
+    });
+  });
+
+  it('sends with Ctrl+Enter', async () => {
+    const user = userEvent.setup();
+    const api = workspaceApi({
+      tickets: [ticket1],
+      overrides: { 'POST /v1/tickets/:id/replies': replyResult() },
+    });
+    await openTicket();
+    await user.type(await screen.findByRole('textbox', { name: 'Public reply' }), 'Quick answer');
+    await user.keyboard('{Control>}{Enter}{/Control}');
+    await waitFor(() => {
+      expect(api.callsTo('/v1/tickets/OPS-1/replies', 'POST')).toHaveLength(1);
+    });
+  });
+
+  it('"reply and set status" sends both in one request and offers only valid next statuses', async () => {
+    const user = userEvent.setup();
+    const api = workspaceApi({
+      tickets: [ticket1],
+      overrides: { 'POST /v1/tickets/:id/replies': replyResult() },
+    });
+    await openTicket();
+    await user.type(await screen.findByRole('textbox', { name: 'Public reply' }), 'Fixed, thanks.');
+
+    const status = screen.getByRole('combobox', { name: 'Then set status' });
+    const offered = within(status)
+      .getAllByRole('option')
+      .map((option) => option.textContent);
+    expect(offered).toContain('Resolved');
+    expect(offered).toContain('Waiting on customer');
+    expect(offered).not.toContain('Open'); // already open
+    expect(offered).not.toContain('Merged'); // reached only by merging
+    expect(offered).not.toContain('New'); // not an allowed move from open
+
+    await user.selectOptions(status, 'Resolved');
+    await user.click(screen.getByRole('button', { name: 'Send reply and set Resolved' }));
+
+    await waitFor(() => {
+      expect(api.callsTo('/v1/tickets/OPS-1/replies', 'POST')[0]?.body).toEqual({
+        body: 'Fixed, thanks.',
+        setStatus: 'resolved',
+      });
+    });
+  });
+
+  it('keeps the text and explains when the server refuses', async () => {
+    const user = userEvent.setup();
+    workspaceApi({
+      tickets: [ticket1],
+      overrides: { 'POST /v1/tickets/:id/replies': apiError(409, 'invalid_transition') },
+    });
+    await openTicket();
+    const box = await screen.findByRole('textbox', { name: 'Public reply' });
+    await user.type(box, 'Do not lose me');
+    await user.click(screen.getByRole('button', { name: 'Send reply' }));
+
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent('Could not send');
+    expect(alert).toHaveTextContent('The ticket cannot move to that status from where it is now.');
+    expect(box).toHaveValue('Do not lose me');
+  });
+
+  it('keeps an unsent draft when you move to another ticket and back', async () => {
+    const user = userEvent.setup();
+    workspaceApi();
+    await openTicket();
+    const box = await screen.findByRole('textbox', { name: 'Public reply' });
+    await user.type(box, 'Half written');
+
+    await user.click(await screen.findByRole('button', { name: /OPS-2/ }));
+    await screen.findByRole('heading', { name: 'Export is slow', level: 3 });
+    expect(await screen.findByRole('textbox', { name: 'Public reply' })).toHaveValue('');
+
+    await user.click(screen.getByRole('button', { name: /OPS-1/ }));
+    await screen.findByRole('heading', { name: 'Cannot log in', level: 3 });
+    expect(await screen.findByRole('textbox', { name: 'Public reply' })).toHaveValue(
+      'Half written',
+    );
+  });
+
+  it('Escape leaves the box and hands the keyboard back to the queue', async () => {
+    const user = userEvent.setup();
+    workspaceApi();
+    await openTicket();
+    await user.click(await screen.findByRole('textbox', { name: 'Public reply' }));
+    await user.keyboard('{Escape}');
+    expect(screen.getByRole('button', { name: /OPS-1/ })).toHaveFocus();
+  });
+
+  it('C and N jump to the reply and note boxes', async () => {
+    const user = userEvent.setup();
+    workspaceApi();
+    await openTicket();
+    await screen.findByRole('textbox', { name: 'Public reply' });
+    await user.click(screen.getByRole('button', { name: /OPS-1/ }));
+
+    await user.keyboard('n');
+    expect(await screen.findByRole('textbox', { name: 'Internal note' })).toHaveFocus();
+    await user.keyboard('{Escape}');
+    await user.keyboard('c');
+    expect(await screen.findByRole('textbox', { name: 'Public reply' })).toHaveFocus();
+  });
+});
+
+describe('composer: templates', () => {
+  it('fills a template from the ticket and inserts it where the cursor is', async () => {
+    const user = userEvent.setup();
+    workspaceApi({ tickets: [ticket1] });
+    await openTicket();
+    const box = await screen.findByRole('textbox', { name: 'Public reply' });
+
+    const picker = await screen.findByRole('combobox', { name: 'Insert a reply template' });
+    await waitFor(() => {
+      expect(picker).toBeEnabled();
+    });
+    await user.selectOptions(picker, 'Ask for details');
+
+    expect(box).toHaveValue(
+      'Hello Riley Requester, about OPS-1: could you share more details? Alex Agent',
+    );
+    expect(screen.queryByText('Fill in the placeholders first')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Send reply' })).toBeEnabled();
+  });
+
+  it('blocks sending while a placeholder has no value, and names it', async () => {
+    const user = userEvent.setup();
+    workspaceApi({ tickets: [ticket1] });
+    await openTicket();
+    const picker = await screen.findByRole('combobox', { name: 'Insert a reply template' });
+    await waitFor(() => {
+      expect(picker).toBeEnabled();
+    });
+    await user.selectOptions(picker, 'Has a gap');
+
+    expect(await screen.findByText('Fill in the placeholders first')).toBeVisible();
+    expect(screen.getByText(/unknown\.thing/, { selector: 'div' })).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Send reply' })).toBeDisabled();
+
+    // Writing over it clears the block.
+    const box = screen.getByRole('textbox', { name: 'Public reply' });
+    await user.clear(box);
+    await user.type(box, 'Plain text');
+    expect(screen.getByRole('button', { name: 'Send reply' })).toBeEnabled();
+  });
+
+  it('says when the intent has no templates', async () => {
+    workspaceApi({
+      tickets: [
+        makeTicket(1, { intent: { id: uuid(701), key: 'billing', name: 'Billing question' } }),
+      ],
+    });
+    await openTicket();
+    const picker = await screen.findByRole('combobox', { name: 'Insert a reply template' });
+    await waitFor(() => {
+      expect(
+        within(picker).getByRole('option', { name: 'No templates for this intent' }),
+      ).toBeInTheDocument();
+    });
+    expect(picker).toBeDisabled();
+  });
+});
+
+describe('composer: internal notes', () => {
+  it('switches to a note, which looks and reads differently, and posts it as a note', async () => {
+    const user = userEvent.setup();
+    const api = workspaceApi({
+      tickets: [ticket1],
+      overrides: {
+        'POST /v1/tickets/:id/notes': {
+          status: 201,
+          json: {
+            message: makeMessage(60, ticket1, {
+              direction: 'internal',
+              visibility: 'internal',
+              sender: { type: 'user', id: uuid(900), name: 'Alex Agent' },
+            }),
+            ticket: ticket1,
+          },
+        },
+      },
+    });
+    await openTicket();
+    await screen.findByRole('textbox', { name: 'Public reply' });
+
+    await user.click(screen.getByRole('button', { name: 'Internal note' }));
+    expect(screen.getByRole('button', { name: 'Internal note' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    expect(
+      screen.getByText('Only your team sees this note. It is never sent to the customer.'),
+    ).toBeVisible();
+    // No reply-only controls on a note.
+    expect(screen.queryByRole('combobox', { name: 'Then set status' })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('combobox', { name: 'Insert a reply template' }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole('form', { name: 'Write a message' })).toHaveClass('border-dashed');
+
+    await user.type(screen.getByRole('textbox', { name: 'Internal note' }), 'Check the SSO config');
+    await user.click(screen.getByRole('button', { name: 'Add note' }));
+
+    expect(await screen.findByText('Note added.')).toBeVisible();
+    expect(api.callsTo('/v1/tickets/OPS-1/notes', 'POST')[0]?.body).toEqual({
+      body: 'Check the SSO config',
+    });
+    expect(api.callsTo('/v1/tickets/OPS-1/replies', 'POST')).toHaveLength(0);
+  });
+
+  it('keeps the reply draft and the note draft apart', async () => {
+    const user = userEvent.setup();
+    workspaceApi({ tickets: [ticket1] });
+    await openTicket();
+    await user.type(
+      await screen.findByRole('textbox', { name: 'Public reply' }),
+      'for the customer',
+    );
+    await user.click(screen.getByRole('button', { name: 'Internal note' }));
+    expect(screen.getByRole('textbox', { name: 'Internal note' })).toHaveValue('');
+    await user.type(screen.getByRole('textbox', { name: 'Internal note' }), 'for the team');
+    await user.click(screen.getByRole('button', { name: 'Public reply' }));
+    expect(screen.getByRole('textbox', { name: 'Public reply' })).toHaveValue('for the customer');
+  });
+});
+
+describe('composer: permissions and closed tickets', () => {
+  it('a customer can only reply: no note toggle, no templates, no status change', async () => {
+    const user = userEvent.setup();
+    const clientTicket = makeClientTicket(1);
+    const api = workspaceApi({
+      role: 'client',
+      tickets: [clientTicket],
+      overrides: {
+        'POST /v1/tickets/:id/replies': {
+          status: 201,
+          json: {
+            message: makeMessage(70, clientTicket),
+            ticket: clientTicket,
+          },
+        },
+      },
+    });
+    await openTicket('OPS-1');
+    const box = await screen.findByRole('textbox', { name: 'Public reply' });
+
+    expect(screen.queryByRole('button', { name: 'Internal note' })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('combobox', { name: 'Insert a reply template' }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByRole('combobox', { name: 'Then set status' })).not.toBeInTheDocument();
+    expect(
+      screen.getByText('Your message is added to this ticket and the support team is notified.'),
+    ).toBeVisible();
+    // Reference data only staff may read is never requested.
+    expect(api.callsTo('/v1/ticket-workflow')).toHaveLength(0);
+    expect(api.callsTo('/v1/queues')).toHaveLength(0);
+
+    await user.type(box, 'Any update?');
+    await user.click(screen.getByRole('button', { name: 'Send reply' }));
+    await waitFor(() => {
+      expect(api.callsTo('/v1/tickets/OPS-1/replies', 'POST')[0]?.body).toEqual({
+        body: 'Any update?',
+      });
+    });
+  });
+
+  it('a user who can handle but not reply sees only the note composer', async () => {
+    workspaceApi({
+      tickets: [ticket1],
+      overrides: {
+        'GET /v1/auth/session': {
+          json: {
+            user: {
+              id: uuid(900),
+              email: 'x@example.com',
+              name: 'Nora Notes',
+              role: 'agent',
+              orgId: null,
+            },
+            permissions: ['ticket.read', 'ticket.handle', 'auth.session.self'],
+            sessionId: uuid(901),
+            authMethod: 'dev',
+            csrfToken: 'csrf',
+            accessExpiresAt: '2026-11-02T03:15:00.000Z',
+          },
+        },
+      },
+    });
+    await openTicket();
+    expect(await screen.findByRole('textbox', { name: 'Internal note' })).toBeVisible();
+    expect(screen.queryByRole('textbox', { name: 'Public reply' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Public reply' })).not.toBeInTheDocument();
+  });
+
+  it('turns the composer off for a closed ticket', async () => {
+    workspaceApi({ tickets: [makeTicket(1, { status: 'closed' })] });
+    await openTicket();
+    expect(await screen.findByText('This ticket is closed')).toBeVisible();
+    expect(screen.queryByRole('textbox', { name: 'Public reply' })).not.toBeInTheDocument();
+  });
+});
