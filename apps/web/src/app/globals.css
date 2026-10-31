@@ -1,0 +1,44 @@
+@import 'tailwindcss';
+@import '@watchtower/ui/tokens.css';
+@import '@watchtower/ui/tailwind-theme.css';
+
+/* Tailwind scans the shared components too, so their utility classes are generated. */
+@source '../../../../packages/ui/src';
+
+@layer base {
+  html {
+    /* A percentage of the browser default, so a user's own font-size setting still applies. */
+    font-size: var(--wt-font-scale);
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    background-color: var(--color-background);
+    color: var(--color-foreground);
+    font-family: var(--font-sans);
+    line-height: 1.5;
+  }
+
+  *,
+  ::before,
+  ::after {
+    border-color: var(--color-border);
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-ring);
+    outline-offset: 2px;
+  }
+
+  /* Reduced motion: no transitions, no animation, no smooth scrolling (PRD section 10). */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    ::before,
+    ::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}
