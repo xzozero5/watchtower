@@ -153,7 +153,8 @@ test.describe.serial('AC-1: portal submission to resolution', () => {
 
   test('the customer gets a confirmation email whose link opens the tracking page', async () => {
     const email = await mailbox.next(new RegExp(`We received your request ${ticketKey}\\b`));
-    expect(email.text).toContain(requestText.slice(0, 20));
+    // T-010 C-11: the confirmation never echoes what the submitter typed (no phishing relay).
+    expect(email.text).not.toContain(requestText.slice(0, 20));
     trackingLink = email.link;
     expect(new URL(trackingLink).pathname).toBe(`/portal/tickets/${ticketKey}`);
 
