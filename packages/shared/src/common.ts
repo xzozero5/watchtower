@@ -4,6 +4,13 @@ import { z } from 'zod';
 
 export const idParamSchema = z.object({ id: z.uuid() });
 
+const uuidSchema = z.uuid();
+
+/** True for a UUID in the form the API accepts (the same check as `z.uuid()` in the contracts). */
+export function isUuid(value: string): boolean {
+  return uuidSchema.safeParse(value).success;
+}
+
 export const jsonRecordSchema = z.record(z.string(), z.unknown());
 
 /** Opaque value from the previous page's `nextCursor`. */

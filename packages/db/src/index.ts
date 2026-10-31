@@ -7,6 +7,7 @@ export {
   type AppRoleOptions,
 } from './app-role.js';
 export { createDatabase, type CreateDatabaseOptions, type Database } from './client.js';
+export { PG, isPgError, pgCode, pgConstraint } from './errors.js';
 export {
   PermanentOutboxError,
   enqueueOutbox,

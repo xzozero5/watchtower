@@ -1,7 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { schema, type Database } from '@watchtower/db';
+import { contactSnapshot } from '@watchtower/domain';
 import {
-  AUDIT_ACTIONS,
   type Contact,
   type ContactListQuery,
   type CreateContact,
@@ -10,7 +10,6 @@ import {
 import { and, arrayContains, desc, eq, ilike, or, sql } from 'drizzle-orm';
 
 import { AuditScope, type AuditActor } from '../audit/audit-scope.js';
-import { AuditService } from '../audit/audit.service.js';
 import { badRequest, conflict, notFound } from '../auth/http-errors.js';
 import { PG, isPgError } from '../common/db-errors.js';
 import {
@@ -21,6 +20,9 @@ import {
   toPage,
 } from '../common/keyset.js';
 import { DATABASE } from '../database/database.module.js';
+import { domainContext, markAudited } from '../domain/domain-context.js';
+import { translating } from '../domain/domain-errors.js';
+import { DOMAIN, type Domain } from '../domain/domain.module.js';
 import type { DbTransaction } from '../realtime/unit-of-work.js';
 
 export type ContactRow = typeof schema.contact.$inferSelect;
@@ -41,22 +43,11 @@ export function toApiContact(row: ContactRow): Contact {
   };
 }
 
-/** The audit log gets ids and counts, not addresses or phone numbers (PII minimization). */
-function snapshot(row: ContactRow): Record<string, unknown> {
-  return {
-    id: row.id,
-    orgId: row.orgId,
-    emailCount: row.emails.length,
-    hasLineUserId: row.lineUserId !== null,
-    hasPhone: row.phone !== null,
-  };
-}
-
 @Injectable()
 export class ContactsService {
   constructor(
     @Inject(DATABASE) private readonly database: Database,
-    @Inject(AuditService) private readonly audit: AuditService,
+    @Inject(DOMAIN) private readonly domain: Domain,
   ) {}
 
   async list(query: ContactListQuery): Promise<{ items: Contact[]; nextCursor: string | null }> {
@@ -121,7 +112,7 @@ export class ContactsService {
         })
         .returning();
       if (!row) throw new Error('contact insert returned no row');
-      AuditScope.set({ targetType: 'contact', targetId: row.id, after: snapshot(row) });
+      AuditScope.set({ targetType: 'contact', targetId: row.id, after: contactSnapshot(row) });
       return toApiContact(row);
     } catch (error) {
       throw this.translate(error);
@@ -131,7 +122,7 @@ export class ContactsService {
   async update(id: string, patch: UpdateContact): Promise<Contact> {
     const before = await this.find(id);
     if (!before) throw notFound('No such contact');
-    AuditScope.set({ targetType: 'contact', targetId: id, before: snapshot(before) });
+    AuditScope.set({ targetType: 'contact', targetId: id, before: contactSnapshot(before) });
     try {
       const [row] = await this.database.db
         .update(schema.contact)
@@ -150,7 +141,7 @@ export class ContactsService {
         .returning();
       if (!row) throw notFound('No such contact');
       AuditScope.set({
-        after: snapshot(row),
+        after: contactSnapshot(row),
         metadata: { changedFields: Object.keys(patch) },
       });
       return toApiContact(row);
@@ -162,7 +153,7 @@ export class ContactsService {
   async remove(id: string): Promise<void> {
     const before = await this.find(id);
     if (!before) throw notFound('No such contact');
-    AuditScope.set({ targetType: 'contact', targetId: id, before: snapshot(before) });
+    AuditScope.set({ targetType: 'contact', targetId: id, before: contactSnapshot(before) });
     try {
       await this.database.db.delete(schema.contact).where(eq(schema.contact.id, id));
     } catch (error) {
@@ -206,47 +197,16 @@ export class ContactsService {
     name: string,
     actor: AuditActor,
   ): Promise<ContactRow> {
-    const normalized = email.trim().toLowerCase();
-    const [existing] = await tx
-      .select()
-      .from(schema.contact)
-      .where(arrayContains(schema.contact.emails, [normalized]))
-      .limit(1);
-    if (existing) {
-      if (existing.orgId !== orgId) {
-        throw conflict('This email address belongs to a contact of another organization');
-      }
-      return existing;
-    }
-    try {
-      // A savepoint: a unique violation must not abort the caller's whole transaction.
-      return await tx.transaction(async (savepoint) => {
-        const [created] = await savepoint
-          .insert(schema.contact)
-          .values({ orgId, name, emails: [normalized] })
-          .returning();
-        if (!created) throw new Error('contact insert returned no row');
-        await this.audit.recordInTransaction(savepoint, {
-          actor,
-          action: AUDIT_ACTIONS.contactCreate,
-          targetType: 'contact',
-          targetId: created.id,
-          after: snapshot(created),
-          metadata: { via: 'find_or_create_by_email' },
-        });
-        return created;
-      });
-    } catch (error) {
-      if (!isPgError(error, PG.uniqueViolation)) throw error;
-      // Someone created the same contact a moment ago (two submissions from one new address).
-      const [winner] = await tx
-        .select()
-        .from(schema.contact)
-        .where(arrayContains(schema.contact.emails, [normalized]))
-        .limit(1);
-      if (winner?.orgId === orgId) return winner;
-      throw conflict('This email address belongs to another contact');
-    }
+    // The logic moved to @watchtower/domain (ADR-009); the audit row is still written in `tx`.
+    return translating(async () =>
+      markAudited(
+        await this.domain.contacts.findOrCreateByEmail(tx, domainContext(this.domain, actor), {
+          orgId,
+          email,
+          name,
+        }),
+      ),
+    );
   }
 
   private translate(error: unknown): unknown {

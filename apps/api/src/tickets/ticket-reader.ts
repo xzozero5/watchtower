@@ -1,5 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { orgScopeCondition, schema, type Database } from '@watchtower/db';
+import { ticketRefCondition } from '@watchtower/domain';
 import {
   DUPLICATE_SUGGESTION_LIMIT,
   DUPLICATE_WINDOW_HOURS,
@@ -32,7 +33,6 @@ import {
   type SQL,
 } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
-import { z } from 'zod';
 
 import { forbidden, notFound } from '../auth/http-errors.js';
 import { assertOrgAccess, type Principal } from '../auth/principal.js';
@@ -45,6 +45,7 @@ import {
   toPage,
 } from '../common/keyset.js';
 import { DATABASE } from '../database/database.module.js';
+import { translatingSync } from '../domain/domain-errors.js';
 import { TICKET_KEYS, type TicketKeys } from './ticket-keys.js';
 
 export type TicketRow = typeof schema.ticket.$inferSelect;
@@ -161,10 +162,7 @@ export function toClientTicket(row: TicketViewRow, keys: TicketKeys): ClientTick
  * that is neither is "no such ticket", never a query: a uuid column would reject it with an error.
  */
 export function refCondition(ref: string, keys: TicketKeys): SQL {
-  if (z.uuid().safeParse(ref).success) return eq(schema.ticket.id, ref);
-  const number = keys.parse(ref);
-  if (number === null) throw notFound('No such ticket');
-  return eq(schema.ticket.number, number);
+  return translatingSync(() => ticketRefCondition(ref, keys));
 }
 
 /** Staff need `ticket.read`; a client needs `ticket.read.org`. Having only the other one is not enough. */
