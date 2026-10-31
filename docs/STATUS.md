@@ -6,7 +6,7 @@ snapshot สั้นสำหรับ cold start อยู่ที่ `HANDOF
 ## สถานะปัจจุบัน
 | Phase | สถานะ (2026-10-31) | ค้าง |
 |---|---|---|
-| 0 Foundation | ⏸️ พัก รอทำต่อบน cloud session | T-005 ค้างบน `wip/t-005` |
+| 0 Foundation | 🔄 กำลังทำ (cloud session) | T-006 → T-012, T-013 |
 | 1 Inbox + AI 0–2 + Shifts | ⬜ | — |
 | 2 Reliability + Usage | ⬜ | — |
 | 3 Autonomy + Learning | ⬜ | — |
@@ -34,6 +34,16 @@ snapshot สั้นสำหรับ cold start อยู่ที่ `HANDOF
 - บรรทัดใน `.gitignore` ห้ามมี comment ต่อท้าย pattern
 
 ## Log
+
+## 2026-11-01 01:55 (Asia/Bangkok) — backend-dev + main thread — T-005 ปิด
+- ทำอะไร: ตรวจงานค้างบน `wip/t-005` ด้วย `explorer` (agent เดิมถูกหยุดก่อนรายงาน) → ครบ schema/REST/WS/client scoping/`CLIENT_ORG_RESOLVER`/FK `users.org_id` · `backend-dev` แก้ส่วนที่ขาด: SLA recompute ไม่นับเวลา pause, `deliveryStatus` ตาม channel, round-robin ไม่ข้ามคน, event `ticket.reopened`/`sla.recalculated`, `GET /v1/tickets/:id/duplicates` (R-1.5), CRUD test ของ SLA/calendar/queue · main thread แก้ cleanup ของ test DB (57P01) และ test ที่ commit คำต้องห้ามไว้ในโค้ด
+- ไฟล์ที่แตะ: `packages/db/migrations/0002_ticketing*.sql`, `packages/db/src/{schema/ticketing.ts,seed/intents.ts,testing.ts}`, `packages/shared/src/{sla,ticketing,realtime,directory,channels,common}.ts`, `apps/api/src/{orgs,intents,sla,team-queues,tickets,realtime}/**`, `examples/intents/`, `docs/04-ARCHITECTURE.md` §7, §9, §11
+- test: main thread รันเอง: lint, typecheck, test (api 110, shared 106, db 19, worker 19, ui 121, web 60, boundaries 94, ai 1, channels 2) ผ่าน · `test:integration` api 285, db 52, worker 10 ผ่านบน compose Postgres+pgvector/Redis · e2e smoke 22 ผ่าน `[TESTED]`
+- review: `po` ACCEPT WITH FOLLOW-UPS (ไม่มี P0, P1 = เอกสาร DoD ซึ่ง entry นี้ปิดแล้ว) · `architect` merge ได้ ไม่มี P0/P1 · P2/P3 → T-013, T-119, T-007, T-111
+- การตัดสินใจ (main thread): search ใช้ trigram `ILIKE` ไม่ใช้ tsvector (Postgres FTS ตัดคำไทยไม่ได้) · attachment text ค้นหลัง T-102 · R-1.7 load-balanced/stay-with-last-handler อยู่ T-111 · เปลี่ยน calendar ไม่คำนวณ due ของ ticket ที่เปิดอยู่ใหม่ `[ASSUMED]` · ข้อความขาเข้า `deliveryStatus = not_applicable`
+- ค้าง: T-013 (follow-up ก่อน T-007) · DB local ของเจ้าของที่ apply `0002` เวอร์ชันเก่าไปแล้ว: `0002` ไม่ได้แก้ใน session นี้ จึงไม่ต้อง reset ถ้า checksum ตรงกับ `wip/t-005` เดิม `[UNVERIFIED 80%]`
+- ไม่ยืนยัน: performance trigram กับข้อมูลมาก `[UNVERIFIED 70%]` · locale DB บน Cloud SQL ต้องไม่ใช่ `C` `[ASSUMED]` · permission ของ `queue/intent/workflow.manage` ไม่อยู่ใน PRD §2.2 `[ASSUMED]`
+- ข้อสังเกต N1: commit `47f2ae9` (ประวัติของ `wip/t-005`) มีคำในรายการ test ที่บอกใบ้ธุรกิจของ deployment หนึ่ง แก้แล้วใน commit ถัดไป แต่ประวัติยังอยู่เพราะห้ามแก้ history `[ASK-HUMAN]` ถ้าต้องการล้าง
 
 ## 2026-11-01 00:55 (Asia/Bangkok) — main thread — cloud session: environment check
 - ทำอะไร: ตรวจเครื่องมือบน cloud session ตามคำสั่งเจ้าของก่อนทำต่อ
