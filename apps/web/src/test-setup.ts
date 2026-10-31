@@ -1,10 +1,15 @@
 import '@testing-library/jest-dom/vitest';
 
-import { cleanup } from '@testing-library/react';
+import { cleanup, configure } from '@testing-library/react';
 import { afterEach, beforeAll } from 'vitest';
 
 import { resetPreferencesCache } from '@/lib/preferences';
 import { draftStore } from '@/lib/tickets/templates';
+
+// findBy*/waitFor default to 1 s. When turbo runs every package's tests in parallel the CPU is
+// saturated and a render can take longer, which made some tests flaky (T-125). 5 s keeps a real
+// failure fast enough while tolerating load.
+configure({ asyncUtilTimeout: 5_000 });
 
 beforeAll(() => {
   // jsdom does not implement scrolling. Components call these; tests only need them not to throw.
