@@ -116,7 +116,9 @@ export class IntentsController {
   @Audited({ action: AUDIT_ACTIONS.intentDelete, targetType: 'intent' })
   @ApiOperation({ summary: 'Delete an intent no ticket uses' })
   @ApiNoContentResponse({ description: 'Deleted' })
-  @ApiConflictResponse({ description: 'Tickets use this intent; deactivate it instead' })
+  @ApiConflictResponse({
+    description: 'Tickets or its autonomy history use this intent; deactivate it instead',
+  })
   async remove(@Param({ schema: idParamSchema }) params: IdParam): Promise<void> {
     await this.intents.remove(params.id);
   }

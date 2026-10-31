@@ -202,7 +202,10 @@ export const intent = pgTable(
       .array()
       .notNull()
       .default(sql`'{}'`),
+    // Phase 1 CHECK: 0..2. The application role cannot UPDATE this column or autonomy_pinned; the
+    // only way is set_intent_autonomy() (migration 0007, ADR-011).
     autonomyStage: smallint('autonomy_stage').notNull().default(2),
+    autonomyPinned: boolean('autonomy_pinned').notNull().default(false),
     procedureVersionId: uuid('procedure_version_id'),
     replyTemplates: jsonb('reply_templates')
       .notNull()

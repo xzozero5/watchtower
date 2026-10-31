@@ -33,6 +33,8 @@ export const AUTH_ERROR_CODES = [
   'merge_not_allowed',
   'ticket_not_open',
   'verification_failed',
+  // Autonomy (T-112a): asking for stage 3 or above, which only the owner may decide (N3).
+  'autonomy_stage_requires_owner',
 ] as const;
 export type AuthErrorCode = (typeof AUTH_ERROR_CODES)[number];
 
