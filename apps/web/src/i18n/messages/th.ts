@@ -1,4 +1,5 @@
 import type { Messages } from './en';
+import { portalTh } from './portal.th';
 
 /** Thai UI copy. Same keys as en.ts. */
 export const th: Messages = {
@@ -449,4 +450,5 @@ export const th: Messages = {
     notFoundBody: 'หน้านี้ไม่มีอยู่หรือถูกย้ายแล้ว',
     backHome: 'กลับไปที่คิวงาน',
   },
+  portal: portalTh,
 };

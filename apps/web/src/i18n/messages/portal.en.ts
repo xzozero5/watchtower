@@ -1,0 +1,167 @@
+/**
+ * English copy of the public client portal (T-007, docs/06-UI-SPEC.md sections 10 and 16). It lives
+ * in its own file and is merged into the main catalogue as `portal`, so the portal can change
+ * without touching `en.ts`. Same rules as en.ts: add every key to portal.th.ts too.
+ */
+export const portalEn = {
+  frame: {
+    brand: 'Watchtower Support',
+    language: 'Language',
+    main: 'Support portal',
+  },
+  optional: 'optional',
+  submit: 'Submit request',
+  received: 'We received your request {number}',
+  trackingSent: 'We sent a tracking link to {email}.',
+  status: {
+    received: 'Received',
+    inProgress: 'In progress',
+    waitingForYou: 'Waiting for your reply',
+    resolved: 'Resolved',
+    closed: 'Closed',
+    merged: 'Merged',
+    mergedInto: 'Merged into {key}',
+  },
+  linkExpired: "This link has expired. Enter your email and we'll send a new one.",
+  verifyFailed: "Verification couldn't load. Check your connection or try another browser.",
+  form: {
+    title: 'Contact support',
+    intro:
+      "Tell us what is happening and we'll email you a link to follow your request. Fields marked optional can stay empty.",
+    errorSummary: 'Please check the form',
+    errorSummaryHint: 'These fields need your attention:',
+    name: 'Your name',
+    email: 'Email address',
+    emailHint: 'We send the confirmation and the tracking link here.',
+    organization: 'Company or organization',
+    organizationHint: 'We match your company from your email address when we can.',
+    category: 'What is it about?',
+    categoryChoose: 'Choose a topic',
+    urgency: 'How urgent is it?',
+    subject: 'Short summary',
+    subjectHint: 'One line. If you leave it empty we use the start of your description.',
+    description: 'What happened?',
+    descriptionHint: 'What you did, what you expected and what you saw instead.',
+    requestIds: 'Affected session or request IDs',
+    requestIdsHint: 'One per line, for example req_8f3a2c1d. They help us find the problem faster.',
+    sending: 'Sending…',
+    waiting: 'Almost ready…',
+    categories: {
+      outage: 'The service is down or unavailable',
+      apiError: 'API errors',
+      processingFailure: 'Something failed to process',
+      webhook: 'A webhook did not arrive',
+      accountAccess: 'Signing in or account access',
+      billing: 'Billing or usage',
+      configuration: 'Help with configuration',
+      question: 'A question',
+      other: 'Something else',
+    },
+    urgencies: {
+      everythingDown: 'Everything is down',
+      somethingBroken: 'Something is broken',
+      question: 'A question',
+    },
+    urgencyHints: {
+      everythingDown: 'Nothing works for you or your users.',
+      somethingBroken: 'Part of the service fails or behaves wrongly.',
+      question: 'Nothing is broken. You need information or advice.',
+    },
+    errors: {
+      nameRequired: 'Enter your name.',
+      nameTooLong: 'Use at most 200 characters for your name.',
+      emailRequired: 'Enter your email address.',
+      emailInvalid: 'Enter an email address like name@example.com.',
+      organizationTooLong: 'Use at most 200 characters for the organization.',
+      categoryRequired: 'Choose what your request is about.',
+      subjectTooLong: 'Use at most 150 characters for the summary.',
+      descriptionRequired: 'Describe what happened.',
+      descriptionTooLong: 'Use at most 10,000 characters for the description.',
+      requestIdsInvalid: 'Use only letters, digits and . _ : / @ = + - in a request ID.',
+      requestIdsTooMany: 'Add at most 10 request IDs.',
+    },
+    failures: {
+      verification:
+        "We couldn't verify your request. We are checking again: press Submit request when the check is done.",
+      rateLimited:
+        'You have sent several requests recently. Please wait about {time} and try again.',
+      network: "We couldn't reach the server. Check your connection and try again.",
+      validation: 'Some details were not accepted. Check the form and try again.',
+      server: 'Something went wrong on our side. Your text is still here. Try again in a moment.',
+    },
+  },
+  verify: {
+    checking: "Checking you're human…",
+    done: 'Verified. You can submit your request.',
+    progress: 'Verification progress',
+    retry: 'Check again',
+    rateLimited:
+      'Too many checks from your connection. Please wait about {time}, then check again.',
+  },
+  confirmation: {
+    number: 'Your request number',
+    expected: 'We aim to reply by {time}.',
+    next: 'Open the link in the email to follow progress and to reply. Keep the request number if you contact us.',
+    noEmail:
+      'No email after a few minutes? Check your spam folder, or use the number above when you write to us.',
+    another: 'Submit another request',
+    missing: 'There is no request to show here.',
+  },
+  tracking: {
+    title: 'Request {key}',
+    opened: 'Opened {date}',
+    updated: 'Last update {date}',
+    expected: 'We aim to reply by {time}.',
+    mergedBody: 'This request was combined with {key}. Follow the updates there.',
+    mergedLink: 'Open {key}',
+    timeline: 'Conversation',
+    emptyTimeline: 'No messages yet.',
+    truncated: 'Earlier messages are not shown.',
+    you: 'You',
+    team: 'Support team',
+    statusChanged: 'Status changed to {status}',
+    replyTitle: 'Reply',
+    replyLabel: 'Your message',
+    replyHint: 'We will email you when the team answers.',
+    replySend: 'Send reply',
+    replySending: 'Sending…',
+    replySent: 'Your reply was sent.',
+    replyEmpty: 'Write a message before you send.',
+    replyTooLong: 'Use at most 10,000 characters.',
+    cannotReply: 'This request is closed, so it cannot take new replies.',
+    submitNew: 'Submit a new request',
+    accessUntil: 'This link works until {date}. Every email we send you has a fresh link.',
+    loading: 'Loading your request',
+    errors: {
+      network: "We couldn't reach the server. Check your connection and try again.",
+      rateLimited: 'Too many requests. Please wait about {time} and try again.',
+      server: 'Something went wrong on our side. Try again in a moment.',
+      notOpen:
+        'This request was closed or merged while you were writing. Your message was not sent.',
+    },
+    retry: 'Try again',
+  },
+  expired: {
+    title: 'This link has expired',
+    ticket: 'Request number',
+    email: 'Email address you used',
+    send: 'Send a new link',
+    sending: 'Sending…',
+    sent: "If this matches our records, we've sent a new link.",
+    sentHint: 'It can take a few minutes. Check your spam folder too.',
+    errors: {
+      ticketRequired: 'Enter your request number.',
+      emailRequired: 'Enter your email address.',
+      emailInvalid: 'Enter an email address like name@example.com.',
+      rateLimited: 'Too many requests. Please wait about {time} and try again.',
+      network: "We couldn't reach the server. Check your connection and try again.",
+      server: 'Something went wrong on our side. Try again in a moment.',
+    },
+    newRequest: 'Submit a new request',
+  },
+} as const;
+
+type Widen<T> = T extends string ? string : { readonly [K in keyof T]: Widen<T[K]> };
+
+/** The shape portal.th.ts must fill in. */
+export type PortalMessages = Widen<typeof portalEn>;
