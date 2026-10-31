@@ -113,13 +113,13 @@ describe('auth configuration', () => {
   });
 
   it('refuses placeholder or short secrets unless APP_URL is loopback and this is not production (C-1)', () => {
-    expect(() => loadConfig(testEnv({ APP_URL: 'https://support.example.com' }))).toThrow(
-      /JWT_SECRET/,
-    );
+    // testEnv() turns dev login on; a reachable host must also have it off (C-16).
+    const reachable = { APP_URL: 'https://support.example.com', DEV_LOGIN_ENABLED: 'false' };
+    expect(() => loadConfig(testEnv(reachable))).toThrow(/JWT_SECRET/);
     expect(() =>
       loadConfig(
         testEnv({
-          APP_URL: 'https://support.example.com',
+          ...reachable,
           JWT_SECRET: 'x'.repeat(48),
           APP_ENCRYPTION_KEY: Buffer.alloc(32, 5).toString('base64'),
         }),
