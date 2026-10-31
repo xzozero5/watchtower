@@ -6,7 +6,7 @@ snapshot สั้นสำหรับ cold start อยู่ที่ `HANDOF
 ## สถานะปัจจุบัน
 | Phase | สถานะ (2026-10-31) | ค้าง |
 |---|---|---|
-| 0 Foundation | 🟨 กำลังทำ | T-002, T-003 |
+| 0 Foundation | 🟨 กำลังทำ | T-004 |
 | 1 Inbox + AI 0–2 + Shifts | ⬜ | — |
 | 2 Reliability + Usage | ⬜ | — |
 | 3 Autonomy + Learning | ⬜ | — |
@@ -20,6 +20,8 @@ snapshot สั้นสำหรับ cold start อยู่ที่ `HANDOF
 - `[CONFIRMED 2026-10-31]` Google Workspace domain ของ SSO อ่านจาก env ค่าตัวอย่าง `example.com`
 - `[ASSUMED]` งบ `build_ai` $10/session วัดไม่ได้บน Max plan จึงดู % plan limit แทน
 - `docs/brand/watchtower-logo.svg` รุ่น 22:09 สีตรงกับ PNG แล้ว แต่รูปทรงเป็นแบบย่อ: ไม่มีหน้าต่างบนตัวประภาคาร, ซี่ราวระเบียง, ซี่กรอบโคมไฟ และคลื่นคนละทรง (ตรวจจาก source) → UI ยังใช้ PNG เป็นโลโก้ และใช้ hex ใน `docs/brand/README.md` เป็น token
+- `[ASK-HUMAN]` N1 ("secret อยู่ใน environment เท่านั้น") และ `.claude/agents/integration-engineer.md` ขัดกับ PRD §4.12/§6.7/§8.1 ที่ให้ตั้ง credential ของ integration ผ่าน admin UI แบบเข้ารหัส → main thread เสนอแยก infra (env เท่านั้น) กับ integration (env หรือ DB เข้ารหัส) รอเจ้าของตัดสิน ไม่บล็อก Phase 0
+- `[ASK-HUMAN]` deploy ขึ้น GCP อยู่ใน Post-MVP แต่ pilot T-115 ต้องมีข้อมูลจริงและ webhook สาธารณะ → เสนอย้ายมาก่อน T-115, ให้ `po` พิจารณาใน T-011
 - `WT_MAIN_THREAD=1` ใน `.claude/settings.local.json` (เจ้าของตั้งเอง) ปลดการป้องกัน HANDOFF/STATUS/BACKLOG ให้ sub-agent ด้วย → main thread ตรวจ diff ของสามไฟล์นี้หลัง agent ทุกตัว; `guard.py` ควรแยก sub-agent จาก hook input แทน env (เสนอ ยังไม่ทำ)
 - LINE TH pricing/quota `[VERIFY]` · LINE mark-as-read `[VERIFY]` · Google managed MCP availability `[VERIFY]`
 - วันหยุดราชการไทย 2026–2027 สำหรับ business calendar `[VERIFY]` (T-008)
@@ -41,6 +43,13 @@ snapshot สั้นสำหรับ cold start อยู่ที่ `HANDOF
 - ค้าง: —
 - ไม่ยืนยัน: —
 
+
+## 2026-10-31 22:32 (Asia/Bangkok) — backend-dev + main thread — T-002
+- ทำอะไร: `apps/api` (health, Zod config, OpenAPI, pino, OTel, CORS allow-list), `apps/worker` (BullMQ + health), `packages/db` (migration runner แบบ up/down + checksum), `docker-compose.yml`, Dockerfile ของ api/worker, `Caddyfile`, `.env.example` ฉบับครบ, ADR-003
+- ไฟล์ที่แตะ: ตามรายการใน merge `cc220fb`
+- test: main thread รันซ้ำหลัง merge: `--force` lint/typecheck/test/build ผ่าน; `docker compose up -d --wait` ครบทุก service healthy รวม web; `/health` ของ web, api, worker = 200; caddy `/` และ `/api/health` = 200, `/metrics` ผ่าน caddy = 404; CORS ตอบเฉพาะ origin ของ `APP_URL`; ทุก port bind `127.0.0.1`; `test:integration` 19 เคส ผ่าน; e2e 22 เคส ผ่าน `[TESTED]`
+- ค้าง: worker ยังไม่มี OTel/`/metrics` · CORS ยังไม่เปิด `credentials` ต้องกำหนดพร้อม CSRF ใน T-004
+- ไม่ยืนยัน: image `pgsty/minio` เป็นของบุคคลที่สาม (ADR-003) `[VERIFY]` · ชื่อ metric ไม่มี suffix `_seconds`
 
 ## 2026-10-31 22:25 (Asia/Bangkok) — frontend-dev + main thread — T-003
 - ทำอะไร: `apps/web` Next.js + Tailwind + TanStack Query, `/health`, API URL ตอน runtime, design tokens ใน `packages/ui` พร้อม contrast test, three-pane เปล่า, command palette stub, i18n TH/EN, Dockerfile, ใช้โลโก้ PNG และ palette จาก `docs/brand/README.md`
