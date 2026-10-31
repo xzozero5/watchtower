@@ -8,7 +8,7 @@ import {
   type Density,
   type ThemePreference,
 } from '@watchtower/ui';
-import { Button, cn } from '@watchtower/ui';
+import { Button, cn, Select } from '@watchtower/ui';
 import { SlidersHorizontal } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useEffect, useId, useRef, useState } from 'react';
@@ -18,13 +18,11 @@ import { useI18n } from '@/i18n/provider';
 import { saveLocale } from '@/lib/locale-cookie';
 import { setDensity, setSingleKeyShortcuts, setTheme, usePreferences } from '@/lib/preferences';
 
-const SELECT_CLASS =
-  'h-control rounded-md border border-border-strong bg-surface px-2 text-sm text-foreground';
-
 /**
- * Theme, density, language and the single-key shortcut switch. Native controls: keyboard and
- * screen reader support for free. From 1024 px they sit in the top bar; below that they fold into
- * a panel behind one button, so the bar does not wrap onto several rows.
+ * Theme, density, language and the single-key shortcut switch, as native controls (keyboard and
+ * screen reader support for free). The signed-in workspace has these in the account menu; this row
+ * is for the sign-in page, where there is no account yet. From 1024 px they sit in a row; below
+ * that they fold into a panel behind one button.
  */
 export function PreferencesControls() {
   const { t, locale } = useI18n();
@@ -81,7 +79,7 @@ export function PreferencesControls() {
         role="group"
         aria-label={t('topbar.preferences')}
         className={cn(
-          'z-30 flex-col gap-3 rounded-lg border border-border-strong bg-surface p-pane shadow-lg max-lg:absolute max-lg:top-full max-lg:right-0 max-lg:mt-1 max-lg:w-max',
+          'z-30 flex-col gap-3 rounded-lg border border-border bg-surface p-3 shadow-overlay max-lg:absolute max-lg:top-full max-lg:right-0 max-lg:mt-1 max-lg:w-max',
           'lg:flex lg:flex-row lg:flex-wrap lg:items-center lg:border-0 lg:bg-transparent lg:p-0 lg:shadow-none',
           open ? 'flex' : 'hidden',
         )}
@@ -90,47 +88,45 @@ export function PreferencesControls() {
           <label htmlFor={themeId} className="text-sm text-muted-foreground">
             {t('prefs.theme.label')}
           </label>
-          <select
+          <Select
             id={themeId}
             value={theme}
             onChange={(event) => {
               setTheme(parseThemePreference(event.target.value));
             }}
-            className={SELECT_CLASS}
           >
             {THEME_PREFERENCES.map((value) => (
               <option key={value} value={value}>
                 {themeLabel(value)}
               </option>
             ))}
-          </select>
+          </Select>
         </div>
 
         <div className="flex items-center gap-1.5">
           <label htmlFor={densityId} className="text-sm text-muted-foreground">
             {t('prefs.density.label')}
           </label>
-          <select
+          <Select
             id={densityId}
             value={density}
             onChange={(event) => {
               setDensity(parseDensity(event.target.value));
             }}
-            className={SELECT_CLASS}
           >
             {DENSITIES.map((value) => (
               <option key={value} value={value}>
                 {densityLabel(value)}
               </option>
             ))}
-          </select>
+          </Select>
         </div>
 
         <div className="flex items-center gap-1.5">
           <label htmlFor={languageId} className="text-sm text-muted-foreground">
             {t('prefs.language.label')}
           </label>
-          <select
+          <Select
             id={languageId}
             value={locale}
             onChange={(event) => {
@@ -139,14 +135,13 @@ export function PreferencesControls() {
               saveLocale(next);
               router.refresh();
             }}
-            className={SELECT_CLASS}
           >
             {LOCALES.map((value) => (
               <option key={value} value={value} lang={value}>
                 {LOCALE_NAMES[value]}
               </option>
             ))}
-          </select>
+          </Select>
         </div>
 
         <div className="flex items-center gap-1.5">

@@ -40,6 +40,13 @@ describe('keymapFor', () => {
     }
   });
 
+  it('lists Ctrl+B for the navigation rail to everyone, and it is not a single-key shortcut', () => {
+    const rail = KEYMAP.find((entry) => entry.id === 'rail');
+    expect(rail?.keys).toEqual(['Ctrl', 'B']);
+    expect(rail?.singleKey).toBe(false);
+    expect(idsFor('client')).toContain('rail');
+  });
+
   it('has a Thai and an English label for every entry', () => {
     for (const locale of ['en', 'th'] as const) {
       for (const entry of KEYMAP) {

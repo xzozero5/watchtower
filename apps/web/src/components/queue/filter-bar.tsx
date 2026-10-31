@@ -6,9 +6,21 @@ import {
   type TicketPriority,
   type TicketStatus,
 } from '@watchtower/shared';
-import { Button, Input, Select } from '@watchtower/ui';
-import { Bookmark, ListFilter, Search, Trash2 } from 'lucide-react';
-import { type Ref, useEffect, useId, useState } from 'react';
+import {
+  Button,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+  Input,
+  Select,
+  Tooltip,
+} from '@watchtower/ui';
+import { Bookmark, ChevronDown, ListFilter, Search, Trash2 } from 'lucide-react';
+import { type ReactNode, type Ref, useEffect, useId, useState } from 'react';
 
 import { useT } from '@/i18n/provider';
 import {
@@ -36,13 +48,24 @@ export interface FilterBarProps {
   /** A client sees fewer filters: no assignee, no SLA, no sorting by due time. */
   isClient: boolean;
   searchRef?: Ref<HTMLInputElement>;
+  /** How many tickets the list shows, set next to the view name. */
+  count?: ReactNode;
+  /** Extra control at the end of the header row (the button that folds the queue away). */
+  headerEnd?: ReactNode;
 }
 
 function toggle<T>(list: readonly T[], item: T): T[] {
   return list.includes(item) ? list.filter((entry) => entry !== item) : [...list, item];
 }
 
-/** Search, view picker and the filter panel of the queue. */
+const CHECK = 'size-4 shrink-0 accent-primary';
+const CHECK_LABEL = 'inline-flex min-h-7 items-center gap-1.5';
+
+/**
+ * The queue's header (docs/design/ui-refresh-2026-11.md section 3.2): the view switcher with the
+ * ticket count and a filter toggle on a 48px row, the search box under it, and the filter panel
+ * when it is open.
+ */
 export function FilterBar({
   filters,
   onChange,
@@ -51,6 +74,8 @@ export function FilterBar({
   onDeleteView,
   isClient,
   searchRef,
+  count: ticketCount,
+  headerEnd,
 }: FilterBarProps) {
   const t = useT();
   const panelId = useId();
@@ -86,6 +111,11 @@ export function FilterBar({
     : currentSaved
       ? `s:${currentSaved.id}`
       : CUSTOM_VIEW;
+  const viewTitle = currentBuiltIn
+    ? t(`queue.views.${currentBuiltIn.id}`)
+    : currentSaved
+      ? currentSaved.name
+      : t('queue.views.custom');
   const count = activeFilterCount(filters);
 
   const pickView = (value: string) => {
@@ -102,18 +132,86 @@ export function FilterBar({
   const priorities: readonly TicketPriority[] = TICKET_PRIORITIES;
 
   return (
-    <div className="flex flex-col gap-2 border-b border-border px-pane py-2">
+    <div className="border-b border-border">
+      <div className="flex h-[48px] items-center gap-2 px-3">
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button
+              type="button"
+              aria-label={`${t('queue.views.label')}: ${viewTitle}`}
+              className="-ml-2 inline-flex h-control min-w-0 items-center gap-1 rounded-md px-2 text-base font-semibold transition-colors duration-(--wt-motion-duration-fast) ease-out hover:bg-surface-muted data-[state=open]:bg-surface-muted"
+            >
+              <span className="truncate">{viewTitle}</span>
+              <ChevronDown aria-hidden className="size-4 shrink-0 text-muted-foreground" />
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" className="w-60">
+            <DropdownMenuLabel>{t('queue.views.builtIn')}</DropdownMenuLabel>
+            <DropdownMenuRadioGroup value={selectedView} onValueChange={pickView}>
+              {builtIns.map((view) => (
+                <DropdownMenuRadioItem key={view.id} value={`b:${view.id}`}>
+                  {t(`queue.views.${view.id}`)}
+                </DropdownMenuRadioItem>
+              ))}
+              {savedViews.length > 0 ? (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuLabel>{t('queue.views.saved')}</DropdownMenuLabel>
+                  {savedViews.map((view) => (
+                    <DropdownMenuRadioItem key={view.id} value={`s:${view.id}`}>
+                      <span className="truncate">{view.name}</span>
+                    </DropdownMenuRadioItem>
+                  ))}
+                </>
+              ) : null}
+              {selectedView === CUSTOM_VIEW ? (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuRadioItem value={CUSTOM_VIEW} disabled>
+                    {t('queue.views.custom')}
+                  </DropdownMenuRadioItem>
+                </>
+              ) : null}
+            </DropdownMenuRadioGroup>
+          </DropdownMenuContent>
+        </DropdownMenu>
+        {ticketCount ? (
+          <span className="tabular shrink-0 text-xs text-muted-foreground">{ticketCount}</span>
+        ) : null}
+        <Tooltip content={t('queue.filters.title')}>
+          <Button
+            variant="ghost"
+            className="ml-auto gap-1 px-2"
+            aria-expanded={open}
+            aria-controls={panelId}
+            onClick={() => {
+              setOpen((value) => !value);
+            }}
+          >
+            <ListFilter aria-hidden className="size-4" />
+            <span className="sr-only">{t('queue.filters.title')}</span>
+            {count > 0 ? (
+              <span className="tabular rounded-full bg-primary px-1.5 text-xs font-medium text-primary-foreground">
+                <span className="sr-only">{t('queue.filters.activeCount', { count })}</span>
+                <span aria-hidden>{count}</span>
+              </span>
+            ) : null}
+          </Button>
+        </Tooltip>
+        {headerEnd}
+      </div>
+
       <form
         role="search"
         onSubmit={(event) => {
           event.preventDefault();
           if (draft !== filters.q) onChange({ ...filters, q: draft });
         }}
-        className="relative"
+        className="relative px-3 pb-2"
       >
         <Search
           aria-hidden
-          className="pointer-events-none absolute top-1/2 left-2 size-4 -translate-y-1/2 text-muted-foreground"
+          className="pointer-events-none absolute top-1/2 left-5 size-4 -translate-y-[60%] text-muted-foreground"
         />
         <Input
           ref={searchRef}
@@ -127,94 +225,45 @@ export function FilterBar({
           aria-keyshortcuts="/"
           placeholder={t('queue.search.placeholder')}
           autoComplete="off"
-          className="w-full pl-8"
+          className="w-full border-transparent bg-surface-muted pl-8 hover:bg-surface-muted"
         />
       </form>
 
-      <div className="flex items-center gap-2">
-        <label htmlFor={`${panelId}-view`} className="sr-only">
-          {t('queue.views.label')}
-        </label>
-        <Select
-          id={`${panelId}-view`}
-          value={selectedView}
-          onChange={(event) => {
-            pickView(event.target.value);
-          }}
-          className="min-w-0 flex-1"
-        >
-          <optgroup label={t('queue.views.builtIn')}>
-            {builtIns.map((view) => (
-              <option key={view.id} value={`b:${view.id}`}>
-                {t(`queue.views.${view.id}`)}
-              </option>
-            ))}
-          </optgroup>
-          {savedViews.length > 0 ? (
-            <optgroup label={t('queue.views.saved')}>
-              {savedViews.map((view) => (
-                <option key={view.id} value={`s:${view.id}`}>
-                  {view.name}
-                </option>
-              ))}
-            </optgroup>
-          ) : null}
-          {selectedView === CUSTOM_VIEW ? (
-            <option value={CUSTOM_VIEW} disabled>
-              {t('queue.views.custom')}
-            </option>
-          ) : null}
-        </Select>
-        <Button
-          variant="secondary"
-          aria-expanded={open}
-          aria-controls={panelId}
-          onClick={() => {
-            setOpen((value) => !value);
-          }}
-        >
-          <ListFilter aria-hidden className="size-4" />
-          {t('queue.filters.title')}
-          {count > 0 ? (
-            <span className="rounded-full border border-border-strong px-1.5 text-xs">
-              <span className="sr-only">{t('queue.filters.activeCount', { count })}</span>
-              <span aria-hidden>{count}</span>
-            </span>
-          ) : null}
-        </Button>
-      </div>
-
-      <div id={panelId} hidden={!open} className="flex flex-col gap-3 text-sm">
+      <div
+        id={panelId}
+        hidden={!open}
+        className="flex flex-col gap-3 border-t border-border px-3 text-sm"
+      >
         {open ? (
           <>
-            <fieldset className="flex flex-wrap gap-x-3 gap-y-1">
+            <fieldset className="mt-3 flex flex-wrap gap-x-3 gap-y-0.5">
               <legend className="mb-1 font-medium">{t('queue.filters.status')}</legend>
               {statuses.map((status) => (
-                <label key={status} className="inline-flex items-center gap-1.5">
+                <label key={status} className={CHECK_LABEL}>
                   <input
                     type="checkbox"
                     checked={filters.status.includes(status)}
                     onChange={() => {
                       onChange({ ...filters, status: toggle(filters.status, status) });
                     }}
-                    className="size-7 accent-primary"
+                    className={CHECK}
                   />
                   {t(statusKey(status))}
                 </label>
               ))}
             </fieldset>
 
-            <fieldset className="flex flex-wrap gap-x-3 gap-y-1">
+            <fieldset className="flex flex-wrap gap-x-3 gap-y-0.5">
               <legend className="mb-1 font-medium">{t('queue.filters.priority')}</legend>
               {priorities.map((priority) => (
-                <label key={priority} className="inline-flex items-center gap-1.5">
+                <label key={priority} className={CHECK_LABEL}>
                   <input
                     type="checkbox"
                     checked={filters.priority.includes(priority)}
                     onChange={() => {
                       onChange({ ...filters, priority: toggle(filters.priority, priority) });
                     }}
-                    className="size-7 accent-primary"
+                    className={CHECK}
                   />
                   {priority}{' '}
                   <span className="text-muted-foreground">
@@ -242,14 +291,14 @@ export function FilterBar({
                     ))}
                   </Select>
                 </label>
-                <label className="inline-flex items-center gap-1.5">
+                <label className={CHECK_LABEL}>
                   <input
                     type="checkbox"
                     checked={filters.overdue}
                     onChange={(event) => {
                       onChange({ ...filters, overdue: event.target.checked });
                     }}
-                    className="size-7 accent-primary"
+                    className={CHECK}
                   />
                   {t('queue.filters.overdue')}
                 </label>
@@ -273,7 +322,7 @@ export function FilterBar({
               </Select>
             </label>
 
-            <div className="flex flex-wrap items-center gap-2 border-t border-border pt-3">
+            <div className="flex flex-wrap items-center gap-2 border-t border-border py-3">
               <Button
                 variant="ghost"
                 onClick={() => {

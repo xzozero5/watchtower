@@ -46,7 +46,68 @@ describe('queue rows', () => {
     expect(first.querySelector('[data-severity="p1"] svg')).not.toBeNull();
     expect(within(first).getByText('Open')).toBeVisible();
     expect(within(first).getByText('Unassigned')).toBeVisible();
-    expect(within(first).getByText('Example Org')).toBeVisible();
+    expect(first).toHaveTextContent('Riley Requester · Example Org');
+    // An initials avatar, never an image.
+    expect(first.querySelector('[data-hue]')).toHaveTextContent('RR');
+    expect(first.querySelector('img')).toBeNull();
+  });
+
+  it('has no card: a hairline strip with a selected bar, a new-ticket dot and the channel', async () => {
+    const user = userEvent.setup();
+    workspaceApi({
+      tickets: [
+        makeTicket(1, { subject: 'Fresh one', status: 'new', channel: 'gmail' }),
+        makeTicket(2, { subject: 'Old one', status: 'open', channel: 'line' }),
+      ],
+    });
+    const { queue } = await openQueue();
+    const fresh = (await within(queue).findByText('Fresh one')).closest<HTMLElement>(
+      '[role="option"]',
+    );
+    const old = within(queue).getByText('Old one').closest<HTMLElement>('[role="option"]');
+    if (!fresh || !old) throw new Error('rows missing');
+    // No rounded border box around a row; rows are separated by a hairline.
+    expect(fresh.className).not.toMatch(/\brounded/);
+    expect(fresh.className).toContain('border-b');
+    // New: bold subject and a dot; an older ticket has neither.
+    expect(within(fresh).getByText('Fresh one')).toHaveClass('font-semibold');
+    expect(fresh.querySelector('span[aria-hidden="true"].bg-primary')).not.toBeNull();
+    expect(within(old).getByText('Old one')).not.toHaveClass('font-semibold');
+    expect(old.querySelector('span[aria-hidden="true"].bg-primary')).toBeNull();
+    // The channel is an icon with its name for screen readers and as a tooltip.
+    expect(within(fresh).getByText('Email')).toHaveClass('sr-only');
+    expect(fresh.querySelector('[data-channel="gmail"]')).toHaveAttribute('title', 'Email');
+    expect(old.querySelector('[data-channel="line"]')).toBeInTheDocument();
+
+    // Selecting a row gives it the navy left bar and the tint.
+    expect(old.className).not.toContain('before:bg-primary');
+    await user.click(old);
+    expect(old).toHaveAttribute('aria-selected', 'true');
+    expect(old.className).toContain('before:bg-primary');
+    expect(old.className).toContain('bg-primary-subtle');
+  });
+
+  it('shows the requester and organisation, the relative time with the exact time on hover', async () => {
+    workspaceApi({
+      tickets: [makeTicket(1, { updatedAt: new Date(Date.now() - 3 * 60_000).toISOString() })],
+    });
+    const { queue } = await openQueue();
+    const row = (await within(queue).findByText('Subject of ticket 1')).closest<HTMLElement>(
+      '[role="option"]',
+    );
+    if (!row) throw new Error('row missing');
+    expect(row).toHaveTextContent('Riley Requester · Example Org');
+    const time = row.querySelector('time');
+    expect(time).toHaveTextContent('3 minutes ago');
+    expect(time?.getAttribute('title')).toMatch(/2026|2025/);
+  });
+
+  it('counts the tickets next to the view name', async () => {
+    workspaceApi();
+    const { queue } = await openQueue();
+    await within(queue).findByText('Cannot log in');
+    expect(within(queue).getByText('3 tickets')).toBeVisible();
+    expect(within(queue).getByRole('button', { name: 'View: All open' })).toBeVisible();
   });
 
   it('marks an overdue ticket with words and an icon, not only colour', async () => {
@@ -68,7 +129,7 @@ describe('queue rows', () => {
   it('shows a loading state, then the empty state when there are no tickets', async () => {
     workspaceApi({ tickets: [] });
     await openQueue();
-    expect(await screen.findByText('No tickets yet')).toBeVisible();
+    expect(await screen.findByText('All caught up — nothing waiting in your queue.')).toBeVisible();
   });
 
   it('says so, with a retry, when the queue cannot be loaded', async () => {
@@ -358,6 +419,14 @@ describe('the "N new" pill', () => {
   });
 });
 
+/** Opens the view switcher and picks a view with the keyboard (Radix menus ignore jsdom clicks). */
+async function chooseView(user: ReturnType<typeof userEvent.setup>, name: string) {
+  await user.click(screen.getByRole('button', { name: /^View:/ }));
+  const item = await screen.findByRole('menuitemradio', { name });
+  item.focus();
+  await user.keyboard('{Enter}');
+}
+
 describe('filters and saved views', () => {
   it('asks the api for what the view says', async () => {
     const user = userEvent.setup();
@@ -365,12 +434,12 @@ describe('filters and saved views', () => {
     await openQueue();
     await screen.findByText('Cannot log in');
 
-    await user.selectOptions(screen.getByRole('combobox', { name: 'View' }), 'My queue');
+    await chooseView(user, 'My queue');
     await waitFor(() => {
       expect(api.callsTo('/v1/tickets').at(-1)?.search).toContain('assignee=me');
     });
 
-    await user.selectOptions(screen.getByRole('combobox', { name: 'View' }), 'Overdue');
+    await chooseView(user, 'Overdue');
     await waitFor(() => {
       const search = api.callsTo('/v1/tickets').at(-1)?.search ?? '';
       expect(search).toContain('overdue=true');
@@ -443,9 +512,14 @@ describe('filters and saved views', () => {
     await user.type(screen.getByRole('textbox', { name: 'Name for this view' }), 'Critical only');
     await user.click(screen.getByRole('button', { name: 'Save view' }));
 
-    const view = screen.getByRole('combobox', { name: 'View' });
-    expect(within(view).getByRole('option', { name: 'Critical only' })).toBeInTheDocument();
-    expect((view as HTMLSelectElement).value).toMatch(/^s:/);
+    // The saved view is now the current one and sits in the switcher.
+    const view = screen.getByRole('button', { name: 'View: Critical only' });
+    await user.click(view);
+    expect(await screen.findByRole('menuitemradio', { name: 'Critical only' })).toHaveAttribute(
+      'aria-checked',
+      'true',
+    );
+    await user.keyboard('{Escape}');
     const stored = Object.keys(localStorage).filter((key) =>
       key.startsWith(SAVED_VIEWS_KEY_PREFIX),
     );
@@ -456,15 +530,14 @@ describe('filters and saved views', () => {
     workspaceApi();
     await openQueue();
     await screen.findByText('Cannot log in');
-    expect(
-      within(screen.getByRole('combobox', { name: 'View' })).getByRole('option', {
-        name: 'Critical only',
-      }),
-    ).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /^View:/ }));
+    expect(await screen.findByRole('menuitemradio', { name: 'Critical only' })).toBeInTheDocument();
+    await user.keyboard('{Escape}');
 
-    await user.selectOptions(screen.getByRole('combobox', { name: 'View' }), 'Critical only');
+    await chooseView(user, 'Critical only');
     await user.click(screen.getByRole('button', { name: /Filters/ }));
     await user.click(screen.getByRole('button', { name: 'Delete "Critical only"' }));
-    expect(screen.queryByRole('option', { name: 'Critical only' })).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /^View:/ }));
+    expect(screen.queryByRole('menuitemradio', { name: 'Critical only' })).not.toBeInTheDocument();
   });
 });

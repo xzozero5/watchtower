@@ -47,8 +47,8 @@ export function KeyboardMap({ open, onOpenChange, isMac }: KeyboardMapProps) {
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
       <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-40 bg-scrim" />
-        <Dialog.Content className="fixed top-[8vh] left-1/2 z-50 max-h-[84vh] w-[min(40rem,calc(100vw-2rem))] -translate-x-1/2 overflow-y-auto rounded-lg border border-border-strong bg-surface p-pane text-foreground shadow-lg">
+        <Dialog.Overlay className="fixed inset-0 z-40 animate-fade-in bg-scrim" />
+        <Dialog.Content className="fixed top-[8vh] left-1/2 z-50 max-h-[84vh] w-[min(40rem,calc(100vw-2rem))] -translate-x-1/2 overflow-y-auto rounded-xl border border-border bg-surface p-5 text-foreground shadow-overlay">
           <div className="flex items-start justify-between gap-4">
             <div>
               <Dialog.Title className="text-lg font-semibold">{t('keymap.title')}</Dialog.Title>
@@ -71,7 +71,7 @@ export function KeyboardMap({ open, onOpenChange, isMac }: KeyboardMapProps) {
               onChange={(event) => {
                 setSingleKeyShortcuts(event.target.checked);
               }}
-              className="mt-1 size-4"
+              className="mt-1 size-4 accent-primary"
             />
             <div>
               <label htmlFor={switchId} className="text-sm font-medium">
@@ -91,10 +91,7 @@ export function KeyboardMap({ open, onOpenChange, isMac }: KeyboardMapProps) {
             if (inGroup.length === 0) return null;
             return (
               <section key={group} aria-labelledby={`keymap-${group}`} className="mt-4">
-                <h2
-                  id={`keymap-${group}`}
-                  className="text-sm font-semibold tracking-wide text-muted-foreground uppercase"
-                >
+                <h2 id={`keymap-${group}`} className="text-xs font-medium text-muted-foreground">
                   {t(`keymap.groups.${group}`)}
                 </h2>
                 <dl className="mt-2 divide-y divide-border">

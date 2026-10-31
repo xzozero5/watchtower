@@ -49,6 +49,28 @@ export function formatDuration(ms: number, locale: Locale): string {
   }).format(0);
 }
 
+/**
+ * The time a message was sent, short: "10:42" today, "Nov 2, 10:42" on another day (Bangkok time).
+ * The exact date and time sit in the tooltip next to it.
+ */
+export function formatMessageTime(iso: string, locale: Locale, now = Date.now()): string {
+  const day = (ms: number) =>
+    new Intl.DateTimeFormat('en-CA', { timeZone: DISPLAY_TIME_ZONE }).format(new Date(ms));
+  const sameDay = day(Date.parse(iso)) === day(now);
+  return new Intl.DateTimeFormat(
+    locale,
+    sameDay
+      ? { timeStyle: 'short', timeZone: DISPLAY_TIME_ZONE }
+      : {
+          month: 'short',
+          day: 'numeric',
+          hour: 'numeric',
+          minute: '2-digit',
+          timeZone: DISPLAY_TIME_ZONE,
+        },
+  ).format(new Date(iso));
+}
+
 /** Absolute date and time for tooltips and the timeline. */
 export function formatDateTime(iso: string, locale: Locale): string {
   return new Intl.DateTimeFormat(locale, {

@@ -129,7 +129,8 @@ test.describe('sign-in', () => {
 
   test('sign out returns to the login page', async ({ page }) => {
     const backend = await openWorkspace(page);
-    await page.getByRole('button', { name: 'Sign out' }).click();
+    await page.getByRole('button', { name: 'Account menu' }).click();
+    await page.getByRole('menuitem', { name: 'Sign out' }).click();
     await page.waitForURL('**/login');
     expect(backend.to('POST', '/v1/auth/logout')).toHaveLength(1);
   });
@@ -198,8 +199,11 @@ test.describe('queue and conversation', () => {
     expect(reply?.body).toEqual({ body: 'We are on it.' });
     expect(reply?.csrf).toBe('csrf-token-for-tests');
 
-    await conversation(page).getByRole('button', { name: 'Internal note' }).click();
+    await conversation(page).getByRole('radio', { name: 'Internal note' }).click();
     await expect(conversation(page).getByText('Only your team sees this note.')).toBeVisible();
+    await expect(
+      conversation(page).getByText('Internal note — not sent to the customer'),
+    ).toBeVisible();
     await conversation(page)
       .getByRole('textbox', { name: 'Internal note' })
       .fill('Check the config');
@@ -214,8 +218,9 @@ test.describe('queue and conversation', () => {
     const backend = await openWorkspace(page, {}, '/?ticket=OPS-1');
     await conversation(page).getByRole('textbox', { name: 'Public reply' }).fill('Fixed.');
     await conversation(page)
-      .getByRole('combobox', { name: 'Then set status' })
-      .selectOption({ label: 'Resolved' });
+      .getByRole('button', { name: /^Then set status:/ })
+      .click();
+    await page.getByRole('menuitemradio', { name: 'Resolved' }).click();
     await conversation(page).getByRole('button', { name: 'Send reply and set Resolved' }).click();
     await expect(conversation(page).getByText('Reply sent.')).toBeVisible();
     expect(backend.to('POST', '/v1/tickets/OPS-1/replies')[0]?.body).toEqual({
@@ -226,17 +231,28 @@ test.describe('queue and conversation', () => {
 
   test('editing the status in the details saves it and updates the queue row', async ({ page }) => {
     const backend = await openWorkspace(page, {}, '/?ticket=OPS-1');
-    await conversation(page)
-      .getByRole('combobox', { name: 'Status', exact: true })
-      .selectOption({ label: 'Resolved' });
-    await expect(conversation(page).getByText('Saved.')).toBeVisible();
+    const panel = page.getByRole('region', { name: 'Details & AI' });
+    await panel.getByRole('button', { name: /^Status:/ }).click();
+    await page.getByRole('option', { name: /^Resolved/ }).click();
+    await expect(panel.getByText('Saved.')).toBeVisible();
     expect(backend.to('POST', '/v1/tickets/OPS-1/status')[0]?.body).toEqual({ status: 'resolved' });
     await expect(row(page, 'OPS-1')).toContainText('Resolved');
+    // The toast offers Undo, which sends the old status back.
+    await expect(page.getByText('Status set to Resolved')).toBeVisible();
+    await page.getByRole('button', { name: 'Undo' }).click();
+    await expect
+      .poll(() => backend.to('POST', '/v1/tickets/OPS-1/status')[1]?.body)
+      .toEqual({
+        status: 'open',
+      });
   });
 
   test('filters and saved views are sent to the api and survive a reload', async ({ page }) => {
     const backend = await openWorkspace(page);
-    await queue(page).getByRole('combobox', { name: 'View' }).selectOption({ label: 'My queue' });
+    await queue(page)
+      .getByRole('button', { name: /^View:/ })
+      .click();
+    await page.getByRole('menuitemradio', { name: 'My queue' }).click();
     await expect
       .poll(() => backend.to('GET', '/v1/tickets').at(-1)?.search ?? '')
       .toContain('assignee=me');
@@ -248,11 +264,10 @@ test.describe('queue and conversation', () => {
     await queue(page).getByRole('button', { name: 'Save view' }).click();
     await page.reload();
     await expect(page.locator('[data-hydrated="true"]')).toBeAttached();
-    await expect(
-      queue(page)
-        .getByRole('combobox', { name: 'View' })
-        .getByRole('option', { name: 'Mine, urgent' }),
-    ).toHaveCount(1);
+    await queue(page)
+      .getByRole('button', { name: /^View:/ })
+      .click();
+    await expect(page.getByRole('menuitemradio', { name: 'Mine, urgent' })).toHaveCount(1);
   });
 });
 
@@ -327,11 +342,11 @@ test.describe('realtime', () => {
 });
 
 test.describe('customer', () => {
-  test('sees two panes, no AI assistant and can only reply', async ({ page }) => {
+  test('sees two panes, no details panel and can only reply', async ({ page }) => {
     await openWorkspace(page, { role: 'client' }, '/?ticket=OPS-1');
-    await expect(page.getByRole('region', { name: 'AI assistant' })).toHaveCount(0);
+    await expect(page.getByRole('region', { name: 'Details & AI' })).toHaveCount(0);
     await expect(conversation(page).getByRole('textbox', { name: 'Public reply' })).toBeVisible();
-    await expect(conversation(page).getByRole('button', { name: 'Internal note' })).toHaveCount(0);
+    await expect(conversation(page).getByRole('radio', { name: 'Internal note' })).toHaveCount(0);
     await expect(conversation(page).getByRole('combobox')).toHaveCount(0);
   });
 });
@@ -348,10 +363,10 @@ test.describe('layout by width (docs/06-UI-SPEC.md section 3.2)', () => {
     if (!q || !c || !a) throw new Error('a pane is missing');
     expect(q.x + q.width).toBeLessThanOrEqual(c.x + 1);
     expect(c.x + c.width).toBeLessThanOrEqual(a.x + 1);
-    await expect(page.getByRole('button', { name: 'AI assistant', exact: true })).toBeHidden();
+    await expect(page.getByRole('button', { name: 'Details & AI', exact: true })).toBeHidden();
   });
 
-  test('768 to 1023 px: two panes and the AI assistant as a drawer', async ({ page }) => {
+  test('768 to 1023 px: two panes and the details panel as a drawer', async ({ page }) => {
     await page.setViewportSize({ width: 900, height: 800 });
     await openWorkspace(page);
     const q = await page.locator('#pane-queue').boundingBox();
@@ -361,16 +376,22 @@ test.describe('layout by width (docs/06-UI-SPEC.md section 3.2)', () => {
     expect(q.x + q.width).toBeLessThanOrEqual(c.x + 1);
     await expect(page.locator('#pane-assistant')).toBeHidden();
 
-    const toggle = page.getByRole('button', { name: 'AI assistant', exact: true });
+    const toggle = page.getByRole('button', { name: 'Details & AI', exact: true });
     await expect(toggle).toBeVisible();
     await toggle.click();
     const drawer = page.locator('#pane-assistant');
     await expect(drawer).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Close the AI assistant' })).toBeFocused();
+    await expect(page.getByRole('button', { name: 'Close the details panel' })).toBeFocused();
     const box = await drawer.boundingBox();
     if (!box) throw new Error('drawer has no box');
-    // It sits against the right edge and the conversation underneath is still there.
-    expect(Math.abs(box.x + box.width - 900)).toBeLessThan(2);
+    // It sits against the right edge (once its 8 px slide-in has finished) and the conversation
+    // underneath is still there.
+    await expect
+      .poll(async () => {
+        const settled = await drawer.boundingBox();
+        return settled ? Math.abs(settled.x + settled.width - 900) : 999;
+      })
+      .toBeLessThan(2);
     await expect(page.getByRole('dialog')).toHaveCount(0);
 
     await page.keyboard.press('Escape');
@@ -387,7 +408,7 @@ test.describe('layout by width (docs/06-UI-SPEC.md section 3.2)', () => {
       () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
     );
     expect(overflow).toBeLessThanOrEqual(0);
-    await expect(page.getByRole('button', { name: 'AI assistant', exact: true })).toBeHidden();
+    await expect(page.getByRole('button', { name: 'Details & AI', exact: true })).toBeHidden();
 
     const tabs = page.getByRole('tablist', { name: 'Panes' });
     await expect(tabs.getByRole('tab', { name: 'Queue' })).toHaveAttribute('aria-selected', 'true');
@@ -423,7 +444,7 @@ test.describe('layout by width (docs/06-UI-SPEC.md section 3.2)', () => {
     await openWorkspace(page);
     const bar = page.getByRole('group', { name: 'AI draft actions' });
     await expect(bar).toHaveCount(0);
-    await page.getByRole('tab', { name: 'AI assistant' }).click();
+    await page.getByRole('tab', { name: 'Details & AI' }).click();
     await expect(bar).toBeVisible();
     for (const name of ['Approve', 'Edit', 'Reject']) {
       const box = await bar.getByRole('button', { name }).boundingBox();
@@ -541,7 +562,7 @@ test.describe('accessibility (axe, WCAG 2.x A/AA)', () => {
       await queue(page)
         .getByRole('button', { name: /Filters/ })
         .click();
-      await conversation(page).getByRole('button', { name: 'Internal note' }).click();
+      await conversation(page).getByRole('radio', { name: 'Internal note' }).click();
       const results = await new AxeBuilder({ page }).withTags(WCAG_TAGS).analyze();
       expect(results.violations).toEqual([]);
     });
@@ -559,7 +580,7 @@ test.describe('accessibility (axe, WCAG 2.x A/AA)', () => {
   test('the AI drawer has no violations', async ({ page }) => {
     await page.setViewportSize({ width: 900, height: 800 });
     await openWorkspace(page);
-    await page.getByRole('button', { name: 'AI assistant', exact: true }).click();
+    await page.getByRole('button', { name: 'Details & AI', exact: true }).click();
     const results = await new AxeBuilder({ page }).withTags(WCAG_TAGS).analyze();
     expect(results.violations).toEqual([]);
   });
