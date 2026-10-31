@@ -1,9 +1,31 @@
 'use client';
 
 import type { TicketStatus } from '@watchtower/shared';
-import { Alert, Button, Kbd, Select, Textarea, cn } from '@watchtower/ui';
-import { Lock, Send } from 'lucide-react';
-import { type KeyboardEvent, useEffect, useId, useRef, useState } from 'react';
+import {
+  Alert,
+  Button,
+  Combobox,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuTrigger,
+  Kbd,
+  SegmentedControl,
+  Tooltip,
+  cn,
+} from '@watchtower/ui';
+import { Bot, ChevronDown, CornerDownLeft, FileText, Lock, Paperclip, Send } from 'lucide-react';
+import {
+  type KeyboardEvent,
+  type Ref,
+  useEffect,
+  useId,
+  useImperativeHandle,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from 'react';
 
 import { QUEUE_LISTBOX_ID } from '@/components/queue/queue-row';
 import { useI18n } from '@/i18n/provider';
@@ -21,8 +43,18 @@ import {
   renderTemplate,
   type TemplateValues,
 } from '@/lib/tickets/templates';
+import { useIsMac } from '@/lib/use-is-mac';
 
 type Mode = 'reply' | 'note';
+
+/** What the timeline can ask of the composer. */
+export interface ComposerHandle {
+  /** Puts a customer's words into the reply as a quote and moves the caret there. */
+  quote: (text: string) => void;
+}
+
+const MIN_ROWS = 3;
+const MAX_ROWS = 12;
 
 function errorKey(error: unknown): MessageKey {
   if (!isApiError(error)) return 'composer.errors.generic';
@@ -40,15 +72,33 @@ function errorKey(error: unknown): MessageKey {
   }
 }
 
+/** "> " in front of every line, then a blank line so the answer starts below the quote. */
+function asQuote(text: string): string {
+  return `${text
+    .trim()
+    .split('\n')
+    .map((line) => `> ${line}`.trimEnd())
+    .join('\n')}\n\n`;
+}
+
 /**
- * Reply and internal-note composer. The two modes are told apart by words, an icon and the border
- * (solid for something the customer will read, dashed for the team only), so a note cannot be
- * mistaken for a reply. Staff can pick a reply template and send "reply and set status".
+ * Reply and internal-note composer: one rounded box with a Reply / Internal note switch, a textarea
+ * that grows from 3 to 12 rows, a toolbar (template; attach and AI draft are placeholders until
+ * Phase 1) and the send button with its Ctrl/Cmd+Enter hint. The two modes are told apart by
+ * words, an icon, the surface and the border (solid for something the customer will read, dashed
+ * on a muted surface for the team only), so a note cannot be mistaken for a reply.
  */
-export function Composer({ ticket }: { ticket: TicketItem }) {
+export function Composer({
+  ticket,
+  handleRef,
+}: {
+  ticket: TicketItem;
+  handleRef?: Ref<ComposerHandle>;
+}) {
   const { t } = useI18n();
   const { can, session } = useSession();
   const ids = useId();
+  const isMac = useIsMac();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const canReply = can('ticket.reply') || can('ticket.reply.own');
@@ -73,6 +123,18 @@ export function Composer({ ticket }: { ticket: TicketItem }) {
     if (focusTick > 0) textareaRef.current?.focus();
   }, [focusTick]);
 
+  const body = bodies[mode];
+
+  // The box grows with the text, from 3 rows to 12, then scrolls.
+  useLayoutEffect(() => {
+    const area = textareaRef.current;
+    if (!area) return;
+    const line = parseFloat(getComputedStyle(area).lineHeight) || 21;
+    area.style.height = 'auto';
+    const wanted = Math.min(area.scrollHeight, line * MAX_ROWS + 16);
+    area.style.height = `${String(Math.max(wanted, line * MIN_ROWS + 16))}px`;
+  }, [body, mode]);
+
   const focusComposer = (target: Mode) => {
     setMode(target);
     setFocusTick((tick) => tick + 1);
@@ -92,11 +154,25 @@ export function Composer({ ticket }: { ticket: TicketItem }) {
     canNote,
   );
 
+  useImperativeHandle(handleRef, () => ({
+    quote: (text: string) => {
+      if (!canReply) return;
+      setMode('reply');
+      setBodies((current) => {
+        const next = `${current.reply}${current.reply && !current.reply.endsWith('\n') ? '\n\n' : ''}${asQuote(text)}`;
+        draftStore.set(ticket.key, 'reply', next);
+        return { ...current, reply: next };
+      });
+      setSent(null);
+      setFocusTick((tick) => tick + 1);
+    },
+  }));
+
   if (!canReply && !canNote) return null;
 
   if (isClosedForReplies(ticket.status)) {
     return (
-      <div className="border-t border-border p-pane">
+      <div className="border-t border-border p-3">
         <Alert tone="info" title={t('composer.closed.title')}>
           {t('composer.closed.body')}
         </Alert>
@@ -104,7 +180,6 @@ export function Composer({ ticket }: { ticket: TicketItem }) {
     );
   }
 
-  const body = bodies[mode];
   const staffTicket = isDetail(ticket) ? ticket : null;
   const values: TemplateValues = {
     'ticket.key': ticket.key,
@@ -184,6 +259,15 @@ export function Composer({ ticket }: { ticket: TicketItem }) {
   const ModeIcon = mode === 'reply' ? Send : Lock;
   const textareaId = `${ids}-body`;
   const hintId = `${ids}-hint`;
+  const isNote = mode === 'note';
+  const placeholder = t(
+    isNote
+      ? 'composer.placeholders.note'
+      : isStaff
+        ? 'composer.placeholders.reply'
+        : 'composer.placeholders.client',
+  );
+  const soon = t('composer.toolbar.phase1');
 
   return (
     <form
@@ -192,137 +276,200 @@ export function Composer({ ticket }: { ticket: TicketItem }) {
         event.preventDefault();
         submit();
       }}
-      className={cn(
-        'flex flex-col gap-2 border-t p-pane',
-        mode === 'note' ? 'border-dashed border-border-strong bg-surface-muted' : 'border-border',
-      )}
+      className="shrink-0 border-t border-border p-3"
     >
-      {canReply && canNote ? (
-        <div role="group" aria-label={t('composer.modeGroup')} className="flex gap-2">
-          {(['reply', 'note'] as const).map((value) => (
-            <Button
-              key={value}
-              variant={mode === value ? 'primary' : 'secondary'}
-              aria-pressed={mode === value}
-              onClick={() => {
+      <div
+        data-mode={mode}
+        className={cn(
+          'rounded-lg border transition-colors duration-(--wt-motion-duration-fast) ease-out focus-within:outline-2 focus-within:outline-offset-1 focus-within:outline-ring',
+          isNote
+            ? 'border-dashed border-border-strong bg-surface-muted'
+            : 'border-border-strong bg-surface',
+        )}
+      >
+        <div className="flex flex-wrap items-center gap-2 px-2 pt-2">
+          {canReply && canNote ? (
+            <SegmentedControl
+              aria-label={t('composer.modeGroup')}
+              value={mode}
+              onValueChange={(value) => {
                 setMode(value);
                 setSent(null);
               }}
-            >
-              {value === 'reply' ? (
-                <Send aria-hidden className="size-4" />
-              ) : (
-                <Lock aria-hidden className="size-4" />
-              )}
-              {t(`composer.modes.${value}`)}
-            </Button>
-          ))}
+              options={[
+                {
+                  value: 'reply',
+                  label: t('composer.modes.reply'),
+                  icon: <Send aria-hidden className="size-3.5" />,
+                },
+                {
+                  value: 'note',
+                  label: t('composer.modes.note'),
+                  icon: <Lock aria-hidden className="size-3.5" />,
+                },
+              ]}
+            />
+          ) : (
+            <span className="inline-flex h-7 items-center gap-1.5 px-1 text-sm font-medium">
+              <ModeIcon aria-hidden className="size-3.5" />
+              {modeLabel}
+            </span>
+          )}
+          {isNote ? (
+            <p className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+              <Lock aria-hidden className="size-3.5" />
+              {t('composer.noteBanner')}
+            </p>
+          ) : null}
         </div>
-      ) : null}
 
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-        <label htmlFor={textareaId} className="flex items-center gap-1.5 text-sm font-semibold">
-          <ModeIcon aria-hidden className="size-4" />
-          {modeLabel}
+        <label htmlFor={textareaId} className="sr-only">
+          {t(isNote ? 'composer.fields.note' : 'composer.fields.reply')}
         </label>
-        {showTemplates ? (
-          <>
-            <label htmlFor={`${ids}-template`} className="sr-only">
-              {t('composer.template.label')}
-            </label>
-            <Select
+        <textarea
+          ref={textareaRef}
+          id={textareaId}
+          value={body}
+          rows={MIN_ROWS}
+          placeholder={placeholder}
+          onChange={(event) => {
+            setBody(event.target.value);
+          }}
+          onKeyDown={onKeyDown}
+          aria-describedby={hintId}
+          aria-keyshortcuts="Control+Enter Meta+Enter"
+          className="block w-full resize-none bg-transparent px-3 py-2 text-sm leading-normal text-foreground outline-hidden placeholder:text-muted-foreground"
+        />
+
+        <div
+          role="group"
+          aria-label={t('composer.toolbar.label')}
+          className="flex flex-wrap items-center gap-1 px-2 pb-2"
+        >
+          {showTemplates ? (
+            <Combobox
               id={`${ids}-template`}
-              value=""
+              listLabel={t('composer.template.label')}
+              searchPlaceholder={t('composer.toolbar.templateSearch')}
+              emptyText={t('details.noMatches')}
+              selectedText={t('details.selected')}
               disabled={templates.length === 0}
-              onChange={(event) => {
-                insertTemplate(event.target.value);
-              }}
-              className="max-w-56"
+              options={templates.map((template) => ({ value: template.key, label: template.name }))}
+              value=""
+              onValueChange={insertTemplate}
+              className="mx-0 h-control w-auto text-muted-foreground hover:text-foreground"
             >
-              <option value="">
+              <FileText aria-hidden className="size-4" />
+              <span>
                 {templates.length === 0
                   ? t('composer.template.none')
                   : t('composer.template.choose')}
-              </option>
-              {templates.map((template) => (
-                <option key={template.key} value={template.key}>
-                  {template.name}
-                </option>
-              ))}
-            </Select>
-          </>
-        ) : null}
+              </span>
+            </Combobox>
+          ) : null}
+          {isStaff ? (
+            <>
+              <Tooltip content={`${t('composer.toolbar.attach')} — ${soon}`}>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  aria-disabled="true"
+                  aria-label={t('composer.toolbar.attach')}
+                  className="text-muted-foreground"
+                >
+                  <Paperclip aria-hidden className="size-4" />
+                </Button>
+              </Tooltip>
+              <Tooltip content={`${t('composer.toolbar.aiDraft')} — ${soon}`}>
+                <Button
+                  variant="ghost"
+                  aria-disabled="true"
+                  aria-label={t('composer.toolbar.aiDraft')}
+                  className="gap-1.5 px-2 text-muted-foreground"
+                >
+                  <Bot aria-hidden className="size-4 text-ai-accent" />
+                  <span>AI</span>
+                </Button>
+              </Tooltip>
+            </>
+          ) : null}
+
+          <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
+            {showStatus ? (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    className="gap-1 px-2 text-muted-foreground"
+                    aria-label={`${t('composer.setStatus.label')}: ${nextStatus ? t(statusKey(nextStatus)) : t('composer.setStatus.keep')}`}
+                  >
+                    <span aria-hidden>
+                      {nextStatus ? t(statusKey(nextStatus)) : t('composer.setStatus.keep')}
+                    </span>
+                    <ChevronDown aria-hidden className="size-3.5" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" side="top">
+                  <DropdownMenuRadioGroup
+                    value={nextStatus}
+                    onValueChange={(value) => {
+                      const match = nextOptions.find((status) => status === value);
+                      setNextStatus(match ?? '');
+                    }}
+                  >
+                    <DropdownMenuRadioItem value="">
+                      {t('composer.setStatus.keep')}
+                    </DropdownMenuRadioItem>
+                    {nextOptions.map((status) => (
+                      <DropdownMenuRadioItem key={status} value={status}>
+                        {t(statusKey(status))}
+                      </DropdownMenuRadioItem>
+                    ))}
+                  </DropdownMenuRadioGroup>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            ) : null}
+            <Button type="submit" variant="primary" disabled={!canSend} className="gap-2 pr-2.5">
+              <span>
+                {mutation.isPending
+                  ? t('composer.sending')
+                  : isNote
+                    ? t('composer.submit.note')
+                    : nextStatus
+                      ? t('composer.submit.replyAndSet', { status: t(statusKey(nextStatus)) })
+                      : t('composer.submit.reply')}
+              </span>
+              <span aria-hidden className="hidden items-center gap-0.5 sm:inline-flex">
+                <Kbd className="border-transparent bg-primary-foreground/20 text-primary-foreground">
+                  {isMac ? '⌘' : 'Ctrl'}
+                </Kbd>
+                <Kbd className="border-transparent bg-primary-foreground/20 text-primary-foreground">
+                  <CornerDownLeft className="size-3" />
+                </Kbd>
+              </span>
+            </Button>
+          </div>
+        </div>
       </div>
 
-      <Textarea
-        ref={textareaRef}
-        id={textareaId}
-        value={body}
-        onChange={(event) => {
-          setBody(event.target.value);
-        }}
-        onKeyDown={onKeyDown}
-        rows={5}
-        aria-describedby={hintId}
-        aria-keyshortcuts="Control+Enter Meta+Enter"
-        className={cn('w-full', mode === 'note' && 'border-dashed')}
-      />
-      <p id={hintId} className="text-xs text-muted-foreground">
+      <p id={hintId} className="mt-1.5 px-1 text-xs text-muted-foreground">
         {t(hintKey, { channel: channelName ?? '' })}
       </p>
 
       {unresolved.length > 0 ? (
-        <Alert tone="error" title={t('composer.unresolved.title')}>
+        <Alert tone="error" title={t('composer.unresolved.title')} className="mt-2">
           {t('composer.unresolved.body', { names: unresolved.join(', ') })}
         </Alert>
       ) : null}
 
       {mutation.isError ? (
-        <Alert tone="error" title={t('composer.errors.title')}>
+        <Alert tone="error" title={t('composer.errors.title')} className="mt-2">
           {t(errorKey(mutation.error))}
         </Alert>
       ) : null}
 
-      <div role="status" className="text-sm text-muted-foreground">
+      <div role="status" className="px-1 text-xs text-muted-foreground">
         {sent ? (sent === 'reply' ? t('composer.sent.reply') : t('composer.sent.note')) : null}
-      </div>
-
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        {showStatus ? (
-          <label className="inline-flex items-center gap-1.5 text-sm">
-            {t('composer.setStatus.label')}
-            <Select
-              value={nextStatus}
-              onChange={(event) => {
-                const match = nextOptions.find((status) => status === event.target.value);
-                setNextStatus(match ?? '');
-              }}
-            >
-              <option value="">{t('composer.setStatus.keep')}</option>
-              {nextOptions.map((status) => (
-                <option key={status} value={status}>
-                  {t(statusKey(status))}
-                </option>
-              ))}
-            </Select>
-          </label>
-        ) : (
-          <span />
-        )}
-        <div className="flex items-center gap-2">
-          <span className="hidden text-xs text-muted-foreground sm:inline">
-            <Kbd>Ctrl</Kbd> + <Kbd>Enter</Kbd>
-          </span>
-          <Button type="submit" variant="primary" disabled={!canSend}>
-            {mutation.isPending
-              ? t('composer.sending')
-              : mode === 'note'
-                ? t('composer.submit.note')
-                : nextStatus
-                  ? t('composer.submit.replyAndSet', { status: t(statusKey(nextStatus)) })
-                  : t('composer.submit.reply')}
-          </Button>
-        </div>
       </div>
     </form>
   );

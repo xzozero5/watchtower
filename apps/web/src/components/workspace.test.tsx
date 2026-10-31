@@ -54,6 +54,17 @@ const alt = (digit: 1 | 2 | 3) => {
   sendKey({ key: '๑', code: `Digit${String(digit)}`, altKey: true });
 };
 const pane = (name: string) => screen.getByRole('region', { name });
+
+/** Opens the account menu and returns its single-key item (Radix menus ignore jsdom clicks on items). */
+async function singleKeyItem(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(screen.getByRole('button', { name: /^(Account menu|เมนูบัญชี)$/ }));
+  return screen.findByRole('menuitemcheckbox', { name: /Single-key shortcuts|คีย์ลัดปุ่มเดี่ยว/ });
+}
+async function toggleSingleKey(user: ReturnType<typeof userEvent.setup>) {
+  const item = await singleKeyItem(user);
+  item.focus();
+  await user.keyboard('{Enter}');
+}
 const listbox = () => screen.getByRole('listbox', { name: 'Tickets' });
 
 describe('single-key shortcuts preference (WCAG 2.1.4)', () => {
@@ -64,7 +75,7 @@ describe('single-key shortcuts preference (WCAG 2.1.4)', () => {
     await user.click(screen.getByRole('option', { name: /OPS-1/ }));
     await screen.findByRole('textbox', { name: 'Public reply' });
 
-    await user.click(screen.getByRole('checkbox', { name: 'Single-key shortcuts' }));
+    await toggleSingleKey(user);
     expect(localStorage.getItem(SINGLE_KEY_STORAGE_KEY)).toBe('off');
 
     await user.keyboard('j');
@@ -105,14 +116,16 @@ describe('single-key shortcuts preference (WCAG 2.1.4)', () => {
     const user = userEvent.setup();
     workspaceApi();
     const first = await openWorkspace();
-    await user.click(screen.getByRole('checkbox', { name: 'Single-key shortcuts' }));
+    await toggleSingleKey(user);
     first.unmount();
 
     resetPreferencesCache();
     workspaceApi();
     await openWorkspace();
-    expect(screen.getByRole('checkbox', { name: 'Single-key shortcuts' })).not.toBeChecked();
-    await userEvent.setup().keyboard('j');
+    const again = userEvent.setup();
+    expect(await singleKeyItem(again)).toHaveAttribute('aria-checked', 'false');
+    await again.keyboard('{Escape}');
+    await again.keyboard('j');
     expect(within(listbox()).queryByRole('option', { selected: true })).not.toBeInTheDocument();
   });
 
@@ -194,7 +207,7 @@ describe('keyboard map by permission', () => {
       'Approve the draft',
       'Edit the draft',
       'Reject the draft',
-      'Collapse or expand the AI assistant',
+      'Collapse or expand the details panel',
     ]) {
       expect(within(dialog).queryByText(label)).not.toBeInTheDocument();
     }
@@ -218,7 +231,7 @@ describe('moving between panes', () => {
     });
     f6();
     await waitFor(() => {
-      expect(pane('AI assistant')).toHaveFocus();
+      expect(pane('Details & AI')).toHaveFocus();
     });
     f6();
     await waitFor(() => {
@@ -226,7 +239,7 @@ describe('moving between panes', () => {
     });
     f6(true);
     await waitFor(() => {
-      expect(pane('AI assistant')).toHaveFocus();
+      expect(pane('Details & AI')).toHaveFocus();
     });
 
     alt(2);
@@ -235,7 +248,7 @@ describe('moving between panes', () => {
     });
     alt(3);
     await waitFor(() => {
-      expect(pane('AI assistant')).toHaveFocus();
+      expect(pane('Details & AI')).toHaveFocus();
     });
     alt(1);
     await waitFor(() => {
@@ -261,7 +274,7 @@ describe('moving between panes', () => {
     await waitFor(() => {
       expect(pane('Conversation')).toHaveFocus();
     });
-    expect(pane('Conversation').className).toContain('focus-within:ring-2');
+    expect(pane('Conversation').className).toContain('focus-visible:outline-2');
   });
 
   it('a customer has two panes: Alt+3 does nothing and F6 cycles between the two', async () => {
@@ -350,7 +363,7 @@ describe('moving between panes', () => {
     await openWorkspace();
     const queueButton = () => screen.getByRole('button', { name: /^(Collapse|Expand) the queue$/ });
     const assistantButton = () =>
-      screen.getByRole('button', { name: /^(Collapse|Expand) the AI assistant$/ });
+      screen.getByRole('button', { name: /^(Collapse|Expand) the details panel$/ });
     expect(queueButton()).toHaveAttribute('aria-expanded', 'true');
 
     await user.keyboard('[[');
@@ -360,13 +373,13 @@ describe('moving between panes', () => {
       expect(queueButton()).toHaveFocus();
     });
     expect(document.getElementById('pane-queue')?.parentElement?.className).toContain(
-      'lg:grid-cols-[3rem_minmax(0,1fr)_minmax(15rem,24rem)]',
+      'lg:grid-cols-[48px_minmax(0,1fr)_clamp(272px,22vw,320px)]',
     );
 
     await user.keyboard(']');
     expect(assistantButton()).toHaveAttribute('aria-expanded', 'false');
     expect(document.getElementById('pane-queue')?.parentElement?.className).toContain(
-      'lg:grid-cols-[3rem_minmax(0,1fr)_3rem]',
+      'lg:grid-cols-[48px_minmax(0,1fr)_48px]',
     );
 
     // Alt+1 expands the queue again and focuses its list.
@@ -393,7 +406,7 @@ describe('moving between panes', () => {
     });
     f6();
     await waitFor(() => {
-      expect(pane('AI assistant')).toHaveFocus();
+      expect(pane('Details & AI')).toHaveFocus();
     });
     f6();
     // Back to the conversation, not the collapsed queue.
@@ -417,10 +430,10 @@ describe('moving between panes', () => {
 
     alt(3);
     await waitFor(() => {
-      expect(pane('AI assistant')).toHaveFocus();
+      expect(pane('Details & AI')).toHaveFocus();
     });
     await user.keyboard('go');
-    expect(pane('AI assistant')).toHaveFocus();
+    expect(pane('Details & AI')).toHaveFocus();
   });
 
   it('ignores [ ] and g q typed into a field', async () => {
@@ -452,7 +465,7 @@ describe('768 to 1023 px', () => {
     stubViewport(900);
     workspaceApi();
     await openWorkspace();
-    const toggle = screen.getByRole('button', { name: 'AI assistant' });
+    const toggle = screen.getByRole('button', { name: 'Details & AI' });
     await user.keyboard(']');
     expect(toggle).toHaveAttribute('aria-expanded', 'true');
     await user.keyboard('{Escape}');
@@ -473,7 +486,7 @@ describe('768 to 1023 px', () => {
     });
     alt(3);
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: 'Close the AI assistant' })).toHaveFocus();
+      expect(screen.getByRole('button', { name: 'Close the details panel' })).toHaveFocus();
     });
   });
 });
@@ -486,11 +499,9 @@ describe('under 768 px: one pane at a time', () => {
     workspaceApi();
     await openWorkspace();
     expect(screen.getByRole('tablist', { name: 'Panes' })).toBeInTheDocument();
-    expect(screen.getAllByRole('tab').map((t) => t.textContent)).toEqual([
-      'Queue',
-      'Conversation',
-      'AI assistant',
-    ]);
+    const paneTabs = () =>
+      within(screen.getByRole('tablist', { name: 'Panes' })).getAllByRole('tab');
+    expect(paneTabs().map((t) => t.textContent)).toEqual(['Queue', 'Conversation', 'Details & AI']);
     expect(tab('Queue')).toHaveAttribute('aria-selected', 'true');
     expect(tab('Queue')).toHaveAttribute('aria-controls', 'pane-queue');
     expect(tab('Conversation')).toHaveAttribute('aria-selected', 'false');
@@ -499,7 +510,7 @@ describe('under 768 px: one pane at a time', () => {
     expect(document.getElementById('pane-conversation')?.className).toContain('max-md:hidden');
     expect(document.getElementById('pane-assistant')?.className).toContain('max-md:hidden');
     // The tab strip itself exists only on phones.
-    expect(screen.getByRole('tablist').className).toContain('md:hidden');
+    expect(screen.getByRole('tablist', { name: 'Panes' }).className).toContain('md:hidden');
     expect(tab('Queue').className).toContain('min-h-[44px]');
   });
 
@@ -545,11 +556,11 @@ describe('under 768 px: one pane at a time', () => {
       expect(tab('Conversation')).toHaveFocus();
     });
     await user.keyboard('{End}');
-    expect(tab('AI assistant')).toHaveAttribute('aria-selected', 'true');
+    expect(tab('Details & AI')).toHaveAttribute('aria-selected', 'true');
     await user.keyboard('{ArrowRight}');
     expect(tab('Queue')).toHaveAttribute('aria-selected', 'true');
     await user.keyboard('{ArrowLeft}');
-    expect(tab('AI assistant')).toHaveAttribute('aria-selected', 'true');
+    expect(tab('Details & AI')).toHaveAttribute('aria-selected', 'true');
   });
 
   it('F6 and Alt+n switch tabs', async () => {
@@ -557,9 +568,9 @@ describe('under 768 px: one pane at a time', () => {
     workspaceApi();
     await openWorkspace();
     alt(3);
-    expect(tab('AI assistant')).toHaveAttribute('aria-selected', 'true');
+    expect(tab('Details & AI')).toHaveAttribute('aria-selected', 'true');
     await waitFor(() => {
-      expect(pane('AI assistant')).toHaveFocus();
+      expect(pane('Details & AI')).toHaveFocus();
     });
     f6();
     expect(tab('Queue')).toHaveAttribute('aria-selected', 'true');
@@ -574,7 +585,7 @@ describe('under 768 px: one pane at a time', () => {
     await openWorkspace();
     expect(screen.queryByRole('group', { name: 'AI draft actions' })).not.toBeInTheDocument();
 
-    await user.click(tab('AI assistant'));
+    await user.click(tab('Details & AI'));
     const bar = screen.getByRole('group', { name: 'AI draft actions' });
     expect(bar.className).toContain('sticky');
     expect(bar.className).toContain('bottom-0');
@@ -599,7 +610,11 @@ describe('under 768 px: one pane at a time', () => {
     stubViewport(375);
     workspaceApi({ role: 'client' });
     await openWorkspace();
-    expect(screen.getAllByRole('tab').map((t) => t.textContent)).toEqual(['Queue', 'Conversation']);
+    expect(
+      within(screen.getByRole('tablist', { name: 'Panes' }))
+        .getAllByRole('tab')
+        .map((t) => t.textContent),
+    ).toEqual(['Queue', 'Conversation']);
     await user.click(tab('Conversation'));
     expect(screen.queryByRole('group', { name: 'AI draft actions' })).not.toBeInTheDocument();
   });
@@ -615,33 +630,62 @@ describe('under 768 px: one pane at a time', () => {
   });
 });
 
-describe('top bar below 1024 px', () => {
-  it('folds the display and language controls behind one button that opens a panel', async () => {
+describe('navigation rail', () => {
+  it('is 56 px of icons and expands to 220 px with Ctrl+B, announcing the state', async () => {
     const user = userEvent.setup();
     workspaceApi();
     await openWorkspace();
-    const button = screen.getByRole('button', { name: 'Display and language' });
-    const panel = screen.getByRole('group', { name: 'Display and language' });
-    expect(button.className).toContain('lg:hidden');
-    expect(button).toHaveAttribute('aria-expanded', 'false');
-    expect(button).toHaveAttribute('aria-controls', panel.id);
-    // Closed: hidden below lg, shown inline from lg up.
-    expect(panel.className).toContain('hidden');
-    expect(panel.className).toContain('lg:flex');
+    const rail = screen.getByRole('banner');
+    expect(rail.className).toContain('md:w-[56px]');
+    const toggle = screen.getByRole('button', { name: 'Expand the navigation' });
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
 
-    await user.click(button);
-    expect(button).toHaveAttribute('aria-expanded', 'true');
-    expect(panel.className).toContain('flex');
-    expect(panel.className).not.toMatch(/(^|\s)hidden(\s|$)/);
-    expect(within(panel).getByRole('combobox', { name: 'Theme' })).toBeInTheDocument();
+    fireEvent.keyDown(document.body, { key: 'b', code: 'KeyB', ctrlKey: true });
+    expect(rail.className).toContain('md:w-[220px]');
+    expect(screen.getByRole('button', { name: 'Collapse the navigation' })).toHaveAttribute(
+      'aria-expanded',
+      'true',
+    );
+    await user.click(screen.getByRole('button', { name: 'Collapse the navigation' }));
+    expect(rail.className).toContain('md:w-[56px]');
+  });
 
-    await user.keyboard('{Escape}');
-    expect(button).toHaveAttribute('aria-expanded', 'false');
-    expect(button).toHaveFocus();
+  it('gives every icon a tooltip with its shortcut, on keyboard focus too', async () => {
+    const user = userEvent.setup();
+    workspaceApi();
+    await openWorkspace();
+    await user.tab();
+    screen.getByRole('button', { name: 'Open command palette' }).focus();
+    const tip = await screen.findByRole('tooltip');
+    expect(tip).toHaveTextContent('Open command palette');
+    expect(tip).toHaveTextContent('Ctrl');
+    expect(tip).toHaveTextContent('K');
+  });
 
-    await user.click(button);
-    await user.click(document.body);
-    expect(button).toHaveAttribute('aria-expanded', 'false');
+  it('lists what is coming as disabled destinations for staff, and nothing for a customer', async () => {
+    workspaceApi();
+    const view = await openWorkspace();
+    const nav = screen.getByRole('navigation', { name: 'Main navigation' });
+    expect(within(nav).getByRole('button', { name: 'Queue' })).toHaveAttribute(
+      'aria-current',
+      'page',
+    );
+    expect(within(nav).getByRole('button', { name: 'Daily brief' })).toHaveAttribute(
+      'aria-disabled',
+      'true',
+    );
+    view.unmount();
+
+    workspaceApi({ role: 'client' });
+    await openWorkspace();
+    expect(screen.queryByRole('button', { name: 'Daily brief' })).not.toBeInTheDocument();
+  });
+
+  it('moves live and API status into the rail without losing their words', async () => {
+    workspaceApi();
+    await openWorkspace();
+    expect(screen.getByTestId('live-status')).toHaveTextContent(/Live|Connecting/);
+    expect(screen.getByTestId('api-status')).toHaveAttribute('data-state');
   });
 });
 
@@ -666,7 +710,7 @@ describe('Thai copy for the new controls', () => {
     renderWorkspace({ locale: 'th' });
     await screen.findByRole('region', { name: 'คิวงาน' });
     expect(screen.getByRole('tablist', { name: 'พาเนล' })).toBeInTheDocument();
-    expect(screen.getByRole('checkbox', { name: 'คีย์ลัดปุ่มเดี่ยว' })).toBeChecked();
-    expect(screen.getByRole('tab', { name: 'ผู้ช่วย AI' })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'รายละเอียดและ AI' })).toBeInTheDocument();
+    expect(await singleKeyItem(userEvent.setup())).toHaveAttribute('aria-checked', 'true');
   });
 });

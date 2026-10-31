@@ -6,7 +6,7 @@ import { SEVERITIES, type SeverityIconName, type SeverityId } from '../tokens/se
 
 const ICONS: Record<
   SeverityIconName,
-  ComponentType<{ className?: string; 'aria-hidden'?: true }>
+  ComponentType<{ className?: string; strokeWidth?: number; 'aria-hidden'?: true }>
 > = {
   'octagon-alert': OctagonAlert,
   'triangle-alert': TriangleAlert,
@@ -14,12 +14,13 @@ const ICONS: Record<
   info: Info,
 };
 
-// Full class names, so Tailwind can see them when it scans this file.
+// Full class names, so Tailwind can see them when it scans this file. Only P1 is filled: the
+// other levels are outlined, so a screen full of tickets does not turn into a wall of colour.
 const TONE: Record<SeverityId, string> = {
-  p1: 'border-sev-p1-border bg-sev-p1-bg text-sev-p1-fg',
-  p2: 'border-sev-p2-border bg-sev-p2-bg text-sev-p2-fg',
-  p3: 'border-sev-p3-border bg-sev-p3-bg text-sev-p3-fg',
-  p4: 'border-sev-p4-border bg-sev-p4-bg text-sev-p4-fg',
+  p1: 'border-sev-p1-border bg-sev-p1-bg text-sev-p1-fg font-semibold',
+  p2: 'border-sev-p2-border bg-transparent text-sev-p2-fg',
+  p3: 'border-sev-p3-border bg-transparent text-sev-p3-fg',
+  p4: 'border-sev-p4-border bg-transparent text-sev-p4-fg',
 };
 
 export interface SeverityBadgeProps extends Omit<HTMLAttributes<HTMLSpanElement>, 'children'> {
@@ -47,15 +48,16 @@ export function SeverityBadge({
     <span
       data-severity={severity}
       className={cn(
-        'inline-flex items-center gap-1.5 rounded-md border px-2 py-0.5 text-xs font-semibold whitespace-nowrap',
+        'inline-flex h-5 shrink-0 items-center gap-1 rounded-full border px-2 text-xs font-medium whitespace-nowrap',
         TONE[severity],
         className,
       )}
       {...props}
     >
-      <Icon aria-hidden className="size-3.5 shrink-0" />
+      <Icon aria-hidden className="size-3.5 shrink-0" strokeWidth={1.75} />
       <span>{code}</span>
-      <span className={hideLabel ? 'sr-only' : 'font-medium'}>{label}</span>
+      {/* A real space, so the text reads "P1 Critical" to a screen reader and to Label-in-Name. */}{' '}
+      <span className={hideLabel ? 'sr-only' : undefined}>{label}</span>
     </span>
   );
 }

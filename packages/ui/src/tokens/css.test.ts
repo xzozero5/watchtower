@@ -55,6 +55,18 @@ describe('buildTokensCss', () => {
     }
   });
 
+  it('writes the AI accent, the brand ground and every avatar hue in both themes', () => {
+    const dark = block(css, ":root[data-theme='dark']");
+    for (const name of ['color-ai-accent', 'color-brand-surface', 'color-primary-subtle']) {
+      expect(dark).toContain(`--wt-${name}:`);
+      expect(block(css, ':root')).toContain(`--wt-${name}:`);
+    }
+    for (let hue = 1; hue <= 8; hue += 1) {
+      expect(dark).toContain(`--wt-color-avatar-${String(hue)}-bg:`);
+      expect(dark).toContain(`--wt-color-avatar-${String(hue)}-fg:`);
+    }
+  });
+
   it('sets a 14-15px base and a compact density', () => {
     const root = block(css, ':root');
     expect(root).toContain(`--wt-font-scale: ${DENSITY_TOKENS.comfortable.fontScale};`);
@@ -70,6 +82,14 @@ describe('buildTokensCss', () => {
     expect(reduced).toContain('--wt-motion-duration-base: 0ms;');
   });
 
+  it('uses 32px controls and 40px rows when comfortable, 28px and 32px when compact', () => {
+    // rem of the density's own base (15px comfortable, 14px compact), so the UI follows browser zoom.
+    expect(parseFloat(DENSITY_TOKENS.comfortable.controlHeight) * 15).toBeCloseTo(32, 0);
+    expect(parseFloat(DENSITY_TOKENS.comfortable.rowHeight) * 15).toBeCloseTo(40, 0);
+    expect(parseFloat(DENSITY_TOKENS.compact.controlHeight) * 14).toBeCloseTo(28, 0);
+    expect(parseFloat(DENSITY_TOKENS.compact.rowHeight) * 14).toBeCloseTo(32, 0);
+  });
+
   it('contains no hard-coded colour outside the declared tokens', () => {
     const known = new Set<string>();
     for (const theme of Object.values(COLOR_TOKENS)) {
@@ -79,6 +99,7 @@ describe('buildTokensCss', () => {
       for (const id of SEVERITY_IDS) {
         known.add(theme.severity[id].fg).add(theme.severity[id].bg).add(theme.severity[id].border);
       }
+      for (const { fg, bg } of theme.avatar) known.add(fg).add(bg);
     }
     for (const [hex] of css.matchAll(/#[0-9a-f]{6}\b/gi)) {
       expect(known.has(hex)).toBe(true);
@@ -105,6 +126,18 @@ describe('buildTailwindThemeCss', () => {
     for (const name of referenced) {
       expect(defined, name).toContain(`${name}:`);
     }
+  });
+
+  it('maps the type scale to 12, 13, 14, 16 and 20 px with Thai-safe line heights', () => {
+    expect(css).toContain('--text-xs: 0.8rem;');
+    expect(css).toContain('--text-xs--line-height: 1.5;');
+    expect(css).toContain('--text-xl: 1.3333rem;');
+  });
+
+  it('exposes the AI accent and avatar colours as utilities and one overlay shadow', () => {
+    expect(css).toContain('--color-ai-accent: var(--wt-color-ai-accent);');
+    expect(css).toContain('--color-avatar-8-bg: var(--wt-color-avatar-8-bg);');
+    expect(css).toContain('--shadow-overlay:');
   });
 
   it('lists Thai-capable fonts after the Latin one', () => {

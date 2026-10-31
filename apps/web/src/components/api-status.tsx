@@ -1,7 +1,7 @@
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
-import { cn } from '@watchtower/ui';
+import { cn, Tooltip } from '@watchtower/ui';
 import { CircleCheck, CircleX, LoaderCircle } from 'lucide-react';
 
 import { useT } from '@/i18n/provider';
@@ -25,7 +25,7 @@ export async function fetchApiHealth(apiUrl: string, signal?: AbortSignal): Prom
  * Shows whether the browser can reach the API. It uses the runtime API URL, so it also proves the
  * deployment's configuration is wired up. The state is words plus an icon, never colour alone.
  */
-export function ApiStatus() {
+export function ApiStatus({ compact = false }: { compact?: boolean }) {
   const t = useT();
   const { apiUrl } = useRuntimeConfig();
   const { status } = useQuery({
@@ -49,15 +49,21 @@ export function ApiStatus() {
   const Icon = view.icon;
 
   return (
-    <p
-      role="status"
-      data-testid="api-status"
-      data-state={status}
-      aria-label={t('apiStatus.label')}
-      className={cn('flex items-center gap-1.5 text-sm font-medium', view.tone)}
-    >
-      <Icon aria-hidden className={cn('size-4', view.spin && 'animate-spin')} />
-      <span>{view.text}</span>
-    </p>
+    <Tooltip content={view.text} side="right" disabled={!compact}>
+      <p
+        role="status"
+        data-testid="api-status"
+        data-state={status}
+        aria-label={t('apiStatus.label')}
+        className={cn(
+          'flex items-center gap-1.5 text-xs font-medium',
+          compact && 'size-control justify-center',
+          view.tone,
+        )}
+      >
+        <Icon aria-hidden className={cn('size-4', view.spin && 'animate-spin')} />
+        <span className={compact ? 'sr-only' : undefined}>{view.text}</span>
+      </p>
+    </Tooltip>
   );
 }

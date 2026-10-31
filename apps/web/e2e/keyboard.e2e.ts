@@ -17,7 +17,7 @@ async function openWorkspace(page: Page, options: BackendOptions = {}, path = '/
 
 const queue = (page: Page) => page.getByRole('region', { name: 'Queue' });
 const conversation = (page: Page) => page.getByRole('region', { name: 'Conversation' });
-const assistant = (page: Page) => page.getByRole('region', { name: 'AI assistant' });
+const assistant = (page: Page) => page.getByRole('region', { name: 'Details & AI' });
 const listbox = (page: Page) => page.getByRole('listbox', { name: 'Tickets' });
 const row = (page: Page, key: string) =>
   listbox(page).getByRole('option', { name: new RegExp(key) });
@@ -39,11 +39,11 @@ test.describe('pane keys (docs/06-UI-SPEC.md section 14)', () => {
     await expect(listbox(page)).toBeFocused();
     await page.keyboard.press('Alt+3');
     await expect(assistant(page)).toBeFocused();
-    // The focused pane is outlined.
-    const shadow = await page
+    // The focused pane is outlined with the 2px focus ring.
+    const outline = await page
       .locator('#pane-assistant')
-      .evaluate((element) => getComputedStyle(element).boxShadow);
-    expect(shadow).not.toBe('none');
+      .evaluate((element) => getComputedStyle(element).outlineWidth);
+    expect(outline).toBe('2px');
   });
 
   test('Enter on the list and O open the ticket and move focus into the conversation', async ({
@@ -131,7 +131,8 @@ test.describe('single-key shortcuts preference (WCAG 2.1.4)', () => {
   }) => {
     await openWorkspace(page, {}, '/?ticket=OPS-1');
     await expect(row(page, 'OPS-1')).toBeVisible();
-    await page.getByRole('checkbox', { name: 'Single-key shortcuts' }).uncheck();
+    await page.getByRole('button', { name: 'Account menu' }).click();
+    await page.getByRole('menuitemcheckbox', { name: 'Single-key shortcuts' }).click();
 
     for (const key of ['j', 'k', 'c', 'n', 's', '/', '[', ']', 'Shift+?']) {
       await page.keyboard.press(key);
@@ -149,7 +150,11 @@ test.describe('single-key shortcuts preference (WCAG 2.1.4)', () => {
 
     await page.reload();
     await expect(page.locator('[data-hydrated="true"]')).toBeAttached();
-    await expect(page.getByRole('checkbox', { name: 'Single-key shortcuts' })).not.toBeChecked();
+    await page.getByRole('button', { name: 'Account menu' }).click();
+    await expect(
+      page.getByRole('menuitemcheckbox', { name: 'Single-key shortcuts' }),
+    ).toHaveAttribute('aria-checked', 'false');
+    await page.keyboard.press('Escape');
     await expect(row(page, 'OPS-1')).toBeVisible();
     await page.keyboard.press('j');
     await expect(row(page, 'OPS-2')).toHaveAttribute('aria-selected', 'false');
@@ -269,31 +274,55 @@ test.describe('layout details', () => {
     await expect(conversation(page).getByRole('textbox', { name: 'Public reply' })).toBeVisible();
   });
 
-  test('768 to 1023 px: display and language fold into a panel and the top bar stays short', async ({
+  test('768 to 1023 px: the rail stays 56 px wide and the account menu opens from it', async ({
     page,
   }) => {
     await page.setViewportSize({ width: 900, height: 800 });
     await openWorkspace(page);
-    const barHeight = (await page.getByRole('banner').boundingBox())?.height ?? 0;
-    expect(barHeight).toBeLessThan(100);
+    const rail = await page.getByRole('banner').boundingBox();
+    expect(rail?.width).toBe(56);
 
-    const button = page.getByRole('button', { name: 'Display and language' });
-    await expect(page.getByRole('combobox', { name: 'Theme' })).toBeHidden();
-    await button.click();
-    await expect(page.getByRole('combobox', { name: 'Theme' })).toBeVisible();
+    await page.getByRole('button', { name: 'Account menu' }).click();
+    await page.getByRole('menuitem', { name: 'Theme' }).click();
     const results = await new AxeBuilder({ page }).withTags(WCAG_TAGS).analyze();
     expect(results.violations).toEqual([]);
-    await page.getByRole('combobox', { name: 'Theme' }).selectOption('dark');
+    await page.getByRole('menuitemradio', { name: 'Dark' }).click();
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
     await page.keyboard.press('Escape');
-    await expect(page.getByRole('combobox', { name: 'Theme' })).toBeHidden();
-    await expect(button).toBeFocused();
+    await expect(page.getByRole('menu')).toHaveCount(0);
   });
 
-  test('1024 px and wider: the preference controls stay in the top bar', async ({ page }) => {
+  test('below 768 px the rail is a 48 px bar across the top', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await openWorkspace(page);
+    const bar = await page.getByRole('banner').boundingBox();
+    expect(bar?.height).toBe(48);
+    expect(bar?.width).toBe(390);
+    await expect(page.getByRole('button', { name: 'Account menu' })).toBeVisible();
+  });
+
+  test('1024 px and wider: Ctrl+B expands the rail to 220 px with words, and back', async ({
+    page,
+  }) => {
     await page.setViewportSize({ width: 1280, height: 800 });
     await openWorkspace(page);
-    await expect(page.getByRole('combobox', { name: 'Theme' })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Display and language' })).toBeHidden();
+    const rail = page.getByRole('banner');
+    expect((await rail.boundingBox())?.width).toBe(56);
+    await page.keyboard.press('ControlOrMeta+B');
+    await expect.poll(async () => (await rail.boundingBox())?.width).toBe(220);
+    await expect(rail.getByText('Queue', { exact: true })).toBeVisible();
+    await page.keyboard.press('ControlOrMeta+B');
+    await expect.poll(async () => (await rail.boundingBox())?.width).toBe(56);
+  });
+
+  test('tooltips on the rail icons carry the shortcut, and show on keyboard focus', async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await openWorkspace(page);
+    await page.getByRole('button', { name: 'Open command palette' }).focus();
+    const tip = page.getByRole('tooltip');
+    await expect(tip).toContainText('Open command palette');
+    await expect(tip).toContainText('K');
   });
 });
