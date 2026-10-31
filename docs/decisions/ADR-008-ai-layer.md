@@ -1,6 +1,6 @@
 # ADR-008 — AI layer: ports, provider adapters, PII redaction และ audit record (T-106 a–c)
 
-- **Status:** Proposed
+- **Status:** Accepted 2026-11-01 · security review 2 รอบ (`docs/security-reviews/2026-11-01-T-106-ai-layer.md`) + T-126 ปิด N1–N5 · follow-up SR106-R8 → T-108, R9/R10 → T-106d
 - **Date:** 2026-11-01 (เวลากรุงเทพ) · **ผู้ตัดสิน:** main thread (ร่างโดย `ai-engineer`; รอ `architect` + `security-reviewer` ตรวจตาม N7)
 - **Context:** PRD §6 (หลักการ, agents, guardrails, provider config) และ §8.2 ต้องการ AI ที่ (1) read-only (N2) (2) redact PII ก่อนทุก LLM call (N4) (3) ลง audit ทุก action (prompt version, model, tools, input hash, output, cost, latency) (4) เลือก provider/model ผ่านหน้า admin (§6.7) · ADR-001 เลือก Vercel AI SDK · ADR-002 / `docs/04-ARCHITECTURE.md` §3 กำหนดให้ `packages/ai` ไม่รู้จัก HTTP และ DB/Redis (lint ห้าม global `fetch`, `Request`, `Response`, `Headers`) จึงต้องรับ port จาก `apps/api` / `apps/worker` · BACKLOG T-106 a–c ต้องปลดบล็อก T-107 (embedding) และ T-108 (tools) · `config/models.yaml` ใช้กับ AI ที่ build โปรเจกต์เท่านั้น (ADR-002) แต่คำว่า tier (`deep` / `standard` / `light`) ใช้เป็นภาษากลางได้
 
