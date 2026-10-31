@@ -7,7 +7,7 @@
  * groups; emails are found by walking out from each `@` with hard length caps; names use
  * Aho-Corasick; the few regular expressions left are anchored literals or have bounded repeats.
  */
-import { buildMatcher } from './aho-corasick.js';
+import { buildMatcher, MatchLimitError } from './aho-corasick.js';
 import { foldForMatching, type NormalizedView } from './normalize.js';
 import { isLuhnValid, isValidThaiNationalId } from './validators.js';
 
@@ -70,12 +70,36 @@ const MAX_DOMAIN = 255;
 const ASCII_LOCAL = /[A-Za-z0-9._%+-]/;
 const UNICODE_LOCAL = /[\p{L}\p{M}\p{N}._%+-]/u;
 const ASCII_ALNUM = /[A-Za-z0-9]/;
-// IDN labels may use any script except Thai, so "example.comครับ" stops at the Thai letters.
 const DOMAIN_LABEL_CHAR = /[\p{L}\p{M}\p{N}-]/u;
 const THAI = /\p{Script=Thai}/u;
+// The only top-level domain written in Thai script (.ไทย).
+const THAI_TLD = 'ไทย';
 
-function isDomainChar(char: string): boolean {
-  return DOMAIN_LABEL_CHAR.test(char) && !THAI.test(char);
+interface Label {
+  start: number;
+  end: number;
+}
+
+/**
+ * Where the domain ends, given its labels as scanned (Thai letters allowed). Thai is written
+ * without spaces, so "example.comครับ" must stop at the end of "com": the last label counts only
+ * up to its first Thai letter. A Thai label is a real domain part only before the Thai TLD
+ * (".ไทย") or before a dot ("ร้านค้า.com"); a trailing Thai word that is not the TLD is dropped.
+ * Returns the end offset and the number of labels kept.
+ */
+function domainEnd(text: string, labels: readonly Label[]): { end: number; count: number } {
+  for (let count = labels.length; count > 0; count -= 1) {
+    const label = labels[count - 1];
+    if (label === undefined) break;
+    const word = text.slice(label.start, label.end);
+    if (word.startsWith(THAI_TLD)) return { end: label.start + THAI_TLD.length, count };
+    let prefix = 0;
+    while (prefix < word.length && !THAI.test(word.charAt(prefix))) prefix += 1;
+    if (prefix === word.length) return { end: label.end, count };
+    if (prefix >= 2) return { end: label.start + prefix, count };
+    // A label that opens with Thai letters and is not the TLD: not part of the domain.
+  }
+  return { end: 0, count: 0 };
 }
 
 export function detectEmails(text: string): Span[] {
@@ -98,19 +122,18 @@ export function detectEmails(text: string): Span[] {
     }
 
     // Domain: labels of letters/digits/hyphens separated by single dots, at least two labels.
-    let end = at + 1;
-    let labels = 0;
+    const labels: Label[] = [];
     let cursor = at + 1;
     while (cursor - at <= MAX_DOMAIN) {
       const labelStart = cursor;
-      while (cursor < text.length && isDomainChar(text.charAt(cursor))) cursor += 1;
+      while (cursor < text.length && DOMAIN_LABEL_CHAR.test(text.charAt(cursor))) cursor += 1;
       if (cursor === labelStart) break;
-      labels += 1;
-      end = cursor;
+      labels.push({ start: labelStart, end: cursor });
       if (text.charAt(cursor) === '.' && cursor + 1 < text.length) cursor += 1;
       else break;
     }
-    if (start < at && labels >= 2) {
+    const { end, count } = domainEnd(text, labels);
+    if (start < at && count >= 2) {
       spans.push(span(start, end, 'EMAIL', PRIORITY.EMAIL));
       lastEnd = end;
     }
@@ -123,7 +146,27 @@ export function detectEmails(text: string): Span[] {
 // Numbers: digit clusters
 // ---------------------------------------------------------------------------------------------
 
-const SEPARATORS = new Set([' ', '\t', '.', '-', '‐', '‑', '‒', '–', '—', '―', '−', '/', '(', ')']);
+const SEPARATORS = new Set([
+  ' ',
+  '\t',
+  '\n',
+  '\r',
+  '.',
+  '-',
+  '‐',
+  '‑',
+  '‒',
+  '–',
+  '—',
+  '―',
+  '−',
+  '/',
+  '_',
+  ',',
+  '、',
+  '(',
+  ')',
+]);
 const MAX_SEPARATOR_RUN = 3;
 const MAX_WINDOW_GROUPS = 8;
 const MAX_WINDOW_DIGITS = 19;
@@ -199,7 +242,7 @@ function findClusters(text: string): Cluster[] {
  * parenthesis (") ", " (") is neutral, because "(02) 123-4567" mixes both styles on purpose.
  */
 function separatorKind(separator: string): string | null {
-  const rest = separator.replace(/[ \t()]/g, '');
+  const rest = separator.replace(/[ \t\r\n()]/g, '');
   if (/[()]/.test(separator)) return rest === '' ? null : rest;
   return rest === '' ? ' ' : rest;
 }
@@ -219,15 +262,31 @@ const MOBILE = /^0[689][0-9]{8}$/;
 const BANGKOK = /^02[0-9]{7}$/;
 const PROVINCIAL = /^0[3-57][0-9]{7}$/;
 const INTERNATIONAL_00 = /^0066[2-9][0-9]{8,9}$/;
-const THAI_ID_BOUNDARIES = new Set([1, 5, 10, 12]);
+// Digit-group shapes a person might type a phone number in. Used only when the separators are
+// mixed ("081-234 5678"): a date followed by a count ("08/10/2026 12") has the same digits as a
+// mobile number but not the same grouping.
+const MIXED_SEPARATOR_PHONE_SHAPES = new Set([
+  '3-3-4',
+  '2-4-4',
+  '3-4-3',
+  '3-7',
+  '2-8',
+  '4-6',
+  '2-3-4',
+  '2-7',
+  '3-3-3',
+  '3-6',
+]);
+
+/**
+ * A Thai national ID is written 1-4-5-2-1, but people also write it as 4-4-4-1, 5-5-3, or in two
+ * halves. The shape is only a bound here (at most six groups); the check
+ * digit and the first digit are what make a 13-digit window an ID.
+ */
+const MAX_ID_GROUPS = 6;
 
 function isThaiIdShape(lengths: readonly number[]): boolean {
-  let position = 0;
-  for (let index = 0; index < lengths.length - 1; index += 1) {
-    position += lengths[index] ?? 0;
-    if (!THAI_ID_BOUNDARIES.has(position)) return false;
-  }
-  return true;
+  return lengths.length <= MAX_ID_GROUPS;
 }
 
 function isCardShape(lengths: readonly number[]): boolean {
@@ -275,7 +334,8 @@ function detectInCluster(text: string, cluster: Cluster, spans: Span[]): void {
       } else if (
         lengths.length <= 4 &&
         lengths.every((length) => length >= 2) &&
-        consistentSeparators(cluster, from, to) &&
+        (consistentSeparators(cluster, from, to) ||
+          MIXED_SEPARATOR_PHONE_SHAPES.has(lengths.join('-'))) &&
         (MOBILE.test(digits) ||
           BANGKOK.test(digits) ||
           PROVINCIAL.test(digits) ||
@@ -374,23 +434,66 @@ export class DictionaryTooLargeError extends Error {
 
 /** Upper bound on distinct entries. Pass a scoped dictionary (org contacts, ticket participants). */
 export const MAX_DICTIONARY_ENTRIES = 50_000;
+/**
+ * Display names come from the people who write to us, so each one is bounded (SR106-N2): longer
+ * names keep their first `MAX_NAME_CHARS` characters, and only the first `MAX_NAME_PARTS` words of
+ * a name are matched on their own. Together with `MAX_DICTIONARY_CHARS` this caps the trie, and
+ * with it the memory the dictionary can cost, whatever names are passed in.
+ */
+export const MAX_NAME_CHARS = 128;
+export const MAX_NAME_PARTS = 8;
+/** Total characters over all distinct patterns. */
+export const MAX_DICTIONARY_CHARS = 1_500_000;
+/** Ceiling on dictionary matches one input may produce before the scan gives up. */
+export const MAX_NAME_MATCHES = 2_000_000;
+
+/**
+ * The input holds so many dictionary hits that scanning it is not worth finishing. Fail closed:
+ * the redactor throws this rather than return text it did not fully check, and the caller must
+ * not send the input to a model.
+ */
+export class NameMatchLimitError extends Error {
+  override readonly name = 'NameMatchLimitError';
+}
+
+// Longer than any name is allowed to be, so slicing never drops a part that would be matched.
+const MAX_RAW_NAME_UNITS = MAX_NAME_CHARS * MAX_NAME_PARTS;
 
 /**
  * Builds a detector for names the system already knows. Matching is on the case-folded,
- * normalised view, so "JOSE" and an NFD "José" both match "José". Latin names must sit on
+ * normalised view, so "JOSE" and an NFD "José" both match "José". Latin names must sit on
  * word boundaries; Thai names match as substrings because Thai has no spaces between words, so a
- * short Thai name can over-redact inside a longer word (the safe direction).
+ * short Thai name can over-redact inside a longer word (the safe direction). Where names overlap
+ * the leftmost, longest one wins ("Ann Leeson" over "Ann Lee").
  */
 export function createNameDetector(options: NameMatcherOptions): (view: NormalizedView) => Span[] {
   const candidates = new Set<string>();
+  let totalChars = 0;
   const add = (value: string): void => {
-    const folded = foldForMatching(value.trim().replace(/\s+/g, ' '));
-    if (Array.from(folded).length >= options.minLength) candidates.add(folded);
+    let folded = foldForMatching(value.trim().replace(/\s+/g, ' '));
+    if (folded.length > MAX_NAME_CHARS) {
+      const points = Array.from(folded);
+      if (points.length > MAX_NAME_CHARS) folded = points.slice(0, MAX_NAME_CHARS).join('');
+    }
+    if (Array.from(folded).length < options.minLength || candidates.has(folded)) return;
+    candidates.add(folded);
+    totalChars += folded.length;
+    if (totalChars > MAX_DICTIONARY_CHARS) {
+      throw new DictionaryTooLargeError(
+        `Name dictionary exceeds ${String(MAX_DICTIONARY_CHARS)} characters; pass a scoped dictionary`,
+      );
+    }
   };
   for (const raw of options.names) {
-    add(raw);
+    const bounded = raw.length > MAX_RAW_NAME_UNITS ? raw.slice(0, MAX_RAW_NAME_UNITS) : raw;
+    add(bounded);
     if (options.matchParts) {
-      for (const part of raw.split(/\s+/)) add(part);
+      let parts = 0;
+      for (const part of bounded.matchAll(/\S+/g)) {
+        if (parts >= MAX_NAME_PARTS) break;
+        parts += 1;
+        add(part[0]);
+      }
     }
     if (candidates.size > MAX_DICTIONARY_ENTRIES) {
       throw new DictionaryTooLargeError(
@@ -404,17 +507,20 @@ export function createNameDetector(options: NameMatcherOptions): (view: Normaliz
   const matcher = buildMatcher(patterns);
 
   return (view) => {
-    const spans: Span[] = [];
-    for (const match of matcher.scan(view.folded)) {
-      const pattern = patterns[match.pattern] ?? '';
-      const first = pattern.charAt(0);
-      const last = pattern.charAt(pattern.length - 1);
-      if (ASCII_ALNUM.test(first) && ASCII_ALNUM.test(view.folded.charAt(match.start - 1)))
-        continue;
-      if (ASCII_ALNUM.test(last) && ASCII_ALNUM.test(view.folded.charAt(match.end))) continue;
-      spans.push(span(match.start, match.end, 'NAME', PRIORITY.NAME));
+    const text = view.folded;
+    // A Latin name must not start or end inside a word ("Ann" in "Joanne"); this is the same
+    // test as before, on the text instead of the pattern, because they agree at a match.
+    const accept = (start: number, end: number): boolean =>
+      !(ASCII_ALNUM.test(text.charAt(start)) && ASCII_ALNUM.test(text.charAt(start - 1))) &&
+      !(ASCII_ALNUM.test(text.charAt(end - 1)) && ASCII_ALNUM.test(text.charAt(end)));
+    try {
+      return matcher
+        .scan(text, { accept, maxMatches: MAX_NAME_MATCHES })
+        .map((match) => span(match.start, match.end, 'NAME', PRIORITY.NAME));
+    } catch (error) {
+      if (error instanceof MatchLimitError) throw new NameMatchLimitError(error.message);
+      throw error;
     }
-    return spans;
   };
 }
 

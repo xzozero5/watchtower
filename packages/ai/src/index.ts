@@ -25,7 +25,12 @@ export {
 } from './redaction/redactor.js';
 export {
   DictionaryTooLargeError,
+  MAX_DICTIONARY_CHARS,
   MAX_DICTIONARY_ENTRIES,
+  MAX_NAME_CHARS,
+  MAX_NAME_MATCHES,
+  MAX_NAME_PARTS,
+  NameMatchLimitError,
   REDACTION_KINDS,
   type RedactionKind,
 } from './redaction/detectors.js';
