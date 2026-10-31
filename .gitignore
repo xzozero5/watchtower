@@ -23,6 +23,6 @@ Thumbs.db
 # logs ทั้งหมดยกเว้น daily log (timesheet)
 logs/*
 !logs/daily/
-playwright-report/
-test-results/
+playwright-report*/
+test-results*/
 .cache/
