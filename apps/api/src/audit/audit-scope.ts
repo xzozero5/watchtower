@@ -7,6 +7,11 @@ export interface AuditActor {
   readonly id: string | null;
 }
 
+export interface AuditRequestMeta {
+  readonly ip: string | null;
+  readonly requestId: string | null;
+}
+
 /** What a handler or service can tell the audit interceptor about the mutation in progress. */
 export interface AuditDetails {
   /** Overrides the name from `@Audited`, for example `auth.break_glass.failed` on a failed login. */
@@ -37,6 +42,12 @@ export class AuditScope {
   private static readonly storage = new AsyncLocalStorage<AuditScope>();
 
   private details: AuditDetails = {};
+
+  /**
+   * What the request itself knows (source IP, request id), for entries a service writes in its own
+   * transaction with `AuditService.recordInTransaction`, which has no request object at hand.
+   */
+  constructor(readonly meta: AuditRequestMeta = { ip: null, requestId: null }) {}
 
   static run<T>(scope: AuditScope, callback: () => T): T {
     return AuditScope.storage.run(scope, callback);

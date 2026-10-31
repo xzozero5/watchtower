@@ -1,8 +1,3 @@
-/** Channel types from the data model (PRD section 7, channel_account.type). */
-export const CHANNEL_TYPES = ['gmail', 'line', 'portal', 'discord', 'webhook'] as const;
-
-export type ChannelType = (typeof CHANNEL_TYPES)[number];
-
 export type IntegrationMode = 'mock' | 'live';
 
 /**
@@ -18,8 +13,14 @@ export function resolveIntegrationMode(
 }
 
 export * from './auth.js';
+export * from './channels.js';
+export * from './common.js';
+export * from './directory.js';
 export * from './config.js';
 export * from './logging.js';
 export * from './queues.js';
 export * from './rbac.js';
+export * from './realtime.js';
 export * from './redis-url.js';
+export * from './sla.js';
+export * from './ticketing.js';

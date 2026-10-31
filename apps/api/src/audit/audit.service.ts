@@ -96,7 +96,15 @@ export class AuditService {
    * changes that must commit atomically with their audit entry.
    */
   async recordInTransaction(tx: AuditExecutor, entry: AuditEntryInput): Promise<void> {
-    await this.record(entry, tx);
+    const meta = AuditScope.current()?.meta;
+    await this.record(
+      {
+        ...entry,
+        ip: entry.ip ?? meta?.ip ?? null,
+        requestId: entry.requestId ?? meta?.requestId ?? null,
+      },
+      tx,
+    );
     AuditScope.set({ persisted: true });
   }
 

@@ -1,17 +1,17 @@
-import { createHash, randomUUID } from 'node:crypto';
+import { createHash } from 'node:crypto';
 
 import { emailJobSchema, type SessionInfo } from '@watchtower/shared';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-import { startHarness, uniqueEmail, type Harness } from '../testing/harness.js';
+import { createOrg, startHarness, uniqueEmail, type Harness } from '../testing/harness.js';
 import { CLIENT_ORG_RESOLVER, MagicLinkService, emailTag } from './magic-link.service.js';
 
 // Client magic-link sign-in: the real application, Postgres, Redis and the BullMQ email queue from
 // docker compose. The worker side (SMTP into Mailpit) is covered by apps/worker.
 
 let h: Harness;
-const orgId = randomUUID();
-const domainOrgId = randomUUID();
+let orgId: string;
+let domainOrgId: string;
 
 const resolver = {
   resolveOrgId: (email: string) =>
@@ -20,6 +20,8 @@ const resolver = {
 
 beforeAll(async () => {
   h = await startHarness({ overrides: [{ token: CLIENT_ORG_RESOLVER, value: resolver }] });
+  orgId = await createOrg(h.db.owner.pool);
+  domainOrgId = await createOrg(h.db.owner.pool);
 });
 
 afterAll(async () => {

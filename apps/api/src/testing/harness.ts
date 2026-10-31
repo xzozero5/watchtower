@@ -6,6 +6,7 @@ import { Test } from '@nestjs/testing';
 import { createTestDatabase, type TestDatabase } from '@watchtower/db/testing';
 import { CSRF_HEADER, QUEUE_NAMES, parseRedisUrl, type SessionInfo } from '@watchtower/shared';
 import { Queue } from 'bullmq';
+import type { Pool } from 'pg';
 
 import { AppModule, type AppOptions } from '../app.module.js';
 import { configureApp } from '../bootstrap.js';
@@ -230,4 +231,19 @@ function randomInt(max: number): number {
 /** `email-<random>@example.com`, unique per call, so tests never collide on the unique email. */
 export function uniqueEmail(prefix: string, domain = 'example.com'): string {
   return `${prefix}-${randomBytes(4).toString('hex')}@${domain}`;
+}
+
+/** Inserts an organization (as the schema owner) and returns its id. A client user needs one. */
+export async function createOrg(
+  pool: Pool,
+  name = `Org ${randomBytes(3).toString('hex')}`,
+  domains: readonly string[] = [],
+): Promise<string> {
+  const result = await pool.query<{ id: string }>(
+    'INSERT INTO organization (name, domains) VALUES ($1, $2) RETURNING id',
+    [name, [...domains]],
+  );
+  const id = result.rows[0]?.id;
+  if (id === undefined) throw new Error('organization insert returned no row');
+  return id;
 }

@@ -13,10 +13,24 @@ const adminUrl =
 
 let testDb: TestDatabase;
 let app: Pool;
+let orgA: string;
+let orgB: string;
+
+async function createOrganization(name: string): Promise<string> {
+  const result = await testDb.owner.pool.query<{ id: string }>(
+    'INSERT INTO organization (name) VALUES ($1) RETURNING id',
+    [name],
+  );
+  const id = result.rows[0]?.id;
+  if (id === undefined) throw new Error('organization insert returned no row');
+  return id;
+}
 
 beforeAll(async () => {
   testDb = await createTestDatabase(adminUrl);
   app = new Pool({ connectionString: testDb.appUrl, max: 2 });
+  orgA = await createOrganization('Acme A');
+  orgB = await createOrganization('Acme B');
 });
 
 afterAll(async () => {
@@ -34,6 +48,7 @@ const PRIVILEGE_ERROR = '42501';
 const RESTRICT_VIOLATION = '23001';
 const CHECK_VIOLATION = '23514';
 const UNIQUE_VIOLATION = '23505';
+const FOREIGN_KEY_VIOLATION = '23503';
 
 describe('seed', () => {
   it('seeds exactly the permissions and role matrix defined in @watchtower/shared', async () => {
@@ -67,30 +82,27 @@ describe('users constraints', () => {
       CHECK_VIOLATION,
     );
     await expectSqlState(
-      insert('email, name, role, org_id', [
-        'agent@example.com',
-        'A',
-        'agent',
-        '00000000-0000-4000-8000-000000000001',
-      ]),
+      insert('email, name, role, org_id', ['agent@example.com', 'A', 'agent', orgA]),
       CHECK_VIOLATION,
     );
-    await insert('email, name, role, org_id', [
-      'client@example.com',
-      'C',
-      'client',
-      '00000000-0000-4000-8000-000000000001',
-    ]);
+    await insert('email, name, role, org_id', ['client@example.com', 'C', 'client', orgA]);
+  });
+
+  it('refuses a client of an organization that does not exist', async () => {
+    await expectSqlState(
+      insert('email, name, role, org_id', [
+        'ghost@example.com',
+        'G',
+        'client',
+        '00000000-0000-4000-8000-000000000001',
+      ]),
+      FOREIGN_KEY_VIOLATION,
+    );
   });
 
   it('keeps one account per mailbox and stores normalized emails only', async () => {
     await expectSqlState(
-      insert('email, name, role, org_id', [
-        'client@example.com',
-        'Again',
-        'client',
-        '00000000-0000-4000-8000-000000000002',
-      ]),
+      insert('email, name, role, org_id', ['client@example.com', 'Again', 'client', orgB]),
       UNIQUE_VIOLATION,
     );
     await expectSqlState(
@@ -283,8 +295,9 @@ describe('audit_log', () => {
 
 describe('reversibility of 0001', () => {
   it('goes down (dropping every table it made, keeping 0000) and up again', async () => {
-    const reverted = await migrateDown(owner());
-    expect(reverted).toEqual(['0001_auth_rbac_audit']);
+    // 0002 depends on 0001 (users, reject_mutation, ensure_monthly_partitions): newest goes first.
+    const reverted = await migrateDown(owner(), { steps: 2 });
+    expect(reverted).toEqual(['0002_ticketing', '0001_auth_rbac_audit']);
     const gone = await owner().query<{ name: string | null }>(
       `SELECT to_regclass('users')::text AS name UNION ALL SELECT to_regclass('audit_log')::text`,
     );
@@ -292,7 +305,7 @@ describe('reversibility of 0001', () => {
     const extensions = await owner().query(`SELECT 1 FROM pg_extension WHERE extname = 'vector'`);
     expect(extensions.rowCount).toBe(1);
 
-    expect(await migrateUp(owner())).toEqual(['0001_auth_rbac_audit']);
+    expect(await migrateUp(owner())).toEqual(['0001_auth_rbac_audit', '0002_ticketing']);
     const seeded = await owner().query<{ n: number }>('SELECT count(*)::int AS n FROM permissions');
     expect(seeded.rows[0]?.n).toBe(Object.keys(PERMISSIONS).length);
   });

@@ -9,6 +9,14 @@ export {
 export { createDatabase, type CreateDatabaseOptions, type Database } from './client.js';
 export { orgScopeCondition } from './scope.js';
 export {
+  DEFAULT_INTENT_EXAMPLES_DIR,
+  IntentSeedError,
+  loadIntentDefinitions,
+  seedIntents,
+  upsertIntentDefinitions,
+  type IntentSeedResult,
+} from './seed/intents.js';
+export {
   DEFAULT_MIGRATIONS_DIR,
   MIGRATIONS_TABLE,
   MigrationError,

@@ -1,0 +1,396 @@
+import { z } from 'zod';
+
+import { channelTypeSchema } from './channels.js';
+import { csvList, cursorSchema, jsonRecordSchema, pageLimit, pageOf } from './common.js';
+import { emailSchema } from './auth.js';
+import { ticketPrioritySchema } from './sla.js';
+
+/**
+ * HTTP contract of the ticket endpoints (PRD section 4.1) and the rules both sides share: the
+ * status workflow, ticket numbers, and the shapes of tickets, messages and timeline entries.
+ * apps/api validates and documents with these; apps/web imports the same schemas.
+ */
+
+// --- ticket number ---
+
+/** Prefix of the human ticket number, `OPS-1234`. `[ASSUMED]`; the number itself is a database sequence. */
+export const TICKET_KEY_PREFIX = 'OPS';
+
+export function formatTicketKey(number: number | bigint): string {
+  return `${TICKET_KEY_PREFIX}-${String(number)}`;
+}
+
+/** `OPS-1234` (any case) to 1234; null for anything else. */
+export function parseTicketKey(value: string): number | null {
+  const match = /^OPS-(\d{1,15})$/i.exec(value.trim());
+  if (!match) return null;
+  const number = Number(match[1]);
+  return Number.isSafeInteger(number) && number > 0 ? number : null;
+}
+
+/** A ticket addressed by its uuid or by its number (`OPS-1234`), as it appears in URLs. */
+export const ticketRefSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(64)
+  .refine((value) => z.uuid().safeParse(value).success || parseTicketKey(value) !== null, {
+    message: 'expected a ticket id or a ticket number such as OPS-1234',
+  });
+export const ticketRefParamSchema = z.object({ id: ticketRefSchema });
+
+// --- status workflow (R-1.2) ---
+
+export const TICKET_STATUSES = [
+  'new',
+  'triage',
+  'open',
+  'waiting_on_customer',
+  'waiting_on_dev',
+  'resolved',
+  'closed',
+  'merged',
+] as const;
+export type TicketStatus = (typeof TICKET_STATUSES)[number];
+export const ticketStatusSchema = z.enum(TICKET_STATUSES);
+
+/** A status a person can move a ticket to. `merged` is reached only through the merge endpoint. */
+export const SETTABLE_STATUSES = TICKET_STATUSES.filter((status) => status !== 'merged');
+
+/** The SLA clock stops while a ticket is in one of these. */
+export const SLA_PAUSED_STATUSES: readonly TicketStatus[] = ['waiting_on_customer'];
+
+export const OPEN_STATUSES: readonly TicketStatus[] = [
+  'new',
+  'triage',
+  'open',
+  'waiting_on_customer',
+  'waiting_on_dev',
+];
+
+/** A customer reply reopens a resolved ticket for this many days after it was resolved (R-1.10). */
+export const REOPEN_WINDOW_DAYS = 7;
+
+export interface StatusTransition {
+  readonly from: TicketStatus;
+  readonly to: TicketStatus;
+}
+
+/**
+ * Transitions seeded by migration 0002 (`ticket_status_transition`). A head can change them
+ * without a deploy (`PUT /v1/ticket-workflow`); an integration test keeps the seed equal to this.
+ */
+export const DEFAULT_STATUS_TRANSITIONS: Readonly<Record<TicketStatus, readonly TicketStatus[]>> = {
+  new: ['triage', 'open', 'waiting_on_customer', 'resolved', 'closed'],
+  triage: ['open', 'waiting_on_customer', 'waiting_on_dev', 'resolved', 'closed'],
+  open: ['triage', 'waiting_on_customer', 'waiting_on_dev', 'resolved', 'closed'],
+  waiting_on_customer: ['open', 'waiting_on_dev', 'resolved', 'closed'],
+  waiting_on_dev: ['open', 'waiting_on_customer', 'resolved', 'closed'],
+  resolved: ['open', 'closed'],
+  closed: [],
+  merged: [],
+};
+
+export function defaultTransitionList(): StatusTransition[] {
+  return TICKET_STATUSES.flatMap((from) =>
+    DEFAULT_STATUS_TRANSITIONS[from].map((to): StatusTransition => ({ from, to })),
+  );
+}
+
+export const statusTransitionSchema = z.object({
+  from: ticketStatusSchema,
+  to: ticketStatusSchema,
+});
+
+export const workflowSchema = z.object({ transitions: z.array(statusTransitionSchema) });
+export type Workflow = z.infer<typeof workflowSchema>;
+
+export const setWorkflowSchema = z
+  .object({ transitions: z.array(statusTransitionSchema).max(TICKET_STATUSES.length ** 2) })
+  .superRefine((value, context) => {
+    const seen = new Set<string>();
+    for (const [index, transition] of value.transitions.entries()) {
+      const key = `${transition.from}>${transition.to}`;
+      if (transition.from === transition.to) {
+        context.addIssue({
+          code: 'custom',
+          message: 'a status cannot lead to itself',
+          path: ['transitions', index],
+        });
+      }
+      if (transition.from === 'merged' || transition.to === 'merged') {
+        context.addIssue({
+          code: 'custom',
+          message: 'merged is only reached by merging a ticket and cannot be left',
+          path: ['transitions', index],
+        });
+      }
+      if (seen.has(key)) {
+        context.addIssue({
+          code: 'custom',
+          message: 'duplicate transition',
+          path: ['transitions', index],
+        });
+      }
+      seen.add(key);
+    }
+  });
+export type SetWorkflow = z.infer<typeof setWorkflowSchema>;
+
+// --- tickets ---
+
+export const MESSAGE_VISIBILITIES = ['public', 'internal'] as const;
+export type MessageVisibility = (typeof MESSAGE_VISIBILITIES)[number];
+export const messageVisibilitySchema = z.enum(MESSAGE_VISIBILITIES);
+
+export const MESSAGE_DIRECTIONS = ['inbound', 'outbound', 'internal'] as const;
+export const messageDirectionSchema = z.enum(MESSAGE_DIRECTIONS);
+
+export const DELIVERY_STATUSES = ['not_applicable', 'pending', 'delivered', 'failed'] as const;
+export const deliveryStatusSchema = z.enum(DELIVERY_STATUSES);
+
+export const ASSIGNMENT_STRATEGIES = ['manual', 'round_robin'] as const;
+export const assignmentStrategySchema = z.enum(ASSIGNMENT_STRATEGIES);
+
+/** Types written to `ticket_event.type`. */
+export const TICKET_EVENT_TYPES = {
+  created: 'ticket.created',
+  updated: 'ticket.updated',
+  statusChanged: 'ticket.status_changed',
+  assigned: 'ticket.assigned',
+  merged: 'ticket.merged',
+  mergeReceived: 'ticket.merge_received',
+  reopened: 'ticket.reopened',
+  slaPaused: 'sla.paused',
+  slaResumed: 'sla.resumed',
+  slaRecalculated: 'sla.recalculated',
+} as const;
+export type TicketEventType = (typeof TICKET_EVENT_TYPES)[keyof typeof TICKET_EVENT_TYPES];
+
+export const ticketOrgRefSchema = z.object({ id: z.uuid(), name: z.string() });
+export const ticketIntentRefSchema = z.object({ id: z.uuid(), key: z.string(), name: z.string() });
+export const ticketUserRefSchema = z.object({ id: z.uuid(), name: z.string() });
+export const ticketQueueRefSchema = z.object({ id: z.uuid(), name: z.string() });
+
+/** A ticket as the queue shows it. The requester's address is not here; the detail has it. */
+export const ticketSummarySchema = z.object({
+  id: z.uuid(),
+  number: z.number().int(),
+  /** `OPS-1234`. */
+  key: z.string(),
+  subject: z.string(),
+  status: ticketStatusSchema,
+  priority: ticketPrioritySchema,
+  channel: channelTypeSchema,
+  org: ticketOrgRefSchema,
+  requester: z.object({ id: z.uuid(), name: z.string() }).nullable(),
+  intent: ticketIntentRefSchema.nullable(),
+  assignee: ticketUserRefSchema.nullable(),
+  queue: ticketQueueRefSchema.nullable(),
+  slaPolicyId: z.uuid().nullable(),
+  firstResponseDueAt: z.iso.datetime().nullable(),
+  resolutionDueAt: z.iso.datetime().nullable(),
+  /** Set while the SLA clock is stopped (`waiting_on_customer`). */
+  slaPausedAt: z.iso.datetime().nullable(),
+  firstRespondedAt: z.iso.datetime().nullable(),
+  resolvedAt: z.iso.datetime().nullable(),
+  closedAt: z.iso.datetime().nullable(),
+  /** The ticket this one was merged into, if any. */
+  parentTicketId: z.uuid().nullable(),
+  mergedIntoKey: z.string().nullable(),
+  tags: z.array(z.string()),
+  customFields: jsonRecordSchema,
+  autonomyStageAtCreation: z.number().int().nullable(),
+  aiHandled: z.boolean(),
+  reopenCount: z.number().int(),
+  csatScore: z.number().int().nullable(),
+  createdAt: z.iso.datetime(),
+  updatedAt: z.iso.datetime(),
+});
+export type TicketSummary = z.infer<typeof ticketSummarySchema>;
+
+export const ticketDetailSchema = ticketSummarySchema.extend({
+  requester: z.object({ id: z.uuid(), name: z.string(), email: z.string().nullable() }).nullable(),
+  /** Tickets merged into this one. */
+  mergedTickets: z.array(z.object({ id: z.uuid(), key: z.string(), subject: z.string() })),
+});
+export type TicketDetail = z.infer<typeof ticketDetailSchema>;
+
+/** What a client sees of a ticket of their own organization: nothing internal. */
+export const clientTicketSchema = z.object({
+  id: z.uuid(),
+  number: z.number().int(),
+  key: z.string(),
+  subject: z.string(),
+  status: ticketStatusSchema,
+  priority: ticketPrioritySchema,
+  intent: z.object({ id: z.uuid(), name: z.string() }).nullable(),
+  requesterName: z.string().nullable(),
+  mergedIntoKey: z.string().nullable(),
+  resolvedAt: z.iso.datetime().nullable(),
+  createdAt: z.iso.datetime(),
+  updatedAt: z.iso.datetime(),
+});
+export type ClientTicket = z.infer<typeof clientTicketSchema>;
+
+export const ticketListSchema = pageOf(z.union([ticketSummarySchema, clientTicketSchema]));
+export const ticketDetailResponseSchema = z.union([ticketDetailSchema, clientTicketSchema]);
+
+export const TICKET_SORTS = ['created_desc', 'updated_desc', 'due_asc'] as const;
+export const ticketSortSchema = z.enum(TICKET_SORTS);
+
+export const ticketListQuerySchema = z.object({
+  status: csvList(ticketStatusSchema),
+  priority: csvList(ticketPrioritySchema),
+  /** A user id, `me`, or `unassigned`. Ignored for clients (they have no assignee). */
+  assignee: z.union([z.uuid(), z.literal('me'), z.literal('unassigned')]).optional(),
+  queueId: z.uuid().optional(),
+  /** Staff only; a client is always limited to their own organization. */
+  orgId: z.uuid().optional(),
+  intentId: z.uuid().optional(),
+  channel: channelTypeSchema.optional(),
+  tag: z.string().trim().min(1).max(64).optional(),
+  /** Free text over the subject and the visible messages, and an exact ticket number. */
+  q: z.string().trim().min(1).max(200).optional(),
+  /** Only open tickets that are past a first-response or resolution due time. */
+  overdue: z.stringbool().optional(),
+  sort: ticketSortSchema.default('created_desc'),
+  limit: pageLimit(50, 200),
+  cursor: cursorSchema.optional(),
+});
+export type TicketListQuery = z.infer<typeof ticketListQuerySchema>;
+
+const tagSchema = z.string().trim().min(1).max(64);
+export const ticketTagsSchema = z.array(tagSchema).max(30);
+
+export const createTicketSchema = z.object({
+  /** Required for staff. A client's ticket always belongs to their own organization. */
+  orgId: z.uuid().optional(),
+  subject: z.string().trim().min(1).max(300),
+  /** The first message of the ticket, as the customer would have written it. */
+  body: z.string().trim().min(1).max(20_000),
+  /** Staff: who is asking, by contact id or by address (a contact is created if the address is new). */
+  requesterContactId: z.uuid().optional(),
+  requester: z.object({ email: emailSchema, name: z.string().trim().min(1).max(200) }).optional(),
+  intentId: z.uuid().optional(),
+  intentKey: z.string().trim().min(1).max(64).optional(),
+  priority: ticketPrioritySchema.optional(),
+  queueId: z.uuid().optional(),
+  assigneeId: z.uuid().optional(),
+  tags: ticketTagsSchema.optional(),
+  customFields: jsonRecordSchema.optional(),
+});
+export type CreateTicket = z.infer<typeof createTicketSchema>;
+
+export const updateTicketSchema = z
+  .object({
+    subject: z.string().trim().min(1).max(300).optional(),
+    priority: ticketPrioritySchema.optional(),
+    intentId: z.uuid().nullable().optional(),
+    queueId: z.uuid().nullable().optional(),
+    tags: ticketTagsSchema.optional(),
+    customFields: jsonRecordSchema.optional(),
+  })
+  .refine((value) => Object.keys(value).length > 0, { message: 'nothing to update' });
+export type UpdateTicket = z.infer<typeof updateTicketSchema>;
+
+export const changeStatusSchema = z.object({
+  status: ticketStatusSchema,
+  reason: z.string().trim().min(1).max(500).optional(),
+});
+export type ChangeStatus = z.infer<typeof changeStatusSchema>;
+
+export const assignTicketSchema = z
+  .object({
+    /** A staff user id, or null to unassign. */
+    assigneeId: z.uuid().nullable().optional(),
+    /** Pick the next active member of the ticket's queue (or of `queueId`) in turn. */
+    strategy: z.literal('round_robin').optional(),
+    queueId: z.uuid().optional(),
+  })
+  .refine((value) => (value.assigneeId !== undefined) !== (value.strategy !== undefined), {
+    message: 'give either assigneeId or strategy',
+  });
+export type AssignTicket = z.infer<typeof assignTicketSchema>;
+
+export const mergeTicketSchema = z.object({
+  /** The ticket that stays; the ticket in the URL is merged into it. */
+  intoTicketId: ticketRefSchema,
+  reason: z.string().trim().min(1).max(500).optional(),
+});
+export type MergeTicket = z.infer<typeof mergeTicketSchema>;
+
+export const replySchema = z.object({
+  body: z.string().trim().min(1).max(20_000),
+  /** "Reply and set status" (R-1.4). Staff only; checked against the workflow. */
+  setStatus: ticketStatusSchema.optional(),
+});
+export type Reply = z.infer<typeof replySchema>;
+
+export const noteSchema = z.object({ body: z.string().trim().min(1).max(20_000) });
+export type Note = z.infer<typeof noteSchema>;
+
+export const messageSenderSchema = z.object({
+  type: z.enum(['contact', 'user', 'system']),
+  id: z.uuid().nullable(),
+  name: z.string().nullable(),
+});
+
+export const messageSchema = z.object({
+  id: z.uuid(),
+  ticketId: z.uuid(),
+  ticketKey: z.string(),
+  channel: channelTypeSchema,
+  direction: messageDirectionSchema,
+  visibility: messageVisibilitySchema,
+  sender: messageSenderSchema,
+  bodyText: z.string(),
+  deliveryStatus: deliveryStatusSchema,
+  attachments: z.array(jsonRecordSchema),
+  createdAt: z.iso.datetime(),
+});
+export type Message = z.infer<typeof messageSchema>;
+
+export const timelineEventSchema = z.object({
+  id: z.uuid(),
+  ticketId: z.uuid(),
+  ticketKey: z.string(),
+  type: z.string(),
+  actor: z.object({
+    type: z.enum(['user', 'system', 'ai', 'anonymous']),
+    id: z.string().nullable(),
+    name: z.string().nullable(),
+  }),
+  visibility: messageVisibilitySchema,
+  payload: jsonRecordSchema,
+  createdAt: z.iso.datetime(),
+});
+
+export const timelineEntrySchema = z.discriminatedUnion('kind', [
+  messageSchema.extend({ kind: z.literal('message') }),
+  timelineEventSchema.extend({ kind: z.literal('event') }),
+]);
+export type TimelineEntry = z.infer<typeof timelineEntrySchema>;
+
+export const timelineQuerySchema = z.object({
+  /** Include the history of tickets merged into this one (default yes). */
+  includeMerged: z.stringbool().default(true),
+  limit: pageLimit(100, 500),
+  cursor: cursorSchema.optional(),
+});
+export type TimelineQuery = z.infer<typeof timelineQuerySchema>;
+
+export const timelinePageSchema = z.object({
+  entries: z.array(timelineEntrySchema),
+  nextCursor: z.string().nullable(),
+});
+
+export const mergeResultSchema = z.object({
+  source: ticketDetailSchema,
+  target: ticketDetailSchema,
+});
+
+export const replyResultSchema = z.object({
+  message: messageSchema,
+  ticket: z.union([ticketDetailSchema, clientTicketSchema]),
+});

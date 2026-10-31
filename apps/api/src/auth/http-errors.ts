@@ -36,6 +36,19 @@ export const notFound = (message = 'Not found'): ApiHttpError =>
 export const conflict = (message: string): ApiHttpError =>
   new ApiHttpError(HttpStatus.CONFLICT, 'conflict', message);
 
+/** 400 for a request that is well formed but refers to something that does not exist or is not allowed. */
+export const badRequest = (message: string): ApiHttpError =>
+  new ApiHttpError(HttpStatus.BAD_REQUEST, 'validation_failed', message);
+
+export const invalidTransition = (message: string): ApiHttpError =>
+  new ApiHttpError(HttpStatus.CONFLICT, 'invalid_transition', message);
+
+export const mergeNotAllowed = (message: string): ApiHttpError =>
+  new ApiHttpError(HttpStatus.CONFLICT, 'merge_not_allowed', message);
+
+export const ticketNotOpen = (message: string): ApiHttpError =>
+  new ApiHttpError(HttpStatus.CONFLICT, 'ticket_not_open', message);
+
 export const invalidCredentials = (): ApiHttpError =>
   new ApiHttpError(HttpStatus.UNAUTHORIZED, 'invalid_credentials', 'Invalid email or password');
 
