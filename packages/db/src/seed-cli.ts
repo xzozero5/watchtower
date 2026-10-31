@@ -1,4 +1,6 @@
 // Entry point for `pnpm db:seed`. Like cli.ts it is an executable, so it may read process.env.
+import { ticketKeyPrefixSchema } from '@watchtower/shared';
+
 import { createDatabase } from './client.js';
 import { SeedError, runSeed } from './seed/index.js';
 
@@ -40,7 +42,8 @@ async function main(argv: readonly string[]): Promise<number> {
       nodeEnv: process.env.NODE_ENV,
       allowProduction,
       ...(examplesDir === undefined ? {} : { examplesDir }),
-      ticketKeyPrefix: process.env.TICKET_KEY_PREFIX || 'OPS',
+      // Same normalisation as the api config, so seeded keys match what the api resolves.
+      ticketKeyPrefix: ticketKeyPrefixSchema.parse(process.env.TICKET_KEY_PREFIX || 'OPS'),
       log: (message) => {
         console.log(`seeded: ${message}`);
       },

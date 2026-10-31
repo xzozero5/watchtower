@@ -182,7 +182,8 @@ function messageEvent(keys: TicketKeys, row: TicketRow, message: MessageRow): Re
  * Everything that changes a ticket. Each method runs inside the caller's `UnitOfWork`, so the
  * ticket, its messages, its events and its audit entry commit together, and the realtime events go
  * out only after the commit. The portal channel (T-007) calls `create` in the same transaction as
- * its own work (a signed tracking token, an email job via `uow.afterCommit`).
+ * its own work (a signed tracking token, and an email written to the transactional outbox in the
+ * same transaction — ADR-006; never an enqueue in `uow.afterCommit`, which is lost if Redis is down).
  */
 @Injectable()
 export class TicketsService {
