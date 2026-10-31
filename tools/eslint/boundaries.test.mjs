@@ -98,6 +98,34 @@ const VIOLATIONS = [
   // packages/shared is a leaf
   ['packages/shared/src/a.ts', "import x from '@watchtower/db';"],
   ['packages/shared/src/a.ts', "import x from 'node:https';"],
+  // packages/domain (ADR-009) is writes only: no AI, channels, HTTP, Redis or BullMQ
+  ['packages/domain/src/a.ts', "import x from '@watchtower/ai';"],
+  ['packages/domain/src/a.ts', "import x from '@watchtower/channels';"],
+  ['packages/domain/src/a.ts', "import x from '@watchtower/api';"],
+  ['packages/domain/src/a.ts', "import x from '@watchtower/worker';"],
+  ['packages/domain/src/a.ts', "import x from '@watchtower/web';"],
+  ['packages/domain/src/a.ts', "import { Queue } from 'bullmq';"],
+  ['packages/domain/src/a.ts', "import x from 'ioredis';"],
+  ['packages/domain/src/a.ts', "import x from 'redis';"],
+  ['packages/domain/src/a.ts', "import { Injectable } from '@nestjs/common';"],
+  ['packages/domain/src/a.ts', "import x from 'express';"],
+  ['packages/domain/src/a.ts', "import x from 'node:http';"],
+  ['packages/domain/src/a.ts', "import WebSocket from 'ws';"],
+  ['packages/domain/src/a.ts', "const r = await fetch('https://example.com');"],
+  ['packages/domain/src/a.ts', "const x = await import('bullmq');"],
+  ['packages/domain/src/a.ts', "const r = new Request('https://example.com');"],
+  ['packages/domain/src/a.ts', "import x from '../../db/src/index.js';"],
+  // nothing but api and worker may depend on packages/domain
+  ['packages/db/src/a.ts', "import x from '@watchtower/domain';"],
+  ['packages/shared/src/a.ts', "import x from '@watchtower/domain';"],
+  ['packages/ai/src/a.ts', "import x from '@watchtower/domain';"],
+  ['packages/channels/src/a.ts', "import x from '@watchtower/domain';"],
+  ['packages/ui/src/a.ts', "import x from '@watchtower/domain';"],
+  ['apps/web/src/a.ts', "import x from '@watchtower/domain';"],
+  ['apps/web/src/a.ts', "import x from '../../../packages/domain/src/index.js';"],
+  // the Redis group is its own: bullmq stays out of packages that forbid persistence or Redis
+  ['packages/shared/src/a.ts', "import { Queue } from 'bullmq';"],
+  ['apps/web/src/a.ts', "import x from 'ioredis';"],
 ];
 
 const ALLOWED = [
@@ -106,6 +134,15 @@ const ALLOWED = [
   ['apps/api/src/a.ts', "import { x } from '@watchtower/channels';"],
   ['apps/api/src/a.ts', "import { Module } from '@nestjs/common';"],
   ['apps/worker/src/a.ts', "import { db } from '@watchtower/db';"],
+  ['apps/api/src/a.ts', "import { createDomain } from '@watchtower/domain';"],
+  ['apps/worker/src/a.ts', "import { createDomain } from '@watchtower/domain';"],
+  ['apps/worker/src/a.ts', "import { Queue } from 'bullmq';"],
+  ['packages/domain/src/a.ts', "import { eq } from 'drizzle-orm';"],
+  ['packages/domain/src/a.ts', "import { schema } from '@watchtower/db';"],
+  ['packages/domain/src/a.ts', "import { x } from '@watchtower/shared';"],
+  ['packages/domain/src/a.ts', "import { x } from '@watchtower/shared/secret-box';"],
+  ['packages/domain/src/a.ts', "import { randomUUID } from 'node:crypto';"],
+  ['packages/domain/src/a.ts', "import { x } from './tickets/create.js';"],
   ['apps/web/src/a.ts', "import { x } from '@watchtower/ui';"],
   ['apps/web/src/a.ts', "import { x } from '@watchtower/shared';"],
   ['apps/web/src/a.ts', "import Link from 'next/link';"],
@@ -152,6 +189,26 @@ describe('the real root config', () => {
   it('allows a declared workspace dependency', async () => {
     const code = "import { CHANNEL_TYPES } from '@watchtower/shared';";
     expect(await boundaryViolations(real, channelsFile, code)).toEqual([]);
+  });
+
+  it('applies the HTTP, Redis and workspace rules to packages/domain', async () => {
+    const domainFile = join(repoRoot, 'packages', 'domain', 'src', 'index.ts');
+    const real = new ESLint({ cwd: join(repoRoot, 'packages', 'domain') });
+    for (const code of [
+      "import { Injectable } from '@nestjs/common';",
+      "import { Queue } from 'bullmq';",
+      "import x from '@watchtower/ai';",
+      "const r = await fetch('https://example.com');",
+    ]) {
+      expect(await boundaryViolations(real, domainFile, code), code).not.toEqual([]);
+    }
+    for (const code of [
+      "import { eq } from 'drizzle-orm';",
+      "import { schema } from '@watchtower/db';",
+      "import { TICKET_STATUSES } from '@watchtower/shared';",
+    ]) {
+      expect(await boundaryViolations(real, domainFile, code), code).toEqual([]);
+    }
   });
 
   it('applies the DB rule to packages/channels', async () => {

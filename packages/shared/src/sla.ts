@@ -339,6 +339,15 @@ export interface SlaPause {
 }
 
 /**
+ * What an `sla.resumed` ticket event carries. Older events have no `resumedAt` and fall back to
+ * the time of the event itself.
+ */
+export const slaResumedPayloadSchema = z.object({
+  pausedAt: z.iso.datetime(),
+  resumedAt: z.iso.datetime().optional(),
+});
+
+/**
  * Due dates for a ticket created at `startedAt`; both null when the policy has no target for the
  * priority. `pauses` are the stops that already ended, oldest first: each moves the due date as
  * `resumeDueAfterPause` did when the clock restarted, so a recalculation from `startedAt` (new

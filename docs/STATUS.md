@@ -38,6 +38,12 @@ snapshot สั้นสำหรับ cold start อยู่ที่ `HANDOF
 
 ## Log
 
+## 2026-11-01 05:55 (Asia/Bangkok) — backend-dev + main thread — T-122b `packages/domain`
+- ทำอะไร: workspace ใหม่ `@watchtower/domain` (deps: db, shared, drizzle-orm) ตาม ADR-009 — create (staff/portal + `externalId` idempotency), update + SLA recompute, changeStatus (reopen, pause/resume), assign (manual/round-robin), merge, reply/note, contact find-or-create, intent resolve, workflow, SLA, ticket keys, outbox `enqueueJob`, audit ใน tx, `PolicyGate` (fail closed; ตอนนี้ใช้กับ reply ที่ actor เป็น AI เท่านั้น) · คืน `{value, events, audited}` + `DomainError` · api เป็นตัวห่อบาง (`apps/api/src/domain/`) · boundary: group `redis`, flag `forbidHttpGlobals`, domain ใช้ได้เฉพาะ api/worker (+38 boundary cases)
+- ข้อเบี่ยงจาก ADR-009: เพิ่ม port `TicketNotifier` ใน ctx (อีเมล portal ยังอยู่ api เพราะต้องใช้ config/token) · workflow อ่านใน tx ไม่มี cache 5 s · `policy_denied` → 403
+- test: main thread รัน `--force`: lint, typecheck ผ่าน · unit domain 8, boundaries 131, api 167, db 50 … · integration domain 47 (ใหม่), api 387 (เท่าเดิม), db 110, worker 19 · full-stack e2e 23 ผ่าน · **ไฟล์ test ของ api ไม่ถูกแก้** (`git diff --stat` ว่าง) `[TESTED]` · ใน full run มี flaky 2 ตัวจาก CPU load (web `conversation-pane` "Insert template", api break-glass timing 28.97 vs 28.99 ms) รันแยกผ่าน 3/3 และ 2/2 → T-125 ทำ assertion เวลาให้ทนโหลด
+- ค้าง: T-122c (ingest + `inbound_message`), T-122d (outbound) · ADR-009 ยัง Proposed
+
 ## 2026-11-01 04:50 (Asia/Bangkok) — qa-engineer + backend-dev + architect + main thread — T-014, T-012, T-123a, T-122a
 - T-014: `.github/workflows/ci.yml` 4 job (static, integration + service containers, e2e + full-stack, compose build/up/health) · action pin SHA · ขั้น assign ใน `ac1-portal.e2e.ts` (UI + REST + timeline + audit) · main thread รัน full-stack 23 ผ่าน · **CI run #1 บน GitHub ผ่านครบ 4 job รวม `docker compose build` + `up --wait` + health** (https://github.com/xzozero5/watchtower/actions/runs/41243188507) `[TESTED]`
 - T-012: `HANDOFF.md` เขียนใหม่ (checklist เจ้าของ 11 ข้อ, po 25 ข้อ) + `CHANGELOG.md` 0.0.1 · **ไม่ tag** (po #14) → Phase 0 = เสร็จ รอเจ้าของตรวจบนเครื่อง
