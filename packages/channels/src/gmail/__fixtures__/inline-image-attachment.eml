@@ -1,0 +1,42 @@
+From: Bob Example <bob@customer.example.com>
+To: support@example.com
+Subject: Screenshot of the error
+Date: Thu, 16 Oct 2025 08:30:00 +0700
+Message-ID: <inline-1@customer.example.com>
+MIME-Version: 1.0
+Content-Type: multipart/mixed; boundary="mixed-1"
+
+--mixed-1
+Content-Type: multipart/related; boundary="related-1"
+
+--related-1
+Content-Type: multipart/alternative; boundary="alt-2"
+
+--alt-2
+Content-Type: text/plain; charset=UTF-8
+
+See the screenshot below.
+
+--alt-2
+Content-Type: text/html; charset=UTF-8
+
+<div>See the screenshot below.</div><img src="cid:shot1@customer.example.com" alt="screenshot" width="1" height="1"><img src="https://tracker.example.net/pixel.gif" width="1" height="1">
+--alt-2--
+
+--related-1
+Content-Type: image/png; name="shot.png"
+Content-Transfer-Encoding: base64
+Content-Disposition: inline; filename="shot.png"
+Content-ID: <shot1@customer.example.com>
+
+iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6
+kgAAAABJRU5ErkJggg==
+--related-1--
+
+--mixed-1
+Content-Type: text/plain; charset=UTF-8; name="log.txt"
+Content-Disposition: attachment; filename*=UTF-8''%E0%B8%A3%E0%B8%B2%E0%B8%A2%E0%B8%87%E0%B8%B2%E0%B8%99%2E%74%78%74
+Content-Transfer-Encoding: base64
+
+bGluZSBvbmUKbGluZSB0d28K
+--mixed-1--

@@ -1,0 +1,17 @@
+Return-Path: <alice@customer.example.com>
+Received: from mail.customer.example.com by mx.example.com; Tue, 14 Oct 2025 09:12:00 +0700
+From: Alice Example <alice@customer.example.com>
+To: Support <support@example.com>
+Subject: Cannot log in to the dashboard
+Date: Tue, 14 Oct 2025 09:11:58 +0700
+Message-ID: <CAF1234abcd@mail.customer.example.com>
+MIME-Version: 1.0
+Content-Type: text/plain; charset="us-ascii"
+Content-Transfer-Encoding: 7bit
+
+Hello,
+
+I cannot log in since this morning. The page shows a blank screen.
+
+Thanks,
+Alice

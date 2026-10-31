@@ -38,6 +38,11 @@ snapshot สั้นสำหรับ cold start อยู่ที่ `HANDOF
 
 ## Log
 
+## 2026-11-01 06:20 (Asia/Bangkok) — integration-engineer + main thread — T-102a + T-103a
+- ทำอะไร: `packages/channels` — common `ChannelAdapter`/`ChannelError`/`HttpClient` (inject `fetch`, timeout, backoff, `Retry-After`) · Gmail: transport fake + live stub (ไม่มี ADC), MIME parser (TIS-620/windows-874/UTF-8, QP/base64, RFC 2047/2231), HTML sanitiser allow-list (บล็อกรูปภายนอก), classifier human/auto_reply/noise (RFC 3834), thread keys R-2.3, reply builder กัน header injection, fixture `.eml` 12 ไฟล์ (example.com) · LINE: ตรวจ signature (timing-safe, secret สุ่มต่อรอบ), normaliser (ทิ้ง URL media ภายนอกกัน SSRF), transport fake (reply token ใช้ครั้งเดียว, retry key, 429 รายเดือน) + live stub, router reply-vs-push พร้อมเหตุผล, quota helper · contract test รันกับ fake เสมอ, live เฉพาะ `CONTRACT_LIVE=1` (ไม่ได้ตั้ง) · ทุก test อยู่ใต้ `disableNetConnect`
+- ตรวจเอกสารทางการ 2026-10-31/11-01 → PRD §11 + README ของ channels: ราคา LINE ไทย Free 300 / Basic ฿1,280 (15,000) / Pro ฿1,780 (35,000) ไม่รวม VAT `[CONFIRMED]` (po #20 ปิด) · `[VERIFY]` ที่เหลือ: อายุ reply token จริง, `Retry-After` ของ LINE, timezone ของ quota, mark-as-read ตาม plan, Gmail คง `Message-ID`
+- test: main thread รัน `--force`: lint, typecheck ผ่าน · channels 321 ผ่าน + 22 skip (live contract) · boundaries 131, api 167, domain 8 `[TESTED]`
+
 ## 2026-11-01 05:55 (Asia/Bangkok) — backend-dev + main thread — T-122b `packages/domain`
 - ทำอะไร: workspace ใหม่ `@watchtower/domain` (deps: db, shared, drizzle-orm) ตาม ADR-009 — create (staff/portal + `externalId` idempotency), update + SLA recompute, changeStatus (reopen, pause/resume), assign (manual/round-robin), merge, reply/note, contact find-or-create, intent resolve, workflow, SLA, ticket keys, outbox `enqueueJob`, audit ใน tx, `PolicyGate` (fail closed; ตอนนี้ใช้กับ reply ที่ actor เป็น AI เท่านั้น) · คืน `{value, events, audited}` + `DomainError` · api เป็นตัวห่อบาง (`apps/api/src/domain/`) · boundary: group `redis`, flag `forbidHttpGlobals`, domain ใช้ได้เฉพาะ api/worker (+38 boundary cases)
 - ข้อเบี่ยงจาก ADR-009: เพิ่ม port `TicketNotifier` ใน ctx (อีเมล portal ยังอยู่ api เพราะต้องใช้ config/token) · workflow อ่านใน tx ไม่มี cache 5 s · `policy_denied` → 403
