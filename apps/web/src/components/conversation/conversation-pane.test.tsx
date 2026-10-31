@@ -291,11 +291,11 @@ describe('composer: reply', () => {
     const box = await screen.findByRole('textbox', { name: 'Public reply' });
     await user.type(box, 'Half written');
 
-    await user.click(await screen.findByRole('button', { name: /OPS-2/ }));
+    await user.click(await screen.findByRole('option', { name: /OPS-2/ }));
     await screen.findByRole('heading', { name: 'Export is slow', level: 3 });
     expect(await screen.findByRole('textbox', { name: 'Public reply' })).toHaveValue('');
 
-    await user.click(screen.getByRole('button', { name: /OPS-1/ }));
+    await user.click(screen.getByRole('option', { name: /OPS-1/ }));
     await screen.findByRole('heading', { name: 'Cannot log in', level: 3 });
     expect(await screen.findByRole('textbox', { name: 'Public reply' })).toHaveValue(
       'Half written',
@@ -308,7 +308,7 @@ describe('composer: reply', () => {
     await openTicket();
     await user.click(await screen.findByRole('textbox', { name: 'Public reply' }));
     await user.keyboard('{Escape}');
-    expect(screen.getByRole('button', { name: /OPS-1/ })).toHaveFocus();
+    expect(screen.getByRole('listbox', { name: 'Tickets' })).toHaveFocus();
   });
 
   it('C and N jump to the reply and note boxes', async () => {
@@ -316,7 +316,7 @@ describe('composer: reply', () => {
     workspaceApi();
     await openTicket();
     await screen.findByRole('textbox', { name: 'Public reply' });
-    await user.click(screen.getByRole('button', { name: /OPS-1/ }));
+    await user.click(screen.getByRole('option', { name: /OPS-1/ }));
 
     await user.keyboard('n');
     expect(await screen.findByRole('textbox', { name: 'Internal note' })).toHaveFocus();

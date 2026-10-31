@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 
 import { useI18n } from '@/i18n/provider';
+import { statusKey } from '@/lib/tickets/status-key';
 import { formatDateTime } from '@/lib/format';
 
 type EventEntry = Extract<TimelineEntry, { kind: 'event' }>;
@@ -40,8 +41,8 @@ function EventText({ entry }: { entry: EventEntry }) {
         return (
           <>
             {t('timeline.events.statusChanged', {
-              from: t(`status.${from.data}`),
-              to: t(`status.${to.data}`),
+              from: t(statusKey(from.data)),
+              to: t(statusKey(to.data)),
             })}
           </>
         );

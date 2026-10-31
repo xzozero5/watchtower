@@ -7,9 +7,8 @@ import { createContext, type ReactNode, useCallback, useContext, useMemo } from 
 import { useApi } from '@/lib/api/api-context';
 import { isUnauthenticated } from '@/lib/api/errors';
 
-import { draftStore } from '@/lib/tickets/templates';
-
-import { hasSessionHint, markSignedOut } from './session-hint';
+import { endSession } from './end-session';
+import { hasSessionHint } from './session-hint';
 import { SESSION_QUERY_KEY } from './session-key';
 
 export type SessionStatus = 'loading' | 'authenticated' | 'anonymous' | 'error';
@@ -61,12 +60,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     } catch {
       // The cookies may already be gone; either way this tab is done with the session.
     }
-    markSignedOut();
-    draftStore.clear();
-    // Drop everything cached for this person, but keep the session query itself: it is what tells
-    // the auth gate to leave.
-    queryClient.removeQueries({ predicate: (query) => query.queryKey[0] !== SESSION_QUERY_KEY[0] });
-    queryClient.setQueryData(SESSION_QUERY_KEY, null);
+    endSession(queryClient);
   }, [api, queryClient]);
 
   const session = query.data ?? null;
@@ -90,6 +84,11 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   }, [query.isError, query.data, session, retry, signOut]);
 
   return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>;
+}
+
+/** The signed-in user's id, used to scope query keys. `anonymous` when there is no session. */
+export function useUserId(): string {
+  return useSession().session?.user.id ?? 'anonymous';
 }
 
 export function useSession(): SessionState {

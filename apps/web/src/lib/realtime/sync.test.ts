@@ -29,15 +29,18 @@ function setup() {
     queryClient,
     getTicket,
     onNewTicket,
-    deps: { queryClient, api: { getTicket }, onNewTicket },
+    deps: { queryClient, userId: USER_ID, api: { getTicket }, onNewTicket },
   };
 }
+
+const USER_ID = 'user-a';
+const keys = ticketKeys(USER_ID);
 
 describe('applyRealtimeEvent', () => {
   it('counts a new ticket but never touches the list, so rows do not move', () => {
     const { queryClient, onNewTicket, deps } = setup();
     const ticket = makeTicket(1);
-    queryClient.setQueryData(ticketKeys.list(DEFAULT_FILTERS), {
+    queryClient.setQueryData(keys.list(DEFAULT_FILTERS), {
       pages: [{ items: [ticket], nextCursor: null }],
       pageParams: [undefined],
     });
@@ -46,7 +49,7 @@ describe('applyRealtimeEvent', () => {
 
     expect(onNewTicket).toHaveBeenCalledWith(makeTicket(2).id);
     const list = queryClient.getQueryData<{ pages: { items: unknown[] }[] }>(
-      ticketKeys.list(DEFAULT_FILTERS),
+      keys.list(DEFAULT_FILTERS),
     );
     expect(list?.pages[0]?.items).toEqual([ticket]);
   });
@@ -55,7 +58,7 @@ describe('applyRealtimeEvent', () => {
     const { queryClient, getTicket, deps } = setup();
     const before = makeTicket(1, { status: 'open' });
     const other = makeTicket(2);
-    queryClient.setQueryData(ticketKeys.list(DEFAULT_FILTERS), {
+    queryClient.setQueryData(keys.list(DEFAULT_FILTERS), {
       pages: [{ items: [other, before], nextCursor: null }],
       pageParams: [undefined],
     });
@@ -70,14 +73,14 @@ describe('applyRealtimeEvent', () => {
     await vi.waitFor(() => {
       const list = queryClient.getQueryData<{
         pages: { items: { key: string; status: string }[] }[];
-      }>(ticketKeys.list(DEFAULT_FILTERS));
+      }>(keys.list(DEFAULT_FILTERS));
       // Same position, new content.
       expect(list?.pages[0]?.items.map((item) => `${item.key}:${item.status}`)).toEqual([
         `${other.key}:open`,
         `${before.key}:resolved`,
       ]);
     });
-    expect(queryClient.getQueryData(ticketKeys.detail(before.key))).toEqual(after);
+    expect(queryClient.getQueryData(keys.detail(before.key))).toEqual(after);
   });
 
   it('ignores updates to tickets this tab has never loaded', () => {
@@ -89,7 +92,7 @@ describe('applyRealtimeEvent', () => {
   it('refetches the timeline when a message arrives', () => {
     const { queryClient, deps } = setup();
     const ticket = makeTicket(3);
-    queryClient.setQueryData(ticketKeys.timeline(ticket.key), { pages: [], pageParams: [] });
+    queryClient.setQueryData(keys.timeline(ticket.key), { pages: [], pageParams: [] });
     const invalidate = vi.spyOn(queryClient, 'invalidateQueries');
 
     applyRealtimeEvent(
@@ -109,22 +112,29 @@ describe('applyRealtimeEvent', () => {
       deps,
     );
 
-    expect(invalidate).toHaveBeenCalledWith({ queryKey: ticketKeys.timeline(ticket.key) });
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: keys.timeline(ticket.key) });
   });
 });
 
 describe('isTicketCached', () => {
+  it("never sees another user's cache", () => {
+    const { queryClient } = setup();
+    const a = makeTicket(1);
+    queryClient.setQueryData(keys.detail(a.key), a);
+    expect(isTicketCached(queryClient, 'user-b', a.id, a.key)).toBe(false);
+  });
+
   it('is true for an open detail or a loaded row, false otherwise', () => {
     const { queryClient } = setup();
     const a = makeTicket(1);
     const b = makeTicket(2);
-    queryClient.setQueryData(ticketKeys.detail(a.key), a);
-    queryClient.setQueryData(ticketKeys.list(DEFAULT_FILTERS), {
+    queryClient.setQueryData(keys.detail(a.key), a);
+    queryClient.setQueryData(keys.list(DEFAULT_FILTERS), {
       pages: [{ items: [b], nextCursor: null }],
       pageParams: [undefined],
     });
-    expect(isTicketCached(queryClient, a.id, a.key)).toBe(true);
-    expect(isTicketCached(queryClient, b.id, b.key)).toBe(true);
-    expect(isTicketCached(queryClient, makeTicket(9).id, 'OPS-9')).toBe(false);
+    expect(isTicketCached(queryClient, USER_ID, a.id, a.key)).toBe(true);
+    expect(isTicketCached(queryClient, USER_ID, b.id, b.key)).toBe(true);
+    expect(isTicketCached(queryClient, USER_ID, makeTicket(9).id, 'OPS-9')).toBe(false);
   });
 });

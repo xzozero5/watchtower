@@ -2,11 +2,24 @@ import { act, render, screen } from '@testing-library/react';
 import { DENSITY_STORAGE_KEY, THEME_STORAGE_KEY } from '@watchtower/ui';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { resetPreferencesCache, setDensity, setTheme, usePreferences } from './preferences';
+import {
+  getPreferences,
+  resetPreferencesCache,
+  setDensity,
+  setSingleKeyShortcuts,
+  setTheme,
+  SINGLE_KEY_STORAGE_KEY,
+  usePreferences,
+} from './preferences';
 
 function Probe() {
-  const { theme, density } = usePreferences();
-  return <p data-testid="probe">{`${theme}/${density}`}</p>;
+  const { theme, density, singleKeyShortcuts } = usePreferences();
+  return (
+    <>
+      <p data-testid="probe">{`${theme}/${density}`}</p>
+      <p data-testid="keys">{singleKeyShortcuts ? 'on' : 'off'}</p>
+    </>
+  );
 }
 
 const html = () => document.documentElement;
@@ -87,5 +100,53 @@ describe('preferences', () => {
     } finally {
       spy.mockRestore();
     }
+  });
+
+  describe('single-key shortcuts (WCAG 2.1.4)', () => {
+    it('are on by default', () => {
+      render(<Probe />);
+      expect(screen.getByTestId('keys')).toHaveTextContent('on');
+      expect(getPreferences().singleKeyShortcuts).toBe(true);
+    });
+
+    it('can be turned off, are saved and survive a reload', () => {
+      render(<Probe />);
+      act(() => {
+        setSingleKeyShortcuts(false);
+      });
+      expect(screen.getByTestId('keys')).toHaveTextContent('off');
+      expect(localStorage.getItem(SINGLE_KEY_STORAGE_KEY)).toBe('off');
+
+      resetPreferencesCache();
+      expect(getPreferences().singleKeyShortcuts).toBe(false);
+
+      act(() => {
+        setSingleKeyShortcuts(true);
+      });
+      expect(localStorage.getItem(SINGLE_KEY_STORAGE_KEY)).toBe('on');
+    });
+
+    it('does not change the other preferences when toggled', () => {
+      render(<Probe />);
+      act(() => {
+        setTheme('dark');
+        setSingleKeyShortcuts(false);
+      });
+      expect(screen.getByTestId('probe')).toHaveTextContent('dark/comfortable');
+    });
+
+    it('treats any value but "off" as on, so a corrupt value fails towards the default', () => {
+      localStorage.setItem(SINGLE_KEY_STORAGE_KEY, 'nope');
+      expect(getPreferences().singleKeyShortcuts).toBe(true);
+    });
+
+    it('follows a change made in another tab', () => {
+      render(<Probe />);
+      act(() => {
+        localStorage.setItem(SINGLE_KEY_STORAGE_KEY, 'off');
+        window.dispatchEvent(new StorageEvent('storage', { key: SINGLE_KEY_STORAGE_KEY }));
+      });
+      expect(screen.getByTestId('keys')).toHaveTextContent('off');
+    });
   });
 });

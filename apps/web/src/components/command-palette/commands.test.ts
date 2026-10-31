@@ -8,6 +8,7 @@ const actions = (): CommandActions => ({
   setTheme: vi.fn(),
   setDensity: vi.fn(),
   setLocale: vi.fn(),
+  setSingleKeyShortcuts: vi.fn(),
   showShortcuts: vi.fn(),
   focusSearch: vi.fn(),
   signOut: vi.fn(),
@@ -31,6 +32,15 @@ describe('buildCommands', () => {
     expect(a.setTheme).toHaveBeenCalledWith('dark');
     expect(a.setDensity).toHaveBeenCalledWith('compact');
     expect(a.setLocale).toHaveBeenCalledWith('th');
+  });
+
+  it('turns single-key shortcuts off and on from the palette', () => {
+    const a = actions();
+    const byId = new Map(buildCommands(tEn, a).map((c) => [c.id, c]));
+    byId.get('shortcuts.singleKeyOff')?.run();
+    byId.get('shortcuts.singleKeyOn')?.run();
+    expect(a.setSingleKeyShortcuts).toHaveBeenNthCalledWith(1, false);
+    expect(a.setSingleKeyShortcuts).toHaveBeenNthCalledWith(2, true);
   });
 
   it('has unique ids', () => {

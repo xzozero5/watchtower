@@ -94,20 +94,20 @@ export function ConversationPane({ ticketKey }: { ticketKey: string | null }) {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col" data-ticket-key={data.key}>
+      {/* Outside the scrolling area, so opening a ticket (which scrolls to the newest message) never hides it. */}
+      <header className="flex shrink-0 flex-col gap-2 border-b border-border px-pane py-3">
+        <p className="font-mono text-xs text-muted-foreground">{data.key}</p>
+        <h3 className="text-lg font-semibold break-words">{data.subject}</h3>
+        <div className="flex flex-wrap items-center gap-3">
+          <SeverityBadge
+            severity={severityOf(data.priority)}
+            label={t(`severity.${severityOf(data.priority)}`)}
+          />
+          <StatusLabel status={data.status} />
+          <SlaBadge sla={slaView(data, now)} />
+        </div>
+      </header>
       <div ref={scrollRef} className="flex min-h-0 flex-1 flex-col overflow-y-auto">
-        <header className="flex flex-col gap-2 border-b border-border px-pane py-3">
-          <p className="font-mono text-xs text-muted-foreground">{data.key}</p>
-          <h3 className="text-lg font-semibold break-words">{data.subject}</h3>
-          <div className="flex flex-wrap items-center gap-3">
-            <SeverityBadge
-              severity={severityOf(data.priority)}
-              label={t(`severity.${severityOf(data.priority)}`)}
-            />
-            <StatusLabel status={data.status} />
-            <SlaBadge sla={slaView(data, now)} />
-          </div>
-        </header>
-
         <TicketDetails ticket={data} />
 
         <div aria-busy={timeline.isFetching}>
