@@ -15,7 +15,12 @@ export default defineConfig({
   workers: 1,
   forbidOnly: Boolean(process.env.CI),
   retries: 0,
-  reporter: process.env.CI ? 'github' : 'list',
+  // In CI an HTML report (with traces) is written for the workflow to upload when the job fails.
+  // Folders of their own: each Playwright run clears its output directory when it starts.
+  reporter: process.env.CI
+    ? [['github'], ['html', { open: 'never', outputFolder: 'playwright-report-fullstack' }]]
+    : 'list',
+  outputDir: 'test-results-fullstack',
   timeout: 90_000,
   expect: { timeout: 10_000 },
   use: { trace: 'retain-on-failure', locale: 'en-US' },

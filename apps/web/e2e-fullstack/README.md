@@ -5,7 +5,7 @@ mocked (the UI tests in `../e2e/` mock the api; these do not). It covers:
 
 | File | Scenarios |
 |---|---|
-| `ac1-portal.e2e.ts` | AC-1, portal path: submit on the portal, ticket with org / intent / SLA due within 10 s (measured), confirmation email and tracking link, staff reply in the workspace, customer sees it on the tracking page, internal note never reaches the customer, staff resolve, customer gets the status email |
+| `ac1-portal.e2e.ts` | AC-1, portal path: submit on the portal, ticket with org / intent / SLA due within 10 s (measured), staff assign it to a seeded agent in the Details panel (checked in the UI after a reload, over REST, in the timeline `ticket.assigned` event and in the audit log), confirmation email and tracking link, staff reply in the workspace, customer sees it on the tracking page, internal note never reaches the customer, staff resolve, customer gets the status email |
 | `auth.e2e.ts` | Magic link end to end (login page, email read from Mailpit's HTTP API, link opened, signed in, link works once, sign out), no email for an unknown address, break-glass staff sign-in |
 | `rbac.e2e.ts` | A client sees only their own organization (REST and UI), never an internal note, cannot use staff actions; checked for two clients of two organizations |
 
@@ -53,6 +53,30 @@ origin). The defaults `PORTAL_POW_DIFFICULTY_BITS=18` and `PORTAL_MIN_FILL_SECON
 seconds to the portal submit; the AC-1 clock starts at the click, after the proof of work.
 The suite writes data (tickets, a note, users for two clients): use a dev or demo instance, never
 production. It deletes the Mailpit messages it caused.
+
+## In CI (`.github/workflows/ci.yml`, T-014)
+
+The `e2e` job runs both Playwright suites on an `ubuntu-latest` runner, in this order:
+
+1. `pnpm test:e2e` (the UI tests in `../e2e/`, api mocked), then
+2. `pnpm test:e2e:fullstack`, from source, exactly as in "Run it from source" above.
+
+Its service containers are the same images as `docker-compose.yml` (`pgvector/pgvector:0.8.7-pg16-trixie`,
+`redis:7.4-alpine`, `axllent/mailpit:v1.33.0`) on `127.0.0.1:5432`, `:6379`, `:1025` and `:8025`. MinIO is not
+needed. The web build and the api/worker builds come from turbo (`dependsOn` in `turbo.json`).
+
+- Chromium is downloaded in the job with `playwright install --with-deps chromium` (CI-time only; it is not part
+  of the product or of any image). Locally keep using `PW_EXECUTABLE_PATH` / `PW_CHANNEL`.
+- No repository secret is used. The stack generates its JWT secret, encryption key and break-glass password at
+  run time (`tools/e2e-stack/up.mjs`) and never prints them.
+- With `CI` set, both configs also write an HTML report (`playwright-report/`, `playwright-report-fullstack/`) and
+  the traces go to `test-results*/`. The job uploads them, plus the api/worker/web logs of the stack
+  (`E2E_KEEP_LOGS=1`), as the `playwright-<run>-<attempt>` artifact **only when it fails**, kept 7 days. Traces can
+  contain the throwaway break-glass password of that run; the stack and its database are gone when the job ends.
+- Retries are 1 for `../e2e/` and 0 here (AC-1 measures a time budget). `forbidOnly` is on.
+- The same workflow has a `compose` job that builds the images, runs `docker compose up -d --wait` and probes
+  `/health` on the published ports. It does not run these tests; to run them against it use the "docker compose up"
+  section above.
 
 ## Notes
 
