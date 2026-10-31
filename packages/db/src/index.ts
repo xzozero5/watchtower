@@ -23,6 +23,16 @@ export {
 } from './outbox.js';
 export { orgScopeCondition } from './scope.js';
 export {
+  DEFAULT_EXAMPLES_DIR,
+  SeedError,
+  assertSeedAllowed,
+  loadHolidayFiles,
+  loadSlaPolicyFiles,
+  runSeed,
+  type SeedOptions,
+  type SeedResult,
+} from './seed/index.js';
+export {
   DEFAULT_INTENT_EXAMPLES_DIR,
   IntentSeedError,
   loadIntentDefinitions,
