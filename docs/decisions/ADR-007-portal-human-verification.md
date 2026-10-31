@@ -1,6 +1,6 @@
 # ADR-007 — Human verification ของ client portal แบบ self-hosted (T-007)
 
-- **Status:** Proposed (เขียนโดย `backend-dev` ก่อนเขียนโค้ด T-007 · รอ `security-reviewer`/`architect` ตรวจ แล้ว main thread เปลี่ยนเป็น Accepted)
+- **Status:** Accepted 2026-11-01 · ตรวจโดย `security-reviewer` T-010 (2026-11-01) หลังแก้ C-3, C-4 · ค้าง P3 C-17 (replay ของ proof ที่ claim แล้วกิน bucket) → T-125
 - **Date:** 2026-11-01 (เวลากรุงเทพ) · **ผู้ตัดสิน:** `po` ตามอำนาจที่เจ้าของมอบ (HANDOFF "PO ตัดสินแทนเจ้าของ" #22 `[ASSUMED]` รอเจ้าของทบทวน)
 - **Context:** PRD R-9.1 ให้หน้า submit สาธารณะมี human verification โดยยกตัวอย่าง Turnstile/hCaptcha · ทั้งสองคือบริการภายนอก: ต้องโหลด script จาก vendor, ส่ง IP/fingerprint ของผู้ใช้ไปให้ vendor และเพิ่มปลายทาง network ใหม่ของ server (`siteverify`) ซึ่ง AGENTS.md ให้หยุดถามเจ้าของ (`[ASK-HUMAN]`) · `po` ตัดสินให้ทำแบบ self-hosted ก่อน (UI spec §10, §17 Q5) · endpoint สาธารณะ 2 ตัว (`GET /v1/portal/challenge`, `POST /v1/portal/tickets`) ไม่มี session จึงต้องกันบอท, การสแปมกล่องอีเมลของคนอื่น (confirmation ไปที่อีเมลที่ผู้ส่งพิมพ์เอง) และการเติม ticket ปลอม · ข้อจำกัด: ห้ามเพิ่ม dependency (N10/AGENTS.md), ห้าม PII/secret ใน log (N1), ทุก mutation ลง audit (PRD §8.2)
 

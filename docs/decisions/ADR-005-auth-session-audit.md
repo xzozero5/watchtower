@@ -1,6 +1,6 @@
 # ADR-005 — Auth, session, CSRF, RBAC และ audit log (T-004)
 
-- **Status:** Proposed (เขียนโดย `backend-dev` ใน T-004 · รอ `architect`/`security-reviewer` ตรวจใน T-010 แล้ว main thread เปลี่ยนเป็น Accepted)
+- **Status:** Accepted 2026-11-01 · ตรวจโดย `security-reviewer` T-010 (2026-11-01) หลังแก้ C-1, C-6, C-7, C-16
 - **Date:** 2026-10-31 (เวลากรุงเทพ)
 - **Context:** PRD §2.2–2.3 และ §8.2 กำหนดว่า staff ใช้ Google SSO จำกัด domain, client ใช้ magic link, มี break-glass admin, session เป็น JWT สั้น + refresh พร้อม device list/forced logout, RBAC ด้วย permission string และ audit log ที่แก้ไม่ได้ · ADR-001 กำหนด NestJS + Drizzle + Postgres · ADR-004 กำหนดรหัส break-glass อยู่ใน environment
 
@@ -65,6 +65,8 @@
 - **C-8 proxy:** `TRUST_PROXY_HOPS` เดิม 0 (ไม่เชื่อ `X-Forwarded-For`) · `docker-compose.proxy.yml` รัน stack ผ่าน Caddy อย่างเดียว (api ไม่ publish :4000, ตั้ง hops = 1, web/api/อีเมลใช้ origin เดียว `PROXY_PUBLIC_URL`) · api เตือนครั้งเดียวต่อ 10 นาทีเมื่อ hops = 0 แต่ request มี `X-Forwarded-For` มาจาก address ส่วนตัว (Caddy ใน docker network) · `[VERIFY]` พฤติกรรมของ Caddy ที่เขียนทับ `X-Forwarded-For` ของ client เมื่อไม่ตั้ง `trusted_proxies` (ตามเอกสาร Caddy; ยังไม่ได้รัน stack เต็มผ่าน proxy)
 - **C-9 audit snapshot ของ user:** เก็บเฉพาะ `id`, `role`, `status`, `hasEmail` (เดิมมี email, name, orgId) เหมือน contact
 - **C-10 `emailTag`:** HMAC-SHA-256 ด้วย subkey ของ `APP_ENCRYPTION_KEY` (label `watchtower/audit/email-tag/v1`) แทน SHA-256 เปล่า ๆ ที่ใครอ่าน audit log ได้ก็เดาอีเมลย้อนได้ · เปลี่ยน key แล้ว tag เปลี่ยนทั้งหมด (แถวเก่าไม่ match แถวใหม่)
+
+- **C-16 (main thread, 2026-11-01):** `DEV_LOGIN_ENABLED=true` ทำให้ boot ล้มถ้า `APP_URL` ไม่ใช่ loopback — `.env.example` ที่ถูก copy ไปขึ้น host ที่เข้าถึงได้จะไม่แจกบัญชี head
 
 ## Links
 - PRD §2.2, §2.3, §8.2 · ADR-001 · ADR-004 · `docs/04-ARCHITECTURE.md` §7 · OIDC Core §3.1.3.7 · RFC 7636 (PKCE)

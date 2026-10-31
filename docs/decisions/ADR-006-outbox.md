@@ -1,6 +1,6 @@
 # ADR-006 — Transactional outbox สำหรับงานที่ต้อง enqueue หลัง commit (T-013)
 
-- **Status:** Proposed (เขียนโดย `backend-dev` ใน T-013 · รอ `architect`/`security-reviewer` ตรวจ แล้ว main thread เปลี่ยนเป็น Accepted)
+- **Status:** Accepted 2026-11-01 · ตรวจโดย `security-reviewer` T-010 (2026-11-01) หลังแก้ C-2 (เข้ารหัส payload + expires_at)
 - **Date:** 2026-11-01 (เวลากรุงเทพ)
 - **Context:** PRD §8.3 ต้องการ at-least-once สำหรับการส่งงานออก (อีเมล, ตอบ Gmail/LINE ใน Phase 1) · โค้ด T-005 ใช้ `uow.afterCommit(() => queue.add(...))` ซึ่งรันหลัง commit: ถ้า Redis ล่มพอดีหรือ process ตายระหว่าง commit กับ `add` งานหาย และข้อมูลใน DB บอกว่า "ควรมีงาน" โดยไม่มีใครส่ง (เช่น reply บน LINE ค้าง `delivery_status = pending` ตลอด) · review T-005 ตั้งเป็น T-013 · `docs/04-ARCHITECTURE.md` §2 และ §11 บันทึกไว้ว่ายังไม่มี outbox `[ASSUMED]`
 - **ข้อจำกัด:** boundary ใน `docs/04-ARCHITECTURE.md` §3 (apps ห้าม import กัน; `packages/db` รู้จัก Postgres ไม่รู้จัก Redis/BullMQ; logic ที่ api กับ worker ใช้ร่วมต้องอยู่ใน package) · ADR-001 ให้ scheduler/งานเบื้องหลังอยู่ใน worker ไม่พึ่ง cron ของ OS · Cloud Run ลด CPU ของ container ที่ไม่มี request จึงไม่เหมาะกับ loop เบื้องหลังใน api

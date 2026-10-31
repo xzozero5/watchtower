@@ -306,6 +306,25 @@ describe('break-glass credentials', () => {
   });
 });
 
+describe('dev login on a reachable host (C-16)', () => {
+  it('refuses DEV_LOGIN_ENABLED=true when APP_URL is not loopback', () => {
+    const issues = issuesFor({
+      ...validEnv,
+      DEV_LOGIN_ENABLED: 'true',
+      APP_URL: 'https://support.example.com',
+    });
+    expect(issues.get('DEV_LOGIN_ENABLED')).toContain('loopback');
+  });
+
+  it('allows it on a loopback APP_URL', () => {
+    expect(
+      issuesFor({ ...validEnv, DEV_LOGIN_ENABLED: 'true', APP_URL: 'http://localhost:3000' }).has(
+        'DEV_LOGIN_ENABLED',
+      ),
+    ).toBe(false);
+  });
+});
+
 describe('Google OIDC domain restriction', () => {
   it('requires GOOGLE_ALLOWED_DOMAIN once OIDC credentials are set', () => {
     const withClient = {

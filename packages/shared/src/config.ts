@@ -202,6 +202,10 @@ function applyGuards(env: Readonly<Record<string, unknown>>, ctx: z.RefinementCt
         'must not be true while Google sign-in credentials are set (dev login exists only in mock mode)',
       );
     }
+    // A copied .env.example on a reachable host must not hand out head accounts (T-010 C-16).
+    if (!isLoopbackUrl(text(env, 'APP_URL') ?? '')) {
+      fail('DEV_LOGIN_ENABLED', 'must not be true unless APP_URL is a loopback address');
+    }
   }
   const breakGlassEmail = text(env, 'BREAK_GLASS_EMAIL');
   const breakGlassPassword = text(env, 'BREAK_GLASS_PASSWORD');
