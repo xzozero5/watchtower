@@ -6,7 +6,7 @@ snapshot สั้นสำหรับ cold start อยู่ที่ `HANDOF
 ## สถานะปัจจุบัน
 | Phase | สถานะ (2026-10-31) | ค้าง |
 |---|---|---|
-| 0 Foundation | 🟨 กำลังทำ | T-001 |
+| 0 Foundation | 🟨 กำลังทำ | T-002, T-003 |
 | 1 Inbox + AI 0–2 + Shifts | ⬜ | — |
 | 2 Reliability + Usage | ⬜ | — |
 | 3 Autonomy + Learning | ⬜ | — |
@@ -31,6 +31,14 @@ snapshot สั้นสำหรับ cold start อยู่ที่ `HANDOF
 - บรรทัดใน `.gitignore` ห้ามมี comment ต่อท้าย pattern
 
 ## Log
+
+## 2026-10-31 21:50 (Asia/Bangkok) — architect + main thread — T-001
+- ทำอะไร: monorepo pnpm + Turborepo, placeholder 5 package, boundary lint, `docs/04-ARCHITECTURE.md` ร่าง, ADR-002
+- ไฟล์ที่แตะ: root config, `tools/eslint/`, `packages/*`, `docs/04-ARCHITECTURE.md`, `docs/decisions/ADR-002-boundary-enforcement.md`, PRD §12
+- test: main thread รันซ้ำแบบ `--force` lint/typecheck/test/build และยืนยันว่าไฟล์ละเมิดใน `packages/ai` ทำ lint fail `[TESTED]`
+- ค้าง: `pnpm test:e2e` ยังไม่มี test จริง (T-003) ห้ามนับเป็นผ่าน
+- ไม่ยืนยัน: boundary test บน Linux/CI `[UNVERIFIED 90%]` · `eslint-config-next` กับ ESLint 10 `[UNVERIFIED 70%]` · drizzle-kit กับ `PARTITION BY` `[VERIFY]`
+- `[ASK-HUMAN]` Turbo telemetry เปิดอยู่บนเครื่อง dev: เจ้าของปิดเองด้วย `turbo telemetry disable`; CI/Docker ตั้ง `TURBO_TELEMETRY_DISABLED=1`
 
 ## 2026-10-31 21:35 (Asia/Bangkok) — main thread — T-000
 - ทำอะไร: git init ต่อจาก `origin/main` (`f848253`, LICENSE Apache-2.0) ให้ push เป็น fast-forward, เปิด hooks, แก้ `.gitignore`, เพิ่ม `.gitattributes` (LF), ทำเอกสารให้เป็นกลางตามคำสั่งเจ้าของ, แก้ pre-commit ให้ fail closed

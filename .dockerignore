@@ -1,0 +1,24 @@
+# Local environment files must never enter a build context.
+**/.env*
+
+.git
+.github
+.claude
+.turbo
+.next
+node_modules
+**/node_modules
+**/dist
+**/.next
+**/.turbo
+**/coverage
+**/playwright-report
+**/test-results
+data
+logs
+docs
+evals/golden
+*.md
+LICENSE
+Dockerfile*
+docker-compose*.yml

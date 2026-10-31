@@ -528,7 +528,7 @@ External inputs the system does not compute (platform uptime from monitoring, re
 
 ## 12. Architecture & stack recommendation
 
-[ASSUMED — the build session may propose alternatives via an ADR in `docs/adr/`]
+[ASSUMED — the build session may propose alternatives via an ADR in `docs/decisions/`]
 
 - **Monorepo** (pnpm + Turborepo), TypeScript end-to-end:
   - `apps/web` — Next.js (App Router), React, Tailwind, shadcn/ui, TanStack Query, WebSocket client, PWA.

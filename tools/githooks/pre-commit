@@ -19,7 +19,7 @@ if [ "$rc" -ne 1 ]; then
   echo "BLOCKED: secret-looking string in staged diff (grep exit $rc)"; fail=1
 fi
 # org-neutral repo: optional local-only term list (one regex per line), kept outside the repo in .git/info/forbidden-terms
-terms="$(git rev-parse --git-dir)/info/forbidden-terms"
+terms="$(git rev-parse --git-common-dir)/info/forbidden-terms"
 if [ -s "$terms" ]; then
   # lowercase both sides because `grep -i` aborts on some Git for Windows builds
   lower() { LC_ALL=C tr '[:upper:]' '[:lower:]'; }

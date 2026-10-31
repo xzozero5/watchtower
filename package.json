@@ -1,0 +1,35 @@
+{
+  "name": "watchtower",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@10.11.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "turbo run dev --env-mode=loose",
+    "build": "turbo run build",
+    "test": "turbo run test test:boundaries",
+    "test:e2e": "turbo run test:e2e --env-mode=loose",
+    "test:boundaries": "vitest run --dir tools",
+    "lint": "turbo run lint lint:root",
+    "lint:root": "eslint eslint.config.mjs tools && prettier --check .",
+    "typecheck": "turbo run typecheck",
+    "db:migrate": "turbo run db:migrate --env-mode=loose",
+    "db:seed": "turbo run db:seed --env-mode=loose",
+    "eval": "turbo run eval --env-mode=loose",
+    "format": "prettier --write ."
+  },
+  "devDependencies": {
+    "@eslint/js": "catalog:",
+    "eslint": "catalog:",
+    "eslint-config-prettier": "catalog:",
+    "globals": "catalog:",
+    "prettier": "catalog:",
+    "turbo": "catalog:",
+    "typescript": "catalog:",
+    "typescript-eslint": "catalog:",
+    "vitest": "catalog:"
+  }
+}

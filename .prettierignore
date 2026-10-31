@@ -1,0 +1,17 @@
+node_modules
+dist
+.next
+.turbo
+coverage
+playwright-report
+test-results
+pnpm-lock.yaml
+*.md
+LICENSE
+.claude
+config
+docs
+evals
+examples
+logs
+tools/githooks

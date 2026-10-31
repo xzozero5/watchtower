@@ -1,0 +1,33 @@
+{
+  "name": "@watchtower/db",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "dev": "tsc -p tsconfig.build.json --watch --preserveWatchOutput",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "db:migrate": "node -e \"console.error('db:migrate is not implemented yet (T-002)');process.exit(1)\"",
+    "db:seed": "node -e \"console.error('db:seed is not implemented yet (T-008)');process.exit(1)\""
+  },
+  "dependencies": {
+    "@watchtower/shared": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "eslint": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}
