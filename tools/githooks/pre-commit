@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+# Watchtower pre-commit guard — เปิดใช้: git config core.hooksPath tools/githooks
+set -euo pipefail
+fail=0
+files=$(git diff --cached --name-only --diff-filter=ACM || true)
+for f in $files; do
+  case "$f" in
+    .env|.env.*|*/.env|*/.env.*) [ "$f" != ".env.example" ] && [ "${f##*/}" != ".env.example" ] && { echo "BLOCKED: $f (.env files are never committed)"; fail=1; } ;;
+  esac
+  if [ -f "$f" ] && [ $(wc -c <"$f") -gt 10485760 ]; then echo "BLOCKED: $f > 10 MB"; fail=1; fi
+done
+# secret patterns (เพิ่มได้) — ตรวจเฉพาะ diff ที่เพิ่มเข้ามา
+if git diff --cached -U0 | grep -E '^\+' | grep -E -q 'sk-ant-[A-Za-z0-9_-]{20,}|AIza[0-9A-Za-z_-]{30,}|-----BEGIN (RSA |EC )?PRIVATE KEY-----|"private_key_id"[[:space:]]*:|LINE_CHANNEL_SECRET=[A-Za-z0-9]{10,}|DISCORD_BOT_TOKEN=[A-Za-z0-9._-]{20,}'; then
+  echo "BLOCKED: secret-looking string in staged diff"; fail=1
+fi
+# org-neutral repo: optional local-only term list (one regex per line), kept outside the repo in .git/info/forbidden-terms
+terms="$(git rev-parse --git-dir)/info/forbidden-terms"
+if [ -s "$terms" ] && git diff --cached -U0 | grep -E '^\+' | grep -E -i -q -f "$terms"; then
+  echo "BLOCKED: forbidden term in staged diff (list: $terms)"; fail=1
+fi
+exit $fail

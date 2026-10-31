@@ -1,0 +1,9 @@
+# งบ — ค่าเริ่มต้น [ASSUMED] เจ้าของแก้ได้ · เกินเพดาน = [ASK-HUMAN]
+build_ai:            # AI ที่ใช้สร้างโปรเจกต์ (Claude Code ฯลฯ)
+  per_session_usd: 10
+  per_month_usd: 150
+app_ai_dev:          # เรียก provider จริงจาก Watchtower ระหว่าง dev/eval
+  per_session_usd: 2
+  per_month_usd: 30
+cloud_dev_usd_per_month: 20   # GCP ระหว่าง dev (Pub/Sub emulator/local ก่อนเป็นหลัก)
+line_oa_plan: free            # 300 push/เดือน [VERIFY] — เปลี่ยนเมื่อ pilot จริง

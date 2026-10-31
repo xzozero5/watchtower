@@ -1,0 +1,17 @@
+# Model tiers — agent files ใส่ model ตาม tier นี้ ห้าม hardcode ชื่อ model ในโค้ดแอป
+# (โค้ดแอปอ่าน provider/model จาก admin settings ใน DB — PRD §6.7 — ไฟล์นี้ใช้กับ AI ที่ "สร้าง" โปรเจกต์เท่านั้น)
+tiers:
+  deep: opus        # ตัดสินใจ/ออกแบบ/ตรวจ: po, architect, ux-designer, security-reviewer
+  standard: sonnet  # implement: backend-dev, frontend-dev, ai-engineer, integration-engineer, qa-engineer
+  light: haiku      # อ่านสรุป: explorer
+roles:
+  po: deep
+  architect: deep
+  ux-designer: deep
+  security-reviewer: deep
+  backend-dev: standard
+  frontend-dev: standard
+  ai-engineer: standard
+  integration-engineer: standard
+  qa-engineer: standard
+  explorer: light

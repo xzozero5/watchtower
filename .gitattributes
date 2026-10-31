@@ -1,0 +1,6 @@
+# Force LF in the repo and working tree: shell scripts and Dockerfiles break in containers with CRLF (Windows hosts default to autocrlf=true)
+* text=auto eol=lf
+*.png binary
+*.jpg binary
+*.ico binary
+*.woff2 binary
