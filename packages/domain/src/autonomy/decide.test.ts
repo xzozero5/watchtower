@@ -228,6 +228,19 @@ describe('the truth table (ADR-011), one row per rule', () => {
   });
 });
 
+describe('the safe template list', () => {
+  it('cannot be changed at run time (review A-7)', () => {
+    const set = SAFE_AUTO_ACK_TEMPLATES as Set<string>;
+    expect(() => set.add('anything_else')).toThrow(TypeError);
+    expect(() => set.delete(SAFE)).toThrow(TypeError);
+    expect(() => {
+      set.clear();
+    }).toThrow(TypeError);
+    expect(Object.isFrozen(set)).toBe(true);
+    expect([...set].toSorted()).toEqual(['auto_ack.received', 'auto_ack.received_with_sla']);
+  });
+});
+
 describe('Phase 1 invariants over the whole input space', () => {
   const all = [...everyInput()];
 

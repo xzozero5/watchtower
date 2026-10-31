@@ -26,7 +26,7 @@ import { effectiveStage } from './decide.js';
 /** Postgres error codes raised by `set_intent_autonomy()` (migration 0007). */
 const SQLSTATE_PINNED = 'WT001';
 const SQLSTATE_CAP_ON = 'WT002';
-const SQLSTATE_NO_INTENT = 'P0002';
+const SQLSTATE_NO_ROW = 'P0002';
 
 function toSwitch(row: typeof schema.aiSwitch.$inferSelect): AiSwitch {
   return {
@@ -106,29 +106,29 @@ export async function setAiSwitch(
       reason: 'actor_not_a_person',
     });
   }
-  const [before] = await tx
-    .select()
-    .from(schema.aiSwitch)
-    .where(eq(schema.aiSwitch.key, input.switch))
-    .for('update');
-  if (before === undefined) throw notFound('No such switch');
-
-  let changed = false;
-  if (before.isOn !== input.on) {
-    await tx
-      .update(schema.aiSwitch)
-      .set({ isOn: input.on, reason, changedBy: ctx.actor.id, changedAt: sql`now()` })
-      .where(eq(schema.aiSwitch.key, input.switch));
+  // The application role cannot UPDATE ai_switch: set_ai_switch() (migration 0007) demands an actor
+  // and a reason, locks the row, writes only a real change and returns the value it had before.
+  let previous: boolean;
+  try {
+    const result = await tx.execute<{ previous: boolean }>(
+      sql`SELECT public.set_ai_switch(${input.switch}, ${input.on}, ${ctx.actor.id}::uuid, ${reason}) AS previous`,
+    );
+    previous = result.rows[0]?.previous ?? input.on;
+  } catch (error) {
+    if (pgCode(error) === SQLSTATE_NO_ROW) throw notFound('No such switch');
+    throw error;
+  }
+  const changed = previous !== input.on;
+  if (changed) {
     await recordAuditInTx(tx, ctx, fx, {
       action: AUDIT_ACTIONS.autonomySwitchSet,
       targetType: 'ai_switch',
       targetId: null,
-      before: { switch: input.switch, on: before.isOn },
+      before: { switch: input.switch, on: previous },
       after: { switch: input.switch, on: input.on },
       // The reason is free text typed by a person; it is not customer content (N4).
       metadata: { switch: input.switch, on: input.on, reason },
     });
-    changed = true;
   }
   return fx.result({ changed, switches: await readSwitches(tx) });
 }
@@ -196,7 +196,7 @@ export async function setIntentAutonomy(
   let written: number;
   try {
     const result = await tx.execute<{ written: number }>(
-      sql`SELECT set_intent_autonomy(${input.intentId}::uuid, ${input.stage ?? null}::smallint, ${input.pinned ?? null}::boolean, ${ctx.actor.id}::uuid, ${reason}) AS written`,
+      sql`SELECT public.set_intent_autonomy(${input.intentId}::uuid, ${input.stage ?? null}::smallint, ${input.pinned ?? null}::boolean, ${ctx.actor.id}::uuid, ${reason}) AS written`,
     );
     written = result.rows[0]?.written ?? 0;
   } catch (error) {
@@ -205,7 +205,7 @@ export async function setIntentAutonomy(
         throw conflict('The stage of this intent is pinned; unpin it first');
       case SQLSTATE_CAP_ON:
         throw conflict('Stages cannot be raised while "limit all intents to stage 2" is on');
-      case SQLSTATE_NO_INTENT:
+      case SQLSTATE_NO_ROW:
         throw notFound('No such intent');
       default:
         throw error;

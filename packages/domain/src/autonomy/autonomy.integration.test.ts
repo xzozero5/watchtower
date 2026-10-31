@@ -13,7 +13,7 @@ import {
   startDomainTest,
   type DomainTestEnv,
 } from '../testing/support.js';
-import { createPolicyGate } from './gate.js';
+import { createPolicyGate, createPolicyGateForTest } from './gate.js';
 
 let env: DomainTestEnv;
 let gate: PolicyGate;
@@ -266,6 +266,31 @@ describe('the real policy gate', () => {
         },
       ),
     ).rejects.toThrow('database down');
+  });
+});
+
+describe('the template list (review A-7)', () => {
+  it('cannot be replaced through the production factory, only through the test factory', async () => {
+    const ask = (policyGate: PolicyGate) =>
+      policyGate.check({
+        ticketId: TICKET,
+        channel: 'line',
+        intentId: null,
+        actor: SYSTEM,
+        origin: 'system_template',
+        templateKey: 'custom_ack',
+      });
+    // An extra option is ignored by the production factory (and the type refuses it).
+    const production = createPolicyGate({
+      db: env.database.db,
+      safeTemplates: new Set(['custom_ack']),
+    } as never);
+    expect(await ask(production)).toMatchObject({ allowed: false });
+    const test = createPolicyGateForTest({
+      db: env.database.db,
+      safeTemplates: new Set(['custom_ack']),
+    });
+    expect(await ask(test)).toMatchObject({ allowed: true });
   });
 });
 

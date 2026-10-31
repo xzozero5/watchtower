@@ -1,4 +1,4 @@
-import { Pool } from 'pg';
+import { Pool, type PoolClient } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { migrateDown, migrateUp } from './migrator.js';
@@ -32,6 +32,13 @@ async function newIntent(key: string): Promise<string> {
     [key],
   );
 }
+const setSwitch = (client: Pool | PoolClient, key: string, on: boolean, reason = 'because') =>
+  client.query('SELECT public.set_ai_switch($1, $2, $3::uuid, $4) AS previous', [
+    key,
+    on,
+    actor,
+    reason,
+  ]);
 const setAutonomy = (
   intent: string,
   stage: number | null,
@@ -172,10 +179,7 @@ describe('set_intent_autonomy() and the history', () => {
   it('refuses to raise a stage while the cap switch is on, but lowers and keeps 0/1 as they are (WT002)', async () => {
     const id = await newIntent('cap');
     await setAutonomy(id, 0, null);
-    await app.query(
-      `UPDATE ai_switch SET is_on = true, reason = 'incident', changed_by = $1 WHERE key = 'ai_stage_cap_pinned'`,
-      [actor],
-    );
+    await setSwitch(app, 'ai_stage_cap_pinned', true, 'incident');
     try {
       await expect(setAutonomy(id, 1, null)).rejects.toMatchObject({ code: 'WT002' });
       await expect(setAutonomy(id, 2, null)).rejects.toMatchObject({ code: 'WT002' });
@@ -185,10 +189,7 @@ describe('set_intent_autonomy() and the history', () => {
       const other = await newIntent('cap_lower');
       await setAutonomy(other, 1, null, 'lower is fine under the cap');
     } finally {
-      await app.query(
-        `UPDATE ai_switch SET is_on = false, reason = 'done', changed_by = $1 WHERE key = 'ai_stage_cap_pinned'`,
-        [actor],
-      );
+      await setSwitch(app, 'ai_stage_cap_pinned', false, 'done');
     }
   });
 
@@ -266,13 +267,167 @@ describe('ai_switch', () => {
     ).rejects.toMatchObject({ code: CHECK_VIOLATION });
   });
 
-  it('needs a reason whenever someone flips it', async () => {
+  it('is read-only for the application role: a direct UPDATE cannot flip it without a reason (A-5)', async () => {
+    await expect(
+      app.query(`UPDATE ai_switch SET is_on = true WHERE key = 'ai_kill_switch'`),
+    ).rejects.toMatchObject({ code: INSUFFICIENT_PRIVILEGE });
     await expect(
       app.query(
-        `UPDATE ai_switch SET is_on = true, reason = '  ', changed_by = $1 WHERE key = 'ai_kill_switch'`,
-        [actor],
+        `UPDATE ai_switch SET is_on = true, reason = 'x', changed_by = NULL WHERE key = 'ai_kill_switch'`,
       ),
+    ).rejects.toMatchObject({ code: INSUFFICIENT_PRIVILEGE });
+  });
+
+  it('flips through set_ai_switch(), which needs a reason and an actor and reports the old value', async () => {
+    await expect(setSwitch(app, 'ai_kill_switch', true, '  ')).rejects.toMatchObject({
+      code: CHECK_VIOLATION,
+    });
+    await expect(
+      app.query(`SELECT public.set_ai_switch('ai_kill_switch', true, NULL, 'no actor')`),
     ).rejects.toMatchObject({ code: CHECK_VIOLATION });
+    await expect(setSwitch(app, 'ai_nope', true)).rejects.toMatchObject({ code: 'P0002' });
+    expect((await setSwitch(app, 'ai_kill_switch', true, 'testing')).rows[0]).toEqual({
+      previous: false,
+    });
+    expect((await setSwitch(app, 'ai_kill_switch', true, 'again')).rows[0]).toEqual({
+      previous: true,
+    });
+    const row = await app.query('SELECT is_on, reason, changed_by FROM ai_switch WHERE key = $1', [
+      'ai_kill_switch',
+    ]);
+    // The second call changed nothing, so the first reason stands.
+    expect(row.rows[0]).toEqual({ is_on: true, reason: 'testing', changed_by: actor });
+    await setSwitch(app, 'ai_kill_switch', false, 'testing over');
+  });
+
+  it('treats a missing cap switch row as ON, so a damaged table never lets a stage rise (A-5)', async () => {
+    const id = await newIntent('missing_switch');
+    await setAutonomy(id, 0, null);
+    await owner().query(`DELETE FROM ai_switch WHERE key = 'ai_stage_cap_pinned'`);
+    try {
+      await expect(setAutonomy(id, 1, null)).rejects.toMatchObject({ code: 'WT002' });
+    } finally {
+      await owner().query(`INSERT INTO ai_switch (key) VALUES ('ai_stage_cap_pinned')`);
+    }
+    await setAutonomy(id, 1, null, 'with the row back');
+  });
+});
+
+describe('SECURITY DEFINER functions cannot be fooled with TEMP objects (security review A-1)', () => {
+  const appRole = () => decodeURIComponent(new URL(testDb.appUrl).username);
+
+  it('has no TEMP privilege for the application role after provisioning', async () => {
+    const client = await app.connect();
+    try {
+      await expect(client.query('CREATE TEMP TABLE probe (x int)')).rejects.toMatchObject({
+        code: INSUFFICIENT_PRIVILEGE,
+      });
+    } finally {
+      client.release();
+    }
+  });
+
+  it('ignores shadow tables and a temp trigger even where TEMP is allowed', async () => {
+    // A database where PUBLIC still holds TEMPORARY (every install made before this fix).
+    await owner().query(`GRANT TEMPORARY ON DATABASE ${testDb.name} TO ${appRole()}`);
+    const intent = await newIntent('shadowed');
+    await setAutonomy(intent, 0, null, 'start low');
+    await setSwitch(owner(), 'ai_stage_cap_pinned', true, 'cap is on');
+    const client = await app.connect();
+    try {
+      await client.query('SET search_path = pg_temp, public');
+      await client.query('CREATE TEMP TABLE ai_switch (key text, is_on boolean)');
+      await client.query(`INSERT INTO ai_switch VALUES ('ai_stage_cap_pinned', false)`);
+      await client.query(
+        'CREATE TEMP TABLE intent_autonomy_history (LIKE public.intent_autonomy_history)',
+      );
+      await client.query('CREATE TEMP TABLE intent (LIKE public.intent)');
+      await client.query(`CREATE FUNCTION pg_temp.evil() RETURNS trigger LANGUAGE plpgsql AS $$
+        BEGIN EXECUTE 'CREATE TABLE public.escalation_probe (x int)'; RETURN NEW; END $$`);
+      await client.query(
+        'CREATE TRIGGER evil AFTER INSERT ON pg_temp.intent_autonomy_history FOR EACH ROW EXECUTE FUNCTION pg_temp.evil()',
+      );
+
+      // The real cap is on; the shadow says off. The function must listen to the real one.
+      await expect(
+        client.query('SELECT set_intent_autonomy($1::uuid, 1::smallint, NULL, $2::uuid, $3)', [
+          intent,
+          actor,
+          'try to bypass the cap',
+        ]),
+      ).rejects.toMatchObject({ code: 'WT002' });
+
+      // With the cap off, a lowering works and its history lands in public, not in the shadow.
+      await setSwitch(owner(), 'ai_stage_cap_pinned', false, 'cap is off');
+      const other = await newIntent('shadowed_lower');
+      await client.query(
+        'SELECT public.set_intent_autonomy($1::uuid, 1::smallint, NULL, $2::uuid, $3)',
+        [other, actor, 'divert my history'],
+      );
+      expect(
+        await scalar<number>(
+          owner(),
+          'SELECT count(*)::int AS value FROM public.intent_autonomy_history WHERE intent_id = $1',
+          [other],
+        ),
+      ).toBe(1);
+      expect(
+        (await client.query('SELECT count(*)::int AS n FROM pg_temp.intent_autonomy_history'))
+          .rows[0],
+      ).toEqual({ n: 0 });
+
+      // set_ai_switch() writes the real table too.
+      await client.query('SELECT public.set_ai_switch($1, true, $2::uuid, $3)', [
+        'ai_kill_switch',
+        actor,
+        'shadow test',
+      ]);
+      expect(
+        await scalar<boolean>(
+          owner(),
+          `SELECT is_on AS value FROM public.ai_switch WHERE key = 'ai_kill_switch'`,
+        ),
+      ).toBe(true);
+      expect(
+        (
+          await client.query('SELECT is_on FROM pg_temp.ai_switch WHERE key = $1', [
+            'ai_kill_switch',
+          ])
+        ).rows,
+      ).toEqual([]);
+      await setSwitch(owner(), 'ai_kill_switch', false, 'shadow test over');
+
+      // Nothing ran with the owner's rights: the trigger's DDL never happened.
+      expect(
+        await scalar<string | null>(
+          owner(),
+          `SELECT to_regclass('public.escalation_probe')::text AS value`,
+        ),
+      ).toBeNull();
+      await expect(
+        client.query('CREATE TABLE public.escalation_probe (x int)'),
+      ).rejects.toMatchObject({
+        code: INSUFFICIENT_PRIVILEGE,
+      });
+    } finally {
+      client.release(true);
+      await owner().query(`REVOKE TEMPORARY ON DATABASE ${testDb.name} FROM ${appRole()}`);
+    }
+  });
+
+  it('gives every SECURITY DEFINER function a fixed search_path of pg_catalog, pg_temp', async () => {
+    const rows = await owner().query<{ proname: string; proconfig: string[] | null }>(
+      `SELECT p.proname, p.proconfig FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+        WHERE n.nspname = 'public' AND p.prosecdef ORDER BY p.proname`,
+    );
+    expect(rows.rows.map((row) => row.proname)).toEqual([
+      'ensure_monthly_partitions',
+      'set_ai_switch',
+      'set_intent_autonomy',
+    ]);
+    for (const row of rows.rows) {
+      expect(row.proconfig, row.proname).toEqual(['search_path=pg_catalog, pg_temp']);
+    }
   });
 });
 

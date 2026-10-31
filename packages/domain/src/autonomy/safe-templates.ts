@@ -12,7 +12,26 @@
  * `[ASSUMED]` names; T-102/T-103 define the actual auto-ack templates and must use these keys or
  * add theirs here in the same change.
  */
-export const SAFE_AUTO_ACK_TEMPLATES: ReadonlySet<string> = new Set([
+class FrozenSet<T> extends Set<T> {
+  constructor(values: readonly T[]) {
+    super();
+    // `super.add` on purpose: this class refuses `add` once built.
+    for (const value of values) super.add(value);
+    Object.freeze(this);
+  }
+  override add(): never {
+    throw new TypeError('This set is read-only');
+  }
+  override delete(): never {
+    throw new TypeError('This set is read-only');
+  }
+  override clear(): never {
+    throw new TypeError('This set is read-only');
+  }
+}
+
+/** Read-only at run time as well as in the type: `add`, `delete` and `clear` throw (review A-7). */
+export const SAFE_AUTO_ACK_TEMPLATES: ReadonlySet<string> = new FrozenSet([
   'auto_ack.received',
   'auto_ack.received_with_sla',
 ]);

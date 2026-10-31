@@ -24,8 +24,11 @@ export interface PolicyGateOptions {
    * denial usually ends the request in an error, and its audit row must survive the rollback.
    */
   readonly db: GateDatabase;
-  /** Template keys an automatic acknowledgment may use. Default: `SAFE_AUTO_ACK_TEMPLATES`. */
-  readonly safeTemplates?: ReadonlySet<string>;
+}
+
+/** Test seam only (not exported from the package): a gate with its own template list (review A-7). */
+export interface TestPolicyGateOptions extends PolicyGateOptions {
+  readonly safeTemplates: ReadonlySet<string>;
 }
 
 type SwitchRows = readonly { readonly key: string; readonly isOn: boolean }[];
@@ -80,9 +83,15 @@ function originFor(actor: Actor, given: SendOrigin | undefined): SendOrigin | nu
  * handle, so both processes run the same rules.
  */
 export function createPolicyGate(options: PolicyGateOptions): PolicyGate {
-  const safeTemplates = options.safeTemplates ?? SAFE_AUTO_ACK_TEMPLATES;
-  const { db } = options;
+  return buildPolicyGate(options.db, SAFE_AUTO_ACK_TEMPLATES);
+}
 
+/** For tests only: the production list cannot be replaced through `createPolicyGate`. */
+export function createPolicyGateForTest(options: TestPolicyGateOptions): PolicyGate {
+  return buildPolicyGate(options.db, options.safeTemplates);
+}
+
+function buildPolicyGate(db: GateDatabase, safeTemplates: ReadonlySet<string>): PolicyGate {
   async function denyAudit(
     actor: Actor,
     auditMeta: GateAuditMeta | undefined,

@@ -4,8 +4,13 @@
 --      The application role may no longer UPDATE autonomy_stage / autonomy_pinned directly: the only
 --      way is set_intent_autonomy() below, which writes the history row in the same statement.
 --   2. intent_autonomy_history: append-only record of who / when / why / from / to.
---   3. ai_switch: the two global switches. Rows are seeded here; the application role can only
---      UPDATE is_on, reason, changed_by, changed_at (never insert, delete or rename a switch).
+--   3. ai_switch: the two global switches. Rows are seeded here; the application role has no
+--      INSERT/UPDATE/DELETE: a flip goes through set_ai_switch(), which demands an actor and a reason.
+--   4. Hardening of the SECURITY DEFINER functions (security review A-1): every function that runs
+--      with the owner's rights has `SET search_path = pg_catalog, pg_temp` and names every object
+--      with its schema, so a TEMP table or function made by the application role can never take
+--      the place of a real one. Older functions (0001, 0002) are tightened here too.
+--   5. The description of permission ai.autonomy.set no longer says "up to stage 3" (A-8).
 --
 -- HOW PHASE 3 LIFTS THE CEILING (not done here, and not by an agent): the owner decides to open
 -- stage 3, an ADR supersedes ADR-011 section 2, and a NEW migration drops
@@ -88,19 +93,23 @@ CREATE TABLE ai_switch (
   changed_by uuid,
   changed_at timestamptz NOT NULL DEFAULT now(),
   CONSTRAINT ai_switch_key_check CHECK (key IN ('ai_stage_cap_pinned', 'ai_kill_switch')),
-  -- Every flip carries a reason, whichever direction it goes.
+  -- Every flip carries a reason (and the seed rows, with no actor, carry none), either direction.
   CONSTRAINT ai_switch_reason_check CHECK (changed_by IS NULL OR length(btrim(reason)) > 0)
 );
 INSERT INTO ai_switch (key) VALUES ('ai_stage_cap_pinned'), ('ai_kill_switch');
+-- Read-only for the application role (A-5): a direct UPDATE could flip a switch with no reason and
+-- no actor. Flips go through set_ai_switch() below.
 REVOKE INSERT, UPDATE, DELETE, TRUNCATE ON ai_switch FROM watchtower_app, PUBLIC;
-GRANT UPDATE (is_on, reason, changed_by, changed_at) ON ai_switch TO watchtower_app;
+GRANT SELECT ON ai_switch TO watchtower_app;
 
 -- 4. The one door to an intent's autonomy state. SECURITY DEFINER: it runs as the schema owner, so
 --    the application role needs no UPDATE on the two columns and no INSERT on the history.
---    Raises: WT001 the intent is pinned, WT002 raising a stage while the cap switch is on,
---    P0002 no such intent, 23514 empty reason or a stage outside the CHECK. Returns the number of
---    history rows written (0 = nothing to change).
-CREATE FUNCTION set_intent_autonomy(
+--    HARDENED (A-1): search_path is pg_catalog then pg_temp (never public, never pg_temp first), and
+--    every table and type is schema-qualified, so a TEMP table of the same name cannot shadow one.
+--    Raises: WT001 the intent is pinned, WT002 raising a stage while the cap switch is on (a missing
+--    switch row counts as on), P0002 no such intent, 23514 empty reason or a stage outside the CHECK.
+--    Returns the number of history rows written (0 = nothing to change).
+CREATE FUNCTION public.set_intent_autonomy(
   p_intent_id uuid,
   p_stage smallint,
   p_pinned boolean,
@@ -109,21 +118,21 @@ CREATE FUNCTION set_intent_autonomy(
 ) RETURNS integer
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = public, pg_catalog
+SET search_path = pg_catalog, pg_temp
 AS $$
 DECLARE
-  cur intent%ROWTYPE;
+  cur public.intent%ROWTYPE;
   new_stage smallint;
   new_pinned boolean;
   written integer := 0;
 BEGIN
-  IF p_reason IS NULL OR length(btrim(p_reason)) = 0 THEN
+  IF p_reason IS NULL OR pg_catalog.length(pg_catalog.btrim(p_reason)) = 0 THEN
     RAISE EXCEPTION 'a reason is required' USING ERRCODE = 'check_violation';
   END IF;
   IF p_actor IS NULL THEN
     RAISE EXCEPTION 'an actor is required' USING ERRCODE = 'check_violation';
   END IF;
-  SELECT * INTO cur FROM intent WHERE id = p_intent_id FOR UPDATE;
+  SELECT * INTO cur FROM public.intent WHERE id = p_intent_id FOR UPDATE;
   IF NOT FOUND THEN
     RAISE EXCEPTION 'no such intent' USING ERRCODE = 'P0002';
   END IF;
@@ -135,27 +144,101 @@ BEGIN
       RAISE EXCEPTION 'the stage of this intent is pinned' USING ERRCODE = 'WT001';
     END IF;
     IF new_stage > cur.autonomy_stage
-       AND (SELECT is_on FROM ai_switch WHERE key = 'ai_stage_cap_pinned') THEN
+       AND COALESCE((SELECT s.is_on FROM public.ai_switch AS s WHERE s.key = 'ai_stage_cap_pinned'), true) THEN
       RAISE EXCEPTION 'stages cannot be raised while the stage cap switch is on' USING ERRCODE = 'WT002';
     END IF;
-    INSERT INTO intent_autonomy_history (intent_id, change, from_stage, to_stage, pinned, reason, changed_by, changed_at)
-    VALUES (cur.id, 'stage', cur.autonomy_stage, new_stage, new_pinned, btrim(p_reason), p_actor, clock_timestamp());
+    INSERT INTO public.intent_autonomy_history (intent_id, change, from_stage, to_stage, pinned, reason, changed_by, changed_at)
+    VALUES (cur.id, 'stage', cur.autonomy_stage, new_stage, new_pinned, pg_catalog.btrim(p_reason), p_actor, pg_catalog.clock_timestamp());
     written := written + 1;
   END IF;
 
   IF new_pinned <> cur.autonomy_pinned THEN
-    INSERT INTO intent_autonomy_history (intent_id, change, from_stage, to_stage, pinned, reason, changed_by, changed_at)
-    VALUES (cur.id, CASE WHEN new_pinned THEN 'pin' ELSE 'unpin' END, new_stage, new_stage, new_pinned, btrim(p_reason), p_actor, clock_timestamp());
+    INSERT INTO public.intent_autonomy_history (intent_id, change, from_stage, to_stage, pinned, reason, changed_by, changed_at)
+    VALUES (cur.id, CASE WHEN new_pinned THEN 'pin' ELSE 'unpin' END, new_stage, new_stage, new_pinned, pg_catalog.btrim(p_reason), p_actor, pg_catalog.clock_timestamp());
     written := written + 1;
   END IF;
 
   IF written > 0 THEN
-    UPDATE intent
-       SET autonomy_stage = new_stage, autonomy_pinned = new_pinned, updated_at = now()
+    UPDATE public.intent
+       SET autonomy_stage = new_stage, autonomy_pinned = new_pinned, updated_at = pg_catalog.now()
      WHERE id = cur.id;
   END IF;
   RETURN written;
 END
 $$;
-REVOKE ALL ON FUNCTION set_intent_autonomy(uuid, smallint, boolean, uuid, text) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION set_intent_autonomy(uuid, smallint, boolean, uuid, text) TO watchtower_app;
+REVOKE ALL ON FUNCTION public.set_intent_autonomy(uuid, smallint, boolean, uuid, text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.set_intent_autonomy(uuid, smallint, boolean, uuid, text) TO watchtower_app;
+
+-- 5. The one door to a switch (A-5). Same hardening as set_intent_autonomy(). Returns the value the
+--    switch had before (the caller compares), or raises P0002 for an unknown switch and 23514 for a
+--    missing reason or actor. Writes nothing when the value does not change.
+CREATE FUNCTION public.set_ai_switch(
+  p_key text,
+  p_on boolean,
+  p_actor uuid,
+  p_reason text
+) RETURNS boolean
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = pg_catalog, pg_temp
+AS $$
+DECLARE
+  previous boolean;
+BEGIN
+  IF p_reason IS NULL OR pg_catalog.length(pg_catalog.btrim(p_reason)) = 0 THEN
+    RAISE EXCEPTION 'a reason is required' USING ERRCODE = 'check_violation';
+  END IF;
+  IF p_actor IS NULL OR p_on IS NULL THEN
+    RAISE EXCEPTION 'an actor and a value are required' USING ERRCODE = 'check_violation';
+  END IF;
+  SELECT s.is_on INTO previous FROM public.ai_switch AS s WHERE s.key = p_key FOR UPDATE;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'no such switch' USING ERRCODE = 'P0002';
+  END IF;
+  IF previous <> p_on THEN
+    UPDATE public.ai_switch
+       SET is_on = p_on, reason = pg_catalog.btrim(p_reason), changed_by = p_actor, changed_at = pg_catalog.now()
+     WHERE key = p_key;
+  END IF;
+  RETURN previous;
+END
+$$;
+REVOKE ALL ON FUNCTION public.set_ai_switch(text, boolean, uuid, text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.set_ai_switch(text, boolean, uuid, text) TO watchtower_app;
+
+-- 6. Older functions (A-1 audit). The only other SECURITY DEFINER function, ensure_monthly_partitions
+--    (0001), already has `SET search_path = pg_catalog, pg_temp` and qualified names. The trigger
+--    functions run with the caller's rights, so shadowing could not escalate, but it could dodge
+--    their integrity checks; they get the same fixed search_path. ticket_reject_parent_cycle() read
+--    `ticket` unqualified, so it is replaced with public.ticket. (is_normalized_text_array is a pure
+--    IMMUTABLE expression over pg_catalog functions and is left as it is.)
+ALTER FUNCTION public.reject_mutation() SET search_path = pg_catalog, pg_temp;
+ALTER FUNCTION public.enforce_unique_array_elements() SET search_path = pg_catalog, pg_temp;
+CREATE OR REPLACE FUNCTION public.ticket_reject_parent_cycle() RETURNS trigger
+LANGUAGE plpgsql
+SET search_path = pg_catalog, pg_temp
+AS $$
+DECLARE
+  ancestor uuid := NEW.parent_ticket_id;
+  depth integer := 0;
+BEGIN
+  WHILE ancestor IS NOT NULL LOOP
+    IF ancestor = NEW.id THEN
+      RAISE EXCEPTION 'ticket % would become its own ancestor', NEW.id
+        USING ERRCODE = 'check_violation';
+    END IF;
+    depth := depth + 1;
+    IF depth > 50 THEN
+      RAISE EXCEPTION 'ticket parent chain is too deep'
+        USING ERRCODE = 'check_violation';
+    END IF;
+    SELECT t.parent_ticket_id INTO ancestor FROM public.ticket AS t WHERE t.id = ancestor;
+  END LOOP;
+  RETURN NEW;
+END
+$$;
+
+-- 7. A-8: ai.autonomy.set stops at stage 2 in Phase 1 (stage 3 is the owner's decision, N3).
+UPDATE permissions
+   SET description = 'Change AI autonomy stage per intent (0-2 in Phase 1; stage 3 and above is the owner decision)'
+ WHERE key = 'ai.autonomy.set';
