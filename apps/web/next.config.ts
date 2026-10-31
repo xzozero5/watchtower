@@ -15,6 +15,15 @@ const config: NextConfig = {
   headers() {
     return Promise.resolve([
       {
+        // A service worker must never be served stale, or a bad one could not be replaced.
+        source: '/sw.js',
+        headers: [
+          { key: 'Cache-Control', value: 'no-cache, no-store, must-revalidate' },
+          { key: 'Content-Type', value: 'text/javascript; charset=utf-8' },
+          { key: 'Service-Worker-Allowed', value: '/' },
+        ],
+      },
+      {
         source: '/:path*',
         headers: [
           { key: 'X-Content-Type-Options', value: 'nosniff' },
