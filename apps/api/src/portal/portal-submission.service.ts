@@ -15,18 +15,19 @@ import { and, eq } from 'drizzle-orm';
 
 import { AuditScope } from '../audit/audit-scope.js';
 import { AuditService } from '../audit/audit.service.js';
+import { EmailTagService } from '../audit/email-tag.service.js';
 import { verificationFailed } from '../auth/http-errors.js';
-import {
-  CLIENT_ORG_RESOLVER,
-  emailTag,
-  type ClientOrgResolver,
-} from '../auth/magic-link.service.js';
+import { CLIENT_ORG_RESOLVER, type ClientOrgResolver } from '../auth/magic-link.service.js';
 import { DATABASE } from '../database/database.module.js';
 import { ContactsService } from '../orgs/contacts.service.js';
 import { UnitOfWorkService, type DbTransaction } from '../realtime/unit-of-work.js';
 import { TICKET_KEYS, type TicketKeys } from '../tickets/ticket-keys.js';
 import { TicketsService } from '../tickets/tickets.service.js';
-import { HUMAN_VERIFICATION, type HumanVerificationProvider } from './human-verification.js';
+import {
+  HUMAN_VERIFICATION,
+  type HumanVerificationProvider,
+  type VerificationFailure,
+} from './human-verification.js';
 import { PortalLimits } from './portal-limits.js';
 import { PortalNotifier, oneLine } from './portal-notifier.js';
 
@@ -38,8 +39,12 @@ import { PortalNotifier, oneLine } from './portal-notifier.js';
 export const UNMATCHED_ORG_ID = '00000000-0000-4000-8000-00000000a001';
 const UNMATCHED_ORG_NAME = 'Unmatched portal submissions';
 
-/** An unplaced submitter cannot claim more than this by typing "everything is down" `[ASSUMED]`. */
-const UNMATCHED_PRIORITY_CAP: TicketPriority = 'P2';
+/**
+ * The most urgent priority an unverified email address can obtain by choosing "everything is down"
+ * `[ASSUMED]`. Portal submitters are never verified (C-4), so this applies to every portal ticket,
+ * whether or not the address belongs to an organization.
+ */
+export const UNVERIFIED_PRIORITY_CAP: TicketPriority = 'P2';
 const PRIORITY_ORDER: readonly TicketPriority[] = ['P1', 'P2', 'P3', 'P4'];
 
 export interface SubmitContext {
@@ -64,7 +69,8 @@ function composeBody(input: PortalSubmit): string {
 }
 
 /**
- * The public submit flow (R-9.1, R-9.2): limits, human verification, then one transaction that
+ * The public submit flow (R-9.1, R-9.2): address limit, stateless proof check, email and
+ * organization limits, single-use claim of the proof (the order is explained in `submit`), then one transaction that
  * finds or creates the contact, files the ticket on the `portal` channel with its SLA, writes the
  * audit rows and the confirmation email (outbox). The tracking link is only in that email: the
  * response never carries it, so someone who types another person's address learns nothing.
@@ -85,41 +91,46 @@ export class PortalSubmissionService {
     @Inject(UnitOfWorkService) private readonly uow: UnitOfWorkService,
     @Inject(AuditService) private readonly audit: AuditService,
     @Inject(TICKET_KEYS) private readonly keys: TicketKeys,
+    @Inject(EmailTagService) private readonly tags: EmailTagService,
   ) {}
 
   async submit(input: PortalSubmit, context: SubmitContext): Promise<PortalSubmitted> {
+    // Order matters (C-3, ADR-007): what costs the caller work comes before what spends a bucket
+    // that belongs to someone else.
+    //   1. the client address's own limit: whoever floods from one address pays for it, whatever
+    //      they send;
+    //   2. the stateless proof check (signature, expiry, fill time, honeypot, proof-of-work): free
+    //      for us, not free for the caller, and touches no storage;
+    //   3. the per-email and per-organization limits: only a request that did the work can spend a
+    //      victim's bucket, so a script cannot exhaust the limit of an address it does not own;
+    //   4. the single-use claim of the challenge: last, so a request the limits turned away does
+    //      not burn a proof the person already paid for, and may be retried later.
     await this.limits.enforce('submit-ip', context.ip ?? 'unknown');
-    await this.limits.enforce('submit-email', input.email);
 
-    const placement = await this.place(input.email);
-    await this.limits.enforce('submit-org', placement.limitSubject);
-
-    const verified = await this.verification.verify({
+    const checked = await this.verification.check({
       proof: input.verification,
       honeypot: input.website,
     });
-    if (!verified.ok) {
-      AuditScope.set({
-        action: AUDIT_ACTIONS.portalVerificationFailed,
-        outcome: 'denied',
-        targetType: 'email',
-        targetId: emailTag(input.email),
-        metadata: { reason: verified.reason, provider: this.verification.name },
-      });
-      throw verificationFailed();
-    }
+    if (!checked.ok) this.refuse(input.email, checked.reason);
+
+    await this.limits.enforce('submit-email', input.email);
+    const placement = await this.place(input.email);
+    await this.limits.enforce('submit-org', placement.limitSubject);
+
+    const verified = await this.verification.claim(checked);
+    if (!verified.ok) this.refuse(input.email, verified.reason);
 
     const created = await this.uow.run(async (uow) => {
       const { tx } = uow;
       const orgId = placement.orgId ?? (await this.ensureUnmatchedOrg(tx));
       const hint = await this.activeIntentKey(tx, PORTAL_CATEGORY_INTENT_HINT[input.category]);
+      // The address is only typed, never proven (no double opt-in, ADR-007), so what the
+      // submitter says about urgency is a request, not a fact: it is capped at P2 for everyone.
+      // Staff raise it after reading the ticket. `requesterVerified` and `urgencyCapped` tell them
+      // (and a later staff UI) that this happened.
       const wanted = PORTAL_URGENCY_PRIORITY[input.urgency ?? 'question'];
       const priority =
-        input.urgency === undefined
-          ? undefined
-          : placement.orgId === null
-            ? lowerPriority(wanted, UNMATCHED_PRIORITY_CAP)
-            : wanted;
+        input.urgency === undefined ? undefined : lowerPriority(wanted, UNVERIFIED_PRIORITY_CAP);
 
       const result = await this.tickets.create(uow, {
         actor: { type: 'anonymous', id: null },
@@ -138,6 +149,8 @@ export class PortalSubmissionService {
             organizationMatched: placement.orgId !== null,
             category: input.category,
             urgency: input.urgency ?? null,
+            requesterVerified: false,
+            urgencyCapped: priority !== undefined && priority !== wanted,
             affectedRequestIds: input.affectedRequestIds ?? [],
             locale: input.locale ?? null,
           },
@@ -154,7 +167,7 @@ export class PortalSubmissionService {
           metadata: {
             category: input.category,
             organizationMatched: placement.orgId !== null,
-            emailTag: emailTag(input.email),
+            emailTag: this.tags.tag(input.email),
             affectedRequestIdCount: input.affectedRequestIds?.length ?? 0,
           },
         });
@@ -168,6 +181,18 @@ export class PortalSubmissionService {
       status: customerStatus('new'),
       expectedFirstResponseAt: created.ticket.firstResponseDueAt?.toISOString() ?? null,
     };
+  }
+
+  /** Audits why a proof was refused and answers 400 `verification_failed` (the reason stays in the audit log). */
+  private refuse(email: string, reason: VerificationFailure): never {
+    AuditScope.set({
+      action: AUDIT_ACTIONS.portalVerificationFailed,
+      outcome: 'denied',
+      targetType: 'email',
+      targetId: this.tags.tag(email),
+      metadata: { reason, provider: this.verification.name },
+    });
+    throw verificationFailed();
   }
 
   /**

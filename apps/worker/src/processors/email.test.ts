@@ -1,7 +1,10 @@
+import { QUEUE_NAMES } from '@watchtower/shared';
+import { KEY_LABELS, deriveSubkey } from '@watchtower/shared/secret-box';
 import { UnrecoverableError, type Job } from 'bullmq';
 import { describe, expect, it } from 'vitest';
 
 import type { Mailer, OutboundMessage } from '../mailer.js';
+import { sealedEmailPayload } from '../testing/support.js';
 import { createEmailProcessor, renderEmail } from './email.js';
 
 const magicLink = {
@@ -25,7 +28,18 @@ function fakeMailer(): Mailer & { sent: OutboundMessage[] } {
   };
 }
 
-const jobWith = (data: unknown): Job => ({ data }) as unknown as Job;
+const sealKey = deriveSubkey(
+  'a-root-key-of-more-than-thirty-two-characters',
+  KEY_LABELS.outboxSecret,
+);
+
+/** A BullMQ job as the worker sees it after the relay: sealed payload, id and queue. */
+const jobWith = (data: unknown, id = 'job-1'): Job =>
+  ({ data, id, queueName: QUEUE_NAMES.email }) as unknown as Job;
+const sealedJob = (job: Parameters<typeof sealedEmailPayload>[0], id = 'job-1', extra = {}): Job =>
+  jobWith({ ...sealedEmailPayload(job, id, sealKey), ...extra }, id);
+const processorFor = (mailer: Mailer, now?: () => number) =>
+  createEmailProcessor(mailer, { sealKey, ...(now === undefined ? {} : { now }) });
 
 describe('renderEmail', () => {
   it('puts the link and the lifetime in both parts, in English and Thai', () => {
@@ -47,20 +61,84 @@ describe('renderEmail', () => {
 });
 
 describe('email processor', () => {
-  it('sends a valid job once', async () => {
+  it('opens the sealed link and sends the job once', async () => {
     const mailer = fakeMailer();
-    await expect(createEmailProcessor(mailer)(jobWith(magicLink))).resolves.toEqual({ sent: true });
+    await expect(processorFor(mailer)(sealedJob(magicLink))).resolves.toEqual({ sent: true });
+    expect(mailer.sent).toHaveLength(1);
+    expect(mailer.sent[0]?.text).toContain(magicLink.link);
+  });
+
+  it('keeps the link out of the job data the queue holds', () => {
+    const job = sealedJob(magicLink);
+    const data = JSON.stringify(job.data);
+    expect(data).not.toContain('abc_DEF');
+    expect(data).not.toContain('localhost');
+    expect(job.data).toMatchObject({ kind: 'magic_link', to: 'client@example.com' });
+  });
+
+  it('drops a job past its notAfter without sending, and completes it', async () => {
+    const mailer = fakeMailer();
+    const process = processorFor(mailer, () => 2_000);
+    await expect(process(sealedJob(magicLink, 'job-1', { notAfter: 1_999 }))).resolves.toEqual({
+      sent: false,
+      dropped: 'expired',
+    });
+    await expect(process(sealedJob(magicLink, 'job-1', { notAfter: 2_000 }))).resolves.toEqual({
+      sent: false,
+      dropped: 'expired',
+    });
+    expect(mailer.sent).toHaveLength(0);
+    await expect(process(sealedJob(magicLink, 'job-1', { notAfter: 2_001 }))).resolves.toEqual({
+      sent: true,
+    });
     expect(mailer.sent).toHaveLength(1);
   });
 
   it('ends an invalid payload at once, without retries and without sending', async () => {
     const mailer = fakeMailer();
-    const process = createEmailProcessor(mailer);
+    const process = processorFor(mailer);
     await expect(process(jobWith({ kind: 'magic_link', to: 'x' }))).rejects.toBeInstanceOf(
       UnrecoverableError,
     );
     await expect(process(jobWith({ kind: 'unknown' }))).rejects.toBeInstanceOf(UnrecoverableError);
+    // A job that still carries the link in the clear (the pre-0005 format) is refused, not sent.
+    await expect(process(jobWith(magicLink))).rejects.toBeInstanceOf(UnrecoverableError);
     expect(mailer.sent).toHaveLength(0);
+  });
+
+  it('refuses a sealed part that was tampered with, moved to another job, or sealed under another key', async () => {
+    const mailer = fakeMailer();
+    const process = processorFor(mailer);
+    const sealed = sealedEmailPayload(magicLink, 'job-1', sealKey);
+    await expect(process(jobWith(sealed, 'job-2'))).rejects.toThrow('cannot be opened');
+    await expect(
+      process(jobWith({ ...sealed, secret: `${String(sealed.secret).slice(0, -3)}AAA` }, 'job-1')),
+    ).rejects.toBeInstanceOf(UnrecoverableError);
+    const otherKey = deriveSubkey(
+      'another-root-key-of-more-than-32-characters!',
+      KEY_LABELS.outboxSecret,
+    );
+    await expect(
+      process(jobWith(sealedEmailPayload(magicLink, 'job-1', otherKey), 'job-1')),
+    ).rejects.toBeInstanceOf(UnrecoverableError);
+    expect(mailer.sent).toHaveLength(0);
+  });
+
+  it('never puts the link in an error message', async () => {
+    const mailer = fakeMailer();
+    const failures: string[] = [];
+    for (const job of [
+      jobWith({ ...sealedEmailPayload(magicLink, 'job-1', sealKey) }, 'wrong-id'),
+      jobWith(magicLink),
+    ]) {
+      try {
+        await processorFor(mailer)(job);
+      } catch (error) {
+        failures.push(String(error));
+      }
+    }
+    expect(failures).toHaveLength(2);
+    for (const failure of failures) expect(failure).not.toContain('abc_DEF');
   });
 
   it('lets an SMTP failure through as a normal error, so BullMQ retries it', async () => {
@@ -70,7 +148,7 @@ describe('email processor', () => {
         // nothing to close
       },
     };
-    const rejection = createEmailProcessor(failing)(jobWith(magicLink));
+    const rejection = processorFor(failing)(sealedJob(magicLink));
     await expect(rejection).rejects.toThrow('connection refused');
     await expect(rejection).rejects.not.toBeInstanceOf(UnrecoverableError);
   });
@@ -107,11 +185,34 @@ describe('portal emails (T-007)', () => {
     expect(message.text).toContain(base.trackingUrl);
   });
 
-  it('escapes the subject and the link in HTML, and has no images or remote resources', () => {
+  it('does not repeat what the submitter typed, in either language (C-11)', () => {
+    const typed = { ...confirmation, subject: 'Click https://evil.example to claim a prize' };
+    for (const locale of ['en', 'th'] as const) {
+      for (const job of [
+        { ...typed, locale },
+        { kind: 'portal_link' as const, ...base, locale, subject: typed.subject },
+      ]) {
+        const message = renderEmail(job);
+        expect(message.text, `${job.kind} ${locale}`).not.toContain('evil.example');
+        expect(message.html).not.toContain('evil.example');
+        expect(message.subject).not.toContain('evil.example');
+      }
+    }
+  });
+
+  it('escapes the staff-facing subject and the link in HTML, and has no images or remote resources', () => {
     const { html } = renderEmail(confirmation);
-    expect(html).toContain('&lt;b&gt;never&lt;/b&gt;');
-    expect(html).not.toContain('<b>never');
     expect(html).toContain('&quot;y&quot;');
+    const update = renderEmail({
+      kind: 'portal_update',
+      ...base,
+      locale: 'en',
+      reason: 'staff_reply',
+      status: 'in_progress',
+      agentName: 'Somchai',
+    });
+    expect(update.html).toContain('&lt;b&gt;never&lt;/b&gt;');
+    expect(update.html).not.toContain('<b>never');
     expect(html).not.toMatch(/<img|<script|<link|<iframe|url\(/i);
     expect(html.match(/href="/g)).toHaveLength(1);
   });
@@ -168,11 +269,12 @@ describe('portal emails (T-007)', () => {
 
   it('processes a portal job and ends an invalid one at once', async () => {
     const mailer = fakeMailer();
-    const process = createEmailProcessor(mailer);
-    await expect(process(jobWith(confirmation))).resolves.toEqual({ sent: true });
+    const process = processorFor(mailer);
+    await expect(process(sealedJob(confirmation))).resolves.toEqual({ sent: true });
     expect(mailer.sent).toHaveLength(1);
-    await expect(process(jobWith({ ...confirmation, locale: 'fr' }))).rejects.toBeInstanceOf(
-      UnrecoverableError,
-    );
+    expect(mailer.sent[0]?.text).toContain(base.trackingUrl);
+    await expect(
+      process(jobWith({ ...sealedEmailPayload(confirmation, 'job-1', sealKey), locale: 'fr' })),
+    ).rejects.toBeInstanceOf(UnrecoverableError);
   });
 });

@@ -4,6 +4,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import { schema } from '@watchtower/db';
 import {
   DEFAULT_PORTAL_LOCALE,
+  PORTAL_EMAIL_TTL_SECONDS,
   PORTAL_TOKEN_FRAGMENT_KEY,
   customerStatus,
   portalLocaleSchema,
@@ -70,12 +71,12 @@ export class PortalNotifier {
         to: to.email,
         locale: to.locale,
         ticketKey,
-        subject: oneLine(ticket.subject),
         trackingUrl: await this.link(tx, ticket, ticketKey, to),
         expectedFirstResponseAt: ticket.firstResponseDueAt?.toISOString() ?? null,
       },
       `portal-confirm-${ticket.id}`,
       tx,
+      PORTAL_EMAIL_TTL_SECONDS,
     );
   }
 
@@ -111,6 +112,7 @@ export class PortalNotifier {
       },
       `portal-reply-${message.id}`,
       tx,
+      PORTAL_EMAIL_TTL_SECONDS,
     );
   }
 
@@ -131,6 +133,12 @@ export class PortalNotifier {
     if (before === after || after === 'merged') return;
     const recipient = await this.recipient(tx, ticket);
     if (!recipient) return;
+    // A closed ticket's links were revoked (`closeLinks`), so the notice must not mint a new one:
+    // it points at the plain ticket page, and the customer can ask for a link there by email.
+    const trackingUrl =
+      after === 'closed'
+        ? this.plainUrl(ticketKey)
+        : await this.link(tx, ticket, ticketKey, recipient);
     await this.outbox.send(
       {
         kind: 'portal_update',
@@ -138,13 +146,14 @@ export class PortalNotifier {
         locale: recipient.locale,
         ticketKey,
         subject: oneLine(ticket.subject),
-        trackingUrl: await this.link(tx, ticket, ticketKey, recipient),
+        trackingUrl,
         reason: 'status_change',
         status: after,
         agentName: null,
       },
       `portal-status-${ticket.id}-${randomUUID()}`,
       tx,
+      PORTAL_EMAIL_TTL_SECONDS,
     );
   }
 
@@ -169,6 +178,7 @@ export class PortalNotifier {
       },
       `portal-merged-${source.id}`,
       tx,
+      PORTAL_EMAIL_TTL_SECONDS,
     );
   }
 
@@ -185,12 +195,22 @@ export class PortalNotifier {
         to: to.email,
         locale: to.locale,
         ticketKey,
-        subject: oneLine(ticket.subject),
         trackingUrl: await this.link(tx, ticket, ticketKey, to),
       },
       `portal-link-${randomUUID()}`,
       tx,
+      PORTAL_EMAIL_TTL_SECONDS,
     );
+  }
+
+  /**
+   * A ticket was closed: every tracking link it has stops working (C-13). A closed ticket is
+   * final, so a link that leaks later (a forwarded email, a shared screen) must not stay a key to
+   * its conversation. The requester can still ask for a fresh link by email, which proves they
+   * hold the mailbox.
+   */
+  async closeLinks(tx: DbTransaction, ticketId: string): Promise<number> {
+    return this.tokens.revokeForTicket(tx, ticketId);
   }
 
   /** Who the portal emails for this ticket: its requester, in their language. Null when none. */
@@ -204,6 +224,11 @@ export class PortalNotifier {
     const email = contact?.emails[0];
     if (!contact || email === undefined) return null;
     return { contactId: contact.id, email, locale: localeOf(contact.notificationPrefs, ticket) };
+  }
+
+  /** The ticket page with no token: opening it asks for a new link. */
+  private plainUrl(ticketKey: string): string {
+    return new URL(portalTrackingPath(ticketKey), this.config.APP_URL).toString();
   }
 
   private async link(

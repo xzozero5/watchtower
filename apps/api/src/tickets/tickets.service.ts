@@ -610,6 +610,8 @@ export class TicketsService {
       after: snapshot(after),
       metadata: { from, to, ...(context.automatic === true ? { automatic: true } : {}) },
     });
+    // Closing is final: the tracking links of the ticket stop working in the same transaction (C-13).
+    if (to === 'closed') await this.portal.closeLinks(tx, after.id);
     // Tell the customer of a portal ticket, in the same transaction (ADR-006). Not for a change the
     // customer caused, nor when the caller (a reply that sets the status) sends its own email.
     if (context.automatic !== true && context.silent !== true) {

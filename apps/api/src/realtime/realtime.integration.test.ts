@@ -146,6 +146,9 @@ describe('the handshake', () => {
   it('refuses a request without a session cookie, with a bad one, or after logout', async () => {
     expect(await refusedWith(agent, { cookie: null })).toBe(401);
     expect(await refusedWith(agent, { cookie: 'wt_at=not-a-jwt' })).toBe(401);
+    // A repeated access cookie is never ours (C-6): refused even when both copies are valid.
+    const access = agent.client.cookie('wt_at') ?? '';
+    expect(await refusedWith(agent, { cookie: `wt_at=${access}; wt_at=${access}` })).toBe(401);
     expect(
       await refusedWith(agent, { cookie: `wt_rt=${agent.client.cookie('wt_rt') ?? ''}` }),
     ).toBe(401);

@@ -26,16 +26,17 @@ export function isUniqueViolation(error: unknown): boolean {
   );
 }
 
-/** What an audit entry records about a user: never the password hash or other credentials. */
+/**
+ * What an audit entry records about a user: ids and states, not the person. No address, no name,
+ * no organization, no credentials: the audit log outlives the account and is read by many people
+ * (PII minimization, the same rule as contacts). The user id leads back to the row while it exists.
+ */
 export function userSnapshot(row: UserRow): Record<string, unknown> {
   return {
     id: row.id,
-    email: row.email,
-    name: row.name,
     role: row.role,
     status: row.status,
-    orgId: row.orgId,
-    isBreakGlass: row.isBreakGlass,
+    hasEmail: row.email.length > 0,
   };
 }
 

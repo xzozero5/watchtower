@@ -119,6 +119,33 @@ describe('SelfHostedHumanVerification', () => {
     });
   });
 
+  it('checks without storing anything, and claims separately so the limits can sit between (C-3)', async () => {
+    const { verification, replay } = provider({ minFillSeconds: 0 });
+    const { challenge } = await verification.challenge();
+    const proof = {
+      provider: 'pow-sha256' as const,
+      challenge,
+      nonce: solveChallenge(challenge, 8),
+    };
+    const checked = await verification.check({ proof, honeypot: undefined });
+    expect(checked.ok).toBe(true);
+    // The same proof can be checked as often as wanted: nothing is used up until the claim.
+    expect((await verification.check({ proof, honeypot: undefined })).ok).toBe(true);
+    expect(replay.used.size).toBe(0);
+    if (!checked.ok) throw new Error('expected the proof to pass the check');
+    expect(checked.remainingSeconds).toBeGreaterThan(0);
+    expect(checked.remainingSeconds).toBeLessThanOrEqual(600);
+
+    expect(await verification.claim(checked)).toEqual({
+      ok: true,
+      challengeId: checked.challengeId,
+    });
+    expect(replay.used.size).toBe(1);
+    // Still passes the stateless check; only the claim notices the replay.
+    expect((await verification.check({ proof, honeypot: undefined })).ok).toBe(true);
+    expect(await verification.claim(checked)).toEqual({ ok: false, reason: 'replayed' });
+  });
+
   it('refuses a submit that is too quick without using the challenge up', async () => {
     let clock = t0;
     const { verification, replay } = provider({}, () => clock);

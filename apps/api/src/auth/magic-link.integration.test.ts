@@ -1,10 +1,11 @@
 import { createHash } from 'node:crypto';
 
-import { emailJobSchema, type SessionInfo } from '@watchtower/shared';
+import type { SessionInfo } from '@watchtower/shared';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { createOrg, startHarness, uniqueEmail, type Harness } from '../testing/harness.js';
-import { CLIENT_ORG_RESOLVER, MagicLinkService, emailTag } from './magic-link.service.js';
+import { EmailTagService } from '../audit/email-tag.service.js';
+import { CLIENT_ORG_RESOLVER, MagicLinkService } from './magic-link.service.js';
 
 // Client magic-link sign-in: the real application, Postgres, Redis and the BullMQ email queue from
 // docker compose. The worker side (SMTP into Mailpit) is covered by apps/worker.
@@ -78,7 +79,9 @@ async function requestToken(email: string, ip?: string): Promise<string> {
   await settle();
   const jobs = await jobsFor(email);
   expect(jobs.length).toBe(before + 1);
-  const payload = emailJobSchema.parse(jobs.at(-1)?.data);
+  const last = jobs.at(-1);
+  if (!last) throw new Error('no email job');
+  const payload = h.openEmail(last);
   if (payload.kind !== 'magic_link') throw new Error('expected a magic link email');
   return tokenFrom(payload.link);
 }
@@ -115,14 +118,22 @@ describe('requesting a link', () => {
     const email = await createClient();
     const token = await requestToken(email);
     const [job] = await jobsFor(email);
-    const payload = emailJobSchema.parse(job?.data);
+    if (!job) throw new Error('no email job');
+    const payload = h.openEmail(job);
     expect(payload).toMatchObject({ kind: 'magic_link', to: email, expiresInMinutes: 15 });
+    // What the queue holds is ciphertext: the token is nowhere in the job data (C-2).
+    expect(JSON.stringify(job.data)).not.toContain(token);
+    expect(JSON.stringify(job.data)).not.toContain('/login/magic');
+    const data = job.data as { kind: string; to: string; secret: string; notAfter?: number };
+    expect(data).toMatchObject({ kind: 'magic_link', to: email });
+    expect(data.secret).toMatch(/^v1\./);
+    expect(typeof data.notAfter).toBe('number');
     if (payload.kind !== 'magic_link') throw new Error('expected a magic link email');
     expect(payload.link.startsWith('http://localhost:3000/login/magic#token=')).toBe(true);
     expect(token).toHaveLength(43);
     // Idempotency key is derived from the hash, not the token.
-    expect(job?.id).toBe(`magic-link-${sha256(token).slice(0, 32)}`);
-    expect(job?.id).not.toContain(token);
+    expect(job.id).toBe(`magic-link-${sha256(token).slice(0, 32)}`);
+    expect(job.id).not.toContain(token);
   });
 
   it('keeps only a hash of the token in the database', async () => {
@@ -365,7 +376,9 @@ describe('audit trail', () => {
     const byAction = (action: string) => rows.rows.filter((row) => row.action === action);
 
     expect(
-      byAction('auth.magic_link.requested').some((row) => row.target_id === emailTag(email)),
+      byAction('auth.magic_link.requested').some(
+        (row) => row.target_id === h.app.get(EmailTagService).tag(email),
+      ),
     ).toBe(true);
     expect(byAction('auth.login.magic_link')).toContainEqual(
       expect.objectContaining({

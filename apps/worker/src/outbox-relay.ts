@@ -27,6 +27,17 @@ const PUBLISH_TIMEOUT_MS = 5000;
 const PASSES_PER_TICK = 10;
 const PURGE_EVERY_MS = 60 * 60 * 1000;
 
+/**
+ * The job data BullMQ gets: the row's payload plus `notAfter` (epoch ms of `outbox.expires_at`), so
+ * a worker that picks the job up late, after Redis or the worker itself was down, can drop it.
+ */
+export function withNotAfter(
+  payload: Record<string, unknown>,
+  expiresAt: Date | null,
+): Record<string, unknown> {
+  return expiresAt === null ? payload : { ...payload, notAfter: expiresAt.getTime() };
+}
+
 export interface BullmqPublisher {
   readonly publish: OutboxPublisher;
   close(): Promise<void>;
@@ -74,7 +85,10 @@ export function createBullmqPublisher(
       try {
         // `jobId` is the idempotency key: adding an id that exists is a no-op that returns that job.
         await Promise.race([
-          queue.add(row.jobName, row.payload, { ...parsed.data, jobId: row.jobId }),
+          queue.add(row.jobName, withNotAfter(row.payload, row.expiresAt), {
+            ...parsed.data,
+            jobId: row.jobId,
+          }),
           timeout,
         ]);
       } finally {
@@ -127,7 +141,7 @@ export function startOutboxRelay(options: OutboxRelayOptions): RunningOutboxRela
   let lastFailureLogged = 0;
 
   const pass = async (): Promise<RelayResult> => {
-    let total: RelayResult = { claimed: 0, sent: 0, retried: 0, dead: 0 };
+    let total: RelayResult = { claimed: 0, sent: 0, retried: 0, dead: 0, expired: 0 };
     for (let index = 0; index < PASSES_PER_TICK; index += 1) {
       const result = await relayOutbox(database, publish, relayOptions);
       total = {
@@ -135,6 +149,7 @@ export function startOutboxRelay(options: OutboxRelayOptions): RunningOutboxRela
         sent: total.sent + result.sent,
         retried: total.retried + result.retried,
         dead: total.dead + result.dead,
+        expired: total.expired + result.expired,
         ...(total.firstError !== undefined
           ? { firstError: total.firstError }
           : result.firstError === undefined
@@ -158,6 +173,9 @@ export function startOutboxRelay(options: OutboxRelayOptions): RunningOutboxRela
       }
     }
     if (total.dead > 0) logger.error({ dead: total.dead }, 'outbox rows given up on');
+    if (total.expired > 0) {
+      logger.warn({ expired: total.expired }, 'outbox rows expired before they could be relayed');
+    }
     if (Date.now() - lastPurge >= PURGE_EVERY_MS) {
       lastPurge = Date.now();
       const purged = await purgeOutbox(database, retentionDays);
@@ -172,7 +190,7 @@ export function startOutboxRelay(options: OutboxRelayOptions): RunningOutboxRela
       current = pass()
         .catch((error: unknown) => {
           logger.error({ err: error }, 'outbox relay pass failed');
-          return { claimed: 0, sent: 0, retried: 0, dead: 0 } satisfies RelayResult;
+          return { claimed: 0, sent: 0, retried: 0, dead: 0, expired: 0 } satisfies RelayResult;
         })
         .finally(() => {
           current = undefined;
