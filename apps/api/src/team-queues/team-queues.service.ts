@@ -149,8 +149,17 @@ export class TeamQueuesService {
   async remove(id: string): Promise<void> {
     const before = await this.get(id);
     AuditScope.set({ targetType: 'team_queue', targetId: id, before: this.snapshot(before) });
-    // Tickets keep existing: their queue_id becomes null (ON DELETE SET NULL).
-    await this.database.db.delete(schema.teamQueue).where(eq(schema.teamQueue.id, id));
+    try {
+      await this.database.db.delete(schema.teamQueue).where(eq(schema.teamQueue.id, id));
+    } catch (error) {
+      // 0003 made ticket.queue_id RESTRICT: a ticket never silently loses the queue it was filed in.
+      if (isPgError(error, PG.foreignKeyViolation)) {
+        throw conflict(
+          'The queue still has tickets. Move them to another queue first (PATCH /v1/tickets/:id with queueId), then delete it',
+        );
+      }
+      throw error;
+    }
   }
 
   private snapshot(queue: TeamQueue): Record<string, unknown> {

@@ -3,6 +3,7 @@ import { randomBytes } from 'node:crypto';
 import type { Type } from '@nestjs/common';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { Test } from '@nestjs/testing';
+import { relayOutbox, type RelayResult } from '@watchtower/db';
 import { createTestDatabase, type TestDatabase } from '@watchtower/db/testing';
 import { CSRF_HEADER, QUEUE_NAMES, parseRedisUrl, type SessionInfo } from '@watchtower/shared';
 import { Queue } from 'bullmq';
@@ -26,6 +27,11 @@ export interface Harness {
   readonly queuePrefix: string;
   /** The email queue, read through its own connection, to see what the api enqueued. */
   readonly emailQueue: Queue;
+  /**
+   * Runs one pass of the outbox relay, which in production lives in apps/worker: pending rows the
+   * api wrote become jobs in `emailQueue`. The api never talks to BullMQ itself (ADR-006).
+   */
+  relayOutbox(): Promise<RelayResult>;
   /** A fresh browser-like client with its own cookie jar and its own source IP. */
   client(): TestClient;
   close(): Promise<void>;
@@ -86,6 +92,12 @@ export async function startHarness(options: StartOptions = {}): Promise<Harness>
     db,
     queuePrefix,
     emailQueue,
+    relayOutbox: () =>
+      relayOutbox(db.owner, async (row) => {
+        if (row.queue !== QUEUE_NAMES.email)
+          throw new Error(`harness relays only the email queue, not ${row.queue}`);
+        await emailQueue.add(row.jobName, row.payload, { ...row.options, jobId: row.jobId });
+      }),
     client: () => new TestClient(base, config),
     async close() {
       await app.close();

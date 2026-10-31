@@ -277,6 +277,7 @@ export const AUDIT_ACTIONS = {
   ticketStatusChange: 'ticket.status_change',
   ticketAssign: 'ticket.assign',
   ticketMerge: 'ticket.merge',
+  ticketReparent: 'ticket.reparent',
   ticketReply: 'ticket.reply',
   ticketNote: 'ticket.note',
 } as const;

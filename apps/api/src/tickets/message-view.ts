@@ -1,10 +1,5 @@
 import type { schema } from '@watchtower/db';
-import {
-  formatTicketKey,
-  type ChannelType,
-  type Message,
-  type TimelineEntry,
-} from '@watchtower/shared';
+import { type ChannelType, type Message, type TimelineEntry } from '@watchtower/shared';
 
 export type MessageRow = typeof schema.message.$inferSelect;
 export type TicketEventRow = typeof schema.ticketEvent.$inferSelect;
@@ -12,7 +7,8 @@ export type TicketEventRow = typeof schema.ticketEvent.$inferSelect;
 export type Audience = 'staff' | 'client';
 
 export interface MessageContext {
-  readonly ticketNumber: number;
+  /** The display key of the ticket, `OPS-1234` with this instance's prefix. */
+  readonly ticketKey: string;
   readonly channel: ChannelType;
   /** Name of `sender_user_id`, when the message has one. */
   readonly senderUserName: string | null;
@@ -44,7 +40,7 @@ export function toMessage(row: MessageRow, context: MessageContext): Message {
   return {
     id: row.id,
     ticketId: row.ticketId,
-    ticketKey: formatTicketKey(context.ticketNumber),
+    ticketKey: context.ticketKey,
     channel: context.channel,
     direction: row.direction as Message['direction'],
     visibility: row.visibility as Message['visibility'],
@@ -67,7 +63,7 @@ const CLIENT_PAYLOAD_KEYS: Readonly<Record<string, readonly string[]>> = {
 };
 
 export interface EventContext {
-  readonly ticketNumber: number;
+  readonly ticketKey: string;
   readonly actorName: string | null;
   readonly audience: Audience;
 }
@@ -91,7 +87,7 @@ export function toTimelineEvent(
     kind: 'event',
     id: row.id,
     ticketId: row.ticketId,
-    ticketKey: formatTicketKey(context.ticketNumber),
+    ticketKey: context.ticketKey,
     type: row.type,
     actor:
       context.audience === 'staff'

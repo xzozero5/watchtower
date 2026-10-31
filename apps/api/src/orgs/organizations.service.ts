@@ -4,7 +4,6 @@ import type {
   CreateOrganization,
   Organization,
   OrganizationListQuery,
-  OrgTier,
   UpdateOrganization,
 } from '@watchtower/shared';
 import { and, desc, eq, ilike, sql } from 'drizzle-orm';
@@ -12,7 +11,7 @@ import { and, desc, eq, ilike, sql } from 'drizzle-orm';
 import { AuditScope } from '../audit/audit-scope.js';
 import { badRequest, conflict, notFound } from '../auth/http-errors.js';
 import { assertOrgAccess, type Principal } from '../auth/principal.js';
-import { PG, isPgError } from '../common/db-errors.js';
+import { PG, isPgError, pgConstraint } from '../common/db-errors.js';
 import {
   beforeCursor,
   decodeCursor,
@@ -28,7 +27,7 @@ export function toApiOrganization(row: OrganizationRow): Organization {
   return {
     id: row.id,
     name: row.name,
-    tier: row.tier as OrgTier,
+    tier: row.tier,
     slaPolicyId: row.slaPolicyId,
     domains: row.domains,
     lineGroupIds: row.lineGroupIds,
@@ -189,7 +188,9 @@ export class OrganizationsService {
       return conflict('A domain of this organization already belongs to another organization');
     }
     if (isPgError(error, PG.foreignKeyViolation)) {
-      return badRequest('slaPolicyId does not refer to an SLA policy');
+      return pgConstraint(error) === 'organization_tier_fkey'
+        ? badRequest('tier is not a known tier')
+        : badRequest('slaPolicyId does not refer to an SLA policy');
     }
     return error;
   }

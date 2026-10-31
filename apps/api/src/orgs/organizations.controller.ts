@@ -190,9 +190,11 @@ export class ContactsController {
   @Audited({ action: AUDIT_ACTIONS.contactDelete, targetType: 'contact' })
   @ApiOperation({
     summary: 'Delete a contact',
-    description: 'Tickets and messages keep their text; they no longer point at the contact.',
+    description:
+      'Refused with 409 while any ticket or message still points at the contact (history is not rewritten); erasing a person for PDPA is a separate process.',
   })
   @ApiNoContentResponse({ description: 'Deleted' })
+  @ApiConflictResponse({ description: 'Tickets or messages still reference the contact' })
   async remove(@Param({ schema: idParamSchema }) params: IdParam): Promise<void> {
     await this.contacts.remove(params.id);
   }

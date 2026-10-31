@@ -1,0 +1,91 @@
+{
+  "_meta": {
+    "status": "[ASSUMED] Example SLA policies for the development seed; a deployment sets its own numbers in the admin UI.",
+    "decided": "Gold P1 first response 15 min / resolution 4 h on a 24x7 clock; Silver P1 30 min / 8 h; Standard on business hours for every priority (PO decision 8 in HANDOFF.md, [ASSUMED], awaiting owner review).",
+    "assumed": "Every other number below (P2 to P4, the calendar of Silver P1, all of Standard) is an [ASSUMED] sensible default, not a decision.",
+    "names": "Gold, Silver and Standard are neutral tier names (N1); real contract terms stay out of the repository."
+  },
+  "policies": [
+    {
+      "name": "Gold",
+      "tier": "gold",
+      "calendar": "Bangkok office hours",
+      "targets": {
+        "P1": {
+          "first_response_min": 15,
+          "resolution_min": 240,
+          "calendar": "24x7"
+        },
+        "P2": {
+          "first_response_min": 60,
+          "resolution_min": 480,
+          "calendar": "business"
+        },
+        "P3": {
+          "first_response_min": 240,
+          "resolution_min": 1440,
+          "calendar": "business"
+        },
+        "P4": {
+          "first_response_min": 480,
+          "resolution_min": 2880,
+          "calendar": "business"
+        }
+      }
+    },
+    {
+      "name": "Silver",
+      "tier": "silver",
+      "calendar": "Bangkok office hours",
+      "targets": {
+        "P1": {
+          "first_response_min": 30,
+          "resolution_min": 480,
+          "calendar": "business"
+        },
+        "P2": {
+          "first_response_min": 120,
+          "resolution_min": 960,
+          "calendar": "business"
+        },
+        "P3": {
+          "first_response_min": 480,
+          "resolution_min": 2880,
+          "calendar": "business"
+        },
+        "P4": {
+          "first_response_min": 960,
+          "resolution_min": 5760,
+          "calendar": "business"
+        }
+      }
+    },
+    {
+      "name": "Standard",
+      "tier": "standard",
+      "calendar": "Bangkok office hours",
+      "targets": {
+        "P1": {
+          "first_response_min": 120,
+          "resolution_min": 960,
+          "calendar": "business"
+        },
+        "P2": {
+          "first_response_min": 240,
+          "resolution_min": 1920,
+          "calendar": "business"
+        },
+        "P3": {
+          "first_response_min": 480,
+          "resolution_min": 4320,
+          "calendar": "business"
+        },
+        "P4": {
+          "first_response_min": 960,
+          "resolution_min": 7200,
+          "calendar": "business"
+        }
+      }
+    }
+  ]
+}

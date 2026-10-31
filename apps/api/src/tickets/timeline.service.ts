@@ -1,13 +1,14 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { schema, type Database } from '@watchtower/db';
 import type { ChannelType, TimelineEntry, TimelineQuery } from '@watchtower/shared';
-import { and, asc, eq, inArray, sql } from 'drizzle-orm';
+import { and, asc, eq, gte, inArray, sql } from 'drizzle-orm';
 
 import type { Principal } from '../auth/principal.js';
 import { afterCursor, decodeCursor, encodeCursor, preciseTimestamp } from '../common/keyset.js';
 import { DATABASE } from '../database/database.module.js';
 import { toMessage, toTimelineEvent, type Audience } from './message-view.js';
 import { TicketReader, isClient } from './ticket-reader.js';
+import { TICKET_KEYS, type TicketKeys } from './ticket-keys.js';
 
 /**
  * The conversation of a ticket (R-1.3): customer messages, public replies, internal notes and the
@@ -24,6 +25,7 @@ export class TimelineService {
   constructor(
     @Inject(DATABASE) private readonly database: Database,
     @Inject(TicketReader) private readonly reader: TicketReader,
+    @Inject(TICKET_KEYS) private readonly keys: TicketKeys,
   ) {}
 
   async timeline(
@@ -35,17 +37,28 @@ export class TimelineService {
     const audience: Audience = isClient(principal) ? 'client' : 'staff';
     const { message, ticketEvent, ticket, users, contact } = schema;
 
+    // No event of a ticket is older than the ticket. The events table is partitioned by month, and
+    // this bound lets Postgres skip every partition before the ticket existed. A day of slack: the
+    // ticket's own timestamp comes from the application clock and the event's from the database
+    // transaction start, so they can differ by the clock skew between the two machines.
+    let earliest = root.t.createdAt;
     const numbers = new Map<string, { number: number; channel: ChannelType }>([
       [root.t.id, { number: root.t.number, channel: root.t.channel as ChannelType }],
     ]);
     if (query.includeMerged) {
       const children = await this.database.db
-        .select({ id: ticket.id, number: ticket.number, channel: ticket.channel })
+        .select({
+          id: ticket.id,
+          number: ticket.number,
+          channel: ticket.channel,
+          createdAt: ticket.createdAt,
+        })
         .from(ticket)
         // Merging never crosses organizations, so the children are in the caller's organization too.
         .where(and(eq(ticket.parentTicketId, root.t.id), eq(ticket.orgId, root.t.orgId)));
       for (const child of children) {
         numbers.set(child.id, { number: child.number, channel: child.channel as ChannelType });
+        if (child.createdAt < earliest) earliest = child.createdAt;
       }
     }
     const ids = [...numbers.keys()];
@@ -83,6 +96,10 @@ export class TimelineService {
       .where(
         and(
           inArray(ticketEvent.ticketId, ids),
+          gte(
+            ticketEvent.createdAt,
+            sql`${earliest.toISOString()}::timestamptz - interval '1 day'`,
+          ),
           audience === 'client' ? eq(ticketEvent.visibility, 'public') : undefined,
           cursor ? afterCursor(ticketEvent.createdAt, ticketEvent.id, cursor) : undefined,
         ),
@@ -100,7 +117,7 @@ export class TimelineService {
           return {
             kind: 'message',
             ...toMessage(entry.row, {
-              ticketNumber: known?.number ?? root.t.number,
+              ticketKey: this.keys.format(known?.number ?? root.t.number),
               channel: known?.channel ?? (root.t.channel as ChannelType),
               senderUserName: entry.userName,
               senderUserRole: entry.userRole,
@@ -115,7 +132,7 @@ export class TimelineService {
         id: entry.row.id,
         build: (): TimelineEntry =>
           toTimelineEvent(entry.row, {
-            ticketNumber: numbers.get(entry.row.ticketId)?.number ?? root.t.number,
+            ticketKey: this.keys.format(numbers.get(entry.row.ticketId)?.number ?? root.t.number),
             actorName: entry.actorName,
             audience,
           }),

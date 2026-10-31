@@ -42,7 +42,7 @@ Build ของ package: ESM, `tsc` ออกที่ `dist/`, `exports` ชี
 5. **ลูกค้าติดตาม:** tracking page ตรวจ signed link แล้วแสดงเฉพาะ public message · reply จากหน้านี้เข้า timeline เดิม
 6. **Resolve:** เปลี่ยน status ตาม workflow R-1.2 → `ticket_event` + `audit_log` → job อีเมลแจ้ง status
 
-กติกา flow: enqueue หลัง commit เท่านั้น (พิจารณา outbox table ถ้าต้องการ at-least-once จริงตาม PRD §8.3) · job ทุกตัวมี idempotency key · ไม่มี AI action ใน Phase 0 จึงยังไม่แตะ N3 และ N4
+กติกา flow: งานเข้าคิวผ่าน outbox table (เขียนใน transaction เดียวกับข้อมูล, relay ใน worker ย้ายไป BullMQ — ADR-006) · job ทุกตัวมี idempotency key · ไม่มี AI action ใน Phase 0 จึงยังไม่แตะ N3 และ N4
 
 ## 3. Boundary rules
 
@@ -185,14 +185,14 @@ Build ของ package: ESM, `tsc` ออกที่ `dist/`, `exports` ชี
 | API modules | `apps/api/src/{tickets,sla,team-queues,orgs,intents,realtime}/` |
 
 กติกา:
-- **เขียน ticket ผ่าน `UnitOfWorkService.run()` เท่านั้น:** ticket + message + `ticket_event` + `audit.recordInTransaction` อยู่ใน tx เดียว · `uow.emit` (realtime) และ `uow.afterCommit` (enqueue) รันหลัง commit ถ้า fail จะลง log โดยไม่ rollback · ยังไม่มี outbox `[ASSUMED]` ต้องตัดสินก่อน T-007 (T-013)
+- **เขียน ticket ผ่าน `UnitOfWorkService.run()` เท่านั้น:** ticket + message + `ticket_event` + `audit.recordInTransaction` อยู่ใน tx เดียว · `uow.emit` (realtime) และ `uow.afterCommit` รันหลัง commit ถ้า fail จะลง log โดยไม่ rollback · **งานเข้าคิวห้ามใช้ `afterCommit`** ให้เขียน `OutboxService.enqueue(job, uow.tx)` ใน transaction (ADR-006, `[TESTED]` Redis ล่ม → แถวค้าง `pending` → ส่งทีหลัง) · ตัวอักษรนำหน้าเลข ticket มาจาก `TICKET_KEY_PREFIX` (ค่าเริ่มต้น `OPS`) ผ่าน `TicketKeys` · tier ของ org เป็นข้อมูลในตาราง `org_tier` (migration 0003) · ลบ queue/contact ที่ ticket/message ยังอ้างอยู่ = 409
 - **Concurrency:** ticket `FOR UPDATE` (merge ล็อกตามลำดับ id) · round-robin ล็อกแถว `team_queue` (ดูคิวก่อน แล้วค่อยใช้สิทธิ์เมื่อ ticket ย้ายจริง) · idempotency ของ inbound = advisory lock + unique `message_external_key`
 - **Workflow (R-1.2):** เก็บเป็นข้อมูลใน `ticket_status_transition` (`workflow.manage`) · เข้า `merged` ได้ทาง merge เท่านั้น · chain ลึกไม่เกิน 1 ชั้น มี trigger กัน loop
 - **SLA:** due date คำนวณจาก `createdAt` + pause ที่จบแล้ว (อ่านจาก event `sla.resumed`) · pause ที่ยังไม่จบเก็บใน `ticket.sla_paused_at` · เปลี่ยน calendar/holiday ไม่คำนวณ ticket ที่เปิดอยู่ใหม่ (ลูกค้าได้ due date ที่สัญญาไว้แล้ว) `[ASSUMED]`
 - **`ticket_event` เป็นทั้ง log และ state:** SLA คำนวณ pause จาก `sla.resumed` จึงห้าม detach partition ที่ยังมี ticket เปิด (นโยบายต่างจาก `audit_log`) · partition สร้างโดย `maintenance:ensure-partitions` (`PARTITIONED_TABLES`)
 - **Delivery status:** ข้อความขาเข้า = `not_applicable` · reply บน portal = `delivered` · channel อื่น = `pending` จนกว่า outbox ของ adapter จะส่ง
 - **Realtime:** `/v1/realtime` ใช้ `ws` บน HTTP server ของ Nest เพราะต้องตรวจ Origin + cookie + session ตอน upgrade · fan-out ผ่าน Redis `REALTIME_CHANNEL` · event มีแค่ id และ field สั้น ๆ ไม่มีเนื้อความ · client ได้เฉพาะ org ตัวเองและไม่ได้ internal (`realtimeEventFor`) · หลุดแล้ว refetch REST · Cloud Run ตัด WS ตาม request timeout `[VERIFY]` ซึ่ง client ต้อง reconnect ทุก 15 นาทีอยู่แล้ว (4401)
-- **Search (R-1.8):** `ILIKE` + GIN `pg_trgm` บน `ticket.subject`, `message.body_text` (ทดสอบภาษาไทยแล้ว) · ต้องใช้ DB locale UTF-8 ที่ไม่ใช่ `C` `[ASSUMED]` · `q` สั้นกว่า 3 ตัวใช้ index ไม่ได้ · ยังไม่ค้น attachment (T-102)
+- **Search (R-1.8):** `ILIKE` + GIN `pg_trgm` บน `ticket.subject`, `message.body_text` (ทดสอบภาษาไทยแล้ว) · ต้องใช้ DB locale UTF-8 ที่ไม่ใช่ `C` `[ASSUMED]` · `q` ขั้นต่ำ 2 ตัว (คำไทยสั้นมี 2 ตัวบ่อย) แต่สั้นกว่า 3 ตัวไม่มี trigram จึงใช้ index ไม่ได้ ควรใช้คู่กับ filter อื่น · ยังไม่ค้น attachment (T-102)
 - **Duplicate suggestion (R-1.5):** `GET /v1/tickets/:id/duplicates` org + intent เดียวกัน ภายใน 72 ชม. ไม่ merged/closed สูงสุด 10
 - **ข้อเบี่ยงจาก PRD §7:**
   - `team_queue.members[]` → `team_queue_member`

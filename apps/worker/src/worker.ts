@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import type { AddressInfo } from 'node:net';
 
-import { createDatabase } from '@watchtower/db';
+import { createDatabase, type OutboxPublisher } from '@watchtower/db';
 import { MAINTENANCE_JOBS, parseRedisUrl, QUEUE_NAMES, type QueueName } from '@watchtower/shared';
 import { Queue, Worker, type Processor } from 'bullmq';
 import { z } from 'zod';
@@ -10,6 +10,11 @@ import type { WorkerConfig } from './config.js';
 import { createHealthServer } from './health.js';
 import type { WorkerLogger } from './logger.js';
 import { createSmtpMailer, type Mailer } from './mailer.js';
+import {
+  createBullmqPublisher,
+  startOutboxRelay,
+  type RunningOutboxRelay,
+} from './outbox-relay.js';
 import { createEmailProcessor } from './processors/email.js';
 import { createMaintenanceProcessor } from './processors/maintenance.js';
 import { processSystemJob } from './processors/system.js';
@@ -26,6 +31,8 @@ export interface StartOptions {
   readonly queuePrefix?: string;
   /** Replaces the SMTP mailer. Tests inject a fake; production leaves it unset. */
   readonly mailer?: Mailer;
+  /** Replaces how the outbox relay hands jobs to BullMQ. Tests inject a publisher that fails on demand. */
+  readonly outboxPublisher?: OutboxPublisher;
 }
 
 const packageJsonSchema = z.object({ version: z.string() });
@@ -111,6 +118,15 @@ export async function startWorker(
     { jobId: `ensure-partitions-boot-${String(Date.now())}`, removeOnComplete: true },
   );
 
+  // The transactional outbox (ADR-006): rows the api wrote in its own transactions become BullMQ jobs.
+  const publisher = createBullmqPublisher(connection, logger, prefixOption);
+  const outboxRelay: RunningOutboxRelay = startOutboxRelay({
+    database,
+    publish: options.outboxPublisher ?? publisher.publish,
+    logger,
+    intervalMs: config.OUTBOX_POLL_INTERVAL_MS,
+  });
+
   const health = createHealthServer({
     service: config.OTEL_SERVICE_NAME,
     version: readVersion(),
@@ -138,6 +154,8 @@ export async function startWorker(
   return {
     healthPort,
     async close() {
+      await outboxRelay.stop();
+      await publisher.close();
       await Promise.all(consumers.map((consumer) => consumer.close()));
       await probe.close();
       await maintenance.close();

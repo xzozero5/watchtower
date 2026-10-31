@@ -100,6 +100,11 @@ export class MagicLinkService implements OnApplicationShutdown {
     const token = generateOpaqueToken();
     const expiresAt = new Date(Date.now() + this.config.MAGIC_LINK_TTL_SECONDS * 1000);
     const hash = hashOpaqueToken(token);
+    const link = new URL('/login/magic', this.config.APP_URL);
+    link.hash = `token=${token}`;
+    // The token and the email job commit together: no token without a mail to carry it, and no
+    // mail for a token that was rolled back. The outbox relay (apps/worker) delivers the job to
+    // BullMQ, also after a Redis outage (ADR-006).
     await this.database.db.transaction(async (tx) => {
       await tx
         .update(schema.magicLinkTokens)
@@ -113,19 +118,17 @@ export class MagicLinkService implements OnApplicationShutdown {
       await tx
         .insert(schema.magicLinkTokens)
         .values({ userId: user.id, tokenHash: hash, expiresAt, requestedIp: ip });
+      await this.outbox.send(
+        {
+          kind: 'magic_link',
+          to: user.email,
+          link: link.toString(),
+          expiresInMinutes: Math.ceil(this.config.MAGIC_LINK_TTL_SECONDS / 60),
+        },
+        `magic-link-${hash.slice(0, 32)}`,
+        tx,
+      );
     });
-
-    const link = new URL('/login/magic', this.config.APP_URL);
-    link.hash = `token=${token}`;
-    await this.outbox.send(
-      {
-        kind: 'magic_link',
-        to: user.email,
-        link: link.toString(),
-        expiresInMinutes: Math.ceil(this.config.MAGIC_LINK_TTL_SECONDS / 60),
-      },
-      `magic-link-${hash.slice(0, 32)}`,
-    );
   }
 
   private async provisionByDomain(email: string): Promise<UserRow | undefined> {

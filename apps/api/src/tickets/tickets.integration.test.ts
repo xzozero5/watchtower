@@ -1428,8 +1428,9 @@ describe('search', () => {
 
   it('treats % and _ as plain characters', async () => {
     expect(await search('100%')).toEqual([]);
-    expect(await search('_')).toEqual([]);
-    expect(await search('%')).toEqual([]);
+    expect(await search('__')).toEqual([]);
+    expect(await search('%%')).toEqual([]);
+    expect(await search('%_')).toEqual([]);
   });
 
   it('does not take SQL from the search text', async () => {

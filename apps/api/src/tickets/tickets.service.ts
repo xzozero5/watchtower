@@ -7,7 +7,6 @@ import {
   REOPEN_WINDOW_DAYS,
   SLA_PAUSED_STATUSES,
   TICKET_EVENT_TYPES,
-  formatTicketKey,
   type AssignTicket,
   type ChannelType,
   type MergeTicket,
@@ -38,6 +37,7 @@ import type { DbTransaction, UnitOfWork } from '../realtime/unit-of-work.js';
 import { SlaService } from '../sla/sla.service.js';
 import { AssignmentService } from '../team-queues/assignment.service.js';
 import { assertAssignableStaff } from '../team-queues/team-queues.service.js';
+import { TICKET_KEYS, type TicketKeys } from './ticket-keys.js';
 import { refCondition, type TicketRow } from './ticket-reader.js';
 import { WorkflowService } from './workflow.service.js';
 
@@ -139,6 +139,7 @@ function snapshot(row: TicketRow): Record<string, unknown> {
 }
 
 function ticketEvent(
+  keys: TicketKeys,
   type: 'ticket.created' | 'ticket.updated',
   row: TicketRow,
   changed: string[],
@@ -149,7 +150,7 @@ function ticketEvent(
     occurredAt: new Date().toISOString(),
     orgId: row.orgId,
     ticketId: row.id,
-    ticketKey: formatTicketKey(row.number),
+    ticketKey: keys.format(row.number),
     data: {
       subject: row.subject,
       status: row.status as TicketStatus,
@@ -161,14 +162,14 @@ function ticketEvent(
   };
 }
 
-function messageEvent(row: TicketRow, message: MessageRow): RealtimeEvent {
+function messageEvent(keys: TicketKeys, row: TicketRow, message: MessageRow): RealtimeEvent {
   return {
     id: randomUUID(),
     type: 'message.created',
     occurredAt: new Date().toISOString(),
     orgId: row.orgId,
     ticketId: row.id,
-    ticketKey: formatTicketKey(row.number),
+    ticketKey: keys.format(row.number),
     data: {
       messageId: message.id,
       direction: message.direction as 'inbound' | 'outbound' | 'internal',
@@ -192,6 +193,7 @@ export class TicketsService {
     @Inject(SlaService) private readonly sla: SlaService,
     @Inject(WorkflowService) private readonly workflow: WorkflowService,
     @Inject(AssignmentService) private readonly assignment: AssignmentService,
+    @Inject(TICKET_KEYS) private readonly keys: TicketKeys,
   ) {}
 
   // --- create ---
@@ -243,6 +245,7 @@ export class TicketsService {
           org.id,
           command.requester.email,
           command.requester.name,
+          command.actor,
         )
       ).id;
     }
@@ -340,8 +343,8 @@ export class TicketsService {
       metadata: { channel, messageId: message.id },
     });
 
-    uow.emit(ticketEvent('ticket.created', ticket, []));
-    uow.emit(messageEvent(ticket, message));
+    uow.emit(ticketEvent(this.keys, 'ticket.created', ticket, []));
+    uow.emit(messageEvent(this.keys, ticket, message));
     return { ticket, message, duplicate: false };
   }
 
@@ -478,7 +481,7 @@ export class TicketsService {
       after: snapshot(after),
       metadata: { changed },
     });
-    uow.emit(ticketEvent('ticket.updated', after, changed));
+    uow.emit(ticketEvent(this.keys, 'ticket.updated', after, changed));
     return after;
   }
 
@@ -597,7 +600,7 @@ export class TicketsService {
       after: snapshot(after),
       metadata: { from, to, ...(context.automatic === true ? { automatic: true } : {}) },
     });
-    uow.emit(ticketEvent('ticket.updated', after, changed));
+    uow.emit(ticketEvent(this.keys, 'ticket.updated', after, changed));
     return after;
   }
 
@@ -668,7 +671,7 @@ export class TicketsService {
       after: { assigneeId, queueId },
       metadata: { strategy },
     });
-    uow.emit(ticketEvent('ticket.updated', after, changed));
+    uow.emit(ticketEvent(this.keys, 'ticket.updated', after, changed));
     return after;
   }
 
@@ -719,7 +722,7 @@ export class TicketsService {
       .update(schema.ticket)
       .set({ parentTicketId: target.id, updatedAt: new Date() })
       .where(eq(schema.ticket.parentTicketId, source.id))
-      .returning({ id: schema.ticket.id });
+      .returning();
 
     const now = new Date();
     let updatedSource: TicketRow | undefined;
@@ -743,7 +746,7 @@ export class TicketsService {
     }
     if (!updatedSource || !updatedTarget) throw notFound('No such ticket');
 
-    const targetKey = formatTicketKey(target.number);
+    const targetKey = this.keys.format(target.number);
     await this.recordEvent(tx, source.id, TICKET_EVENT_TYPES.merged, actor, 'public', {
       intoTicketId: target.id,
       intoKey: targetKey,
@@ -751,9 +754,30 @@ export class TicketsService {
     });
     await this.recordEvent(tx, target.id, TICKET_EVENT_TYPES.mergeReceived, actor, 'internal', {
       fromTicketId: source.id,
-      fromKey: formatTicketKey(source.number),
+      fromKey: this.keys.format(source.number),
       movedChildren: children.length,
     });
+    // A ticket that moved from the source to the target changed its own parent: it gets its own
+    // event (its history says why it points elsewhere now) and its own audit row.
+    for (const child of children) {
+      await this.recordEvent(tx, child.id, TICKET_EVENT_TYPES.reparented, actor, 'internal', {
+        fromTicketId: source.id,
+        fromKey: this.keys.format(source.number),
+        toTicketId: target.id,
+        toKey: targetKey,
+        reason: 'parent_merged',
+      });
+      await this.audit.recordInTransaction(tx, {
+        actor,
+        action: AUDIT_ACTIONS.ticketReparent,
+        targetType: 'ticket',
+        targetId: child.id,
+        before: { parentTicketId: source.id },
+        after: { parentTicketId: target.id },
+        metadata: { mergedTicketId: source.id, intoTicketId: target.id, intoKey: targetKey },
+      });
+      uow.emit(ticketEvent(this.keys, 'ticket.updated', child, ['merge']));
+    }
     await this.audit.recordInTransaction(tx, {
       actor,
       action: AUDIT_ACTIONS.ticketMerge,
@@ -763,8 +787,8 @@ export class TicketsService {
       after: snapshot(updatedSource),
       metadata: { intoTicketId: target.id, intoKey: targetKey, movedChildren: children.length },
     });
-    uow.emit(ticketEvent('ticket.updated', updatedSource, ['status']));
-    uow.emit(ticketEvent('ticket.updated', updatedTarget, ['merge']));
+    uow.emit(ticketEvent(this.keys, 'ticket.updated', updatedSource, ['status']));
+    uow.emit(ticketEvent(this.keys, 'ticket.updated', updatedTarget, ['merge']));
     return { source: updatedSource, target: updatedTarget };
   }
 
@@ -809,7 +833,7 @@ export class TicketsService {
     let contactId: string | null = null;
     if (sender.kind === 'client') {
       contactId = (
-        await this.contacts.findOrCreateByEmail(tx, ticket.orgId, sender.email, sender.name)
+        await this.contacts.findOrCreateByEmail(tx, ticket.orgId, sender.email, sender.name, actor)
       ).id;
     }
     const accountId = ticket.channelAccountId;
@@ -851,8 +875,8 @@ export class TicketsService {
         firstResponse,
       },
     });
-    uow.emit(messageEvent(ticket, message));
-    if (firstResponse) uow.emit(ticketEvent('ticket.updated', ticket, ['sla']));
+    uow.emit(messageEvent(this.keys, ticket, message));
+    if (firstResponse) uow.emit(ticketEvent(this.keys, 'ticket.updated', ticket, ['sla']));
 
     if (sender.kind === 'client') {
       // The customer answered: the clock restarts, and a ticket resolved in the last 7 days reopens.
@@ -911,7 +935,7 @@ export class TicketsService {
       metadata: { messageId: message.id },
     });
     // The event says an internal note exists; the realtime filter keeps it from every client.
-    uow.emit(messageEvent(ticket, message));
+    uow.emit(messageEvent(this.keys, ticket, message));
     return { message, ticket: touched ?? ticket };
   }
 
@@ -919,7 +943,11 @@ export class TicketsService {
 
   /** Loads and locks a ticket for the rest of the transaction. */
   async lock(tx: DbTransaction, ref: string): Promise<TicketRow> {
-    const [row] = await tx.select().from(schema.ticket).where(refCondition(ref)).for('update');
+    const [row] = await tx
+      .select()
+      .from(schema.ticket)
+      .where(refCondition(ref, this.keys))
+      .for('update');
     if (!row) throw notFound('No such ticket');
     return row;
   }
@@ -928,7 +956,7 @@ export class TicketsService {
     const [row] = await tx
       .select({ id: schema.ticket.id })
       .from(schema.ticket)
-      .where(refCondition(ref))
+      .where(refCondition(ref, this.keys))
       .limit(1);
     if (!row) throw notFound('No such ticket');
     return row.id;
