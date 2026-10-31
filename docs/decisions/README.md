@@ -9,5 +9,6 @@
 - [ADR-007](ADR-007-portal-human-verification.md) — Human verification ของ client portal แบบ self-hosted (PoW + honeypot + rate limit) หลัง `HumanVerificationProvider` (T-007) · Accepted 2026-11-01
 - [ADR-009](ADR-009-inbound-ingestion-and-domain-package.md) — Inbound ingestion: webhook บางใน api → orchestration ใน worker + workspace ใหม่ `packages/domain` + `inbound_event`/`inbound_message` (แก้ matrix ADR-002, T-122a) · Proposed 2026-11-01
 - [ADR-010](ADR-010-outbound-delivery.md) — Outbound delivery ถึงลูกค้าแบบ at-most-once (`outbound_delivery`), undo-send ฝั่ง server, reply-vs-push + LINE quota, policy gate N3 (T-122a/d) · Proposed 2026-11-01
+- [ADR-011](ADR-011-autonomy-policy-gate.md) — Autonomy stage ต่อ intent + policy gate (`decide()`/`createPolicyGate`) + สวิตช์ฉุกเฉิน 2 ตัว + ceiling stage ≤ 2 ใน DB (T-112a) · Proposed 2026-11-01
 - ADR ใหม่: `ADR-00x-<slug>.md` ตาม `docs/templates/adr.template.md` แล้วเพิ่มบรรทัดที่นี่
 - Review records (security/po) เก็บเป็น `T-xxx-review.md` ในโฟลเดอร์นี้
