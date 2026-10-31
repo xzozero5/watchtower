@@ -11,6 +11,7 @@
     "dev": "turbo run dev --env-mode=loose",
     "build": "turbo run build",
     "test": "turbo run test test:boundaries",
+    "test:integration": "turbo run test:integration --env-mode=loose",
     "test:e2e": "turbo run test:e2e --env-mode=loose",
     "test:boundaries": "vitest run --dir tools",
     "lint": "turbo run lint lint:root",

@@ -1,0 +1,42 @@
+# Local reverse proxy (docker compose). TLS and the public hostname are the load balancer's job on
+# GCP, so this serves plain http on the loopback-published port 8080.
+#
+#   /api/*            -> api (prefix stripped: /api/tickets reaches the api as /tickets)
+#   /docs*            -> api (OpenAPI UI and /docs-json)
+#   /ws, /ws/*        -> api (WebSocket gateway, T-005) [ASSUMED path]
+#   everything else   -> web
+#
+# /metrics is never exposed here: Prometheus scrapes the api directly on 127.0.0.1:4000.
+# /health through this proxy reaches web; probe api and worker on their own ports.
+
+{
+	auto_https off
+}
+
+:8080 {
+	encode zstd gzip
+
+	header {
+		X-Content-Type-Options nosniff
+		Referrer-Policy strict-origin-when-cross-origin
+		-Server
+	}
+
+	@internal path /metrics /metrics/* /api/metrics /api/metrics/*
+	handle @internal {
+		respond 404
+	}
+
+	handle_path /api/* {
+		reverse_proxy api:4000
+	}
+
+	@api path /docs /docs/* /docs-json /docs-yaml /ws /ws/*
+	handle @api {
+		reverse_proxy api:4000
+	}
+
+	handle {
+		reverse_proxy web:3000
+	}
+}
