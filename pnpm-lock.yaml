@@ -192,6 +192,9 @@ importers:
       '@tanstack/react-query':
         specifier: ^5.105.0
         version: 5.105.0(@types/react@19.3.0)(react@19.3.1)
+      '@watchtower/shared':
+        specifier: workspace:*
+        version: link:../../packages/shared
       '@watchtower/ui':
         specifier: workspace:*
         version: link:../../packages/ui
@@ -207,6 +210,9 @@ importers:
       react-dom:
         specifier: ^19.3.1
         version: 19.3.1(react@19.3.1)
+      zod:
+        specifier: ^4.6.7
+        version: 4.6.7
     devDependencies:
       '@axe-core/playwright':
         specifier: ^4.14.0

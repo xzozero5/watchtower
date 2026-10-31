@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <title>Watchtower</title>
+    <style>
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        font-family: system-ui, sans-serif;
+        line-height: 1.5;
+        background: Canvas;
+        color: CanvasText;
+      }
+      main {
+        max-width: 32rem;
+        padding: 2rem;
+        text-align: center;
+      }
+      h1 {
+        font-size: 1.25rem;
+        margin: 0 0 0.5rem;
+      }
+      p {
+        margin: 0.25rem 0;
+      }
+      button {
+        margin-top: 1rem;
+        padding: 0.5rem 1rem;
+        font: inherit;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1 lang="en">You are offline</h1>
+      <p lang="en">Watchtower needs a connection to load tickets. Nothing you sent was lost.</p>
+      <h1 lang="th">ไม่ได้เชื่อมต่ออินเทอร์เน็ต</h1>
+      <p lang="th">Watchtower ต้องใช้อินเทอร์เน็ตเพื่อโหลด ticket งานที่ส่งไปแล้วไม่หาย</p>
+      <button type="button" onclick="location.reload()">Try again / ลองอีกครั้ง</button>
+    </main>
+  </body>
+</html>

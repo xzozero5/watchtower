@@ -135,12 +135,21 @@ describe('Ctrl+K / Cmd+K', () => {
   });
 
   it('recognises only the real shortcut', () => {
-    const base = { key: 'k', ctrlKey: false, metaKey: false, shiftKey: false, altKey: false };
+    const base = {
+      key: 'k',
+      code: 'KeyK',
+      ctrlKey: false,
+      metaKey: false,
+      shiftKey: false,
+      altKey: false,
+    };
     expect(isPaletteShortcut({ ...base, ctrlKey: true })).toBe(true);
     expect(isPaletteShortcut({ ...base, metaKey: true })).toBe(true);
     expect(isPaletteShortcut({ ...base, key: 'K', ctrlKey: true })).toBe(true);
     expect(isPaletteShortcut(base)).toBe(false);
-    expect(isPaletteShortcut({ ...base, ctrlKey: true, key: 'j' })).toBe(false);
+    expect(isPaletteShortcut({ ...base, ctrlKey: true, key: 'j', code: 'KeyJ' })).toBe(false);
+    // Thai layout: another character, same physical key.
+    expect(isPaletteShortcut({ ...base, ctrlKey: true, key: '\u0e46' })).toBe(true);
     expect(isPaletteShortcut({ ...base, ctrlKey: true, shiftKey: true })).toBe(false);
     expect(isPaletteShortcut({ ...base, ctrlKey: true, altKey: true })).toBe(false);
   });

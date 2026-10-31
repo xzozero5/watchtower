@@ -2,6 +2,7 @@ import AxeBuilder from '@axe-core/playwright';
 import { expect, type Page, test } from '@playwright/test';
 import { COLOR_TOKENS } from '@watchtower/ui';
 
+import { type BackendOptions, mockBackend } from './backend';
 import { E2E_API_URL } from './constants';
 
 const rgb = (hex: string) => {
@@ -12,25 +13,18 @@ const rgb = (hex: string) => {
 const bodyBackground = (page: Page) =>
   page.evaluate(() => getComputedStyle(document.body).backgroundColor);
 
-/** Opens the home page and waits until React has hydrated, so key presses and clicks are heard. */
-async function openHome(page: Page) {
+/**
+ * Signs in as an agent against the in-browser stand-in for the api, opens the home page and waits
+ * until React has hydrated, so key presses and clicks are heard.
+ */
+async function openHome(page: Page, options: BackendOptions = {}) {
+  const backend = await mockBackend(page, options);
   await page.goto('/');
   await expect(page.locator('[data-hydrated="true"]')).toBeAttached();
+  return backend;
 }
 
 const WCAG_TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'];
-
-/** Pages tests that intercept the API in the browser, so no real API is needed. */
-async function mockApiHealth(page: Page, status: number) {
-  await page.route(`${E2E_API_URL}/health`, (route) =>
-    route.fulfill({
-      status,
-      contentType: 'application/json',
-      headers: { 'access-control-allow-origin': '*' },
-      body: '{"status":"ok"}',
-    }),
-  );
-}
 
 test.describe('health', () => {
   test('GET /health answers 200', async ({ request }) => {
@@ -41,15 +35,15 @@ test.describe('health', () => {
 });
 
 test.describe('three-pane layout', () => {
-  test('shows queue, conversation and assistant panes with empty states', async ({ page }) => {
+  test('shows the queue, an empty conversation and the AI placeholder', async ({ page }) => {
     await openHome(page);
     await expect(page).toHaveTitle('Watchtower');
-    await expect(page.getByRole('region', { name: 'Queue' })).toContainText('No tickets yet');
+    await expect(page.getByRole('region', { name: 'Queue' })).toContainText('Cannot log in');
     await expect(page.getByRole('region', { name: 'Conversation' })).toContainText(
       'Select a ticket',
     );
     await expect(page.getByRole('region', { name: 'AI assistant' })).toContainText(
-      'Nothing to investigate',
+      'The AI assistant is not switched on yet',
     );
   });
 
@@ -175,7 +169,9 @@ test.describe('severity is not colour alone', () => {
       ['P4', 'Low'],
     ] as const;
     for (const [code, label] of expected) {
-      const badge = page.locator(`[data-severity="${code.toLowerCase()}"]`);
+      const badge = page
+        .locator('details', { hasText: 'Severity key' })
+        .locator(`[data-severity="${code.toLowerCase()}"]`);
       await expect(badge).toContainText(code);
       await expect(badge).toContainText(label);
       await expect(badge.locator('svg')).toBeVisible();
@@ -210,7 +206,6 @@ test.describe('runtime API URL', () => {
   test('the browser calls the API_URL the server started with, not a build-time value', async ({
     page,
   }) => {
-    await mockApiHealth(page, 200);
     const requested = page.waitForRequest(`${E2E_API_URL}/health`);
     await openHome(page);
     await requested;
@@ -219,8 +214,7 @@ test.describe('runtime API URL', () => {
   });
 
   test('says the API is unreachable when it does not answer', async ({ page }) => {
-    await page.route(`${E2E_API_URL}/health`, (route) => route.abort('connectionrefused'));
-    await openHome(page);
+    await openHome(page, { health: 'down' });
     await expect(page.getByText('API unreachable')).toBeVisible();
   });
 });
@@ -237,7 +231,6 @@ test.describe('error pages', () => {
 test.describe('accessibility (axe, WCAG 2.x A/AA)', () => {
   for (const scheme of ['light', 'dark'] as const) {
     test(`home page has no violations in ${scheme} mode`, async ({ page }) => {
-      await mockApiHealth(page, 200);
       await page.emulateMedia({ colorScheme: scheme });
       await openHome(page);
       await expect(page.getByText('API online')).toBeVisible();
@@ -247,7 +240,6 @@ test.describe('accessibility (axe, WCAG 2.x A/AA)', () => {
     });
 
     test(`command palette has no violations in ${scheme} mode`, async ({ page }) => {
-      await mockApiHealth(page, 200);
       await page.emulateMedia({ colorScheme: scheme });
       await openHome(page);
       await page.keyboard.press('ControlOrMeta+K');
@@ -258,8 +250,7 @@ test.describe('accessibility (axe, WCAG 2.x A/AA)', () => {
   }
 
   test('unreachable-API state has no violations', async ({ page }) => {
-    await page.route(`${E2E_API_URL}/health`, (route) => route.abort('connectionrefused'));
-    await openHome(page);
+    await openHome(page, { health: 'down' });
     await expect(page.getByText('API unreachable')).toBeVisible();
     const results = await new AxeBuilder({ page }).withTags(WCAG_TAGS).analyze();
     expect(results.violations).toEqual([]);

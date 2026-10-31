@@ -2,7 +2,7 @@ import type { Density, ThemePreference } from '@watchtower/ui';
 
 import type { Locale, MessageKey, Translate } from '@/i18n';
 
-export type CommandGroup = 'display' | 'language';
+export type CommandGroup = 'general' | 'display' | 'language';
 
 export interface Command {
   id: string;
@@ -18,6 +18,9 @@ export interface CommandActions {
   setTheme: (theme: ThemePreference) => void;
   setDensity: (density: Density) => void;
   setLocale: (locale: Locale) => void;
+  showShortcuts: () => void;
+  focusSearch: () => void;
+  signOut: () => void;
 }
 
 interface Definition {
@@ -30,6 +33,33 @@ interface Definition {
 
 // Keywords are searchable aliases in both languages, so "ธีม" and "theme" find the same command.
 const DEFINITIONS: readonly Definition[] = [
+  {
+    id: 'go.search',
+    labelKey: 'commands.focusSearch',
+    group: 'general',
+    keywords: ['search', 'find', 'queue', 'filter', 'ค้นหา', 'คิว'],
+    run: (a) => {
+      a.focusSearch();
+    },
+  },
+  {
+    id: 'help.shortcuts',
+    labelKey: 'commands.showShortcuts',
+    group: 'general',
+    keywords: ['keyboard', 'shortcuts', 'keys', 'help', 'คีย์ลัด', 'แป้นพิมพ์', 'ช่วยเหลือ'],
+    run: (a) => {
+      a.showShortcuts();
+    },
+  },
+  {
+    id: 'session.signOut',
+    labelKey: 'commands.signOut',
+    group: 'general',
+    keywords: ['sign out', 'log out', 'logout', 'ออกจากระบบ'],
+    run: (a) => {
+      a.signOut();
+    },
+  },
   {
     id: 'theme.system',
     labelKey: 'commands.themeSystem',
@@ -95,7 +125,7 @@ const DEFINITIONS: readonly Definition[] = [
   },
 ];
 
-/** The commands available now. Task-level commands (go to ticket, assign, ...) arrive with T-006. */
+/** The commands available now. Ticket-level commands (assign, set status, ...) come with the AI sidebar. */
 export function buildCommands(t: Translate, actions: CommandActions): Command[] {
   return DEFINITIONS.map(({ id, labelKey, group, keywords, run }) => ({
     id,

@@ -8,6 +8,9 @@ const actions = (): CommandActions => ({
   setTheme: vi.fn(),
   setDensity: vi.fn(),
   setLocale: vi.fn(),
+  showShortcuts: vi.fn(),
+  focusSearch: vi.fn(),
+  signOut: vi.fn(),
 });
 
 const tEn: Translate = (key, values) => translate(getMessages('en'), key, values);
