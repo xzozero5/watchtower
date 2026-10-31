@@ -135,6 +135,8 @@ test.describe('sign-in', () => {
 test.describe('queue and conversation', () => {
   test('J and K move through tickets and open them; the address follows', async ({ page }) => {
     await openWorkspace(page);
+    // J on an empty (still loading) queue does nothing by design; wait for the rows first.
+    await expect(queue(page).getByRole('button', { name: /OPS-1/ })).toBeVisible();
     await page.keyboard.press('j');
     await expect(
       conversation(page).getByRole('heading', { name: 'Cannot log in', level: 3 }),
