@@ -60,6 +60,15 @@ export const PERMISSIONS = {
   'rbac.manage': 'Change which permissions each role has',
   'session.revoke.any': 'Force logout of any user',
   'auth.session.self': 'View and revoke the caller own sessions',
+  // Phase 1 (T-123a, migration 0006). `[ASSUMED]`, grants are explained above `AGENT`.
+  'inbound.read': 'View received messages, including mail that did not become a ticket',
+  'outbox.manage': 'View and resend dead-lettered outbound messages',
+  'view.share': 'Share a saved view with the team',
+  'ai.emergency_switch': 'Use the emergency switch that sends every intent back to draft-only',
+  'shift.note.write': 'Write shift notes',
+  'handoff.ack': 'Acknowledge the items of a shift handoff',
+  'csat.read': 'View CSAT responses',
+  'ai.run.read': 'View AI run records: prompt version, model, tools and cost',
 } as const satisfies Record<string, string>;
 
 export type Permission = keyof typeof PERMISSIONS;
@@ -70,6 +79,16 @@ export function isPermission(value: string): value is Permission {
   return Object.hasOwn(PERMISSIONS, value);
 }
 
+/**
+ * Phase 1 grants (T-123a) `[ASSUMED]`, in the style of PRD section 2.2; `po` confirms them:
+ * - agent: `inbound.read` (the "Other mail" view), `shift.note.write`, `handoff.ack` (R-7.x: every
+ *   person on shift writes notes and acknowledges the handoff they receive).
+ * - lead adds `view.share` (team views), `ai.emergency_switch` (PRD section 6.4: it only moves
+ *   intents to stage 2, the safe direction), `csat.read` and `ai.run.read` (quality review).
+ * - head adds `outbox.manage` (PRD section 8.3: dead letters are visible to the head).
+ * - client and system get none.
+ * Migration 0006 seeds the same rows; the integration tests compare them with this file.
+ */
 const AGENT: readonly Permission[] = [
   'ticket.read',
   'ticket.handle',
@@ -84,6 +103,9 @@ const AGENT: readonly Permission[] = [
   'kb.read',
   'kb.write',
   'auth.session.self',
+  'inbound.read',
+  'shift.note.write',
+  'handoff.ack',
 ];
 
 const LEAD: readonly Permission[] = [
@@ -99,6 +121,10 @@ const LEAD: readonly Permission[] = [
   'ceo.view',
   'queue.manage',
   'intent.manage',
+  'view.share',
+  'ai.emergency_switch',
+  'csat.read',
+  'ai.run.read',
 ];
 
 const HEAD: readonly Permission[] = [
@@ -114,6 +140,7 @@ const HEAD: readonly Permission[] = [
   'pii.export',
   'rbac.manage',
   'session.revoke.any',
+  'outbox.manage',
 ];
 
 const CLIENT: readonly Permission[] = [

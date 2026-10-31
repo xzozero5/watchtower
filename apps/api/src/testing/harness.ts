@@ -19,7 +19,7 @@ import { Queue, type Job } from 'bullmq';
 import type { Pool } from 'pg';
 
 import { AppModule, type AppOptions } from '../app.module.js';
-import { configureApp } from '../bootstrap.js';
+import { NEST_APP_OPTIONS, configureApp } from '../bootstrap.js';
 import type { ApiConfig } from '../config/config.js';
 import { createLogger } from '../logging/logger.js';
 import { listenOnFreePort, testConfig, type captureLogs } from './support.js';
@@ -93,7 +93,7 @@ export async function startHarness(options: StartOptions = {}): Promise<Harness>
     builder = builder.overrideProvider(override.token).useValue(override.value);
   }
   const moduleRef = await builder.compile();
-  const app = moduleRef.createNestApplication<NestExpressApplication>();
+  const app = moduleRef.createNestApplication<NestExpressApplication>(NEST_APP_OPTIONS);
   configureApp(app, config, logger);
   const base = await listenOnFreePort(app);
   const emailQueue = new Queue(QUEUE_NAMES.email, {

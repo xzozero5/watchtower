@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+import { assertDisjoint } from './features/compose.js';
+import { FEATURES, FEATURE_AUDIT_ACTIONS } from './features/index.js';
 import { permissionSchema, roleSchema } from './rbac.js';
 
 /**
@@ -229,8 +231,11 @@ export const auditLogPageSchema = z.object({
   nextCursor: z.string().nullable(),
 });
 
-/** Audit action names used by the auth code, so the UI and the tests do not retype strings. */
-export const AUDIT_ACTIONS = {
+/**
+ * Audit action names of the core (Phase 0) features. A Phase 1 feature adds its own in
+ * `features/<feature>.ts`, not here.
+ */
+export const CORE_AUDIT_ACTIONS = {
   piiRead: 'pii.read',
   authzDenied: 'authz.denied',
   csrfRejected: 'auth.csrf_rejected',
@@ -291,3 +296,10 @@ export const AUDIT_ACTIONS = {
   portalRateLimited: 'portal.rate_limited',
   portalAccessDenied: 'portal.access_denied',
 } as const;
+
+/** Audit action names, so the UI and the tests do not retype strings: core plus every feature. */
+export const AUDIT_ACTIONS = { ...CORE_AUDIT_ACTIONS, ...FEATURE_AUDIT_ACTIONS } as const;
+assertDisjoint('AUDIT_ACTIONS', [
+  CORE_AUDIT_ACTIONS,
+  ...FEATURES.map((feature) => feature.auditActions),
+]);

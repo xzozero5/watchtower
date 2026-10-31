@@ -2,7 +2,7 @@ import { Pool } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { migrateDown, migrateUp } from './migrator.js';
-import { createTestDatabase, type TestDatabase } from './testing.js';
+import { createTestDatabase, migrationsAfter, type TestDatabase } from './testing.js';
 
 // Migration 0005 (T-010 security fixes): dev-login provenance, outbox expiry, per-IP break-glass
 // lockout. `app` is the restricted login role the api runs as.
@@ -86,7 +86,11 @@ describe('outbox.expires_at', () => {
 
 describe('reversibility of 0005', () => {
   it('drops its additions going down and restores them going up', async () => {
-    expect(await migrateDown(owner(), { steps: 1 })).toEqual(['0005_security']);
+    const later = await migrationsAfter('0005_security');
+    expect(await migrateDown(owner(), { steps: 1 + later.length })).toEqual([
+      ...later.toReversed(),
+      '0005_security',
+    ]);
     expect(
       await scalar<string | null>(
         owner(),
@@ -100,7 +104,7 @@ describe('reversibility of 0005', () => {
     );
     expect(columns.rowCount).toBe(0);
 
-    expect(await migrateUp(owner())).toEqual(['0005_security']);
+    expect(await migrateUp(owner())).toEqual(['0005_security', ...later]);
     expect(
       await scalar<string>(app, 'SELECT count(*)::text AS value FROM break_glass_attempt'),
     ).toBe('0');
@@ -109,7 +113,11 @@ describe('reversibility of 0005', () => {
 
 describe('migration 0005 on a database that already has pending email rows', () => {
   it('dead-letters plaintext email rows and releases the old account-wide break-glass lock', async () => {
-    expect(await migrateDown(owner(), { steps: 1 })).toEqual(['0005_security']);
+    const later = await migrationsAfter('0005_security');
+    expect(await migrateDown(owner(), { steps: 1 + later.length })).toEqual([
+      ...later.toReversed(),
+      '0005_security',
+    ]);
     await owner().query('TRUNCATE outbox');
     await owner().query(
       `INSERT INTO outbox (queue, job_name, job_id, payload)
@@ -120,7 +128,7 @@ describe('migration 0005 on a database that already has pending email rows', () 
       `INSERT INTO users (email, name, role, is_break_glass, password_hash, failed_login_count, locked_until)
        VALUES ('locked-bg@example.com', 'L', 'head', true, 'not-a-real-hash', 5, now() + interval '1 hour')`,
     );
-    expect(await migrateUp(owner())).toEqual(['0005_security']);
+    expect(await migrateUp(owner())).toEqual(['0005_security', ...later]);
 
     const legacy = await owner().query<{ status: string; payload: unknown }>(
       `SELECT status, payload FROM outbox WHERE job_id = 'legacy-plain'`,

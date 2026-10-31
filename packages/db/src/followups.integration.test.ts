@@ -2,7 +2,7 @@ import { Pool } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { migrateDown, migrateUp } from './migrator.js';
-import { createTestDatabase, type TestDatabase } from './testing.js';
+import { createTestDatabase, migrationsAfter, type TestDatabase } from './testing.js';
 
 // Migration 0003 (T-013): tiers as data, RESTRICT on contact/queue references, the message
 // privileges, the foreign-key-side indexes and the outbox table. `app` is the restricted login
@@ -318,7 +318,9 @@ describe('reversibility of 0003', () => {
       `INSERT INTO outbox (queue, job_name, job_id, payload) VALUES ('email', 'send', 'pending-at-down', '{}'::jsonb)`,
     );
 
-    expect(await migrateDown(owner(), { steps: 3 })).toEqual([
+    const later = await migrationsAfter('0005_security');
+    expect(await migrateDown(owner(), { steps: 3 + later.length })).toEqual([
+      ...later.toReversed(),
       '0005_security',
       '0004_portal',
       '0003_followups_outbox',
@@ -362,6 +364,7 @@ describe('reversibility of 0003', () => {
       '0003_followups_outbox',
       '0004_portal',
       '0005_security',
+      ...later,
     ]);
     expect(await scalar<string>(owner(), 'SELECT count(*)::text AS value FROM org_tier')).toBe('3');
     const orgAgain = await newOrg(owner(), 'After revert', 'gold');

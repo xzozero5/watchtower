@@ -3,6 +3,8 @@ import { z } from 'zod';
 import { channelTypeSchema } from './channels.js';
 import { csvList, cursorSchema, jsonRecordSchema, pageLimit, pageOf } from './common.js';
 import { emailSchema } from './auth.js';
+import { assertDisjoint } from './features/compose.js';
+import { FEATURES, FEATURE_TICKET_EVENTS } from './features/index.js';
 import { ticketPrioritySchema } from './sla.js';
 
 /**
@@ -176,8 +178,8 @@ export const deliveryStatusSchema = z.enum(DELIVERY_STATUSES);
 export const ASSIGNMENT_STRATEGIES = ['manual', 'round_robin'] as const;
 export const assignmentStrategySchema = z.enum(ASSIGNMENT_STRATEGIES);
 
-/** Types written to `ticket_event.type`. */
-export const TICKET_EVENT_TYPES = {
+/** Types written to `ticket_event.type` by the core (Phase 0) features; Phase 1 features add theirs in `features/<feature>.ts`. */
+export const CORE_TICKET_EVENT_TYPES = {
   created: 'ticket.created',
   updated: 'ticket.updated',
   statusChanged: 'ticket.status_changed',
@@ -191,6 +193,13 @@ export const TICKET_EVENT_TYPES = {
   slaResumed: 'sla.resumed',
   slaRecalculated: 'sla.recalculated',
 } as const;
+
+/** Types written to `ticket_event.type`: core plus every feature. */
+export const TICKET_EVENT_TYPES = { ...CORE_TICKET_EVENT_TYPES, ...FEATURE_TICKET_EVENTS } as const;
+assertDisjoint('TICKET_EVENT_TYPES', [
+  CORE_TICKET_EVENT_TYPES,
+  ...FEATURES.map((feature) => feature.ticketEvents),
+]);
 export type TicketEventType = (typeof TICKET_EVENT_TYPES)[keyof typeof TICKET_EVENT_TYPES];
 
 export const ticketOrgRefSchema = z.object({ id: z.uuid(), name: z.string() });

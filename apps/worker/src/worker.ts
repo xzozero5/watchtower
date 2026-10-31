@@ -2,8 +2,7 @@ import { readFileSync } from 'node:fs';
 import type { AddressInfo } from 'node:net';
 
 import { createDatabase, type OutboxPublisher } from '@watchtower/db';
-import { MAINTENANCE_JOBS, parseRedisUrl, QUEUE_NAMES, type QueueName } from '@watchtower/shared';
-import { KEY_LABELS, deriveSubkey } from '@watchtower/shared/secret-box';
+import { parseRedisUrl, QUEUE_NAMES, type QueueName } from '@watchtower/shared';
 import { Queue, Worker, type Processor } from 'bullmq';
 import { z } from 'zod';
 
@@ -16,9 +15,8 @@ import {
   startOutboxRelay,
   type RunningOutboxRelay,
 } from './outbox-relay.js';
-import { createEmailProcessor } from './processors/email.js';
-import { createMaintenanceProcessor } from './processors/maintenance.js';
-import { processSystemJob } from './processors/system.js';
+import { PROCESSORS } from './processors/index.js';
+import { SCHEDULES } from './schedules.js';
 
 export interface RunningWorker {
   /** Port the health server is bound to (useful when configured with port 0). */
@@ -45,12 +43,10 @@ function readVersion(): string {
   return packageJsonSchema.parse(raw).version;
 }
 
-/** Runs partition maintenance at 03:00 UTC every day, and once at start so a fresh install is ready. */
-const PARTITION_SCHEDULE = { pattern: '0 3 * * *', tz: 'UTC' } as const;
-
 /**
- * Starts the queue consumers and the health server. Add a queue by adding its name to
- * QUEUE_NAMES in @watchtower/shared and a Worker here; see docs/04-ARCHITECTURE.md section 2.
+ * Starts the queue consumers and the health server. Add a queue by declaring its name in
+ * `packages/shared/src/features/<feature>.ts` and a line in `processors/index.ts` (a repeating
+ * job: `schedules.ts`); see docs/04-ARCHITECTURE.md section 2.
  */
 export async function startWorker(
   config: WorkerConfig,
@@ -78,10 +74,10 @@ export async function startWorker(
     });
 
   const consumers: Worker[] = [];
-  const consume = (queue: QueueName, processor: Processor): Worker => {
+  const consume = (queue: QueueName, processor: Processor, concurrency?: number): Worker => {
     const worker = new Worker(queue, processor, {
       connection,
-      concurrency: config.WORKER_CONCURRENCY,
+      concurrency: concurrency ?? config.WORKER_CONCURRENCY,
       ...prefixOption,
     });
     worker.on('error', (error) => {
@@ -94,14 +90,13 @@ export async function startWorker(
     return worker;
   };
 
-  consume(QUEUE_NAMES.system, processSystemJob);
-  consume(
-    QUEUE_NAMES.email,
-    createEmailProcessor(mailer, {
-      sealKey: deriveSubkey(config.APP_ENCRYPTION_KEY, KEY_LABELS.outboxSecret),
-    }),
-  );
-  consume(QUEUE_NAMES.maintenance, createMaintenanceProcessor(database));
+  for (const registration of PROCESSORS) {
+    consume(
+      registration.queue,
+      registration.create({ config, logger, database, mailer }),
+      registration.concurrency,
+    );
+  }
   await Promise.all(consumers.map((consumer) => consumer.waitUntilReady()));
 
   // A round trip to Redis for the readiness probe (a Worker only holds blocking connections).
@@ -110,19 +105,30 @@ export async function startWorker(
     logger.error({ err: error }, 'queue probe error');
   });
 
-  const maintenance = new Queue(QUEUE_NAMES.maintenance, { connection, ...prefixOption });
-  maintenance.on('error', (error) => {
-    logger.error({ err: error }, 'maintenance queue error');
-  });
-  await maintenance.upsertJobScheduler(MAINTENANCE_JOBS.ensurePartitions, PARTITION_SCHEDULE, {
-    name: MAINTENANCE_JOBS.ensurePartitions,
-    opts: { removeOnComplete: true, removeOnFail: { age: 7 * 24 * 3600 } },
-  });
-  await maintenance.add(
-    MAINTENANCE_JOBS.ensurePartitions,
-    {},
-    { jobId: `ensure-partitions-boot-${String(Date.now())}`, removeOnComplete: true },
-  );
+  // Repeating jobs (schedules.ts): one producer connection per queue that has any.
+  const schedulers = new Map<QueueName, Queue>();
+  for (const schedule of SCHEDULES) {
+    let scheduler = schedulers.get(schedule.queue);
+    if (scheduler === undefined) {
+      const created = new Queue(schedule.queue, { connection, ...prefixOption });
+      created.on('error', (error) => {
+        logger.error({ err: error, queue: schedule.queue }, 'schedule queue error');
+      });
+      schedulers.set(schedule.queue, created);
+      scheduler = created;
+    }
+    await scheduler.upsertJobScheduler(schedule.id, schedule.repeat, {
+      name: schedule.job.name,
+      ...(schedule.job.data === undefined ? {} : { data: schedule.job.data }),
+      ...(schedule.job.opts === undefined ? {} : { opts: schedule.job.opts }),
+    });
+    if (schedule.runAtBoot === true) {
+      await scheduler.add(schedule.job.name, schedule.job.data ?? {}, {
+        jobId: `${schedule.id}-boot-${String(Date.now())}`,
+        removeOnComplete: true,
+      });
+    }
+  }
 
   // The transactional outbox (ADR-006): rows the api wrote in its own transactions become BullMQ jobs.
   const publisher = createBullmqPublisher(connection, logger, prefixOption);
@@ -164,7 +170,7 @@ export async function startWorker(
       await publisher.close();
       await Promise.all(consumers.map((consumer) => consumer.close()));
       await probe.close();
-      await maintenance.close();
+      await Promise.all([...schedulers.values()].map((scheduler) => scheduler.close()));
       mailer.close();
       await new Promise<void>((resolve) => {
         health.close(() => {

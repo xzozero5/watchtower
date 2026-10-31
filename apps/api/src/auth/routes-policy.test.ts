@@ -8,6 +8,7 @@ import { describe, expect, it } from 'vitest';
 import { AppModule } from '../app.module.js';
 import { DATABASE } from '../database/database.module.js';
 import { createLogger } from '../logging/logger.js';
+import { FEATURE_PUBLIC_ROUTES } from '../public-routes.js';
 import { REDIS } from '../redis/redis.module.js';
 import { testConfig } from '../testing/support.js';
 import { ANY_PERMISSIONS_KEY, PERMISSIONS_KEY, PUBLIC_KEY } from './decorators.js';
@@ -112,6 +113,8 @@ const EXPECTED_PUBLIC_ROUTES = [
   'GET /v1/portal/tickets/:key',
   'POST /v1/portal/tickets/:key/replies',
   'POST /v1/portal/track/resend',
+  // Phase 1 feature modules list theirs in their own public-routes.ts (T-123a).
+  ...FEATURE_PUBLIC_ROUTES,
 ].sort();
 
 describe('every route states who may call it', () => {

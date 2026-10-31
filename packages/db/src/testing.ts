@@ -4,7 +4,7 @@ import { Pool } from 'pg';
 
 import { provisionAppRole } from './app-role.js';
 import { createDatabase, type Database } from './client.js';
-import { migrateUp } from './migrator.js';
+import { loadMigrations, migrateUp } from './migrator.js';
 
 /**
  * Test support, imported as `@watchtower/db/testing`. Gives an integration test its own throwaway
@@ -41,6 +41,18 @@ async function waitForNoSessions(admin: Pool, database: string, timeoutMs = 3000
     if ((rows[0]?.n ?? 0) === 0) return;
     await new Promise((resolve) => setTimeout(resolve, 50));
   }
+}
+
+/**
+ * Ids of the migrations that sort after `id`, oldest first. A reversibility test reverts down to
+ * the migration it is about and has to revert the newer ones first; asking for them here (instead
+ * of listing them) means a migration added later does not break the test (T-123a).
+ */
+export async function migrationsAfter(id: string): Promise<string[]> {
+  const ids = (await loadMigrations()).map((migration) => migration.id);
+  const index = ids.indexOf(id);
+  if (index === -1) throw new Error(`unknown migration ${id}`);
+  return ids.slice(index + 1);
 }
 
 /**
