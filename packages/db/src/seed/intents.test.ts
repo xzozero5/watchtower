@@ -70,8 +70,11 @@ describe('examples/intents', () => {
   it('names no business domain of a particular deployment (the repository is public and neutral)', async () => {
     const definitions = await loadIntentDefinitions(DEFAULT_INTENT_EXAMPLES_DIR);
     const text = JSON.stringify(definitions).toLowerCase();
-    for (const forbidden of ['.co.th', 'liveness', 'ekyc']) {
-      expect(text).not.toContain(forbidden);
+    // Any domain-looking name must be a reserved example domain (RFC 2606). The list of words a
+    // particular deployment must never commit stays local (`.git/info/forbidden-terms`, pre-commit).
+    const domains = text.match(/[a-z0-9-]+(?:\.[a-z0-9-]+)*\.[a-z]{2,}(?=[^a-z0-9.]|$)/g) ?? [];
+    for (const domain of domains) {
+      expect(domain).toMatch(/(^|\.)example\.(com|org|net)$|\.(test|example|invalid)$/);
     }
   });
 });
