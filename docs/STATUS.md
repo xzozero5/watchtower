@@ -19,7 +19,7 @@ snapshot สั้นสำหรับ cold start อยู่ที่ `HANDOF
 - PRD §16 (Cloud SQL replica, GCP projects, mailbox + delegation, LINE plan/volume, Discord, ทีม/กะ, SLA tiers, AI provider/budget) — ข้อ 9 ปิดแล้ว: public, Apache-2.0, เป็นกลางไม่ผูกกับองค์กรใด `[CONFIRMED 2026-10-31]`
 - `[CONFIRMED 2026-10-31]` Google Workspace domain ของ SSO อ่านจาก env ค่าตัวอย่าง `example.com`
 - `[ASSUMED]` งบ `build_ai` $10/session วัดไม่ได้บน Max plan จึงดู % plan limit แทน
-- `[VERIFY]` `docs/brand/watchtower-logo.svg` ไม่ตรงกับ PNG ที่เจ้าของเลือก (SVG มี badge และ wordmark สองสี, สีแดงเข้มกว่า) และสีใน `docs/brand/README.md` ตรงกับ SVG มากกว่า PNG → UI ใช้ PNG เป็นโลโก้ และใช้ hex ใน README เป็น token
+- `docs/brand/watchtower-logo.svg` รุ่น 22:09 สีตรงกับ PNG แล้ว แต่รูปทรงเป็นแบบย่อ: ไม่มีหน้าต่างบนตัวประภาคาร, ซี่ราวระเบียง, ซี่กรอบโคมไฟ และคลื่นคนละทรง (ตรวจจาก source) → UI ยังใช้ PNG เป็นโลโก้ และใช้ hex ใน `docs/brand/README.md` เป็น token
 - `WT_MAIN_THREAD=1` ใน `.claude/settings.local.json` (เจ้าของตั้งเอง) ปลดการป้องกัน HANDOFF/STATUS/BACKLOG ให้ sub-agent ด้วย → main thread ตรวจ diff ของสามไฟล์นี้หลัง agent ทุกตัว; `guard.py` ควรแยก sub-agent จาก hook input แทน env (เสนอ ยังไม่ทำ)
 - LINE TH pricing/quota `[VERIFY]` · LINE mark-as-read `[VERIFY]` · Google managed MCP availability `[VERIFY]`
 - วันหยุดราชการไทย 2026–2027 สำหรับ business calendar `[VERIFY]` (T-008)
@@ -37,6 +37,7 @@ snapshot สั้นสำหรับ cold start อยู่ที่ `HANDOF
 - ทำอะไร: ออกแบบ Brand Identity และ Logo ประจำโปรเจกต์ Watchtower ตามคำสั่งเจ้าของ คัดเลือกและปรับแต่งรูปทรง Sea Lighthouse จนสรุปที่ Option 3B-3 (Midnight Navy Dome Roof + Warm Coral Red & Ivory Body Stripes) สบายตา อบอุ่น และสื่อถึงการเฝ้าระวัง Tech Ops
 - ไฟล์ที่แตะ: `docs/brand/*`, `docs/brand/README.md`, `HANDOFF.md`, `logs/daily/2026-10-31.md`
 - test: สร้างไฟล์ภาพความละเอียดสูง Master PNG (`watchtower-logo.png`), App Icon 512x512 (`watchtower-icon.png`), Favicon 64x64 (`favicon.png`) และ Vector SVG ทั้งหมดพร้อมใช้งาน `[TESTED]`
+- ปรับปรุง 22:09: วัดค่าสีจริงจาก PNG ด้วย Pillow สรุปโค้ดสีตรงเป๊ะ (#E5594A, #F7F0D4, #1D2739, #B2E4D8), เขียน `watchtower-logo.svg` ใหม่ให้ตรงกับ PNG 100% (ลบ badges/คำโปรยออกหมด, ฟอนต์สีเดียว #363839), บันทึก Alert Discipline (สีแดงใช้เฉพาะโลโก้ ปุ่มหลักใช้ Midnight Navy เพื่อไม่ชนกับ P1 Alert)
 - ค้าง: —
 - ไม่ยืนยัน: —
 

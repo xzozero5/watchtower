@@ -1,99 +1,102 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 280" width="100%" height="100%">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="100%" height="100%">
   <defs>
-    <!-- Background Gradient (Soft warm off-white) -->
-    <linearGradient id="bgCanvas" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#FCFAF6" />
-      <stop offset="100%" stop-color="#F6F2EA" />
+    <!-- Background Canvas (Sampled: #F7F7ED) -->
+    <rect id="bg" width="1024" height="1024" fill="#F7F7ED" />
+
+    <!-- Warm Golden Light Beam (Sampled: #FFFAE6) -->
+    <linearGradient id="warmLightBeam" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#FFFAE6" stop-opacity="0.9" />
+      <stop offset="50%" stop-color="#FDE8B3" stop-opacity="0.45" />
+      <stop offset="100%" stop-color="#FDE8B3" stop-opacity="0" />
     </linearGradient>
 
-    <!-- Warm Golden Light Beam -->
-    <linearGradient id="goldenBeam" x1="0%" y1="0%" x2="100%" y2="0%">
-      <stop offset="0%" stop-color="#FEF08A" stop-opacity="0.85" />
-      <stop offset="60%" stop-color="#FDE047" stop-opacity="0.35" />
-      <stop offset="100%" stop-color="#FDE047" stop-opacity="0" />
+    <!-- Coral Red Shading (Sampled: #E5594A to #F67963) -->
+    <linearGradient id="coralRedGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#E5594A" />
+      <stop offset="60%" stop-color="#F67963" />
+      <stop offset="100%" stop-color="#E5594A" />
     </linearGradient>
 
-    <!-- Sea Wave Gradients -->
-    <linearGradient id="oceanWave1" x1="0%" y1="0%" x2="100%" y2="0%">
-      <stop offset="0%" stop-color="#0284C7" />
-      <stop offset="100%" stop-color="#0369A1" />
+    <!-- Warm Ivory Shading (Sampled: #F7F0D4) -->
+    <linearGradient id="ivoryGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#F4EBC8" />
+      <stop offset="50%" stop-color="#FDFBF0" />
+      <stop offset="100%" stop-color="#F4EBC8" />
     </linearGradient>
 
-    <linearGradient id="oceanWave2" x1="0%" y1="0%" x2="100%" y2="0%">
-      <stop offset="0%" stop-color="#38BDF8" />
-      <stop offset="100%" stop-color="#7DD3FC" />
+    <!-- Midnight Slate Navy Dome (Sampled: #1D2739 to #0F172A) -->
+    <linearGradient id="midnightDomeGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#0F172A" />
+      <stop offset="40%" stop-color="#1D2739" />
+      <stop offset="100%" stop-color="#0B0F19" />
+    </linearGradient>
+
+    <!-- Seafoam Waves (Sampled: #B2E4D8 and #80CFC0) -->
+    <linearGradient id="seaWaveGrad1" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#76C4B4" />
+      <stop offset="50%" stop-color="#B2E4D8" />
+      <stop offset="100%" stop-color="#76C4B4" />
+    </linearGradient>
+    <linearGradient id="seaWaveGrad2" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#8AD5C6" />
+      <stop offset="50%" stop-color="#C2EFE5" />
+      <stop offset="100%" stop-color="#8AD5C6" />
     </linearGradient>
   </defs>
 
-  <!-- Background Canvas -->
-  <rect width="800" height="280" rx="20" fill="url(#bgCanvas)" />
+  <!-- Background -->
+  <use href="#bg" />
 
-  <!-- LOGO ICON (Watchtower Sea Lighthouse: Near-black Navy Dome & Coral Red Stripes) -->
-  <g id="lighthouse-icon" transform="translate(60, 20)">
-    <!-- Diagonal Warm Golden Light Beam -->
-    <polygon points="145,100 285,55 285,125 145,112" fill="url(#goldenBeam)" />
+  <!-- ========================================== -->
+  <!-- LIGHTHOUSE MARK (Centered horizontally at x=512) -->
+  <!-- ========================================== -->
+  <g id="lighthouse-mark">
+    <!-- Golden Light Beam -->
+    <polygon points="536,290 850,200 850,370 536,315" fill="url(#warmLightBeam)" />
 
-    <!-- Tapered Lighthouse Body (Alternating Coral Red and Ivory Stripes) -->
-    <!-- Base Stripe 1 (Coral Red) -->
-    <polygon points="107,188 163,188 159,164 111,164" fill="#E11D48" />
-    <!-- Stripe 2 (Ivory White) -->
-    <polygon points="111,164 159,164 155,138 115,138" fill="#FFFFFF" />
-    <!-- Stripe 3 (Coral Red) -->
-    <polygon points="115,138 155,138 151,118 119,118" fill="#E11D48" />
-    <!-- Stripe 4 (Ivory White collar) -->
-    <polygon points="119,118 151,118 149,108 121,108" fill="#FFFFFF" />
+    <!-- Tapered Tower Body -->
+    <!-- Stripe 1 (Base - Coral Red) -->
+    <polygon points="428,580 596,580 584,500 440,500" fill="url(#coralRedGrad)" />
+    <!-- Stripe 2 (Ivory Cream) -->
+    <polygon points="440,500 584,500 572,425 452,425" fill="url(#ivoryGrad)" />
+    <!-- Stripe 3 (Upper - Coral Red) -->
+    <polygon points="452,425 572,425 560,355 464,355" fill="url(#coralRedGrad)" />
+    <!-- Stripe 4 (Top Collar - Ivory Cream) -->
+    <polygon points="464,355 560,355 554,320 470,320" fill="url(#ivoryGrad)" />
 
-    <!-- Near-Black Navy Door at Base -->
-    <path d="M 128,188 L 128,172 Q 135,166 142,172 L 142,188 Z" fill="#0B0F19" />
+    <!-- Charcoal Door at Base -->
+    <path d="M 494,580 L 494,525 Q 512,508 530,525 L 530,580 Z" fill="#2B303A" />
 
-    <!-- Balcony Railing (Near-Black Midnight Navy Platform) -->
-    <rect x="113" y="103" width="44" height="6" rx="2" fill="#0B0F19" />
+    <!-- Balcony Railing Deck (Midnight Navy) -->
+    <rect x="450" y="306" width="124" height="15" rx="4" fill="#0F172A" />
 
-    <!-- Lantern Chamber (Warm Golden Glow) -->
-    <rect x="121" y="85" width="28" height="18" rx="2" fill="#FEF08A" stroke="#F59E0B" stroke-width="1.5" />
-    <!-- Glowing lantern core -->
-    <circle cx="135" cy="94" r="5" fill="#F59E0B" />
-    <circle cx="135" cy="94" r="2.5" fill="#FFFFFF" />
+    <!-- Lantern Room (Warm Golden Glow) -->
+    <rect x="472" y="260" width="80" height="48" rx="4" fill="#FFFAE6" stroke="#E5B55E" stroke-width="2.5" />
+    <circle cx="512" cy="284" r="14" fill="#F59E0B" />
+    <circle cx="512" cy="284" r="7" fill="#FFFFFF" />
 
-    <!-- ROUNDED DOME ROOF: NEAR-BLACK DEEP NAVY / MIDNIGHT SLATE (#0B0F19) -->
-    <path d="M 117,85 Q 135,49 153,85 Z" fill="#0B0F19" />
-    <!-- Finial Ball on Dome Top -->
-    <circle cx="135" cy="51" r="3.5" fill="#0B0F19" />
+    <!-- Midnight Slate Dome Roof (#1D2739 / #0F172A) -->
+    <path d="M 462,260 Q 512,176 562,260 Z" fill="url(#midnightDomeGrad)" />
+    <circle cx="512" cy="180" r="9" fill="#0F172A" />
 
-    <!-- Minimal Sea Waves (2 smooth rhythmic curves) -->
-    <!-- Wave 1 (Deep Ocean Blue) -->
-    <path d="M 65,194 Q 90,186 115,195 Q 140,186 165,195 Q 190,187 205,194 L 205,202 L 65,202 Z" fill="url(#oceanWave1)" />
-    <!-- Wave 2 (Cyan Seafoam) -->
-    <path d="M 80,200 Q 105,192 135,201 Q 165,192 190,200 L 190,208 L 80,208 Z" fill="url(#oceanWave2)" />
+    <!-- Sea Waves at Base (Soft Pastel Seafoam #B2E4D8) -->
+    <!-- Wave Layer 1 -->
+    <path d="M 310,595 Q 380,572 450,596 Q 520,572 590,596 Q 660,574 714,595 L 714,618 L 310,618 Z" fill="url(#seaWaveGrad1)" />
+    <!-- Wave Layer 2 -->
+    <path d="M 345,612 Q 415,590 495,614 Q 575,590 650,612 Q 675,603 695,612 L 695,630 L 345,630 Z" fill="url(#seaWaveGrad2)" />
   </g>
 
-  <!-- TYPOGRAPHY / WORDMARK -->
-  <g id="wordmark" transform="translate(365, 95)">
-    <!-- Title -->
-    <text x="0" y="44" fill="#0B0F19" font-family="-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, sans-serif" font-size="52" font-weight="900" letter-spacing="1.5">
-      Watch<tspan fill="#E11D48">tower</tspan>
-    </text>
-
-    <!-- Subtitle -->
-    <text x="3" y="78" fill="#64748B" font-family="-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, sans-serif" font-size="14.5" font-weight="600" letter-spacing="3.5">
-      TECH OPS AI COMMAND CENTER
-    </text>
-
-    <!-- Badges -->
-    <g transform="translate(3, 98)">
-      <rect width="138" height="24" rx="12" fill="#FEE2E2" stroke="#FECACA" stroke-width="1" />
-      <circle cx="12" cy="12" r="3.5" fill="#E11D48" />
-      <text x="22" y="16.5" fill="#BE123C" font-family="sans-serif" font-size="10.5" font-weight="700" letter-spacing="1">
-        SAFE HARBOR OPS
-      </text>
-    </g>
-
-    <g transform="translate(152, 98)">
-      <rect width="132" height="24" rx="12" fill="#E0F2FE" stroke="#BAE6FD" stroke-width="1" />
-      <circle cx="12" cy="12" r="3.5" fill="#0284C7" />
-      <text x="22" y="16.5" fill="#0369A1" font-family="sans-serif" font-size="10.5" font-weight="700" letter-spacing="1">
-        PEACE OF MIND AI
-      </text>
-    </g>
+  <!-- ========================================== -->
+  <!-- WORDMARK: Exact single line "Watchtower" -->
+  <!-- Uniform Charcoal Color (#363839) - NO Badges, NO Subtitle -->
+  <!-- ========================================== -->
+  <g id="wordmark">
+    <text x="512" y="828" 
+          text-anchor="middle" 
+          fill="#363839" 
+          font-family="-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, sans-serif" 
+          font-size="82" 
+          font-weight="700" 
+          letter-spacing="1">Watchtower</text>
   </g>
 </svg>

@@ -1,42 +1,68 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="100%" height="100%">
   <defs>
-    <linearGradient id="iconBg" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#FCFAF6" />
-      <stop offset="100%" stop-color="#F1ECE4" />
+    <!-- Background (Sampled: #F7F7ED) -->
+    <rect id="iconBgRect" width="128" height="128" rx="28" fill="#F7F7ED" stroke="#E5DEC9" stroke-width="2" />
+
+    <!-- Light beam -->
+    <linearGradient id="iconBeamGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#FFFAE6" stop-opacity="0.95" />
+      <stop offset="100%" stop-color="#FDE8B3" stop-opacity="0" />
     </linearGradient>
-    <linearGradient id="iconBeam" x1="0%" y1="0%" x2="100%" y2="0%">
-      <stop offset="0%" stop-color="#FEF08A" stop-opacity="0.9" />
-      <stop offset="100%" stop-color="#FDE047" stop-opacity="0" />
+
+    <!-- Coral Red (Sampled: #E5594A) -->
+    <linearGradient id="iconCoralGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#E5594A" />
+      <stop offset="60%" stop-color="#F67963" />
+      <stop offset="100%" stop-color="#E5594A" />
+    </linearGradient>
+
+    <!-- Ivory (Sampled: #F7F0D4) -->
+    <linearGradient id="iconIvoryGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#F4EBC8" />
+      <stop offset="100%" stop-color="#FDFBF0" />
+    </linearGradient>
+
+    <!-- Midnight Dome (Sampled: #1D2739) -->
+    <linearGradient id="iconDomeGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#0F172A" />
+      <stop offset="50%" stop-color="#1D2739" />
+      <stop offset="100%" stop-color="#0B0F19" />
+    </linearGradient>
+
+    <!-- Sea Waves (Sampled: #B2E4D8) -->
+    <linearGradient id="iconWaveGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#76C4B4" />
+      <stop offset="50%" stop-color="#B2E4D8" />
+      <stop offset="100%" stop-color="#76C4B4" />
     </linearGradient>
   </defs>
 
-  <!-- Squircle App Icon Container -->
-  <rect width="128" height="128" rx="28" fill="url(#iconBg)" stroke="#E2E8F0" stroke-width="2" />
+  <use href="#iconBgRect" />
 
-  <!-- Diagonal Golden Light Beam -->
-  <polygon points="69,49 122,25 122,65 69,56" fill="url(#iconBeam)" />
+  <!-- Diagonal Light Beam -->
+  <polygon points="69,46 120,24 120,62 69,53" fill="url(#iconBeamGrad)" />
 
-  <!-- Lighthouse Body (Coral Red & Ivory Stripes) -->
-  <polygon points="50,96 78,96 76,82 52,82" fill="#E11D48" />
-  <polygon points="52,82 76,82 74,68 54,68" fill="#FFFFFF" />
-  <polygon points="54,68 74,68 72,57 56,57" fill="#E11D48" />
-  <polygon points="56,57 72,57 71,52 57,52" fill="#FFFFFF" />
+  <!-- Lighthouse Body (Coral Red & Warm Ivory Stripes) -->
+  <polygon points="50,96 78,96 76,82 52,82" fill="url(#iconCoralGrad)" />
+  <polygon points="52,82 76,82 74,68 54,68" fill="url(#iconIvoryGrad)" />
+  <polygon points="54,68 74,68 72,57 56,57" fill="url(#iconCoralGrad)" />
+  <polygon points="56,57 72,57 71,52 57,52" fill="url(#iconIvoryGrad)" />
 
-  <!-- Door in Near-Black Navy -->
-  <path d="M 60,96 L 60,88 Q 64,84 68,88 L 68,96 Z" fill="#0B0F19" />
+  <!-- Door in Charcoal -->
+  <path d="M 60,96 L 60,88 Q 64,84 68,88 L 68,96 Z" fill="#2B303A" />
 
-  <!-- Balcony in Near-Black Navy -->
-  <rect x="53" y="49" width="22" height="3.5" rx="1.5" fill="#0B0F19" />
+  <!-- Balcony Platform in Midnight Navy -->
+  <rect x="53" y="49" width="22" height="3.5" rx="1.5" fill="#0F172A" />
 
   <!-- Lantern Room -->
-  <rect x="57" y="40" width="14" height="9" rx="1.5" fill="#FEF08A" stroke="#F59E0B" stroke-width="1" />
+  <rect x="57" y="40" width="14" height="9" rx="1.5" fill="#FFFAE6" stroke="#E5B55E" stroke-width="1" />
   <circle cx="64" cy="44.5" r="2.5" fill="#F59E0B" />
 
-  <!-- Rounded Dome Roof in Near-Black Midnight Navy (#0B0F19) -->
-  <path d="M 55,40 Q 64,22 73,40 Z" fill="#0B0F19" />
-  <circle cx="64" cy="23" r="2" fill="#0B0F19" />
+  <!-- Rounded Dome Roof in Midnight Navy -->
+  <path d="M 55,40 Q 64,22 73,40 Z" fill="url(#iconDomeGrad)" />
+  <circle cx="64" cy="23" r="2" fill="#0F172A" />
 
-  <!-- Sea Waves -->
-  <path d="M 28,100 Q 42,95 56,101 Q 70,95 84,101 Q 98,96 106,100 L 106,105 L 28,105 Z" fill="#0284C7" />
-  <path d="M 36,104 Q 50,99 68,105 Q 86,99 100,104 L 100,108 L 36,108 Z" fill="#38BDF8" />
+  <!-- Sea Waves in Soft Seafoam Cyan -->
+  <path d="M 28,100 Q 42,94 56,101 Q 70,94 84,101 Q 98,95 106,100 L 106,105 L 28,105 Z" fill="url(#iconWaveGrad)" />
+  <path d="M 36,104 Q 50,98 68,105 Q 86,98 100,103 L 100,108 L 36,108 Z" fill="#8AD5C6" />
 </svg>
