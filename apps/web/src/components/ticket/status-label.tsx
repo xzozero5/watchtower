@@ -1,42 +1,54 @@
 import type { TicketStatus } from '@watchtower/shared';
-import { cn } from '@watchtower/ui';
-import {
-  Archive,
-  Circle,
-  CircleCheck,
-  CircleDot,
-  Code,
-  GitMerge,
-  Hourglass,
-  ListChecks,
-  type LucideIcon,
-} from 'lucide-react';
+import { cn, type DotTone, Pill, StatusDot } from '@watchtower/ui';
 
 import { useT } from '@/i18n/provider';
 import { statusKey } from '@/lib/tickets/status-key';
 
-const ICONS: Record<TicketStatus, LucideIcon> = {
-  new: Circle,
-  triage: ListChecks,
-  open: CircleDot,
-  waiting_on_customer: Hourglass,
-  waiting_on_dev: Code,
-  resolved: CircleCheck,
-  closed: Archive,
-  merged: GitMerge,
+/**
+ * The dot says "where in the life of the ticket" (working, waiting, finished); the words say which
+ * status exactly. The dot is never the only signal.
+ */
+export const STATUS_TONE: Record<TicketStatus, DotTone> = {
+  new: 'info',
+  triage: 'outline',
+  open: 'info',
+  waiting_on_customer: 'outline',
+  waiting_on_dev: 'outline',
+  resolved: 'success',
+  closed: 'muted',
+  merged: 'muted',
 };
 
-/** A ticket status as icon + words. Never colour alone. */
-export function StatusLabel({ status, className }: { status: TicketStatus; className?: string }) {
+/** A ticket status as a coloured dot and words. `pill` wraps it in a neutral 20px pill. */
+export function StatusLabel({
+  status,
+  pill = false,
+  className,
+}: {
+  status: TicketStatus;
+  pill?: boolean;
+  className?: string;
+}) {
   const t = useT();
-  const Icon = ICONS[status];
+  const content = (
+    <>
+      <StatusDot tone={STATUS_TONE[status]} />
+      <span className="truncate">{t(statusKey(status))}</span>
+    </>
+  );
+  if (pill) {
+    return (
+      <Pill data-status={status} className={className}>
+        {content}
+      </Pill>
+    );
+  }
   return (
     <span
       data-status={status}
-      className={cn('inline-flex items-center gap-1 text-xs font-medium', className)}
+      className={cn('inline-flex min-w-0 items-center gap-1.5 text-xs font-medium', className)}
     >
-      <Icon aria-hidden className="size-3.5 shrink-0" />
-      <span>{t(statusKey(status))}</span>
+      {content}
     </span>
   );
 }

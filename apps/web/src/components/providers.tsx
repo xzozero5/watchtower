@@ -1,10 +1,11 @@
 'use client';
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { Toaster, TooltipProvider } from '@watchtower/ui';
 import { type ReactNode, useState } from 'react';
 
 import { RegisterServiceWorker } from '@/components/register-service-worker';
-import { I18nProvider } from '@/i18n/provider';
+import { I18nProvider, useT } from '@/i18n/provider';
 import type { Locale } from '@/i18n';
 import type { Messages } from '@/i18n/messages/en';
 import { ApiProvider } from '@/lib/api/api-context';
@@ -27,6 +28,12 @@ export function makeQueryClient(): QueryClient {
   });
 }
 
+/** The toast region, named in the UI language. */
+function ToastHost() {
+  const t = useT();
+  return <Toaster regionLabel={t('toast.region')} />;
+}
+
 export function Providers({
   locale,
   messages,
@@ -46,7 +53,8 @@ export function Providers({
         <QueryClientProvider client={queryClient}>
           <ApiProvider baseUrl={config.apiUrl}>
             <SessionProvider>
-              {children}
+              <TooltipProvider>{children}</TooltipProvider>
+              <ToastHost />
               <RegisterServiceWorker />
             </SessionProvider>
           </ApiProvider>

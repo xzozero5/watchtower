@@ -1,24 +1,33 @@
 'use client';
 
-import { TICKET_PRIORITIES, type TicketPriority, type TicketStatus } from '@watchtower/shared';
-import { Alert, Button, Input, Select } from '@watchtower/ui';
-import { ChevronDown, ChevronRight, Plus, X } from 'lucide-react';
-import { type SyntheticEvent, type ReactNode, useId, useMemo, useRef, useState } from 'react';
+import {
+  TICKET_PRIORITIES,
+  type TicketPriority,
+  type TicketStatus,
+  type TicketSummary,
+} from '@watchtower/shared';
+import { Alert, Avatar, Combobox, type ComboboxOption, Pill, SeverityBadge } from '@watchtower/ui';
+import { type ReactNode, useEffect, useId, useMemo, useRef } from 'react';
 
 import { useI18n } from '@/i18n/provider';
 import type { MessageKey } from '@/i18n';
 import { isApiError } from '@/lib/api/errors';
 import { formatDateTime } from '@/lib/format';
 import { useSession } from '@/lib/auth/session';
-import { useShortcut } from '@/lib/keyboard';
 import { isStaffTicket, isDetail, severityOf, type TicketItem } from '@/lib/tickets/model';
 import { useIntents, useQueues, useTicketMutations, useWorkflow } from '@/lib/tickets/queries';
 import { statusKey } from '@/lib/tickets/status-key';
 import { allowedNextStatuses } from '@/lib/tickets/templates';
 
+import { ChannelIcon } from './channel-icon';
 import { StatusLabel } from './status-label';
+import { useOptimisticEdit } from './use-optimistic-edit';
+
+/** The id of the status field, so the S shortcut can move focus to it. */
+export const STATUS_FIELD_ID = 'ticket-field-status';
 
 const UNASSIGNED = '';
+const NO_INTENT = '';
 
 function saveErrorKey(error: unknown): MessageKey {
   if (isApiError(error)) {
@@ -30,19 +39,25 @@ function saveErrorKey(error: unknown): MessageKey {
   return 'details.errors.generic';
 }
 
-function Field({ label, children }: { label: string; children: ReactNode }) {
+/** One label and its value. The value is plain text or an inline field that looks like text. */
+export function Row({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <div className="flex min-w-0 flex-col gap-1">
-      <dt className="text-xs font-medium text-muted-foreground">{label}</dt>
-      <dd className="min-w-0 text-sm">{children}</dd>
+    <div className="grid min-h-row grid-cols-[6.5rem_minmax(0,1fr)] items-start gap-2 px-4">
+      <dt className="pt-[7px] text-xs font-medium text-muted-foreground">{label}</dt>
+      <dd className="min-w-0 py-[3px] text-sm">{children}</dd>
     </div>
   );
 }
 
+const Empty = ({ children }: { children: ReactNode }) => (
+  <span className="text-muted-foreground">{children}</span>
+);
+
 /**
- * Status, priority, assignee, intent and tags of the open ticket. Anyone who can handle tickets
- * edits them in place (each change is saved at once and the result replaces the ticket
- * everywhere); everyone else, a customer included, sees the same facts read-only.
+ * Status, priority, assignee, intent and tags of the open ticket, as label and value rows. Anyone
+ * who can handle tickets edits a value in place (it looks like text until hovered, then opens a
+ * searchable list); everyone else, a customer included, sees the same facts read-only. A change is
+ * shown at once and saved in the background; a toast offers Undo.
  */
 export function TicketDetails({ ticket }: { ticket: TicketItem }) {
   const { t, locale } = useI18n();
@@ -50,31 +65,18 @@ export function TicketDetails({ ticket }: { ticket: TicketItem }) {
   const ids = useId();
   const canEdit = can('ticket.handle');
   const staff = isStaffTicket(ticket);
-  const [open, setOpen] = useState(true);
-  const [saved, setSaved] = useState(false);
-  const [tagDraft, setTagDraft] = useState('');
-  const statusRef = useRef<HTMLSelectElement>(null);
 
   const mutations = useTicketMutations(ticket.key);
   const intents = useIntents(canEdit);
   const queues = useQueues(canEdit);
   const workflow = useWorkflow(canEdit);
+  const edit = useOptimisticEdit(ticket);
 
   const failure = [mutations.changeStatus, mutations.assign, mutations.update].find(
     (mutation) => mutation.isError,
   );
   const busy =
     mutations.changeStatus.isPending || mutations.assign.isPending || mutations.update.isPending;
-
-  useShortcut(
-    's',
-    () => {
-      setOpen(true);
-      // Wait for the section to render before moving focus into it.
-      setTimeout(() => statusRef.current?.focus(), 0);
-    },
-    canEdit,
-  );
 
   const assignees = useMemo(() => {
     const byId = new Map<string, string>();
@@ -90,287 +92,388 @@ export function TicketDetails({ ticket }: { ticket: TicketItem }) {
     (intent) => !('isActive' in intent) || intent.isActive,
   );
 
-  const after = {
-    onSuccess: () => {
-      setSaved(true);
-    },
-  };
-  const changeStatus = (status: string) => {
+  const summary: TicketSummary | null = staff ? ticket : null;
+  const label = (value: TicketPriority) => `${value} ${t(`severity.${severityOf(value)}`)}`;
+
+  // ---- status ----
+  const changeStatus = (status: string, silent = false) => {
     const next = allowedNextStatuses(workflow.data, ticket.status).find(
       (value) => value === status,
     );
     if (!next) return;
-    setSaved(false);
-    mutations.changeStatus.mutate({ status: next }, after);
+    const previous = ticket.status;
+    // Going back is only offered when the workflow allows the move from the new status.
+    const canGoBack = allowedNextStatuses(workflow.data, next).includes(previous);
+    edit.run({
+      optimistic: { ...ticket, status: next },
+      message: silent
+        ? t('details.undone')
+        : t('details.changed.status', { value: t(statusKey(next)) }),
+      undo:
+        silent || !canGoBack
+          ? undefined
+          : () => {
+              latest.current.changeStatus(previous, true);
+            },
+      send: (callbacks) => {
+        mutations.changeStatus.mutate({ status: next }, callbacks);
+      },
+    });
   };
-  const changePriority = (value: string) => {
+
+  // ---- priority ----
+  const changePriority = (value: string, silent = false) => {
     const priority = TICKET_PRIORITIES.find((entry) => entry === value);
     if (!priority || priority === ticket.priority) return;
-    setSaved(false);
-    mutations.update.mutate({ priority }, after);
-  };
-  const changeAssignee = (value: string) => {
-    setSaved(false);
-    mutations.assign.mutate({ assigneeId: value === UNASSIGNED ? null : value }, after);
-  };
-  const changeIntent = (value: string) => {
-    setSaved(false);
-    mutations.update.mutate({ intentId: value === '' ? null : value }, after);
-  };
-  const setTags = (tags: string[]) => {
-    setSaved(false);
-    mutations.update.mutate({ tags }, after);
-  };
-  const addTag = (event: SyntheticEvent) => {
-    event.preventDefault();
-    const tag = tagDraft.trim();
-    if (!staff || tag === '' || ticket.tags.includes(tag)) {
-      setTagDraft('');
-      return;
-    }
-    setTags([...ticket.tags, tag]);
-    setTagDraft('');
+    const previous = ticket.priority;
+    edit.run({
+      optimistic: { ...ticket, priority },
+      message: silent
+        ? t('details.undone')
+        : t('details.changed.priority', { value: label(priority) }),
+      undo: silent
+        ? undefined
+        : () => {
+            latest.current.changePriority(previous, true);
+          },
+      send: (callbacks) => {
+        mutations.update.mutate({ priority }, callbacks);
+      },
+    });
   };
 
-  const statusOptions: TicketStatus[] = [
+  // ---- assignee ----
+  const changeAssignee = (value: string, silent = false) => {
+    if (!summary) return;
+    const person = assignees.find((entry) => entry.id === value);
+    const assigneeId = value === UNASSIGNED ? null : value;
+    if (assigneeId === (summary.assignee?.id ?? null)) return;
+    const previous = summary.assignee?.id ?? UNASSIGNED;
+    edit.run({
+      optimistic: {
+        ...ticket,
+        assignee: assigneeId && person ? { id: assigneeId, name: person.name } : null,
+      },
+      message: silent
+        ? t('details.undone')
+        : person
+          ? t('details.changed.assignee', { value: person.name })
+          : t('details.changed.unassigned'),
+      undo: silent
+        ? undefined
+        : () => {
+            latest.current.changeAssignee(previous, true);
+          },
+      send: (callbacks) => {
+        mutations.assign.mutate({ assigneeId }, callbacks);
+      },
+    });
+  };
+
+  // ---- intent ----
+  const changeIntent = (value: string, silent = false) => {
+    if (!summary || value === (summary.intent?.id ?? NO_INTENT)) return;
+    const picked = activeIntents.find((entry) => entry.id === value);
+    const previous = summary.intent?.id ?? NO_INTENT;
+    edit.run({
+      optimistic: {
+        ...summary,
+        intent: picked ? { id: picked.id, key: picked.key, name: picked.name } : null,
+      },
+      message: silent
+        ? t('details.undone')
+        : t('details.changed.intent', { value: picked?.name ?? t('details.noIntent') }),
+      undo: silent
+        ? undefined
+        : () => {
+            latest.current.changeIntent(previous, true);
+          },
+      send: (callbacks) => {
+        mutations.update.mutate({ intentId: value === NO_INTENT ? null : value }, callbacks);
+      },
+    });
+  };
+
+  // ---- tags ----
+  const setTags = (tags: string[], silent = false) => {
+    if (!summary) return;
+    const previous = summary.tags;
+    edit.run({
+      optimistic: { ...ticket, tags },
+      message: silent ? t('details.undone') : t('details.changed.tags'),
+      undo: silent
+        ? undefined
+        : () => {
+            latest.current.setTags(previous, true);
+          },
+      send: (callbacks) => {
+        mutations.update.mutate({ tags }, callbacks);
+      },
+    });
+  };
+
+  // Undo runs later, after the ticket changed, so it must call the newest handlers, not these.
+  const latest = useRef({ changeStatus, changePriority, changeAssignee, changeIntent, setTags });
+  useEffect(() => {
+    latest.current = { changeStatus, changePriority, changeAssignee, changeIntent, setTags };
+  });
+
+  const statusOptions: ComboboxOption[] = [
     ticket.status,
     ...allowedNextStatuses(workflow.data, ticket.status),
+  ].map((status: TicketStatus) => ({ value: status, label: t(statusKey(status)) }));
+
+  const priorityOptions: ComboboxOption[] = TICKET_PRIORITIES.map((priority) => ({
+    value: priority,
+    label: label(priority),
+    keywords: [priority],
+  }));
+
+  const assigneeOptions: ComboboxOption[] = [
+    { value: UNASSIGNED, label: t('details.unassigned') },
+    ...assignees.map((person) => ({
+      value: person.id,
+      label:
+        person.id === session?.user.id
+          ? t('details.assigneeMe', { name: person.name })
+          : person.name,
+      keywords: [person.name],
+    })),
   ];
-  const regionId = `${ids}-details`;
+
+  const intentOptions: ComboboxOption[] = [
+    { value: NO_INTENT, label: t('details.noIntent') },
+    ...(ticket.intent && !activeIntents.some((intent) => intent.id === ticket.intent?.id)
+      ? [{ value: ticket.intent.id, label: ticket.intent.name }]
+      : []),
+    ...activeIntents.map((intent) => ({ value: intent.id, label: intent.name })),
+  ];
+
+  const common = {
+    searchPlaceholder: t('details.search'),
+    emptyText: t('details.noMatches'),
+    selectedText: t('details.selected'),
+    disabled: busy,
+  };
+
+  const assigneeName = summary?.assignee
+    ? summary.assignee.id === session?.user.id
+      ? t('details.assigneeMe', { name: summary.assignee.name })
+      : summary.assignee.name
+    : t('details.unassigned');
 
   return (
-    <section aria-label={t('details.title')} className="border-b border-border">
-      <h3 className="px-pane py-1">
-        <button
-          type="button"
-          aria-expanded={open}
-          aria-controls={regionId}
-          aria-keyshortcuts={canEdit ? 's' : undefined}
-          onClick={() => {
-            setOpen((value) => !value);
-          }}
-          className="flex w-full items-center gap-1 text-sm font-semibold"
-        >
-          {open ? (
-            <ChevronDown aria-hidden className="size-4" />
+    <section aria-label={t('details.title')} className="flex flex-col gap-1 py-2">
+      <dl aria-label={t('details.listLabel')} className="flex flex-col">
+        <Row label={t('details.status')}>
+          {canEdit ? (
+            <Combobox
+              {...common}
+              fieldLabel={t('details.status')}
+              listLabel={t('details.status')}
+              options={statusOptions}
+              value={ticket.status}
+              onValueChange={changeStatus}
+              id={STATUS_FIELD_ID}
+            >
+              <StatusLabel status={ticket.status} className="text-sm font-normal" />
+            </Combobox>
           ) : (
-            <ChevronRight aria-hidden className="size-4" />
+            <StatusLabel status={ticket.status} className="text-sm font-normal" />
           )}
-          {t('details.title')}
-        </button>
-      </h3>
+        </Row>
 
-      <div id={regionId} hidden={!open} className="px-pane pb-3">
-        {open ? (
-          <>
-            <dl className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
-              <Field label={t('details.status')}>
-                {canEdit ? (
-                  <Select
-                    ref={statusRef}
-                    aria-label={t('details.status')}
-                    value={ticket.status}
-                    disabled={busy}
-                    onChange={(event) => {
-                      changeStatus(event.target.value);
-                    }}
-                    className="w-full"
-                  >
-                    {statusOptions.map((status) => (
-                      <option key={status} value={status}>
-                        {t(statusKey(status))}
-                      </option>
-                    ))}
-                  </Select>
+        <Row label={t('details.priority')}>
+          {canEdit ? (
+            <Combobox
+              {...common}
+              fieldLabel={t('details.priority')}
+              listLabel={t('details.priority')}
+              options={priorityOptions}
+              value={ticket.priority}
+              onValueChange={changePriority}
+            >
+              <SeverityBadge
+                severity={severityOf(ticket.priority)}
+                label={t(`severity.${severityOf(ticket.priority)}`)}
+              />
+            </Combobox>
+          ) : (
+            <SeverityBadge
+              severity={severityOf(ticket.priority)}
+              label={t(`severity.${severityOf(ticket.priority)}`)}
+            />
+          )}
+        </Row>
+
+        {summary ? (
+          <Row label={t('details.assignee')}>
+            {canEdit ? (
+              <Combobox
+                {...common}
+                fieldLabel={t('details.assignee')}
+                listLabel={t('details.assignee')}
+                options={assigneeOptions}
+                value={summary.assignee?.id ?? UNASSIGNED}
+                onValueChange={changeAssignee}
+              >
+                {summary.assignee ? (
+                  <>
+                    <Avatar name={summary.assignee.name} id={summary.assignee.id} size={20} />
+                    <span className="truncate">{assigneeName}</span>
+                  </>
                 ) : (
-                  <StatusLabel status={ticket.status} />
+                  <Empty>{t('details.unassigned')}</Empty>
                 )}
-              </Field>
-
-              <Field label={t('details.priority')}>
-                {canEdit ? (
-                  <Select
-                    aria-label={t('details.priority')}
-                    value={ticket.priority}
-                    disabled={busy}
-                    onChange={(event) => {
-                      changePriority(event.target.value);
-                    }}
-                    className="w-full"
-                  >
-                    {TICKET_PRIORITIES.map((priority: TicketPriority) => (
-                      <option key={priority} value={priority}>
-                        {priority} {t(`severity.${severityOf(priority)}`)}
-                      </option>
-                    ))}
-                  </Select>
-                ) : (
-                  <span>
-                    {ticket.priority} {t(`severity.${severityOf(ticket.priority)}`)}
-                  </span>
-                )}
-              </Field>
-
-              {staff ? (
-                <Field label={t('details.assignee')}>
-                  {canEdit ? (
-                    <Select
-                      aria-label={t('details.assignee')}
-                      value={ticket.assignee?.id ?? UNASSIGNED}
-                      disabled={busy}
-                      onChange={(event) => {
-                        changeAssignee(event.target.value);
-                      }}
-                      className="w-full"
-                    >
-                      <option value={UNASSIGNED}>{t('details.unassigned')}</option>
-                      {assignees.map((person) => (
-                        <option key={person.id} value={person.id}>
-                          {person.id === session?.user.id
-                            ? t('details.assigneeMe', { name: person.name })
-                            : person.name}
-                        </option>
-                      ))}
-                    </Select>
-                  ) : (
-                    <span>{ticket.assignee?.name ?? t('details.unassigned')}</span>
-                  )}
-                </Field>
-              ) : null}
-
-              <Field label={t('details.intent')}>
-                {canEdit ? (
-                  <Select
-                    aria-label={t('details.intent')}
-                    value={ticket.intent?.id ?? ''}
-                    disabled={busy}
-                    onChange={(event) => {
-                      changeIntent(event.target.value);
-                    }}
-                    className="w-full"
-                  >
-                    <option value="">{t('details.noIntent')}</option>
-                    {ticket.intent &&
-                    !activeIntents.some((intent) => intent.id === ticket.intent?.id) ? (
-                      <option value={ticket.intent.id}>{ticket.intent.name}</option>
-                    ) : null}
-                    {activeIntents.map((intent) => (
-                      <option key={intent.id} value={intent.id}>
-                        {intent.name}
-                      </option>
-                    ))}
-                  </Select>
-                ) : (
-                  <span>{ticket.intent?.name ?? t('details.noIntent')}</span>
-                )}
-              </Field>
-
-              {staff ? (
-                <>
-                  <Field label={t('details.organization')}>{ticket.org.name}</Field>
-                  {isDetail(ticket) && ticket.requester ? (
-                    <Field label={t('details.requester')}>
-                      <span>{ticket.requester.name}</span>
-                      {ticket.requester.email ? (
-                        <span className="block truncate text-xs text-muted-foreground">
-                          {ticket.requester.email}
-                        </span>
-                      ) : null}
-                    </Field>
-                  ) : null}
-                  <Field label={t('details.channel')}>{t(`channel.${ticket.channel}`)}</Field>
-                  <Field label={t('details.firstResponseDue')}>
-                    {ticket.firstRespondedAt
-                      ? t('details.done')
-                      : ticket.firstResponseDueAt
-                        ? formatDateTime(ticket.firstResponseDueAt, locale)
-                        : t('details.none')}
-                  </Field>
-                  <Field label={t('details.resolutionDue')}>
-                    {ticket.slaPausedAt
-                      ? t('details.slaPaused')
-                      : ticket.resolutionDueAt
-                        ? formatDateTime(ticket.resolutionDueAt, locale)
-                        : t('details.none')}
-                  </Field>
-                </>
-              ) : null}
-
-              <Field label={t('details.created')}>{formatDateTime(ticket.createdAt, locale)}</Field>
-            </dl>
-
-            {staff ? (
-              <div className="mt-3">
-                <p id={`${ids}-tags`} className="text-xs font-medium text-muted-foreground">
-                  {t('details.tags')}
-                </p>
-                <ul
-                  aria-labelledby={`${ids}-tags`}
-                  className="mt-1 flex flex-wrap items-center gap-1.5"
-                >
-                  {ticket.tags.length === 0 ? (
-                    <li className="text-sm text-muted-foreground">{t('details.noTags')}</li>
-                  ) : null}
-                  {ticket.tags.map((tag) => (
-                    <li
-                      key={tag}
-                      className="inline-flex items-center gap-1 rounded-md border border-border-strong px-2 py-0.5 text-xs"
-                    >
-                      {tag}
-                      {canEdit ? (
-                        <button
-                          type="button"
-                          disabled={busy}
-                          aria-label={t('details.removeTag', { tag })}
-                          onClick={() => {
-                            setTags(ticket.tags.filter((entry) => entry !== tag));
-                          }}
-                          className="rounded-sm hover:bg-surface-muted"
-                        >
-                          <X aria-hidden className="size-3.5" />
-                        </button>
-                      ) : null}
-                    </li>
-                  ))}
-                </ul>
-                {canEdit ? (
-                  <form onSubmit={addTag} className="mt-2 flex items-center gap-2">
-                    <Input
-                      value={tagDraft}
-                      onChange={(event) => {
-                        setTagDraft(event.target.value);
-                      }}
-                      maxLength={64}
-                      aria-label={t('details.addTag')}
-                      placeholder={t('details.addTag')}
-                      className="min-w-0 flex-1"
-                    />
-                    <Button type="submit" disabled={busy || tagDraft.trim() === ''}>
-                      <Plus aria-hidden className="size-4" />
-                      {t('details.addTagButton')}
-                    </Button>
-                  </form>
-                ) : null}
-              </div>
-            ) : null}
-
-            {staff && ticket.mergedIntoKey ? (
-              <p className="mt-3 text-sm text-muted-foreground">
-                {t('details.mergedInto', { key: ticket.mergedIntoKey })}
-              </p>
-            ) : null}
-
-            <div role="status" className="mt-2 text-sm text-muted-foreground">
-              {busy ? t('details.saving') : saved && !failure ? t('details.saved') : null}
-            </div>
-            {failure ? (
-              <Alert tone="error" title={t('details.errors.title')} className="mt-2">
-                {t(saveErrorKey(failure.error))}
-              </Alert>
-            ) : null}
-          </>
+              </Combobox>
+            ) : summary.assignee ? (
+              <span className="inline-flex items-center gap-2">
+                <Avatar name={summary.assignee.name} id={summary.assignee.id} size={20} />
+                {summary.assignee.name}
+              </span>
+            ) : (
+              <Empty>{t('details.unassigned')}</Empty>
+            )}
+          </Row>
         ) : null}
+
+        <Row label={t('details.intent')}>
+          {canEdit ? (
+            <Combobox
+              {...common}
+              fieldLabel={t('details.intent')}
+              listLabel={t('details.intent')}
+              options={intentOptions}
+              value={ticket.intent?.id ?? NO_INTENT}
+              onValueChange={changeIntent}
+            >
+              {ticket.intent ? (
+                <span className="truncate">{ticket.intent.name}</span>
+              ) : (
+                <Empty>{t('details.noIntent')}</Empty>
+              )}
+            </Combobox>
+          ) : ticket.intent ? (
+            <span>{ticket.intent.name}</span>
+          ) : (
+            <Empty>{t('details.noIntent')}</Empty>
+          )}
+        </Row>
+
+        {summary ? (
+          <Row label={t('details.tags')}>
+            {canEdit ? (
+              <Combobox
+                {...common}
+                multiple
+                fieldLabel={t('details.tags')}
+                listLabel={t('details.tags')}
+                searchPlaceholder={t('details.searchTag')}
+                options={summary.tags.map((tag) => ({ value: tag, label: tag }))}
+                values={summary.tags}
+                onToggle={(tag) => {
+                  setTags(
+                    summary.tags.includes(tag)
+                      ? summary.tags.filter((entry) => entry !== tag)
+                      : [...summary.tags, tag],
+                  );
+                }}
+                onCreate={(tag) => {
+                  if (!summary.tags.includes(tag)) setTags([...summary.tags, tag]);
+                }}
+                createLabel={(tag) => t('details.createTag', { tag })}
+              >
+                <TagList tags={summary.tags} empty={t('details.noTags')} />
+              </Combobox>
+            ) : (
+              <TagList tags={summary.tags} empty={t('details.noTags')} />
+            )}
+          </Row>
+        ) : null}
+      </dl>
+
+      {summary ? (
+        <dl className="mt-1 flex flex-col border-t border-border pt-2">
+          <Row label={t('details.organization')}>{summary.org.name}</Row>
+          {isDetail(summary) && summary.requester ? (
+            <Row label={t('details.requester')}>
+              <span>{summary.requester.name}</span>
+              {summary.requester.email ? (
+                <span className="block truncate text-xs text-muted-foreground">
+                  {summary.requester.email}
+                </span>
+              ) : null}
+            </Row>
+          ) : null}
+          <Row label={t('details.channel')}>
+            <span className="inline-flex items-center gap-1.5">
+              <ChannelIcon channel={summary.channel} />
+              {t(`channel.${summary.channel}`)}
+            </span>
+          </Row>
+          <Row label={t('details.firstResponseDue')}>
+            <span className="tabular">
+              {summary.firstRespondedAt
+                ? t('details.done')
+                : summary.firstResponseDueAt
+                  ? formatDateTime(summary.firstResponseDueAt, locale)
+                  : t('details.none')}
+            </span>
+          </Row>
+          <Row label={t('details.resolutionDue')}>
+            <span className="tabular">
+              {summary.slaPausedAt
+                ? t('details.slaPaused')
+                : summary.resolutionDueAt
+                  ? formatDateTime(summary.resolutionDueAt, locale)
+                  : t('details.none')}
+            </span>
+          </Row>
+          <Row label={t('details.created')}>
+            <span className="tabular">{formatDateTime(ticket.createdAt, locale)}</span>
+          </Row>
+        </dl>
+      ) : (
+        <dl className="flex flex-col">
+          <Row label={t('details.created')}>
+            <span className="tabular">{formatDateTime(ticket.createdAt, locale)}</span>
+          </Row>
+        </dl>
+      )}
+
+      {summary?.mergedIntoKey ? (
+        <p className="px-4 pt-1 text-sm text-muted-foreground">
+          {t('details.mergedInto', { key: summary.mergedIntoKey })}
+        </p>
+      ) : null}
+
+      <div
+        id={`${ids}-status`}
+        role="status"
+        className="min-h-5 px-4 text-xs text-muted-foreground"
+      >
+        {busy ? t('details.saving') : edit.saved && !failure ? t('details.saved') : null}
       </div>
+      {failure ? (
+        <div className="px-4">
+          <Alert tone="error" title={t('details.errors.title')}>
+            {t(saveErrorKey(failure.error))}
+          </Alert>
+        </div>
+      ) : null}
     </section>
+  );
+}
+
+function TagList({ tags, empty }: { tags: readonly string[]; empty: string }) {
+  if (tags.length === 0) return <Empty>{empty}</Empty>;
+  return (
+    <ul className="flex flex-wrap gap-1">
+      {tags.map((tag) => (
+        <li key={tag}>
+          <Pill className="font-normal">{tag}</Pill>
+        </li>
+      ))}
+    </ul>
   );
 }

@@ -24,6 +24,15 @@ afterEach(() => {
   document.cookie = 'wt-locale=; Max-Age=0; Path=/';
 });
 
+/**
+ * Chooses a menu item with the keyboard (focus, then Enter). Radix menus in jsdom ignore the
+ * synthetic pointer click on an item; the e2e tests cover the mouse in a real browser.
+ */
+async function choose(user: ReturnType<typeof userEvent.setup>, item: HTMLElement) {
+  item.focus();
+  await user.keyboard('{Enter}');
+}
+
 async function openWorkspace(options: Parameters<typeof renderWorkspace>[0] = {}) {
   const view = renderWorkspace(options);
   await screen.findByRole('region', { name: options.locale === 'th' ? 'คิวงาน' : 'Queue' });
@@ -32,14 +41,18 @@ async function openWorkspace(options: Parameters<typeof renderWorkspace>[0] = {}
 
 describe('AppShell for staff', () => {
   it('shows the three panes: the queue with tickets, an empty conversation, the AI placeholder', async () => {
+    const user = userEvent.setup();
     workspaceApi();
     await openWorkspace();
     const queue = screen.getByRole('region', { name: 'Queue' });
     const conversation = screen.getByRole('region', { name: 'Conversation' });
-    const assistant = screen.getByRole('region', { name: 'AI assistant' });
+    const assistant = screen.getByRole('region', { name: 'Details & AI' });
 
     expect(await within(queue).findByText('Cannot log in')).toBeVisible();
     expect(within(conversation).getByText('Select a ticket')).toBeVisible();
+    // The panel opens on Details; the AI tab holds the plain explanation.
+    expect(within(assistant).getByText('Select a ticket to see its details here.')).toBeVisible();
+    await user.click(within(assistant).getByRole('tab', { name: 'AI' }));
     expect(within(assistant).getByText('The AI assistant is not switched on yet')).toBeVisible();
     expect(within(assistant).getByText(/arrives in Phase 1/)).toBeVisible();
   });
@@ -47,7 +60,10 @@ describe('AppShell for staff', () => {
   it('keeps the panes in reading order so they stack correctly on a narrow screen', async () => {
     workspaceApi();
     await openWorkspace();
-    const ids = screen.getAllByRole('region').map((region) => region.getAttribute('id'));
+    const ids = screen
+      .getAllByRole('region')
+      .map((region) => region.getAttribute('id'))
+      .filter((id) => id?.startsWith('pane-'));
     expect(ids).toEqual(['pane-queue', 'pane-conversation', 'pane-assistant']);
   });
 
@@ -63,10 +79,12 @@ describe('AppShell for staff', () => {
   });
 
   it('renders the whole screen in Thai', async () => {
+    const user = userEvent.setup();
     workspaceApi();
     await openWorkspace({ locale: 'th' });
+    await user.click(screen.getByRole('tab', { name: 'AI' }));
     expect(screen.getByRole('region', { name: 'บทสนทนา' })).toBeInTheDocument();
-    expect(screen.getByRole('region', { name: 'ผู้ช่วย AI' })).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: 'รายละเอียดและ AI' })).toBeInTheDocument();
     expect(screen.getByText('ผู้ช่วย AI ยังไม่เปิดใช้งาน')).toBeInTheDocument();
     expect(screen.queryByText('Select a ticket')).not.toBeInTheDocument();
   });
@@ -93,9 +111,11 @@ describe('AppShell for staff', () => {
     const user = userEvent.setup();
     const api = workspaceApi({ overrides: { 'POST /v1/auth/logout': { status: 204 } } });
     await openWorkspace();
-    expect(screen.getByText('Alex Agent')).toBeVisible();
+    await user.click(screen.getByRole('button', { name: 'Account menu' }));
+    expect(await screen.findByText('Alex Agent')).toBeVisible();
+    expect(screen.getByText(/agent@example.com · Agent/)).toBeVisible();
 
-    await user.click(screen.getByRole('button', { name: 'Sign out' }));
+    await choose(user, screen.getByRole('menuitem', { name: 'Sign out' }));
 
     await waitFor(() => {
       expect(replace).toHaveBeenCalledWith('/login');
@@ -116,7 +136,7 @@ describe('AppShell for staff', () => {
     expect(screen.getByRole('dialog', { name: 'Command palette' })).toBeInTheDocument();
   });
 
-  it('changes the theme from the palette and from the select', async () => {
+  it('changes the theme from the palette and from the account menu', async () => {
     const user = userEvent.setup();
     workspaceApi();
     await openWorkspace();
@@ -125,20 +145,40 @@ describe('AppShell for staff', () => {
     await user.type(await screen.findByRole('combobox', { name: 'Command palette' }), 'dark');
     await user.keyboard('{Enter}');
     expect(document.documentElement).toHaveAttribute('data-theme', 'dark');
-    expect(screen.getByRole('combobox', { name: 'Theme' })).toHaveValue('dark');
 
-    await user.selectOptions(screen.getByRole('combobox', { name: 'Theme' }), 'light');
+    await user.click(screen.getByRole('button', { name: 'Account menu' }));
+    await user.click(await screen.findByRole('menuitem', { name: 'Theme' }));
+    expect(await screen.findByRole('menuitemradio', { name: 'Dark' })).toHaveAttribute(
+      'aria-checked',
+      'true',
+    );
+    await choose(user, screen.getByRole('menuitemradio', { name: 'Light' }));
     expect(document.documentElement).toHaveAttribute('data-theme', 'light');
 
-    await user.selectOptions(screen.getByRole('combobox', { name: 'Density' }), 'compact');
+    await user.click(screen.getByRole('button', { name: 'Account menu' }));
+    await user.click(await screen.findByRole('menuitem', { name: 'Density' }));
+    await choose(user, await screen.findByRole('menuitemradio', { name: 'Compact' }));
     expect(document.documentElement).toHaveAttribute('data-density', 'compact');
+  });
+
+  it('turns single-key shortcuts off and on from the account menu', async () => {
+    const user = userEvent.setup();
+    workspaceApi();
+    await openWorkspace();
+    await user.click(screen.getByRole('button', { name: 'Account menu' }));
+    const item = await screen.findByRole('menuitemcheckbox', { name: 'Single-key shortcuts' });
+    expect(item).toHaveAttribute('aria-checked', 'true');
+    await choose(user, item);
+    expect(localStorage.getItem('wt-single-key-shortcuts')).toBe('off');
   });
 
   it('switches language by saving a cookie and refreshing the server render', async () => {
     const user = userEvent.setup();
     workspaceApi();
     await openWorkspace();
-    await user.selectOptions(screen.getByRole('combobox', { name: 'Language' }), 'th');
+    await user.click(screen.getByRole('button', { name: 'Account menu' }));
+    await user.click(await screen.findByRole('menuitem', { name: 'Language' }));
+    await choose(user, await screen.findByRole('menuitemradio', { name: 'ไทย' }));
     expect(document.cookie).toContain('wt-locale=th');
     expect(refresh).toHaveBeenCalledTimes(1);
   });
@@ -185,13 +225,13 @@ describe('AI assistant drawer (768 to 1023 px)', () => {
     const user = userEvent.setup();
     workspaceApi();
     await openWorkspace();
-    const toggle = screen.getByRole('button', { name: 'AI assistant' });
+    const toggle = screen.getByRole('button', { name: 'Details & AI' });
     expect(toggle).toHaveAttribute('aria-expanded', 'false');
     expect(toggle).toHaveAttribute('aria-controls', 'pane-assistant');
 
     await user.click(toggle);
     expect(toggle).toHaveAttribute('aria-expanded', 'true');
-    const close = screen.getByRole('button', { name: 'Close the AI assistant' });
+    const close = screen.getByRole('button', { name: 'Close the details panel' });
     expect(close).toHaveFocus();
     // A plain region, not a dialog: the conversation stays readable and reachable.
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
@@ -205,9 +245,9 @@ describe('AI assistant drawer (768 to 1023 px)', () => {
     const user = userEvent.setup();
     workspaceApi();
     await openWorkspace();
-    await user.click(screen.getByRole('button', { name: 'AI assistant' }));
-    await user.click(screen.getByRole('button', { name: 'Close the AI assistant' }));
-    expect(screen.getByRole('button', { name: 'AI assistant' })).toHaveAttribute(
+    await user.click(screen.getByRole('button', { name: 'Details & AI' }));
+    await user.click(screen.getByRole('button', { name: 'Close the details panel' }));
+    expect(screen.getByRole('button', { name: 'Details & AI' })).toHaveAttribute(
       'aria-expanded',
       'false',
     );
@@ -216,7 +256,7 @@ describe('AI assistant drawer (768 to 1023 px)', () => {
   it('is hidden by CSS from 1024 px up and only between 768 and 1023 px', async () => {
     workspaceApi();
     await openWorkspace();
-    expect(screen.getByRole('button', { name: 'AI assistant' }).className).toContain(
+    expect(screen.getByRole('button', { name: 'Details & AI' }).className).toContain(
       'md:max-lg:inline-flex',
     );
     expect(document.getElementById('pane-assistant')?.className).toContain('md:max-lg:hidden');
@@ -225,7 +265,7 @@ describe('AI assistant drawer (768 to 1023 px)', () => {
   it('is not offered to a customer', async () => {
     workspaceApi({ role: 'client' });
     await openWorkspace();
-    expect(screen.queryByRole('button', { name: 'AI assistant' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Details & AI' })).not.toBeInTheDocument();
   });
 });
 
@@ -265,11 +305,13 @@ describe('AppShell for a customer', () => {
     renderWorkspace();
     await screen.findByRole('region', { name: 'Queue' });
 
-    expect(screen.queryByRole('region', { name: 'AI assistant' })).not.toBeInTheDocument();
-    expect(screen.getAllByRole('region').map((region) => region.id)).toEqual([
-      'pane-queue',
-      'pane-conversation',
-    ]);
+    expect(screen.queryByRole('region', { name: 'Details & AI' })).not.toBeInTheDocument();
+    expect(
+      screen
+        .getAllByRole('region')
+        .map((region) => region.id)
+        .filter((id) => id.startsWith('pane-')),
+    ).toEqual(['pane-queue', 'pane-conversation']);
     expect(await screen.findByText('Customer subject 1')).toBeVisible();
 
     await user.click(screen.getByRole('button', { name: /Filters/ }));

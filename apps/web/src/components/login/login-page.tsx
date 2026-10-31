@@ -32,14 +32,17 @@ function Section({
   title,
   description,
   children,
+  first = false,
 }: {
   title: string;
   description?: string;
   children: ReactNode;
+  /** The main way in: no divider above it. The others are separated by a hairline. */
+  first?: boolean;
 }) {
   const id = useId();
   return (
-    <section aria-labelledby={id} className="rounded-lg border border-border bg-surface p-pane">
+    <section aria-labelledby={id} className={cn(!first && 'border-t border-border pt-6')}>
       <h2 id={id} className="text-base font-semibold">
         {title}
       </h2>
@@ -73,7 +76,7 @@ function StaffSso({ config }: { config: AuthConfig }) {
   const { apiUrl } = useRuntimeConfig();
   const href = ssoStartUrl(apiUrl, config);
   return (
-    <Section title={t('login.staff.title')} description={t('login.staff.description')}>
+    <Section first title={t('login.staff.title')} description={t('login.staff.description')}>
       {href ? (
         <a href={href} className={cn(buttonVariants({ variant: 'primary' }), 'w-full')}>
           <LogIn aria-hidden className="size-4" />
@@ -223,7 +226,7 @@ function BreakGlass({ onSignedIn }: { onSignedIn: () => void }) {
 
   const code = isApiError(mutation.error) ? mutation.error.code : null;
   return (
-    <details className="rounded-lg border border-border bg-surface p-pane">
+    <details className="border-t border-border pt-6">
       <summary className="cursor-pointer text-base font-semibold">
         {t('login.breakGlass.title')}
       </summary>
@@ -311,7 +314,7 @@ export function LoginPage() {
   return (
     <LoginLayout>
       <div>
-        <h1 className="text-2xl font-semibold">{t('login.title')}</h1>
+        <h1 className="text-xl font-semibold">{t('login.title')}</h1>
         <p className="mt-1 text-sm text-muted-foreground">{t('login.subtitle')}</p>
       </div>
 
@@ -324,8 +327,8 @@ export function LoginPage() {
       {config.isPending ? (
         <div role="status" className="flex flex-col gap-3">
           <span className="sr-only">{t('login.loading')}</span>
+          <Skeleton className="h-24" />
           <Skeleton className="h-32" />
-          <Skeleton className="h-40" />
         </div>
       ) : config.isError ? (
         <Alert tone="error" title={t('login.configError.title')}>

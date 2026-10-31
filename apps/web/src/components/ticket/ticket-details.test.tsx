@@ -54,19 +54,30 @@ function editable(initial = makeTicket(1, { tags: ['vip'] })) {
   };
 }
 
+type User = ReturnType<typeof userEvent.setup>;
+
+/** Opens an inline field (a button named "Status: Open") and picks an option from its list. */
+async function openField(user: User, field: string) {
+  await user.click(screen.getByRole('button', { name: new RegExp(`^${field}:`) }));
+  return screen.findByRole('listbox', { name: field });
+}
+
+async function pick(user: User, field: string, option: string | RegExp) {
+  const list = await openField(user, field);
+  await user.click(await within(list).findByRole('option', { name: option }));
+}
+
 describe('ticket details: editing', () => {
-  it('changes the status through the workflow and shows it saved', async () => {
+  it('changes the status through the workflow, shows it at once and offers Undo', async () => {
     const user = userEvent.setup();
     const { api } = editable();
     const { section } = await openDetails();
-    const status = within(section).getByRole('combobox', { name: 'Status' });
-    await waitFor(() => {
-      // The allowed moves arrive from the workflow endpoint.
-      expect(within(status).queryByRole('option', { name: 'Resolved' })).toBeInTheDocument();
-    });
-    expect(within(status).queryByRole('option', { name: 'Merged' })).not.toBeInTheDocument();
 
-    await user.selectOptions(status, 'Resolved');
+    const list = await openField(user, 'Status');
+    // The allowed moves arrive from the workflow endpoint; Merged is never one of them.
+    expect(await within(list).findByRole('option', { name: /^Resolved/ })).toBeInTheDocument();
+    expect(within(list).queryByRole('option', { name: /^Merged/ })).not.toBeInTheDocument();
+    await user.click(within(list).getByRole('option', { name: /^Resolved/ }));
 
     await waitFor(() => {
       expect(api.callsTo('/v1/tickets/OPS-1/status', 'POST')[0]?.body).toEqual({
@@ -74,21 +85,51 @@ describe('ticket details: editing', () => {
       });
     });
     expect(await within(section).findByText('Saved.')).toBeVisible();
-    expect(within(section).getByRole('combobox', { name: 'Status' })).toHaveValue('resolved');
+    expect(within(section).getByRole('button', { name: /^Status:\s*Resolved/ })).toBeVisible();
     // The header, queue row and timeline pick the change up too.
     expect(
       within(screen.getByRole('region', { name: 'Queue' })).getByText('Resolved'),
     ).toBeVisible();
+
+    // The toast says what happened and Undo sends the old status back.
+    expect(await screen.findByText('Status set to Resolved')).toBeVisible();
+    await user.click(screen.getByRole('button', { name: 'Undo' }));
+    await waitFor(() => {
+      expect(api.callsTo('/v1/tickets/OPS-1/status', 'POST')[1]?.body).toEqual({ status: 'open' });
+    });
+    expect(await within(section).findByRole('button', { name: /^Status:\s*Open/ })).toBeVisible();
+  });
+
+  it('shows the new value before the api has answered', async () => {
+    const user = userEvent.setup();
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const initial = makeTicket(1);
+    workspaceApi({
+      tickets: [initial],
+      overrides: {
+        'PATCH /v1/tickets/:id': async () => {
+          await gate;
+          return { json: { ...initial, priority: 'P1' } };
+        },
+      },
+    });
+    const { section } = await openDetails();
+    await pick(user, 'Priority', /^P1 Critical/);
+    // The request is still pending, yet the value already changed.
+    expect(
+      within(section).getByRole('button', { name: /^Priority:\s*P1\s*Critical/ }),
+    ).toBeVisible();
+    release();
   });
 
   it('changes the priority', async () => {
     const user = userEvent.setup();
     const { api } = editable();
-    const { section } = await openDetails();
-    await user.selectOptions(
-      within(section).getByRole('combobox', { name: 'Priority' }),
-      'P1 Critical',
-    );
+    await openDetails();
+    await pick(user, 'Priority', /^P1 Critical/);
     await waitFor(() => {
       expect(api.callsTo('/v1/tickets/OPS-1', 'PATCH')[0]?.body).toEqual({ priority: 'P1' });
     });
@@ -98,27 +139,22 @@ describe('ticket details: editing', () => {
     const user = userEvent.setup();
     const { api } = editable();
     const { section } = await openDetails();
-    const assignee = within(section).getByRole('combobox', { name: 'Assignee' });
-    await waitFor(() => {
-      expect(within(assignee).queryByRole('option', { name: 'Sam Support' })).toBeInTheDocument();
-    });
-    // The signed-in user is always in the list and is marked.
-    expect(within(assignee).getByRole('option', { name: 'Alex Agent (me)' })).toBeInTheDocument();
 
-    await user.selectOptions(assignee, 'Sam Support');
+    const list = await openField(user, 'Assignee');
+    expect(await within(list).findByRole('option', { name: /^Sam Support/ })).toBeInTheDocument();
+    // The signed-in user is always in the list and is marked.
+    expect(within(list).getByRole('option', { name: /^Alex Agent \(me\)/ })).toBeInTheDocument();
+    await user.click(within(list).getByRole('option', { name: /^Sam Support/ }));
     await waitFor(() => {
       expect(api.callsTo('/v1/tickets/OPS-1/assign', 'POST')[0]?.body).toEqual({
         assigneeId: uuid(901),
       });
     });
-    await waitFor(() => {
-      expect(within(section).getByRole('combobox', { name: 'Assignee' })).toHaveValue(uuid(901));
-    });
+    expect(
+      await within(section).findByRole('button', { name: /^Assignee:\s*Sam Support/ }),
+    ).toBeVisible();
 
-    await user.selectOptions(
-      within(section).getByRole('combobox', { name: 'Assignee' }),
-      'Unassigned',
-    );
+    await pick(user, 'Assignee', /^Unassigned/);
     await waitFor(() => {
       expect(api.callsTo('/v1/tickets/OPS-1/assign', 'POST')[1]?.body).toEqual({
         assigneeId: null,
@@ -126,17 +162,27 @@ describe('ticket details: editing', () => {
     });
   });
 
+  it('finds an option by typing', async () => {
+    const user = userEvent.setup();
+    editable();
+    await openDetails();
+    const list = await openField(user, 'Assignee');
+    await within(list).findByRole('option', { name: /^Sam Support/ });
+    await user.keyboard('sam');
+    expect(within(list).getByRole('option', { name: /^Sam Support/ })).toBeVisible();
+    expect(within(list).queryByRole('option', { name: /^Alex Agent/ })).not.toBeInTheDocument();
+    await user.clear(screen.getByRole('combobox', { name: 'Search' }));
+    await user.keyboard('zzz');
+    expect(within(list).getByText('No matches')).toBeVisible();
+  });
+
   it('changes or clears the intent', async () => {
     const user = userEvent.setup();
     const { api } = editable();
-    const { section } = await openDetails();
-    const intent = within(section).getByRole('combobox', { name: 'Intent' });
-    await waitFor(() => {
-      expect(
-        within(intent).queryByRole('option', { name: 'Billing question' }),
-      ).toBeInTheDocument();
-    });
-    await user.selectOptions(intent, 'Billing question');
+    await openDetails();
+    const list = await openField(user, 'Intent');
+    expect(await within(list).findByRole('option', { name: /^Billing question/ })).toBeVisible();
+    await user.click(within(list).getByRole('option', { name: /^Billing question/ }));
     await waitFor(() => {
       expect(api.callsTo('/v1/tickets/OPS-1', 'PATCH')[0]?.body).toEqual({ intentId: uuid(701) });
     });
@@ -148,8 +194,9 @@ describe('ticket details: editing', () => {
     const { section } = await openDetails();
     expect(within(section).getByText('vip')).toBeVisible();
 
-    await user.type(within(section).getByRole('textbox', { name: 'Add a tag' }), 'billing');
-    await user.click(within(section).getByRole('button', { name: 'Add' }));
+    const list = await openField(user, 'Tags');
+    await user.keyboard('billing');
+    await user.click(await within(list).findByRole('option', { name: 'Create tag “billing”' }));
     await waitFor(() => {
       expect(api.callsTo('/v1/tickets/OPS-1', 'PATCH')[0]?.body).toEqual({
         tags: ['vip', 'billing'],
@@ -157,52 +204,54 @@ describe('ticket details: editing', () => {
     });
     expect(await within(section).findByText('billing')).toBeVisible();
 
-    await user.click(within(section).getByRole('button', { name: 'Remove tag vip' }));
+    // The list stays open for more changes; choosing a tag that is set removes it.
+    await user.click(await within(list).findByRole('option', { name: /^vip/ }));
     await waitFor(() => {
       expect(api.callsTo('/v1/tickets/OPS-1', 'PATCH')[1]?.body).toEqual({ tags: ['billing'] });
     });
   });
 
-  it('explains a refused change and leaves the value as it was', async () => {
+  it('explains a refused change and puts the value back', async () => {
     const user = userEvent.setup();
     workspaceApi({
       tickets: [makeTicket(1)],
       overrides: { 'POST /v1/tickets/:id/status': apiError(409, 'invalid_transition') },
     });
     const { section } = await openDetails();
-    const status = within(section).getByRole('combobox', { name: 'Status' });
-    await waitFor(() => {
-      expect(within(status).queryByRole('option', { name: 'Resolved' })).toBeInTheDocument();
-    });
-    await user.selectOptions(status, 'Resolved');
+    await pick(user, 'Status', /^Resolved/);
 
     const alert = await within(section).findByRole('alert');
     expect(alert).toHaveTextContent('The change was not saved');
     expect(alert).toHaveTextContent('The ticket cannot move to that status from where it is now.');
-    expect(within(section).getByRole('combobox', { name: 'Status' })).toHaveValue('open');
-  });
-
-  it('S opens the details and focuses the status', async () => {
-    const user = userEvent.setup();
-    editable();
-    const { section } = await openDetails();
-    await user.click(within(section).getByRole('button', { name: 'Ticket details' }));
-    expect(within(section).queryByRole('combobox', { name: 'Status' })).not.toBeInTheDocument();
-
-    await user.keyboard('s');
     await waitFor(() => {
-      expect(within(section).getByRole('combobox', { name: 'Status' })).toHaveFocus();
+      expect(within(section).getByRole('button', { name: /^Status:\s*Open/ })).toBeVisible();
     });
   });
 
-  it('collapses and expands, announcing the state', async () => {
+  it('S shows the Details tab and focuses the status', async () => {
     const user = userEvent.setup();
     editable();
-    const { section } = await openDetails();
-    const toggle = within(section).getByRole('button', { name: 'Ticket details' });
-    expect(toggle).toHaveAttribute('aria-expanded', 'true');
-    await user.click(toggle);
-    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    await openDetails();
+    await user.click(screen.getByRole('tab', { name: 'AI' }));
+    expect(screen.queryByRole('button', { name: /^Status:/ })).not.toBeInTheDocument();
+
+    await user.keyboard('s');
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /^Status:/ })).toHaveFocus();
+    });
+    expect(screen.getByRole('tab', { name: 'Details' })).toHaveAttribute('aria-selected', 'true');
+  });
+
+  it('has Details, AI and Customer tabs, and the Customer tab shows who wrote in', async () => {
+    const user = userEvent.setup();
+    editable();
+    await openDetails();
+    const tabs = screen.getAllByRole('tab', { name: /^(Details|AI|Customer)$/ });
+    expect(tabs.map((tab) => tab.textContent)).toEqual(['Details', 'AI', 'Customer']);
+    await user.click(screen.getByRole('tab', { name: 'Customer' }));
+    const panel = screen.getByRole('tabpanel', { name: 'Customer' });
+    expect(within(panel).getAllByText('Riley Requester').length).toBeGreaterThan(0);
+    expect(within(panel).getByText('riley@example.com')).toBeVisible();
   });
 });
 

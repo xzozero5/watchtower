@@ -12,6 +12,54 @@ export {
   type TextareaProps,
 } from './components/field.js';
 export { Skeleton } from './components/skeleton.js';
+export {
+  Avatar,
+  AVATAR_SIZES,
+  avatarHue,
+  initialsOf,
+  type AvatarProps,
+  type AvatarSize,
+} from './components/avatar.js';
+export { DOT_TONES, Pill, StatusDot, StatusPill, type DotTone } from './components/pill.js';
+export { Tooltip, TooltipProvider, type TooltipProps } from './components/tooltip.js';
+export {
+  Popover,
+  PopoverAnchor,
+  PopoverClose,
+  PopoverContent,
+  PopoverTrigger,
+} from './components/popover.js';
+export {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuHint,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
+  DropdownMenuTrigger,
+} from './components/dropdown-menu.js';
+export { Tabs, TabsContent, TabsList, TabsTrigger } from './components/tabs.js';
+export {
+  SegmentedControl,
+  type SegmentedControlProps,
+  type SegmentedOption,
+} from './components/segmented-control.js';
+export { Separator } from './components/separator.js';
+export {
+  Combobox,
+  type ComboboxOption,
+  type ComboboxProps,
+  type MultiComboboxProps,
+  type SingleComboboxProps,
+} from './components/combobox.js';
+export { Toaster, toast, type ToasterProps } from './components/toaster.js';
 export { Kbd } from './components/kbd.js';
 export { SeverityBadge, type SeverityBadgeProps } from './components/severity-badge.js';
 export { cn } from './lib/cn.js';
@@ -26,8 +74,10 @@ export {
   type ThemePreference,
 } from './theme/preferences.js';
 export {
+  AVATAR_HUE_COUNT,
   COLOR_TOKENS,
   THEME_NAMES,
+  type AvatarColors,
   type ColorTokens,
   type SeverityColors,
   type ThemeName,

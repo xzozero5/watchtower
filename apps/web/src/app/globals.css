@@ -16,7 +16,10 @@
     background-color: var(--color-background);
     color: var(--color-foreground);
     font-family: var(--font-sans);
+    /* Thai needs at least 1.5 so the tone marks above and below the line never collide. */
     line-height: 1.5;
+    font-feature-settings: 'cv11', 'ss01';
+    -webkit-font-smoothing: antialiased;
   }
 
   *,
@@ -25,9 +28,31 @@
     border-color: var(--color-border);
   }
 
+  /* Lucide icons: 1.75 stroke at 16px, the weight of the type next to them. */
+  .lucide {
+    stroke-width: 1.75;
+  }
+
+  /* Times, counts and SLA countdowns keep their digits aligned. */
+  time,
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* A 2px navy ring, offset 2px, on every control reached by keyboard. */
   :focus-visible {
     outline: 2px solid var(--color-ring);
     outline-offset: 2px;
+  }
+
+  ::selection {
+    background-color: var(--color-primary-subtle);
+  }
+
+  /* Thin, quiet scrollbars: they take space only when there is something to scroll. */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-border-strong) transparent;
   }
 
   /* Reduced motion: no transitions, no animation, no smooth scrolling (PRD section 10). */

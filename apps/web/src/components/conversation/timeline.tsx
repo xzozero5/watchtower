@@ -6,22 +6,29 @@ import {
   type Message,
   type TimelineEntry,
 } from '@watchtower/shared';
-import { cn } from '@watchtower/ui';
+import { Avatar, cn, toast, Tooltip } from '@watchtower/ui';
 import {
   AlertTriangle,
+  Bot,
   Clock,
+  Copy,
   Lock,
   MessageSquareReply,
+  Quote,
   Send,
   Settings2,
-  UserRound,
 } from 'lucide-react';
 
+import { ChannelIcon } from '@/components/ticket/channel-icon';
 import { useI18n } from '@/i18n/provider';
+import { formatDateTime, formatMessageTime } from '@/lib/format';
 import { statusKey } from '@/lib/tickets/status-key';
-import { formatDateTime } from '@/lib/format';
 
 type EventEntry = Extract<TimelineEntry, { kind: 'event' }>;
+type MessageEntry = Extract<TimelineEntry, { kind: 'message' }>;
+
+/** Messages by the same author, of the same kind, this close together read as one block. */
+export const GROUP_WINDOW_MS = 5 * 60_000;
 
 function str(value: unknown): string | null {
   return typeof value === 'string' && value !== '' ? value : null;
@@ -80,18 +87,24 @@ function EventText({ entry }: { entry: EventEntry }) {
   }
 }
 
+/** A system or AI event: one line (icon, sentence, time), not a bubble. */
 function EventRow({ entry }: { entry: EventEntry }) {
   const { t, locale } = useI18n();
-  const Icon = entry.type.startsWith('sla.') ? Clock : Settings2;
-  const actor = entry.actor.name ?? (entry.actor.type === 'ai' ? t('timeline.actorAi') : null);
+  const byAi = entry.actor.type === 'ai';
+  const Icon = byAi ? Bot : entry.type.startsWith('sla.') ? Clock : Settings2;
+  const actor = entry.actor.name ?? (byAi ? t('timeline.actorAi') : null);
   return (
-    <li className="flex items-start gap-2 px-pane py-1.5 text-xs text-muted-foreground">
-      <Icon aria-hidden className="mt-0.5 size-3.5 shrink-0" />
-      <p className="min-w-0">
+    <li className="flex items-center gap-2 px-4 py-1.5 text-xs text-muted-foreground">
+      <Icon aria-hidden className={cn('size-3.5 shrink-0', byAi && 'text-ai-accent')} />
+      <p className="min-w-0 flex-1 truncate">
         <EventText entry={entry} />
-        {actor ? <span> {t('timeline.byActor', { name: actor })}</span> : null}{' '}
-        <time dateTime={entry.createdAt}>{formatDateTime(entry.createdAt, locale)}</time>
+        {actor ? <span> {t('timeline.byActor', { name: actor })}</span> : null}
       </p>
+      <Tooltip content={formatDateTime(entry.createdAt, locale)} side="left">
+        <time dateTime={entry.createdAt} className="tabular shrink-0">
+          {formatMessageTime(entry.createdAt, locale)}
+        </time>
+      </Tooltip>
     </li>
   );
 }
@@ -119,71 +132,167 @@ function DeliveryNote({ message }: { message: Message }) {
   );
 }
 
-function MessageRow({ message }: { message: Message }) {
+function sameBlock(previous: TimelineEntry | undefined, message: MessageEntry): boolean {
+  if (previous?.kind !== 'message') return false;
+  if (messageKind(previous) !== messageKind(message)) return false;
+  if (previous.sender.type !== message.sender.type) return false;
+  if ((previous.sender.id ?? previous.sender.name) !== (message.sender.id ?? message.sender.name)) {
+    return false;
+  }
+  return Math.abs(Date.parse(message.createdAt) - Date.parse(previous.createdAt)) < GROUP_WINDOW_MS;
+}
+
+const ICON_BUTTON =
+  'inline-flex size-6 items-center justify-center rounded-md text-muted-foreground transition-colors duration-(--wt-motion-duration-fast) ease-out hover:bg-surface-muted hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-0 focus-visible:outline-ring';
+
+function MessageRow({
+  message,
+  continued,
+  onQuote,
+  canQuote,
+}: {
+  message: MessageEntry;
+  /** True when this message continues the block above: no avatar or name again. */
+  continued: boolean;
+  onQuote?: (text: string) => void;
+  canQuote: boolean;
+}) {
   const { t, locale } = useI18n();
   const kind = messageKind(message);
   const Icon = kind === 'internal' ? Lock : kind === 'reply' ? Send : MessageSquareReply;
   const author =
     message.sender.name ??
     (message.sender.type === 'system' ? t('timeline.system') : t('timeline.unknownSender'));
-  const AuthorIcon = message.sender.type === 'contact' ? UserRound : null;
+  const staffSide = kind !== 'customer';
+  const exact = formatDateTime(message.createdAt, locale);
+
+  const copy = () => {
+    void navigator.clipboard
+      .writeText(message.bodyText)
+      .then(() => {
+        toast(t('timeline.copied'));
+      })
+      .catch(() => undefined);
+  };
 
   return (
-    <li className="px-pane py-2">
+    <li
+      className={cn(
+        'group/message flex px-4',
+        continued ? 'pt-0.5' : 'pt-3',
+        staffSide && 'justify-end',
+      )}
+    >
       <article
         data-message-kind={kind}
         aria-label={t(`timeline.kinds.${kind}`)}
         className={cn(
-          'rounded-lg border px-3 py-2',
+          'relative w-fit max-w-[88%] min-w-0 rounded-lg border px-3 py-2',
           kind === 'internal' && 'border-dashed border-border-strong bg-surface-muted',
-          kind === 'reply' && 'border-solid border-border-strong bg-surface',
-          kind === 'customer' && 'border-solid border-border bg-surface',
+          kind === 'reply' && 'border-solid border-transparent bg-primary-subtle',
+          kind === 'customer' && 'border-solid border-transparent bg-surface-muted',
         )}
       >
-        <header className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs">
-          <span
-            className={cn(
-              'inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 font-semibold',
-              kind === 'internal'
-                ? 'border-dashed border-border-strong'
-                : kind === 'reply'
-                  ? 'border-border-strong bg-primary text-primary-foreground'
-                  : 'border-border-strong',
-            )}
-          >
+        <header
+          className={cn(
+            'flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs',
+            continued ? 'sr-only' : 'mb-1',
+          )}
+        >
+          <Avatar name={author} id={message.sender.id ?? author} size={20} />
+          <span className="text-sm font-medium text-foreground">{author}</span>
+          <span className="inline-flex items-center gap-1 text-muted-foreground">
             <Icon aria-hidden className="size-3.5" />
             {t(`timeline.kinds.${kind}`)}
           </span>
-          <span className="inline-flex items-center gap-1 font-medium text-foreground">
-            {AuthorIcon ? <AuthorIcon aria-hidden className="size-3.5" /> : null}
-            {author}
-          </span>
-          <span className="text-muted-foreground">{t(`channel.${message.channel}`)}</span>
-          <time dateTime={message.createdAt} className="ml-auto text-muted-foreground">
-            {formatDateTime(message.createdAt, locale)}
-          </time>
+          <ChannelIcon channel={message.channel} className="text-muted-foreground" />
+          <Tooltip content={exact}>
+            <time dateTime={message.createdAt} className="tabular ml-auto text-muted-foreground">
+              {formatMessageTime(message.createdAt, locale)}
+            </time>
+          </Tooltip>
         </header>
-        {kind === 'internal' ? (
-          <p className="mt-1 text-xs text-muted-foreground">{t('timeline.internalHint')}</p>
+        {kind === 'internal' && !continued ? (
+          <p className="mb-1 text-xs text-muted-foreground">{t('timeline.internalHint')}</p>
         ) : null}
         {/* Plain text, preserved line breaks. Never rendered as HTML. */}
-        <p className="mt-2 text-sm break-words whitespace-pre-wrap text-foreground">
+        <p className="text-sm break-words whitespace-pre-wrap text-foreground">
           {message.bodyText}
         </p>
         <DeliveryNote message={message} />
+        {continued ? (
+          <Tooltip content={t('timeline.at', { time: exact })}>
+            <time dateTime={message.createdAt} className="sr-only">
+              {formatMessageTime(message.createdAt, locale)}
+            </time>
+          </Tooltip>
+        ) : null}
+
+        <div
+          role="group"
+          aria-label={t('timeline.actions')}
+          className={cn(
+            'absolute -top-3 flex gap-0.5 rounded-md border border-border bg-surface p-0.5 opacity-0 shadow-overlay transition-opacity duration-(--wt-motion-duration-fast) ease-out group-hover/message:opacity-100 focus-within:opacity-100',
+            staffSide ? 'right-2' : 'left-2',
+          )}
+        >
+          <Tooltip content={t('timeline.copy')}>
+            <button
+              type="button"
+              aria-label={t('timeline.copy')}
+              onClick={copy}
+              className={ICON_BUTTON}
+            >
+              <Copy aria-hidden className="size-3.5" />
+            </button>
+          </Tooltip>
+          {canQuote && onQuote && kind !== 'internal' ? (
+            <Tooltip content={t('timeline.quote')}>
+              <button
+                type="button"
+                aria-label={t('timeline.quote')}
+                onClick={() => {
+                  onQuote(message.bodyText);
+                  toast(t('timeline.quoted'));
+                }}
+                className={ICON_BUTTON}
+              >
+                <Quote aria-hidden className="size-3.5" />
+              </button>
+            </Tooltip>
+          ) : null}
+        </div>
       </article>
     </li>
   );
 }
 
-/** Messages and system events in time order. Public replies and internal notes look different. */
-export function Timeline({ entries }: { entries: readonly TimelineEntry[] }) {
+/**
+ * Messages and system events in time order. A customer's message sits on the left on a raised
+ * surface; a team reply sits on the right on a navy tint; an internal note keeps its dashed border
+ * and lock. Messages by the same author within five minutes read as one block. Events are one line.
+ */
+export function Timeline({
+  entries,
+  onQuote,
+  canQuote = false,
+}: {
+  entries: readonly TimelineEntry[];
+  onQuote?: (text: string) => void;
+  canQuote?: boolean;
+}) {
   const t = useI18n().t;
   return (
-    <ol aria-label={t('timeline.label')} className="flex flex-col py-1">
-      {entries.map((entry) =>
+    <ol aria-label={t('timeline.label')} className="flex flex-col pt-1 pb-3">
+      {entries.map((entry, index) =>
         entry.kind === 'message' ? (
-          <MessageRow key={`m-${entry.id}`} message={entry} />
+          <MessageRow
+            key={`m-${entry.id}`}
+            message={entry}
+            continued={sameBlock(entries[index - 1], entry)}
+            onQuote={onQuote}
+            canQuote={canQuote}
+          />
         ) : (
           <EventRow key={`e-${entry.id}`} entry={entry} />
         ),

@@ -1,5 +1,6 @@
 import {
   OPEN_STATUSES,
+  type ChannelType,
   type ClientTicket,
   type TicketDetail,
   type TicketPriority,
@@ -36,6 +37,11 @@ export interface RowModel {
   status: TicketStatus;
   priority: TicketPriority;
   orgName: string | null;
+  /** Who wrote in. A client sees their own name; staff see the requester on the ticket. */
+  requesterName: string | null;
+  /** Stable id behind the avatar hue. */
+  requesterId: string;
+  channel: ChannelType | null;
   assigneeName: string | null;
   unassigned: boolean;
   intentName: string | null;
@@ -68,6 +74,9 @@ export function toRowModel(ticket: TicketItem, now: number): RowModel {
     status: ticket.status,
     priority: ticket.priority,
     orgName: staff ? ticket.org.name : null,
+    requesterName: staff ? (ticket.requester?.name ?? null) : ticket.requesterName,
+    requesterId: staff ? (ticket.requester?.id ?? ticket.id) : ticket.id,
+    channel: staff ? ticket.channel : null,
     assigneeName: staff ? (ticket.assignee?.name ?? null) : null,
     unassigned: staff && ticket.assignee === null,
     intentName: ticket.intent?.name ?? null,

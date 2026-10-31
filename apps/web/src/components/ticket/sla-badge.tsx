@@ -56,7 +56,9 @@ export function SlaBadge({ sla, className }: { sla: SlaView; className?: string 
       aria-label={full}
       role="img"
       className={cn(
-        'inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-xs whitespace-nowrap',
+        // Colour only where it means something: a breach is red, everything else is greyscale.
+        // The state is also carried by the icon and the words, and by the weight and outline.
+        'tabular inline-flex items-center gap-1 rounded-full border px-1.5 py-px text-xs whitespace-nowrap',
         sla.state === 'breached' && 'border-danger font-semibold text-danger',
         sla.state === 'atRisk' && 'border-border-strong font-semibold text-foreground',
         sla.state === 'onTrack' && 'border-transparent text-muted-foreground',
