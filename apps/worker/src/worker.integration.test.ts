@@ -15,7 +15,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { createLogger } from './logger.js';
 import { pingResultSchema } from './processors/system.js';
-import { testConfig } from './testing/support.js';
+import { sealedEmailPayload, testConfig, testSealKey } from './testing/support.js';
 import { startWorker, type RunningWorker } from './worker.js';
 
 // Real Postgres, Redis and Mailpit from docker compose
@@ -141,7 +141,10 @@ describe('email queue to Mailpit over SMTP', () => {
     const link = `http://localhost:3000/login/magic#token=${randomBytes(16).toString('hex')}`;
     const payload: EmailJob = { kind: 'magic_link', to: recipient, link, expiresInMinutes: 15 };
     const jobId = `magic-${randomBytes(4).toString('hex')}`;
-    await emailQueue.add(EMAIL_JOBS.send, payload, { jobId, removeOnComplete: true });
+    await emailQueue.add(EMAIL_JOBS.send, sealedEmailPayload(payload, jobId, testSealKey(config)), {
+      jobId,
+      removeOnComplete: true,
+    });
 
     const summary = await waitForMail(recipient);
     expect(summary.Subject).toBe('Your Watchtower sign-in link');
@@ -160,6 +163,25 @@ describe('email queue to Mailpit over SMTP', () => {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ IDs: [summary.ID] }),
     });
+  });
+
+  it('drops an email job past its notAfter: completes without mailing, leaving nothing behind', async () => {
+    const recipient = `late-${randomBytes(4).toString('hex')}@example.com`;
+    const link = `http://localhost:3000/login/magic#token=${randomBytes(16).toString('hex')}`;
+    const payload: EmailJob = { kind: 'magic_link', to: recipient, link, expiresInMinutes: 15 };
+    const jobId = `late-${randomBytes(4).toString('hex')}`;
+    const job = await emailQueue.add(
+      EMAIL_JOBS.send,
+      { ...sealedEmailPayload(payload, jobId, testSealKey(config)), notAfter: Date.now() - 1000 },
+      { jobId, removeOnComplete: true, attempts: 5 },
+    );
+    await expect(job.waitUntilFinished(emailEvents, 10_000)).resolves.toEqual({
+      sent: false,
+      dropped: 'expired',
+    });
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    expect(await findMail(recipient)).toBeUndefined();
+    expect(await emailQueue.getJob(jobId)).toBeUndefined();
   });
 
   it('fails a malformed email job once, without retrying', async () => {

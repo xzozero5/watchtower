@@ -54,7 +54,7 @@ export class AuthService implements OnApplicationBootstrap {
   onApplicationBootstrap(): void {
     if (this.config.devLoginEnabled) {
       this.logger.warn(
-        'mock sign-in is ON (no Google credentials): POST /v1/auth/dev-login signs anyone in as any role. Local development only.',
+        'dev login is ON (DEV_LOGIN_ENABLED=true, no Google credentials): POST /v1/auth/dev-login signs anyone in as any role, for accounts it created. Local development only.',
       );
     }
   }
@@ -95,19 +95,24 @@ export class AuthService implements OnApplicationBootstrap {
   }
 
   /**
-   * Mock-mode sign-in for local development: no password, no network. Exists only when Google is
-   * in mock mode and NODE_ENV is not production (both guaranteed at boot); otherwise 404 as if the
-   * route did not exist.
+   * Mock-mode sign-in for local development: no password, no network. Exists only when
+   * DEV_LOGIN_ENABLED=true, Google is in mock mode and NODE_ENV is not production (all checked at
+   * boot); otherwise 404 as if the route did not exist.
+   *
+   * It signs in only to accounts it created itself (`dev_created`). An account made any other way
+   * (invited by a head, provisioned by domain, seeded, a break-glass admin, a real person who
+   * happens to share the address) is refused, so turning this on by mistake on a database with
+   * real accounts still cannot sign anyone in as them.
    */
   async devLogin(input: DevLoginRequest): Promise<UserRow> {
     if (!this.config.devLoginEnabled) throw notFound();
 
     const existing = await this.users.findByEmail(input.email);
     if (existing) {
-      // Break-glass accounts sign in with their password, and system identities never sign in as a person.
-      if (existing.status !== 'active' || existing.isBreakGlass || existing.role === 'system') {
+      if (!existing.devCreated || existing.status !== 'active' || existing.isBreakGlass) {
         throw forbidden();
       }
+      if (existing.role === 'system') throw forbidden();
       return existing;
     }
     if (input.role === 'client') {
@@ -115,17 +120,26 @@ export class AuthService implements OnApplicationBootstrap {
     } else if (!input.email.endsWith(`@${this.config.staffDomain}`)) {
       throw forbidden(`Staff dev accounts need an email at ${this.config.staffDomain}`);
     }
-    const [row] = await this.database.db
-      .insert(schema.users)
-      .values({
-        email: input.email,
-        name: input.name ?? input.email.split('@')[0] ?? input.email,
-        role: input.role,
-        orgId: input.role === 'client' ? (input.orgId ?? null) : null,
-      })
-      .returning();
-    if (!row) throw new Error('user insert returned no row');
-    return row;
+    try {
+      const [row] = await this.database.db
+        .insert(schema.users)
+        .values({
+          email: input.email,
+          name: input.name ?? input.email.split('@')[0] ?? input.email,
+          role: input.role,
+          orgId: input.role === 'client' ? (input.orgId ?? null) : null,
+          devCreated: true,
+        })
+        .returning();
+      if (!row) throw new Error('user insert returned no row');
+      return row;
+    } catch (error) {
+      // Two first-time requests for the same address: the loser signs in only if the winner was dev login.
+      if (!isUniqueViolation(error)) throw error;
+      const winner = await this.users.findByEmail(input.email);
+      if (!winner?.devCreated || winner.status !== 'active') throw forbidden();
+      return winner;
+    }
   }
 
   async principalFor(

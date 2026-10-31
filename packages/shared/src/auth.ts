@@ -244,6 +244,8 @@ export const AUDIT_ACTIONS = {
   breakGlassLogin: 'auth.login.break_glass',
   breakGlassFailed: 'auth.break_glass.failed',
   breakGlassLocked: 'auth.break_glass.locked',
+  breakGlassLockout: 'auth.break_glass.lockout',
+  breakGlassUnlocked: 'auth.break_glass.unlocked',
   breakGlassRateLimited: 'auth.break_glass.rate_limited',
   breakGlassProvisioned: 'auth.break_glass.provisioned',
   refresh: 'auth.refresh',

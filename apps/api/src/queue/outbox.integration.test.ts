@@ -1,5 +1,6 @@
 import { relayOutbox } from '@watchtower/db';
-import { QUEUE_NAMES, emailJobSchema } from '@watchtower/shared';
+import { QUEUE_NAMES } from '@watchtower/shared';
+import { KEY_LABELS, deriveSubkey, openFields, outboxAad } from '@watchtower/shared/secret-box';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { MagicLinkService } from '../auth/magic-link.service.js';
@@ -43,12 +44,13 @@ async function outboxRowFor(email: string) {
     id: string;
     job_id: string;
     status: string;
-    payload: { to?: string; link?: string };
+    payload: { to?: string; link?: string; secret?: string };
     queue: string;
     job_name: string;
     options: Record<string, unknown>;
+    expires_at: Date | null;
   }>(
-    `SELECT id, job_id, status, payload, queue, job_name, options FROM outbox
+    `SELECT id, job_id, status, payload, queue, job_name, options, expires_at FROM outbox
      WHERE job_id IN (SELECT 'magic-link-' || substr(t.token_hash, 1, 32)
                       FROM magic_link_tokens t JOIN users u ON u.id = t.user_id WHERE u.email = $1)`,
     [email],
@@ -74,7 +76,13 @@ describe('email through the outbox', () => {
       job_name: 'send',
       options: { attempts: 5, removeOnComplete: true },
     });
-    expect(emailJobSchema.safeParse(rows[0]?.payload).success).toBe(true);
+    // The link is sealed at rest; the clear part still says what the email is.
+    const payload = rows[0]?.payload ?? {};
+    expect(payload).toMatchObject({ kind: 'magic_link', to: email });
+    expect(payload.secret).toMatch(/^v1\./);
+    expect(payload).not.toHaveProperty('link');
+    expect(JSON.stringify(payload)).not.toContain('/login/magic');
+    expect(rows[0]?.expires_at).toBeInstanceOf(Date);
     // No relay has run: BullMQ has not heard of it.
     expect(await queuedFor(email)).toHaveLength(0);
   });
@@ -117,6 +125,77 @@ describe('email through the outbox', () => {
     await h.relayOutbox();
     expect(await queuedFor(email)).toHaveLength(1);
     expect((await outboxRowFor(email))[0]?.status).toBe('sent');
+  });
+
+  it('expires a magic-link email with the link itself (MAGIC_LINK_TTL_SECONDS)', async () => {
+    const email = await createClient();
+    const before = Date.now();
+    await requestLink(email);
+    const [row] = await outboxRowFor(email);
+    const lifetime = (row?.expires_at?.getTime() ?? 0) - before;
+    expect(lifetime).toBeGreaterThan(h.config.MAGIC_LINK_TTL_SECONDS * 1000 - 5000);
+    expect(lifetime).toBeLessThan(h.config.MAGIC_LINK_TTL_SECONDS * 1000 + 5000);
+  });
+
+  it('never relays a link that expired in the outbox: dead, payload blanked, nothing in Redis', async () => {
+    const email = await createClient();
+    await requestLink(email);
+    const [row] = await outboxRowFor(email);
+    expect(row?.payload.secret).toBeDefined();
+    await pool().query(`UPDATE outbox SET expires_at = now() - interval '1 second' WHERE id = $1`, [
+      row?.id,
+    ]);
+    const result = await h.relayOutbox();
+    expect(result.expired).toBeGreaterThanOrEqual(1);
+    expect(await queuedFor(email)).toHaveLength(0);
+    const [after] = await outboxRowFor(email);
+    expect(after).toMatchObject({ status: 'dead', payload: {} });
+  });
+
+  it('seals only the secret part, bound to the queue and job id it was written for', async () => {
+    const outbox = h.app.get(OutboxService);
+    const jobId = `sealed-${uniqueEmail('s')}`;
+    const link = 'http://localhost:3000/login/magic#token=THE-SECRET-VALUE';
+    await outbox.enqueue({
+      queue: QUEUE_NAMES.email,
+      name: 'send',
+      jobId,
+      payload: { kind: 'magic_link', to: 'sealed@example.com', expiresInMinutes: 15 },
+      secret: { link },
+      expiresAt: new Date(Date.now() + 60_000),
+    });
+    const stored = await pool().query<{ payload: Record<string, unknown>; expires_at: Date }>(
+      'SELECT payload, expires_at FROM outbox WHERE job_id = $1',
+      [jobId],
+    );
+    const payload = stored.rows[0]?.payload ?? {};
+    expect(payload).toMatchObject({ kind: 'magic_link', to: 'sealed@example.com' });
+    expect(JSON.stringify(payload)).not.toContain('THE-SECRET-VALUE');
+    expect(stored.rows[0]?.expires_at.getTime()).toBeGreaterThan(Date.now());
+
+    const key = deriveSubkey(h.config.APP_ENCRYPTION_KEY, KEY_LABELS.outboxSecret);
+    const sealed = String(payload.secret);
+    expect(openFields(key, sealed, outboxAad(QUEUE_NAMES.email, jobId))).toEqual({ link });
+    // Copied onto another job, or opened with another key, it is useless.
+    expect(() => openFields(key, sealed, outboxAad(QUEUE_NAMES.email, 'another-job'))).toThrow();
+    expect(() =>
+      openFields(
+        deriveSubkey(h.config.APP_ENCRYPTION_KEY, 'other'),
+        sealed,
+        outboxAad(QUEUE_NAMES.email, jobId),
+      ),
+    ).toThrow();
+  });
+
+  it('refuses a payload that already has a secret key of its own', async () => {
+    await expect(
+      h.app.get(OutboxService).enqueue({
+        queue: QUEUE_NAMES.email,
+        name: 'send',
+        jobId: `reserved-${uniqueEmail('r')}`,
+        payload: { secret: 'plain' },
+      }),
+    ).rejects.toThrow('reserved');
   });
 
   it('enqueues once when the same job id is asked for twice', async () => {

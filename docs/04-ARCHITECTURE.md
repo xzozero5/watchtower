@@ -96,9 +96,10 @@ Build ของ package: ESM, `tsc` ออกที่ `dist/`, `exports` ชี
 
 - **12-factor:** config ของ infra ผ่าน environment เท่านั้น ส่วน credential ของ integration อยู่ใน environment หรือ DB แบบเข้ารหัส ตั้งผ่าน admin UI ได้ และ environment ชนะ (ADR-004, งาน T-116) · `apps/api` และ `apps/worker` validate ด้วย Zod ตอน boot แล้ว fail ทันทีถ้าค่าที่จำเป็นขาด · package ไม่อ่าน `process.env` เอง รับค่าผ่าน parameter
 - **รายการตัวแปร:** `.env.example` เป็นแหล่งเดียว · ค่า secret จริงอยู่นอก repo และไม่ลง log
+- **Guard ตอน boot (T-010):** `JWT_SECRET`/`APP_ENCRYPTION_KEY` เป็น placeholder หรือสั้นกว่า 32 byte → ล้ม ยกเว้นเมื่อ `APP_URL` เป็น loopback และ `NODE_ENV != production` · `DEV_LOGIN_ENABLED=true` ร่วมกับ Google credential หรือ production → ล้ม (ADR-005)
 - **host ใน `.env.example` เป็น `localhost`** (ใช้กับ `pnpm dev` และ integration test บนเครื่อง) ส่วน `docker-compose.yml` สร้าง `DATABASE_URL`, `REDIS_URL`, `S3_ENDPOINT`, `SMTP_HOST` ด้วยชื่อ service เองเสมอ ค่าเหล่านี้ใน `.env` จึงไม่กระทบ container `[TESTED]` (T-002)
 - **CORS:** `apps/api` อนุญาต origin ของ `APP_URL` เพียงตัวเดียว ไม่ใช้ `*` · browser เรียก `API_URL` ตรง ใน compose `web` ได้ `API_URL=http://localhost:4000` `[TESTED]`
-- **MinIO:** image ทางการ `minio/minio` ถูกถอนจาก Docker Hub และ Quay (ตรวจ 2026-10-31) compose จึงใช้ fork `pgsty/minio` ปักเวอร์ชัน override ได้ด้วย `MINIO_IMAGE` `[ASK-HUMAN]` ตัดสินว่าจะคงตัวนี้หรือเขียน ADR เปลี่ยนเป็น S3-compatible ตัวอื่น
+- **MinIO:** image ทางการ `minio/minio` ถูกถอนจาก Docker Hub และ Quay (ตรวจ 2026-10-31) compose จึงใช้ fork `pgsty/minio` ปักเวอร์ชัน**และ digest** (`image: repo:tag@sha256:…` ทั้ง `minio` และ `minio-init`; tag ไว้ให้อ่านง่าย, digest คือตัวที่ Docker ใช้จริง — T-010 C-14) override ได้ด้วย `MINIO_IMAGE`/`MINIO_MC_IMAGE` (ถ้า override ให้ปัก digest เองด้วย) ปรับเวอร์ชันต้องแก้ tag กับ digest พร้อมกัน `[ASK-HUMAN]` ตัดสินว่าจะคงตัวนี้หรือเขียน ADR เปลี่ยนเป็น S3-compatible ตัวอื่น
 - **Google Workspace domain ของ SSO:** อ่านจาก `GOOGLE_ALLOWED_DOMAIN` ค่าตัวอย่าง `example.com` `[CONFIRMED]`
 - **ค่าที่แก้ได้จากหน้า admin** (provider/model ตาม PRD §6.7) เก็บใน DB ค่าใน environment เป็นค่าเริ่มต้นเท่านั้น · `config/models.yaml` และ `config/budgets.yaml` ใช้กับ AI ที่ build โปรเจกต์ โค้ดแอปไม่อ่าน
 - **Turbo env mode:** `build`, `test`, `typecheck`, `lint` เป็น strict เพื่อให้ cache ถูก · `dev`, `test:e2e`, `db:*`, `eval` ใช้ `--env-mode=loose` และไม่ cache เพราะต้องเห็นตัวแปรทั้งหมด
@@ -112,7 +113,7 @@ Build ของ package: ESM, `tsc` ออกที่ `dist/`, `exports` ชี
 
 | Integration | ตัวแปรที่ตัดสิน | พฤติกรรม local | เริ่มใน |
 |---|---|---|---|
-| Google OIDC | `GOOGLE_OIDC_CLIENT_ID`, `GOOGLE_OIDC_CLIENT_SECRET` | `POST /v1/auth/dev-login` (เฉพาะนอก production) + break-glass · production boot ล้มถ้า credential ไม่ครบ `[TESTED]` | T-004 |
+| Google OIDC | `GOOGLE_OIDC_CLIENT_ID`, `GOOGLE_OIDC_CLIENT_SECRET` | `POST /v1/auth/dev-login` (ต้องตั้ง `DEV_LOGIN_ENABLED=true` เอง, นอก production, เฉพาะบัญชีที่ dev login สร้าง) + break-glass · production boot ล้มถ้า credential ไม่ครบ `[TESTED]` | T-004 |
 | Email ขาออก | `SMTP_HOST`, `SMTP_PORT` | ส่ง SMTP จริงเข้า Mailpit ไม่ออกอินเทอร์เน็ต | T-007 |
 | Human verification | `PORTAL_POW_DIFFICULTY_BITS`, `PORTAL_MIN_FILL_SECONDS` | self-hosted proof-of-work + honeypot + rate limit (ADR-007) ไม่มีปลายทางภายนอกจึงไม่มี mock ที่ผ่านเสมอ · test ใช้ difficulty 8 bits / fill 0 s · provider ภายนอก (Turnstile/hCaptcha) = `[ASK-HUMAN]` | T-007 |
 | Object storage | `S3_*` | MinIO ผ่าน S3 interface เดียวกับ GCS | T-002 |
@@ -173,10 +174,12 @@ Build ของ package: ESM, `tsc` ออกที่ `dist/`, `exports` ชี
 
 กติกา:
 - **route ใหม่ทุกตัวต้องมี `@RequirePermission(...)`/`@RequireAnyPermission(...)` หรือ `@Public()`** ไม่งั้น 403 `route_not_configured` และ `routes-policy.test.ts` fail · เพิ่ม route สาธารณะต้องแก้ allow-list ใน test นั้นโดยตั้งใจ · permission string ใหม่ต้องเพิ่มใน `PERMISSIONS`/`DEFAULT_ROLE_PERMISSIONS` **และ** migration ใหม่ที่ `INSERT` ลง `permissions`/`role_permissions` (test เทียบ seed กับค่าใน shared)
+- **Secret ใน job:** อีเมลที่พก link ต้องส่งผ่าน `EmailOutbox.send(job, jobId, tx, ttlSeconds)` ซึ่งเข้ารหัส `link`/`trackingUrl` (AES-256-GCM, subkey ของ `APP_ENCRYPTION_KEY`) และตั้ง `expires_at` · worker เปิดก่อนส่ง SMTP · test อ่าน link ผ่าน `harness.openEmail(job)` (ADR-006)
 - **Audit:** ทุก POST/PUT/PATCH/DELETE ถูกบันทึกอัตโนมัติ · ตั้งชื่อ action ด้วย `@Audited({ action, targetType })` และเติม `AuditScope.set({ targetId, before, after })` ใน service · GET ที่คืน PII ติด `@AuditPiiRead('contact')` · ต้อง commit พร้อมกัน → `audit.recordInTransaction(tx, entry)` · ห้ามใส่ secret เอง (redaction เป็นด่านสุดท้าย ไม่ใช่ข้ออ้าง)
 - **Org scope:** ทุก query ของตารางที่ client เห็นต้องมี `orgScopeCondition(table.orgId, principal.orgScope)` และโหลดแบบ by-id แล้วเรียก `assertOrgAccess(principal, row.orgId)` (404)
 - **ตารางใหม่:** ได้สิทธิ์ SELECT/INSERT/UPDATE/DELETE ให้ `watchtower_app` อัตโนมัติ · ตาราง append-only (เช่น `ticket_event`) ให้ใช้ trigger `reject_mutation()`, `REVOKE UPDATE, DELETE, TRUNCATE`, และ `ensure_monthly_partitions('<table>', n, true)`
 - **Integration test:** ใช้ `createTestDatabase()` จาก `@watchtower/db/testing` (database ใหม่ + migrate + login role แบบจำกัดต่อ test file) และ `apps/api/src/testing/harness.ts` (`startHarness`, `TestClient` ที่มี cookie jar/CSRF/Origin/IP)
+- **Cookie และ header (T-010):** ชื่อ cookie มาจาก `cookieNames(config)` (`__Host-` เมื่อ Secure) ห้ามอ่าน `wt_at`/`wt_rt` ตรง ๆ · อ่านผ่าน `readCookie` เสมอ (cookie ซ้ำ = ไม่มี) · header ความปลอดภัยของ api อยู่ใน `http/security-headers.middleware.ts`
 - **ยังไม่ทำ:** purge session/token ที่หมดอายุ · LINE Login (Phase 1) · UI login (T-006)
 
 ## 11. Ticketing core (T-005) `[TESTED]` ยกเว้นที่ระบุ

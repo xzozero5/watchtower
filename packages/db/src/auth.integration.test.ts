@@ -297,8 +297,9 @@ describe('reversibility of 0001', () => {
   it('goes down (dropping every table it made, keeping 0000) and up again', async () => {
     // 0002 depends on 0001 (users, reject_mutation, ensure_monthly_partitions), 0003 on 0002 and
     // 0004 on 0002: newest goes first.
-    const reverted = await migrateDown(owner(), { steps: 4 });
+    const reverted = await migrateDown(owner(), { steps: 5 });
     expect(reverted).toEqual([
+      '0005_security',
       '0004_portal',
       '0003_followups_outbox',
       '0002_ticketing',
@@ -316,6 +317,7 @@ describe('reversibility of 0001', () => {
       '0002_ticketing',
       '0003_followups_outbox',
       '0004_portal',
+      '0005_security',
     ]);
     const seeded = await owner().query<{ n: number }>('SELECT count(*)::int AS n FROM permissions');
     expect(seeded.rows[0]?.n).toBe(Object.keys(PERMISSIONS).length);

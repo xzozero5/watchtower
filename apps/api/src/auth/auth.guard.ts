@@ -1,12 +1,13 @@
 import { Inject, Injectable, type CanActivate, type ExecutionContext } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import { ACCESS_COOKIE, AUDIT_ACTIONS, CSRF_HEADER, type Permission } from '@watchtower/shared';
+import { AUDIT_ACTIONS, CSRF_HEADER, type Permission } from '@watchtower/shared';
 import type { Request, Response } from 'express';
 
 import { AuditService } from '../audit/audit.service.js';
+import { APP_CONFIG, type ApiConfig } from '../config/config.js';
 import { LOGGER, type AppLogger } from '../logging/logger.js';
 import { AuthService } from './auth.service.js';
-import { readCookie } from './cookies.js';
+import { cookieNames, hasDuplicateCookie, readCookie } from './cookies.js';
 import { ANY_PERMISSIONS_KEY, PERMISSIONS_KEY, PUBLIC_KEY } from './decorators.js';
 import { ApiHttpError, forbidden, unauthenticated } from './http-errors.js';
 import { attachPrincipal, type Principal } from './principal.js';
@@ -38,6 +39,7 @@ export class AuthGuard implements CanActivate {
     @Inject(AuthService) private readonly auth: AuthService,
     @Inject(AuditService) private readonly audit: AuditService,
     @Inject(LOGGER) private readonly logger: AppLogger,
+    @Inject(APP_CONFIG) private readonly config: Pick<ApiConfig, 'cookieSecure'>,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -94,8 +96,19 @@ export class AuthGuard implements CanActivate {
   }
 
   private async authenticate(request: Request): Promise<Principal> {
-    const token = readCookie(request, ACCESS_COOKIE);
-    if (!token) throw unauthenticated();
+    const name = cookieNames(this.config).access;
+    const token = readCookie(request, name);
+    if (!token) {
+      // Two cookies of the auth name are never ours (a sibling subdomain or a proxy planted one):
+      // refuse rather than guess which copy to believe.
+      if (hasDuplicateCookie(request, name)) {
+        this.logger.warn(
+          { route: this.routeOf(request) },
+          'request carries the access cookie more than once; treating it as unauthenticated',
+        );
+      }
+      throw unauthenticated();
+    }
     const claims = await this.tokens.verifyAccessToken(token);
     if (!claims) throw unauthenticated();
     const live = await this.sessions.authenticate(claims);

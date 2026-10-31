@@ -1,4 +1,5 @@
-import { emailJobSchema, type EmailJob } from '@watchtower/shared';
+import { emailJobSchema, sealedEnvelopeSchema, type EmailJob } from '@watchtower/shared';
+import { openFields, outboxAad } from '@watchtower/shared/secret-box';
 import { UnrecoverableError, type Job } from 'bullmq';
 
 import type { Mailer, OutboundMessage } from '../mailer.js';
@@ -51,14 +52,42 @@ export function renderEmail(job: EmailJob): OutboundMessage {
   }
 }
 
+export interface EmailProcessorOptions {
+  /** The outbox subkey (`deriveSubkey(APP_ENCRYPTION_KEY, KEY_LABELS.outboxSecret)`) that opens sealed links. */
+  readonly sealKey: Buffer;
+  /** Clock in epoch milliseconds. Tests pass a fixed one. */
+  readonly now?: () => number;
+}
+
+export type EmailResult = { sent: true } | { sent: false; dropped: 'expired' };
+
 /**
- * Processor for the `email` queue. A payload that fails validation can never succeed, so it ends
- * the job at once (UnrecoverableError) instead of burning retries; an SMTP failure throws normally
- * and BullMQ retries with backoff. The payload is not logged: it holds a one-time link.
+ * Processor for the `email` queue. The job holds the message parameters in the clear and its links
+ * sealed (ADR-006): Redis, the failed-job history and logs only ever see ciphertext. The link is
+ * opened here, in memory, just before SMTP.
+ *
+ *  - A job past its `notAfter` is dropped unsent and completes (so it leaves no failed job behind):
+ *    a magic link past its lifetime opens nothing, and a stale tracking link should not be sent.
+ *  - A payload that fails validation, or whose sealed part cannot be opened (wrong key, wrong job,
+ *    tampering), can never succeed, so it ends the job at once (UnrecoverableError) instead of
+ *    burning retries; an SMTP failure throws normally and BullMQ retries with backoff.
+ *  - Nothing from the payload is logged or put in an error message.
  */
-export function createEmailProcessor(mailer: Mailer) {
-  return async (job: Job): Promise<{ sent: true }> => {
-    const parsed = emailJobSchema.safeParse(job.data);
+export function createEmailProcessor(mailer: Mailer, options: EmailProcessorOptions) {
+  const now = options.now ?? Date.now;
+  return async (job: Job): Promise<EmailResult> => {
+    const envelope = sealedEnvelopeSchema.safeParse(job.data);
+    if (!envelope.success) throw new UnrecoverableError('email job payload is invalid');
+    const { secret, notAfter, ...clear } = envelope.data;
+    if (notAfter !== undefined && now() >= notAfter) return { sent: false, dropped: 'expired' };
+
+    let links: Record<string, string>;
+    try {
+      links = openFields(options.sealKey, secret, outboxAad(job.queueName, job.id ?? ''));
+    } catch {
+      throw new UnrecoverableError('email job secret cannot be opened');
+    }
+    const parsed = emailJobSchema.safeParse({ ...clear, ...links });
     if (!parsed.success) throw new UnrecoverableError('email job payload is invalid');
     await mailer.send(renderEmail(parsed.data));
     return { sent: true };

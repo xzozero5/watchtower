@@ -3,6 +3,7 @@ import type { AddressInfo } from 'node:net';
 
 import { createDatabase, type OutboxPublisher } from '@watchtower/db';
 import { MAINTENANCE_JOBS, parseRedisUrl, QUEUE_NAMES, type QueueName } from '@watchtower/shared';
+import { KEY_LABELS, deriveSubkey } from '@watchtower/shared/secret-box';
 import { Queue, Worker, type Processor } from 'bullmq';
 import { z } from 'zod';
 
@@ -94,7 +95,12 @@ export async function startWorker(
   };
 
   consume(QUEUE_NAMES.system, processSystemJob);
-  consume(QUEUE_NAMES.email, createEmailProcessor(mailer));
+  consume(
+    QUEUE_NAMES.email,
+    createEmailProcessor(mailer, {
+      sealKey: deriveSubkey(config.APP_ENCRYPTION_KEY, KEY_LABELS.outboxSecret),
+    }),
+  );
   consume(QUEUE_NAMES.maintenance, createMaintenanceProcessor(database));
   await Promise.all(consumers.map((consumer) => consumer.waitUntilReady()));
 

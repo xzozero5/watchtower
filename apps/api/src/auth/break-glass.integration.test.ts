@@ -6,10 +6,16 @@ import { createDatabase } from '@watchtower/db';
 import type { SessionInfo } from '@watchtower/shared';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-import { startHarness, uniqueEmail, type Harness } from '../testing/harness.js';
+import { startHarness, uniqueEmail, type Harness, type TestClient } from '../testing/harness.js';
 import { captureLogs } from '../testing/support.js';
 import { provisionBreakGlass } from './break-glass-provision.js';
-import { BreakGlassBootstrap, LOCKOUT_THRESHOLD } from './break-glass.service.js';
+import {
+  BreakGlassBootstrap,
+  LOCKOUT_BASE_SECONDS,
+  LOCKOUT_MAX_SECONDS,
+  LOCKOUT_THRESHOLD,
+  lockSeconds,
+} from './break-glass.service.js';
 import { PasswordService } from './password.service.js';
 
 // The break-glass local admin on the real application. The passwords below exist only in this
@@ -35,6 +41,24 @@ afterAll(async () => {
 
 const pool = () => h.db.owner.pool;
 
+async function clearLockouts(): Promise<void> {
+  await pool().query('DELETE FROM break_glass_attempt');
+}
+
+async function attemptsFor(ip: string) {
+  const result = await pool().query<{
+    failed_count: number;
+    locked_until: Date | null;
+    seconds_left: number | null;
+  }>(
+    `SELECT failed_count, locked_until,
+            extract(epoch FROM locked_until - now())::float AS seconds_left
+     FROM break_glass_attempt WHERE ip = $1`,
+    [ip],
+  );
+  return result.rows[0];
+}
+
 async function account() {
   const result = await pool().query<{
     id: string;
@@ -42,12 +66,7 @@ async function account() {
     status: string;
     is_break_glass: boolean;
     password_hash: string;
-    failed_login_count: number;
-    locked_until: Date | null;
-  }>(
-    `SELECT id, role, status, is_break_glass, password_hash, failed_login_count, locked_until FROM users WHERE email = $1`,
-    [EMAIL],
-  );
+  }>(`SELECT id, role, status, is_break_glass, password_hash FROM users WHERE email = $1`, [EMAIL]);
   return result.rows[0];
 }
 
@@ -103,10 +122,7 @@ describe('provisioning from the environment', () => {
         (await client.post('/v1/auth/break-glass', { email: EMAIL, password: rotated })).status,
       ).toBe(200);
       expect(await provisionBreakGlass(database, passwords, EMAIL, PASSWORD)).toBe('updated');
-      await pool().query(
-        `UPDATE users SET failed_login_count = 0, locked_until = NULL WHERE email = $1`,
-        [EMAIL],
-      );
+      await clearLockouts();
     } finally {
       await database.close();
     }
@@ -176,10 +192,7 @@ describe('signing in', () => {
     }
     expect(new Set(bodies.map((body) => JSON.stringify(body))).size).toBe(1);
     expect(bodies[0]).toMatchObject({ code: 'invalid_credentials' });
-    await pool().query(
-      `UPDATE users SET failed_login_count = 0, locked_until = NULL WHERE email = $1`,
-      [EMAIL],
-    );
+    await clearLockouts();
   });
 
   it('spends the cost of a password check even when the account does not exist', async () => {
@@ -224,75 +237,197 @@ describe('signing in', () => {
   });
 });
 
-describe('lockout', () => {
-  it(`locks the account after ${String(LOCKOUT_THRESHOLD)} wrong passwords, even for the right one`, async () => {
-    await pool().query(
-      `UPDATE users SET failed_login_count = 0, locked_until = NULL WHERE email = $1`,
-      [EMAIL],
-    );
-    for (let attempt = 1; attempt <= LOCKOUT_THRESHOLD; attempt += 1) {
-      const response = await h.client().post('/v1/auth/break-glass', {
-        email: EMAIL,
-        password: `wrong-${String(attempt)}-password`,
-      });
-      expect(response.status).toBe(401);
-    }
-    const locked = await account();
-    expect(locked?.failed_login_count).toBe(LOCKOUT_THRESHOLD);
-    expect(locked?.locked_until && locked.locked_until.getTime() > Date.now()).toBe(true);
+describe('lockout per (account, IP address) with exponential backoff (C-7)', () => {
+  const wrong = (client: TestClient, n: number | string) =>
+    client.post<{ code: string }>('/v1/auth/break-glass', {
+      email: EMAIL,
+      password: `wrong-${String(n)}-password`,
+    });
 
-    const withRightPassword = await h.client().post<{ code: string }>('/v1/auth/break-glass', {
+  it('computes the lock length: none below the threshold, then 60 s doubling up to an hour', () => {
+    expect([1, 4].map(lockSeconds)).toEqual([0, 0]);
+    expect([5, 6, 7, 8].map(lockSeconds)).toEqual([60, 120, 240, 480]);
+    expect(lockSeconds(11)).toBe(LOCKOUT_MAX_SECONDS);
+    expect(lockSeconds(500)).toBe(LOCKOUT_MAX_SECONDS);
+  });
+
+  it(`locks the address after ${String(LOCKOUT_THRESHOLD)} wrong passwords, even for the right one, and no other address`, async () => {
+    await clearLockouts();
+    const attacker = h.client();
+    for (let attempt = 1; attempt <= LOCKOUT_THRESHOLD; attempt += 1) {
+      expect((await wrong(attacker, attempt)).status).toBe(401);
+    }
+    const locked = await attemptsFor(attacker.ip);
+    expect(locked?.failed_count).toBe(LOCKOUT_THRESHOLD);
+    expect(locked?.seconds_left).toBeGreaterThan(LOCKOUT_BASE_SECONDS - 10);
+    expect(locked?.seconds_left).toBeLessThanOrEqual(LOCKOUT_BASE_SECONDS);
+
+    // The attacker's address is out, whatever it types ...
+    const retry = await attacker.post<{ code: string }>('/v1/auth/break-glass', {
       email: EMAIL,
       password: PASSWORD,
     });
-    expect(withRightPassword.status).toBe(401);
-    expect(withRightPassword.body.code).toBe('invalid_credentials');
+    expect(retry.status).toBe(401);
+    expect(retry.body.code).toBe('invalid_credentials');
+    // ... and the real admin, from somewhere else, is not.
+    const admin = h.client();
     expect(
-      (await auditActions()).filter((action) => action === 'auth.break_glass.locked').length,
+      (await admin.post('/v1/auth/break-glass', { email: EMAIL, password: PASSWORD })).status,
+    ).toBe(200);
+    expect(await attemptsFor(admin.ip)).toBeUndefined();
+
+    const actions = await auditActions();
+    expect(
+      actions.filter((action) => action === 'auth.break_glass.locked').length,
     ).toBeGreaterThanOrEqual(1);
+    expect(actions).toContain('auth.break_glass.lockout');
   });
 
-  it('lets the right password in again once the lock has passed, and clears the count', async () => {
+  it('writes an audit row and a warning when a lock is applied, and none for the earlier failures', async () => {
+    await clearLockouts();
+    const client = h.client();
+    const lockoutRows = () =>
+      pool().query<{
+        outcome: string;
+        target_id: string;
+        metadata: { failedAttempts: number; lockedForSeconds: number };
+      }>(
+        `SELECT outcome, target_id, metadata FROM audit_log
+         WHERE action = 'auth.break_glass.lockout' AND ip = $1`,
+        [client.ip],
+      );
+    for (let attempt = 1; attempt < LOCKOUT_THRESHOLD; attempt += 1) await wrong(client, attempt);
+    expect((await lockoutRows()).rows).toHaveLength(0);
+
+    await wrong(client, LOCKOUT_THRESHOLD);
+    const rows = await lockoutRows();
+    expect(rows.rows).toHaveLength(1);
+    expect(rows.rows[0]).toMatchObject({
+      outcome: 'denied',
+      target_id: (await account())?.id,
+      metadata: { failedAttempts: LOCKOUT_THRESHOLD, lockedForSeconds: LOCKOUT_BASE_SECONDS },
+    });
+    const warning = logs
+      .lines()
+      .find(
+        (line) =>
+          typeof line.msg === 'string' &&
+          line.msg.includes('break-glass sign-in locked') &&
+          line.ip === client.ip,
+      );
+    expect(warning).toMatchObject({ level: 'warn', failedAttempts: LOCKOUT_THRESHOLD });
+    expect(JSON.stringify(warning)).not.toContain('wrong-');
+  });
+
+  it('doubles the lock with each further wrong password from that address, up to an hour', async () => {
+    await clearLockouts();
+    const client = h.client();
+    const userId = (await account())?.id;
     await pool().query(
-      `UPDATE users SET locked_until = now() - interval '1 second' WHERE email = $1`,
-      [EMAIL],
+      `INSERT INTO break_glass_attempt (user_id, ip, failed_count, locked_until)
+       VALUES ($1, $2, $3, now() - interval '1 second')`,
+      [userId, client.ip, LOCKOUT_THRESHOLD],
     );
-    const response = await h
-      .client()
-      .post('/v1/auth/break-glass', { email: EMAIL, password: PASSWORD });
+    await wrong(client, 'six');
+    let row = await attemptsFor(client.ip);
+    expect(row?.failed_count).toBe(LOCKOUT_THRESHOLD + 1);
+    expect(row?.seconds_left).toBeGreaterThan(2 * LOCKOUT_BASE_SECONDS - 10);
+    expect(row?.seconds_left).toBeLessThanOrEqual(2 * LOCKOUT_BASE_SECONDS);
+
+    await pool().query(
+      `UPDATE break_glass_attempt SET locked_until = now() - interval '1 second' WHERE ip = $1`,
+      [client.ip],
+    );
+    await wrong(client, 'seven');
+    row = await attemptsFor(client.ip);
+    expect(row?.failed_count).toBe(LOCKOUT_THRESHOLD + 2);
+    expect(row?.seconds_left).toBeGreaterThan(4 * LOCKOUT_BASE_SECONDS - 10);
+
+    await pool().query(
+      `UPDATE break_glass_attempt SET failed_count = 40, locked_until = now() - interval '1 second' WHERE ip = $1`,
+      [client.ip],
+    );
+    await wrong(client, 'many');
+    row = await attemptsFor(client.ip);
+    expect(row?.failed_count).toBe(41);
+    expect(row?.seconds_left).toBeLessThanOrEqual(LOCKOUT_MAX_SECONDS);
+    expect(row?.seconds_left).toBeGreaterThan(LOCKOUT_MAX_SECONDS - 10);
+  });
+
+  it('does not extend a lock by guessing during it', async () => {
+    await clearLockouts();
+    const client = h.client();
+    for (let attempt = 1; attempt <= LOCKOUT_THRESHOLD; attempt += 1) await wrong(client, attempt);
+    const first = await attemptsFor(client.ip);
+    await wrong(client, 'during-lock');
+    const second = await attemptsFor(client.ip);
+    expect(second?.failed_count).toBe(first?.failed_count);
+    expect(second?.locked_until?.getTime()).toBe(first?.locked_until?.getTime());
+  });
+
+  it('lets the right password in again once the lock has passed, and forgets that address', async () => {
+    await clearLockouts();
+    const client = h.client();
+    for (let attempt = 1; attempt <= LOCKOUT_THRESHOLD; attempt += 1) await wrong(client, attempt);
+    await pool().query(
+      `UPDATE break_glass_attempt SET locked_until = now() - interval '1 second' WHERE ip = $1`,
+      [client.ip],
+    );
+    const response = await client.post('/v1/auth/break-glass', {
+      email: EMAIL,
+      password: PASSWORD,
+    });
     expect(response.status).toBe(200);
-    expect(await account()).toMatchObject({ failed_login_count: 0, locked_until: null });
+    expect(await attemptsFor(client.ip)).toBeUndefined();
   });
 
-  it('counts parallel guesses exactly, so they cannot slip under the threshold', async () => {
-    await pool().query(
-      `UPDATE users SET failed_login_count = 0, locked_until = NULL WHERE email = $1`,
-      [EMAIL],
-    );
+  it('counts parallel guesses from one address exactly, so they cannot slip under the threshold', async () => {
+    await clearLockouts();
+    const client = h.client();
     await Promise.all(
-      Array.from({ length: 4 }, (_, index) =>
-        h.client().post('/v1/auth/break-glass', {
-          email: EMAIL,
-          password: `parallel-guess-${String(index)}`,
-        }),
-      ),
+      Array.from({ length: 4 }, (_, index) => wrong(client, `parallel-${String(index)}`)),
     );
-    expect((await account())?.failed_login_count).toBe(4);
+    expect((await attemptsFor(client.ip))?.failed_count).toBe(4);
+    await wrong(client, 'parallel-last');
+    expect((await attemptsFor(client.ip))?.seconds_left).toBeGreaterThan(0);
+  });
+
+  it('starts counting again after a quiet day', async () => {
+    await clearLockouts();
+    const client = h.client();
     await pool().query(
-      `UPDATE users SET failed_login_count = 0, locked_until = NULL WHERE email = $1`,
-      [EMAIL],
+      `INSERT INTO break_glass_attempt (user_id, ip, failed_count, last_failed_at)
+       VALUES ($1, $2, 4, now() - interval '25 hours')`,
+      [(await account())?.id, client.ip],
     );
+    await wrong(client, 'after-a-day');
+    expect(await attemptsFor(client.ip)).toMatchObject({ failed_count: 1, locked_until: null });
   });
 
   it('forgets earlier mistakes after a successful sign-in', async () => {
-    await h
-      .client()
-      .post('/v1/auth/break-glass', { email: EMAIL, password: 'one-mistake-password' });
-    expect((await account())?.failed_login_count).toBe(1);
+    await clearLockouts();
+    const client = h.client();
+    await wrong(client, 'one-mistake');
+    expect((await attemptsFor(client.ip))?.failed_count).toBe(1);
     expect(
-      (await h.client().post('/v1/auth/break-glass', { email: EMAIL, password: PASSWORD })).status,
+      (await client.post('/v1/auth/break-glass', { email: EMAIL, password: PASSWORD })).status,
     ).toBe(200);
-    expect((await account())?.failed_login_count).toBe(0);
+    expect(await attemptsFor(client.ip)).toBeUndefined();
+  });
+
+  it('keeps the counters per account: a lock on one account does not touch another', async () => {
+    await clearLockouts();
+    const database = createDatabase({ url: h.db.ownerUrl, max: 1 });
+    const other = uniqueEmail('second-admin');
+    try {
+      await provisionBreakGlass(database, new PasswordService(), other, PASSWORD);
+    } finally {
+      await database.close();
+    }
+    const client = h.client();
+    for (let attempt = 1; attempt <= LOCKOUT_THRESHOLD; attempt += 1) await wrong(client, attempt);
+    const second = await client.post('/v1/auth/break-glass', { email: other, password: PASSWORD });
+    expect(second.status).toBe(200);
   });
 });
 
@@ -332,6 +467,7 @@ describe('everything is audited, nothing secret is', () => {
       'auth.login.break_glass',
       'auth.break_glass.failed',
       'auth.break_glass.locked',
+      'auth.break_glass.lockout',
       'auth.break_glass.rate_limited',
     ]) {
       expect(actions, expected).toContain(expected);
@@ -418,6 +554,49 @@ describe('command line', () => {
     expect(short.stderr).toContain('at least 12');
     expect(short.stdout + short.stderr).not.toContain('short-pw');
     expect(short.stdout + short.stderr).not.toContain(h.db.ownerUrl);
+  });
+
+  it('--unlock clears every lockout of the account, needs no password, and is audited', async () => {
+    await clearLockouts();
+    const attacker = h.client();
+    for (let attempt = 1; attempt <= LOCKOUT_THRESHOLD; attempt += 1) {
+      await attacker.post('/v1/auth/break-glass', {
+        email: EMAIL,
+        password: `cli-wrong-${String(attempt)}`,
+      });
+    }
+    expect((await attemptsFor(attacker.ip))?.seconds_left).toBeGreaterThan(0);
+    expect(
+      (await attacker.post('/v1/auth/break-glass', { email: EMAIL, password: PASSWORD })).status,
+    ).toBe(401);
+
+    const result = await run(['--unlock', EMAIL], { DATABASE_URL: h.db.ownerUrl });
+    expect(result.code).toBe(0);
+    expect(result.stdout).toContain('unlocked');
+    expect(result.stdout + result.stderr).not.toContain(h.db.ownerUrl);
+    expect(await attemptsFor(attacker.ip)).toBeUndefined();
+    expect(
+      (await attacker.post('/v1/auth/break-glass', { email: EMAIL, password: PASSWORD })).status,
+    ).toBe(200);
+
+    const audit = await pool().query<{ actor_type: string; actor_id: string; metadata: unknown }>(
+      `SELECT actor_type, actor_id, metadata FROM audit_log WHERE action = 'auth.break_glass.unlocked'`,
+    );
+    expect(audit.rows.at(-1)).toMatchObject({
+      actor_type: 'system',
+      actor_id: 'break-glass-cli',
+      metadata: { clearedAddresses: 1 },
+    });
+  });
+
+  it('--unlock refuses an address that is not a break-glass account, and a stray argument', async () => {
+    const normal = uniqueEmail('not-break-glass');
+    await pool().query(`INSERT INTO users (email, name, role) VALUES ($1, 'N', 'head')`, [normal]);
+    const notBreakGlass = await run(['--unlock', normal], { DATABASE_URL: h.db.ownerUrl });
+    expect(notBreakGlass.code).toBe(1);
+    expect(notBreakGlass.stderr).toContain('no break-glass account');
+    expect((await run(['--unlock', EMAIL, 'extra'], { DATABASE_URL: h.db.ownerUrl })).code).toBe(2);
+    expect((await run(['--unlock'], { DATABASE_URL: h.db.ownerUrl })).code).toBe(2);
   });
 
   it('needs a password and a database', async () => {

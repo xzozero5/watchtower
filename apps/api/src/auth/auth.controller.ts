@@ -23,9 +23,7 @@ import {
   ApiTooManyRequestsResponse,
 } from '@nestjs/swagger';
 import {
-  ACCESS_COOKIE,
   AUDIT_ACTIONS,
-  REFRESH_COOKIE,
   authConfigSchema,
   breakGlassLoginSchema,
   deviceListSchema,
@@ -50,7 +48,15 @@ import { APP_CONFIG, type ApiConfig } from '../config/config.js';
 import { parseResponse } from '../common/zod-openapi.js';
 import { AuthService, GoogleLoginRejected, requestMeta } from './auth.service.js';
 import { BreakGlassService } from './break-glass.service.js';
-import { OIDC_COOKIE, clearSessionCookies, readCookie, setSessionCookies } from './cookies.js';
+import {
+  clearOidcCookie,
+  clearSessionCookies,
+  cookieNames,
+  hasDuplicateCookie,
+  oidcCookieOptions,
+  readCookie,
+  setSessionCookies,
+} from './cookies.js';
 import { Audited, CurrentPrincipal, Public, RequirePermission } from './decorators.js';
 import { GoogleOidcService, OidcError } from './google-oidc.service.js';
 import { RateLimitedError, invalidLink, invalidRefreshToken, notFound } from './http-errors.js';
@@ -82,7 +88,8 @@ function secondsUntil(date: Date): number {
 /**
  * Sign-in, session renewal and sign-out. Browser contract (also for T-006):
  *
- *  - Sign-in sets two HttpOnly cookies (`wt_at` access JWT, `wt_rt` refresh token) and returns
+ *  - Sign-in sets two HttpOnly cookies (`wt_at` access JWT, `wt_rt` refresh token; named
+ *    `__Host-wt_at` / `__Host-wt_rt` when cookies are Secure, which the browser handles by itself) and returns
  *    SessionInfo in the body, including `csrfToken`. Tokens are never in a JSON body.
  *  - Send `credentials: 'include'` on every fetch. Send `x-csrf-token: <csrfToken>` on every POST,
  *    PUT, PATCH and DELETE to a signed-in route.
@@ -174,13 +181,7 @@ export class AuthController {
     if (!this.oidc.live) throw notFound('Google sign-in is not configured');
     try {
       const { url, cookie } = await this.oidc.start(query.returnTo);
-      response.cookie(OIDC_COOKIE, cookie, {
-        httpOnly: true,
-        secure: this.config.cookieSecure,
-        sameSite: 'lax',
-        path: '/',
-        maxAge: 10 * 60 * 1000,
-      });
+      response.cookie(cookieNames(this.config).oidc, cookie, oidcCookieOptions(this.config));
       return { url, statusCode: 302 };
     } catch (error) {
       if (error instanceof OidcError) return this.loginRedirect(error.failure);
@@ -211,17 +212,20 @@ export class AuthController {
         outcome: 'failure',
         metadata: { reason },
       });
-      response.clearCookie(OIDC_COOKIE, { path: '/' });
+      clearOidcCookie(response, this.config);
       return this.loginRedirect(reason);
     };
 
     if (!this.oidc.live) return fail('google_unavailable');
     const query = new URL(request.originalUrl, 'http://placeholder.invalid').searchParams;
     try {
-      const identity = await this.oidc.finish(query, readCookie(request, OIDC_COOKIE));
+      const identity = await this.oidc.finish(
+        query,
+        readCookie(request, cookieNames(this.config).oidc),
+      );
       const user = await this.auth.resolveGoogleUser(identity);
       await this.signIn(request, response, user, 'google');
-      response.clearCookie(OIDC_COOKIE, { path: '/' });
+      clearOidcCookie(response, this.config);
       return { url: new URL(identity.returnTo, this.config.APP_URL).toString(), statusCode: 302 };
     } catch (error) {
       if (error instanceof OidcError) return fail(error.failure);
@@ -237,8 +241,9 @@ export class AuthController {
   @ApiOperation({
     summary: 'Development sign-in without a password (mock mode only)',
     description:
-      'Exists only when Google credentials are empty and NODE_ENV is not production; otherwise 404. ' +
-      'Creates the account on first use.',
+      'Exists only when DEV_LOGIN_ENABLED=true, Google credentials are empty and NODE_ENV is not ' +
+      'production; otherwise 404. Creates the account on first use and signs in only to accounts ' +
+      'it created (any other account is 403).',
   })
   @ApiOkResponse({ standardSchema: sessionInfoSchema })
   @ApiNotFoundResponse({ description: 'Not available (live mode or production)' })
@@ -319,8 +324,10 @@ export class AuthController {
     summary: 'Break-glass local admin sign-in (role head)',
     description:
       'For when Google sign-in is down. 401 `invalid_credentials` for a wrong password, an unknown ' +
-      'account and a locked account alike. 5 wrong passwords lock the account for 15 minutes; 10 ' +
-      'attempts per IP per 15 minutes (429). Every attempt is audited.',
+      'account and a locked account alike. The 5th wrong password from one IP address locks that ' +
+      'address out of that account for 60 seconds, doubling with each further wrong password up to ' +
+      'an hour; other addresses are not affected. 10 attempts per IP per 15 minutes (429). Every ' +
+      'attempt is audited.',
   })
   @ApiOkResponse({ standardSchema: sessionInfoSchema })
   @ApiTooManyRequestsResponse({ description: 'Too many attempts from this IP address' })
@@ -343,7 +350,7 @@ export class AuthController {
   @ApiOperation({
     summary: 'Renew the session',
     description:
-      'Uses the `wt_rt` cookie. Each refresh token works once and is replaced by a new one. ' +
+      'Uses the refresh cookie (`wt_rt`; `__Host-wt_rt` when Secure). Each refresh token works once and is replaced by a new one. ' +
       'Presenting an already-used token revokes the whole session (401 and cleared cookies). ' +
       'Call it from one tab at a time.',
   })
@@ -354,9 +361,18 @@ export class AuthController {
   })
   async refresh(@Req() request: Request, @Res({ passthrough: true }) response: Response) {
     await this.limiter.enforce('refresh-ip', request.ip ?? 'unknown', 120, 60);
-    const token = readCookie(request, REFRESH_COOKIE);
+    const names = cookieNames(this.config);
+    const token = readCookie(request, names.refresh);
     if (!token) {
-      AuditScope.set({ outcome: 'failure', metadata: { reason: 'no_refresh_cookie' } });
+      // A repeated cookie reads as absent: we cannot know which copy is ours (see readCookie).
+      AuditScope.set({
+        outcome: 'failure',
+        metadata: {
+          reason: hasDuplicateCookie(request, names.refresh)
+            ? 'duplicate_refresh_cookie'
+            : 'no_refresh_cookie',
+        },
+      });
       throw invalidRefreshToken();
     }
     const result = await this.sessions.refresh(token, requestMeta(request));
@@ -392,8 +408,9 @@ export class AuthController {
   })
   @ApiNoContentResponse()
   async logout(@Req() request: Request, @Res({ passthrough: true }) response: Response) {
-    const access = readCookie(request, ACCESS_COOKIE);
-    const refresh = readCookie(request, REFRESH_COOKIE);
+    const names = cookieNames(this.config);
+    const access = readCookie(request, names.access);
+    const refresh = readCookie(request, names.refresh);
     const claims = access ? await this.tokens.verifyAccessToken(access) : null;
     const sessionId =
       claims?.sessionId ?? (refresh ? await this.sessions.sessionIdForRefreshToken(refresh) : null);

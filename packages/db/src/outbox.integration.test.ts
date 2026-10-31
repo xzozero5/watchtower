@@ -253,6 +253,37 @@ describe('relayOutbox', () => {
     expect(await relayOutbox(testDb.owner, () => Promise.resolve())).toMatchObject({ sent: 1 });
   });
 
+  it('dead-letters a row past expires_at and blanks its payload instead of relaying it', async () => {
+    const db = testDb.owner.db;
+    await enqueueOutbox(db, {
+      ...job('stale', { secret: 'sealed-ciphertext' }),
+      expiresAt: new Date(Date.now() + 60_000),
+    });
+    await enqueueOutbox(db, {
+      ...job('fresh', { secret: 'sealed-ciphertext' }),
+      expiresAt: new Date(Date.now() + 3_600_000),
+    });
+    await enqueueOutbox(db, job('never-expires'));
+    // Time passes: the first row's lifetime is over before the relay got to it.
+    await testDb.owner.pool.query(
+      `UPDATE outbox SET expires_at = now() - interval '1 second' WHERE job_id = 'stale'`,
+    );
+    const seen: OutboxRow[] = [];
+    const result = await relayOutbox(testDb.owner, (row) => {
+      seen.push(row);
+      return Promise.resolve();
+    });
+    expect(result).toMatchObject({ claimed: 2, sent: 2, expired: 1 });
+    expect(seen.map((row) => row.jobId).toSorted()).toEqual(['fresh', 'never-expires']);
+    expect(seen.find((row) => row.jobId === 'fresh')?.expiresAt).toBeInstanceOf(Date);
+    expect(seen.find((row) => row.jobId === 'never-expires')?.expiresAt).toBeNull();
+    const stale = await statusOf('stale');
+    expect(stale.status).toBe('dead');
+    expect(stale.payload).toEqual({});
+    expect(stale.last_error).toContain('expired');
+    expect(stale.finished_at).not.toBeNull();
+  });
+
   it('works as the restricted application role', async () => {
     await enqueueOutbox(testDb.owner.db, job('as-app'));
     const result = await relayOutbox({ pool: app }, () => Promise.resolve());

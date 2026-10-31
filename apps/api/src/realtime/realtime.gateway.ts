@@ -9,7 +9,6 @@ import {
 } from '@nestjs/common';
 import { HttpAdapterHost } from '@nestjs/core';
 import {
-  ACCESS_COOKIE,
   REALTIME_CLOSE_CODES,
   REALTIME_PATH,
   realtimeEventFor,
@@ -20,7 +19,7 @@ import type { Redis } from 'ioredis';
 import { WebSocket, WebSocketServer } from 'ws';
 
 import { AuthService } from '../auth/auth.service.js';
-import { parseCookies } from '../auth/cookies.js';
+import { cookieNames, parseCookieHeader } from '../auth/cookies.js';
 import type { Principal } from '../auth/principal.js';
 import { SessionService } from '../auth/session.service.js';
 import { TokenService } from '../auth/token.service.js';
@@ -166,7 +165,10 @@ export class RealtimeGateway implements OnApplicationBootstrap, OnModuleDestroy 
       return;
     }
 
-    const token = parseCookies(request.headers.cookie).get(ACCESS_COOKIE);
+    // A repeated access cookie is not ours (see readCookie): no credentials, so 401.
+    const cookies = parseCookieHeader(request.headers.cookie);
+    const accessName = cookieNames(this.config).access;
+    const token = cookies.duplicates.has(accessName) ? undefined : cookies.values.get(accessName);
     const claims = token === undefined ? null : await this.tokens.verifyAccessToken(token);
     const live = claims === null ? null : await this.sessions.authenticate(claims);
     if (claims === null || live === null) {

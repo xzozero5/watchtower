@@ -21,6 +21,7 @@ function guardFor(isPublic: boolean) {
     {} as AuthService,
     {} as AuditService,
     { error: vi.fn() } as unknown as AppLogger,
+    { cookieSecure: false },
   );
 }
 
