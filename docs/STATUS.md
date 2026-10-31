@@ -4,16 +4,16 @@
 snapshot สั้นสำหรับ cold start อยู่ที่ `HANDOFF.md` — ไฟล์นี้คือ log ต่อ task + open questions
 
 ## สถานะปัจจุบัน
-| Phase | สถานะ (2026-10-31) | ค้าง |
+| Phase | สถานะ (2026-11-01) | ค้าง |
 |---|---|---|
-| 0 Foundation | 🔄 กำลังทำ (cloud session) | T-006 → T-012, T-013 |
-| 1 Inbox + AI 0–2 + Shifts | ⬜ | — |
+| 0 Foundation | 🟡 งานครบ รอ CI (T-014) แล้วรอเจ้าของตรวจบนเครื่องก่อน tag | T-014, T-012 |
+| 1 Inbox + AI 0–2 + Shifts | 🔄 W0 เริ่มแล้ว (T-101, T-124 เสร็จ; T-123a กำลังทำ) | ตาม waves ใน BACKLOG |
 | 2 Reliability + Usage | ⬜ | — |
 | 3 Autonomy + Learning | ⬜ | — |
 | 4 Mobile + Scale | ⬜ | — |
 
-- Test ล่าสุด: ยังไม่มีโค้ด
-- Blockers: ไม่มี · `[ASK-HUMAN]` ค้าง: credential, PRD §16
+- Test ล่าสุด (main `61e1395`, 2026-11-01 04:05, `--force` ไม่ใช้ cache): lint, typecheck ผ่าน · unit shared 148, api 164, worker 33, db 47, ui 256, web 470, boundaries 94 ผ่าน · integration (main + T-010/T-009 ก่อน merge) api 387, db 107, worker 19 · e2e 99 · full-stack e2e 22 `[TESTED]` · `docker compose up` ด้วย image ยังไม่เคยรัน `[ASK-HUMAN]`
+- Blockers: ไม่มี · `[ASK-HUMAN]` ค้าง: ดู `HANDOFF.md`
 
 ## Open questions / `[UNVERIFIED]` / `[ASSUMED]` ที่ยังค้าง
 - PRD §16 (Cloud SQL replica, GCP projects, mailbox + delegation, LINE plan/volume, Discord, ทีม/กะ, SLA tiers, AI provider/budget) — ข้อ 9 ปิดแล้ว: public, Apache-2.0, เป็นกลางไม่ผูกกับองค์กรใด `[CONFIRMED 2026-10-31]`
@@ -21,8 +21,8 @@ snapshot สั้นสำหรับ cold start อยู่ที่ `HANDOF
 - `[ASSUMED]` งบ `build_ai` $10/session วัดไม่ได้บน Max plan จึงดู % plan limit แทน
 - `docs/brand/watchtower-logo.svg` รุ่น 22:09 สีตรงกับ PNG แล้ว แต่รูปทรงเป็นแบบย่อ: ไม่มีหน้าต่างบนตัวประภาคาร, ซี่ราวระเบียง, ซี่กรอบโคมไฟ และคลื่นคนละทรง (ตรวจจาก source) → UI ยังใช้ PNG เป็นโลโก้ และใช้ hex ใน `docs/brand/README.md` เป็น token
 - `[CONFIRMED 2026-10-31]` secret ของ infra อยู่ใน env เท่านั้น, credential ของ integration อยู่ใน env หรือ DB เข้ารหัส ตั้งผ่าน admin UI (ADR-004, งาน T-116) · `docs/04-ARCHITECTURE.md` §5 ต้องปรับถ้อยคำตามหลัง T-004
-- `[ASK-HUMAN]` deploy ขึ้น GCP อยู่ใน Post-MVP แต่ pilot T-115 ต้องมีข้อมูลจริงและ webhook สาธารณะ → เสนอย้ายมาก่อน T-115, ให้ `po` พิจารณาใน T-011
-- `WT_MAIN_THREAD=1` ใน `.claude/settings.local.json` (เจ้าของตั้งเอง) ปลดการป้องกัน HANDOFF/STATUS/BACKLOG ให้ sub-agent ด้วย → main thread ตรวจ diff ของสามไฟล์นี้หลัง agent ทุกตัว; `guard.py` ควรแยก sub-agent จาก hook input แทน env (เสนอ ยังไม่ทำ)
+- ~~deploy GCP ก่อน T-115~~ → `po` ตัดสินแล้ว: T-118 (ADR + IaC skeleton ไม่ apply) `[ASSUMED]`
+- `WT_MAIN_THREAD=1` (บน cloud session นี้มีใน env แล้ว) ใน `.claude/settings.local.json` (เจ้าของตั้งเอง) ปลดการป้องกัน HANDOFF/STATUS/BACKLOG ให้ sub-agent ด้วย → main thread ตรวจ diff ของสามไฟล์นี้หลัง agent ทุกตัว; `guard.py` ควรแยก sub-agent จาก hook input แทน env (เสนอ ยังไม่ทำ)
 - LINE TH pricing/quota `[VERIFY]` · LINE mark-as-read `[VERIFY]` · Google managed MCP availability `[VERIFY]`
 - วันหยุดราชการไทย 2026–2027 สำหรับ business calendar `[VERIFY]` (T-008)
 - งบ API: ยังไม่ตั้ง (`config/budgets.yaml` ค่า default `[ASSUMED]`)
@@ -32,40 +32,48 @@ snapshot สั้นสำหรับ cold start อยู่ที่ `HANDOF
 - `TZ=Asia/Bangkok date` บน Git Bash (Windows) ให้เวลา GMT ผิด 7 ชม. → ใช้ `TZ=ICT-7 date` `[TESTED]`
 - `grep -i` (โดยเฉพาะ `-F -i`) abort บน Git for Windows เครื่องนี้ → lowercase ด้วย `tr` แล้วค่อย match และ script ตรวจความปลอดภัยต้อง block เมื่อ grep error `[TESTED]`
 - บรรทัดใน `.gitignore` ห้ามมี comment ต่อท้าย pattern
+- (2026-11-01) หลังแก้ `packages/shared` ต้อง build/รัน test แบบ `turbo --force` ก่อนอ้างว่า package ที่ import shared ผ่าน — api import `dist` ของ shared จึงเห็นผลเก่าได้ (เคยรายงานผิดว่า api ผ่าน) `[TESTED]`
+- (2026-11-01) เวลาใน log/STATUS ต้องมาจาก `TZ=Asia/Bangkok date` เสมอ ห้ามพิมพ์เอง (เคยพิมพ์ผิดหลายชั่วโมง)
+- (2026-11-01) cloud session: `dockerd` ต้องสั่งเอง · Docker Hub 429 → pull ซ้ำทีละ image · build image ไม่ได้ (corepack ไม่เชื่อ CA ของ proxy) · Playwright ใช้ `PW_EXECUTABLE_PATH=/opt/pw-browsers/chromium` · หลาย worktree รัน e2e พร้อมกันต้องตั้ง `E2E_PORT` ต่างกัน · Redis counter ข้ามรอบ test → `RATE_LIMIT_NAMESPACE`
 
 ## Log
 
-## 2026-11-01 10:15 (Asia/Bangkok) — security-reviewer + backend-dev + qa-engineer + main thread — T-010 และ T-009 ปิด
+## 2026-11-01 04:10 (Asia/Bangkok) — po + main thread — T-011 review Phase 0 + scope Phase 1
+- `po` ตรวจ Phase 0: **ยังไม่ปิด** — P0 api `config.test.ts` พังบน main หลัง C-16 (entry 03:57 ที่บอกว่า api ผ่านไม่ถูกต้อง: main thread รัน api test ก่อน build `shared` ใหม่) → แก้แล้ว รัน `turbo --force` ผ่านทุก package · P1: ไม่มี CI (`.github/workflows`) → T-014 · full-stack e2e ไม่มีขั้น assign (PRD §15 exit) → T-014 · HANDOFF/STATUS เก่า → เขียนใหม่ · checklist เจ้าของก่อน tag อยู่ใน `HANDOFF.md`
+- `po` ตัดสิน scope Phase 1 `[ASSUMED]`: รับ breakdown ของ architect, T-122 = ingest/domain core, T-123 = scaffolding, T-014 = CI · เลิกจองเลข migration (main thread กำหนดตอน merge) · AC-4 ไม่ตัด → T-108e KB-author ขั้นต่ำ · เลื่อนหลัง T-113: T-104 bot, T-105 digest/Web Push/เสียง, T-110c, T-103e, T-107d, T-119, T-121 UI, T-118b/d · worktree พร้อมกัน ≤ 3 · Web Push/KB crawl mock เท่านั้น · Phase 1 ปิดที่ "done pending pilot"
+- ไฟล์: `docs/BACKLOG.md`, `docs/STATUS.md`, `apps/api/src/config/config.test.ts`, `HANDOFF.md`
+
+## 2026-11-01 03:57 (Asia/Bangkok) — security-reviewer + backend-dev + qa-engineer + main thread — T-010 และ T-009 ปิด
 - T-010 review: P1 C-1 (dev-login + secret placeholder บน compose), C-2 (ความลับใน `outbox.payload`) · P2/P3 C-3…C-15 → `backend-dev` แก้ทั้งหมด (dev-login opt-in + เฉพาะบัญชีที่ dev สร้าง, boot ไม่ขึ้นถ้า secret อ่อนนอก loopback, AES-256-GCM + HKDF ใน outbox/BullMQ + `expires_at`, ลำดับ PoW/rate limit, portal จำกัด P2 + `requesterVerified=false`, header API, CSP เว็บแบบ build-time, `__Host-` cookie + ปฏิเสธ cookie ซ้ำ, lockout ต่อ (account, IP) + CLI unlock, `docker-compose.proxy.yml`, audit user แบบย่อ, HMAC emailTag, ไม่ echo subject, `bullmq` เป็น devDependency, tracking 30 วัน + revoke ตอน closed, MinIO pin digest) · migration `0005_security` · re-review: **ไม่เหลือ P0/P1** · main thread แก้ C-16 (dev-login ต้อง APP_URL loopback) และ namespace ของ rate-limit key (`RATE_LIMIT_NAMESPACE`) เพราะ counter ใน Redis สะสมข้ามรอบ test · ADR-005, ADR-006, ADR-007 → Accepted · P3 ที่เหลือ → T-125
 - T-009: `pnpm test:e2e:fullstack` รัน web+api+worker จาก source บน Postgres/Redis/Mailpit จริง (DB ชั่วคราว) — AC-1 portal path (submit → ticket มี org/intent/SLA ใน ~1.1–1.2 s จากงบ 10 s → staff ตอบ → ลูกค้าเห็น → resolve → อีเมลสถานะ), magic link ครบวงจรผ่าน Mailpit, break-glass, RBAC สอง org (REST + UI, internal note ไม่หลุด) · bug B-001 (P3) ใน `docs/qa/bugs.md`
 - test: main thread รันเองบน main + `wip/t-010-fixes` + `wip/t-009`: lint, typecheck, test (shared 148, api 164, worker 33, web 470, …) ผ่าน · `test:integration` api 387 (×3), db 107, worker 19 ผ่าน · e2e 99 ผ่าน · `test:e2e:fullstack` 22/22 สองรอบติด (หลังแก้ assertion ให้ตรง C-11) `[TESTED]`
 - ไม่ยืนยัน: `docker compose up` ทั้งระบบด้วย image (build ไม่ได้บน cloud: Docker Hub 429 + corepack TLS) `[ASK-HUMAN]` · `docker-compose.proxy.yml` กับ Caddy จริง `[VERIFY]` · digest ของ MinIO เทียบ registry `[VERIFY]` · staff ใน e2e ใช้ break-glass (role head) จึงยังไม่ทดสอบสิทธิ์ agent/lead ผ่าน browser
 
-## 2026-11-01 08:30 (Asia/Bangkok) — frontend-dev + main thread — T-124 UI refresh (คำขอเจ้าของ)
+## 2026-11-01 03:31 (Asia/Bangkok) — frontend-dev + main thread — T-124 UI refresh (คำขอเจ้าของ)
 - ที่มา: เจ้าของดูภาพ T-006 แล้วว่า "ดู AI เกินไป ให้ศึกษา 21st.dev" → research: Terms ของ 21st.dev (2026-07-20) ไม่อนุญาตให้ redistribute → ใช้เป็นแรงบันดาลใจเท่านั้น ไม่คัดลอกโค้ด · ทิศทางใน `docs/design/ui-refresh-2026-11.md`
 - ทำอะไร: tokens ใหม่ (canvas กลาง, ivory เฉพาะ login, navy tint, `aiAccent`, avatar 8 hue, type scale, overlay shadow, motion) + contrast test ทุกคู่ · `packages/ui` เพิ่ม Avatar (initials), Pill/StatusDot, Tooltip, Popover, DropdownMenu, Tabs, SegmentedControl, Separator, Combobox (cmdk), Toaster (sonner) · nav rail + user menu แทน top bar · queue row ไม่มี card · right panel Details/AI/Customer แบบ inline combobox + Undo toast · timeline bubble + event บรรทัดเดียว · composer กล่องเดียว · login ใหม่
 - dependency ใหม่ (MIT, client-side): `@radix-ui/react-{popover,dropdown-menu,tooltip,tabs,toggle-group,separator,slot}`, `cmdk`, `sonner` — grep dist ไม่พบ fetch/XHR/sendBeacon/WebSocket/EventSource `[TESTED]`
 - test: main thread รันบน main + `wip/t-124`: merge ชนที่ `status-label.tsx` กับ T-007 → รวมให้ใช้ดีไซน์ใหม่ + คำของลูกค้า · lint, typecheck ผ่าน · test ui 256, web 459 ผ่าน · e2e 99 ผ่าน `[TESTED]`
 - ยังไม่ทำ: snippet ใน queue row และ read-state (ต้องเพิ่ม API), แท็บ Customer ยังไม่มี ticket เก่า · ภาพส่งเจ้าของแล้ว รอ feedback `[ASK-HUMAN]` ว่าพอใจหรือไม่
 
-## 2026-11-01 07:10 (Asia/Bangkok) — frontend-dev + main thread — T-007 ปิด (หน้า portal)
+## 2026-11-01 03:07 (Asia/Bangkok) — frontend-dev + main thread — T-007 ปิด (หน้า portal)
 - ทำอะไร: `/portal` (ฟอร์มแจ้งเรื่อง, PoW ใน Web Worker ด้วย `crypto.subtle` + fallback, honeypot ซ่อน, รอ `minFillSeconds`, จัดการ 400/429), `/portal/submitted`, `/portal/tickets/[key]` (อ่าน token จาก fragment แล้วลบด้วย `replaceState`, ส่ง `X-Portal-Token`, timeline สาธารณะ, ตอบกลับ, สถานะแบบคำลูกค้า, merged → ลิงก์ ticket หลัก, ลิงก์หมดอายุ → ขอใหม่) · `/portal/*` no-store + no-referrer · `sw.js` ข้าม `/portal` และ `/v1` · มุมมอง client ใน workspace ใช้ `customerStatus()` (P2-4 จาก review T-006) · i18n แยกไฟล์ `portal.{en,th}.ts` · `SessionProvider` ไม่เรียก session ใต้ `/portal`
 - test: main thread รันเองบน main + `wip/t-007-web`: lint, typecheck, test (web 425 + ทุก package) ผ่าน · e2e 95 ผ่าน (portal 28 รวม PoW จริง, axe light/dark) `[TESTED]` · main thread แก้ชื่อบุคคลจริงในข้อมูลทดสอบเป็นชื่อสมมติ (N1)
 - ไม่ยืนยัน: Web Worker บน Safari/Firefox · full-stack กับ API จริง (T-009) `[UNVERIFIED]` · header ของ portal ยังใช้สีพื้นเดิม รอ token ใหม่จาก T-124
 
-## 2026-11-01 06:15 (Asia/Bangkok) — backend-dev + main thread — T-007 ฝั่ง API/worker (หน้าเว็บยังทำอยู่)
+## 2026-11-01 02:35 (Asia/Bangkok) — backend-dev + main thread — T-007 ฝั่ง API/worker (หน้าเว็บยังทำอยู่)
 - ทำอะไร: ADR-007 (Proposed) human verification แบบ self-hosted: PoW SHA-256 แบบ HMAC-signed + single-use ใน Redis, honeypot `website`, เวลากรอกขั้นต่ำ, rate limit ต่อ IP/email/org (429 + audit) ไม่มี dependency ใหม่ · endpoint public `/v1/portal/{challenge,tickets,tickets/:key,tickets/:key/replies,track/resend}` + staff revoke · tracking token HMAC เก็บแค่ hash, TTL 90 วัน `[ASSUMED]`, header `X-Portal-Token`, ทุกความล้มเหลวตอบ 401 เดียวกัน (กัน enumeration) · อีเมลยืนยัน/ตอบกลับ/สถานะ/merge (R-1.5) ผ่าน outbox → worker → SMTP (Mailpit) TH/EN · migration `0004_portal`
 - test: main thread รันเองบน main + `wip/t-007-api`: lint, typecheck, test (api 144, shared 122, worker 28 …) ผ่าน · `test:integration` api 351 (portal 36), db 101, worker 16 ผ่าน `[TESTED]`
 - ค้าง: หน้า portal (web) — `frontend-dev` ทำใน `wip/t-007-web` · security review ใน T-010
 - ไม่ยืนยัน `[ASSUMED]`: map category→intent, urgency→priority (ผู้ส่งที่ไม่รู้ org จำกัดไม่เกิน P2), ความยาก PoW 18 bit (ยังไม่วัดบนมือถือ), ตัวเลข rate limit, ภาษาเริ่มต้น EN · ไม่ได้ทดสอบ HTML email กับ mail client จริง · ลิงก์ติดตามอยู่ใน `outbox.payload` ระหว่าง pending (→ T-010)
 
-## 2026-11-01 05:30 (Asia/Bangkok) — frontend-dev + main thread — T-120 ปิด
+## 2026-11-01 02:13 (Asia/Bangkok) — frontend-dev + main thread — T-120 ปิด
 - ทำอะไร: ปิด single-key shortcut ได้ (WCAG 2.1.4) · ล้าง cache + draft ตอน session หมดอายุผ่าน routine เดียวกับ sign out, query key ผูก user · keyboard map กรองตาม permission · F6 / Alt+1..3, `[` `]`, `g q`, Enter/O · < 768 px เป็นแท็บ · throttle live region 30 s · status copy key camelCase · queue เป็น listbox + `aria-selected` · หัว ticket ไม่ถูกตัดตอนเปิด, แถบบนไม่ล้นที่ 768–1023 px (จากภาพที่ส่งเจ้าของ)
 - test: main thread รันเอง: lint, typecheck, test (web 318, ui 125 + ทุก package), e2e 67 ผ่าน `[TESTED]`
 - review: เป็นการแก้ finding ของ `po` จาก T-006 → ตรวจรวมใน T-011 (ไม่เรียก `po` แยกเพื่อประหยัด credit)
 - ไม่ยืนยัน: remap shortcut ยังไม่มี (ปิดได้อย่างเดียว) `[ASSUMED]` ว่าพอสำหรับ 2.1.4 · ยังไม่ได้ทดสอบกับ screen reader จริงและ iOS/Android จริง
 
-## 2026-11-01 04:20 (Asia/Bangkok) — backend-dev + main thread — T-013 + T-008 ปิด
+## 2026-11-01 01:58 (Asia/Bangkok) — backend-dev + main thread — T-013 + T-008 ปิด
 - ทำอะไร (T-013): audit `contact.create` ตอนสร้าง contact อัตโนมัติ · child ที่ย้ายตอน merge ได้ event `ticket.reparented` + audit `ticket.reparent` · `@AuditPiiRead` บน `GET /v1/tickets` · `q` ขั้นต่ำ 2 ตัว · ลบ queue/contact ที่ยังถูกอ้าง → 409 (FK RESTRICT) · migration `0003_followups_outbox`: `org_tier` แทน CHECK, `message` ไม่มี DELETE และ UPDATE ได้เฉพาะ `delivery_status, body_redacted`, index FK, ตาราง `outbox` · transactional outbox: api เขียนแถวใน tx เดียวกับงาน, relay อยู่ใน worker (SKIP LOCKED, backoff, dead หลัง 30 ครั้ง) · ADR-006 (Proposed) · `TICKET_KEY_PREFIX` ตั้งได้ (default `OPS`)
 - ทำอะไร (T-008): `pnpm db:seed` idempotent + additive, ปฏิเสธ `NODE_ENV=production` ถ้าไม่มี `--allow-production` · calendar Bangkok + 24×7, วันหยุดไทย 2026–2027 จาก `examples/calendars/` (`[VERIFY]` ทุกวัน, วันตามจันทรคติ/วันชดเชย `[UNVERIFIED]`), SLA จาก `examples/sla/` (po #8, ตัวเลขอื่น `[ASSUMED]`), 3 orgs (gold/silver/standard), contacts 8, staff 2 head/2 lead/4 agent + client 1 คนต่อ org, 3 queues, intents 11 ตัว stage 2, 30 tickets ครบทุกสถานะ (TH/EN, internal note) · ยังไม่ seed กะ (ยังไม่มีตาราง → T-111)
 - ไฟล์ที่แตะ: `packages/db/{migrations/0003_*,src/outbox.ts,src/seed/**,src/seed-cli.ts,README.md}`, `apps/worker/src/outbox-relay.ts`, `apps/api/src/{orgs,tickets,team-queues,auth,config}/**`, `packages/shared/src/{ticketing,directory,seed-data}.ts`, `examples/{calendars,sla}/`, `docs/decisions/ADR-006-outbox.md`, `docs/04-ARCHITECTURE.md` §2/§11, `.env.example`, `docker-compose.yml`
@@ -74,7 +82,7 @@ snapshot สั้นสำหรับ cold start อยู่ที่ `HANDOF
 - ไม่ยืนยัน: วันหยุดเทียบประกาศ ครม. ยังไม่ได้ทำ `[UNVERIFIED 70%]` · พฤติกรรม `jobId` ของ BullMQ `[VERIFY]` · outbox เป็น at-least-once อีเมลอาจซ้ำในหน้าต่างเล็ก
 - ข้อสังเกต: เปลี่ยน FK เป็น RESTRICT ใน `0003` — DB local ของเจ้าของที่มีข้อมูลทดสอบจะ migrate ได้ตราบที่ไม่มีแถวอ้างค่าที่ผิด FK ใหม่ (`org_tier`) `[UNVERIFIED 80%]`
 
-## 2026-11-01 03:10 (Asia/Bangkok) — frontend-dev + main thread — T-006 ปิด
+## 2026-11-01 01:34 (Asia/Bangkok) — frontend-dev + main thread — T-006 ปิด
 - ทำอะไร: workspace three-pane จริง (queue + filters/saved views ใน browser, J/K, pill "N new" จาก realtime, timeline แยก public/internal, composer + template/ตัวแปร + reply & set status, ticket detail/edit, AI sidebar placeholder, keyboard map `?`), login (SSO จาก provider config, magic link, break-glass, dev-login เฉพาะ mock + non-production), `/login/magic` อ่าน token จาก fragment, refresh single-flight + Web Locks ข้ามแท็บ (ADR-005), WS client backoff/4401/4403/4429, PWA manifest + `sw.js` (same-origin GET, ไม่ cache HTML/API, offline page), `packages/ui` เพิ่ม Input/Select/Textarea/Skeleton/Alert · layout 3 ระดับตาม UI spec §3.2
 - ไฟล์ที่แตะ: `apps/web/**`, `packages/ui/src/components/*`
 - test: main thread รันเองบน main + wip/t-006: lint, typecheck, test (web 252, ui 125 + ทุก package) ผ่าน · e2e 53 ผ่านด้วย API จำลอง (`page.route`/`routeWebSocket`) หลังแก้ test J/K ที่ flaky (repeat-each=4 → 124/124) `[TESTED]`
@@ -83,14 +91,14 @@ snapshot สั้นสำหรับ cold start อยู่ที่ `HANDOF
 - ไม่ยืนยัน: ยังไม่ได้ทดสอบกับ API จริง (T-009) `[UNVERIFIED]` · Web Locks ข้ามแท็บทดสอบด้วย lock manager จำลองเท่านั้น `[UNVERIFIED]` · SLA at-risk ฝั่ง UI ใช้ due − createdAt ไม่ใช่ business time `[ASSUMED]`
 - หมายเหตุ: `guard.py` บล็อกคำสั่ง shell ที่มีคำว่า `set` ตามด้วยคำว่า token ในข้อความเอกสาร (false positive ของกฎ N1) → เขียน entry นี้ด้วย Edit tool แทน ไม่ได้แก้ guard
 
-## 2026-11-01 02:20 (Asia/Bangkok) — ux-designer + po + main thread — T-101 UI spec
+## 2026-11-01 01:12 (Asia/Bangkok) — ux-designer + po + main thread — T-101 UI spec
 - ทำอะไร: `ux-designer` เขียน `docs/06-UI-SPEC.md` (§0–§17, ชี้ token ในโค้ดแทนการคัดลอกค่า) ล่วงหน้าเพื่อให้ T-006/T-007 และ Phase 1 ใช้อ้างอิง · `po` ตัดสิน open questions §17 (Q1–Q11) แทนเจ้าของ `[ASSUMED]` · main thread แก้ §6.5 (cap ไม่ใช่ set stage 2), §10 (human verification self-hosted, สถานะ merged ที่ลูกค้าเห็น)
 - ไฟล์ที่แตะ: `docs/06-UI-SPEC.md`, `HANDOFF.md` (PO ตัดสิน #21–23), `docs/BACKLOG.md` (T-101, T-007)
 - test: เอกสาร — prettier ผ่าน, ตรวจ forbidden terms ผ่าน
 - ข้อเบี่ยง `[ASSUMED]`: R-9.1 ยกตัวอย่าง Turnstile/hCaptcha แต่ทำแบบ self-hosted เพราะผู้ให้บริการภายนอกเป็นปลายทาง network ใหม่ (`[ASK-HUMAN]`)
 - ไม่ยืนยัน: ค่า severity ของ GCP Monitoring `[VERIFY]` · library PoW ยังไม่เลือก
 
-## 2026-11-01 01:55 (Asia/Bangkok) — backend-dev + main thread — T-005 ปิด
+## 2026-11-01 01:02 (Asia/Bangkok) — backend-dev + main thread — T-005 ปิด
 - ทำอะไร: ตรวจงานค้างบน `wip/t-005` ด้วย `explorer` (agent เดิมถูกหยุดก่อนรายงาน) → ครบ schema/REST/WS/client scoping/`CLIENT_ORG_RESOLVER`/FK `users.org_id` · `backend-dev` แก้ส่วนที่ขาด: SLA recompute ไม่นับเวลา pause, `deliveryStatus` ตาม channel, round-robin ไม่ข้ามคน, event `ticket.reopened`/`sla.recalculated`, `GET /v1/tickets/:id/duplicates` (R-1.5), CRUD test ของ SLA/calendar/queue · main thread แก้ cleanup ของ test DB (57P01) และ test ที่ commit คำต้องห้ามไว้ในโค้ด
 - ไฟล์ที่แตะ: `packages/db/migrations/0002_ticketing*.sql`, `packages/db/src/{schema/ticketing.ts,seed/intents.ts,testing.ts}`, `packages/shared/src/{sla,ticketing,realtime,directory,channels,common}.ts`, `apps/api/src/{orgs,intents,sla,team-queues,tickets,realtime}/**`, `examples/intents/`, `docs/04-ARCHITECTURE.md` §7, §9, §11
 - test: main thread รันเอง: lint, typecheck, test (api 110, shared 106, db 19, worker 19, ui 121, web 60, boundaries 94, ai 1, channels 2) ผ่าน · `test:integration` api 285, db 52, worker 10 ผ่านบน compose Postgres+pgvector/Redis · e2e smoke 22 ผ่าน `[TESTED]`
@@ -100,7 +108,7 @@ snapshot สั้นสำหรับ cold start อยู่ที่ `HANDOF
 - ไม่ยืนยัน: performance trigram กับข้อมูลมาก `[UNVERIFIED 70%]` · locale DB บน Cloud SQL ต้องไม่ใช่ `C` `[ASSUMED]` · permission ของ `queue/intent/workflow.manage` ไม่อยู่ใน PRD §2.2 `[ASSUMED]`
 - ข้อสังเกต N1: commit `47f2ae9` (ประวัติของ `wip/t-005`) มีคำในรายการ test ที่บอกใบ้ธุรกิจของ deployment หนึ่ง แก้แล้วใน commit ถัดไป แต่ประวัติยังอยู่เพราะห้ามแก้ history `[ASK-HUMAN]` ถ้าต้องการล้าง
 
-## 2026-11-01 00:55 (Asia/Bangkok) — main thread — cloud session: environment check
+## 2026-11-01 00:35 (Asia/Bangkok) — main thread — cloud session: environment check
 - ทำอะไร: ตรวจเครื่องมือบน cloud session ตามคำสั่งเจ้าของก่อนทำต่อ
 - ผล `[TESTED]`:
   - Docker: CLI 29.9 มี แต่ daemon ไม่ได้รันตอนเริ่ม และ `service docker start` ล้ม (ulimit) → สั่ง `dockerd` ตรงได้ · Docker Hub ตอบ `429 Too Many Requests` เป็นช่วง ๆ ต้อง pull ซ้ำทีละ image
