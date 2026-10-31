@@ -1,6 +1,6 @@
 # ADR-011 — Autonomy stage ต่อ intent, policy gate, และสวิตช์ฉุกเฉิน (T-112a)
 
-- **Status:** Proposed
+- **Status:** Accepted 2026-11-01 · `security-reviewer` 2 รอบ: A-1 (P1 search_path) แก้และยืนยันด้วยการโจมตีบน DB แยก · follow-up A-2/A-3/A-4 → T-122d/T-108/T-106, A-6 → T-106d, A-9…A-11 → T-125
 - **Date:** 2026-11-01 (เวลากรุงเทพ) · **ผู้ตัดสิน:** main thread (ร่างโดย `ai-engineer`) · ใช้โดย T-122d (outbound), T-102/T-103 (auto-ack), T-106/T-108 (AI runs), T-112b
 - **Context:**
   - N3: AI ตอบลูกค้าเองได้เฉพาะ intent ที่ stage ≥ 3 และผ่าน gate · default ทุก intent = stage 2 · auto-ack จาก template ปลอดภัยส่งได้ทุก stage · **การยก intent ใดเป็น stage ≥ 3 ห้าม agent ทำ** (เจ้าของตัดสิน)
