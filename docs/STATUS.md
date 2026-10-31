@@ -35,6 +35,12 @@ snapshot สั้นสำหรับ cold start อยู่ที่ `HANDOF
 
 ## Log
 
+## 2026-11-01 06:15 (Asia/Bangkok) — backend-dev + main thread — T-007 ฝั่ง API/worker (หน้าเว็บยังทำอยู่)
+- ทำอะไร: ADR-007 (Proposed) human verification แบบ self-hosted: PoW SHA-256 แบบ HMAC-signed + single-use ใน Redis, honeypot `website`, เวลากรอกขั้นต่ำ, rate limit ต่อ IP/email/org (429 + audit) ไม่มี dependency ใหม่ · endpoint public `/v1/portal/{challenge,tickets,tickets/:key,tickets/:key/replies,track/resend}` + staff revoke · tracking token HMAC เก็บแค่ hash, TTL 90 วัน `[ASSUMED]`, header `X-Portal-Token`, ทุกความล้มเหลวตอบ 401 เดียวกัน (กัน enumeration) · อีเมลยืนยัน/ตอบกลับ/สถานะ/merge (R-1.5) ผ่าน outbox → worker → SMTP (Mailpit) TH/EN · migration `0004_portal`
+- test: main thread รันเองบน main + `wip/t-007-api`: lint, typecheck, test (api 144, shared 122, worker 28 …) ผ่าน · `test:integration` api 351 (portal 36), db 101, worker 16 ผ่าน `[TESTED]`
+- ค้าง: หน้า portal (web) — `frontend-dev` ทำใน `wip/t-007-web` · security review ใน T-010
+- ไม่ยืนยัน `[ASSUMED]`: map category→intent, urgency→priority (ผู้ส่งที่ไม่รู้ org จำกัดไม่เกิน P2), ความยาก PoW 18 bit (ยังไม่วัดบนมือถือ), ตัวเลข rate limit, ภาษาเริ่มต้น EN · ไม่ได้ทดสอบ HTML email กับ mail client จริง · ลิงก์ติดตามอยู่ใน `outbox.payload` ระหว่าง pending (→ T-010)
+
 ## 2026-11-01 05:30 (Asia/Bangkok) — frontend-dev + main thread — T-120 ปิด
 - ทำอะไร: ปิด single-key shortcut ได้ (WCAG 2.1.4) · ล้าง cache + draft ตอน session หมดอายุผ่าน routine เดียวกับ sign out, query key ผูก user · keyboard map กรองตาม permission · F6 / Alt+1..3, `[` `]`, `g q`, Enter/O · < 768 px เป็นแท็บ · throttle live region 30 s · status copy key camelCase · queue เป็น listbox + `aria-selected` · หัว ticket ไม่ถูกตัดตอนเปิด, แถบบนไม่ล้นที่ 768–1023 px (จากภาพที่ส่งเจ้าของ)
 - test: main thread รันเอง: lint, typecheck, test (web 318, ui 125 + ทุก package), e2e 67 ผ่าน `[TESTED]`
