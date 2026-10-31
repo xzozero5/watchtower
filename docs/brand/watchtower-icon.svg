@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="100%" height="100%">
+  <defs>
+    <linearGradient id="iconBg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FCFAF6" />
+      <stop offset="100%" stop-color="#F1ECE4" />
+    </linearGradient>
+    <linearGradient id="iconBeam" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#FEF08A" stop-opacity="0.9" />
+      <stop offset="100%" stop-color="#FDE047" stop-opacity="0" />
+    </linearGradient>
+  </defs>
+
+  <!-- Squircle App Icon Container -->
+  <rect width="128" height="128" rx="28" fill="url(#iconBg)" stroke="#E2E8F0" stroke-width="2" />
+
+  <!-- Diagonal Golden Light Beam -->
+  <polygon points="69,49 122,25 122,65 69,56" fill="url(#iconBeam)" />
+
+  <!-- Lighthouse Body (Coral Red & Ivory Stripes) -->
+  <polygon points="50,96 78,96 76,82 52,82" fill="#E11D48" />
+  <polygon points="52,82 76,82 74,68 54,68" fill="#FFFFFF" />
+  <polygon points="54,68 74,68 72,57 56,57" fill="#E11D48" />
+  <polygon points="56,57 72,57 71,52 57,52" fill="#FFFFFF" />
+
+  <!-- Door in Near-Black Navy -->
+  <path d="M 60,96 L 60,88 Q 64,84 68,88 L 68,96 Z" fill="#0B0F19" />
+
+  <!-- Balcony in Near-Black Navy -->
+  <rect x="53" y="49" width="22" height="3.5" rx="1.5" fill="#0B0F19" />
+
+  <!-- Lantern Room -->
+  <rect x="57" y="40" width="14" height="9" rx="1.5" fill="#FEF08A" stroke="#F59E0B" stroke-width="1" />
+  <circle cx="64" cy="44.5" r="2.5" fill="#F59E0B" />
+
+  <!-- Rounded Dome Roof in Near-Black Midnight Navy (#0B0F19) -->
+  <path d="M 55,40 Q 64,22 73,40 Z" fill="#0B0F19" />
+  <circle cx="64" cy="23" r="2" fill="#0B0F19" />
+
+  <!-- Sea Waves -->
+  <path d="M 28,100 Q 42,95 56,101 Q 70,95 84,101 Q 98,96 106,100 L 106,105 L 28,105 Z" fill="#0284C7" />
+  <path d="M 36,104 Q 50,99 68,105 Q 86,99 100,104 L 100,108 L 36,108 Z" fill="#38BDF8" />
+</svg>

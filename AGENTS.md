@@ -26,6 +26,7 @@ Open-source, self-hosted **AI Command Center** สำหรับทีม Tech 
 | การตัดสินใจที่มีผลอยู่ (stack, boundary, ข้อเบี่ยง) | `docs/decisions/ADR-xxx.md` (`docs/decisions/README.md` เป็นสารบัญ) |
 | Architecture จริงของโค้ด (เขียนตอน Phase 0–1) | `docs/04-ARCHITECTURE.md` |
 | UI spec / design tokens / copy TH-EN | `docs/06-UI-SPEC.md` |
+| โลโก้ + สีแบรนด์ (ยืนยันแล้ว ใช้ PNG เป็นหลัก) | `docs/brand/README.md` |
 | Test strategy, eval ของ AI, QA checklist, security checklist | `docs/07-TESTING.md`, `docs/08-QA-CHECKLIST.md`, `docs/09-SECURITY.md` |
 | บันทึกรายวัน (timesheet) | `logs/daily/YYYY-MM-DD.md` (เวลากรุงเทพ) |
 | HANDOFF ที่จบแล้ว | `docs/handoff-archive/` |

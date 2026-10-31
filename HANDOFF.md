@@ -20,6 +20,7 @@
 - SSO domain อ่านจาก env — 2026-10-31 21:25
 - Default autonomy = stage 2 (draft-for-approval) ทุก intent; เป้าหมายระยะยาว AI support 100% — PRD §6.4
 - เอกสารการทำงานเป็นไทย, PRD/โค้ดเป็นอังกฤษ — PRD §0 / AGENTS.md
+- โลโก้และ Brand Identity เลือก Option 3B-3 (Sea Lighthouse: Midnight Navy Dome + Warm Coral & Ivory Stripes) ใน `docs/brand/` — 2026-10-31 22:04 `[CONFIRMED 2026-10-31]`
 
 ## ทำเสร็จใน session นี้ (วางแผน)
 | งาน | ผล | ไฟล์ |

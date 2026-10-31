@@ -9,6 +9,13 @@ coverage/
 !.env.example
 *.local
 .claude/settings.local.json
+.claude/worktrees/
+# brand: keep only the final assets, not the rejected concept iterations
+docs/brand/*
+!docs/brand/README.md
+!docs/brand/watchtower-logo.*
+!docs/brand/watchtower-icon.*
+!docs/brand/favicon.png
 .DS_Store
 Thumbs.db
 # docker volumes ถ้า mount ไว้ใน repo
