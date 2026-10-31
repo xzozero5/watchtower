@@ -35,6 +35,13 @@ snapshot สั้นสำหรับ cold start อยู่ที่ `HANDOF
 
 ## Log
 
+## 2026-11-01 08:30 (Asia/Bangkok) — frontend-dev + main thread — T-124 UI refresh (คำขอเจ้าของ)
+- ที่มา: เจ้าของดูภาพ T-006 แล้วว่า "ดู AI เกินไป ให้ศึกษา 21st.dev" → research: Terms ของ 21st.dev (2026-07-20) ไม่อนุญาตให้ redistribute → ใช้เป็นแรงบันดาลใจเท่านั้น ไม่คัดลอกโค้ด · ทิศทางใน `docs/design/ui-refresh-2026-11.md`
+- ทำอะไร: tokens ใหม่ (canvas กลาง, ivory เฉพาะ login, navy tint, `aiAccent`, avatar 8 hue, type scale, overlay shadow, motion) + contrast test ทุกคู่ · `packages/ui` เพิ่ม Avatar (initials), Pill/StatusDot, Tooltip, Popover, DropdownMenu, Tabs, SegmentedControl, Separator, Combobox (cmdk), Toaster (sonner) · nav rail + user menu แทน top bar · queue row ไม่มี card · right panel Details/AI/Customer แบบ inline combobox + Undo toast · timeline bubble + event บรรทัดเดียว · composer กล่องเดียว · login ใหม่
+- dependency ใหม่ (MIT, client-side): `@radix-ui/react-{popover,dropdown-menu,tooltip,tabs,toggle-group,separator,slot}`, `cmdk`, `sonner` — grep dist ไม่พบ fetch/XHR/sendBeacon/WebSocket/EventSource `[TESTED]`
+- test: main thread รันบน main + `wip/t-124`: merge ชนที่ `status-label.tsx` กับ T-007 → รวมให้ใช้ดีไซน์ใหม่ + คำของลูกค้า · lint, typecheck ผ่าน · test ui 256, web 459 ผ่าน · e2e 99 ผ่าน `[TESTED]`
+- ยังไม่ทำ: snippet ใน queue row และ read-state (ต้องเพิ่ม API), แท็บ Customer ยังไม่มี ticket เก่า · ภาพส่งเจ้าของแล้ว รอ feedback `[ASK-HUMAN]` ว่าพอใจหรือไม่
+
 ## 2026-11-01 07:10 (Asia/Bangkok) — frontend-dev + main thread — T-007 ปิด (หน้า portal)
 - ทำอะไร: `/portal` (ฟอร์มแจ้งเรื่อง, PoW ใน Web Worker ด้วย `crypto.subtle` + fallback, honeypot ซ่อน, รอ `minFillSeconds`, จัดการ 400/429), `/portal/submitted`, `/portal/tickets/[key]` (อ่าน token จาก fragment แล้วลบด้วย `replaceState`, ส่ง `X-Portal-Token`, timeline สาธารณะ, ตอบกลับ, สถานะแบบคำลูกค้า, merged → ลิงก์ ticket หลัก, ลิงก์หมดอายุ → ขอใหม่) · `/portal/*` no-store + no-referrer · `sw.js` ข้าม `/portal` และ `/v1` · มุมมอง client ใน workspace ใช้ `customerStatus()` (P2-4 จาก review T-006) · i18n แยกไฟล์ `portal.{en,th}.ts` · `SessionProvider` ไม่เรียก session ใต้ `/portal`
 - test: main thread รันเองบน main + `wip/t-007-web`: lint, typecheck, test (web 425 + ทุก package) ผ่าน · e2e 95 ผ่าน (portal 28 รวม PoW จริง, axe light/dark) `[TESTED]` · main thread แก้ชื่อบุคคลจริงในข้อมูลทดสอบเป็นชื่อสมมติ (N1)
