@@ -37,6 +37,10 @@
       "dependsOn": ["^build", "build"],
       "cache": false
     },
+    "test:e2e:fullstack": {
+      "dependsOn": ["^build", "build", "@watchtower/api#build", "@watchtower/worker#build"],
+      "cache": false
+    },
     "db:migrate": {
       "dependsOn": ["^build"],
       "cache": false
