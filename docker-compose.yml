@@ -9,7 +9,10 @@
 #
 # Inside the network the containers always reach each other by service name, so DATABASE_URL,
 # REDIS_URL, S3_ENDPOINT and SMTP_HOST from .env are not passed through; they are built below.
-# If you change POSTGRES_PASSWORD, keep it URL-safe (letters and digits).
+# If you change POSTGRES_PASSWORD or APP_DB_PASSWORD, keep it URL-safe (letters and digits).
+#
+# The api and worker connect as the restricted login role APP_DB_USER (created by the `migrate` service),
+# not as the database owner: no DDL, and no UPDATE/DELETE/TRUNCATE on the append-only audit log.
 
 name: watchtower
 
@@ -18,7 +21,7 @@ x-app-env: &app-env
   LOG_LEVEL: ${LOG_LEVEL:-info}
   APP_URL: ${APP_URL:-http://localhost:3000}
   API_URL: ${API_URL:-http://localhost:4000}
-  DATABASE_URL: postgres://${POSTGRES_USER:-watchtower}:${POSTGRES_PASSWORD:-watchtower}@postgres:5432/${POSTGRES_DB:-watchtower}
+  DATABASE_URL: postgres://${APP_DB_USER:-watchtower_api}:${APP_DB_PASSWORD:-watchtower_api}@postgres:5432/${POSTGRES_DB:-watchtower}
   REDIS_URL: redis://redis:6379
   S3_ENDPOINT: http://minio:9000
   S3_REGION: ${S3_REGION:-us-east-1}
@@ -29,6 +32,16 @@ x-app-env: &app-env
   APP_ENCRYPTION_KEY: ${APP_ENCRYPTION_KEY:-change-me-32-bytes-base64}
   SMTP_HOST: mailpit
   SMTP_PORT: '1025'
+  SMTP_FROM: ${SMTP_FROM:-Watchtower <no-reply@example.com>}
+  BREAK_GLASS_EMAIL: ${BREAK_GLASS_EMAIL:-}
+  BREAK_GLASS_PASSWORD: ${BREAK_GLASS_PASSWORD:-}
+  ACCESS_TOKEN_TTL_SECONDS: ${ACCESS_TOKEN_TTL_SECONDS:-900}
+  REFRESH_TOKEN_TTL_SECONDS: ${REFRESH_TOKEN_TTL_SECONDS:-604800}
+  SESSION_MAX_AGE_SECONDS: ${SESSION_MAX_AGE_SECONDS:-2592000}
+  MAGIC_LINK_TTL_SECONDS: ${MAGIC_LINK_TTL_SECONDS:-900}
+  # Port 4000 is published directly, so X-Forwarded-For is not trusted by default. Set 1 when the
+  # api is reachable only through the Caddy container.
+  TRUST_PROXY_HOPS: ${TRUST_PROXY_HOPS:-0}
   OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
   GOOGLE_OIDC_CLIENT_ID: ${GOOGLE_OIDC_CLIENT_ID:-}
   GOOGLE_OIDC_CLIENT_SECRET: ${GOOGLE_OIDC_CLIENT_SECRET:-}
@@ -147,7 +160,8 @@ services:
       retries: 20
 
   migrate:
-    # One-shot: applies pending migrations (reversible, see packages/db) before api and worker start.
+    # One-shot: applies pending migrations (reversible, see packages/db) as the schema owner, then
+    # creates or updates the restricted login role (APP_DB_USER) that api and worker use.
     build: &api-build
       context: .
       dockerfile: apps/api/Dockerfile
@@ -156,6 +170,8 @@ services:
     command: ['node', 'node_modules/@watchtower/db/dist/cli.js', 'up']
     environment:
       DATABASE_URL: postgres://${POSTGRES_USER:-watchtower}:${POSTGRES_PASSWORD:-watchtower}@postgres:5432/${POSTGRES_DB:-watchtower}
+      APP_DB_USER: ${APP_DB_USER:-watchtower_api}
+      APP_DB_PASSWORD: ${APP_DB_PASSWORD:-watchtower_api}
     depends_on:
       postgres:
         condition: service_healthy

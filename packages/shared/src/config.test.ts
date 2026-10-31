@@ -29,6 +29,9 @@ const productionEnv = {
   NODE_ENV: 'production',
   JWT_SECRET: 'a'.repeat(40),
   APP_ENCRYPTION_KEY: Buffer.alloc(32, 7).toString('base64'),
+  GOOGLE_OIDC_CLIENT_ID: 'client-id.example',
+  GOOGLE_OIDC_CLIENT_SECRET: 'client-secret-value',
+  GOOGLE_ALLOWED_DOMAIN: 'example.com',
 };
 
 function issuesFor(env: Record<string, string | undefined>): Map<string, string> {
@@ -141,6 +144,62 @@ describe('production guards', () => {
         'APP_ENCRYPTION_KEY',
       ),
     ).toBe(true);
+  });
+});
+
+describe('mock sign-in is dev-only', () => {
+  it.each(['GOOGLE_OIDC_CLIENT_ID', 'GOOGLE_OIDC_CLIENT_SECRET'])(
+    'refuses to boot in production without %s (mock mode)',
+    (key) => {
+      const issues = issuesFor({ ...productionEnv, [key]: '' });
+      expect(issues.get(key)).toContain('mock sign-in is not allowed');
+    },
+  );
+
+  it('allows mock mode (empty credentials) outside production', () => {
+    expect(issuesFor({ ...validEnv, GOOGLE_OIDC_CLIENT_ID: '' }).size).toBe(0);
+    expect(issuesFor({ ...validEnv, NODE_ENV: 'test' }).size).toBe(0);
+  });
+});
+
+describe('break-glass credentials', () => {
+  it('needs the email and the password together', () => {
+    expect(
+      issuesFor({ ...validEnv, BREAK_GLASS_EMAIL: 'admin@example.com' }).has(
+        'BREAK_GLASS_PASSWORD',
+      ),
+    ).toBe(true);
+    expect(
+      issuesFor({ ...validEnv, BREAK_GLASS_PASSWORD: 'a-long-enough-password' }).has(
+        'BREAK_GLASS_EMAIL',
+      ),
+    ).toBe(true);
+    expect(
+      issuesFor({
+        ...validEnv,
+        BREAK_GLASS_EMAIL: 'admin@example.com',
+        BREAK_GLASS_PASSWORD: 'a-long-enough-password',
+      }).size,
+    ).toBe(0);
+  });
+
+  it('rejects a short password without echoing it', () => {
+    const issues = issuesFor({
+      ...validEnv,
+      BREAK_GLASS_EMAIL: 'admin@example.com',
+      BREAK_GLASS_PASSWORD: 'short',
+    });
+    expect(issues.get('BREAK_GLASS_PASSWORD')).toContain('at least 12');
+    expect(issues.get('BREAK_GLASS_PASSWORD')).not.toContain('short');
+  });
+
+  it('refuses a placeholder password in production', () => {
+    const issues = issuesFor({
+      ...productionEnv,
+      BREAK_GLASS_EMAIL: 'admin@example.com',
+      BREAK_GLASS_PASSWORD: 'change-me-change-me',
+    });
+    expect(issues.get('BREAK_GLASS_PASSWORD')).toContain('placeholder');
   });
 });
 

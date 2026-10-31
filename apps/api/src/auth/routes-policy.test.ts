@@ -1,0 +1,181 @@
+import { RequestMethod, type Type } from '@nestjs/common';
+import { METHOD_METADATA, PATH_METADATA } from '@nestjs/common/constants.js';
+import { MetadataScanner, ModulesContainer, Reflector } from '@nestjs/core';
+import { Test } from '@nestjs/testing';
+import { PERMISSIONS } from '@watchtower/shared';
+import { describe, expect, it } from 'vitest';
+
+import { AppModule } from '../app.module.js';
+import { DATABASE } from '../database/database.module.js';
+import { createLogger } from '../logging/logger.js';
+import { EMAIL_QUEUE } from '../queue/queue.module.js';
+import { REDIS } from '../redis/redis.module.js';
+import { testConfig } from '../testing/support.js';
+import { ANY_PERMISSIONS_KEY, PERMISSIONS_KEY, PUBLIC_KEY } from './decorators.js';
+
+// The whole point of a deny-by-default guard is that no route can be left unprotected by
+// forgetting. This builds the real module graph (infrastructure faked, no network) and walks every
+// route of every controller. A new route fails here until it says who may call it.
+
+interface RouteInfo {
+  readonly key: string;
+  readonly controller: string;
+  readonly method: string;
+  readonly isPublic: boolean;
+  readonly permissions: readonly string[];
+  readonly anyOf: readonly string[];
+  readonly unsafe: boolean;
+}
+
+const METHODS: Record<number, string> = {
+  [RequestMethod.GET]: 'GET',
+  [RequestMethod.POST]: 'POST',
+  [RequestMethod.PUT]: 'PUT',
+  [RequestMethod.PATCH]: 'PATCH',
+  [RequestMethod.DELETE]: 'DELETE',
+  [RequestMethod.OPTIONS]: 'OPTIONS',
+  [RequestMethod.HEAD]: 'HEAD',
+  [RequestMethod.ALL]: 'ALL',
+};
+
+async function collectRoutes(): Promise<RouteInfo[]> {
+  const config = testConfig();
+  const moduleRef = await Test.createTestingModule({
+    imports: [AppModule.forRoot(config, createLogger(config))],
+  })
+    .overrideProvider(DATABASE)
+    .useValue({ db: {}, pool: {}, ping: () => Promise.resolve(), close: () => Promise.resolve() })
+    .overrideProvider(REDIS)
+    .useValue({
+      ping: () => Promise.resolve('PONG'),
+      quit: () => Promise.resolve('OK'),
+      disconnect: () => undefined,
+    })
+    .overrideProvider(EMAIL_QUEUE)
+    .useValue({ add: () => Promise.resolve(), close: () => Promise.resolve() })
+    .compile();
+
+  const reflector = new Reflector();
+  const scanner = new MetadataScanner();
+  const routes: RouteInfo[] = [];
+  for (const module of moduleRef.get(ModulesContainer, { strict: false }).values()) {
+    for (const wrapper of module.controllers.values()) {
+      const controller = wrapper.metatype as Type | null;
+      if (!controller) continue;
+      const prefix = (Reflect.getMetadata(PATH_METADATA, controller) as string | undefined) ?? '';
+      for (const name of scanner.getAllMethodNames(controller.prototype as object)) {
+        const handler = (controller.prototype as Record<string, unknown>)[name] as Type;
+        const path = Reflect.getMetadata(PATH_METADATA, handler) as string | undefined;
+        const verb = Reflect.getMetadata(METHOD_METADATA, handler) as number | undefined;
+        if (path === undefined || verb === undefined) continue;
+        const method = METHODS[verb] ?? String(verb);
+        const targets = [handler, controller];
+        routes.push({
+          key: `${method} /${[prefix, path]
+            .join('/')
+            .replace(/\/+/g, '/')
+            .replace(/^\/|\/$/g, '')}`,
+          controller: controller.name,
+          method,
+          isPublic: reflector.getAllAndOverride<boolean | undefined>(PUBLIC_KEY, targets) === true,
+          permissions:
+            reflector.getAllAndOverride<readonly string[] | undefined>(PERMISSIONS_KEY, targets) ??
+            [],
+          anyOf:
+            reflector.getAllAndOverride<readonly string[] | undefined>(
+              ANY_PERMISSIONS_KEY,
+              targets,
+            ) ?? [],
+          unsafe: !['GET', 'HEAD', 'OPTIONS'].includes(method),
+        });
+      }
+    }
+  }
+  await moduleRef.close();
+  return routes;
+}
+
+/** Every route that is open to anyone. Adding one is a decision; make it here, on purpose. */
+const EXPECTED_PUBLIC_ROUTES = [
+  'GET /health',
+  'GET /health/ready',
+  'GET /metrics',
+  'GET /v1/auth/config',
+  'GET /v1/auth/google/start',
+  'GET /v1/auth/google/callback',
+  'POST /v1/auth/dev-login',
+  'POST /v1/auth/magic-link/request',
+  'POST /v1/auth/magic-link/verify',
+  'POST /v1/auth/break-glass',
+  'POST /v1/auth/refresh',
+  'POST /v1/auth/logout',
+].sort();
+
+describe('every route states who may call it', () => {
+  it('has a permission or @Public() on all of them', async () => {
+    const routes = await collectRoutes();
+    expect(routes.length).toBeGreaterThanOrEqual(22);
+    const unprotected = routes.filter(
+      (route) => !route.isPublic && route.permissions.length === 0 && route.anyOf.length === 0,
+    );
+    expect(unprotected.map((route) => route.key)).toEqual([]);
+  });
+
+  it('keeps the list of public routes to exactly the expected ones', async () => {
+    const routes = await collectRoutes();
+    expect(
+      routes
+        .filter((route) => route.isPublic)
+        .map((route) => route.key)
+        .sort(),
+    ).toEqual(EXPECTED_PUBLIC_ROUTES);
+  });
+
+  it('never marks a route both public and permissioned', async () => {
+    const routes = await collectRoutes();
+    const both = routes.filter(
+      (route) => route.isPublic && (route.permissions.length > 0 || route.anyOf.length > 0),
+    );
+    expect(both.map((route) => route.key)).toEqual([]);
+  });
+
+  it('only names permission strings that exist', async () => {
+    const routes = await collectRoutes();
+    for (const route of routes) {
+      for (const permission of [...route.permissions, ...route.anyOf]) {
+        expect(Object.hasOwn(PERMISSIONS, permission), `${route.key} uses ${permission}`).toBe(
+          true,
+        );
+      }
+    }
+  });
+
+  it('sees the routes this task added, so the walk is not vacuous', async () => {
+    const keys = (await collectRoutes()).map((route) => route.key);
+    expect(keys).toEqual(
+      expect.arrayContaining([
+        'GET /health',
+        'GET /v1/auth/session',
+        'GET /v1/auth/sessions',
+        'DELETE /v1/auth/sessions/:id',
+        'GET /v1/users',
+        'POST /v1/users',
+        'PATCH /v1/users/:id',
+        'POST /v1/users/:id/force-logout',
+        'GET /v1/audit-logs',
+        'GET /v1/rbac/roles',
+        'PUT /v1/rbac/roles/:role/permissions',
+      ]),
+    );
+  });
+
+  it('keeps head-only capabilities away from agent and lead permissions', async () => {
+    const byKey = new Map((await collectRoutes()).map((route) => [route.key, route]));
+    expect(byKey.get('GET /v1/audit-logs')?.permissions).toEqual(['audit.read']);
+    expect(byKey.get('PUT /v1/rbac/roles/:role/permissions')?.permissions).toEqual(['rbac.manage']);
+    expect(byKey.get('POST /v1/users/:id/force-logout')?.permissions).toEqual([
+      'session.revoke.any',
+    ]);
+    expect(byKey.get('PATCH /v1/users/:id')?.permissions).toEqual(['user.manage']);
+  });
+});

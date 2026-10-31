@@ -1,6 +1,13 @@
 export const packageName = '@watchtower/db';
 
+export {
+  APP_ROLE_GROUP,
+  provisionAppRole,
+  scramVerifier,
+  type AppRoleOptions,
+} from './app-role.js';
 export { createDatabase, type CreateDatabaseOptions, type Database } from './client.js';
+export { orgScopeCondition } from './scope.js';
 export {
   DEFAULT_MIGRATIONS_DIR,
   MIGRATIONS_TABLE,

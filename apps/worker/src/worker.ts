@@ -2,13 +2,16 @@ import { readFileSync } from 'node:fs';
 import type { AddressInfo } from 'node:net';
 
 import { createDatabase } from '@watchtower/db';
-import { parseRedisUrl, QUEUE_NAMES } from '@watchtower/shared';
-import { Queue, Worker } from 'bullmq';
+import { MAINTENANCE_JOBS, parseRedisUrl, QUEUE_NAMES, type QueueName } from '@watchtower/shared';
+import { Queue, Worker, type Processor } from 'bullmq';
 import { z } from 'zod';
 
 import type { WorkerConfig } from './config.js';
 import { createHealthServer } from './health.js';
 import type { WorkerLogger } from './logger.js';
+import { createSmtpMailer, type Mailer } from './mailer.js';
+import { createEmailProcessor } from './processors/email.js';
+import { createMaintenanceProcessor } from './processors/maintenance.js';
 import { processSystemJob } from './processors/system.js';
 
 export interface RunningWorker {
@@ -21,6 +24,8 @@ export interface RunningWorker {
 export interface StartOptions {
   /** BullMQ key prefix. Tests use a unique one so runs never see each other's jobs. */
   readonly queuePrefix?: string;
+  /** Replaces the SMTP mailer. Tests inject a fake; production leaves it unset. */
+  readonly mailer?: Mailer;
 }
 
 const packageJsonSchema = z.object({ version: z.string() });
@@ -31,6 +36,9 @@ function readVersion(): string {
   );
   return packageJsonSchema.parse(raw).version;
 }
+
+/** Runs partition maintenance at 03:00 UTC every day, and once at start so a fresh install is ready. */
+const PARTITION_SCHEDULE = { pattern: '0 3 * * *', tz: 'UTC' } as const;
 
 /**
  * Starts the queue consumers and the health server. Add a queue by adding its name to
@@ -51,30 +59,57 @@ export async function startWorker(
   });
 
   const connection = parseRedisUrl(config.REDIS_URL);
-  const system = new Worker(QUEUE_NAMES.system, processSystemJob, {
-    connection,
-    concurrency: config.WORKER_CONCURRENCY,
-    ...(options.queuePrefix === undefined ? {} : { prefix: options.queuePrefix }),
-  });
-  system.on('error', (error) => {
-    logger.error({ err: error, queue: QUEUE_NAMES.system }, 'queue worker error');
-  });
-  system.on('failed', (job, error) => {
-    logger.warn(
-      { err: error, queue: QUEUE_NAMES.system, jobId: job?.id, job: job?.name },
-      'job failed',
-    );
-  });
-  await system.waitUntilReady();
+  const prefixOption = options.queuePrefix === undefined ? {} : { prefix: options.queuePrefix };
+  const mailer =
+    options.mailer ??
+    createSmtpMailer({
+      host: config.SMTP_HOST,
+      port: config.SMTP_PORT,
+      from: config.SMTP_FROM,
+      requireTls: config.NODE_ENV === 'production',
+    });
+
+  const consumers: Worker[] = [];
+  const consume = (queue: QueueName, processor: Processor): Worker => {
+    const worker = new Worker(queue, processor, {
+      connection,
+      concurrency: config.WORKER_CONCURRENCY,
+      ...prefixOption,
+    });
+    worker.on('error', (error) => {
+      logger.error({ err: error, queue }, 'queue worker error');
+    });
+    worker.on('failed', (job, error) => {
+      logger.warn({ err: error, queue, jobId: job?.id, job: job?.name }, 'job failed');
+    });
+    consumers.push(worker);
+    return worker;
+  };
+
+  consume(QUEUE_NAMES.system, processSystemJob);
+  consume(QUEUE_NAMES.email, createEmailProcessor(mailer));
+  consume(QUEUE_NAMES.maintenance, createMaintenanceProcessor(database));
+  await Promise.all(consumers.map((consumer) => consumer.waitUntilReady()));
 
   // A round trip to Redis for the readiness probe (a Worker only holds blocking connections).
-  const probe = new Queue(QUEUE_NAMES.system, {
-    connection,
-    ...(options.queuePrefix === undefined ? {} : { prefix: options.queuePrefix }),
-  });
+  const probe = new Queue(QUEUE_NAMES.system, { connection, ...prefixOption });
   probe.on('error', (error) => {
     logger.error({ err: error }, 'queue probe error');
   });
+
+  const maintenance = new Queue(QUEUE_NAMES.maintenance, { connection, ...prefixOption });
+  maintenance.on('error', (error) => {
+    logger.error({ err: error }, 'maintenance queue error');
+  });
+  await maintenance.upsertJobScheduler(MAINTENANCE_JOBS.ensurePartitions, PARTITION_SCHEDULE, {
+    name: MAINTENANCE_JOBS.ensurePartitions,
+    opts: { removeOnComplete: true, removeOnFail: { age: 7 * 24 * 3600 } },
+  });
+  await maintenance.add(
+    MAINTENANCE_JOBS.ensurePartitions,
+    {},
+    { jobId: `ensure-partitions-boot-${String(Date.now())}`, removeOnComplete: true },
+  );
 
   const health = createHealthServer({
     service: config.OTEL_SERVICE_NAME,
@@ -96,15 +131,17 @@ export async function startWorker(
   });
   const healthPort = (health.address() as AddressInfo).port;
   logger.info(
-    { host: config.HOST, port: healthPort, queues: [QUEUE_NAMES.system] },
+    { host: config.HOST, port: healthPort, queues: Object.values(QUEUE_NAMES) },
     'worker started',
   );
 
   return {
     healthPort,
     async close() {
-      await system.close();
+      await Promise.all(consumers.map((consumer) => consumer.close()));
       await probe.close();
+      await maintenance.close();
+      mailer.close();
       await new Promise<void>((resolve) => {
         health.close(() => {
           resolve();

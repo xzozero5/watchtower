@@ -4,5 +4,6 @@
 - [ADR-002](ADR-002-boundary-enforcement.md) — กลไกบังคับ boundary และ dependency matrix · Accepted 2026-10-31
 - [ADR-003](ADR-003-minio-image.md) — แหล่ง image ของ MinIO ใน compose · Accepted (ชั่วคราว) 2026-10-31
 - [ADR-004](ADR-004-credential-storage.md) — ที่เก็บ secret และการตั้ง credential ของ integration ผ่าน UI · Accepted 2026-10-31
+- [ADR-005](ADR-005-auth-session-audit.md) — Auth, session, CSRF, RBAC และ audit log (T-004) · Proposed 2026-10-31
 - ADR ใหม่: `ADR-00x-<slug>.md` ตาม `docs/templates/adr.template.md` แล้วเพิ่มบรรทัดที่นี่
 - Review records (security/po) เก็บเป็น `T-xxx-review.md` ในโฟลเดอร์นี้

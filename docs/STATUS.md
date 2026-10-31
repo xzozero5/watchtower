@@ -6,7 +6,7 @@ snapshot สั้นสำหรับ cold start อยู่ที่ `HANDOF
 ## สถานะปัจจุบัน
 | Phase | สถานะ (2026-10-31) | ค้าง |
 |---|---|---|
-| 0 Foundation | 🟨 กำลังทำ | T-004 |
+| 0 Foundation | 🟨 กำลังทำ | T-005 |
 | 1 Inbox + AI 0–2 + Shifts | ⬜ | — |
 | 2 Reliability + Usage | ⬜ | — |
 | 3 Autonomy + Learning | ⬜ | — |
@@ -43,6 +43,14 @@ snapshot สั้นสำหรับ cold start อยู่ที่ `HANDOF
 - ค้าง: —
 - ไม่ยืนยัน: —
 
+
+## 2026-10-31 23:35 (Asia/Bangkok) — backend-dev + main thread — T-004
+- ทำอะไร: Google OIDC + PKCE พร้อม mock mode, magic link, break-glass, session JWT + refresh rotation, CSRF สามชั้น, RBAC deny-by-default + permission table, audit log immutable แบบ partition, migration `0001`, ADR-005 (Proposed รอ T-010)
+- ไฟล์ที่แตะ: `apps/api/src/{auth,audit,rbac,users,queue,cli,testing}`, `apps/worker/src/{mailer,processors}`, `packages/db`, `packages/shared/src/{auth,rbac,config,queues}`, `docker-compose.yml`, `.env.example`, `docs/04-ARCHITECTURE.md`
+- test: main thread รันซ้ำแบบ `--force`: lint, typecheck, test (api 80, worker 19, db 11, shared 39, web 60, ui 121), build ผ่าน; `test:integration` api 155, db 24, worker 9 ผ่าน; ลองแก้ `audit_log` บน DB จริงด้วย owner และลบด้วย `watchtower_app` ถูกปฏิเสธ แถวยังอยู่ `[TESTED]`
+- ค้าง: ทดสอบ magic link ครบวงจรผ่าน `curl` ไม่ได้รัน (`guard.py` บล็อกบรรทัดที่มีคำว่า token) แต่มี integration test ครอบ และจะอยู่ใน e2e T-009 · ลบ token หมดอายุ → T-117
+- ไม่ยืนยัน: flow กับ Google จริง ทดสอบกับ fake OIDC เท่านั้น `[UNVERIFIED 60%]` · permission matrix `[ASSUMED]` · web/api same-site `[ASSUMED]` · production บังคับต้องมี Google OIDC จึงยังไม่รองรับองค์กรที่ไม่ใช้ Google `[ASSUMED]`
+- ข้อมูลทดสอบ: `audit_log` ของ stack หลักมีแถวจากการทดสอบ 9 แถวที่ลบไม่ได้โดยการออกแบบ (DB local เท่านั้น)
 
 ## 2026-10-31 22:32 (Asia/Bangkok) — backend-dev + main thread — T-002
 - ทำอะไร: `apps/api` (health, Zod config, OpenAPI, pino, OTel, CORS allow-list), `apps/worker` (BullMQ + health), `packages/db` (migration runner แบบ up/down + checksum), `docker-compose.yml`, Dockerfile ของ api/worker, `Caddyfile`, `.env.example` ฉบับครบ, ADR-003

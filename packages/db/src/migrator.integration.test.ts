@@ -29,6 +29,7 @@ function urlFor(name: string): string {
 
 let admin: Pool;
 let database: Database;
+let allIds: string[] = [];
 
 async function installedExtensions(): Promise<string[]> {
   const result = await database.pool.query<{ extname: string }>(
@@ -41,6 +42,7 @@ beforeAll(async () => {
   admin = new Pool({ connectionString: adminUrl, max: 1 });
   await admin.query(`CREATE DATABASE ${databaseName}`);
   database = createDatabase({ url: urlFor(databaseName), applicationName: 'wt-db-test' });
+  allIds = (await loadMigrations()).map((migration) => migration.id);
 });
 
 afterAll(async () => {
@@ -56,7 +58,8 @@ describe('migrations against real Postgres', () => {
 
   it('applies up, enabling vector and pg_trgm', async () => {
     expect(await installedExtensions()).toEqual([]);
-    expect(await migrateUp(database.pool)).toEqual(['0000_extensions']);
+    expect(allIds[0]).toBe('0000_extensions');
+    expect(await migrateUp(database.pool)).toEqual(allIds);
     expect(await installedExtensions()).toEqual(['pg_trgm', 'vector']);
   });
 
@@ -77,24 +80,32 @@ describe('migrations against real Postgres', () => {
   });
 
   it('rolls back with down, then forward again (up, down, up)', async () => {
-    expect(await migrateDown(database.pool)).toEqual(['0000_extensions']);
+    // Newest first, so each down runs while what it depends on still exists.
+    expect(await migrateDown(database.pool, { steps: allIds.length })).toEqual(
+      [...allIds].reverse(),
+    );
     expect(await installedExtensions()).toEqual([]);
     expect((await migrationStatus(database.pool))[0]?.applied).toBe(false);
-    expect(await migrateUp(database.pool)).toEqual(['0000_extensions']);
+    expect(await migrateUp(database.pool)).toEqual(allIds);
     expect(await installedExtensions()).toEqual(['pg_trgm', 'vector']);
   });
 
   it('is safe when two migrators start at once', async () => {
-    await migrateDown(database.pool);
+    await migrateDown(database.pool, { steps: allIds.length });
     const [a, b] = await Promise.all([migrateUp(database.pool), migrateUp(database.pool)]);
-    expect([...a, ...b]).toEqual(['0000_extensions']);
+    expect([...a, ...b]).toEqual(allIds);
   });
 
   it('refuses to continue when an applied migration was edited', async () => {
-    const [first] = await loadMigrations();
+    const migrations = await loadMigrations();
     await database.pool.query(`UPDATE ${MIGRATIONS_TABLE} SET checksum = 'tampered'`);
     await expect(migrateUp(database.pool)).rejects.toThrow(/edited after it was applied/);
-    await database.pool.query(`UPDATE ${MIGRATIONS_TABLE} SET checksum = $1`, [first?.checksum]);
+    for (const migration of migrations) {
+      await database.pool.query(`UPDATE ${MIGRATIONS_TABLE} SET checksum = $1 WHERE id = $2`, [
+        migration.checksum,
+        migration.id,
+      ]);
+    }
     await expect(migrateUp(database.pool)).resolves.toEqual([]);
   });
 

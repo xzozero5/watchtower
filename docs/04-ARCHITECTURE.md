@@ -92,7 +92,7 @@ Build ของ package: ESM, `tsc` ออกที่ `dist/`, `exports` ชี
 
 ## 5. Env และ config
 
-- **12-factor:** config ผ่าน environment เท่านั้น · `apps/api` และ `apps/worker` validate ด้วย Zod ตอน boot แล้ว fail ทันทีถ้าค่าที่จำเป็นขาด · package ไม่อ่าน `process.env` เอง รับค่าผ่าน parameter
+- **12-factor:** config ของ infra ผ่าน environment เท่านั้น ส่วน credential ของ integration อยู่ใน environment หรือ DB แบบเข้ารหัส ตั้งผ่าน admin UI ได้ และ environment ชนะ (ADR-004, งาน T-116) · `apps/api` และ `apps/worker` validate ด้วย Zod ตอน boot แล้ว fail ทันทีถ้าค่าที่จำเป็นขาด · package ไม่อ่าน `process.env` เอง รับค่าผ่าน parameter
 - **รายการตัวแปร:** `.env.example` เป็นแหล่งเดียว · ค่า secret จริงอยู่นอก repo และไม่ลง log
 - **host ใน `.env.example` เป็น `localhost`** (ใช้กับ `pnpm dev` และ integration test บนเครื่อง) ส่วน `docker-compose.yml` สร้าง `DATABASE_URL`, `REDIS_URL`, `S3_ENDPOINT`, `SMTP_HOST` ด้วยชื่อ service เองเสมอ ค่าเหล่านี้ใน `.env` จึงไม่กระทบ container `[TESTED]` (T-002)
 - **CORS:** `apps/api` อนุญาต origin ของ `APP_URL` เพียงตัวเดียว ไม่ใช้ `*` · browser เรียก `API_URL` ตรง ใน compose `web` ได้ `API_URL=http://localhost:4000` `[TESTED]`
@@ -110,7 +110,7 @@ Build ของ package: ESM, `tsc` ออกที่ `dist/`, `exports` ชี
 
 | Integration | ตัวแปรที่ตัดสิน | พฤติกรรม local | เริ่มใน |
 |---|---|---|---|
-| Google OIDC | `GOOGLE_OIDC_CLIENT_ID`, `GOOGLE_OIDC_CLIENT_SECRET` | local admin แบบ break-glass และ dev login `[ASSUMED]` | T-004 |
+| Google OIDC | `GOOGLE_OIDC_CLIENT_ID`, `GOOGLE_OIDC_CLIENT_SECRET` | `POST /v1/auth/dev-login` (เฉพาะนอก production) + break-glass · production boot ล้มถ้า credential ไม่ครบ `[TESTED]` | T-004 |
 | Email ขาออก | `SMTP_HOST`, `SMTP_PORT` | ส่ง SMTP จริงเข้า Mailpit ไม่ออกอินเทอร์เน็ต | T-007 |
 | Human verification | ยังไม่มีตัวแปร | ผ่านเสมอใน mock และห้ามเปิดใน production `[ASSUMED]` | T-007 |
 | Object storage | `S3_*` | MinIO ผ่าน S3 interface เดียวกับ GCS | T-002 |
@@ -155,3 +155,24 @@ Build ของ package: ESM, `tsc` ออกที่ `dist/`, `exports` ชี
 - `[ASSUMED]` **ที่อยู่ของ client read-only ของ GCP, BigQuery, GitHub:** `packages/ai` เก็บแค่ interface ส่วน implement อยู่ app หรือ package ใหม่ ตัดสินตอน T-108
 - `[ASSUMED]` **eval runner:** PRD §12 ให้อยู่ใน `packages/ai` แต่ `CLAUDE.md` วาง `evals/runner` ซึ่งไม่อยู่ใน workspace glob · ตอนนี้ `pnpm eval` ชี้ `packages/ai` ตัดสินตอน T-302
 - `[ASSUMED]` Node 22 ตาม brief, TypeScript 6.0 เพราะ `typescript-eslint` 8.72 ประกาศ peer `<6.1.0` จึงยังใช้ TypeScript 7 ไม่ได้
+
+## 10. Auth, session, RBAC, audit (T-004) `[TESTED]` ยกเว้นที่ระบุ
+
+เหตุผลและทางเลือกอยู่ใน `docs/decisions/ADR-005-auth-session-audit.md` · ที่นี่คือแผนที่โค้ดและกติกาที่ task ถัดไปต้องรู้
+
+| เรื่อง | ที่อยู่ในโค้ด |
+|---|---|
+| Contract HTTP (Zod schema ใช้ร่วม api/web), roles, permission strings, defaults | `packages/shared/src/auth.ts`, `rbac.ts` |
+| ตาราง `users`, `permissions`, `role_permissions`, `sessions`, `refresh_tokens`, `magic_link_tokens`, `audit_log` | migration `packages/db/migrations/0001_auth_rbac_audit.sql` (+ `.down.sql`), Drizzle mirror ใน `packages/db/src/schema/` |
+| Guard global, decorator `@Public` `@RequirePermission` `@RequireAnyPermission` `@CurrentPrincipal`, `Principal`, org scope | `apps/api/src/auth/` |
+| Audit: `AuditInterceptor` (global), `AuditScope`, `AuditService`, redaction | `apps/api/src/audit/` |
+| Email ผ่านคิว: producer `EmailOutbox` → worker `processors/email.ts` → SMTP | `apps/api/src/queue/`, `apps/worker/src/` |
+| Partition รายเดือนของ audit log | SQL `ensure_monthly_partitions` + job `maintenance:ensure-partitions` ใน worker |
+
+กติกา:
+- **route ใหม่ทุกตัวต้องมี `@RequirePermission(...)`/`@RequireAnyPermission(...)` หรือ `@Public()`** ไม่งั้น 403 `route_not_configured` และ `routes-policy.test.ts` fail · เพิ่ม route สาธารณะต้องแก้ allow-list ใน test นั้นโดยตั้งใจ · permission string ใหม่ต้องเพิ่มใน `PERMISSIONS`/`DEFAULT_ROLE_PERMISSIONS` **และ** migration ใหม่ที่ `INSERT` ลง `permissions`/`role_permissions` (test เทียบ seed กับค่าใน shared)
+- **Audit:** ทุก POST/PUT/PATCH/DELETE ถูกบันทึกอัตโนมัติ · ตั้งชื่อ action ด้วย `@Audited({ action, targetType })` และเติม `AuditScope.set({ targetId, before, after })` ใน service · GET ที่คืน PII ติด `@AuditPiiRead('contact')` · ต้อง commit พร้อมกัน → `audit.recordInTransaction(tx, entry)` · ห้ามใส่ secret เอง (redaction เป็นด่านสุดท้าย ไม่ใช่ข้ออ้าง)
+- **Org scope:** ทุก query ของตารางที่ client เห็นต้องมี `orgScopeCondition(table.orgId, principal.orgScope)` และโหลดแบบ by-id แล้วเรียก `assertOrgAccess(principal, row.orgId)` (404)
+- **ตารางใหม่:** ได้สิทธิ์ SELECT/INSERT/UPDATE/DELETE ให้ `watchtower_app` อัตโนมัติ · ตาราง append-only (เช่น `ticket_event`) ให้ใช้ trigger `reject_mutation()`, `REVOKE UPDATE, DELETE, TRUNCATE`, และ `ensure_monthly_partitions('<table>', n, true)`
+- **Integration test:** ใช้ `createTestDatabase()` จาก `@watchtower/db/testing` (database ใหม่ + migrate + login role แบบจำกัดต่อ test file) และ `apps/api/src/testing/harness.ts` (`startHarness`, `TestClient` ที่มี cookie jar/CSRF/Origin/IP)
+- **ยังไม่ทำ:** purge session/token ที่หมดอายุ · LINE Login (Phase 1) · UI login (T-006)

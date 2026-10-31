@@ -8,7 +8,7 @@
 - [x] T-001 `architect` ยืนยัน ADR-001 กับโครงจริง, สร้างโครง monorepo (pnpm-workspace, turbo.json, tsconfig base, eslint/prettier shared), ร่าง `docs/04-ARCHITECTURE.md` (module map, boundary rules: `apps/*` ห้าม import ข้ามกันตรง ๆ, `packages/ai` ห้ามรู้จัก HTTP, `packages/channels` ห้ามรู้จัก DB), ESLint `no-restricted-imports` บังคับ boundary
 - [x] T-002 `backend-dev` ∥ `apps/api` NestJS โครง (health, config module อ่าน env + validate ด้วย Zod, OpenAPI ที่ `/docs`, structured logger, OpenTelemetry), `packages/db` Drizzle + migration runner + `docker-compose.yml` (postgres+pgvector, redis, minio, api, worker, web, caddy) + `.env.example` — `docker compose up` แล้ว `GET /health` ตอบ
 - [x] T-003 `frontend-dev` ∥ `apps/web` Next.js + Tailwind + shadcn/ui + design tokens เริ่มต้น (light/dark ตาม OS, density, severity ไม่ใช้สีอย่างเดียว) + layout three-pane เปล่า + ⌘K palette stub + Vitest/RTL + Playwright smoke
-- [ ] T-004 `backend-dev` auth: Google OIDC (domain restricted) + magic link สำหรับ client + break-glass local admin; session JWT/refresh; **RBAC** roles + permission strings ตาม PRD §2.2; **audit log** interceptor ทุก mutation (PRD §8.2); unit tests
+- [x] T-004 `backend-dev` auth: Google OIDC (domain restricted) + magic link สำหรับ client + break-glass local admin; session JWT/refresh; **RBAC** roles + permission strings ตาม PRD §2.2; **audit log** interceptor ทุก mutation (PRD §8.2); unit tests
 - [ ] T-005 `backend-dev` schema + modules: `organization`, `contact`, `user`, `sla_policy`, `business_calendar`, `intent` (seed starter taxonomy PRD §3.1 เป็น `examples/intents/`), `ticket`, `message`, `ticket_event` — status workflow R-1.2, SLA due calc R-1.6 (Bangkok calendar), assignment R-1.7 (manual + round-robin), merge R-1.5 (แบบง่าย), full-text search R-1.8; REST + WS events; integration tests กับ Postgres จริงใน compose
 - [ ] T-006 `frontend-dev` three-pane จริง: queue (filters/saved views, J/K, "N new" pill), conversation timeline (public/internal, composer with templates), AI sidebar placeholder; ticket detail/edit; keyboard map `?`; realtime ผ่าน WS
 - [ ] T-007 `backend-dev` + `frontend-dev` portal channel (PRD §4.9 P0): public submit form (+ human-verification), confirmation email ผ่าน SMTP adapter (local = Mailpit ใน compose), tracking page ด้วย signed token, reply จาก portal เข้า timeline; email update เมื่อ public reply/status เปลี่ยน
@@ -35,6 +35,7 @@
 - [ ] T-114 `security-reviewer` channels (signature, token storage), AI (redaction, allow-list, audit)
 - [ ] T-115 `po` review + `[ASK-HUMAN]` ต่อ credential จริงครั้งแรก → pilot กับทีมจริง 1 สัปดาห์
 - [ ] T-116 `backend-dev` + `frontend-dev` credential store + หน้า admin ของ integration ตาม ADR-004 (ทำก่อน T-115): `head` เท่านั้น, อ่านกลับไม่ได้, envelope encryption, audit, ปุ่มทดสอบ, environment ชนะ DB, วิธีหมุนกุญแจ
+- [ ] T-117 `backend-dev` job ใน worker ลบ session, refresh token, magic-link token ที่หมดอายุ (จาก ADR-005)
 
 ## Phase 2 — Reliability + Usage — แตก task ตอนจบ Phase 1
 - [ ] T-201 GCP Monitoring/Logging ingest via Pub/Sub, fingerprint dedup, correlation rules, service catalog, escalation chain, snooze/heartbeat, noise metrics (R-3.1–3.11)

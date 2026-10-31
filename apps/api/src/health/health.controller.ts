@@ -6,10 +6,13 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 
+import { Public } from '../auth/decorators.js';
 import { livenessSchema, readinessSchema, type Liveness, type Readiness } from './health.schema.js';
 import { HealthService } from './health.service.js';
 
 @ApiTags('health')
+// Probes carry no credentials.
+@Public()
 @Controller('health')
 export class HealthController {
   constructor(@Inject(HealthService) private readonly health: HealthService) {}

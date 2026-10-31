@@ -17,7 +17,9 @@ export function resolveIntegrationMode(
   return complete ? 'live' : 'mock';
 }
 
+export * from './auth.js';
 export * from './config.js';
 export * from './logging.js';
 export * from './queues.js';
+export * from './rbac.js';
 export * from './redis-url.js';

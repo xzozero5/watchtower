@@ -1,0 +1,252 @@
+import { z } from 'zod';
+
+import { permissionSchema, roleSchema } from './rbac.js';
+
+/**
+ * HTTP contract of the auth, user, RBAC and audit endpoints. apps/api validates with these and
+ * documents them in OpenAPI; apps/web (T-006) imports the same schemas, so the two cannot drift.
+ */
+
+/** Names of the cookies the api sets. Both are HttpOnly: scripts never see a token. */
+export const ACCESS_COOKIE = 'wt_at';
+export const REFRESH_COOKIE = 'wt_rt';
+/** Header an authenticated browser must send on every POST, PUT, PATCH and DELETE. */
+export const CSRF_HEADER = 'x-csrf-token';
+
+/** Machine-readable `code` of an error response body, so the UI can branch without parsing text. */
+export const AUTH_ERROR_CODES = [
+  'unauthenticated',
+  'forbidden',
+  'csrf_invalid',
+  'origin_not_allowed',
+  'invalid_credentials',
+  'invalid_or_expired_link',
+  'invalid_refresh_token',
+  'rate_limited',
+  'not_found',
+  'conflict',
+  'route_not_configured',
+] as const;
+export type AuthErrorCode = (typeof AUTH_ERROR_CODES)[number];
+
+export const apiErrorSchema = z.object({
+  statusCode: z.number().int(),
+  error: z.string(),
+  code: z.enum(AUTH_ERROR_CODES),
+  message: z.string(),
+});
+export type ApiError = z.infer<typeof apiErrorSchema>;
+
+/** Lower-cased and trimmed so one mailbox is one account. */
+export const emailSchema = z.string().trim().toLowerCase().pipe(z.email().max(254));
+
+export const USER_STATUSES = ['active', 'disabled'] as const;
+export const userStatusSchema = z.enum(USER_STATUSES);
+export type UserStatus = (typeof USER_STATUSES)[number];
+
+export const AUTH_METHODS = ['google', 'dev', 'magic_link', 'break_glass'] as const;
+export const authMethodSchema = z.enum(AUTH_METHODS);
+export type AuthMethod = (typeof AUTH_METHODS)[number];
+
+export const sessionUserSchema = z.object({
+  id: z.uuid(),
+  email: z.string(),
+  name: z.string(),
+  role: roleSchema,
+  /** Set for clients only: the one organization they belong to. */
+  orgId: z.uuid().nullable(),
+});
+export type SessionUser = z.infer<typeof sessionUserSchema>;
+
+/** Returned by login, refresh and `GET /v1/auth/session`. Tokens travel in cookies, never here. */
+export const sessionInfoSchema = z.object({
+  user: sessionUserSchema,
+  permissions: z.array(z.string()),
+  sessionId: z.uuid(),
+  authMethod: authMethodSchema,
+  /** Send this value in the `x-csrf-token` header on every unsafe request. */
+  csrfToken: z.string(),
+  accessExpiresAt: z.iso.datetime(),
+});
+export type SessionInfo = z.infer<typeof sessionInfoSchema>;
+
+export const authConfigSchema = z.object({
+  google: z.object({
+    mode: z.enum(['mock', 'live']),
+    /** Navigate the browser here to start the Google sign-in. Null in mock mode. */
+    startPath: z.string().nullable(),
+  }),
+  /** True only in mock mode outside production: `POST /v1/auth/dev-login` works. */
+  devLoginEnabled: z.boolean(),
+  magicLinkEnabled: z.boolean(),
+  breakGlassEnabled: z.boolean(),
+});
+export type AuthConfig = z.infer<typeof authConfigSchema>;
+
+export const devLoginRequestSchema = z.object({
+  email: emailSchema,
+  role: roleSchema.exclude(['system']).default('agent'),
+  name: z.string().trim().min(1).max(200).optional(),
+  /** Required when `role` is client. */
+  orgId: z.uuid().optional(),
+});
+export type DevLoginRequest = z.infer<typeof devLoginRequestSchema>;
+
+export const magicLinkRequestSchema = z.object({ email: emailSchema });
+export type MagicLinkRequest = z.infer<typeof magicLinkRequestSchema>;
+
+/** Always this body, whether or not the address belongs to a client. */
+export const magicLinkAcceptedSchema = z.object({ status: z.literal('accepted') });
+
+export const magicLinkVerifySchema = z.object({ token: z.string().min(20).max(256) });
+export type MagicLinkVerify = z.infer<typeof magicLinkVerifySchema>;
+
+export const breakGlassLoginSchema = z.object({
+  email: emailSchema,
+  password: z.string().min(1).max(256),
+});
+export type BreakGlassLogin = z.infer<typeof breakGlassLoginSchema>;
+
+export const deviceSchema = z.object({
+  id: z.uuid(),
+  authMethod: authMethodSchema,
+  ip: z.string().nullable(),
+  userAgent: z.string().nullable(),
+  createdAt: z.iso.datetime(),
+  lastUsedAt: z.iso.datetime(),
+  expiresAt: z.iso.datetime(),
+  current: z.boolean(),
+});
+export type Device = z.infer<typeof deviceSchema>;
+export const deviceListSchema = z.object({ devices: z.array(deviceSchema) });
+
+export const forceLogoutResultSchema = z.object({ revokedSessions: z.number().int().min(0) });
+
+// --- users ---
+
+export const userSchema = z.object({
+  id: z.uuid(),
+  email: z.string(),
+  name: z.string(),
+  role: roleSchema,
+  status: userStatusSchema,
+  orgId: z.uuid().nullable(),
+  isBreakGlass: z.boolean(),
+  lastLoginAt: z.iso.datetime().nullable(),
+  createdAt: z.iso.datetime(),
+});
+export type User = z.infer<typeof userSchema>;
+export const userListSchema = z.object({ users: z.array(userSchema) });
+
+export const createUserSchema = z
+  .object({
+    email: emailSchema,
+    name: z.string().trim().min(1).max(200),
+    role: roleSchema.exclude(['system']),
+    /** Required for client, forbidden for staff. */
+    orgId: z.uuid().optional(),
+  })
+  .refine((value) => (value.role === 'client') === (value.orgId !== undefined), {
+    message: 'orgId is required for a client and not allowed for staff',
+    path: ['orgId'],
+  });
+export type CreateUser = z.infer<typeof createUserSchema>;
+
+export const updateUserSchema = z
+  .object({
+    name: z.string().trim().min(1).max(200).optional(),
+    role: roleSchema.exclude(['system', 'client']).optional(),
+    status: userStatusSchema.optional(),
+  })
+  .refine((value) => Object.keys(value).length > 0, { message: 'nothing to update' });
+export type UpdateUser = z.infer<typeof updateUserSchema>;
+
+export const userIdParamSchema = z.object({ id: z.uuid() });
+export const sessionIdParamSchema = z.object({ id: z.uuid() });
+export const roleParamSchema = z.object({ role: roleSchema });
+
+// --- RBAC ---
+
+export const rolePermissionsSchema = z.object({
+  role: roleSchema,
+  permissions: z.array(permissionSchema),
+});
+export const rolePermissionsListSchema = z.object({
+  roles: z.array(rolePermissionsSchema),
+  /** Every permission string that exists, with what it allows. */
+  catalog: z.array(z.object({ key: permissionSchema, description: z.string() })),
+});
+export const setRolePermissionsSchema = z.object({
+  permissions: z.array(permissionSchema).max(200),
+});
+export type SetRolePermissions = z.infer<typeof setRolePermissionsSchema>;
+
+// --- audit log (PRD section 8.2) ---
+
+export const AUDIT_ACTOR_TYPES = ['user', 'system', 'ai', 'anonymous'] as const;
+export const AUDIT_OUTCOMES = ['success', 'failure', 'denied'] as const;
+export type AuditActorType = (typeof AUDIT_ACTOR_TYPES)[number];
+export type AuditOutcome = (typeof AUDIT_OUTCOMES)[number];
+
+export const auditLogEntrySchema = z.object({
+  id: z.uuid(),
+  createdAt: z.iso.datetime(),
+  actorType: z.enum(AUDIT_ACTOR_TYPES),
+  actorId: z.string().nullable(),
+  action: z.string(),
+  outcome: z.enum(AUDIT_OUTCOMES),
+  targetType: z.string().nullable(),
+  targetId: z.string().nullable(),
+  before: z.unknown().nullable(),
+  after: z.unknown().nullable(),
+  ip: z.string().nullable(),
+  requestId: z.string().nullable(),
+  metadata: z.record(z.string(), z.unknown()),
+});
+export type AuditLogEntry = z.infer<typeof auditLogEntrySchema>;
+
+export const auditLogQuerySchema = z.object({
+  actorId: z.string().max(100).optional(),
+  action: z.string().max(100).optional(),
+  outcome: z.enum(AUDIT_OUTCOMES).optional(),
+  targetType: z.string().max(100).optional(),
+  targetId: z.string().max(100).optional(),
+  from: z.iso.datetime().optional(),
+  to: z.iso.datetime().optional(),
+  limit: z.coerce.number().int().min(1).max(200).default(50),
+  /** Opaque value from the previous page's `nextCursor`. */
+  cursor: z.string().max(200).optional(),
+});
+export type AuditLogQuery = z.infer<typeof auditLogQuerySchema>;
+
+export const auditLogPageSchema = z.object({
+  entries: z.array(auditLogEntrySchema),
+  nextCursor: z.string().nullable(),
+});
+
+/** Audit action names used by the auth code, so the UI and the tests do not retype strings. */
+export const AUDIT_ACTIONS = {
+  piiRead: 'pii.read',
+  authzDenied: 'authz.denied',
+  csrfRejected: 'auth.csrf_rejected',
+  loginGoogle: 'auth.login.google',
+  loginGoogleFailed: 'auth.login.google_failed',
+  loginDev: 'auth.login.dev',
+  magicLinkRequested: 'auth.magic_link.requested',
+  magicLinkRateLimited: 'auth.magic_link.rate_limited',
+  magicLinkLogin: 'auth.login.magic_link',
+  magicLinkFailed: 'auth.magic_link.failed',
+  breakGlassLogin: 'auth.login.break_glass',
+  breakGlassFailed: 'auth.break_glass.failed',
+  breakGlassLocked: 'auth.break_glass.locked',
+  breakGlassRateLimited: 'auth.break_glass.rate_limited',
+  breakGlassProvisioned: 'auth.break_glass.provisioned',
+  refresh: 'auth.refresh',
+  refreshReuse: 'auth.refresh.reuse_detected',
+  logout: 'auth.logout',
+  sessionRevoke: 'auth.session.revoke',
+  forceLogout: 'auth.force_logout',
+  userCreate: 'user.create',
+  userUpdate: 'user.update',
+  rolePermissionsSet: 'rbac.role_permissions.set',
+} as const;

@@ -49,7 +49,14 @@ export const baseEnvShape = {
   APP_ENCRYPTION_KEY: z.string().min(1),
   SMTP_HOST: z.string().min(1),
   SMTP_PORT: portSchema,
+  /** From address of every email the system sends. */
+  SMTP_FROM: z.string().min(1).default('Watchtower <no-reply@example.com>'),
   OTEL_EXPORTER_OTLP_ENDPOINT: optionalUrl,
+  // Break-glass local admin (role head). Both set: the api creates/updates the account at boot.
+  // Neither set: no break-glass account is provisioned from the environment (the CLI can still
+  // create one). The password is a secret: environment only, never in the repo.
+  BREAK_GLASS_EMAIL: optionalString,
+  BREAK_GLASS_PASSWORD: optionalString,
   // Integrations: empty means mock mode (resolveIntegrationMode).
   GOOGLE_OIDC_CLIENT_ID: optionalString,
   GOOGLE_OIDC_CLIENT_SECRET: optionalString,
@@ -76,6 +83,8 @@ export const baseEnvShape = {
 
 const MIN_PRODUCTION_SECRET_LENGTH = 32;
 const ENCRYPTION_KEY_BYTES = 32;
+/** Also enforced by the CLI that creates a break-glass account. */
+export const MIN_BREAK_GLASS_PASSWORD_LENGTH = 12;
 
 const text = (env: Readonly<Record<string, unknown>>, key: string): string | undefined => {
   const value = env[key];
@@ -116,12 +125,38 @@ function applyGuards(env: Readonly<Record<string, unknown>>, ctx: z.RefinementCt
     }
   }
 
-  const oidcConfigured =
-    Boolean(text(env, 'GOOGLE_OIDC_CLIENT_ID')) || Boolean(text(env, 'GOOGLE_OIDC_CLIENT_SECRET'));
+  const oidcId = text(env, 'GOOGLE_OIDC_CLIENT_ID');
+  const oidcSecret = text(env, 'GOOGLE_OIDC_CLIENT_SECRET');
+  const oidcConfigured = Boolean(oidcId) || Boolean(oidcSecret);
   if (oidcConfigured && !text(env, 'GOOGLE_ALLOWED_DOMAIN')) {
     fail(
       'GOOGLE_ALLOWED_DOMAIN',
       'is required when Google OIDC credentials are set (domain restriction)',
+    );
+  }
+  // Mock sign-in (dev login) exists only for local work. A production boot without real
+  // credentials would leave it reachable, so refuse to start (docs/04-ARCHITECTURE.md section 6).
+  if (env.NODE_ENV === 'production') {
+    for (const [key, value] of [
+      ['GOOGLE_OIDC_CLIENT_ID', oidcId],
+      ['GOOGLE_OIDC_CLIENT_SECRET', oidcSecret],
+    ] as const) {
+      if (!value) fail(key, 'is required in production: mock sign-in is not allowed');
+    }
+  }
+
+  const breakGlassEmail = text(env, 'BREAK_GLASS_EMAIL');
+  const breakGlassPassword = text(env, 'BREAK_GLASS_PASSWORD');
+  if (Boolean(breakGlassEmail) !== Boolean(breakGlassPassword)) {
+    fail(
+      breakGlassEmail ? 'BREAK_GLASS_PASSWORD' : 'BREAK_GLASS_EMAIL',
+      'must be set together with the other BREAK_GLASS_* variable, or both left empty',
+    );
+  }
+  if (breakGlassPassword && breakGlassPassword.length < MIN_BREAK_GLASS_PASSWORD_LENGTH) {
+    fail(
+      'BREAK_GLASS_PASSWORD',
+      `must be at least ${String(MIN_BREAK_GLASS_PASSWORD_LENGTH)} characters`,
     );
   }
 }
