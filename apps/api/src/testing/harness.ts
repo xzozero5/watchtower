@@ -75,6 +75,8 @@ export async function startHarness(options: StartOptions = {}): Promise<Harness>
     // One proxy hop: tests choose the client IP with x-forwarded-for.
     TRUST_PROXY_HOPS: '1',
     LOG_LEVEL: 'silent',
+    // Counters of earlier runs and other harnesses on the same Redis must not leak into this one.
+    RATE_LIMIT_NAMESPACE: queuePrefix,
     ...options.env,
   });
   const logger = createLogger(config, options.logs?.destination);

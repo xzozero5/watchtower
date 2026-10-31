@@ -65,6 +65,14 @@ const apiEnvSchema = createEnvSchema({
   PORTAL_POW_TTL_SECONDS: seconds(1800, 30, 86_400),
   /** The form cannot be submitted sooner than this after its challenge was issued. */
   PORTAL_MIN_FILL_SECONDS: seconds(3, 0, 120),
+  /**
+   * Prefix of the rate-limit counters in Redis. Instances (or test runs) sharing one Redis keep
+   * separate counters by setting different values.
+   */
+  RATE_LIMIT_NAMESPACE: z
+    .string()
+    .regex(/^[a-z0-9-]{1,40}$/)
+    .default('wt'),
   /** Portal submissions per hour: per client IP, per email address, per organization. */
   PORTAL_RATE_IP_PER_HOUR: z.coerce.number().int().min(1).max(10_000).default(20),
   PORTAL_RATE_EMAIL_PER_HOUR: z.coerce.number().int().min(1).max(1000).default(5),
