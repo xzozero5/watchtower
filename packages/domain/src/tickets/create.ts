@@ -40,6 +40,12 @@ export interface CreateTicketInput {
    */
   readonly externalId?: string;
   readonly requesterContactId?: string;
+  /** Conversation key stored on the first message (`gmail:<threadId>`, `line:<id>`): thread matching reads it. */
+  readonly threadKey?: string;
+  /** Sanitised HTML of the first message, when the channel has one. */
+  readonly bodyHtml?: string;
+  /** Attachment references of the first message (objects already in storage). */
+  readonly attachments?: readonly Record<string, unknown>[];
   /** Finds the organization's contact by address, or creates it. */
   readonly requester?: { readonly email: string; readonly name: string };
   /** The signed-in client user who wrote the message, if any. */
@@ -174,9 +180,12 @@ export async function createTicket(
       channelAccountId: accountId,
       direction: 'inbound',
       externalId: input.externalId ?? null,
+      threadKey: input.threadKey ?? null,
       senderContactId: contactId,
       senderUserId: input.senderUserId ?? null,
       bodyText: input.body,
+      bodyHtml: input.bodyHtml ?? null,
+      attachments: [...(input.attachments ?? [])],
       visibility: 'public',
       // The customer wrote it to us; there is nothing for us to deliver.
       deliveryStatus: 'not_applicable',

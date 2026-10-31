@@ -327,6 +327,9 @@ export const message = pgTable(
   (table) => [
     index('message_ticket_idx').on(table.ticketId, table.createdAt),
     uniqueIndex('message_external_key').on(table.channelAccountId, table.externalId),
+    index('message_thread_key_idx')
+      .on(table.channelAccountId, table.threadKey)
+      .where(sql`${table.threadKey} IS NOT NULL`),
     index('message_sender_contact_idx')
       .on(table.senderContactId)
       .where(sql`${table.senderContactId} IS NOT NULL`),

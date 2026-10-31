@@ -23,6 +23,23 @@ describe('loadConfig', () => {
     );
   });
 
+  it('reads the ticket key prefix like the api does: default OPS, upper-cased, validated', () => {
+    expect(loadConfig(testEnv()).TICKET_KEY_PREFIX).toBe('OPS');
+    expect(loadConfig(testEnv({ TICKET_KEY_PREFIX: 'ops2' })).TICKET_KEY_PREFIX).toBe('OPS2');
+    expect(loadConfig(testEnv({ TICKET_KEY_PREFIX: '' })).TICKET_KEY_PREFIX).toBe('OPS');
+    expect(() => loadConfig(testEnv({ TICKET_KEY_PREFIX: 'a-b' }))).toThrow(/TICKET_KEY_PREFIX/);
+  });
+
+  it('waits 3 s for the ingest classifier by default, within bounds', () => {
+    expect(loadConfig(testEnv()).INGEST_CLASSIFIER_TIMEOUT_MS).toBe(3000);
+    expect(
+      loadConfig(testEnv({ INGEST_CLASSIFIER_TIMEOUT_MS: '500' })).INGEST_CLASSIFIER_TIMEOUT_MS,
+    ).toBe(500);
+    expect(() => loadConfig(testEnv({ INGEST_CLASSIFIER_TIMEOUT_MS: '5' }))).toThrow(
+      /INGEST_CLASSIFIER_TIMEOUT_MS/,
+    );
+  });
+
   it('lets PORT (Cloud Run) win over WORKER_PORT', () => {
     expect(loadConfig(testEnv({ WORKER_PORT: '4101', PORT: '8080' })).listenPort).toBe(8080);
   });

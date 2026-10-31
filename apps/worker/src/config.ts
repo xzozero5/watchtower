@@ -1,4 +1,11 @@
-import { createEnvSchema, emptyToUndefined, parseEnv, portSchema } from '@watchtower/shared';
+import {
+  DEFAULT_TICKET_KEY_PREFIX,
+  createEnvSchema,
+  emptyToUndefined,
+  parseEnv,
+  portSchema,
+  ticketKeyPrefixSchema,
+} from '@watchtower/shared';
 import { z } from 'zod';
 
 const workerEnvSchema = createEnvSchema({
@@ -12,6 +19,19 @@ const workerEnvSchema = createEnvSchema({
   WORKER_CONCURRENCY: z.coerce.number().int().min(1).max(100).default(5),
   /** How often the outbox relay looks for pending jobs to hand to BullMQ (milliseconds, ADR-006). */
   OUTBOX_POLL_INTERVAL_MS: z.coerce.number().int().min(100).max(60_000).default(1000),
+  /**
+   * Prefix of the human ticket number (`OPS-1234`), the same value as in the api: the domain
+   * writes tickets from both processes and recognises `[OPS-1234]` in a subject (ADR-009).
+   */
+  TICKET_KEY_PREFIX: z.preprocess(
+    emptyToUndefined,
+    ticketKeyPrefixSchema.default(DEFAULT_TICKET_KEY_PREFIX),
+  ),
+  /**
+   * How long ingestion waits for the AI classifier before it uses the header rules (ADR-009
+   * step 4, milliseconds). `[ASSUMED]` 3 s: PRD AC-1 wants a ticket within 10 s.
+   */
+  INGEST_CLASSIFIER_TIMEOUT_MS: z.coerce.number().int().min(100).max(30_000).default(3000),
 });
 
 export type WorkerConfig = z.output<typeof workerEnvSchema> & {
