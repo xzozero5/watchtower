@@ -8,17 +8,25 @@ import {
 } from '@watchtower/shared';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-import { startHarness, uniqueEmail, type Harness, type TestClient } from '../testing/harness.js';
+import {
+  createOrg,
+  startHarness,
+  uniqueEmail,
+  type Harness,
+  type TestClient,
+} from '../testing/harness.js';
 import { ProbeController } from '../testing/test-controllers.js';
 
 // Roles, permissions, users, organization scoping and the role editor, on the real application.
 
 let h: Harness;
-const orgA = randomUUID();
-const orgB = randomUUID();
+let orgA: string;
+let orgB: string;
 
 beforeAll(async () => {
   h = await startHarness({ controllers: [ProbeController] });
+  orgA = await createOrg(h.db.owner.pool);
+  orgB = await createOrg(h.db.owner.pool);
 });
 
 afterAll(async () => {

@@ -36,6 +36,8 @@ const apiEnvSchema = createEnvSchema({
    * audit log and rate limits. 0 trusts none (the socket address is used). Caddy in compose is 1.
    */
   TRUST_PROXY_HOPS: z.coerce.number().int().min(0).max(5).default(0),
+  /** How often an open WebSocket re-checks its session in the database (seconds). */
+  REALTIME_REVALIDATE_SECONDS: seconds(10, 1, 300),
 });
 
 export type ApiConfig = z.output<typeof apiEnvSchema> & {

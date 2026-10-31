@@ -11,17 +11,20 @@ function fakeDatabase(created: number) {
 }
 
 describe('maintenance processor', () => {
-  it('asks the database for the next months of audit_log partitions, append-only', async () => {
+  it('asks for the next months of partitions of every append-only table, append-only', async () => {
     const { database, query } = fakeDatabase(2);
     const result = await createMaintenanceProcessor(database)({
       name: MAINTENANCE_JOBS.ensurePartitions,
     } as Job);
-    expect(result).toEqual({ created: 2 });
-    expect(query).toHaveBeenCalledTimes(1);
-    const [sql, params] = query.mock.calls[0] as [string, unknown[]];
-    expect(sql).toContain("ensure_monthly_partitions('audit_log'");
-    expect(sql).toContain('true');
-    expect(params).toEqual([PARTITION_MONTHS_AHEAD]);
+    expect(result).toEqual({ created: 4 });
+    expect(query).toHaveBeenCalledTimes(2);
+    const calls = query.mock.calls as [string, unknown[]][];
+    expect(calls[0]?.[0]).toContain("ensure_monthly_partitions('audit_log'");
+    expect(calls[1]?.[0]).toContain("ensure_monthly_partitions('ticket_event'");
+    for (const [sql, params] of calls) {
+      expect(sql).toContain('true');
+      expect(params).toEqual([PARTITION_MONTHS_AHEAD]);
+    }
   });
 
   it('ends an unknown job without touching the database', async () => {

@@ -208,6 +208,16 @@ describe('maintenance queue creates audit_log partitions', () => {
     expect(privileges.rows[0]).toEqual({ update: false, insert: true });
   });
 
+  it('keeps ticket_event partitioned ahead too, append-only', async () => {
+    const rows = await testDb.owner.pool.query<{ name: string }>(
+      `SELECT c.relname AS name FROM pg_inherits i JOIN pg_class c ON c.oid = i.inhrelid
+        WHERE i.inhparent = 'ticket_event'::regclass`,
+    );
+    const now = new Date();
+    const suffix = `${String(now.getUTCFullYear())}${String(now.getUTCMonth() + 1).padStart(2, '0')}`;
+    expect(rows.rows.map((row) => row.name)).toContain(`ticket_event_p${suffix}`);
+  });
+
   it('created the partitions on boot: current month and the three after it', async () => {
     const names = await partitions();
     const now = new Date();

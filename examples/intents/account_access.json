@@ -1,0 +1,20 @@
+{
+  "key": "account_access",
+  "name": "Account access",
+  "description": "Dashboard sign-in, user management or API keys.",
+  "typicalEvidence": "Authentication logs.",
+  "defaultPriority": "P3",
+  "allowedTools": [],
+  "replyTemplates": [
+    {
+      "key": "ack_en",
+      "name": "Acknowledge (English)",
+      "body": "Thank you for reaching out. We have received your report and our team is looking into it. We will update you here as soon as we know more."
+    },
+    {
+      "key": "ack_th",
+      "name": "รับเรื่องแล้ว (ไทย)",
+      "body": "ขอบคุณที่แจ้งปัญหา ทีมงานได้รับเรื่องแล้วและกำลังตรวจสอบ จะแจ้งความคืบหน้าให้ทราบทางช่องทางนี้โดยเร็วที่สุด"
+    }
+  ]
+}

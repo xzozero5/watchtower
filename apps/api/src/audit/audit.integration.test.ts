@@ -2,7 +2,13 @@ import type { AuditLogEntry } from '@watchtower/shared';
 import { Pool } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-import { startHarness, uniqueEmail, type Harness, type TestClient } from '../testing/harness.js';
+import {
+  createOrg,
+  startHarness,
+  uniqueEmail,
+  type Harness,
+  type TestClient,
+} from '../testing/harness.js';
 import { ProbeController } from '../testing/test-controllers.js';
 import { DATABASE } from '../database/database.module.js';
 import type { Database } from '@watchtower/db';
@@ -145,7 +151,7 @@ describe('reads of personal data', () => {
   it('are audited even when the read is refused', async () => {
     const client = h.client();
     const session = await client.devLogin(uniqueEmail('client'), 'client', {
-      orgId: '00000000-0000-4000-8000-0000000000aa',
+      orgId: await createOrg(h.db.owner.pool),
     });
     expect((await client.get('/test/pii/contact-1')).status).toBe(403);
     const [row] = await rows(`action = 'authz.denied' AND actor_id = $1`, [session.user.id]);

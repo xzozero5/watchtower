@@ -31,6 +31,18 @@ function withCredentials(base: string, name: string, user?: string, password?: s
   return url.toString();
 }
 
+async function waitForNoSessions(admin: Pool, database: string, timeoutMs = 3000): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const { rows } = await admin.query<{ n: number }>(
+      'SELECT count(*)::int AS n FROM pg_stat_activity WHERE datname = $1 AND pid <> pg_backend_pid()',
+      [database],
+    );
+    if ((rows[0]?.n ?? 0) === 0) return;
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+}
+
 /**
  * @param adminUrl a superuser connection to any database on the server (`TEST_DATABASE_URL`)
  */
@@ -56,6 +68,10 @@ export async function createTestDatabase(adminUrl: string): Promise<TestDatabase
       owner: database,
       async cleanup() {
         await database.close();
+        // `pool.end()` resolves before the server has seen every socket close. Dropping WITH (FORCE)
+        // while a backend is still finishing sends 57P01 to a client that no longer has an error
+        // listener, which vitest reports as an unhandled error. Wait briefly for the sessions to go.
+        await waitForNoSessions(admin, name);
         await admin.query(`DROP DATABASE IF EXISTS ${name} WITH (FORCE)`);
         await admin.query(`DROP ROLE IF EXISTS ${appUser}`);
         await admin.end();

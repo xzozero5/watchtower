@@ -9,14 +9,15 @@
 - [x] T-002 `backend-dev` ∥ `apps/api` NestJS โครง (health, config module อ่าน env + validate ด้วย Zod, OpenAPI ที่ `/docs`, structured logger, OpenTelemetry), `packages/db` Drizzle + migration runner + `docker-compose.yml` (postgres+pgvector, redis, minio, api, worker, web, caddy) + `.env.example` — `docker compose up` แล้ว `GET /health` ตอบ
 - [x] T-003 `frontend-dev` ∥ `apps/web` Next.js + Tailwind + shadcn/ui + design tokens เริ่มต้น (light/dark ตาม OS, density, severity ไม่ใช้สีอย่างเดียว) + layout three-pane เปล่า + ⌘K palette stub + Vitest/RTL + Playwright smoke
 - [x] T-004 `backend-dev` auth: Google OIDC (domain restricted) + magic link สำหรับ client + break-glass local admin; session JWT/refresh; **RBAC** roles + permission strings ตาม PRD §2.2; **audit log** interceptor ทุก mutation (PRD §8.2); unit tests
-- [~] T-005 (ค้างบน branch `wip/t-005`) `backend-dev` schema + modules: `organization`, `contact`, `user`, `sla_policy`, `business_calendar`, `intent` (seed starter taxonomy PRD §3.1 เป็น `examples/intents/`), `ticket`, `message`, `ticket_event` — status workflow R-1.2, SLA due calc R-1.6 (Bangkok calendar), assignment R-1.7 (manual + round-robin), merge R-1.5 (แบบง่าย), full-text search R-1.8; REST + WS events; integration tests กับ Postgres จริงใน compose
+- [x] T-005 `backend-dev` schema + modules: `organization`, `contact`, `user`, `sla_policy`, `business_calendar`, `intent` (seed starter taxonomy PRD §3.1 เป็น `examples/intents/`), `ticket`, `message`, `ticket_event` — status workflow R-1.2, SLA due calc R-1.6 (Bangkok calendar), assignment R-1.7 (manual + round-robin), merge R-1.5 (แบบง่าย), full-text search R-1.8; REST + WS events; integration tests กับ Postgres จริงใน compose
+- [ ] T-013 `backend-dev` follow-up จาก review T-005 (ทำก่อน T-007): audit `contact.create` ใน `findOrCreateByEmail` + audit/event ของ child ที่ย้ายตอน merge + test audit ของ assign/merge · `@AuditPiiRead` บน `GET /v1/tickets` · `q` ขั้นต่ำ 2–3 ตัว · ลบ queue/contact ที่ยังถูกอ้าง → 409 · migration `0003`: column-level grant ของ `message` (ไม่มี DELETE), index FK ที่ขาด · ADR outbox (at-least-once ของ after-commit enqueue, PRD §8.3) · `OPS-` prefix และ tier เป็น config/data แทน constant/CHECK `[ASSUMED]`
 - [ ] T-006 `frontend-dev` three-pane จริง: queue (filters/saved views, J/K, "N new" pill), conversation timeline (public/internal, composer with templates), AI sidebar placeholder; ticket detail/edit; keyboard map `?`; realtime ผ่าน WS
-- [ ] T-007 `backend-dev` + `frontend-dev` portal channel (PRD §4.9 P0): public submit form (+ human-verification), confirmation email ผ่าน SMTP adapter (local = Mailpit ใน compose), tracking page ด้วย signed token, reply จาก portal เข้า timeline; email update เมื่อ public reply/status เปลี่ยน
-- [ ] T-008 `backend-dev` seed script: 3 orgs (tiers), contacts, 2 staff ทุก role, SLA policies, intents, 30 tickets ตัวอย่างหลายสถานะ, business calendar + วันหยุดไทย 2026–2027 `[VERIFY]`
+- [ ] T-007 `backend-dev` + `frontend-dev` portal channel (PRD §4.9 P0): public submit form (+ human-verification), confirmation email ผ่าน SMTP adapter (local = Mailpit ใน compose), tracking page ด้วย signed token, reply จาก portal เข้า timeline; email update เมื่อ public reply/status เปลี่ยน; แจ้งลูกค้าของ ticket ที่ถูก merge ว่า ticket หลักคือเลขใด (R-1.5)
+- [ ] T-008 `backend-dev` seed script: 3 orgs (tiers), contacts, 2 staff ทุก role, SLA policies, intents, 30 tickets ตัวอย่างหลายสถานะ, business calendar + วันหยุดไทย 2026–2027 จาก `examples/calendars/` (ข้อมูลตัวอย่าง `[VERIFY]` โหลดเฉพาะ seed dev, production เริ่มว่าง — po 2026-11-01 `[ASSUMED]`)
 - [ ] T-009 `qa-engineer` e2e **AC-1 (portal path)**: submit → ticket พร้อม org/intent/SLA due ภายใน 10 s → agent reply → ลูกค้าเห็นใน tracking page → resolve → status email; e2e RBAC (client เห็นเฉพาะ org ตัวเอง)
 - [ ] T-010 `security-reviewer` review auth/session/RBAC/audit/secret handling/`.env`/compose exposure/webhook token design; findings → แก้ P0/P1 ก่อนปิด phase
 - [ ] T-011 `po` review Phase 0 กับ PRD §15 exit criteria + N1–N10; เสนอปรับ BACKLOG Phase 1
-- [ ] T-012 main thread `/handoff`, `CHANGELOG.md` 0.0.1, tag `v0.0.1`
+- [ ] T-012 main thread `/handoff`, `CHANGELOG.md` 0.0.1 · tag `v0.0.1` **หลังเจ้าของตรวจ compose + integration + e2e บนเครื่องตัวเอง** `[ASK-HUMAN]`
 
 ## Phase 1 — Inbox + AI stage 0–2 + Shifts (เป้า: 3–5 สัปดาห์) — แตก task ละเอียดตอนจบ Phase 0 โดย `po` + `architect`
 - [ ] T-101 `ux-designer` `docs/06-UI-SPEC.md`: three-pane spec, AI sidebar (report/evidence/draft A-E-R + reason codes), alert discipline, focus mode, shift brief/handoff screens, portal, copy TH/EN
@@ -29,13 +30,15 @@
 - [ ] T-108 `ai-engineer` + `backend-dev` investigator: runbook per intent → KB search, similar tickets, org context, **read-only tool stubs** (GCP Logs, BigQuery, repo — mock mode ก่อนมี credential), evidence cards, investigation report; drafter + `ai_draft` A/E/R + diff/edit-distance (R-5.1–5.3 mock, §6.2, §6.5 ข้อ 1)
 - [ ] T-109 `frontend-dev` AI sidebar จริง + evidence cards + draft A/E/R + reason codes; "Other mail" view; LINE quota indicator
 - [ ] T-110 `backend-dev` CSAT (R-10.1–10.5) + reopen rules (R-1.10)
-- [ ] T-111 `backend-dev` + `frontend-dev` shifts: definitions, roster, clock in/out, shift notes, structured handoff + acknowledgment, daily brief (AI summarizer) (R-7.1, 7.3–7.8)
+- [ ] T-111 `backend-dev` + `frontend-dev` shifts (+ round-robin เลือกเฉพาะคนที่ clock-in, R-1.7 load-balanced / stay-with-last-handler): definitions, roster, clock in/out, shift notes, structured handoff + acknowledgment, daily brief (AI summarizer) (R-7.1, 7.3–7.8)
 - [ ] T-112 `ai-engineer` autonomy stage model per intent (0–2 เท่านั้นใน phase นี้) + emergency switch (§6.4)
 - [ ] T-113 `qa-engineer` e2e AC-2, AC-4, AC-7 + scenario §5.1, §5.2 ด้วย mock adapters
 - [ ] T-114 `security-reviewer` channels (signature, token storage), AI (redaction, allow-list, audit)
 - [ ] T-115 `po` review + `[ASK-HUMAN]` ต่อ credential จริงครั้งแรก → pilot กับทีมจริง 1 สัปดาห์
 - [ ] T-116 `backend-dev` + `frontend-dev` credential store + หน้า admin ของ integration ตาม ADR-004 (ทำก่อน T-115): `head` เท่านั้น, อ่านกลับไม่ได้, envelope encryption, audit, ปุ่มทดสอบ, environment ชนะ DB, วิธีหมุนกุญแจ
 - [ ] T-117 `backend-dev` job ใน worker ลบ session, refresh token, magic-link token ที่หมดอายุ (จาก ADR-005)
+- [ ] T-118 `architect` + `backend-dev` ADR deploy บน GCP + IaC skeleton + runbook staging (public HTTPS endpoint สำหรับ Gmail Pub/Sub push และ LINE webhook) — **ไม่ apply / ไม่สร้าง resource จริง** (`[ASK-HUMAN]` credential + เงิน) · ทำก่อน T-115 (po 2026-11-01 `[ASSUMED]`)
+- [ ] T-119 `backend-dev` + `frontend-dev` bulk actions + saved views ฝั่ง server (R-1.8), linked tickets แบบ duplicate/related (R-1.1) — จาก review T-005
 
 ## Phase 2 — Reliability + Usage — แตก task ตอนจบ Phase 1
 - [ ] T-201 GCP Monitoring/Logging ingest via Pub/Sub, fingerprint dedup, correlation rules, service catalog, escalation chain, snooze/heartbeat, noise metrics (R-3.1–3.11)
@@ -55,4 +58,4 @@
 - [ ] T-306 Review + pilot stage 3 กับ 2–3 intent
 
 ## Post-MVP / Phase 4
-- React Native app, org-private status page, LINE group chat (R-2.15), Helm chart, additional channels, GCP deployment ADR + Terraform
+- React Native app, org-private status page, LINE group chat (R-2.15), Helm chart, additional channels, Terraform ฉบับสมบูรณ์ (ADR deploy ย้ายไป T-118), generic OIDC issuer ผ่าน discovery สำหรับองค์กรที่ไม่ใช้ Google (po 2026-11-01 `[ASSUMED]`)

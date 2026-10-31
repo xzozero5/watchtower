@@ -1,3 +1,4 @@
-// Business tables arrive with T-004 (users, RBAC, sessions, audit_log) and T-005 (tickets and the rest).
+// users, RBAC, sessions and the audit log (T-004); the ticketing tables (T-005).
 export * from './audit.js';
 export * from './auth.js';
+export * from './ticketing.js';

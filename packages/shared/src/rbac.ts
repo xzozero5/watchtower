@@ -48,6 +48,9 @@ export const PERMISSIONS = {
   'apikey.manage': 'Manage API keys',
   'org.manage': 'Manage organizations and contacts',
   'sla.manage': 'Manage SLA policies',
+  'queue.manage': 'Manage team queues and their members',
+  'intent.manage': 'Create and edit intents (not their autonomy stage)',
+  'workflow.manage': 'Change which ticket status transitions are allowed',
   'user.read': 'List users',
   'user.manage': 'Create users and change their role or status',
   'client.invite': 'Invite client users to an organization',
@@ -94,6 +97,8 @@ const LEAD: readonly Permission[] = [
   'client.invite',
   'user.read',
   'ceo.view',
+  'queue.manage',
+  'intent.manage',
 ];
 
 const HEAD: readonly Permission[] = [
@@ -103,6 +108,7 @@ const HEAD: readonly Permission[] = [
   'ai.provider.manage',
   'apikey.manage',
   'sla.manage',
+  'workflow.manage',
   'user.manage',
   'audit.read',
   'pii.export',

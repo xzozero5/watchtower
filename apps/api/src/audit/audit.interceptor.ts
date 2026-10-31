@@ -61,7 +61,11 @@ export class AuditInterceptor implements NestInterceptor {
     ]);
     if (SAFE_METHODS.has(request.method) && options?.always !== true) return next.handle();
 
-    const scope = new AuditScope();
+    const requestId = response.getHeader('x-request-id');
+    const scope = new AuditScope({
+      ip: request.ip ?? null,
+      requestId: typeof requestId === 'string' ? requestId : null,
+    });
     return defer(() => from(this.audited(request, response, options, scope, next)));
   }
 

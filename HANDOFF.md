@@ -37,6 +37,33 @@
 - Default autonomy = stage 2 ทุก intent; เป้าหมายระยะยาว AI support 100% — PRD §6.4
 - commit และโค้ดเป็นอังกฤษ, เอกสารการทำงานเป็นไทย, PRD เป็นอังกฤษ — 2026-10-31
 
+## PO ตัดสินแทนเจ้าของ (session 2026-11-01 — เจ้าของมอบอำนาจ, รอทบทวน)
+> ทุกข้อ `[ASSUMED]` เลือกทางที่ย้อนกลับง่าย · `po` ห้ามตรวจงานที่ตัวเองตัดสิน (N7) · สิ่งที่อยู่ใน "ห้ามทำแทนเจ้าของ" ไม่อยู่ในอำนาจนี้
+> ติ๊ก `[x]` = เจ้าของรับ · ถ้าไม่รับ เขียนเหตุผลไว้ข้าง ๆ
+
+| # | คำถาม | `po` ตัดสิน `[ASSUMED]` | เหตุผล |
+|---|---|---|---|
+| [ ] 1 | §16.1 repo/CI, GitHub App | GitHub + Actions · repo tool เป็น interface กลาง มี mock + GitHub App adapter read-only เปิดเมื่อมี credential | เป็นกลาง, N2 |
+| [ ] 2 | §16.2 product DB | Postgres ทั่วไป (Cloud SQL เป็นแค่ตัวอ้างอิง) · data tool = Postgres read replica + read-only role ผ่าน DSN; BigQuery `EXTERNAL_QUERY` ปิดเป็นค่าเริ่มต้น · mock = Postgres ใน compose + `examples/metrics/` · guardrail `statement_timeout`/row limit/PII mask | ไม่บังคับ GCP |
+| [ ] 3 | §16.3 GCP projects | config `gcp_projects[]` พร้อม environment · seed `example-prod`/`example-staging` · ไม่ migrate alert policy เดิม | เป็นกลาง |
+| [ ] 4 | §16.4 mailbox | 1 mailbox = 1 `channel_account` หลายกล่องได้ · ค่าเริ่มต้น OAuth ของกล่องนั้นเอง, domain-wide delegation เป็นทางเลือก · seed `support@example.com` | สิทธิ์น้อยสุด |
+| [ ] 5 | §16.5 LINE | plan `free` ตาม budgets · `quota_limit` ตั้งได้ ค่าเริ่มต้น 300 `[VERIFY]` เตือน 80% · rich menu ปิดด้วย flag (OA อาจใช้ร่วมทีมอื่น) | กันทับงานทีมอื่น |
+| [ ] 6 | §16.6 Discord | ช่องแจ้งเตือน/ประสานงาน ไม่ใช่ system of record · map channel ผ่าน config | R-3.17 |
+| [ ] 7 | §16.7 ทีม/กะ | seed 1 head, 1 lead, 4 agents · กะ 08–17, 13–22, on-call 22–08 (Asia/Bangkok) แก้ได้ | รูปแบบทั่วไป |
+| [ ] 8 | §16.8 tier/SLA | ชื่อกลาง Gold/Silver/Standard ตัวเลขอยู่ใน `examples/` + seed เท่านั้น · Gold P1 15m/4h 24×7, Silver P1 30m/8h, Standard business hours | N1, N5 |
+| [ ] 9 | §16.10 AI provider | `AI_PROVIDER=mock` · Anthropic + Vertex adapter หลัง abstraction · PII redaction เปิดเสมอ · งบ dev ตาม `config/budgets.yaml` | ยังไม่มี key |
+| [ ] 10 | เอกสารขัด: START-HERE ว่า `po` "ไม่ตัดสินแทน" | ไม่แก้กฎถาวร บันทึกเป็นข้อยกเว้นของ session ใน STATUS/HANDOFF/daily log | ข้อยกเว้นชั่วคราว |
+| [ ] 11 | ย้าย GCP deploy มาก่อน T-115 | ย้าย → **T-118** ADR deploy GCP + IaC skeleton + runbook staging (public HTTPS สำหรับ Pub/Sub push/LINE webhook) **ไม่ apply จริง** | pilot ต้องมี webhook สาธารณะ |
+| [ ] 12 | generic OIDC (องค์กรไม่ใช้ Google) | เลื่อนไป Post-MVP · UI/contract ห้าม hard-code Google นอก provider config | ไม่อยู่ใน exit criteria |
+| [ ] 13 | MinIO `pgsty/minio` | ใช้ต่อเฉพาะ local · T-010 ตรวจการปัก digest · production ใช้ GCS | override ได้ด้วย env |
+| [ ] 14 | tag `v0.0.1` | เลื่อน จนเจ้าของตรวจ compose/integration/e2e บนเครื่องตัวเอง | คำสั่งเจ้าของ |
+| [ ] 15 | วันหยุดไทย 2026–2027 | ใส่เป็นข้อมูลตัวอย่าง `examples/calendars/` ติด `[VERIFY]` โหลดเฉพาะ seed dev · production เริ่มว่าง | N5 |
+| [ ] 16 | permission matrix `[ASSUMED]` | ใช้ต่อจนทีมจริงทบทวนตอน T-115 | deny-by-default |
+| [ ] 17 | ภาษาเริ่มต้น | `en` · instance ตั้ง `th` ได้ | OSS เป็นกลาง |
+| [ ] 18 | Pub/Sub emulator image (T-102) | อนุญาตเฉพาะ compose local ปักเวอร์ชัน | ไม่มีปลายทาง runtime ใหม่ |
+| [ ] 19 | ลำดับ Phase 1 | T-101 ก่อน T-109/T-111 frontend · T-106 ก่อน T-108/T-112 · T-116 ก่อน T-118/T-115 · T-112 จำกัด stage ≤ 2 | ลด rework |
+| [ ] 20 | ราคา LINE | ไม่บล็อกเริ่ม Phase 1 แต่บล็อกปิด T-103 (ตรวจเอกสารทางการ บันทึกลิงก์+วันที่) | AGENTS.md |
+
 ## ทำเสร็จใน session นี้
 | งาน | ผล | ไฟล์ |
 |---|---|---|

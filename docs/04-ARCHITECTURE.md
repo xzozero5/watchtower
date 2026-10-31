@@ -133,7 +133,7 @@ Build ของ package: ESM, `tsc` ออกที่ `dist/`, `exports` ชี
 - **Audit (PRD §8.2):** immutable ด้วย trigger ที่ปฏิเสธ `UPDATE`/`DELETE` และ role ของแอปไม่มีสิทธิ์สองคำสั่งนี้ · PRD กำหนดให้ audit การอ่าน PII ด้วย ตารางจึงต้องมี action สำหรับ read · retention ≥ 1 ปี ใช้วิธี detach partition
 - **Index ของ queue:** `ticket(status, queue_id, priority, first_response_due_at)`, `ticket(org_id, status)`, `ticket(assignee_id, status)`, partial index สำหรับ ticket ที่ยังเปิด · `ticket.number` unique · `message(ticket_id, created_at)` · `ticket_event(ticket_id, created_at)`
 - **RBAC ระดับ org:** ทุก query ของ client ต้องกรอง `org_id` เป็นจุดที่ T-009 ทดสอบ
-- **Full-text search ภาษาไทย (R-1.8):** parser `simple` ของ Postgres ตัดคำไทยไม่ได้ เสนอ `pg_trgm` ใน T-005 ต้องทดสอบกับข้อความไทยจริง
+- **Full-text search ภาษาไทย (R-1.8):** parser `simple` ของ Postgres ตัดคำไทยไม่ได้ → T-005 ใช้ `ILIKE` + GIN `pg_trgm` ทดสอบกับข้อความไทยแล้ว `[TESTED]` ดู §11
 - **`user` เป็นคำสงวนของ Postgres:** ตั้งชื่อตาราง `users` หรือ quote ทุกครั้ง
 - **Array ใน PRD** เช่น `organization.domains[]`, `contact.emails[]` ต้องมี GIN index ถ้าใช้ match อีเมลขาเข้า
 
@@ -150,7 +150,7 @@ Build ของ package: ESM, `tsc` ออกที่ `dist/`, `exports` ชี
 
 ## 9. เรื่องที่ยังเปิดและ `[ASSUMED]`
 
-- `[ASSUMED]` **logic ที่ทั้ง api และ worker ใช้** (เช่น สร้าง ticket จาก inbound) ห้าม import ข้าม app จึงต้องอยู่ใน package เสนอ: pure logic เช่นคำนวณ SLA อยู่ `shared`, งาน transaction อยู่ `db` ใน Phase 0 ถ้าโตเกินค่อยแยก `packages/domain` ด้วย ADR ใหม่
+- `[ASSUMED]` **logic ที่ทั้ง api และ worker ใช้** (เช่น สร้าง ticket จาก inbound) ห้าม import ข้าม app จึงต้องอยู่ใน package · หลัง T-005 การสร้าง ticket อยู่ใน `apps/api` (ดู §11) T-102 ต้องเขียน ADR ว่า ingestion อยู่ api หรือแยก package · ข้อเสนอเดิม: pure logic เช่นคำนวณ SLA อยู่ `shared`, งาน transaction อยู่ `db` ใน Phase 0 ถ้าโตเกินค่อยแยก `packages/domain` ด้วย ADR ใหม่
 - `[ASSUMED]` **`apps/worker` ไม่มีเจ้าของใน BACKLOG Phase 0:** T-002 สร้างใน compose แต่ scope เขียนแค่ `apps/api` ให้ T-002 สร้างโครง worker ด้วย เพราะ T-007 ต้องส่งอีเมลผ่าน queue
 - `[ASSUMED]` **ที่อยู่ของ client read-only ของ GCP, BigQuery, GitHub:** `packages/ai` เก็บแค่ interface ส่วน implement อยู่ app หรือ package ใหม่ ตัดสินตอน T-108
 - `[ASSUMED]` **eval runner:** PRD §12 ให้อยู่ใน `packages/ai` แต่ `CLAUDE.md` วาง `evals/runner` ซึ่งไม่อยู่ใน workspace glob · ตอนนี้ `pnpm eval` ชี้ `packages/ai` ตัดสินตอน T-302
@@ -176,3 +176,27 @@ Build ของ package: ESM, `tsc` ออกที่ `dist/`, `exports` ชี
 - **ตารางใหม่:** ได้สิทธิ์ SELECT/INSERT/UPDATE/DELETE ให้ `watchtower_app` อัตโนมัติ · ตาราง append-only (เช่น `ticket_event`) ให้ใช้ trigger `reject_mutation()`, `REVOKE UPDATE, DELETE, TRUNCATE`, และ `ensure_monthly_partitions('<table>', n, true)`
 - **Integration test:** ใช้ `createTestDatabase()` จาก `@watchtower/db/testing` (database ใหม่ + migrate + login role แบบจำกัดต่อ test file) และ `apps/api/src/testing/harness.ts` (`startHarness`, `TestClient` ที่มี cookie jar/CSRF/Origin/IP)
 - **ยังไม่ทำ:** purge session/token ที่หมดอายุ · LINE Login (Phase 1) · UI login (T-006)
+
+## 11. Ticketing core (T-005) `[TESTED]` ยกเว้นที่ระบุ
+| เรื่อง | ที่อยู่ในโค้ด |
+|---|---|
+| Contract + pure logic: workflow, key `OPS-n`, SLA business time, realtime filter | `packages/shared/src/{ticketing,sla,realtime,directory,common}.ts` |
+| ตาราง calendar, SLA, queue(+member), org, contact, channel_account, intent, transition, ticket, message, `ticket_event` | `packages/db/migrations/0002_ticketing.sql` (+down), `packages/db/src/schema/ticketing.ts`, seed `packages/db/src/seed/intents.ts` |
+| API modules | `apps/api/src/{tickets,sla,team-queues,orgs,intents,realtime}/` |
+
+กติกา:
+- **เขียน ticket ผ่าน `UnitOfWorkService.run()` เท่านั้น:** ticket + message + `ticket_event` + `audit.recordInTransaction` อยู่ใน tx เดียว · `uow.emit` (realtime) และ `uow.afterCommit` (enqueue) รันหลัง commit ถ้า fail จะลง log โดยไม่ rollback · ยังไม่มี outbox `[ASSUMED]` ต้องตัดสินก่อน T-007 (T-013)
+- **Concurrency:** ticket `FOR UPDATE` (merge ล็อกตามลำดับ id) · round-robin ล็อกแถว `team_queue` (ดูคิวก่อน แล้วค่อยใช้สิทธิ์เมื่อ ticket ย้ายจริง) · idempotency ของ inbound = advisory lock + unique `message_external_key`
+- **Workflow (R-1.2):** เก็บเป็นข้อมูลใน `ticket_status_transition` (`workflow.manage`) · เข้า `merged` ได้ทาง merge เท่านั้น · chain ลึกไม่เกิน 1 ชั้น มี trigger กัน loop
+- **SLA:** due date คำนวณจาก `createdAt` + pause ที่จบแล้ว (อ่านจาก event `sla.resumed`) · pause ที่ยังไม่จบเก็บใน `ticket.sla_paused_at` · เปลี่ยน calendar/holiday ไม่คำนวณ ticket ที่เปิดอยู่ใหม่ (ลูกค้าได้ due date ที่สัญญาไว้แล้ว) `[ASSUMED]`
+- **`ticket_event` เป็นทั้ง log และ state:** SLA คำนวณ pause จาก `sla.resumed` จึงห้าม detach partition ที่ยังมี ticket เปิด (นโยบายต่างจาก `audit_log`) · partition สร้างโดย `maintenance:ensure-partitions` (`PARTITIONED_TABLES`)
+- **Delivery status:** ข้อความขาเข้า = `not_applicable` · reply บน portal = `delivered` · channel อื่น = `pending` จนกว่า outbox ของ adapter จะส่ง
+- **Realtime:** `/v1/realtime` ใช้ `ws` บน HTTP server ของ Nest เพราะต้องตรวจ Origin + cookie + session ตอน upgrade · fan-out ผ่าน Redis `REALTIME_CHANNEL` · event มีแค่ id และ field สั้น ๆ ไม่มีเนื้อความ · client ได้เฉพาะ org ตัวเองและไม่ได้ internal (`realtimeEventFor`) · หลุดแล้ว refetch REST · Cloud Run ตัด WS ตาม request timeout `[VERIFY]` ซึ่ง client ต้อง reconnect ทุก 15 นาทีอยู่แล้ว (4401)
+- **Search (R-1.8):** `ILIKE` + GIN `pg_trgm` บน `ticket.subject`, `message.body_text` (ทดสอบภาษาไทยแล้ว) · ต้องใช้ DB locale UTF-8 ที่ไม่ใช่ `C` `[ASSUMED]` · `q` สั้นกว่า 3 ตัวใช้ index ไม่ได้ · ยังไม่ค้น attachment (T-102)
+- **Duplicate suggestion (R-1.5):** `GET /v1/tickets/:id/duplicates` org + intent เดียวกัน ภายใน 72 ชม. ไม่ merged/closed สูงสุด 10
+- **ข้อเบี่ยงจาก PRD §7:**
+  - `team_queue.members[]` → `team_queue_member`
+  - `ticket_event.actor` → `actor_type`/`actor_id`/`visibility`
+  - เพิ่ม `ticket.channel`, `ticket.sla_paused_at`, `organization.status`, `sla_policy.business_calendar_id`
+  - linked tickets มีแค่ `parent_ticket_id`
+  - `incident_id`/`runbook_article_id`/`procedure_version_id` ยังไม่มี FK

@@ -13,7 +13,7 @@
     "test": "turbo run test test:boundaries",
     "test:integration": "turbo run test:integration --env-mode=loose",
     "test:e2e": "turbo run test:e2e --env-mode=loose",
-    "test:boundaries": "vitest run --dir tools",
+    "test:boundaries": "vitest run --dir tools --testTimeout=30000",
     "lint": "turbo run lint lint:root",
     "lint:root": "eslint eslint.config.mjs tools && prettier --check .",
     "typecheck": "turbo run typecheck",

@@ -9,7 +9,13 @@ import {
   type IdentityClaims,
   type TokenFaults,
 } from '../testing/fake-idp.js';
-import { startHarness, uniqueEmail, type Harness, type TestClient } from '../testing/harness.js';
+import {
+  createOrg,
+  startHarness,
+  uniqueEmail,
+  type Harness,
+  type TestClient,
+} from '../testing/harness.js';
 import { OIDC_COOKIE } from './cookies.js';
 
 // Staff sign-in through the real `openid-client` flow (authorization code + PKCE) against a local
@@ -237,7 +243,7 @@ describe('refusals', () => {
     const clientEmail = uniqueEmail('client');
     await pool().query(
       `INSERT INTO users (email, name, role, org_id) VALUES ($1, 'C', 'client', $2)`,
-      [clientEmail, randomUUID()],
+      [clientEmail, await createOrg(pool())],
     );
     await expectRefused(goodClaims(clientEmail), 'staff_not_provisioned');
 

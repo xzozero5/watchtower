@@ -165,6 +165,24 @@ describe('every route states who may call it', () => {
         'GET /v1/audit-logs',
         'GET /v1/rbac/roles',
         'PUT /v1/rbac/roles/:role/permissions',
+        'GET /v1/orgs',
+        'POST /v1/contacts',
+        'POST /v1/queues',
+        'POST /v1/intents',
+        'POST /v1/sla-policies',
+        'POST /v1/business-calendars',
+        'PUT /v1/ticket-workflow',
+        'GET /v1/tickets',
+        'POST /v1/tickets',
+        'GET /v1/tickets/:id',
+        'PATCH /v1/tickets/:id',
+        'POST /v1/tickets/:id/status',
+        'POST /v1/tickets/:id/assign',
+        'POST /v1/tickets/:id/merge',
+        'POST /v1/tickets/:id/replies',
+        'POST /v1/tickets/:id/notes',
+        'GET /v1/tickets/:id/timeline',
+        'GET /v1/tickets/:id/duplicates',
       ]),
     );
   });
@@ -177,5 +195,31 @@ describe('every route states who may call it', () => {
       'session.revoke.any',
     ]);
     expect(byKey.get('PATCH /v1/users/:id')?.permissions).toEqual(['user.manage']);
+  });
+
+  it('keeps ticket configuration and ticket handling behind their own permissions', async () => {
+    const byKey = new Map((await collectRoutes()).map((route) => [route.key, route]));
+    expect(byKey.get('PUT /v1/ticket-workflow')?.permissions).toEqual(['workflow.manage']);
+    expect(byKey.get('POST /v1/sla-policies')?.permissions).toEqual(['sla.manage']);
+    expect(byKey.get('POST /v1/business-calendars')?.permissions).toEqual(['sla.manage']);
+    expect(byKey.get('POST /v1/queues')?.permissions).toEqual(['queue.manage']);
+    expect(byKey.get('POST /v1/intents')?.permissions).toEqual(['intent.manage']);
+    expect(byKey.get('POST /v1/orgs')?.permissions).toEqual(['org.manage']);
+    // A client must never be able to write an internal note, merge, assign or change a status.
+    for (const key of [
+      'POST /v1/tickets/:id/notes',
+      'POST /v1/tickets/:id/merge',
+      'POST /v1/tickets/:id/assign',
+      'POST /v1/tickets/:id/status',
+      'PATCH /v1/tickets/:id',
+    ]) {
+      expect(byKey.get(key)?.permissions, key).toEqual(['ticket.handle']);
+    }
+    // Reading is open to both audiences; the service narrows to the caller's organization.
+    expect(byKey.get('GET /v1/tickets')?.anyOf).toEqual(['ticket.read', 'ticket.read.org']);
+    expect(byKey.get('POST /v1/tickets/:id/replies')?.anyOf).toEqual([
+      'ticket.reply',
+      'ticket.reply.own',
+    ]);
   });
 });
