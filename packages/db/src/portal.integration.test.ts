@@ -4,7 +4,7 @@ import { Pool } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { migrateDown, migrateUp } from './migrator.js';
-import { createTestDatabase, type TestDatabase } from './testing.js';
+import { createTestDatabase, migrationsAfter, type TestDatabase } from './testing.js';
 
 // Migration 0004 (T-007): the table behind the portal tracking links. `app` is the restricted
 // login role the api runs as.
@@ -108,7 +108,12 @@ describe('reversibility of 0004', () => {
        VALUES ($1, $2, $3, now() + interval '1 day')`,
       [ticket, contact, hash('revert')],
     );
-    expect(await migrateDown(owner(), { steps: 2 })).toEqual(['0005_security', '0004_portal']);
+    const later = await migrationsAfter('0005_security');
+    expect(await migrateDown(owner(), { steps: 2 + later.length })).toEqual([
+      ...later.toReversed(),
+      '0005_security',
+      '0004_portal',
+    ]);
     expect(
       await scalar<string | null>(
         owner(),
@@ -122,7 +127,7 @@ describe('reversibility of 0004', () => {
       ]),
     ).toBe('1');
 
-    expect(await migrateUp(owner())).toEqual(['0004_portal', '0005_security']);
+    expect(await migrateUp(owner())).toEqual(['0004_portal', '0005_security', ...later]);
     expect(
       await scalar<string>(app, 'SELECT count(*)::text AS value FROM portal_access_token'),
     ).toBe('0');

@@ -15,6 +15,23 @@ export const emptyToUndefined = (value: unknown): unknown =>
 
 const optionalString = z.preprocess(emptyToUndefined, z.string().optional());
 const optionalUrl = z.preprocess(emptyToUndefined, z.url().optional());
+const optionalPositiveNumber = z.preprocess(
+  emptyToUndefined,
+  z.coerce.number().positive().optional(),
+);
+
+/** `a.example.com, b.example.com` as a list of lower-case host names; empty means none. */
+const hostList = z.preprocess(
+  (value: unknown): unknown => {
+    if (value === undefined) return [];
+    if (typeof value !== 'string') return value;
+    return value
+      .split(',')
+      .map((host) => host.trim().toLowerCase())
+      .filter((host) => host !== '');
+  },
+  z.array(z.string().regex(/^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$/, 'must be a host name')).max(100),
+);
 
 export const portSchema = z.coerce.number().int().min(1).max(65535);
 
@@ -31,6 +48,11 @@ const redisUrl = z
 export const LOG_LEVELS = ['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent'] as const;
 export const NODE_ENVS = ['development', 'test', 'production'] as const;
 export const AI_PROVIDERS = ['mock', 'anthropic', 'vertex'] as const;
+/**
+ * Where knowledge base embeddings come from. `[ASSUMED]` mock (deterministic, offline) or Vertex;
+ * any other provider or a downloaded model sends data to a new destination and needs an ADR first.
+ */
+export const EMBEDDING_PROVIDERS = ['mock', 'vertex'] as const;
 
 /** Variables every service needs. Required ones fail the boot when missing. */
 export const baseEnvShape = {
@@ -66,7 +88,6 @@ export const baseEnvShape = {
   GOOGLE_ALLOWED_DOMAIN: optionalString,
   GMAIL_SERVICE_ACCOUNT_JSON_PATH: optionalString,
   GMAIL_IMPERSONATE_USER: optionalString,
-  PUBSUB_EMULATOR_HOST: optionalString,
   LINE_CHANNEL_ID: optionalString,
   LINE_CHANNEL_SECRET: optionalString,
   LINE_CHANNEL_ACCESS_TOKEN: optionalString,
@@ -82,6 +103,46 @@ export const baseEnvShape = {
   VERTEX_LOCATION: optionalString,
   WEB_PUSH_VAPID_PUBLIC: optionalString,
   WEB_PUSH_VAPID_PRIVATE: optionalString,
+} satisfies z.ZodRawShape;
+
+/**
+ * Phase 1 variables (T-123a). Every one is optional and empty means mock mode, so an unchanged
+ * `.env.example` never reaches a real service. Credentials are secrets: environment (or the
+ * encrypted credential store, ADR-004) only. The groups below follow `.env.example`.
+ */
+export const phase1EnvShape = {
+  // Gmail push (T-102): Pub/Sub project, topic and subscription, and how the push receiver
+  // recognises Pub/Sub (OIDC token audience and service account). Emulator host: PUBSUB_EMULATOR_HOST.
+  PUBSUB_EMULATOR_HOST: optionalString,
+  PUBSUB_PROJECT_ID: optionalString,
+  PUBSUB_TOPIC: optionalString,
+  PUBSUB_SUBSCRIPTION: optionalString,
+  GMAIL_PUSH_AUDIENCE: optionalString,
+  GMAIL_PUSH_SERVICE_ACCOUNT: optionalString,
+  // LINE Login for customers (T-103d): a separate channel from the Messaging API one above.
+  LINE_LOGIN_CHANNEL_ID: optionalString,
+  LINE_LOGIN_CHANNEL_SECRET: optionalString,
+  // Discord (T-104): webhook notifications now; the bot interactions endpoint needs the public key.
+  DISCORD_WEBHOOK_URL: optionalUrl,
+  DISCORD_APPLICATION_ID: optionalString,
+  DISCORD_PUBLIC_KEY: optionalString,
+  // Web Push (T-105): the contact URL or mailto: sent to push services with the VAPID keys above.
+  WEB_PUSH_SUBJECT: optionalString,
+  // Outbound (T-122d): how long a customer reply waits so the agent can cancel it (UI spec: 5 s).
+  OUTBOUND_UNDO_SECONDS: z.preprocess(
+    emptyToUndefined,
+    z.coerce.number().int().min(0).max(30).default(5),
+  ),
+  // Knowledge base (T-107): embeddings, and the only hosts the URL crawler may fetch (empty: none).
+  EMBEDDING_PROVIDER: z.preprocess(emptyToUndefined, z.enum(EMBEDDING_PROVIDERS).default('mock')),
+  KB_CRAWL_ALLOWED_HOSTS: hostList,
+  // AI budget (T-106d). Empty falls back to the default in config/budgets.yaml; a value overrides it.
+  AI_DAILY_COST_CAP_USD: optionalPositiveNumber,
+  AI_DAILY_TOKEN_CAP: z.preprocess(emptyToUndefined, z.coerce.number().int().positive().optional()),
+  AI_BUDGET_ALERT_PERCENT: z.preprocess(
+    emptyToUndefined,
+    z.coerce.number().int().min(1).max(100).default(80),
+  ),
 } satisfies z.ZodRawShape;
 
 const MIN_PRODUCTION_SECRET_LENGTH = 32;
@@ -225,7 +286,7 @@ function applyGuards(env: Readonly<Record<string, unknown>>, ctx: z.RefinementCt
 
 /** Builds a service env schema: the shared variables, the service's own, then the guards. */
 export function createEnvSchema<Shape extends z.ZodRawShape>(extra: Shape) {
-  return z.object({ ...baseEnvShape, ...extra }).superRefine((env, ctx) => {
+  return z.object({ ...baseEnvShape, ...phase1EnvShape, ...extra }).superRefine((env, ctx) => {
     applyGuards(env, ctx);
   });
 }

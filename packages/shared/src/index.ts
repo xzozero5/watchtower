@@ -16,6 +16,7 @@ export * from './auth.js';
 export * from './channels.js';
 export * from './common.js';
 export * from './directory.js';
+export * from './features/index.js';
 export * from './config.js';
 export * from './logging.js';
 export * from './portal.js';

@@ -21,6 +21,15 @@ import { TelemetryService } from './telemetry/telemetry.service.js';
 export const DOCS_PATH = 'docs';
 
 /**
+ * Options for creating the Nest application, here and in tests that build their own module
+ * (`moduleRef.createNestApplication(undefined, NEST_APP_OPTIONS)`). `rawBody` keeps the exact
+ * bytes of a JSON body on `req.rawBody` (a Buffer, in addition to the parsed body) so that a
+ * webhook signature (LINE HMAC, Discord Ed25519) can be checked over what the sender signed.
+ * A handler reads it with `@Req() req: RawBodyRequest<Request>`.
+ */
+export const NEST_APP_OPTIONS = { rawBody: true } as const;
+
+/**
  * Cross-cutting HTTP setup shared by the real app and by tests that build their own module:
  * access log + metrics + trace, Zod validation, shutdown hooks and the OpenAPI document.
  */
@@ -82,6 +91,7 @@ export async function createApp(
   const app = await NestFactory.create<NestExpressApplication>(
     AppModule.forRoot(config, logger, options),
     {
+      ...NEST_APP_OPTIONS,
       bufferLogs: true,
       logger: new NestPinoLogger(logger),
     },
