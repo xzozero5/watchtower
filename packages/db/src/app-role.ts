@@ -31,7 +31,8 @@ export interface AppRoleOptions {
 /**
  * Creates (or updates the password of) a login role and makes it a member of `watchtower_app`, so
  * the api and worker run without ownership of the schema: no DDL, and no UPDATE/DELETE on the
- * audit log. Idempotent. Run it as the migration owner, after `migrateUp`.
+ * audit log, and no TEMP tables (the revoke is on PUBLIC for the whole database; the schema owner
+ * keeps its own rights). Idempotent. Run it as the migration owner, after `migrateUp`.
  */
 export async function provisionAppRole(
   pool: Pool,
@@ -57,6 +58,12 @@ export async function provisionAppRole(
         : `ALTER ROLE ${role} WITH LOGIN PASSWORD ${verifier}`,
     );
     await client.query(`GRANT ${APP_ROLE_GROUP} TO ${role}`);
+    // PUBLIC may create TEMP tables by default. Nothing in the api or worker uses them, and a TEMP
+    // table is the way to shadow a real one (security review A-1), so the application role gets
+    // none. The SECURITY DEFINER functions are hardened on their own; this is the second layer.
+    await client.query(
+      `DO $$ BEGIN EXECUTE format('REVOKE TEMPORARY ON DATABASE %I FROM PUBLIC', current_database()); END $$`,
+    );
     return created ? 'created' : 'updated';
   } finally {
     client.release();
