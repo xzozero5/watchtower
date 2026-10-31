@@ -6,7 +6,7 @@ snapshot สั้นสำหรับ cold start อยู่ที่ `HANDOF
 ## สถานะปัจจุบัน
 | Phase | สถานะ (2026-10-31) | ค้าง |
 |---|---|---|
-| 0 Foundation | 🟨 กำลังทำ | T-005 |
+| 0 Foundation | ⏸️ พัก รอทำต่อบน cloud session | T-005 ค้างบน `wip/t-005` |
 | 1 Inbox + AI 0–2 + Shifts | ⬜ | — |
 | 2 Reliability + Usage | ⬜ | — |
 | 3 Autonomy + Learning | ⬜ | — |
@@ -43,6 +43,13 @@ snapshot สั้นสำหรับ cold start อยู่ที่ `HANDOF
 - ค้าง: —
 - ไม่ยืนยัน: —
 
+
+## 2026-11-01 00:25 (Asia/Bangkok) — main thread — พักงาน, T-005 ยังไม่เสร็จ
+- ทำอะไร: เจ้าของสั่งพักเพื่อย้ายไป cloud session จึงหยุด `backend-dev` กลางคัน เก็บงานทั้งหมดบน branch `wip/t-005` แล้ว push · หยุด compose โดยไม่ลบ volume
+- ไฟล์ที่แตะ: `HANDOFF.md`, `docs/STATUS.md`, `docs/BACKLOG.md`, `logs/daily/2026-11-01.md` บน `main` · โค้ด T-005 บน `wip/t-005`
+- test บน `wip/t-005`: lint, typecheck, unit test ผ่าน `[TESTED]` · `test:integration` และ e2e ยังไม่ได้รัน
+- ค้าง: ตรวจข้อส่งมอบ T-005 ที่ยังขาด (agent ถูกหยุดก่อนรายงาน)
+- ไม่ยืนยัน: cloud session มี Docker หรือไม่ `[VERIFY]`
 
 ## 2026-10-31 23:35 (Asia/Bangkok) — backend-dev + main thread — T-004
 - ทำอะไร: Google OIDC + PKCE พร้อม mock mode, magic link, break-glass, session JWT + refresh rotation, CSRF สามชั้น, RBAC deny-by-default + permission table, audit log immutable แบบ partition, migration `0001`, ADR-005 (Proposed รอ T-010)
