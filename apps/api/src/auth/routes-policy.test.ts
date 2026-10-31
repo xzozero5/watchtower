@@ -106,6 +106,12 @@ const EXPECTED_PUBLIC_ROUTES = [
   'POST /v1/auth/break-glass',
   'POST /v1/auth/refresh',
   'POST /v1/auth/logout',
+  // The client portal (T-007): submit, track and answer without an account (ADR-007).
+  'GET /v1/portal/challenge',
+  'POST /v1/portal/tickets',
+  'GET /v1/portal/tickets/:key',
+  'POST /v1/portal/tickets/:key/replies',
+  'POST /v1/portal/track/resend',
 ].sort();
 
 describe('every route states who may call it', () => {
@@ -180,6 +186,7 @@ describe('every route states who may call it', () => {
         'POST /v1/tickets/:id/notes',
         'GET /v1/tickets/:id/timeline',
         'GET /v1/tickets/:id/duplicates',
+        'POST /v1/tickets/:id/portal-links/revoke',
       ]),
     );
   });
@@ -212,6 +219,10 @@ describe('every route states who may call it', () => {
     ]) {
       expect(byKey.get(key)?.permissions, key).toEqual(['ticket.handle']);
     }
+    // Revoking a customer's tracking links is staff work.
+    expect(byKey.get('POST /v1/tickets/:id/portal-links/revoke')?.permissions).toEqual([
+      'ticket.handle',
+    ]);
     // Reading is open to both audiences; the service narrows to the caller's organization.
     expect(byKey.get('GET /v1/tickets')?.anyOf).toEqual(['ticket.read', 'ticket.read.org']);
     expect(byKey.get('POST /v1/tickets/:id/replies')?.anyOf).toEqual([

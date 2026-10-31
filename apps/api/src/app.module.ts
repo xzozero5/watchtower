@@ -11,6 +11,7 @@ import { HealthModule } from './health/health.module.js';
 import { LoggingModule } from './logging/logging.module.js';
 import type { AppLogger } from './logging/logger.js';
 import { OrgsModule } from './orgs/orgs.module.js';
+import { PortalModule } from './portal/portal.module.js';
 import { QueueModule } from './queue/queue.module.js';
 import { RealtimeModule } from './realtime/realtime.module.js';
 import { RbacModule } from './rbac/rbac.module.js';
@@ -53,6 +54,7 @@ export class AppModule {
         SlaModule,
         TeamQueuesModule,
         TicketsModule,
+        PortalModule,
         HealthModule,
       ],
     };

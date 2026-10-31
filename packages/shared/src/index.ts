@@ -18,6 +18,7 @@ export * from './common.js';
 export * from './directory.js';
 export * from './config.js';
 export * from './logging.js';
+export * from './portal.js';
 export * from './queues.js';
 export * from './rbac.js';
 export * from './seed-data.js';

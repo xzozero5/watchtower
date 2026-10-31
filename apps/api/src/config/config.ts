@@ -44,7 +44,27 @@ const apiEnvSchema = createEnvSchema({
    * Prefix of the human ticket number: `OPS` gives `OPS-1234`. 2 to 10 letters or digits, upper-cased.
    * Changing it renames future displays only; keys already sent in emails keep the old prefix.
    */
-  TICKET_KEY_PREFIX: z.preprocess(emptyToUndefined, ticketKeyPrefixSchema.default(DEFAULT_TICKET_KEY_PREFIX)),
+  TICKET_KEY_PREFIX: z.preprocess(
+    emptyToUndefined,
+    ticketKeyPrefixSchema.default(DEFAULT_TICKET_KEY_PREFIX),
+  ),
+  /**
+   * Key that signs portal tracking links and proof-of-work challenges (HKDF with a separate label
+   * for each). Empty: derived from APP_ENCRYPTION_KEY (ADR-004, ADR-007). A secret: environment only.
+   */
+  PORTAL_TOKEN_SECRET: z.preprocess(emptyToUndefined, z.string().min(32).optional()),
+  /** How long a tracking link works; every email that carries a new link starts a new period `[ASSUMED]`. */
+  PORTAL_TOKEN_TTL_DAYS: z.coerce.number().int().min(1).max(365).default(90),
+  /** Leading zero bits the portal proof-of-work asks for (ADR-007). 8 is for tests. */
+  PORTAL_POW_DIFFICULTY_BITS: z.coerce.number().int().min(4).max(28).default(18),
+  /** How long a proof-of-work challenge stays valid. */
+  PORTAL_POW_TTL_SECONDS: seconds(1800, 30, 86_400),
+  /** The form cannot be submitted sooner than this after its challenge was issued. */
+  PORTAL_MIN_FILL_SECONDS: seconds(3, 0, 120),
+  /** Portal submissions per hour: per client IP, per email address, per organization. */
+  PORTAL_RATE_IP_PER_HOUR: z.coerce.number().int().min(1).max(10_000).default(20),
+  PORTAL_RATE_EMAIL_PER_HOUR: z.coerce.number().int().min(1).max(1000).default(5),
+  PORTAL_RATE_ORG_PER_HOUR: z.coerce.number().int().min(1).max(100_000).default(60),
 });
 
 export type ApiConfig = z.output<typeof apiEnvSchema> & {

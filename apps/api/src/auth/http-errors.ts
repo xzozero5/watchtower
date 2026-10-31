@@ -75,3 +75,26 @@ export class RateLimitedError extends ApiHttpError {
     this.retryAfterSeconds = retryAfterSeconds;
   }
 }
+
+/**
+ * The public portal could not tell that a person is behind the form (ADR-007): no, wrong, expired,
+ * reused or too-quick proof, or a filled honeypot. The reason goes to the audit log, never to the
+ * caller; they get a challenge to solve again.
+ */
+export const verificationFailed = (): ApiHttpError =>
+  new ApiHttpError(
+    HttpStatus.BAD_REQUEST,
+    'verification_failed',
+    'Human verification failed; request a new challenge and try again',
+  );
+
+/**
+ * A portal tracking link that does not open a ticket. One answer for every reason (unknown ticket,
+ * wrong token, expired, revoked, token of another ticket) so a caller cannot tell them apart.
+ */
+export const invalidTrackingLink = (): ApiHttpError =>
+  new ApiHttpError(
+    HttpStatus.UNAUTHORIZED,
+    'invalid_or_expired_link',
+    'This link is invalid or has expired',
+  );

@@ -23,7 +23,7 @@ interface HumanVerificationProvider {
    - Redis ล่ม = fail closed (500/503) ไม่ปล่อยผ่าน
 2. **Honeypot + minimum fill time**
    - ฟิลด์ล่อ `website` ต้องว่าง (ซ่อนด้วย CSS + `aria-hidden` + `tabindex=-1` + `autocomplete=off`) · ถ้ามีค่า = บอท
-   - เวลาขั้นต่ำระหว่าง `issuedAt` ของ challenge กับตอน submit (ค่าเริ่มต้น 3 วินาที `PORTAL_MIN_FILL_SECONDS`) · web ต้องขอ challenge ตอนเปิดฟอร์ม ไม่ใช่ตอนกดส่ง · เร็วกว่านี้ = ปฏิเสธ (challenge นั้นถูกใช้แล้ว ต้องขอใหม่)
+   - เวลาขั้นต่ำระหว่าง `issuedAt` ของ challenge กับตอน submit (ค่าเริ่มต้น 3 วินาที `PORTAL_MIN_FILL_SECONDS`) · web ต้องขอ challenge ตอนเปิดฟอร์ม ไม่ใช่ตอนกดส่ง · เร็วกว่านี้ = ปฏิเสธ (ไม่ burn challenge: รอแล้วส่งซ้ำด้วย challenge เดิมได้)
 3. **Rate limit ใน Redis** (fixed window ต่อชั่วโมง, key เป็น SHA-256 ของ subject ไม่เก็บ IP/อีเมลตรง ๆ — ใช้ `RateLimiter` เดิมของ T-004)
    - ต่อ IP (ค่าเริ่มต้น 20/ชม.), ต่อ email (5/ชม., กันการถล่มกล่องของเหยื่อ), ต่อ org (60/ชม.; ถ้า org ยังไม่ตรง allow-list ใช้โดเมนของอีเมลแทน เพื่อไม่ให้ผู้ส่งแปลกหน้าแย่ง bucket เดียวกันหมด) · ตอบ `429` + `Retry-After` · **ทุกครั้งที่ปฏิเสธลง audit** (`portal.rate_limited`, outcome `denied`, metadata บอกว่า scope ไหน ไม่มี IP/อีเมลดิบใน metadata — `audit_log.ip` ตามปกติ)
    - read/reply ผ่าน tracking link มี limit แยก (ต่อ IP และต่อ ticket)
@@ -43,7 +43,7 @@ interface HumanVerificationProvider {
 - **CSRF ของ endpoint สาธารณะ:** portal ไม่ใช้ cookie เลย — submit ไม่ต้อง auth, ส่วน tracking ใช้ header `X-Portal-Token` ที่ web ใส่เอง (ไม่ใช่ credential ที่ browser แนบอัตโนมัติ) จึงไม่มี ambient authority ให้ CSRF โจมตี · `originCheck` เดิมยังบล็อก `Origin` แปลกปลอมบน POST · CORS allow-list ยังเป็น `APP_URL` เดียว (เพิ่มเฉพาะ header `x-portal-token`) `[ASSUMED]`
 - ความเสี่ยงที่ยอมรับ: ใครก็ส่งฟอร์มโดยใช้อีเมลของคนอื่นได้ (ผู้รับจะได้อีเมล confirmation 1 ฉบับต่อ ticket สูงสุด 5 ฉบับ/ชม.) · tracking link ส่งทางอีเมลเท่านั้น ไม่คืนใน response ผู้ส่งจึงไม่ได้สิทธิ์อ่าน ticket ของคนอื่น
 - difficulty คงที่ ยังไม่ปรับตามภาระ (adaptive) `[ASSUMED]` · ตรวจซ้ำถ้ามีบอทผ่าน หรือผู้ใช้มือถือรอนานเกินไป
-- challenge ใช้ซ้ำไม่ได้แม้ฟอร์มผิดหลัง verify (ต้องขอใหม่) · web ต้องขอ challenge ใหม่เมื่อได้ 400 `verification_failed` หรือ 429
+- challenge ที่ verify ผ่านแล้วใช้ซ้ำไม่ได้ (ถ้า request ล้มเหลวหลังจากนั้น ต้องขอใหม่) · web ต้องขอ challenge ใหม่เมื่อได้ 400 `verification_failed` (ยกเว้นเหตุ `too_fast` ซึ่งรอแล้วส่งซ้ำได้) หรือ 429
 - ถ้าเปลี่ยน `PORTAL_TOKEN_SECRET`/`APP_ENCRYPTION_KEY` challenge ที่ค้างอยู่ใช้ไม่ได้ (ปกติ ขอใหม่) และ tracking link ที่ส่งไปแล้วใช้ไม่ได้ทั้งหมด (ลูกค้าขอลิงก์ใหม่ด้วยอีเมล)
 - ต้องตรวจซ้ำ: ก่อนเปิดลิงก์แยกต่อ org (R-9.1 "per org") · เมื่อเจ้าของตัดสินเรื่อง hosted provider · ตอน T-010 (`security-reviewer`)
 
