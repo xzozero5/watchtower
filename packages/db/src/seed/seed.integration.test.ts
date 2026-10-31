@@ -88,13 +88,18 @@ describe('the first run', () => {
       timezone: string;
       is_default: boolean;
       hours: Record<string, { start: string; end: string }[]>;
-      holidays: { date: string; name: string }[];
+      holidays: { date: string; name: string; checked?: boolean }[];
     }>(
       `SELECT timezone, is_default, hours, holidays FROM business_calendar WHERE name = 'Bangkok office hours'`,
     );
     expect(row.rows[0]?.timezone).toBe('Asia/Bangkok');
     expect(row.rows[0]?.is_default).toBe(true);
     expect(row.rows[0]?.holidays).toHaveLength(file?.holidays.length ?? -1);
+    // Example data is [VERIFY]: nobody has compared it with the official announcement (T-127).
+    expect(row.rows[0]?.holidays.length).toBeGreaterThan(0);
+    for (const holiday of row.rows[0]?.holidays ?? []) {
+      expect(holiday).toMatchObject({ checked: false, checkedAt: null, checkedBy: null });
+    }
     expect(row.rows[0]?.hours.mon).toEqual([{ start: '09:00', end: '18:00' }]);
     expect(row.rows[0]?.hours.sat).toEqual([]);
     const wide = await owner().query<{ is_default: boolean; hours: Record<string, unknown[]> }>(
