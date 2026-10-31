@@ -11,6 +11,8 @@ const SOURCE_GLOB = '**/*.{ts,tsx,mts,cts,js,jsx,mjs,cjs}';
 const SLASH = String.raw`\x2f`;
 const NOT_SLASH = `[^${SLASH}]`;
 
+const REDIS_MODULES = ['ioredis', 'redis', 'bullmq'];
+
 const MODULE_GROUPS = {
   http: {
     label: 'HTTP',
@@ -34,6 +36,7 @@ const MODULE_GROUPS = {
       'socket[.]io(?:-client)?',
     ],
   },
+  redis: { label: 'Redis or BullMQ', modules: REDIS_MODULES },
   persistence: {
     label: 'the database or Redis',
     modules: [
@@ -43,9 +46,7 @@ const MODULE_GROUPS = {
       `pg-${NOT_SLASH}+`,
       'postgres',
       'pgvector',
-      'ioredis',
-      'redis',
-      'bullmq',
+      ...REDIS_MODULES,
     ],
   },
 };
@@ -58,6 +59,7 @@ const SHARED = '@watchtower/shared';
 /**
  * The dependency matrix. `allow` lists the workspace packages an entry may import by name; every
  * other workspace is off limits. `forbid` names MODULE_GROUPS it must not know about.
+ * `forbidHttpGlobals` also bans the global `fetch` and friends, which reach the network without an import.
  */
 export const WORKSPACES = {
   'apps/web': {
@@ -67,17 +69,42 @@ export const WORKSPACES = {
   },
   'apps/api': {
     name: '@watchtower/api',
-    allow: ['@watchtower/db', '@watchtower/ai', '@watchtower/channels', SHARED],
+    allow: [
+      '@watchtower/db',
+      '@watchtower/domain',
+      '@watchtower/ai',
+      '@watchtower/channels',
+      SHARED,
+    ],
     forbid: [],
   },
   'apps/worker': {
     name: '@watchtower/worker',
-    allow: ['@watchtower/db', '@watchtower/ai', '@watchtower/channels', SHARED],
+    allow: [
+      '@watchtower/db',
+      '@watchtower/domain',
+      '@watchtower/ai',
+      '@watchtower/channels',
+      SHARED,
+    ],
     forbid: [],
   },
   'packages/shared': { name: SHARED, allow: [], forbid: ['http', 'persistence'] },
   'packages/db': { name: '@watchtower/db', allow: [SHARED], forbid: ['http'] },
-  'packages/ai': { name: '@watchtower/ai', allow: [SHARED], forbid: ['http', 'persistence'] },
+  'packages/ai': {
+    name: '@watchtower/ai',
+    allow: [SHARED],
+    forbid: ['http', 'persistence'],
+    forbidHttpGlobals: true,
+  },
+  // Writes only (ADR-009): the ticket write logic that api and worker share. It may use the
+  // database, but not HTTP, Redis or BullMQ; the policy gate and the notifier are ports.
+  'packages/domain': {
+    name: '@watchtower/domain',
+    allow: ['@watchtower/db', SHARED],
+    forbid: ['http', 'redis'],
+    forbidHttpGlobals: true,
+  },
   'packages/channels': { name: '@watchtower/channels', allow: [SHARED], forbid: ['persistence'] },
   'packages/ui': { name: '@watchtower/ui', allow: [SHARED], forbid: ['persistence'] },
 };
@@ -183,7 +210,7 @@ const watchtowerPlugin = { rules: { 'no-relative-escape': noRelativeEscape } };
  *   eslint with each package as cwd.
  */
 export function boundaryConfigs({ rootDir }) {
-  return Object.entries(WORKSPACES).map(([dir, { forbid }]) => {
+  return Object.entries(WORKSPACES).map(([dir, { forbidHttpGlobals }]) => {
     const restrictions = restrictionsFor(dir);
     const rules = {
       'no-restricted-imports': 'off',
@@ -191,12 +218,12 @@ export function boundaryConfigs({ rootDir }) {
       'no-restricted-syntax': ['error', ...syntaxRestrictions(restrictions)],
       'watchtower/no-relative-escape': ['error', { workspaceRoot: join(rootDir, dir) }],
     };
-    if (dir === 'packages/ai' && forbid.includes('http')) {
+    if (forbidHttpGlobals === true) {
       rules['no-restricted-globals'] = [
         'error',
         ...HTTP_GLOBALS.map((name) => ({
           name,
-          message: 'packages/ai must not know about HTTP. Accept a port from the caller instead.',
+          message: `${dir} must not know about HTTP. Accept a port from the caller instead.`,
         })),
       ];
     }
