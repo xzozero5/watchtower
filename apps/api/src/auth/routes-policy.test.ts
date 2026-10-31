@@ -194,6 +194,12 @@ describe('every route states who may call it', () => {
         'GET /v1/autonomy',
         'POST /v1/autonomy/switches',
         'POST /v1/intents/:id/autonomy',
+        // Head console (T-127).
+        'GET /v1/tickets/stats',
+        'GET /v1/intents/:id/autonomy/history',
+        'PATCH /v1/business-calendars/:id/holidays/:date',
+        'GET /v1/org-tiers',
+        'GET /v1/audit-logs/export',
       ]),
     );
   });
@@ -247,5 +253,26 @@ describe('every route states who may call it', () => {
     ]);
     expect(byKey.get('POST /v1/intents/:id/autonomy')?.permissions).toEqual(['ai.autonomy.set']);
     expect(byKey.get('GET /v1/autonomy')?.permissions).toEqual(['ticket.read']);
+  });
+
+  it('keeps the head console routes behind the right people (T-127)', async () => {
+    const byKey = new Map((await collectRoutes()).map((route) => [route.key, route]));
+    // Counts are staff work: a client holds `ticket.read.org`, not `ticket.read`.
+    expect(byKey.get('GET /v1/tickets/stats')?.permissions).toEqual(['ticket.read']);
+    expect(byKey.get('GET /v1/tickets/stats')?.anyOf).toEqual([]);
+    // History is shown in the Intents admin page, which lead and head open.
+    expect(byKey.get('GET /v1/intents/:id/autonomy/history')?.permissions).toEqual([
+      'intent.manage',
+    ]);
+    // Marking a holiday checked is the head's (`sla.manage`), like the rest of the calendar.
+    expect(byKey.get('PATCH /v1/business-calendars/:id/holidays/:date')?.permissions).toEqual([
+      'sla.manage',
+    ]);
+    expect(byKey.get('GET /v1/org-tiers')?.permissions).toEqual(['ticket.read']);
+    // Taking the audit log out needs both the audit permission and the export permission.
+    expect(byKey.get('GET /v1/audit-logs/export')?.permissions).toEqual([
+      'audit.read',
+      'pii.export',
+    ]);
   });
 });

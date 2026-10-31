@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { emailSchema } from './auth.js';
 import { cursorSchema, jsonRecordSchema, pageLimit, pageOf } from './common.js';
 import {
+  holidayRecordSchema,
   holidaySchema,
   slaTargetsSchema,
   ticketPrioritySchema,
@@ -108,6 +109,8 @@ export const organizationSchema = z.object({
   lineGroupIds: z.array(z.string()),
   healthScore: z.number().int().min(0).max(100).nullable(),
   primaryContactId: z.uuid().nullable(),
+  /** Number of contacts of the organization. Null for a client, who is not shown their colleagues' count. */
+  contactCount: z.number().int().min(0).nullable(),
   notes: z.string(),
   status: orgStatusSchema,
   createdAt: z.iso.datetime(),
@@ -148,6 +151,16 @@ export const organizationListQuerySchema = z.object({
 });
 export type OrganizationListQuery = z.infer<typeof organizationListQuerySchema>;
 export const organizationPageSchema = pageOf(organizationSchema);
+
+/** One row of `org_tier` (T-127; creating and editing tiers is T-121). */
+export const orgTierRecordSchema = z.object({
+  slug: orgTierSchema,
+  name: z.string(),
+  sortOrder: z.number().int(),
+});
+export type OrgTierRecord = z.infer<typeof orgTierRecordSchema>;
+export const orgTierListSchema = z.object({ tiers: z.array(orgTierRecordSchema) });
+export type OrgTierList = z.infer<typeof orgTierListSchema>;
 
 // --- contacts ---
 
@@ -378,7 +391,7 @@ export const businessCalendarSchema = z.object({
   name: z.string(),
   timezone: z.string(),
   hours: weeklyHoursSchema,
-  holidays: z.array(holidaySchema),
+  holidays: z.array(holidayRecordSchema),
   isDefault: z.boolean(),
   createdAt: z.iso.datetime(),
   updatedAt: z.iso.datetime(),
