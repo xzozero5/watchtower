@@ -10,7 +10,7 @@ import {
 
 const valid: FormValues = {
   ...EMPTY_FORM,
-  name: ' Ada Lovelace ',
+  name: ' Dana Demo ',
   email: ' Ada@Example.COM ',
   category: 'api_error',
   description: ' The export fails with a 500 ',
@@ -23,7 +23,7 @@ describe('validateForm', () => {
       ok: true,
       payload: {
         email: 'ada@example.com',
-        name: 'Ada Lovelace',
+        name: 'Dana Demo',
         category: 'api_error',
         description: 'The export fails with a 500',
         locale: 'en',

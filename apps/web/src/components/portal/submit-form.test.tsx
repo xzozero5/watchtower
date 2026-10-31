@@ -42,7 +42,7 @@ function openForm(routes: Record<string, MockHandler> = {}, locale?: 'th') {
 }
 
 async function fillValid(user: ReturnType<typeof userEvent.setup>) {
-  await user.type(screen.getByLabelText('Your name'), 'Ada Lovelace');
+  await user.type(screen.getByLabelText('Your name'), 'Dana Demo');
   await user.type(screen.getByLabelText('Email address'), 'Ada@Example.com');
   await user.selectOptions(screen.getByLabelText('What is it about?'), 'api_error');
   await user.click(screen.getByRole('radio', { name: /Something is broken/ }));
@@ -110,7 +110,7 @@ describe('portal submit form', () => {
     const body = post?.body as Record<string, unknown>;
     expect(body).toMatchObject({
       email: 'ada@example.com',
-      name: 'Ada Lovelace',
+      name: 'Dana Demo',
       category: 'api_error',
       urgency: 'something_broken',
       description: 'The export fails with a 500.',
@@ -262,7 +262,7 @@ describe('portal submit form', () => {
     );
     await user.click(screen.getByRole('button', { name: 'Submit request' }));
     expect(await screen.findByText(/We couldn't reach the server/)).toBeInTheDocument();
-    expect(screen.getByLabelText('Your name')).toHaveValue('Ada Lovelace');
+    expect(screen.getByLabelText('Your name')).toHaveValue('Dana Demo');
   });
 
   it('is available in Thai', async () => {

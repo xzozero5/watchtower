@@ -29,7 +29,7 @@ async function openTracking(
 }
 
 async function fillForm(page: Page) {
-  await page.getByLabel('Your name').fill('Ada Lovelace');
+  await page.getByLabel('Your name').fill('Dana Demo');
   await page.getByLabel('Email address').fill('ada@example.com');
   await page.getByLabel('What is it about?').selectOption('api_error');
   await page.getByRole('radio', { name: /Something is broken/ }).check();
