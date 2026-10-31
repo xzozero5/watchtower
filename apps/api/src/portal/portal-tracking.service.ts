@@ -16,7 +16,7 @@ import { and, desc, eq, gte, inArray, sql } from 'drizzle-orm';
 import { AuditScope } from '../audit/audit-scope.js';
 import { AuditService } from '../audit/audit.service.js';
 import { invalidTrackingLink } from '../auth/http-errors.js';
-import { emailTag } from '../auth/magic-link.service.js';
+import { EmailTagService } from '../audit/email-tag.service.js';
 import { DATABASE } from '../database/database.module.js';
 import { LOGGER, type AppLogger } from '../logging/logger.js';
 import { UnitOfWorkService } from '../realtime/unit-of-work.js';
@@ -64,6 +64,7 @@ export class PortalTrackingService implements OnApplicationShutdown {
     @Inject(AuditService) private readonly audit: AuditService,
     @Inject(TICKET_KEYS) private readonly keys: TicketKeys,
     @Inject(LOGGER) private readonly logger: AppLogger,
+    @Inject(EmailTagService) private readonly tags: EmailTagService,
   ) {}
 
   async view(
@@ -186,7 +187,7 @@ export class PortalTrackingService implements OnApplicationShutdown {
    * emails per address per hour; beyond that the request is accepted and dropped.
    */
   requestNewLink(ticketKey: string, email: string, ip: string | null): void {
-    AuditScope.set({ targetType: 'email', targetId: emailTag(email) });
+    AuditScope.set({ targetType: 'email', targetId: this.tags.tag(email) });
     const work = this.issueNewLink(ticketKey, email, ip).catch((error: unknown) => {
       this.logger.error({ err: error }, 'portal tracking link request failed');
     });
@@ -212,7 +213,7 @@ export class PortalTrackingService implements OnApplicationShutdown {
     const allowed = await this.limits.hit('resend-email', email);
     if (!allowed.allowed) {
       this.logger.warn(
-        { emailTag: emailTag(email) },
+        { emailTag: this.tags.tag(email) },
         'portal link request limited for this address',
       );
       return;
@@ -238,7 +239,7 @@ export class PortalTrackingService implements OnApplicationShutdown {
           targetType: 'ticket',
           targetId: ticket.id,
           ip,
-          metadata: { emailTag: emailTag(email) },
+          metadata: { emailTag: this.tags.tag(email) },
         },
         tx,
       );

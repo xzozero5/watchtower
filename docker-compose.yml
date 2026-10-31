@@ -39,13 +39,20 @@ x-app-env: &app-env
   REFRESH_TOKEN_TTL_SECONDS: ${REFRESH_TOKEN_TTL_SECONDS:-604800}
   SESSION_MAX_AGE_SECONDS: ${SESSION_MAX_AGE_SECONDS:-2592000}
   MAGIC_LINK_TTL_SECONDS: ${MAGIC_LINK_TTL_SECONDS:-900}
-  # Port 4000 is published directly, so X-Forwarded-For is not trusted by default. Set 1 when the
-  # api is reachable only through the Caddy container.
+  # Mock sign-in is an explicit opt-in: off unless DEV_LOGIN_ENABLED=true (copy .env.example to
+  # .env for local work). Ignored, and refused at boot, with Google credentials or in production.
+  DEV_LOGIN_ENABLED: ${DEV_LOGIN_ENABLED:-false}
+  # Port 4000 is published directly here, so anyone can send the api a forged X-Forwarded-For and
+  # it is not trusted (0): the audit log and rate limits use the socket address. Behind Caddy that
+  # address is always Caddy's, which is wrong the other way round: use the proxy override
+  #   docker compose -f docker-compose.yml -f docker-compose.proxy.yml up -d --wait
+  # which does not publish :4000 and sets this to 1. The api logs a warning when it sees
+  # X-Forwarded-For from a private address while this is 0.
   TRUST_PROXY_HOPS: ${TRUST_PROXY_HOPS:-0}
   TICKET_KEY_PREFIX: ${TICKET_KEY_PREFIX:-OPS}
   OUTBOX_POLL_INTERVAL_MS: ${OUTBOX_POLL_INTERVAL_MS:-1000}
   PORTAL_TOKEN_SECRET: ${PORTAL_TOKEN_SECRET:-}
-  PORTAL_TOKEN_TTL_DAYS: ${PORTAL_TOKEN_TTL_DAYS:-90}
+  PORTAL_TOKEN_TTL_DAYS: ${PORTAL_TOKEN_TTL_DAYS:-30}
   PORTAL_POW_DIFFICULTY_BITS: ${PORTAL_POW_DIFFICULTY_BITS:-18}
   PORTAL_POW_TTL_SECONDS: ${PORTAL_POW_TTL_SECONDS:-1800}
   PORTAL_MIN_FILL_SECONDS: ${PORTAL_MIN_FILL_SECONDS:-3}
@@ -123,7 +130,10 @@ services:
     # S3-compatible object storage for local use; GCS replaces it on GCP. The upstream minio/minio
     # images were withdrawn from Docker Hub and Quay, so this defaults to a community fork.
     # Override with MINIO_IMAGE. See docs/04-ARCHITECTURE.md section 4.
-    image: ${MINIO_IMAGE:-pgsty/minio:RELEASE.2026-08-04T00-00-00Z}
+    # Pinned by digest as well as tag (the tag stays for readability): a fork's tag can be moved, a
+    # digest cannot. Update both together, then `docker image inspect --format
+    # '{{index .RepoDigests 0}}' <image>` shows the new digest.
+    image: ${MINIO_IMAGE:-pgsty/minio:RELEASE.2026-08-04T00-00-00Z@sha256:b6bfe7239bfc83fb90d31612d9704d86039dd714f7904b3f1ad68f211e602372}
     restart: unless-stopped
     command: ['server', '/data', '--console-address', ':9001']
     environment:
@@ -143,7 +153,8 @@ services:
 
   minio-init:
     # One-shot: creates the bucket, then exits 0.
-    image: ${MINIO_MC_IMAGE:-pgsty/mc:RELEASE.2026-10-26T00-00-00Z}
+    # Pinned by digest as well as tag, like minio above.
+    image: ${MINIO_MC_IMAGE:-pgsty/mc:RELEASE.2026-10-26T00-00-00Z@sha256:ce62c9053c69ce12a527a322345b5ad9f44b5f8a7b8189f82e516f2e3f30f1d8}
     restart: 'no'
     depends_on:
       minio:

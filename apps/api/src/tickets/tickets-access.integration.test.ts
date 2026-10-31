@@ -741,7 +741,10 @@ describe('CLIENT_ORG_RESOLVER over organization.domains', () => {
     const email = uniqueEmail('first-visit', 'magic-org.example');
     await request(email);
     const [job] = await emailJobsFor(email);
-    const link = (job?.data as { link: string }).link;
+    if (!job) throw new Error('no email job');
+    const opened = h.openEmail(job);
+    if (opened.kind !== 'magic_link') throw new Error('expected a magic link email');
+    const link = opened.link;
     const token = new URL(link).hash.replace('#token=', '');
 
     const client = h.client();

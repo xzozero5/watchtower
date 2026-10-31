@@ -6,7 +6,12 @@ import { loadConfig, type ApiConfig } from '../config/config.js';
 export function testEnv(
   overrides: Readonly<Record<string, string | undefined>> = {},
 ): Record<string, string | undefined> {
+  // Dev login is an explicit opt-in; tests sign in with it, so it is on unless the test makes
+  // Google live (the config guard refuses both together).
+  const live =
+    Boolean(overrides.GOOGLE_OIDC_CLIENT_ID) || Boolean(overrides.GOOGLE_OIDC_CLIENT_SECRET);
   return {
+    DEV_LOGIN_ENABLED: live ? 'false' : 'true',
     NODE_ENV: 'test',
     LOG_LEVEL: 'silent',
     APP_URL: 'http://localhost:3000',

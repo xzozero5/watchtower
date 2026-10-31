@@ -1,10 +1,9 @@
-import { createHash } from 'node:crypto';
-
 import { Inject, Injectable, type OnApplicationShutdown } from '@nestjs/common';
 import { schema, type Database } from '@watchtower/db';
 import { and, eq, gt, isNull, sql } from 'drizzle-orm';
 
 import { AuditScope } from '../audit/audit-scope.js';
+import { EmailTagService } from '../audit/email-tag.service.js';
 import { APP_CONFIG, type ApiConfig } from '../config/config.js';
 import { DATABASE } from '../database/database.module.js';
 import { LOGGER, type AppLogger } from '../logging/logger.js';
@@ -29,11 +28,6 @@ export const noClientOrgResolver: ClientOrgResolver = { resolveOrgId: () => Prom
 
 const REQUEST_WINDOW_SECONDS = 15 * 60;
 const MAX_REQUESTS_PER_EMAIL = 3;
-
-/** A short, non-reversible tag of an address for the audit log (the address itself is PII). */
-export function emailTag(email: string): string {
-  return createHash('sha256').update(email).digest('hex').slice(0, 16);
-}
 
 /**
  * Passwordless sign-in for client users.
@@ -60,11 +54,12 @@ export class MagicLinkService implements OnApplicationShutdown {
     @Inject(RateLimiter) private readonly limiter: RateLimiter,
     @Inject(CLIENT_ORG_RESOLVER) private readonly orgs: ClientOrgResolver,
     @Inject(LOGGER) private readonly logger: AppLogger,
+    @Inject(EmailTagService) private readonly tags: EmailTagService,
   ) {}
 
   /** Starts the issue-and-send work and returns without waiting for it. */
   request(email: string, ip: string | null): void {
-    AuditScope.set({ targetType: 'email', targetId: emailTag(email) });
+    AuditScope.set({ targetType: 'email', targetId: this.tags.tag(email) });
     const work = this.issue(email, ip).catch((error: unknown) => {
       this.logger.error({ err: error }, 'magic link request failed');
     });
@@ -89,7 +84,10 @@ export class MagicLinkService implements OnApplicationShutdown {
       REQUEST_WINDOW_SECONDS,
     );
     if (!perEmail.allowed) {
-      this.logger.warn({ emailTag: emailTag(email) }, 'magic link rate limited for this address');
+      this.logger.warn(
+        { emailTag: this.tags.tag(email) },
+        'magic link rate limited for this address',
+      );
       return;
     }
 
@@ -127,6 +125,8 @@ export class MagicLinkService implements OnApplicationShutdown {
         },
         `magic-link-${hash.slice(0, 32)}`,
         tx,
+        // Past its lifetime the link opens nothing, so the mail is not worth sending late.
+        this.config.MAGIC_LINK_TTL_SECONDS,
       );
     });
   }

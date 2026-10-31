@@ -353,6 +353,8 @@ export const outbox = pgTable(
     nextAttemptAt: timestamptz('next_attempt_at').notNull().defaultNow(),
     lockedUntil: timestamptz('locked_until'),
     lastError: text('last_error'),
+    /** After this a pending row is dead-lettered and its payload blanked instead of relayed (0005). */
+    expiresAt: timestamptz('expires_at'),
     createdAt: timestamptz('created_at').notNull().defaultNow(),
     finishedAt: timestamptz('finished_at'),
   },
@@ -361,6 +363,9 @@ export const outbox = pgTable(
     index('outbox_due_idx')
       .on(table.nextAttemptAt)
       .where(sql`${table.status} = 'pending'`),
+    index('outbox_expiry_idx')
+      .on(table.expiresAt)
+      .where(sql`${table.status} = 'pending' AND ${table.expiresAt} IS NOT NULL`),
   ],
 );
 

@@ -98,9 +98,6 @@ importers:
       '@watchtower/shared':
         specifier: workspace:*
         version: link:../../packages/shared
-      bullmq:
-        specifier: ^6.5.3
-        version: 6.5.3(ioredis@6.0.0)(pg@8.23.1)
       drizzle-orm:
         specifier: ^0.45.4
         version: 0.45.4(@opentelemetry/api@1.10.0)(@types/pg@8.23.1)(pg@8.23.1)
@@ -147,6 +144,9 @@ importers:
       '@types/ws':
         specifier: ^8.18.2
         version: 8.18.2
+      bullmq:
+        specifier: ^6.5.3
+        version: 6.5.3(ioredis@6.0.0)(pg@8.23.1)
       eslint:
         specifier: 'catalog:'
         version: 10.14.0(jiti@2.7.0)

@@ -4,7 +4,7 @@ import { parseEnv as parseDotenv } from 'node:util';
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 
-import { ConfigError, createEnvSchema, parseEnv } from './config.js';
+import { ConfigError, createEnvSchema, isLoopbackUrl, parseEnv } from './config.js';
 
 const schema = createEnvSchema({ API_PORT: z.coerce.number().int().default(4000) });
 
@@ -162,6 +162,109 @@ describe('mock sign-in is dev-only', () => {
   });
 });
 
+describe('dev login needs an explicit opt-in (C-1)', () => {
+  it('is off unless DEV_LOGIN_ENABLED is set to true', () => {
+    expect(parseEnv(schema, validEnv).DEV_LOGIN_ENABLED).toBe(false);
+    expect(parseEnv(schema, { ...validEnv, DEV_LOGIN_ENABLED: '' }).DEV_LOGIN_ENABLED).toBe(false);
+    expect(parseEnv(schema, { ...validEnv, DEV_LOGIN_ENABLED: 'true' }).DEV_LOGIN_ENABLED).toBe(
+      true,
+    );
+  });
+
+  it('refuses to boot in production even with credentials set', () => {
+    const issues = issuesFor({ ...productionEnv, DEV_LOGIN_ENABLED: 'true' });
+    expect(issues.get('DEV_LOGIN_ENABLED')).toContain('production');
+  });
+
+  it('refuses to boot when Google sign-in is configured (live mode)', () => {
+    const issues = issuesFor({
+      ...validEnv,
+      DEV_LOGIN_ENABLED: 'true',
+      GOOGLE_OIDC_CLIENT_ID: 'id.example',
+      GOOGLE_OIDC_CLIENT_SECRET: 'client-value',
+      GOOGLE_ALLOWED_DOMAIN: 'example.com',
+    });
+    expect(issues.get('DEV_LOGIN_ENABLED')).toContain('mock mode');
+  });
+
+  it('is accepted in mock mode outside production', () => {
+    expect(issuesFor({ ...validEnv, DEV_LOGIN_ENABLED: 'true' }).size).toBe(0);
+  });
+});
+
+describe('weak secrets are refused off the local machine (C-1)', () => {
+  const remote = { ...validEnv, APP_URL: 'https://staging.example.com' };
+
+  it.each(['JWT_SECRET', 'APP_ENCRYPTION_KEY'])(
+    'refuses a placeholder %s when APP_URL is not loopback',
+    (key) => {
+      expect(
+        issuesFor({ ...remote, [key]: 'change-me-but-long-enough-to-pass-32-bytes' }).get(key),
+      ).toContain('placeholder');
+    },
+  );
+
+  it.each(['JWT_SECRET', 'APP_ENCRYPTION_KEY'])('refuses a %s shorter than 32 bytes', (key) => {
+    expect(issuesFor({ ...remote, [key]: 'x'.repeat(31) }).has(key)).toBe(true);
+  });
+
+  it('accepts strong values on a remote URL', () => {
+    expect(
+      issuesFor({
+        ...remote,
+        JWT_SECRET: 'q'.repeat(40),
+        APP_ENCRYPTION_KEY: Buffer.alloc(32, 9).toString('base64'),
+      }).size,
+    ).toBe(0);
+  });
+
+  it('allows the example values only on a loopback APP_URL outside production', () => {
+    expect(issuesFor(validEnv).size).toBe(0);
+    expect(issuesFor({ ...validEnv, APP_URL: 'http://127.0.0.1:3000' }).size).toBe(0);
+    expect(issuesFor({ ...validEnv, APP_URL: 'http://[::1]:3000' }).size).toBe(0);
+    expect(issuesFor({ ...validEnv, APP_URL: 'http://192.168.1.20:3000' }).has('JWT_SECRET')).toBe(
+      true,
+    );
+    expect(
+      issuesFor({ ...validEnv, APP_URL: 'http://localhost.evil.example' }).has('JWT_SECRET'),
+    ).toBe(true);
+  });
+
+  it('never prints the weak value', () => {
+    let message = '';
+    try {
+      parseEnv(schema, { ...remote, JWT_SECRET: 'tiny-value-xyz' });
+    } catch (error) {
+      message = error instanceof Error ? error.message : '';
+    }
+    expect(message).toContain('JWT_SECRET');
+    expect(message).not.toContain('tiny-value-xyz');
+  });
+});
+
+describe('isLoopbackUrl', () => {
+  it('recognises only addresses that stay on this machine', () => {
+    for (const url of [
+      'http://localhost:3000',
+      'http://127.0.0.1',
+      'http://127.1.2.3:80',
+      'http://[::1]:4000',
+      'http://app.localhost',
+    ]) {
+      expect(isLoopbackUrl(url), url).toBe(true);
+    }
+    for (const url of [
+      'https://example.com',
+      'http://10.0.0.1',
+      'http://localhost.example.com',
+      'not a url',
+      '',
+    ]) {
+      expect(isLoopbackUrl(url), url).toBe(false);
+    }
+  });
+});
+
 describe('break-glass credentials', () => {
   it('needs the email and the password together', () => {
     expect(
@@ -200,6 +303,25 @@ describe('break-glass credentials', () => {
       BREAK_GLASS_PASSWORD: 'change-me-change-me',
     });
     expect(issues.get('BREAK_GLASS_PASSWORD')).toContain('placeholder');
+  });
+});
+
+describe('dev login on a reachable host (C-16)', () => {
+  it('refuses DEV_LOGIN_ENABLED=true when APP_URL is not loopback', () => {
+    const issues = issuesFor({
+      ...validEnv,
+      DEV_LOGIN_ENABLED: 'true',
+      APP_URL: 'https://support.example.com',
+    });
+    expect(issues.get('DEV_LOGIN_ENABLED')).toContain('loopback');
+  });
+
+  it('allows it on a loopback APP_URL', () => {
+    expect(
+      issuesFor({ ...validEnv, DEV_LOGIN_ENABLED: 'true', APP_URL: 'http://localhost:3000' }).has(
+        'DEV_LOGIN_ENABLED',
+      ),
+    ).toBe(false);
   });
 });
 

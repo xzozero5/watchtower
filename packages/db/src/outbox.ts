@@ -25,6 +25,11 @@ export interface OutboxJob {
   readonly payload: Record<string, unknown>;
   /** BullMQ job options; the relay validates them before use. */
   readonly options?: Record<string, unknown>;
+  /**
+   * After this instant the job is no longer worth sending (a magic link past its lifetime). A
+   * pending row that reaches it is dead-lettered and its payload blanked; the queue never sees it.
+   */
+  readonly expiresAt?: Date;
 }
 
 /**
@@ -40,6 +45,7 @@ export async function enqueueOutbox(writer: OutboxWriter, job: OutboxJob): Promi
       jobId: job.jobId,
       payload: job.payload,
       options: job.options ?? {},
+      expiresAt: job.expiresAt ?? null,
     })
     .onConflictDoNothing({ target: [outbox.queue, outbox.jobId] })
     .returning({ id: outbox.id });
@@ -56,6 +62,8 @@ export interface OutboxRow {
   readonly options: Record<string, unknown>;
   /** Failed hand-overs so far. */
   readonly attempts: number;
+  /** The instant after which the job must not be acted on; the publisher passes it to the queue. */
+  readonly expiresAt: Date | null;
 }
 
 /** Hands one row to the queue. Throws when it cannot; resolving means the job is in Redis. */
@@ -92,6 +100,8 @@ export interface RelayResult {
   readonly retried: number;
   /** Rows given up on (too many attempts, or a permanent error). */
   readonly dead: number;
+  /** Pending rows that passed `expires_at` before they could be relayed: dead-lettered, payload blanked. */
+  readonly expired: number;
   /** The first failure of this run, for the log (never contains a payload). */
   readonly firstError?: string;
 }
@@ -105,6 +115,7 @@ interface ClaimedRow {
   options: Record<string, unknown>;
   attempts: number;
   created_at: Date;
+  expires_at: Date | null;
 }
 
 const MAX_ERROR_LENGTH = 500;
@@ -138,18 +149,27 @@ export async function relayOutbox(
   const maxDelay = options.maxDelaySeconds ?? 300;
   const { pool } = database;
 
+  // A job past its expiry is not sent, even late: blank it first so no secret outlives its use.
+  const expiredRows = await pool.query(
+    `UPDATE outbox SET status = 'dead', payload = '{}'::jsonb, locked_until = NULL,
+            last_error = 'expired before it could be relayed', finished_at = now()
+     WHERE status = 'pending' AND expires_at IS NOT NULL AND expires_at <= now()`,
+  );
+  const expired = expiredRows.rowCount ?? 0;
+
   const claimed = await pool.query<ClaimedRow>(
     `UPDATE outbox SET locked_until = now() + make_interval(secs => $2)
      WHERE id IN (
        SELECT id FROM outbox
        WHERE status = 'pending'
          AND next_attempt_at <= now()
+         AND (expires_at IS NULL OR expires_at > now())
          AND (locked_until IS NULL OR locked_until < now())
        ORDER BY next_attempt_at, created_at, id
        LIMIT $1
        FOR UPDATE SKIP LOCKED
      )
-     RETURNING id, queue, job_name, job_id, payload, options, attempts, created_at`,
+     RETURNING id, queue, job_name, job_id, payload, options, attempts, created_at, expires_at`,
     [batchSize, leaseSeconds],
   );
   const rows = claimed.rows.toSorted((a, b) => a.created_at.getTime() - b.created_at.getTime());
@@ -170,6 +190,7 @@ export async function relayOutbox(
         payload: row.payload,
         options: row.options,
         attempts: row.attempts,
+        expiresAt: row.expires_at,
       });
     } catch (error) {
       const message = describeError(error);
@@ -219,6 +240,7 @@ export async function relayOutbox(
     sent,
     retried,
     dead,
+    expired,
     ...(firstError === undefined ? {} : { firstError }),
   };
 }

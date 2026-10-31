@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import { Inject, Injectable } from '@nestjs/common';
 import type { Redis } from 'ioredis';
 
+import { APP_CONFIG, type ApiConfig } from '../config/config.js';
 import { REDIS } from '../redis/redis.module.js';
 import { RateLimitedError } from './http-errors.js';
 
@@ -30,7 +31,14 @@ return {count, ttl}
  */
 @Injectable()
 export class RateLimiter {
-  constructor(@Inject(REDIS) private readonly redis: Redis) {}
+  private readonly namespace: string;
+
+  constructor(
+    @Inject(REDIS) private readonly redis: Redis,
+    @Inject(APP_CONFIG) config: Pick<ApiConfig, 'RATE_LIMIT_NAMESPACE'>,
+  ) {
+    this.namespace = config.RATE_LIMIT_NAMESPACE;
+  }
 
   async hit(
     scope: string,
@@ -39,7 +47,7 @@ export class RateLimiter {
     windowSeconds: number,
   ): Promise<RateLimitResult> {
     const digest = createHash('sha256').update(subject).digest('hex').slice(0, 32);
-    const key = `wt:rl:${scope}:${digest}`;
+    const key = `${this.namespace}:rl:${scope}:${digest}`;
     const reply = (await this.redis.eval(HIT_SCRIPT, 1, key, String(windowSeconds))) as [
       number,
       number,

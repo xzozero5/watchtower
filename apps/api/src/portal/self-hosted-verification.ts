@@ -5,6 +5,7 @@ import type { Redis } from 'ioredis';
 import { APP_CONFIG, type ApiConfig } from '../config/config.js';
 import { REDIS } from '../redis/redis.module.js';
 import type {
+  CheckedSubmission,
   HumanVerificationProvider,
   VerificationResult,
   VerificationSubmission,
@@ -40,9 +41,9 @@ export interface SelfHostedSettings {
 }
 
 /**
- * Proof-of-work + honeypot + minimum fill time (ADR-007). The checks run from cheapest to most
- * expensive, and the challenge is claimed (single use) only after it proved valid work, so garbage
- * costs the server one HMAC and never a Redis write.
+ * Proof-of-work + honeypot + minimum fill time (ADR-007). `check` runs from cheapest to most
+ * expensive and touches no storage, so garbage costs the server one HMAC and never a Redis write;
+ * `claim` makes the challenge single use and is called only after the caller's rate limits.
  */
 export class SelfHostedHumanVerification implements HumanVerificationProvider {
   readonly name = 'pow-sha256';
@@ -69,7 +70,11 @@ export class SelfHostedHumanVerification implements HumanVerificationProvider {
     });
   }
 
-  async verify(submission: VerificationSubmission): Promise<VerificationResult> {
+  check(submission: VerificationSubmission): Promise<CheckedSubmission> {
+    return Promise.resolve(this.checkSync(submission));
+  }
+
+  private checkSync(submission: VerificationSubmission): CheckedSubmission {
     if (submission.honeypot !== undefined && submission.honeypot.trim() !== '') {
       return { ok: false, reason: 'honeypot' };
     }
@@ -89,10 +94,27 @@ export class SelfHostedHumanVerification implements HumanVerificationProvider {
     if (!hasWork(proof.challenge, proof.nonce, checked.difficultyBits)) {
       return { ok: false, reason: 'insufficient_work' };
     }
+    return {
+      ok: true,
+      challengeId: checked.id,
+      remainingSeconds: Math.ceil((checked.expiresAt.getTime() - now.getTime()) / 1000),
+    };
+  }
 
-    const remaining = Math.ceil((checked.expiresAt.getTime() - now.getTime()) / 1000);
-    const fresh = await this.replay.claim(checked.id, remaining + REPLAY_SLACK_SECONDS);
-    return fresh ? { ok: true, challengeId: checked.id } : { ok: false, reason: 'replayed' };
+  async claim(checked: Extract<CheckedSubmission, { ok: true }>): Promise<VerificationResult> {
+    const fresh = await this.replay.claim(
+      checked.challengeId,
+      checked.remainingSeconds + REPLAY_SLACK_SECONDS,
+    );
+    return fresh
+      ? { ok: true, challengeId: checked.challengeId }
+      : { ok: false, reason: 'replayed' };
+  }
+
+  /** `check` then `claim` in one call, for callers (and tests) with no limits to run in between. */
+  async verify(submission: VerificationSubmission): Promise<VerificationResult> {
+    const checked = await this.check(submission);
+    return checked.ok ? this.claim(checked) : checked;
   }
 }
 

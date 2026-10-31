@@ -4,13 +4,15 @@ import {
   EMAIL_JOBS,
   EMAIL_OUTBOX_JOB_OPTIONS,
   QUEUE_NAMES,
-  emailJobSchema,
   outboxJobOptionsSchema,
+  splitEmailSecrets,
   type EmailJob,
   type OutboxJobOptions,
   type QueueName,
 } from '@watchtower/shared';
+import { KEY_LABELS, deriveSubkey, outboxAad, sealFields } from '@watchtower/shared/secret-box';
 
+import { APP_CONFIG, type ApiConfig } from '../config/config.js';
 import { DATABASE } from '../database/database.module.js';
 
 /** What a caller asks the outbox to enqueue. */
@@ -19,7 +21,16 @@ export interface OutboxRequest {
   readonly name: string;
   /** Idempotency key (the BullMQ jobId): the same `(queue, jobId)` is enqueued once. */
   readonly jobId: string;
+  /** The non-secret part of the job, stored in the clear. Must not have a `secret` key. */
   readonly payload: Record<string, unknown>;
+  /**
+   * The secret part: named string fields (a link that carries a token). They are sealed with
+   * AES-256-GCM under a subkey of APP_ENCRYPTION_KEY, bound to this queue and job id, and stored
+   * as `payload.secret`; the consumer opens them just before it uses them (ADR-006).
+   */
+  readonly secret?: Readonly<Record<string, string>>;
+  /** After this instant the job is dropped unsent (the outbox relay dead-letters it, the worker skips it). */
+  readonly expiresAt?: Date;
   readonly options?: OutboxJobOptions;
 }
 
@@ -34,7 +45,14 @@ const QUEUES: ReadonlySet<string> = new Set(Object.values(QUEUE_NAMES));
  */
 @Injectable()
 export class OutboxService {
-  constructor(@Inject(DATABASE) private readonly database: Database) {}
+  private readonly sealKey: Buffer;
+
+  constructor(
+    @Inject(DATABASE) private readonly database: Database,
+    @Inject(APP_CONFIG) config: ApiConfig,
+  ) {
+    this.sealKey = deriveSubkey(config.APP_ENCRYPTION_KEY, KEY_LABELS.outboxSecret);
+  }
 
   /**
    * Stores one job. Without `executor` it is its own statement (durable on return); with a
@@ -43,12 +61,26 @@ export class OutboxService {
   async enqueue(request: OutboxRequest, executor?: OutboxWriter): Promise<boolean> {
     if (!QUEUES.has(request.queue)) throw new Error(`unknown queue "${request.queue}"`);
     const options = outboxJobOptionsSchema.parse(request.options ?? {});
+    if ('secret' in request.payload)
+      throw new Error('payload.secret is reserved for sealed fields');
+    const payload =
+      request.secret === undefined
+        ? request.payload
+        : {
+            ...request.payload,
+            secret: sealFields(
+              this.sealKey,
+              request.secret,
+              outboxAad(request.queue, request.jobId),
+            ),
+          };
     return enqueueOutbox(executor ?? this.database.db, {
       queue: request.queue,
       jobName: request.name,
       jobId: request.jobId,
-      payload: request.payload,
+      payload,
       options,
+      ...(request.expiresAt === undefined ? {} : { expiresAt: request.expiresAt }),
     });
   }
 }
@@ -61,16 +93,25 @@ export class EmailOutbox {
   /**
    * Enqueues one email. `jobId` is the idempotency key: enqueueing the same id twice sends once.
    * Give the transaction that created whatever the email is about (a token, a ticket) so the two
-   * commit together.
+   * commit together. The link inside (`EMAIL_SECRET_FIELDS`) is sealed before it is stored, and
+   * the email is dropped unsent once `ttlSeconds` have passed (a magic link past its lifetime is
+   * useless; a tracking link that sat in the queue for a day is stale).
    */
-  async send(job: EmailJob, jobId: string, executor?: OutboxWriter): Promise<void> {
-    const payload = emailJobSchema.parse(job);
+  async send(
+    job: EmailJob,
+    jobId: string,
+    executor: OutboxWriter | undefined,
+    ttlSeconds: number,
+  ): Promise<void> {
+    const { clear, secret } = splitEmailSecrets(job);
     await this.outbox.enqueue(
       {
         queue: QUEUE_NAMES.email,
         name: EMAIL_JOBS.send,
         jobId,
-        payload,
+        payload: clear,
+        secret,
+        expiresAt: new Date(Date.now() + ttlSeconds * 1000),
         options: EMAIL_OUTBOX_JOB_OPTIONS,
       },
       executor,

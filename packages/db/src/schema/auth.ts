@@ -41,6 +41,8 @@ export const users = pgTable(
     googleSub: text('google_sub'),
     passwordHash: text('password_hash'),
     isBreakGlass: boolean('is_break_glass').notNull().default(false),
+    /** Created by mock dev login (0005). Dev login signs in to these accounts and no others. */
+    devCreated: boolean('dev_created').notNull().default(false),
     failedLoginCount: integer('failed_login_count').notNull().default(0),
     lockedUntil: timestamptz('locked_until'),
     lastLoginAt: timestamptz('last_login_at'),
@@ -142,3 +144,21 @@ export const magicLinkTokens = pgTable(
 export type UserRow = typeof users.$inferSelect;
 export type NewUserRow = typeof users.$inferInsert;
 export type SessionRow = typeof sessions.$inferSelect;
+
+/**
+ * Failed break-glass sign-ins per (account, client IP) (0005, ADR-005). The lock delay grows
+ * exponentially with the failures from that IP; other addresses are not affected.
+ */
+export const breakGlassAttempt = pgTable(
+  'break_glass_attempt',
+  {
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    ip: text('ip').notNull(),
+    failedCount: integer('failed_count').notNull().default(0),
+    lockedUntil: timestamptz('locked_until'),
+    lastFailedAt: timestamptz('last_failed_at').notNull().defaultNow(),
+  },
+  (table) => [primaryKey({ columns: [table.userId, table.ip] })],
+);

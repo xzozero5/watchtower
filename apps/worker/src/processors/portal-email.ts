@@ -63,7 +63,7 @@ function english(job: PortalJob): Copy {
       return {
         subject: `We received your request ${key}`,
         lead: [
-          `We received your request ${key}: ${job.subject}`,
+          `We received your request ${key}.`,
           ...(job.expectedFirstResponseAt === null
             ? []
             : [`We aim to reply by ${formatDue(job.expectedFirstResponseAt, 'en')}.`]),
@@ -112,7 +112,7 @@ function english(job: PortalJob): Copy {
     case 'portal_link':
       return {
         subject: `Your link for ${key}`,
-        lead: [`Here is a new link for your request ${key}: ${job.subject}`],
+        lead: [`Here is a new link for your request ${key}.`],
         linkText: 'Open your request',
         tail: [PRIVACY_EN, 'If you did not ask for this email, you can ignore it.'],
       };
@@ -126,7 +126,7 @@ function thai(job: PortalJob): Copy {
       return {
         subject: `เราได้รับคำขอ ${key} แล้ว`,
         lead: [
-          `เราได้รับคำขอ ${key}: ${job.subject}`,
+          `เราได้รับคำขอ ${key} แล้ว`,
           ...(job.expectedFirstResponseAt === null
             ? []
             : [`เราตั้งเป้าตอบกลับภายใน ${formatDue(job.expectedFirstResponseAt, 'th')}`]),
@@ -172,7 +172,7 @@ function thai(job: PortalJob): Copy {
     case 'portal_link':
       return {
         subject: `ลิงก์ใหม่สำหรับ ${key}`,
-        lead: [`ลิงก์ใหม่สำหรับคำขอ ${key}: ${job.subject}`],
+        lead: [`ลิงก์ใหม่สำหรับคำขอ ${key}`],
         linkText: 'เปิดคำขอของคุณ',
         tail: [PRIVACY_TH, 'หากคุณไม่ได้ขออีเมลนี้ ไม่ต้องทำอะไร'],
       };

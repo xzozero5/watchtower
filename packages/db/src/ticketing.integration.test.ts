@@ -536,7 +536,8 @@ describe('down and up again', () => {
     );
     await newTicket(owner(), org);
 
-    expect(await migrateDown(owner(), { steps: 3 })).toEqual([
+    expect(await migrateDown(owner(), { steps: 4 })).toEqual([
+      '0005_security',
       '0004_portal',
       '0003_followups_outbox',
       '0002_ticketing',
@@ -568,6 +569,7 @@ describe('down and up again', () => {
       '0002_ticketing',
       '0003_followups_outbox',
       '0004_portal',
+      '0005_security',
     ]);
     expect(
       await scalar<string>(owner(), `SELECT count(*)::text AS value FROM ticket_status_transition`),

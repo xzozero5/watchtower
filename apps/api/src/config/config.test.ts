@@ -17,6 +17,11 @@ const productionEnv = {
 };
 
 describe('loadConfig', () => {
+  it('defaults the portal tracking link to 30 days (C-13)', () => {
+    expect(loadConfig(testEnv()).PORTAL_TOKEN_TTL_DAYS).toBe(30);
+    expect(loadConfig(testEnv({ PORTAL_TOKEN_TTL_DAYS: '7' })).PORTAL_TOKEN_TTL_DAYS).toBe(7);
+  });
+
   it('applies API defaults: loopback bind, port 4000, docs on outside production', () => {
     const config = loadConfig(testEnv());
     expect(config.HOST).toBe('127.0.0.1');
@@ -77,11 +82,52 @@ describe('loadConfig', () => {
 });
 
 describe('auth configuration', () => {
-  it('is in mock mode with dev login on when Google credentials are empty (outside production)', () => {
+  it('is in mock mode with dev login on when Google credentials are empty and DEV_LOGIN_ENABLED=true', () => {
     const config = loadConfig(testEnv());
     expect(config.googleMode).toBe('mock');
     expect(config.devLoginEnabled).toBe(true);
     expect(config.staffDomain).toBe('example.com');
+  });
+
+  it('keeps dev login off unless DEV_LOGIN_ENABLED is true, even in mock mode outside production (C-1)', () => {
+    expect(loadConfig(testEnv({ DEV_LOGIN_ENABLED: undefined })).devLoginEnabled).toBe(false);
+    expect(loadConfig(testEnv({ DEV_LOGIN_ENABLED: '' })).devLoginEnabled).toBe(false);
+    expect(loadConfig(testEnv({ DEV_LOGIN_ENABLED: 'false' })).devLoginEnabled).toBe(false);
+    expect(loadConfig(testEnv({ DEV_LOGIN_ENABLED: 'true' })).devLoginEnabled).toBe(true);
+  });
+
+  it('refuses to boot when DEV_LOGIN_ENABLED=true is combined with live Google or production', () => {
+    expect(() =>
+      loadConfig(
+        testEnv({
+          DEV_LOGIN_ENABLED: 'true',
+          GOOGLE_OIDC_CLIENT_ID: 'id',
+          GOOGLE_OIDC_CLIENT_SECRET: 'secret',
+          GOOGLE_ALLOWED_DOMAIN: 'example.com',
+        }),
+      ),
+    ).toThrow(/DEV_LOGIN_ENABLED/);
+    expect(() => loadConfig(testEnv({ ...productionEnv, DEV_LOGIN_ENABLED: 'true' }))).toThrow(
+      /DEV_LOGIN_ENABLED/,
+    );
+  });
+
+  it('refuses placeholder or short secrets unless APP_URL is loopback and this is not production (C-1)', () => {
+    expect(() => loadConfig(testEnv({ APP_URL: 'https://support.example.com' }))).toThrow(
+      /JWT_SECRET/,
+    );
+    expect(() =>
+      loadConfig(
+        testEnv({
+          APP_URL: 'https://support.example.com',
+          JWT_SECRET: 'x'.repeat(48),
+          APP_ENCRYPTION_KEY: Buffer.alloc(32, 5).toString('base64'),
+        }),
+      ),
+    ).not.toThrow();
+    // The example values keep working on a laptop and in compose (APP_URL is localhost there).
+    expect(() => loadConfig(testEnv({ APP_URL: 'http://localhost:3000' }))).not.toThrow();
+    expect(() => loadConfig(testEnv({ APP_URL: 'http://127.0.0.1:3000' }))).not.toThrow();
   });
 
   it('is live with dev login off once both Google credentials are set', () => {

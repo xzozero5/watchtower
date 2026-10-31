@@ -1,3 +1,6 @@
+import { QUEUE_NAMES, splitEmailSecrets, type EmailJob } from '@watchtower/shared';
+import { KEY_LABELS, deriveSubkey, outboxAad, sealFields } from '@watchtower/shared/secret-box';
+
 import { loadConfig, type WorkerConfig } from '../config.js';
 
 /** A complete, valid environment pointing at the compose services on localhost. */
@@ -29,4 +32,22 @@ export function testConfig(
   overrides: Readonly<Record<string, string | undefined>> = {},
 ): WorkerConfig {
   return loadConfig(testEnv(overrides));
+}
+
+/** The outbox subkey of a test config, the same one the worker opens links with. */
+export function testSealKey(config: Pick<WorkerConfig, 'APP_ENCRYPTION_KEY'>): Buffer {
+  return deriveSubkey(config.APP_ENCRYPTION_KEY, KEY_LABELS.outboxSecret);
+}
+
+/**
+ * What the api writes to `outbox.payload` for an email: the clear fields, and the links sealed
+ * under the outbox subkey and bound to `(email queue, jobId)`.
+ */
+export function sealedEmailPayload(
+  job: EmailJob,
+  jobId: string,
+  key: Buffer,
+): Record<string, unknown> {
+  const { clear, secret } = splitEmailSecrets(job);
+  return { ...clear, secret: sealFields(key, secret, outboxAad(QUEUE_NAMES.email, jobId)) };
 }

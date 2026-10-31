@@ -21,3 +21,6 @@
 
 ## Links
 - ADR-001 · `docker-compose.yml` · `docs/04-ARCHITECTURE.md` §5
+
+## อัปเดต T-010 (C-14)
+compose ปัก image ของ `pgsty/minio` และ `pgsty/mc` ด้วย digest (`@sha256:…`) นอกเหนือจาก tag เพราะ tag ของ fork ชุมชนย้ายไปชี้ image อื่นได้ ค่า digest อ่านจาก image ที่ดึงมาแล้วในเครื่อง (`docker image inspect --format '{{index .RepoDigests 0}}'`) `[TESTED]` · ยังไม่ได้ตรวจกับ registry โดยตรงว่า digest นี้ตรงกับ tag ใน registry ณ วันนี้ `[VERIFY]`

@@ -2,7 +2,6 @@ import { createHash, randomBytes } from 'node:crypto';
 
 import { seedIntents } from '@watchtower/db';
 import {
-  emailJobSchema,
   type EmailJob,
   type HumanChallenge,
   type PortalReplyResult,
@@ -23,7 +22,7 @@ import {
   type ApiErrorBody,
   type Persona,
 } from '../testing/ticketing.js';
-import { solveChallenge } from './pow.js';
+import { hasWork, solveChallenge } from './pow.js';
 import { PortalTrackingService } from './portal-tracking.service.js';
 import { UNMATCHED_ORG_ID } from './portal-submission.service.js';
 
@@ -129,7 +128,7 @@ async function jobsFor(to: string, harness: Harness = h): Promise<EmailJob[]> {
   return jobs
     .filter((job) => (job.data as { to?: string }).to === to)
     .sort((a, b) => a.timestamp - b.timestamp)
-    .map((job) => emailJobSchema.parse(job.data));
+    .map((job) => harness.openEmail(job));
 }
 
 function tokenOf(url: string): string {
@@ -339,8 +338,93 @@ describe('POST /v1/portal/tickets', () => {
       organizationMatched: false,
     });
     expect(row.intent_key).toBe('incident_inquiry');
-    // "Everything is down" asks for P1; an unplaced submitter gets at most P2 [ASSUMED].
+    // "Everything is down" asks for P1; an unverified submitter gets at most P2 [ASSUMED].
     expect(row.priority).toBe('P2');
+    expect(row.custom_fields.portal).toMatchObject({
+      requesterVerified: false,
+      urgencyCapped: true,
+    });
+    expect(await jobsFor(email)).toHaveLength(1);
+  });
+
+  it('caps urgency from an unverified address at P2 even for an organization it belongs to (C-4)', async () => {
+    const email = uniqueEmail('shouting', DOMAIN_A);
+    const response = await submit(h.client(), {
+      email,
+      category: 'outage',
+      urgency: 'everything_down',
+    });
+    expect(response.status, JSON.stringify(response.body)).toBe(201);
+    const row = await ticketRow(response.body.ticketKey);
+    expect(row.org_id).toBe(orgA);
+    expect(row.priority).toBe('P2');
+    expect(row.custom_fields.portal).toMatchObject({
+      organizationMatched: true,
+      urgency: 'everything_down',
+      requesterVerified: false,
+      urgencyCapped: true,
+    });
+  });
+
+  it('flags every portal ticket as unverified, and does not claim a cap that did not happen (C-4)', async () => {
+    const calm = await submit(h.client(), {
+      email: uniqueEmail('calm', DOMAIN_A),
+      urgency: 'something_broken',
+    });
+    const calmRow = await ticketRow(calm.body.ticketKey);
+    expect(calmRow.priority).toBe('P2');
+    expect(calmRow.custom_fields.portal).toMatchObject({
+      requesterVerified: false,
+      urgencyCapped: false,
+    });
+    const asking = await submit(h.client(), { email: uniqueEmail('asking', DOMAIN_A) });
+    expect((await ticketRow(asking.body.ticketKey)).custom_fields.portal).toMatchObject({
+      requesterVerified: false,
+      urgency: null,
+      urgencyCapped: false,
+    });
+  });
+
+  it('does not put what the submitter typed as the subject into the confirmation email (C-11)', async () => {
+    const email = uniqueEmail('phisher', DOMAIN_A);
+    const typed = 'Your account is locked: open https://evil.example/login';
+    const response = await submit(h.client(), { email, subject: typed });
+    expect(response.status, JSON.stringify(response.body)).toBe(201);
+    // Staff still see it as the ticket's subject ...
+    const detail = await pool().query<{ subject: string }>(
+      'SELECT subject FROM ticket WHERE number = $1',
+      [numberOf(response.body.ticketKey)],
+    );
+    expect(detail.rows[0]?.subject).toBe(typed);
+    // ... but the email to the (possibly unwilling) address never repeats it.
+    const [confirmation] = await jobsFor(email);
+    expect(confirmation?.kind).toBe('portal_confirmation');
+    expect(JSON.stringify(confirmation)).not.toContain('evil.example');
+    expect(confirmation).not.toHaveProperty('subject');
+  });
+
+  it('seals the tracking link in the outbox and lets the email lapse after a day (C-2)', async () => {
+    const email = uniqueEmail('sealed', DOMAIN_A);
+    const before = Date.now();
+    const response = await submit(h.client(), { email });
+    const row = await ticketRow(response.body.ticketKey);
+    const pending = await pool().query<{
+      payload: Record<string, unknown>;
+      expires_at: Date;
+      status: string;
+    }>('SELECT payload, expires_at, status FROM outbox WHERE job_id = $1', [
+      `portal-confirm-${row.id}`,
+    ]);
+    expect(pending.rows[0]?.status).toBe('pending');
+    const payload = pending.rows[0]?.payload ?? {};
+    expect(payload).toMatchObject({ kind: 'portal_confirmation', to: email });
+    expect(payload).not.toHaveProperty('trackingUrl');
+    expect(JSON.stringify(payload)).not.toMatch(/wtp1|token=|\/portal\/tickets/);
+    expect(payload.secret).toMatch(/^v1\./);
+    const lifetime = (pending.rows[0]?.expires_at.getTime() ?? 0) - before;
+    expect(lifetime).toBeGreaterThan(24 * 3600 * 1000 - 10_000);
+    expect(lifetime).toBeLessThan(24 * 3600 * 1000 + 10_000);
+    // The worker can still open it.
     expect(await jobsFor(email)).toHaveLength(1);
   });
 
@@ -638,6 +722,14 @@ describe('POST /v1/portal/tickets/:key/replies', () => {
   it('is refused on a closed ticket and after the reopen window, and for a bad token', async () => {
     const closed = await portalTicket();
     await agent.client.post(`/v1/tickets/${closed.key}/status`, { status: 'closed' });
+    // Closing revoked the link the customer had (C-13); they prove the mailbox to get a new one.
+    expect((await view(closed.client, closed.key, closed.token)).status).toBe(401);
+    await closed.client.post('/v1/portal/track/resend', {
+      ticketKey: closed.key,
+      email: closed.email,
+    });
+    await h.app.get(PortalTrackingService).whenIdle();
+    closed.token = lastTokenOf(await jobsFor(closed.email));
     const refused = await closed.client.post<ApiErrorBody>(
       `/v1/portal/tickets/${closed.key}/replies`,
       { body: 'Hello?' },
@@ -674,6 +766,54 @@ describe('POST /v1/portal/tickets/:key/replies', () => {
       asToken(closed.token),
     );
     expect(empty.status).toBe(400);
+  });
+
+  it('revokes every tracking link when the ticket is closed, and the closing notice carries none (C-13)', async () => {
+    const t = await portalTicket();
+    await t.client.post('/v1/portal/track/resend', { ticketKey: t.key, email: t.email });
+    await h.app.get(PortalTrackingService).whenIdle();
+    const second = lastTokenOf(await jobsFor(t.email));
+    expect(second).not.toBe(t.token);
+    expect((await view(t.client, t.key, t.token)).status).toBe(200);
+    expect((await view(t.client, t.key, second)).status).toBe(200);
+
+    await agent.client.post(`/v1/tickets/${t.key}/status`, { status: 'resolved' });
+    expect((await view(t.client, t.key, second)).status).toBe(200);
+    expect(
+      (await agent.client.post(`/v1/tickets/${t.key}/status`, { status: 'closed' })).status,
+    ).toBe(200);
+    expect((await view(t.client, t.key, t.token)).status).toBe(401);
+    expect((await view(t.client, t.key, second)).status).toBe(401);
+
+    const live = await pool().query(
+      `SELECT 1 FROM portal_access_token a JOIN ticket t ON t.id = a.ticket_id
+       WHERE t.number = $1 AND a.revoked_at IS NULL AND a.expires_at > now()`,
+      [numberOf(t.key)],
+    );
+    expect(live.rowCount).toBe(0);
+
+    // The "closed" email points at the plain ticket page: no token to leak, none to revoke.
+    const notice = (await jobsFor(t.email)).filter((job) => job.kind === 'portal_update').at(-1);
+    if (!notice || !('trackingUrl' in notice)) throw new Error('no closing notice');
+    expect(notice).toMatchObject({ status: 'closed', reason: 'status_change' });
+    expect(new URL(notice.trackingUrl).hash).toBe('');
+    expect(notice.trackingUrl).toContain(`/portal/tickets/${t.key}`);
+    // The requester can still prove the mailbox and get a read-only link.
+    await t.client.post('/v1/portal/track/resend', { ticketKey: t.key, email: t.email });
+    await h.app.get(PortalTrackingService).whenIdle();
+    const reopened = lastTokenOf(await jobsFor(t.email));
+    expect((await view(t.client, t.key, reopened)).body).toMatchObject({ canReply: false });
+  });
+
+  it('gives a tracking link 30 days by default (C-13)', async () => {
+    const t = await portalTicket();
+    const { rows } = await pool().query<{ days: number }>(
+      `SELECT (extract(epoch FROM a.expires_at - now()) / 86400)::float8 AS days
+       FROM portal_access_token a JOIN ticket t ON t.id = a.ticket_id WHERE t.number = $1`,
+      [numberOf(t.key)],
+    );
+    expect(rows[0]?.days).toBeGreaterThan(29.9);
+    expect(rows[0]?.days).toBeLessThanOrEqual(30);
   });
 
   it('cannot answer another customer of the same organization', async () => {
@@ -959,6 +1099,83 @@ describe('rate limits', () => {
     expect(statuses.filter((s) => s === 201).length).toBeGreaterThanOrEqual(3);
     expect(statuses.filter((s) => s === 429).length).toBeGreaterThanOrEqual(2);
     expect(await count('submit-org')).toBeGreaterThanOrEqual(1);
+  });
+
+  /** A proof that fails the work check: a real challenge, a nonce that does not solve it. */
+  async function workless(client: TestClient) {
+    const response = await client.get<HumanChallenge>('/v1/portal/challenge');
+    let nonce = 0;
+    while (hasWork(response.body.challenge, String(nonce), response.body.difficultyBits))
+      nonce += 1;
+    return {
+      provider: 'pow-sha256' as const,
+      challenge: response.body.challenge,
+      nonce: String(nonce),
+    };
+  }
+
+  it('lets a request without valid work nowhere near the email or organization limits (C-3)', async () => {
+    const domain = `victim-${randomBytes(4).toString('hex')}.example`;
+    const victim = uniqueEmail('victim', domain);
+    // Four scripts, four addresses, none of them did the work: they must not use up the victim's 2 per hour.
+    for (let i = 0; i < 4; i += 1) {
+      const attacker = strict.client();
+      const response = await submit(
+        attacker,
+        { email: victim, verification: await workless(attacker) },
+        strict,
+      );
+      expect(response.status).toBe(400);
+      expect(response.body.code).toBe('verification_failed');
+    }
+    const owner = strict.client();
+    expect((await submit(owner, { email: victim }, strict)).status).toBe(201);
+    expect((await submit(owner, { email: victim }, strict)).status).toBe(201);
+    expect((await submit(owner, { email: victim }, strict)).status).toBe(429);
+  });
+
+  it('counts a request from one address against that address even when its proof is bad (C-3)', async () => {
+    const domain = `flood-${randomBytes(4).toString('hex')}.example`;
+    const flooder = strict.client();
+    const statuses: number[] = [];
+    for (let i = 0; i < 6; i += 1) {
+      statuses.push(
+        (
+          await submit(
+            flooder,
+            { email: uniqueEmail('f', domain), verification: await workless(flooder) },
+            strict,
+          )
+        ).status,
+      );
+    }
+    expect(statuses).toEqual([400, 400, 400, 400, 429, 429]);
+  });
+
+  it('keeps the proof when a limit turns the request away, so it can be used for another address (C-3)', async () => {
+    const domain = `keep-${randomBytes(4).toString('hex')}.example`;
+    const busy = uniqueEmail('busy', domain);
+    const client = strict.client();
+    expect((await submit(client, { email: busy }, strict)).status).toBe(201);
+    expect((await submit(client, { email: busy }, strict)).status).toBe(201);
+    const kept = await proof(client, strict);
+    const limited = await submit(client, { email: busy, verification: kept }, strict);
+    expect(limited.status).toBe(429);
+    // Same proof, another address: the claim comes after the limits, so it was not spent.
+    const retry = await submit(
+      client,
+      { email: uniqueEmail('free', domain), verification: kept },
+      strict,
+    );
+    expect(retry.status, JSON.stringify(retry.body)).toBe(201);
+    // Now it is spent.
+    const replay = await submit(
+      strict.client(),
+      { email: uniqueEmail('free2', domain), verification: kept },
+      strict,
+    );
+    expect(replay.status).toBe(400);
+    expect(replay.body.code).toBe('verification_failed');
   });
 
   it('limits reads per IP address as well', async () => {

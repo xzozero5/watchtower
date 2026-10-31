@@ -53,14 +53,26 @@ const apiEnvSchema = createEnvSchema({
    * for each). Empty: derived from APP_ENCRYPTION_KEY (ADR-004, ADR-007). A secret: environment only.
    */
   PORTAL_TOKEN_SECRET: z.preprocess(emptyToUndefined, z.string().min(32).optional()),
-  /** How long a tracking link works; every email that carries a new link starts a new period `[ASSUMED]`. */
-  PORTAL_TOKEN_TTL_DAYS: z.coerce.number().int().min(1).max(365).default(90),
+  /**
+   * How long a tracking link works; every email that carries a new link starts a new period. A link
+   * is a bearer credential that sits in a mailbox, so the default is 30 days `[ASSUMED]`; all links
+   * of a ticket also stop working when it is closed.
+   */
+  PORTAL_TOKEN_TTL_DAYS: z.coerce.number().int().min(1).max(365).default(30),
   /** Leading zero bits the portal proof-of-work asks for (ADR-007). 8 is for tests. */
   PORTAL_POW_DIFFICULTY_BITS: z.coerce.number().int().min(4).max(28).default(18),
   /** How long a proof-of-work challenge stays valid. */
   PORTAL_POW_TTL_SECONDS: seconds(1800, 30, 86_400),
   /** The form cannot be submitted sooner than this after its challenge was issued. */
   PORTAL_MIN_FILL_SECONDS: seconds(3, 0, 120),
+  /**
+   * Prefix of the rate-limit counters in Redis. Instances (or test runs) sharing one Redis keep
+   * separate counters by setting different values.
+   */
+  RATE_LIMIT_NAMESPACE: z
+    .string()
+    .regex(/^[a-z0-9-]{1,40}$/)
+    .default('wt'),
   /** Portal submissions per hour: per client IP, per email address, per organization. */
   PORTAL_RATE_IP_PER_HOUR: z.coerce.number().int().min(1).max(10_000).default(20),
   PORTAL_RATE_EMAIL_PER_HOUR: z.coerce.number().int().min(1).max(1000).default(5),
@@ -76,7 +88,11 @@ export type ApiConfig = z.output<typeof apiEnvSchema> & {
   readonly googleMode: IntegrationMode;
   /** The Google Workspace domain staff sign in with. Falls back to example.com in mock mode. */
   readonly staffDomain: string;
-  /** Dev login exists only in mock mode and never in production. */
+  /**
+   * Dev login needs DEV_LOGIN_ENABLED=true (never the default), Google in mock mode and a
+   * non-production NODE_ENV. The shared env guard already refuses a boot that asks for it
+   * elsewhere; this repeats the three conditions so no single mistake can turn it on.
+   */
   readonly devLoginEnabled: boolean;
   /** Cookies get the Secure flag in production and whenever the api is served over https. */
   readonly cookieSecure: boolean;
@@ -101,7 +117,7 @@ export function loadConfig(
     docsEnabled: parsed.DOCS_ENABLED ?? !production,
     googleMode,
     staffDomain: (parsed.GOOGLE_ALLOWED_DOMAIN ?? 'example.com').toLowerCase(),
-    devLoginEnabled: googleMode === 'mock' && !production,
+    devLoginEnabled: parsed.DEV_LOGIN_ENABLED && googleMode === 'mock' && !production,
     cookieSecure: production || new URL(parsed.API_URL).protocol === 'https:',
   };
 }

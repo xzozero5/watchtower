@@ -57,6 +57,9 @@ export const baseEnvShape = {
   // create one). The password is a secret: environment only, never in the repo.
   BREAK_GLASS_EMAIL: optionalString,
   BREAK_GLASS_PASSWORD: optionalString,
+  // Mock sign-in for local work (POST /v1/auth/dev-login). Off unless set to true, and even then
+  // only in mock Google mode outside production: see applyGuards.
+  DEV_LOGIN_ENABLED: z.preprocess(emptyToUndefined, z.stringbool().default(false)),
   // Integrations: empty means mock mode (resolveIntegrationMode).
   GOOGLE_OIDC_CLIENT_ID: optionalString,
   GOOGLE_OIDC_CLIENT_SECRET: optionalString,
@@ -86,6 +89,30 @@ const ENCRYPTION_KEY_BYTES = 32;
 /** Also enforced by the CLI that creates a break-glass account. */
 export const MIN_BREAK_GLASS_PASSWORD_LENGTH = 12;
 
+/** True for localhost, 127.0.0.0/8, ::1 and *.localhost: a URL only this machine can reach. */
+export function isLoopbackUrl(value: string): boolean {
+  let host: string;
+  try {
+    host = new URL(value).hostname.toLowerCase();
+  } catch {
+    return false;
+  }
+  if (host.startsWith('[') && host.endsWith(']')) host = host.slice(1, -1);
+  return (
+    host === 'localhost' ||
+    host.endsWith('.localhost') ||
+    host === '::1' ||
+    /^127(?:\.\d{1,3}){3}$/.test(host)
+  );
+}
+
+/** A value that looks like the example placeholder or is too short to be a real secret. */
+function isWeakSecret(value: string): boolean {
+  return (
+    /change-?me/i.test(value) || Buffer.byteLength(value, 'utf8') < MIN_PRODUCTION_SECRET_LENGTH
+  );
+}
+
 const text = (env: Readonly<Record<string, unknown>>, key: string): string | undefined => {
   const value = env[key];
   return typeof value === 'string' ? value : undefined;
@@ -99,6 +126,23 @@ function applyGuards(env: Readonly<Record<string, unknown>>, ctx: z.RefinementCt
   const fail = (key: string, message: string): void => {
     ctx.addIssue({ code: 'custom', path: [key], message });
   };
+
+  // The example secrets are fine on a laptop. On any deployment reachable from outside this machine
+  // a placeholder or short secret would let anyone forge sessions and read what is encrypted at
+  // rest, so the boot is refused.
+  // (A production build has its own, stricter checks below.)
+  const localOnly = isLoopbackUrl(text(env, 'APP_URL') ?? '');
+  if (env.NODE_ENV !== 'production' && !localOnly) {
+    for (const key of ['JWT_SECRET', 'APP_ENCRYPTION_KEY'] as const) {
+      const value = text(env, key);
+      if (value !== undefined && isWeakSecret(value)) {
+        fail(
+          key,
+          `is a placeholder or shorter than ${String(MIN_PRODUCTION_SECRET_LENGTH)} bytes; set a real random value (the example values are allowed only when NODE_ENV is not production and APP_URL is localhost)`,
+        );
+      }
+    }
+  }
 
   if (env.NODE_ENV === 'production') {
     for (const [key, value] of Object.entries(env)) {
@@ -145,6 +189,24 @@ function applyGuards(env: Readonly<Record<string, unknown>>, ctx: z.RefinementCt
     }
   }
 
+  // Dev login signs anyone in as a role of their choosing. It needs an explicit opt-in and exists
+  // only while Google is in mock mode and outside production; asking for it elsewhere is a
+  // misconfiguration, so refuse to boot rather than silently ignore it.
+  if (env.DEV_LOGIN_ENABLED === true) {
+    if (env.NODE_ENV === 'production') {
+      fail('DEV_LOGIN_ENABLED', 'must not be true in production');
+    }
+    if (oidcId || oidcSecret) {
+      fail(
+        'DEV_LOGIN_ENABLED',
+        'must not be true while Google sign-in credentials are set (dev login exists only in mock mode)',
+      );
+    }
+    // A copied .env.example on a reachable host must not hand out head accounts (T-010 C-16).
+    if (!isLoopbackUrl(text(env, 'APP_URL') ?? '')) {
+      fail('DEV_LOGIN_ENABLED', 'must not be true unless APP_URL is a loopback address');
+    }
+  }
   const breakGlassEmail = text(env, 'BREAK_GLASS_EMAIL');
   const breakGlassPassword = text(env, 'BREAK_GLASS_PASSWORD');
   if (Boolean(breakGlassEmail) !== Boolean(breakGlassPassword)) {

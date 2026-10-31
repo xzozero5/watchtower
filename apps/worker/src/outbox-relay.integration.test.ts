@@ -13,8 +13,8 @@ import { Queue } from 'bullmq';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { createLogger } from './logger.js';
-import { createBullmqPublisher } from './outbox-relay.js';
-import { testConfig } from './testing/support.js';
+import { createBullmqPublisher, withNotAfter } from './outbox-relay.js';
+import { sealedEmailPayload, testConfig, testSealKey } from './testing/support.js';
 import { startWorker, type RunningWorker } from './worker.js';
 
 // The relay of the transactional outbox (ADR-006) in the worker, on real Postgres, Redis and
@@ -47,7 +47,7 @@ beforeAll(async () => {
   // The "network": a publisher that fails exactly like ioredis does while Redis is unreachable.
   const publish: OutboxPublisher = async (row) => {
     if (!redisUp) throw new Error('connect ECONNREFUSED 127.0.0.1:6379');
-    await emailQueue.add(row.jobName, row.payload, {
+    await emailQueue.add(row.jobName, withNotAfter(row.payload, row.expiresAt), {
       ...EMAIL_OUTBOX_JOB_OPTIONS,
       jobId: row.jobId,
     });
@@ -97,23 +97,24 @@ async function rowStatus(jobId: string): Promise<{ status: string; attempts: num
   return rows[0];
 }
 
-/** What the api does inside its transaction: one outbox row for one email. */
-async function apiWritesEmail(recipient: string, jobId: string): Promise<void> {
-  const job: EmailJob = {
-    kind: 'magic_link',
-    to: recipient,
-    link: `http://localhost:3000/login/magic#token=${randomBytes(16).toString('hex')}`,
-    expiresInMinutes: 15,
-  };
+/**
+ * What the api does inside its transaction: one outbox row for one email, the link sealed and an
+ * expiry set. Returns the link, to assert it never shows up where it should not.
+ */
+async function apiWritesEmail(recipient: string, jobId: string, ttlSeconds = 900): Promise<string> {
+  const link = `http://localhost:3000/login/magic#token=${randomBytes(16).toString('hex')}`;
+  const job: EmailJob = { kind: 'magic_link', to: recipient, link, expiresInMinutes: 15 };
   await apiDb.db.transaction(async (tx) => {
     await enqueueOutbox(tx, {
       queue: QUEUE_NAMES.email,
       jobName: EMAIL_JOBS.send,
       jobId,
-      payload: job,
+      payload: sealedEmailPayload(job, jobId, testSealKey(config)),
       options: EMAIL_OUTBOX_JOB_OPTIONS,
+      expiresAt: new Date(Date.now() + ttlSeconds * 1000),
     });
   });
+  return link;
 }
 
 describe('outbox relay in the worker', () => {
@@ -121,10 +122,30 @@ describe('outbox relay in the worker', () => {
     redisUp = true;
     const recipient = `outbox-${randomBytes(4).toString('hex')}@example.com`;
     const jobId = `outbox-e2e-${randomBytes(4).toString('hex')}`;
-    await apiWritesEmail(recipient, jobId);
+    const link = await apiWritesEmail(recipient, jobId);
+
+    // At rest the link is ciphertext: neither the pending row nor the queue ever holds it.
+    const pending = await testDb.owner.pool.query<{ payload: unknown }>(
+      'SELECT payload FROM outbox WHERE job_id = $1',
+      [jobId],
+    );
+    expect(JSON.stringify(pending.rows[0]?.payload ?? 'sent already')).not.toContain('token=');
 
     const mail = await waitFor(() => mailFor(recipient), 'the email in Mailpit');
     expect(mail.Subject).toBe('Your Watchtower sign-in link');
+    const sent = (await (await fetch(`${mailpit}/api/v1/message/${mail.ID}`)).json()) as {
+      Text: string;
+    };
+    expect(sent.Text, 'the worker opened the link just before SMTP').toContain(link);
+    for (const job of await emailQueue.getJobs([
+      'waiting',
+      'delayed',
+      'active',
+      'completed',
+      'failed',
+    ])) {
+      expect(JSON.stringify(job.data), 'Redis never holds the link').not.toContain(link);
+    }
     const row = await waitFor(async () => {
       const status = await rowStatus(jobId);
       return status?.status === 'sent' ? status : undefined;
@@ -153,7 +174,6 @@ describe('outbox relay in the worker', () => {
       to: recipient,
       locale: 'th',
       ticketKey: 'OPS-77',
-      subject: 'Webhook ไม่เข้า',
       trackingUrl,
       expectedFirstResponseAt: null,
     };
@@ -162,8 +182,9 @@ describe('outbox relay in the worker', () => {
         queue: QUEUE_NAMES.email,
         jobName: EMAIL_JOBS.send,
         jobId,
-        payload: job,
+        payload: sealedEmailPayload(job, jobId, testSealKey(config)),
         options: EMAIL_OUTBOX_JOB_OPTIONS,
+        expiresAt: new Date(Date.now() + 24 * 3600 * 1000),
       });
     });
     const mail = await waitFor(() => mailFor(recipient), 'the portal email in Mailpit');
@@ -222,6 +243,27 @@ describe('outbox relay in the worker', () => {
     });
   });
 
+  it('never relays a row past its expiry: it is dead-lettered, blanked and nothing is mailed', async () => {
+    redisUp = true;
+    const recipient = `outbox-expired-${randomBytes(4).toString('hex')}@example.com`;
+    const jobId = `outbox-expired-${randomBytes(4).toString('hex')}`;
+    // Written with a lifetime that is already over, as if the worker had been down for a while.
+    await apiWritesEmail(recipient, jobId, -5);
+    const done = await waitFor(async () => {
+      const { rows } = await testDb.owner.pool.query<{
+        status: string;
+        payload: unknown;
+        last_error: string | null;
+      }>('SELECT status, payload, last_error FROM outbox WHERE job_id = $1', [jobId]);
+      return rows[0]?.status === 'dead' ? rows[0] : undefined;
+    }, 'the expired row to be dead-lettered');
+    expect(done.payload).toEqual({});
+    expect(done.last_error).toContain('expired');
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    expect(handedOver).not.toContain(jobId);
+    expect(await mailFor(recipient)).toBeUndefined();
+  });
+
   it('sends one email when the same job id is written twice', async () => {
     redisUp = true;
     const recipient = `outbox-dup-${randomBytes(4).toString('hex')}@example.com`;
@@ -259,6 +301,7 @@ describe('createBullmqPublisher', () => {
         payload: {},
         options: {},
         attempts: 0,
+        expiresAt: null,
       }),
     ).rejects.toThrow(/did not accept the job within 300 ms/);
     expect(Date.now() - started).toBeLessThan(3000);
@@ -277,6 +320,7 @@ describe('createBullmqPublisher', () => {
       payload: {},
       options: {},
       attempts: 0,
+      expiresAt: null,
     };
     await expect(publisher.publish({ ...row, queue: 'nope' })).rejects.toMatchObject({
       name: 'PermanentOutboxError',
@@ -285,5 +329,18 @@ describe('createBullmqPublisher', () => {
       publisher.publish({ ...row, options: { repeat: { every: 1 } } }),
     ).rejects.toMatchObject({ name: 'PermanentOutboxError' });
     await publisher.close();
+  });
+});
+
+describe('withNotAfter', () => {
+  it('adds the row expiry to the job data, and leaves a row without expiry alone', () => {
+    const at = new Date('2026-11-03T08:30:00.000Z');
+    expect(withNotAfter({ to: 'a@example.com', secret: 'v1.x' }, at)).toEqual({
+      to: 'a@example.com',
+      secret: 'v1.x',
+      notAfter: at.getTime(),
+    });
+    const payload = { to: 'a@example.com' };
+    expect(withNotAfter(payload, null)).toBe(payload);
   });
 });

@@ -5,8 +5,17 @@ import type { NestExpressApplication } from '@nestjs/platform-express';
 import { Test } from '@nestjs/testing';
 import { relayOutbox, type RelayResult } from '@watchtower/db';
 import { createTestDatabase, type TestDatabase } from '@watchtower/db/testing';
-import { CSRF_HEADER, QUEUE_NAMES, parseRedisUrl, type SessionInfo } from '@watchtower/shared';
-import { Queue } from 'bullmq';
+import {
+  CSRF_HEADER,
+  QUEUE_NAMES,
+  emailJobSchema,
+  parseRedisUrl,
+  sealedEnvelopeSchema,
+  type EmailJob,
+  type SessionInfo,
+} from '@watchtower/shared';
+import { KEY_LABELS, deriveSubkey, openFields, outboxAad } from '@watchtower/shared/secret-box';
+import { Queue, type Job } from 'bullmq';
 import type { Pool } from 'pg';
 
 import { AppModule, type AppOptions } from '../app.module.js';
@@ -32,6 +41,11 @@ export interface Harness {
    * api wrote become jobs in `emailQueue`. The api never talks to BullMQ itself (ADR-006).
    */
   relayOutbox(): Promise<RelayResult>;
+  /**
+   * What the worker does to an email job before SMTP: opens the sealed link and validates the
+   * whole message. Jobs in `emailQueue` hold ciphertext only (ADR-006), so tests read links here.
+   */
+  openEmail(job: Job): EmailJob;
   /** A fresh browser-like client with its own cookie jar and its own source IP. */
   client(): TestClient;
   close(): Promise<void>;
@@ -61,6 +75,8 @@ export async function startHarness(options: StartOptions = {}): Promise<Harness>
     // One proxy hop: tests choose the client IP with x-forwarded-for.
     TRUST_PROXY_HOPS: '1',
     LOG_LEVEL: 'silent',
+    // Counters of earlier runs and other harnesses on the same Redis must not leak into this one.
+    RATE_LIMIT_NAMESPACE: queuePrefix,
     ...options.env,
   });
   const logger = createLogger(config, options.logs?.destination);
@@ -96,8 +112,22 @@ export async function startHarness(options: StartOptions = {}): Promise<Harness>
       relayOutbox(db.owner, async (row) => {
         if (row.queue !== QUEUE_NAMES.email)
           throw new Error(`harness relays only the email queue, not ${row.queue}`);
-        await emailQueue.add(row.jobName, row.payload, { ...row.options, jobId: row.jobId });
+        // Like the real relay: the row's expiry travels with the job as `notAfter`.
+        const data =
+          row.expiresAt === null
+            ? row.payload
+            : { ...row.payload, notAfter: row.expiresAt.getTime() };
+        await emailQueue.add(row.jobName, data, { ...row.options, jobId: row.jobId });
       }),
+    openEmail: (job) => {
+      const { secret, ...clearAndExpiry } = sealedEnvelopeSchema.parse(job.data);
+      const clear = Object.fromEntries(
+        Object.entries(clearAndExpiry).filter(([name]) => name !== 'notAfter'),
+      );
+      const key = deriveSubkey(config.APP_ENCRYPTION_KEY, KEY_LABELS.outboxSecret);
+      const links = openFields(key, secret, outboxAad(job.queueName, job.id ?? ''));
+      return emailJobSchema.parse({ ...clear, ...links });
+    },
     client: () => new TestClient(base, config),
     async close() {
       await app.close();

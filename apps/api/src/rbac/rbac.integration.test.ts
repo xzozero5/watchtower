@@ -219,16 +219,30 @@ describe('user administration', () => {
     expect(updated.body).toMatchObject({ role: 'lead', name: 'Promoted' });
 
     const rows = await pool().query<{
-      before: { role: string; name: string };
-      after: { role: string; name: string };
+      before: Record<string, unknown>;
+      after: Record<string, unknown>;
       actor_id: string;
     }>(
       `SELECT before, after, actor_id FROM audit_log WHERE action = 'user.update' AND target_id = $1`,
       [target.user.id],
     );
     expect(rows.rowCount).toBe(1);
-    expect(rows.rows[0]?.before).toMatchObject({ role: 'agent' });
-    expect(rows.rows[0]?.after).toMatchObject({ role: 'lead', name: 'Promoted' });
+    // Ids and states only: no address, no name (C-9).
+    expect(rows.rows[0]?.before).toEqual({
+      id: target.user.id,
+      role: 'agent',
+      status: 'active',
+      hasEmail: true,
+    });
+    expect(rows.rows[0]?.after).toEqual({
+      id: target.user.id,
+      role: 'lead',
+      status: 'active',
+      hasEmail: true,
+    });
+    const raw = JSON.stringify(rows.rows[0]);
+    expect(raw).not.toContain('Promoted');
+    expect(raw).not.toContain(target.user.email);
   });
 
   it('applies a role change to a signed-in user on their next request', async () => {

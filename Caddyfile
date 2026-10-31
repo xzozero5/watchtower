@@ -6,6 +6,11 @@
 #   /ws, /ws/*        -> api (WebSocket gateway, T-005) [ASSUMED path]
 #   everything else   -> web
 #
+# The client address: reverse_proxy puts the address it saw in X-Forwarded-For (it replaces a
+# value sent by the client, because no trusted_proxies are configured) [VERIFY]. The api only
+# believes that header when TRUST_PROXY_HOPS is 1, and then only if nothing but this proxy can
+# reach it: use docker-compose.proxy.yml, which sets the variable and does not publish :4000.
+#
 # /metrics is never exposed here: Prometheus scrapes the api directly on 127.0.0.1:4000.
 # /health through this proxy reaches web; probe api and worker on their own ports.
 
