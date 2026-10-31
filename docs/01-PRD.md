@@ -524,6 +524,10 @@ External inputs the system does not compute (platform uptime from monitoring, re
 | Google Workspace SSO / Docs export | OIDC; Docs API for CEO brief export. [ASSUMED] |
 | AI providers | Anthropic Messages API (tool use) / Vertex AI (Gemini function calling); embeddings; cost metering. |
 
+Re-checked against official docs on 2026-11-01 (T-102a/T-103a; full tables with URLs in `packages/channels/src/{gmail,line}/README.md`):
+- LINE: `x-line-signature` = HMAC-SHA256 of the raw body; reply token single-use, valid ~1 min (may change without notice); `X-Line-Retry-Key` UUID valid 24 h for push/multicast/narrowcast/broadcast only (409 on repeat); quota via `GET /v2/bot/message/quota[/consumption]`, reply messages not counted, push counted per recipient, 429 over quota; mark-as-read `POST /v2/bot/chat/markAsRead`. Thai OA plans (lineforbusiness.com/th, prices excl. 7% VAT): Free 300 msgs/month; Basic ฿1,280 for 15,000 (extra ฿0.1); Pro ฿1,780 for 35,000 (extra ฿0.06). [CONFIRMED 2026-11-01] · reply-token exact lifetime, `Retry-After` on 429, quota reset time zone, mark-as-read availability per plan [VERIFY]
+- Gmail: watch renewal ≤ 7 days, history 404 → full sync, push payload base64url `{emailAddress, historyId}`, threading needs `threadId` + `References`/`In-Reply-To` + matching subject. [CONFIRMED 2026-11-01] · caller-supplied `Message-ID` kept on send [VERIFY]
+
 ---
 
 ## 12. Architecture & stack recommendation
