@@ -12,11 +12,11 @@
 - [~] T-005 (ค้างบน branch `wip/t-005`) `backend-dev` schema + modules: `organization`, `contact`, `user`, `sla_policy`, `business_calendar`, `intent` (seed starter taxonomy PRD §3.1 เป็น `examples/intents/`), `ticket`, `message`, `ticket_event` — status workflow R-1.2, SLA due calc R-1.6 (Bangkok calendar), assignment R-1.7 (manual + round-robin), merge R-1.5 (แบบง่าย), full-text search R-1.8; REST + WS events; integration tests กับ Postgres จริงใน compose
 - [ ] T-006 `frontend-dev` three-pane จริง: queue (filters/saved views, J/K, "N new" pill), conversation timeline (public/internal, composer with templates), AI sidebar placeholder; ticket detail/edit; keyboard map `?`; realtime ผ่าน WS
 - [ ] T-007 `backend-dev` + `frontend-dev` portal channel (PRD §4.9 P0): public submit form (+ human-verification), confirmation email ผ่าน SMTP adapter (local = Mailpit ใน compose), tracking page ด้วย signed token, reply จาก portal เข้า timeline; email update เมื่อ public reply/status เปลี่ยน
-- [ ] T-008 `backend-dev` seed script: 3 orgs (tiers), contacts, 2 staff ทุก role, SLA policies, intents, 30 tickets ตัวอย่างหลายสถานะ, business calendar + วันหยุดไทย 2026–2027 `[VERIFY]`
+- [ ] T-008 `backend-dev` seed script: 3 orgs (tiers), contacts, 2 staff ทุก role, SLA policies, intents, 30 tickets ตัวอย่างหลายสถานะ, business calendar + วันหยุดไทย 2026–2027 จาก `examples/calendars/` (ข้อมูลตัวอย่าง `[VERIFY]` โหลดเฉพาะ seed dev, production เริ่มว่าง — po 2026-11-01 `[ASSUMED]`)
 - [ ] T-009 `qa-engineer` e2e **AC-1 (portal path)**: submit → ticket พร้อม org/intent/SLA due ภายใน 10 s → agent reply → ลูกค้าเห็นใน tracking page → resolve → status email; e2e RBAC (client เห็นเฉพาะ org ตัวเอง)
 - [ ] T-010 `security-reviewer` review auth/session/RBAC/audit/secret handling/`.env`/compose exposure/webhook token design; findings → แก้ P0/P1 ก่อนปิด phase
 - [ ] T-011 `po` review Phase 0 กับ PRD §15 exit criteria + N1–N10; เสนอปรับ BACKLOG Phase 1
-- [ ] T-012 main thread `/handoff`, `CHANGELOG.md` 0.0.1, tag `v0.0.1`
+- [ ] T-012 main thread `/handoff`, `CHANGELOG.md` 0.0.1 · tag `v0.0.1` **หลังเจ้าของตรวจ compose + integration + e2e บนเครื่องตัวเอง** `[ASK-HUMAN]`
 
 ## Phase 1 — Inbox + AI stage 0–2 + Shifts (เป้า: 3–5 สัปดาห์) — แตก task ละเอียดตอนจบ Phase 0 โดย `po` + `architect`
 - [ ] T-101 `ux-designer` `docs/06-UI-SPEC.md`: three-pane spec, AI sidebar (report/evidence/draft A-E-R + reason codes), alert discipline, focus mode, shift brief/handoff screens, portal, copy TH/EN
@@ -36,6 +36,7 @@
 - [ ] T-115 `po` review + `[ASK-HUMAN]` ต่อ credential จริงครั้งแรก → pilot กับทีมจริง 1 สัปดาห์
 - [ ] T-116 `backend-dev` + `frontend-dev` credential store + หน้า admin ของ integration ตาม ADR-004 (ทำก่อน T-115): `head` เท่านั้น, อ่านกลับไม่ได้, envelope encryption, audit, ปุ่มทดสอบ, environment ชนะ DB, วิธีหมุนกุญแจ
 - [ ] T-117 `backend-dev` job ใน worker ลบ session, refresh token, magic-link token ที่หมดอายุ (จาก ADR-005)
+- [ ] T-118 `architect` + `backend-dev` ADR deploy บน GCP + IaC skeleton + runbook staging (public HTTPS endpoint สำหรับ Gmail Pub/Sub push และ LINE webhook) — **ไม่ apply / ไม่สร้าง resource จริง** (`[ASK-HUMAN]` credential + เงิน) · ทำก่อน T-115 (po 2026-11-01 `[ASSUMED]`)
 
 ## Phase 2 — Reliability + Usage — แตก task ตอนจบ Phase 1
 - [ ] T-201 GCP Monitoring/Logging ingest via Pub/Sub, fingerprint dedup, correlation rules, service catalog, escalation chain, snooze/heartbeat, noise metrics (R-3.1–3.11)
@@ -55,4 +56,4 @@
 - [ ] T-306 Review + pilot stage 3 กับ 2–3 intent
 
 ## Post-MVP / Phase 4
-- React Native app, org-private status page, LINE group chat (R-2.15), Helm chart, additional channels, GCP deployment ADR + Terraform
+- React Native app, org-private status page, LINE group chat (R-2.15), Helm chart, additional channels, Terraform ฉบับสมบูรณ์ (ADR deploy ย้ายไป T-118), generic OIDC issuer ผ่าน discovery สำหรับองค์กรที่ไม่ใช้ Google (po 2026-11-01 `[ASSUMED]`)
