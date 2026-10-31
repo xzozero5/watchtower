@@ -5,11 +5,15 @@ import {
   SlaCalendarError,
   addSlaMinutes,
   computeSlaDueDates,
+  holidayRecordSchema,
+  holidaySchema,
+  isSlaAtRisk,
   resumeDueAfterPause,
   slaMinutesBetween,
   slaTargetsSchema,
   weeklyHoursSchema,
   type BusinessCalendar,
+  type SlaCalendarMode,
 } from './sla.js';
 
 // Bangkok is UTC+7 all year. Business hours 09:00 to 18:00 local are 02:00Z to 11:00Z.
@@ -415,5 +419,63 @@ describe('schemas', () => {
     expect(
       slaTargetsSchema.safeParse({ P1: { first_response_min: 600, resolution_min: 60 } }).success,
     ).toBe(false);
+  });
+});
+
+describe('isSlaAtRisk (UI spec 17 Q9: 25 % of the target or 30 minutes left, in business time)', () => {
+  const risk = (
+    now: string,
+    due: string,
+    targetMinutes: number | null,
+    mode: SlaCalendarMode = 'business',
+  ) => isSlaAtRisk({ now: at(now), dueAt: at(due), targetMinutes, mode, calendar: bangkok });
+
+  it('is at risk with 30 minutes or less left, whatever the target', () => {
+    // Monday 10:00 local, due 10:30 local.
+    expect(risk('2026-11-02T03:00:00Z', '2026-11-02T03:30:00Z', null)).toBe(true);
+    expect(risk('2026-11-02T03:00:00Z', '2026-11-02T03:31:00Z', null)).toBe(false);
+    expect(risk('2026-11-02T03:00:00Z', '2026-11-02T03:31:00Z', 60)).toBe(false);
+  });
+
+  it('is at risk with 25 % of the target or less left', () => {
+    // 8 business hours target = 480 min; 25 % = 120 min. Monday 10:00 -> due 12:00 is 120 min.
+    expect(risk('2026-11-02T03:00:00Z', '2026-11-02T05:00:00Z', 480)).toBe(true);
+    expect(risk('2026-11-02T03:00:00Z', '2026-11-02T05:01:00Z', 480)).toBe(false);
+  });
+
+  it('counts business time: a long weekend between now and the due time does not make it safe', () => {
+    // Friday 17:00 local -> due Monday 10:00 local = 60 + 60 = 120 business minutes; the wall
+    // clock says 65 hours. Target 480 min: 120 is 25 % -> at risk.
+    expect(risk('2026-11-06T10:00:00Z', '2026-11-09T03:00:00Z', 480)).toBe(true);
+    // The same wall-clock distance on the 24x7 clock is far from risky.
+    expect(risk('2026-11-06T10:00:00Z', '2026-11-09T03:00:00Z', 480, '24x7')).toBe(false);
+  });
+
+  it('is not "at risk" once the due time has passed: that is breached', () => {
+    expect(risk('2026-11-02T03:00:00Z', '2026-11-02T02:59:00Z', 480)).toBe(false);
+    expect(risk('2026-11-02T03:00:00Z', '2026-11-02T03:00:00Z', 480)).toBe(false);
+  });
+
+  it('ignores a target of unknown length', () => {
+    expect(risk('2026-11-02T03:00:00Z', '2026-11-03T03:00:00Z', null)).toBe(false);
+  });
+});
+
+describe('holiday check state', () => {
+  it('reads a stored holiday without the state as unchecked', () => {
+    expect(holidayRecordSchema.parse({ date: '2026-12-31', name: 'New Year Eve' })).toEqual({
+      date: '2026-12-31',
+      name: 'New Year Eve',
+      checked: false,
+      checkedAt: null,
+      checkedBy: null,
+    });
+  });
+
+  it('keeps the input schema free of it: a caller cannot send the state', () => {
+    expect(holidaySchema.parse({ date: '2026-12-31', name: 'x', checked: true })).toEqual({
+      date: '2026-12-31',
+      name: 'x',
+    });
   });
 });

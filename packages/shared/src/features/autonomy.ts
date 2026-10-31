@@ -10,6 +10,8 @@
  */
 import { z } from 'zod';
 
+import { cursorSchema, pageLimit } from '../common.js';
+
 /** Audit `action` strings written by this feature. */
 export const AUTONOMY_AUDIT_ACTIONS = {
   /** A global switch was turned on or off (reason required both ways). */
@@ -56,6 +58,12 @@ export const aiSwitchSchema = z.object({
   /** The reason given when it was last flipped (either direction); empty if never flipped. */
   reason: z.string(),
   changedBy: z.uuid().nullable(),
+  /**
+   * First word of the display name of whoever flipped it, for every staff reader (agents need it for
+   * the "AI paused by ..." banner; they cannot list users). Null if never flipped or the account is
+   * gone. Never an email address.
+   */
+  changedByName: z.string().nullable(),
   changedAt: z.iso.datetime(),
 });
 export type AiSwitch = z.infer<typeof aiSwitchSchema>;
@@ -117,3 +125,36 @@ export const intentAutonomyChangeSchema = z.object({
   changed: z.boolean(),
 });
 export type IntentAutonomyChange = z.infer<typeof intentAutonomyChangeSchema>;
+
+// --- autonomy history (T-127, UI spec 18.9 H6) ---
+
+export const AUTONOMY_HISTORY_CHANGES = ['stage', 'pin', 'unpin'] as const;
+
+export const autonomyHistoryEntrySchema = z.object({
+  id: z.uuid(),
+  intentId: z.uuid(),
+  change: z.enum(AUTONOMY_HISTORY_CHANGES),
+  fromStage: z.number().int().min(0),
+  toStage: z.number().int().min(0),
+  /** The pin state after this change. */
+  pinned: z.boolean(),
+  reason: z.string(),
+  changedBy: z.uuid(),
+  /** Display name of the person; null if the account no longer exists. */
+  changedByName: z.string().nullable(),
+  changedAt: z.iso.datetime(),
+});
+export type AutonomyHistoryEntry = z.infer<typeof autonomyHistoryEntrySchema>;
+
+export const autonomyHistoryQuerySchema = z.object({
+  limit: pageLimit(50, 200),
+  cursor: cursorSchema.optional(),
+});
+export type AutonomyHistoryQuery = z.infer<typeof autonomyHistoryQuerySchema>;
+
+export const autonomyHistoryPageSchema = z.object({
+  /** Newest first. */
+  items: z.array(autonomyHistoryEntrySchema),
+  nextCursor: z.string().nullable(),
+});
+export type AutonomyHistoryPage = z.infer<typeof autonomyHistoryPageSchema>;

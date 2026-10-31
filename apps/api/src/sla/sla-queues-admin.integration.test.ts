@@ -191,7 +191,10 @@ describe('business calendars', () => {
       { holidays: [{ date: busyDay, name: 'Company day off' }] },
     );
     expect(edited.status).toBe(200);
-    expect(edited.body.holidays).toEqual([{ date: busyDay, name: 'Company day off' }]);
+    // T-127: every holiday also carries its check state, unchecked until a person marks it.
+    expect(edited.body.holidays).toEqual([
+      { date: busyDay, name: 'Company day off', checked: false, checkedAt: null, checkedBy: null },
+    ]);
 
     const after = await fileTicket(agent, orgId, { priority: 'P3' });
     const expectedAfter = addSlaMinutes(new Date(after.createdAt), 480, 'business', {

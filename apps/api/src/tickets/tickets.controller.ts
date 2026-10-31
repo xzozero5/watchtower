@@ -22,6 +22,8 @@ import {
   ticketListQuerySchema,
   ticketListSchema,
   ticketRefParamSchema,
+  ticketStatsQuerySchema,
+  ticketStatsSchema,
   timelinePageSchema,
   timelineQuerySchema,
   updateTicketSchema,
@@ -33,6 +35,7 @@ import {
   type Note,
   type Reply,
   type TicketListQuery,
+  type TicketStatsQuery,
   type TimelineQuery,
   type UpdateTicket,
 } from '@watchtower/shared';
@@ -110,6 +113,29 @@ export class TicketsController {
     const page = await this.reader.list(query, principal);
     AuditScope.set({ metadata: { resultCount: page.items.length } });
     return parseResponse(ticketListSchema, page);
+  }
+
+  // Declared before `:id` so that "stats" is not read as a ticket reference.
+  @Get('stats')
+  @RequirePermission('ticket.read')
+  @ApiOperation({
+    summary: 'Ticket counts by status, queue, assignee, priority and SLA state (staff)',
+    description:
+      'Takes the filters of the list (not paging or sorting) and counts the tickets they match. ' +
+      'Every group carries `count`, `open` and `sla` (`ok`, `at_risk`, `breached`, `paused`) ' +
+      'for the SLA target that is running now. At risk = 25 % of the target or 30 minutes left, ' +
+      'whichever is first, measured in business time on the policy calendar; paused = the SLA ' +
+      'clock is stopped; a ticket with no running target is in no SLA state. Assignee `null` = ' +
+      'unassigned, queue `null` = no queue. Groups with no ticket are left out. Not available to ' +
+      'a client (403): the counts are about assignees and SLA. Counts only, no personal data, so ' +
+      'it is not on the audit log.',
+  })
+  @ApiOkResponse({ standardSchema: ticketStatsSchema })
+  async stats(
+    @Query({ schema: ticketStatsQuerySchema }) query: TicketStatsQuery,
+    @CurrentPrincipal() principal: Principal,
+  ) {
+    return parseResponse(ticketStatsSchema, await this.reader.stats(query, principal));
   }
 
   @Post()
