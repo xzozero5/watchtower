@@ -1,41 +1,35 @@
 # HANDOFF — Watchtower
 
 > สถานะล่าสุดของโปรเจกต์ session ใหม่อ่านไฟล์นี้ต่อจาก `AGENTS.md` แล้วทำงานต่อได้โดยไม่ต้องอ่านบทสนทนาเดิม
-> อัปเดตล่าสุด: 2026-11-01 00:25 (เวลากรุงเทพ) โดย Claude Code (main thread, Phase 0) — เจ้าของสั่งพักเพื่อย้ายไปทำต่อบน cloud session
-> กฎขนาด ≤ 40 KB — เขียนทับสถานะ ไม่ append ประวัติ · เรื่องที่จบย้ายไป `docs/handoff-archive/` · บันทึกรายชั่วโมงอยู่ `logs/daily/`
+> อัปเดตล่าสุด: 2026-11-01 04:20 (เวลากรุงเทพ) โดย Claude Code (main thread, cloud session ทำงานอัตโนมัติ เจ้าของมอบอำนาจตัดสินใจให้ `po`)
+> กฎขนาด ≤ 40 KB — เขียนทับสถานะ ไม่ append ประวัติ · ฉบับก่อนหน้าอยู่ `docs/handoff-archive/HANDOFF-2026-10-31_2026-11-01-pause.md` · บันทึกรายชั่วโมงอยู่ `logs/daily/`
 
-> ⚠️ **T-005 ค้างอยู่บน branch `wip/t-005` ไม่ใช่ `main`** — งานถูกหยุดกลางคัน ต้องทำต่อจาก branch นี้ ห้ามเริ่มใหม่
+## อ่านก่อน (สรุป 2 นาที)
+- **Phase 0 งานครบแล้ว** (T-005…T-011 + T-013, T-120, T-124 UI ใหม่) รอ CI (T-014 กำลังทำ) และ **เจ้าของตรวจบนเครื่องตามรายการด้านล่างก่อน tag `v0.0.1`**
+- **Phase 1 เริ่ม wave 0** (T-101 UI spec เสร็จ, T-123a scaffolding กำลังทำ) แผนอยู่ `docs/BACKLOG.md` หัวข้อ Phase 1 + `docs/plans/phase-1-breakdown.md`
+- **การตัดสินใจที่ `po` ทำแทนเจ้าของ 25 ข้อ** อยู่ในตารางด้านล่าง ติ๊กรับ/ไม่รับได้เลย
+- **UI ถูกทำใหม่ตามคำขอเจ้าของ** ("ดู AI เกินไป → ศึกษา 21st.dev") · ทิศทาง `docs/design/ui-refresh-2026-11.md` · ใช้ 21st.dev เป็นแรงบันดาลใจเท่านั้น ไม่คัดลอกโค้ด (Terms ไม่อนุญาต) · ภาพหน้าจอส่งในแชตแล้ว (ไม่ได้ commit)
 
 ## สถานะปัจจุบัน
-- **Phase:** 0 — Foundation · เสร็จ T-000, T-001, T-002, T-003, T-004 · T-005 ทำค้าง
-- **Build/Test:**
-  - `main`: lint, typecheck, test, build, `test:integration`, e2e 22 เคส ผ่านตอน T-004 (`c130f66`) `[TESTED]`
-  - `wip/t-005`: lint, typecheck, unit test ผ่าน (api 107, shared 103, db 19, worker 19, ui 121, web 60, boundaries 94) `[TESTED]` · **`test:integration` และ e2e ยังไม่ได้รัน** · ยังไม่รู้ว่าข้อส่งมอบ T-005 ครบกี่ข้อ เพราะ agent ถูกหยุดก่อนรายงาน
-- **Repo:** `xzozero5/watchtower` public, Apache-2.0, เป็นกลางไม่ผูกกับองค์กรใด (PRD §13) `[CONFIRMED 2026-10-31]`
-- **Deployment:** Docker Compose บน local ก่อน → production บน GCP ภายหลัง (ADR-001) `[CONFIRMED 2026-10-31]`
-- **Credential ที่มีแล้ว:** ไม่มี ทุก integration เป็น mock mode (`[ASK-HUMAN]` ก่อนต่อของจริง)
-- **เงิน:** บัญชีเป็น Max plan ไม่คิดราย API จึงวัดงบ `build_ai` เป็นดอลลาร์ไม่ได้ ดู % plan limit แทน `[ASSUMED]`
+- **Phase:** 0 รอ CI + เจ้าของตรวจ · 1 wave 0
+- **Build/Test (`main`, 2026-11-01 04:05, `turbo --force`):** lint, typecheck ผ่าน · unit shared 148, api 164, worker 33, db 47, ui 256, web 470, boundaries 94 · integration api 387, db 107, worker 19 · e2e (API จำลอง) 99 · full-stack e2e (web+api+worker จาก source + Postgres/Redis/Mailpit จริง) 22 `[TESTED]` บน cloud Linux
+- **ยังไม่เคยรัน:** `docker compose up` ด้วย image ที่ build เอง (บน cloud build ไม่ได้: Docker Hub 429 + corepack ไม่เชื่อ CA ของ proxy) · CI บน GitHub
+- **Repo:** `xzozero5/watchtower` public, Apache-2.0, เป็นกลาง `[CONFIRMED 2026-10-31]`
+- **Credential ที่มีแล้ว:** ไม่มี ทุก integration เป็น mock mode
+- **เงิน:** Max plan วัดเป็นดอลลาร์ไม่ได้ · token ของ sub-agent ดู daily log
 
-## ⚠️ ตั้งค่าก่อนเริ่มบนเครื่องหรือ cloud ใหม่ (ไม่ติดมากับ git)
-1. `git config core.hooksPath tools/githooks` — เปิด pre-commit
-2. `WT_MAIN_THREAD=1` — ต้องมีใน environment ของ session ไม่งั้น `guard.py` บล็อกการแก้ `HANDOFF.md`, `docs/STATUS.md`, `docs/BACKLOG.md` · บนเครื่องเดิมตั้งใน `.claude/settings.local.json` ซึ่ง gitignore · **agent ตั้งเองไม่ได้ (auto mode ปฏิเสธ) เจ้าของต้องตั้ง** · ค่านี้ปลดให้ sub-agent ด้วย main thread จึงต้องตรวจ diff ของสามไฟล์นี้หลัง agent ทุกตัว
-3. `.git/info/forbidden-terms` — รายการคำต้องห้ามของ pre-commit อยู่นอก repo โดยตั้งใจ clone ใหม่จะไม่มีและ hook จะข้ามการตรวจเงียบ ๆ · ขอรายการจากเจ้าของก่อน commit แรก · ถ้าไม่มี ให้ตรวจ diff เองตามกฎ N1
-4. ตั้ง `TURBO_TELEMETRY_DISABLED=1` และ `NEXT_TELEMETRY_DISABLED=1` ทุกครั้งที่รัน turbo/next
-5. e2e ต้องมี browser: เครื่องเดิมใช้ `PW_CHANNEL=msedge` ที่อื่นให้ `pnpm --filter @watchtower/web exec playwright install --with-deps chromium` `[VERIFY บน Linux]`
-6. Integration test และ `docker compose up` ต้องมี Docker · ยังไม่รู้ว่า cloud session มี Docker หรือไม่ `[VERIFY]` ถ้าไม่มีให้ใช้ Postgres (pgvector) กับ Redis ของ environment นั้นผ่าน `TEST_DATABASE_URL` / `TEST_REDIS_URL` ถ้าทำไม่ได้ให้รายงาน ห้ามนับว่าผ่าน
-
-## การตัดสินใจของเจ้าของที่มีผลอยู่
-- ชื่อโปรเจกต์ **Watchtower** — 2026-10-31 20:57
-- Tech stack ตาม ADR-001 — 2026-10-31 21:01
-- รัน Docker local ก่อน, deploy จริงบน GCP — 2026-10-31 21:01
-- Feature set ตาม PRD v0.1 รวม CSAT email, GCP Monitoring, product-usage dashboard + proactive ticket — 2026-10-31 20:43–20:45
-- Repo public และเป็นกลาง ห้ามมีชื่อหรือข้อมูลขององค์กรที่นำไปใช้ องค์กรจะ fork ไปใส่ข้อมูลตัวเอง — 2026-10-31 21:25
-- SSO domain อ่านจาก env — 2026-10-31 21:25
-- Secret ของ infra อยู่ใน env, credential ของ integration ตั้งผ่าน admin UI แบบเข้ารหัสได้ — 2026-10-31 — ADR-004, N1
-- `.env.example` ไม่อยู่ใน deny rule — 2026-10-31 — `.claude/settings.json`
-- โลโก้ Option 3B-3 ออกแบบโดย Gemini ยึดตาม `docs/brand/` — 2026-10-31 22:04
-- Default autonomy = stage 2 ทุก intent; เป้าหมายระยะยาว AI support 100% — PRD §6.4
-- commit และโค้ดเป็นอังกฤษ, เอกสารการทำงานเป็นไทย, PRD เป็นอังกฤษ — 2026-10-31
+## ต้องทำบนเครื่องเจ้าของก่อน tag `v0.0.1` (`[ASK-HUMAN]`, จาก `po` T-011)
+1. `git pull` → `git config core.hooksPath tools/githooks` → `pnpm install && pnpm lint && pnpm typecheck && pnpm test` เขียว
+2. CI run แรกบน GitHub เขียว (หลัง T-014 merge)
+3. `docker compose up -d --build --wait` ทุก service healthy · `GET /health` ผ่าน Caddy (`:8080`)
+4. `pnpm db:migrate && pnpm db:seed` บน volume ใหม่ — DB เก่าที่เคย apply `0002` รุ่นก่อนอาจ checksum ไม่ตรง → `docker compose down -v` แล้วขึ้นใหม่ (ข้อมูลทดสอบหาย)
+5. `pnpm test:integration` บนเครื่องที่มี Docker
+6. `PW_CHANNEL=msedge pnpm test:e2e` และ `pnpm test:e2e:fullstack` ทั้งแบบ source และ `E2E_STACK=external` กับ image ของ compose (`apps/web/e2e-fullstack/README.md`)
+7. ลองมือ: `/portal` แจ้งเรื่อง → ticket มี org/intent/SLA → assign → ตอบ → ลูกค้าเห็นในหน้า tracking → resolve → อีเมลใน Mailpit `http://localhost:8025`
+8. **ใส่รายการคำต้องห้ามจริงใน `.git/info/forbidden-terms`** (ข้อความสั่งงานมีแต่ placeholder ไม่มีรายการ — session นี้ใช้รายการที่ main thread อนุมานเองไว้ก่อน) แล้วสแกนทั้ง history · ตัดสินเรื่อง commit `47f2ae9` (test มีคำที่บอกใบ้ธุรกิจของ deployment หนึ่ง แก้แล้วใน commit ถัดไป แต่อยู่ในประวัติ `main` ที่ public) — agent ห้ามแก้ history
+9. ไม่บล็อก tag: Google OIDC จริงด้วย OAuth client ของตัวเอง · `docker-compose.proxy.yml` กับ Caddy · digest ของ MinIO `[VERIFY]`
+10. ติ๊กการตัดสินใจของ `po` ด้านล่าง · ให้ feedback UI ใหม่ (T-124)
+11. tag เอง: `git tag v0.0.1` แล้ว `git push origin v0.0.1` (agent ไม่ tag)
 
 ## PO ตัดสินแทนเจ้าของ (session 2026-11-01 — เจ้าของมอบอำนาจ, รอทบทวน)
 > ทุกข้อ `[ASSUMED]` เลือกทางที่ย้อนกลับง่าย · `po` ห้ามตรวจงานที่ตัวเองตัดสิน (N7) · สิ่งที่อยู่ใน "ห้ามทำแทนเจ้าของ" ไม่อยู่ในอำนาจนี้
@@ -49,63 +43,73 @@
 | [ ] 4 | §16.4 mailbox | 1 mailbox = 1 `channel_account` หลายกล่องได้ · ค่าเริ่มต้น OAuth ของกล่องนั้นเอง, domain-wide delegation เป็นทางเลือก · seed `support@example.com` | สิทธิ์น้อยสุด |
 | [ ] 5 | §16.5 LINE | plan `free` ตาม budgets · `quota_limit` ตั้งได้ ค่าเริ่มต้น 300 `[VERIFY]` เตือน 80% · rich menu ปิดด้วย flag (OA อาจใช้ร่วมทีมอื่น) | กันทับงานทีมอื่น |
 | [ ] 6 | §16.6 Discord | ช่องแจ้งเตือน/ประสานงาน ไม่ใช่ system of record · map channel ผ่าน config | R-3.17 |
-| [ ] 7 | §16.7 ทีม/กะ | seed 1 head, 1 lead, 4 agents · กะ 08–17, 13–22, on-call 22–08 (Asia/Bangkok) แก้ได้ | รูปแบบทั่วไป |
+| [ ] 7 | §16.7 ทีม/กะ | seed 2 head, 2 lead, 4 agents (ครอบ "2 ต่อ role" ของ T-008) · กะ 08–17, 13–22, on-call 22–08 (Asia/Bangkok) แก้ได้ | รูปแบบทั่วไป |
 | [ ] 8 | §16.8 tier/SLA | ชื่อกลาง Gold/Silver/Standard ตัวเลขอยู่ใน `examples/` + seed เท่านั้น · Gold P1 15m/4h 24×7, Silver P1 30m/8h, Standard business hours | N1, N5 |
 | [ ] 9 | §16.10 AI provider | `AI_PROVIDER=mock` · Anthropic + Vertex adapter หลัง abstraction · PII redaction เปิดเสมอ · งบ dev ตาม `config/budgets.yaml` | ยังไม่มี key |
 | [ ] 10 | เอกสารขัด: START-HERE ว่า `po` "ไม่ตัดสินแทน" | ไม่แก้กฎถาวร บันทึกเป็นข้อยกเว้นของ session ใน STATUS/HANDOFF/daily log | ข้อยกเว้นชั่วคราว |
 | [ ] 11 | ย้าย GCP deploy มาก่อน T-115 | ย้าย → **T-118** ADR deploy GCP + IaC skeleton + runbook staging (public HTTPS สำหรับ Pub/Sub push/LINE webhook) **ไม่ apply จริง** | pilot ต้องมี webhook สาธารณะ |
 | [ ] 12 | generic OIDC (องค์กรไม่ใช้ Google) | เลื่อนไป Post-MVP · UI/contract ห้าม hard-code Google นอก provider config | ไม่อยู่ใน exit criteria |
-| [ ] 13 | MinIO `pgsty/minio` | ใช้ต่อเฉพาะ local · T-010 ตรวจการปัก digest · production ใช้ GCS | override ได้ด้วย env |
+| [ ] 13 | MinIO `pgsty/minio` | ใช้ต่อเฉพาะ local · ปัก digest แล้ว (T-010) · production ใช้ GCS | override ได้ด้วย env |
 | [ ] 14 | tag `v0.0.1` | เลื่อน จนเจ้าของตรวจ compose/integration/e2e บนเครื่องตัวเอง | คำสั่งเจ้าของ |
-| [ ] 15 | วันหยุดไทย 2026–2027 | ใส่เป็นข้อมูลตัวอย่าง `examples/calendars/` ติด `[VERIFY]` โหลดเฉพาะ seed dev · production เริ่มว่าง | N5 |
+| [ ] 15 | วันหยุดไทย 2026–2027 | ข้อมูลตัวอย่างใน `examples/calendars/` ติด `[VERIFY]` โหลดเฉพาะ seed dev · production เริ่มว่าง | N5 |
 | [ ] 16 | permission matrix `[ASSUMED]` | ใช้ต่อจนทีมจริงทบทวนตอน T-115 | deny-by-default |
 | [ ] 17 | ภาษาเริ่มต้น | `en` · instance ตั้ง `th` ได้ | OSS เป็นกลาง |
 | [ ] 18 | Pub/Sub emulator image (T-102) | อนุญาตเฉพาะ compose local ปักเวอร์ชัน | ไม่มีปลายทาง runtime ใหม่ |
 | [ ] 19 | ลำดับ Phase 1 | T-101 ก่อน T-109/T-111 frontend · T-106 ก่อน T-108/T-112 · T-116 ก่อน T-118/T-115 · T-112 จำกัด stage ≤ 2 | ลด rework |
 | [ ] 20 | ราคา LINE | ไม่บล็อกเริ่ม Phase 1 แต่บล็อกปิด T-103 (ตรวจเอกสารทางการ บันทึกลิงก์+วันที่) | AGENTS.md |
-| [ ] 21 | UI spec §17 (Q1–Q11) | Undo-send 5 s ฝั่ง server · สี AI จาก seafoam ผ่าน contrast test · focus digest 15 นาที P1/P2 แทรกได้ · เสียง P1 ซ้ำทุก 60 วิ · portal แสดงชื่อเล่น/ชื่อต้น · 3 breakpoint · reject reason 9 รหัส · SLA at-risk ≤25% หรือ ≤30 นาที · severity map · spec เป็นอังกฤษ — รายละเอียด `docs/06-UI-SPEC.md` §17 | ลด friction ทางปลอดภัย |
-| [ ] 22 | human verification ของ portal (R-9.1 ยกตัวอย่าง Turnstile/hCaptcha) | ทำแบบ self-hosted: proof-of-work + honeypot + rate limit หลัง interface `HumanVerificationProvider` · ใช้ผู้ให้บริการภายนอก = `[ASK-HUMAN]` (ปลายทาง network ใหม่ + ส่ง IP ผู้ใช้ไป vendor) · ADR ก่อน T-007 | po อนุมัติปลายทางใหม่ไม่ได้ |
-| [ ] 23 | emergency switch Phase 1 | สองปุ่ม: "จำกัดทุก intent ≤ stage 2" (ไม่ยก 0/1 ขึ้น) และ kill switch "หยุด AI ทั้งหมด" · เปิด = confirm + เหตุผล + audit · ปิด (กลับมาใช้ AI) = confirm + เหตุผล + audit | N3 |
+| [ ] 21 | UI spec §17 (Q1–Q11) | Undo-send 5 s ฝั่ง server · สี AI จาก seafoam ผ่าน contrast test · focus digest 15 นาที P1/P2 แทรกได้ · เสียง P1 ซ้ำทุก 60 วิ · portal แสดงชื่อต้น · 3 breakpoint · reject reason 9 รหัส · SLA at-risk ≤25% หรือ ≤30 นาที · severity map · spec เป็นอังกฤษ — `docs/06-UI-SPEC.md` §17 | ลด friction ทางปลอดภัย |
+| [ ] 22 | human verification ของ portal (R-9.1 ยกตัวอย่าง Turnstile/hCaptcha) | self-hosted: proof-of-work + honeypot + rate limit หลัง `HumanVerificationProvider` (ADR-007) · ผู้ให้บริการภายนอก = `[ASK-HUMAN]` (ปลายทาง network ใหม่ + ส่ง IP ผู้ใช้ไป vendor) | po อนุมัติปลายทางใหม่ไม่ได้ |
+| [ ] 23 | emergency switch Phase 1 | สองปุ่ม: "จำกัดทุก intent ≤ stage 2" (ไม่ยก 0/1 ขึ้น) และ kill switch "หยุด AI ทั้งหมด" · เปิด/ปิด = confirm + เหตุผล + audit | N3 |
+| [ ] 24 | T-011 Phase 0 | ยังไม่ปิดจนกว่า CI (T-014) เขียว · เจ้าของตรวจตาม checklist แล้วค่อย tag | DoD |
+| [ ] 25 | T-011 Phase 1 scope | T-122 ingest + `packages/domain`, T-123 scaffolding, AC-4 → T-108e KB-author ขั้นต่ำ, เลื่อน Discord bot / Web Push / digest / crawler / bulk ไปหลัง T-113, worktree ≤ 3, Phase 1 ปิดที่ "done pending pilot" | credit จำกัด ทำของมีค่าก่อน |
 
-## ทำเสร็จใน session นี้
-| งาน | ผล | ไฟล์ |
+## การตัดสินใจของเจ้าของที่มีผลอยู่
+- ชื่อ Watchtower · stack ADR-001 · Docker local ก่อน GCP ภายหลัง · feature set PRD v0.1 · repo public เป็นกลาง · SSO domain จาก env · secret infra ใน env / credential integration เข้ารหัสใน DB (ADR-004) · โลโก้ `docs/brand/` · default autonomy stage 2 · ภาษา (โค้ด/commit อังกฤษ, เอกสารไทย) — 2026-10-31
+- 2026-11-01: ทำงานอัตโนมัติจนจบ Phase 1 (หยุดที่ T-115) · มอบอำนาจตัดสินใจให้ `po` ยกเว้นรายการ "ห้ามทำแทน" · งานขนานใน worktree แล้ว main thread ตรวจซ้ำ merge ทีละงาน · UI ต้องไม่ "ดู AI" — ศึกษา 21st.dev
+
+## ทำเสร็จใน session นี้ (2026-11-01)
+| งาน | ผล | ไฟล์หลัก |
 |---|---|---|
-| T-000 | repo ต่อจาก `f848253`, hook, เอกสารเป็นกลาง | `.gitignore`, `.gitattributes`, `tools/githooks/pre-commit` |
-| T-001 | monorepo + boundary lint | `tools/eslint/`, `packages/*`, `docs/04-ARCHITECTURE.md`, ADR-002 |
-| T-002 | api, worker, migration runner, compose ครบ | `apps/api`, `apps/worker`, `packages/db`, `docker-compose.yml`, ADR-003 |
-| T-003 | web shell, design tokens, three-pane เปล่า, โลโก้ | `apps/web`, `packages/ui` |
-| T-004 | auth, session, RBAC, audit log | `apps/api/src/{auth,audit,rbac,users}`, ADR-005 (Proposed) |
-| Credential policy | แก้ N1 ตามเจ้าของ, เพิ่ม T-116 | ADR-004, `AGENTS.md` |
+| Env | cloud: dockerd เอง, compose infra, Chromium ติดตั้งแล้ว, hook + forbidden terms ทดสอบแล้ว | `docs/STATUS.md` 00:35 |
+| T-005 | ticket core ครบ + แก้ B1–B4, duplicates 72h, CRUD tests | `apps/api/src/{tickets,sla,team-queues,orgs,realtime}` |
+| T-013 | follow-up review T-005, outbox ADR-006, `org_tier`, prefix ตั้งได้ | migration `0003`, `packages/db/src/outbox.ts` |
+| T-008 | `pnpm db:seed` idempotent, วันหยุดไทยเป็นข้อมูลตัวอย่าง `[VERIFY]` | `packages/db/src/seed/`, `examples/{calendars,sla}` |
+| T-101 | UI spec + คำตัดสิน `po` §17 | `docs/06-UI-SPEC.md` |
+| T-006 / T-120 | workspace three-pane, login, realtime, PWA / a11y + keyboard + session cache | `apps/web` |
+| T-124 | UI ใหม่ตาม 21st.dev (แรงบันดาลใจ) | `docs/design/ui-refresh-2026-11.md`, `packages/ui`, `apps/web` |
+| T-007 | portal: PoW self-hosted (ADR-007), tracking link, อีเมลผ่าน outbox, หน้า portal | `apps/api/src/portal`, `apps/web/src/app/portal`, migration `0004` |
+| T-010 | security review → แก้ C-1…C-16, ADR-005/006/007 Accepted | migration `0005`, `docs/09-SECURITY.md` |
+| T-009 | full-stack e2e AC-1 + magic link + RBAC | `apps/web/e2e-fullstack`, `tools/e2e-stack` |
+| T-011 | `po` review Phase 0 + scope Phase 1 | `docs/BACKLOG.md`, `docs/plans/phase-1-breakdown.md` |
 
 ## ค้าง / ติดอะไร
-- **T-005 บน `wip/t-005`** — มี migration `0002_ticketing`, `apps/api/src/{orgs,intents,sla,team-queues,tickets,realtime}`, `packages/shared/src/{sla,ticketing,realtime,directory,channels}`, `examples/intents/` — ต้องตรวจกับข้อส่งมอบใน `docs/BACKLOG.md` T-005 แล้วทำส่วนที่ขาด รวมถึง WebSocket, `CLIENT_ORG_RESOLVER`, และ FK `users.org_id` → `organization`
-- Checksum ของ migration: DB ใน stack local เดิมได้ apply `0002` ไปแล้ว ถ้าแก้ไฟล์นี้ต่อ DB local เดิมต้อง reset (DB ใหม่บน cloud ไม่กระทบ)
-- image MinIO เป็น fork ชุมชน `pgsty/minio` — ทบทวนใน T-010 (ADR-003)
+- **T-014 CI** (`qa-engineer`, worktree `wip/t-014`) + ขั้น assign ใน full-stack e2e — กำลังทำ · push ครั้งแรกจะสั่ง CI บน GitHub จริง
+- **T-123a scaffolding** (`backend-dev`, `wip/t-123a`) — กำลังทำ · ต่อด้วย T-123b (i18n แยก namespace)
+- T-012 `/handoff` ปิด Phase 0 + `CHANGELOG.md` 0.0.1 (ไม่ tag)
+- งาน Phase 1 ตาม waves ใน `docs/BACKLOG.md` · **หยุดที่ T-115** (credential จริง + ทีมจริง)
+- bug B-001 (P3) portal tracking ไม่ refetch เมื่อ fragment เปลี่ยน → T-125
 
 ## รอเจ้าของ (`[ASK-HUMAN]`)
-- [ ] ตั้ง `WT_MAIN_THREAD=1` และส่ง term list บน cloud session (หัวข้อด้านบน)
-- [ ] ตอบ PRD §16 เท่าที่ตอบได้ (ไม่บล็อก Phase 0)
-- [ ] ปิด Turbo telemetry บนเครื่องตัวเอง (`pnpm exec turbo telemetry disable`) ถ้ายังไม่ได้ทำ
+- [ ] รายการตรวจก่อน tag ข้างบน (ข้อ 1–11)
+- [ ] รายการคำต้องห้ามจริง + เรื่อง commit `47f2ae9`
+- [ ] feedback UI ใหม่ (T-124)
+- [ ] ผู้ให้บริการ human verification แบบ hosted (Turnstile/hCaptcha) ถ้าต้องการ — ปลายทาง network ใหม่ (ADR-007)
+- [ ] Web Push / KB crawl แบบ live — ปลายทาง network ใหม่
+- [ ] credential จริงทุกตัว (T-115) — `.env.example` + คู่มือจะเตรียมให้ตอนจบ Phase 1
+- [ ] ยก autonomy ของ intent ใด ≥ 3 — ห้าม agent ทำ
 
 ## ขั้นต่อไป (เรียงลำดับ)
-1. Checkout `wip/t-005` → รัน `pnpm test:integration` → ทำ T-005 ให้ครบ → ตรวจซ้ำ → merge เข้า `main` แบบไม่ force → ลบ branch เมื่อเจ้าของตกลง — `backend-dev`
-2. T-006 three-pane จริง + หน้า login — `frontend-dev` · contract ของ auth ดู JSDoc ของ `AuthController` และ `packages/shared/src/auth.ts` · refresh ต้องทีละ tab เท่านั้น (ADR-005) · PWA manifest/service worker ยังไม่ทำ ต้องอยู่ในงานนี้
-3. T-007 portal, T-008 seed — `backend-dev` + `frontend-dev`
-4. T-009 e2e AC-1 + RBAC — `qa-engineer` · รวมขั้นตอน magic link ครบวงจรที่ T-004 ยังไม่ได้รันผ่าน `curl`
-5. T-010 `security-reviewer` — ตรวจ ADR-005 แล้วเปลี่ยนเป็น Accepted, ตรวจ ADR-003
-6. T-011 `po` — พิจารณา: ย้ายงาน deploy GCP มาก่อน T-115 (pilot ต้องมีข้อมูลจริงและ webhook สาธารณะ) · การรองรับ OIDC ทั่วไปสำหรับองค์กรที่ไม่ใช้ Google
-7. T-012 `/handoff`, `CHANGELOG.md` 0.0.1, tag `v0.0.1`
+1. ตรวจซ้ำ + merge T-014 (CI) และ T-123a → T-123b → T-012 (CHANGELOG 0.0.1, ไม่ tag)
+2. Phase 1 W1: T-122a ADR + T-122b `packages/domain` ∥ T-106a→d (AI core, PII redaction ก่อน) ∥ T-102a/T-103a (adapter pure + fake) ∥ T-116a, T-117 — worktree ≤ 3
+3. W2–W4 ตาม `docs/BACKLOG.md` → T-113 → T-114 → T-125 → **หยุดที่ T-115**
 
 ## ยังไม่ยืนยัน (ห้ามเขียนเป็นข้อเท็จจริง)
-- Flow กับ Google จริง ทดสอบกับ fake OIDC เท่านั้น `[UNVERIFIED 60%]` — ADR-005
-- Permission matrix `[ASSUMED]` — PRD §2.2 · web/api same-site `[ASSUMED]` — ADR-005
-- สี link/focus และ surface ที่ palette ไม่ได้กำหนด `[ASSUMED]` — `packages/ui/src/tokens/colors.ts`
-- e2e และ boundary test ยังไม่เคยรันบน Linux/CI `[UNVERIFIED 80%]`
-- สาเหตุที่ image ทางการของ MinIO ดึงไม่ได้ `[VERIFY]` — ADR-003
+- Google OIDC จริง (ทดสอบกับ fake OIDC) `[UNVERIFIED 60%]` · permission matrix `[ASSUMED]`
+- วันหยุดไทย 2026–2027 ใน `examples/calendars/` `[VERIFY]` (วันตามจันทรคติ/ชดเชย `[UNVERIFIED]`)
+- ตัวเลข SLA ตัวอย่าง, rate limit portal, PoW 18 bit บนมือถือ `[ASSUMED]`
+- CSP เว็บยัง `unsafe-inline` + `connect-src` แบบ build-time → T-125
+- Caddy override + digest MinIO `[VERIFY]` · LINE pricing `[VERIFY]` ก่อนปิด T-103 · Pub/Sub emulator รองรับ push `[VERIFY]`
 - `docs/brand/watchtower-logo.svg` เป็นแบบย่อของ PNG — UI ใช้ PNG
-- LINE OA ราคา/โควตาแผนไทย `[VERIFY]` — PRD §4.2 R-2.10 · Mark-as-read API ของ LINE `[VERIFY]`
-- Product DB ของ deployment อ้างอิง = Cloud SQL Postgres `[ASSUMED]` · GCP mapping `[ASSUMED]` — ADR-001
 
 ## วันตรวจซ้ำ
-- LINE pricing/feature: ก่อน T-103
-- Google managed MCP (BigQuery/Logging) availability: ก่อน T-203
+- LINE pricing/feature: ก่อนปิด T-103 · Google managed MCP: ก่อน T-203 · วันหยุดราชการไทยปีถัดไป: ธันวาคม 2026
