@@ -6,8 +6,8 @@ snapshot สั้นสำหรับ cold start อยู่ที่ `HANDOF
 ## สถานะปัจจุบัน
 | Phase | สถานะ (2026-11-01) | ค้าง |
 |---|---|---|
-| 0 Foundation | 🟡 งานครบ รอ CI (T-014) แล้วรอเจ้าของตรวจบนเครื่องก่อน tag | T-014, T-012 |
-| 1 Inbox + AI 0–2 + Shifts | 🔄 W0 เริ่มแล้ว (T-101, T-124 เสร็จ; T-123a กำลังทำ) | ตาม waves ใน BACKLOG |
+| 0 Foundation | ✅ เสร็จ รอเจ้าของตรวจบนเครื่องก่อน tag `v0.0.1` (CI เขียว) | checklist ใน HANDOFF |
+| 1 Inbox + AI 0–2 + Shifts | 🔄 W0/W1 (T-101, T-124, T-123a, T-122a เสร็จ) | T-106, T-122b, T-123b … |
 | 2 Reliability + Usage | ⬜ | — |
 | 3 Autonomy + Learning | ⬜ | — |
 | 4 Mobile + Scale | ⬜ | — |
@@ -37,6 +37,14 @@ snapshot สั้นสำหรับ cold start อยู่ที่ `HANDOF
 - (2026-11-01) cloud session: `dockerd` ต้องสั่งเอง · Docker Hub 429 → pull ซ้ำทีละ image · build image ไม่ได้ (corepack ไม่เชื่อ CA ของ proxy) · Playwright ใช้ `PW_EXECUTABLE_PATH=/opt/pw-browsers/chromium` · หลาย worktree รัน e2e พร้อมกันต้องตั้ง `E2E_PORT` ต่างกัน · Redis counter ข้ามรอบ test → `RATE_LIMIT_NAMESPACE`
 
 ## Log
+
+## 2026-11-01 04:50 (Asia/Bangkok) — qa-engineer + backend-dev + architect + main thread — T-014, T-012, T-123a, T-122a
+- T-014: `.github/workflows/ci.yml` 4 job (static, integration + service containers, e2e + full-stack, compose build/up/health) · action pin SHA · ขั้น assign ใน `ac1-portal.e2e.ts` (UI + REST + timeline + audit) · main thread รัน full-stack 23 ผ่าน · **CI run #1 บน GitHub ผ่านครบ 4 job รวม `docker compose build` + `up --wait` + health** (https://github.com/xzozero5/watchtower/actions/runs/41243188507) `[TESTED]`
+- T-012: `HANDOFF.md` เขียนใหม่ (checklist เจ้าของ 11 ข้อ, po 25 ข้อ) + `CHANGELOG.md` 0.0.1 · **ไม่ tag** (po #14) → Phase 0 = เสร็จ รอเจ้าของตรวจบนเครื่อง
+- T-123a: scaffolding Phase 1 — `packages/shared/src/features/*` + composition ที่ตรวจ key ซ้ำ, `FeaturesModule` + `public-routes.ts` ต่อ feature, `rawBody`, worker `processors/index.ts` + `schedules.ts`, schema ต่อ feature, ตัวแปร Phase 1 ใน `.env.example` (ว่าง = mock), `disableNetConnect` (`@watchtower/shared/testing`), migration `0006_phase1_permissions` (matrix `[ASSUMED]`) · test เดิมที่แก้: test migration 6 ตัวใน `packages/db` (ใช้ `migrationsAfter()` แทนการระบุ migration ล่าสุดตายตัว), `routes-policy.test.ts`, harness — main thread ตรวจ diff แล้ว เป็นการแก้เชิงกลไก
+- T-122a: ADR-009 (ingestion + `packages/domain`) และ ADR-010 (outbound at-most-once + undo-send) Proposed · `[VERIFY]` LINE retry key/quota API, Pub/Sub OIDC, Gmail Message-ID
+- test: main thread รัน `turbo --force` บน main + `wip/t-123a`: lint, typecheck ผ่าน · shared 192, api 167, worker 42, db 47, ui 256, web 470, boundaries 94 · integration api 387, db 110, worker 19 `[TESTED]`
+- ไม่ยืนยัน: ตัวแปร env Phase 1 ที่ตั้งชื่อเอง `[ASSUMED]` · docker-compose ยังไม่ส่งตัวแปร Phase 1 เข้า container (task แรกที่ใช้ต้องเพิ่ม)
 
 ## 2026-11-01 04:10 (Asia/Bangkok) — po + main thread — T-011 review Phase 0 + scope Phase 1
 - `po` ตรวจ Phase 0: **ยังไม่ปิด** — P0 api `config.test.ts` พังบน main หลัง C-16 (entry 03:57 ที่บอกว่า api ผ่านไม่ถูกต้อง: main thread รัน api test ก่อน build `shared` ใหม่) → แก้แล้ว รัน `turbo --force` ผ่านทุก package · P1: ไม่มี CI (`.github/workflows`) → T-014 · full-stack e2e ไม่มีขั้น assign (PRD §15 exit) → T-014 · HANDOFF/STATUS เก่า → เขียนใหม่ · checklist เจ้าของก่อน tag อยู่ใน `HANDOFF.md`
