@@ -163,6 +163,191 @@ describe('token look-alikes in other forms are escaped', () => {
   });
 });
 
+// SR106-N5: the second review round found these still got through.
+describe('SR106-N5: mixed and extra separators inside numbers', () => {
+  it.each([
+    ['081-234 5678', '[PHONE_1]'],
+    ['081 234-5678', '[PHONE_1]'],
+    ['tel 081-234.5678 ok', 'tel [PHONE_1] ok'],
+    ['08-1234 5678', '[PHONE_1]'],
+    ['081_234_5678', '[PHONE_1]'],
+    ['081,234,5678', '[PHONE_1]'],
+    ['081, 234, 5678', '[PHONE_1]'],
+    ['081\n234\n5678', '[PHONE_1]'],
+    ['081\r\n234\r\n5678', '[PHONE_1]'],
+    ['081、234、5678', '[PHONE_1]'],
+    ['02 123-4567', '[PHONE_1]'],
+  ])('redacts the phone %j', (input, expected) => {
+    expect(redact(input)).toBe(expected);
+  });
+
+  it('redacts two phones in a comma separated list as two phones', () => {
+    expect(redact('0812345678, 0898765432')).toBe('[PHONE_1], [PHONE_2]');
+    expect(redact('0812345678,\n0898765432')).toBe('[PHONE_1],\n[PHONE_2]');
+  });
+
+  it('redacts a card separated by underscores, commas or newlines', () => {
+    const parts = [CARD.slice(0, 4), CARD.slice(4, 8), CARD.slice(8, 12), CARD.slice(12)];
+    for (const separator of ['_', ',', '\n', ', ']) {
+      expect(redact(`card ${parts.join(separator)}`)).toBe('card [CARD_1]');
+    }
+  });
+
+  it('still leaves dates, counts and short lists alone', () => {
+    for (const text of [
+      '08/10/2026 12 tickets',
+      '08-10-2026 12',
+      '08.10.2026 12',
+      '08,10,2026 12',
+      '1, 2, 3, 4, 5, 6, 7, 8, 9, 10',
+      'rows 12_34_56',
+      'versions 1.2.3, 4.5.6',
+    ]) {
+      expect(redact(text), text).toBe(text);
+    }
+  });
+
+  it('redacts a national ID in less usual groupings', () => {
+    const groupings: number[][] = [
+      [13],
+      [1, 4, 5, 2, 1],
+      [4, 4, 4, 1],
+      [5, 5, 3],
+      [6, 7],
+      [1, 12],
+      [3, 3, 3, 4],
+    ];
+    for (const sizes of groupings) {
+      let at = 0;
+      const parts = sizes.map((size) => {
+        const part = ID.slice(at, at + size);
+        at += size;
+        return part;
+      });
+      for (const separator of [' ', '-', '_', ', ']) {
+        expect(redact(`id ${parts.join(separator)}`), `${sizes.join('-')} ${separator}`).toBe(
+          'id [THAI_ID_1]',
+        );
+      }
+    }
+  });
+
+  it('does not read a 13-digit number with a bad check digit as an ID', () => {
+    const bad = `${ID.slice(0, 12)}${String((Number(ID.slice(12)) + 1) % 10)}`;
+    const grouped = `${bad.slice(0, 4)} ${bad.slice(4, 8)} ${bad.slice(8)}`;
+    expect(redact(grouped)).toBe(grouped);
+  });
+});
+
+describe('SR106-N5: invisible characters', () => {
+  const INVISIBLES: [string, string][] = [
+    ['combining grapheme joiner U+034F', '͏'],
+    ['variation selector-15 U+FE0E', '︎'],
+    ['variation selector-16 U+FE0F', '️'],
+    ['variation selector-17 U+E0100', '\u{E0100}'],
+    ['Mongolian free variation selector U+180B', '᠋'],
+    ['Hangul filler U+3164', 'ㅤ'],
+    ['halfwidth Hangul filler U+FFA0', 'ﾠ'],
+    ['Hangul choseong filler U+115F', 'ᅟ'],
+    ['Khmer inherent vowel U+17B4', '឴'],
+    ['Braille blank U+2800', '⠀'],
+  ];
+
+  it.each(INVISIBLES)('does not let %s split a phone number', (_label, mark) => {
+    expect(redact(`08${mark}12${mark}34${mark}5678`)).toBe('[PHONE_1]');
+    expect(redact(`081-234${mark}-5678`)).toBe('[PHONE_1]');
+  });
+
+  it.each(INVISIBLES)('does not let %s split an email', (_label, mark) => {
+    expect(redact(`so${mark}mchai@exam${mark}ple.c${mark}om`)).toBe('[EMAIL_1]');
+  });
+
+  it('does not let an invisible mark split a card or an ID', () => {
+    const mark = '͏';
+    const card = [CARD.slice(0, 4), CARD.slice(4, 8), CARD.slice(8, 12), CARD.slice(12)].join(
+      `${mark} `,
+    );
+    expect(redact(card)).toBe('[CARD_1]');
+    expect(redact(`${ID.slice(0, 5)}${mark}${ID.slice(5)}`)).toBe('[THAI_ID_1]');
+  });
+
+  it('does not let a combining mark on a digit split a number', () => {
+    const marked = Array.from('0812345678')
+      .map((digit) => `${digit}́`)
+      .join('');
+    expect(redact(marked)).toBe('[PHONE_1]');
+  });
+
+  it('restores the original text when invisible characters sit inside a redacted span', () => {
+    const session = redactor.session({ scope: 'ticket:test' });
+    const text = 'call 08͏12ㅤ345678 now';
+    const out = session.redact(text);
+    expect(out).toBe('call [PHONE_1] now');
+    expect(session.restore(out, 'internal').text).toBe(text);
+  });
+
+  it('maps the view back to the original around dropped characters', () => {
+    const view = buildView('1͏2ㅤ3');
+    expect(view.text).toBe('123');
+    expect([...view.starts]).toEqual([0, 2, 4]);
+  });
+});
+
+describe('SR106-N5: ideographic full stops and Thai domains', () => {
+  it.each([
+    ['user@example。com', '[EMAIL_1]'],
+    ['user@example｡com', '[EMAIL_1]'],
+    ['user@sub。example。co。th', '[EMAIL_1]'],
+    ['ผู้ใช้@example。com', '[EMAIL_1]'],
+    ['mail user@例え。jp now', 'mail [EMAIL_1] now'],
+  ])('redacts %j', (input, expected) => {
+    expect(redact(input)).toBe(expected);
+  });
+
+  it.each([
+    ['สมชาย@ตัวอย่าง.ไทย', '[EMAIL_1]'],
+    ['user@ตัวอย่าง.ไทย', '[EMAIL_1]'],
+    ['user@ร้านค้า.com', '[EMAIL_1]'],
+    ['user@ร้านค้า.co.th', '[EMAIL_1]'],
+    ['user@mail.ร้านค้า.ไทย', '[EMAIL_1]'],
+    ['อีเมลuser@ตัวอย่าง.ไทย ครับ', 'อีเมล[EMAIL_1] ครับ'],
+    ['ส่งไปที่ user@ตัวอย่าง.ไทย แล้วโทร', 'ส่งไปที่ [EMAIL_1] แล้วโทร'],
+  ])('redacts the Thai domain in %j', (input, expected) => {
+    expect(redact(input)).toBe(expected);
+  });
+
+  it('does not swallow Thai words that follow the domain', () => {
+    expect(redact('user@example.comครับ')).toBe('[EMAIL_1]ครับ');
+    expect(redact('user@example.com.ครับ')).toBe('[EMAIL_1].ครับ');
+    expect(redact('user@example.co.thครับผม')).toBe('[EMAIL_1]ครับผม');
+    expect(redact('user@example.com แล้วครับ')).toBe('[EMAIL_1] แล้วครับ');
+    expect(redact('ส่งมาที่user@example.comเลยครับ')).toBe('ส่งมาที่[EMAIL_1]เลยครับ');
+  });
+
+  it('does not treat a lone Thai word after an @ as a domain', () => {
+    for (const text of ['ติดต่อ@ตัวอย่าง.บริษัท', 'ราคา 5@ครับ', 'user@ตัวอย่าง']) {
+      expect(redact(text), text).toBe(text);
+    }
+  });
+
+  it('restores the original text of an email with a Thai domain', () => {
+    const session = redactor.session({ scope: 'ticket:test' });
+    const text = 'user@ตัวอย่าง.ไทยครับ and user@example。com';
+    expect(session.restore(session.redact(text), 'internal').text).toBe(text);
+  });
+});
+
+describe('SR106-N5: known gaps (pinned so that closing one is a deliberate change)', () => {
+  it('does not fold homoglyphs from other scripts (Cyrillic а for Latin a)', () => {
+    // NFKC does not map U+0430 to 'a', so the keyword "account" is not recognised.
+    expect(redact('аccount 1234567890')).toBe('аccount 1234567890');
+  });
+
+  it('does not redact a bare 10-digit account number without a keyword or bank formatting', () => {
+    expect(redact('transfer to 1234567890 please')).toBe('transfer to 1234567890 please');
+  });
+});
+
 describe('round trip on hostile Unicode (seeded)', () => {
   function mulberry32(seed: number): () => number {
     let state = seed;

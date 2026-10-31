@@ -42,6 +42,7 @@ export default defineConfig([
   // eslint-config-next, which pulls in eslint-plugin-react and eslint-plugin-import, and both
   // declare a peer range that stops at ESLint 9 (this repo is on ESLint 10).
   {
+    basePath: rootDir,
     files: ['apps/web/**/*.{ts,tsx}'],
     plugins: { '@next/next': nextPlugin },
     rules: {
@@ -50,7 +51,7 @@ export default defineConfig([
     },
     languageOptions: { globals: globals.browser },
   },
-  { files: ['apps/web/**/*.{ts,tsx}'], ...reactHooks.configs.flat.recommended },
+  { basePath: rootDir, files: ['apps/web/**/*.{ts,tsx}'], ...reactHooks.configs.flat.recommended },
   prettier,
   ...boundaryConfigs({ rootDir }),
 ]);

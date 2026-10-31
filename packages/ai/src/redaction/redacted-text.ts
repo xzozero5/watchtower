@@ -16,7 +16,7 @@ export type RedactedText = string & { readonly [redactedBrand]: true };
 export function mintRedacted(value: string): RedactedText {
   // The only cast to RedactedText in the repository; the lint rule in tools/eslint/boundaries.mjs
   // forbids it everywhere else (R-6), and reportUnusedDisableDirectives keeps this one honest.
-  // eslint-disable-next-line no-restricted-syntax -- sole mint point
+  // eslint-disable-next-line watchtower/no-redacted-text-cast -- sole mint point
   return value as RedactedText;
 }
 

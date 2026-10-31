@@ -2,6 +2,7 @@
 // To add a workspace: add one entry to WORKSPACES. boundaries.test.mjs fails until you do.
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 
+import ts from 'typescript';
 import tseslint from 'typescript-eslint';
 
 const SOURCE_GLOB = '**/*.{ts,tsx,mts,cts,js,jsx,mjs,cjs}';
@@ -109,21 +110,6 @@ export const WORKSPACES = {
   'packages/ui': { name: '@watchtower/ui', allow: [SHARED], forbid: ['persistence'] },
 };
 
-// N4: a value of the branded type RedactedText may only come from the redactor. The single mint
-// point in packages/ai/src/redaction/redacted-text.ts carries the only eslint-disable for this.
-// Aliases (`type R = RedactedText; x as R`) are not caught; reviewers and the security review are
-// the backstop for those.
-const REDACTED_TEXT_RESTRICTIONS = [
-  'TSAsExpression[typeAnnotation.typeName.name="RedactedText"]',
-  'TSAsExpression[typeAnnotation.elementType.typeName.name="RedactedText"]',
-  'TSTypeAssertion[typeAnnotation.typeName.name="RedactedText"]',
-  'TSTypeAssertion[typeAnnotation.elementType.typeName.name="RedactedText"]',
-].map((selector) => ({
-  selector,
-  message:
-    'Do not cast to RedactedText (N4). Get it from the redactor: session.redact(), session.redactToolOutput() or session.fromModel().',
-}));
-
 const moduleRegexSource = (modules) => `^(?:${modules.join('|')})(?:${SLASH}.*)?$`;
 
 const workspaceFragment = (name) => name.replace('/', SLASH);
@@ -217,7 +203,108 @@ const noRelativeEscape = {
   },
 };
 
-const watchtowerPlugin = { rules: { 'no-relative-escape': noRelativeEscape } };
+// N4: a value of the branded type RedactedText may only come from the redactor. The single mint
+// point in packages/ai/src/redaction/redacted-text.ts carries the only eslint-disable for this.
+//
+// Two layers. The syntactic layer needs no type information: it looks for the name RedactedText
+// anywhere inside the target type of an `as` / `<T>` assertion, so `as RT.RedactedText`,
+// `as RedactedText[]`, `as RedactedText | null`, `as { text: RedactedText }`,
+// `as Promise<RedactedText>` and `as import('x').RedactedText` are all caught. The type layer runs
+// when the file is linted with type information (every workspace is, through the project
+// service): it resolves the target type and looks for the brand inside it, which also catches
+// aliases (`type R = RedactedText; x as R`) and re-exported names (`import { RedactedText as T }`).
+//
+// Residual gap, documented in ADR-008: a cast hidden behind a generic helper written by the
+// author (`function cast<T>(v: unknown): T`, `cast<RedactedText>(x)`) and an `any` value assigned
+// to a RedactedText binding. `no-unsafe-assignment` (strictTypeChecked) covers the second; code
+// review covers the first.
+const BRAND_PROPERTY_PREFIX = '__@redactedBrand';
+const MAX_TYPE_DEPTH = 6;
+const MAX_TYPE_NODES = 400;
+
+function mentionsRedactedTextName(node, seen = new Set()) {
+  if (node === null || typeof node !== 'object' || seen.has(node)) return false;
+  seen.add(node);
+  if (Array.isArray(node)) return node.some((child) => mentionsRedactedTextName(child, seen));
+  if (node.type === 'TSTypeReference') {
+    const name = node.typeName;
+    if (name?.type === 'Identifier' && name.name === 'RedactedText') return true;
+    if (name?.type === 'TSQualifiedName' && name.right?.name === 'RedactedText') return true;
+  }
+  if (node.type === 'TSImportType') {
+    const qualifier = node.qualifier;
+    if (qualifier?.type === 'Identifier' && qualifier.name === 'RedactedText') return true;
+    if (qualifier?.type === 'TSQualifiedName' && qualifier.right?.name === 'RedactedText') {
+      return true;
+    }
+  }
+  for (const [key, child] of Object.entries(node)) {
+    if (key === 'parent' || key === 'loc' || key === 'range') continue;
+    if (mentionsRedactedTextName(child, seen)) return true;
+  }
+  return false;
+}
+
+/** True when `type` is, or contains, the RedactedText brand. Bounded in depth and node count. */
+function typeContainsBrand(checker, root) {
+  const seen = new Set();
+  const visit = (type, depth) => {
+    if (seen.has(type) || seen.size > MAX_TYPE_NODES || depth > MAX_TYPE_DEPTH) return false;
+    seen.add(type);
+    if (type.aliasSymbol?.name === 'RedactedText') return true;
+    if (type.isUnionOrIntersection()) return type.types.some((member) => visit(member, depth));
+    if ((type.flags & ts.TypeFlags.Object) === 0) return false;
+    const properties = type.getProperties();
+    if (properties.some((property) => property.escapedName.startsWith(BRAND_PROPERTY_PREFIX))) {
+      return true;
+    }
+    if ((type.objectFlags & ts.ObjectFlags.Reference) !== 0) {
+      const args = checker.getTypeArguments(type);
+      if (args.length > 0) return args.some((arg) => visit(arg, depth + 1));
+    }
+    return (
+      properties.some((property) => visit(checker.getTypeOfSymbol(property), depth + 1)) ||
+      checker.getIndexInfosOfType(type).some((info) => visit(info.type, depth + 1)) ||
+      type
+        .getCallSignatures()
+        .some((signature) => visit(checker.getReturnTypeOfSignature(signature), depth + 1))
+    );
+  };
+  return visit(root, 0);
+}
+
+const noRedactedTextCast = {
+  meta: {
+    type: 'problem',
+    docs: { description: 'Disallow casting to RedactedText (N4)' },
+    schema: [],
+    messages: {
+      cast: 'Do not cast to RedactedText (N4). Get it from the redactor: session.redact(), session.redactToolOutput() or session.fromModel().',
+    },
+  },
+  create(context) {
+    const services = context.sourceCode.parserServices;
+    const typed = services?.program != null && typeof services.getTypeAtLocation === 'function';
+    const checker = typed ? services.program.getTypeChecker() : undefined;
+    const check = (node) => {
+      const target = node.typeAnnotation;
+      if (target.type === 'TSTypeReference' && target.typeName?.name === 'const') return;
+      let flagged = mentionsRedactedTextName(target);
+      if (!flagged && checker !== undefined) {
+        flagged = typeContainsBrand(checker, services.getTypeAtLocation(target));
+      }
+      if (flagged) context.report({ node, messageId: 'cast' });
+    };
+    return { TSAsExpression: check, TSTypeAssertion: check };
+  },
+};
+
+const watchtowerPlugin = {
+  rules: {
+    'no-relative-escape': noRelativeEscape,
+    'no-redacted-text-cast': noRedactedTextCast,
+  },
+};
 
 /**
  * Builds one config block per workspace.
@@ -230,12 +317,9 @@ export function boundaryConfigs({ rootDir }) {
     const rules = {
       'no-restricted-imports': 'off',
       '@typescript-eslint/no-restricted-imports': ['error', { patterns: restrictions }],
-      'no-restricted-syntax': [
-        'error',
-        ...syntaxRestrictions(restrictions),
-        ...REDACTED_TEXT_RESTRICTIONS,
-      ],
+      'no-restricted-syntax': ['error', ...syntaxRestrictions(restrictions)],
       'watchtower/no-relative-escape': ['error', { workspaceRoot: join(rootDir, dir) }],
+      'watchtower/no-redacted-text-cast': 'error',
     };
     if (forbidHttpGlobals === true) {
       rules['no-restricted-globals'] = [
@@ -248,7 +332,13 @@ export function boundaryConfigs({ rootDir }) {
     }
     return {
       name: `watchtower/boundaries/${dir}`,
+      // The globs are relative to the repo root even when a workspace config re-spreads this
+      // array: without basePath they would resolve against that workspace and never match
+      // (SR106-N1).
+      basePath: rootDir,
       files: [`${dir}/${SOURCE_GLOB}`],
+      // A workspace's own eslint config legitimately imports the root config.
+      ignores: [`${dir}/eslint.config.mjs`],
       plugins: { '@typescript-eslint': tseslint.plugin, watchtower: watchtowerPlugin },
       rules,
     };

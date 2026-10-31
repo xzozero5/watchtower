@@ -294,6 +294,103 @@ describe('createAuditedLlm: one audit row per provider call, on every path', () 
     });
   });
 
+  // SR106-N3: the provider is third-party code; none of these may skip the audit row.
+  it('a response without usage: one call, one row, cost unknown', async () => {
+    const t = counted({
+      respond: () => Promise.resolve({ text: 'fine', finishReason: 'stop' } as never),
+    });
+    const { run } = await t.llm.generate(t.call);
+    expect(t.providerCalls()).toBe(1);
+    expect(t.rows).toHaveLength(1);
+    expect(run).toMatchObject({ inputTokens: 0, outputTokens: 0, costUsd: null, status: 'ok' });
+  });
+
+  it('a response with usage = null or non-numeric counts: one call, one row', async () => {
+    for (const usage of [null, 'lots', { inputTokens: '5', outputTokens: {} }]) {
+      const t = counted({
+        respond: () => Promise.resolve({ ...okResponse, usage } as never),
+      });
+      await t.llm.generate(t.call);
+      expect(t.providerCalls()).toBe(1);
+      expect(t.rows).toHaveLength(1);
+      expect(t.rows[0]).toMatchObject({ inputTokens: 0, outputTokens: 0 });
+    }
+  });
+
+  it.each([
+    ['undefined', undefined],
+    ['null', null],
+    ['a string', 'text'],
+    ['a response whose text is not a string', { usage: okResponse.usage, text: 7 }],
+  ])('a provider that returns %s: a minimal error row, then fail closed', async (_label, value) => {
+    const t = counted({ respond: () => Promise.resolve(value as never) });
+    await expect(t.llm.generate(t.call)).rejects.toBeInstanceOf(AuditRecordError);
+    expect(t.providerCalls()).toBe(1);
+    expect(t.rows).toHaveLength(1);
+    expect(t.rows[0]).toMatchObject({ status: 'error', output: null, tools: [] });
+  });
+
+  it.each([
+    ['a string', 'boom'],
+    ['null', null],
+    ['an object without a name', { message: 'x' }],
+    ['an Error whose name is a number', Object.assign(new Error('x'), { name: 42 })],
+    [
+      'an Error whose name getter throws',
+      (() => {
+        const error = new Error('x');
+        Object.defineProperty(error, 'name', {
+          get() {
+            throw new TypeError('no name');
+          },
+        });
+        return error;
+      })(),
+    ],
+  ])(
+    'a provider that rejects with %s: one row, original value rethrown',
+    async (_label, thrown) => {
+      // eslint-disable-next-line @typescript-eslint/prefer-promise-reject-errors -- the point: non-Error reasons
+      const t = counted({ respond: () => Promise.reject(thrown) });
+      const caught = await t.llm.generate(t.call).then(
+        () => 'resolved',
+        (error: unknown) => error,
+      );
+      expect(caught).toBe(thrown);
+      expect(t.providerCalls()).toBe(1);
+      expect(t.rows).toHaveLength(1);
+      expect(t.rows[0]).toMatchObject({ status: 'error', output: null });
+      expect(typeof t.rows[0]?.errorCode).toBe('string');
+    },
+  );
+
+  it('a provider that throws synchronously: one row', async () => {
+    const rows: AiRunRecord[] = [];
+    let providerCalls = 0;
+    const llm = createAuditedLlm({
+      settings: { load: () => Promise.resolve(mockSettings()) },
+      providers: {
+        mock: {
+          kind: 'mock',
+          generate: () => {
+            providerCalls += 1;
+            throw new RangeError('sync');
+          },
+        },
+      },
+      sink: {
+        record: (run) => {
+          rows.push(run);
+          return Promise.resolve();
+        },
+      },
+    });
+    await expect(llm.generate(setup().call)).rejects.toBeInstanceOf(RangeError);
+    expect(providerCalls).toBe(1);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ errorCode: 'RangeError' });
+  });
+
   it('provider failure: one call, one error row, original error rethrown', async () => {
     const failure = new ProviderError('anthropic', 'APICallError', 500, true);
     const t = counted({ respond: () => Promise.reject(failure) });

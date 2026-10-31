@@ -55,6 +55,16 @@ const ADVERSARIAL: [string, string][] = [
   ['combining marks', repeat('á')],
   ['thai text', repeat('สวัสดีครับผมโทรมาเรื่องระบบ ')],
   ['thai digits', repeat('๐๘๑ ')],
+  ['digit and comma', repeat('1,')],
+  ['digit and newline', repeat('1\n')],
+  ['digit and underscore', repeat('1_')],
+  ['mixed separators', repeat('081-234 5678_')],
+  ['digit and invisible mark', repeat('1͏')],
+  ['digit and combining mark', repeat('1́')],
+  ['hangul filler', repeat('ㅤ')],
+  ['ideographic stops in a domain', repeat('a@b。')],
+  ['thai domain labels', repeat('a@ตัวอย่าง.')],
+  ['thai domain without dots', `a@${repeat('ตัวอย่าง', SIZE)}`],
   ['mixed', repeat('x1 2-3.4/5 (6) +7 a@b. [A_1] ')],
 ];
 
