@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
-import { createRedactor } from './redactor.js';
-import { isLuhnValid, isValidThaiNationalId, toAsciiDigits } from './validators.js';
+import { createRedactor, RedactionInputTooLargeError, RedactionScopeError } from './redactor.js';
+import { buildView } from './normalize.js';
+import { isLuhnValid, isValidThaiNationalId } from './validators.js';
 
 // Independent of the production checksum code, so a bug there cannot hide itself.
 function thaiId(first12: string): string {
@@ -27,7 +28,7 @@ const ID = thaiId('110170023067'); // 13 digits, valid checksum
 const redactor = createRedactor({
   names: () => ['สมชาย ใจดี', 'Nattaya Wong', 'Jo'],
 });
-const redact = (text: string) => redactor.session().redact(text);
+const redact = (text: string) => redactor.session({ scope: 'ticket:test' }).redact(text);
 
 describe('validators', () => {
   it('validates the Thai national ID checksum', () => {
@@ -45,7 +46,8 @@ describe('validators', () => {
   });
 
   it('maps Thai digits to ASCII without changing length', () => {
-    expect(toAsciiDigits('๐๘๑-๒๓๔-๕๖๗๘')).toBe('081-234-5678');
+    expect(buildView('๐๘๑-๒๓๔-๕๖๗๘').text).toBe('081-234-5678');
+    expect(buildView('๐๘๑-๒๓๔-๕๖๗๘').text).toHaveLength('๐๘๑-๒๓๔-๕๖๗๘'.length);
   });
 });
 
@@ -178,21 +180,29 @@ describe('names from the dictionary', () => {
 
   it('uses word boundaries for Latin names and ignores names that are too short', () => {
     const local = createRedactor({ names: () => ['Ann', 'Jo'] });
-    const out = local.session().redact('Ann met Annabel and Jo joined; Joanna stayed');
+    const out = local
+      .session({ scope: 'ticket:test' })
+      .redact('Ann met Annabel and Jo joined; Joanna stayed');
     expect(out).toBe('[NAME_1] met Annabel and Jo joined; Joanna stayed');
   });
 
   it('picks up new dictionary entries for the next session', () => {
     const names = ['Somsri'];
     const dynamic = createRedactor({ names: () => names });
-    expect(dynamic.session().redact('Somsri and Prasert')).toBe('[NAME_1] and Prasert');
+    expect(dynamic.session({ scope: 'ticket:test' }).redact('Somsri and Prasert')).toBe(
+      '[NAME_1] and Prasert',
+    );
     names.push('Prasert');
-    expect(dynamic.session().redact('Somsri and Prasert')).toBe('[NAME_1] and [NAME_2]');
+    expect(dynamic.session({ scope: 'ticket:test' }).redact('Somsri and Prasert')).toBe(
+      '[NAME_1] and [NAME_2]',
+    );
   });
 
   it('escapes regex characters in names', () => {
     const local = createRedactor({ names: () => ['A.B. (Cho)'], matchNameParts: false });
-    expect(local.session().redact('from A.B. (Cho) today')).toBe('from [NAME_1] today');
+    expect(local.session({ scope: 'ticket:test' }).redact('from A.B. (Cho) today')).toBe(
+      'from [NAME_1] today',
+    );
   });
 });
 
@@ -221,43 +231,51 @@ describe('false-positive guards', () => {
 });
 
 describe('mapping and restore', () => {
-  it('restores originals from the mapping', () => {
-    const session = redactor.session();
+  it('restores originals from the session', () => {
+    const session = redactor.session({ scope: 'ticket:test' });
     const text = `คุณสมชาย ใจดี โทร 0812345678 อีเมล a@b.com บัตร ${ID}`;
     const redacted = session.redact(text);
     expect(redacted).toBe('คุณ[NAME_1] โทร [PHONE_1] อีเมล [EMAIL_1] บัตร [THAI_ID_1]');
-    expect(session.restore(redacted)).toBe(text);
-    expect(session.restore('answer for [EMAIL_1] and [PHONE_9]')).toBe(
-      'answer for a@b.com and [PHONE_9]',
-    );
+    expect(session.restore(redacted)).toEqual({ text, needsReview: false, unresolved: [] });
+    const unknown = session.restore('answer for [EMAIL_1] and [PHONE_9]');
+    expect(unknown.text).toBe('answer for a@b.com and [PHONE_9]');
+    expect(unknown).toMatchObject({ needsReview: true, unresolved: ['[PHONE_9]'] });
   });
 
-  it('keeps the mapping out of the redacted text', () => {
-    const session = redactor.session();
+  it('keeps the original values out of the redacted text', () => {
+    const session = redactor.session({ scope: 'ticket:test' });
     const redacted = session.redact(`mail a@b.com or call 0812345678 (${ID})`);
-    for (const original of Object.values(session.mapping())) {
-      expect(redacted).not.toContain(original);
+    for (const entry of Object.values(session.snapshot().tokens)) {
+      expect(redacted).not.toContain(entry.value);
     }
   });
 
-  it('can restore in a later session from a stored mapping, and continues numbering', () => {
-    const first = redactor.session();
+  it('can restore in a later session from a stored snapshot, and continues numbering', () => {
+    const first = redactor.session({ scope: 'ticket:test' });
     first.redact('a@b.com');
-    const later = redactor.session(first.mapping());
-    expect(later.restore('hello [EMAIL_1]')).toBe('hello a@b.com');
+    const later = redactor.session({ scope: 'ticket:test', snapshot: first.snapshot() });
+    expect(later.restore('hello [EMAIL_1]').text).toBe('hello a@b.com');
     expect(later.redact('c@d.com a@b.com')).toBe('[EMAIL_2] [EMAIL_1]');
   });
 
+  it('refuses a snapshot from another scope', () => {
+    const first = redactor.session({ scope: 'ticket:one' });
+    first.redact('a@b.com');
+    expect(() => redactor.session({ scope: 'ticket:two', snapshot: first.snapshot() })).toThrow(
+      RedactionScopeError,
+    );
+  });
+
   it('escapes token-shaped input so a restore cannot expand it', () => {
-    const session = redactor.session();
+    const session = redactor.session({ scope: 'ticket:test' });
     const text = 'literal [EMAIL_1] next to a@b.com';
     const redacted = session.redact(text);
     expect(redacted).toBe('literal [LITERAL_1] next to [EMAIL_1]');
-    expect(session.restore(redacted)).toBe(text);
+    expect(session.restore(redacted).text).toBe(text);
   });
 
   it('reports counts without original values', () => {
-    const session = redactor.session();
+    const session = redactor.session({ scope: 'ticket:test' });
     session.redact('a@b.com a@b.com 0812345678');
     const report = session.report();
     expect(report).toEqual({ total: 3, byKind: { EMAIL: 2, PHONE: 1 } });
@@ -265,9 +283,16 @@ describe('mapping and restore', () => {
   });
 
   it('reports a total of zero for clean text', () => {
-    const session = redactor.session();
+    const session = redactor.session({ scope: 'ticket:test' });
     session.redact('nothing to see');
     expect(session.report()).toEqual({ total: 0, byKind: {} });
+  });
+
+  it('refuses input over the size limit instead of scanning it', () => {
+    const small = createRedactor({ maxInputChars: 100 });
+    expect(() => small.session({ scope: 's' }).redact('x'.repeat(101))).toThrow(
+      RedactionInputTooLargeError,
+    );
   });
 });
 
@@ -337,8 +362,8 @@ describe('properties (seeded)', () => {
     const random = mulberry32(20261031);
     for (let run = 0; run < 400; run += 1) {
       const { text } = sample(random);
-      const session = redactor.session();
-      expect(session.restore(session.redact(text))).toBe(text);
+      const session = redactor.session({ scope: 'ticket:test' });
+      expect(session.restore(session.redact(text), 'internal').text).toBe(text);
     }
   });
 
@@ -346,7 +371,7 @@ describe('properties (seeded)', () => {
     const random = mulberry32(7);
     for (let run = 0; run < 400; run += 1) {
       const { text, secrets } = sample(random);
-      const out = redactor.session().redact(text);
+      const out = redactor.session({ scope: 'ticket:test' }).redact(text);
       for (const secret of secrets) expect(out).not.toContain(secret);
     }
   });
@@ -355,11 +380,11 @@ describe('properties (seeded)', () => {
     const random = mulberry32(99);
     for (let run = 0; run < 200; run += 1) {
       const { text } = sample(random);
-      const out = redactor.session().redact(text);
-      expect(redactor.session().redact(text)).toBe(out);
+      const out = redactor.session({ scope: 'ticket:test' }).redact(text);
+      expect(redactor.session({ scope: 'ticket:test' }).redact(text)).toBe(out);
       // A second pass over the output only escapes its tokens; it round-trips and adds no PII kinds.
-      const again = redactor.session();
-      expect(again.restore(again.redact(out))).toBe(out);
+      const again = redactor.session({ scope: 'ticket:test' });
+      expect(again.restore(again.redact(out), 'internal').text).toBe(out);
       expect(Object.keys(again.report().byKind).filter((kind) => kind !== 'LITERAL')).toEqual([]);
     }
   });
@@ -369,7 +394,7 @@ describe('properties (seeded)', () => {
     for (let run = 0; run < 200; run += 1) {
       let text = '';
       for (let i = 0; i < 60; i += 1) text += String.fromCodePoint(Math.floor(random() * 0x2fff));
-      expect(() => redactor.session().redact(text)).not.toThrow();
+      expect(() => redactor.session({ scope: 'ticket:test' }).redact(text)).not.toThrow();
     }
   });
 });

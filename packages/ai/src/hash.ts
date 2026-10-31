@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto';
+import { createHash, createHmac } from 'node:crypto';
 
 import type { LlmRequest } from './contract.js';
 
@@ -33,8 +33,26 @@ export function hashJson(value: unknown): string {
 }
 
 /**
- * Hash of what the model would see. It leaves out the model id and the tier, so changing the
- * settings does not change which canned answer a test gets.
+ * Keyed hash of the redacted input for the audit row (R-7). Redaction has known gaps, so the
+ * input may still hold PII; a plain sha256 of a short or guessable input could be reversed by
+ * brute force. With a server-side key the hash only supports "same input?" lookups for whoever
+ * holds the key. Not `hashLlmInput`, which is unkeyed and exists for mock-rule matching only.
+ */
+export function hmacInputHash(
+  hmacKey: string,
+  request: Pick<LlmRequest, 'system' | 'messages'>,
+): string {
+  const input = canonicalJson({
+    system: request.system,
+    messages: request.messages.map((message) => ({ role: message.role, content: message.content })),
+  });
+  return createHmac('sha256', hmacKey).update(input, 'utf8').digest('hex');
+}
+
+/**
+ * Unkeyed hash of what the model would see, for the mock provider's rules. It leaves out the model
+ * id and the tier, so changing the settings does not change which canned answer a test gets. Do
+ * not store it: audit rows use `hmacInputHash`.
  */
 export function hashLlmInput(request: Pick<LlmRequest, 'system' | 'messages'>): string {
   return hashJson({

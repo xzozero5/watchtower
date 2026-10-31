@@ -28,6 +28,7 @@
 7. **ที่ยังไม่ครอบคลุม `[ASSUMED]`:** `to` (อีเมลผู้รับ) ยังเป็น plaintext ใน payload ระหว่าง `pending`/ใน Redis — เป็น PII แต่ไม่ใช่ credential · การหมุน `APP_ENCRYPTION_KEY` ทำให้งานที่รออยู่เปิดไม่ได้ (ถูกทิ้ง) ยังไม่มี key versioning · ผู้ที่ได้ทั้ง DB และ `APP_ENCRYPTION_KEY` ยังอ่านได้ (ADR-004: เก็บ key แยกจาก backup)
 
 ## Options considered
+
 - **A — คงไว้: enqueue หลัง commit (`afterCommit`)** — ง่ายสุด แต่ผิด PRD §8.3: งานหายเมื่อ Redis ล่มหรือ process ตายระหว่างสองขั้น
 - **B — enqueue ใน transaction (ก่อน commit)** — ถ้า commit ล้มเหลวทีหลังจะมีงานที่ไม่มีข้อมูลรองรับ (ส่งอีเมลของ token ที่ไม่มีจริง) และผูก request กับความพร้อมของ Redis
 - **C — outbox ใน DB + relay ใน api process** — ทดสอบง่ายกว่า แต่ api บน Cloud Run ถูกลด CPU เมื่อไม่มี request งานค้างจึงไม่ถูกส่ง และ api ต้องรู้จัก BullMQ เพิ่ม
@@ -35,6 +36,7 @@
 - **E — Postgres `LISTEN/NOTIFY` หรือ logical replication (CDC)** — latency ต่ำกว่า polling แต่ซับซ้อนกว่า (connection ค้าง, ต้องมี fallback polling อยู่ดี) · เลื่อนไว้ถ้า latency 1 s ไม่พอ
 
 ## Consequences
+
 - **At-least-once ไม่ใช่ exactly-once:** ถ้า relay ตายระหว่าง `queue.add` กับ `UPDATE … sent` แถวจะถูกส่งซ้ำ · `jobId` กันซ้ำได้ตราบที่ job เดิมยังอยู่ใน Redis · อีเมลใช้ `removeOnComplete: true` ดังนั้นถ้า job แรกส่งเสร็จและถูกลบก่อนส่งซ้ำ ผู้รับอาจได้ 2 ฉบับ (หน้าต่างเล็กมาก ยอมรับสำหรับ magic link) · consumer ของงานที่ซ้ำไม่ได้ (ตอบลูกค้า) ต้องทำ idempotency ของตัวเองด้วย `external_id`/`delivery_status`
 - **Latency เพิ่ม** ≤ `OUTBOX_POLL_INTERVAL_MS` (ปกติไม่ถึง 1–2 s) · AC ที่กำหนดเวลา (AC-1: ticket ภายใน 10 s) ไม่กระทบเพราะ ticket ไม่ผ่านคิว
 - **worker หยุด = งานค้างใน DB** ไม่หาย · มี `outboxBacklog()` สำหรับ log/alert (relay เขียน warning ทุกนาทีขณะส่งไม่ได้) · health check ที่ดูอายุแถวเก่าสุดยังไม่ทำ `[ASSUMED]` ทำพร้อม metrics ใน phase ถัดไป
@@ -46,6 +48,7 @@
 - ต้องตรวจซ้ำ: เมื่อมี consumer ที่ต้อง exactly-once จริง (ส่งข้อความลูกค้า) · เมื่อ latency polling เริ่มไม่พอ · key versioning ก่อนมีการหมุน `APP_ENCRYPTION_KEY` จริง (T-116)
 
 ## Links
+
 - PRD §8.3 (at-least-once, idempotent ingestion) · `docs/04-ARCHITECTURE.md` §2, §3, §11 · BACKLOG T-013
 - โค้ด: `packages/db/migrations/0003_followups_outbox.sql`, `0005_security.sql`, `packages/db/src/outbox.ts`, `packages/shared/src/secret-box.ts`, `apps/worker/src/processors/email.ts`, `apps/api/src/queue/queue.module.ts`, `apps/worker/src/outbox-relay.ts`
 - Test: `packages/db/src/outbox.integration.test.ts`, `apps/worker/src/outbox-relay.integration.test.ts`, `apps/api/src/queue/outbox.integration.test.ts`

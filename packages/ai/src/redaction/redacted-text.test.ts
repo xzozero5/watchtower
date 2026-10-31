@@ -60,7 +60,7 @@ describe('RedactedText (N4 enforced by the compiler)', () => {
   });
 
   it('accepts what the redactor returns, and the type is not assignable back from string', () => {
-    const redacted = redactor.session().redact('hello');
+    const redacted = redactor.session({ scope: 'ticket:test' }).redact('hello');
     expectTypeOf(redacted).toEqualTypeOf<RedactedText>();
     expectTypeOf<string>().not.toExtend<RedactedText>();
     expectTypeOf<RedactedText>().toExtend<string>();
@@ -69,7 +69,7 @@ describe('RedactedText (N4 enforced by the compiler)', () => {
   });
 
   it('keeps redacted text redacted when joined', () => {
-    const session = redactor.session();
+    const session = redactor.session({ scope: 'ticket:test' });
     const joined = joinRedacted([session.redact('a@b.com'), session.redact('x')], '\n\n');
     expect(joined).toBe('[EMAIL_1]\n\nx');
     expectTypeOf(joined).toEqualTypeOf<RedactedText>();

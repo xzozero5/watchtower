@@ -49,6 +49,9 @@ export function mockSettings(): AiSettings {
       light: { provider: 'mock', model: 'mock-light' },
     },
     agentTiers: {},
+    // Fixed on purpose: the mock provider holds no real data. Real settings carry a server-side
+    // value from the environment or the credential store.
+    inputHashKey: 'mock-only-input-hash-value-0000000000',
     embedding: { provider: 'mock', model: 'mock-embedding', dimensions: 16 },
     prices: {
       'mock-deep': { inputUsdPerMTok: 0, outputUsdPerMTok: 0 },

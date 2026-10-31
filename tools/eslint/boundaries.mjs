@@ -82,6 +82,21 @@ export const WORKSPACES = {
   'packages/ui': { name: '@watchtower/ui', allow: [SHARED], forbid: ['persistence'] },
 };
 
+// N4: a value of the branded type RedactedText may only come from the redactor. The single mint
+// point in packages/ai/src/redaction/redacted-text.ts carries the only eslint-disable for this.
+// Aliases (`type R = RedactedText; x as R`) are not caught; reviewers and the security review are
+// the backstop for those.
+const REDACTED_TEXT_RESTRICTIONS = [
+  'TSAsExpression[typeAnnotation.typeName.name="RedactedText"]',
+  'TSAsExpression[typeAnnotation.elementType.typeName.name="RedactedText"]',
+  'TSTypeAssertion[typeAnnotation.typeName.name="RedactedText"]',
+  'TSTypeAssertion[typeAnnotation.elementType.typeName.name="RedactedText"]',
+].map((selector) => ({
+  selector,
+  message:
+    'Do not cast to RedactedText (N4). Get it from the redactor: session.redact(), session.redactToolOutput() or session.fromModel().',
+}));
+
 const moduleRegexSource = (modules) => `^(?:${modules.join('|')})(?:${SLASH}.*)?$`;
 
 const workspaceFragment = (name) => name.replace('/', SLASH);
@@ -188,7 +203,11 @@ export function boundaryConfigs({ rootDir }) {
     const rules = {
       'no-restricted-imports': 'off',
       '@typescript-eslint/no-restricted-imports': ['error', { patterns: restrictions }],
-      'no-restricted-syntax': ['error', ...syntaxRestrictions(restrictions)],
+      'no-restricted-syntax': [
+        'error',
+        ...syntaxRestrictions(restrictions),
+        ...REDACTED_TEXT_RESTRICTIONS,
+      ],
       'watchtower/no-relative-escape': ['error', { workspaceRoot: join(rootDir, dir) }],
     };
     if (dir === 'packages/ai' && forbid.includes('http')) {

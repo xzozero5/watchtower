@@ -306,16 +306,16 @@ importers:
   packages/ai:
     dependencies:
       '@ai-sdk/anthropic':
-        specifier: ^4.0.94
+        specifier: 4.0.94
         version: 4.0.94(zod@4.6.7)
       '@ai-sdk/google-vertex':
-        specifier: ^5.0.129
+        specifier: 5.0.129
         version: 5.0.129(zod@4.6.7)
       '@watchtower/shared':
         specifier: workspace:*
         version: link:../shared
       ai:
-        specifier: ^7.0.159
+        specifier: 7.0.159
         version: 7.0.159(zod@4.6.7)
       zod:
         specifier: ^4.6.7

@@ -21,10 +21,10 @@
     "eval": "node -e \"console.error('eval is not implemented yet (T-302)');process.exit(1)\""
   },
   "dependencies": {
-    "@ai-sdk/anthropic": "^4.0.94",
-    "@ai-sdk/google-vertex": "^5.0.129",
+    "@ai-sdk/anthropic": "4.0.94",
+    "@ai-sdk/google-vertex": "5.0.129",
     "@watchtower/shared": "workspace:*",
-    "ai": "^7.0.159",
+    "ai": "7.0.159",
     "zod": "^4.6.7"
   },
   "devDependencies": {

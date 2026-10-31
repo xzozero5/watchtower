@@ -14,6 +14,7 @@ const settings: AiSettings = aiSettingsSchema.parse({
     light: { provider: 'vertex', model: 'fixture-light' },
   },
   agentTiers: { classifier: 'standard' },
+  inputHashKey: 'x'.repeat(32),
   embedding: { provider: 'vertex', model: 'fixture-embedding', dimensions: 768 },
   prices: { 'fixture-deep': { inputUsdPerMTok: 15, outputUsdPerMTok: 75 } },
 });

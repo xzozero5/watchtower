@@ -161,6 +161,11 @@ export const aiSettingsSchema = z.object({
     model: z.string().min(1),
     dimensions: z.number().int().positive(),
   }),
+  /**
+   * Server-side HMAC key for `AiRunRecord.inputHash`. Load it from the environment or the
+   * credential store, never log it, and rotate it under the usual key policy.
+   */
+  inputHashKey: z.string().min(32),
   /** Keyed by model id. A model without a price is metered with `costUsd: null`. */
   prices: z.record(z.string(), modelPriceSchema).default({}),
 });
@@ -184,7 +189,7 @@ export const aiRunRecordSchema = z.object({
   prompt: promptRefSchema,
   /** Names of the tools the run called, in order (`ToolCallRecord` carries the detail). */
   tools: z.array(z.string()),
-  /** sha256 of the redacted input (system + messages). Never the input itself. */
+  /** HMAC-SHA-256, keyed by the server-side hash key from settings, of the redacted input. */
   inputHash: z.string().regex(/^[0-9a-f]{64}$/),
   /** The model's answer, still in redacted (placeholder) form. Null when the run failed. */
   output: z.string().nullable(),

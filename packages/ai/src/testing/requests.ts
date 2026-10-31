@@ -12,7 +12,7 @@ export function buildLlmRequest(
   rawUserText = 'Hello from Somchai, reach me at somchai@example.com',
   overrides: Partial<Omit<LlmRequest, 'system' | 'messages'>> = {},
 ): { request: LlmRequest; restore: (text: string) => string } {
-  const session = createRedactor({ names: () => ['Somchai'] }).session();
+  const session = createRedactor({ names: () => ['Somchai'] }).session({ scope: 'ticket:test' });
   const request: LlmRequest = {
     model: 'fixture-model-standard',
     tier: 'standard',
@@ -21,13 +21,13 @@ export function buildLlmRequest(
     messages: [{ role: 'user', content: session.redact(rawUserText) }],
     ...overrides,
   };
-  return { request, restore: (text) => session.restore(text) };
+  return { request, restore: (text) => session.restore(text).text };
 }
 
 export function buildEmbeddingRequest(
   values: readonly string[],
   model = 'fixture-embedding',
 ): EmbeddingRequest {
-  const session = createRedactor().session();
+  const session = createRedactor().session({ scope: 'ticket:test' });
   return { model, values: values.map((value) => session.redact(value)) };
 }

@@ -2,7 +2,7 @@ export const packageName = '@watchtower/ai';
 
 export * from './contract.js';
 export * from './audited.js';
-export { hashJson, hashLlmInput, sha256Hex } from './hash.js';
+export { hashJson, hmacInputHash, sha256Hex } from './hash.js';
 export * from './models.js';
 export * from './prompts.js';
 export * from './tools.js';
@@ -10,12 +10,25 @@ export * from './tools.js';
 export { joinRedacted, type RedactedText } from './redaction/redacted-text.js';
 export {
   createRedactor,
+  RedactionInputTooLargeError,
+  RedactionScopeError,
   type RedactionReport,
   type RedactionSession,
+  type RedactionSnapshot,
   type Redactor,
   type RedactorOptions,
+  type RestoreAudience,
+  type RestoreResult,
+  type SessionOptions,
+  type TokenEntry,
+  type TokenOrigin,
 } from './redaction/redactor.js';
-export { REDACTION_KINDS, type RedactionKind } from './redaction/detectors.js';
+export {
+  DictionaryTooLargeError,
+  MAX_DICTIONARY_ENTRIES,
+  REDACTION_KINDS,
+  type RedactionKind,
+} from './redaction/detectors.js';
 
 export { createAnthropicProvider, type AnthropicProviderConfig } from './providers/anthropic.js';
 export {

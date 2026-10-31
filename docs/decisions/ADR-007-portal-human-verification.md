@@ -10,8 +10,8 @@
 
 ```ts
 interface HumanVerificationProvider {
-  readonly name: string;                      // 'pow-sha256' วันนี้
-  challenge(): Promise<HumanChallenge>;       // สิ่งที่หน้า web ต้องแก้ (GET /v1/portal/challenge)
+  readonly name: string; // 'pow-sha256' วันนี้
+  challenge(): Promise<HumanChallenge>; // สิ่งที่หน้า web ต้องแก้ (GET /v1/portal/challenge)
   verify(submission, context): Promise<VerificationResult>; // ok | reason (audit ได้)
 }
 ```
@@ -34,12 +34,14 @@ interface HumanVerificationProvider {
 **ไม่มี "mock mode" ที่ผ่านเสมอ** — `docs/04-ARCHITECTURE.md` §6 เคยร่างว่า human verification ผ่านเสมอใน mock · เมื่อทำ self-hosted ไม่มีปลายทางภายนอกให้ mock แล้ว จึงใช้ difficulty ต่ำ (`PORTAL_POW_DIFFICULTY_BITS=8`) กับ `PORTAL_MIN_FILL_SECONDS=0` ใน test/e2e แทน ไม่มีสวิตช์ปิดการตรวจที่อาจหลุดขึ้น production
 
 ## Options considered
+
 - **A — Turnstile/hCaptcha ตั้งแต่ต้น** — กันบอทดีที่สุดและผู้ใช้ไม่ต้องรอ PoW · แต่ปลายทาง network ใหม่ + ส่ง IP ให้ vendor (PDPA/N1) และต้องมี credential จริง → `[ASK-HUMAN]` ไม่อยู่ในอำนาจ `po`
 - **B (เลือก) — PoW + honeypot + rate limit self-hosted หลัง interface** — ไม่มีปลายทางใหม่, ไม่มี dependency, ทดสอบอัตโนมัติได้ครบ · แลกกับกันบอทที่มี GPU/แรงเยอะไม่ได้ และผู้ใช้รอ 1–3 วินาที
 - **C — rate limit อย่างเดียว** — ง่ายสุด แต่ไม่เพิ่มต้นทุนต่อคำขอให้บอท
 - **D — ให้ email ยืนยันก่อนสร้าง ticket (double opt-in)** — กัน email ปลอมได้จริง แต่เพิ่ม friction ทุกครั้งและ AC-1 ต้องการ ticket ภายใน 10 วินาที · เก็บไว้เป็นทางเลือกถ้าพบการใช้ในทางที่ผิด
 
 ## Consequences
+
 - **CSRF ของ endpoint สาธารณะ:** portal ไม่ใช้ cookie เลย — submit ไม่ต้อง auth, ส่วน tracking ใช้ header `X-Portal-Token` ที่ web ใส่เอง (ไม่ใช่ credential ที่ browser แนบอัตโนมัติ) จึงไม่มี ambient authority ให้ CSRF โจมตี · `originCheck` เดิมยังบล็อก `Origin` แปลกปลอมบน POST · CORS allow-list ยังเป็น `APP_URL` เดียว (เพิ่มเฉพาะ header `x-portal-token`) `[ASSUMED]`
 - ความเสี่ยงที่ยอมรับ: ใครก็ส่งฟอร์มโดยใช้อีเมลของคนอื่นได้ (ผู้รับจะได้อีเมล confirmation 1 ฉบับต่อ ticket สูงสุด 5 ฉบับ/ชม.) · tracking link ส่งทางอีเมลเท่านั้น ไม่คืนใน response ผู้ส่งจึงไม่ได้สิทธิ์อ่าน ticket ของคนอื่น
 - **อีเมลที่ไม่ได้ยืนยัน (T-010 C-4, C-11, C-13) `[ASSUMED]`:**
@@ -52,6 +54,7 @@ interface HumanVerificationProvider {
 - ต้องตรวจซ้ำ: ก่อนเปิดลิงก์แยกต่อ org (R-9.1 "per org") · เมื่อเจ้าของตัดสินเรื่อง hosted provider · ตอน T-010 (`security-reviewer`)
 
 ## Links
+
 - PRD §4.9 R-9.1–9.3, §8.2 · `docs/06-UI-SPEC.md` §10, §17 Q5/Q6 · HANDOFF "PO ตัดสินแทนเจ้าของ" #22 · BACKLOG T-007
 - ADR-004 (ที่มาของกุญแจ), ADR-005 (rate limiter/audit/CSRF ของ staff), ADR-006 (outbox ที่ใช้ส่งอีเมล)
 - โค้ด (ดูไฟล์จริงใน `apps/api/src/portal/`): `human-verification.ts`, `pow.ts`, `self-hosted-verification.ts`

@@ -1,14 +1,3 @@
-/**
- * Maps Thai digits (U+0E50-U+0E59) and full-width digits (U+FF10-U+FF19) to ASCII. Each is one
- * UTF-16 code unit, so the result has the same length and the same offsets as the input.
- */
-export function toAsciiDigits(text: string): string {
-  return text.replace(/[๐-๙０-９]/g, (char) => {
-    const code = char.charCodeAt(0);
-    return String(code >= 0xff10 ? code - 0xff10 : code - 0x0e50);
-  });
-}
-
 /** Digits of `value` only (drops spaces, dashes and anything else). */
 export function digitsOnly(value: string): string {
   return value.replace(/\D/g, '');

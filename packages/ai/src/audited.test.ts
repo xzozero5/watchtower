@@ -1,7 +1,18 @@
 import { describe, expect, it } from 'vitest';
 
-import { aiRunRecordSchema, type AiRunRecord, type AiSettings } from './contract.js';
 import {
+  aiRunRecordSchema,
+  aiSettingsSchema,
+  type AiRunRecord,
+  type AiSettings,
+  type LlmProvider,
+  type LlmResponse,
+} from './contract.js';
+import { createHmac } from 'node:crypto';
+import { canonicalJson, sha256Hex } from './hash.js';
+import {
+  AuditInputError,
+  AuditRecordError,
   AuditWriteError,
   createAuditedLlm,
   ProviderUnavailableError,
@@ -30,7 +41,7 @@ function setup(options: { settings?: AiSettings; sinkFails?: boolean } = {}) {
     },
     now: () => (clock += 25),
   });
-  const session = createRedactor().session();
+  const session = createRedactor().session({ scope: 'ticket:test' });
   const call: AgentCall = {
     agent: 'classifier',
     prompt: TEST_PROMPT,
@@ -155,5 +166,209 @@ describe('createAuditedLlm', () => {
   it('fails closed: no answer is returned when the audit row cannot be written', async () => {
     const { llm, call } = setup({ sinkFails: true });
     await expect(llm.generate(call)).rejects.toBeInstanceOf(AuditWriteError);
+  });
+});
+
+// R-1: the provider call count and the audit row count must agree on every path.
+describe('createAuditedLlm: one audit row per provider call, on every path', () => {
+  const okResponse: LlmResponse = {
+    text: 'fine',
+    finishReason: 'stop',
+    usage: { inputTokens: 10, outputTokens: 5 },
+    model: 'mock-light',
+  };
+
+  function counted(options: { respond?: () => Promise<LlmResponse>; sinkFails?: boolean } = {}) {
+    const rows: AiRunRecord[] = [];
+    const sinkAttempts: AiRunRecord[] = [];
+    let providerCalls = 0;
+    const provider: LlmProvider = {
+      kind: 'mock',
+      generate: () => {
+        providerCalls += 1;
+        return options.respond?.() ?? Promise.resolve(okResponse);
+      },
+    };
+    const llm = createAuditedLlm({
+      settings: { load: () => Promise.resolve(mockSettings()) },
+      providers: { mock: provider },
+      sink: {
+        record: (run) => {
+          sinkAttempts.push(run);
+          if (options.sinkFails === true) return Promise.reject(new Error('db down'));
+          rows.push(run);
+          return Promise.resolve();
+        },
+      },
+    });
+    const { call } = setup();
+    return {
+      llm,
+      call,
+      rows,
+      sinkAttempts,
+      providerCalls: () => providerCalls,
+    };
+  }
+
+  it('malformed prompt hash: fails before the provider is called, nothing to audit', async () => {
+    const t = counted();
+    const bad = { ...t.call, prompt: { ...t.call.prompt, hash: 'not-a-hash' } };
+    await expect(t.llm.generate(bad)).rejects.toBeInstanceOf(AuditInputError);
+    expect(t.providerCalls()).toBe(0);
+    expect(t.sinkAttempts).toHaveLength(0);
+  });
+
+  it.each([
+    ['prompt version 0', { prompt: { id: 'classifier', version: 0, hash: 'a'.repeat(64) } }],
+    ['prompt id with spaces', { prompt: { id: 'Bad Id', version: 1, hash: 'a'.repeat(64) } }],
+    ['negative redaction total', { redaction: { total: -1, byKind: {} } }],
+  ])('%s: fails before the provider is called', async (_name, patch) => {
+    const t = counted();
+    await expect(t.llm.generate({ ...t.call, ...patch })).rejects.toBeInstanceOf(AuditInputError);
+    expect(t.providerCalls()).toBe(0);
+    expect(t.sinkAttempts).toHaveLength(0);
+  });
+
+  it.each([
+    ['above 1', () => 7, 1],
+    ['below 0', () => -3, 0],
+    ['NaN', () => Number.NaN, null],
+    ['Infinity', () => Number.POSITIVE_INFINITY, null],
+    ['not a number', () => 'high' as unknown as number, null],
+    [
+      'throws',
+      () => {
+        throw new Error('parse failed');
+      },
+      null,
+    ],
+  ])(
+    'confidence %s: one call, one ok row, value sanitised',
+    async (_name, confidence, expected) => {
+      const t = counted();
+      const { run } = await t.llm.generate({ ...t.call, confidence });
+      expect(t.providerCalls()).toBe(1);
+      expect(t.rows).toHaveLength(1);
+      expect(run).toMatchObject({ status: 'ok', confidence: expected });
+    },
+  );
+
+  it('toolCalls that throws: one call, one row, no tools', async () => {
+    const t = counted();
+    const { run } = await t.llm.generate({
+      ...t.call,
+      toolCalls: () => {
+        throw new Error('registry gone');
+      },
+    });
+    expect(t.providerCalls()).toBe(1);
+    expect(t.rows).toHaveLength(1);
+    expect(run.tools).toEqual([]);
+  });
+
+  it('odd usage numbers from a provider are sanitised, not fatal', async () => {
+    const t = counted({
+      respond: () =>
+        Promise.resolve({ ...okResponse, usage: { inputTokens: Number.NaN, outputTokens: -4.5 } }),
+    });
+    const { run } = await t.llm.generate(t.call);
+    expect(t.providerCalls()).toBe(1);
+    expect(t.rows).toHaveLength(1);
+    expect(run).toMatchObject({ inputTokens: 0, outputTokens: 0, status: 'ok' });
+  });
+
+  it('a record that is still invalid after sanitising: a minimal error row, then fail closed', async () => {
+    const t = counted();
+    const broken = { ...t.call, toolCalls: () => [{ name: 42 }] as never };
+    await expect(t.llm.generate(broken)).rejects.toBeInstanceOf(AuditRecordError);
+    expect(t.providerCalls()).toBe(1);
+    expect(t.rows).toHaveLength(1);
+    expect(t.rows[0]).toMatchObject({
+      status: 'error',
+      errorCode: 'AuditRecordInvalid',
+      output: null,
+      tools: [],
+      inputTokens: 10,
+      outputTokens: 5,
+    });
+  });
+
+  it('provider failure: one call, one error row, original error rethrown', async () => {
+    const failure = new ProviderError('anthropic', 'APICallError', 500, true);
+    const t = counted({ respond: () => Promise.reject(failure) });
+    await expect(t.llm.generate(t.call)).rejects.toBe(failure);
+    expect(t.providerCalls()).toBe(1);
+    expect(t.rows).toHaveLength(1);
+    expect(t.rows[0]).toMatchObject({ status: 'error', errorCode: 'ProviderError' });
+  });
+
+  it('sink failure after a call: one call, one write attempt, no answer returned', async () => {
+    const t = counted({ sinkFails: true });
+    await expect(t.llm.generate(t.call)).rejects.toBeInstanceOf(AuditWriteError);
+    expect(t.providerCalls()).toBe(1);
+    expect(t.sinkAttempts).toHaveLength(1);
+  });
+
+  it('sink failure after a provider failure: both causes survive', async () => {
+    const failure = new Error('upstream');
+    const t = counted({ respond: () => Promise.reject(failure), sinkFails: true });
+    const error = await t.llm.generate(t.call).then(
+      () => undefined,
+      (caught: unknown) => caught,
+    );
+    expect(error).toBeInstanceOf(AuditWriteError);
+    expect(((error as Error).cause as AggregateError).errors).toHaveLength(2);
+    expect(t.providerCalls()).toBe(1);
+  });
+
+  it('every call is counted: N successful and failing calls leave exactly N rows', async () => {
+    let n = 0;
+    const t = counted({
+      respond: () =>
+        ++n % 3 === 0 ? Promise.reject(new Error('flaky')) : Promise.resolve(okResponse),
+    });
+    for (let i = 0; i < 9; i += 1) {
+      await t.llm
+        .generate({ ...t.call, confidence: i % 2 === 0 ? () => 99 : undefined })
+        .catch(() => undefined);
+    }
+    expect(t.providerCalls()).toBe(9);
+    expect(t.rows).toHaveLength(9);
+  });
+});
+
+// R-7: the audit hash is keyed.
+describe('createAuditedLlm: input hash is an HMAC with the server key', () => {
+  it('equals HMAC-SHA-256 of the canonical redacted input and is not a plain sha256', async () => {
+    const { llm, call } = setup();
+    const { run } = await llm.generate(call);
+    const canonical = canonicalJson({
+      system: call.system,
+      messages: call.messages.map((m) => ({ role: m.role, content: m.content })),
+    });
+    const key = mockSettings().inputHashKey;
+    expect(run.inputHash).toBe(createHmac('sha256', key).update(canonical, 'utf8').digest('hex'));
+    expect(run.inputHash).not.toBe(sha256Hex(canonical));
+  });
+
+  it('changes with the key and is stable for the same key', async () => {
+    const hashWith = async (key: string): Promise<string> => {
+      const { call } = setup();
+      const llm = createAuditedLlm({
+        settings: { load: () => Promise.resolve({ ...mockSettings(), inputHashKey: key }) },
+        providers: { mock: new MockLlmProvider() },
+        sink: { record: () => Promise.resolve() },
+      });
+      return (await llm.generate(call)).run.inputHash;
+    };
+    const a = await hashWith('a'.repeat(32));
+    expect(await hashWith('a'.repeat(32))).toBe(a);
+    expect(await hashWith('b'.repeat(32))).not.toBe(a);
+  });
+
+  it('settings without a long enough key are rejected', () => {
+    expect(() => aiSettingsSchema.parse({ ...mockSettings(), inputHashKey: 'short' })).toThrow();
+    expect(() => aiSettingsSchema.parse({ ...mockSettings(), inputHashKey: undefined })).toThrow();
   });
 });
