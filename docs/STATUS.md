@@ -35,6 +35,15 @@ snapshot สั้นสำหรับ cold start อยู่ที่ `HANDOF
 
 ## Log
 
+## 2026-11-01 03:10 (Asia/Bangkok) — frontend-dev + main thread — T-006 ปิด
+- ทำอะไร: workspace three-pane จริง (queue + filters/saved views ใน browser, J/K, pill "N new" จาก realtime, timeline แยก public/internal, composer + template/ตัวแปร + reply & set status, ticket detail/edit, AI sidebar placeholder, keyboard map `?`), login (SSO จาก provider config, magic link, break-glass, dev-login เฉพาะ mock + non-production), `/login/magic` อ่าน token จาก fragment, refresh single-flight + Web Locks ข้ามแท็บ (ADR-005), WS client backoff/4401/4403/4429, PWA manifest + `sw.js` (same-origin GET, ไม่ cache HTML/API, offline page), `packages/ui` เพิ่ม Input/Select/Textarea/Skeleton/Alert · layout 3 ระดับตาม UI spec §3.2
+- ไฟล์ที่แตะ: `apps/web/**`, `packages/ui/src/components/*`
+- test: main thread รันเองบน main + wip/t-006: lint, typecheck, test (web 252, ui 125 + ทุก package) ผ่าน · e2e 53 ผ่านด้วย API จำลอง (`page.route`/`routeWebSocket`) หลังแก้ test J/K ที่ flaky (repeat-each=4 → 124/124) `[TESTED]`
+- review: `po` merge ได้ ไม่มี P0 · P1 = WCAG 2.1.4 (ปิด single-key shortcut ไม่ได้) → T-120 ก่อน T-011 · P2/P3 → T-120, T-007, T-105, T-119, T-102, T-111
+- ค้าง: T-120
+- ไม่ยืนยัน: ยังไม่ได้ทดสอบกับ API จริง (T-009) `[UNVERIFIED]` · Web Locks ข้ามแท็บทดสอบด้วย lock manager จำลองเท่านั้น `[UNVERIFIED]` · SLA at-risk ฝั่ง UI ใช้ due − createdAt ไม่ใช่ business time `[ASSUMED]`
+- หมายเหตุ: `guard.py` บล็อกคำสั่ง shell ที่มีคำว่า `set` ตามด้วยคำว่า token ในข้อความเอกสาร (false positive ของกฎ N1) → เขียน entry นี้ด้วย Edit tool แทน ไม่ได้แก้ guard
+
 ## 2026-11-01 02:20 (Asia/Bangkok) — ux-designer + po + main thread — T-101 UI spec
 - ทำอะไร: `ux-designer` เขียน `docs/06-UI-SPEC.md` (§0–§17, ชี้ token ในโค้ดแทนการคัดลอกค่า) ล่วงหน้าเพื่อให้ T-006/T-007 และ Phase 1 ใช้อ้างอิง · `po` ตัดสิน open questions §17 (Q1–Q11) แทนเจ้าของ `[ASSUMED]` · main thread แก้ §6.5 (cap ไม่ใช่ set stage 2), §10 (human verification self-hosted, สถานะ merged ที่ลูกค้าเห็น)
 - ไฟล์ที่แตะ: `docs/06-UI-SPEC.md`, `HANDOFF.md` (PO ตัดสิน #21–23), `docs/BACKLOG.md` (T-101, T-007)
