@@ -4,7 +4,7 @@
 ทุก task ต้องผ่าน DoD ใน `docs/00-START-HERE.md` · อ้าง requirement ด้วย `R-x.y`/`AC-x` จาก `docs/01-PRD.md`
 
 ## Phase 0 — Foundation (เป้า: 2–3 วันทำงานของ AI)
-- [ ] T-000 **main thread ทำก่อนอื่น** — `git init` (ถ้ายังไม่มี), ตรวจ `.gitignore` ครอบ `.env*`, `node_modules`, `dist`, `*.local`, `logs/` (ยกเว้น `logs/daily/`), เปิด hook `git config core.hooksPath tools/githooks`, commit แผนทั้งหมด `docs: แผน Watchtower + AGENTS/CLAUDE + agents` — remote/push `[ASK-HUMAN]` ข้อ 1
+- [x] T-000 **main thread ทำก่อนอื่น** — `git init` (ถ้ายังไม่มี), ตรวจ `.gitignore` ครอบ `.env*`, `node_modules`, `dist`, `*.local`, `logs/` (ยกเว้น `logs/daily/`), เปิด hook `git config core.hooksPath tools/githooks`, commit แผนทั้งหมด `docs: แผน Watchtower + AGENTS/CLAUDE + agents` — remote/push `[ASK-HUMAN]` ข้อ 1
 - [ ] T-001 `architect` ยืนยัน ADR-001 กับโครงจริง, สร้างโครง monorepo (pnpm-workspace, turbo.json, tsconfig base, eslint/prettier shared), ร่าง `docs/04-ARCHITECTURE.md` (module map, boundary rules: `apps/*` ห้าม import ข้ามกันตรง ๆ, `packages/ai` ห้ามรู้จัก HTTP, `packages/channels` ห้ามรู้จัก DB), ESLint `no-restricted-imports` บังคับ boundary
 - [ ] T-002 `backend-dev` ∥ `apps/api` NestJS โครง (health, config module อ่าน env + validate ด้วย Zod, OpenAPI ที่ `/docs`, structured logger, OpenTelemetry), `packages/db` Drizzle + migration runner + `docker-compose.yml` (postgres+pgvector, redis, minio, api, worker, web, caddy) + `.env.example` — `docker compose up` แล้ว `GET /health` ตอบ
 - [ ] T-003 `frontend-dev` ∥ `apps/web` Next.js + Tailwind + shadcn/ui + design tokens เริ่มต้น (light/dark ตาม OS, density, severity ไม่ใช้สีอย่างเดียว) + layout three-pane เปล่า + ⌘K palette stub + Vitest/RTL + Playwright smoke
