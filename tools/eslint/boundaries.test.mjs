@@ -95,6 +95,13 @@ const VIOLATIONS = [
   // absolute paths and paths to files that do not exist are still caught
   ['packages/ai/src/a.ts', "import x from '../../does-not-exist/src/index.js';"],
   ['packages/ai/src/a.ts', "import x from '/repo/packages/db/src/index.js';"],
+  // RedactedText is created by the redactor only (N4, R-6)
+  ['packages/ai/src/a.ts', 'const x = raw as RedactedText;'],
+  ['packages/ai/src/a.ts', 'const x = raw as unknown as RedactedText;'],
+  ['packages/ai/src/a.ts', 'const x = <RedactedText>raw;'],
+  ['packages/ai/src/a.ts', 'const x = list as RedactedText[];'],
+  ['apps/api/src/a.ts', 'const x = text as RedactedText;'],
+  ['apps/worker/src/a.ts', 'const x = text as unknown as RedactedText[];'],
   // packages/shared is a leaf
   ['packages/shared/src/a.ts', "import x from '@watchtower/db';"],
   ['packages/shared/src/a.ts', "import x from 'node:https';"],
@@ -159,6 +166,9 @@ const ALLOWED = [
   ['packages/ai/src/a.ts', "import { x } from '../src/index.js';"],
   ['apps/web/src/a.ts', "import { x } from './api/client.js';"],
   ['apps/web/src/a.ts', "import { x } from '../src/index.js';"],
+  // Casts that do not target RedactedText stay legal.
+  ['packages/ai/src/a.ts', 'const x = raw as string;'],
+  ['apps/api/src/a.ts', 'const x = value as unknown as Record<string, string>;'],
   // Packages whose names only start like a forbidden one.
   ['packages/ai/src/a.ts', "import x from 'expressive';"],
   ['packages/ai/src/a.ts', "import x from 'nextra';"],
@@ -184,6 +194,13 @@ describe('the real root config', () => {
   it('applies the HTTP and DB rules to packages/ai', async () => {
     expect(await boundaryViolations(real, aiFile, "import x from 'express';")).not.toEqual([]);
     expect(await boundaryViolations(real, aiFile, "import x from 'pg';")).not.toEqual([]);
+  });
+
+  it('forbids casting to RedactedText outside the redactor (N4)', async () => {
+    const code =
+      "import type { RedactedText } from './x.js';\nexport const x = 'a' as RedactedText;";
+    const messages = await boundaryViolations(real, aiFile, code);
+    expect(messages.map((message) => message.ruleId)).toContain('no-restricted-syntax');
   });
 
   it('allows a declared workspace dependency', async () => {
