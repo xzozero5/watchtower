@@ -30,6 +30,7 @@ export const AUTH_ERROR_CODES = [
   'invalid_transition',
   'merge_not_allowed',
   'ticket_not_open',
+  'verification_failed',
 ] as const;
 export type AuthErrorCode = (typeof AUTH_ERROR_CODES)[number];
 
@@ -280,4 +281,11 @@ export const AUDIT_ACTIONS = {
   ticketReparent: 'ticket.reparent',
   ticketReply: 'ticket.reply',
   ticketNote: 'ticket.note',
+  portalTicketSubmit: 'portal.ticket.submit',
+  portalLinkResend: 'portal.tracking_link.resend',
+  portalLinkIssued: 'portal.tracking_link.issued',
+  portalLinksRevoke: 'portal.tracking_links.revoke',
+  portalVerificationFailed: 'portal.verification_failed',
+  portalRateLimited: 'portal.rate_limited',
+  portalAccessDenied: 'portal.access_denied',
 } as const;

@@ -2,3 +2,5 @@
 export * from './audit.js';
 export * from './auth.js';
 export * from './ticketing.js';
+// the client portal (T-007).
+export * from './portal.js';

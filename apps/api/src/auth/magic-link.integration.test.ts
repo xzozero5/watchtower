@@ -79,6 +79,7 @@ async function requestToken(email: string, ip?: string): Promise<string> {
   const jobs = await jobsFor(email);
   expect(jobs.length).toBe(before + 1);
   const payload = emailJobSchema.parse(jobs.at(-1)?.data);
+  if (payload.kind !== 'magic_link') throw new Error('expected a magic link email');
   return tokenFrom(payload.link);
 }
 
@@ -116,6 +117,7 @@ describe('requesting a link', () => {
     const [job] = await jobsFor(email);
     const payload = emailJobSchema.parse(job?.data);
     expect(payload).toMatchObject({ kind: 'magic_link', to: email, expiresInMinutes: 15 });
+    if (payload.kind !== 'magic_link') throw new Error('expected a magic link email');
     expect(payload.link.startsWith('http://localhost:3000/login/magic#token=')).toBe(true);
     expect(token).toHaveLength(43);
     // Idempotency key is derived from the hash, not the token.

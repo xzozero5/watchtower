@@ -2,15 +2,8 @@ import { emailJobSchema, type EmailJob } from '@watchtower/shared';
 import { UnrecoverableError, type Job } from 'bullmq';
 
 import type { Mailer, OutboundMessage } from '../mailer.js';
-
-function escapeHtml(value: string): string {
-  return value
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;')
-    .replaceAll("'", '&#39;');
-}
+import { escapeHtml } from './html.js';
+import { renderPortalEmail } from './portal-email.js';
 
 type MagicLinkJob = Extract<EmailJob, { kind: 'magic_link' }>;
 
@@ -43,11 +36,19 @@ function renderMagicLink(job: MagicLinkJob): OutboundMessage {
 }
 
 /**
- * Turns an email job into a message. All wording lives here, in one place (TH and EN). There is
- * one kind of email today; add a `switch (job.kind)` here when the second one arrives (T-007).
+ * Turns an email job into a message. All wording lives here, in one place (TH and EN): the magic
+ * link of T-004 and the client portal emails of T-007 (`portal-email.ts`).
  */
 export function renderEmail(job: EmailJob): OutboundMessage {
-  return renderMagicLink(job);
+  switch (job.kind) {
+    case 'magic_link':
+      return renderMagicLink(job);
+    case 'portal_confirmation':
+    case 'portal_update':
+    case 'portal_merged':
+    case 'portal_link':
+      return renderPortalEmail(job);
+  }
 }
 
 /**

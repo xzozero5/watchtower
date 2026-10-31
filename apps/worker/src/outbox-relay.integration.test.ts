@@ -143,6 +143,53 @@ describe('outbox relay in the worker', () => {
     });
   });
 
+  it('delivers a portal confirmation the api wrote: rendered in Thai, link intact, payload blanked', async () => {
+    redisUp = true;
+    const recipient = `portal-${randomBytes(4).toString('hex')}@example.com`;
+    const jobId = `portal-confirm-${randomBytes(4).toString('hex')}`;
+    const trackingUrl = `http://localhost:3000/portal/tickets/OPS-77#token=wtp1.${randomBytes(8).toString('hex')}`;
+    const job: EmailJob = {
+      kind: 'portal_confirmation',
+      to: recipient,
+      locale: 'th',
+      ticketKey: 'OPS-77',
+      subject: 'Webhook ไม่เข้า',
+      trackingUrl,
+      expectedFirstResponseAt: null,
+    };
+    await apiDb.db.transaction(async (tx) => {
+      await enqueueOutbox(tx, {
+        queue: QUEUE_NAMES.email,
+        jobName: EMAIL_JOBS.send,
+        jobId,
+        payload: job,
+        options: EMAIL_OUTBOX_JOB_OPTIONS,
+      });
+    });
+    const mail = await waitFor(() => mailFor(recipient), 'the portal email in Mailpit');
+    expect(mail.Subject).toBe('เราได้รับคำขอ OPS-77 แล้ว');
+    const full = (await (await fetch(`${mailpit}/api/v1/message/${mail.ID}`)).json()) as {
+      Text: string;
+      HTML: string;
+    };
+    expect(full.Text).toContain(trackingUrl);
+    expect(full.HTML).not.toMatch(/<img|<script/i);
+    await waitFor(async () => {
+      const status = await rowStatus(jobId);
+      return status?.status === 'sent' ? status : undefined;
+    }, 'the row to be marked sent');
+    const payload = await testDb.owner.pool.query<{ payload: unknown }>(
+      'SELECT payload FROM outbox WHERE job_id = $1',
+      [jobId],
+    );
+    expect(payload.rows[0]?.payload).toEqual({});
+    await fetch(`${mailpit}/api/v1/messages`, {
+      method: 'DELETE',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ IDs: [mail.ID] }),
+    });
+  });
+
   it('keeps the row while Redis is unreachable and delivers it once Redis is back', async () => {
     redisUp = false;
     const recipient = `outbox-down-${randomBytes(4).toString('hex')}@example.com`;

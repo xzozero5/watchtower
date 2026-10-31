@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 
 import { IntentsModule } from '../intents/intents.module.js';
 import { OrgsModule } from '../orgs/orgs.module.js';
+import { PortalNotificationsModule } from '../portal/portal-notifications.module.js';
 import { SlaModule } from '../sla/sla.module.js';
 import { TeamQueuesModule } from '../team-queues/team-queues.module.js';
 import { APP_CONFIG, type ApiConfig } from '../config/config.js';
@@ -18,7 +19,7 @@ import { WorkflowController, WorkflowService } from './workflow.service.js';
  * create a ticket inside its own transaction (`UnitOfWorkService.run`).
  */
 @Module({
-  imports: [OrgsModule, IntentsModule, SlaModule, TeamQueuesModule],
+  imports: [OrgsModule, IntentsModule, SlaModule, TeamQueuesModule, PortalNotificationsModule],
   controllers: [TicketsController, WorkflowController],
   providers: [
     {
