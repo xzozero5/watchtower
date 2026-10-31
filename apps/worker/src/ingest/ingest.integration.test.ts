@@ -1,3 +1,4 @@
+import { createRedactor } from '@watchtower/ai';
 import { randomBytes } from 'node:crypto';
 
 import { gmail } from '@watchtower/channels';
@@ -23,7 +24,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createLogger } from '../logger.js';
 import { testConfig } from '../testing/support.js';
 import { startWorker, type RunningWorker } from '../worker.js';
-import type { InboundClassifierHook, RedactedText } from './classifier.js';
+import type { InboundClassifierHook } from './classifier.js';
 import { createS3ObjectStore, type ObjectStore } from './object-store.js';
 
 // Event -> ticket through the real worker: Postgres (restricted application role), Redis (outbox
@@ -87,7 +88,7 @@ beforeAll(async () => {
     delete: (key) => real.delete(key),
   };
   const hook: InboundClassifierHook = {
-    redact: (text) => text.replace(/\d/g, '#') as RedactedText,
+    redact: (text) => createRedactor().session({ scope: 'ingest-test' }).redact(text),
     classify: (input, signal) => {
       behaviour.classifierSeen.push({ subject: input.subject, body: input.body });
       if (behaviour.classifier === 'slow') {
@@ -519,7 +520,7 @@ describe('ingest queue: classifier hook', () => {
     try {
       const { payload } = mailPayload({
         subject: 'โทรกลับ 081-234-5678',
-        body: 'เลขบัตร 1-2345-67890-12-3',
+        body: 'เลขบัตร 1-2345-67890-12-1',
       });
       const started = Date.now();
       const eventId = await receive(gmailId, payload.id, payload);
@@ -531,7 +532,7 @@ describe('ingest queue: classifier hook', () => {
         classification: { type: 'triage', source: 'rules' },
       });
       expect(behaviour.classifierSeen).toHaveLength(1);
-      expect(JSON.stringify(behaviour.classifierSeen)).not.toMatch(/\d/);
+      expect(JSON.stringify(behaviour.classifierSeen)).not.toMatch(/081|5678|2345|67890/);
     } finally {
       behaviour.classifier = 'none';
     }

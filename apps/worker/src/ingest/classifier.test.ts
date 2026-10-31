@@ -1,3 +1,4 @@
+import { createRedactor } from '@watchtower/ai';
 import type { NormalisedInboundMessage } from '@watchtower/domain';
 import type { InboundClassification } from '@watchtower/shared';
 import { describe, expect, it, vi } from 'vitest';
@@ -16,7 +17,7 @@ const message = (overrides: Partial<NormalisedInboundMessage> = {}): NormalisedI
   threadCandidates: [],
   from: { address: 'a@customer.example.test', name: null, lineUserId: null },
   subject: 'โทร 081-234-5678 ด่วน',
-  bodyText: 'บัตรประชาชน 1-2345-67890-12-3 ใช้ไม่ได้',
+  bodyText: 'บัตรประชาชน 1-2345-67890-12-1 ใช้ไม่ได้',
   bodyHtml: null,
   attachments: [],
   receivedAt: new Date('2026-11-02T03:00:00Z'),
@@ -26,7 +27,9 @@ const message = (overrides: Partial<NormalisedInboundMessage> = {}): NormalisedI
 });
 
 // A stand-in for the T-106c redactor: masks digits. The point is where the output goes.
-const redact = (text: string): RedactedText => text.replace(/\d/g, '#') as RedactedText;
+const redactor = createRedactor();
+const redact = (text: string): RedactedText =>
+  redactor.session({ scope: 'classifier-test' }).redact(text);
 
 const answer: InboundClassification = {
   type: 'new_customer_issue',
@@ -57,9 +60,10 @@ describe('classifyMessage', () => {
     });
     expect(result).toMatchObject({ type: 'new_customer_issue', source: 'ai', confidence: 0.91 });
     const input = classify.mock.calls[0]?.[0];
-    expect(input?.subject).toBe('โทร ###-###-#### ด่วน');
-    expect(input?.body).toBe('บัตรประชาชน #-####-#####-##-# ใช้ไม่ได้');
-    expect(JSON.stringify(input)).not.toMatch(/\d/);
+    // The real redactor (T-106) replaces PII with typed tokens; no raw number reaches the hook.
+    expect(input?.subject).toBe('โทร [PHONE_1] ด่วน');
+    expect(input?.body).toBe('บัตรประชาชน [THAI_ID_1] ใช้ไม่ได้');
+    expect(JSON.stringify(input)).not.toMatch(/081|2345|67890/);
   });
 
   it('falls back to the header rules when the hook is too slow, and tells the hook to stop', async () => {

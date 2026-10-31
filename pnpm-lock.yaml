@@ -271,6 +271,9 @@ importers:
 
   apps/worker:
     dependencies:
+      '@watchtower/ai':
+        specifier: workspace:*
+        version: link:../../packages/ai
       '@watchtower/channels':
         specifier: workspace:*
         version: link:../../packages/channels

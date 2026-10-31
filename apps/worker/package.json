@@ -17,6 +17,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@watchtower/ai": "workspace:*",
     "@watchtower/channels": "workspace:*",
     "@watchtower/db": "workspace:*",
     "@watchtower/domain": "workspace:*",

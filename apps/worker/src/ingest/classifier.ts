@@ -9,6 +9,8 @@ import {
   type InboundClassification,
 } from '@watchtower/shared';
 
+import type { RedactedText } from '@watchtower/ai';
+
 import type { WorkerLogger } from '../logger.js';
 
 /**
@@ -20,16 +22,13 @@ import type { WorkerLogger } from '../logger.js';
  * `RedactedText`, and the only producer of it is `redact` on the hook, so a classifier cannot be
  * handed the raw subject or body by this code.
  *
- * STATUS `[ASSUMED]`: the real redaction API and the provider belong to T-106 (`@watchtower/ai`),
- * which is not on `main` yet. `RedactedText` below is a placeholder of the same shape; when T-106c
- * lands, replace it with the type from `@watchtower/ai`, and wire the hook with the mock provider
- * first (no real provider before T-106 and a credential decision). Until then no hook is
- * registered and ingestion classifies by rules only.
+ * `RedactedText` is the branded type of `@watchtower/ai` (T-106): a hook implements `redact` with a
+ * redaction session (`createRedactor().session({ scope }).redact`). No hook is registered in
+ * production yet (T-106e wires the classifier with the mock provider first), so ingestion
+ * classifies by rules only.
  */
 
-declare const redactedBrand: unique symbol;
-/** Text that went through PII redaction. Placeholder for the branded type of `@watchtower/ai` (T-106c). */
-export type RedactedText = string & { readonly [redactedBrand]: true };
+export type { RedactedText };
 
 export interface InboundClassifierInput {
   readonly channel: ChannelType;
