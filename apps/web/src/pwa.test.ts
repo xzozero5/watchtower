@@ -192,6 +192,35 @@ describe('service worker', () => {
     expect([...(caches.stores.get('wt-static-v1')?.keys() ?? [])]).toEqual(['/offline.html']);
   });
 
+  it('never touches the public portal: its pages and any same-origin api path pass through', () => {
+    const fetchSpy = vi.fn();
+    const caches = fakeCaches();
+    const { listeners } = loadWorker({ caches, fetch: fetchSpy });
+    const cases: [string, string | undefined][] = [
+      ['https://app.test/portal', 'navigate'],
+      ['https://app.test/portal/submitted', 'navigate'],
+      ['https://app.test/portal/tickets/OPS-12', 'navigate'],
+      ['https://app.test/portal/tickets/OPS-12?_rsc=abc', undefined],
+      ['https://app.test/v1/portal/challenge', undefined],
+      ['https://app.test/v1/portal/tickets/OPS-12', undefined],
+    ];
+    for (const [url, mode] of cases) {
+      const event = fetchEvent(url, undefined, mode);
+      listeners.fetch?.(event);
+      expect(event.respondWith, url).not.toHaveBeenCalled();
+    }
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(caches.stores.size).toBe(0);
+  });
+
+  it('does not mistake a path that only starts with the same letters for the portal', () => {
+    const online = vi.fn(() => Promise.resolve(new Response('live page')));
+    const { listeners } = loadWorker({ caches: fakeCaches(), fetch: online });
+    const event = fetchEvent('https://app.test/portals-are-not-special', undefined, 'navigate');
+    listeners.fetch?.(event);
+    expect(event.respondWith).toHaveBeenCalled();
+  });
+
   it('serves build assets from the cache first', async () => {
     const url = 'https://app.test/_next/static/chunks/app.js';
     const cached = new Response('cached script');

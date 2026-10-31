@@ -6,6 +6,7 @@ import { createContext, type ReactNode, useCallback, useContext, useMemo } from 
 
 import { useApi } from '@/lib/api/api-context';
 import { isUnauthenticated } from '@/lib/api/errors';
+import { onPortalPage } from '@/lib/portal/public-path';
 
 import { endSession } from './end-session';
 import { hasSessionHint } from './session-hint';
@@ -37,6 +38,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const query = useQuery<SessionInfo | null>({
     queryKey: SESSION_QUERY_KEY,
     queryFn: async ({ signal }) => {
+      // The public client portal has no staff session: no call to the staff api from there (T-007).
+      if (onPortalPage()) return null;
       try {
         return await api.session(signal, { refresh: hasSessionHint() });
       } catch (error) {

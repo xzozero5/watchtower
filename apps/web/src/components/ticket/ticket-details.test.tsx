@@ -240,7 +240,9 @@ describe('ticket details: what each person may do', () => {
 
     expect(within(section).queryByRole('combobox')).not.toBeInTheDocument();
     expect(within(section).queryByRole('textbox')).not.toBeInTheDocument();
-    expect(within(section).getByText('Waiting on customer')).toBeVisible();
+    // A customer sees the portal's words, not the internal status (review finding P2-4).
+    expect(within(section).getByText('Waiting for your reply')).toBeVisible();
+    expect(within(section).queryByText('Waiting on customer')).not.toBeInTheDocument();
     expect(within(section).getByText('Login issue')).toBeVisible();
     expect(within(section).queryByText('Assignee')).not.toBeInTheDocument();
     expect(within(section).queryByText('Organization')).not.toBeInTheDocument();
