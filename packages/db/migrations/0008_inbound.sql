@@ -7,7 +7,7 @@
 --                    it opened a ticket, joined one, or stayed out of the ticket flow (noise,
 --                    auto_reply, internal): those are the rows of the "Other mail" view (R-2.7).
 -- Neither table is partitioned: the unique keys must hold across months (same reason as `message`).
--- Reversible: see 0007_inbound.down.sql.
+-- Reversible: see 0008_inbound.down.sql.
 
 CREATE TABLE inbound_event (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),

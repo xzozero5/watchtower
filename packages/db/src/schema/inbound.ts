@@ -4,7 +4,7 @@ import { index, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizz
 import { channelAccount, message, ticket } from './ticketing.js';
 
 /**
- * Mirrors migrations/0007_inbound.sql (T-122c, ADR-009). The SQL file is the source of truth (check
+ * Mirrors migrations/0008_inbound.sql (T-122c, ADR-009). The SQL file is the source of truth (check
  * constraints, partial indexes and column-level privileges live there); keep both in step by hand
  * and let the integration tests catch drift.
  */

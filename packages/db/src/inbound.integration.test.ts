@@ -173,16 +173,16 @@ describe('0007 inbound tables', () => {
   });
 
   it('goes down (dropping both tables and the thread index) and up again', async () => {
-    const later = await migrationsAfter('0007_inbound');
+    const later = await migrationsAfter('0008_inbound');
     const reverted = await migrateDown(owner(), { steps: 1 + later.length });
-    expect(reverted).toEqual([...later.toReversed(), '0007_inbound']);
+    expect(reverted).toEqual([...later.toReversed(), '0008_inbound']);
     const gone = await owner().query<{ n: number }>(
       `SELECT count(*)::int AS n FROM pg_class
         WHERE relname IN ('inbound_event', 'inbound_message', 'message_thread_key_idx')`,
     );
     expect(gone.rows[0]?.n).toBe(0);
 
-    expect(await migrateUp(owner())).toEqual(['0007_inbound', ...later]);
+    expect(await migrateUp(owner())).toEqual(['0008_inbound', ...later]);
     const back = await owner().query<{ n: number }>(
       `SELECT count(*)::int AS n FROM pg_class WHERE relname IN ('inbound_event', 'inbound_message')`,
     );
