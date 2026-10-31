@@ -3,6 +3,7 @@
  * same keys (the compiler checks it), and every `{placeholder}` must appear in both languages
  * (messages.test.ts checks it). Never put UI text in a component: add a key here and in th.ts.
  */
+import { adminEn, homeEn } from './console.en';
 import { portalEn } from './portal.en';
 
 export const en = {
@@ -10,6 +11,7 @@ export const en = {
     name: 'Watchtower',
     description: 'Tech operations command center',
     skipToContent: 'Skip to the conversation',
+    skipToMain: 'Skip to the content',
   },
   topbar: {
     openPalette: 'Open command palette',
@@ -300,6 +302,9 @@ export const en = {
     expandAssistant: 'Expand the details panel',
   },
   ai: {
+    paused: 'AI paused by {name} at {time} — replies are manual.',
+    pausedNoName: 'AI paused at {time} — replies are manual.',
+    pausedLink: 'AI controls',
     title: 'The AI assistant is not switched on yet',
     body: 'It arrives in Phase 1. Then this panel will show an investigation report, the evidence behind it and a draft reply for you to approve, edit or reject. Until then every reply is written by a person.',
     draftBar: {
@@ -353,6 +358,8 @@ export const en = {
     collapseQueue: 'Collapse or expand the queue',
     collapseAssistant: 'Collapse or expand the details panel',
     goQueue: 'Go to the queue',
+    goHome: 'Go to Home',
+    goAdmin: 'Go to Admin',
     goOtherMail: 'Go to other mail',
     goBrief: 'Go to the daily brief',
     goHandoff: 'Go to the shift handoff',
@@ -465,10 +472,17 @@ export const en = {
       general: 'General',
       display: 'Display',
       language: 'Language',
+      admin: 'Admin',
     },
   },
   commands: {
     focusSearch: 'Search the queue',
+    goHome: 'Go to Home',
+    goAdmin: 'Go to Admin › {section}',
+    aiStop: 'AI: Stop all AI runs…',
+    aiResume: 'AI: Resume AI runs…',
+    aiLimit: 'AI: Limit all intents to Stage 2…',
+    aiUnlimit: 'AI: Remove the stage limit…',
     showShortcuts: 'Show keyboard shortcuts',
     signOut: 'Sign out',
     themeSystem: 'Theme: follow system',
@@ -499,6 +513,8 @@ export const en = {
   rail: {
     label: 'Main navigation',
     queue: 'Queue',
+    home: 'Home',
+    admin: 'Admin',
     brief: 'Daily brief',
     handoff: 'Shift handoff',
     notifications: 'Notifications',
@@ -538,6 +554,15 @@ export const en = {
     notFoundBody: 'This page does not exist or has moved.',
     backHome: 'Back to the queue',
   },
+  states: {
+    denied: {
+      title: 'You don’t have access to this page.',
+      body: 'It needs the {role} role.',
+      back: 'Back to the queue',
+    },
+  },
+  home: homeEn,
+  admin: adminEn,
   portal: portalEn,
 } as const;
 

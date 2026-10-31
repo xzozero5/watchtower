@@ -64,7 +64,9 @@ function PaletteBody({ commands, onClose }: { commands: readonly Command[]; onCl
       ? t('palette.groups.display')
       : group === 'language'
         ? t('palette.groups.language')
-        : t('palette.groups.general');
+        : group === 'admin'
+          ? t('palette.groups.admin')
+          : t('palette.groups.general');
 
   return (
     <Dialog.Content className="fixed top-[12vh] left-1/2 z-50 w-[min(36rem,calc(100vw-2rem))] -translate-x-1/2 overflow-hidden rounded-xl border border-border bg-surface text-foreground shadow-overlay">

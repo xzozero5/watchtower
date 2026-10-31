@@ -1,8 +1,10 @@
+import type { AiSwitchKey, Permission } from '@watchtower/shared';
 import type { Density, ThemePreference } from '@watchtower/ui';
 
 import type { Locale, MessageKey, Translate } from '@/i18n';
+import { adminSectionsFor, canFlipSwitches, HOME_PERMISSION } from '@/lib/admin/sections';
 
-export type CommandGroup = 'general' | 'display' | 'language';
+export type CommandGroup = 'general' | 'display' | 'language' | 'admin';
 
 export interface Command {
   id: string;
@@ -22,6 +24,18 @@ export interface CommandActions {
   showShortcuts: () => void;
   focusSearch: () => void;
   signOut: () => void;
+  /** Head console (T-127). Only used when `buildCommands` is given the person's permissions. */
+  goHome?: () => void;
+  goAdmin?: (href: string) => void;
+  /** Opens the confirm dialog for a switch; it never flips the switch itself. */
+  openSwitchDialog?: (switchKey: AiSwitchKey, on: boolean) => void;
+}
+
+/** What decides which admin commands exist: the person's permissions and the current switch state. */
+export interface CommandAccess {
+  can: (permission: Permission) => boolean;
+  /** The current state of the two AI switches, once known: the label says "Stop" or "Resume". */
+  ai?: { killOn: boolean; capOn: boolean };
 }
 
 interface Definition {
@@ -144,9 +158,73 @@ const DEFINITIONS: readonly Definition[] = [
   },
 ];
 
-/** The commands available now. Ticket-level commands (assign, set status, ...) come with the AI sidebar. */
-export function buildCommands(t: Translate, actions: CommandActions): Command[] {
-  return DEFINITIONS.map(({ id, labelKey, group, keywords, run }) => ({
+const ADMIN_KEYWORDS = ['admin', 'settings', 'manage', 'ผู้ดูแล', 'ตั้งค่า', 'จัดการ'] as const;
+
+/** Navigation and AI-switch commands for a head or lead (docs/06-UI-SPEC.md section 18.1). */
+function adminCommands(t: Translate, actions: CommandActions, access: CommandAccess): Command[] {
+  const commands: Command[] = [];
+  if (access.can(HOME_PERMISSION) && actions.goHome) {
+    const goHome = actions.goHome;
+    commands.push({
+      id: 'go.home',
+      label: t('commands.goHome'),
+      group: 'admin',
+      keywords: ['home', 'dashboard', 'overview', 'หน้าหลัก', 'ภาพรวม'],
+      run: goHome,
+    });
+  }
+  const goAdmin = actions.goAdmin;
+  if (goAdmin) {
+    for (const section of adminSectionsFor(access.can)) {
+      commands.push({
+        id: `go.admin.${section.id}`,
+        label: t('commands.goAdmin', { section: t(section.labelKey) }),
+        group: 'admin',
+        keywords: [...ADMIN_KEYWORDS, section.id],
+        run: () => {
+          goAdmin(section.href);
+        },
+      });
+    }
+  }
+  const openSwitchDialog = actions.openSwitchDialog;
+  if (openSwitchDialog && canFlipSwitches(access.can)) {
+    const killOn = access.ai?.killOn ?? false;
+    const capOn = access.ai?.capOn ?? false;
+    commands.push(
+      {
+        id: killOn ? 'ai.resume' : 'ai.stop',
+        label: t(killOn ? 'commands.aiResume' : 'commands.aiStop'),
+        group: 'admin',
+        keywords: ['ai', 'kill', 'stop', 'pause', 'resume', 'emergency', 'หยุด', 'ฉุกเฉิน'],
+        run: () => {
+          openSwitchDialog('ai_kill_switch', !killOn);
+        },
+      },
+      {
+        id: capOn ? 'ai.unlimit' : 'ai.limit',
+        label: t(capOn ? 'commands.aiUnlimit' : 'commands.aiLimit'),
+        group: 'admin',
+        keywords: ['ai', 'stage', 'limit', 'cap', 'emergency', 'ขั้น', 'จำกัด', 'ฉุกเฉิน'],
+        run: () => {
+          openSwitchDialog('ai_stage_cap_pinned', !capOn);
+        },
+      },
+    );
+  }
+  return commands;
+}
+
+/**
+ * The commands available now. Ticket-level commands (assign, set status, ...) come with the AI
+ * sidebar. With `access`, the admin group is added for a head or lead.
+ */
+export function buildCommands(
+  t: Translate,
+  actions: CommandActions,
+  access?: CommandAccess,
+): Command[] {
+  const base = DEFINITIONS.map(({ id, labelKey, group, keywords, run }) => ({
     id,
     label: t(labelKey),
     group,
@@ -155,6 +233,7 @@ export function buildCommands(t: Translate, actions: CommandActions): Command[] 
       run(actions);
     },
   }));
+  return access ? [...adminCommands(t, actions, access), ...base] : base;
 }
 
 /** Case-insensitive match on the label and the keywords. Every word of the query must match. */

@@ -11,8 +11,20 @@ const idsFor = (role: Role) => {
 };
 
 describe('keymapFor', () => {
-  it('shows an agent every shortcut', () => {
-    expect(idsFor('agent')).toEqual(KEYMAP.map((entry) => entry.id));
+  it('shows an agent every shortcut except the head console ones', () => {
+    expect(idsFor('agent')).toEqual(
+      KEYMAP.filter((entry) => !['goHome', 'goAdmin'].includes(entry.id)).map((entry) => entry.id),
+    );
+  });
+
+  it('shows Home and Admin keys to a lead and a head, not to an agent or a customer', () => {
+    for (const role of ['lead', 'head'] as const) {
+      expect(idsFor(role)).toEqual(expect.arrayContaining(['goHome', 'goAdmin']));
+    }
+    for (const role of ['agent', 'client'] as const) {
+      expect(idsFor(role)).not.toContain('goHome');
+      expect(idsFor(role)).not.toContain('goAdmin');
+    }
   });
 
   it('hides note, status and AI keys from a customer but keeps reply and navigation', () => {
