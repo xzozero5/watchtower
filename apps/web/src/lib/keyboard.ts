@@ -15,9 +15,13 @@ export function isTypingTarget(target: EventTarget | null): boolean {
   return !['checkbox', 'radio', 'button', 'submit', 'reset'].includes(type);
 }
 
-/** An open modal (command palette, keyboard map) owns the keyboard. */
+/** An open dialog (command palette, keyboard map) or menu owns the keyboard. */
 function modalIsOpen(): boolean {
-  return document.querySelector('[role="dialog"][data-state="open"]') !== null;
+  return (
+    document.querySelector(
+      '[role="dialog"][data-state="open"], [role="menu"][data-state="open"]',
+    ) !== null
+  );
 }
 
 export interface ShortcutEvent {

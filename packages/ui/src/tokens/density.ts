@@ -11,9 +11,9 @@ export interface DensityTokens {
    * base of 14-15px `[ASSUMED]`.
    */
   readonly fontScale: string;
-  /** Height of a queue or list row. */
+  /** Height of a one-line list row: property rows, menu items. 40px comfortable, 32px compact. */
   readonly rowHeight: string;
-  /** Height of buttons and inputs. Stays at or above the 24px WCAG 2.2 target size. */
+  /** Height of buttons and inputs: 32px comfortable, 28px compact. Both clear the 24px WCAG 2.2 target size. */
   readonly controlHeight: string;
   /** Padding inside a pane. */
   readonly panePadding: string;
@@ -24,14 +24,14 @@ export interface DensityTokens {
 export const DENSITY_TOKENS: Readonly<Record<Density, DensityTokens>> = {
   comfortable: {
     fontScale: '93.75%',
-    rowHeight: '3.5rem',
-    controlHeight: '2.5rem',
+    rowHeight: '2.6667rem',
+    controlHeight: '2.1333rem',
     panePadding: '1rem',
     gap: '0.75rem',
   },
   compact: {
     fontScale: '87.5%',
-    rowHeight: '2.5rem',
+    rowHeight: '2.2857rem',
     controlHeight: '2rem',
     panePadding: '0.625rem',
     gap: '0.375rem',
@@ -41,5 +41,5 @@ export const DENSITY_TOKENS: Readonly<Record<Density, DensityTokens>> = {
 /** Animation timing. Zeroed under prefers-reduced-motion in the generated CSS. */
 export const MOTION_TOKENS = {
   durationFast: '120ms',
-  durationBase: '200ms',
+  durationBase: '180ms',
 } as const;

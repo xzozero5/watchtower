@@ -44,7 +44,7 @@ export interface ContrastRequirement {
   readonly kind: 'text' | 'ui';
 }
 
-const SURFACES = ['background', 'surface', 'surfaceMuted'] as const;
+const SURFACES = ['background', 'surface', 'surfaceMuted', 'primarySubtle'] as const;
 
 /**
  * Every colour pair the UI is allowed to draw, with the AA ratio it must reach. Add a pair here
@@ -78,20 +78,40 @@ export function contrastRequirements(
       ui(`primary fill on ${surface}`, tokens.primary, tokens[surface]),
       text(`danger on ${surface}`, tokens.danger, tokens[surface]),
       text(`success on ${surface}`, tokens.success, tokens[surface]),
+      text(`aiAccent on ${surface}`, tokens.aiAccent, tokens[surface]),
       ui(`borderStrong on ${surface}`, tokens.borderStrong, tokens[surface]),
       ui(`ring on ${surface}`, tokens.ring, tokens[surface]),
     );
   }
   requirements.push(text('primaryForeground on primary', tokens.primaryForeground, tokens.primary));
 
+  // The brand moment ground (login, portal header) carries its own text and controls.
+  requirements.push(
+    text('brandForeground on brandSurface', tokens.brandForeground, tokens.brandSurface),
+    text('mutedForeground on brandSurface', tokens.mutedForeground, tokens.brandSurface),
+    text('link on brandSurface', tokens.link, tokens.brandSurface),
+    text('danger on brandSurface', tokens.danger, tokens.brandSurface),
+    ui('primary fill on brandSurface', tokens.primary, tokens.brandSurface),
+    ui('borderStrong on brandSurface', tokens.borderStrong, tokens.brandSurface),
+    ui('ring on brandSurface', tokens.ring, tokens.brandSurface),
+  );
+
+  // Initials avatars: every hue must keep its letters readable.
+  tokens.avatar.forEach((colors, index) => {
+    requirements.push(text(`avatar ${String(index + 1)} fg on bg`, colors.fg, colors.bg));
+  });
+
   for (const id of SEVERITY_IDS) {
     const colors = tokens.severity[id];
     requirements.push(
       text(`severity ${id} fg on bg`, colors.fg, colors.bg),
-      ui(`severity ${id} border on surface`, colors.border, tokens.surface),
-      ui(`severity ${id} border on background`, colors.border, tokens.background),
       ui(`severity ${id} border on bg`, colors.border, colors.bg),
     );
+    // Outlined pills (every level but P1) have no fill, so the text sits on the surface itself.
+    for (const surface of SURFACES) {
+      requirements.push(text(`severity ${id} fg on ${surface}`, colors.fg, tokens[surface]));
+      requirements.push(ui(`severity ${id} border on ${surface}`, colors.border, tokens[surface]));
+    }
   }
   return requirements;
 }

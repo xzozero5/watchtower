@@ -3,7 +3,15 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { Alert, Button, EmptyState, Skeleton } from '@watchtower/ui';
 import { ArrowUp, Inbox, SearchX } from 'lucide-react';
-import { type KeyboardEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  type KeyboardEvent,
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 
 import { useT } from '@/i18n/provider';
 import { useSession } from '@/lib/auth/session';
@@ -39,6 +47,8 @@ export interface QueuePaneProps {
   onActivate?: () => void;
   /** Enter or O on the open ticket: move keyboard focus into the conversation. */
   onOpenConversation?: () => void;
+  /** Extra control at the end of the queue header (the button that folds the queue away). */
+  headerEnd?: ReactNode;
 }
 
 /** The "N new" pill is announced to screen readers at most this often (docs/06-UI-SPEC.md 4.3). */
@@ -59,6 +69,7 @@ export function QueuePane({
   onSelect,
   onActivate,
   onOpenConversation,
+  headerEnd,
 }: QueuePaneProps) {
   const t = useT();
   const queryClient = useQueryClient();
@@ -204,6 +215,12 @@ export function QueuePane({
         }}
         isClient={isClient}
         searchRef={searchRef}
+        headerEnd={headerEnd}
+        count={
+          rows.length > 0
+            ? t(list.hasNextPage ? 'queue.countMore' : 'queue.count', { count: rows.length })
+            : null
+        }
       />
 
       {/* The announcement is throttled (see above); the button is the action and is not live. */}
@@ -211,14 +228,14 @@ export function QueuePane({
         {announcedCount > 0 ? t('queue.newPill', { count: announcedCount }) : ''}
       </p>
       {newCount > 0 ? (
-        <div className="sticky top-0 z-10">
+        <div className="sticky top-0 z-10 flex justify-center px-3 pt-2">
           <button
             type="button"
             onClick={showNew}
             aria-keyshortcuts={singleKeyShortcuts ? '.' : undefined}
-            className="flex w-full items-center justify-center gap-2 border-b border-border-strong bg-primary px-pane py-2 text-sm font-semibold text-primary-foreground hover:opacity-90"
+            className="tabular inline-flex h-7 animate-pop-in items-center gap-1.5 rounded-full bg-primary px-3 text-xs font-medium text-primary-foreground shadow-overlay transition-opacity duration-(--wt-motion-duration-fast) ease-out hover:opacity-90"
           >
-            <ArrowUp aria-hidden className="size-4" />
+            <ArrowUp aria-hidden className="size-3.5" />
             {t(singleKeyShortcuts ? 'queue.newPill' : 'queue.newPillClick', { count: newCount })}
           </button>
         </div>
@@ -230,10 +247,17 @@ export function QueuePane({
         className="flex min-h-0 flex-1 flex-col overflow-y-auto"
       >
         {initialLoading ? (
-          <div role="status" className="flex flex-col gap-2 p-pane">
+          <div role="status" className="flex flex-col">
             <span className="sr-only">{t('queue.loading')}</span>
             {[0, 1, 2, 3, 4].map((index) => (
-              <Skeleton key={index} className="h-14" />
+              <div key={index} className="flex gap-2.5 border-b border-border px-3 py-3">
+                <Skeleton className="size-6 shrink-0 rounded-full" />
+                <div className="flex flex-1 flex-col gap-2">
+                  <Skeleton className="h-3 w-2/5" />
+                  <Skeleton className="h-3.5 w-4/5" />
+                  <Skeleton className="h-3 w-3/5" />
+                </div>
+              </div>
             ))}
           </div>
         ) : list.isError ? (
@@ -253,7 +277,7 @@ export function QueuePane({
         ) : rows.length === 0 ? (
           filtered && !filtersEqual(filters, DEFAULT_FILTERS) ? (
             <EmptyState
-              icon={<SearchX className="size-8" />}
+              icon={<SearchX />}
               title={t('queue.emptyFilteredTitle')}
               description={t('queue.emptyFilteredBody')}
               action={
@@ -268,9 +292,10 @@ export function QueuePane({
             />
           ) : (
             <EmptyState
-              icon={<Inbox className="size-8" />}
+              icon={<Inbox />}
               title={t('panes.queue.emptyTitle')}
               description={t('panes.queue.emptyBody')}
+              hint={t('queue.emptyHint')}
             />
           )
         ) : (
@@ -283,7 +308,7 @@ export function QueuePane({
               aria-label={t('queue.listLabel')}
               aria-activedescendant={activeDescendant}
               onKeyDown={onListKeyDown}
-              className="flex flex-col focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
+              className="flex flex-col outline-hidden focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
             >
               {rows.map((row) => (
                 <QueueRow
@@ -299,8 +324,9 @@ export function QueuePane({
               ))}
             </ul>
             {list.hasNextPage ? (
-              <div className="p-pane">
+              <div className="p-3">
                 <Button
+                  variant="ghost"
                   className="w-full"
                   disabled={list.isFetchingNextPage}
                   onClick={() => {

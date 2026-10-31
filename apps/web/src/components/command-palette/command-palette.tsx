@@ -20,7 +20,7 @@ export function CommandPalette({ open, onOpenChange, commands }: CommandPaletteP
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
       <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-40 bg-scrim" />
+        <Dialog.Overlay className="fixed inset-0 z-40 animate-fade-in bg-scrim" />
         {/* The body remounts on every open, so the query and highlight reset without an effect. */}
         <PaletteBody
           commands={commands}
@@ -67,11 +67,11 @@ function PaletteBody({ commands, onClose }: { commands: readonly Command[]; onCl
         : t('palette.groups.general');
 
   return (
-    <Dialog.Content className="fixed top-[12vh] left-1/2 z-50 w-[min(36rem,calc(100vw-2rem))] -translate-x-1/2 overflow-hidden rounded-lg border border-border-strong bg-surface text-foreground shadow-lg">
+    <Dialog.Content className="fixed top-[12vh] left-1/2 z-50 w-[min(36rem,calc(100vw-2rem))] -translate-x-1/2 overflow-hidden rounded-xl border border-border bg-surface text-foreground shadow-overlay">
       <Dialog.Title className="sr-only">{t('palette.title')}</Dialog.Title>
       <Dialog.Description className="sr-only">{t('palette.description')}</Dialog.Description>
 
-      <div className="flex items-center gap-2 border-b border-border px-3">
+      <div className="flex items-center gap-2 border-b border-border px-4">
         <Search aria-hidden className="size-4 shrink-0 text-muted-foreground" />
         <input
           type="text"
@@ -90,7 +90,7 @@ function PaletteBody({ commands, onClose }: { commands: readonly Command[]; onCl
             setActive(0);
           }}
           onKeyDown={onKeyDown}
-          className="h-control w-full bg-transparent text-base text-foreground placeholder:text-muted-foreground focus:outline-none"
+          className="h-12 w-full bg-transparent text-base text-foreground placeholder:text-muted-foreground focus:outline-none"
         />
       </div>
 
@@ -114,19 +114,12 @@ function PaletteBody({ commands, onClose }: { commands: readonly Command[]; onCl
                 run(command);
               }}
               className={cn(
-                'flex cursor-pointer items-center justify-between gap-3 rounded-md px-3 py-2 text-sm',
-                index === activeIndex && 'bg-primary text-primary-foreground',
+                'flex min-h-row cursor-pointer items-center justify-between gap-3 rounded-md px-3 text-sm',
+                index === activeIndex && 'bg-primary-subtle',
               )}
             >
               <span>{command.label}</span>
-              <span
-                className={cn(
-                  'text-xs',
-                  index === activeIndex ? 'text-primary-foreground' : 'text-muted-foreground',
-                )}
-              >
-                {groupLabel(command.group)}
-              </span>
+              <span className="text-xs text-muted-foreground">{groupLabel(command.group)}</span>
             </li>
           ))}
         </ul>

@@ -144,6 +144,8 @@ describe('ticket rows', () => {
     expect(staff).toMatchObject({
       key: 'OPS-1',
       orgName: 'Example Org',
+      requesterName: 'Riley Requester',
+      channel: 'portal',
       assigneeName: 'Sam',
       unassigned: false,
     });
@@ -151,6 +153,8 @@ describe('ticket rows', () => {
     expect(client).toMatchObject({
       key: 'OPS-2',
       orgName: null,
+      requesterName: 'Casey Customer',
+      channel: null,
       assigneeName: null,
       unassigned: false,
     });

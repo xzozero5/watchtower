@@ -1,19 +1,26 @@
+import { Slot } from '@radix-ui/react-slot';
 import { cva, type VariantProps } from 'class-variance-authority';
 import type { ButtonHTMLAttributes, Ref } from 'react';
 
 import { cn } from '../lib/cn.js';
 
+/**
+ * Buttons: 6px radius, `control` height (32px comfortable, 28px compact), 120ms colour transition.
+ * Navy is the one primary colour; every other button is quiet until hovered.
+ */
 export const buttonVariants = cva(
-  'inline-flex h-control shrink-0 items-center justify-center gap-2 rounded-md px-3 text-sm font-medium whitespace-nowrap transition-colors duration-(--wt-motion-duration-fast) focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:pointer-events-none disabled:opacity-60',
+  'inline-flex h-control shrink-0 items-center justify-center gap-1.5 rounded-md px-3 text-sm font-medium whitespace-nowrap transition-colors duration-(--wt-motion-duration-fast) ease-out focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:pointer-events-none disabled:opacity-50 aria-disabled:cursor-not-allowed aria-disabled:opacity-50',
   {
     variants: {
       variant: {
-        primary: 'bg-primary text-primary-foreground hover:opacity-90',
-        secondary: 'border border-border-strong bg-surface text-foreground hover:bg-surface-muted',
-        ghost: 'text-foreground hover:bg-surface-muted',
+        primary: 'bg-primary text-primary-foreground hover:opacity-90 active:opacity-80',
+        secondary:
+          'border border-border-strong bg-surface text-foreground hover:bg-surface-muted active:bg-primary-subtle',
+        ghost: 'text-foreground hover:bg-surface-muted active:bg-primary-subtle',
       },
       size: {
         default: '',
+        sm: 'px-2 text-xs',
         icon: 'w-control px-0',
       },
     },
@@ -24,15 +31,20 @@ export const buttonVariants = cva(
 export interface ButtonProps
   extends ButtonHTMLAttributes<HTMLButtonElement>, VariantProps<typeof buttonVariants> {
   ref?: Ref<HTMLButtonElement>;
+  /** Render the child element (a link, a trigger) with the button's look instead of a `<button>`. */
+  asChild?: boolean;
 }
 
-export function Button({ className, variant, size, type = 'button', ref, ...props }: ButtonProps) {
-  return (
-    <button
-      ref={ref}
-      type={type}
-      className={cn(buttonVariants({ variant, size }), className)}
-      {...props}
-    />
-  );
+export function Button({
+  className,
+  variant,
+  size,
+  type = 'button',
+  asChild = false,
+  ref,
+  ...props
+}: ButtonProps) {
+  const classes = cn(buttonVariants({ variant, size }), className);
+  if (asChild) return <Slot ref={ref} className={classes} {...props} />;
+  return <button ref={ref} type={type} className={classes} {...props} />;
 }

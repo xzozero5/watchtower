@@ -216,6 +216,14 @@ export const KEYMAP: readonly KeymapEntry[] = [
     singleKey: false,
   },
   {
+    id: 'rail',
+    keys: ['Ctrl', 'B'],
+    labelKey: 'keymap.rail',
+    group: 'general',
+    available: true,
+    singleKey: false,
+  },
+  {
     id: 'help',
     keys: ['?'],
     labelKey: 'keymap.help',

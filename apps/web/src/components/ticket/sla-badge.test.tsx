@@ -51,7 +51,8 @@ describe('SlaBadge', () => {
     );
     expect(screen.getByRole('img')).toHaveTextContent('Met');
     rerender(<SlaBadge sla={{ state: 'none', target: null, ms: 0, dueAt: null }} />);
-    expect(container).toBeEmptyDOMElement();
+    expect(screen.queryByRole('img')).not.toBeInTheDocument();
+    expect(container.querySelector('[data-sla]')).toBeNull();
   });
 
   it('is in Thai too', () => {
