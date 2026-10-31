@@ -2,11 +2,13 @@ import { Inject, Injectable } from '@nestjs/common';
 import { orgScopeCondition, schema, type Database } from '@watchtower/db';
 import type {
   CreateOrganization,
+  OrgScope,
   Organization,
   OrganizationListQuery,
+  OrgTierRecord,
   UpdateOrganization,
 } from '@watchtower/shared';
-import { and, desc, eq, ilike, sql } from 'drizzle-orm';
+import { and, asc, count, desc, eq, ilike, inArray, sql } from 'drizzle-orm';
 
 import { AuditScope } from '../audit/audit-scope.js';
 import { badRequest, conflict, notFound } from '../auth/http-errors.js';
@@ -23,7 +25,7 @@ import { DATABASE } from '../database/database.module.js';
 
 export type OrganizationRow = typeof schema.organization.$inferSelect;
 
-export function toApiOrganization(row: OrganizationRow): Organization {
+export function toApiOrganization(row: OrganizationRow, contactCount: number | null): Organization {
   return {
     id: row.id,
     name: row.name,
@@ -33,6 +35,7 @@ export function toApiOrganization(row: OrganizationRow): Organization {
     lineGroupIds: row.lineGroupIds,
     healthScore: row.healthScore,
     primaryContactId: row.primaryContactId,
+    contactCount,
     notes: row.notes,
     status: row.status === 'inactive' ? 'inactive' : 'active',
     createdAt: row.createdAt.toISOString(),
@@ -82,17 +85,52 @@ export class OrganizationsService {
       rows.map((entry) => ({ ...entry, id: entry.row.id })),
       query.limit,
     );
+    const counts = await this.contactCounts(
+      page.rows.map((entry) => entry.row.id),
+      principal.orgScope,
+    );
     return {
-      items: page.rows.map((entry) => toApiOrganization(entry.row)),
+      items: page.rows.map((entry) =>
+        toApiOrganization(entry.row, counts.get(entry.row.id) ?? null),
+      ),
       nextCursor: page.nextCursor,
     };
+  }
+
+  /**
+   * Contacts per organization, one grouped query for the whole page (index `contact_org_idx`).
+   * A client gets none: the count is for staff, and the map is empty so every value reads null.
+   */
+  async contactCounts(
+    orgIds: readonly string[],
+    scope: OrgScope,
+  ): Promise<ReadonlyMap<string, number>> {
+    if (scope.kind === 'org' || orgIds.length === 0) return new Map();
+    const rows = await this.database.db
+      .select({ orgId: schema.contact.orgId, n: count() })
+      .from(schema.contact)
+      .where(inArray(schema.contact.orgId, [...orgIds]))
+      .groupBy(schema.contact.orgId);
+    const counts = new Map<string, number>(orgIds.map((id) => [id, 0]));
+    for (const row of rows) counts.set(row.orgId, row.n);
+    return counts;
+  }
+
+  /** The tiers an organization or an SLA policy may name, in display order (T-127; editing is T-121). */
+  async tiers(): Promise<OrgTierRecord[]> {
+    const rows = await this.database.db
+      .select()
+      .from(schema.orgTier)
+      .orderBy(asc(schema.orgTier.sortOrder), asc(schema.orgTier.slug));
+    return rows.map((row) => ({ slug: row.slug, name: row.name, sortOrder: row.sortOrder }));
   }
 
   async get(id: string, principal: Principal): Promise<Organization> {
     const row = await this.find(id);
     if (!row) throw notFound('No such organization');
     assertOrgAccess(principal, row.id);
-    return toApiOrganization(row);
+    const counts = await this.contactCounts([row.id], principal.orgScope);
+    return toApiOrganization(row, counts.get(row.id) ?? null);
   }
 
   async find(id: string): Promise<OrganizationRow | undefined> {
@@ -119,7 +157,7 @@ export class OrganizationsService {
         .returning();
       if (!row) throw new Error('organization insert returned no row');
       AuditScope.set({ targetType: 'organization', targetId: row.id, after: snapshot(row) });
-      return toApiOrganization(row);
+      return toApiOrganization(row, 0);
     } catch (error) {
       throw this.translate(error);
     }
@@ -161,7 +199,8 @@ export class OrganizationsService {
         .returning();
       if (!row) throw notFound('No such organization');
       AuditScope.set({ after: snapshot(row) });
-      return toApiOrganization(row);
+      const counts = await this.contactCounts([row.id], { kind: 'all' });
+      return toApiOrganization(row, counts.get(row.id) ?? 0);
     } catch (error) {
       throw this.translate(error);
     }

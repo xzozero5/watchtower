@@ -20,6 +20,7 @@ const EXPECTED_FEATURES = [
   'autonomy',
   'credentials',
   'views',
+  'admin',
 ];
 
 describe('feature records', () => {

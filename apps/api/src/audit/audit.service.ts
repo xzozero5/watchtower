@@ -28,6 +28,19 @@ export interface AuditEntryInput {
   readonly metadata?: Record<string, unknown>;
 }
 
+/** One CSV row: the same fields as the list minus IP, before/after and metadata. */
+export interface AuditExportRow {
+  readonly id: string;
+  readonly createdAt: string;
+  readonly actorType: string;
+  readonly actorId: string | null;
+  readonly action: string;
+  readonly outcome: string;
+  readonly targetType: string | null;
+  readonly targetId: string | null;
+  readonly requestId: string | null;
+}
+
 export interface AuditPage {
   readonly entries: AuditLogEntry[];
   readonly nextCursor: string | null;
@@ -115,10 +128,12 @@ export class AuditService {
     await this.record({ ...entry, action: entry.action ?? 'pii.read' });
   }
 
-  async list(query: AuditLogQuery): Promise<AuditPage> {
+  /** The WHERE of a search, shared by the list and the CSV export so both filter the same way. */
+  private conditions(query: Omit<AuditLogQuery, 'limit' | 'cursor'>): (SQL | undefined)[] {
     const { auditLog } = schema;
-    const conditions: (SQL | undefined)[] = [
+    return [
       query.actorId === undefined ? undefined : eq(auditLog.actorId, query.actorId),
+      query.actorType === undefined ? undefined : eq(auditLog.actorType, query.actorType),
       query.action === undefined ? undefined : eq(auditLog.action, query.action),
       query.outcome === undefined ? undefined : eq(auditLog.outcome, query.outcome),
       query.targetType === undefined ? undefined : eq(auditLog.targetType, query.targetType),
@@ -126,14 +141,79 @@ export class AuditService {
       query.from === undefined ? undefined : gte(auditLog.createdAt, new Date(query.from)),
       query.to === undefined ? undefined : lte(auditLog.createdAt, new Date(query.to)),
     ];
-    if (query.cursor !== undefined) {
-      const cursor = decodeCursor(query.cursor);
-      if (!cursor) throw new BadRequestException('Invalid cursor');
-      const at = sql`${cursor.t}::timestamptz`;
-      conditions.push(
-        or(lt(auditLog.createdAt, at), and(eq(auditLog.createdAt, at), lt(auditLog.id, cursor.id))),
-      );
+  }
+
+  private cursorCondition(cursorText: string): SQL | undefined {
+    const { auditLog } = schema;
+    const cursor = decodeCursor(cursorText);
+    if (!cursor) throw new BadRequestException('Invalid cursor');
+    const at = sql`${cursor.t}::timestamptz`;
+    return or(
+      lt(auditLog.createdAt, at),
+      and(eq(auditLog.createdAt, at), lt(auditLog.id, cursor.id)),
+    );
+  }
+
+  /**
+   * Rows for the CSV export, newest first, at most `maxRows`, read in keyset batches so a large log
+   * never sits in memory twice. Only the columns the export carries are selected: no IP, no
+   * before/after, no metadata.
+   */
+  async exportRows(
+    query: Omit<AuditLogQuery, 'limit' | 'cursor'>,
+    maxRows: number,
+  ): Promise<AuditExportRow[]> {
+    const { auditLog } = schema;
+    const out: AuditExportRow[] = [];
+    let cursor: string | undefined;
+    while (out.length < maxRows) {
+      const batch = Math.min(1000, maxRows - out.length);
+      const rows = await this.database.db
+        .select({
+          id: auditLog.id,
+          createdAt: auditLog.createdAt,
+          actorType: auditLog.actorType,
+          actorId: auditLog.actorId,
+          action: auditLog.action,
+          outcome: auditLog.outcome,
+          targetType: auditLog.targetType,
+          targetId: auditLog.targetId,
+          requestId: auditLog.requestId,
+          precise: sql<string>`to_char(${auditLog.createdAt} AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')`,
+        })
+        .from(auditLog)
+        .where(
+          and(
+            ...this.conditions(query),
+            cursor === undefined ? undefined : this.cursorCondition(cursor),
+          ),
+        )
+        .orderBy(desc(auditLog.createdAt), desc(auditLog.id))
+        .limit(batch);
+      for (const row of rows) {
+        out.push({
+          id: row.id,
+          createdAt: row.createdAt.toISOString(),
+          actorType: row.actorType,
+          actorId: row.actorId,
+          action: row.action,
+          outcome: row.outcome,
+          targetType: row.targetType,
+          targetId: row.targetId,
+          requestId: row.requestId,
+        });
+      }
+      const last = rows.at(-1);
+      if (rows.length < batch || last === undefined) break;
+      cursor = encodeCursor({ t: last.precise, id: last.id });
     }
+    return out;
+  }
+
+  async list(query: AuditLogQuery): Promise<AuditPage> {
+    const { auditLog } = schema;
+    const conditions: (SQL | undefined)[] = this.conditions(query);
+    if (query.cursor !== undefined) conditions.push(this.cursorCondition(query.cursor));
 
     const rows = await this.database.db
       .select({
