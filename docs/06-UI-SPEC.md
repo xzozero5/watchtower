@@ -258,9 +258,9 @@ Draft reply - English - Stage 2 Draft for approval - from investigation at 10:42
 
 ### 6.5 Emergency switch (head only)
 - Location: Admin → AI → "Emergency controls" (also as a palette command for head). Two controls:
-  1. `Set all intents to Stage 2` (PRD §6.4). In Phase 1 every intent is already ≤ 2, so this also **pins** them (blocks promotion) until turned off `[ASSUMED]`.
+  1. `Limit all intents to Stage 2 or lower` (PRD §6.4): caps every intent at `min(stage, 2)` and **pins** it (blocks promotion) until turned off. It never raises a stage 0/1 intent to 2 `[ASSUMED]` (po 2026-11-01).
   2. `Stop all AI runs` (kill switch, PRD §6.6): classifier falls back to rules, no investigations or drafts; auto-ack templates continue.
-- Confirmation dialog with typed confirmation (`STOP` / `stage 2`) `[ASSUMED]`, a required reason, and audit entry.
+- Turning a control **on** (the safe direction): one confirm + required reason + audit entry, no typed confirmation. Turning it **off** (resuming AI): confirm + required reason + audit entry `[ASSUMED]` (po 2026-11-01).
 - While active: global non-dismissible info `Banner` for all staff "AI paused by the head at 10:42 — replies are manual." The sidebar shows the same message instead of drafts. Not red (it's a safe state, not P1).
 
 ---
@@ -337,9 +337,9 @@ Handoff - Evening shift 13:00-22:00 -> Night shift (incoming: PS)        Saved 2
 ---
 
 ## 10. Client portal (R-9.1–9.5, T-007) — public, mobile-first, TH/EN switch, org branding
-- **Submit form**: email, organisation (auto from allow-listed domain, else text), category, description, attachments, affected session/request IDs (optional, with example format), urgency (plain words: "Everything is down" / "Something is broken" / "A question"). Human verification widget (Turnstile or hCaptcha — provider `[ASSUMED]`, ADR needed) on the generic link only, placed above Submit; if it fails to load, show "Verification couldn't load. Check your connection or try another browser." Labels above fields, errors inline + summary, no placeholder-only labels.
+- **Submit form**: email, organisation (auto from allow-listed domain, else text), category, description, attachments, affected session/request IDs (optional, with example format), urgency (plain words: "Everything is down" / "Something is broken" / "A question"). Human verification on the generic link only, placed above Submit: self-hosted proof-of-work challenge solved in a Web Worker + honeypot field + minimum fill time + per-IP/email/org rate limits, behind a `HumanVerificationProvider` interface; a hosted provider (Turnstile/hCaptcha) is a new network destination → `[ASK-HUMAN]` (po 2026-11-01, ADR before T-007); if it fails to load, show "Verification couldn't load. Check your connection or try another browser." Labels above fields, errors inline + summary, no placeholder-only labels.
 - **Confirmation page**: "We received your request" + ticket number + "We sent a tracking link to a***@example.com" (masked) + expected first response from SLA.
-- **Tracking page** (signed link, R-9.2): status in customer words — `Received` / `In progress` / `Waiting for your reply` / `Resolved` / `Closed` (mapping from internal statuses `[ASSUMED]`; `triage` and `waiting_on_dev` both show `In progress`); public timeline only (never internal notes, AI events, system events, or agent surnames `[ASSUMED]`); reply box + attachments; rating prompt once resolved. Link expired/invalid → "This link has expired. Enter your email and we'll send a new one." (response is the same whether or not the email exists).
+- **Tracking page** (signed link, R-9.2): status in customer words — `Received` / `In progress` / `Waiting for your reply` / `Resolved` / `Closed` / `Merged into OPS-xxxx` (mapping from internal statuses `[ASSUMED]`; `triage`, `open` and `waiting_on_dev` show `In progress`; `merged` links to the primary ticket); public timeline only (never internal notes, AI events, system events, or agent surnames `[ASSUMED]`); reply box + attachments; rating prompt once resolved. Link expired/invalid → "This link has expired. Enter your email and we'll send a new one." (response is the same whether or not the email exists).
 - Logged-in org view (R-9.4) is P1/Phase 2 — out of this spec.
 
 ## 11. CSAT (R-10.1–10.5)
@@ -534,13 +534,17 @@ Thai copy notes: keep `ticket`, `SLA`, `intent`, `LINE`, `push` in English (team
 
 ---
 
-## 17. Open questions (for `po` / owner)
-| # | Question | Default used here |
+## 17. Open questions — decided by `po` under owner delegation 2026-11-01 (all `[ASSUMED]`, owner review pending)
+| # | Question | Decision |
 |---|---|---|
-| Q1 | Undo-send window length (and whether approve should confirm instead) | 5 s undo toast `[ASSUMED]` |
-| Q2 | AI accent colour (no accent in brand palette besides seafoam/gold) | darkened seafoam teal `[ASSUMED]` |
-| Q3 | Focus-mode digest interval and whether P2 breaks through focus | 15 min; P2 breaks through (PRD: sound for P1/P2) |
-| Q4 | Does P1 sound repeat until ack? | every 60 s `[ASSUMED]` |
-| Q5 | Human-verification provider for the portal (needs ADR + new network destination → `[ASK-HUMAN]`) | Turnstile or hCaptcha, undecided |
-| Q6 | Show agent names to customers on the portal? | first name only `[ASSUMED]` |
-| Q7 | Mobile layout split at 768 px vs current stack below 1024 px | 3-tier as §3.2 `[ASSUMED]` |
+| Q1 | Undo-send window length (and whether approve should confirm instead) | 5 s Undo toast, hold is **server-side** (send scheduled at T+5 s, Undo cancels); org setting 0–30 s; inline confirm only for uncited claims or LINE quota ≥ 80 %; auto-ack not delayed |
+| Q2 | AI accent colour (no accent in brand palette besides seafoam/gold) | `aiAccent`/`aiSurface` from `#80CFC0`, darkened in light theme until text ≥ 4.5:1 and UI ≥ 3:1; pairs added to `contrast.test.ts`; AI chip always icon + text "AI" |
+| Q3 | Focus-mode digest interval and whether P2 breaks through focus | digest every 15 min (user setting 5–60); P1 and P2 interrupt; P3/P4/assign/mention batched |
+| Q4 | Does P1 sound repeat until ack? | repeat every 60 s until anyone acks/opens, ≤ 1 sound per 10 s; mute allowed but banner stays and "Sound off" is shown; clock-in warns if muted |
+| Q5 | Human-verification provider for the portal (needs ADR + new network destination → `[ASK-HUMAN]`) | self-hosted PoW + honeypot + rate limit behind `HumanVerificationProvider`; hosted provider `[ASK-HUMAN]`; ADR before T-007 |
+| Q6 | Show agent names to customers on the portal? | public display name (default first name, alias allowed); never surname/email/role; approved AI drafts show the approver; no external avatar URLs |
+| Q7 | Mobile layout split at 768 px vs current stack below 1024 px | 3 tiers as §3.2; ≥ 1440 widening + per-user widths are nice-to-have |
+| Q8 | Reject reason codes | the 9 codes in §6.3, stable English ids stored as data (not a CHECK); `other` requires a comment |
+| Q9 | SLA at-risk threshold | ≤ 25 % of target left **or** ≤ 30 min, whichever first, in business time; default per SLA policy, computed server-side |
+| Q10 | Alert severity → P-level | critical→P1, error→P2, warning→P3, info→P4, configurable per policy; unknown → P3 + "Severity unmapped" label + head warning; GCP field values `[VERIFY]` |
+| Q11 | Spec language | English (PRD/open-source docs); TH copy stays in §16 |

@@ -35,6 +35,13 @@ snapshot สั้นสำหรับ cold start อยู่ที่ `HANDOF
 
 ## Log
 
+## 2026-11-01 02:20 (Asia/Bangkok) — ux-designer + po + main thread — T-101 UI spec
+- ทำอะไร: `ux-designer` เขียน `docs/06-UI-SPEC.md` (§0–§17, ชี้ token ในโค้ดแทนการคัดลอกค่า) ล่วงหน้าเพื่อให้ T-006/T-007 และ Phase 1 ใช้อ้างอิง · `po` ตัดสิน open questions §17 (Q1–Q11) แทนเจ้าของ `[ASSUMED]` · main thread แก้ §6.5 (cap ไม่ใช่ set stage 2), §10 (human verification self-hosted, สถานะ merged ที่ลูกค้าเห็น)
+- ไฟล์ที่แตะ: `docs/06-UI-SPEC.md`, `HANDOFF.md` (PO ตัดสิน #21–23), `docs/BACKLOG.md` (T-101, T-007)
+- test: เอกสาร — prettier ผ่าน, ตรวจ forbidden terms ผ่าน
+- ข้อเบี่ยง `[ASSUMED]`: R-9.1 ยกตัวอย่าง Turnstile/hCaptcha แต่ทำแบบ self-hosted เพราะผู้ให้บริการภายนอกเป็นปลายทาง network ใหม่ (`[ASK-HUMAN]`)
+- ไม่ยืนยัน: ค่า severity ของ GCP Monitoring `[VERIFY]` · library PoW ยังไม่เลือก
+
 ## 2026-11-01 01:55 (Asia/Bangkok) — backend-dev + main thread — T-005 ปิด
 - ทำอะไร: ตรวจงานค้างบน `wip/t-005` ด้วย `explorer` (agent เดิมถูกหยุดก่อนรายงาน) → ครบ schema/REST/WS/client scoping/`CLIENT_ORG_RESOLVER`/FK `users.org_id` · `backend-dev` แก้ส่วนที่ขาด: SLA recompute ไม่นับเวลา pause, `deliveryStatus` ตาม channel, round-robin ไม่ข้ามคน, event `ticket.reopened`/`sla.recalculated`, `GET /v1/tickets/:id/duplicates` (R-1.5), CRUD test ของ SLA/calendar/queue · main thread แก้ cleanup ของ test DB (57P01) และ test ที่ commit คำต้องห้ามไว้ในโค้ด
 - ไฟล์ที่แตะ: `packages/db/migrations/0002_ticketing*.sql`, `packages/db/src/{schema/ticketing.ts,seed/intents.ts,testing.ts}`, `packages/shared/src/{sla,ticketing,realtime,directory,channels,common}.ts`, `apps/api/src/{orgs,intents,sla,team-queues,tickets,realtime}/**`, `examples/intents/`, `docs/04-ARCHITECTURE.md` §7, §9, §11

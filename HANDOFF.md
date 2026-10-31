@@ -63,6 +63,9 @@
 | [ ] 18 | Pub/Sub emulator image (T-102) | อนุญาตเฉพาะ compose local ปักเวอร์ชัน | ไม่มีปลายทาง runtime ใหม่ |
 | [ ] 19 | ลำดับ Phase 1 | T-101 ก่อน T-109/T-111 frontend · T-106 ก่อน T-108/T-112 · T-116 ก่อน T-118/T-115 · T-112 จำกัด stage ≤ 2 | ลด rework |
 | [ ] 20 | ราคา LINE | ไม่บล็อกเริ่ม Phase 1 แต่บล็อกปิด T-103 (ตรวจเอกสารทางการ บันทึกลิงก์+วันที่) | AGENTS.md |
+| [ ] 21 | UI spec §17 (Q1–Q11) | Undo-send 5 s ฝั่ง server · สี AI จาก seafoam ผ่าน contrast test · focus digest 15 นาที P1/P2 แทรกได้ · เสียง P1 ซ้ำทุก 60 วิ · portal แสดงชื่อเล่น/ชื่อต้น · 3 breakpoint · reject reason 9 รหัส · SLA at-risk ≤25% หรือ ≤30 นาที · severity map · spec เป็นอังกฤษ — รายละเอียด `docs/06-UI-SPEC.md` §17 | ลด friction ทางปลอดภัย |
+| [ ] 22 | human verification ของ portal (R-9.1 ยกตัวอย่าง Turnstile/hCaptcha) | ทำแบบ self-hosted: proof-of-work + honeypot + rate limit หลัง interface `HumanVerificationProvider` · ใช้ผู้ให้บริการภายนอก = `[ASK-HUMAN]` (ปลายทาง network ใหม่ + ส่ง IP ผู้ใช้ไป vendor) · ADR ก่อน T-007 | po อนุมัติปลายทางใหม่ไม่ได้ |
+| [ ] 23 | emergency switch Phase 1 | สองปุ่ม: "จำกัดทุก intent ≤ stage 2" (ไม่ยก 0/1 ขึ้น) และ kill switch "หยุด AI ทั้งหมด" · เปิด = confirm + เหตุผล + audit · ปิด (กลับมาใช้ AI) = confirm + เหตุผล + audit | N3 |
 
 ## ทำเสร็จใน session นี้
 | งาน | ผล | ไฟล์ |
