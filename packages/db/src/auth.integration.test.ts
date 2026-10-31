@@ -4,7 +4,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { createDatabase } from './client.js';
 import { migrateDown, migrateUp } from './migrator.js';
-import { createTestDatabase, type TestDatabase } from './testing.js';
+import { createTestDatabase, migrationsAfter, type TestDatabase } from './testing.js';
 
 // Migration 0001 (users, RBAC, sessions, audit log) against the real Postgres from docker compose,
 // in a throwaway database. `app` below is the restricted login role the api runs as.
@@ -297,8 +297,10 @@ describe('reversibility of 0001', () => {
   it('goes down (dropping every table it made, keeping 0000) and up again', async () => {
     // 0002 depends on 0001 (users, reject_mutation, ensure_monthly_partitions), 0003 on 0002 and
     // 0004 on 0002: newest goes first.
-    const reverted = await migrateDown(owner(), { steps: 5 });
+    const later = await migrationsAfter('0005_security');
+    const reverted = await migrateDown(owner(), { steps: 5 + later.length });
     expect(reverted).toEqual([
+      ...later.toReversed(),
       '0005_security',
       '0004_portal',
       '0003_followups_outbox',
@@ -318,6 +320,7 @@ describe('reversibility of 0001', () => {
       '0003_followups_outbox',
       '0004_portal',
       '0005_security',
+      ...later,
     ]);
     const seeded = await owner().query<{ n: number }>('SELECT count(*)::int AS n FROM permissions');
     expect(seeded.rows[0]?.n).toBe(Object.keys(PERMISSIONS).length);

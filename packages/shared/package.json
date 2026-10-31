@@ -11,6 +11,10 @@
     "./secret-box": {
       "types": "./dist/secret-box.d.ts",
       "default": "./dist/secret-box.js"
+    },
+    "./testing": {
+      "types": "./dist/testing.d.ts",
+      "default": "./dist/testing.js"
     }
   },
   "files": [

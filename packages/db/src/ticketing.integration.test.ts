@@ -9,7 +9,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { migrateDown, migrateUp } from './migrator.js';
 import { seedIntents } from './seed/intents.js';
-import { createTestDatabase, type TestDatabase } from './testing.js';
+import { createTestDatabase, migrationsAfter, type TestDatabase } from './testing.js';
 
 // Migration 0002 (organizations, tickets, messages, events) against the real Postgres from docker
 // compose, in a throwaway database. `app` is the restricted login role the api runs as.
@@ -536,7 +536,9 @@ describe('down and up again', () => {
     );
     await newTicket(owner(), org);
 
-    expect(await migrateDown(owner(), { steps: 4 })).toEqual([
+    const later = await migrationsAfter('0005_security');
+    expect(await migrateDown(owner(), { steps: 4 + later.length })).toEqual([
+      ...later.toReversed(),
       '0005_security',
       '0004_portal',
       '0003_followups_outbox',
@@ -570,6 +572,7 @@ describe('down and up again', () => {
       '0003_followups_outbox',
       '0004_portal',
       '0005_security',
+      ...later,
     ]);
     expect(
       await scalar<string>(owner(), `SELECT count(*)::text AS value FROM ticket_status_transition`),

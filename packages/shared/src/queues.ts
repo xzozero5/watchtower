@@ -6,9 +6,12 @@
  */
 import { z } from 'zod';
 
+import { assertDisjoint } from './features/compose.js';
+import { FEATURES, FEATURE_QUEUES } from './features/index.js';
 import { customerStatusSchema, portalLocaleSchema } from './portal.js';
 
-export const QUEUE_NAMES = {
+/** Queues of the core (Phase 0) features; Phase 1 features add theirs in `features/<feature>.ts`. */
+export const CORE_QUEUE_NAMES = {
   /** Liveness and plumbing checks. Carries no business data. */
   system: 'system',
   /** Outbound email, delivered over SMTP (Mailpit locally). */
@@ -16,6 +19,10 @@ export const QUEUE_NAMES = {
   /** Scheduled housekeeping, for example creating next month's partitions. */
   maintenance: 'maintenance',
 } as const;
+
+/** Every queue: core plus every feature. */
+export const QUEUE_NAMES = { ...CORE_QUEUE_NAMES, ...FEATURE_QUEUES } as const;
+assertDisjoint('QUEUE_NAMES', [CORE_QUEUE_NAMES, ...FEATURES.map((feature) => feature.queues)]);
 
 export type QueueName = (typeof QUEUE_NAMES)[keyof typeof QUEUE_NAMES];
 
