@@ -156,7 +156,9 @@ export class IntentsService {
       await this.database.db.delete(schema.intent).where(eq(schema.intent.id, id));
     } catch (error) {
       if (isPgError(error, PG.foreignKeyViolation)) {
-        throw conflict('Tickets use this intent; set it to inactive instead');
+        throw conflict(
+          'Tickets or its autonomy history use this intent; set it to inactive instead',
+        );
       }
       throw error;
     }

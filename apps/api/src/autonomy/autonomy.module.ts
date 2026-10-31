@@ -1,10 +1,17 @@
 import { Module } from '@nestjs/common';
 
+import { AutonomyController } from './autonomy.controller.js';
+import { AutonomyService } from './autonomy.service.js';
+import { IntentAutonomyController } from './intent-autonomy.controller.js';
+
 /**
- * Autonomy stage per intent and the emergency switch (T-112). Empty until the owning task adds its controllers and providers (T-123a). Add files in
- * this directory and list them here; `app.module.ts` already imports this module through
- * `features.module.ts`. Every route needs `@RequirePermission` / `@RequireAnyPermission` or
- * `@Public()`, and a public one must also be listed in `./public-routes.ts`.
+ * Autonomy stage per intent and the emergency switches (T-112a, ADR-011). The policy gate itself is
+ * built in `DomainModule`; this module is the HTTP surface for reading and changing the state.
+ * Every route needs `@RequirePermission` / `@RequireAnyPermission` or `@Public()`, and a public one
+ * must also be listed in `./public-routes.ts` (none here).
  */
-@Module({})
+@Module({
+  controllers: [AutonomyController, IntentAutonomyController],
+  providers: [AutonomyService],
+})
 export class AutonomyModule {}

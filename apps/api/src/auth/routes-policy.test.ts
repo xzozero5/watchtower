@@ -190,6 +190,10 @@ describe('every route states who may call it', () => {
         'GET /v1/tickets/:id/timeline',
         'GET /v1/tickets/:id/duplicates',
         'POST /v1/tickets/:id/portal-links/revoke',
+        // Autonomy and the AI switches (T-112a).
+        'GET /v1/autonomy',
+        'POST /v1/autonomy/switches',
+        'POST /v1/intents/:id/autonomy',
       ]),
     );
   });
@@ -232,5 +236,16 @@ describe('every route states who may call it', () => {
       'ticket.reply',
       'ticket.reply.own',
     ]);
+  });
+
+  it('keeps the AI switches head-only and the stage change behind its own permission (T-112a)', async () => {
+    const byKey = new Map((await collectRoutes()).map((route) => [route.key, route]));
+    // ai.emergency_switch is also a lead permission; the head-only one is ai.autonomy.set.any.
+    expect(byKey.get('POST /v1/autonomy/switches')?.permissions).toEqual([
+      'ai.emergency_switch',
+      'ai.autonomy.set.any',
+    ]);
+    expect(byKey.get('POST /v1/intents/:id/autonomy')?.permissions).toEqual(['ai.autonomy.set']);
+    expect(byKey.get('GET /v1/autonomy')?.permissions).toEqual(['ticket.read']);
   });
 });

@@ -289,8 +289,11 @@ describe('tickets.reply written by the AI (policy gate)', () => {
     const gate = (allowed: boolean): PolicyGate => ({
       check: (request) => {
         asked.push(request.ticketId);
-        return Promise.resolve(allowed ? { allowed } : { allowed, reason: 'stage_below_3' });
+        return Promise.resolve(
+          allowed ? { allowed, reason: 'test_allow' } : { allowed, reason: 'stage_below_3' },
+        );
       },
+      checkAiAction: () => Promise.resolve({ allowed, reason: 'test' }),
     });
     const reply = (policyGate: PolicyGate) =>
       env.tx((tx) =>

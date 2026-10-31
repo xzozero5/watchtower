@@ -1,6 +1,7 @@
 import { REOPEN_WINDOW_DAYS } from '@watchtower/shared';
 
 import { assertAssignableStaff, nextRoundRobin, peekRoundRobin, takeTurn } from './assignment.js';
+import { readAutonomyState, setAiSwitch, setIntentAutonomy } from './autonomy/state.js';
 import { findOrCreateContactByEmail } from './contacts.js';
 import { resolveIntent } from './intents.js';
 import { NO_NOTIFIER, type TicketNotifier } from './notifier.js';
@@ -41,11 +42,44 @@ export { resolveIntent } from './intents.js';
 export { NO_NOTIFIER, type TicketNotifier } from './notifier.js';
 export { enqueueJob, type OutboxRequest } from './outbox.js';
 export {
+  SEND_ORIGINS,
+  requireAiAction,
   requireCustomerSend,
+  type AiActionRequest,
   type CustomerSendRequest,
+  type GateAuditMeta,
   type PolicyDecision,
   type PolicyGate,
+  type SendOrigin,
 } from './policy.js';
+export {
+  GATE_REASONS,
+  ORIGIN_ACTOR,
+  decide,
+  effectiveStage,
+  type DecisionInput,
+  type GateReason,
+  type IntentStanding,
+  type SwitchState,
+} from './autonomy/decide.js';
+export {
+  createPolicyGate,
+  readSwitchState,
+  switchStateFrom,
+  type GateDatabase,
+  type PolicyGateOptions,
+} from './autonomy/gate.js';
+export { SAFE_AUTO_ACK_TEMPLATES } from './autonomy/safe-templates.js';
+export {
+  readAutonomyState,
+  readSwitches,
+  setAiSwitch,
+  setIntentAutonomy,
+  toAutonomyIntent,
+  type SetAiSwitchInput,
+  type SetIntentAutonomyInput,
+  type SetIntentAutonomyResult,
+} from './autonomy/state.js';
 export type { ContactRow, IntentRow, MessageRow, SlaPolicyRow, TicketRow } from './rows.js';
 export {
   FALLBACK_CALENDAR,
@@ -98,7 +132,7 @@ export interface DomainOptions {
   readonly sealKey: Buffer;
   /** Days a resolved ticket still reopens on a customer reply. Default: `REOPEN_WINDOW_DAYS`. */
   readonly reopenWindowDays?: number;
-  /** Absent means every customer-bound AI action is refused (fail closed, N3). */
+  /** Absent means every customer-bound AI action is refused (fail closed, N3). `createPolicyGate` builds the real one. */
   readonly policyGate?: PolicyGate | undefined;
   readonly now?: () => Date;
 }
@@ -129,6 +163,12 @@ export interface Domain {
   };
   readonly contacts: { readonly findOrCreateByEmail: typeof findOrCreateContactByEmail };
   readonly intents: { readonly resolve: typeof resolveIntent };
+  /** Stage per intent and the two global switches (T-112a, ADR-011). */
+  readonly autonomy: {
+    readonly read: typeof readAutonomyState;
+    readonly setSwitch: typeof setAiSwitch;
+    readonly setIntentStage: typeof setIntentAutonomy;
+  };
   readonly workflow: { readonly allows: typeof workflowAllows };
   readonly sla: {
     readonly resolvePolicy: typeof resolveSlaPolicy;
@@ -175,6 +215,11 @@ export function createDomain(options: DomainOptions): Domain {
     },
     contacts: { findOrCreateByEmail: findOrCreateContactByEmail },
     intents: { resolve: resolveIntent },
+    autonomy: {
+      read: readAutonomyState,
+      setSwitch: setAiSwitch,
+      setIntentStage: setIntentAutonomy,
+    },
     workflow: { allows: workflowAllows },
     sla: {
       resolvePolicy: resolveSlaPolicy,

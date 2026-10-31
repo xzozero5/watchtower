@@ -38,6 +38,13 @@ snapshot สั้นสำหรับ cold start อยู่ที่ `HANDOF
 
 ## Log
 
+## 2026-11-01 08:05 (Asia/Bangkok) — ai-engineer + security-reviewer + main thread — T-126, T-112a
+- T-126: boundary lint ทำงานทุก workspace แล้ว (เดิม `apps/api` ไม่มีกฎใดทำงาน; เปิดแล้วไม่พบโค้ดผิดกฎ), Aho–Corasick ไม่ OOM (1 MB < 6 MB heap), audit row เสมอแม้ provider ตอบผิดสัญญา, lint `no-redacted-text-cast` แบบ type-aware, normaliser ครอบรูปแบบเพิ่ม · ADR-008 → Accepted
+- T-112a: ADR-011 + migration `0007_autonomy_gate` — gate เป็น pure function (`ai_auto` ปฏิเสธเสมอใน Phase 1, property test 12,800 กรณี), DB CHECK stage 0–2, history append-only, เปลี่ยน stage/สวิตช์ผ่าน SECURITY DEFINER เท่านั้น, API `GET /v1/autonomy`, `POST /v1/autonomy/switches` (head), `POST /v1/intents/:id/autonomy` (≥3 → 403) · security review: **P1 A-1** search_path ของ SECURITY DEFINER → แก้ (`pg_catalog, pg_temp` + qualify ทุกชื่อ, harden trigger function เก่าใน 0007, ถอน TEMP จาก PUBLIC) และ reviewer ยืนยันด้วยการโจมตีจริงว่าปิดแล้ว · ADR-011 → Accepted · P3 A-9…A-11 → T-125
+- main thread แก้ flaky ของ web (testing-library `asyncUtilTimeout` 5 s) → full run ผ่านภายใต้ load
+- test: main thread รัน `--force` บน main + `wip/t-112a`: lint, typecheck ผ่าน · unit ai 346, boundaries 200, domain 28, api 168, web 470 … · integration api 402, db 127, domain 62, worker 19 `[TESTED]`
+- เจ้าของถามหา "หน้าของ head of tech ops" → พบว่า PRD §4.12 Administration (P0) ไม่มี task ใน BACKLOG → เพิ่ม **T-127 Head console** (admin + AI controls + head home แบบเบา) `ux-designer` กำลังร่าง spec
+
 ## 2026-11-01 07:15 (Asia/Bangkok) — ai-engineer + security-reviewer + main thread — T-106 a–c
 - ทำอะไร: ADR-008 (Proposed) · `packages/ai`: ports (`LlmProvider`, `EmbeddingProvider`, `AiRunSink`, `ToolRegistry`, `SettingsSource`), เลือก model ตาม tier จาก settings (ไม่มีชื่อ model ในโค้ด), provider mock / anthropic / vertex ผ่าน Vercel AI SDK (pin `ai 7.0.159`, `@ai-sdk/anthropic 4.0.94`, `@ai-sdk/google-vertex 5.0.129`; ใช้ edge entry ไม่ probe ADC; inject `fetch`; telemetry ปิด), PII redaction (บัตร ปชช. + checksum, เบอร์, อีเมล, บัตร Luhn, บัญชี `[ASSUMED]`, ชื่อจาก dictionary ด้วย Aho–Corasick, normalise NFKC/zero-width/เลขทุกระบบ) + `RedactedText` brand + token provenance + `createAuditedLlm` fail-closed + lint ห้าม cast
 - security review 2 รอบ: รอบแรก P1 ×5 (audit หาย, restore ข้าม ticket, ReDoS, dictionary พัง, false negatives) → แก้ · รอบสอง **ไม่เหลือ P0/P1** · P2 ใหม่: lint boundary ไม่ทำงานใน `apps/api` (มีมาก่อน T-106) และ DoS หน่วยความจำของ Aho–Corasick → T-126 · บันทึก `docs/security-reviews/2026-11-01-T-106-ai-layer.md` · ADR-008 ยัง Proposed จนกว่า T-126 ปิด N1
