@@ -207,6 +207,7 @@ export interface StaffTicket {
   firstResponseDueAt: string | null;
   resolutionDueAt: string | null;
   channel: string;
+  assignee: { id: string; name: string } | null;
   createdAt: string;
 }
 
@@ -214,6 +215,10 @@ export interface TimelineEntryJson {
   kind: 'message' | 'event';
   visibility: 'public' | 'internal';
   bodyText?: string;
+  /** Events only. */
+  type?: string;
+  actor?: { type: string; id: string | null; name: string | null };
+  payload?: Record<string, unknown>;
 }
 
 // ---------------------------------------------------------------- sign-in

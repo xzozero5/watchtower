@@ -151,6 +151,67 @@ test.describe.serial('AC-1: portal submission to resolution', () => {
     await expect(details).not.toContainText('Not set');
   });
 
+  test('staff assign the ticket to a seeded agent; UI, API, timeline and audit agree', async () => {
+    const page = staff.page;
+    await page.goto(`/?ticket=${ticketKey}`);
+    const details = panel();
+    const assigneeField = details.getByRole('button', { name: /^Assignee:/ });
+    await expect(assigneeField).toBeVisible();
+
+    // The signed-in staff member is the break-glass head; hand the ticket to somebody else, and to
+    // an agent that does not already hold it (the portal may have routed it round-robin).
+    const session = await staffApi.get<{ user: { id: string } }>('/v1/auth/session');
+    expect(session.status).toBe(200);
+    const me = session.json.user.id;
+    const before = await staffApi.get<StaffTicket>(`/v1/tickets/${ticketKey}`);
+    const target = ['Demo Agent 3', 'Demo Agent 4'].find(
+      (name) => name !== before.json.assignee?.name,
+    );
+    expect(target, 'a seeded agent to assign to').toBeDefined();
+    if (!target) return;
+
+    await assigneeField.click();
+    await page.getByRole('option', { name: new RegExp(`^${target}`) }).click();
+    await expect(details.getByText('Saved.')).toBeVisible();
+    // Shown in the Details panel (not the "(me)" label) ...
+    await expect(assigneeField).toContainText(target);
+    await expect(assigneeField).not.toContainText('(me)');
+    // ... and survives a reload, i.e. it was stored, not only shown optimistically.
+    await page.reload();
+    await expect(panel().getByRole('button', { name: /^Assignee:/ })).toContainText(target);
+
+    const after = await staffApi.get<StaffTicket>(`/v1/tickets/${ticketKey}`);
+    expect(after.status).toBe(200);
+    expect(after.json.assignee?.name).toBe(target);
+    const assigneeId = after.json.assignee?.id ?? '';
+    expect(assigneeId).not.toBe('');
+    expect(assigneeId).not.toBe(me);
+
+    // The history holds one ticket.assigned event, by this actor, from the previous holder to the agent.
+    const timeline = await staffApi.get<{ entries: TimelineEntryJson[] }>(
+      `/v1/tickets/${ticketId}/timeline`,
+    );
+    const assigned = timeline.json.entries.filter(
+      (entry) => entry.kind === 'event' && entry.type === 'ticket.assigned',
+    );
+    const last = assigned.at(-1);
+    expect(last, 'a ticket.assigned event').toBeDefined();
+    expect(last?.visibility).toBe('internal');
+    expect(last?.actor?.id).toBe(me);
+    expect(last?.payload?.to).toBe(assigneeId);
+    expect(last?.payload?.from ?? null).toBe(before.json.assignee?.id ?? null);
+
+    // And the audit log records the action with the new holder (ids only, no text).
+    const audit = await staffApi.get<{
+      entries: { action: string; outcome: string; actorId: string | null; after: unknown }[];
+    }>(`/v1/audit-logs?action=ticket.assign&targetId=${ticketId}`);
+    expect(audit.status).toBe(200);
+    const entry = audit.json.entries.find((e) => e.outcome === 'success');
+    expect(entry, 'an audit row for the assignment').toBeDefined();
+    expect(entry?.actorId).toBe(me);
+    expect(entry?.after).toMatchObject({ assigneeId });
+  });
+
   test('the customer gets a confirmation email whose link opens the tracking page', async () => {
     const email = await mailbox.next(new RegExp(`We received your request ${ticketKey}\\b`));
     // T-010 C-11: the confirmation never echoes what the submitter typed (no phishing relay).
