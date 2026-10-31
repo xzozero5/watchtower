@@ -1,0 +1,12 @@
+{
+  "id": "msg_fixture_01",
+  "type": "message",
+  "role": "assistant",
+  "model": "fixture-model-standard",
+  "content": [
+    { "type": "text", "text": "Category: access_issue. Reply to [NAME_1] at [EMAIL_1]." }
+  ],
+  "stop_reason": "end_turn",
+  "stop_sequence": null,
+  "usage": { "input_tokens": 42, "output_tokens": 17 }
+}

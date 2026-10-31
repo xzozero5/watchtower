@@ -7,6 +7,7 @@
 - [ADR-005](ADR-005-auth-session-audit.md) — Auth, session, CSRF, RBAC และ audit log (T-004) · Accepted 2026-11-01
 - [ADR-006](ADR-006-outbox.md) — Transactional outbox + relay ใน worker สำหรับ enqueue แบบ at-least-once (T-013) · Accepted 2026-11-01
 - [ADR-007](ADR-007-portal-human-verification.md) — Human verification ของ client portal แบบ self-hosted (PoW + honeypot + rate limit) หลัง `HumanVerificationProvider` (T-007) · Accepted 2026-11-01
+- [ADR-008](ADR-008-ai-layer.md) — AI layer: ports (`LlmProvider`, `EmbeddingProvider`, `AiRunSink`, `ToolRegistry`, `SettingsSource`), provider adapters, PII redaction ด้วย `RedactedText`, audit record `ai_run` (T-106 a–c) · Proposed 2026-11-01
 - [ADR-009](ADR-009-inbound-ingestion-and-domain-package.md) — Inbound ingestion: webhook บางใน api → orchestration ใน worker + workspace ใหม่ `packages/domain` + `inbound_event`/`inbound_message` (แก้ matrix ADR-002, T-122a) · Proposed 2026-11-01
 - [ADR-010](ADR-010-outbound-delivery.md) — Outbound delivery ถึงลูกค้าแบบ at-most-once (`outbound_delivery`), undo-send ฝั่ง server, reply-vs-push + LINE quota, policy gate N3 (T-122a/d) · Proposed 2026-11-01
 - ADR ใหม่: `ADR-00x-<slug>.md` ตาม `docs/templates/adr.template.md` แล้วเพิ่มบรรทัดที่นี่
