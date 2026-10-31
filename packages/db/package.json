@@ -10,22 +10,31 @@
     }
   },
   "files": [
-    "dist"
+    "dist",
+    "migrations"
   ],
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "dev": "tsc -p tsconfig.build.json --watch --preserveWatchOutput",
     "lint": "eslint .",
     "test": "vitest run",
+    "test:integration": "vitest run -c vitest.integration.config.ts",
     "typecheck": "tsc --noEmit",
-    "db:migrate": "node -e \"console.error('db:migrate is not implemented yet (T-002)');process.exit(1)\"",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "pnpm run build && node --env-file-if-exists=../../.env dist/cli.js up",
+    "db:rollback": "pnpm run build && node --env-file-if-exists=../../.env dist/cli.js down",
+    "db:status": "pnpm run build && node --env-file-if-exists=../../.env dist/cli.js status",
     "db:seed": "node -e \"console.error('db:seed is not implemented yet (T-008)');process.exit(1)\""
   },
   "dependencies": {
-    "@watchtower/shared": "workspace:*"
+    "@watchtower/shared": "workspace:*",
+    "drizzle-orm": "^0.45.4",
+    "pg": "^8.23.1"
   },
   "devDependencies": {
     "@types/node": "catalog:",
+    "@types/pg": "^8.23.1",
+    "drizzle-kit": "^0.31.11",
     "eslint": "catalog:",
     "typescript": "catalog:",
     "vitest": "catalog:"

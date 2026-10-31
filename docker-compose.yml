@@ -1,0 +1,282 @@
+# Watchtower local stack (ADR-001: Docker Compose on one machine; the same images go to Cloud Run).
+#
+#   docker compose up -d --wait       everything, then http://localhost:8080 (caddy)
+#   docker compose up -d --wait postgres redis minio minio-init mailpit
+#                                     only the infrastructure, for `pnpm dev` and integration tests
+#
+# Works without a .env file: every value has a local default via ${VAR:-default}. Copy .env.example
+# to .env to change ports or credentials. Every published port binds 127.0.0.1 only.
+#
+# Inside the network the containers always reach each other by service name, so DATABASE_URL,
+# REDIS_URL, S3_ENDPOINT and SMTP_HOST from .env are not passed through; they are built below.
+# If you change POSTGRES_PASSWORD, keep it URL-safe (letters and digits).
+
+name: watchtower
+
+x-app-env: &app-env
+  NODE_ENV: ${NODE_ENV:-development}
+  LOG_LEVEL: ${LOG_LEVEL:-info}
+  APP_URL: ${APP_URL:-http://localhost:3000}
+  API_URL: ${API_URL:-http://localhost:4000}
+  DATABASE_URL: postgres://${POSTGRES_USER:-watchtower}:${POSTGRES_PASSWORD:-watchtower}@postgres:5432/${POSTGRES_DB:-watchtower}
+  REDIS_URL: redis://redis:6379
+  S3_ENDPOINT: http://minio:9000
+  S3_REGION: ${S3_REGION:-us-east-1}
+  S3_BUCKET: ${S3_BUCKET:-watchtower}
+  S3_ACCESS_KEY: ${S3_ACCESS_KEY:-minio}
+  S3_SECRET_KEY: ${S3_SECRET_KEY:-minio12345}
+  JWT_SECRET: ${JWT_SECRET:-change-me}
+  APP_ENCRYPTION_KEY: ${APP_ENCRYPTION_KEY:-change-me-32-bytes-base64}
+  SMTP_HOST: mailpit
+  SMTP_PORT: '1025'
+  OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+  GOOGLE_OIDC_CLIENT_ID: ${GOOGLE_OIDC_CLIENT_ID:-}
+  GOOGLE_OIDC_CLIENT_SECRET: ${GOOGLE_OIDC_CLIENT_SECRET:-}
+  GOOGLE_ALLOWED_DOMAIN: ${GOOGLE_ALLOWED_DOMAIN:-example.com}
+  GMAIL_SERVICE_ACCOUNT_JSON_PATH: ${GMAIL_SERVICE_ACCOUNT_JSON_PATH:-}
+  GMAIL_IMPERSONATE_USER: ${GMAIL_IMPERSONATE_USER:-}
+  PUBSUB_EMULATOR_HOST: ${PUBSUB_EMULATOR_HOST:-}
+  LINE_CHANNEL_ID: ${LINE_CHANNEL_ID:-}
+  LINE_CHANNEL_SECRET: ${LINE_CHANNEL_SECRET:-}
+  LINE_CHANNEL_ACCESS_TOKEN: ${LINE_CHANNEL_ACCESS_TOKEN:-}
+  DISCORD_BOT_TOKEN: ${DISCORD_BOT_TOKEN:-}
+  DISCORD_ALERT_CHANNEL_ID: ${DISCORD_ALERT_CHANNEL_ID:-}
+  GITHUB_APP_ID: ${GITHUB_APP_ID:-}
+  GITHUB_APP_PRIVATE_KEY_PATH: ${GITHUB_APP_PRIVATE_KEY_PATH:-}
+  GCP_PROJECT_ID: ${GCP_PROJECT_ID:-}
+  GOOGLE_APPLICATION_CREDENTIALS: ${GOOGLE_APPLICATION_CREDENTIALS:-}
+  AI_PROVIDER: ${AI_PROVIDER:-mock}
+  ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+  VERTEX_PROJECT_ID: ${VERTEX_PROJECT_ID:-}
+  VERTEX_LOCATION: ${VERTEX_LOCATION:-asia-southeast1}
+  WEB_PUSH_VAPID_PUBLIC: ${WEB_PUSH_VAPID_PUBLIC:-}
+  WEB_PUSH_VAPID_PRIVATE: ${WEB_PUSH_VAPID_PRIVATE:-}
+
+x-node-service: &node-service
+  restart: unless-stopped
+  read_only: true
+  tmpfs:
+    - /tmp
+  cap_drop:
+    - ALL
+  security_opt:
+    - no-new-privileges:true
+
+services:
+  postgres:
+    # pgvector on Postgres 16. Extensions are created by migration 0000, not by an init script.
+    image: pgvector/pgvector:0.8.7-pg16-trixie
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-watchtower}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-watchtower}
+      POSTGRES_DB: ${POSTGRES_DB:-watchtower}
+    ports:
+      - '127.0.0.1:${POSTGRES_PORT:-5432}:5432'
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"']
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+
+  redis:
+    image: redis:7.4-alpine
+    restart: unless-stopped
+    command: ['redis-server', '--appendonly', 'yes']
+    ports:
+      - '127.0.0.1:${REDIS_PORT:-6379}:6379'
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  minio:
+    # S3-compatible object storage for local use; GCS replaces it on GCP. The upstream minio/minio
+    # images were withdrawn from Docker Hub and Quay, so this defaults to a community fork.
+    # Override with MINIO_IMAGE. See docs/04-ARCHITECTURE.md section 4.
+    image: ${MINIO_IMAGE:-pgsty/minio:RELEASE.2026-08-04T00-00-00Z}
+    restart: unless-stopped
+    command: ['server', '/data', '--console-address', ':9001']
+    environment:
+      MINIO_ROOT_USER: ${S3_ACCESS_KEY:-minio}
+      MINIO_ROOT_PASSWORD: ${S3_SECRET_KEY:-minio12345}
+    ports:
+      - '127.0.0.1:${MINIO_PORT:-9000}:9000'
+      - '127.0.0.1:${MINIO_CONSOLE_PORT:-9001}:9001'
+    volumes:
+      - miniodata:/data
+    healthcheck:
+      test: ['CMD', 'mc', 'ready', 'local']
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 5s
+
+  minio-init:
+    # One-shot: creates the bucket, then exits 0.
+    image: ${MINIO_MC_IMAGE:-pgsty/mc:RELEASE.2026-10-26T00-00-00Z}
+    restart: 'no'
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: ['/bin/sh', '-c']
+    command:
+      - 'mc alias set local http://minio:9000 "$$S3_ACCESS_KEY" "$$S3_SECRET_KEY" >/dev/null && mc mb --ignore-existing "local/$$S3_BUCKET"'
+    environment:
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:-minio}
+      S3_SECRET_KEY: ${S3_SECRET_KEY:-minio12345}
+      S3_BUCKET: ${S3_BUCKET:-watchtower}
+
+  mailpit:
+    # Local/dev only (ADR-002). Catches all outbound email; nothing leaves the machine.
+    image: axllent/mailpit:v1.33.0
+    restart: unless-stopped
+    ports:
+      - '127.0.0.1:${SMTP_PORT:-1025}:1025'
+      - '127.0.0.1:${MAILPIT_UI_PORT:-8025}:8025'
+    healthcheck:
+      test: ['CMD', '/mailpit', 'readyz']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  migrate:
+    # One-shot: applies pending migrations (reversible, see packages/db) before api and worker start.
+    build: &api-build
+      context: .
+      dockerfile: apps/api/Dockerfile
+    image: watchtower/api:local
+    restart: 'no'
+    command: ['node', 'node_modules/@watchtower/db/dist/cli.js', 'up']
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-watchtower}:${POSTGRES_PASSWORD:-watchtower}@postgres:5432/${POSTGRES_DB:-watchtower}
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  api:
+    <<: *node-service
+    build: *api-build
+    image: watchtower/api:local
+    environment:
+      <<: *app-env
+      HOST: 0.0.0.0
+      API_PORT: '4000'
+    ports:
+      - '127.0.0.1:${API_PORT:-4000}:4000'
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+      minio-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:4000/health/ready').then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1))"
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+
+  worker:
+    <<: *node-service
+    build:
+      context: .
+      dockerfile: apps/worker/Dockerfile
+    image: watchtower/worker:local
+    environment:
+      <<: *app-env
+      HOST: 0.0.0.0
+      WORKER_PORT: '4100'
+    ports:
+      - '127.0.0.1:${WORKER_PORT:-4100}:4100'
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+      mailpit:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:4100/health/ready').then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1))"
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+
+  web:
+    # apps/web/Dockerfile belongs to T-003. Contract: listens on 3000, GET /health returns 2xx.
+    <<: *node-service
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    image: watchtower/web:local
+    environment:
+      NODE_ENV: ${NODE_ENV:-development}
+      PORT: '3000'
+      HOSTNAME: 0.0.0.0
+      APP_URL: ${APP_URL:-http://localhost:3000}
+      # The browser calls the API directly (cross-origin), so this must be reachable from the
+      # host, never http://api:4000. The api allows CORS for APP_URL only.
+      API_URL: ${API_URL:-http://localhost:4000}
+    ports:
+      - '127.0.0.1:${WEB_PORT:-3000}:3000'
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:3000/health').then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1))"
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  caddy:
+    # Local reverse proxy on http://localhost:8080 (TLS is the load balancer's job on GCP).
+    image: caddy:2.11.7-alpine
+    restart: unless-stopped
+    ports:
+      - '127.0.0.1:${CADDY_PORT:-8080}:8080'
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    # Starts after the api only. web is proxied lazily: until it is healthy caddy answers 502 for
+    # pages, which keeps `docker compose up caddy` usable without building web.
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ['CMD', 'wget', '-q', '-O', '/dev/null', 'http://127.0.0.1:2019/config/']
+      interval: 10s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  pgdata:
+  redisdata:
+  miniodata:
+  caddy_data:
+  caddy_config:

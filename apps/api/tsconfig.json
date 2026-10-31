@@ -1,0 +1,13 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "types": ["node"],
+    // NestJS decorators. @nestjs/swagger reads the emitted parameter types to document
+    // @Body/@Query schemas. Constructor parameters still use an explicit @Inject(token), because
+    // verbatimModuleSyntax requires type-only imports and those leave no runtime class to inject.
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true
+  },
+  "include": ["src", "*.config.ts"]
+}

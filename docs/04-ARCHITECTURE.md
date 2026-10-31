@@ -94,18 +94,15 @@ Build ของ package: ESM, `tsc` ออกที่ `dist/`, `exports` ชี
 
 - **12-factor:** config ผ่าน environment เท่านั้น · `apps/api` และ `apps/worker` validate ด้วย Zod ตอน boot แล้ว fail ทันทีถ้าค่าที่จำเป็นขาด · package ไม่อ่าน `process.env` เอง รับค่าผ่าน parameter
 - **รายการตัวแปร:** `.env.example` เป็นแหล่งเดียว · ค่า secret จริงอยู่นอก repo และไม่ลง log
-- **host ใน `.env.example` เป็นชื่อ service ของ compose** (`postgres`, `redis`, `minio`, `mailpit`, `pubsub`) ถ้ารัน `pnpm dev` นอก container ต้อง override เป็น `localhost`
+- **host ใน `.env.example` เป็น `localhost`** (ใช้กับ `pnpm dev` และ integration test บนเครื่อง) ส่วน `docker-compose.yml` สร้าง `DATABASE_URL`, `REDIS_URL`, `S3_ENDPOINT`, `SMTP_HOST` ด้วยชื่อ service เองเสมอ ค่าเหล่านี้ใน `.env` จึงไม่กระทบ container `[TESTED]` (T-002)
+- **CORS:** `apps/api` อนุญาต origin ของ `APP_URL` เพียงตัวเดียว ไม่ใช้ `*` · browser เรียก `API_URL` ตรง ใน compose `web` ได้ `API_URL=http://localhost:4000` `[TESTED]`
+- **MinIO:** image ทางการ `minio/minio` ถูกถอนจาก Docker Hub และ Quay (ตรวจ 2026-10-31) compose จึงใช้ fork `pgsty/minio` ปักเวอร์ชัน override ได้ด้วย `MINIO_IMAGE` `[ASK-HUMAN]` ตัดสินว่าจะคงตัวนี้หรือเขียน ADR เปลี่ยนเป็น S3-compatible ตัวอื่น
 - **Google Workspace domain ของ SSO:** อ่านจาก `GOOGLE_ALLOWED_DOMAIN` ค่าตัวอย่าง `example.com` `[CONFIRMED]`
 - **ค่าที่แก้ได้จากหน้า admin** (provider/model ตาม PRD §6.7) เก็บใน DB ค่าใน environment เป็นค่าเริ่มต้นเท่านั้น · `config/models.yaml` และ `config/budgets.yaml` ใช้กับ AI ที่ build โปรเจกต์ โค้ดแอปไม่อ่าน
 - **Turbo env mode:** `build`, `test`, `typecheck`, `lint` เป็น strict เพื่อให้ cache ถูก · `dev`, `test:e2e`, `db:*`, `eval` ใช้ `--env-mode=loose` และไม่ cache เพราะต้องเห็นตัวแปรทั้งหมด
 - **Build-time public value:** Next.js ฝังค่า `NEXT_PUBLIC_*` ตอน build ซึ่งขัดกับ "image เดียวกัน" ของ ADR-001 จึงควรให้ web อ่าน API URL ตอน runtime `[ASSUMED]`
 
-จุดที่ T-002 ต้องดูใน `.env.example`:
-- ยังไม่มีตัวแปร port ของ service และ `S3_REGION`
-- `GOOGLE_ALLOWED_DOMAIN` ยังว่าง
-- บางบรรทัดมี comment ต่อท้ายค่า ต้องทดสอบว่า parser ที่ใช้ตัด comment ถูก
-- ค่าตัวอย่าง `change-me` ควรถูก Zod ปฏิเสธเมื่อ `NODE_ENV=production`
-- `PUBSUB_EMULATOR_HOST` มีค่าแล้วแต่ยังไม่มี service นี้ใน Phase 0
+ผลของ T-002 ต่อ `.env.example` `[TESTED]`: เติม port ของ service และ `S3_REGION`, `GOOGLE_ALLOWED_DOMAIN=example.com`, ย้าย comment ท้ายบรรทัดไปบรรทัดของตัวเอง (test parse ด้วย `util.parseEnv`), `change-me` ถูก Zod ปฏิเสธเมื่อ `NODE_ENV=production` · `PUBSUB_EMULATOR_HOST` ยังไม่มี service จนถึง T-102
 
 ## 6. Mock mode ของทุก integration
 
