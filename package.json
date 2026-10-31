@@ -23,8 +23,10 @@
   },
   "devDependencies": {
     "@eslint/js": "catalog:",
+    "@next/eslint-plugin-next": "^16.4.3",
     "eslint": "catalog:",
     "eslint-config-prettier": "catalog:",
+    "eslint-plugin-react-hooks": "^7.1.1",
     "globals": "catalog:",
     "prettier": "catalog:",
     "turbo": "catalog:",
