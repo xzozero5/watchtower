@@ -2,8 +2,11 @@ import { readFileSync } from 'node:fs';
 import type { AddressInfo } from 'node:net';
 
 import { createDatabase, type OutboxPublisher } from '@watchtower/db';
+import { createDomain } from '@watchtower/domain';
 import { parseRedisUrl, QUEUE_NAMES, type QueueName } from '@watchtower/shared';
+import { KEY_LABELS, deriveSubkey } from '@watchtower/shared/secret-box';
 import { Queue, Worker, type Processor } from 'bullmq';
+import { Redis } from 'ioredis';
 import { z } from 'zod';
 
 import type { WorkerConfig } from './config.js';
@@ -15,7 +18,8 @@ import {
   startOutboxRelay,
   type RunningOutboxRelay,
 } from './outbox-relay.js';
-import { PROCESSORS } from './processors/index.js';
+import { PROCESSORS, type ProcessorOverrides } from './processors/index.js';
+import { createRealtimeSink } from './realtime.js';
 import { SCHEDULES } from './schedules.js';
 
 export interface RunningWorker {
@@ -32,6 +36,10 @@ export interface StartOptions {
   readonly mailer?: Mailer;
   /** Replaces how the outbox relay hands jobs to BullMQ. Tests inject a publisher that fails on demand. */
   readonly outboxPublisher?: OutboxPublisher;
+  /** Replaces the outside world of the processors (object storage, provider transports, classifier). */
+  readonly overrides?: ProcessorOverrides;
+  /** Redis pub/sub channel for realtime events. Tests use a unique one; production leaves the default. */
+  readonly realtimeChannel?: string;
 }
 
 const packageJsonSchema = z.object({ version: z.string() });
@@ -73,6 +81,22 @@ export async function startWorker(
       requireTls: config.NODE_ENV === 'production',
     });
 
+  // The write logic shared with the api (ADR-009). No policy gate yet (T-112): fail closed.
+  const domain = createDomain({
+    ticketKeyPrefix: config.TICKET_KEY_PREFIX,
+    sealKey: deriveSubkey(config.APP_ENCRYPTION_KEY, KEY_LABELS.outboxSecret),
+  });
+  const realtimeRedis = new Redis({
+    ...connection,
+    connectionName: `${config.OTEL_SERVICE_NAME}-realtime`,
+    maxRetriesPerRequest: 2,
+  });
+  realtimeRedis.on('error', (error: Error) => {
+    logger.error({ err: error }, 'realtime redis connection error');
+  });
+  const realtime = createRealtimeSink(realtimeRedis, options.realtimeChannel);
+  const overrides = options.overrides ?? {};
+
   const consumers: Worker[] = [];
   const consume = (queue: QueueName, processor: Processor, concurrency?: number): Worker => {
     const worker = new Worker(queue, processor, {
@@ -93,7 +117,7 @@ export async function startWorker(
   for (const registration of PROCESSORS) {
     consume(
       registration.queue,
-      registration.create({ config, logger, database, mailer }),
+      registration.create({ config, logger, database, mailer, domain, realtime, overrides }),
       registration.concurrency,
     );
   }
@@ -172,6 +196,9 @@ export async function startWorker(
       await probe.close();
       await Promise.all([...schedulers.values()].map((scheduler) => scheduler.close()));
       mailer.close();
+      await realtimeRedis.quit().catch(() => {
+        realtimeRedis.disconnect();
+      });
       await new Promise<void>((resolve) => {
         health.close(() => {
           resolve();

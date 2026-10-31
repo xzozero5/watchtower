@@ -1,11 +1,14 @@
 import type { Database } from '@watchtower/db';
+import type { Domain } from '@watchtower/domain';
 import { QUEUE_NAMES, type QueueName } from '@watchtower/shared';
 import { KEY_LABELS, deriveSubkey } from '@watchtower/shared/secret-box';
 import type { Processor } from 'bullmq';
 
 import type { WorkerConfig } from '../config.js';
+import { createIngestRegistration, type IngestOverrides } from '../ingest/index.js';
 import type { WorkerLogger } from '../logger.js';
 import type { Mailer } from '../mailer.js';
+import type { RealtimeSink } from '../realtime.js';
 import { createEmailProcessor } from './email.js';
 import { createMaintenanceProcessor } from './maintenance.js';
 import { processSystemJob } from './system.js';
@@ -16,6 +19,16 @@ export interface ProcessorContext {
   readonly logger: WorkerLogger;
   readonly database: Database;
   readonly mailer: Mailer;
+  /** The shared write logic, built once at boot from the worker config (ADR-009). */
+  readonly domain: Domain;
+  /** Publishes realtime events after a commit. */
+  readonly realtime: RealtimeSink;
+  /** Test doubles for the outside world (storage, provider transports, classifier). Production passes none. */
+  readonly overrides: ProcessorOverrides;
+}
+
+export interface ProcessorOverrides {
+  readonly ingest?: IngestOverrides;
 }
 
 export interface ProcessorRegistration {
@@ -49,6 +62,7 @@ export const PROCESSORS: readonly ProcessorRegistration[] = [
   },
 
   // --- inbound (T-122) ---
+  { queue: QUEUE_NAMES.ingest, create: createIngestRegistration },
 
   // --- outbound (T-122d) ---
 
