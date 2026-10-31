@@ -95,7 +95,12 @@ export interface RedactorOptions {
   /**
    * Names the system already knows. Pass a **scoped** dictionary (the organisation's contacts,
    * the ticket's participants), not every contact in the system: it is rebuilt for each session,
-   * and more than 50,000 entries is refused. Evaluated each time a session starts.
+   * and more than 50,000 entries (or 1.5 million characters in all) is refused. Each name is cut
+   * to 128 characters and only its first 8 words are matched on their own. Evaluated each time a
+   * session starts.
+   *
+   * A text that makes the dictionary produce more than `MAX_NAME_MATCHES` hits makes `redact`
+   * throw `NameMatchLimitError`. Treat it as "do not send this text to a model".
    */
   names?: () => Iterable<string>;
   /** Ignore names shorter than this many characters. Default 3. */

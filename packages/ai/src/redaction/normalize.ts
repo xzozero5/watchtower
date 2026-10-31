@@ -8,7 +8,17 @@
  *    and NFD sequences compose (so "José" matches "José");
  *  - drop `\p{Cf}` (zero-width space/joiners, soft hyphen, bidi marks), which can be used to split a
  *    number or an address without changing how it looks;
+ *  - drop invisible characters that are not `\p{Cf}` but render as nothing and can be used to split
+ *    a number or an address just the same (SR106-N5): the combining grapheme joiner U+034F,
+ *    variation selectors U+FE00-FE0F and U+E0100-E01EF, Mongolian free variation selectors, the
+ *    Hangul fillers U+115F U+1160 U+3164 U+FFA0, the Khmer inherent vowels U+17B4 U+17B5, and the
+ *    Braille blank U+2800;
+ *  - drop combining marks that follow a digit (a digit with a mark is not a digit anyone writes);
+ *  - read the ideographic full stop U+3002 and U+FF61 as '.', the way IDNA does for domains;
  *  - map every `\p{Nd}` (Thai, Arabic-Indic, Devanagari, mathematical, ...) to ASCII 0-9.
+ *
+ * Not handled, by design (documented in ADR-008): homoglyphs from other scripts (Cyrillic 'а' for
+ * Latin 'a', which NFKC does not fold) and digits spelled as words.
  */
 export interface NormalizedView {
   /** Canonical text the detectors scan. */
@@ -24,6 +34,24 @@ export interface NormalizedView {
 const MARK = /^\p{M}$/u;
 const DECIMAL_DIGIT = /^\p{Nd}$/u;
 const FORMAT = /^\p{Cf}$/u;
+// Inclusive code point ranges of characters that render as nothing but are not \p{Cf}.
+const INVISIBLE_RANGES: readonly (readonly [number, number])[] = [
+  [0x034f, 0x034f], // combining grapheme joiner
+  [0x115f, 0x1160], // Hangul choseong / jungseong filler
+  [0x17b4, 0x17b5], // Khmer inherent vowels
+  [0x180b, 0x180d], // Mongolian free variation selectors
+  [0x180f, 0x180f],
+  [0x2800, 0x2800], // Braille blank
+  [0x3164, 0x3164], // Hangul filler
+  [0xfe00, 0xfe0f], // variation selectors
+  [0xffa0, 0xffa0], // halfwidth Hangul filler
+  [0xe0100, 0xe01ef], // variation selectors supplement
+];
+
+function isInvisible(char: string): boolean {
+  const code = char.codePointAt(0) ?? 0;
+  return INVISIBLE_RANGES.some(([from, to]) => code >= from && code <= to);
+}
 const digitCache = new Map<number, string>();
 
 /** ASCII digit for a Unicode decimal digit. Nd characters come in aligned runs of ten. */
@@ -102,9 +130,12 @@ export function buildView(original: string): NormalizedView {
   const builder = new ViewBuilder(length);
 
   const pushNormalized = (cluster: string, from: number, to: number): void => {
+    let afterDigit = false;
     for (const char of cluster.normalize('NFKC')) {
-      if (FORMAT.test(char)) continue;
-      const mapped = DECIMAL_DIGIT.test(char) ? asciiDigit(char) : char;
+      if (FORMAT.test(char) || isInvisible(char)) continue;
+      if (afterDigit && MARK.test(char)) continue;
+      afterDigit = DECIMAL_DIGIT.test(char);
+      const mapped = afterDigit ? asciiDigit(char) : char === '。' || char === '｡' ? '.' : char;
       for (let index = 0; index < mapped.length; index += 1) {
         builder.push(mapped.charCodeAt(index), from, to);
       }

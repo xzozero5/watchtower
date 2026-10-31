@@ -65,8 +65,8 @@ export interface AuditedResult {
   run: AiRunRecord;
 }
 
-const count = (value: number): number =>
-  Number.isFinite(value) && value > 0 ? Math.trunc(value) : 0;
+const count = (value: unknown): number =>
+  typeof value === 'number' && Number.isFinite(value) && value > 0 ? Math.trunc(value) : 0;
 
 function attempt<T>(read: () => T, fallback: T): T {
   try {
@@ -144,13 +144,23 @@ export function createAuditedLlm(deps: AuditedLlmDeps) {
         }
       };
 
+      // `finish` must never throw: once the provider has been called, a row is always written.
+      // The provider is third-party code behind a port, so nothing it returns is trusted to have
+      // the declared shape (SR106-N3): a missing `usage`, a response that is not an object, or an
+      // error whose `name` is not a string all end in a row, never in a TypeError.
       const finish = (outcome: {
         response?: LlmResponse;
         error?: unknown;
       }): { run: AiRunRecord; degraded: boolean } => {
+        // What the provider actually returned, which may not match its declared type.
+        const response = (typeof outcome.response === 'object' ? outcome.response : null) as {
+          text?: unknown;
+          usage?: { inputTokens?: unknown; outputTokens?: unknown } | null;
+        } | null;
+        const usageKnown = typeof response?.usage === 'object' && response.usage !== null;
         const usage = {
-          inputTokens: count(outcome.response?.usage.inputTokens ?? 0),
-          outputTokens: count(outcome.response?.usage.outputTokens ?? 0),
+          inputTokens: attempt(() => count(response?.usage?.inputTokens ?? 0), 0),
+          outputTokens: attempt(() => count(response?.usage?.outputTokens ?? 0), 0),
         };
         const latencyMs =
           Math.max(
@@ -160,30 +170,15 @@ export function createAuditedLlm(deps: AuditedLlmDeps) {
         const errorName =
           outcome.error === undefined
             ? null
-            : outcome.error instanceof Error
-              ? outcome.error.name.slice(0, 100) || 'Error'
-              : 'UnknownError';
-        const text = outcome.response?.text;
-        const parsed = aiRunRecordSchema.safeParse({
-          ...base,
-          tools: attempt(() => (call.toolCalls?.() ?? []).map((tool) => tool.name), []),
-          output: text ?? null,
-          confidence:
-            text === undefined
-              ? null
-              : clampConfidence(attempt(() => call.confidence?.(text), null)),
-          inputTokens: usage.inputTokens,
-          outputTokens: usage.outputTokens,
-          costUsd:
-            text === undefined
-              ? null
-              : attempt(() => estimateCostUsd(usage, settings.prices[resolved.model]), null),
-          latencyMs,
-          status: errorName === null ? 'ok' : 'error',
-          errorCode: errorName,
-        });
-        if (parsed.success) return { run: parsed.data, degraded: false };
-        return {
+            : attempt(
+                () =>
+                  outcome.error instanceof Error && typeof outcome.error.name === 'string'
+                    ? outcome.error.name.slice(0, 100) || 'Error'
+                    : 'UnknownError',
+                'UnknownError',
+              );
+        const text = typeof response?.text === 'string' ? response.text : undefined;
+        const minimal = (): { run: AiRunRecord; degraded: boolean } => ({
           run: aiRunRecordSchema.parse({
             ...base,
             ...empty,
@@ -193,7 +188,34 @@ export function createAuditedLlm(deps: AuditedLlmDeps) {
             errorCode: errorName ?? 'AuditRecordInvalid',
           }),
           degraded: true,
-        };
+        });
+        // A success with no readable answer is not a success.
+        if (outcome.error === undefined && text === undefined) return minimal();
+        try {
+          const parsed = aiRunRecordSchema.safeParse({
+            ...base,
+            tools: attempt(() => (call.toolCalls?.() ?? []).map((tool) => tool.name), []),
+            output: text ?? null,
+            confidence:
+              text === undefined
+                ? null
+                : clampConfidence(attempt(() => call.confidence?.(text), null)),
+            inputTokens: usage.inputTokens,
+            outputTokens: usage.outputTokens,
+            // No usage from the provider means the cost is unknown, not zero.
+            costUsd:
+              text === undefined || !usageKnown
+                ? null
+                : attempt(() => estimateCostUsd(usage, settings.prices[resolved.model]), null),
+            latencyMs,
+            status: errorName === null ? 'ok' : 'error',
+            errorCode: errorName,
+          });
+          if (parsed.success) return { run: parsed.data, degraded: false };
+        } catch {
+          // fall through to the minimal row
+        }
+        return minimal();
       };
 
       const provider = deps.providers[resolved.provider];
