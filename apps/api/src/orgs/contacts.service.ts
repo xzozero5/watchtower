@@ -177,6 +177,19 @@ export class ContactsService {
     }
   }
 
+  /** The contact that owns `email` in any organization (one mailbox is one contact), if there is one. */
+  async findByEmail(
+    executor: Pick<Database['db'], 'select'>,
+    email: string,
+  ): Promise<ContactRow | undefined> {
+    const [row] = await executor
+      .select()
+      .from(schema.contact)
+      .where(arrayContains(schema.contact.emails, [email.trim().toLowerCase()]))
+      .limit(1);
+    return row;
+  }
+
   /**
    * The contact of this organization that owns `email`, created if the address is new. Used when a
    * ticket arrives from a person we have not seen (portal form, a staff member filing on behalf).

@@ -318,7 +318,10 @@ describe('reversibility of 0003', () => {
       `INSERT INTO outbox (queue, job_name, job_id, payload) VALUES ('email', 'send', 'pending-at-down', '{}'::jsonb)`,
     );
 
-    expect(await migrateDown(owner(), { steps: 1 })).toEqual(['0003_followups_outbox']);
+    expect(await migrateDown(owner(), { steps: 2 })).toEqual([
+      '0004_portal',
+      '0003_followups_outbox',
+    ]);
     expect(
       await scalar<string | null>(owner(), `SELECT to_regclass('outbox')::text AS value`),
     ).toBeNull();
@@ -354,7 +357,7 @@ describe('reversibility of 0003', () => {
       ),
     ).toBeNull();
 
-    expect(await migrateUp(owner())).toEqual(['0003_followups_outbox']);
+    expect(await migrateUp(owner())).toEqual(['0003_followups_outbox', '0004_portal']);
     expect(await scalar<string>(owner(), 'SELECT count(*)::text AS value FROM org_tier')).toBe('3');
     const orgAgain = await newOrg(owner(), 'After revert', 'gold');
     expect(orgAgain).toBeTruthy();

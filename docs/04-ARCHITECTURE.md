@@ -42,6 +42,8 @@ Build ของ package: ESM, `tsc` ออกที่ `dist/`, `exports` ชี
 5. **ลูกค้าติดตาม:** tracking page ตรวจ signed link แล้วแสดงเฉพาะ public message · reply จากหน้านี้เข้า timeline เดิม
 6. **Resolve:** เปลี่ยน status ตาม workflow R-1.2 → `ticket_event` + `audit_log` → job อีเมลแจ้ง status
 
+> **สถานะจริง (T-007, `[TESTED]`):** ขั้น 1–6 ทำงานตามนี้ ผ่าน `apps/api/src/portal/` — ฟอร์มสาธารณะ `POST /v1/portal/tickets` (PoW จาก `GET /v1/portal/challenge`), tracking ด้วย header `X-Portal-Token` (token อยู่ใน URL fragment ของลิงก์ในอีเมล เก็บเฉพาะ SHA-256 ใน `portal_access_token`), reply จากลูกค้าเข้า `TicketsService.reply` ด้วย sender แบบ `contact`, อีเมลทั้งหมดเขียนลง outbox ใน transaction เดียวกับ reply/status/merge แล้ว worker render TH/EN (`apps/worker/src/processors/portal-email.ts`) · แนบไฟล์ยังไม่รองรับ (รอ T-102) · ลิงก์แยกต่อ org (R-9.1 "per org") ยังไม่ทำ
+
 กติกา flow: งานเข้าคิวผ่าน outbox table (เขียนใน transaction เดียวกับข้อมูล, relay ใน worker ย้ายไป BullMQ — ADR-006) · job ทุกตัวมี idempotency key · ไม่มี AI action ใน Phase 0 จึงยังไม่แตะ N3 และ N4
 
 ## 3. Boundary rules
@@ -112,7 +114,7 @@ Build ของ package: ESM, `tsc` ออกที่ `dist/`, `exports` ชี
 |---|---|---|---|
 | Google OIDC | `GOOGLE_OIDC_CLIENT_ID`, `GOOGLE_OIDC_CLIENT_SECRET` | `POST /v1/auth/dev-login` (เฉพาะนอก production) + break-glass · production boot ล้มถ้า credential ไม่ครบ `[TESTED]` | T-004 |
 | Email ขาออก | `SMTP_HOST`, `SMTP_PORT` | ส่ง SMTP จริงเข้า Mailpit ไม่ออกอินเทอร์เน็ต | T-007 |
-| Human verification | ยังไม่มีตัวแปร | ผ่านเสมอใน mock และห้ามเปิดใน production `[ASSUMED]` | T-007 |
+| Human verification | `PORTAL_POW_DIFFICULTY_BITS`, `PORTAL_MIN_FILL_SECONDS` | self-hosted proof-of-work + honeypot + rate limit (ADR-007) ไม่มีปลายทางภายนอกจึงไม่มี mock ที่ผ่านเสมอ · test ใช้ difficulty 8 bits / fill 0 s · provider ภายนอก (Turnstile/hCaptcha) = `[ASK-HUMAN]` | T-007 |
 | Object storage | `S3_*` | MinIO ผ่าน S3 interface เดียวกับ GCS | T-002 |
 | Gmail | `GMAIL_SERVICE_ACCOUNT_JSON_PATH`, `GMAIL_IMPERSONATE_USER` | recorded fixtures + Pub/Sub emulator | T-102 |
 | LINE | `LINE_CHANNEL_ID` และ credential ของ channel | webhook จำลอง, บันทึกการส่งแทนการยิงจริง | T-103 |

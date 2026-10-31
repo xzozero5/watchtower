@@ -34,6 +34,7 @@ import { PG, isPgError } from '../common/db-errors.js';
 import { IntentsService, type IntentRow } from '../intents/intents.service.js';
 import { ContactsService } from '../orgs/contacts.service.js';
 import type { DbTransaction, UnitOfWork } from '../realtime/unit-of-work.js';
+import { PortalNotifier } from '../portal/portal-notifier.js';
 import { SlaService } from '../sla/sla.service.js';
 import { AssignmentService } from '../team-queues/assignment.service.js';
 import { assertAssignableStaff } from '../team-queues/team-queues.service.js';
@@ -91,13 +92,20 @@ export type Sender =
       readonly orgId: string;
       readonly email: string;
       readonly name: string;
-    };
+    }
+  /**
+   * The requester writing through the portal with a tracking link: no account, only the contact the
+   * link was issued to. It can answer its own ticket and nobody else's.
+   */
+  | { readonly kind: 'contact'; readonly contactId: string; readonly orgId: string };
 
 interface StatusContext {
   readonly actor: Actor;
   readonly reason?: string | undefined;
   /** Automatic transitions (a customer replies) do not depend on the configurable workflow. */
   readonly automatic?: boolean;
+  /** The caller sends its own customer email (a staff reply that also sets the status). */
+  readonly silent?: boolean;
 }
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -116,7 +124,7 @@ export function replyDeliveryStatus(
   sender: Sender['kind'],
   channel: string,
 ): 'not_applicable' | 'pending' | 'delivered' {
-  if (sender === 'client') return 'not_applicable';
+  if (sender !== 'staff') return 'not_applicable';
   return channel === 'portal' ? 'delivered' : 'pending';
 }
 
@@ -195,6 +203,7 @@ export class TicketsService {
     @Inject(WorkflowService) private readonly workflow: WorkflowService,
     @Inject(AssignmentService) private readonly assignment: AssignmentService,
     @Inject(TICKET_KEYS) private readonly keys: TicketKeys,
+    @Inject(PortalNotifier) private readonly portal: PortalNotifier,
   ) {}
 
   // --- create ---
@@ -601,6 +610,11 @@ export class TicketsService {
       after: snapshot(after),
       metadata: { from, to, ...(context.automatic === true ? { automatic: true } : {}) },
     });
+    // Tell the customer of a portal ticket, in the same transaction (ADR-006). Not for a change the
+    // customer caused, nor when the caller (a reply that sets the status) sends its own email.
+    if (context.automatic !== true && context.silent !== true) {
+      await this.portal.statusChange(tx, after, this.keys.format(after.number), from, to);
+    }
     uow.emit(ticketEvent(this.keys, 'ticket.updated', after, changed));
     return after;
   }
@@ -788,6 +802,8 @@ export class TicketsService {
       after: snapshot(updatedSource),
       metadata: { intoTicketId: target.id, intoKey: targetKey, movedChildren: children.length },
     });
+    // R-1.5: the customer of the merged ticket is told which ticket carries the conversation now.
+    await this.portal.merged(tx, updatedSource, this.keys.format(source.number), targetKey);
     uow.emit(ticketEvent(this.keys, 'ticket.updated', updatedSource, ['status']));
     uow.emit(ticketEvent(this.keys, 'ticket.updated', updatedTarget, ['merge']));
     return { source: updatedSource, target: updatedTarget };
@@ -809,8 +825,12 @@ export class TicketsService {
   ): Promise<{ message: MessageRow; ticket: TicketRow }> {
     const tx = uow.tx;
     let ticket = await this.lock(tx, ref);
-    if (sender.kind === 'client' && ticket.orgId !== sender.orgId) throw notFound('No such ticket');
-    if (sender.kind === 'client' && input.setStatus !== undefined) {
+    const fromCustomer = sender.kind !== 'staff';
+    if (sender.kind !== 'staff' && ticket.orgId !== sender.orgId) throw notFound('No such ticket');
+    if (sender.kind === 'contact' && ticket.requesterContactId !== sender.contactId) {
+      throw notFound('No such ticket');
+    }
+    if (fromCustomer && input.setStatus !== undefined) {
       throw badRequest('A client cannot set the status');
     }
     if (ticket.status === 'merged') {
@@ -821,7 +841,7 @@ export class TicketsService {
     }
     const now = new Date();
     if (
-      sender.kind === 'client' &&
+      fromCustomer &&
       ticket.status === 'resolved' &&
       (ticket.resolvedAt === null ||
         now.getTime() - ticket.resolvedAt.getTime() > REOPEN_WINDOW_DAYS * DAY_MS)
@@ -836,6 +856,8 @@ export class TicketsService {
       contactId = (
         await this.contacts.findOrCreateByEmail(tx, ticket.orgId, sender.email, sender.name, actor)
       ).id;
+    } else if (sender.kind === 'contact') {
+      contactId = sender.contactId;
     }
     const accountId = ticket.channelAccountId;
     const [message] = await tx
@@ -843,8 +865,8 @@ export class TicketsService {
       .values({
         ticketId: ticket.id,
         channelAccountId: accountId,
-        direction: sender.kind === 'client' ? 'inbound' : 'outbound',
-        senderUserId: sender.userId,
+        direction: fromCustomer ? 'inbound' : 'outbound',
+        senderUserId: sender.kind === 'contact' ? null : sender.userId,
         senderContactId: contactId,
         bodyText: input.body,
         visibility: 'public',
@@ -879,7 +901,7 @@ export class TicketsService {
     uow.emit(messageEvent(this.keys, ticket, message));
     if (firstResponse) uow.emit(ticketEvent(this.keys, 'ticket.updated', ticket, ['sla']));
 
-    if (sender.kind === 'client') {
+    if (fromCustomer) {
       // The customer answered: the clock restarts, and a ticket resolved in the last 7 days reopens.
       if (ticket.status === 'waiting_on_customer' || ticket.status === 'resolved') {
         ticket = await this.applyStatus(uow, ticket, 'open', {
@@ -890,7 +912,11 @@ export class TicketsService {
       }
     } else if (input.setStatus !== undefined && input.setStatus !== ticket.status) {
       // "Reply and set status" (R-1.4). An invalid transition fails the whole request: the reply is not sent.
-      ticket = await this.applyStatus(uow, ticket, input.setStatus, { actor });
+      ticket = await this.applyStatus(uow, ticket, input.setStatus, { actor, silent: true });
+    }
+    // One email for the reply, which also carries the status the ticket ended up in.
+    if (sender.kind === 'staff') {
+      await this.portal.staffReply(tx, ticket, this.keys.format(ticket.number), message);
     }
     return { message, ticket };
   }

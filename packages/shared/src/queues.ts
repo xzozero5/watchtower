@@ -6,6 +6,8 @@
  */
 import { z } from 'zod';
 
+import { customerStatusSchema, portalLocaleSchema } from './portal.js';
+
 export const QUEUE_NAMES = {
   /** Liveness and plumbing checks. Carries no business data. */
   system: 'system',
@@ -29,6 +31,42 @@ export const MAINTENANCE_JOBS = {
   ensurePartitions: 'ensure-partitions',
 } as const;
 
+const portalEmailBase = {
+  to: z.string().min(3).max(254),
+  locale: portalLocaleSchema,
+  ticketKey: z.string().min(3).max(32),
+  /** The ticket subject as the customer wrote it (no line breaks). */
+  subject: z.string().max(300),
+  trackingUrl: z.url().max(1000),
+};
+
+function portalEmailVariants() {
+  return [
+    z.object({
+      kind: z.literal('portal_confirmation'),
+      ...portalEmailBase,
+      expectedFirstResponseAt: z.iso.datetime().nullable(),
+    }),
+    z.object({
+      kind: z.literal('portal_update'),
+      ...portalEmailBase,
+      reason: z.enum(['staff_reply', 'status_change']),
+      status: customerStatusSchema,
+      /** First name of the staff member who replied; null for a status change. */
+      agentName: z.string().max(100).nullable(),
+    }),
+    z.object({
+      kind: z.literal('portal_merged'),
+      ...portalEmailBase,
+      intoKey: z.string().min(3).max(32),
+    }),
+    z.object({
+      kind: z.literal('portal_link'),
+      ...portalEmailBase,
+    }),
+  ] as const;
+}
+
 /**
  * Payload of an `email` job. The api builds the whole message content-free (kind + parameters) and
  * the worker renders it, so wording lives in one place. A magic link is a secret until used: the
@@ -41,6 +79,10 @@ export const emailJobSchema = z.discriminatedUnion('kind', [
     link: z.url(),
     expiresInMinutes: z.number().int().min(1).max(1440),
   }),
+  // Client portal emails (T-007). The api writes parameters; the worker renders TH or EN. The
+  // tracking URL carries the access token in its fragment, so like a magic link it is a secret
+  // until the row is sent (the outbox relay blanks the payload then, ADR-006).
+  ...portalEmailVariants(),
 ]);
 export type EmailJob = z.infer<typeof emailJobSchema>;
 

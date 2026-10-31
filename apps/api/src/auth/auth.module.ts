@@ -56,6 +56,8 @@ export class AuthModule {
         AuthService,
         BreakGlassService,
         PasswordService,
+        RateLimiter,
+        CLIENT_ORG_RESOLVER,
       ],
     };
   }
