@@ -35,6 +35,11 @@ snapshot สั้นสำหรับ cold start อยู่ที่ `HANDOF
 
 ## Log
 
+## 2026-11-01 07:10 (Asia/Bangkok) — frontend-dev + main thread — T-007 ปิด (หน้า portal)
+- ทำอะไร: `/portal` (ฟอร์มแจ้งเรื่อง, PoW ใน Web Worker ด้วย `crypto.subtle` + fallback, honeypot ซ่อน, รอ `minFillSeconds`, จัดการ 400/429), `/portal/submitted`, `/portal/tickets/[key]` (อ่าน token จาก fragment แล้วลบด้วย `replaceState`, ส่ง `X-Portal-Token`, timeline สาธารณะ, ตอบกลับ, สถานะแบบคำลูกค้า, merged → ลิงก์ ticket หลัก, ลิงก์หมดอายุ → ขอใหม่) · `/portal/*` no-store + no-referrer · `sw.js` ข้าม `/portal` และ `/v1` · มุมมอง client ใน workspace ใช้ `customerStatus()` (P2-4 จาก review T-006) · i18n แยกไฟล์ `portal.{en,th}.ts` · `SessionProvider` ไม่เรียก session ใต้ `/portal`
+- test: main thread รันเองบน main + `wip/t-007-web`: lint, typecheck, test (web 425 + ทุก package) ผ่าน · e2e 95 ผ่าน (portal 28 รวม PoW จริง, axe light/dark) `[TESTED]` · main thread แก้ชื่อบุคคลจริงในข้อมูลทดสอบเป็นชื่อสมมติ (N1)
+- ไม่ยืนยัน: Web Worker บน Safari/Firefox · full-stack กับ API จริง (T-009) `[UNVERIFIED]` · header ของ portal ยังใช้สีพื้นเดิม รอ token ใหม่จาก T-124
+
 ## 2026-11-01 06:15 (Asia/Bangkok) — backend-dev + main thread — T-007 ฝั่ง API/worker (หน้าเว็บยังทำอยู่)
 - ทำอะไร: ADR-007 (Proposed) human verification แบบ self-hosted: PoW SHA-256 แบบ HMAC-signed + single-use ใน Redis, honeypot `website`, เวลากรอกขั้นต่ำ, rate limit ต่อ IP/email/org (429 + audit) ไม่มี dependency ใหม่ · endpoint public `/v1/portal/{challenge,tickets,tickets/:key,tickets/:key/replies,track/resend}` + staff revoke · tracking token HMAC เก็บแค่ hash, TTL 90 วัน `[ASSUMED]`, header `X-Portal-Token`, ทุกความล้มเหลวตอบ 401 เดียวกัน (กัน enumeration) · อีเมลยืนยัน/ตอบกลับ/สถานะ/merge (R-1.5) ผ่าน outbox → worker → SMTP (Mailpit) TH/EN · migration `0004_portal`
 - test: main thread รันเองบน main + `wip/t-007-api`: lint, typecheck, test (api 144, shared 122, worker 28 …) ผ่าน · `test:integration` api 351 (portal 36), db 101, worker 16 ผ่าน `[TESTED]`

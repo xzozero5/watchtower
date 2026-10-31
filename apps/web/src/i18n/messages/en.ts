@@ -3,6 +3,8 @@
  * same keys (the compiler checks it), and every `{placeholder}` must appear in both languages
  * (messages.test.ts checks it). Never put UI text in a component: add a key here and in th.ts.
  */
+import { portalEn } from './portal.en';
+
 export const en = {
   app: {
     name: 'Watchtower',
@@ -452,6 +454,7 @@ export const en = {
     notFoundBody: 'This page does not exist or has moved.',
     backHome: 'Back to the queue',
   },
+  portal: portalEn,
 } as const;
 
 type Widen<T> = T extends string ? string : { readonly [K in keyof T]: Widen<T[K]> };

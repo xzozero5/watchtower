@@ -31,6 +31,15 @@ const config: NextConfig = {
           { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
         ],
       },
+      {
+        // The public client portal (T-007): tracking pages carry a ticket number, never cache them
+        // and never send a Referer. Listed after the rule above, so these values win.
+        source: '/portal/:path*',
+        headers: [
+          { key: 'Cache-Control', value: 'no-store' },
+          { key: 'Referrer-Policy', value: 'no-referrer' },
+        ],
+      },
     ]);
   },
 };
