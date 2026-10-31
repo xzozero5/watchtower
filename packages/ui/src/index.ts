@@ -61,6 +61,33 @@ export {
 } from './components/combobox.js';
 export { Toaster, toast, type ToasterProps } from './components/toaster.js';
 export { Kbd } from './components/kbd.js';
+export {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogTrigger,
+  type DialogContentProps,
+} from './components/dialog.js';
+export {
+  Sheet,
+  SheetClose,
+  SheetContent,
+  SheetTrigger,
+  type SheetContentProps,
+} from './components/sheet.js';
+export {
+  DataTable,
+  type DataTableColumn,
+  type DataTableProps,
+  type DataTableSort,
+} from './components/data-table.js';
+export { Breadcrumb, type BreadcrumbItem, type BreadcrumbProps } from './components/breadcrumb.js';
+export {
+  AUTONOMY_STAGES,
+  StageBadge,
+  type AutonomyStage,
+  type StageBadgeProps,
+} from './components/stage-badge.js';
 export { SeverityBadge, type SeverityBadgeProps } from './components/severity-badge.js';
 export { cn } from './lib/cn.js';
 export {
