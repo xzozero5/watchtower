@@ -6,6 +6,7 @@ import { AuthModule } from './auth/auth.module.js';
 import { AppConfigModule } from './config/config.module.js';
 import type { ApiConfig } from './config/config.js';
 import { DatabaseModule } from './database/database.module.js';
+import { DomainModule } from './domain/domain.module.js';
 import { FeaturesModule } from './features.module.js';
 import { IntentsModule } from './intents/intents.module.js';
 import { HealthModule } from './health/health.module.js';
@@ -44,6 +45,7 @@ export class AppModule {
         LoggingModule.forRoot(logger),
         TelemetryModule,
         DatabaseModule,
+        DomainModule,
         RedisModule,
         QueueModule,
         RealtimeModule.forRoot(options.queuePrefix),

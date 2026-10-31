@@ -1,17 +1,14 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { schema, type Database } from '@watchtower/db';
-import {
-  STAFF_ROLES,
-  type CreateTeamQueue,
-  type TeamQueue,
-  type UpdateTeamQueue,
-} from '@watchtower/shared';
+import { assertAssignableStaff as assertStaff } from '@watchtower/domain';
+import { type CreateTeamQueue, type TeamQueue, type UpdateTeamQueue } from '@watchtower/shared';
 import { and, asc, eq, inArray, ne, sql } from 'drizzle-orm';
 
 import { AuditScope } from '../audit/audit-scope.js';
-import { badRequest, conflict, notFound } from '../auth/http-errors.js';
+import { conflict, notFound } from '../auth/http-errors.js';
 import { PG, isPgError } from '../common/db-errors.js';
 import { DATABASE } from '../database/database.module.js';
+import { translating } from '../domain/domain-errors.js';
 import type { DbTransaction } from '../realtime/unit-of-work.js';
 
 type QueueRow = typeof schema.teamQueue.$inferSelect;
@@ -40,22 +37,8 @@ export async function assertAssignableStaff(
   executor: Pick<Database['db'], 'select'>,
   userIds: readonly string[],
 ): Promise<void> {
-  if (userIds.length === 0) return;
-  const rows = await executor
-    .select({ id: schema.users.id })
-    .from(schema.users)
-    .where(
-      and(
-        inArray(schema.users.id, [...userIds]),
-        eq(schema.users.status, 'active'),
-        inArray(schema.users.role, [...STAFF_ROLES]),
-      ),
-    );
-  const found = new Set(rows.map((row) => row.id));
-  const missing = userIds.filter((id) => !found.has(id));
-  if (missing.length > 0) {
-    throw badRequest('Every member must be an existing, active staff user');
-  }
+  // The check moved to @watchtower/domain (ADR-009); a refusal still answers 400.
+  await translating(() => assertStaff(executor, userIds));
 }
 
 @Injectable()

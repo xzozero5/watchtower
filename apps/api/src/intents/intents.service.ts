@@ -1,5 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { schema, type Database } from '@watchtower/db';
+import { resolveIntent } from '@watchtower/domain';
 import {
   replyTemplateSchema,
   type CreateIntent,
@@ -14,6 +15,7 @@ import { AuditScope } from '../audit/audit-scope.js';
 import { badRequest, conflict, notFound } from '../auth/http-errors.js';
 import { PG, isPgError } from '../common/db-errors.js';
 import { DATABASE } from '../database/database.module.js';
+import { translating } from '../domain/domain-errors.js';
 import type { DbTransaction } from '../realtime/unit-of-work.js';
 
 export type IntentRow = typeof schema.intent.$inferSelect;
@@ -85,21 +87,8 @@ export class IntentsService {
     tx: DbTransaction,
     ref: { readonly intentId?: string | undefined; readonly intentKey?: string | undefined },
   ): Promise<IntentRow | null> {
-    if (ref.intentId === undefined && ref.intentKey === undefined) return null;
-    const [row] = await tx
-      .select()
-      .from(schema.intent)
-      .where(
-        ref.intentId === undefined
-          ? eq(schema.intent.key, ref.intentKey ?? '')
-          : eq(schema.intent.id, ref.intentId),
-      )
-      .limit(1);
-    if (!row?.isActive) throw badRequest('Unknown or inactive intent');
-    if (ref.intentId !== undefined && ref.intentKey !== undefined && row.key !== ref.intentKey) {
-      throw badRequest('intentId and intentKey name different intents');
-    }
-    return row;
+    // The lookup moved to @watchtower/domain (ADR-009); a refusal still answers 400.
+    return translating(() => resolveIntent(tx, ref));
   }
 
   async create(input: CreateIntent): Promise<Intent> {
