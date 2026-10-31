@@ -34,6 +34,7 @@
 - [ ] T-113 `qa-engineer` e2e AC-2, AC-4, AC-7 + scenario §5.1, §5.2 ด้วย mock adapters
 - [ ] T-114 `security-reviewer` channels (signature, token storage), AI (redaction, allow-list, audit)
 - [ ] T-115 `po` review + `[ASK-HUMAN]` ต่อ credential จริงครั้งแรก → pilot กับทีมจริง 1 สัปดาห์
+- [ ] T-116 `backend-dev` + `frontend-dev` credential store + หน้า admin ของ integration ตาม ADR-004 (ทำก่อน T-115): `head` เท่านั้น, อ่านกลับไม่ได้, envelope encryption, audit, ปุ่มทดสอบ, environment ชนะ DB, วิธีหมุนกุญแจ
 
 ## Phase 2 — Reliability + Usage — แตก task ตอนจบ Phase 1
 - [ ] T-201 GCP Monitoring/Logging ingest via Pub/Sub, fingerprint dedup, correlation rules, service catalog, escalation chain, snooze/heartbeat, noise metrics (R-3.1–3.11)

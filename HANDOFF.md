@@ -18,6 +18,7 @@
 - Feature set ตาม PRD v0.1 รวม 3 ข้อที่เพิ่ม: CSAT email, GCP Monitoring, product-usage dashboard + proactive ticket — 2026-10-31 20:43–20:45
 - Repo เป็น public และเป็นกลาง ห้ามมีชื่อหรือข้อมูลขององค์กรที่นำไปใช้ องค์กรจะ fork ไปใส่ข้อมูลตัวเอง — 2026-10-31 21:25
 - SSO domain อ่านจาก env — 2026-10-31 21:25
+- secret ของ infra อยู่ใน env, credential ของ integration ตั้งผ่าน admin UI แบบเข้ารหัสได้ (ADR-004, แก้ N1) — 2026-10-31
 - Default autonomy = stage 2 (draft-for-approval) ทุก intent; เป้าหมายระยะยาว AI support 100% — PRD §6.4
 - เอกสารการทำงานเป็นไทย, PRD/โค้ดเป็นอังกฤษ — PRD §0 / AGENTS.md
 - โลโก้และ Brand Identity เลือก Option 3B-3 (Sea Lighthouse: Midnight Navy Dome + Warm Coral & Ivory Stripes) ใน `docs/brand/` — 2026-10-31 22:04 `[CONFIRMED 2026-10-31]`

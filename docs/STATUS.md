@@ -20,7 +20,7 @@ snapshot สั้นสำหรับ cold start อยู่ที่ `HANDOF
 - `[CONFIRMED 2026-10-31]` Google Workspace domain ของ SSO อ่านจาก env ค่าตัวอย่าง `example.com`
 - `[ASSUMED]` งบ `build_ai` $10/session วัดไม่ได้บน Max plan จึงดู % plan limit แทน
 - `docs/brand/watchtower-logo.svg` รุ่น 22:09 สีตรงกับ PNG แล้ว แต่รูปทรงเป็นแบบย่อ: ไม่มีหน้าต่างบนตัวประภาคาร, ซี่ราวระเบียง, ซี่กรอบโคมไฟ และคลื่นคนละทรง (ตรวจจาก source) → UI ยังใช้ PNG เป็นโลโก้ และใช้ hex ใน `docs/brand/README.md` เป็น token
-- `[ASK-HUMAN]` N1 ("secret อยู่ใน environment เท่านั้น") และ `.claude/agents/integration-engineer.md` ขัดกับ PRD §4.12/§6.7/§8.1 ที่ให้ตั้ง credential ของ integration ผ่าน admin UI แบบเข้ารหัส → main thread เสนอแยก infra (env เท่านั้น) กับ integration (env หรือ DB เข้ารหัส) รอเจ้าของตัดสิน ไม่บล็อก Phase 0
+- `[CONFIRMED 2026-10-31]` secret ของ infra อยู่ใน env เท่านั้น, credential ของ integration อยู่ใน env หรือ DB เข้ารหัส ตั้งผ่าน admin UI (ADR-004, งาน T-116) · `docs/04-ARCHITECTURE.md` §5 ต้องปรับถ้อยคำตามหลัง T-004
 - `[ASK-HUMAN]` deploy ขึ้น GCP อยู่ใน Post-MVP แต่ pilot T-115 ต้องมีข้อมูลจริงและ webhook สาธารณะ → เสนอย้ายมาก่อน T-115, ให้ `po` พิจารณาใน T-011
 - `WT_MAIN_THREAD=1` ใน `.claude/settings.local.json` (เจ้าของตั้งเอง) ปลดการป้องกัน HANDOFF/STATUS/BACKLOG ให้ sub-agent ด้วย → main thread ตรวจ diff ของสามไฟล์นี้หลัง agent ทุกตัว; `guard.py` ควรแยก sub-agent จาก hook input แทน env (เสนอ ยังไม่ทำ)
 - LINE TH pricing/quota `[VERIFY]` · LINE mark-as-read `[VERIFY]` · Google managed MCP availability `[VERIFY]`

@@ -36,7 +36,7 @@ Open-source, self-hosted **AI Command Center** สำหรับทีม Tech 
 ## Non-negotiables (ห้ามละเมิด — ฉบับเต็มใน PRD §6.6, §8.2)
 | # | กฎ | เหตุผล |
 |---|---|---|
-| N1 | **ไม่มี secret / credential / customer data / ชื่อหรือ procedure ภายในของบริษัทที่นำไปใช้ใน repo** — repo เป็นกลาง ไม่ผูกกับองค์กรใด (ผู้ใช้ fork แล้วใส่ข้อมูลตัวเองใน instance) · secret อยู่ใน environment เท่านั้น ห้ามพิมพ์ค่าออก stdout/log/transcript (ตรวจได้แค่ "มี/ไม่มี" หรือความยาว) | open source + ISO 27001 + PDPA |
+| N1 | **ไม่มี secret / credential / customer data / ชื่อหรือ procedure ภายในของบริษัทที่นำไปใช้ใน repo** — repo เป็นกลาง ไม่ผูกกับองค์กรใด (ผู้ใช้ fork แล้วใส่ข้อมูลตัวเองใน instance) · secret ของ infra อยู่ใน environment เท่านั้น ส่วน credential ของ integration อยู่ใน environment หรือ DB แบบเข้ารหัสเท่านั้น (ADR-004) · ห้ามพิมพ์ค่าออก stdout/log/transcript (ตรวจได้แค่ "มี/ไม่มี" หรือความยาว) | open source + ISO 27001 + PDPA |
 | N2 | **tool ที่ AI/คนใช้ investigate เป็น read-only ทั้งหมด** (GCP Logs, BigQuery/Postgres, Git) และมี rate/cost budget; write action ใด ๆ ของ AI ต้องผ่าน policy หรือคนกด | PRD §6.1 |
 | N3 | **AI ตอบลูกค้าเองได้เฉพาะ intent ที่ autonomy stage ≥ 3 และผ่าน gate** — default ทุก intent = stage 2 (draft-for-approval); auto-ack template ปลอดภัยเท่านั้นที่ส่งได้ทุก stage | PRD §6.4 |
 | N4 | **PII ถูก redact ก่อนส่ง LLM เสมอ** และทุก AI action ลง audit log (prompt version, model, tools, cost) | PRD §6.6 |
