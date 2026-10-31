@@ -43,7 +43,7 @@ export class AppModule {
         TelemetryModule,
         DatabaseModule,
         RedisModule,
-        QueueModule.forRoot(options.queuePrefix),
+        QueueModule,
         RealtimeModule.forRoot(options.queuePrefix),
         AuditModule,
         RbacModule,

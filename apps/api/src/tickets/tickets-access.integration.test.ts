@@ -687,6 +687,7 @@ describe('organizations and domains', () => {
 
 describe('CLIENT_ORG_RESOLVER over organization.domains', () => {
   async function emailJobsFor(to: string) {
+    await h.relayOutbox();
     const jobs = await h.emailQueue.getJobs([
       'waiting',
       'delayed',

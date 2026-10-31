@@ -295,9 +295,10 @@ describe('audit_log', () => {
 
 describe('reversibility of 0001', () => {
   it('goes down (dropping every table it made, keeping 0000) and up again', async () => {
-    // 0002 depends on 0001 (users, reject_mutation, ensure_monthly_partitions): newest goes first.
-    const reverted = await migrateDown(owner(), { steps: 2 });
-    expect(reverted).toEqual(['0002_ticketing', '0001_auth_rbac_audit']);
+    // 0002 depends on 0001 (users, reject_mutation, ensure_monthly_partitions), and 0003 on 0002:
+    // newest goes first.
+    const reverted = await migrateDown(owner(), { steps: 3 });
+    expect(reverted).toEqual(['0003_followups_outbox', '0002_ticketing', '0001_auth_rbac_audit']);
     const gone = await owner().query<{ name: string | null }>(
       `SELECT to_regclass('users')::text AS name UNION ALL SELECT to_regclass('audit_log')::text`,
     );
@@ -305,7 +306,11 @@ describe('reversibility of 0001', () => {
     const extensions = await owner().query(`SELECT 1 FROM pg_extension WHERE extname = 'vector'`);
     expect(extensions.rowCount).toBe(1);
 
-    expect(await migrateUp(owner())).toEqual(['0001_auth_rbac_audit', '0002_ticketing']);
+    expect(await migrateUp(owner())).toEqual([
+      '0001_auth_rbac_audit',
+      '0002_ticketing',
+      '0003_followups_outbox',
+    ]);
     const seeded = await owner().query<{ n: number }>('SELECT count(*)::int AS n FROM permissions');
     expect(seeded.rows[0]?.n).toBe(Object.keys(PERMISSIONS).length);
   });

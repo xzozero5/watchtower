@@ -10,6 +10,8 @@ const workerEnvSchema = createEnvSchema({
   OTEL_SERVICE_NAME: z.string().min(1).default('watchtower-worker'),
   /** Jobs processed in parallel per queue. */
   WORKER_CONCURRENCY: z.coerce.number().int().min(1).max(100).default(5),
+  /** How often the outbox relay looks for pending jobs to hand to BullMQ (milliseconds, ADR-006). */
+  OUTBOX_POLL_INTERVAL_MS: z.coerce.number().int().min(100).max(60_000).default(1000),
 });
 
 export type WorkerConfig = z.output<typeof workerEnvSchema> & {

@@ -7,6 +7,20 @@ export {
   type AppRoleOptions,
 } from './app-role.js';
 export { createDatabase, type CreateDatabaseOptions, type Database } from './client.js';
+export {
+  PermanentOutboxError,
+  enqueueOutbox,
+  outboxBacklog,
+  purgeOutbox,
+  relayOutbox,
+  type OutboxBacklog,
+  type OutboxJob,
+  type OutboxPublisher,
+  type OutboxRow,
+  type OutboxWriter,
+  type RelayOptions,
+  type RelayResult,
+} from './outbox.js';
 export { orgScopeCondition } from './scope.js';
 export {
   DEFAULT_INTENT_EXAMPLES_DIR,

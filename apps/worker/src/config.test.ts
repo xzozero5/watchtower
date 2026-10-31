@@ -13,6 +13,16 @@ describe('loadConfig', () => {
     expect(config.OTEL_SERVICE_NAME).toBe('watchtower-worker');
   });
 
+  it('reads the outbox poll interval: default 1 s, bounded', () => {
+    expect(loadConfig(testEnv()).OUTBOX_POLL_INTERVAL_MS).toBe(1000);
+    expect(loadConfig(testEnv({ OUTBOX_POLL_INTERVAL_MS: '250' })).OUTBOX_POLL_INTERVAL_MS).toBe(
+      250,
+    );
+    expect(() => loadConfig(testEnv({ OUTBOX_POLL_INTERVAL_MS: '10' }))).toThrow(
+      /OUTBOX_POLL_INTERVAL_MS/,
+    );
+  });
+
   it('lets PORT (Cloud Run) win over WORKER_PORT', () => {
     expect(loadConfig(testEnv({ WORKER_PORT: '4101', PORT: '8080' })).listenPort).toBe(8080);
   });

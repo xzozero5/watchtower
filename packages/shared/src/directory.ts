@@ -18,10 +18,22 @@ import {
 
 // --- organizations ---
 
+/**
+ * The tiers a fresh database starts with (migration 0003 seeds the `org_tier` table with them).
+ * Tiers are data: the table decides which slugs exist, and an admin can add more later. `[ASSUMED]`
+ * Gold/Silver/Standard from PRD R-1.6.
+ */
 export const ORG_TIERS = ['gold', 'silver', 'standard'] as const;
-export type OrgTier = (typeof ORG_TIERS)[number];
-/** `[ASSUMED]` Gold/Silver/Standard from PRD R-1.6. */
-export const orgTierSchema = z.enum(ORG_TIERS);
+/** The slug of a row of `org_tier`. */
+export type OrgTier = string;
+/**
+ * The shape of a tier slug. Whether it exists is the database's call (a foreign key to `org_tier`),
+ * so a tier an admin adds works without a code change; an unknown one is answered with 400.
+ */
+export const orgTierSchema = z
+  .string()
+  .trim()
+  .regex(/^[a-z][a-z0-9_-]{0,31}$/, 'expected a tier slug such as "gold"');
 
 export const ORG_STATUSES = ['active', 'inactive'] as const;
 export const orgStatusSchema = z.enum(ORG_STATUSES);

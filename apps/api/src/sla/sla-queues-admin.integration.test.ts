@@ -412,13 +412,15 @@ describe('team queues', () => {
     expect((await lead.client.post('/v1/queues', { name: '   ' })).status).toBe(400);
   });
 
-  it('sends the tickets of a deleted queue on without a queue', async () => {
+  it('refuses to delete a queue that still has tickets (409), and keeps their queue', async () => {
     const queue = await apiQueue(lead, { name: unique('Short lived') });
     const orgId = (await apiOrg(lead)).id;
     const ticket = await fileTicket(agent, orgId, { queueId: queue.id });
     expect(ticket.queue?.id).toBe(queue.id);
-    expect((await lead.client.delete(`/v1/queues/${queue.id}`)).status).toBe(204);
+    const refused = await lead.client.delete<ApiErrorBody>(`/v1/queues/${queue.id}`);
+    expect(refused.status).toBe(409);
+    expect(refused.body.message).toMatch(/still has tickets/);
     const reread = await agent.client.get<TicketDetail>(`/v1/tickets/${ticket.id}`);
-    expect(reread.body.queue).toBeNull();
+    expect(reread.body.queue?.id).toBe(queue.id);
   });
 });

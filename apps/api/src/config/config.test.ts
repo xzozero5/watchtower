@@ -25,6 +25,15 @@ describe('loadConfig', () => {
     expect(config.OTEL_EXPORTER_OTLP_ENDPOINT).toBeUndefined();
   });
 
+  it('reads the ticket key prefix: default OPS, upper-cased, validated', () => {
+    expect(loadConfig(testEnv()).TICKET_KEY_PREFIX).toBe('OPS');
+    expect(loadConfig(testEnv({ TICKET_KEY_PREFIX: '' })).TICKET_KEY_PREFIX).toBe('OPS');
+    expect(loadConfig(testEnv({ TICKET_KEY_PREFIX: 'sup2' })).TICKET_KEY_PREFIX).toBe('SUP2');
+    for (const bad of ['S', '2UP', 'has space', 'WAYTOOLONGPREFIX', 'OPS-']) {
+      expect(() => loadConfig(testEnv({ TICKET_KEY_PREFIX: bad }))).toThrow(/TICKET_KEY_PREFIX/);
+    }
+  });
+
   it('lets PORT (Cloud Run) win over API_PORT, and ignores an empty PORT', () => {
     expect(loadConfig(testEnv({ API_PORT: '4001', PORT: '8080' })).listenPort).toBe(8080);
     expect(loadConfig(testEnv({ API_PORT: '4001', PORT: '' })).listenPort).toBe(4001);

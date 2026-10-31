@@ -4,6 +4,8 @@ import {
   parseEnv,
   portSchema,
   resolveIntegrationMode,
+  ticketKeyPrefixSchema,
+  DEFAULT_TICKET_KEY_PREFIX,
   type IntegrationMode,
 } from '@watchtower/shared';
 import { z } from 'zod';
@@ -38,6 +40,11 @@ const apiEnvSchema = createEnvSchema({
   TRUST_PROXY_HOPS: z.coerce.number().int().min(0).max(5).default(0),
   /** How often an open WebSocket re-checks its session in the database (seconds). */
   REALTIME_REVALIDATE_SECONDS: seconds(10, 1, 300),
+  /**
+   * Prefix of the human ticket number: `OPS` gives `OPS-1234`. 2 to 10 letters or digits, upper-cased.
+   * Changing it renames future displays only; keys already sent in emails keep the old prefix.
+   */
+  TICKET_KEY_PREFIX: z.preprocess(emptyToUndefined, ticketKeyPrefixSchema.default(DEFAULT_TICKET_KEY_PREFIX)),
 });
 
 export type ApiConfig = z.output<typeof apiEnvSchema> & {

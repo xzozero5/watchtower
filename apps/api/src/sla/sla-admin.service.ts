@@ -7,7 +7,6 @@ import {
   type BusinessCalendarRecord,
   type CreateBusinessCalendar,
   type CreateSlaPolicy,
-  type OrgTier,
   type SlaPolicy,
   type UpdateBusinessCalendar,
   type UpdateSlaPolicy,
@@ -17,7 +16,7 @@ import { z } from 'zod';
 
 import { AuditScope } from '../audit/audit-scope.js';
 import { badRequest, conflict, notFound } from '../auth/http-errors.js';
-import { PG, isPgError } from '../common/db-errors.js';
+import { PG, isPgError, pgConstraint } from '../common/db-errors.js';
 import { DATABASE } from '../database/database.module.js';
 import type { DbTransaction } from '../realtime/unit-of-work.js';
 import { targetsFromRow } from './sla.service.js';
@@ -31,7 +30,7 @@ function toApiPolicy(row: PolicyRow): SlaPolicy {
   return {
     id: row.id,
     name: row.name,
-    tier: (row.tier as OrgTier | null) ?? null,
+    tier: row.tier,
     targets: targetsFromRow(row),
     businessCalendarId: row.businessCalendarId,
     createdAt: row.createdAt.toISOString(),
@@ -263,7 +262,9 @@ export class SlaAdminService {
       return conflict('The name, or the tier, already has an SLA policy');
     }
     if (isPgError(error, PG.foreignKeyViolation)) {
-      return badRequest('businessCalendarId does not refer to a calendar');
+      return pgConstraint(error) === 'sla_policy_tier_fkey'
+        ? badRequest('tier is not a known tier')
+        : badRequest('businessCalendarId does not refer to a calendar');
     }
     return error;
   }

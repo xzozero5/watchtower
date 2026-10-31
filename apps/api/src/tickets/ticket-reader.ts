@@ -4,8 +4,6 @@ import {
   DUPLICATE_SUGGESTION_LIMIT,
   DUPLICATE_WINDOW_HOURS,
   OPEN_STATUSES,
-  formatTicketKey,
-  parseTicketKey,
   type ChannelType,
   type ClientTicket,
   type DuplicateSuggestions,
@@ -34,6 +32,7 @@ import {
   type SQL,
 } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
+import { z } from 'zod';
 
 import { forbidden, notFound } from '../auth/http-errors.js';
 import { assertOrgAccess, type Principal } from '../auth/principal.js';
@@ -46,6 +45,7 @@ import {
   toPage,
 } from '../common/keyset.js';
 import { DATABASE } from '../database/database.module.js';
+import { TICKET_KEYS, type TicketKeys } from './ticket-keys.js';
 
 export type TicketRow = typeof schema.ticket.$inferSelect;
 type Executor = Pick<Database['db'], 'select'>;
@@ -93,12 +93,12 @@ function viewQuery<Extra extends Record<string, SQL>>(executor: Executor, extra:
 
 const iso = (date: Date | null): string | null => date?.toISOString() ?? null;
 
-export function toSummary(row: TicketViewRow): TicketSummary {
+export function toSummary(row: TicketViewRow, keys: TicketKeys): TicketSummary {
   const t = row.t;
   return {
     id: t.id,
     number: t.number,
-    key: formatTicketKey(t.number),
+    key: keys.format(t.number),
     subject: t.subject,
     status: t.status as TicketStatus,
     priority: t.priority as TicketPriority,
@@ -125,7 +125,7 @@ export function toSummary(row: TicketViewRow): TicketSummary {
     resolvedAt: iso(t.resolvedAt),
     closedAt: iso(t.closedAt),
     parentTicketId: t.parentTicketId,
-    mergedIntoKey: row.parentNumber === null ? null : formatTicketKey(row.parentNumber),
+    mergedIntoKey: row.parentNumber === null ? null : keys.format(row.parentNumber),
     tags: t.tags,
     customFields: (t.customFields ?? {}) as Record<string, unknown>,
     autonomyStageAtCreation: t.autonomyStageAtCreation,
@@ -138,28 +138,33 @@ export function toSummary(row: TicketViewRow): TicketSummary {
 }
 
 /** The only shape a client ever gets: no assignee, queue, SLA, tags, custom fields or AI flags. */
-export function toClientTicket(row: TicketViewRow): ClientTicket {
+export function toClientTicket(row: TicketViewRow, keys: TicketKeys): ClientTicket {
   const t = row.t;
   return {
     id: t.id,
     number: t.number,
-    key: formatTicketKey(t.number),
+    key: keys.format(t.number),
     subject: t.subject,
     status: t.status as TicketStatus,
     priority: t.priority as TicketPriority,
     intent: t.intentId && row.intentName !== null ? { id: t.intentId, name: row.intentName } : null,
     requesterName: row.requesterName,
-    mergedIntoKey: row.parentNumber === null ? null : formatTicketKey(row.parentNumber),
+    mergedIntoKey: row.parentNumber === null ? null : keys.format(row.parentNumber),
     resolvedAt: iso(t.resolvedAt),
     createdAt: t.createdAt.toISOString(),
     updatedAt: t.updatedAt.toISOString(),
   };
 }
 
-/** `uuid` or `OPS-1234` as a WHERE condition on the ticket table. */
-export function refCondition(ref: string): SQL {
-  const number = parseTicketKey(ref);
-  return number === null ? eq(schema.ticket.id, ref) : eq(schema.ticket.number, number);
+/**
+ * `uuid` or `OPS-1234` (with this instance's prefix) as a WHERE condition on the ticket table. Text
+ * that is neither is "no such ticket", never a query: a uuid column would reject it with an error.
+ */
+export function refCondition(ref: string, keys: TicketKeys): SQL {
+  if (z.uuid().safeParse(ref).success) return eq(schema.ticket.id, ref);
+  const number = keys.parse(ref);
+  if (number === null) throw notFound('No such ticket');
+  return eq(schema.ticket.number, number);
 }
 
 /** Staff need `ticket.read`; a client needs `ticket.read.org`. Having only the other one is not enough. */
@@ -175,7 +180,10 @@ export function isClient(principal: Principal): boolean {
 /** Reads tickets for the API: lists with filters and search, and the detail of one. */
 @Injectable()
 export class TicketReader {
-  constructor(@Inject(DATABASE) private readonly database: Database) {}
+  constructor(
+    @Inject(DATABASE) private readonly database: Database,
+    @Inject(TICKET_KEYS) private readonly keys: TicketKeys,
+  ) {}
 
   /** One ticket the principal may see, as a row with names; 404 if it does not exist or is not theirs. */
   async viewRow(
@@ -185,7 +193,12 @@ export class TicketReader {
   ): Promise<TicketViewRow> {
     assertCanRead(principal);
     const [row] = await viewQuery(executor, {})
-      .where(and(refCondition(ref), orgScopeCondition(schema.ticket.orgId, principal.orgScope)))
+      .where(
+        and(
+          refCondition(ref, this.keys),
+          orgScopeCondition(schema.ticket.orgId, principal.orgScope),
+        ),
+      )
       .limit(1);
     if (!row) throw notFound('No such ticket');
     // Belt and braces: the query already filtered by organization.
@@ -216,7 +229,7 @@ export class TicketReader {
     principal: Principal,
     executor: Executor = this.database.db,
   ): Promise<TicketDetail | ClientTicket> {
-    if (isClient(principal)) return toClientTicket(row);
+    if (isClient(principal)) return toClientTicket(row, this.keys);
     return this.staffDetail(row, executor);
   }
 
@@ -234,14 +247,14 @@ export class TicketReader {
       .where(eq(schema.ticket.parentTicketId, row.t.id))
       .orderBy(asc(schema.ticket.number));
     return {
-      ...toSummary(row),
+      ...toSummary(row, this.keys),
       requester:
         row.t.requesterContactId && row.requesterName !== null
           ? { id: row.t.requesterContactId, name: row.requesterName, email: row.requesterEmail }
           : null,
       mergedTickets: children.map((child) => ({
         id: child.id,
-        key: formatTicketKey(child.number),
+        key: this.keys.format(child.number),
         subject: child.subject,
       })),
     };
@@ -275,7 +288,9 @@ export class TicketReader {
     const client = isClient(principal);
     return {
       ticketId: source.t.id,
-      items: rows.map((row) => (client ? toClientTicket(row) : toSummary(row))),
+      items: rows.map((row) =>
+        client ? toClientTicket(row, this.keys) : toSummary(row, this.keys),
+      ),
     };
   }
 
@@ -315,7 +330,7 @@ export class TicketReader {
     }
 
     if (query.q !== undefined) {
-      const ticketNumber = parseTicketKey(query.q);
+      const ticketNumber = this.keys.parse(query.q);
       const pattern = likeContains(query.q);
       conditions.push(
         or(
@@ -363,7 +378,9 @@ export class TicketReader {
       query.limit,
     );
     return {
-      items: page.rows.map((entry) => (client ? toClientTicket(entry.row) : toSummary(entry.row))),
+      items: page.rows.map((entry) =>
+        client ? toClientTicket(entry.row, this.keys) : toSummary(entry.row, this.keys),
+      ),
       nextCursor: page.nextCursor,
     };
   }

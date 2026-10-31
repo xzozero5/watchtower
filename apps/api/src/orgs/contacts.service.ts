@@ -1,9 +1,16 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { schema, type Database } from '@watchtower/db';
-import type { Contact, ContactListQuery, CreateContact, UpdateContact } from '@watchtower/shared';
+import {
+  AUDIT_ACTIONS,
+  type Contact,
+  type ContactListQuery,
+  type CreateContact,
+  type UpdateContact,
+} from '@watchtower/shared';
 import { and, arrayContains, desc, eq, ilike, or, sql } from 'drizzle-orm';
 
-import { AuditScope } from '../audit/audit-scope.js';
+import { AuditScope, type AuditActor } from '../audit/audit-scope.js';
+import { AuditService } from '../audit/audit.service.js';
 import { badRequest, conflict, notFound } from '../auth/http-errors.js';
 import { PG, isPgError } from '../common/db-errors.js';
 import {
@@ -47,7 +54,10 @@ function snapshot(row: ContactRow): Record<string, unknown> {
 
 @Injectable()
 export class ContactsService {
-  constructor(@Inject(DATABASE) private readonly database: Database) {}
+  constructor(
+    @Inject(DATABASE) private readonly database: Database,
+    @Inject(AuditService) private readonly audit: AuditService,
+  ) {}
 
   async list(query: ContactListQuery): Promise<{ items: Contact[]; nextCursor: string | null }> {
     const { contact } = schema;
@@ -153,7 +163,18 @@ export class ContactsService {
     const before = await this.find(id);
     if (!before) throw notFound('No such contact');
     AuditScope.set({ targetType: 'contact', targetId: id, before: snapshot(before) });
-    await this.database.db.delete(schema.contact).where(eq(schema.contact.id, id));
+    try {
+      await this.database.db.delete(schema.contact).where(eq(schema.contact.id, id));
+    } catch (error) {
+      // 0003 made the foreign keys of tickets and messages RESTRICT: history is never rewritten.
+      if (isPgError(error, PG.foreignKeyViolation)) {
+        throw conflict(
+          'The contact is still referenced by tickets or messages and cannot be deleted. ' +
+            'Erasing a person (PDPA) is a separate process; edit the contact instead',
+        );
+      }
+      throw error;
+    }
   }
 
   /**
@@ -161,12 +182,16 @@ export class ContactsService {
    * ticket arrives from a person we have not seen (portal form, a staff member filing on behalf).
    * An address that already belongs to a contact of another organization is a conflict: one mailbox
    * is one contact, and silently moving it would change whose tickets someone sees.
+   *
+   * A contact it creates gets a `contact.create` audit row in the same transaction (rolled back
+   * together with it), attributed to `actor`: creating a person record is never silent.
    */
   async findOrCreateByEmail(
     tx: DbTransaction,
     orgId: string,
     email: string,
     name: string,
+    actor: AuditActor,
   ): Promise<ContactRow> {
     const normalized = email.trim().toLowerCase();
     const [existing] = await tx
@@ -188,6 +213,14 @@ export class ContactsService {
           .values({ orgId, name, emails: [normalized] })
           .returning();
         if (!created) throw new Error('contact insert returned no row');
+        await this.audit.recordInTransaction(savepoint, {
+          actor,
+          action: AUDIT_ACTIONS.contactCreate,
+          targetType: 'contact',
+          targetId: created.id,
+          after: snapshot(created),
+          metadata: { via: 'find_or_create_by_email' },
+        });
         return created;
       });
     } catch (error) {
