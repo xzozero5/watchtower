@@ -1,0 +1,15 @@
+From: Alice Example <alice@customer.example.com>
+To: Support <support@example.com>
+Subject: Re: Cannot log in to the dashboard [OPS-1234]
+Date: Tue, 14 Oct 2025 10:00:00 +0700
+Message-ID: <CAF5678efgh@mail.customer.example.com>
+In-Reply-To: <wt.delivery1@example.com>
+References: <CAF1234abcd@mail.customer.example.com>
+ <wt.delivery1@example.com>
+MIME-Version: 1.0
+Content-Type: text/plain; charset="UTF-8"
+
+It works now, thank you.
+
+On Tue, 14 Oct 2025, Support wrote:
+> Please try again.

