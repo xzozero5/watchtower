@@ -252,7 +252,8 @@ describe('the first run', () => {
       await count(
         owner(),
         'audit_log',
-        `after::text ILIKE '%502%' OR before::text ILIKE '%dashboard%'`,
+        // Phrases from seeded subjects/bodies; bare digits like 502 also occur in random UUIDs.
+        `after::text ILIKE '%returns 502 intermittently%' OR after::text ILIKE '%open the dashboard%' OR before::text ILIKE '%open the dashboard%'`,
       ),
     ).toBe(0);
     expect(await count(owner(), 'audit_log', `metadata->>'seed' = 'true'`)).toBeGreaterThan(100);
