@@ -51,7 +51,8 @@ describe('StatusLabel', () => {
       const label = await show('client', status);
       expect(label).toHaveAttribute('data-customer-status');
       expect(label).toHaveTextContent(words);
-      expect(label.querySelector('svg')).toHaveAttribute('aria-hidden', 'true');
+      // The dot is decoration; the words carry the meaning.
+      expect(label.querySelector('[data-tone]')).toHaveAttribute('aria-hidden', 'true');
     },
   );
 

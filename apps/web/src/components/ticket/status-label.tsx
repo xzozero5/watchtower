@@ -37,7 +37,9 @@ export function StatusLabel({
 }) {
   const t = useT();
   const { isClient } = useSession();
-  const words = isClient ? t(customerStatusKey(customerStatus(status))) : t(statusKey(status));
+  const customer = isClient ? customerStatus(status) : undefined;
+  const words = customer ? t(customerStatusKey(customer)) : t(statusKey(status));
+  const attrs = customer ? { 'data-customer-status': customer } : { 'data-status': status };
   const content = (
     <>
       <StatusDot tone={STATUS_TONE[status]} />
@@ -46,14 +48,14 @@ export function StatusLabel({
   );
   if (pill) {
     return (
-      <Pill data-status={status} className={className}>
+      <Pill {...attrs} className={className}>
         {content}
       </Pill>
     );
   }
   return (
     <span
-      data-status={status}
+      {...attrs}
       className={cn('inline-flex min-w-0 items-center gap-1.5 text-xs font-medium', className)}
     >
       {content}
