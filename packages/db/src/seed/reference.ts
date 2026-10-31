@@ -65,6 +65,8 @@ export async function loadSlaPolicyFiles(dir: string): Promise<SlaPolicyFile[]> 
   return files;
 }
 
+const UNCHECKED = { checked: false, checkedAt: null, checkedBy: null } as const;
+
 const ALL_DAY = [{ start: '00:00', end: '24:00' }];
 
 /**
@@ -92,7 +94,13 @@ export async function seedCalendars(
       name: file.calendar.name,
       timezone: file.calendar.timezone,
       hours: DEFAULT_WEEKLY_HOURS,
-      holidays: file.holidays.map((holiday) => ({ date: holiday.date, name: holiday.name })),
+      // Example data is `[VERIFY]`: every date starts unchecked until a person compares it with the
+      // official announcement (T-127, migration 0009).
+      holidays: file.holidays.map((holiday) => ({
+        date: holiday.date,
+        name: holiday.name,
+        ...UNCHECKED,
+      })),
     })),
     {
       name: CALENDAR_24X7,

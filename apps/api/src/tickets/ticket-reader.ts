@@ -11,6 +11,8 @@ import {
   type TicketDetail,
   type TicketListQuery,
   type TicketPriority,
+  type TicketStats,
+  type TicketStatsQuery,
   type TicketStatus,
   type TicketSummary,
 } from '@watchtower/shared';
@@ -32,7 +34,7 @@ import {
   sql,
   type SQL,
 } from 'drizzle-orm';
-import { alias } from 'drizzle-orm/pg-core';
+import { alias, type PgColumn } from 'drizzle-orm/pg-core';
 
 import { forbidden, notFound } from '../auth/http-errors.js';
 import { assertOrgAccess, type Principal } from '../auth/principal.js';
@@ -46,6 +48,7 @@ import {
 } from '../common/keyset.js';
 import { DATABASE } from '../database/database.module.js';
 import { translatingSync } from '../domain/domain-errors.js';
+import { TicketSlaStates, runningDueSortKey } from './sla-states.js';
 import { TICKET_KEYS, type TicketKeys } from './ticket-keys.js';
 
 export type TicketRow = typeof schema.ticket.$inferSelect;
@@ -181,6 +184,7 @@ export class TicketReader {
   constructor(
     @Inject(DATABASE) private readonly database: Database,
     @Inject(TICKET_KEYS) private readonly keys: TicketKeys,
+    @Inject(TicketSlaStates) private readonly slaStates: TicketSlaStates,
   ) {}
 
   /** One ticket the principal may see, as a row with names; 404 if it does not exist or is not theirs. */
@@ -292,11 +296,15 @@ export class TicketReader {
     };
   }
 
-  async list(
-    query: TicketListQuery,
+  /**
+   * The WHERE conditions both the list and the counts apply: the caller's organization first (a
+   * client is never given anything else), then the filters of the query. The SLA state filter is
+   * not here because it needs a query of its own (`slaStates`).
+   */
+  private filterConditions(
+    query: Omit<TicketStatsQuery, 'slaState'>,
     principal: Principal,
-  ): Promise<{ items: (TicketSummary | ClientTicket)[]; nextCursor: string | null }> {
-    assertCanRead(principal);
+  ): (SQL | undefined)[] {
     const client = isClient(principal);
     const { ticket, message } = schema;
 
@@ -350,25 +358,61 @@ export class TicketReader {
         ),
       );
     }
+    return conditions;
+  }
 
-    // `due_asc` puts tickets without a due date last (their key is infinity).
-    const dueKey = sql`coalesce(${ticket.firstResponseDueAt}, 'infinity'::timestamptz)`;
-    const sort = client && query.sort === 'due_asc' ? 'created_desc' : query.sort;
-    const key =
-      sort === 'updated_desc' ? ticket.updatedAt : sort === 'due_asc' ? dueKey : ticket.createdAt;
+  /**
+   * Ticket counts by status, queue, assignee and priority with their SLA states (T-127). Staff
+   * only: a client has no queue, assignee or SLA to count. Takes the filters of the list.
+   */
+  async stats(query: TicketStatsQuery, principal: Principal): Promise<TicketStats> {
+    assertCanRead(principal);
+    if (isClient(principal)) throw forbidden('Ticket statistics are for staff');
+    const now = new Date();
+    const conditions = this.filterConditions(query, principal);
+    if (query.slaState !== undefined) {
+      conditions.push(await this.slaStates.condition(query.slaState, conditions, now));
+    }
+    return this.slaStates.stats(conditions, now);
+  }
+
+  async list(
+    query: TicketListQuery,
+    principal: Principal,
+  ): Promise<{ items: (TicketSummary | ClientTicket)[]; nextCursor: string | null }> {
+    assertCanRead(principal);
+    const client = isClient(principal);
+    const { ticket } = schema;
+    const conditions = this.filterConditions(query, principal);
+    if (!client && query.slaState !== undefined) {
+      conditions.push(await this.slaStates.condition(query.slaState, conditions, new Date()));
+    }
+
+    // The due-based sorts put tickets without a due date last (their key is infinity). A client has
+    // no SLA, so a due sort means newest first for them.
+    const sort =
+      client && (query.sort === 'due_asc' || query.sort === 'sla_due_asc')
+        ? 'created_desc'
+        : query.sort;
+    const key: PgColumn | SQL = {
+      created_desc: ticket.createdAt,
+      created_asc: ticket.createdAt,
+      updated_desc: ticket.updatedAt,
+      due_asc: sql`coalesce(${ticket.firstResponseDueAt}, 'infinity'::timestamptz)`,
+      sla_due_asc: runningDueSortKey(),
+    }[sort];
+    const ascending = sort === 'due_asc' || sort === 'sla_due_asc' || sort === 'created_asc';
     if (query.cursor !== undefined) {
       const cursor = decodeCursor(query.cursor);
       conditions.push(
-        sort === 'due_asc'
-          ? afterCursor(key, ticket.id, cursor)
-          : beforeCursor(key, ticket.id, cursor),
+        ascending ? afterCursor(key, ticket.id, cursor) : beforeCursor(key, ticket.id, cursor),
       );
     }
 
     const rows = await viewQuery(this.database.db, { sortKey: preciseTimestamp(key) })
       .$dynamic()
       .where(and(...conditions))
-      .orderBy(...(sort === 'due_asc' ? [asc(key), asc(ticket.id)] : [desc(key), desc(ticket.id)]))
+      .orderBy(...(ascending ? [asc(key), asc(ticket.id)] : [desc(key), desc(ticket.id)]))
       .limit(query.limit + 1);
 
     const page = toPage(

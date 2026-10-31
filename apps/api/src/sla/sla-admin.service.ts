@@ -2,9 +2,11 @@ import { Inject, Injectable } from '@nestjs/common';
 import { schema, type Database } from '@watchtower/db';
 import {
   DEFAULT_WEEKLY_HOURS,
-  holidaySchema,
+  holidayRecordSchema,
   weeklyHoursSchema,
   type BusinessCalendarRecord,
+  type HolidayRecord,
+  type Holiday,
   type CreateBusinessCalendar,
   type CreateSlaPolicy,
   type SlaPolicy,
@@ -24,7 +26,7 @@ import { targetsFromRow } from './sla.service.js';
 type PolicyRow = typeof schema.slaPolicy.$inferSelect;
 type CalendarRow = typeof schema.businessCalendar.$inferSelect;
 
-const holidaysSchema = z.array(holidaySchema);
+const holidaysSchema = z.array(holidayRecordSchema);
 
 function toApiPolicy(row: PolicyRow): SlaPolicy {
   return {
@@ -51,6 +53,26 @@ function toApiCalendar(row: CalendarRow): BusinessCalendarRecord {
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };
+}
+
+const UNCHECKED = { checked: false, checkedAt: null, checkedBy: null } as const;
+
+/**
+ * Holidays as the caller sent them, with the check state they already had. A date that is new, or
+ * whose name changed, starts unchecked: someone has to look at it again. A caller cannot send the
+ * state itself (the input schema drops it); only `markHolidayChecked` sets it.
+ */
+function withCheckState(
+  incoming: readonly Holiday[],
+  existing: readonly HolidayRecord[],
+): HolidayRecord[] {
+  const before = new Map(existing.map((holiday) => [`${holiday.date}\n${holiday.name}`, holiday]));
+  return incoming.map((holiday) => {
+    const kept = before.get(`${holiday.date}\n${holiday.name}`);
+    return kept === undefined
+      ? { date: holiday.date, name: holiday.name, ...UNCHECKED }
+      : { ...holiday, checked: kept.checked, checkedAt: kept.checkedAt, checkedBy: kept.checkedBy };
+  });
 }
 
 /** Administration of SLA policies and business calendars (head, `sla.manage`). */
@@ -153,7 +175,7 @@ export class SlaAdminService {
             name: input.name,
             timezone: input.timezone,
             hours: input.hours,
-            holidays: input.holidays,
+            holidays: withCheckState(input.holidays, []),
             isDefault: input.isDefault,
           })
           .returning();
@@ -187,7 +209,9 @@ export class SlaAdminService {
             ...(patch.name === undefined ? {} : { name: patch.name }),
             ...(patch.timezone === undefined ? {} : { timezone: patch.timezone }),
             ...(patch.hours === undefined ? {} : { hours: patch.hours }),
-            ...(patch.holidays === undefined ? {} : { holidays: patch.holidays }),
+            ...(patch.holidays === undefined
+              ? {}
+              : { holidays: withCheckState(patch.holidays, toApiCalendar(before).holidays) }),
             ...(patch.isDefault === undefined ? {} : { isDefault: patch.isDefault }),
             updatedAt: sql`now()`,
           })
@@ -204,6 +228,56 @@ export class SlaAdminService {
     } catch (error) {
       throw this.translateCalendar(error);
     }
+  }
+
+  /**
+   * Marks one holiday as checked (or not) against the official announcement `[VERIFY]`, recording
+   * who and when. The row is locked while it is read and written, so two heads checking different
+   * dates of the same calendar do not overwrite each other.
+   */
+  async markHolidayChecked(
+    id: string,
+    date: string,
+    checked: boolean,
+    actorUserId: string,
+  ): Promise<BusinessCalendarRecord> {
+    const row = await this.database.db.transaction(async (tx) => {
+      const [current] = await tx
+        .select()
+        .from(schema.businessCalendar)
+        .where(eq(schema.businessCalendar.id, id))
+        .for('update')
+        .limit(1);
+      if (!current) throw notFound('No such calendar');
+      const holidays = toApiCalendar(current).holidays;
+      const holiday = holidays.find((candidate) => candidate.date === date);
+      if (!holiday) throw notFound('No holiday on this date in the calendar');
+      AuditScope.set({
+        targetType: 'business_calendar',
+        targetId: id,
+        before: { date, name: holiday.name, checked: holiday.checked },
+      });
+      const now = new Date();
+      const next = holidays.map((candidate) =>
+        candidate.date !== date
+          ? candidate
+          : {
+              ...candidate,
+              checked,
+              checkedAt: checked ? now.toISOString() : null,
+              checkedBy: checked ? actorUserId : null,
+            },
+      );
+      const [updated] = await tx
+        .update(schema.businessCalendar)
+        .set({ holidays: next, updatedAt: sql`now()` })
+        .where(eq(schema.businessCalendar.id, id))
+        .returning();
+      if (!updated) throw notFound('No such calendar');
+      return updated;
+    });
+    AuditScope.set({ after: { date, checked }, metadata: { date, checked } });
+    return toApiCalendar(row);
   }
 
   async removeCalendar(id: string): Promise<void> {

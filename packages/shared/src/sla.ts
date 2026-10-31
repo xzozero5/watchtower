@@ -105,6 +105,24 @@ export const holidaySchema = z.object({
 });
 export type Holiday = z.infer<typeof holidaySchema>;
 
+/**
+ * A holiday as stored and returned (T-127, migration 0009): the date and name plus whether a
+ * person has checked the date against the official announcement `[VERIFY]`. Imported and example
+ * holidays start unchecked. Older rows without the fields read as unchecked. Input schemas keep
+ * using `holidaySchema`, which strips these fields: a client cannot mark a date checked by sending
+ * the flag, only the dedicated endpoint does, and it records who and when.
+ */
+export const holidayRecordSchema = holidaySchema.extend({
+  checked: z.boolean().default(false),
+  checkedAt: z.iso.datetime().nullable().default(null),
+  /** The user who checked it; the id outlives the account like `audit_log.actor_id`. */
+  checkedBy: z.uuid().nullable().default(null),
+});
+export type HolidayRecord = z.infer<typeof holidayRecordSchema>;
+
+export const markHolidayCheckedSchema = z.object({ checked: z.boolean() });
+export type MarkHolidayChecked = z.infer<typeof markHolidayCheckedSchema>;
+
 /** What the arithmetic needs from a `business_calendar` row. */
 export interface BusinessCalendar {
   readonly timezone: string;
@@ -401,4 +419,34 @@ export function resumeDueAfterPause(input: {
   if (input.resumedAt.getTime() <= input.pausedAt.getTime()) return input.due;
   const remainingMinutes = slaMinutesBetween(input.pausedAt, input.due, input.mode, input.calendar);
   return addSlaMinutes(input.resumedAt, remainingMinutes, input.mode, input.calendar);
+}
+
+// --- SLA state of a running ticket (T-127, UI spec 17 Q9) ---
+
+/** What a ticket whose SLA clock is relevant is in right now. A ticket with no running target has none. */
+export const SLA_STATES = ['ok', 'at_risk', 'breached', 'paused'] as const;
+export type SlaState = (typeof SLA_STATES)[number];
+export const slaStateSchema = z.enum(SLA_STATES);
+
+/** `[ASSUMED]` (UI spec 17 Q9): at risk with 25 % of the target left, or 30 minutes, whichever is first. */
+export const SLA_AT_RISK_FRACTION = 0.25;
+export const SLA_AT_RISK_MINUTES = 30;
+
+/**
+ * Whether a target that has not been missed yet is at risk. The time left is measured on the
+ * target's own clock (business hours, or 24x7), so a ticket due Monday morning is not "at risk"
+ * on Saturday just because the weekend is short on business time. `targetMinutes` is the length of
+ * the target on that clock; without it only the 30 minute rule applies.
+ */
+export function isSlaAtRisk(input: {
+  readonly now: Date;
+  readonly dueAt: Date;
+  readonly targetMinutes: number | null;
+  readonly mode: SlaCalendarMode;
+  readonly calendar: BusinessCalendar;
+}): boolean {
+  if (input.dueAt.getTime() <= input.now.getTime()) return false;
+  const left = slaMinutesBetween(input.now, input.dueAt, input.mode, input.calendar);
+  if (left <= SLA_AT_RISK_MINUTES) return true;
+  return input.targetMinutes !== null && left <= input.targetMinutes * SLA_AT_RISK_FRACTION;
 }
