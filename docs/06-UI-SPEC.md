@@ -548,3 +548,215 @@ Thai copy notes: keep `ticket`, `SLA`, `intent`, `LINE`, `push` in English (team
 | Q9 | SLA at-risk threshold | ≤ 25 % of target left **or** ≤ 30 min, whichever first, in business time; default per SLA policy, computed server-side |
 | Q10 | Alert severity → P-level | critical→P1, error→P2, warning→P3, info→P4, configurable per policy; unknown → P3 + "Severity unmapped" label + head warning; GCP field values `[VERIFY]` |
 | Q11 | Spec language | English (PRD/open-source docs); TH copy stays in §16 |
+
+---
+
+## 18. Head console (T-127) — Head home + Admin
+
+> Why: owner asked 2026-11-01 "isn't there a page for the head of tech ops yet?" — there was none. Scope: a Phase 1 **light** Head home (PRD §9.1 without history/charts; the full Ops dashboard is T-206) and the P0 admin pages of PRD §4.12 that already have an API. Visual style follows `docs/design/ui-refresh-2026-11.md` (rail, 1 px hairlines, no cards, no UPPERCASE, inline comboboxes, neutral canvas, colour only with meaning); behaviour follows §6.4–6.5, §12–15 of this spec.
+> API names were read from `apps/api/src/**/*.controller.ts` on `main` and from `apps/api/src/autonomy/` + ADR-011 on `wip/t-112a` (not merged yet) on 2026-11-01. `[NEEDS API]` = no endpoint exists; the stated interim is what the UI does until it does. Everything not decided by PRD/ADR is `[ASSUMED]`.
+
+### 18.1 Navigation, routes, keyboard
+| Route | Page | Visible with (permission, role per PRD §2.2) | Breadcrumb |
+|---|---|---|---|
+| `/home` | Head home (§18.2) | `user.read` (head, lead) `[ASSUMED]` | Home |
+| `/admin` | Redirects to the first section the user may open | any admin permission below | — |
+| `/admin/users` | Users & roles | `user.read` (lead read-only, head edits: `user.manage`) | Admin / Users |
+| `/admin/orgs`, `/admin/orgs/:id` | Organizations, one org + its contacts | `org.manage` (lead, head) | Admin / Organizations / Acme Logistics |
+| `/admin/sla`, `/admin/sla/calendars/:id` | SLA policies, business calendar + holidays | `sla.manage` (head) | Admin / SLA / Bangkok office hours |
+| `/admin/intents`, `/admin/intents/:id` | Intents + autonomy stage | `intent.manage` (lead, head) | Admin / Intents / webhook_not_received |
+| `/admin/queues` | Queues & members | `queue.manage` (lead, head) | Admin / Queues |
+| `/admin/ai` | AI controls (§18.4) | `ai.autonomy.set` (lead read-only, head acts) | Admin / AI controls |
+| `/admin/audit` | Audit log | `audit.read` (head) | Admin / Audit log |
+| `/admin/integrations` | Integrations (§12) | `integration.manage` (head) | Admin / Integrations |
+
+- **Rail**: after the existing queue/brief/handoff/notifications items add `Home` (lucide `gauge`), a hairline separator, then `Admin` (`settings-2`). Items the user may not open are **hidden**, not disabled (same rule as §12). `aria-current="page"` on the active one.
+- **Admin layout**: rail · 220 px section list (plain text links with count where cheap, hairline right border) · page. The section list shows only permitted sections. Below 768 px the section list becomes a `Combobox` "Section" in the page header.
+- **Page header** (48 px, normal case): breadcrumb `nav aria-label="Breadcrumb"` (last item `aria-current="page"`) left; page actions right (`Invite`, `New organization`…). Body = one table or one form; edits open in a right **sheet** (400 px, modal, focus returns to the row on close; unsaved changes ask before closing).
+- **Landing** `[ASSUMED]`: head lands on `/home` after sign-in; lead and agent land on the queue.
+- **Keyboard** (adds to §14; single keys follow the §14 text-field rule): `g` then `d` Head home · `g` then `a` Admin · on admin lists `J`/`K` move the row focus, `Enter` opens the sheet, `N` starts "New…", `/` focuses the page filter (not the queue search) · `Esc` closes the sheet.
+- **⌘K**: new palette group `admin` — "Go to Home", "Go to Admin › {section}" (filtered by permission); head only: "AI: Stop all AI runs…", "AI: Limit all intents to Stage 2…". Palette commands only **open** the confirm dialog of §18.4; they never flip a switch directly.
+
+### 18.2 Head home `/home` (Phase 1 light)
+```
+Home                                     Data from 09:14 · refreshes every minute  [Refresh]
+-----------------------------------------------------------------------------------------------
+[info] AI runs are stopped since 08:50 — replies are manual.                    [AI controls]   <- only while a switch is on
+-----------------------------------------------------------------------------------------------
+SLA at risk now  7  (2 overdue)            [View in queue] | Waiting for someone
+[P1] OPS-1240  Overdue 12m   Acme Logistics   unassigned   | Unassigned      3   oldest 18m
+[P2] OPS-1234  FR 18m left   Example Co.      (MK)         | New (not triaged) 2
+... up to 10 rows, then "Show all 7"                       | Needs triage    1
+-----------------------------------------------------------------------------------------------
+Open tickets by status                                     | Open tickets by queue
+New 4 · Triage 2 · Open 31 · Waiting on dev 6 ·            | Default 22 · Billing 9 · No queue 3
+Waiting on customer 12 (SLA paused)                        |
+-----------------------------------------------------------------------------------------------
+Open load per person                                       | System health
+(MK) Mana K.     9 open · 2 at risk                        | [check] Database and Redis: ready
+(PS) Pim S.      4 open · 0 at risk                        | [minus] Outbound queue: not available yet
+(DN) Dao N.      0 open                                    | [minus] Integrations: not available yet
+-----------------------------------------------------------------------------------------------
+AI   Runs: on · Stage limit: off · 14 intents: Stage 0 · 2 · Stage 1 · 3 · Stage 2 · 9 · 1 pinned   [Intents]
+```
+| Widget | Shows | Data source today | Gap |
+|---|---|---|---|
+| SLA at risk now | count + top 10 rows (severity, key, `SlaBadge`, org, assignee avatar); "overdue" sub-count | `GET /v1/tickets?status=new,triage,open,waiting_on_dev&sort=due_asc&limit=200` → existing `slaView()` (`apps/web/src/lib/tickets/sla.ts`) keeps `atRisk` + `breached`; overdue alone = `overdue=true` | `[NEEDS API]` server `slaState=at_risk` filter + total count (same need as T-119 "SLA at risk" view); counts are "at least" when the page is full |
+| Waiting for someone | unassigned, new, triage counts; oldest unassigned age | `GET /v1/tickets?assignee=unassigned&status=new,triage,open`, `?status=new`, `?status=triage` (limit 200 each) | `[NEEDS API]` `created_asc` sort / counts; oldest computed from the loaded page |
+| Open by status / by queue | one labelled number per status / per queue, each a link to the queue filtered | one `GET /v1/tickets?status=<open statuses>&limit=200` grouped client-side; queue names `GET /v1/queues` | `[NEEDS API]` grouped counts endpoint (e.g. `GET /v1/tickets/counts?groupBy=status\|queue\|assignee`) |
+| Open load per person | per active staff user: open count, at-risk count; people with 0 still listed | same ticket page grouped by `assignee`; people from `GET /v1/users` (active, staff) | same counts endpoint; this is load, not performance (performance is T-206) |
+| System health | Postgres + Redis readiness; outbound queue pending/dead + oldest pending age; integration health | `GET /health/ready` ✓ | `[NEEDS API]` outbox pending/dead/oldest (T-121) · integration health (T-116) — rows show "Not available yet" in muted text, never hidden and never green |
+| AI status | both switch states with who/when; intents per stage; pinned count | `GET /v1/autonomy` (`wip/t-112a`) | names of `changedBy` need `GET /v1/users` (head/lead have it) |
+
+- Restraint (dataviz): **numbers with labels and lists only** — no charts, sparklines, trends or WoW deltas in Phase 1 (they need history → T-206). `tabular-nums` for all counts and times. A count ≥ 200 from a full page shows `200+`.
+- Every number is a link to the queue with the matching filter (status, queue, assignee, `overdue`); the "SLA at risk" link opens the `SLA at risk` saved view once T-119 lands, until then the queue sorted by due time.
+- Colour only where it means something: severity badges, SLA badge states, AI banner (info). Section titles are plain 14 px/600 text, sections divided by hairlines.
+- Refresh: refetch every 60 s `[ASSUMED]` + `Refresh` button; numbers change in place. Lists never reorder while focus or hover is inside them — they show the §4.3 pill "`{count} changed — press .`" instead.
+- Lead sees the same page; the AI line links to a read-only AI controls page. Agents have no Home (their home is the queue).
+
+### 18.3 Admin pages
+Common pattern: `DataTable` (sticky header, sortable columns with `aria-sort`, row = one focusable item, `h-row` height) + filter field + right sheet for create/edit. Save is explicit (button), success toast, field errors inline from the API's 400 details, 409 messages shown as a plain sentence above the form. Nothing is deleted from a list without a confirm dialog naming the item.
+
+| Page | List columns | Create / edit and rules | API |
+|---|---|---|---|
+| Users & roles | avatar + name · email · role pill · status dot + text (`Active`/`Disabled`) · last sign-in | `Invite` (head): email, name, role `agent`/`lead`/`head` — "They sign in with Google using this address." Role = inline combobox; promoting to `head` asks to confirm. `Disable…` confirm: "Their sessions end now." `Enable`. `Sign out everywhere` (`session.revoke.any`). Own row: role/status read-only with "You can't change your own role or status." **Break-glass** row: lock icon + "Emergency sign-in account — not editable here", no actions. Lead: whole page read-only. | `GET/POST/PATCH /v1/users`, `POST /v1/users/:id/force-logout` · role–permission matrix `GET /v1/rbac/roles` shown read-only in a "Roles" tab `[ASSUMED]` (editing `PUT` deferred) |
+| Organizations | name · tier · status · domains (first + "+2") · SLA policy · contacts count `[NEEDS API]` (hidden until available) | Sheet: name, tier (combobox), SLA policy (combobox, "Tier default" option = null), domains (chip input; free-mail domains rejected inline with the API message), LINE group ids, notes, status `Active`/`Inactive`. Deactivate preferred over delete; `Delete…` in overflow, API 409 shown as text. Org page tabs: **Details · Contacts · Tickets** (Tickets = link to queue `orgId=`). | `GET/POST/PATCH/DELETE /v1/orgs` · tier list `[NEEDS API]` (T-121 `org_tier`); interim: tiers seen on loaded orgs + typed slug validated by the API |
+| Contacts (org tab) | name · emails · LINE linked (icon + "Linked") · verified (`Verified` / `Unverified` chip, §4.1) · role in org | Sheet: name, emails (1–10), LINE user id, phone, role in org. `Invite to portal` = `POST /v1/users` role `client` + `orgId` (lead/head, `client.invite`). | `GET /v1/contacts?orgId=`, `POST/PATCH/DELETE /v1/contacts` |
+| SLA policies | name · tier default · P1–P4 "FR / Res" targets in business time · calendar | Sheet: name, tier, calendar, a 4-row grid (priority × first response × resolution × `Business`/`24×7` segmented). Inline error if FR > Res. Editing note: "Changes apply to new due times; running tickets keep theirs." `[ASSUMED]` | `GET/POST/PATCH/DELETE /v1/sla-policies` |
+| Business calendars + holidays | calendar list: name · timezone · default · holiday count; holiday table: date · weekday · name · check state | Weekly hours: 7 rows, time-window inputs. Holidays: add row, edit inline, remove, import JSON file (preview before save; duplicates flagged). **`[VERIFY]` badge**: every imported/example holiday shows `Not checked` (icon `shield-question` + text) until a person ticks `Checked against the official announcement`; a calendar with unchecked rows shows a warning line above the table. | `GET/POST/PATCH /v1/business-calendars` (holidays are part of the calendar body) · per-holiday check state `[NEEDS API]` (holiday has only `date`,`name`); interim: calendar-level warning "Check every date against the official announcement before using it for a real SLA." always shown, no per-row badge |
+| Intents | name + key (mono) · default priority (`SeverityBadge`) · SLA policy · `StageBadge` · pinned (lock + "Pinned") · active | Sheet tabs **Details · Autonomy · History**. Details: name, description, typical evidence, default priority, SLA policy, active (allowed tools + reply templates read-only chips in this version `[ASSUMED]`). Autonomy: §18.3.1. History: stage/pin changes (who, when, from→to, reason). | `GET/POST/PATCH /v1/intents` · `GET /v1/autonomy`, `POST /v1/intents/:id/autonomy` (`wip/t-112a`) · History: `GET /v1/audit-logs?targetType=intent&targetId=` (head only) — `[NEEDS API]` history endpoint for leads; lead sees "History is visible to the head." |
+| Queues & members | name · assignment (`Manual`/`Round robin`) · default · members (avatar group + count) | Sheet: name, assignment segmented control, default checkbox ("New tickets without a queue go here"), members multi-combobox of active staff. | `GET/POST/PATCH/DELETE /v1/queues`, people from `GET /v1/users` |
+| Audit log | time · actor (name, or `System` / `AI` / `Anonymous`) · action (readable label + code in mono) · target (type + ticket key / intent key / short id) · outcome (`Success` check · `Failure` x · `Denied` lock) | Filters: actor (user combobox → `actorId`), action (combobox from the shared `AUDIT_ACTIONS` catalogue, exact match), target type + target id, outcome segmented (`Any`/`Success`/`Failure`/`Denied`), date range (default last 24 h, Asia/Bangkok). **No PII in the list**: no IP, no before/after, no email. Row → **detail sheet**: all fields, before/after as a field diff, metadata, IP, request id, copy id; PII-bearing values masked with a local `Show` toggle `[ASSUMED]`. `Load more` (keyset). Note under the header: "Opening this log is itself recorded." | `GET /v1/audit-logs` (head) · export `[NEEDS API]` (PRD §8.2) · actor-type filter `[NEEDS API]` |
+| Integrations | as §12 | as §12 | `[NEEDS API]` T-116 |
+| Portal links (not an admin page) | — | Ticket header overflow → `Revoke tracking links…` confirm: "Revoke every tracking link of OPS-1234? The customer can ask for a new one by email; only the requester receives it." Result toast "`{count}` links revoked". Any `ticket.handle` user. | `POST /v1/tickets/:id/portal-links/revoke` |
+
+#### 18.3.1 Intent autonomy control (stage 0–2 only)
+```
+Autonomy                                                     [Stage 2 · Draft for approval]
+Stage   ( Stage 0 · Observe | Stage 1 · Suggest | (*) Stage 2 · Draft for approval )
+Reason  [ required, 3–500 characters                                   ]   [Change stage]
+Pin     [ ] Pin this stage — nobody can change it until unpinned (head)    reason [....]
+i  Stage 3 and above (automatic replies) is the owner's decision and isn't available in this version.
+```
+- `SegmentedControl` with exactly three options; **stage ≥ 3 is never rendered** (no option, no disabled option, no slider, no hint of a toggle) — §6.4. The owner-only line is static text.
+- Changing the selection reveals the required reason field and `Change stage`; nothing is saved until then. Pin/unpin is a checkbox with its own required reason, **head only** (`ai.autonomy.set.any`); lead sees the pin state as text.
+- Blocked states (text, not just disabled): pinned → "Pinned by {name} on {date} — unpin to change"; stage limit switch on → higher options disabled with "Stage limit is on — stages can only go down"; API 409 shows the same sentences; 403 `autonomy_stage_requires_owner` cannot happen from this UI but maps to the owner-only line.
+- Success toast "Stage changed to Stage 1 · Suggest — recorded with your reason." `changed: false` → "Already at this stage — nothing changed."
+
+### 18.4 AI controls `/admin/ai` (two emergency switches, po #23, ADR-011 §4)
+```
+Admin / AI controls                                                          Only the head can change these
+-----------------------------------------------------------------------------------------------------------
+[shield] Limit all intents to Stage 2 or lower                        Off            [Turn on…]
+         Keeps every intent at its stage or lower and blocks raising. Never raises Stage 0 or 1.
+         Last changed 1 Nov 10:42 by Mana K. — "eval regression on billing replies"
+-----------------------------------------------------------------------------------------------------------
+[circle-stop] Stop all AI runs                                        On since 08:50 [Turn off…]
+         No classification, investigation or drafts. Safe automatic acknowledgments continue.
+         Last changed 2 Nov 08:50 by Mana K. — "provider outage"
+-----------------------------------------------------------------------------------------------------------
+Stages per intent: Stage 0 · 2 · Stage 1 · 3 · Stage 2 · 9 · 1 pinned                      [Open intents]
+```
+- **Who**: head sees buttons (needs `ai.emergency_switch` + `ai.autonomy.set.any`, ADR-011); lead sees the same rows, states and history but no buttons, with "Only the head can change these."; agents never see the page (they see only the banner).
+- **State** text + icon, never colour alone: `Off` (muted) · `On since {time}` (info tone, icon). Neither state is red — both are safe states (§6.5).
+- **Confirm dialog** (both directions, po #23): title `Stop all AI runs?` / `Resume AI runs?` / `Limit all intents to Stage 2 or lower?` / `Remove the stage limit?`; 2–3 lines of consequences; **Reason** textarea required (3–500 chars, live counter, initial focus); line "Recorded in the audit log with your name and reason."; buttons `Cancel` + primary verb (`Stop AI runs`, `Resume AI runs`, `Turn on limit`, `Remove limit`). No typed confirmation. `Ctrl/⌘ Enter` submits, `Esc` cancels. Submit → `POST /v1/autonomy/switches {switch, on, reason}`; `changed: false` → toast "Already {state} — nothing changed."; 400 → inline reason error; 403 → permission-denied text in the dialog.
+- **Banner semantics** (refines §6.5): kill switch on → global non-dismissible info `Alert` at the top of the main area for **all staff** (`ai.paused`; agents lack `user.read`, so they get `ai.pausedNoName` unless the API adds a display name `[NEEDS API]`), and the AI panel shows the same text instead of drafts. Stage limit on → no global banner (nothing changes for agents in Phase 1, stages are ≤ 2 already) `[ASSUMED]`; head/lead see a status line on Home, AI controls and Intents.
+- Freshness: no realtime event for switches yet (ADR-011) → poll `GET /v1/autonomy` every 30 s on every staff screen + refetch after a flip `[ASSUMED]`.
+
+### 18.5 States (applies §13 to these screens)
+| Screen | Empty | Loading | Error | Permission denied |
+|---|---|---|---|---|
+| Head home | per section one line (`home.empty.*`): "No tickets at risk.", "Nothing waiting for an owner.", "No open tickets." | skeleton rows per section; text after 2 s "Loading home…" | per section inline error + `Try again`; other sections keep working | agent opening `/home` → §13 denied (`states.denied` with role `lead`) + link to queue |
+| Admin lists | `EmptyState` + primary action ("No organizations yet." + `New organization`) · filtered: "Nothing matches — Clear filters" | table skeleton (5 rows) | inline above table, list keeps last data | §13 pattern; section hidden from section list and rail |
+| Sheet save | — | button shows "Saving…", fields locked | inline + summary; "Your changes were not saved." | 403 mid-session → message in sheet, fields read-only |
+| AI controls | — | skeleton of the two rows | "Couldn't load AI status. The switches keep their last state." + `Try again` | lead read-only (not an error); agent → §13 |
+| Audit log | "No entries match these filters." | table skeleton | inline + `Try again` | §13 with role `head` |
+
+### 18.6 Components (N6 — checked `packages/ui/src/index.ts` 2026-11-01)
+- **Reuse**: `Button`, `Alert` (info/error/success — banner), `EmptyState`, `Input`/`Textarea`, `Skeleton`, `Avatar`, `Pill`/`StatusPill`/`StatusDot`, `Tooltip`, `Popover`, `DropdownMenu`, `Tabs`, `SegmentedControl`, `Separator`, `Combobox` (single + multi), `Toaster`/`toast`, `Kbd`, `SeverityBadge` · web: `NavRail`/`RailButton`, `SlaBadge` + `slaView`, `CommandPalette`, `UserMenu`.
+- **New in `packages/ui`** (each with an icon+text / a11y test): `Dialog` (wrap the Radix Dialog the palette already uses — still missing from §2's list), `Sheet` (right drawer on the same primitive), `DataTable` (table + sortable header + roving row focus), `Breadcrumb`, `StageBadge` (§6.4, still missing).
+- **New in `apps/web`**: `AdminLayout` + `AdminSectionNav`, `HomePage` sections, `SwitchRow` + `SwitchConfirmDialog`, `IntentAutonomyControl`, `HolidayTable`, `AuditFilters` + `AuditDetailSheet`.
+
+### 18.7 Accessibility and density
+- Tables: `<table>` with visible caption (= page title, `sr-only` if the header shows it), `th scope="col"`, `aria-sort` on sortable headers; status/outcome/stage/verified cells each icon + text.
+- Head home sections are `section aria-labelledby` with `h2`; counts read as one phrase ("Unassigned, 3 tickets"); the 60 s refresh is not announced; the "changed" pill uses the §4.3 polite live region.
+- Dialog/sheet: focus trapped, returns to the trigger; reason errors tied with `aria-describedby`; destructive-looking verbs never rely on red.
+- Density: table rows and controls use `h-row`/`h-control` (compact 32/28, comfortable 40/32); Thai line-height ≥ 1.5 in multi-line cells.
+- Grayscale check: Off/On switch states, outcomes and `Not checked` holidays stay distinguishable without colour.
+
+### 18.8 Copy TH/EN (new keys; add to `en.ts`/`th.ts`, same style as §16)
+| Key | EN | TH |
+|---|---|---|
+| `rail.home` / `rail.admin` | Home / Admin | หน้าหลัก / ผู้ดูแลระบบ |
+| `admin.sections.users/orgs/sla/intents/queues/ai/audit/integrations` | Users / Organizations / SLA / Intents / Queues / AI controls / Audit log / Integrations | ผู้ใช้ / องค์กร / SLA / intent / คิว / การควบคุม AI / บันทึกการตรวจสอบ / การเชื่อมต่อ |
+| `admin.breadcrumb` | Breadcrumb | เส้นทางหน้า |
+| `home.title` | Home | หน้าหลัก |
+| `home.dataAt` | `Data from {time} · refreshes every minute` | `ข้อมูล ณ {time} · อัปเดตทุกนาที` |
+| `home.refresh` | Refresh | รีเฟรช |
+| `home.slaRisk` | SLA at risk now | ใกล้หลุด SLA ตอนนี้ |
+| `home.overdueCount` | `{count} overdue` | `เกินกำหนด {count}` |
+| `home.waiting` | Waiting for someone | รอคนรับ |
+| `home.unassigned` / `home.new` / `home.triage` | Unassigned / New (not triaged) / Needs triage | ยังไม่มีผู้รับผิดชอบ / ใหม่ (ยังไม่คัดแยก) / รอคัดแยก |
+| `home.oldest` | `oldest {time}` | `นานสุด {time}` |
+| `home.byStatus` / `home.byQueue` | Open tickets by status / Open tickets by queue | ticket ที่เปิดอยู่ตามสถานะ / ตามคิว |
+| `home.noQueue` | No queue | ไม่อยู่ในคิวใด |
+| `home.load` | Open load per person | งานที่ถืออยู่ต่อคน |
+| `home.loadRow` | `{open} open · {atRisk} at risk` | `เปิดอยู่ {open} · ใกล้หลุด {atRisk}` |
+| `home.atLeast` | `{count}+` | `{count}+` |
+| `home.health` | System health | สถานะระบบ |
+| `home.health.ready` / `notReady` | Database and Redis: ready / Database or Redis: not responding | ฐานข้อมูลและ Redis: พร้อม / ฐานข้อมูลหรือ Redis: ไม่ตอบสนอง |
+| `home.health.outbox` | `Outbound queue: {pending} waiting · {dead} failed · oldest {age}` | `คิวส่งออก: รอ {pending} · ล้มเหลว {dead} · ค้างนานสุด {age}` |
+| `home.health.unavailable` | Not available yet | ยังไม่พร้อมใช้งาน |
+| `home.ai` | `Runs: {runs} · Stage limit: {limit} · {count} intents` | `การทำงานของ AI: {runs} · จำกัดขั้น: {limit} · intent {count} รายการ` |
+| `home.changedPill` | `{count} changed — press .` | `เปลี่ยน {count} รายการ — กด .` |
+| `home.empty.slaRisk` / `waiting` / `open` | No tickets at risk. / Nothing waiting for an owner. / No open tickets. | ไม่มี ticket ที่ใกล้หลุด SLA / ไม่มีงานรอคนรับ / ไม่มี ticket ที่เปิดอยู่ |
+| `admin.users.invite` | Invite | เชิญ |
+| `admin.users.inviteHint` | They sign in with Google using this address. | ผู้ใช้จะเข้าสู่ระบบด้วย Google ด้วยอีเมลนี้ |
+| `admin.users.disableConfirm` | `Disable {name}? Their sessions end now.` | `ปิดบัญชี {name}? เซสชันทั้งหมดจะสิ้นสุดทันที` |
+| `admin.users.enable` / `signOutAll` | Enable / Sign out everywhere | เปิดใช้งาน / ออกจากระบบทุกอุปกรณ์ |
+| `admin.users.selfLocked` | You can't change your own role or status. | คุณเปลี่ยนบทบาทหรือสถานะของตัวเองไม่ได้ |
+| `admin.users.breakGlass` | Emergency sign-in account — not editable here | บัญชีเข้าระบบฉุกเฉิน — แก้ไขที่หน้านี้ไม่ได้ |
+| `admin.users.promoteHead` | `Make {name} a head? Heads can change integrations, users and AI controls.` | `ตั้ง {name} เป็น head? head แก้การเชื่อมต่อ ผู้ใช้ และการควบคุม AI ได้` |
+| `admin.orgs.new` / `admin.orgs.tierDefault` | New organization / Tier default | เพิ่มองค์กร / ตามค่าเริ่มต้นของ tier |
+| `admin.orgs.inviteClient` | Invite to portal | เชิญเข้า portal |
+| `admin.sla.appliesToNew` | Changes apply to new due times; running tickets keep theirs. | การแก้ไขมีผลกับกำหนดเวลาใหม่ ticket ที่กำลังนับอยู่ใช้ค่าเดิม |
+| `admin.cal.notChecked` | Not checked | ยังไม่ตรวจ |
+| `admin.cal.markChecked` | Checked against the official announcement | ตรวจกับประกาศทางการแล้ว |
+| `admin.cal.verifyWarn` | Check every date against the official announcement before using it for a real SLA. | ตรวจทุกวันที่กับประกาศทางการก่อนใช้กับ SLA จริง |
+| `admin.intents.stageReason` | Reason (required) | เหตุผล (จำเป็น) |
+| `admin.intents.changeStage` | Change stage | เปลี่ยนขั้น |
+| `admin.intents.pin` | Pin this stage — nobody can change it until unpinned | ปักขั้นนี้ไว้ — ไม่มีใครเปลี่ยนได้จนกว่าจะยกเลิกการปัก |
+| `admin.intents.pinnedBy` | `Pinned by {name} on {date} — unpin to change` | `ปักไว้โดย {name} เมื่อ {date} — ยกเลิกการปักก่อนจึงเปลี่ยนได้` |
+| `admin.intents.capOn` | Stage limit is on — stages can only go down | เปิดการจำกัดขั้นอยู่ — ลดขั้นได้อย่างเดียว |
+| `admin.intents.ownerOnly` | Stage 3 and above (automatic replies) is the owner's decision and isn't available in this version. | ขั้น 3 ขึ้นไป (ตอบลูกค้าอัตโนมัติ) เป็นการตัดสินใจของเจ้าของ และยังไม่มีในเวอร์ชันนี้ |
+| `admin.intents.stageChanged` / `noChange` | `Stage changed to {stage} — recorded with your reason.` / Already at this stage — nothing changed. | `เปลี่ยนเป็น {stage} แล้ว — บันทึกพร้อมเหตุผล` / อยู่ขั้นนี้แล้ว — ไม่มีการเปลี่ยนแปลง |
+| `admin.intents.historyHeadOnly` | History is visible to the head. | ประวัติดูได้เฉพาะ head |
+| `admin.ai.capTitle` / `capBody` | Limit all intents to Stage 2 or lower / Keeps every intent at its stage or lower and blocks raising. Never raises Stage 0 or 1. | จำกัดทุก intent ไม่เกินขั้น 2 / คงขั้นเดิมหรือต่ำกว่า และห้ามยกขั้น ไม่ยกขั้น 0 หรือ 1 ขึ้น |
+| `admin.ai.killTitle` / `killBody` | Stop all AI runs / No classification, investigation or drafts. Safe automatic acknowledgments continue. | หยุด AI ทั้งหมด / ไม่คัดแยก ไม่ตรวจสอบ ไม่ร่างคำตอบ ข้อความตอบรับอัตโนมัติที่ปลอดภัยยังส่งต่อ |
+| `admin.ai.off` / `onSince` | Off / `On since {time}` | ปิด / `เปิดตั้งแต่ {time}` |
+| `admin.ai.lastChanged` | `Last changed {time} by {name} — "{reason}"` | `เปลี่ยนล่าสุด {time} โดย {name} — "{reason}"` |
+| `admin.ai.headOnly` | Only the head can change these. | head เท่านั้นที่เปลี่ยนได้ |
+| `admin.ai.turnOn` / `turnOff` | Turn on… / Turn off… | เปิด… / ปิด… |
+| `admin.ai.confirm.stop` / `resume` / `limit` / `unlimit` | Stop AI runs / Resume AI runs / Turn on limit / Remove limit | หยุด AI / ให้ AI ทำงานต่อ / เปิดการจำกัด / ยกเลิกการจำกัด |
+| `admin.ai.reasonLabel` | `Reason (required, {min}–{max} characters)` | `เหตุผล (จำเป็น {min}–{max} ตัวอักษร)` |
+| `admin.ai.auditNote` | Recorded in the audit log with your name and reason. | บันทึกลง audit log พร้อมชื่อและเหตุผลของคุณ |
+| `admin.ai.noChange` | `Already {state} — nothing changed.` | `{state} อยู่แล้ว — ไม่มีการเปลี่ยนแปลง` |
+| `ai.pausedNoName` | `AI paused at {time} — replies are manual.` | `AI ถูกหยุดเมื่อ {time} — ตอบด้วยตนเองเท่านั้น` |
+| `admin.audit.readNote` | Opening this log is itself recorded. | การเปิดดูบันทึกนี้ก็ถูกบันทึกด้วย |
+| `admin.audit.outcome.success/failure/denied` | Success / Failure / Denied | สำเร็จ / ล้มเหลว / ถูกปฏิเสธ |
+| `admin.audit.actor.system/ai/anonymous` | System / AI / Anonymous | ระบบ / AI / ไม่ระบุตัวตน |
+| `admin.audit.loadMore` / `show` | Load more / Show | โหลดเพิ่ม / แสดง |
+| `admin.portal.revoke` | Revoke tracking links… | ยกเลิกลิงก์ติดตามสถานะ… |
+| `admin.portal.revokeConfirm` | `Revoke every tracking link of {number}? The customer can ask for a new one by email; only the requester receives it.` | `ยกเลิกลิงก์ติดตามทั้งหมดของ {number}? ลูกค้าขอลิงก์ใหม่ทางอีเมลได้ และส่งถึงผู้แจ้งเท่านั้น` |
+| `admin.portal.revoked` | `{count} links revoked` | `ยกเลิกลิงก์แล้ว {count} รายการ` |
+| `admin.form.saving` / `notSaved` | Saving… / Your changes were not saved. | กำลังบันทึก… / การแก้ไขยังไม่ถูกบันทึก |
+
+### 18.9 Open questions (for `po`, all `[ASSUMED]` until decided)
+| # | Question | Proposal |
+|---|---|---|
+| H1 | Who sees `/home` — head only (owner's wording) or head + lead (PRD §9.1 "head, lead")? | head + lead; agents keep the queue |
+| H2 | Counts need an aggregate endpoint (tickets by status/queue/assignee + `slaState=at_risk`) | add to T-119 or a new backend task before T-127 UI; interim client grouping with `200+` cap |
+| H3 | Kill-switch banner name for agents (`changedBy` is a uuid; agents lack `user.read`) | API adds `changedByName` to `aiSwitch`; until then `ai.pausedNoName` |
+| H4 | Holiday check state (`[VERIFY]` per row) needs a field on `holiday` | add `checked: boolean` (+ who/when) in a migration; interim calendar-level warning |
+| H5 | Stage limit switch: global banner or not? | no global banner in Phase 1 (no behaviour change); status line for head/lead |
+| H6 | Intent autonomy history for leads | `GET /v1/intents/:id/autonomy/history` (reads `intent_autonomy_history`); head uses audit log meanwhile |
