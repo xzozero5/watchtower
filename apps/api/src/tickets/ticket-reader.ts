@@ -1,11 +1,14 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { orgScopeCondition, schema, type Database } from '@watchtower/db';
 import {
+  DUPLICATE_SUGGESTION_LIMIT,
+  DUPLICATE_WINDOW_HOURS,
   OPEN_STATUSES,
   formatTicketKey,
   parseTicketKey,
   type ChannelType,
   type ClientTicket,
+  type DuplicateSuggestions,
   type TicketDetail,
   type TicketListQuery,
   type TicketPriority,
@@ -21,8 +24,11 @@ import {
   exists,
   ilike,
   inArray,
+  gte,
   isNull,
   lt,
+  ne,
+  notInArray,
   or,
   sql,
   type SQL,
@@ -238,6 +244,38 @@ export class TicketReader {
         key: formatTicketKey(child.number),
         subject: child.subject,
       })),
+    };
+  }
+
+  /**
+   * Tickets this one may duplicate (R-1.5): same organization, same intent, filed in the last
+   * `DUPLICATE_WINDOW_HOURS`, not merged or closed, and not the ticket itself. Seen exactly as the
+   * ticket is: a ticket the principal cannot read is a 404, and a client gets the client shape.
+   */
+  async duplicates(
+    ref: string,
+    principal: Principal,
+  ): Promise<DuplicateSuggestions & { ticketId: string }> {
+    const source = await this.viewRow(ref, principal);
+    const { ticket } = schema;
+    if (source.t.intentId === null) return { ticketId: source.t.id, items: [] };
+    const rows = await viewQuery(this.database.db, {})
+      .where(
+        and(
+          orgScopeCondition(ticket.orgId, principal.orgScope),
+          eq(ticket.orgId, source.t.orgId),
+          eq(ticket.intentId, source.t.intentId),
+          ne(ticket.id, source.t.id),
+          notInArray(ticket.status, ['merged', 'closed']),
+          gte(ticket.createdAt, sql`now() - make_interval(hours => ${DUPLICATE_WINDOW_HOURS})`),
+        ),
+      )
+      .orderBy(desc(ticket.createdAt), desc(ticket.id))
+      .limit(DUPLICATE_SUGGESTION_LIMIT);
+    const client = isClient(principal);
+    return {
+      ticketId: source.t.id,
+      items: rows.map((row) => (client ? toClientTicket(row) : toSummary(row))),
     };
   }
 

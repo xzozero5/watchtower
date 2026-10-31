@@ -106,6 +106,20 @@ function paused(status: string): boolean {
   return (SLA_PAUSED_STATUSES as readonly string[]).includes(status);
 }
 
+/**
+ * Where a public message stands when it is saved. A reply on the portal is visible to the customer
+ * as soon as it is written. Every other channel needs its adapter to send it: `pending` until the
+ * outbox of that adapter (not built yet) delivers it. Something the customer wrote has nothing to
+ * deliver.
+ */
+export function replyDeliveryStatus(
+  sender: Sender['kind'],
+  channel: string,
+): 'not_applicable' | 'pending' | 'delivered' {
+  if (sender === 'client') return 'not_applicable';
+  return channel === 'portal' ? 'delivered' : 'pending';
+}
+
 /** What an audit entry records about a ticket: ids, status and dates, never the text. */
 function snapshot(row: TicketRow): Record<string, unknown> {
   return {
@@ -290,7 +304,8 @@ export class TicketsService {
         senderUserId: command.senderUserId ?? null,
         bodyText: command.body,
         visibility: 'public',
-        deliveryStatus: 'delivered',
+        // The customer wrote it to us; there is nothing for us to deliver.
+        deliveryStatus: 'not_applicable',
         createdAt: now,
       })
       .returning();
@@ -381,15 +396,54 @@ export class TicketsService {
       changed.push('priority');
     }
 
-    // A new priority means new targets. The clock restarts from the creation time of the ticket
-    // with the new targets; time already spent paused is not carried over `[ASSUMED]`.
+    // A new priority, or a new intent that brings a different SLA policy, means new targets. The
+    // dates are recomputed from the creation time with the pauses that already ended applied again,
+    // so time spent waiting on the customer is not counted as elapsed. A pause that is still running
+    // keeps its `slaPausedAt`: resuming shifts the new dates by the whole pause.
     const open = !['resolved', 'closed'].includes(before.status);
-    if (priorityChanged && patch.priority !== undefined && open) {
-      const due = await this.sla.recompute(tx, before, patch.priority);
-      if (before.firstRespondedAt === null) set.firstResponseDueAt = due.firstResponseDueAt;
-      set.resolutionDueAt = due.resolutionDueAt;
-      if (before.slaPausedAt !== null) set.slaPausedAt = new Date();
-      changed.push('sla');
+    let slaRecalculation: Record<string, unknown> | undefined;
+    if (open && (priorityChanged || intent !== undefined)) {
+      const priority = (patch.priority ?? before.priority) as TicketPriority;
+      let policyId = before.slaPolicyId;
+      if (intent !== undefined) {
+        const [org] = await tx
+          .select({ tier: schema.organization.tier, slaPolicyId: schema.organization.slaPolicyId })
+          .from(schema.organization)
+          .where(eq(schema.organization.id, before.orgId))
+          .limit(1);
+        if (org) {
+          policyId =
+            (
+              await this.sla.resolvePolicy(
+                tx,
+                org,
+                intent ? { slaPolicyId: intent.slaPolicyId } : null,
+              )
+            )?.id ?? null;
+        }
+      }
+      const policyChanged = policyId !== before.slaPolicyId;
+      if (priorityChanged || policyChanged) {
+        const due = await this.sla.recompute(tx, before, policyId, priority);
+        if (policyChanged) set.slaPolicyId = policyId;
+        if (before.firstRespondedAt === null) set.firstResponseDueAt = due.firstResponseDueAt;
+        set.resolutionDueAt = due.resolutionDueAt;
+        changed.push('sla');
+        slaRecalculation = {
+          reason: [...(priorityChanged ? ['priority'] : []), ...(policyChanged ? ['policy'] : [])],
+          ...(priorityChanged ? { priority: { from: before.priority, to: priority } } : {}),
+          ...(policyChanged ? { policyId: { from: before.slaPolicyId, to: policyId } } : {}),
+          paused: before.slaPausedAt !== null,
+          firstResponseDueAt: {
+            from: before.firstResponseDueAt?.toISOString() ?? null,
+            to: (set.firstResponseDueAt ?? before.firstResponseDueAt)?.toISOString() ?? null,
+          },
+          resolutionDueAt: {
+            from: before.resolutionDueAt?.toISOString() ?? null,
+            to: due.resolutionDueAt?.toISOString() ?? null,
+          },
+        };
+      }
     }
 
     if (changed.length === 0) return before;
@@ -405,6 +459,16 @@ export class TicketsService {
       changed,
       ...(priorityChanged ? { priority: { from: before.priority, to: after.priority } } : {}),
     });
+    if (slaRecalculation) {
+      await this.recordEvent(
+        tx,
+        after.id,
+        TICKET_EVENT_TYPES.slaRecalculated,
+        actor,
+        'internal',
+        slaRecalculation,
+      );
+    }
     await this.audit.recordInTransaction(tx, {
       actor,
       action: AUDIT_ACTIONS.ticketUpdate,
@@ -467,6 +531,7 @@ export class TicketsService {
         type: TICKET_EVENT_TYPES.slaResumed,
         payload: {
           pausedAt: current.slaPausedAt.toISOString(),
+          resumedAt: now.toISOString(),
           firstResponseDueAt: due.firstResponseDueAt?.toISOString() ?? null,
           resolutionDueAt: due.resolutionDueAt?.toISOString() ?? null,
         },
@@ -512,6 +577,14 @@ export class TicketsService {
         ...(reopened ? { reopened: true } : {}),
       },
     );
+    if (reopened) {
+      await this.recordEvent(tx, after.id, TICKET_EVENT_TYPES.reopened, context.actor, 'internal', {
+        from,
+        to,
+        reopenCount: after.reopenCount,
+        ...(context.reason === undefined ? {} : { reason: context.reason }),
+      });
+    }
     for (const event of slaEvents) {
       await this.recordEvent(tx, after.id, event.type, context.actor, 'internal', event.payload);
     }
@@ -553,7 +626,8 @@ export class TicketsService {
     if (input.strategy === 'round_robin') {
       if (queueId === null)
         throw badRequest('The ticket has no queue to take turns in; give queueId');
-      assigneeId = await this.assignment.nextRoundRobin(tx, queueId);
+      // Look at whose turn it is without taking the turn: it is taken below only if the ticket moves.
+      assigneeId = await this.assignment.peekRoundRobin(tx, queueId);
       if (assigneeId === null) throw conflict('The queue has no active member to assign to');
       strategy = 'round_robin';
     } else {
@@ -562,7 +636,11 @@ export class TicketsService {
       strategy = 'manual';
     }
 
+    // Nothing changes, so a round-robin turn is not used up: the same member stays next in line.
     if (assigneeId === before.assigneeId && queueId === before.queueId) return before;
+    if (strategy === 'round_robin' && queueId !== null && assigneeId !== null) {
+      await this.assignment.takeTurn(tx, queueId, assigneeId);
+    }
     const [after] = await tx
       .update(schema.ticket)
       .set({ assigneeId, queueId, updatedAt: new Date() })
@@ -745,8 +823,7 @@ export class TicketsService {
         senderContactId: contactId,
         bodyText: input.body,
         visibility: 'public',
-        // On the portal a public reply is visible to the customer as soon as it is saved.
-        deliveryStatus: 'delivered',
+        deliveryStatus: replyDeliveryStatus(sender.kind, ticket.channel),
         createdAt: now,
       })
       .returning();

@@ -182,6 +182,7 @@ describe('every route states who may call it', () => {
         'POST /v1/tickets/:id/replies',
         'POST /v1/tickets/:id/notes',
         'GET /v1/tickets/:id/timeline',
+        'GET /v1/tickets/:id/duplicates',
       ]),
     );
   });

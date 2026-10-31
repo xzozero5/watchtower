@@ -12,6 +12,7 @@ import {
   assignTicketSchema,
   changeStatusSchema,
   createTicketSchema,
+  duplicateSuggestionsSchema,
   mergeResultSchema,
   mergeTicketSchema,
   noteSchema,
@@ -184,6 +185,27 @@ export class TicketsController {
     const detail = await this.reader.detail(params.id, principal);
     AuditScope.set({ targetId: detail.id });
     return parseResponse(ticketDetailResponseSchema, detail);
+  }
+
+  @Get(':id/duplicates')
+  @RequireAnyPermission('ticket.read', 'ticket.read.org')
+  @AuditPiiRead('ticket')
+  @ApiOperation({
+    summary: 'Tickets this one may duplicate',
+    description:
+      'Open tickets of the same organization and intent that were filed in the last 72 hours, ' +
+      'newest first, without the ticket itself (merged and closed tickets are left out). Staff get ' +
+      'the full summary; a client gets the reduced shape and only tickets of their own organization.',
+  })
+  @ApiOkResponse({ standardSchema: duplicateSuggestionsSchema })
+  @ApiNotFoundResponse({ description: 'No such ticket, or not in your organization' })
+  async duplicates(
+    @Param({ schema: ticketRefParamSchema }) params: RefParam,
+    @CurrentPrincipal() principal: Principal,
+  ) {
+    const { ticketId, items } = await this.reader.duplicates(params.id, principal);
+    AuditScope.set({ targetId: ticketId });
+    return parseResponse(duplicateSuggestionsSchema, { items });
   }
 
   @Patch(':id')

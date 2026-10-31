@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { schema, type Database } from '@watchtower/db';
 import {
   DEFAULT_WEEKLY_HOURS,
+  TICKET_EVENT_TYPES,
   computeSlaDueDates,
   holidaySchema,
   resumeDueAfterPause,
@@ -9,10 +10,11 @@ import {
   weeklyHoursSchema,
   type BusinessCalendar,
   type SlaCalendarMode,
+  type SlaPause,
   type SlaTargets,
   type TicketPriority,
 } from '@watchtower/shared';
-import { asc, eq } from 'drizzle-orm';
+import { and, asc, eq } from 'drizzle-orm';
 import { z } from 'zod';
 
 type PolicyRow = typeof schema.slaPolicy.$inferSelect;
@@ -26,6 +28,12 @@ export const FALLBACK_CALENDAR: BusinessCalendar = {
   hours: DEFAULT_WEEKLY_HOURS,
   holidays: [],
 };
+
+/** What `sla.resumed` events carry; older events have no `resumedAt` and fall back to their own time. */
+const resumedPayloadSchema = z.object({
+  pausedAt: z.iso.datetime(),
+  resumedAt: z.iso.datetime().optional(),
+});
 
 const holidayListSchema = z.array(holidaySchema);
 
@@ -124,21 +132,57 @@ export class SlaService {
     return { policyId: policy.id, ...due };
   }
 
-  /** Recomputes the due dates of an existing ticket from its own policy (priority changed). */
+  /**
+   * Recomputes the due dates of an existing ticket under `policyId` and `priority` (priority or
+   * policy changed). The count starts at the creation time, then every pause that already ended is
+   * applied again, so time spent waiting on the customer is not counted as elapsed. A pause that is
+   * still running is left to `resume`, which shifts the new dates by the whole pause when the clock
+   * restarts; that is why the ticket keeps its original `slaPausedAt`.
+   */
   async recompute(
     executor: Executor,
-    ticket: { readonly slaPolicyId: string | null; readonly createdAt: Date },
+    ticket: { readonly id: string; readonly createdAt: Date },
+    policyId: string | null,
     priority: TicketPriority,
   ): Promise<Pick<TicketSla, 'firstResponseDueAt' | 'resolutionDueAt'>> {
-    if (ticket.slaPolicyId === null) return { firstResponseDueAt: null, resolutionDueAt: null };
-    const policy = await this.policyById(executor, ticket.slaPolicyId);
+    if (policyId === null) return { firstResponseDueAt: null, resolutionDueAt: null };
+    const policy = await this.policyById(executor, policyId);
     if (!policy) return { firstResponseDueAt: null, resolutionDueAt: null };
     return computeSlaDueDates({
       startedAt: ticket.createdAt,
       priority,
       targets: targetsFromRow(policy),
       calendar: await this.calendarFor(executor, policy),
+      pauses: await this.finishedPauses(executor, ticket.id),
     });
+  }
+
+  /**
+   * The stops of the SLA clock that have ended, from the `sla.resumed` events of the ticket (the
+   * event log is append-only, so it is the record of every pause). Oldest first.
+   */
+  async finishedPauses(executor: Executor, ticketId: string): Promise<SlaPause[]> {
+    const events = await executor
+      .select({ payload: schema.ticketEvent.payload, createdAt: schema.ticketEvent.createdAt })
+      .from(schema.ticketEvent)
+      .where(
+        and(
+          eq(schema.ticketEvent.ticketId, ticketId),
+          eq(schema.ticketEvent.type, TICKET_EVENT_TYPES.slaResumed),
+        ),
+      )
+      .orderBy(asc(schema.ticketEvent.createdAt), asc(schema.ticketEvent.id));
+    const pauses: SlaPause[] = [];
+    for (const event of events) {
+      const parsed = resumedPayloadSchema.safeParse(event.payload);
+      if (!parsed.success) continue;
+      pauses.push({
+        pausedAt: new Date(parsed.data.pausedAt),
+        resumedAt:
+          parsed.data.resumedAt === undefined ? event.createdAt : new Date(parsed.data.resumedAt),
+      });
+    }
+    return pauses;
   }
 
   /**

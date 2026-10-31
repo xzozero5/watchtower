@@ -3,6 +3,7 @@ import {
   DEFAULT_WEEKLY_HOURS,
   TICKET_STATUSES,
   defaultTransitionList,
+  type DuplicateSuggestions,
   type Intent,
   type Message,
   type TicketDetail,
@@ -15,9 +16,11 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { startHarness, uniqueEmail, type Harness } from '../testing/harness.js';
 import {
   apiCalendar,
+  apiIntent,
   apiOrg,
   apiPolicy,
   apiQueue,
+  clientOfNewOrg,
   fileTicket,
   signIn,
   sleep,
@@ -44,6 +47,34 @@ const intentByKey = (key: string): Intent => {
   if (!found) throw new Error(`no intent ${key}`);
   return found;
 };
+
+type EventEntry = Extract<TimelineEntry, { kind: 'event' }>;
+
+async function eventsOf(who: Persona, ticketId: string, type: string): Promise<EventEntry[]> {
+  return (await timelineOf(who, ticketId)).entries.filter(
+    (entry): entry is EventEntry => entry.kind === 'event' && entry.type === type,
+  );
+}
+
+const ms = (iso: string | null): number => Date.parse(iso ?? '');
+
+/** An organization with its own policy on the 24x7 clock, so pause arithmetic is plain milliseconds. */
+async function org24x7(): Promise<string> {
+  const policy = await apiPolicy(head, {
+    name: `Round the clock ${uniqueEmail('p')}`,
+    targets: {
+      P1: { first_response_min: 15, resolution_min: 240, calendar: '24x7' },
+      P2: { first_response_min: 60, resolution_min: 480, calendar: '24x7' },
+      P3: { first_response_min: 120, resolution_min: 960, calendar: '24x7' },
+    },
+  });
+  const response = await lead.client.post<{ id: string }>('/v1/orgs', {
+    name: `Always on ${uniqueEmail('org')}`,
+    slaPolicyId: policy.id,
+  });
+  expect(response.status).toBe(201);
+  return response.body.id;
+}
 
 beforeAll(async () => {
   h = await startHarness();
@@ -450,6 +481,120 @@ describe('the SLA clock', () => {
     );
   });
 
+  it('keeps the original pause and counts none of it as elapsed when the priority changes while paused', async () => {
+    const always = await org24x7();
+    const ticket = await fileTicket(agent, always, { priority: 'P2' });
+    const created = ms(ticket.createdAt);
+    expect(ms(ticket.resolutionDueAt) - created).toBe(480 * 60_000);
+
+    const paused = await agent.client.post<TicketDetail>(`/v1/tickets/${ticket.id}/status`, {
+      status: 'waiting_on_customer',
+    });
+    const pausedAt = paused.body.slaPausedAt;
+    expect(pausedAt).not.toBeNull();
+    await sleep(1500);
+
+    const raised = await agent.client.patch<TicketDetail>(`/v1/tickets/${ticket.id}`, {
+      priority: 'P1',
+    });
+    expect(raised.status).toBe(200);
+    // Still paused since the first stop, not since the edit.
+    expect(raised.body.slaPausedAt).toBe(pausedAt);
+    // The new targets count from the creation time; the running pause has not been added yet.
+    expect(ms(raised.body.firstResponseDueAt) - created).toBe(15 * 60_000);
+    expect(ms(raised.body.resolutionDueAt) - created).toBe(240 * 60_000);
+
+    const recalculated = await eventsOf(agent, ticket.id, 'sla.recalculated');
+    expect(recalculated).toHaveLength(1);
+    expect(recalculated[0]).toMatchObject({
+      visibility: 'internal',
+      payload: { reason: ['priority'], paused: true, priority: { from: 'P2', to: 'P1' } },
+    });
+
+    // Resuming adds the whole pause, including the 1.5 s before the edit.
+    const resumed = await agent.client.post<TicketDetail>(`/v1/tickets/${ticket.id}/status`, {
+      status: 'open',
+    });
+    expect(resumed.body.slaPausedAt).toBeNull();
+    const shift = ms(resumed.body.resolutionDueAt) - (created + 240 * 60_000);
+    expect(shift).toBeGreaterThanOrEqual(1400);
+    expect(shift).toBeLessThan(8000);
+    const firstShift = ms(resumed.body.firstResponseDueAt) - (created + 15 * 60_000);
+    expect(firstShift).toBeGreaterThanOrEqual(1400);
+    expect(firstShift).toBeLessThan(8000);
+  });
+
+  it('applies a pause that already ended again when the priority changes later', async () => {
+    const always = await org24x7();
+    const ticket = await fileTicket(agent, always, { priority: 'P2' });
+    const created = ms(ticket.createdAt);
+    await agent.client.post(`/v1/tickets/${ticket.id}/status`, { status: 'waiting_on_customer' });
+    await sleep(1500);
+    const resumed = await agent.client.post<TicketDetail>(`/v1/tickets/${ticket.id}/status`, {
+      status: 'open',
+    });
+    const resumedShift = ms(resumed.body.resolutionDueAt) - (created + 480 * 60_000);
+    expect(resumedShift).toBeGreaterThanOrEqual(1400);
+
+    const raised = await agent.client.patch<TicketDetail>(`/v1/tickets/${ticket.id}`, {
+      priority: 'P1',
+    });
+    // Counting from the creation time must not give the pause back.
+    const shift = ms(raised.body.resolutionDueAt) - (created + 240 * 60_000);
+    expect(shift).toBeGreaterThanOrEqual(1400);
+    expect(shift).toBeLessThan(8000);
+    expect(raised.body.slaPausedAt).toBeNull();
+  });
+
+  it('writes sla.recalculated only when the due dates are recomputed', async () => {
+    const ticket = await fileTicket(agent, orgId, { priority: 'P3' });
+    await agent.client.patch(`/v1/tickets/${ticket.id}`, { subject: 'Another subject' });
+    await agent.client.patch(`/v1/tickets/${ticket.id}`, { priority: 'P3' });
+    expect(await eventsOf(agent, ticket.id, 'sla.recalculated')).toHaveLength(0);
+
+    await agent.client.patch(`/v1/tickets/${ticket.id}`, { priority: 'P2' });
+    const [event] = await eventsOf(agent, ticket.id, 'sla.recalculated');
+    expect(event?.payload).toMatchObject({
+      reason: ['priority'],
+      priority: { from: 'P3', to: 'P2' },
+      resolutionDueAt: { from: ticket.resolutionDueAt },
+    });
+    const audit = await pool().query<{ metadata: { changed: string[] } }>(
+      `SELECT metadata FROM audit_log WHERE action = 'ticket.update' AND target_id = $1 ORDER BY created_at`,
+      [ticket.id],
+    );
+    expect(audit.rows.at(-1)?.metadata.changed).toEqual(['priority', 'sla']);
+  });
+
+  it('recalculates when a new intent brings another SLA policy, and says why', async () => {
+    const fast = await apiPolicy(head, {
+      name: `Intent policy ${uniqueEmail('p')}`,
+      targets: { P3: { first_response_min: 30, resolution_min: 60, calendar: '24x7' } },
+    });
+    const withPolicy = await apiIntent(lead, {
+      key: `with_policy_${Math.random().toString(36).slice(2, 8)}`,
+      name: 'Has its own SLA policy',
+      defaultPriority: 'P3',
+      slaPolicyId: fast.id,
+    });
+    const bare = await apiOrg(lead, { name: 'Standard without policy', tier: 'standard' });
+    const ticket = await fileTicket(agent, bare.id, { priority: 'P3' });
+    expect(ticket.slaPolicyId).toBeNull();
+    expect(ticket.resolutionDueAt).toBeNull();
+
+    const changed = await agent.client.patch<TicketDetail>(`/v1/tickets/${ticket.id}`, {
+      intentId: withPolicy.id,
+    });
+    expect(changed.status).toBe(200);
+    expect(changed.body.slaPolicyId).toBe(fast.id);
+    expect(ms(changed.body.resolutionDueAt) - ms(ticket.createdAt)).toBe(60 * 60_000);
+    const [event] = await eventsOf(agent, ticket.id, 'sla.recalculated');
+    expect(event?.payload).toMatchObject({
+      reason: ['policy'],
+      policyId: { from: null, to: fast.id },
+    });
+  });
+
   it('counts the first staff reply as the first response, and a customer message as none', async () => {
     const ticket = await fileTicket(agent, orgId);
     expect(ticket.firstRespondedAt).toBeNull();
@@ -487,6 +632,54 @@ describe('replies and notes', () => {
     });
     expect(note.status).toBe(201);
     expect(note.body.message).toMatchObject({ direction: 'internal', visibility: 'internal' });
+  });
+
+  it('delivers a staff reply at once on the portal and leaves it pending on every other channel', async () => {
+    const portal = await fileTicket(agent, orgId);
+    const onPortal = await agent.client.post<{ message: Message }>(
+      `/v1/tickets/${portal.id}/replies`,
+      { body: 'Visible as soon as it is saved.' },
+    );
+    expect(onPortal.body.message.deliveryStatus).toBe('delivered');
+
+    // No channel adapter exists yet: a reply on another channel waits for its adapter to send it.
+    for (const channel of ['gmail', 'line', 'discord', 'webhook']) {
+      const other = await fileTicket(agent, orgId);
+      await pool().query(`UPDATE ticket SET channel = $2 WHERE id = $1`, [other.id, channel]);
+      const reply = await agent.client.post<{ message: Message }>(
+        `/v1/tickets/${other.id}/replies`,
+        { body: `Reply over ${channel}` },
+      );
+      expect(reply.status, channel).toBe(201);
+      expect(reply.body.message, channel).toMatchObject({
+        direction: 'outbound',
+        deliveryStatus: 'pending',
+      });
+      const stored = await pool().query<{ delivery_status: string }>(
+        `SELECT delivery_status FROM message WHERE id = $1`,
+        [reply.body.message.id],
+      );
+      expect(stored.rows[0]?.delivery_status, channel).toBe('pending');
+    }
+  });
+
+  it('has nothing to deliver for what the customer wrote, and for internal notes', async () => {
+    const ticket = await fileTicket(agent, orgId);
+    const client = await signIn(h, 'client', orgId);
+    const answered = await client.client.post<{ message: Message }>(
+      `/v1/tickets/${ticket.id}/replies`,
+      { body: 'Here is more detail.' },
+    );
+    expect(answered.status).toBe(201);
+    await agent.client.post(`/v1/tickets/${ticket.id}/notes`, { body: 'Looking.' });
+    const messages = (await timelineOf(agent, ticket.id)).entries.filter(
+      (entry): entry is Extract<TimelineEntry, { kind: 'message' }> => entry.kind === 'message',
+    );
+    expect(messages.map((message) => [message.direction, message.deliveryStatus])).toEqual([
+      ['inbound', 'not_applicable'], // the first message, as the customer filed it
+      ['inbound', 'not_applicable'],
+      ['internal', 'not_applicable'],
+    ]);
   });
 
   it('sends nothing when the status in "reply and set status" is not allowed', async () => {
@@ -678,6 +871,41 @@ describe('assignment', () => {
     ).toBe(400);
   });
 
+  it('does not use up a round-robin turn when the ticket is already with whoever is next', async () => {
+    const members = await staffMembers(3);
+    const order = members.map((member) => member.userId).sort();
+    const queue = await apiQueue(lead, {
+      name: `Fair turns ${uniqueEmail('q')}`,
+      assignmentMode: 'manual',
+      memberIds: order,
+    });
+    const roundRobin = async (ticketId: string) => {
+      const response = await lead.client.post<TicketDetail>(`/v1/tickets/${ticketId}/assign`, {
+        strategy: 'round_robin',
+      });
+      expect(response.status).toBe(200);
+      return response.body.assignee?.id;
+    };
+
+    // The first member already holds this ticket when someone asks for "the next member".
+    const held = await fileTicket(lead, orgId, { queueId: queue.id, assigneeId: order[0] });
+    expect(await roundRobin(held.id)).toBe(order[0]);
+    const events = await eventsOf(lead, held.id, 'ticket.assigned');
+    expect(events).toHaveLength(1); // nothing changed, so nothing was recorded
+
+    // That asked for nothing to change, so nobody lost their turn: the queue still starts at 0.
+    const second = await fileTicket(lead, orgId, { queueId: queue.id });
+    const third = await fileTicket(lead, orgId, { queueId: queue.id });
+    const fourth = await fileTicket(lead, orgId, { queueId: queue.id });
+    const fifth = await fileTicket(lead, orgId, { queueId: queue.id });
+    expect([
+      await roundRobin(second.id),
+      await roundRobin(third.id),
+      await roundRobin(fourth.id),
+      await roundRobin(fifth.id),
+    ]).toEqual([order[0], order[1], order[2], order[0]]);
+  });
+
   it('keeps one default queue and sends queue-less tickets to it', async () => {
     const first = await apiQueue(lead, { name: `Default A ${uniqueEmail('q')}`, isDefault: true });
     const second = await apiQueue(lead, { name: `Default B ${uniqueEmail('q')}`, isDefault: true });
@@ -692,6 +920,159 @@ describe('assignment', () => {
     expect(first.id).not.toBe(second.id);
     // Put the default away so later tests start from "no queue".
     await lead.client.patch(`/v1/queues/${second.id}`, { isDefault: false });
+  });
+});
+
+describe('reopening', () => {
+  it('writes ticket.reopened when staff move a resolved ticket back to work, and counts it', async () => {
+    const ticket = await fileTicket(agent, orgId);
+    await agent.client.post(`/v1/tickets/${ticket.id}/status`, { status: 'open' });
+    expect(await eventsOf(agent, ticket.id, 'ticket.reopened')).toHaveLength(0);
+    await agent.client.post(`/v1/tickets/${ticket.id}/status`, { status: 'resolved' });
+    expect(await eventsOf(agent, ticket.id, 'ticket.reopened')).toHaveLength(0);
+
+    const reopened = await agent.client.post<TicketDetail>(`/v1/tickets/${ticket.id}/status`, {
+      status: 'open',
+      reason: 'fix did not hold',
+    });
+    expect(reopened.body.reopenCount).toBe(1);
+    const [event] = await eventsOf(agent, ticket.id, 'ticket.reopened');
+    expect(event).toMatchObject({
+      visibility: 'internal',
+      actor: { type: 'user', id: agent.userId },
+      payload: { from: 'resolved', to: 'open', reopenCount: 1, reason: 'fix did not hold' },
+    });
+
+    expect(await eventsOf(agent, ticket.id, 'ticket.reopened')).toHaveLength(1);
+  });
+
+  it('writes it when a customer reply reopens a recently resolved ticket', async () => {
+    const client = await signIn(h, 'client', orgId);
+    const ticket = await fileTicket(agent, orgId);
+    await agent.client.post(`/v1/tickets/${ticket.id}/status`, { status: 'resolved' });
+    const reply = await client.client.post(`/v1/tickets/${ticket.id}/replies`, {
+      body: 'It is still broken.',
+    });
+    expect(reply.status).toBe(201);
+    const [event] = await eventsOf(agent, ticket.id, 'ticket.reopened');
+    expect(event).toMatchObject({
+      actor: { id: client.userId },
+      payload: { from: 'resolved', to: 'open', reason: 'customer_reply', reopenCount: 1 },
+    });
+    // Internal: the customer's timeline shows the status change, not the bookkeeping.
+    const seen = await timelineOf(client, ticket.id);
+    expect(
+      seen.entries.some((entry) => entry.kind === 'event' && entry.type === 'ticket.reopened'),
+    ).toBe(false);
+  });
+
+  it('writes nothing for a waiting_on_customer ticket that the customer restarts', async () => {
+    const client = await signIn(h, 'client', orgId);
+    const ticket = await fileTicket(agent, orgId);
+    await agent.client.post(`/v1/tickets/${ticket.id}/status`, { status: 'waiting_on_customer' });
+    await client.client.post(`/v1/tickets/${ticket.id}/replies`, { body: 'Answer.' });
+    expect(await eventsOf(agent, ticket.id, 'ticket.reopened')).toHaveLength(0);
+    expect(
+      (await agent.client.get<TicketDetail>(`/v1/tickets/${ticket.id}`)).body.reopenCount,
+    ).toBe(0);
+  });
+});
+
+describe('duplicate suggestions', () => {
+  let dupOrg: string;
+  let otherOrg: string;
+  let intentA: Intent;
+  let intentB: Intent;
+  let source: TicketDetail;
+  let same: TicketDetail;
+  let resolvedSame: TicketDetail;
+
+  const suggestions = async (who: Persona, ref: string) =>
+    who.client.get<DuplicateSuggestions>(`/v1/tickets/${ref}/duplicates`);
+
+  beforeAll(async () => {
+    dupOrg = (await apiOrg(lead, { name: 'Duplicates Org' })).id;
+    otherOrg = (await apiOrg(lead, { name: 'Another Duplicates Org' })).id;
+    intentA = intentByKey('api_error');
+    intentB = intents.find((intent) => intent.id !== intentA.id) ?? intentA;
+    expect(intentB.id).not.toBe(intentA.id);
+
+    source = await fileTicket(agent, dupOrg, { intentId: intentA.id });
+    same = await fileTicket(agent, dupOrg, { intentId: intentA.id });
+    resolvedSame = await fileTicket(agent, dupOrg, { intentId: intentA.id });
+    await agent.client.post(`/v1/tickets/${resolvedSame.id}/status`, { status: 'resolved' });
+
+    // Not suggestions: another intent, another organization, merged, closed, and older than 72 hours.
+    await fileTicket(agent, dupOrg, { intentId: intentB.id });
+    await fileTicket(agent, otherOrg, { intentId: intentA.id });
+    await fileTicket(agent, dupOrg);
+    const merged = await fileTicket(agent, dupOrg, { intentId: intentA.id });
+    await agent.client.post(`/v1/tickets/${merged.id}/merge`, { intoTicketId: same.id });
+    const closed = await fileTicket(agent, dupOrg, { intentId: intentA.id });
+    await agent.client.post(`/v1/tickets/${closed.id}/status`, { status: 'closed' });
+    const old = await fileTicket(agent, dupOrg, { intentId: intentA.id });
+    await pool().query(`UPDATE ticket SET created_at = now() - interval '73 hours' WHERE id = $1`, [
+      old.id,
+    ]);
+  });
+
+  it('lists open tickets of the same organization and intent from the last 72 hours, newest first', async () => {
+    const response = await suggestions(agent, source.key);
+    expect(response.status).toBe(200);
+    expect(response.body.items.map((ticket) => ticket.id)).toEqual([resolvedSame.id, same.id]);
+    expect(response.body.items.every((ticket) => 'org' in ticket)).toBe(true);
+  });
+
+  it('is empty for a ticket without an intent, and never lists the ticket itself', async () => {
+    const bare = await fileTicket(agent, dupOrg);
+    expect((await suggestions(agent, bare.id)).body.items).toEqual([]);
+    const ids = (await suggestions(agent, same.id)).body.items.map((ticket) => ticket.id);
+    expect(ids).not.toContain(same.id);
+    expect(ids).toContain(source.id);
+  });
+
+  it('shows a client only tickets of their own organization, in the client shape', async () => {
+    const client = await signIn(h, 'client', dupOrg);
+    const response = await suggestions(client, source.id);
+    expect(response.status).toBe(200);
+    expect(response.body.items.map((ticket) => ticket.id)).toEqual([resolvedSame.id, same.id]);
+    for (const item of response.body.items) {
+      expect(Object.keys(item).sort()).toEqual([
+        'createdAt',
+        'id',
+        'intent',
+        'key',
+        'mergedIntoKey',
+        'number',
+        'priority',
+        'requesterName',
+        'resolvedAt',
+        'status',
+        'subject',
+        'updatedAt',
+      ]);
+    }
+
+    // A client of another organization cannot even ask about a ticket that is not theirs.
+    const stranger = await signIn(h, 'client', otherOrg);
+    expect((await suggestions(stranger, source.id)).status).toBe(404);
+    expect((await suggestions(stranger, source.key)).status).toBe(404);
+    const theirs = await fileTicket(agent, otherOrg, { intentId: intentA.id });
+    const own = await suggestions(stranger, theirs.id);
+    expect(own.status).toBe(200);
+    expect(own.body.items.map((ticket) => ticket.id)).not.toContain(source.id);
+  });
+
+  it('answers 404 to an unknown ticket and 401 without a session, and audits the read', async () => {
+    expect((await suggestions(agent, '00000000-0000-4000-8000-000000000009')).status).toBe(404);
+    expect((await suggestions(agent, 'OPS-999999999')).status).toBe(404);
+    expect((await h.client().get(`/v1/tickets/${source.id}/duplicates`)).status).toBe(401);
+    await suggestions(agent, source.id);
+    const reads = await pool().query(
+      `SELECT 1 FROM audit_log WHERE action = 'pii.read' AND target_id = $1 AND actor_id = $2`,
+      [source.id, agent.userId],
+    );
+    expect(reads.rowCount).toBeGreaterThanOrEqual(1);
   });
 });
 
@@ -1019,6 +1400,27 @@ describe('search', () => {
     expect(await search('october')).toEqual([english.id]);
   });
 
+  it('searches the subject and the message bodies, never another organization', async () => {
+    const client = await signIn(h, 'client', searchOrg);
+    const outsider = await clientOfNewOrg(h);
+    const own = async (who: Persona, q: string) =>
+      (
+        await who.client.get<Page<TicketSummary>>(`/v1/tickets?q=${encodeURIComponent(q)}`)
+      ).body.items.map((ticket) => ticket.id);
+    // A Thai word from the subject only, and one from the body only.
+    expect(await own(client, 'รหัสผ่าน')).toEqual([thai.id]);
+    expect(await own(client, 'webhook แล้วแต่ไม่ได้รับ')).toEqual([thai.id]);
+    // The same words, asked by a client of another organization, and by staff narrowed to another org.
+    expect(await own(outsider.persona, 'รหัสผ่าน')).toEqual([]);
+    expect(await own(outsider.persona, 'billing report')).toEqual([]);
+    const other = (
+      await agent.client.get<Page<TicketSummary>>(
+        `/v1/tickets?orgId=${orgId}&q=${encodeURIComponent('รหัสผ่าน')}`,
+      )
+    ).body.items;
+    expect(other).toEqual([]);
+  });
+
   it('finds a ticket by its number, with the prefix or without case', async () => {
     expect(await search(thai.key)).toEqual([thai.id]);
     expect(await search(english.key.toLowerCase())).toEqual([english.id]);
@@ -1086,6 +1488,7 @@ describe('PII reads and OpenAPI', () => {
       ['/v1/tickets/{id}/replies', 'post', ['ticket.reply', 'ticket.reply.own']],
       ['/v1/tickets/{id}/notes', 'post', ['ticket.handle']],
       ['/v1/tickets/{id}/timeline', 'get', ['ticket.read', 'ticket.read.org']],
+      ['/v1/tickets/{id}/duplicates', 'get', ['ticket.read', 'ticket.read.org']],
     ] as const) {
       const operation = op(path, method);
       expect(operation, `${method.toUpperCase()} ${path}`).toBeDefined();

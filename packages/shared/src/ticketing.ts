@@ -236,6 +236,16 @@ export type ClientTicket = z.infer<typeof clientTicketSchema>;
 export const ticketListSchema = pageOf(z.union([ticketSummarySchema, clientTicketSchema]));
 export const ticketDetailResponseSchema = z.union([ticketDetailSchema, clientTicketSchema]);
 
+/** A new ticket may duplicate one of the same intent filed in this window (R-1.5). */
+export const DUPLICATE_WINDOW_HOURS = 72;
+export const DUPLICATE_SUGGESTION_LIMIT = 10;
+
+/** Open tickets of the same organization and intent that this ticket may duplicate, newest first. */
+export const duplicateSuggestionsSchema = z.object({
+  items: z.array(z.union([ticketSummarySchema, clientTicketSchema])),
+});
+export type DuplicateSuggestions = z.infer<typeof duplicateSuggestionsSchema>;
+
 export const TICKET_SORTS = ['created_desc', 'updated_desc', 'due_asc'] as const;
 export const ticketSortSchema = z.enum(TICKET_SORTS);
 

@@ -332,28 +332,45 @@ export interface SlaDueDates {
   readonly resolutionDueAt: Date | null;
 }
 
-/** Due dates for a ticket created at `startedAt`; both null when the policy has no target for the priority. */
+/** A stretch during which the SLA clock of a ticket was stopped. */
+export interface SlaPause {
+  readonly pausedAt: Date;
+  readonly resumedAt: Date;
+}
+
+/**
+ * Due dates for a ticket created at `startedAt`; both null when the policy has no target for the
+ * priority. `pauses` are the stops that already ended, oldest first: each moves the due date as
+ * `resumeDueAfterPause` did when the clock restarted, so a recalculation from `startedAt` (new
+ * priority, new policy) does not count paused time as elapsed.
+ */
 export function computeSlaDueDates(input: {
   readonly startedAt: Date;
   readonly priority: TicketPriority;
   readonly targets: SlaTargets;
   readonly calendar: BusinessCalendar;
+  readonly pauses?: readonly SlaPause[];
 }): SlaDueDates {
   const target = input.targets[input.priority];
   if (!target) return { firstResponseDueAt: null, resolutionDueAt: null };
+  const pauses = [...(input.pauses ?? [])].sort(
+    (a, b) => a.pausedAt.getTime() - b.pausedAt.getTime(),
+  );
+  const due = (minutes: number): Date =>
+    pauses.reduce(
+      (current, pause) =>
+        resumeDueAfterPause({
+          pausedAt: pause.pausedAt,
+          resumedAt: pause.resumedAt,
+          due: current,
+          mode: target.calendar,
+          calendar: input.calendar,
+        }),
+      addSlaMinutes(input.startedAt, minutes, target.calendar, input.calendar),
+    );
   return {
-    firstResponseDueAt: addSlaMinutes(
-      input.startedAt,
-      target.first_response_min,
-      target.calendar,
-      input.calendar,
-    ),
-    resolutionDueAt: addSlaMinutes(
-      input.startedAt,
-      target.resolution_min,
-      target.calendar,
-      input.calendar,
-    ),
+    firstResponseDueAt: due(target.first_response_min),
+    resolutionDueAt: due(target.resolution_min),
   };
 }
 

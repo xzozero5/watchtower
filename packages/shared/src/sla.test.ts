@@ -244,6 +244,66 @@ describe('computeSlaDueDates', () => {
   });
 });
 
+describe('computeSlaDueDates with pauses', () => {
+  const targets = slaTargetsSchema.parse({
+    P1: { first_response_min: 15, resolution_min: 240, calendar: '24x7' },
+    P3: { first_response_min: 240, resolution_min: 2400 },
+  });
+  const startedAt = at('2026-11-02T03:00:00Z'); // Monday 10:00 local
+
+  it('moves a 24x7 due date by the length of each finished pause', () => {
+    const due = computeSlaDueDates({
+      startedAt,
+      priority: 'P1',
+      targets,
+      calendar: bangkok,
+      pauses: [
+        { pausedAt: at('2026-11-02T03:05:00Z'), resumedAt: at('2026-11-02T03:35:00Z') },
+        { pausedAt: at('2026-11-02T04:00:00Z'), resumedAt: at('2026-11-02T04:10:00Z') },
+      ],
+    });
+    // First response: 10 min were left at the first stop, so 03:35 + 10 min; it was already missed
+    // when the second stop began, so that one changes nothing. Resolution: 240 min + 40 min paused.
+    expect(due.firstResponseDueAt && iso(due.firstResponseDueAt)).toBe('2026-11-02T03:45:00.000Z');
+    expect(due.resolutionDueAt && iso(due.resolutionDueAt)).toBe('2026-11-02T07:40:00.000Z');
+  });
+
+  it('counts only business time of a pause on the business clock', () => {
+    // 4 business hours from Monday 10:00 local = 14:00 local. Paused 16:00 -> next day 10:00 does
+    // not matter (already past due when paused), so nothing moves.
+    const unaffected = computeSlaDueDates({
+      startedAt,
+      priority: 'P3',
+      targets,
+      calendar: bangkok,
+      pauses: [{ pausedAt: at('2026-11-02T09:00:00Z'), resumedAt: at('2026-11-03T03:00:00Z') }],
+    });
+    expect(unaffected.firstResponseDueAt && iso(unaffected.firstResponseDueAt)).toBe(
+      '2026-11-02T07:00:00.000Z',
+    );
+    // Paused Monday 12:00 local (2 h left), resumed Tuesday 10:00 local: due Tuesday 12:00 local.
+    const moved = computeSlaDueDates({
+      startedAt,
+      priority: 'P3',
+      targets,
+      calendar: bangkok,
+      pauses: [{ pausedAt: at('2026-11-02T05:00:00Z'), resumedAt: at('2026-11-03T03:00:00Z') }],
+    });
+    expect(moved.firstResponseDueAt && iso(moved.firstResponseDueAt)).toBe(
+      '2026-11-03T05:00:00.000Z',
+    );
+  });
+
+  it('does not depend on the order the pauses are given in', () => {
+    const first = { pausedAt: at('2026-11-02T03:05:00Z'), resumedAt: at('2026-11-02T03:35:00Z') };
+    const second = { pausedAt: at('2026-11-02T04:00:00Z'), resumedAt: at('2026-11-02T04:10:00Z') };
+    const base = { startedAt, priority: 'P1' as const, targets, calendar: bangkok };
+    expect(computeSlaDueDates({ ...base, pauses: [second, first] })).toEqual(
+      computeSlaDueDates({ ...base, pauses: [first, second] }),
+    );
+  });
+});
+
 describe('resumeDueAfterPause', () => {
   it('keeps the remaining business time across an overnight pause', () => {
     // Due Monday 14:00 local. Paused Monday 12:00 local (2 h left), resumed Tuesday 10:00 local.

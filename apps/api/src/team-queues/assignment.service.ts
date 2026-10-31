@@ -28,8 +28,18 @@ export function pickNextMember(sortedIds: readonly string[], last: string | null
  */
 @Injectable()
 export class AssignmentService {
-  /** The next member of the queue to receive a ticket, or null when it has no active member. */
+  /** The next member of the queue to receive a ticket, or null when it has no active member. Takes the turn. */
   async nextRoundRobin(tx: DbTransaction, queueId: string): Promise<string | null> {
+    const next = await this.peekRoundRobin(tx, queueId);
+    if (next !== null) await this.takeTurn(tx, queueId, next);
+    return next;
+  }
+
+  /**
+   * Whose turn it is, without taking it. Locks the queue row for the rest of the transaction, so
+   * the answer stays true until the caller calls `takeTurn` (or ends the transaction).
+   */
+  async peekRoundRobin(tx: DbTransaction, queueId: string): Promise<string | null> {
     const [queue] = await tx
       .select({ last: schema.teamQueue.lastAssignedUserId })
       .from(schema.teamQueue)
@@ -50,15 +60,17 @@ export class AssignmentService {
       )
       .orderBy(asc(schema.users.id));
 
-    const next = pickNextMember(
+    return pickNextMember(
       members.map((member) => member.id),
       queue.last,
     );
-    if (next === null) return null;
+  }
+
+  /** Records that `userId` took the turn, so the next one goes to the member after them. */
+  async takeTurn(tx: DbTransaction, queueId: string, userId: string): Promise<void> {
     await tx
       .update(schema.teamQueue)
-      .set({ lastAssignedUserId: next })
+      .set({ lastAssignedUserId: userId })
       .where(eq(schema.teamQueue.id, queueId));
-    return next;
   }
 }
