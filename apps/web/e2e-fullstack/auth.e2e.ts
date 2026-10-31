@@ -41,7 +41,7 @@ test.describe('magic link', () => {
       expect(session.json.permissions).not.toContain('ticket.handle');
 
       // Signed in: the workspace shows a client's view (no internal-note mode, no staff controls).
-      await expect(page.getByRole('button', { name: 'Internal note', exact: true })).toHaveCount(0);
+      await expect(page.getByRole('radio', { name: 'Internal note' })).toHaveCount(0);
 
       // The same link cannot be used again, from another browser.
       const other = await newActor(browser);
@@ -55,7 +55,8 @@ test.describe('magic link', () => {
       }
 
       // Sign out returns to the login page and ends the session on the server.
-      await page.getByRole('button', { name: 'Sign out' }).click();
+      await page.getByRole('button', { name: 'Account menu' }).click();
+      await page.getByRole('menuitem', { name: 'Sign out' }).click();
       await page.waitForURL('**/login');
       expect((await api.get('/v1/auth/session')).status).toBe(401);
     } finally {

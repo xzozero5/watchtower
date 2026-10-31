@@ -65,6 +65,7 @@ test.describe.serial('AC-1: portal submission to resolution', () => {
   });
 
   const conversation = () => staff.page.getByRole('region', { name: 'Conversation' });
+  const panel = () => staff.page.getByRole('region', { name: 'Details & AI' });
 
   test('submit on the portal: ticket with org, intent and SLA due within 10 s', async () => {
     const testInfo = test.info();
@@ -135,13 +136,17 @@ test.describe.serial('AC-1: portal submission to resolution', () => {
     await expect(row).toBeVisible();
     await expect(row).toContainText(ORGS.acme.name);
 
-    const details = conversation().getByRole('region', { name: 'Ticket details' });
+    // Properties live in the right-hand "Details & AI" panel; fields are inline comboboxes.
+    const details = panel();
     await expect(details).toContainText(ORGS.acme.name);
     await expect(details).toContainText('Portal');
-    await expect(details.getByRole('combobox', { name: 'Intent' })).toHaveValue(
-      (await staffApi.get<StaffTicket>(`/v1/tickets/${ticketKey}`)).json.intent?.id ?? 'missing',
+    const intentName = (await staffApi.get<StaffTicket>(`/v1/tickets/${ticketKey}`)).json.intent
+      ?.name;
+    expect(intentName).toBe('API error');
+    await expect(details.getByRole('button', { name: /^Intent:/ })).toContainText(
+      intentName ?? 'missing',
     );
-    // The SLA badge is shown with a running (not "none") state.
+    // The SLA badge is shown with a running (not "none") state, and a first-response time is set.
     await expect(conversation().locator('[data-sla]')).toBeVisible();
     await expect(details).not.toContainText('Not set');
   });
@@ -195,7 +200,7 @@ test.describe.serial('AC-1: portal submission to resolution', () => {
   test('an internal note stays inside: not on the tracking page, no email', async () => {
     const page = staff.page;
     await page.goto(`/?ticket=${ticketKey}`);
-    await page.getByRole('button', { name: 'Internal note', exact: true }).click();
+    await page.getByRole('radio', { name: 'Internal note' }).click();
     await page.getByRole('textbox', { name: 'Internal note' }).fill(noteText);
     await page.getByRole('button', { name: 'Add note', exact: true }).click();
     await expect(page.getByText('Note added.')).toBeVisible();
@@ -222,8 +227,9 @@ test.describe.serial('AC-1: portal submission to resolution', () => {
   test('staff resolve the ticket; the customer receives the status email and sees Resolved', async () => {
     const page = staff.page;
     await page.goto(`/?ticket=${ticketKey}`);
-    const details = conversation().getByRole('region', { name: 'Ticket details' });
-    await details.getByRole('combobox', { name: 'Status' }).selectOption({ label: 'Resolved' });
+    const details = panel();
+    await details.getByRole('button', { name: /^Status:/ }).click();
+    await page.getByRole('option', { name: /^Resolved/ }).click();
     await expect(details.getByText('Saved.')).toBeVisible();
 
     const email = await mailbox.next(new RegExp(`${ticketKey} is now: Resolved`));

@@ -241,12 +241,19 @@ test.describe.serial('RBAC: a client sees only their own organization', () => {
     await expect(conversation.getByText(marker)).toHaveCount(0);
     await expect(page.getByText(marker)).toHaveCount(0);
     // A client's composer has no internal-note mode.
-    await expect(page.getByRole('button', { name: 'Internal note', exact: true })).toHaveCount(0);
+    await expect(page.getByRole('radio', { name: 'Internal note' })).toHaveCount(0);
     await expect(page.getByRole('textbox', { name: 'Internal note' })).toHaveCount(0);
     await expect(conversation.getByText('Your message is added to this ticket')).toBeVisible();
     // Staff controls are read-only: no assignee, no editable status.
-    await expect(conversation.getByRole('combobox', { name: 'Assignee' })).toHaveCount(0);
-    await expect(conversation.getByRole('combobox', { name: 'Status' })).toHaveCount(0);
+    // A client has no side panel: their read-only facts sit in the conversation.
+    await expect(page.getByRole('region', { name: 'Details & AI' })).toHaveCount(0);
+    const details = conversation.getByRole('region', { name: 'Ticket details' });
+    await expect(details).toBeVisible();
+    await expect(details.getByRole('button')).toHaveCount(0);
+    await expect(details).not.toContainText('Assignee');
+    await expect(details).not.toContainText(ORGS.acme.name);
+    // The status is shown in the customer's words.
+    await expect(page.locator('[data-customer-status]').first()).toBeVisible();
   });
 
   test("UI: another organization's ticket opened by address is not found", async () => {
@@ -268,8 +275,6 @@ test.describe.serial('RBAC: a client sees only their own organization', () => {
     await staff.page.goto(`/?ticket=${noted.key}`);
     const conversation = staff.page.getByRole('region', { name: 'Conversation' });
     await expect(conversation.getByText(noteText)).toBeVisible();
-    await expect(
-      staff.page.getByRole('button', { name: 'Internal note', exact: true }),
-    ).toBeVisible();
+    await expect(staff.page.getByRole('radio', { name: 'Internal note' })).toBeVisible();
   });
 });
