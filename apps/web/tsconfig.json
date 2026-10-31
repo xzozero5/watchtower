@@ -21,8 +21,10 @@
     "next.config.ts",
     "vitest.config.ts",
     "playwright.config.ts",
+    "playwright.fullstack.config.ts",
     "src",
     "e2e",
+    "e2e-fullstack",
     ".next/types/**/*.ts",
     ".next/dev/types/**/*.ts"
   ],
