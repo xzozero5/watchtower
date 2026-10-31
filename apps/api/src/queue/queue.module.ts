@@ -1,86 +1,86 @@
-import {
-  Global,
-  Inject,
-  Injectable,
-  Module,
-  type DynamicModule,
-  type OnApplicationShutdown,
-} from '@nestjs/common';
+import { Global, Inject, Injectable, Module } from '@nestjs/common';
+import { enqueueOutbox, type Database, type OutboxWriter } from '@watchtower/db';
 import {
   EMAIL_JOBS,
+  EMAIL_OUTBOX_JOB_OPTIONS,
   QUEUE_NAMES,
   emailJobSchema,
-  parseRedisUrl,
+  outboxJobOptionsSchema,
   type EmailJob,
+  type OutboxJobOptions,
+  type QueueName,
 } from '@watchtower/shared';
-import { Queue } from 'bullmq';
 
-import { APP_CONFIG, type ApiConfig } from '../config/config.js';
-import { LOGGER, type AppLogger } from '../logging/logger.js';
+import { DATABASE } from '../database/database.module.js';
 
-/** DI token for the BullMQ `email` queue. Use EmailOutbox instead of injecting it directly. */
-export const EMAIL_QUEUE = Symbol('EMAIL_QUEUE');
+/** What a caller asks the outbox to enqueue. */
+export interface OutboxRequest {
+  readonly queue: QueueName;
+  readonly name: string;
+  /** Idempotency key (the BullMQ jobId): the same `(queue, jobId)` is enqueued once. */
+  readonly jobId: string;
+  readonly payload: Record<string, unknown>;
+  readonly options?: OutboxJobOptions;
+}
 
-/** DI token for the BullMQ key prefix; tests set a unique one. */
-export const QUEUE_PREFIX = Symbol('QUEUE_PREFIX');
+const QUEUES: ReadonlySet<string> = new Set(Object.values(QUEUE_NAMES));
 
-/** Producer side of the `email` queue; apps/worker consumes it and talks SMTP (Mailpit locally). */
+/**
+ * Producer side of every BullMQ queue (ADR-006). It writes a row to the `outbox` table; it never
+ * talks to Redis. Pass the transaction of the change the job belongs to and the job exists if and
+ * only if that change commits. `apps/worker` runs the relay that moves rows to BullMQ, so a Redis
+ * outage delays a job and never loses it. Future channel sends (reply on Gmail or LINE) enqueue
+ * the same way.
+ */
 @Injectable()
-export class EmailOutbox {
-  constructor(@Inject(EMAIL_QUEUE) private readonly queue: Queue) {}
+export class OutboxService {
+  constructor(@Inject(DATABASE) private readonly database: Database) {}
 
   /**
-   * Enqueues one email. `jobId` is the idempotency key: enqueueing the same id twice sends once.
-   * The payload carries a one-time secret, so a finished job is deleted immediately and a failed
-   * one is kept for an hour only.
+   * Stores one job. Without `executor` it is its own statement (durable on return); with a
+   * transaction it commits with it. Returns false when `jobId` was enqueued before.
    */
-  async send(job: EmailJob, jobId: string): Promise<void> {
-    const payload = emailJobSchema.parse(job);
-    await this.queue.add(EMAIL_JOBS.send, payload, {
-      jobId,
-      attempts: 5,
-      backoff: { type: 'exponential', delay: 1000 },
-      removeOnComplete: true,
-      removeOnFail: { age: 3600 },
+  async enqueue(request: OutboxRequest, executor?: OutboxWriter): Promise<boolean> {
+    if (!QUEUES.has(request.queue)) throw new Error(`unknown queue "${request.queue}"`);
+    const options = outboxJobOptionsSchema.parse(request.options ?? {});
+    return enqueueOutbox(executor ?? this.database.db, {
+      queue: request.queue,
+      jobName: request.name,
+      jobId: request.jobId,
+      payload: request.payload,
+      options,
     });
   }
 }
 
+/** Outbound email: the api describes the message, the worker renders and sends it over SMTP. */
 @Injectable()
-class QueueLifecycle implements OnApplicationShutdown {
-  constructor(@Inject(EMAIL_QUEUE) private readonly queue: Queue) {}
+export class EmailOutbox {
+  constructor(@Inject(OutboxService) private readonly outbox: OutboxService) {}
 
-  async onApplicationShutdown(): Promise<void> {
-    await this.queue.close();
+  /**
+   * Enqueues one email. `jobId` is the idempotency key: enqueueing the same id twice sends once.
+   * Give the transaction that created whatever the email is about (a token, a ticket) so the two
+   * commit together.
+   */
+  async send(job: EmailJob, jobId: string, executor?: OutboxWriter): Promise<void> {
+    const payload = emailJobSchema.parse(job);
+    await this.outbox.enqueue(
+      {
+        queue: QUEUE_NAMES.email,
+        name: EMAIL_JOBS.send,
+        jobId,
+        payload,
+        options: EMAIL_OUTBOX_JOB_OPTIONS,
+      },
+      executor,
+    );
   }
 }
 
 @Global()
-@Module({})
-export class QueueModule {
-  static forRoot(prefix?: string): DynamicModule {
-    return {
-      module: QueueModule,
-      providers: [
-        { provide: QUEUE_PREFIX, useValue: prefix },
-        {
-          provide: EMAIL_QUEUE,
-          inject: [APP_CONFIG, LOGGER, QUEUE_PREFIX],
-          useFactory: (config: ApiConfig, logger: AppLogger, queuePrefix: string | undefined) => {
-            const queue = new Queue(QUEUE_NAMES.email, {
-              connection: parseRedisUrl(config.REDIS_URL),
-              ...(queuePrefix === undefined ? {} : { prefix: queuePrefix }),
-            });
-            queue.on('error', (error) => {
-              logger.error({ err: error, queue: QUEUE_NAMES.email }, 'queue error');
-            });
-            return queue;
-          },
-        },
-        EmailOutbox,
-        QueueLifecycle,
-      ],
-      exports: [EmailOutbox, EMAIL_QUEUE],
-    };
-  }
-}
+@Module({
+  providers: [OutboxService, EmailOutbox],
+  exports: [OutboxService, EmailOutbox],
+})
+export class QueueModule {}

@@ -48,6 +48,7 @@ async function settle(): Promise<void> {
 
 /** Every email job addressed to `email`, oldest first. */
 async function jobsFor(email: string) {
+  await h.relayOutbox();
   const jobs = await h.emailQueue.getJobs(['waiting', 'delayed', 'active', 'completed', 'failed']);
   return jobs
     .filter((job) => (job.data as { to?: string }).to === email)

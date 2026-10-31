@@ -92,9 +92,11 @@ export class TeamQueuesController {
   @Audited({ action: AUDIT_ACTIONS.queueDelete, targetType: 'team_queue' })
   @ApiOperation({
     summary: 'Delete a team queue',
-    description: 'Its tickets stay and become queue-less.',
+    description:
+      'Refused with 409 while any ticket is still in the queue: move them first. An empty queue is deleted.',
   })
   @ApiNoContentResponse({ description: 'Deleted' })
+  @ApiConflictResponse({ description: 'Tickets still belong to the queue' })
   async remove(@Param({ schema: idParamSchema }) params: IdParam): Promise<void> {
     await this.queues.remove(params.id);
   }

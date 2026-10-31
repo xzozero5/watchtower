@@ -19,9 +19,9 @@ import {
 import { users } from './auth.js';
 
 /**
- * Mirrors migrations/0002_ticketing.sql. The SQL file is the source of truth (check constraints,
- * partitioning, triggers and privileges live there); keep both in step by hand and let the
- * integration tests catch drift.
+ * Mirrors migrations/0002_ticketing.sql and 0003_followups_outbox.sql. The SQL files are the source
+ * of truth (check constraints, partitioning, triggers and privileges live there); keep both in step
+ * by hand and let the integration tests catch drift.
  */
 
 const timestamptz = (name: string) => timestamp(name, { withTimezone: true, mode: 'date' });
@@ -111,6 +111,14 @@ export const teamQueueMember = pgTable(
     index('team_queue_member_user_idx').on(table.userId),
   ],
 );
+
+/** The tiers that exist (0003). `organization.tier` and `sla_policy.tier` hold one of these slugs. */
+export const orgTier = pgTable('org_tier', {
+  slug: text('slug').primaryKey(),
+  name: text('name').notNull(),
+  sortOrder: integer('sort_order').notNull().default(0),
+  createdAt: timestamptz('created_at').notNull().defaultNow(),
+});
 
 export const organization = pgTable(
   'organization',
@@ -227,7 +235,7 @@ export const ticket = pgTable(
       .notNull()
       .references(() => organization.id, { onDelete: 'restrict' }),
     requesterContactId: uuid('requester_contact_id').references(() => contact.id, {
-      onDelete: 'set null',
+      onDelete: 'restrict',
     }),
     channelAccountId: uuid('channel_account_id').references(() => channelAccount.id, {
       onDelete: 'restrict',
@@ -237,7 +245,7 @@ export const ticket = pgTable(
     priority: text('priority').notNull().default('P3'),
     status: text('status').notNull().default('new'),
     assigneeId: uuid('assignee_id').references(() => users.id, { onDelete: 'set null' }),
-    queueId: uuid('queue_id').references(() => teamQueue.id, { onDelete: 'set null' }),
+    queueId: uuid('queue_id').references(() => teamQueue.id, { onDelete: 'restrict' }),
     slaPolicyId: uuid('sla_policy_id').references(() => slaPolicy.id, { onDelete: 'restrict' }),
     firstResponseDueAt: timestamptz('first_response_due_at'),
     resolutionDueAt: timestamptz('resolution_due_at'),
@@ -277,6 +285,12 @@ export const ticket = pgTable(
     index('ticket_updated_idx').on(table.updatedAt.desc(), table.id.desc()),
     index('ticket_org_created_idx').on(table.orgId, table.createdAt.desc(), table.id.desc()),
     index('ticket_tags_idx').using('gin', table.tags),
+    index('ticket_queue_id_idx')
+      .on(table.queueId)
+      .where(sql`${table.queueId} IS NOT NULL`),
+    index('ticket_intent_idx')
+      .on(table.intentId)
+      .where(sql`${table.intentId} IS NOT NULL`),
   ],
 );
 
@@ -294,7 +308,7 @@ export const message = pgTable(
     externalId: text('external_id'),
     threadKey: text('thread_key'),
     senderContactId: uuid('sender_contact_id').references(() => contact.id, {
-      onDelete: 'set null',
+      onDelete: 'restrict',
     }),
     senderUserId: uuid('sender_user_id').references(() => users.id, { onDelete: 'set null' }),
     bodyText: text('body_text').notNull(),
@@ -310,6 +324,43 @@ export const message = pgTable(
   (table) => [
     index('message_ticket_idx').on(table.ticketId, table.createdAt),
     uniqueIndex('message_external_key').on(table.channelAccountId, table.externalId),
+    index('message_sender_contact_idx')
+      .on(table.senderContactId)
+      .where(sql`${table.senderContactId} IS NOT NULL`),
+    index('message_sender_user_idx')
+      .on(table.senderUserId)
+      .where(sql`${table.senderUserId} IS NOT NULL`),
+  ],
+);
+
+/**
+ * Transactional outbox (0003, ADR-006): a row per BullMQ job that must be enqueued, written in the
+ * same transaction as the change that needs it and moved to Redis by the relay in apps/worker.
+ */
+export const outbox = pgTable(
+  'outbox',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    queue: text('queue').notNull(),
+    jobName: text('job_name').notNull(),
+    jobId: text('job_id').notNull(),
+    payload: jsonb('payload').notNull(),
+    options: jsonb('options')
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+    status: text('status').notNull().default('pending'),
+    attempts: integer('attempts').notNull().default(0),
+    nextAttemptAt: timestamptz('next_attempt_at').notNull().defaultNow(),
+    lockedUntil: timestamptz('locked_until'),
+    lastError: text('last_error'),
+    createdAt: timestamptz('created_at').notNull().defaultNow(),
+    finishedAt: timestamptz('finished_at'),
+  },
+  (table) => [
+    uniqueIndex('outbox_job_key').on(table.queue, table.jobId),
+    index('outbox_due_idx')
+      .on(table.nextAttemptAt)
+      .where(sql`${table.status} = 'pending'`),
   ],
 );
 

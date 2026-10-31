@@ -20,6 +20,7 @@ export * from './config.js';
 export * from './logging.js';
 export * from './queues.js';
 export * from './rbac.js';
+export * from './seed-data.js';
 export * from './realtime.js';
 export * from './redis-url.js';
 export * from './sla.js';

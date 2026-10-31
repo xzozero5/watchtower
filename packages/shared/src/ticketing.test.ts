@@ -15,9 +15,11 @@ import {
   createTicketSchema,
   defaultTransitionList,
   formatTicketKey,
+  MIN_SEARCH_LENGTH,
   parseTicketKey,
   setWorkflowSchema,
   ticketListQuerySchema,
+  ticketKeyPrefixSchema,
   ticketRefSchema,
 } from './ticketing.js';
 
@@ -35,6 +37,17 @@ describe('ticket numbers', () => {
       expect(parseTicketKey(value)).toBeNull();
     },
   );
+
+  it('formats and parses with the prefix an instance configures', () => {
+    expect(formatTicketKey(7, 'SUP')).toBe('SUP-7');
+    expect(parseTicketKey('sup-7', 'SUP')).toBe(7);
+    expect(parseTicketKey('OPS-7', 'SUP')).toBeNull();
+    expect(parseTicketKey('SUP-7')).toBeNull();
+    expect(ticketKeyPrefixSchema.parse(' sup2 ')).toBe('SUP2');
+    for (const bad of ['', 'A', '2UP', 'TOO-LONG', 'ABCDEFGHIJK', 'ไทย']) {
+      expect(ticketKeyPrefixSchema.safeParse(bad).success).toBe(false);
+    }
+  });
 
   it('accepts a uuid or a key as a ticket reference and nothing else', () => {
     expect(ticketRefSchema.safeParse('OPS-12').success).toBe(true);
@@ -116,6 +129,12 @@ describe('request schemas', () => {
     expect(ticketListQuerySchema.safeParse({ status: 'bogus' }).success).toBe(false);
     expect(ticketListQuerySchema.safeParse({ limit: '1000' }).success).toBe(false);
     expect(ticketListQuerySchema.parse({ status: '' }).status).toBeUndefined();
+  });
+
+  it('accepts a two-character search (a Thai word) and refuses one character', () => {
+    expect(ticketListQuerySchema.parse({ q: ' ไฟ ' }).q).toBe('ไฟ');
+    expect(ticketListQuerySchema.safeParse({ q: 'a' }).success).toBe(false);
+    expect(MIN_SEARCH_LENGTH).toBe(2);
   });
 
   it('normalizes the requester address and trims the subject', () => {

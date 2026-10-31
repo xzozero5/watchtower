@@ -13,20 +13,44 @@ import { ticketPrioritySchema } from './sla.js';
 
 // --- ticket number ---
 
-/** Prefix of the human ticket number, `OPS-1234`. `[ASSUMED]`; the number itself is a database sequence. */
-export const TICKET_KEY_PREFIX = 'OPS';
+/** Prefix of the human ticket number (`OPS-1234`) when an instance does not configure its own. */
+export const DEFAULT_TICKET_KEY_PREFIX = 'OPS';
 
-export function formatTicketKey(number: number | bigint): string {
-  return `${TICKET_KEY_PREFIX}-${String(number)}`;
+/**
+ * A ticket number prefix: 2 to 10 upper-case letters or digits, starting with a letter. The api
+ * reads it from `TICKET_KEY_PREFIX`. Changing it later renames future displays only: the number is
+ * a database sequence, but keys already copied into event payloads or sent in emails keep the old
+ * prefix.
+ */
+export const ticketKeyPrefixSchema = z
+  .string()
+  .trim()
+  .toUpperCase()
+  .regex(/^[A-Z][A-Z0-9]{1,9}$/, 'expected 2 to 10 letters or digits, starting with a letter');
+
+export function formatTicketKey(
+  number: number | bigint,
+  prefix: string = DEFAULT_TICKET_KEY_PREFIX,
+): string {
+  return `${prefix}-${String(number)}`;
 }
 
-/** `OPS-1234` (any case) to 1234; null for anything else. */
-export function parseTicketKey(value: string): number | null {
-  const match = /^OPS-(\d{1,15})$/i.exec(value.trim());
-  if (!match) return null;
-  const number = Number(match[1]);
+/** `OPS-1234` (any case) to 1234; null when the text is not a key with this prefix. */
+export function parseTicketKey(
+  value: string,
+  prefix: string = DEFAULT_TICKET_KEY_PREFIX,
+): number | null {
+  const text = value.trim();
+  const dash = text.lastIndexOf('-');
+  if (dash <= 0 || text.slice(0, dash).toUpperCase() !== prefix.toUpperCase()) return null;
+  const digits = text.slice(dash + 1);
+  if (!/^\d{1,15}$/.test(digits)) return null;
+  const number = Number(digits);
   return Number.isSafeInteger(number) && number > 0 ? number : null;
 }
+
+/** What any instance's ticket key looks like, whatever its prefix: the prefix is checked by the api. */
+const TICKET_KEY_SHAPE = /^[A-Za-z][A-Za-z0-9]{1,9}-\d{1,15}$/;
 
 /** A ticket addressed by its uuid or by its number (`OPS-1234`), as it appears in URLs. */
 export const ticketRefSchema = z
@@ -34,7 +58,7 @@ export const ticketRefSchema = z
   .trim()
   .min(1)
   .max(64)
-  .refine((value) => z.uuid().safeParse(value).success || parseTicketKey(value) !== null, {
+  .refine((value) => z.uuid().safeParse(value).success || TICKET_KEY_SHAPE.test(value), {
     message: 'expected a ticket id or a ticket number such as OPS-1234',
   });
 export const ticketRefParamSchema = z.object({ id: ticketRefSchema });
@@ -160,6 +184,8 @@ export const TICKET_EVENT_TYPES = {
   assigned: 'ticket.assigned',
   merged: 'ticket.merged',
   mergeReceived: 'ticket.merge_received',
+  /** A ticket merged earlier now points at a new target because its own target was merged away. */
+  reparented: 'ticket.reparented',
   reopened: 'ticket.reopened',
   slaPaused: 'sla.paused',
   slaResumed: 'sla.resumed',
@@ -249,6 +275,13 @@ export type DuplicateSuggestions = z.infer<typeof duplicateSuggestionsSchema>;
 export const TICKET_SORTS = ['created_desc', 'updated_desc', 'due_asc'] as const;
 export const ticketSortSchema = z.enum(TICKET_SORTS);
 
+/**
+ * Shortest free-text search. Two, not three, because many Thai words are two characters; a query
+ * under 3 characters has no trigram and therefore cannot use the `pg_trgm` index, so Postgres scans
+ * the rows that the other filters leave (fine for one organization, slow across the whole table).
+ */
+export const MIN_SEARCH_LENGTH = 2;
+
 export const ticketListQuerySchema = z.object({
   status: csvList(ticketStatusSchema),
   priority: csvList(ticketPrioritySchema),
@@ -261,7 +294,7 @@ export const ticketListQuerySchema = z.object({
   channel: channelTypeSchema.optional(),
   tag: z.string().trim().min(1).max(64).optional(),
   /** Free text over the subject and the visible messages, and an exact ticket number. */
-  q: z.string().trim().min(1).max(200).optional(),
+  q: z.string().trim().min(MIN_SEARCH_LENGTH).max(200).optional(),
   /** Only open tickets that are past a first-response or resolution due time. */
   overdue: z.stringbool().optional(),
   sort: ticketSortSchema.default('created_desc'),

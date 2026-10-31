@@ -50,7 +50,7 @@ export interface ApiErrorBody {
 /** An organization created through the API by someone who may. */
 export async function apiOrg(
   lead: Persona,
-  fields: { name?: string; tier?: 'gold' | 'silver' | 'standard'; domains?: string[] } = {},
+  fields: { name?: string; tier?: string; domains?: string[] } = {},
 ): Promise<Organization> {
   const response = await lead.client.post<Organization>('/v1/orgs', {
     name: fields.name ?? `Acme ${uniqueEmail('org')}`,

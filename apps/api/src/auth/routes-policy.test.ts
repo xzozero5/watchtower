@@ -8,7 +8,6 @@ import { describe, expect, it } from 'vitest';
 import { AppModule } from '../app.module.js';
 import { DATABASE } from '../database/database.module.js';
 import { createLogger } from '../logging/logger.js';
-import { EMAIL_QUEUE } from '../queue/queue.module.js';
 import { REDIS } from '../redis/redis.module.js';
 import { testConfig } from '../testing/support.js';
 import { ANY_PERMISSIONS_KEY, PERMISSIONS_KEY, PUBLIC_KEY } from './decorators.js';
@@ -51,8 +50,6 @@ async function collectRoutes(): Promise<RouteInfo[]> {
       quit: () => Promise.resolve('OK'),
       disconnect: () => undefined,
     })
-    .overrideProvider(EMAIL_QUEUE)
-    .useValue({ add: () => Promise.resolve(), close: () => Promise.resolve() })
     .compile();
 
   const reflector = new Reflector();

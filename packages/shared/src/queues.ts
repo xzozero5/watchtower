@@ -51,3 +51,45 @@ export const DEFAULT_JOB_OPTIONS = {
   removeOnComplete: { age: 3600, count: 1000 },
   removeOnFail: { age: 7 * 24 * 3600 },
 } as const;
+
+const keepRule = z.union([
+  z.boolean(),
+  z.object({ age: z.number().int().min(0), count: z.number().int().min(0).optional() }),
+]);
+
+/**
+ * BullMQ options a transactional-outbox row may carry (ADR-006). A closed list on purpose: the row
+ * is data in the database, and the relay passes it to `queue.add` after parsing it with this schema,
+ * so a damaged or hostile row cannot set an option nobody reviewed.
+ */
+export const outboxJobOptionsSchema = z
+  .object({
+    attempts: z.number().int().min(1).max(50).optional(),
+    backoff: z
+      .object({
+        type: z.enum(['exponential', 'fixed']),
+        delay: z.number().int().min(100).max(3_600_000),
+      })
+      .optional(),
+    removeOnComplete: keepRule.optional(),
+    removeOnFail: keepRule.optional(),
+    delay: z
+      .number()
+      .int()
+      .min(0)
+      .max(7 * 24 * 3600 * 1000)
+      .optional(),
+  })
+  .strict();
+export type OutboxJobOptions = z.infer<typeof outboxJobOptionsSchema>;
+
+/**
+ * Options of an outbound email job. The payload carries a one-time secret (a magic link), so a
+ * finished job is deleted at once and a failed one is kept for an hour only.
+ */
+export const EMAIL_OUTBOX_JOB_OPTIONS: OutboxJobOptions = {
+  attempts: 5,
+  backoff: { type: 'exponential', delay: 1000 },
+  removeOnComplete: true,
+  removeOnFail: { age: 3600 },
+};

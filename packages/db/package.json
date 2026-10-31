@@ -28,7 +28,7 @@
     "db:migrate": "pnpm run build && node --env-file-if-exists=../../.env dist/cli.js up",
     "db:rollback": "pnpm run build && node --env-file-if-exists=../../.env dist/cli.js down",
     "db:status": "pnpm run build && node --env-file-if-exists=../../.env dist/cli.js status",
-    "db:seed": "node -e \"console.error('db:seed is not implemented yet (T-008)');process.exit(1)\""
+    "db:seed": "pnpm run build && node --env-file-if-exists=../../.env dist/seed-cli.js"
   },
   "dependencies": {
     "@watchtower/shared": "workspace:*",

@@ -32,7 +32,7 @@ function message(overrides: Partial<MessageRow> = {}): MessageRow {
 }
 
 const context = {
-  ticketNumber: 1234,
+  ticketKey: 'OPS-1234',
   channel: 'portal' as const,
   senderUserName: 'Somchai Staff',
   senderUserRole: 'agent',
@@ -87,14 +87,18 @@ describe('toTimelineEvent', () => {
   };
 
   it('gives staff the whole event', () => {
-    const view = toTimelineEvent(row, { ticketNumber: 1, actorName: 'Somchai', audience: 'staff' });
+    const view = toTimelineEvent(row, {
+      ticketKey: 'OPS-1',
+      actorName: 'Somchai',
+      audience: 'staff',
+    });
     expect(view.payload).toEqual(row.payload);
     expect(view.actor).toEqual({ type: 'user', id: USER, name: 'Somchai' });
   });
 
   it('gives a client only the allowed keys of the payload and no actor', () => {
     const view = toTimelineEvent(row, {
-      ticketNumber: 1,
+      ticketKey: 'OPS-1',
       actorName: 'Somchai',
       audience: 'client',
     });
@@ -105,7 +109,7 @@ describe('toTimelineEvent', () => {
   it('gives a client nothing from an event type it does not know', () => {
     const view = toTimelineEvent(
       { ...row, type: 'sla.paused', payload: { reason: 'x' } },
-      { ticketNumber: 1, actorName: null, audience: 'client' },
+      { ticketKey: 'OPS-1', actorName: null, audience: 'client' },
     );
     expect(view.payload).toEqual({});
   });

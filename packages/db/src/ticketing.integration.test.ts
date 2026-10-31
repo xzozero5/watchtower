@@ -536,7 +536,10 @@ describe('down and up again', () => {
     );
     await newTicket(owner(), org);
 
-    expect(await migrateDown(owner(), { steps: 1 })).toEqual(['0002_ticketing']);
+    expect(await migrateDown(owner(), { steps: 2 })).toEqual([
+      '0003_followups_outbox',
+      '0002_ticketing',
+    ]);
     expect(
       await scalar<string | null>(owner(), `SELECT to_regclass('ticket')::text AS value`),
     ).toBeNull();
@@ -560,7 +563,7 @@ describe('down and up again', () => {
       ),
     ).toBe('1');
 
-    expect(await migrateUp(owner())).toEqual(['0002_ticketing']);
+    expect(await migrateUp(owner())).toEqual(['0002_ticketing', '0003_followups_outbox']);
     expect(
       await scalar<string>(owner(), `SELECT count(*)::text AS value FROM ticket_status_transition`),
     ).toBe(String(defaultTransitionList().length));

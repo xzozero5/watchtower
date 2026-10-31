@@ -51,6 +51,7 @@ import { badRequest, forbidden } from '../auth/http-errors.js';
 import { parseResponse } from '../common/zod-openapi.js';
 import { UnitOfWorkService } from '../realtime/unit-of-work.js';
 import { toMessage } from './message-view.js';
+import { TICKET_KEYS, type TicketKeys } from './ticket-keys.js';
 import { TicketReader, assertCanRead, isClient } from './ticket-reader.js';
 import {
   TicketsService,
@@ -83,24 +84,32 @@ export class TicketsController {
     @Inject(TicketReader) private readonly reader: TicketReader,
     @Inject(TimelineService) private readonly timelines: TimelineService,
     @Inject(UnitOfWorkService) private readonly uow: UnitOfWorkService,
+    @Inject(TICKET_KEYS) private readonly keys: TicketKeys,
   ) {}
 
   @Get()
   @RequireAnyPermission('ticket.read', 'ticket.read.org')
+  // A list carries the requester's name and a search can reveal who wrote about what: it is on the
+  // audit log (`pii.read`, no target id) just like reading one ticket.
+  @AuditPiiRead('ticket')
   @ApiOperation({
     summary: 'List tickets with filters, search and cursor pagination',
     description:
       'Staff see every ticket; a client sees only tickets of their own organization, in a reduced ' +
       'shape (no assignee, queue, SLA, tags or internal fields). `q` searches the subject and the ' +
       'text of messages (Thai included) and matches an exact ticket number such as OPS-1234; a ' +
-      "client's search never matches an internal note. Pass `nextCursor` back as `cursor`.",
+      "client's search never matches an internal note. `q` needs at least 2 characters; below 3 " +
+      'the trigram index cannot be used, so combine it with another filter. Pass `nextCursor` ' +
+      'back as `cursor`. Every list is on the audit log (`pii.read`).',
   })
   @ApiOkResponse({ standardSchema: ticketListSchema })
   async list(
     @Query({ schema: ticketListQuerySchema }) query: TicketListQuery,
     @CurrentPrincipal() principal: Principal,
   ) {
-    return parseResponse(ticketListSchema, await this.reader.list(query, principal));
+    const page = await this.reader.list(query, principal);
+    AuditScope.set({ metadata: { resultCount: page.items.length } });
+    return parseResponse(ticketListSchema, page);
   }
 
   @Post()
@@ -338,7 +347,7 @@ export class TicketsController {
     );
     return parseResponse(replyResultSchema, {
       message: toMessage(result.message, {
-        ticketNumber: result.ticket.number,
+        ticketKey: this.keys.format(result.ticket.number),
         channel: result.ticket.channel as ChannelType,
         senderUserName: principal.name,
         senderUserRole: principal.role,
@@ -367,7 +376,7 @@ export class TicketsController {
     );
     return parseResponse(replyResultSchema, {
       message: toMessage(result.message, {
-        ticketNumber: result.ticket.number,
+        ticketKey: this.keys.format(result.ticket.number),
         channel: result.ticket.channel as ChannelType,
         senderUserName: principal.name,
         senderUserRole: principal.role,
