@@ -13,6 +13,7 @@ import {
 } from 'react';
 
 import { useApi } from '@/lib/api/api-context';
+import { useUserId } from '@/lib/auth/session';
 import { isUnauthenticated } from '@/lib/api/errors';
 import { useRuntimeConfig } from '@/lib/runtime-config-context';
 import { ticketKeys } from '@/lib/tickets/queries';
@@ -67,6 +68,7 @@ export function RealtimeProvider({
 }) {
   const { apiUrl } = useRuntimeConfig();
   const api = useApi();
+  const userId = useUserId();
   const queryClient = useQueryClient();
   const [state, setState] = useState<ConnectionState>('connecting');
   const [newTicketIds, setNewTicketIds] = useState<readonly string[]>([]);
@@ -80,6 +82,7 @@ export function RealtimeProvider({
       onEvent: (event) => {
         applyRealtimeEvent(event, {
           queryClient,
+          userId,
           api,
           onNewTicket: (ticketId) => {
             setNewTicketIds((ids) => (ids.includes(ticketId) ? ids : [...ids, ticketId]));
@@ -87,7 +90,7 @@ export function RealtimeProvider({
         });
       },
       onResync: () => {
-        void queryClient.invalidateQueries({ queryKey: ticketKeys.all });
+        void queryClient.invalidateQueries({ queryKey: ticketKeys(userId).all });
       },
       ensureSession: async () => {
         try {
@@ -111,7 +114,7 @@ export function RealtimeProvider({
       connection.stop();
       connectionRef.current = null;
     };
-  }, [apiUrl, api, queryClient, createSocket]);
+  }, [apiUrl, api, queryClient, userId, createSocket]);
 
   const clearNewTickets = useCallback(() => {
     setNewTicketIds([]);

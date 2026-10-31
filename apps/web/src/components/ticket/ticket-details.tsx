@@ -13,6 +13,7 @@ import { useSession } from '@/lib/auth/session';
 import { useShortcut } from '@/lib/keyboard';
 import { isStaffTicket, isDetail, severityOf, type TicketItem } from '@/lib/tickets/model';
 import { useIntents, useQueues, useTicketMutations, useWorkflow } from '@/lib/tickets/queries';
+import { statusKey } from '@/lib/tickets/status-key';
 import { allowedNextStatuses } from '@/lib/tickets/templates';
 
 import { StatusLabel } from './status-label';
@@ -177,7 +178,7 @@ export function TicketDetails({ ticket }: { ticket: TicketItem }) {
                   >
                     {statusOptions.map((status) => (
                       <option key={status} value={status}>
-                        {t(`status.${status}`)}
+                        {t(statusKey(status))}
                       </option>
                     ))}
                   </Select>

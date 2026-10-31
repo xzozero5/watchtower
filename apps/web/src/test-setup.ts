@@ -3,6 +3,7 @@ import '@testing-library/jest-dom/vitest';
 import { cleanup } from '@testing-library/react';
 import { afterEach, beforeAll } from 'vitest';
 
+import { resetPreferencesCache } from '@/lib/preferences';
 import { draftStore } from '@/lib/tickets/templates';
 
 beforeAll(() => {
@@ -13,5 +14,6 @@ beforeAll(() => {
 afterEach(() => {
   cleanup();
   draftStore.clear();
+  resetPreferencesCache();
   window.history.replaceState(null, '', '/');
 });

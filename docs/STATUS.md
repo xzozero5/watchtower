@@ -35,6 +35,12 @@ snapshot สั้นสำหรับ cold start อยู่ที่ `HANDOF
 
 ## Log
 
+## 2026-11-01 05:30 (Asia/Bangkok) — frontend-dev + main thread — T-120 ปิด
+- ทำอะไร: ปิด single-key shortcut ได้ (WCAG 2.1.4) · ล้าง cache + draft ตอน session หมดอายุผ่าน routine เดียวกับ sign out, query key ผูก user · keyboard map กรองตาม permission · F6 / Alt+1..3, `[` `]`, `g q`, Enter/O · < 768 px เป็นแท็บ · throttle live region 30 s · status copy key camelCase · queue เป็น listbox + `aria-selected` · หัว ticket ไม่ถูกตัดตอนเปิด, แถบบนไม่ล้นที่ 768–1023 px (จากภาพที่ส่งเจ้าของ)
+- test: main thread รันเอง: lint, typecheck, test (web 318, ui 125 + ทุก package), e2e 67 ผ่าน `[TESTED]`
+- review: เป็นการแก้ finding ของ `po` จาก T-006 → ตรวจรวมใน T-011 (ไม่เรียก `po` แยกเพื่อประหยัด credit)
+- ไม่ยืนยัน: remap shortcut ยังไม่มี (ปิดได้อย่างเดียว) `[ASSUMED]` ว่าพอสำหรับ 2.1.4 · ยังไม่ได้ทดสอบกับ screen reader จริงและ iOS/Android จริง
+
 ## 2026-11-01 04:20 (Asia/Bangkok) — backend-dev + main thread — T-013 + T-008 ปิด
 - ทำอะไร (T-013): audit `contact.create` ตอนสร้าง contact อัตโนมัติ · child ที่ย้ายตอน merge ได้ event `ticket.reparented` + audit `ticket.reparent` · `@AuditPiiRead` บน `GET /v1/tickets` · `q` ขั้นต่ำ 2 ตัว · ลบ queue/contact ที่ยังถูกอ้าง → 409 (FK RESTRICT) · migration `0003_followups_outbox`: `org_tier` แทน CHECK, `message` ไม่มี DELETE และ UPDATE ได้เฉพาะ `delivery_status, body_redacted`, index FK, ตาราง `outbox` · transactional outbox: api เขียนแถวใน tx เดียวกับงาน, relay อยู่ใน worker (SKIP LOCKED, backoff, dead หลัง 30 ครั้ง) · ADR-006 (Proposed) · `TICKET_KEY_PREFIX` ตั้งได้ (default `OPS`)
 - ทำอะไร (T-008): `pnpm db:seed` idempotent + additive, ปฏิเสธ `NODE_ENV=production` ถ้าไม่มี `--allow-production` · calendar Bangkok + 24×7, วันหยุดไทย 2026–2027 จาก `examples/calendars/` (`[VERIFY]` ทุกวัน, วันตามจันทรคติ/วันชดเชย `[UNVERIFIED]`), SLA จาก `examples/sla/` (po #8, ตัวเลขอื่น `[ASSUMED]`), 3 orgs (gold/silver/standard), contacts 8, staff 2 head/2 lead/4 agent + client 1 คนต่อ org, 3 queues, intents 11 ตัว stage 2, 30 tickets ครบทุกสถานะ (TH/EN, internal note) · ยังไม่ seed กะ (ยังไม่มีตาราง → T-111)

@@ -5,7 +5,7 @@ import { Alert, Button, Kbd, Select, Textarea, cn } from '@watchtower/ui';
 import { Lock, Send } from 'lucide-react';
 import { type KeyboardEvent, useEffect, useId, useRef, useState } from 'react';
 
-import { rowDomId } from '@/components/queue/queue-row';
+import { QUEUE_LISTBOX_ID } from '@/components/queue/queue-row';
 import { useI18n } from '@/i18n/provider';
 import type { MessageKey } from '@/i18n';
 import { isApiError } from '@/lib/api/errors';
@@ -13,6 +13,7 @@ import { useSession } from '@/lib/auth/session';
 import { useShortcut } from '@/lib/keyboard';
 import { isClosedForReplies, isDetail, type TicketItem } from '@/lib/tickets/model';
 import { useIntents, useTicketMutations, useWorkflow } from '@/lib/tickets/queries';
+import { statusKey } from '@/lib/tickets/status-key';
 import {
   allowedNextStatuses,
   draftStore,
@@ -168,7 +169,7 @@ export function Composer({ ticket }: { ticket: TicketItem }) {
     } else if (event.key === 'Escape') {
       // Hand the keyboard back to the queue so J/K work again.
       event.currentTarget.blur();
-      document.getElementById(rowDomId(ticket.key))?.focus();
+      document.getElementById(QUEUE_LISTBOX_ID)?.focus();
     }
   };
 
@@ -300,7 +301,7 @@ export function Composer({ ticket }: { ticket: TicketItem }) {
               <option value="">{t('composer.setStatus.keep')}</option>
               {nextOptions.map((status) => (
                 <option key={status} value={status}>
-                  {t(`status.${status}`)}
+                  {t(statusKey(status))}
                 </option>
               ))}
             </Select>
@@ -318,7 +319,7 @@ export function Composer({ ticket }: { ticket: TicketItem }) {
               : mode === 'note'
                 ? t('composer.submit.note')
                 : nextStatus
-                  ? t('composer.submit.replyAndSet', { status: t(`status.${nextStatus}`) })
+                  ? t('composer.submit.replyAndSet', { status: t(statusKey(nextStatus)) })
                   : t('composer.submit.reply')}
           </Button>
         </div>

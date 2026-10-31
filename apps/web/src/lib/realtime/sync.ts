@@ -9,10 +9,16 @@ interface CachedPage {
 }
 
 /** True when this tab holds the ticket anywhere: an open detail or a row of a loaded list. */
-export function isTicketCached(queryClient: QueryClient, ticketId: string, key: string): boolean {
-  if (queryClient.getQueryData(ticketKeys.detail(key)) !== undefined) return true;
+export function isTicketCached(
+  queryClient: QueryClient,
+  userId: string,
+  ticketId: string,
+  key: string,
+): boolean {
+  const keys = ticketKeys(userId);
+  if (queryClient.getQueryData(keys.detail(key)) !== undefined) return true;
   const lists = queryClient.getQueriesData<{ pages: readonly CachedPage[] }>({
-    queryKey: ticketKeys.lists,
+    queryKey: keys.lists,
   });
   return lists.some(([, data]) =>
     data?.pages.some((page) => page.items.some((item) => item.id === ticketId)),
@@ -21,6 +27,8 @@ export function isTicketCached(queryClient: QueryClient, ticketId: string, key: 
 
 export interface SyncDeps {
   queryClient: QueryClient;
+  /** Whose cache the event updates: query keys are scoped by user id. */
+  userId: string;
   api: Pick<Endpoints, 'getTicket'>;
   onNewTicket: (ticketId: string) => void;
 }
@@ -40,19 +48,23 @@ export function applyRealtimeEvent(event: RealtimeEvent, deps: SyncDeps): void {
       deps.onNewTicket(event.ticketId);
       return;
     case 'ticket.updated': {
-      if (!isTicketCached(queryClient, event.ticketId, event.ticketKey)) return;
+      if (!isTicketCached(queryClient, deps.userId, event.ticketId, event.ticketKey)) return;
       api
         .getTicket(event.ticketKey)
         .then((ticket) => {
-          storeTicket(queryClient, ticket);
+          storeTicket(queryClient, deps.userId, ticket);
         })
         .catch(() => {
-          void queryClient.invalidateQueries({ queryKey: ticketKeys.detail(event.ticketKey) });
+          void queryClient.invalidateQueries({
+            queryKey: ticketKeys(deps.userId).detail(event.ticketKey),
+          });
         });
       return;
     }
     case 'message.created':
-      void queryClient.invalidateQueries({ queryKey: ticketKeys.timeline(event.ticketKey) });
+      void queryClient.invalidateQueries({
+        queryKey: ticketKeys(deps.userId).timeline(event.ticketKey),
+      });
       return;
   }
 }
