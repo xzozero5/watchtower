@@ -18,6 +18,7 @@ export interface CommandActions {
   setTheme: (theme: ThemePreference) => void;
   setDensity: (density: Density) => void;
   setLocale: (locale: Locale) => void;
+  setSingleKeyShortcuts: (enabled: boolean) => void;
   showShortcuts: () => void;
   focusSearch: () => void;
   signOut: () => void;
@@ -49,6 +50,24 @@ const DEFINITIONS: readonly Definition[] = [
     keywords: ['keyboard', 'shortcuts', 'keys', 'help', 'คีย์ลัด', 'แป้นพิมพ์', 'ช่วยเหลือ'],
     run: (a) => {
       a.showShortcuts();
+    },
+  },
+  {
+    id: 'shortcuts.singleKeyOff',
+    labelKey: 'commands.singleKeyOff',
+    group: 'general',
+    keywords: ['single key', 'shortcuts', 'keyboard', 'disable', 'off', 'คีย์ลัด', 'ปิด'],
+    run: (a) => {
+      a.setSingleKeyShortcuts(false);
+    },
+  },
+  {
+    id: 'shortcuts.singleKeyOn',
+    labelKey: 'commands.singleKeyOn',
+    group: 'general',
+    keywords: ['single key', 'shortcuts', 'keyboard', 'enable', 'on', 'คีย์ลัด', 'เปิด'],
+    run: (a) => {
+      a.setSingleKeyShortcuts(true);
     },
   },
   {

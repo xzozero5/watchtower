@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 
 import { useT } from '@/i18n/provider';
+import { statusKey } from '@/lib/tickets/status-key';
 
 const ICONS: Record<TicketStatus, LucideIcon> = {
   new: Circle,
@@ -35,7 +36,7 @@ export function StatusLabel({ status, className }: { status: TicketStatus; class
       className={cn('inline-flex items-center gap-1 text-xs font-medium', className)}
     >
       <Icon aria-hidden className="size-3.5 shrink-0" />
-      <span>{t(`status.${status}`)}</span>
+      <span>{t(statusKey(status))}</span>
     </span>
   );
 }

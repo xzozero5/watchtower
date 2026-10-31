@@ -153,7 +153,7 @@ describe('AppShell for staff', () => {
     expect(within(dialog).getByText('Previous ticket')).toBeVisible();
     expect(within(dialog).getByText('Approve the draft')).toBeVisible();
     // The AI draft keys are listed but marked as not available yet.
-    expect(within(dialog).getAllByText('coming soon')).toHaveLength(3);
+    expect(within(dialog).getAllByText('coming soon')).toHaveLength(7);
 
     await user.keyboard('{Escape}');
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
@@ -237,14 +237,14 @@ describe('shortcuts on a Thai keyboard layout', () => {
 
     // Thai layout: the physical J key types a different character.
     fireEvent.keyDown(document.body, { key: '\u0e48', code: 'KeyJ' });
-    expect(await screen.findByRole('button', { name: /OPS-1/ })).toHaveAttribute(
-      'aria-current',
+    expect(await screen.findByRole('option', { name: /OPS-1/ })).toHaveAttribute(
+      'aria-selected',
       'true',
     );
     fireEvent.keyDown(document.body, { key: '\u0e48', code: 'KeyJ' });
-    expect(screen.getByRole('button', { name: /OPS-2/ })).toHaveAttribute('aria-current', 'true');
+    expect(screen.getByRole('option', { name: /OPS-2/ })).toHaveAttribute('aria-selected', 'true');
     fireEvent.keyDown(document.body, { key: '\u0e41', code: 'KeyK' });
-    expect(screen.getByRole('button', { name: /OPS-1/ })).toHaveAttribute('aria-current', 'true');
+    expect(screen.getByRole('option', { name: /OPS-1/ })).toHaveAttribute('aria-selected', 'true');
 
     fireEvent.keyDown(document.body, { key: '\u0e22', code: 'Slash', shiftKey: true });
     expect(await screen.findByRole('dialog', { name: 'Keyboard shortcuts' })).toBeInTheDocument();

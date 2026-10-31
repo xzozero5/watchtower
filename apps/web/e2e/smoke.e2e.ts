@@ -66,19 +66,20 @@ test.describe('three-pane layout', () => {
     expect(conversation.x + conversation.width).toBeLessThanOrEqual(assistant.x);
   });
 
-  test('stacks the panes on a phone-sized screen without sideways scrolling', async ({ page }) => {
+  test('shows one pane at a time with tabs on a phone-sized screen, without sideways scrolling', async ({
+    page,
+  }) => {
     await page.setViewportSize({ width: 375, height: 800 });
     await openHome(page);
-    const boxes = await Promise.all(
-      ['pane-queue', 'pane-conversation', 'pane-assistant'].map((id) =>
-        page.locator(`#${id}`).boundingBox(),
-      ),
-    );
-    const [queue, conversation, assistant] = boxes;
-    if (!queue || !conversation || !assistant) throw new Error('a pane has no box');
-    expect(conversation.y).toBeGreaterThanOrEqual(queue.y + queue.height);
-    expect(assistant.y).toBeGreaterThanOrEqual(conversation.y + conversation.height);
-    expect(Math.abs(queue.x - conversation.x)).toBeLessThan(2);
+    const tabs = page.getByRole('tablist', { name: 'Panes' });
+    await expect(tabs.getByRole('tab')).toHaveText(['Queue', 'Conversation', 'AI assistant']);
+    await expect(page.locator('#pane-queue')).toBeVisible();
+    await expect(page.locator('#pane-conversation')).toBeHidden();
+    await expect(page.locator('#pane-assistant')).toBeHidden();
+
+    await tabs.getByRole('tab', { name: 'AI assistant' }).click();
+    await expect(page.locator('#pane-assistant')).toBeVisible();
+    await expect(page.locator('#pane-queue')).toBeHidden();
 
     const overflow = await page.evaluate(
       () => document.documentElement.scrollWidth - document.documentElement.clientWidth,

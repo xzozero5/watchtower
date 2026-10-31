@@ -1,0 +1,672 @@
+import { fireEvent, screen, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+import { SINGLE_KEY_STORAGE_KEY, resetPreferencesCache } from '@/lib/preferences';
+import { renderWorkspace } from '@/test-utils';
+import { workspaceApi } from '@/test/scenarios';
+
+vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: vi.fn(), replace: vi.fn() }) }));
+
+beforeEach(() => {
+  localStorage.clear();
+  resetPreferencesCache();
+});
+afterEach(() => {
+  vi.unstubAllGlobals();
+  Reflect.deleteProperty(window, 'matchMedia');
+});
+
+/** Makes the window `width` px wide for the layout hook (jsdom has no media queries). */
+function stubViewport(width: number) {
+  const px = (query: string) => {
+    const rem = /min-width:\s*([\d.]+)rem/.exec(query)?.[1];
+    return rem ? Number(rem) * 16 : 0;
+  };
+  Object.defineProperty(window, 'matchMedia', {
+    configurable: true,
+    writable: true,
+    value: (query: string) => ({
+      matches: width >= px(query),
+      media: query,
+      addEventListener: () => undefined,
+      removeEventListener: () => undefined,
+    }),
+  });
+}
+
+async function openWorkspace(options: Parameters<typeof renderWorkspace>[0] = {}) {
+  const view = renderWorkspace(options);
+  await screen.findByRole('region', { name: 'Queue' });
+  await screen.findByRole('option', { name: /OPS-1|Customer subject 1/ });
+  return view;
+}
+
+/** A key that is not a character (F6, Alt+digit), sent to whatever has focus. */
+const sendKey = (init: KeyboardEventInit) => {
+  fireEvent.keyDown(document.activeElement ?? document.body, init);
+};
+const f6 = (shiftKey = false) => {
+  sendKey({ key: 'F6', code: 'F6', shiftKey });
+};
+const alt = (digit: 1 | 2 | 3) => {
+  // The character differs by layout; the physical key is what counts.
+  sendKey({ key: '๑', code: `Digit${String(digit)}`, altKey: true });
+};
+const pane = (name: string) => screen.getByRole('region', { name });
+const listbox = () => screen.getByRole('listbox', { name: 'Tickets' });
+
+describe('single-key shortcuts preference (WCAG 2.1.4)', () => {
+  it('turns every single-character shortcut off, keeps Ctrl+K and the buttons, and is saved', async () => {
+    const user = userEvent.setup();
+    workspaceApi();
+    await openWorkspace();
+    await user.click(screen.getByRole('option', { name: /OPS-1/ }));
+    await screen.findByRole('textbox', { name: 'Public reply' });
+
+    await user.click(screen.getByRole('checkbox', { name: 'Single-key shortcuts' }));
+    expect(localStorage.getItem(SINGLE_KEY_STORAGE_KEY)).toBe('off');
+
+    await user.keyboard('j');
+    expect(screen.getByRole('option', { name: /OPS-1/ })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('option', { name: /OPS-2/ })).toHaveAttribute('aria-selected', 'false');
+    await user.keyboard('k');
+    expect(screen.getByRole('option', { name: /OPS-1/ })).toHaveAttribute('aria-selected', 'true');
+
+    // "[[" types a literal "[" in user-event's key syntax.
+    for (const key of ['c', 'n', 's', '/', '?', '[[', ']', 'o']) {
+      await user.keyboard(key);
+    }
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(screen.getByRole('searchbox', { name: 'Search tickets' })).not.toHaveFocus();
+    expect(screen.getByRole('textbox', { name: 'Public reply' })).not.toHaveFocus();
+    expect(screen.getByRole('button', { name: 'Collapse the queue' })).toHaveAttribute(
+      'aria-expanded',
+      'true',
+    );
+    await user.keyboard('gq');
+    expect(listbox()).not.toHaveFocus();
+
+    // Ctrl+K is not a single-character shortcut: it still works.
+    fireEvent.keyDown(document.body, { key: 'k', code: 'KeyK', ctrlKey: true });
+    expect(await screen.findByRole('dialog', { name: 'Command palette' })).toBeInTheDocument();
+    await user.keyboard('{Escape}');
+
+    // So do F6 (from the top bar it goes to the first pane) and the buttons.
+    f6();
+    await waitFor(() => {
+      expect(listbox()).toHaveFocus();
+    });
+    await user.click(screen.getByRole('button', { name: /Show keyboard shortcuts/ }));
+    expect(await screen.findByRole('dialog', { name: 'Keyboard shortcuts' })).toBeInTheDocument();
+  });
+
+  it('remembers the choice after a reload', async () => {
+    const user = userEvent.setup();
+    workspaceApi();
+    const first = await openWorkspace();
+    await user.click(screen.getByRole('checkbox', { name: 'Single-key shortcuts' }));
+    first.unmount();
+
+    resetPreferencesCache();
+    workspaceApi();
+    await openWorkspace();
+    expect(screen.getByRole('checkbox', { name: 'Single-key shortcuts' })).not.toBeChecked();
+    await userEvent.setup().keyboard('j');
+    expect(within(listbox()).queryByRole('option', { selected: true })).not.toBeInTheDocument();
+  });
+
+  it('can be switched from the command palette, and ? works again when it is on', async () => {
+    const user = userEvent.setup();
+    workspaceApi();
+    await openWorkspace();
+
+    fireEvent.keyDown(document.body, { key: 'k', code: 'KeyK', ctrlKey: true });
+    await user.type(
+      await screen.findByRole('combobox', { name: 'Command palette' }),
+      'single-key shortcuts: turn off',
+    );
+    await user.keyboard('{Enter}');
+    expect(localStorage.getItem(SINGLE_KEY_STORAGE_KEY)).toBe('off');
+    await user.keyboard('?');
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+
+    fireEvent.keyDown(document.body, { key: 'k', code: 'KeyK', ctrlKey: true });
+    await user.type(
+      await screen.findByRole('combobox', { name: 'Command palette' }),
+      'single-key shortcuts: turn on',
+    );
+    await user.keyboard('{Enter}');
+    await user.keyboard('?');
+    expect(await screen.findByRole('dialog', { name: 'Keyboard shortcuts' })).toBeInTheDocument();
+  });
+
+  it('is reflected in the keyboard map: switch, notice and "off" on the keys it disables', async () => {
+    const user = userEvent.setup();
+    workspaceApi();
+    await openWorkspace();
+    await user.keyboard('?');
+    let dialog = await screen.findByRole('dialog', { name: 'Keyboard shortcuts' });
+    expect(within(dialog).getByRole('checkbox', { name: 'Single-key shortcuts' })).toBeChecked();
+    expect(within(dialog).queryByText('Single-key shortcuts are off')).not.toBeInTheDocument();
+    expect(within(dialog).queryByText('(off)')).not.toBeInTheDocument();
+
+    await user.click(within(dialog).getByRole('checkbox', { name: 'Single-key shortcuts' }));
+    dialog = screen.getByRole('dialog', { name: 'Keyboard shortcuts' });
+    expect(within(dialog).getByText('Single-key shortcuts are off')).toBeVisible();
+    const row = (id: string) => dialog.querySelector(`[data-keymap-id="${id}"]`) as HTMLElement;
+    expect(within(row('next')).getByText('(off)')).toBeVisible();
+    expect(within(row('help')).getByText('(off)')).toBeVisible();
+    // Modifier and function keys are not affected.
+    expect(within(row('palette')).queryByText('(off)')).not.toBeInTheDocument();
+    expect(within(row('panesCycle')).queryByText('(off)')).not.toBeInTheDocument();
+  });
+});
+
+describe('keyboard map by permission', () => {
+  it('shows an agent the note, status and AI keys', async () => {
+    const user = userEvent.setup();
+    workspaceApi();
+    await openWorkspace();
+    await user.keyboard('?');
+    const dialog = await screen.findByRole('dialog', { name: 'Keyboard shortcuts' });
+    for (const label of [
+      'Write an internal note',
+      'Change the status of the open ticket',
+      'Approve the draft',
+      'Go to the queue',
+    ]) {
+      expect(within(dialog).getByText(label)).toBeVisible();
+    }
+  });
+
+  it('hides the note, status and AI keys from a customer', async () => {
+    const user = userEvent.setup();
+    workspaceApi({ role: 'client' });
+    await openWorkspace();
+    await user.keyboard('?');
+    const dialog = await screen.findByRole('dialog', { name: 'Keyboard shortcuts' });
+    expect(within(dialog).getByText('Write a public reply')).toBeVisible();
+    expect(within(dialog).getByText('Next ticket')).toBeVisible();
+    for (const label of [
+      'Write an internal note',
+      'Change the status of the open ticket',
+      'Approve the draft',
+      'Edit the draft',
+      'Reject the draft',
+      'Collapse or expand the AI assistant',
+    ]) {
+      expect(within(dialog).queryByText(label)).not.toBeInTheDocument();
+    }
+    expect(within(dialog).queryByText('AI drafts (Phase 1)')).not.toBeInTheDocument();
+  });
+});
+
+describe('moving between panes', () => {
+  it('F6 and Shift+F6 cycle the panes, Alt+1/2/3 jump to one', async () => {
+    workspaceApi();
+    await openWorkspace();
+
+    f6();
+    // The queue's focus target is its list.
+    await waitFor(() => {
+      expect(listbox()).toHaveFocus();
+    });
+    f6();
+    await waitFor(() => {
+      expect(pane('Conversation')).toHaveFocus();
+    });
+    f6();
+    await waitFor(() => {
+      expect(pane('AI assistant')).toHaveFocus();
+    });
+    f6();
+    await waitFor(() => {
+      expect(listbox()).toHaveFocus();
+    });
+    f6(true);
+    await waitFor(() => {
+      expect(pane('AI assistant')).toHaveFocus();
+    });
+
+    alt(2);
+    await waitFor(() => {
+      expect(pane('Conversation')).toHaveFocus();
+    });
+    alt(3);
+    await waitFor(() => {
+      expect(pane('AI assistant')).toHaveFocus();
+    });
+    alt(1);
+    await waitFor(() => {
+      expect(listbox()).toHaveFocus();
+    });
+  });
+
+  it('works from inside a text field and on a Thai layout', async () => {
+    const user = userEvent.setup();
+    workspaceApi();
+    await openWorkspace();
+    await user.click(screen.getByRole('searchbox', { name: 'Search tickets' }));
+    alt(2);
+    await waitFor(() => {
+      expect(pane('Conversation')).toHaveFocus();
+    });
+  });
+
+  it('shows the focused pane with a ring', async () => {
+    workspaceApi();
+    await openWorkspace();
+    alt(2);
+    await waitFor(() => {
+      expect(pane('Conversation')).toHaveFocus();
+    });
+    expect(pane('Conversation').className).toContain('focus-within:ring-2');
+  });
+
+  it('a customer has two panes: Alt+3 does nothing and F6 cycles between the two', async () => {
+    workspaceApi({ role: 'client' });
+    await openWorkspace();
+    alt(3);
+    expect(document.body).toHaveFocus();
+    alt(2);
+    await waitFor(() => {
+      expect(pane('Conversation')).toHaveFocus();
+    });
+    f6();
+    await waitFor(() => {
+      expect(listbox()).toHaveFocus();
+    });
+  });
+
+  it('Enter on the list and O open the ticket and move focus into the conversation', async () => {
+    const user = userEvent.setup();
+    workspaceApi();
+    await openWorkspace();
+
+    await user.keyboard('j');
+    expect(listbox()).toHaveFocus();
+    await user.keyboard('{Enter}');
+    await waitFor(() => {
+      expect(pane('Conversation')).toHaveFocus();
+    });
+    expect(await screen.findByRole('heading', { name: 'Cannot log in', level: 3 })).toBeVisible();
+
+    // O does the same from anywhere outside a field.
+    alt(1);
+    await waitFor(() => {
+      expect(listbox()).toHaveFocus();
+    });
+    await user.keyboard('j');
+    await user.keyboard('o');
+    await waitFor(() => {
+      expect(pane('Conversation')).toHaveFocus();
+    });
+    expect(await screen.findByRole('heading', { name: 'Export is slow', level: 3 })).toBeVisible();
+  });
+
+  it('O does nothing without an open ticket, and Enter on an empty selection does nothing', async () => {
+    const user = userEvent.setup();
+    workspaceApi();
+    await openWorkspace();
+    await user.keyboard('o');
+    expect(pane('Conversation')).not.toHaveFocus();
+    listbox().focus();
+    await user.keyboard('{Enter}');
+    expect(pane('Conversation')).not.toHaveFocus();
+  });
+
+  it('arrow keys, Home and End move through the list while it has focus', async () => {
+    const user = userEvent.setup();
+    workspaceApi();
+    await openWorkspace();
+    listbox().focus();
+    await user.keyboard('{ArrowDown}');
+    expect(screen.getByRole('option', { name: /OPS-1/ })).toHaveAttribute('aria-selected', 'true');
+    await user.keyboard('{ArrowDown}');
+    expect(screen.getByRole('option', { name: /OPS-2/ })).toHaveAttribute('aria-selected', 'true');
+    await user.keyboard('{End}');
+    expect(screen.getByRole('option', { name: /OPS-3/ })).toHaveAttribute('aria-selected', 'true');
+    await user.keyboard('{Home}');
+    expect(screen.getByRole('option', { name: /OPS-1/ })).toHaveAttribute('aria-selected', 'true');
+    await user.keyboard('{ArrowUp}');
+    expect(screen.getByRole('option', { name: /OPS-1/ })).toHaveAttribute('aria-selected', 'true');
+    expect(listbox()).toHaveAttribute('aria-activedescendant', 'queue-row-OPS-1');
+  });
+
+  it('the queue is a listbox of options; only the open ticket is selected', async () => {
+    workspaceApi();
+    await openWorkspace();
+    expect(listbox()).toHaveAttribute('tabindex', '0');
+    const options = within(listbox()).getAllByRole('option');
+    expect(options).toHaveLength(3);
+    expect(options.every((option) => option.getAttribute('aria-selected') === 'false')).toBe(true);
+    expect(listbox()).not.toHaveAttribute('aria-activedescendant');
+  });
+
+  it('[ and ] collapse and expand the side panes, with a button for each and focus kept', async () => {
+    const user = userEvent.setup();
+    workspaceApi();
+    await openWorkspace();
+    const queueButton = () => screen.getByRole('button', { name: /^(Collapse|Expand) the queue$/ });
+    const assistantButton = () =>
+      screen.getByRole('button', { name: /^(Collapse|Expand) the AI assistant$/ });
+    expect(queueButton()).toHaveAttribute('aria-expanded', 'true');
+
+    await user.keyboard('[[');
+    expect(queueButton()).toHaveAttribute('aria-expanded', 'false');
+    expect(queueButton()).toHaveAccessibleName('Expand the queue');
+    await waitFor(() => {
+      expect(queueButton()).toHaveFocus();
+    });
+    expect(document.getElementById('pane-queue')?.parentElement?.className).toContain(
+      'lg:grid-cols-[3rem_minmax(0,1fr)_minmax(15rem,24rem)]',
+    );
+
+    await user.keyboard(']');
+    expect(assistantButton()).toHaveAttribute('aria-expanded', 'false');
+    expect(document.getElementById('pane-queue')?.parentElement?.className).toContain(
+      'lg:grid-cols-[3rem_minmax(0,1fr)_3rem]',
+    );
+
+    // Alt+1 expands the queue again and focuses its list.
+    alt(1);
+    await waitFor(() => {
+      expect(listbox()).toHaveFocus();
+    });
+    expect(queueButton()).toHaveAttribute('aria-expanded', 'true');
+
+    await user.keyboard(']');
+    expect(assistantButton()).toHaveAttribute('aria-expanded', 'true');
+    await user.click(queueButton());
+    expect(queueButton()).toHaveAttribute('aria-expanded', 'false');
+  });
+
+  it('skips a collapsed pane when cycling', async () => {
+    const user = userEvent.setup();
+    workspaceApi();
+    await openWorkspace();
+    await user.keyboard('[[');
+    alt(2);
+    await waitFor(() => {
+      expect(pane('Conversation')).toHaveFocus();
+    });
+    f6();
+    await waitFor(() => {
+      expect(pane('AI assistant')).toHaveFocus();
+    });
+    f6();
+    // Back to the conversation, not the collapsed queue.
+    await waitFor(() => {
+      expect(pane('Conversation')).toHaveFocus();
+    });
+  });
+
+  it('g then q goes to the queue; the other g keys are listed but not wired', async () => {
+    const user = userEvent.setup();
+    workspaceApi();
+    await openWorkspace();
+    alt(2);
+    await waitFor(() => {
+      expect(pane('Conversation')).toHaveFocus();
+    });
+    await user.keyboard('gq');
+    await waitFor(() => {
+      expect(listbox()).toHaveFocus();
+    });
+
+    alt(3);
+    await waitFor(() => {
+      expect(pane('AI assistant')).toHaveFocus();
+    });
+    await user.keyboard('go');
+    expect(pane('AI assistant')).toHaveFocus();
+  });
+
+  it('ignores [ ] and g q typed into a field', async () => {
+    const user = userEvent.setup();
+    workspaceApi();
+    await openWorkspace();
+    await user.type(screen.getByRole('searchbox', { name: 'Search tickets' }), '[[]gq');
+    expect(screen.getByRole('searchbox', { name: 'Search tickets' })).toHaveValue('[]gq');
+    expect(screen.getByRole('button', { name: 'Collapse the queue' })).toBeInTheDocument();
+  });
+
+  it('matches the physical key on a Thai layout', async () => {
+    workspaceApi();
+    await openWorkspace();
+    fireEvent.keyDown(document.body, { key: 'บ', code: 'BracketLeft' });
+    expect(screen.getByRole('button', { name: 'Expand the queue' })).toBeInTheDocument();
+    fireEvent.keyDown(document.body, { key: 'บ', code: 'BracketLeft' });
+    fireEvent.keyDown(document.body, { key: '๊', code: 'KeyG' });
+    fireEvent.keyDown(document.body, { key: 'ๆ', code: 'KeyQ' });
+    await waitFor(() => {
+      expect(listbox()).toHaveFocus();
+    });
+  });
+});
+
+describe('768 to 1023 px', () => {
+  it('] opens and closes the AI drawer', async () => {
+    const user = userEvent.setup();
+    stubViewport(900);
+    workspaceApi();
+    await openWorkspace();
+    const toggle = screen.getByRole('button', { name: 'AI assistant' });
+    await user.keyboard(']');
+    expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    await user.keyboard('{Escape}');
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+  });
+
+  it('Alt+3 opens the drawer; F6 skips it while it is closed', async () => {
+    stubViewport(900);
+    workspaceApi();
+    await openWorkspace();
+    alt(2);
+    await waitFor(() => {
+      expect(pane('Conversation')).toHaveFocus();
+    });
+    f6();
+    await waitFor(() => {
+      expect(listbox()).toHaveFocus();
+    });
+    alt(3);
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Close the AI assistant' })).toHaveFocus();
+    });
+  });
+});
+
+describe('under 768 px: one pane at a time', () => {
+  const tab = (name: string) => screen.getByRole('tab', { name });
+
+  it('offers tabs for Queue, Conversation and AI assistant, starting on the queue', async () => {
+    stubViewport(375);
+    workspaceApi();
+    await openWorkspace();
+    expect(screen.getByRole('tablist', { name: 'Panes' })).toBeInTheDocument();
+    expect(screen.getAllByRole('tab').map((t) => t.textContent)).toEqual([
+      'Queue',
+      'Conversation',
+      'AI assistant',
+    ]);
+    expect(tab('Queue')).toHaveAttribute('aria-selected', 'true');
+    expect(tab('Queue')).toHaveAttribute('aria-controls', 'pane-queue');
+    expect(tab('Conversation')).toHaveAttribute('aria-selected', 'false');
+    // Only the chosen pane is shown below 768 px.
+    expect(document.getElementById('pane-queue')?.className).not.toContain('max-md:hidden');
+    expect(document.getElementById('pane-conversation')?.className).toContain('max-md:hidden');
+    expect(document.getElementById('pane-assistant')?.className).toContain('max-md:hidden');
+    // The tab strip itself exists only on phones.
+    expect(screen.getByRole('tablist').className).toContain('md:hidden');
+    expect(tab('Queue').className).toContain('min-h-[44px]');
+  });
+
+  it('tapping a ticket opens the Conversation tab and moves focus there', async () => {
+    const user = userEvent.setup();
+    stubViewport(375);
+    workspaceApi();
+    await openWorkspace();
+    await user.click(screen.getByRole('option', { name: /OPS-2/ }));
+    expect(tab('Conversation')).toHaveAttribute('aria-selected', 'true');
+    expect(document.getElementById('pane-conversation')?.className).not.toContain('max-md:hidden');
+    expect(document.getElementById('pane-queue')?.className).toContain('max-md:hidden');
+    await waitFor(() => {
+      expect(pane('Conversation')).toHaveFocus();
+    });
+    expect(await screen.findByRole('heading', { name: 'Export is slow', level: 3 })).toBeVisible();
+
+    // Back to the queue with its tab; the list is still there with the ticket marked.
+    await user.click(tab('Queue'));
+    expect(screen.getByRole('option', { name: /OPS-2/ })).toHaveAttribute('aria-selected', 'true');
+  });
+
+  it('opens on the Conversation tab when the address names a ticket', async () => {
+    stubViewport(375);
+    window.history.replaceState(null, '', '/?ticket=OPS-1');
+    workspaceApi();
+    renderWorkspace();
+    await screen.findByRole('region', { name: 'Conversation' });
+    expect(tab('Conversation')).toHaveAttribute('aria-selected', 'true');
+  });
+
+  it('moves between tabs with the arrow keys, Home and End (roving tabindex)', async () => {
+    const user = userEvent.setup();
+    stubViewport(375);
+    workspaceApi();
+    await openWorkspace();
+    expect(tab('Queue')).toHaveAttribute('tabindex', '0');
+    expect(tab('Conversation')).toHaveAttribute('tabindex', '-1');
+    tab('Queue').focus();
+    await user.keyboard('{ArrowRight}');
+    expect(tab('Conversation')).toHaveAttribute('aria-selected', 'true');
+    await waitFor(() => {
+      expect(tab('Conversation')).toHaveFocus();
+    });
+    await user.keyboard('{End}');
+    expect(tab('AI assistant')).toHaveAttribute('aria-selected', 'true');
+    await user.keyboard('{ArrowRight}');
+    expect(tab('Queue')).toHaveAttribute('aria-selected', 'true');
+    await user.keyboard('{ArrowLeft}');
+    expect(tab('AI assistant')).toHaveAttribute('aria-selected', 'true');
+  });
+
+  it('F6 and Alt+n switch tabs', async () => {
+    stubViewport(375);
+    workspaceApi();
+    await openWorkspace();
+    alt(3);
+    expect(tab('AI assistant')).toHaveAttribute('aria-selected', 'true');
+    await waitFor(() => {
+      expect(pane('AI assistant')).toHaveFocus();
+    });
+    f6();
+    expect(tab('Queue')).toHaveAttribute('aria-selected', 'true');
+    f6();
+    expect(tab('Conversation')).toHaveAttribute('aria-selected', 'true');
+  });
+
+  it('shows a sticky Approve / Edit / Reject bar with 44 px targets on the ticket tabs only', async () => {
+    const user = userEvent.setup();
+    stubViewport(375);
+    workspaceApi();
+    await openWorkspace();
+    expect(screen.queryByRole('group', { name: 'AI draft actions' })).not.toBeInTheDocument();
+
+    await user.click(tab('AI assistant'));
+    const bar = screen.getByRole('group', { name: 'AI draft actions' });
+    expect(bar.className).toContain('sticky');
+    expect(bar.className).toContain('bottom-0');
+    expect(bar.className).toContain('md:hidden');
+    expect(bar).toHaveAccessibleDescription('There is no draft to act on yet.');
+    const buttons = within(bar).getAllByRole('button');
+    expect(buttons.map((button) => button.textContent)).toEqual(['Approve', 'Edit', 'Reject']);
+    for (const button of buttons) {
+      expect(button).toBeDisabled();
+      expect(button.className).toContain('min-h-[44px]');
+      expect(button.className).toContain('min-w-[44px]');
+    }
+
+    await user.click(tab('Conversation'));
+    expect(screen.getByRole('group', { name: 'AI draft actions' })).toBeInTheDocument();
+    await user.click(tab('Queue'));
+    expect(screen.queryByRole('group', { name: 'AI draft actions' })).not.toBeInTheDocument();
+  });
+
+  it('a customer gets two tabs and no draft bar', async () => {
+    const user = userEvent.setup();
+    stubViewport(375);
+    workspaceApi({ role: 'client' });
+    await openWorkspace();
+    expect(screen.getAllByRole('tab').map((t) => t.textContent)).toEqual(['Queue', 'Conversation']);
+    await user.click(tab('Conversation'));
+    expect(screen.queryByRole('group', { name: 'AI draft actions' })).not.toBeInTheDocument();
+  });
+
+  it('J and K still move through the list without leaving the Queue tab', async () => {
+    const user = userEvent.setup();
+    stubViewport(375);
+    workspaceApi();
+    await openWorkspace();
+    await user.keyboard('jj');
+    expect(screen.getByRole('option', { name: /OPS-2/ })).toHaveAttribute('aria-selected', 'true');
+    expect(tab('Queue')).toHaveAttribute('aria-selected', 'true');
+  });
+});
+
+describe('top bar below 1024 px', () => {
+  it('folds the display and language controls behind one button that opens a panel', async () => {
+    const user = userEvent.setup();
+    workspaceApi();
+    await openWorkspace();
+    const button = screen.getByRole('button', { name: 'Display and language' });
+    const panel = screen.getByRole('group', { name: 'Display and language' });
+    expect(button.className).toContain('lg:hidden');
+    expect(button).toHaveAttribute('aria-expanded', 'false');
+    expect(button).toHaveAttribute('aria-controls', panel.id);
+    // Closed: hidden below lg, shown inline from lg up.
+    expect(panel.className).toContain('hidden');
+    expect(panel.className).toContain('lg:flex');
+
+    await user.click(button);
+    expect(button).toHaveAttribute('aria-expanded', 'true');
+    expect(panel.className).toContain('flex');
+    expect(panel.className).not.toMatch(/(^|\s)hidden(\s|$)/);
+    expect(within(panel).getByRole('combobox', { name: 'Theme' })).toBeInTheDocument();
+
+    await user.keyboard('{Escape}');
+    expect(button).toHaveAttribute('aria-expanded', 'false');
+    expect(button).toHaveFocus();
+
+    await user.click(button);
+    await user.click(document.body);
+    expect(button).toHaveAttribute('aria-expanded', 'false');
+  });
+});
+
+describe('ticket header', () => {
+  it('sits outside the scrolling area, so scrolling to the newest message cannot hide it', async () => {
+    const user = userEvent.setup();
+    workspaceApi();
+    await openWorkspace();
+    await user.click(screen.getByRole('option', { name: /OPS-1/ }));
+    const heading = await screen.findByRole('heading', { name: 'Cannot log in', level: 3 });
+    const header = heading.closest('header');
+    expect(header).not.toBeNull();
+    expect(header?.closest('.overflow-y-auto')).toBeNull();
+    expect(header?.className).toContain('shrink-0');
+  });
+});
+
+describe('Thai copy for the new controls', () => {
+  it('has the panes label, tabs and the preference in Thai', async () => {
+    stubViewport(375);
+    workspaceApi();
+    renderWorkspace({ locale: 'th' });
+    await screen.findByRole('region', { name: 'คิวงาน' });
+    expect(screen.getByRole('tablist', { name: 'พาเนล' })).toBeInTheDocument();
+    expect(screen.getByRole('checkbox', { name: 'คีย์ลัดปุ่มเดี่ยว' })).toBeChecked();
+    expect(screen.getByRole('tab', { name: 'ผู้ช่วย AI' })).toBeInTheDocument();
+  });
+});

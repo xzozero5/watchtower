@@ -3,12 +3,14 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { Alert, Button, EmptyState, Skeleton } from '@watchtower/ui';
 import { ArrowUp, Inbox, SearchX } from 'lucide-react';
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { type KeyboardEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { useT } from '@/i18n/provider';
 import { useSession } from '@/lib/auth/session';
 import { useShortcut, stepIndex } from '@/lib/keyboard';
+import { usePreferences } from '@/lib/preferences';
 import { useNow } from '@/lib/use-now';
+import { useThrottledValue } from '@/lib/use-throttled-value';
 import { useRealtime } from '@/lib/realtime/realtime-provider';
 import {
   activeFilterCount,
@@ -28,12 +30,21 @@ import {
 } from '@/lib/tickets/saved-views';
 
 import { FilterBar } from './filter-bar';
-import { QueueRow, rowDomId } from './queue-row';
+import { QUEUE_LISTBOX_ID, QueueRow, rowDomId } from './queue-row';
 
 export interface QueuePaneProps {
   selectedKey: string | null;
   onSelect: (key: string) => void;
+  /** A click on a row (a tap on a phone, where the conversation is another tab). */
+  onActivate?: () => void;
+  /** Enter or O on the open ticket: move keyboard focus into the conversation. */
+  onOpenConversation?: () => void;
 }
+
+/** The "N new" pill is announced to screen readers at most this often (docs/06-UI-SPEC.md 4.3). */
+export const PILL_ANNOUNCE_INTERVAL_MS = 30_000;
+
+const isZero = (count: number) => count === 0;
 
 let viewCounter = 0;
 const makeViewId = () => `v${String(Date.now())}-${String((viewCounter += 1))}`;
@@ -43,13 +54,20 @@ const makeViewId = () => `v${String(Date.now())}-${String((viewCounter += 1))}`;
  * New tickets from the realtime feed are only counted; the list changes when the user asks
  * (pill, or the `U` key), never under the cursor.
  */
-export function QueuePane({ selectedKey, onSelect }: QueuePaneProps) {
+export function QueuePane({
+  selectedKey,
+  onSelect,
+  onActivate,
+  onOpenConversation,
+}: QueuePaneProps) {
   const t = useT();
   const queryClient = useQueryClient();
   const { session, isClient } = useSession();
   const userId = session?.user.id ?? 'anonymous';
   const realtime = useRealtime();
+  const { singleKeyShortcuts } = usePreferences();
   const searchRef = useRef<HTMLInputElement>(null);
+  const listboxRef = useRef<HTMLUListElement>(null);
 
   const [filters, setFilters] = useState<QueueFilters>(DEFAULT_FILTERS);
   const [savedViews, setSavedViews] = useState<SavedView[]>(() =>
@@ -64,35 +82,81 @@ export function QueuePane({ selectedKey, onSelect }: QueuePaneProps) {
     [list.data, now],
   );
 
-  const focusRow = useCallback((key: string) => {
-    document.getElementById(rowDomId(key))?.focus();
+  // The listbox keeps the keyboard focus; the current row is named by aria-activedescendant.
+  const focusList = useCallback(() => {
+    listboxRef.current?.focus();
   }, []);
 
-  const move = useCallback(
-    (delta: number) => {
-      const current = rows.findIndex((row) => row.key === selectedKey);
-      const next = stepIndex(current, delta, rows.length);
+  const selectedIndex = rows.findIndex((row) => row.key === selectedKey);
+  const activeDescendant = selectedIndex >= 0 && selectedKey ? rowDomId(selectedKey) : undefined;
+
+  // Keep the current row in view as it moves (J/K, arrows, a ticket opened from the address).
+  useEffect(() => {
+    if (activeDescendant)
+      document.getElementById(activeDescendant)?.scrollIntoView({ block: 'nearest' });
+  }, [activeDescendant]);
+
+  const moveTo = useCallback(
+    (next: number) => {
       const target = rows[next];
       if (!target) return;
       onSelect(target.key);
-      focusRow(target.key);
+      focusList();
       // Reaching the end of what is loaded fetches the next page, so J never hits a wall.
       if (next >= rows.length - 3 && list.hasNextPage && !list.isFetchingNextPage) {
         void list.fetchNextPage();
       }
     },
-    [rows, selectedKey, onSelect, focusRow, list],
+    [rows, onSelect, focusList, list],
   );
 
+  const move = useCallback(
+    (delta: number) => {
+      moveTo(stepIndex(selectedIndex, delta, rows.length));
+    },
+    [moveTo, selectedIndex, rows.length],
+  );
+
+  const onListKeyDown = (event: KeyboardEvent<HTMLUListElement>) => {
+    if (event.altKey || event.ctrlKey || event.metaKey) return;
+    switch (event.key) {
+      case 'ArrowDown':
+        event.preventDefault();
+        move(1);
+        return;
+      case 'ArrowUp':
+        event.preventDefault();
+        move(-1);
+        return;
+      case 'Home':
+        event.preventDefault();
+        moveTo(0);
+        return;
+      case 'End':
+        event.preventDefault();
+        moveTo(rows.length - 1);
+        return;
+      case 'Enter':
+        // Only acts while the list has focus, so it is not a character-key shortcut (WCAG 2.1.4).
+        if (selectedIndex >= 0) {
+          event.preventDefault();
+          onOpenConversation?.();
+        }
+        return;
+    }
+  };
+
   const newCount = realtime.newTicketIds.length;
+  // Screen readers hear the count at most once per 30 s; the visible pill updates at once.
+  const announcedCount = useThrottledValue(newCount, PILL_ANNOUNCE_INTERVAL_MS, isZero);
   const { clearNewTickets } = realtime;
   const showNew = useCallback(() => {
     clearNewTickets();
-    void queryClient.invalidateQueries({ queryKey: ticketKeys.lists }).then(() => {
+    void queryClient.invalidateQueries({ queryKey: ticketKeys(userId).lists }).then(() => {
       const list = document.getElementById('queue-list');
       if (list) list.scrollTop = 0;
     });
-  }, [clearNewTickets, queryClient]);
+  }, [clearNewTickets, queryClient, userId]);
 
   useShortcut('j', () => {
     move(1);
@@ -103,6 +167,13 @@ export function QueuePane({ selectedKey, onSelect }: QueuePaneProps) {
   useShortcut('/', () => {
     searchRef.current?.focus();
   });
+  useShortcut(
+    'o',
+    () => {
+      onOpenConversation?.();
+    },
+    selectedKey !== null,
+  );
   useShortcut(
     '.',
     () => {
@@ -135,20 +206,23 @@ export function QueuePane({ selectedKey, onSelect }: QueuePaneProps) {
         searchRef={searchRef}
       />
 
-      {/* Announced politely when the count changes; the button itself is the action. */}
-      <div role="status" aria-live="polite" className="sticky top-0 z-10">
-        {newCount > 0 ? (
+      {/* The announcement is throttled (see above); the button is the action and is not live. */}
+      <p role="status" aria-live="polite" className="sr-only">
+        {announcedCount > 0 ? t('queue.newPill', { count: announcedCount }) : ''}
+      </p>
+      {newCount > 0 ? (
+        <div className="sticky top-0 z-10">
           <button
             type="button"
             onClick={showNew}
-            aria-keyshortcuts="."
+            aria-keyshortcuts={singleKeyShortcuts ? '.' : undefined}
             className="flex w-full items-center justify-center gap-2 border-b border-border-strong bg-primary px-pane py-2 text-sm font-semibold text-primary-foreground hover:opacity-90"
           >
             <ArrowUp aria-hidden className="size-4" />
-            {t('queue.newPill', { count: newCount })}
+            {t(singleKeyShortcuts ? 'queue.newPill' : 'queue.newPillClick', { count: newCount })}
           </button>
-        ) : null}
-      </div>
+        </div>
+      ) : null}
 
       <div
         id="queue-list"
@@ -201,14 +275,26 @@ export function QueuePane({ selectedKey, onSelect }: QueuePaneProps) {
           )
         ) : (
           <>
-            <ul aria-label={t('queue.listLabel')} className="flex flex-col">
+            <ul
+              ref={listboxRef}
+              id={QUEUE_LISTBOX_ID}
+              role="listbox"
+              tabIndex={0}
+              aria-label={t('queue.listLabel')}
+              aria-activedescendant={activeDescendant}
+              onKeyDown={onListKeyDown}
+              className="flex flex-col focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
+            >
               {rows.map((row) => (
                 <QueueRow
                   key={row.id}
                   row={row}
                   selected={row.key === selectedKey}
                   now={now}
-                  onSelect={onSelect}
+                  onSelect={(key) => {
+                    onSelect(key);
+                    onActivate?.();
+                  }}
                 />
               ))}
             </ul>

@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event';
 import type { RealtimeEvent } from '@watchtower/shared';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { resetPreferencesCache } from '@/lib/preferences';
 import { SAVED_VIEWS_KEY_PREFIX } from '@/lib/tickets/saved-views';
 import { renderWorkspace } from '@/test-utils';
 import { makeTicket, uuid } from '@/test/fixtures';
@@ -29,14 +30,16 @@ async function openQueue(options: Parameters<typeof renderWorkspace>[0] = {}) {
 
 const rowKeys = () =>
   screen
-    .getAllByRole('button', { name: /OPS-\d+/ })
+    .getAllByRole('option', { name: /OPS-\d+/ })
     .map((row) => row.getAttribute('data-ticket-key'));
 
 describe('queue rows', () => {
   it('shows priority as icon + code, status as words and the assignee state', async () => {
     workspaceApi();
     const { queue } = await openQueue();
-    const first = (await within(queue).findByText('Cannot log in')).closest('button');
+    const first = (await within(queue).findByText('Cannot log in')).closest<HTMLElement>(
+      '[role="option"]',
+    );
     if (!first) throw new Error('row not found');
 
     expect(within(first).getByText('P1')).toBeVisible();
@@ -51,7 +54,9 @@ describe('queue rows', () => {
       tickets: [makeTicket(1, { firstResponseDueAt: '2026-01-01T00:00:00.000Z' })],
     });
     const { queue } = await openQueue();
-    const row = (await within(queue).findByText('Subject of ticket 1')).closest('button');
+    const row = (await within(queue).findByText('Subject of ticket 1')).closest<HTMLElement>(
+      '[role="option"]',
+    );
     expect(row).not.toBeNull();
     const badge = within(row as HTMLElement).getByRole('img', {
       name: /^Overdue .*First response due/,
@@ -114,18 +119,23 @@ describe('J and K navigation', () => {
     await screen.findByText('Cannot log in');
 
     await user.keyboard('j');
-    expect(screen.getByRole('button', { name: /OPS-1/ })).toHaveAttribute('aria-current', 'true');
-    expect(screen.getByRole('button', { name: /OPS-1/ })).toHaveFocus();
+    expect(screen.getByRole('option', { name: /OPS-1/ })).toHaveAttribute('aria-selected', 'true');
+    // The listbox keeps the focus and names the current row.
+    expect(screen.getByRole('listbox', { name: 'Tickets' })).toHaveFocus();
+    expect(screen.getByRole('listbox', { name: 'Tickets' })).toHaveAttribute(
+      'aria-activedescendant',
+      'queue-row-OPS-1',
+    );
     expect(await screen.findByRole('heading', { name: 'Cannot log in', level: 3 })).toBeVisible();
 
     await user.keyboard('j');
-    expect(screen.getByRole('button', { name: /OPS-2/ })).toHaveAttribute('aria-current', 'true');
-    expect(screen.getByRole('button', { name: /OPS-1/ })).not.toHaveAttribute('aria-current');
+    expect(screen.getByRole('option', { name: /OPS-2/ })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('option', { name: /OPS-1/ })).toHaveAttribute('aria-selected', 'false');
     expect(await screen.findByRole('heading', { name: 'Export is slow', level: 3 })).toBeVisible();
     expect(window.location.search).toBe('?ticket=OPS-2');
 
     await user.keyboard('k');
-    expect(screen.getByRole('button', { name: /OPS-1/ })).toHaveAttribute('aria-current', 'true');
+    expect(screen.getByRole('option', { name: /OPS-1/ })).toHaveAttribute('aria-selected', 'true');
   });
 
   it('stops at the first and last ticket instead of wrapping', async () => {
@@ -135,9 +145,9 @@ describe('J and K navigation', () => {
     await screen.findByText('Cannot log in');
 
     await user.keyboard('kk');
-    expect(screen.getByRole('button', { name: /OPS-1/ })).toHaveAttribute('aria-current', 'true');
+    expect(screen.getByRole('option', { name: /OPS-1/ })).toHaveAttribute('aria-selected', 'true');
     await user.keyboard('jjjjj');
-    expect(screen.getByRole('button', { name: /OPS-3/ })).toHaveAttribute('aria-current', 'true');
+    expect(screen.getByRole('option', { name: /OPS-3/ })).toHaveAttribute('aria-selected', 'true');
   });
 
   it('does nothing while typing in the search box, or with a modifier key', async () => {
@@ -148,7 +158,7 @@ describe('J and K navigation', () => {
 
     await user.type(screen.getByRole('searchbox', { name: 'Search tickets' }), 'jjk');
     await user.keyboard('{Control>}j{/Control}');
-    expect(document.querySelector('[aria-current="true"]')).toBeNull();
+    expect(document.querySelector('[role="option"][aria-selected="true"]')).toBeNull();
   });
 
   it('opens the ticket named in the address', async () => {
@@ -156,8 +166,8 @@ describe('J and K navigation', () => {
     workspaceApi();
     await openQueue();
     expect(await screen.findByRole('heading', { name: 'Export is slow', level: 3 })).toBeVisible();
-    expect(await screen.findByRole('button', { name: /OPS-2/ })).toHaveAttribute(
-      'aria-current',
+    expect(await screen.findByRole('option', { name: /OPS-2/ })).toHaveAttribute(
+      'aria-selected',
       'true',
     );
   });
@@ -254,8 +264,66 @@ describe('the "N new" pill', () => {
       await Promise.resolve();
     });
     await emit(sockets, ticketCreatedEvent(makeTicket(9)));
-    const pill = await within(queue).findByRole('button', { name: '1 new — press .' });
-    expect(pill.parentElement).toHaveAttribute('aria-live', 'polite');
+    await within(queue).findByRole('button', { name: '1 new — press .' });
+    // The announcement lives in its own polite region; the button is not a live region.
+    const live = within(queue).getByRole('status');
+    expect(live).toHaveAttribute('aria-live', 'polite');
+    await waitFor(() => {
+      expect(live).toHaveTextContent('1 new — press .');
+    });
+  });
+
+  it('announces the count to screen readers at most once per 30 s, while the button stays current', async () => {
+    const user = userEvent.setup();
+    workspaceApi();
+    const { sockets, queue } = await openQueue();
+    await screen.findByText('Cannot log in');
+    await waitFor(() => {
+      expect(sockets.sockets).toHaveLength(1);
+    });
+    await act(async () => {
+      sockets.last.ready();
+      await Promise.resolve();
+    });
+    const live = within(queue).getByRole('status');
+    expect(live).toHaveTextContent('');
+
+    await emit(sockets, ticketCreatedEvent(makeTicket(9)));
+    await waitFor(() => {
+      expect(live).toHaveTextContent('1 new — press .');
+    });
+
+    // More arrive straight away: the visible pill follows, the announcement is held back.
+    await emit(sockets, ticketCreatedEvent(makeTicket(10)));
+    await emit(sockets, ticketCreatedEvent(makeTicket(11)));
+    expect(await within(queue).findByRole('button', { name: '3 new — press .' })).toBeVisible();
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    expect(live).toHaveTextContent('1 new — press .');
+    expect(live).not.toHaveTextContent('3 new');
+
+    // Loading them clears the announcement at once.
+    await user.click(within(queue).getByRole('button', { name: '3 new — press .' }));
+    await waitFor(() => {
+      expect(live).toHaveTextContent('');
+    });
+  });
+
+  it('tells the person to click, not press a key, when single-key shortcuts are off', async () => {
+    localStorage.setItem('wt-single-key-shortcuts', 'off');
+    resetPreferencesCache();
+    workspaceApi();
+    const { sockets, queue } = await openQueue();
+    await screen.findByText('Cannot log in');
+    await waitFor(() => {
+      expect(sockets.sockets).toHaveLength(1);
+    });
+    await act(async () => {
+      sockets.last.ready();
+      await Promise.resolve();
+    });
+    await emit(sockets, ticketCreatedEvent(makeTicket(9)));
+    const pill = await within(queue).findByRole('button', { name: '1 new — click to show' });
+    expect(pill).not.toHaveAttribute('aria-keyshortcuts');
   });
 
   it('updates an existing row in place when its ticket changes', async () => {

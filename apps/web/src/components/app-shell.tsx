@@ -18,7 +18,7 @@ import { useT } from '@/i18n/provider';
 import { useSession } from '@/lib/auth/session';
 import { useShortcut } from '@/lib/keyboard';
 import { saveLocale } from '@/lib/locale-cookie';
-import { setDensity, setTheme } from '@/lib/preferences';
+import { setDensity, setSingleKeyShortcuts, setTheme } from '@/lib/preferences';
 
 const subscribeNever = () => () => undefined;
 const detectMac = () => /Mac|iPhone|iPad/.test(navigator.userAgent);
@@ -53,6 +53,7 @@ export function AppShell() {
       buildCommands(t, {
         setTheme,
         setDensity,
+        setSingleKeyShortcuts,
         setLocale: (locale) => {
           saveLocale(locale);
           router.refresh();

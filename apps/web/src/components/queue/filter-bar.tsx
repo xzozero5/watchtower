@@ -22,6 +22,7 @@ import {
 } from '@/lib/tickets/filters';
 import { severityOf } from '@/lib/tickets/model';
 import { MAX_VIEW_NAME, type SavedView } from '@/lib/tickets/saved-views';
+import { statusKey } from '@/lib/tickets/status-key';
 
 const SEARCH_DEBOUNCE_MS = 300;
 const CUSTOM_VIEW = 'custom';
@@ -198,7 +199,7 @@ export function FilterBar({
                     }}
                     className="size-7 accent-primary"
                   />
-                  {t(`status.${status}`)}
+                  {t(statusKey(status))}
                 </label>
               ))}
             </fieldset>

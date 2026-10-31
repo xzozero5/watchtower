@@ -16,6 +16,9 @@ async function openWorkspace(page: Page, options: BackendOptions = {}, path = '/
 }
 
 const queue = (page: Page) => page.getByRole('region', { name: 'Queue' });
+const listbox = (page: Page) => page.getByRole('listbox', { name: 'Tickets' });
+const row = (page: Page, key: string) =>
+  listbox(page).getByRole('option', { name: new RegExp(key) });
 const conversation = (page: Page) => page.getByRole('region', { name: 'Conversation' });
 
 test.describe('sign-in', () => {
@@ -136,7 +139,7 @@ test.describe('queue and conversation', () => {
   test('J and K move through tickets and open them; the address follows', async ({ page }) => {
     await openWorkspace(page);
     // J on an empty (still loading) queue does nothing by design; wait for the rows first.
-    await expect(queue(page).getByRole('button', { name: /OPS-1/ })).toBeVisible();
+    await expect(row(page, 'OPS-1')).toBeVisible();
     await page.keyboard.press('j');
     await expect(
       conversation(page).getByRole('heading', { name: 'Cannot log in', level: 3 }),
@@ -146,12 +149,12 @@ test.describe('queue and conversation', () => {
       conversation(page).getByRole('heading', { name: 'Export is slow', level: 3 }),
     ).toBeVisible();
     await expect(page).toHaveURL(/\?ticket=OPS-2$/);
-    await expect(queue(page).getByRole('button', { name: /OPS-2/ })).toBeFocused();
+    // The listbox keeps the focus and names the current row.
+    await expect(listbox(page)).toBeFocused();
+    await expect(listbox(page)).toHaveAttribute('aria-activedescendant', 'queue-row-OPS-2');
     await page.keyboard.press('k');
-    await expect(queue(page).getByRole('button', { name: /OPS-1/ })).toHaveAttribute(
-      'aria-current',
-      'true',
-    );
+    await expect(row(page, 'OPS-1')).toHaveAttribute('aria-selected', 'true');
+    await expect(row(page, 'OPS-2')).toHaveAttribute('aria-selected', 'false');
   });
 
   test('shortcuts work with a Thai keyboard layout (physical key)', async ({ page }) => {
@@ -161,10 +164,7 @@ test.describe('queue and conversation', () => {
         new KeyboardEvent('keydown', { key: '่', code: 'KeyJ', bubbles: true }),
       );
     });
-    await expect(queue(page).getByRole('button', { name: /OPS-1/ })).toHaveAttribute(
-      'aria-current',
-      'true',
-    );
+    await expect(row(page, 'OPS-1')).toHaveAttribute('aria-selected', 'true');
   });
 
   test('typing in the search box does not trigger shortcuts', async ({ page }) => {
@@ -173,7 +173,7 @@ test.describe('queue and conversation', () => {
     await expect(page.getByRole('searchbox', { name: 'Search tickets' })).toBeFocused();
     await page.keyboard.type('jjk?');
     await expect(page.getByRole('dialog')).toHaveCount(0);
-    await expect(page.locator('[aria-current="true"]')).toHaveCount(0);
+    await expect(listbox(page).locator('[aria-selected="true"]')).toHaveCount(0);
   });
 
   test('? shows the keyboard map and Escape gives the focus back', async ({ page }) => {
@@ -231,7 +231,7 @@ test.describe('queue and conversation', () => {
       .selectOption({ label: 'Resolved' });
     await expect(conversation(page).getByText('Saved.')).toBeVisible();
     expect(backend.to('POST', '/v1/tickets/OPS-1/status')[0]?.body).toEqual({ status: 'resolved' });
-    await expect(queue(page).getByRole('button', { name: /OPS-1/ })).toContainText('Resolved');
+    await expect(row(page, 'OPS-1')).toContainText('Resolved');
   });
 
   test('filters and saved views are sent to the api and survive a reload', async ({ page }) => {
@@ -261,7 +261,7 @@ test.describe('realtime', () => {
     page,
   }) => {
     const backend = await openWorkspace(page);
-    await expect(queue(page).getByRole('button', { name: /OPS-/ })).toHaveCount(3);
+    await expect(queue(page).getByRole('option', { name: /OPS-/ })).toHaveCount(3);
     const added = makeTicket(9, { subject: 'Brand new ticket' });
     backend.tickets.unshift(added);
     backend.push({
@@ -276,7 +276,7 @@ test.describe('realtime', () => {
 
     const pill = queue(page).getByRole('button', { name: '1 new — press .' });
     await expect(pill).toBeVisible();
-    await expect(queue(page).getByRole('button', { name: /OPS-/ })).toHaveCount(3);
+    await expect(queue(page).getByRole('option', { name: /OPS-/ })).toHaveCount(3);
     await expect(queue(page).getByText('Brand new ticket')).toHaveCount(0);
 
     await page.keyboard.press('.');
@@ -348,7 +348,7 @@ test.describe('layout by width (docs/06-UI-SPEC.md section 3.2)', () => {
     if (!q || !c || !a) throw new Error('a pane is missing');
     expect(q.x + q.width).toBeLessThanOrEqual(c.x + 1);
     expect(c.x + c.width).toBeLessThanOrEqual(a.x + 1);
-    await expect(page.getByRole('button', { name: 'AI assistant' })).toBeHidden();
+    await expect(page.getByRole('button', { name: 'AI assistant', exact: true })).toBeHidden();
   });
 
   test('768 to 1023 px: two panes and the AI assistant as a drawer', async ({ page }) => {
@@ -361,7 +361,7 @@ test.describe('layout by width (docs/06-UI-SPEC.md section 3.2)', () => {
     expect(q.x + q.width).toBeLessThanOrEqual(c.x + 1);
     await expect(page.locator('#pane-assistant')).toBeHidden();
 
-    const toggle = page.getByRole('button', { name: 'AI assistant' });
+    const toggle = page.getByRole('button', { name: 'AI assistant', exact: true });
     await expect(toggle).toBeVisible();
     await toggle.click();
     const drawer = page.locator('#pane-assistant');
@@ -378,14 +378,83 @@ test.describe('layout by width (docs/06-UI-SPEC.md section 3.2)', () => {
     await expect(toggle).toBeFocused();
   });
 
-  test('under 768 px: the panes stack and nothing scrolls sideways', async ({ page }) => {
+  test('under 768 px: tabs show one pane at a time and nothing scrolls sideways', async ({
+    page,
+  }) => {
     await page.setViewportSize({ width: 375, height: 800 });
     await openWorkspace(page);
     const overflow = await page.evaluate(
       () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
     );
     expect(overflow).toBeLessThanOrEqual(0);
-    await expect(page.getByRole('button', { name: 'AI assistant' })).toBeHidden();
+    await expect(page.getByRole('button', { name: 'AI assistant', exact: true })).toBeHidden();
+
+    const tabs = page.getByRole('tablist', { name: 'Panes' });
+    await expect(tabs.getByRole('tab', { name: 'Queue' })).toHaveAttribute('aria-selected', 'true');
+    await expect(page.locator('#pane-queue')).toBeVisible();
+    await expect(page.locator('#pane-conversation')).toBeHidden();
+    await expect(page.locator('#pane-assistant')).toBeHidden();
+    // Tab targets are at least 44 px tall.
+    for (const tab of await tabs.getByRole('tab').all()) {
+      expect((await tab.boundingBox())?.height ?? 0).toBeGreaterThanOrEqual(44);
+    }
+
+    // Tapping a ticket opens the Conversation tab; the queue is hidden until "Queue" is chosen.
+    await row(page, 'OPS-2').click();
+    await expect(tabs.getByRole('tab', { name: 'Conversation' })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
+    await expect(page.locator('#pane-conversation')).toBeVisible();
+    await expect(page.locator('#pane-queue')).toBeHidden();
+    await expect(
+      conversation(page).getByRole('heading', { name: 'Export is slow', level: 3 }),
+    ).toBeVisible();
+
+    await tabs.getByRole('tab', { name: 'Queue' }).click();
+    await expect(page.locator('#pane-queue')).toBeVisible();
+    await expect(row(page, 'OPS-2')).toHaveAttribute('aria-selected', 'true');
+  });
+
+  test('under 768 px: a sticky Approve / Edit / Reject bar with 44 px targets on the AI tab', async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 375, height: 800 });
+    await openWorkspace(page);
+    const bar = page.getByRole('group', { name: 'AI draft actions' });
+    await expect(bar).toHaveCount(0);
+    await page.getByRole('tab', { name: 'AI assistant' }).click();
+    await expect(bar).toBeVisible();
+    for (const name of ['Approve', 'Edit', 'Reject']) {
+      const box = await bar.getByRole('button', { name }).boundingBox();
+      expect(box?.height ?? 0).toBeGreaterThanOrEqual(44);
+      expect(box?.width ?? 0).toBeGreaterThanOrEqual(44);
+    }
+    // Pinned to the bottom edge of the window.
+    const barBox = await bar.boundingBox();
+    expect(Math.abs((barBox?.y ?? 0) + (barBox?.height ?? 0) - 800)).toBeLessThan(2);
+  });
+
+  test('1024 px and wider: [ and ] fold the side panes into rails and back', async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await openWorkspace(page);
+    const width = async (id: string) => (await page.locator(`#${id}`).boundingBox())?.width ?? 0;
+    expect(await width('pane-queue')).toBeGreaterThan(200);
+
+    await page.keyboard.press('[');
+    await expect(page.getByRole('button', { name: 'Expand the queue' })).toBeFocused();
+    await expect.poll(() => width('pane-queue')).toBeLessThan(80);
+    await expect(listbox(page)).toBeHidden();
+
+    await page.keyboard.press(']');
+    await expect.poll(() => width('pane-assistant')).toBeLessThan(80);
+    // The conversation takes the freed space.
+    expect(await width('pane-conversation')).toBeGreaterThan(700);
+
+    await page.getByRole('button', { name: 'Expand the queue' }).click();
+    await expect.poll(() => width('pane-queue')).toBeGreaterThan(200);
+    await page.keyboard.press(']');
+    await expect.poll(() => width('pane-assistant')).toBeGreaterThan(200);
   });
 });
 
@@ -490,7 +559,7 @@ test.describe('accessibility (axe, WCAG 2.x A/AA)', () => {
   test('the AI drawer has no violations', async ({ page }) => {
     await page.setViewportSize({ width: 900, height: 800 });
     await openWorkspace(page);
-    await page.getByRole('button', { name: 'AI assistant' }).click();
+    await page.getByRole('button', { name: 'AI assistant', exact: true }).click();
     const results = await new AxeBuilder({ page }).withTags(WCAG_TAGS).analyze();
     expect(results.violations).toEqual([]);
   });
