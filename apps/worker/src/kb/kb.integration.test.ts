@@ -65,6 +65,15 @@ beforeAll(async () => {
   });
   appDatabase = createDatabase({ url: testDb.appUrl, max: 4, applicationName: 'wt-kb-test' });
   domain = createDomain({ ticketKeyPrefix: 'OPS', sealKey: testSealKey(config) });
+  const people = await owner()
+    .insert(schema.users)
+    .values([
+      { email: 'writer@example.test', name: 'Writer', role: 'agent' },
+      { email: 'approver@example.test', name: 'Approver', role: 'lead' },
+    ])
+    .returning({ id: schema.users.id, role: schema.users.role });
+  writerId = people.find((person) => person.role === 'agent')?.id ?? '';
+  approverId = people.find((person) => person.role === 'lead')?.id ?? '';
 });
 
 afterAll(async () => {
@@ -103,7 +112,10 @@ const setKillSwitch = (on: boolean) =>
     [on],
   );
 
-const ctx = () => domain.context({ actor: { type: 'system', id: null } });
+// Two different people: the one who writes and the approver who publishes (segregation of duties).
+let writerId = '';
+let approverId = '';
+const ctx = (id = writerId) => domain.context({ actor: { type: 'user', id } });
 
 async function article(fields: Partial<CreateKbArticle> = {}, publish = true) {
   slugs += 1;
@@ -124,9 +136,14 @@ async function article(fields: Partial<CreateKbArticle> = {}, publish = true) {
     )
   ).value;
   if (publish) {
-    await appDatabase.db.transaction((tx) =>
-      domain.kb.publish(tx, ctx(), { articleId: created.articleId, version: 1 }),
-    );
+    await appDatabase.db.transaction(async (tx) => {
+      await domain.kb.transition(tx, ctx(), { articleId: created.articleId, to: 'in_review' });
+      await domain.kb.publish(tx, ctx(approverId), {
+        articleId: created.articleId,
+        version: 1,
+        audience: { visibility: fields.visibility ?? 'customer', orgIds: [] },
+      });
+    });
   }
   return created;
 }
@@ -265,7 +282,11 @@ describe('knowledge base indexing, end to end on the mock provider', () => {
         patch: { bodyMd: 'The new wording mentions kestrels.' },
         canApprove: true,
       });
-      await domain.kb.publish(tx, ctx(), { articleId: made.articleId, version: 2 });
+      await domain.kb.publish(tx, ctx(approverId), {
+        articleId: made.articleId,
+        version: 2,
+        audience: { visibility: 'customer', orgIds: [] },
+      });
     });
     const rows = await waitFor('the new text', async () => {
       const found = await chunksOf(made.articleId);
@@ -282,7 +303,7 @@ describe('knowledge base indexing, end to end on the mock provider', () => {
     const made = await article({ title: 'Retire', bodyMd: 'Text that will not stay for long.' });
     await embeddedChunks(made.articleId);
     await appDatabase.db.transaction((tx) =>
-      domain.kb.transition(tx, ctx(), { articleId: made.articleId, to: 'deprecated' }),
+      domain.kb.transition(tx, ctx(approverId), { articleId: made.articleId, to: 'deprecated' }),
     );
     await waitFor('the chunks to be removed', async () =>
       (await chunksOf(made.articleId)).length === 0 ? true : undefined,

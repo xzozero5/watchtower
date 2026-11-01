@@ -24,6 +24,7 @@ import {
   type AiCaps,
   type BudgetEventNotice,
 } from '@watchtower/domain';
+import { assertKbEmbeddingProvider } from '@watchtower/shared';
 
 import type { WorkerConfig } from '../config.js';
 import type { InboundClassifierFactory } from '../ingest/classifier.js';
@@ -73,12 +74,18 @@ export interface AiRuntime {
 export function createAiRuntime(
   config: Pick<
     WorkerConfig,
-    'AI_PROVIDER' | 'AI_DAILY_COST_CAP_USD' | 'AI_DAILY_TOKEN_CAP' | 'AI_BUDGET_ALERT_PERCENT'
+    | 'AI_PROVIDER'
+    | 'EMBEDDING_PROVIDER'
+    | 'AI_DAILY_COST_CAP_USD'
+    | 'AI_DAILY_TOKEN_CAP'
+    | 'AI_BUDGET_ALERT_PERCENT'
   >,
   database: Database,
   logger: WorkerLogger,
   overrides: AiOverrides = {},
 ): AiRuntime | undefined {
+  // A provider that is not wired stops the boot: it is never ignored in silence (N5).
+  assertKbEmbeddingProvider(config.EMBEDDING_PROVIDER);
   if (config.AI_PROVIDER !== 'mock') {
     logger.error(
       { provider: config.AI_PROVIDER },
