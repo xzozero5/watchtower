@@ -173,16 +173,20 @@ test.describe('ticket with an AI brief', () => {
 
   test('Undo inside the window sends nothing', async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 900 });
+    // A fake clock that still runs: it lets the test jump past the undo window instead of sleeping.
+    await page.clock.install();
     const backend = await openWorkspace(page, { ai: { 'OPS-1': makeInsight() } }, '/?ticket=OPS-1');
-    await page.keyboard.press('a');
-    await page
-      .getByRole('dialog', { name: 'Send this reply?' })
-      .getByRole('button', { name: 'Approve and send' })
-      .click();
-    await conversation(page).getByTestId('ai-draft').getByRole('button', { name: /^Undo/ }).click();
-    await page.waitForTimeout(5600);
+    const draft = conversation(page).getByTestId('ai-draft');
+    await expect(draft).toBeVisible();
+    await draft.getByRole('button', { name: /^Approve/ }).click();
+    const dialog = page.getByRole('dialog', { name: 'Send this reply?' });
+    await expect(dialog).toContainText('Hello Riley, your account was locked');
+    await dialog.getByRole('button', { name: 'Approve and send' }).click();
+    await draft.getByRole('button', { name: /^Undo/ }).click();
+    await expect(draft.getByRole('button', { name: /^Approve/ })).toBeEnabled();
+    await page.clock.fastForward(6000);
     expect(backend.to('POST', '/v1/tickets/OPS-1/replies')).toHaveLength(0);
-    await expect(conversation(page).getByTestId('ai-draft')).toBeVisible();
+    await expect(draft).toBeVisible();
   });
 
   test('rejecting asks for a reason and records the code', async ({ page }) => {
@@ -193,7 +197,10 @@ test.describe('ticket with an AI brief', () => {
       '/?ticket=OPS-1',
     );
     await expect(conversation(page).getByTestId('ai-draft')).toContainText('1 uncited');
-    await page.keyboard.press('r');
+    await conversation(page)
+      .getByTestId('ai-draft')
+      .getByRole('button', { name: /^Reject/ })
+      .click();
     const dialog = page.getByRole('dialog', { name: 'Reject this draft' });
     await expect(dialog.getByRole('button', { name: 'Reject' })).toBeDisabled();
     await page.keyboard.press('4');

@@ -21,7 +21,6 @@ import {
   type PinnedRow,
   type RowGroup,
   triageGroup,
-  type TriageGroup,
 } from '@/lib/ai/model';
 import { useSession } from '@/lib/auth/session';
 import { useShortcut, stepIndex } from '@/lib/keyboard';
@@ -99,24 +98,27 @@ function Section({
   const t = useT();
   const listId = active ? QUEUE_LISTBOX_ID : `queue-section-${group.id}`;
   const Chevron = GROUP_ICON[open ? 'open' : 'closed'];
-  const title = t(`queue.groups.${group.id}`);
+  const flat = group.id === 'all';
+  const title = group.id === 'all' ? t('queue.listLabel') : t(`queue.groups.${group.id}`);
   return (
     <section data-group={group.id} className="flex flex-col">
-      <h3 className="m-0 border-b border-border bg-background text-xs font-medium">
-        <button
-          type="button"
-          aria-expanded={open}
-          aria-controls={open ? listId : undefined}
-          onClick={onToggle}
-          className="flex min-h-8 w-full items-center gap-1.5 px-3 text-left text-muted-foreground transition-colors duration-(--wt-motion-duration-fast) ease-out hover:text-foreground focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
-        >
-          <Chevron aria-hidden className="size-3.5 shrink-0" />
-          <span>{title}</span>
-          <span className="tabular rounded-full bg-surface-muted px-1.5 text-foreground">
-            {group.rows.length}
-          </span>
-        </button>
-      </h3>
+      {flat ? null : (
+        <h3 className="m-0 border-b border-border bg-background text-xs font-medium">
+          <button
+            type="button"
+            aria-expanded={open}
+            aria-controls={open ? listId : undefined}
+            onClick={onToggle}
+            className="flex min-h-8 w-full items-center gap-1.5 px-3 text-left text-muted-foreground transition-colors duration-(--wt-motion-duration-fast) ease-out hover:text-foreground focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
+          >
+            <Chevron aria-hidden className="size-3.5 shrink-0" />
+            <span>{title}</span>
+            <span className="tabular rounded-full bg-surface-muted px-1.5 text-foreground">
+              {group.rows.length}
+            </span>
+          </button>
+        </h3>
+      )}
       {open ? (
         <ul
           id={listId}
@@ -162,7 +164,7 @@ export function QueuePane({
   const { singleKeyShortcuts, density } = usePreferences();
   const compact = density === 'compact';
   const searchRef = useRef<HTMLInputElement>(null);
-  const [folded, setFolded] = useState<ReadonlySet<TriageGroup>>(COLLAPSED_BY_DEFAULT);
+  const [folded, setFolded] = useState<ReadonlySet<string>>(COLLAPSED_BY_DEFAULT);
   // Set when the keyboard moved the cursor: focus follows it once the right section is drawn.
   const refocus = useRef(false);
 
@@ -186,7 +188,10 @@ export function QueuePane({
     // A new ticket was opened: remember its section, so it stays there while it is open.
     setPinned(openRow ? { key: openRow.key, group: triageGroup(openRow) } : null);
   }
-  const groups = useMemo(() => groupRows(rows, pinned), [rows, pinned]);
+  const groups = useMemo<RowGroup[]>(
+    () => (isClient ? (rows.length > 0 ? [{ id: 'all', rows }] : []) : groupRows(rows, pinned)),
+    [isClient, rows, pinned],
+  );
   const walkable = useMemo(
     () => navigableRows(groups, folded, selectedKey),
     [groups, folded, selectedKey],
@@ -198,7 +203,7 @@ export function QueuePane({
     selectedIndex >= 0
       ? groups.find((group) => group.rows.some((row) => row.key === selectedKey))
       : undefined;
-  const activeGroup: TriageGroup | undefined = (
+  const activeGroup: RowGroup['id'] | undefined = (
     holder && !folded.has(holder.id) ? holder : groups.find((group) => !folded.has(group.id))
   )?.id;
 
@@ -217,7 +222,7 @@ export function QueuePane({
     }
   }, [activeDescendant, focusList]);
 
-  const toggleGroup = (id: TriageGroup) => {
+  const toggleGroup = (id: RowGroup['id']) => {
     setFolded((current) => {
       const next = new Set(current);
       if (next.has(id)) next.delete(id);

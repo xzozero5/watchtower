@@ -130,10 +130,15 @@ test.describe.serial('AC-1: portal submission to resolution', () => {
     await expect(
       conversation().getByRole('heading', { name: requestText, level: 3 }),
     ).toBeVisible();
-    const row = page.getByRole('listbox', { name: 'Tickets' }).getByRole('option', {
-      name: new RegExp(ticketKey),
-    });
+    // The staff queue is a triage board; the real api sends no AI data yet, so a new ticket sits
+    // under "Needs you" (nothing is working on it).
+    const row = page.getByRole('option', { name: new RegExp(ticketKey) });
     await expect(row).toBeVisible();
+    await expect(
+      page
+        .getByRole('listbox', { name: 'Needs you' })
+        .getByRole('option', { name: new RegExp(ticketKey) }),
+    ).toBeVisible();
     await expect(row).toContainText(ORGS.acme.name);
 
     // Properties live in the right-hand "Details & AI" panel; fields are inline comboboxes.

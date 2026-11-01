@@ -165,4 +165,12 @@ describe('triage board', () => {
       within(screen.getByRole('option', { name: /OPS-1/ })).getByText('Login issue'),
     ).toBeVisible();
   });
+
+  it('shows a customer one plain list with no AI sections', async () => {
+    workspaceApi({ role: 'client' });
+    renderWorkspace();
+    expect(await screen.findByRole('listbox', { name: 'Tickets' })).toBeVisible();
+    expect(screen.queryByRole('button', { name: /^Needs you/ })).toBeNull();
+    expect(screen.getAllByRole('option')).toHaveLength(2);
+  });
 });

@@ -3,11 +3,11 @@
 A real browser against the real web, api and worker with Postgres, Redis and Mailpit. Nothing is
 mocked (the UI tests in `../e2e/` mock the api; these do not). It covers:
 
-| File | Scenarios |
-|---|---|
+| File                | Scenarios                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| ------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `ac1-portal.e2e.ts` | AC-1, portal path: submit on the portal, ticket with org / intent / SLA due within 10 s (measured), staff assign it to a seeded agent in the Details panel (checked in the UI after a reload, over REST, in the timeline `ticket.assigned` event and in the audit log), confirmation email and tracking link, staff reply in the workspace, customer sees it on the tracking page, internal note never reaches the customer, staff resolve, customer gets the status email |
-| `auth.e2e.ts` | Magic link end to end (login page, email read from Mailpit's HTTP API, link opened, signed in, link works once, sign out), no email for an unknown address, break-glass staff sign-in |
-| `rbac.e2e.ts` | A client sees only their own organization (REST and UI), never an internal note, cannot use staff actions; checked for two clients of two organizations |
+| `auth.e2e.ts`       | Magic link end to end (login page, email read from Mailpit's HTTP API, link opened, signed in, link works once, sign out), no email for an unknown address, break-glass staff sign-in                                                                                                                                                                                                                                                                                      |
+| `rbac.e2e.ts`       | A client sees only their own organization (REST and UI), never an internal note, cannot use staff actions; checked for two clients of two organizations                                                                                                                                                                                                                                                                                                                    |
 
 Staff sign in with the break-glass account, never dev login. Customers sign in with the magic link.
 

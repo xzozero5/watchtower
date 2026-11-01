@@ -37,7 +37,8 @@ export function triageGroup(row: Pick<RowModel, 'status' | 'ai' | 'sla'>): Triag
 }
 
 export interface RowGroup {
-  id: TriageGroup;
+  /** `all` is the single, header-less section a customer sees (the AI triage board is for staff). */
+  id: TriageGroup | 'all';
   rows: RowModel[];
 }
 
@@ -73,7 +74,7 @@ export function groupRows(rows: readonly RowModel[], pinned: PinnedRow | null = 
  */
 export function navigableRows(
   groups: readonly RowGroup[],
-  collapsed: ReadonlySet<TriageGroup>,
+  collapsed: ReadonlySet<string>,
   selectedKey: string | null,
 ): RowModel[] {
   return groups.flatMap((group) =>
