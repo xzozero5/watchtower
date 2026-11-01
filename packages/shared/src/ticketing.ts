@@ -4,6 +4,7 @@ import { channelTypeSchema } from './channels.js';
 import { csvList, cursorSchema, jsonRecordSchema, pageLimit, pageOf } from './common.js';
 import { emailSchema } from './auth.js';
 import { assertDisjoint } from './features/compose.js';
+import { ticketAiRowSchema } from './features/ai.js';
 import { FEATURES, FEATURE_TICKET_EVENTS } from './features/index.js';
 import { ticketPrioritySchema } from './sla.js';
 
@@ -239,6 +240,8 @@ export const ticketSummarySchema = z.object({
   aiHandled: z.boolean(),
   reopenCount: z.number().int(),
   csatScore: z.number().int().nullable(),
+  /** What the AI has done with the ticket (T-128). Absent until the api serves it. */
+  ai: ticketAiRowSchema.optional(),
   createdAt: z.iso.datetime(),
   updatedAt: z.iso.datetime(),
 });
