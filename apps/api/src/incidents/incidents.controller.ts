@@ -20,6 +20,8 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import {
+  changesQuerySchema,
+  incidentChangesSchema,
   commIdParamSchema,
   createIncidentSchema,
   draftCommSchema,
@@ -38,6 +40,7 @@ import {
   linkAlertSchema,
   linkTicketSchema,
   updateIncidentSchema,
+  type ChangesQuery,
   type CommIdParam,
   type CreateIncident,
   type DraftComm,
@@ -227,6 +230,26 @@ export class IncidentsController {
   ) {
     return this.uow.run((uow) => this.incidents.note(uow, userOf(principal), params.id, body));
   }
+  @Get(':id/changes')
+  @RequirePermission('ticket.read')
+  @ApiOperation({
+    summary: 'What changed before the first alert (R-3.15)',
+    description:
+      'Deploys of the incident services and commits, merged pull requests and releases of their ' +
+      'repositories in the windowMinutes (default 60, 5 to 1440) before the first alert linked to the ' +
+      'incident, or before the incident started if no alert is linked. repoSource says where the ' +
+      'repository changes came from (none, fake or live); if the repository cannot be read the deploys ' +
+      'are still returned and repoUnavailable is true.',
+  })
+  @ApiOkResponse({ standardSchema: incidentChangesSchema })
+  @ApiNotFoundResponse({ description: 'No such incident' })
+  async changes(
+    @Param({ schema: incidentIdParamSchema }) params: IncidentIdParam,
+    @Query({ schema: changesQuerySchema }) query: ChangesQuery,
+  ) {
+    return parseResponse(incidentChangesSchema, await this.incidents.changes(params.id, query));
+  }
+
   // --- mass customer communication (R-3.14, N3) -----------------------------------------------
 
   @Get(':id/comms')

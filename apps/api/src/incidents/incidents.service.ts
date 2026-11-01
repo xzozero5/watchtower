@@ -6,7 +6,10 @@ import {
   type CreateIncident,
   type Deploy,
   type DeployListQuery,
+  type ChangesQuery,
   type Incident,
+  type IncidentChanges,
+  type RepoChange,
   type IncidentComm,
   type IncidentCommPreview,
   type SendComm,
@@ -20,7 +23,7 @@ import {
   type IncidentTimelineEntry,
   type UpdateIncident,
 } from '@watchtower/shared';
-import { and, asc, count, desc, eq, inArray, ne, type SQL } from 'drizzle-orm';
+import { and, asc, count, desc, eq, gte, inArray, lte, min, ne, type SQL } from 'drizzle-orm';
 
 import { notFound } from '../auth/http-errors.js';
 import { beforeCursor, decodeCursor, preciseTimestamp, toPage } from '../common/keyset.js';
@@ -29,6 +32,7 @@ import { domainContext, settle } from '../domain/domain-context.js';
 import { translating } from '../domain/domain-errors.js';
 import { DOMAIN, type Domain } from '../domain/domain.module.js';
 import { RealtimePublisher } from '../realtime/realtime-publisher.js';
+import { REPO_CHANGES, type RepoChangesPort } from './changes.js';
 import type { UnitOfWork } from '../realtime/unit-of-work.js';
 
 type IncidentRow = typeof schema.incident.$inferSelect;
@@ -83,7 +87,84 @@ export class IncidentsService {
     @Inject(DATABASE) private readonly database: Database,
     @Inject(DOMAIN) private readonly domain: Domain,
     @Inject(RealtimePublisher) private readonly publisher: RealtimePublisher,
+    @Inject(REPO_CHANGES) private readonly repo: RepoChangesPort,
   ) {}
+
+  /**
+   * Deploys of the incident's services, and commits, merged pull requests and releases of their
+   * repositories, in the window before the first alert (else before the incident started, R-3.15). The
+   * window edge is a database timestamp; the deploys' own times are the sender's and are only lined up
+   * against it. A repository that cannot be read leaves the deploys intact and sets `repoUnavailable`.
+   */
+  async changes(incidentId: string, query: ChangesQuery): Promise<IncidentChanges> {
+    const incident = await this.getRow(incidentId);
+    const [firstAlert] = await this.database.db
+      .select({ at: min(schema.alert.firstSeenAt) })
+      .from(schema.alert)
+      .where(eq(schema.alert.incidentId, incidentId));
+    const to = new Date(firstAlert?.at ?? incident.startedAt);
+    const from = new Date(to.getTime() - query.windowMinutes * 60_000);
+
+    const services = await this.database.db
+      .select({ id: schema.service.id, repos: schema.service.repos })
+      .from(schema.incidentService)
+      .innerJoin(schema.service, eq(schema.service.id, schema.incidentService.serviceId))
+      .where(eq(schema.incidentService.incidentId, incidentId));
+    const serviceIds = services.map((service) => service.id);
+    const deployRows =
+      serviceIds.length === 0
+        ? []
+        : await this.database.db
+            .select()
+            .from(schema.deploy)
+            .where(
+              and(
+                inArray(schema.deploy.serviceId, serviceIds),
+                gte(schema.deploy.occurredAt, from),
+                lte(schema.deploy.occurredAt, to),
+              ),
+            )
+            .orderBy(desc(schema.deploy.occurredAt), desc(schema.deploy.id))
+            .limit(50);
+
+    const repoChanges: RepoChange[] = [];
+    let repoUnavailable = false;
+    for (const repo of new Set(services.flatMap((service) => service.repos))) {
+      try {
+        repoChanges.push(
+          ...(await this.repo.listChanges({ repo, since: from, until: to, limit: 30 })),
+        );
+      } catch {
+        repoUnavailable = true;
+      }
+    }
+    repoChanges.sort((a, b) => Date.parse(b.at) - Date.parse(a.at));
+
+    return {
+      window: {
+        from: from.toISOString(),
+        to: to.toISOString(),
+        minutes: query.windowMinutes,
+        endsAt: firstAlert?.at == null ? 'incident' : 'alert',
+      },
+      deploys: deployRows.map((row) => ({
+        id: row.id,
+        serviceId: row.serviceId,
+        serviceSlug: row.serviceSlug,
+        version: row.version,
+        env: row.env,
+        actor: row.actor,
+        source: row.source as Deploy['source'],
+        startedAt: row.startedAt?.toISOString() ?? null,
+        finishedAt: row.finishedAt?.toISOString() ?? null,
+        url: row.url,
+        occurredAt: (row.occurredAt ?? row.receivedAt).toISOString(),
+      })),
+      repoSource: this.repo.source,
+      repoChanges: repoChanges.slice(0, 100),
+      repoUnavailable,
+    };
+  }
 
   async list(query: IncidentListQuery) {
     const incident = schema.incident;
