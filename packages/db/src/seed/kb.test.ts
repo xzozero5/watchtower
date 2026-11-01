@@ -4,7 +4,8 @@ import { join } from 'node:path';
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-import { SeedError } from './common.js';
+import { DEFAULT_EXAMPLES_DIR, SeedError } from './common.js';
+import { loadIntentDefinitions } from './intents.js';
 import { loadKbArticleFiles, parseKbArticleFile } from './kb.js';
 
 const GOOD = `---
@@ -90,5 +91,36 @@ describe('loadKbArticleFiles', () => {
     await writeFile(join(dir, 'c-repeat.md'), GOOD);
     await expect(loadKbArticleFiles(dir)).rejects.toThrow(/repeats the slug "reset-your-password"/);
     await rm(join(dir, 'c-repeat.md'));
+  });
+});
+
+describe('the example articles of this repository (examples/kb)', () => {
+  const load = () => loadKbArticleFiles(join(DEFAULT_EXAMPLES_DIR, 'kb'));
+
+  it('are valid, in both languages, with internal runbooks and customer articles', async () => {
+    const articles = await load();
+    expect(articles.length).toBeGreaterThanOrEqual(5);
+    expect(new Set(articles.map((article) => article.lang))).toEqual(new Set(['en', 'th']));
+    expect(articles.some((article) => article.visibility === 'internal')).toBe(true);
+    expect(articles.some((article) => article.visibility === 'customer')).toBe(true);
+    expect(articles.some((article) => article.kind === 'runbook')).toBe(true);
+  });
+
+  it('tag only intents that the starter intents define', async () => {
+    const intents = await loadIntentDefinitions(join(DEFAULT_EXAMPLES_DIR, 'intents'));
+    const keys = new Set(intents.map((definition) => definition.key));
+    for (const article of await load()) {
+      for (const tag of article.intentTags) {
+        expect(keys.has(tag), `${article.slug}: ${tag}`).toBe(true);
+      }
+    }
+  });
+
+  it('name no real company: the only addresses are example domains', async () => {
+    for (const article of await load()) {
+      for (const address of article.bodyMd.match(/[\w.+-]+@[\w.-]+/g) ?? []) {
+        expect(address, article.slug).toMatch(/@example\.(com|org|net|test)$/);
+      }
+    }
   });
 });
