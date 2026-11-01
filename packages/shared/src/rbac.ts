@@ -70,7 +70,9 @@ export const PERMISSIONS = {
   'handoff.ack': 'Acknowledge the items of a shift handoff',
   'csat.read': 'View CSAT responses',
   'ai.run.read': 'View AI run records: prompt version, model, tools and cost',
-  // Phase 1 (T-107a, migration 0013).
+  // T-122e (migration 0014).
+  'ticket.cancel.any': "Undo a colleague's send before it goes out",
+  // Phase 1 (T-107a, migration 0015_kb).
   'kb.read.customer': 'Search the customer-visible knowledge base (client)',
   'kb.publish.break_glass':
     'Publish a knowledge base article without a second person, with a reason (head)',
@@ -130,6 +132,7 @@ const LEAD: readonly Permission[] = [
   'ai.emergency_switch',
   'csat.read',
   'ai.run.read',
+  'ticket.cancel.any',
 ];
 
 const HEAD: readonly Permission[] = [

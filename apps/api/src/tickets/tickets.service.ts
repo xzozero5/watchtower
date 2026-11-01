@@ -6,6 +6,7 @@ import {
   type CreateTicketResult,
   type DomainContext,
   type MessageRow,
+  type OutboundDeliveryRow,
   type Sender,
 } from '@watchtower/domain';
 import type {
@@ -139,7 +140,7 @@ export class TicketsService {
     input: Reply,
     sender: Sender,
     actor: Actor,
-  ): Promise<{ message: MessageRow; ticket: TicketRow }> {
+  ): Promise<{ message: MessageRow; ticket: TicketRow; delivery?: OutboundDeliveryRow | null }> {
     return translating(async () =>
       settle(
         uow,

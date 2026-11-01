@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto';
+
 import { schema } from '@watchtower/db';
 import {
   AUDIT_ACTIONS,
@@ -10,6 +12,7 @@ import { and, eq, ne } from 'drizzle-orm';
 
 import { recordAuditInTx } from '../audit.js';
 import { badRequest } from '../errors.js';
+import { sealReplyToken } from '../outbound/reply-token.js';
 import type { TicketRow } from '../rows.js';
 import { applyStatus } from '../tickets/status.js';
 import { createTicket } from '../tickets/create.js';
@@ -186,9 +189,16 @@ export async function ingestInbound(
   const message = input.message;
 
   // 1. Record the message (once) and lock its row for the rest of the transaction.
+  // The id is chosen here so the reply token can be sealed bound to the row it will live in.
+  const inboundMessageId = randomUUID();
   await tx
     .insert(schema.inboundMessage)
     .values({
+      id: inboundMessageId,
+      replyTokenSealed:
+        message.replyToken === undefined || message.replyToken === null || message.replyToken === ''
+          ? null
+          : sealReplyToken(ctx, inboundMessageId, message.replyToken),
       channelAccountId: message.channelAccountId,
       inboundEventId: input.inboundEventId ?? null,
       providerMessageId: message.providerMessageId,

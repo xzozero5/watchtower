@@ -1,7 +1,7 @@
 'use client';
 
-import { cn, Skeleton } from '@watchtower/ui';
-import { Bot, ExternalLink } from 'lucide-react';
+import { cn, Skeleton, TintChip } from '@watchtower/ui';
+import { Bot, ExternalLink, Quote } from 'lucide-react';
 
 import { useI18n } from '@/i18n/provider';
 import { confidenceBand, formatConfidence, safeHref } from '@/lib/ai/model';
@@ -68,8 +68,8 @@ export function EvidencePanel({
             tabIndex={-1}
             data-highlighted={highlightId === entry.id ? 'true' : undefined}
             className={cn(
-              'flex flex-col gap-1.5 rounded-lg border border-border bg-surface px-3 py-2.5 text-sm outline-hidden focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring',
-              highlightId === entry.id && 'border-ai-accent ring-1 ring-ai-accent',
+              'flex flex-col gap-1.5 rounded-lg bg-surface px-4 py-3 text-sm ring-1 ring-border/70 outline-hidden ring-inset focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring',
+              highlightId === entry.id && 'bg-ai-subtle ring-2 ring-ai-accent',
             )}
           >
             <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
@@ -84,9 +84,9 @@ export function EvidencePanel({
             <p className="text-muted-foreground">{entry.snippet}</p>
             <div className="flex flex-wrap items-center gap-2 text-xs">
               {cited ? (
-                <span className="rounded-full border border-border px-1.5 font-medium">
+                <TintChip tone="teal" icon={Quote}>
                   {t('ai.evidence.cited')}
-                </span>
+                </TintChip>
               ) : null}
               {href ? (
                 <a

@@ -254,6 +254,17 @@ export const QUEUE: TeamQueue = {
   updatedAt: AT,
 };
 
+/** The second queue the stats count tickets in (`STATS.byQueue`), so every counted queue has a name. */
+export const QUEUE_BILLING: TeamQueue = {
+  id: uuid(801),
+  name: 'Billing',
+  assignmentMode: 'manual',
+  isDefault: false,
+  members: [{ userId: PEOPLE.pim.id, name: 'Pim S.', role: 'agent', status: 'active' }],
+  createdAt: AT,
+  updatedAt: AT,
+};
+
 export function auditEntry(n: number, overrides: Partial<AuditLogEntry> = {}): AuditLogEntry {
   return {
     id: uuid(1000 + n),

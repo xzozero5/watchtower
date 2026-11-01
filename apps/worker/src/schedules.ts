@@ -2,6 +2,7 @@ import {
   CLEANUP_JOBS,
   KB_JOBS,
   MAINTENANCE_JOBS,
+  OUTBOUND_JOBS,
   QUEUE_NAMES,
   type QueueName,
 } from '@watchtower/shared';
@@ -58,6 +59,16 @@ export const SCHEDULES: readonly ScheduleRegistration[] = [
   // --- inbound (T-122) ---
 
   // --- outbound (T-122d) ---
+  {
+    queue: QUEUE_NAMES.outbound,
+    id: OUTBOUND_JOBS.sweep,
+    // Stuck `sending`, late `scheduled` and stale reply tokens, every 30 s (ADR-010 section 7).
+    repeat: { every: 30_000 },
+    job: {
+      name: OUTBOUND_JOBS.sweep,
+      opts: { removeOnComplete: true, removeOnFail: { age: 24 * 3600 } },
+    },
+  },
 
   // --- gmail (T-102): watch renewal, heartbeat ---
 

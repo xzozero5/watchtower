@@ -23,6 +23,16 @@ export interface DomainConfig {
   readonly reopenWindowDays: number;
   /** Subkey that seals the secret part of outbox jobs (`KEY_LABELS.outboxSecret`). */
   readonly sealKey: Buffer;
+  /**
+   * Where a customer can follow a request, for the automatic acknowledgment (ADR-010). Unset: the
+   * sentence is left out. The same value in api and worker (`APP_URL` + the portal path).
+   */
+  readonly portalUrl?: string | undefined;
+  /**
+   * How long a delivery may keep being retried under the same LINE retry key (seconds). Unset:
+   * `DELIVERY_RETRY_KEY_MAX_AGE_SECONDS`. Must stay below LINE's 24 hours.
+   */
+  readonly retryKeyMaxAgeSeconds?: number | undefined;
 }
 
 /**

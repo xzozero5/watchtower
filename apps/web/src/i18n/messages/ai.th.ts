@@ -104,5 +104,7 @@ export const aiTh: AiMessages = {
   dock: {
     reply: 'เขียนคำตอบ',
     note: 'บันทึกภายใน',
+    replyShort: 'ตอบ',
+    noteShort: 'บันทึก',
   },
 };

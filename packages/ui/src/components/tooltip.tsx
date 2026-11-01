@@ -48,7 +48,7 @@ export function Tooltip({
           sideOffset={6}
           collisionPadding={8}
           className={cn(
-            'z-50 flex max-w-64 animate-pop-in items-center gap-2 rounded-md bg-primary px-2 py-1 text-xs font-medium text-primary-foreground shadow-overlay',
+            'z-50 flex max-w-64 animate-pop-in items-center gap-2 rounded-lg bg-primary px-2.5 py-1 text-xs font-medium text-primary-foreground shadow-overlay',
           )}
         >
           <span>{content}</span>

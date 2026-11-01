@@ -1,4 +1,10 @@
-import { COLOR_TOKENS, type ColorTokens, type ThemeName } from './colors.js';
+import {
+  COLOR_TOKENS,
+  type ColorTokens,
+  RADIUS_TOKENS,
+  type ThemeName,
+  TINT_IDS,
+} from './colors.js';
 import { DENSITY_TOKENS, type Density, type DensityTokens, MOTION_TOKENS } from './density.js';
 import { SEVERITY_IDS } from './severity.js';
 
@@ -20,6 +26,14 @@ function colorEntries(tokens: ColorTokens): [name: string, value: string][] {
       [`color-severity-${id}-border`, border],
     );
   }
+  for (const id of TINT_IDS) {
+    const { fg, bg, icon } = tokens.tint[id];
+    entries.push(
+      [`color-tint-${id}-fg`, fg],
+      [`color-tint-${id}-bg`, bg],
+      [`color-tint-${id}-icon`, icon],
+    );
+  }
   tokens.avatar.forEach(({ fg, bg }, index) => {
     entries.push(
       [`color-avatar-${String(index + 1)}-fg`, fg],
@@ -37,6 +51,13 @@ function densityEntries(tokens: DensityTokens): [name: string, value: string][] 
     ['pane-padding', tokens.panePadding],
     ['stack-gap', tokens.gap],
   ];
+}
+
+function radiusEntries(): [name: string, value: string][] {
+  return Object.entries(RADIUS_TOKENS).map(([key, value]): [string, string] => [
+    `radius-${key}`,
+    value,
+  ]);
 }
 
 const declarations = (entries: [string, string][], indent: string) =>
@@ -70,6 +91,7 @@ export function buildTokensCss(): string {
       [
         ...colorEntries(light),
         ...densityEntries(DENSITY_TOKENS.comfortable),
+        ...radiusEntries(),
         ...motionEntries(false),
       ],
       '  ',
@@ -113,6 +135,9 @@ const TYPE_SCALE = {
 /** The only shadow in the UI: popovers, menus, dialogs and toasts float, nothing else does. */
 const OVERLAY_SHADOW = '0 1px 2px rgb(15 23 42 / 0.08), 0 8px 24px -4px rgb(15 23 42 / 0.18)';
 
+/** The one soft lift besides overlays: the AI brief. Barely there. */
+const SOFT_SHADOW = '0 1px 2px rgb(15 23 42 / 0.05), 0 4px 14px -6px rgb(15 23 42 / 0.12)';
+
 const SANS_STACK =
   "'Inter Variable', 'Noto Sans Thai Variable', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif";
 const MONO_STACK = "ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace";
@@ -143,8 +168,23 @@ export function buildTailwindThemeCss(): string {
     ['--font-sans', SANS_STACK],
     ['--font-mono', MONO_STACK],
   ];
+  // Rounder everywhere (docs/design/friendly-polish.md section 2): the default md / lg / xl steps
+  // become the control, card and dialog radii, so every existing `rounded-md|lg|xl` follows.
+  const radii: [string, string][] = [
+    ['--radius-md', `var(${CSS_VAR_PREFIX}radius-control)`],
+    ['--radius-lg', `var(${CSS_VAR_PREFIX}radius-card)`],
+    ['--radius-xl', `var(${CSS_VAR_PREFIX}radius-dialog)`],
+    ['--radius-control', `var(${CSS_VAR_PREFIX}radius-control)`],
+    ['--radius-card', `var(${CSS_VAR_PREFIX}radius-card)`],
+    ['--radius-dialog', `var(${CSS_VAR_PREFIX}radius-dialog)`],
+  ];
   const effects: [string, string][] = [
     ['--shadow-overlay', OVERLAY_SHADOW],
+    ['--shadow-soft', SOFT_SHADOW],
+    [
+      '--animate-check-pop',
+      `wt-check-pop var(${CSS_VAR_PREFIX}motion-duration-base) ease-out both`,
+    ],
     // Durations come from the motion tokens, which drop to zero under prefers-reduced-motion.
     ['--animate-pop-in', `wt-pop-in var(${CSS_VAR_PREFIX}motion-duration-base) ease-out both`],
     ['--animate-fade-in', `wt-fade-in var(${CSS_VAR_PREFIX}motion-duration-base) ease-out both`],
@@ -153,7 +193,7 @@ export function buildTailwindThemeCss(): string {
       `wt-slide-in-right var(${CSS_VAR_PREFIX}motion-duration-base) ease-out both`,
     ],
   ];
-  const lines = [...colorMap, ...typeScale, ...spacing, ...fonts, ...effects].map(
+  const lines = [...colorMap, ...typeScale, ...spacing, ...radii, ...fonts, ...effects].map(
     ([name, value]) => `  ${name}: ${value};`,
   );
   return [
@@ -171,6 +211,12 @@ export function buildTailwindThemeCss(): string {
     '@keyframes wt-fade-in {',
     '  from { opacity: 0; }',
     '  to { opacity: 1; }',
+    '}',
+    '/* A check mark pops when something succeeds (approve, resolve). */',
+    '@keyframes wt-check-pop {',
+    '  0% { opacity: 0; transform: scale(0.6); }',
+    '  60% { opacity: 1; transform: scale(1.15); }',
+    '  100% { opacity: 1; transform: none; }',
     '}',
     '@keyframes wt-slide-in-right {',
     '  from { opacity: 0; transform: translateX(8px); }',

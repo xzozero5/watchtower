@@ -1,4 +1,4 @@
--- Reverts 0013. Lossy on purpose: every article, every version, the chunks and the embedding
+-- Reverts 0015. Lossy on purpose: every article, every version, the chunks and the embedding
 -- index registry go away (the version history is immutable while the migration is applied, so the
 -- only way to remove it is this rollback). role_permissions rows go with the permission.
 DELETE FROM permissions WHERE key IN ('kb.read.customer', 'kb.publish.break_glass');

@@ -23,7 +23,7 @@
 --   kb.publish.break_glass: granted to the head only: publish without a second person (the
 --     break-glass columns of kb_article record it until another approver reviews it).
 -- Articles are never deleted (deprecate instead): the application role has no DELETE on them.
--- Reversible: see 0013_kb.down.sql.
+-- Reversible: see 0015_kb.down.sql.
 
 CREATE TABLE kb_embedding_index (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -88,7 +88,12 @@ CREATE TABLE kb_article (
   CONSTRAINT kb_article_published_check CHECK (status <> 'published' OR published_version_id IS NOT NULL),
   CONSTRAINT kb_article_sources_check CHECK (jsonb_typeof(sources) = 'array'),
   CONSTRAINT kb_article_break_glass_check CHECK (
-    NOT break_glass_pending OR (break_glass_by IS NOT NULL AND length(btrim(break_glass_reason)) > 0)
+    NOT break_glass_pending OR (
+      break_glass_by IS NOT NULL
+      AND length(btrim(break_glass_reason)) > 0
+      AND break_glass_version_id IS NOT NULL
+      AND break_glass_prev_version IS NOT NULL
+    )
   )
 );
 CREATE UNIQUE INDEX kb_article_slug_key ON kb_article (slug);
@@ -125,7 +130,12 @@ ALTER TABLE kb_article
     DEFERRABLE INITIALLY DEFERRED,
   ADD CONSTRAINT kb_article_published_version_fkey
     FOREIGN KEY (published_version_id, id) REFERENCES kb_article_version (id, article_id)
-    DEFERRABLE INITIALLY DEFERRED;
+    DEFERRABLE INITIALLY DEFERRED,
+  -- These two are only set to versions that already exist, so they need no deferral.
+  ADD CONSTRAINT kb_article_review_version_fkey
+    FOREIGN KEY (review_version_id, id) REFERENCES kb_article_version (id, article_id),
+  ADD CONSTRAINT kb_article_break_glass_version_fkey
+    FOREIGN KEY (break_glass_version_id, id) REFERENCES kb_article_version (id, article_id);
 
 CREATE TRIGGER kb_article_version_reject_update_delete
   BEFORE UPDATE OR DELETE ON kb_article_version
@@ -171,8 +181,10 @@ CREATE INDEX kb_chunk_index_idx ON kb_chunk (embedding_index_id) WHERE embedding
 CREATE INDEX kb_chunk_text_trgm_idx ON kb_chunk USING gin (text gin_trgm_ops);
 
 -- Break-glass bookkeeping cannot be edited around the domain: the flag drops only with a reviewer
--- who is somebody else than the publisher, and who, how, when and why are frozen while it is up,
--- unless a newer break-glass publication replaces it (a later time and a different live version).
+-- who is somebody else than the publisher and wrote none of the text that went live (every version
+-- after the one that was live before, up to the break-glass one), and who, how, when, why and which
+-- version are frozen while it is up, unless a newer break-glass publication replaces it (a later
+-- time and a different live version).
 CREATE FUNCTION kb_article_guard_break_glass() RETURNS trigger
 LANGUAGE plpgsql
 AS $$
@@ -184,8 +196,22 @@ BEGIN
         RAISE EXCEPTION 'a break-glass flag is cleared by a review from somebody else than its publisher'
           USING ERRCODE = 'check_violation';
       END IF;
+      IF EXISTS (
+        SELECT 1
+        FROM kb_article_version written
+        JOIN kb_article_version live ON live.id = OLD.break_glass_version_id
+        WHERE written.article_id = OLD.id
+          AND written.version > coalesce(OLD.break_glass_prev_version, 0)
+          AND written.version <= live.version
+          AND written.created_by = NEW.break_glass_reviewed_by
+      ) THEN
+        RAISE EXCEPTION 'a break-glass flag is not cleared by somebody who wrote the text that went live'
+          USING ERRCODE = 'check_violation';
+      END IF;
       IF NEW.break_glass_by IS DISTINCT FROM OLD.break_glass_by
          OR NEW.break_glass_at IS DISTINCT FROM OLD.break_glass_at
+         OR NEW.break_glass_version_id IS DISTINCT FROM OLD.break_glass_version_id
+         OR NEW.break_glass_prev_version IS DISTINCT FROM OLD.break_glass_prev_version
          OR NEW.break_glass_reason IS DISTINCT FROM OLD.break_glass_reason THEN
         RAISE EXCEPTION 'break-glass history cannot change while it is reviewed'
           USING ERRCODE = 'check_violation';

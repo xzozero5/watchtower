@@ -1,35 +1,35 @@
 # HANDOFF — Watchtower
 
 > สถานะล่าสุดของโปรเจกต์ session ใหม่อ่านไฟล์นี้ต่อจาก `AGENTS.md` แล้วทำงานต่อได้โดยไม่ต้องอ่านบทสนทนาเดิม
-> อัปเดตล่าสุด: 2026-11-01 04:20 (เวลากรุงเทพ) โดย Claude Code (main thread, cloud session ทำงานอัตโนมัติ เจ้าของมอบอำนาจตัดสินใจให้ `po`)
-> กฎขนาด ≤ 40 KB — เขียนทับสถานะ ไม่ append ประวัติ · ฉบับก่อนหน้าอยู่ `docs/handoff-archive/HANDOFF-2026-10-31_2026-11-01-pause.md` · บันทึกรายชั่วโมงอยู่ `logs/daily/`
+> อัปเดตล่าสุด: 2026-11-01 11:40 (เวลากรุงเทพ) โดย Claude Code (main thread, cloud session) — **เจ้าของสั่ง pause เพื่อไปทำต่อบนเครื่อง local**
+> กฎขนาด ≤ 40 KB — เขียนทับสถานะ ไม่ append ประวัติ · ฉบับก่อนหน้า `docs/handoff-archive/HANDOFF-2026-11-01-0420.md` · บันทึกรายชั่วโมง `logs/daily/2026-11-01.md` · log ต่อ task `docs/STATUS.md`
 
 ## อ่านก่อน (สรุป 2 นาที)
-- **Phase 0 เสร็จแล้ว** (T-005…T-014 + T-120, T-124 UI ใหม่) · **CI run #1 บน GitHub เขียวครบ 4 job รวม compose build/up/health** · เหลือ **เจ้าของตรวจบนเครื่องตามรายการด้านล่างก่อน tag `v0.0.1`**
-- **Phase 1 เริ่ม wave 0** (T-101 UI spec เสร็จ, T-123a scaffolding กำลังทำ) แผนอยู่ `docs/BACKLOG.md` หัวข้อ Phase 1 + `docs/plans/phase-1-breakdown.md`
-- **การตัดสินใจที่ `po` ทำแทนเจ้าของ 25 ข้อ** อยู่ในตารางด้านล่าง ติ๊กรับ/ไม่รับได้เลย
-- **UI ถูกทำใหม่ตามคำขอเจ้าของ** ("ดู AI เกินไป → ศึกษา 21st.dev") · ทิศทาง `docs/design/ui-refresh-2026-11.md` · ใช้ 21st.dev เป็นแรงบันดาลใจเท่านั้น ไม่คัดลอกโค้ด (Terms ไม่อนุญาต) · ภาพหน้าจอส่งในแชตแล้ว (ไม่ได้ commit)
+- **Phase 0 เสร็จ** (CI บน GitHub เขียว) · ยังไม่ tag `v0.0.1` — รอเจ้าของตรวจบนเครื่อง (รายการด้านล่าง)
+- **Phase 1 กำลังทำ** · บน `main` แล้ว: T-101, T-102a, T-103a, T-106a–e, T-112a, T-116a, T-117, T-122a–e, T-123a, T-126–T-129 · **ค้างบน branch 3 งาน** (LINE, Gmail, KB — ตารางด้านล่าง) ทั้งหมดผ่าน security review รอบแรกและแก้ finding ไปแล้วบางส่วน
+- **กติกาที่ใช้ทั้ง session:** security finding P0/P1 ต้องแก้ก่อน merge · main thread รัน test เองบน branch `verify/<task>` (merge กับ `main` ล่าสุด) ก่อน merge เสมอ · migration เปลี่ยนเลขตอน merge
+- **`po` ตัดสินแทนเจ้าของ 27 ข้อ** (ตารางด้านล่าง) ติ๊กรับ/ไม่รับได้เลย · ข้อใหม่ #26 (LINE verified), #27 (KB publish แยกหน้าที่)
+- **UI:** T-124 → T-128 (AI-first board) → T-129 (มน/สี/icon, แยก status กับ tag ตาม feedback เจ้าของ) · ภาพหน้าจอส่งในแชตแล้ว (ไม่ได้ commit)
 
 ## สถานะปัจจุบัน
-- **Phase:** 0 รอ CI + เจ้าของตรวจ · 1 wave 0
-- **Build/Test (`main`, 2026-11-01 04:05, `turbo --force`):** lint, typecheck ผ่าน · unit shared 148, api 164, worker 33, db 47, ui 256, web 470, boundaries 94 · integration api 387, db 107, worker 19 · e2e (API จำลอง) 99 · full-stack e2e (web+api+worker จาก source + Postgres/Redis/Mailpit จริง) 22 `[TESTED]` บน cloud Linux
-- **ยังไม่เคยรัน:** `docker compose up` ด้วย image ที่ build เอง (บน cloud build ไม่ได้: Docker Hub 429 + corepack ไม่เชื่อ CA ของ proxy) · CI บน GitHub
-- **Repo:** `xzozero5/watchtower` public, Apache-2.0, เป็นกลาง `[CONFIRMED 2026-10-31]`
-- **Credential ที่มีแล้ว:** ไม่มี ทุก integration เป็น mock mode
-- **เงิน:** Max plan วัดเป็นดอลลาร์ไม่ได้ · token ของ sub-agent ดู daily log
+- **Phase:** 0 รอเจ้าของตรวจ + tag · 1 อยู่ wave 2 (`docs/plans/phase-1-breakdown.md` §H)
+- **`main` (merge ล่าสุด T-129, 11:19):** main thread รัน `turbo --force` เอง: lint/typecheck ผ่าน · unit ทุก package (ui 609, web 666, api 188, worker 79, domain 63, ai 372, channels 325) · integration db 200, domain 170, api 502, worker 67 · web e2e 134 · full-stack e2e 23 `[TESTED]` บน cloud Linux
+- **Migration บน `main`:** 0000–0014 (`0013_outbound_delivery`, `0014_outbound_hardening`)
+- **Integration จริง:** ยังไม่มี ทุกตัวเป็น mock / fake transport
+- **เงิน:** Max plan (วัดเป็นดอลลาร์ไม่ได้) · token ของ sub-agent ดู daily log
 
-## ต้องทำบนเครื่องเจ้าของก่อน tag `v0.0.1` (`[ASK-HUMAN]`, จาก `po` T-011)
-1. `git pull` → `git config core.hooksPath tools/githooks` → `pnpm install && pnpm lint && pnpm typecheck && pnpm test` เขียว
-2. CI run แรกบน GitHub เขียว (หลัง T-014 merge)
-3. `docker compose up -d --build --wait` ทุก service healthy · `GET /health` ผ่าน Caddy (`:8080`)
-4. `pnpm db:migrate && pnpm db:seed` บน volume ใหม่ — DB เก่าที่เคย apply `0002` รุ่นก่อนอาจ checksum ไม่ตรง → `docker compose down -v` แล้วขึ้นใหม่ (ข้อมูลทดสอบหาย)
-5. `pnpm test:integration` บนเครื่องที่มี Docker
-6. `PW_CHANNEL=msedge pnpm test:e2e` และ `pnpm test:e2e:fullstack` ทั้งแบบ source และ `E2E_STACK=external` กับ image ของ compose (`apps/web/e2e-fullstack/README.md`)
-7. ลองมือ: `/portal` แจ้งเรื่อง → ticket มี org/intent/SLA → assign → ตอบ → ลูกค้าเห็นในหน้า tracking → resolve → อีเมลใน Mailpit `http://localhost:8025`
-8. **ใส่รายการคำต้องห้ามจริงใน `.git/info/forbidden-terms`** (ข้อความสั่งงานมีแต่ placeholder ไม่มีรายการ — session นี้ใช้รายการที่ main thread อนุมานเองไว้ก่อน) แล้วสแกนทั้ง history · ตัดสินเรื่อง commit `47f2ae9` (test มีคำที่บอกใบ้ธุรกิจของ deployment หนึ่ง แก้แล้วใน commit ถัดไป แต่อยู่ในประวัติ `main` ที่ public) — agent ห้ามแก้ history
-9. ไม่บล็อก tag: Google OIDC จริงด้วย OAuth client ของตัวเอง · `docker-compose.proxy.yml` กับ Caddy · digest ของ MinIO `[VERIFY]`
-10. ติ๊กการตัดสินใจของ `po` ด้านล่าง · ให้ feedback UI ใหม่ (T-124)
-11. tag เอง: `git tag v0.0.1` แล้ว `git push origin v0.0.1` (agent ไม่ tag)
+## งานค้างบน branch (push ขึ้น origin แล้ว ทำต่อบนเครื่องได้เลย)
+| งาน | branch | สถานะ | ต้องทำต่อ |
+|---|---|---|---|
+| **T-103b–d LINE** webhook + media + auto-ack ผ่าน policy gate + identity link | `verify/t-103bd` (= `wip/t-103bd` + merge `main` + แก้ conflict + migration → `0015_line_identity` + แก้ revert test ของ 0014) | security: C-1 (P1 ticket ข้าม tenant) และ C-2..C-11 แก้แล้ว, re-review ไม่มี P0/P1 ค้าง · main thread test: lint/typecheck/unit ผ่าน, db integration 200, full-stack 23 · domain/api/worker integration ดู "ปิด session" ท้ายไฟล์ | ถ้าเขียวครบ → merge `verify/t-103bd` เข้า `main` (`--no-ff`) + STATUS/BACKLOG + เพิ่ม **T-103e** (ส่งรหัสผูก LINE ไป email ที่ยืนยันแล้ว = verified, `po` #26) |
+| **T-102b–d Gmail** push receiver (OIDC) + history sync/watch/heartbeat + ส่ง in-thread | `wip/t-102bd` | security รอบ 1: P1-1 (mock กลืน reply) แก้แล้ว, P2-1 scope เหลือ `gmail.readonly`+`gmail.send` · re-review พบ **N-1 P1** (compose default `NODE_ENV=development` ทำให้ mock ยังกลืน reply ได้) → agent แก้เป็น opt-in `GMAIL_MOCK_ENABLED` + boot guard + ห้ามสลับ live→mock (`6f606ab`, ดู "ปิด session") · **ยังไม่ผ่าน security re-review และ main thread ยังไม่ได้รัน test** | 1) security re-review N-1..N-3 2) merge `main` หลัง T-103 (เลข migration ชน: Gmail `0015_gmail_account_state` → `0016`) 3) suite เต็ม 4) main thread แก้ PRD R-2.4 ให้ scope = readonly + send |
+| **T-107a–c KB** schema/versions + chunker + audited embedder (mock) + hybrid search + API | `wip/t-107ac` | security รอบ 1: P2-1 + P3 แก้แล้ว (`80e301e` สะอาด, test ผ่านตาม agent) · re-review พบ **P2-A** ผู้เขียนเคลียร์ break-glass review เองได้, **P2-B** approver คนเดียวขยายผู้อ่านบทความ published ได้ทันที, P3-C..F · **`2bcac4a` เป็น `wip:` ครึ่งทาง build ไม่ผ่าน ห้าม merge** | ทำต่อจาก `2bcac4a` (หรือย้อน `80e301e`): P2-A, P2-B, P3-C (version ใหม่ของบทความ published ต้องผ่าน in_review — main thread ตัดสิน `[ASSUMED]`), P3-D trigger, P3-E, P3-F (`actorOf` + `HEAD_ONLY_PERMISSIONS`) · migration `0013_kb` เป็นเลขชั่วคราว · แล้ว security re-review |
+
+## Follow-up ที่เปิดไว้
+- **T-122f** (P3 จาก re-review T-122e) — **F-1 ต้องปิดก่อนเปิด LINE push จริง:** cancel/deny ของ pinned push ที่ re-queue แล้วต้องติด `outcome_unknown`
+- **T-125** security P3 รวม + test จับเวลาที่ flaky ภายใต้โหลด (break-glass timing, ui timeout) + B-001
+- **T-103e** (เพิ่มลง BACKLOG ตอน merge T-103) · ยังไม่มีโค้ดอ่าน `line_verified_at` ไปใช้ตัดสิน disclosure — ต้องทำใน T-108/T-109
+- T-109 ต้องเปลี่ยน web ไปใช้ cancel endpoint ฝั่ง server + `aiDraftId`
 
 ## PO ตัดสินแทนเจ้าของ (session 2026-11-01 — เจ้าของมอบอำนาจ, รอทบทวน)
 > ทุกข้อ `[ASSUMED]` เลือกทางที่ย้อนกลับง่าย · `po` ห้ามตรวจงานที่ตัวเองตัดสิน (N7) · สิ่งที่อยู่ใน "ห้ามทำแทนเจ้าของ" ไม่อยู่ในอำนาจนี้
@@ -61,55 +61,48 @@
 | [ ] 22 | human verification ของ portal (R-9.1 ยกตัวอย่าง Turnstile/hCaptcha) | self-hosted: proof-of-work + honeypot + rate limit หลัง `HumanVerificationProvider` (ADR-007) · ผู้ให้บริการภายนอก = `[ASK-HUMAN]` (ปลายทาง network ใหม่ + ส่ง IP ผู้ใช้ไป vendor) | po อนุมัติปลายทางใหม่ไม่ได้ |
 | [ ] 23 | emergency switch Phase 1 | สองปุ่ม: "จำกัดทุก intent ≤ stage 2" (ไม่ยก 0/1 ขึ้น) และ kill switch "หยุด AI ทั้งหมด" · เปิด/ปิด = confirm + เหตุผล + audit | N3 |
 | [ ] 24 | T-011 Phase 0 | ยังไม่ปิดจนกว่า CI (T-014) เขียว · เจ้าของตรวจตาม checklist แล้วค่อย tag | DoD |
+| [ ] 26 | LINE link แล้วถือว่า "ยืนยันตัวตน" ไหม (T-103d) | LINE Login จาก portal session ที่ login แล้ว → verified · code ที่ staff เห็นแล้วบอกลูกค้า → ผูกได้แต่ **unverified** (disclosure policy §6.6 ยังบังคับ) · code ที่ส่งไป email ที่ยืนยันแล้วเท่านั้น (R-2.11c) → verified · เก็บสถานะ LINE แยกจาก `contact.verified_at` · staff ยืนยันเองเป็น action แยก lead+ พร้อมเหตุผล+audit (อนาคต) | staff ถูก social engineering ทางโทรศัพท์ได้ · ทางที่ verified ต้องพิสูจน์ว่าคุมทั้ง email และ LINE · ย้อนกลับง่าย |
+| [ ] 27 | KB publish ต้องแยกหน้าที่ไหม (T-107, ISO 27001 A.5.3/A.8.32) | ต้องผ่าน `in_review` เสมอ · ผู้อนุมัติต้องไม่ใช่ผู้เขียน version นั้น · break-glass เฉพาะ `head` ต้องมีเหตุผล + audit แยก + ธงรีวิวย้อนหลัง · AI draft ต้องมีคนอนุมัติที่ไม่ใช่ผู้สั่ง AI ใช้ break-glass ไม่ได้ · deprecate ไม่ต้องรอคนที่สอง | ตรง PRD R-4.1/R-4.4 · seed มีผู้อนุมัติ 4 คน · เป็นกฎใน domain ย้อนกลับง่าย |
 | [ ] 25 | T-011 Phase 1 scope | T-122 ingest + `packages/domain`, T-123 scaffolding, AC-4 → T-108e KB-author ขั้นต่ำ, เลื่อน Discord bot / Web Push / digest / crawler / bulk ไปหลัง T-113, worktree ≤ 3, Phase 1 ปิดที่ "done pending pilot" | credit จำกัด ทำของมีค่าก่อน |
 
 ## การตัดสินใจของเจ้าของที่มีผลอยู่
 - ชื่อ Watchtower · stack ADR-001 · Docker local ก่อน GCP ภายหลัง · feature set PRD v0.1 · repo public เป็นกลาง · SSO domain จาก env · secret infra ใน env / credential integration เข้ารหัสใน DB (ADR-004) · โลโก้ `docs/brand/` · default autonomy stage 2 · ภาษา (โค้ด/commit อังกฤษ, เอกสารไทย) — 2026-10-31
-- 2026-11-01: ทำงานอัตโนมัติจนจบ Phase 1 (หยุดที่ T-115) · มอบอำนาจตัดสินใจให้ `po` ยกเว้นรายการ "ห้ามทำแทน" · งานขนานใน worktree แล้ว main thread ตรวจซ้ำ merge ทีละงาน · UI ต้องไม่ "ดู AI" — ศึกษา 21st.dev
+- 2026-11-01: ทำงานอัตโนมัติจนจบ Phase 1 (หยุดที่ T-115) · มอบอำนาจตัดสินใจให้ `po` ยกเว้นรายการ "ห้ามทำแทน" · งานขนานใน worktree แล้ว main thread ตรวจซ้ำ merge ทีละงาน · UI: ไม่ "ดู AI" (21st.dev แรงบันดาลใจ) → เป็น AI-driven workspace ไม่ใช่ mailbox → มนขึ้น น่ารักขึ้น ลด text ใช้สีและสัญลักษณ์ → แยก status กับ tag ให้ชัด · **11:35 สั่ง pause ไปทำต่อบน local**
 
-## ทำเสร็จใน session นี้ (2026-11-01)
-| งาน | ผล | ไฟล์หลัก |
-|---|---|---|
-| Env | cloud: dockerd เอง, compose infra, Chromium ติดตั้งแล้ว, hook + forbidden terms ทดสอบแล้ว | `docs/STATUS.md` 00:35 |
-| T-005 | ticket core ครบ + แก้ B1–B4, duplicates 72h, CRUD tests | `apps/api/src/{tickets,sla,team-queues,orgs,realtime}` |
-| T-013 | follow-up review T-005, outbox ADR-006, `org_tier`, prefix ตั้งได้ | migration `0003`, `packages/db/src/outbox.ts` |
-| T-008 | `pnpm db:seed` idempotent, วันหยุดไทยเป็นข้อมูลตัวอย่าง `[VERIFY]` | `packages/db/src/seed/`, `examples/{calendars,sla}` |
-| T-101 | UI spec + คำตัดสิน `po` §17 | `docs/06-UI-SPEC.md` |
-| T-006 / T-120 | workspace three-pane, login, realtime, PWA / a11y + keyboard + session cache | `apps/web` |
-| T-124 | UI ใหม่ตาม 21st.dev (แรงบันดาลใจ) | `docs/design/ui-refresh-2026-11.md`, `packages/ui`, `apps/web` |
-| T-007 | portal: PoW self-hosted (ADR-007), tracking link, อีเมลผ่าน outbox, หน้า portal | `apps/api/src/portal`, `apps/web/src/app/portal`, migration `0004` |
-| T-010 | security review → แก้ C-1…C-16, ADR-005/006/007 Accepted | migration `0005`, `docs/09-SECURITY.md` |
-| T-009 | full-stack e2e AC-1 + magic link + RBAC | `apps/web/e2e-fullstack`, `tools/e2e-stack` |
-| T-011 | `po` review Phase 0 + scope Phase 1 | `docs/BACKLOG.md`, `docs/plans/phase-1-breakdown.md` |
+## ต้องทำบนเครื่องเจ้าของก่อน tag `v0.0.1` (`[ASK-HUMAN]`)
+1. `git fetch origin && git checkout main && git pull` → `git config core.hooksPath tools/githooks` → `pnpm install && pnpm lint && pnpm typecheck && pnpm test`
+2. `docker compose up -d --build --wait` ทุก service healthy · `GET /health` ผ่าน Caddy (`:8080`) — บน cloud build image ไม่ได้ ยังไม่เคยรันจริง
+3. `pnpm db:migrate && pnpm db:seed` บน volume ใหม่ (DB เก่าอาจ checksum ไม่ตรง → `docker compose down -v`)
+4. `pnpm test:integration` · `pnpm test:e2e` · `pnpm test:e2e:fullstack` (Windows: `PW_CHANNEL=msedge`)
+5. ลองมือ: `/portal` แจ้งเรื่อง → ticket → assign → ตอบ → ลูกค้าเห็นในหน้า tracking → resolve → อีเมลใน Mailpit `http://localhost:8025`
+6. **รายการคำต้องห้ามจริงใน `.git/info/forbidden-terms`** (ข้อความสั่งงานมีแต่ placeholder) แล้วสแกน history · ตัดสินเรื่อง commit `47f2ae9` — agent ห้ามแก้ history
+7. ติ๊กการตัดสินใจของ `po` (#1–27) · feedback UI T-129
+8. tag เอง: `git tag v0.0.1 && git push origin v0.0.1`
 
-## ค้าง / ติดอะไร
-- **T-014 CI** (`qa-engineer`, worktree `wip/t-014`) + ขั้น assign ใน full-stack e2e — กำลังทำ · push ครั้งแรกจะสั่ง CI บน GitHub จริง
-- **T-123a scaffolding** (`backend-dev`, `wip/t-123a`) — กำลังทำ · ต่อด้วย T-123b (i18n แยก namespace)
-- T-012 `/handoff` ปิด Phase 0 + `CHANGELOG.md` 0.0.1 (ไม่ tag)
-- งาน Phase 1 ตาม waves ใน `docs/BACKLOG.md` · **หยุดที่ T-115** (credential จริง + ทีมจริง)
-- bug B-001 (P3) portal tracking ไม่ refetch เมื่อ fragment เปลี่ยน → T-125
+## ทำต่อบน local — ขั้นตอนแนะนำ
+1. `git fetch origin` แล้วดู branch `verify/t-103bd`, `wip/t-102bd`, `wip/t-107ac` (worktree ของ cloud ไม่ตามไป มีแต่ branch)
+2. env: `TURBO_TELEMETRY_DISABLED=1 NEXT_TELEMETRY_DISABLED=1` · ตรวจด้วย `turbo run … --force` เสมอ (dist ของ `shared`/`domain` ที่ cache ไว้ทำให้ผลหลอกได้) · integration ใช้ `--concurrency=1`
+3. ลำดับ: merge T-103 → Gmail (re-review + renumber) → KB (P2-A/P2-B ให้จบ + re-review) → W3: **T-108** investigator/drafter + KB-author ขั้นต่ำ, T-109 AI sidebar จริง, T-104 Discord webhook, T-105 notifications, T-110 CSAT, T-111 shifts, T-119, T-121, T-116c, T-123b, T-118 → W4: T-113 QA → T-114 security → T-125 → **หยุดที่ T-115** (`.env.example` + คู่มือ credential, `/handoff`)
+4. ทุก merge: `git checkout -b verify/<task> main && git merge --no-ff wip/<task>` → renumber migration ถ้าชน (แก้ test ที่อ้างชื่อ migration ด้วย, ใช้ `migrationsAfter`) → suite เต็ม → `git checkout main && git merge --no-ff verify/<task>` → STATUS + BACKLOG + daily log → push
 
 ## รอเจ้าของ (`[ASK-HUMAN]`)
-- [ ] รายการตรวจก่อน tag ข้างบน (ข้อ 1–11)
+- [ ] รายการตรวจก่อน tag ข้างบน
 - [ ] รายการคำต้องห้ามจริง + เรื่อง commit `47f2ae9`
-- [ ] feedback UI ใหม่ (T-124)
-- [ ] ผู้ให้บริการ human verification แบบ hosted (Turnstile/hCaptcha) ถ้าต้องการ — ปลายทาง network ใหม่ (ADR-007)
-- [ ] Web Push / KB crawl แบบ live — ปลายทาง network ใหม่
-- [ ] credential จริงทุกตัว (T-115) — `.env.example` + คู่มือจะเตรียมให้ตอนจบ Phase 1
+- [ ] integration จริงทุกตัว (T-115) และการทดสอบ live ครั้งแรก: Gmail (service account + domain-wide delegation, scope readonly + send, `format=raw` ใต้ readonly `[VERIFY]`, JWKS ของ push `[VERIFY]`), LINE (pricing `[VERIFY]`, อายุ retry key ~24 ชม. `[VERIFY]`), AI provider, embedding provider (ตอนนี้ mock เท่านั้น — ตั้งเป็นอย่างอื่นแล้ว boot ไม่ขึ้นโดยตั้งใจ)
+- [ ] hosted CAPTCHA / Web Push / KB crawl live — ปลายทาง network ใหม่
 - [ ] ยก autonomy ของ intent ใด ≥ 3 — ห้าม agent ทำ
 
-## ขั้นต่อไป (เรียงลำดับ)
-1. ตรวจซ้ำ + merge T-014 (CI) และ T-123a → T-123b → T-012 (CHANGELOG 0.0.1, ไม่ tag)
-2. Phase 1 W1: T-122a ADR + T-122b `packages/domain` ∥ T-106a→d (AI core, PII redaction ก่อน) ∥ T-102a/T-103a (adapter pure + fake) ∥ T-116a, T-117 — worktree ≤ 3
-3. W2–W4 ตาม `docs/BACKLOG.md` → T-113 → T-114 → T-125 → **หยุดที่ T-115**
-
 ## ยังไม่ยืนยัน (ห้ามเขียนเป็นข้อเท็จจริง)
-- Google OIDC จริง (ทดสอบกับ fake OIDC) `[UNVERIFIED 60%]` · permission matrix `[ASSUMED]`
-- วันหยุดไทย 2026–2027 ใน `examples/calendars/` `[VERIFY]` (วันตามจันทรคติ/ชดเชย `[UNVERIFIED]`)
-- ตัวเลข SLA ตัวอย่าง, rate limit portal, PoW 18 bit บนมือถือ `[ASSUMED]`
-- CSP เว็บยัง `unsafe-inline` + `connect-src` แบบ build-time → T-125
-- Caddy override + digest MinIO `[VERIFY]` · LINE pricing `[VERIFY]` ก่อนปิด T-103 · Pub/Sub emulator รองรับ push `[VERIFY]`
-- `docs/brand/watchtower-logo.svg` เป็นแบบย่อของ PNG — UI ใช้ PNG
+- `docker compose up` ด้วย image ที่ build เอง · Google OIDC จริง `[UNVERIFIED 60%]` · permission matrix `[ASSUMED]`
+- live transport ของ Gmail/LINE ไม่เคยคุยกับปลายทางจริง (ทดสอบด้วย scripted fetch เท่านั้น)
+- อายุ retry key LINE 20 ชม. `[ASSUMED]` · heartbeat Gmail 120 นาทีทำการ, full sync 7 วัน/500 ฉบับ `[ASSUMED]` · ขนาด chunk/similarity floor ของ KB `[ASSUMED]` · Thai trigram ทดสอบบน collation `en_US.utf8` เท่านั้น `[UNVERIFIED]`
+- วันหยุดไทย 2026–2027 `[VERIFY]` · CSP ยัง `unsafe-inline` → T-125 · Caddy override + digest MinIO `[VERIFY]`
 
 ## วันตรวจซ้ำ
 - LINE pricing/feature: ก่อนปิด T-103 · Google managed MCP: ก่อน T-203 · วันหยุดราชการไทยปีถัดไป: ธันวาคม 2026
+
+## ปิด session (cloud, 2026-11-01)
+- หยุด agent และ test ทั้งหมดแล้ว ไม่มีงานค้างใน container · worktree ของ cloud ไม่ตามไป — ทุกอย่างอยู่ใน branch ที่ push แล้ว
+- `verify/t-103bd`: integration db 200 ผ่าน (หลังแก้ revert test), domain 187 ผ่าน · **api/worker integration ถูกหยุดกลางทาง ยังไม่มีผล** → รันใหม่บน local ก่อน merge (`pnpm exec turbo run test:integration --force --concurrency=1`)
+- `wip/t-102bd` @ `6f606ab`: agent รายงานว่าแก้ N-1..N-3 และ merge `main` (ก่อน T-103) แล้ว · agent ถูกหยุดระหว่างรัน gate เต็ม — **ยังไม่มีผล test ที่เชื่อได้ และยังไม่ผ่าน security re-review**
+- `wip/t-107ac` @ `2bcac4a` (`wip:` build ไม่ผ่าน) · จุดสะอาดล่าสุด `80e301e`

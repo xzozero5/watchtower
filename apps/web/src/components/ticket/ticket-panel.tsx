@@ -1,7 +1,16 @@
 'use client';
 
-import { Avatar, cn, Skeleton, Tabs, TabsContent, TabsList, TabsTrigger } from '@watchtower/ui';
-import { Bot } from 'lucide-react';
+import {
+  Avatar,
+  cn,
+  Skeleton,
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+  Tooltip,
+} from '@watchtower/ui';
+import { FileSearch, type LucideIcon, SlidersHorizontal, UserRound } from 'lucide-react';
 import type { ReactNode } from 'react';
 
 import { EvidencePanel } from '@/components/ai/evidence-panel';
@@ -14,6 +23,36 @@ import { ChannelIcon } from './channel-icon';
 import { Row, TicketDetails } from './ticket-details';
 
 export type PanelTab = 'evidence' | 'details' | 'customer';
+
+/**
+ * A tab of the panel: an icon that names itself in a tooltip and in `aria-label`; the selected tab
+ * also shows its word, so the row stays small and still says where you are.
+ */
+function PanelTabTrigger({
+  value,
+  icon: Icon,
+  label,
+}: {
+  value: PanelTab;
+  icon: LucideIcon;
+  label: string;
+}) {
+  return (
+    <Tooltip content={label}>
+      <TabsTrigger
+        value={value}
+        aria-label={label}
+        // The tooltip trigger takes over `data-state`, so the selected look follows `aria-selected`.
+        className="group aria-selected:bg-primary-subtle aria-selected:text-foreground"
+      >
+        <Icon aria-hidden className="size-4 shrink-0" />
+        <span aria-hidden className="hidden group-aria-selected:inline">
+          {label}
+        </span>
+      </TabsTrigger>
+    </Tooltip>
+  );
+}
 
 function CustomerTab({ ticket }: { ticket: TicketItem }) {
   const { t } = useI18n();
@@ -46,7 +85,6 @@ function CustomerTab({ ticket }: { ticket: TicketItem }) {
           </span>
         </Row>
       </dl>
-      <p className="px-4 text-xs text-muted-foreground">{t('customer.more')}</p>
     </div>
   );
 }
@@ -96,7 +134,7 @@ export function TicketPanel({
     >
       <div
         className={cn(
-          'flex h-[48px] shrink-0 items-center gap-1 border-b border-border px-2',
+          'flex h-[48px] shrink-0 items-center gap-1 border-b border-border/60 px-2',
           collapsed && 'lg:h-auto lg:flex-col lg:border-b-0 lg:px-1 lg:py-2',
         )}
       >
@@ -105,13 +143,10 @@ export function TicketPanel({
           className={cn('min-w-0 flex-1', collapsed && 'lg:hidden')}
         >
           {showAi ? (
-            <TabsTrigger value="evidence" className="gap-1.5">
-              <Bot aria-hidden className="size-3.5 text-ai-accent" />
-              {t('panel.evidence')}
-            </TabsTrigger>
+            <PanelTabTrigger value="evidence" icon={FileSearch} label={t('panel.evidence')} />
           ) : null}
-          <TabsTrigger value="details">{t('panel.details')}</TabsTrigger>
-          <TabsTrigger value="customer">{t('panel.customer')}</TabsTrigger>
+          <PanelTabTrigger value="details" icon={SlidersHorizontal} label={t('panel.details')} />
+          <PanelTabTrigger value="customer" icon={UserRound} label={t('panel.customer')} />
         </TabsList>
         {actions}
       </div>

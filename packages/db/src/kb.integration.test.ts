@@ -6,7 +6,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { migrateDown, migrateUp } from './migrator.js';
 import { createTestDatabase, migrationsAfter, type TestDatabase } from './testing.js';
 
-// Migration 0013 (T-107a): knowledge base articles, immutable versions, chunks with pgvector
+// Migration 0015 (T-107a): knowledge base articles, immutable versions, chunks with pgvector
 // embeddings and the embedding-index registry.
 const adminUrl =
   process.env.TEST_DATABASE_URL ?? 'postgres://watchtower:watchtower@localhost:5432/watchtower';
@@ -89,7 +89,7 @@ async function embeddingIndex(dimensions: number, model = `m-${String(dimensions
   return rows[0]?.id ?? '';
 }
 
-describe('0013_kb', () => {
+describe('0015_kb', () => {
   it('creates the tables, with the app role able to write articles and chunks', async () => {
     const { articleId, versionId } = await article(app, { slug: 'app-writes' });
     await app.query(`UPDATE kb_article SET status = 'in_review' WHERE id = $1`, [articleId]);
@@ -349,10 +349,10 @@ describe('0013_kb', () => {
   });
 
   it('reverts and applies again', async () => {
-    const later = await migrationsAfter('0013_kb');
+    const later = await migrationsAfter('0015_kb');
     expect(await migrateDown(owner(), { steps: 1 + later.length })).toEqual([
       ...later.toReversed(),
-      '0013_kb',
+      '0015_kb',
     ]);
     const gone = await owner().query(
       `SELECT to_regclass('kb_article') AS a, to_regclass('kb_article_version') AS b,
@@ -361,7 +361,7 @@ describe('0013_kb', () => {
               (SELECT count(*) FROM permissions WHERE key IN ('kb.read.customer', 'kb.publish.break_glass'))::int AS p`,
     );
     expect(gone.rows[0]).toEqual({ a: null, b: null, c: null, d: null, e: null, p: 0 });
-    expect(await migrateUp(owner())).toEqual(['0013_kb', ...later]);
+    expect(await migrateUp(owner())).toEqual(['0015_kb', ...later]);
     const back = await owner().query(`SELECT to_regclass('kb_chunk') AS c`);
     expect(back.rows[0]).toEqual({ c: 'kb_chunk' });
   });

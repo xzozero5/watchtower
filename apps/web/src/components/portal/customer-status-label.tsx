@@ -1,25 +1,17 @@
 import type { CustomerStatus } from '@watchtower/shared';
-import { cn } from '@watchtower/ui';
-import {
-  Archive,
-  CircleCheck,
-  CircleDot,
-  Circle,
-  GitMerge,
-  Hourglass,
-  type LucideIcon,
-} from 'lucide-react';
+import { type ChipIcon, TintChip, type TintId } from '@watchtower/ui';
+import { Archive, CircleCheck, CircleDot, Circle, GitMerge, Hourglass } from 'lucide-react';
 
 import type { MessageKey } from '@/i18n';
 import { useT } from '@/i18n/provider';
 
-const ICONS: Record<CustomerStatus, LucideIcon> = {
-  received: Circle,
-  in_progress: CircleDot,
-  waiting_for_you: Hourglass,
-  resolved: CircleCheck,
-  closed: Archive,
-  merged: GitMerge,
+const LOOK: Record<CustomerStatus, { icon: ChipIcon; tone: TintId }> = {
+  received: { icon: Circle, tone: 'sky' },
+  in_progress: { icon: CircleDot, tone: 'teal' },
+  waiting_for_you: { icon: Hourglass, tone: 'amber' },
+  resolved: { icon: CircleCheck, tone: 'green' },
+  closed: { icon: Archive, tone: 'slate' },
+  merged: { icon: GitMerge, tone: 'slate' },
 };
 
 /** Copy keys are camelCase (docs/06-UI-SPEC.md section 16); the api's values are snake_case. */
@@ -37,8 +29,8 @@ export function customerStatusKey(status: CustomerStatus): MessageKey {
 }
 
 /**
- * A ticket status in the words a customer sees (UI spec section 10): icon + words, never colour
- * alone. Used by the portal and by the client view of the workspace. Pass `mergedInto` to read
+ * A ticket status in the words a customer sees (UI spec section 10): a soft tinted chip with icon
+ * and words, never colour alone. Used by the portal and by the client view of the workspace. Pass `mergedInto` to read
  * "Merged into OPS-12".
  */
 export function CustomerStatusLabel({
@@ -51,18 +43,14 @@ export function CustomerStatusLabel({
   className?: string;
 }) {
   const t = useT();
-  const Icon = ICONS[status];
+  const { icon, tone } = LOOK[status];
   const text =
     status === 'merged' && mergedInto
       ? t('portal.status.mergedInto', { key: mergedInto })
       : t(KEYS[status]);
   return (
-    <span
-      data-customer-status={status}
-      className={cn('inline-flex items-center gap-1 text-xs font-medium', className)}
-    >
-      <Icon aria-hidden className="size-3.5 shrink-0" />
-      <span>{text}</span>
-    </span>
+    <TintChip tone={tone} icon={icon} data-customer-status={status} className={className}>
+      {text}
+    </TintChip>
   );
 }

@@ -1,4 +1,4 @@
-// Knowledge base articles, versions, chunks and embeddings (T-107a, migration 0013). The SQL file
+// Knowledge base articles, versions, chunks and embeddings (T-107a, migration 0015). The SQL file
 // is the source of truth (triggers, privileges, composite foreign keys and CHECKs live there); keep
 // both in step by hand and let the integration tests catch drift.
 import { sql } from 'drizzle-orm';

@@ -29,12 +29,12 @@ export function StatusDot({
   );
 }
 
-/** A 20px pill: 12px text, medium weight. A neutral outline by default. */
+/** A 20px pill: 12px text, medium weight, a soft neutral ground (no outline). */
 export function Pill({ className, ...props }: HTMLAttributes<HTMLSpanElement>) {
   return (
     <span
       className={cn(
-        'inline-flex h-5 shrink-0 items-center gap-1.5 rounded-full border border-border bg-transparent px-2 text-xs font-medium whitespace-nowrap text-foreground',
+        'inline-flex h-5 shrink-0 items-center gap-1.5 rounded-full bg-surface-muted px-2 text-xs font-medium whitespace-nowrap text-foreground',
         className,
       )}
       {...props}
@@ -42,7 +42,7 @@ export function Pill({ className, ...props }: HTMLAttributes<HTMLSpanElement>) {
   );
 }
 
-/** Ticket status: a neutral pill with a coloured dot and the status in words. */
+/** Ticket status: a soft pill with a coloured dot and the status in words. */
 export function StatusPill({
   tone,
   label,

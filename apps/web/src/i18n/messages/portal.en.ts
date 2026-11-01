@@ -26,24 +26,19 @@ export const portalEn = {
   verifyFailed: "Verification couldn't load. Check your connection or try another browser.",
   form: {
     title: 'Contact support',
-    intro:
-      "Tell us what is happening and we'll email you a link to follow your request. Fields marked optional can stay empty.",
     errorSummary: 'Please check the form',
     errorSummaryHint: 'These fields need your attention:',
     name: 'Your name',
     email: 'Email address',
     emailHint: 'We send the confirmation and the tracking link here.',
     organization: 'Company or organization',
-    organizationHint: 'We match your company from your email address when we can.',
     category: 'What is it about?',
     categoryChoose: 'Choose a topic',
     urgency: 'How urgent is it?',
     subject: 'Short summary',
-    subjectHint: 'One line. If you leave it empty we use the start of your description.',
     description: 'What happened?',
-    descriptionHint: 'What you did, what you expected and what you saw instead.',
     requestIds: 'Affected session or request IDs',
-    requestIdsHint: 'One per line, for example req_8f3a2c1d. They help us find the problem faster.',
+    requestIdsHint: 'One per line, for example req_8f3a2c1d.',
     sending: 'Sending…',
     waiting: 'Almost ready…',
     categories: {
@@ -63,9 +58,9 @@ export const portalEn = {
       question: 'A question',
     },
     urgencyHints: {
-      everythingDown: 'Nothing works for you or your users.',
-      somethingBroken: 'Part of the service fails or behaves wrongly.',
-      question: 'Nothing is broken. You need information or advice.',
+      everythingDown: 'Nothing works at all.',
+      somethingBroken: 'Part of it fails.',
+      question: 'Nothing is broken.',
     },
     errors: {
       nameRequired: 'Enter your name.',

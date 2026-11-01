@@ -22,6 +22,13 @@ const PHASE_1 = [
   'ai.run.read',
 ] as const;
 
+// Permissions added by later migrations; they go when the steps are reverted too.
+const ADDED_LATER = [
+  'ticket.cancel.any',
+  'kb.read.customer',
+  'kb.publish.break_glass',
+] as const;
+
 let testDb: TestDatabase;
 const owner = (): Pool => testDb.owner.pool;
 
@@ -47,9 +54,6 @@ async function phase1Rows(): Promise<{ keys: string[]; grants: string[] }> {
     grants: grants.rows.map((row) => `${row.role}:${row.permission}`).toSorted(),
   };
 }
-
-/** Permission strings introduced by a migration after 0006; reverting past 0006 removes them as well. */
-const ADDED_AFTER_0006 = ['kb.read.customer', 'kb.publish.break_glass'];
 
 describe('0006 Phase 1 permissions', () => {
   it('seeds the permission strings with the descriptions of the shared vocabulary', async () => {
@@ -88,9 +92,8 @@ describe('0006 Phase 1 permissions', () => {
     const remaining = await owner().query<{ n: number }>(
       'SELECT count(*)::int AS n FROM permissions',
     );
-    // Permissions that later migrations add are gone too (0013 adds kb.read.customer and kb.publish.break_glass).
     expect(remaining.rows[0]?.n).toBe(
-      Object.keys(PERMISSIONS).length - PHASE_1.length - ADDED_AFTER_0006.length,
+      Object.keys(PERMISSIONS).length - PHASE_1.length - ADDED_LATER.length,
     );
 
     expect(await migrateUp(owner())).toEqual(['0006_phase1_permissions', ...later]);

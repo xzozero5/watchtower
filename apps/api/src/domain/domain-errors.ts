@@ -23,6 +23,7 @@ const HTTP_ERRORS: Readonly<Record<DomainErrorCode, (message: string) => ApiHttp
   ticket_not_open: ticketNotOpen,
   bad_request: badRequest,
   policy_denied: forbidden,
+  forbidden,
 };
 
 /** A `DomainError` becomes its HTTP error; anything else passes through untouched. */
