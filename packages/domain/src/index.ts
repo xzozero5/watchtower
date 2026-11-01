@@ -27,6 +27,40 @@ import { workflowAllows } from './workflow.js';
 
 export { recordAuditInTx, type AuditEntry, type AuditWriter } from './audit.js';
 export {
+  DEFAULT_AI_BUDGET_ALERT_PERCENT,
+  DEFAULT_AI_DAILY_COST_CAP_USD,
+  DEFAULT_AI_DAILY_TOKEN_CAP,
+  createBudgetMonitor,
+  evaluateBudget,
+  readAiUsage,
+  resolveAiCaps,
+  utcDayStart,
+  type AiCaps,
+  type AiUsage,
+  type BudgetDatabase,
+  type BudgetDimension,
+  type BudgetEventNotice,
+  type BudgetFinding,
+  type BudgetLevel,
+  type BudgetMonitor,
+  type BudgetMonitorOptions,
+  type BudgetStatus,
+} from './ai/budget.js';
+export {
+  createAiGuard,
+  type AiGuardDecision,
+  type AiGuardOptions,
+  type AiGuardRequest,
+} from './ai/guard.js';
+export { upsertAiInsight, type AiInsightInput, type InsightWriter } from './ai/insight.js';
+export {
+  createAiRunRecorder,
+  type AiRunDatabase,
+  type AiRunInput,
+  type AiRunReceipt,
+  type AiRunRecorder,
+} from './ai/recorder.js';
+export {
   assertAssignableStaff,
   nextRoundRobin,
   peekRoundRobin,

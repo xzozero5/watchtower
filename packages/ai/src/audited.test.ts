@@ -47,7 +47,7 @@ function setup(options: { settings?: AiSettings; sinkFails?: boolean } = {}) {
     prompt: TEST_PROMPT,
     system: session.redact('You classify.'),
     messages: [{ role: 'user', content: session.redact('mail me at a@b.com or 0812345678') }],
-    redaction: session.report(),
+    redaction: session,
     intent: 'password_reset',
     ticketId: 'T-1',
   };
@@ -222,7 +222,7 @@ describe('createAuditedLlm: one audit row per provider call, on every path', () 
   it.each([
     ['prompt version 0', { prompt: { id: 'classifier', version: 0, hash: 'a'.repeat(64) } }],
     ['prompt id with spaces', { prompt: { id: 'Bad Id', version: 1, hash: 'a'.repeat(64) } }],
-    ['negative redaction total', { redaction: { total: -1, byKind: {} } }],
+    ['negative redaction total', { redaction: { report: () => ({ total: -1, byKind: {} }) } }],
   ])('%s: fails before the provider is called', async (_name, patch) => {
     const t = counted();
     await expect(t.llm.generate({ ...t.call, ...patch })).rejects.toBeInstanceOf(AuditInputError);
@@ -467,5 +467,47 @@ describe('createAuditedLlm: input hash is an HMAC with the server key', () => {
   it('settings without a long enough key are rejected', () => {
     expect(() => aiSettingsSchema.parse({ ...mockSettings(), inputHashKey: 'short' })).toThrow();
     expect(() => aiSettingsSchema.parse({ ...mockSettings(), inputHashKey: undefined })).toThrow();
+  });
+});
+
+describe('what the record takes from the caller (SR106-R9)', () => {
+  it('reads the redaction counts from the session when the call is made', async () => {
+    const { llm, call } = setup();
+    const session = createRedactor().session({ scope: 'ticket:r9' });
+    const system = session.redact('You classify.');
+    const content = session.redact('a@b.com and c@d.com');
+    const { run } = await llm.generate({
+      ...call,
+      system,
+      messages: [{ role: 'user', content }],
+      redaction: session,
+    });
+    expect(run.redaction).toEqual({ total: 2, byKind: { EMAIL: 2 } });
+  });
+
+  it('refuses a source that throws, before the provider is called', async () => {
+    const { llm, call } = setup();
+    await expect(
+      llm.generate({
+        ...call,
+        redaction: {
+          report: () => {
+            throw new Error('boom');
+          },
+        },
+      }),
+    ).rejects.toBeInstanceOf(AuditInputError);
+  });
+
+  it('returns the id the sink gave the row, or null when it gives none', async () => {
+    const make = (receipt: { id: string } | undefined) =>
+      createAuditedLlm({
+        settings: { load: () => Promise.resolve(mockSettings()) },
+        providers: { mock: new MockLlmProvider() },
+        sink: { record: () => Promise.resolve(receipt) },
+      });
+    const { call } = setup();
+    expect((await make({ id: 'row-1' }).generate(call)).runId).toBe('row-1');
+    expect((await make(undefined).generate(call)).runId).toBeNull();
   });
 });

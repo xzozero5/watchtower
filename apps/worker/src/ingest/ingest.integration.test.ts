@@ -114,13 +114,13 @@ beforeAll(async () => {
       ingest: {
         store,
         // Resolved per event: 'none' behaves like production today (no classifier registered).
-        classifier: {
+        classifier: () => ({
           redact: (text) => hook.redact(text),
           classify: (input, signal) =>
             behaviour.classifier === 'none'
               ? Promise.reject(new Error('no classifier configured in this case'))
               : hook.classify(input, signal),
-        },
+        }),
       },
     },
   });

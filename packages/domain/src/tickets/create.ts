@@ -1,6 +1,9 @@
 import { schema } from '@watchtower/db';
 import {
+  AI_JOBS,
+  AI_OUTBOX_JOB_OPTIONS,
   AUDIT_ACTIONS,
+  QUEUE_NAMES,
   TICKET_EVENT_TYPES,
   type ChannelType,
   type TicketPriority,
@@ -11,6 +14,7 @@ import { nextRoundRobin, assertAssignableStaff } from '../assignment.js';
 import { recordAuditInTx } from '../audit.js';
 import { findOrCreateContactByEmailIn } from '../contacts.js';
 import { badRequest, conflict } from '../errors.js';
+import { enqueueJob } from '../outbox.js';
 import { resolveIntent } from '../intents.js';
 import type { MessageRow, TicketRow } from '../rows.js';
 import { slaForNewTicket } from '../sla.js';
@@ -213,6 +217,17 @@ export async function createTicket(
     targetId: ticket.id,
     after: ticketSnapshot(ticket),
     metadata: { channel, messageId: message.id },
+  });
+
+  // The AI brief (classify + summarize) is made after the commit, by the worker (T-106e). The job
+  // is in the transactional outbox, so it exists if and only if the ticket does; the job id makes
+  // it one job per ticket.
+  await enqueueJob(tx, ctx.config, {
+    queue: QUEUE_NAMES.ai,
+    name: AI_JOBS.summarize,
+    jobId: `ai-summarize-${ticket.id}`,
+    payload: { ticketId: ticket.id },
+    options: AI_OUTBOX_JOB_OPTIONS,
   });
 
   fx.emit(ticketEvent(ctx, 'ticket.created', ticket, []));

@@ -16,11 +16,13 @@ describe('maintenance processor', () => {
     const result = await createMaintenanceProcessor(database)({
       name: MAINTENANCE_JOBS.ensurePartitions,
     } as Job);
-    expect(result).toEqual({ created: 4 });
-    expect(query).toHaveBeenCalledTimes(2);
+    expect(result).toEqual({ created: 6 });
+    expect(query).toHaveBeenCalledTimes(3);
     const calls = query.mock.calls as [string, unknown[]][];
     expect(calls[0]?.[0]).toContain("ensure_monthly_partitions('audit_log'");
     expect(calls[1]?.[0]).toContain("ensure_monthly_partitions('ticket_event'");
+    // The AI audit trail (T-106d) is partitioned like the audit log.
+    expect(calls[2]?.[0]).toContain("ensure_monthly_partitions('ai_run'");
     for (const [sql, params] of calls) {
       expect(sql).toContain('true');
       expect(params).toEqual([PARTITION_MONTHS_AHEAD]);
