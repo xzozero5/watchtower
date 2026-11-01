@@ -62,6 +62,7 @@
 | [ ] 23 | emergency switch Phase 1 | สองปุ่ม: "จำกัดทุก intent ≤ stage 2" (ไม่ยก 0/1 ขึ้น) และ kill switch "หยุด AI ทั้งหมด" · เปิด/ปิด = confirm + เหตุผล + audit | N3 |
 | [ ] 24 | T-011 Phase 0 | ยังไม่ปิดจนกว่า CI (T-014) เขียว · เจ้าของตรวจตาม checklist แล้วค่อย tag | DoD |
 | [ ] 26 | LINE link แล้วถือว่า "ยืนยันตัวตน" ไหม (T-103d) | LINE Login จาก portal session ที่ login แล้ว → verified · code ที่ staff เห็นแล้วบอกลูกค้า → ผูกได้แต่ **unverified** (disclosure policy §6.6 ยังบังคับ) · code ที่ส่งไป email ที่ยืนยันแล้วเท่านั้น (R-2.11c) → verified · เก็บสถานะ LINE แยกจาก `contact.verified_at` · staff ยืนยันเองเป็น action แยก lead+ พร้อมเหตุผล+audit (อนาคต) | staff ถูก social engineering ทางโทรศัพท์ได้ · ทางที่ verified ต้องพิสูจน์ว่าคุมทั้ง email และ LINE · ย้อนกลับง่าย |
+| [ ] 27 | KB publish ต้องแยกหน้าที่ไหม (T-107, ISO 27001 A.5.3/A.8.32) | ต้องผ่าน `in_review` เสมอ · ผู้อนุมัติต้องไม่ใช่ผู้เขียน version นั้น · break-glass เฉพาะ `head` ต้องมีเหตุผล + audit แยก + ธงรีวิวย้อนหลัง · AI draft ต้องมีคนอนุมัติที่ไม่ใช่ผู้สั่ง AI ใช้ break-glass ไม่ได้ · deprecate ไม่ต้องรอคนที่สอง | ตรง PRD R-4.1/R-4.4 · seed มีผู้อนุมัติ 4 คน · เป็นกฎใน domain ย้อนกลับง่าย |
 | [ ] 25 | T-011 Phase 1 scope | T-122 ingest + `packages/domain`, T-123 scaffolding, AC-4 → T-108e KB-author ขั้นต่ำ, เลื่อน Discord bot / Web Push / digest / crawler / bulk ไปหลัง T-113, worktree ≤ 3, Phase 1 ปิดที่ "done pending pilot" | credit จำกัด ทำของมีค่าก่อน |
 
 ## การตัดสินใจของเจ้าของที่มีผลอยู่

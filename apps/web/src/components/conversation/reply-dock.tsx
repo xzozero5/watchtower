@@ -1,6 +1,6 @@
 'use client';
 
-import { Button, Kbd } from '@watchtower/ui';
+import { Button, Tooltip } from '@watchtower/ui';
 import { Lock, Send } from 'lucide-react';
 import { type Ref, useImperativeHandle, useRef, useState } from 'react';
 
@@ -96,30 +96,38 @@ export function ReplyDock({
     <div
       role="group"
       aria-label={t('composer.label')}
-      className="flex shrink-0 gap-2 border-t border-border p-3"
+      className="flex shrink-0 gap-2 border-t border-border/60 p-3"
     >
       {canReply ? (
-        <Button
-          onClick={() => {
-            setRequest({ mode: 'reply' });
-          }}
-        >
-          <Send aria-hidden className="size-4" />
-          {t('ai.dock.reply')}
-          {singleKeyShortcuts ? <Kbd>C</Kbd> : null}
-        </Button>
+        <Tooltip content={t('ai.dock.reply')} shortcut={singleKeyShortcuts ? ['C'] : []}>
+          <Button
+            className="rounded-full"
+            aria-label={t('ai.dock.reply')}
+            aria-keyshortcuts={singleKeyShortcuts ? 'C' : undefined}
+            onClick={() => {
+              setRequest({ mode: 'reply' });
+            }}
+          >
+            <Send aria-hidden className="size-4" />
+            {t('ai.dock.replyShort')}
+          </Button>
+        </Tooltip>
       ) : null}
       {canNote ? (
-        <Button
-          variant="ghost"
-          onClick={() => {
-            setRequest({ mode: 'note' });
-          }}
-        >
-          <Lock aria-hidden className="size-4" />
-          {t('ai.dock.note')}
-          {singleKeyShortcuts ? <Kbd>N</Kbd> : null}
-        </Button>
+        <Tooltip content={t('ai.dock.note')} shortcut={singleKeyShortcuts ? ['N'] : []}>
+          <Button
+            variant="ghost"
+            className="rounded-full"
+            aria-label={t('ai.dock.note')}
+            aria-keyshortcuts={singleKeyShortcuts ? 'N' : undefined}
+            onClick={() => {
+              setRequest({ mode: 'note' });
+            }}
+          >
+            <Lock aria-hidden className="size-4" />
+            {t('ai.dock.noteShort')}
+          </Button>
+        </Tooltip>
       ) : null}
     </div>
   );

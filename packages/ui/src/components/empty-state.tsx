@@ -1,10 +1,14 @@
 import type { HTMLAttributes, ReactNode } from 'react';
 
 import { cn } from '../lib/cn.js';
+import type { TintId } from '../tokens/colors.js';
+import { TINT_CLASSES } from './tint.js';
 
 export interface EmptyStateProps extends Omit<HTMLAttributes<HTMLDivElement>, 'title'> {
-  /** One small line icon (16 to 20px). Never a mascot or a sparkle. */
+  /** One lucide line icon, drawn large in a soft tinted circle. Never a mascot or a sparkle. */
   icon?: ReactNode;
+  /** The hue of the circle. A calm slate unless the state has a mood (teal for "all caught up"). */
+  tone?: TintId;
   /** One human sentence. */
   title: string;
   description?: string;
@@ -14,9 +18,10 @@ export interface EmptyStateProps extends Omit<HTMLAttributes<HTMLDivElement>, 't
   hint?: ReactNode;
 }
 
-/** Shown when a pane or list has nothing in it yet. Says what is missing and what to do next. */
+/** Shown when a pane or list has nothing in it yet: a friendly icon, one line, at most one action. */
 export function EmptyState({
   icon,
+  tone = 'slate',
   title,
   description,
   action,
@@ -35,7 +40,12 @@ export function EmptyState({
       {icon ? (
         <div
           aria-hidden
-          className="mb-1 flex size-9 items-center justify-center rounded-full bg-surface-muted text-muted-foreground [&_svg]:size-[18px]"
+          data-tone={tone}
+          className={cn(
+            'mb-1.5 flex size-14 items-center justify-center rounded-full motion-safe:animate-pop-in [&_svg]:size-6 [&_svg]:stroke-[1.75]',
+            TINT_CLASSES[tone].chip,
+            TINT_CLASSES[tone].icon,
+          )}
         >
           {icon}
         </div>

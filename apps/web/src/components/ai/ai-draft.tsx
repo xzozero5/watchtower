@@ -1,8 +1,8 @@
 'use client';
 
 import type { AiDraft, AiRejectReason } from '@watchtower/shared';
-import { Button, cn, Kbd, toast } from '@watchtower/ui';
-import { PenLine, TriangleAlert } from 'lucide-react';
+import { Button, cn, IconButton, TintChip, toast, Tooltip } from '@watchtower/ui';
+import { Check, Pencil, PenLine, RotateCcw, TriangleAlert, Undo2, X } from 'lucide-react';
 import { Fragment, useEffect, useId, useRef, useState } from 'react';
 
 import { useI18n } from '@/i18n/provider';
@@ -15,6 +15,7 @@ import {
   UNDO_WINDOW_MS,
 } from '@/lib/ai/send-with-undo';
 import { useShortcut } from '@/lib/keyboard';
+import { usePreferences } from '@/lib/preferences';
 import { isDetail, type TicketItem } from '@/lib/tickets/model';
 import { useTicketMutations } from '@/lib/tickets/queries';
 
@@ -98,6 +99,7 @@ export function AiDraftCard({
   onApproveOpenChange: (open: boolean) => void;
 }) {
   const { t } = useI18n();
+  const { singleKeyShortcuts } = usePreferences();
   const headingId = useId();
   const { reply } = useTicketMutations(ticket.key);
   const actions = useAiDraftActions(ticket.key);
@@ -195,26 +197,27 @@ export function AiDraftCard({
     <section
       aria-labelledby={headingId}
       data-testid="ai-draft"
-      className="mx-4 mt-2 flex flex-col gap-2 rounded-lg border border-ai-accent/50 bg-surface px-3 py-2.5"
+      className="mx-4 mt-2.5 flex shrink-0 flex-col gap-2.5 rounded-lg bg-surface px-5 py-4 ring-1 ring-border/70 ring-inset"
     >
       <header className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
-        <PenLine aria-hidden className="size-3.5 text-ai-accent" />
+        <span
+          aria-hidden
+          className="inline-flex size-6 items-center justify-center rounded-full bg-tint-teal-bg text-tint-teal-icon"
+        >
+          <PenLine className="size-3.5" />
+        </span>
         <h4 id={headingId} className="text-sm font-medium text-foreground">
           {t('ai.draft.label')}
         </h4>
         {changed !== null ? (
-          <span className="rounded-full border border-border px-1.5">
+          <TintChip tone="slate" icon={Pencil}>
             {t('ai.draft.edited', { percent: changed })}
-          </span>
+          </TintChip>
         ) : null}
         {draft.uncitedClaims > 0 ? (
-          <span
-            title={t('ai.brief.uncitedTip')}
-            className="inline-flex items-center gap-1 rounded-full border border-border-strong px-1.5 font-medium text-foreground"
-          >
-            <TriangleAlert aria-hidden className="size-3.5" />
+          <TintChip tone="amber" icon={TriangleAlert} title={t('ai.brief.uncitedTip')}>
             {t('ai.brief.uncited', { count: draft.uncitedClaims })}
-          </span>
+          </TintChip>
         ) : null}
       </header>
 
@@ -248,7 +251,7 @@ export function AiDraftCard({
         aria-label={t('ai.draft.actions')}
         className={cn(
           'flex flex-wrap items-center gap-2',
-          'max-md:sticky max-md:bottom-0 max-md:-mx-3 max-md:-mb-2.5 max-md:border-t max-md:border-border max-md:bg-surface max-md:px-3 max-md:py-2',
+          'max-md:sticky max-md:bottom-0 max-md:-mx-5 max-md:-mb-4 max-md:rounded-b-lg max-md:border-t max-md:border-border/60 max-md:bg-surface max-md:px-5 max-md:py-2.5',
         )}
       >
         {sending ? (
@@ -256,64 +259,74 @@ export function AiDraftCard({
             <p role="status" className="text-sm text-muted-foreground">
               <Countdown until={scheduled.until} />
             </p>
-            <Button className="max-md:min-h-[44px]" onClick={undo}>
-              {t('ai.draft.undo')}
-              <Kbd>U</Kbd>
-            </Button>
+            <Tooltip content={t('ai.draft.undo')} shortcut={singleKeyShortcuts ? ['U'] : []}>
+              <Button
+                className="rounded-full max-md:min-h-[44px]"
+                aria-keyshortcuts={singleKeyShortcuts ? 'U' : undefined}
+                onClick={undo}
+              >
+                <Undo2 aria-hidden className="size-4" />
+                {t('ai.draft.undo')}
+              </Button>
+            </Tooltip>
           </>
         ) : editing ? (
           <>
             <Button
               variant="primary"
-              className="max-md:min-h-[44px]"
+              className="rounded-full max-md:min-h-[44px]"
               onClick={() => {
                 setEditing(false);
               }}
             >
+              <Check aria-hidden className="size-4" />
               {t('ai.draft.done')}
             </Button>
-            <Button
+            <IconButton
+              variant="secondary"
               className="max-md:min-h-[44px]"
+              label={t('ai.draft.revert')}
+              icon={<RotateCcw aria-hidden className="size-4" />}
               onClick={() => {
                 setEdited(null);
                 setEditing(false);
               }}
-            >
-              {t('ai.draft.revert')}
-            </Button>
+            />
           </>
         ) : (
           <>
-            <Button
-              variant="primary"
-              aria-keyshortcuts="A"
-              className="max-md:min-h-[44px] max-md:min-w-[44px] max-md:flex-1"
-              disabled={busy}
-              onClick={startApprove}
-            >
-              {t('ai.draft.approve')}
-              <Kbd className="max-md:hidden border-transparent bg-primary-foreground/20 text-primary-foreground">
-                A
-              </Kbd>
-            </Button>
-            <Button
+            <Tooltip content={t('ai.draft.approve')} shortcut={singleKeyShortcuts ? ['A'] : []}>
+              <Button
+                variant="primary"
+                aria-keyshortcuts="A"
+                className="rounded-full px-4 max-md:min-h-[44px] max-md:min-w-[44px] max-md:flex-1"
+                disabled={busy}
+                onClick={startApprove}
+              >
+                <Check aria-hidden className="size-4" />
+                {t('ai.draft.approve')}
+              </Button>
+            </Tooltip>
+            <IconButton
+              variant="secondary"
+              label={t('ai.draft.edit')}
+              shortcut={singleKeyShortcuts ? ['E'] : []}
               aria-keyshortcuts="E"
               className="max-md:min-h-[44px] max-md:min-w-[44px] max-md:flex-1"
+              icon={<Pencil aria-hidden className="size-4" />}
               disabled={busy}
               onClick={startEdit}
-            >
-              {t('ai.draft.edit')}
-              <Kbd className="max-md:hidden">E</Kbd>
-            </Button>
-            <Button
+            />
+            <IconButton
+              variant="secondary"
+              label={t('ai.draft.reject')}
+              shortcut={singleKeyShortcuts ? ['R'] : []}
               aria-keyshortcuts="R"
               className="max-md:min-h-[44px] max-md:min-w-[44px] max-md:flex-1"
+              icon={<X aria-hidden className="size-4" />}
               disabled={busy}
               onClick={startReject}
-            >
-              {t('ai.draft.reject')}
-              <Kbd className="max-md:hidden">R</Kbd>
-            </Button>
+            />
           </>
         )}
       </div>

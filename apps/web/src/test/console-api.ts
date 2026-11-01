@@ -12,6 +12,7 @@ import {
   PEOPLE,
   POLICY,
   QUEUE,
+  QUEUE_BILLING,
   STATS,
   USERS,
 } from './console-fixtures';
@@ -52,7 +53,7 @@ export function consoleApi({
     'GET /v1/tickets': { json: { items: tickets, nextCursor: null } },
     'GET /v1/autonomy': { json: autonomy },
     'GET /v1/users': { json: { users: USERS } },
-    'GET /v1/queues': { json: { queues: [QUEUE] } },
+    'GET /v1/queues': { json: { queues: [QUEUE, QUEUE_BILLING] } },
     'GET /v1/org-tiers': {
       json: {
         tiers: [

@@ -1,36 +1,30 @@
-import { cn } from '@watchtower/ui';
-import {
-  AlarmClockOff,
-  CircleCheck,
-  CirclePause,
-  Clock,
-  ClockAlert,
-  type LucideIcon,
-} from 'lucide-react';
+import { type ChipIcon, cn, TintChip, type TintId } from '@watchtower/ui';
+import { CircleAlert, CircleCheck, CirclePause, Clock, Hourglass } from 'lucide-react';
 
 import { useI18n } from '@/i18n/provider';
 import { formatDateTime, formatDuration } from '@/lib/format';
 import type { SlaState, SlaView } from '@/lib/tickets/sla';
 
-const ICONS: Record<SlaState, LucideIcon> = {
-  onTrack: Clock,
-  atRisk: ClockAlert,
-  breached: AlarmClockOff,
-  paused: CirclePause,
-  met: CircleCheck,
-  none: Clock,
+const LOOK: Record<SlaState, { icon: ChipIcon; tone: TintId }> = {
+  onTrack: { icon: Clock, tone: 'green' },
+  atRisk: { icon: Hourglass, tone: 'amber' },
+  breached: { icon: CircleAlert, tone: 'red' },
+  paused: { icon: CirclePause, tone: 'slate' },
+  met: { icon: CircleCheck, tone: 'green' },
+  none: { icon: Clock, tone: 'slate' },
 };
 
 /**
- * Where a ticket stands against its SLA (docs/06-UI-SPEC.md section 4.4): an icon, words and a
- * border style per state, so no state depends on colour. The full sentence is in the tooltip and
+ * Where a ticket stands against its SLA (docs/06-UI-SPEC.md section 4.4): an outlined (never filled)
+ * chip with an icon and words (green on track or met, amber at risk, red breached, slate paused), so no state
+ * depends on colour. The full sentence is in the tooltip and
  * the accessible name. It shows the next due target, first response until answered, then resolution.
  */
 export function SlaBadge({ sla, className }: { sla: SlaView; className?: string }) {
   const { t, locale } = useI18n();
   if (sla.state === 'none') return null;
 
-  const Icon = ICONS[sla.state];
+  const { icon, tone } = LOOK[sla.state];
   const target = sla.target === null ? '' : t(`sla.${sla.target}`);
   const time = formatDuration(sla.ms, locale);
   const text =
@@ -50,25 +44,18 @@ export function SlaBadge({ sla, className }: { sla: SlaView; className?: string 
   const full = due ? `${text} — ${due}` : text;
 
   return (
-    <span
+    <TintChip
+      tone={tone}
+      icon={icon}
+      outline
+      strong={sla.state === 'breached'}
       data-sla={sla.state}
       title={full}
       aria-label={full}
       role="img"
-      className={cn(
-        // Colour only where it means something: a breach is red, everything else is greyscale.
-        // The state is also carried by the icon and the words, and by the weight and outline.
-        'tabular inline-flex items-center gap-1 rounded-full border px-1.5 py-px text-xs whitespace-nowrap',
-        sla.state === 'breached' && 'border-danger font-semibold text-danger',
-        sla.state === 'atRisk' && 'border-border-strong font-semibold text-foreground',
-        sla.state === 'onTrack' && 'border-transparent text-muted-foreground',
-        sla.state === 'paused' && 'border-transparent text-muted-foreground',
-        sla.state === 'met' && 'border-transparent font-medium text-success',
-        className,
-      )}
+      className={cn('tabular', className)}
     >
-      <Icon aria-hidden className="size-3.5 shrink-0" />
       <span aria-hidden>{text}</span>
-    </span>
+    </TintChip>
   );
 }

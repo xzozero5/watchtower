@@ -1,7 +1,8 @@
 'use client';
 
 import { PORTAL_CATEGORIES, PORTAL_URGENCIES, type PortalLocale } from '@watchtower/shared';
-import { Alert, Button, Input, Select, Textarea } from '@watchtower/ui';
+import { Alert, Button, cn, Input, Select, TINT_CLASSES, Textarea } from '@watchtower/ui';
+import { CircleHelp, Flame, Send, Wrench } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { type SyntheticEvent, useEffect, useId, useRef, useState } from 'react';
 
@@ -58,6 +59,29 @@ const URGENCY_KEYS: Record<
     hint: 'portal.form.urgencyHints.question',
   },
 };
+
+/** Each urgency has an icon in its hue (red only for "everything is down"); the words stay beside it. */
+const URGENCY_LOOK = {
+  everything_down: { icon: Flame, tone: 'red' },
+  something_broken: { icon: Wrench, tone: 'amber' },
+  question: { icon: CircleHelp, tone: 'sky' },
+} as const;
+
+function UrgencyIcon({ urgency }: { urgency: (typeof PORTAL_URGENCIES)[number] }) {
+  const { icon: Icon, tone } = URGENCY_LOOK[urgency];
+  return (
+    <span
+      aria-hidden
+      className={cn(
+        'inline-flex size-8 shrink-0 items-center justify-center rounded-full',
+        TINT_CLASSES[tone].chip,
+        TINT_CLASSES[tone].icon,
+      )}
+    >
+      <Icon className="size-4" />
+    </span>
+  );
+}
 
 const FIELD_LABELS: Record<FieldName, MessageKey> = {
   name: 'portal.form.name',
@@ -206,7 +230,6 @@ export function SubmitForm() {
     <>
       <div>
         <h1 className="text-2xl font-semibold">{t('portal.form.title')}</h1>
-        <p className="mt-1 text-muted-foreground">{t('portal.form.intro')}</p>
       </div>
 
       <form noValidate onSubmit={(event) => void onSubmit(event)} className="flex flex-col gap-5">
@@ -275,7 +298,6 @@ export function SubmitForm() {
           id={id('organization')}
           label={t('portal.form.organization')}
           optionalLabel={t('portal.optional')}
-          hint={t('portal.form.organizationHint')}
           error={errorText('organization')}
         >
           <Input
@@ -323,7 +345,7 @@ export function SubmitForm() {
               <label
                 key={urgency}
                 htmlFor={radioId}
-                className="flex cursor-pointer items-start gap-2 rounded-md border border-border-strong bg-surface px-3 py-2"
+                className="flex cursor-pointer items-center gap-3 rounded-xl bg-surface px-3 py-2.5 ring-1 ring-border-strong transition-colors duration-(--wt-motion-duration-fast) ease-out ring-inset has-[:checked]:bg-primary-subtle has-[:checked]:ring-2 has-[:checked]:ring-ring"
               >
                 <input
                   id={radioId}
@@ -334,8 +356,9 @@ export function SubmitForm() {
                   onChange={() => {
                     if (isPortalUrgency(urgency)) set('urgency', urgency);
                   }}
-                  className="mt-1 size-4 accent-primary"
+                  className="size-4 accent-primary"
                 />
+                <UrgencyIcon urgency={urgency} />
                 <span className="flex flex-col">
                   <span className="text-sm font-medium">{t(URGENCY_KEYS[urgency].label)}</span>
                   <span className="text-sm text-muted-foreground">
@@ -351,7 +374,6 @@ export function SubmitForm() {
           id={id('subject')}
           label={t('portal.form.subject')}
           optionalLabel={t('portal.optional')}
-          hint={t('portal.form.subjectHint')}
           error={errorText('subject')}
         >
           <Input
@@ -367,7 +389,6 @@ export function SubmitForm() {
         <FormField
           id={id('description')}
           label={t('portal.form.description')}
-          hint={t('portal.form.descriptionHint')}
           error={errorText('description')}
         >
           <Textarea
@@ -429,10 +450,11 @@ export function SubmitForm() {
         <Button
           type="submit"
           variant="primary"
-          className="w-full sm:w-auto sm:self-start"
+          className="w-full rounded-full sm:w-auto sm:self-start"
           disabled={submitting || blocked}
           aria-busy={submitting}
         >
+          <Send aria-hidden className="size-4" />
           {buttonLabel}
         </Button>
       </form>

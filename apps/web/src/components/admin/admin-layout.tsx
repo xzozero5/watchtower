@@ -1,7 +1,26 @@
 'use client';
 
-import { type BreadcrumbItem, cn, Combobox, Input } from '@watchtower/ui';
-import { ChevronDown, Search } from 'lucide-react';
+import {
+  type BreadcrumbItem,
+  cn,
+  Combobox,
+  Input,
+  TINT_CLASSES,
+  type TintId,
+} from '@watchtower/ui';
+import {
+  Bot,
+  Building2,
+  ChevronDown,
+  ListOrdered,
+  type LucideIcon,
+  Plug,
+  ScrollText,
+  Search,
+  Tag,
+  Timer,
+  Users,
+} from 'lucide-react';
 import { usePathname, useRouter } from 'next/navigation';
 import { type ReactNode, type Ref } from 'react';
 
@@ -11,6 +30,18 @@ import { useT } from '@/i18n/provider';
 import { type AdminSection, adminSectionsFor } from '@/lib/admin/sections';
 import { useSession } from '@/lib/auth/session';
 import { useShortcut } from '@/lib/keyboard';
+
+/** Each admin section has its own icon and hue, so the list reads at a glance. */
+const SECTION_LOOK: Record<string, { icon: LucideIcon; tone: TintId }> = {
+  users: { icon: Users, tone: 'blue' },
+  orgs: { icon: Building2, tone: 'indigo' },
+  sla: { icon: Timer, tone: 'amber' },
+  intents: { icon: Tag, tone: 'pink' },
+  queues: { icon: ListOrdered, tone: 'sky' },
+  ai: { icon: Bot, tone: 'teal' },
+  audit: { icon: ScrollText, tone: 'slate' },
+  integrations: { icon: Plug, tone: 'violet' },
+};
 
 function isCurrent(section: AdminSection, pathname: string): boolean {
   return pathname === section.href || pathname.startsWith(`${section.href}/`);
@@ -30,7 +61,7 @@ export function AdminLayout({ children }: { children: ReactNode }) {
     <div className="flex min-h-0 flex-1">
       <nav
         aria-label={t('admin.sectionsLabel')}
-        className="hidden w-[220px] shrink-0 border-r border-border px-2 py-3 md:block"
+        className="hidden w-[220px] shrink-0 border-r border-border/60 px-2 py-3 md:block"
       >
         <ul className="flex flex-col gap-0.5">
           {sections.map((section) => {
@@ -41,12 +72,23 @@ export function AdminLayout({ children }: { children: ReactNode }) {
                   href={section.href}
                   aria-current={current ? 'page' : undefined}
                   className={cn(
-                    'flex h-control items-center rounded-md px-2 text-sm focus-visible:outline-2 focus-visible:outline-offset-0 focus-visible:outline-ring',
+                    'flex h-control items-center gap-2 rounded-xl px-2.5 text-sm focus-visible:outline-2 focus-visible:outline-offset-0 focus-visible:outline-ring',
                     current
                       ? 'bg-primary-subtle font-medium text-foreground'
                       : 'text-muted-foreground hover:bg-surface-muted hover:text-foreground',
                   )}
                 >
+                  {(() => {
+                    const look = SECTION_LOOK[section.id];
+                    if (!look) return null;
+                    const Icon = look.icon;
+                    return (
+                      <Icon
+                        aria-hidden
+                        className={cn('size-4 shrink-0', TINT_CLASSES[look.tone].icon)}
+                      />
+                    );
+                  })()}
                   {t(section.labelKey)}
                 </AppLink>
               </li>

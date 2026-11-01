@@ -1,6 +1,6 @@
 'use client';
 
-import { cn, Kbd, Tooltip } from '@watchtower/ui';
+import { cn, Kbd, TINT_CLASSES, type TintId, Tooltip } from '@watchtower/ui';
 import {
   Bell,
   CalendarCheck,
@@ -27,7 +27,7 @@ import { useSession } from '@/lib/auth/session';
 import { QUEUE_LISTBOX_ID } from '@/components/queue/queue-row';
 
 const ITEM =
-  'flex h-control w-full items-center gap-2.5 rounded-md px-2 text-sm transition-colors duration-(--wt-motion-duration-fast) ease-out focus-visible:outline-2 focus-visible:outline-offset-0 focus-visible:outline-ring';
+  'flex h-control w-full items-center gap-2.5 rounded-xl px-2 text-sm transition-colors duration-(--wt-motion-duration-fast) ease-out focus-visible:outline-2 focus-visible:outline-offset-0 focus-visible:outline-ring';
 
 /** One icon (plus its words when the rail is expanded) with a tooltip while it is narrow. */
 function RailButton({
@@ -44,7 +44,10 @@ function RailButton({
   hint,
   shortLabel,
   href,
+  tone,
 }: {
+  /** The hue of the icon: each destination has its own, so the rail reads at a glance. */
+  tone?: TintId;
   /** A destination on another route: rendered as a link. */
   href?: string;
   icon: LucideIcon;
@@ -73,7 +76,7 @@ function RailButton({
   );
   const content = (
     <>
-      <Icon aria-hidden className="size-4 shrink-0" />
+      <Icon aria-hidden className={cn('size-4 shrink-0', tone && TINT_CLASSES[tone].icon)} />
       <span
         aria-hidden={shortLabel ? true : undefined}
         className={cn('truncate', !expanded && 'sr-only', 'max-md:sr-only')}
@@ -164,7 +167,7 @@ export function NavRail({
   return (
     <header
       className={cn(
-        'flex h-[48px] shrink-0 items-center gap-1 border-b border-border bg-background px-3',
+        'flex h-[48px] shrink-0 items-center gap-1 border-b border-border/60 bg-background px-3',
         'md:h-auto md:flex-col md:items-stretch md:gap-0.5 md:border-r md:border-b-0 md:px-2 md:py-3',
         expanded ? 'md:w-[220px]' : 'md:w-[56px]',
       )}
@@ -176,7 +179,7 @@ export function NavRail({
           alt=""
           width={28}
           height={28}
-          className="size-7 shrink-0 rounded-md"
+          className="size-7 shrink-0 rounded-xl"
           priority
         />
         <p className={cn('text-base font-semibold', expanded ? 'md:block' : 'md:sr-only')}>
@@ -187,6 +190,7 @@ export function NavRail({
       <nav aria-label={t('rail.label')} className="hidden flex-col gap-0.5 md:flex">
         <RailButton
           icon={Inbox}
+          tone="teal"
           label={t('rail.queue')}
           expanded={expanded}
           current={destination === 'queue'}
@@ -206,6 +210,7 @@ export function NavRail({
           <>
             <RailButton
               icon={ClipboardList}
+              tone="amber"
               label={t('rail.brief')}
               expanded={expanded}
               unavailable
@@ -213,6 +218,7 @@ export function NavRail({
             />
             <RailButton
               icon={CalendarCheck}
+              tone="indigo"
               label={t('rail.handoff')}
               expanded={expanded}
               unavailable
@@ -220,6 +226,7 @@ export function NavRail({
             />
             <RailButton
               icon={Bell}
+              tone="pink"
               label={t('rail.notifications')}
               expanded={expanded}
               unavailable
@@ -237,6 +244,7 @@ export function NavRail({
         {showHome ? (
           <RailButton
             icon={Gauge}
+            tone="sky"
             label={t('rail.home')}
             expanded={expanded}
             current={destination === 'home'}
@@ -247,6 +255,7 @@ export function NavRail({
         {showAdmin ? (
           <RailButton
             icon={Settings2}
+            tone="violet"
             label={t('rail.admin')}
             expanded={expanded}
             current={destination === 'admin'}

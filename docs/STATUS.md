@@ -38,6 +38,12 @@ snapshot สั้นสำหรับ cold start อยู่ที่ `HANDOF
 
 ## Log
 
+## 2026-11-01 11:19 (Asia/Bangkok) — frontend-dev + po + main thread — T-129 friendly polish ปิด (คำขอเจ้าของ)
+- ทำอะไร: radius ใหญ่ขึ้นทั้งแอป, tint 12 ตระกูล light/dark, `IconButton`/`TintChip`/`IntentChip`/`ConfidenceDots`/`SectionHeading`, ปุ่มรองเป็น icon + tooltip (ปุ่มเสี่ยงยังมีคำ), home เป็น tile สี · รอบ 2 ตาม feedback เจ้าของ "status กับ tag รวมกันอ่านงง": status = pill ทึบคอลัมน์ขวา (ซ่อนถ้าซ้ำกับชื่อกลุ่ม แต่มี sr-only), tag/intent = ตัวจางไม่มีพื้น + title ชื่อเต็ม, priority = icon + ตัวอักษร (P1 ยังเป็น pill), SLA = outline · `po` P1 (N5) ตัวเลข confidence กลับมาบนจอ · "Unknown queue" แทน "…" · portal urgency คืน hint สั้น `[ASSUMED]` main thread
+- ไฟล์ที่แตะ: `packages/ui/**`, `apps/web/**`, `docs/design/friendly-polish.md`, `packages/ui/vitest.config.ts` (testTimeout 20 s)
+- test: main thread รันบน `verify/t-129b` (`--force`): lint/typecheck ผ่าน · unit ทุก package (ui 609, web 666) · integration db 200, domain 170, worker 67, api 501/502 → ตัวที่ตกคือ timing test ของ break-glass ภายใต้โหลด (ไม่เกี่ยวกับ T-129 ที่ไม่แตะ api) รัน api integration ซ้ำทั้งชุดผ่าน 502/502 · web e2e 134 · full-stack 23 `[TESTED]`
+- ไม่ยืนยัน: ความ "น่ารัก" และสีรอเจ้าของดูภาพ `[ASSUMED]` · timing test break-glass flaky ภายใต้โหลด → T-125
+
 ## 2026-11-01 10:53 (Asia/Bangkok) — backend-dev + security-reviewer + main thread — T-122e outbound hardening ปิด
 - ทำอะไร: migration `0014_outbound_hardening` (guard ผู้เขียนข้อความ N-1, state machine N-3, `body_pattern` ของ template, permission `ticket.cancel.any`), sweeper มีเพดาน attempts + อายุ retry key (N-2), pinned push ที่ fail → `outcome_unknown` (N-5), ลบ replyToken จาก event ที่ fail (N-6), cancel endpoint เช็ค org scope + permission (N-4)
 - test: main thread รัน `--force` บน `verify/t-122e`: lint/typecheck ผ่าน · unit ทุก package ผ่าน (api 188, worker 79, domain 63, web 665 …) · integration db 200, domain 170, api 502, worker 67 · full-stack e2e 23 `[TESTED]`

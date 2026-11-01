@@ -1,6 +1,6 @@
 'use client';
 
-import { Button, cn, SEVERITY_IDS, SeverityBadge, Tooltip } from '@watchtower/ui';
+import { cn, IconButton, SEVERITY_IDS, SeverityBadge } from '@watchtower/ui';
 import {
   PanelLeftClose,
   PanelLeftOpen,
@@ -114,7 +114,7 @@ function Pane({
 function SeverityKey() {
   const t = useT();
   return (
-    <details className="border-t border-border px-3 py-2 text-xs">
+    <details className="border-t border-border/60 px-3 py-2 text-xs">
       <summary className="cursor-pointer font-medium text-muted-foreground hover:text-foreground">
         {t('severity.keyTitle')}
       </summary>
@@ -354,30 +354,24 @@ export function Workspace() {
   const onlyOnTab = (pane: PaneId) => (tab === pane ? undefined : 'max-md:hidden');
 
   const queueToggle = (
-    <Tooltip
-      content={t(queueCollapsed ? 'workspace.expandQueue' : 'workspace.collapseQueue')}
+    <IconButton
+      id="pane-queue-toggle"
+      label={t(queueCollapsed ? 'workspace.expandQueue' : 'workspace.collapseQueue')}
       shortcut={['[']}
-    >
-      <Button
-        id="pane-queue-toggle"
-        variant="ghost"
-        size="icon"
-        aria-expanded={!queueCollapsed}
-        aria-controls="queue-pane-body"
-        aria-keyshortcuts="["
-        aria-label={t(queueCollapsed ? 'workspace.expandQueue' : 'workspace.collapseQueue')}
-        className="hidden lg:inline-flex"
-        onClick={() => {
-          setQueueCollapsed((collapsed) => !collapsed);
-        }}
-      >
-        {queueCollapsed ? (
+      aria-expanded={!queueCollapsed}
+      aria-controls="queue-pane-body"
+      className="hidden lg:inline-flex"
+      icon={
+        queueCollapsed ? (
           <PanelLeftOpen aria-hidden className="size-4" />
         ) : (
           <PanelLeftClose aria-hidden className="size-4" />
-        )}
-      </Button>
-    </Tooltip>
+        )
+      }
+      onClick={() => {
+        setQueueCollapsed((collapsed) => !collapsed);
+      }}
+    />
   );
 
   return (
@@ -386,7 +380,7 @@ export function Workspace() {
         role="tablist"
         aria-label={t('workspace.tabsLabel')}
         onKeyDown={onTabKeyDown}
-        className="flex shrink-0 border-b border-border bg-background md:hidden"
+        className="flex shrink-0 gap-1 border-b border-border/60 bg-background p-1.5 md:hidden"
       >
         {panes.map((pane) => (
           <button
@@ -401,10 +395,10 @@ export function Workspace() {
               setTab(pane);
             }}
             className={cn(
-              'min-h-[44px] flex-1 border-b-2 px-2 text-sm transition-colors duration-(--wt-motion-duration-fast) ease-out focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring',
+              'min-h-[44px] flex-1 rounded-full px-2 text-sm transition-colors duration-(--wt-motion-duration-fast) ease-out focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring',
               tab === pane
-                ? 'border-primary font-medium text-foreground'
-                : 'border-transparent text-muted-foreground',
+                ? 'bg-primary-subtle font-medium text-foreground'
+                : 'text-muted-foreground',
             )}
           >
             {t(PANE_TITLE_KEY[pane])}
@@ -424,7 +418,7 @@ export function Workspace() {
           scrolls={false}
           collapsed={queueCollapsed}
           rail={queueToggle}
-          className={cn('md:border-r md:border-border', onlyOnTab('queue'))}
+          className={cn('md:border-r md:border-border/60', onlyOnTab('queue'))}
         >
           <div id="queue-pane-body" className="flex min-h-0 flex-1 flex-col">
             <QueuePane
@@ -452,19 +446,18 @@ export function Workspace() {
             onOpenEvidence={showPanel && showAi ? openEvidence : undefined}
             trailing={
               showPanel ? (
-                <Button
+                <IconButton
                   ref={toggleRef}
                   variant="secondary"
+                  label={t('workspace.openAssistant')}
                   aria-expanded={drawerOpen}
                   aria-controls="pane-assistant"
                   className="hidden md:max-lg:inline-flex"
+                  icon={<PanelRight aria-hidden className="size-4" />}
                   onClick={() => {
                     setDrawerOpen((open) => !open);
                   }}
-                >
-                  <PanelRight aria-hidden className="size-4" />
-                  {t('workspace.openAssistant')}
-                </Button>
+                />
               ) : null
             }
           />
@@ -475,7 +468,7 @@ export function Workspace() {
             aria-labelledby="pane-assistant-heading"
             tabIndex={-1}
             className={cn(
-              'flex min-h-0 min-w-0 flex-col bg-background outline-hidden focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring lg:border-l lg:border-border',
+              'flex min-h-0 min-w-0 flex-col bg-background outline-hidden focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring lg:border-l lg:border-border/60',
               drawerOpen
                 ? 'animate-slide-in-right md:max-lg:fixed md:max-lg:inset-y-0 md:max-lg:right-0 md:max-lg:z-30 md:max-lg:w-[min(24rem,90vw)] md:max-lg:border-l md:max-lg:border-border md:max-lg:bg-surface md:max-lg:shadow-overlay'
                 : 'md:max-lg:hidden',
@@ -494,50 +487,38 @@ export function Workspace() {
               collapsed={assistantCollapsed}
               actions={
                 <>
-                  <Button
+                  <IconButton
                     ref={closeRef}
-                    variant="ghost"
-                    size="icon"
-                    aria-label={t('workspace.closeAssistant')}
+                    label={t('workspace.closeAssistant')}
+                    // Focus lands here when the drawer opens: a tooltip would take the first Escape.
+                    noTooltip
                     className="hidden md:max-lg:inline-flex"
+                    icon={<X aria-hidden className="size-4" />}
                     onClick={() => {
                       setDrawerOpen(false);
                     }}
-                  >
-                    <X aria-hidden className="size-4" />
-                  </Button>
-                  <Tooltip
-                    content={t(
+                  />
+                  <IconButton
+                    id="pane-assistant-toggle"
+                    label={t(
                       assistantCollapsed
                         ? 'workspace.expandAssistant'
                         : 'workspace.collapseAssistant',
                     )}
                     shortcut={[']']}
-                    side="left"
-                  >
-                    <Button
-                      id="pane-assistant-toggle"
-                      variant="ghost"
-                      size="icon"
-                      aria-expanded={!assistantCollapsed}
-                      aria-keyshortcuts="]"
-                      aria-label={t(
-                        assistantCollapsed
-                          ? 'workspace.expandAssistant'
-                          : 'workspace.collapseAssistant',
-                      )}
-                      className="hidden lg:inline-flex"
-                      onClick={() => {
-                        setAssistantCollapsed((collapsed) => !collapsed);
-                      }}
-                    >
-                      {assistantCollapsed ? (
+                    aria-expanded={!assistantCollapsed}
+                    className="hidden lg:inline-flex"
+                    icon={
+                      assistantCollapsed ? (
                         <PanelRightOpen aria-hidden className="size-4" />
                       ) : (
                         <PanelRightClose aria-hidden className="size-4" />
-                      )}
-                    </Button>
-                  </Tooltip>
+                      )
+                    }
+                    onClick={() => {
+                      setAssistantCollapsed((collapsed) => !collapsed);
+                    }}
+                  />
                 </>
               }
             />
