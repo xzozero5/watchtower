@@ -3,8 +3,11 @@ import {
   AI_JOBS,
   AI_OUTBOX_JOB_OPTIONS,
   AUDIT_ACTIONS,
+  DISCORD_JOBS,
+  DISCORD_OUTBOX_JOB_OPTIONS,
   QUEUE_NAMES,
   TICKET_EVENT_TYPES,
+  discordNotifyJobId,
   type ChannelType,
   type TicketPriority,
 } from '@watchtower/shared';
@@ -228,6 +231,17 @@ export async function createTicket(
     jobId: `ai-summarize-${ticket.id}`,
     payload: { ticketId: ticket.id },
     options: AI_OUTBOX_JOB_OPTIONS,
+  });
+
+  // A Discord notice (T-104): in the outbox like the job above, so it exists if and only if the ticket
+  // does. The job carries the id only; the worker decides where it goes (the channel map) and what the
+  // notice says, and writes the ledger row that records what happened.
+  await enqueueJob(tx, ctx.config, {
+    queue: QUEUE_NAMES.discord,
+    name: DISCORD_JOBS.notify,
+    jobId: discordNotifyJobId('ticket.created', ticket.id),
+    payload: { event: 'ticket.created', ticketId: ticket.id },
+    options: DISCORD_OUTBOX_JOB_OPTIONS,
   });
 
   fx.emit(ticketEvent(ctx, 'ticket.created', ticket, []));
