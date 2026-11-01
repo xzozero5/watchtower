@@ -53,9 +53,12 @@ describe('triageGroup', () => {
     expect(triageGroup(row('A', { ai: { state: 'none' } }))).toBe('needsYou');
   });
 
-  it('puts classified and investigating tickets under "AI working"', () => {
-    expect(triageGroup(row('A', { ai: { state: 'classified' } }))).toBe('aiWorking');
+  it('puts only tickets the AI is still investigating under "AI working"', () => {
     expect(triageGroup(row('A', { ai: { state: 'investigating' } }))).toBe('aiWorking');
+  });
+
+  it('puts a classified ticket under "Needs you": nothing else works on it until the investigator (T-108)', () => {
+    expect(triageGroup(row('A', { ai: { state: 'classified' } }))).toBe('needsYou');
   });
 
   it('moves an AI-working ticket to "Needs you" when its SLA is at risk or breached', () => {

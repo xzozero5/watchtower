@@ -45,6 +45,38 @@ export class ProviderConfigError extends Error {
   override readonly name = 'ProviderConfigError';
 }
 
+/**
+ * A provider `baseURL` that is not the vendor default must be https and on an explicit allow-list
+ * of hosts (SR106-R10): a request carries the API key and the redacted prompt, so a typo or a
+ * hostile setting must not point it at an arbitrary server. Returns the URL without a trailing
+ * slash. Credentials in the URL and non-default ports are refused.
+ */
+export function assertAllowedBaseUrl(
+  provider: string,
+  value: string,
+  allowedHosts: readonly string[],
+): string {
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    throw new ProviderConfigError(`${provider} adapter: baseURL is not a valid URL`);
+  }
+  if (url.protocol !== 'https:') {
+    throw new ProviderConfigError(`${provider} adapter: baseURL must use https`);
+  }
+  if (url.username !== '' || url.password !== '' || url.port !== '') {
+    throw new ProviderConfigError(
+      `${provider} adapter: baseURL must not hold credentials or a port`,
+    );
+  }
+  const host = url.hostname.toLowerCase();
+  if (!allowedHosts.some((allowed) => allowed.toLowerCase() === host)) {
+    throw new ProviderConfigError(`${provider} adapter: baseURL host is not on the allow-list`);
+  }
+  return url.toString().replace(/\/+$/, '');
+}
+
 export function requireNonEmpty(
   provider: string,
   field: string,

@@ -2,6 +2,8 @@ import { Inject, Injectable } from '@nestjs/common';
 import { orgScopeCondition, schema, type Database } from '@watchtower/db';
 import { ticketRefCondition } from '@watchtower/domain';
 import {
+  type AiState,
+  type TicketAiRow,
   DUPLICATE_SUGGESTION_LIMIT,
   DUPLICATE_WINDOW_HOURS,
   OPEN_STATUSES,
@@ -65,6 +67,9 @@ export interface TicketViewRow {
   readonly assigneeName: string | null;
   readonly queueName: string | null;
   readonly parentNumber: number | null;
+  /** The latest AI result for the ticket (T-106d), null when there is none. */
+  readonly aiState: string | null;
+  readonly aiSummary: string | null;
 }
 
 const parent = alias(schema.ticket, 'parent_ticket');
@@ -80,19 +85,25 @@ function selection() {
     assigneeName: schema.users.name,
     queueName: schema.teamQueue.name,
     parentNumber: parent.number,
+    aiState: schema.aiTicketInsight.state,
+    aiSummary: schema.aiTicketInsight.summary,
   };
 }
 
 function viewQuery<Extra extends Record<string, SQL>>(executor: Executor, extra: Extra) {
-  return executor
-    .select({ ...selection(), ...extra })
-    .from(schema.ticket)
-    .innerJoin(schema.organization, eq(schema.organization.id, schema.ticket.orgId))
-    .leftJoin(schema.contact, eq(schema.contact.id, schema.ticket.requesterContactId))
-    .leftJoin(schema.intent, eq(schema.intent.id, schema.ticket.intentId))
-    .leftJoin(schema.users, eq(schema.users.id, schema.ticket.assigneeId))
-    .leftJoin(schema.teamQueue, eq(schema.teamQueue.id, schema.ticket.queueId))
-    .leftJoin(parent, eq(parent.id, schema.ticket.parentTicketId));
+  return (
+    executor
+      .select({ ...selection(), ...extra })
+      .from(schema.ticket)
+      .innerJoin(schema.organization, eq(schema.organization.id, schema.ticket.orgId))
+      .leftJoin(schema.contact, eq(schema.contact.id, schema.ticket.requesterContactId))
+      .leftJoin(schema.intent, eq(schema.intent.id, schema.ticket.intentId))
+      .leftJoin(schema.users, eq(schema.users.id, schema.ticket.assigneeId))
+      .leftJoin(schema.teamQueue, eq(schema.teamQueue.id, schema.ticket.queueId))
+      .leftJoin(parent, eq(parent.id, schema.ticket.parentTicketId))
+      // One row per ticket (the primary key), so this join never multiplies rows.
+      .leftJoin(schema.aiTicketInsight, eq(schema.aiTicketInsight.ticketId, schema.ticket.id))
+  );
 }
 
 const iso = (date: Date | null): string | null => date?.toISOString() ?? null;
@@ -136,8 +147,19 @@ export function toSummary(row: TicketViewRow, keys: TicketKeys): TicketSummary {
     aiHandled: t.aiHandled,
     reopenCount: t.reopenCount,
     csatScore: t.csatScore,
+    // Staff only: `toClientTicket` has no AI field (AI internals are never shown to customers).
+    ai: toAiRow(row),
     createdAt: t.createdAt.toISOString(),
     updatedAt: t.updatedAt.toISOString(),
+  };
+}
+
+/** `none` when the AI has not made a brief for the ticket (yet); never invented content (N5). */
+function toAiRow(row: TicketViewRow): TicketAiRow {
+  if (row.aiState === null) return { state: 'none' };
+  return {
+    state: row.aiState as AiState,
+    ...(row.aiSummary === null ? {} : { summary: row.aiSummary.slice(0, 200) }),
   };
 }
 

@@ -1,3 +1,4 @@
+import { ProviderError } from '@watchtower/ai';
 import { describe, expect, it } from 'vitest';
 
 import { captureLogs, testConfig } from '../testing/support.js';
@@ -48,6 +49,31 @@ describe('createLogger', () => {
     expect(raw).toContain('[Redacted]');
     expect(raw).toContain('Somchai');
     expect(raw).toContain('text/html');
+  });
+
+  it('never serialises the cause of an error: a provider error keeps the prompt there (SR106-R10)', () => {
+    const { capture, logger } = loggerWithCapture();
+    const cause = Object.assign(
+      new Error('400 {"messages":[{"content":"PROMPT-WITH-[EMAIL_1]"}]}'),
+      {
+        requestBodyValues: { messages: 'SECRET-PROMPT-TEXT' },
+        responseBody: 'SECRET-RESPONSE-TEXT',
+      },
+    );
+    const error = new ProviderError('anthropic', 'APICallError', 400, false, { cause });
+    logger.error({ err: error }, 'call failed');
+    logger.error({ error: new AggregateError([cause], 'agg', { cause }) }, 'again');
+    const raw = capture.raw();
+    for (const secret of ['SECRET-PROMPT-TEXT', 'SECRET-RESPONSE-TEXT', 'PROMPT-WITH']) {
+      expect(raw).not.toContain(secret);
+    }
+    const [first] = capture.lines();
+    expect(first?.err).toMatchObject({
+      type: 'ProviderError',
+      message: 'Provider call failed (anthropic: APICallError 400)',
+      causeTypes: ['Error'],
+    });
+    expect(first?.err).not.toHaveProperty('cause');
   });
 
   it('honours LOG_LEVEL', () => {

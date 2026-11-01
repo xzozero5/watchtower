@@ -110,6 +110,9 @@ export async function startHarness(options: StartOptions = {}): Promise<Harness>
     emailQueue,
     relayOutbox: () =>
       relayOutbox(db.owner, async (row) => {
+        // The AI brief of a new ticket (T-106e) is queued with every ticket; no worker runs here, so
+        // it is marked relayed and dropped. Anything else but email is a test that forgot something.
+        if (row.queue === QUEUE_NAMES.ai) return;
         if (row.queue !== QUEUE_NAMES.email)
           throw new Error(`harness relays only the email queue, not ${row.queue}`);
         // Like the real relay: the row's expiry travels with the job as `notAfter`.

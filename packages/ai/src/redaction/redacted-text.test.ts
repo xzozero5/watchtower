@@ -51,7 +51,7 @@ describe('RedactedText (N4 enforced by the compiler)', () => {
       // @ts-expect-error a plain string is not RedactedText
       system: 'raw text',
       messages: [],
-      redaction: { total: 0, byKind: {} },
+      redaction: { report: () => ({ total: 0, byKind: {} }) },
     });
     return call.then(
       () => undefined,

@@ -11,13 +11,54 @@
 import { z } from 'zod';
 
 /** Audit `action` strings written by this feature. */
-export const AI_AUDIT_ACTIONS = {} as const satisfies Record<string, string>;
+export const AI_AUDIT_ACTIONS = {
+  /** A daily AI cap reached its alert level (once per UTC day and cap). */
+  aiBudgetAlert: 'ai.budget_alert',
+  /** A daily AI cap was reached: model calls stop for the rest of the UTC day (fail closed to rules). */
+  aiBudgetStop: 'ai.budget_stop',
+} as const satisfies Record<string, string>;
 
 /** `ticket_event.type` strings written by this feature. */
 export const AI_TICKET_EVENTS = {} as const satisfies Record<string, string>;
 
 /** BullMQ queue names owned by this feature (producer: api, consumer: worker). */
-export const AI_QUEUES = {} as const satisfies Record<string, string>;
+export const AI_QUEUES = {
+  /** Jobs of the AI layer: the first one is the ticket brief (classify + summarize), T-106e. */
+  ai: 'ai',
+} as const satisfies Record<string, string>;
+
+export const AI_JOBS = {
+  /** Classify and summarize one ticket and upsert its `ai_ticket_insight`. `jobId` is per ticket. */
+  summarize: 'summarize',
+} as const;
+
+/** Payload of an `ai` `summarize` job: only the id; the worker loads the ticket. */
+export const aiSummarizeJobSchema = z.object({ ticketId: z.uuid() });
+export type AiSummarizeJob = z.infer<typeof aiSummarizeJobSchema>;
+
+/** Retry with backoff; the insight row is the record, so a finished job is dropped. */
+export const AI_OUTBOX_JOB_OPTIONS = {
+  attempts: 3,
+  backoff: { type: 'exponential', delay: 5000 },
+  removeOnComplete: { age: 3600, count: 1000 },
+  removeOnFail: { age: 7 * 24 * 3600 },
+} as const;
+
+/**
+ * Why a ticket is `needs_human` or `failed` in `ai_ticket_insight.reason_code`: a stable code, never
+ * prose from a model. The first three are the gate and the budget saying no before any model call.
+ */
+export const AI_INSIGHT_REASONS = [
+  'kill_switch_on',
+  'policy_denied',
+  'budget_stop',
+  'name_match_limit',
+  'model_output_invalid',
+  'provider_error',
+  'provider_unavailable',
+  'audit_failed',
+] as const;
+export type AiInsightReason = (typeof AI_INSIGHT_REASONS)[number];
 
 // --- AI-first workspace contract (T-128, docs/design/ai-first-workspace.md section 6) ---
 //
