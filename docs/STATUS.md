@@ -35,6 +35,7 @@ snapshot สั้นสำหรับ cold start อยู่ที่ `HANDOF
 - (2026-11-01) หลังแก้ `packages/shared` ต้อง build/รัน test แบบ `turbo --force` ก่อนอ้างว่า package ที่ import shared ผ่าน — api import `dist` ของ shared จึงเห็นผลเก่าได้ (เคยรายงานผิดว่า api ผ่าน) `[TESTED]`
 - (2026-11-01) เวลาใน log/STATUS ต้องมาจาก `TZ=Asia/Bangkok date` เสมอ ห้ามพิมพ์เอง (เคยพิมพ์ผิดหลายชั่วโมง)
 - (2026-11-01) อย่าเทียบเวลาจาก DB กับเวลาแอปในการตัดสินใจเดียวกัน: เครื่องจริงมี skew หลายสิบ ms (host กับ Docker VM) ซึ่ง cloud ไม่เห็น · วัด skew ต้องวัดใน connection เดียว การเทียบ `docker exec date` กับ `date` นับเวลารันคำสั่งเข้าไป `[TESTED]`
+- (2026-11-01) **ผลบนเครื่องไม่แทน CI:** `main` บน GitHub แดงมาตั้งแต่ ingest เข้า (job integration ไม่มี MinIO) แต่ไม่มีใครเปิดดู จนเจ้าของทัก → ทุก merge ต้องดู `gh run list --branch main` ด้วย งานใหม่ที่พึ่ง service เพิ่มต้องแก้ CI ในงานนั้น `[TESTED]`
 - (2026-11-01) cloud session: `dockerd` ต้องสั่งเอง · Docker Hub 429 → pull ซ้ำทีละ image · build image ไม่ได้ (corepack ไม่เชื่อ CA ของ proxy) · Playwright ใช้ `PW_EXECUTABLE_PATH=/opt/pw-browsers/chromium` · หลาย worktree รัน e2e พร้อมกันต้องตั้ง `E2E_PORT` ต่างกัน · Redis counter ข้ามรอบ test → `RATE_LIMIT_NAMESPACE`
 
 ## Log

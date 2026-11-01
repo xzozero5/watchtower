@@ -14,7 +14,7 @@
 - **บั๊กจริงที่เจอเฉพาะบนเครื่องจริง แก้แล้ว:** (1) `message.created_at` ใช้นาฬิกาแอป `ticket_event` ใช้นาฬิกา DB ทำ timeline ลูกค้าเรียงผิด (2) relay ใช้นาฬิกา DB แต่ claim ใช้นาฬิกา worker ทำ reply ลูกค้าค้างราว 2 นาที · security review ของสอง fix ไม่มี P0/P1
 
 ## อ่านก่อน (สรุป 2 นาที)
-- **Phase 0 เสร็จ** (CI บน GitHub เขียว) · ยังไม่ tag `v0.0.1` — รอเจ้าของตรวจบนเครื่อง (รายการด้านล่าง)
+- **Phase 0 เสร็จ** (CI แดงช่วงหลัง T-112a จาก MinIO หาย แก้แล้ว ดู STATUS) · ยังไม่ tag `v0.0.1` — รอเจ้าของตรวจบนเครื่อง (รายการด้านล่าง)
 - **Phase 1 กำลังทำ** · บน `main` แล้ว: T-101, T-102a–d, T-103a–d, T-104, T-106a–e, T-112a, T-116a, T-117, T-122a–e, T-123a, T-126–T-129 · **ค้างบน branch 3 งาน** (LINE, Gmail, KB — ตารางด้านล่าง) ทั้งหมดผ่าน security review รอบแรกและแก้ finding ไปแล้วบางส่วน
 - **กติกาที่ใช้ทั้ง session:** security finding P0/P1 ต้องแก้ก่อน merge · main thread รัน test เองบน branch `verify/<task>` (merge กับ `main` ล่าสุด) ก่อน merge เสมอ · migration เปลี่ยนเลขตอน merge
 - **`po` ตัดสินแทนเจ้าของ 27 ข้อ** (ตารางด้านล่าง) ติ๊กรับ/ไม่รับได้เลย · ข้อใหม่ #26 (LINE verified), #27 (KB publish แยกหน้าที่)
