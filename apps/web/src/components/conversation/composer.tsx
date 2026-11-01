@@ -13,6 +13,7 @@ import {
   IconButton,
   Kbd,
   SegmentedControl,
+  Tooltip,
   cn,
 } from '@watchtower/ui';
 import {
@@ -427,18 +428,19 @@ export function Composer({
           <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
             {showStatus ? (
               <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    className="gap-1 rounded-full px-2 text-muted-foreground"
-                    aria-label={`${t('composer.setStatus.label')}: ${nextStatus ? t(statusKey(nextStatus)) : t('composer.setStatus.keep')}`}
-                    title={t('composer.setStatus.label')}
-                  >
-                    <Flag aria-hidden className="size-4" />
-                    {nextStatus ? <span aria-hidden>{t(statusKey(nextStatus))}</span> : null}
-                    <ChevronDown aria-hidden className="size-3.5" />
-                  </Button>
-                </DropdownMenuTrigger>
+                <Tooltip content={t('composer.setStatus.label')}>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      className="gap-1 rounded-full px-2 text-muted-foreground"
+                      aria-label={`${t('composer.setStatus.label')}: ${nextStatus ? t(statusKey(nextStatus)) : t('composer.setStatus.keep')}`}
+                    >
+                      <Flag aria-hidden className="size-4" />
+                      {nextStatus ? <span aria-hidden>{t(statusKey(nextStatus))}</span> : null}
+                      <ChevronDown aria-hidden className="size-3.5" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                </Tooltip>
                 <DropdownMenuContent align="end" side="top">
                   <DropdownMenuRadioGroup
                     value={nextStatus}

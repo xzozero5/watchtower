@@ -19,6 +19,8 @@ export interface TintChipProps extends Omit<HTMLAttributes<HTMLSpanElement>, 'ch
   children?: ReactNode;
   /** Draw the icon only. The words stay as the accessible name and as a tooltip. */
   iconOnly?: boolean;
+  /** Outlined instead of filled: for a role that must not read as a status (an SLA timer). */
+  outline?: boolean;
   /** A heavier chip for the one level that must stand out (P1, a breach). */
   strong?: boolean;
   /** Lifts 1 px on hover (not under reduced motion). Use it for chips that are buttons. */
@@ -36,6 +38,7 @@ export function TintChip({
   children,
   iconOnly = false,
   strong = false,
+  outline = false,
   interactive = false,
   className,
   title,
@@ -46,11 +49,11 @@ export function TintChip({
   return (
     <span
       data-tone={tone}
-      title={title ?? (iconOnly ? words : undefined)}
+      title={title ?? words}
       className={cn(
         'inline-flex h-5 shrink-0 items-center gap-1 rounded-full px-2 text-xs font-medium whitespace-nowrap',
-        classes.chip,
-        strong && 'font-semibold ring-1 ring-current/30 ring-inset',
+        outline ? cn('bg-transparent ring-1 ring-inset', classes.outline) : classes.chip,
+        strong && (outline ? 'font-semibold' : 'font-semibold ring-1 ring-current/30 ring-inset'),
         iconOnly && 'px-1',
         interactive &&
           'transition-transform duration-(--wt-motion-duration-fast) ease-out motion-safe:hover:-translate-y-px',
@@ -62,7 +65,7 @@ export function TintChip({
         <Icon aria-hidden className={cn('size-3.5 shrink-0', classes.icon)} strokeWidth={2} />
       ) : null}
       {children === undefined || children === null ? null : (
-        <span className={cn('min-w-0', iconOnly && 'sr-only')}>{children}</span>
+        <span className={cn('min-w-0 truncate', iconOnly && 'sr-only')}>{children}</span>
       )}
     </span>
   );

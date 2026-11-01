@@ -85,6 +85,28 @@ describe('severity as tinted chips', () => {
   });
 });
 
+describe('plain and outlined roles', () => {
+  it('draws priority and intent without a fill, and an outlined chip without one either', () => {
+    const { container } = render(
+      <>
+        <SeverityBadge severity="p2" label="High" plain />
+        <SeverityBadge severity="p1" label="Critical" plain />
+        <IntentChip plain intentKey="upstream_timeout" name="Upstream timeout" />
+        <TintChip tone="green" outline>
+          FR 20m
+        </TintChip>
+      </>,
+    );
+    const [p2, p1, intent, sla] = Array.from(container.children);
+    expect(p2?.className).not.toContain('bg-tint');
+    expect(p1?.className).toContain('bg-tint-red-bg');
+    expect(intent?.className).not.toMatch(/bg-/);
+    expect(intent).toHaveAttribute('title', 'Upstream timeout');
+    expect(sla?.className).toContain('bg-transparent');
+    expect(sla?.className).toContain('ring-tint-green-icon');
+  });
+});
+
 describe('intent colour and icon', () => {
   it('hashes an intent key to the same hue every time, and never to red or slate', () => {
     expect(intentTint('account_access')).toBe(intentTint('account_access'));
@@ -128,12 +150,17 @@ describe('ConfidenceDots', () => {
     expect(litDots(0.86)).toBe(4);
     expect(litDots(0.9)).toBe(5);
     expect(litDots(1.4)).toBe(5);
-    render(<ConfidenceDots value={0.86} label="Confidence High 0.86" />);
+    render(
+      <TooltipProvider>
+        <ConfidenceDots value={0.86} label="Confidence High 0.86" text="High 0.86" />
+      </TooltipProvider>,
+    );
     const meter = screen.getByRole('meter', { name: 'Confidence High 0.86' });
     expect(meter).toHaveAttribute('aria-valuenow', '0.86');
     expect(meter.querySelectorAll('[data-on="true"]')).toHaveLength(4);
     expect(meter.querySelectorAll('[data-on="false"]')).toHaveLength(1);
-    expect(meter).toHaveTextContent('');
+    // The words and number are drawn, not only announced (N5).
+    expect(meter).toHaveTextContent('High 0.86');
   });
 });
 

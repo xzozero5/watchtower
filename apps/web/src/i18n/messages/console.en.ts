@@ -23,6 +23,7 @@ export const homeEn = {
   byStatus: 'By status',
   byQueue: 'By queue',
   noQueue: 'No queue',
+  unknownQueue: 'Unknown queue',
   load: 'Open per person',
   loading: 'Loading…',
   healthTitle: 'System',

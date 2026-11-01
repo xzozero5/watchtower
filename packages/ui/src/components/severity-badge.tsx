@@ -26,6 +26,11 @@ export interface SeverityBadgeProps extends Omit<HTMLAttributes<HTMLSpanElement>
   label: string;
   /** Hide the word and keep the icon and code. The label stays available to screen readers. */
   hideLabel?: boolean;
+  /**
+   * No pill: a coloured icon and the code as plain text, for a dense list where priority must not
+   * read as a status. P1 keeps its pill, the one level that has to stand out.
+   */
+  plain?: boolean;
 }
 
 /**
@@ -36,6 +41,7 @@ export function SeverityBadge({
   severity,
   label,
   hideLabel = false,
+  plain = false,
   className,
   ...props
 }: SeverityBadgeProps) {
@@ -46,7 +52,7 @@ export function SeverityBadge({
       data-severity={severity}
       className={cn(
         'inline-flex h-5 shrink-0 items-center gap-1 rounded-full px-2 text-xs font-medium whitespace-nowrap',
-        TINT_CLASSES[TINT[severity]].chip,
+        plain && severity !== 'p1' ? 'px-0 text-foreground' : TINT_CLASSES[TINT[severity]].chip,
         severity === 'p1' && 'font-semibold ring-1 ring-current/30 ring-inset',
         className,
       )}

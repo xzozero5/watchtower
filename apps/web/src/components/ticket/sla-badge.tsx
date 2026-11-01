@@ -15,8 +15,8 @@ const LOOK: Record<SlaState, { icon: ChipIcon; tone: TintId }> = {
 };
 
 /**
- * Where a ticket stands against its SLA (docs/06-UI-SPEC.md section 4.4): a soft tinted chip with an
- * icon and words (green on track or met, amber at risk, red breached, slate paused), so no state
+ * Where a ticket stands against its SLA (docs/06-UI-SPEC.md section 4.4): an outlined (never filled)
+ * chip with an icon and words (green on track or met, amber at risk, red breached, slate paused), so no state
  * depends on colour. The full sentence is in the tooltip and
  * the accessible name. It shows the next due target, first response until answered, then resolution.
  */
@@ -47,6 +47,7 @@ export function SlaBadge({ sla, className }: { sla: SlaView; className?: string 
     <TintChip
       tone={tone}
       icon={icon}
+      outline
       strong={sla.state === 'breached'}
       data-sla={sla.state}
       title={full}
