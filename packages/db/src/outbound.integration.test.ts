@@ -650,10 +650,12 @@ describe('0014 claim and release rules (N-3)', () => {
     await claim(id);
     await dispatch(id, 'line_push');
     await app.query(releaseSql(''), [id]);
-    // A LINE reply is not repeatable.
-    await claim(id);
-    await dispatch(id, 'line_reply');
-    await rejects(app.query(releaseSql(''), [id]), INTEGRITY);
+    // A LINE reply is not repeatable (a row of its own: the route of a delivery is written once, T-122f).
+    const g = await fixture({ accountType: 'line' });
+    const replyId = (await insertDelivery(app, g, { channel: 'line' })).rows[0]?.id ?? '';
+    await claim(replyId);
+    await dispatch(replyId, 'line_reply');
+    await rejects(app.query(releaseSql(''), [replyId]), INTEGRITY);
   });
 });
 

@@ -191,6 +191,22 @@ export async function createTicket(
     .returning();
   if (!ticket) throw new Error('ticket insert returned no row');
 
+  // The timeline reads "received", then the customer's words: events are stamped with statement time
+  // (like messages), so these two come before the message is inserted.
+  await recordTicketEvent(tx, ticket.id, TICKET_EVENT_TYPES.created, ctx.actor, 'public', {
+    channel,
+    priority,
+    intentKey: intent?.key ?? null,
+  });
+  if (assigneeId !== null) {
+    await recordTicketEvent(tx, ticket.id, TICKET_EVENT_TYPES.assigned, ctx.actor, 'internal', {
+      from: null,
+      to: assigneeId,
+      strategy: assignedBy,
+      queueId: queue?.id ?? null,
+    });
+  }
+
   const [message] = await tx
     .insert(schema.message)
     .values({
@@ -212,19 +228,6 @@ export async function createTicket(
     .returning();
   if (!message) throw new Error('message insert returned no row');
 
-  await recordTicketEvent(tx, ticket.id, TICKET_EVENT_TYPES.created, ctx.actor, 'public', {
-    channel,
-    priority,
-    intentKey: intent?.key ?? null,
-  });
-  if (assigneeId !== null) {
-    await recordTicketEvent(tx, ticket.id, TICKET_EVENT_TYPES.assigned, ctx.actor, 'internal', {
-      from: null,
-      to: assigneeId,
-      strategy: assignedBy,
-      queueId: queue?.id ?? null,
-    });
-  }
   await recordAuditInTx(tx, ctx, fx, {
     action: AUDIT_ACTIONS.ticketCreate,
     targetType: 'ticket',

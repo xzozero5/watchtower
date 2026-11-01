@@ -1,0 +1,32 @@
+# Copy to staging.tfvars (git-ignored) and fill in. Nothing here is a secret; do not add one.
+# example.com is a placeholder for the domain the instance owner controls.
+
+project_id          = "REPLACE-WITH-YOUR-STAGING-PROJECT-ID"
+region              = "asia-southeast1"
+environment         = "staging"
+base_domain         = "staging.example.com"
+image_registry_path = "asia-southeast1-docker.pkg.dev/REPLACE-WITH-YOUR-STAGING-PROJECT-ID/watchtower"
+image_tag           = "latest"
+
+db_tier              = "db-custom-1-3840"
+db_availability_type = "ZONAL"
+redis_tier           = "BASIC"
+redis_memory_gb      = 1
+api_min_instances    = 0
+worker_instances     = 1
+
+smtp_relay_host = "smtp-relay.example.com"
+smtp_relay_port = 587
+smtp_from       = "Watchtower <no-reply@example.com>"
+
+google_allowed_domain = "example.com"
+
+# Turn these on step by step (runbook sections 7 to 9):
+enable_gmail_push             = false
+gmail_service_account_mounted = false
+enabled_optional_secrets      = []
+
+extra_env = {
+  # LINE_CHANNEL_ID = "..."
+  # GMAIL_IMPERSONATE_USER = "support@example.com"
+}
