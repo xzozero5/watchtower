@@ -54,7 +54,7 @@ export function Confirmation() {
         </h1>
       </div>
 
-      <dl className="rounded-lg border border-border-strong bg-surface p-pane">
+      <dl className="rounded-2xl bg-surface p-pane ring-1 ring-border/60 ring-inset">
         <dt className="text-sm text-muted-foreground">{t('portal.confirmation.number')}</dt>
         <dd className="mt-0.5 font-mono text-xl font-semibold tabular-nums">{result.ticketKey}</dd>
       </dl>

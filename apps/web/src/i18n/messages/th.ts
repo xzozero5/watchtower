@@ -45,12 +45,10 @@ export const th: Messages = {
     queue: {
       title: 'คิวงาน',
       emptyTitle: 'ไม่มีงานค้างแล้ว',
-      emptyBody: 'ticket ใหม่จากทุกช่องทางจะแสดงที่นี่',
     },
     conversation: {
       title: 'บทสนทนา',
       emptyTitle: 'เลือก ticket',
-      emptyBody: 'เลือกจากคิวงาน',
     },
     assistant: {
       title: 'รายละเอียดและ AI',
@@ -181,7 +179,7 @@ export const th: Messages = {
   composer: {
     label: 'เขียนข้อความ',
     modeGroup: 'ประเภทข้อความ',
-    modes: { reply: 'ตอบลูกค้า', note: 'บันทึกภายใน' },
+    modes: { reply: 'ตอบลูกค้า', note: 'บันทึกภายใน', noteShort: 'บันทึก' },
     hints: {
       replyStaff: 'ลูกค้าจะอ่านข้อความนี้ ส่งทาง{channel}',
       replyClient: 'ข้อความของคุณจะถูกเพิ่มใน ticket นี้ และทีมซัพพอร์ตจะได้รับแจ้ง',
@@ -372,7 +370,6 @@ export const th: Messages = {
   },
   login: {
     title: 'เข้าสู่ระบบ',
-    subtitle: 'เลือกวิธีเข้าสู่ระบบ Watchtower',
     loading: 'กำลังโหลดตัวเลือกการเข้าสู่ระบบ',
     email: 'อีเมล',
     password: 'รหัสผ่าน',
@@ -389,7 +386,6 @@ export const th: Messages = {
     },
     staff: {
       title: 'ทีมงาน',
-      description: 'ใช้บัญชีขององค์กร',
     },
     sso: {
       button: 'ดำเนินการต่อด้วย {provider}',
@@ -415,7 +411,6 @@ export const th: Messages = {
     },
     client: {
       title: 'ลูกค้า',
-      description: 'กรอกอีเมลของคุณ แล้วเราจะส่งลิงก์เข้าสู่ระบบแบบใช้ครั้งเดียวให้',
       button: 'ส่งลิงก์เข้าสู่ระบบทางอีเมล',
       sending: 'กำลังส่ง',
       sentTitle: 'ตรวจสอบอีเมลของคุณ',
@@ -524,7 +519,6 @@ export const th: Messages = {
     requester: 'ผู้แจ้ง',
     email: 'อีเมล',
     noRequester: 'ticket นี้ไม่มีข้อมูลผู้แจ้ง',
-    more: 'ticket ก่อนหน้าของลูกค้ารายนี้จะแสดงที่นี่ เมื่อ API พร้อมให้ข้อมูล',
   },
   toast: {
     region: 'การแจ้งเตือน',

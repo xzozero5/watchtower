@@ -1,8 +1,16 @@
 'use client';
 
 import type { TimelineEntry } from '@watchtower/shared';
-import { Alert, Button, EmptyState, SeverityBadge, Skeleton, toast, Tooltip } from '@watchtower/ui';
-import { CircleCheck, Copy, MessagesSquare } from 'lucide-react';
+import {
+  Alert,
+  Button,
+  EmptyState,
+  IconButton,
+  SeverityBadge,
+  Skeleton,
+  toast,
+} from '@watchtower/ui';
+import { CircleCheck, Copy, MessagesSquare, MousePointerClick } from 'lucide-react';
 import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 
 import { AiBrief } from '@/components/ai/ai-brief';
@@ -40,7 +48,7 @@ export function lastCustomerMessage(entries: readonly TimelineEntry[]): number {
 }
 
 const HEADER =
-  'flex min-h-[48px] shrink-0 items-center gap-x-3 gap-y-1 border-b border-border px-4 py-2';
+  'flex min-h-[48px] shrink-0 items-center gap-x-3 gap-y-1 border-b border-border/60 px-4 py-2';
 
 /** The header actions of an open ticket: copy the key, resolve it. */
 function TicketActions({ ticket, trailing }: { ticket: TicketItem; trailing?: ReactNode }) {
@@ -54,26 +62,22 @@ function TicketActions({ ticket, trailing }: { ticket: TicketItem; trailing?: Re
       aria-label={t('conversation.headerActions')}
       className="flex items-center gap-1"
     >
-      <Tooltip content={t('conversation.copyKey')}>
-        <Button
-          variant="ghost"
-          size="icon"
-          aria-label={t('conversation.copyKey')}
-          onClick={() => {
-            void navigator.clipboard
-              .writeText(ticket.key)
-              .then(() => {
-                toast(t('conversation.keyCopied', { key: ticket.key }));
-              })
-              .catch(() => undefined);
-          }}
-        >
-          <Copy aria-hidden className="size-4" />
-        </Button>
-      </Tooltip>
+      <IconButton
+        label={t('conversation.copyKey')}
+        icon={<Copy aria-hidden className="size-4" />}
+        onClick={() => {
+          void navigator.clipboard
+            .writeText(ticket.key)
+            .then(() => {
+              toast(t('conversation.keyCopied', { key: ticket.key }));
+            })
+            .catch(() => undefined);
+        }}
+      />
       {canResolve ? (
         <Button
           variant="secondary"
+          className="rounded-full"
           disabled={status.pending}
           onClick={() => {
             status.move('resolved');
@@ -166,9 +170,9 @@ export function ConversationPane({
         </div>
         <EmptyState
           className="flex-1"
-          icon={<MessagesSquare />}
+          icon={<MousePointerClick />}
+          tone="sky"
           title={t('panes.conversation.emptyTitle')}
-          description={t('panes.conversation.emptyBody')}
         />
       </>
     );
@@ -309,7 +313,11 @@ export function ConversationPane({
               </Alert>
             </div>
           ) : entries.length === 0 ? (
-            <EmptyState icon={<MessagesSquare />} title={t('conversation.noMessages.title')} />
+            <EmptyState
+              icon={<MessagesSquare />}
+              tone="slate"
+              title={t('conversation.noMessages.title')}
+            />
           ) : (
             <>
               {canFold ? (

@@ -1,7 +1,16 @@
 'use client';
 
 import type { AiSwitch, AiSwitchKey } from '@watchtower/shared';
-import { AUTONOMY_STAGES, Button, Skeleton, StageBadge } from '@watchtower/ui';
+import {
+  AUTONOMY_STAGES,
+  Button,
+  cn,
+  Skeleton,
+  StageBadge,
+  TINT_CLASSES,
+  type TintId,
+  TintChip,
+} from '@watchtower/ui';
 import { CircleCheck, CircleStop, Lock, ShieldCheck, ShieldOff } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { useState } from 'react';
@@ -22,6 +31,8 @@ import { SwitchConfirmDialog, type SwitchTarget } from './switch-confirm-dialog'
 const ROWS: readonly {
   key: AiSwitchKey;
   icon: LucideIcon;
+  /** The hue of the icon bubble and of the chip while the switch is on. */
+  tone: TintId;
   title: MessageKey;
   body: MessageKey;
   turnOn: MessageKey;
@@ -30,6 +41,7 @@ const ROWS: readonly {
   {
     key: 'ai_stage_cap_pinned',
     icon: ShieldCheck,
+    tone: 'teal',
     title: 'admin.ai.capTitle',
     body: 'admin.ai.capBody',
     turnOn: 'admin.ai.turnOn',
@@ -38,6 +50,7 @@ const ROWS: readonly {
   {
     key: 'ai_kill_switch',
     icon: CircleStop,
+    tone: 'amber',
     title: 'admin.ai.killTitle',
     body: 'admin.ai.killBody',
     turnOn: 'admin.ai.turnOn',
@@ -85,7 +98,7 @@ function AiControlsBody() {
           <LoadError message={t('admin.ai.loadError')} onRetry={() => void autonomy.refetch()} />
         ) : (
           <>
-            <ul className="divide-y divide-border border-b border-border">
+            <ul className="flex flex-col gap-3 p-4 pb-2">
               {ROWS.map((row) => (
                 <SwitchRow
                   key={row.key}
@@ -132,9 +145,18 @@ function SwitchRow({
       aria-labelledby={titleId}
       data-switch={row.key}
       data-on={on}
-      className="flex flex-wrap items-start gap-x-4 gap-y-2 px-4 py-4"
+      className="flex flex-wrap items-start gap-x-4 gap-y-2 rounded-2xl bg-surface px-5 py-4 ring-1 ring-border/60 ring-inset"
     >
-      <Icon aria-hidden className="mt-0.5 size-5 shrink-0 text-muted-foreground" />
+      <span
+        aria-hidden
+        className={cn(
+          'inline-flex size-9 shrink-0 items-center justify-center rounded-full',
+          TINT_CLASSES[on ? row.tone : 'slate'].chip,
+          TINT_CLASSES[on ? row.tone : 'slate'].icon,
+        )}
+      >
+        <Icon className="size-5" />
+      </span>
       <div className="min-w-0 flex-1">
         <h2 id={titleId} className="text-sm font-semibold">
           {t(row.title)}
@@ -150,23 +172,18 @@ function SwitchRow({
         ) : null}
       </div>
       <div className="flex items-center gap-3">
-        <span className="inline-flex items-center gap-1.5 text-sm font-medium">
-          {on ? (
-            <CircleCheck aria-hidden className="size-4 text-link" />
-          ) : (
-            <ShieldOff aria-hidden className="size-4 text-muted-foreground" />
-          )}
+        <TintChip tone={on ? row.tone : 'slate'} icon={on ? CircleCheck : ShieldOff} strong={on}>
           {on && state ? (
             <>
-              {t('admin.ai.on')} ·{' '}
-              <RelativeTime iso={state.changedAt} className="font-normal text-muted-foreground" />
+              {t('admin.ai.on')} · <RelativeTime iso={state.changedAt} className="font-normal" />
             </>
           ) : (
             t('admin.ai.off')
           )}
-        </span>
+        </TintChip>
         {canFlip ? (
           <Button
+            className="rounded-full"
             onClick={() => {
               onFlip(!on);
             }}
@@ -189,7 +206,7 @@ function StageSummary({
   const active = intents.filter((intent) => intent.isActive);
   const pinned = active.filter((intent) => intent.pinned).length;
   return (
-    <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
+    <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-3">
       <ul aria-label={t('home.ai.stages')} className="flex flex-wrap items-center gap-x-4 gap-y-2">
         {AUTONOMY_STAGES.map((stage) => (
           <li key={stage} className="flex items-center gap-1.5">

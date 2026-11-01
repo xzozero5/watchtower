@@ -1,8 +1,28 @@
 'use client';
 
 import { useQueryClient } from '@tanstack/react-query';
-import { Alert, Button, EmptyState, Skeleton } from '@watchtower/ui';
-import { ArrowUp, ChevronDown, ChevronRight, Inbox, SearchX } from 'lucide-react';
+import {
+  Alert,
+  Button,
+  EmptyState,
+  IconButton,
+  SectionHeading,
+  Skeleton,
+  type ChipIcon,
+  type TintId,
+} from '@watchtower/ui';
+import {
+  ArrowUp,
+  Bot,
+  ChevronDown,
+  ChevronRight,
+  ChevronsDown,
+  CircleCheck,
+  Coffee,
+  Hand,
+  Hourglass,
+  SearchX,
+} from 'lucide-react';
 import {
   type KeyboardEvent,
   type ReactNode,
@@ -70,6 +90,15 @@ const makeViewId = () => `v${String(Date.now())}-${String((viewCounter += 1))}`;
 
 const GROUP_ICON = { open: ChevronDown, closed: ChevronRight } as const;
 
+/** Each section has its own hue and icon (docs/design/friendly-polish.md section 3). */
+const GROUP_LOOK: Record<RowGroup['id'], { tone: TintId; icon: ChipIcon }> = {
+  needsYou: { tone: 'amber', icon: Hand },
+  aiWorking: { tone: 'teal', icon: Bot },
+  waiting: { tone: 'slate', icon: Hourglass },
+  done: { tone: 'green', icon: CircleCheck },
+  all: { tone: 'slate', icon: Hourglass },
+};
+
 /**
  * One section of the board: a header button (title, count; folds the section; reachable with Tab)
  * and, while open, the section's listbox. Only the section with the cursor is in the tab order,
@@ -104,19 +133,23 @@ function Section({
   return (
     <section data-group={group.id} className="flex flex-col">
       {flat ? null : (
-        <h3 className="m-0 border-b border-border bg-background text-xs font-medium">
+        <h3 className="m-0 bg-background text-xs font-medium">
           <button
             type="button"
             aria-expanded={open}
             aria-controls={open ? listId : undefined}
             onClick={onToggle}
-            className="flex min-h-8 w-full items-center gap-1.5 px-3 text-left text-muted-foreground transition-colors duration-(--wt-motion-duration-fast) ease-out hover:text-foreground focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
+            className="flex min-h-9 w-full items-center gap-1.5 px-4 text-left text-muted-foreground transition-colors duration-(--wt-motion-duration-fast) ease-out hover:text-foreground focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
           >
             <Chevron aria-hidden className="size-3.5 shrink-0" />
-            <span>{title}</span>
-            <span className="tabular rounded-full bg-surface-muted px-1.5 text-foreground">
-              {group.rows.length}
-            </span>
+            <SectionHeading
+              tone={GROUP_LOOK[group.id].tone}
+              icon={GROUP_LOOK[group.id].icon}
+              count={group.rows.length}
+              className="text-foreground"
+            >
+              {title}
+            </SectionHeading>
           </button>
         </h3>
       )}
@@ -362,7 +395,7 @@ export function QueuePane({
             type="button"
             onClick={showNew}
             aria-keyshortcuts={singleKeyShortcuts ? '.' : undefined}
-            className="tabular inline-flex h-7 animate-pop-in items-center gap-1.5 rounded-full bg-primary px-3 text-xs font-medium text-primary-foreground shadow-overlay transition-opacity duration-(--wt-motion-duration-fast) ease-out hover:opacity-90"
+            className="tabular inline-flex h-8 animate-pop-in items-center gap-1.5 rounded-full bg-primary px-3.5 text-xs font-medium text-primary-foreground shadow-overlay transition-opacity duration-(--wt-motion-duration-fast) ease-out hover:opacity-90"
           >
             <ArrowUp aria-hidden className="size-3.5" />
             {t(singleKeyShortcuts ? 'queue.newPill' : 'queue.newPillClick', { count: newCount })}
@@ -379,7 +412,7 @@ export function QueuePane({
           <div role="status" className="flex flex-col">
             <span className="sr-only">{t('queue.loading')}</span>
             {[0, 1, 2, 3, 4].map((index) => (
-              <div key={index} className="flex flex-col gap-2 border-b border-border px-3 py-3">
+              <div key={index} className="mx-2 flex flex-col gap-2 rounded-xl px-2.5 py-3">
                 <Skeleton className="h-3.5 w-4/5" />
                 <Skeleton className="h-3 w-3/5" />
               </div>
@@ -403,6 +436,7 @@ export function QueuePane({
           filtered && !filtersEqual(filters, DEFAULT_FILTERS) ? (
             <EmptyState
               icon={<SearchX />}
+              tone="sky"
               title={t('queue.emptyFilteredTitle')}
               action={
                 <Button
@@ -415,7 +449,7 @@ export function QueuePane({
               }
             />
           ) : (
-            <EmptyState icon={<Inbox />} title={t('panes.queue.emptyTitle')} />
+            <EmptyState icon={<Coffee />} tone="teal" title={t('panes.queue.emptyTitle')} />
           )
         ) : (
           <>
@@ -439,17 +473,16 @@ export function QueuePane({
               />
             ))}
             {list.hasNextPage ? (
-              <div className="p-3">
-                <Button
-                  variant="ghost"
-                  className="w-full"
+              <div className="flex justify-center p-3">
+                <IconButton
+                  variant="secondary"
+                  label={list.isFetchingNextPage ? t('queue.loadingMore') : t('queue.loadMore')}
+                  icon={<ChevronsDown aria-hidden className="size-4" />}
                   disabled={list.isFetchingNextPage}
                   onClick={() => {
                     void list.fetchNextPage();
                   }}
-                >
-                  {list.isFetchingNextPage ? t('queue.loadingMore') : t('queue.loadMore')}
-                </Button>
+                />
               </div>
             ) : null}
           </>

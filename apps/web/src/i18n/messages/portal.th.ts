@@ -24,24 +24,19 @@ export const portalTh: PortalMessages = {
   verifyFailed: 'โหลดการยืนยันตัวตนไม่สำเร็จ ตรวจการเชื่อมต่อหรือลองเบราว์เซอร์อื่น',
   form: {
     title: 'ติดต่อทีมซัพพอร์ต',
-    intro:
-      'บอกเราว่าเกิดอะไรขึ้น แล้วเราจะส่งลิงก์ติดตามคำขอไปทางอีเมล ช่องที่ระบุว่าไม่บังคับเว้นว่างได้',
     errorSummary: 'กรุณาตรวจแบบฟอร์ม',
     errorSummaryHint: 'ช่องเหล่านี้ต้องแก้ไข:',
     name: 'ชื่อของคุณ',
     email: 'อีเมล',
     emailHint: 'เราจะส่งการยืนยันและลิงก์ติดตามสถานะไปที่นี่',
     organization: 'บริษัทหรือองค์กร',
-    organizationHint: 'เราจะระบุบริษัทจากอีเมลของคุณให้เมื่อทำได้',
     category: 'เรื่องอะไร',
     categoryChoose: 'เลือกหัวข้อ',
     urgency: 'เร่งด่วนแค่ไหน',
     subject: 'สรุปสั้น ๆ',
-    subjectHint: 'หนึ่งบรรทัด ถ้าเว้นว่าง เราจะใช้ข้อความช่วงต้นของรายละเอียดแทน',
     description: 'เกิดอะไรขึ้น',
-    descriptionHint: 'สิ่งที่คุณทำ สิ่งที่คาดหวัง และสิ่งที่เห็นจริง',
     requestIds: 'Session หรือ request ID ที่เกี่ยวข้อง',
-    requestIdsHint: 'บรรทัดละหนึ่งค่า เช่น req_8f3a2c1d ช่วยให้เราหาสาเหตุได้เร็วขึ้น',
+    requestIdsHint: 'บรรทัดละหนึ่งค่า เช่น req_8f3a2c1d',
     sending: 'กำลังส่ง…',
     waiting: 'อีกสักครู่…',
     categories: {
@@ -59,11 +54,6 @@ export const portalTh: PortalMessages = {
       everythingDown: 'ใช้งานไม่ได้เลย',
       somethingBroken: 'บางอย่างเสีย',
       question: 'คำถาม',
-    },
-    urgencyHints: {
-      everythingDown: 'คุณหรือผู้ใช้ของคุณใช้งานอะไรไม่ได้เลย',
-      somethingBroken: 'บางส่วนของบริการทำงานผิดพลาด',
-      question: 'ไม่มีอะไรเสีย ต้องการข้อมูลหรือคำแนะนำ',
     },
     errors: {
       nameRequired: 'กรอกชื่อของคุณ',

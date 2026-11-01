@@ -2,8 +2,19 @@
 
 import { useIsFetching, useQueryClient } from '@tanstack/react-query';
 import { OPEN_STATUSES, type TicketSummary } from '@watchtower/shared';
-import { Button, cn, Skeleton } from '@watchtower/ui';
-import { RefreshCw } from 'lucide-react';
+import { cn, IconButton, Skeleton } from '@watchtower/ui';
+import {
+  Activity,
+  Bot,
+  Hourglass,
+  Inbox,
+  ListChecks,
+  ListTree,
+  RefreshCw,
+  UserRoundX,
+  Users,
+  Layers,
+} from 'lucide-react';
 import { useMemo } from 'react';
 
 import { AccessDenied, LoadError, PageHeader } from '@/components/admin/admin-page';
@@ -102,6 +113,8 @@ function HomeBody() {
         ? { sub: t('home.overdueCount', { count: overdue }) }
         : {}),
       href: queueHref({ sort: 'due_asc', status: OPEN_STATUSES }),
+      tone: 'amber',
+      icon: Hourglass,
     },
     {
       id: 'unassigned',
@@ -109,18 +122,24 @@ function HomeBody() {
       value: unassignedCount,
       ...(oldest && unassignedCount ? { sub: oldest } : {}),
       href: queueHref({ assignee: 'unassigned', status: ['new', 'triage', 'open'] }),
+      tone: 'sky',
+      icon: UserRoundX,
     },
     {
       id: 'new',
       label: t('home.new'),
       value: newCount,
       href: queueHref({ status: ['new'] }),
+      tone: 'teal',
+      icon: Inbox,
     },
     {
       id: 'triage',
       label: t('home.triage'),
       value: triageCount,
       href: queueHref({ status: ['triage'] }),
+      tone: 'violet',
+      icon: ListChecks,
     },
   ];
 
@@ -164,13 +183,19 @@ function HomeBody() {
                 <RelativeTime iso={new Date(updatedAt).toISOString()} />
               </span>
             ) : null}
-            <Button size="sm" onClick={refresh} aria-busy={fetching || undefined}>
-              <RefreshCw
-                aria-hidden
-                className={cn('size-3.5', fetching && 'motion-safe:animate-spin')}
-              />
-              {t('home.refresh')}
-            </Button>
+            <IconButton
+              variant="secondary"
+              label={t('home.refresh')}
+              tooltip={t('home.refreshHint')}
+              aria-busy={fetching || undefined}
+              icon={
+                <RefreshCw
+                  aria-hidden
+                  className={cn('size-4', fetching && 'motion-safe:animate-spin')}
+                />
+              }
+              onClick={refresh}
+            />
           </>
         }
       />
@@ -181,8 +206,8 @@ function HomeBody() {
       >
         <TileStrip tiles={tiles} />
 
-        <div className="grid divide-border border-b border-border lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)] lg:divide-x">
-          <HomeSection id="home-sla" title={t('home.slaRisk')}>
+        <div className="grid gap-3 px-4 pb-3 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
+          <HomeSection id="home-sla" title={t('home.slaRisk')} tone="amber" icon={Hourglass}>
             {slaList.isPending ? (
               <ListSkeleton />
             ) : slaList.isError ? (
@@ -196,13 +221,19 @@ function HomeBody() {
               </>
             )}
           </HomeSection>
-          <HomeSection id="home-ai" title={t('home.ai.title')} aside={<BotMark />}>
+          <HomeSection
+            id="home-ai"
+            title={t('home.ai.title')}
+            tone="teal"
+            icon={Bot}
+            aside={<BotMark />}
+          >
             <AiStatus query={autonomy} />
           </HomeSection>
         </div>
 
-        <div className="grid divide-border border-b border-border md:grid-cols-2 md:divide-x">
-          <HomeSection id="home-status" title={t('home.byStatus')}>
+        <div className="grid gap-3 px-4 pb-3 md:grid-cols-2">
+          <HomeSection id="home-status" title={t('home.byStatus')} tone="sky" icon={Layers}>
             {stats.isPending ? (
               <Skeleton className="h-5" />
             ) : stats.isError ? (
@@ -211,7 +242,7 @@ function HomeBody() {
               <StatusBreakdown stats={stats.data} />
             )}
           </HomeSection>
-          <HomeSection id="home-queue" title={t('home.byQueue')}>
+          <HomeSection id="home-queue" title={t('home.byQueue')} tone="indigo" icon={ListTree}>
             {stats.isPending ? (
               <Skeleton className="h-5" />
             ) : stats.isError ? (
@@ -222,8 +253,8 @@ function HomeBody() {
           </HomeSection>
         </div>
 
-        <div className="grid divide-border md:grid-cols-2 md:divide-x">
-          <HomeSection id="home-load" title={t('home.load')}>
+        <div className="grid gap-3 px-4 pb-4 md:grid-cols-2">
+          <HomeSection id="home-load" title={t('home.load')} tone="green" icon={Users}>
             {stats.isPending || users.isPending ? (
               <ListSkeleton />
             ) : stats.isError ? (
@@ -234,7 +265,7 @@ function HomeBody() {
               <LoadList rows={load} />
             )}
           </HomeSection>
-          <HomeSection id="home-health" title={t('home.healthTitle')}>
+          <HomeSection id="home-health" title={t('home.healthTitle')} tone="slate" icon={Activity}>
             <SystemHealth query={ready} />
           </HomeSection>
         </div>

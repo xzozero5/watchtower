@@ -43,7 +43,7 @@ export function PageHeader({
   sectionPicker?: ReactNode;
 }) {
   return (
-    <div className="flex min-h-[48px] shrink-0 flex-wrap items-center justify-between gap-x-4 gap-y-1 border-b border-border px-4 py-1.5">
+    <div className="flex min-h-[48px] shrink-0 flex-wrap items-center justify-between gap-x-4 gap-y-1 border-b border-border/60 px-4 py-1.5">
       <div className="flex min-w-0 items-center gap-3">
         {breadcrumb ? (
           <>
@@ -67,6 +67,7 @@ export function AccessDenied({ role }: { role: 'lead' | 'head' }) {
     <main id="main-content" className="flex flex-1 items-center justify-center">
       <EmptyState
         icon={<Lock />}
+        tone="amber"
         title={t('states.denied.title')}
         description={t('states.denied.body', { role: t(`roles.${role}`) })}
         action={

@@ -15,7 +15,7 @@ export function LoginLayout({ children }: { children: ReactNode }) {
   const t = useT();
   return (
     <div className="grid min-h-dvh lg:grid-cols-[minmax(0,5fr)_minmax(0,6fr)]">
-      <header className="flex items-center gap-3 bg-brand-surface px-6 py-4 text-brand-foreground lg:flex-col lg:justify-center lg:gap-6 lg:p-12 lg:text-center">
+      <header className="flex items-center gap-3 bg-brand-surface px-6 py-4 max-lg:rounded-b-3xl lg:rounded-r-[2.5rem] text-brand-foreground lg:flex-col lg:justify-center lg:gap-6 lg:p-12 lg:text-center">
         {/* The name sits next to it as text, so the icon adds nothing for a screen reader. */}
         <Image
           src="/brand/watchtower-icon.png"

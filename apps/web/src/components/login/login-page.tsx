@@ -2,8 +2,18 @@
 
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { STAFF_ROLES, type AuthConfig, type StaffRole } from '@watchtower/shared';
-import { Alert, Button, buttonVariants, cn, Input, Select, Skeleton } from '@watchtower/ui';
-import { KeyRound, LogIn, Mail } from 'lucide-react';
+import {
+  Alert,
+  Button,
+  buttonVariants,
+  cn,
+  Input,
+  Select,
+  Skeleton,
+  TINT_CLASSES,
+  type TintId,
+} from '@watchtower/ui';
+import { BadgeCheck, KeyRound, LogIn, type LucideIcon, Mail, Wrench } from 'lucide-react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { type SyntheticEvent, type ReactNode, useEffect, useId, useState } from 'react';
 
@@ -28,25 +38,40 @@ const SSO_ERROR_KEYS: Record<SsoFailure, MessageKey> = {
   unknown: 'login.sso.errors.unknown',
 };
 
+/** One way in, as a soft rounded card with an icon bubble beside its title. */
 function Section({
   title,
   description,
+  icon: Icon,
+  tone,
   children,
-  first = false,
 }: {
   title: string;
   description?: string;
+  icon: LucideIcon;
+  tone: TintId;
   children: ReactNode;
-  /** The main way in: no divider above it. The others are separated by a hairline. */
-  first?: boolean;
 }) {
   const id = useId();
   return (
-    <section aria-labelledby={id} className={cn(!first && 'border-t border-border pt-6')}>
-      <h2 id={id} className="text-base font-semibold">
+    <section
+      aria-labelledby={id}
+      className="rounded-2xl bg-surface p-5 ring-1 ring-border/60 ring-inset"
+    >
+      <h2 id={id} className="flex items-center gap-2.5 text-base font-semibold">
+        <span
+          aria-hidden
+          className={cn(
+            'inline-flex size-8 shrink-0 items-center justify-center rounded-full',
+            TINT_CLASSES[tone].chip,
+            TINT_CLASSES[tone].icon,
+          )}
+        >
+          <Icon className="size-4" />
+        </span>
         {title}
       </h2>
-      {description ? <p className="mt-1 text-sm text-muted-foreground">{description}</p> : null}
+      {description ? <p className="mt-2 text-sm text-muted-foreground">{description}</p> : null}
       <div className="mt-3 flex flex-col gap-3">{children}</div>
     </section>
   );
@@ -76,15 +101,18 @@ function StaffSso({ config }: { config: AuthConfig }) {
   const { apiUrl } = useRuntimeConfig();
   const href = ssoStartUrl(apiUrl, config);
   return (
-    <Section first title={t('login.staff.title')} description={t('login.staff.description')}>
+    <Section title={t('login.staff.title')} icon={BadgeCheck} tone="blue">
       {href ? (
-        <a href={href} className={cn(buttonVariants({ variant: 'primary' }), 'w-full')}>
+        <a
+          href={href}
+          className={cn(buttonVariants({ variant: 'primary' }), 'w-full rounded-full')}
+        >
           <LogIn aria-hidden className="size-4" />
           {t('login.sso.button', { provider: SSO_PROVIDER.displayName })}
         </a>
       ) : (
         <>
-          <Button variant="primary" className="w-full" disabled>
+          <Button variant="primary" className="w-full rounded-full" disabled>
             <LogIn aria-hidden className="size-4" />
             {t('login.sso.button', { provider: SSO_PROVIDER.displayName })}
           </Button>
@@ -112,7 +140,12 @@ function DevLogin({ onSignedIn }: { onSignedIn: () => void }) {
     mutation.mutate();
   };
   return (
-    <Section title={t('login.dev.title')} description={t('login.dev.description')}>
+    <Section
+      title={t('login.dev.title')}
+      description={t('login.dev.description')}
+      icon={Wrench}
+      tone="amber"
+    >
       <form onSubmit={submit} className="flex flex-col gap-3">
         <Field label={t('login.email')} htmlFor={`${ids}-email`}>
           <Input
@@ -151,7 +184,12 @@ function DevLogin({ onSignedIn }: { onSignedIn: () => void }) {
             )}
           </Alert>
         ) : null}
-        <Button type="submit" variant="secondary" disabled={mutation.isPending}>
+        <Button
+          type="submit"
+          variant="secondary"
+          className="rounded-full"
+          disabled={mutation.isPending}
+        >
           {mutation.isPending ? t('login.signingIn') : t('login.dev.button')}
         </Button>
       </form>
@@ -168,7 +206,7 @@ function MagicLinkRequest() {
 
   const rateLimited = isApiError(mutation.error) && mutation.error.code === 'rate_limited';
   return (
-    <Section title={t('login.client.title')} description={t('login.client.description')}>
+    <Section title={t('login.client.title')} icon={Mail} tone="teal">
       <form
         onSubmit={(event) => {
           event.preventDefault();
@@ -189,7 +227,12 @@ function MagicLinkRequest() {
             }}
           />
         </Field>
-        <Button type="submit" variant="secondary" disabled={mutation.isPending}>
+        <Button
+          type="submit"
+          variant="secondary"
+          className="rounded-full"
+          disabled={mutation.isPending}
+        >
           <Mail aria-hidden className="size-4" />
           {mutation.isPending ? t('login.client.sending') : t('login.client.button')}
         </Button>
@@ -226,8 +269,18 @@ function BreakGlass({ onSignedIn }: { onSignedIn: () => void }) {
 
   const code = isApiError(mutation.error) ? mutation.error.code : null;
   return (
-    <details className="border-t border-border pt-6">
-      <summary className="cursor-pointer text-base font-semibold">
+    <details className="rounded-2xl bg-surface p-5 ring-1 ring-border/60 ring-inset">
+      <summary className="flex cursor-pointer items-center gap-2.5 text-base font-semibold">
+        <span
+          aria-hidden
+          className={cn(
+            'inline-flex size-8 shrink-0 items-center justify-center rounded-full',
+            TINT_CLASSES.slate.chip,
+            TINT_CLASSES.slate.icon,
+          )}
+        >
+          <KeyRound className="size-4" />
+        </span>
         {t('login.breakGlass.title')}
       </summary>
       <p className="mt-2 text-sm text-muted-foreground">{t('login.breakGlass.description')}</p>
@@ -273,7 +326,12 @@ function BreakGlass({ onSignedIn }: { onSignedIn: () => void }) {
                   : t('login.errors.generic')}
           </Alert>
         ) : null}
-        <Button type="submit" variant="secondary" disabled={mutation.isPending}>
+        <Button
+          type="submit"
+          variant="secondary"
+          className="rounded-full"
+          disabled={mutation.isPending}
+        >
           <KeyRound aria-hidden className="size-4" />
           {mutation.isPending ? t('login.signingIn') : t('login.breakGlass.button')}
         </Button>
@@ -315,7 +373,6 @@ export function LoginPage() {
     <LoginLayout>
       <div>
         <h1 className="text-xl font-semibold">{t('login.title')}</h1>
-        <p className="mt-1 text-sm text-muted-foreground">{t('login.subtitle')}</p>
       </div>
 
       {failure ? (
