@@ -96,6 +96,22 @@ describe('discord_notification', () => {
     await insert(app, 'state, sent_at, provider_message_id', ['sent', new Date(), '1234']);
   });
 
+  it('a claimed row is `sending` with a claim time, and only a claimed row has one (F-3)', async () => {
+    await rejects(insert(app, 'state', ['sending']), PG.checkViolation);
+    await rejects(insert(app, 'state, claimed_at', ['pending', new Date()]), PG.checkViolation);
+    await insert(app, 'state, claimed_at', ['sending', new Date()]);
+    const row = await insert(app, 'state', ['pending']);
+    const id = row.rows[0]?.id ?? '';
+    await app.query(
+      `UPDATE discord_notification SET state = 'sending', claimed_at = now(), attempts = 1 WHERE id = $1`,
+      [id],
+    );
+    await app.query(
+      `UPDATE discord_notification SET state = 'pending', claimed_at = NULL, next_attempt_at = now() + interval '1 minute' WHERE id = $1`,
+      [id],
+    );
+  });
+
   it('a failed or skipped row says why', async () => {
     await rejects(insert(app, 'state', ['failed']), PG.checkViolation);
     await rejects(insert(app, 'state', ['skipped']), PG.checkViolation);

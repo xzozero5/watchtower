@@ -11,6 +11,7 @@ import {
 import { ChannelError } from '../common/errors.js';
 import { randomWebhookParts } from './__fixtures__/random-webhook.js';
 import { LiveDiscordTransport, type LiveDiscordOptions } from './live.js';
+import { MAX_RATE_LIMIT_WAIT_MS } from './rate-limit.js';
 import { DiscordWebhook } from './webhook.js';
 
 const net = disableNetConnect();
@@ -204,6 +205,18 @@ describe('LiveDiscordTransport rate limits (read from headers, never hard-coded)
     expect(error.retryAfterMs).toBe(90_000);
     expect(requests).toHaveLength(1);
     expect(delays).toEqual([]);
+  });
+
+  it('caps a hostile Retry-After in the error it reports (F-5)', async () => {
+    const { transport } = transportFor([
+      jsonResponse(429, { retry_after: 1e308 }, { 'retry-after': '99999999' }),
+    ]);
+    const error = await failureOf(transport.execute(webhook, message));
+    expect(error.retryAfterMs).toBe(MAX_RATE_LIMIT_WAIT_MS);
+    const bodyOnly = transportFor([jsonResponse(429, { retry_after: 1e308 })]);
+    expect((await failureOf(bodyOnly.transport.execute(webhook, message))).retryAfterMs).toBe(
+      MAX_RATE_LIMIT_WAIT_MS,
+    );
   });
 
   it('gives up after a second 429 and reports the wait Discord asked for', async () => {

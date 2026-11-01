@@ -17,7 +17,7 @@ import { ticket } from './ticketing.js';
 const timestamptz = (name: string) => timestamp(name, { withTimezone: true, mode: 'date' });
 
 /**
- * One post of one event to one destination slot. `state` is `pending`, `sent` (Discord accepted
+ * One post of one event to one destination slot. `state` is `pending`, `sending` (claimed before the post), `sent` (Discord accepted
  * it), `mock` (the in-memory transport recorded it; nothing was delivered), `skipped` (no webhook
  * for the slot) or `failed`. Ids and codes only: no ticket text, no webhook URL.
  */
@@ -34,6 +34,10 @@ export const discordNotification = pgTable(
     /** A destination name from the channel map, never a URL. */
     slot: text('slot').notNull(),
     state: text('state').notNull().default('pending'),
+    /** When a `pending` row is next due (a retry waits here). */
+    nextAttemptAt: timestamptz('next_attempt_at').notNull().defaultNow(),
+    /** Set while `sending`: the post is being made, or the worker died. */
+    claimedAt: timestamptz('claimed_at'),
     attempts: integer('attempts').notNull().default(0),
     errorCode: text('error_code'),
     outcomeUnknown: boolean('outcome_unknown').notNull().default(false),
@@ -45,9 +49,12 @@ export const discordNotification = pgTable(
   (table) => [
     uniqueIndex('discord_notification_dedupe_key').on(table.dedupeKey),
     index('discord_notification_ticket_idx').on(table.ticketId, table.createdAt),
-    index('discord_notification_open_idx')
+    index('discord_notification_failed_idx')
       .on(table.createdAt)
-      .where(sql`${table.state} IN ('pending', 'failed')`),
+      .where(sql`${table.state} = 'failed'`),
+    index('discord_notification_due_idx')
+      .on(table.nextAttemptAt)
+      .where(sql`${table.state} IN ('pending', 'sending')`),
   ],
 );
 

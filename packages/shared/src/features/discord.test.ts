@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
+import { outboxJobOptionsSchema } from '../queues.js';
 import { INTEGRATION_CATALOG } from './credentials.js';
 import {
   DEFAULT_DISCORD_CHANNEL_MAP,
@@ -7,6 +8,7 @@ import {
   DISCORD_WEBHOOK_SLOTS,
   DiscordChannelMapError,
   discordNotifyJobId,
+  discordNotifyPriority,
   discordNotifyJobSchema,
   matchDiscordRoutes,
   parseDiscordChannelMap,
@@ -104,5 +106,18 @@ describe('notify job', () => {
       ticketId,
     });
     expect(discordNotifyJobSchema.safeParse({ event: 'ticket.created' }).success).toBe(false);
+  });
+});
+
+describe('discordNotifyPriority (F-2)', () => {
+  it('puts P1 ahead of everything else, one rank per priority, all above BullMQ default 0', () => {
+    expect(['P1', 'P2', 'P3', 'P4'].map((p) => discordNotifyPriority(p as 'P1'))).toEqual([
+      1, 2, 3, 4,
+    ]);
+  });
+
+  it('is accepted by the outbox job options schema', () => {
+    expect(outboxJobOptionsSchema.parse({ priority: 1 })).toEqual({ priority: 1 });
+    expect(outboxJobOptionsSchema.safeParse({ priority: 0 }).success).toBe(false);
   });
 });

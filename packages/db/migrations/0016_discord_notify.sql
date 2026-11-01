@@ -5,6 +5,8 @@
 -- transport recorded it and nothing left the machine) and from `skipped` (no webhook for the slot).
 -- Holds ids and codes only: no ticket subject, no customer, no message text, no webhook URL (N1, N4).
 -- The application may not delete rows, and may change only the outcome columns.
+-- A row is claimed (`sending`) before the post is made, so a crash after the post is not mistaken for
+-- "never posted", and a retry that is owed waits in `pending` with its next attempt time.
 -- Reversible: see 0016_discord_notify.down.sql.
 
 CREATE TABLE discord_notification (
@@ -15,7 +17,11 @@ CREATE TABLE discord_notification (
   ticket_id uuid NOT NULL REFERENCES ticket (id) ON DELETE RESTRICT,
   -- A destination name from the channel map, never a URL (the URL is a credential, ADR-012).
   slot text NOT NULL,
+  -- pending: owed, due at next_attempt_at. sending: claimed, the post is being made (or the worker died).
   state text NOT NULL DEFAULT 'pending',
+  next_attempt_at timestamptz NOT NULL DEFAULT now(),
+  -- Set while `sending`: a row claimed for too long was abandoned by a dead worker.
+  claimed_at timestamptz,
   attempts integer NOT NULL DEFAULT 0,
   -- A stable code (channel error code or kind), never provider text.
   error_code text,
@@ -29,7 +35,8 @@ CREATE TABLE discord_notification (
   CONSTRAINT discord_notification_dedupe_key UNIQUE (dedupe_key),
   CONSTRAINT discord_notification_event_check CHECK (event IN ('ticket.created')),
   CONSTRAINT discord_notification_slot_check CHECK (slot IN ('default', 'urgent')),
-  CONSTRAINT discord_notification_state_check CHECK (state IN ('pending', 'sent', 'mock', 'skipped', 'failed')),
+  CONSTRAINT discord_notification_state_check CHECK (state IN ('pending', 'sending', 'sent', 'mock', 'skipped', 'failed')),
+  CONSTRAINT discord_notification_claim_check CHECK ((state = 'sending') = (claimed_at IS NOT NULL)),
   CONSTRAINT discord_notification_attempts_check CHECK (attempts >= 0),
   -- Only a real, accepted post has a delivery time. A mock row can never claim one.
   CONSTRAINT discord_notification_sent_at CHECK ((state = 'sent') = (sent_at IS NOT NULL)),
@@ -38,11 +45,13 @@ CREATE TABLE discord_notification (
 );
 CREATE INDEX discord_notification_ticket_idx ON discord_notification (ticket_id, created_at);
 -- What an operator looks at: posts still owed, and posts that were given up on.
-CREATE INDEX discord_notification_open_idx ON discord_notification (created_at)
-  WHERE state IN ('pending', 'failed');
+CREATE INDEX discord_notification_failed_idx ON discord_notification (created_at) WHERE state = 'failed';
+-- The sweep: owed posts that are due, and claims that were abandoned.
+CREATE INDEX discord_notification_due_idx ON discord_notification (next_attempt_at)
+  WHERE state IN ('pending', 'sending');
 
 -- Who, what and where never change; the application records the outcome. No DELETE.
 REVOKE UPDATE, DELETE ON discord_notification FROM watchtower_app, PUBLIC;
 GRANT UPDATE (
-  state, attempts, error_code, outcome_unknown, provider_message_id, sent_at, updated_at
+  state, next_attempt_at, claimed_at, attempts, error_code, outcome_unknown, provider_message_id, sent_at, updated_at
 ) ON discord_notification TO watchtower_app;

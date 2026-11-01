@@ -162,8 +162,27 @@ describe('tickets.create, Discord notice (T-104)', () => {
     expect(jobs).toHaveLength(1);
     expect(jobs[0]).toMatchObject({ queue: 'discord', jobName: 'notify' });
     expect(jobs[0]?.payload).toEqual({ event: 'ticket.created', ticketId: value.ticket.id });
+    // A default P3 ticket runs at rank 3; a P1 one would run first (F-2).
+    expect((jobs[0]?.options as { priority?: number }).priority).toBe(3);
     // Nothing a customer wrote rides the queue.
     expect(JSON.stringify(jobs[0])).not.toMatch(/Secret|private@example|Private Person/);
+  });
+
+  it('queues a P1 notice with the first rank, so it goes ahead of a backlog (F-2)', async () => {
+    const org = await addOrg(env);
+    const { value } = await env.tx((tx) =>
+      env.domain.tickets.create(tx, env.ctx(), {
+        orgId: org.id,
+        subject: 'a',
+        body: 'b',
+        priority: 'P1',
+      }),
+    );
+    const [job] = await env.db.owner.db
+      .select()
+      .from(schema.outbox)
+      .where(eq(schema.outbox.jobId, `discord-ticket-created-${value.ticket.id}`));
+    expect((job?.options as { priority?: number }).priority).toBe(1);
   });
 
   it('a duplicate submission does not queue a second notice', async () => {

@@ -10,6 +10,18 @@
 
 const MAX_TRACKED = 1000;
 
+/**
+ * The longest wait any header or body value can impose, in milliseconds. Discord's real values are
+ * seconds to minutes; this ceiling means a corrupt or hostile answer (`99999999`, `1e308`) cannot
+ * switch every webhook off until the process restarts. `[ASSUMED]` ten minutes.
+ */
+export const MAX_RATE_LIMIT_WAIT_MS = 10 * 60 * 1000;
+
+/** Seconds (possibly huge, possibly fractional) to whole milliseconds, never above the ceiling. */
+export function boundedWaitMs(seconds: number): number {
+  return Math.min(MAX_RATE_LIMIT_WAIT_MS, Math.ceil(seconds * 1000));
+}
+
 interface BucketState {
   bucket: string | null;
   remaining: number;
@@ -58,7 +70,7 @@ export class DiscordRateLimiter {
       number(headers.get('retry-after')) ?? observation.bodyRetryAfterSeconds ?? undefined;
 
     if (status === 429) {
-      const waitMs = Math.ceil((retryAfter ?? resetAfter ?? 1) * 1000);
+      const waitMs = boundedWaitMs(retryAfter ?? resetAfter ?? 1);
       const scope = headers.get('x-ratelimit-scope');
       if (headers.get('x-ratelimit-global') !== null || scope === 'global') {
         this.#globalUntilMs = Math.max(this.#globalUntilMs, now + waitMs);
@@ -73,7 +85,7 @@ export class DiscordRateLimiter {
       this.#buckets.set(webhookId, {
         bucket: headers.get('x-ratelimit-bucket'),
         remaining,
-        resetAtMs: now + Math.ceil(resetAfter * 1000),
+        resetAtMs: now + boundedWaitMs(resetAfter),
       });
     }
     this.#prune(now);

@@ -15,12 +15,11 @@ import { localKmsFromConfig } from '@watchtower/shared/credential-box';
 import { disableNetConnect } from '@watchtower/shared/testing';
 import type { Job } from 'bullmq';
 import { eq } from 'drizzle-orm';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
 import { createLogger } from '../logger.js';
 import { testConfig } from '../testing/support.js';
 import {
-  DiscordRetryError,
   createDiscordNotifier,
   createDiscordProcessor,
   type DiscordNotifier,
@@ -53,6 +52,11 @@ beforeAll(async () => {
     .values({ name: `Org ${randomUUID()}` })
     .returning({ id: schema.organization.id });
   orgId = org?.id ?? '';
+});
+
+// The sweep looks at every owed row, so each case starts with an empty ledger.
+beforeEach(async () => {
+  await owner().delete(schema.discordNotification);
 });
 
 afterAll(async () => {
@@ -179,7 +183,7 @@ describe('mock mode (nothing configured)', () => {
   it('records the notice as mock, never as sent, and says so', async () => {
     const { notifier, requests, log } = build();
     const ticketId = await addTicket();
-    const result = await notifier.notify(notice(ticketId), { final: false });
+    const result = await notifier.notify(notice(ticketId));
     expect(result).toMatchObject({ status: 'processed', mode: 'mock' });
     expect(result.slots).toEqual([{ slot: 'default', state: 'mock' }]);
 
@@ -192,20 +196,22 @@ describe('mock mode (nothing configured)', () => {
     expect(log.lines.join('')).toContain('NOT delivered');
   });
 
-  it('is loud in production: a warning that nothing is delivered', async () => {
+  it('is loud in production: a warning on every mock post, not once per process (F-1)', async () => {
     const { notifier, log } = build({ production: true });
-    await notifier.notify(notice(await addTicket()), { final: false });
-    const warning = log.lines.map((line) => JSON.parse(line) as { level: string; msg: string });
-    expect(
-      warning.some((entry) => entry.level === 'warn' && entry.msg.includes('MOCK in production')),
-    ).toBe(true);
+    await notifier.notify(notice(await addTicket()));
+    await notifier.notify(notice(await addTicket()));
+    const entries = log.lines.map((line) => JSON.parse(line) as { level: string; msg: string });
+    const warnings = entries.filter(
+      (entry) => entry.level === 'warn' && entry.msg.includes('NOT delivered'),
+    );
+    expect(warnings).toHaveLength(2);
   });
 
   it('does not post a second time for the same ticket', async () => {
     const { notifier } = build();
     const ticketId = await addTicket();
-    await notifier.notify(notice(ticketId), { final: false });
-    const again = await notifier.notify(notice(ticketId), { final: false });
+    await notifier.notify(notice(ticketId));
+    const again = await notifier.notify(notice(ticketId));
     expect(again.slots).toEqual([{ slot: 'default', state: 'already', was: 'mock' }]);
     expect(notifier.mockTransport.sent).toHaveLength(1);
     expect(await rows(ticketId)).toHaveLength(1);
@@ -214,7 +220,7 @@ describe('mock mode (nothing configured)', () => {
   it('carries the ticket key, priority and a link, and nothing the customer wrote', async () => {
     const { notifier } = build();
     const ticketId = await addTicket('P2');
-    await notifier.notify(notice(ticketId), { final: false });
+    await notifier.notify(notice(ticketId));
     const posted = JSON.stringify(notifier.mockTransport.sent.at(-1)?.payload);
     expect(posted).toContain('"allowed_mentions":{"parse":[]}');
     expect(posted).toMatch(/New ticket OPS-\d+/);
@@ -230,7 +236,7 @@ describe('live mode (a webhook is configured)', () => {
     const hook = webhookFor();
     const { notifier, requests } = build({ urls: { default: hook.url } });
     const ticketId = await addTicket();
-    const result = await notifier.notify(notice(ticketId), { final: false });
+    const result = await notifier.notify(notice(ticketId));
     expect(result.mode).toBe('live');
     expect(result.slots).toEqual([{ slot: 'default', state: 'sent' }]);
     expect(requests).toHaveLength(1);
@@ -242,7 +248,7 @@ describe('live mode (a webhook is configured)', () => {
     expect(notifier.mockTransport.sent).toHaveLength(0);
 
     // A repeat (a duplicate job, a late retry) posts nothing.
-    await notifier.notify(notice(ticketId), { final: false });
+    await notifier.notify(notice(ticketId));
     expect(requests).toHaveLength(1);
   });
 
@@ -250,7 +256,7 @@ describe('live mode (a webhook is configured)', () => {
     const hook = webhookFor();
     const { notifier, log } = build({ urls: { default: hook.url }, steps: [status(500)] });
     const ticketId = await addTicket();
-    await notifier.notify(notice(ticketId), { final: true });
+    await notifier.notify(notice(ticketId));
     const everything = JSON.stringify({ lines: log.lines, rows: await rows(ticketId) });
     expect(everything).not.toContain(hook.token);
     expect(everything).not.toContain(hook.url);
@@ -264,12 +270,12 @@ describe('live mode (a webhook is configured)', () => {
     });
     const hot = await addTicket('P2');
     const calm = await addTicket('P4');
-    const first = await notifier.notify(notice(hot), { final: false });
+    const first = await notifier.notify(notice(hot));
     expect(first.slots.map((slot) => `${slot.slot}:${slot.state}`)).toEqual([
       'default:sent',
       'urgent:sent',
     ]);
-    const second = await notifier.notify(notice(calm), { final: false });
+    const second = await notifier.notify(notice(calm));
     expect(second.slots.map((slot) => `${slot.slot}:${slot.state}`)).toEqual(['default:sent']);
     expect(requests.map((request) => request.url.split('/')[5])).toEqual([a.id, b.id, a.id]);
   });
@@ -280,7 +286,7 @@ describe('live mode (a webhook is configured)', () => {
       map: twoSlots,
     });
     const ticketId = await addTicket('P1');
-    const result = await notifier.notify(notice(ticketId), { final: false });
+    const result = await notifier.notify(notice(ticketId));
     expect(result.slots).toEqual([
       { slot: 'default', state: 'sent' },
       { slot: 'urgent', state: 'skipped' },
@@ -303,7 +309,7 @@ describe('live mode (a webhook is configured)', () => {
       },
     });
     const ticketId = await addTicket();
-    const result = await notifier.notify(notice(ticketId), { final: false });
+    const result = await notifier.notify(notice(ticketId));
     expect(result.mode).toBe('live');
     expect(result.slots).toEqual([{ slot: 'default', state: 'failed' }]);
     expect(requests).toHaveLength(0);
@@ -315,69 +321,225 @@ describe('live mode (a webhook is configured)', () => {
   });
 });
 
-describe('failures', () => {
-  it('keeps a rate-limited post pending and does not post the finished slot again on retry', async () => {
+/** A notifier whose clock and transport clock are the same variable, so waits pass without waiting. */
+function withClock(setup: Setup, steps: Step[]) {
+  const clock = { now: Date.now() + 5000 };
+  const stub = scripted(steps);
+  const built = build({
+    ...setup,
+    overrides: {
+      now: () => new Date(clock.now),
+      liveTransport: new discord.LiveDiscordTransport({
+        fetch: stub.fetch,
+        http: { now: () => clock.now, sleep: () => Promise.resolve() },
+      }),
+      ...setup.overrides,
+    },
+  });
+  return { ...built, clock, requests: stub.requests };
+}
+
+/** A ledger row the way a failed attempt leaves it. */
+async function owe(
+  ticketId: string,
+  extra: Partial<typeof schema.discordNotification.$inferInsert> = {},
+) {
+  await owner()
+    .insert(schema.discordNotification)
+    .values({
+      dedupeKey: `ticket.created:${ticketId}:default`,
+      event: 'ticket.created',
+      ticketId,
+      slot: 'default',
+      nextAttemptAt: new Date(Date.now() - 1000),
+      ...extra,
+    });
+}
+
+describe('failures and retries', () => {
+  it('keeps a rate-limited post pending until Retry-After has passed, and never posts the finished slot again (F-2)', async () => {
     const [a, b] = [webhookFor(), webhookFor()];
     // default ok; urgent: 429 asking for 90 s (too long to wait in the call), then ok on the retry.
-    // The transport has a clock the test moves, so the 90 s can pass without waiting.
-    const stub = scripted([created(), status(429, { 'retry-after': '90' }), created()]);
-    const clock = { now: 1_000_000 };
-    const { notifier } = build({
-      urls: { default: a.url, urgent: b.url },
-      map: twoSlots,
-      overrides: {
-        liveTransport: new discord.LiveDiscordTransport({
-          fetch: stub.fetch,
-          http: { now: () => clock.now, sleep: () => Promise.resolve() },
-        }),
-      },
-    });
-    const requests = stub.requests;
+    const { notifier, clock, requests } = withClock(
+      { urls: { default: a.url, urgent: b.url }, map: twoSlots },
+      [created(), status(429, { 'retry-after': '90' }), created()],
+    );
     const ticketId = await addTicket('P1');
-    const first = await notifier.notify(notice(ticketId), { final: false });
-    expect(first.slots).toEqual([
-      { slot: 'default', state: 'sent' },
-      { slot: 'urgent', state: 'pending', retryAfterMs: 90_000 },
-    ]);
-    expect(await rows(ticketId)).toHaveLength(2);
-    expect((await rows(ticketId)).find((row) => row.slot === 'urgent')).toMatchObject({
-      state: 'pending',
-      errorCode: 'rate_limited',
-      attempts: 1,
-    });
+    const first = await notifier.notify(notice(ticketId));
+    expect(first.slots[0]).toEqual({ slot: 'default', state: 'sent' });
+    expect(first.slots[1]).toMatchObject({ slot: 'urgent', state: 'pending' });
+    const urgent = (await rows(ticketId)).find((row) => row.slot === 'urgent');
+    expect(urgent).toMatchObject({ state: 'pending', errorCode: 'rate_limited', attempts: 1 });
+    // The time the row is next due includes what Discord asked for.
+    expect(urgent?.nextAttemptAt.getTime()).toBe(clock.now + 90_000);
+    expect(urgent?.outcomeUnknown).toBe(false);
 
-    // Still inside the 90 s: the transport remembers the limit and does not even ask.
-    const early = await notifier.notify(notice(ticketId), { final: false });
+    // Not due yet: nothing is sent, not even a question to Discord.
+    clock.now += 1000;
+    const early = await notifier.notify(notice(ticketId));
     expect(early.slots[1]).toMatchObject({ slot: 'urgent', state: 'pending' });
     expect(requests).toHaveLength(2);
 
     clock.now += 91_000;
-    const second = await notifier.notify(notice(ticketId), { final: false });
+    const second = await notifier.notify(notice(ticketId));
     expect(second.slots).toEqual([
       { slot: 'default', state: 'already', was: 'sent' },
       { slot: 'urgent', state: 'sent' },
     ]);
-    // default was posted once, urgent twice (one refused): three requests, not four.
     expect(requests.map((request) => request.url.split('/')[5])).toEqual([a.id, b.id, b.id]);
   });
 
-  it('settles an exhausted retry as failed and says the outcome is unknown after a 5xx', async () => {
-    const { notifier } = build({ urls: { default: webhookFor().url }, steps: [status(502)] });
+  it('an unknown outcome (5xx) is retried once, then given up: at most two posts per slot (F-3)', async () => {
+    const { notifier, clock, requests } = withClock({ urls: { default: webhookFor().url } }, [
+      status(502),
+      status(502),
+      status(502),
+    ]);
     const ticketId = await addTicket();
-    const result = await notifier.notify(notice(ticketId), { final: true });
-    expect(result.slots).toEqual([{ slot: 'default', state: 'failed' }]);
+    const first = await notifier.notify(notice(ticketId));
+    expect(first.slots[0]).toMatchObject({ state: 'pending' });
+    expect((await rows(ticketId))[0]).toMatchObject({ state: 'pending', outcomeUnknown: true });
+
+    clock.now += 10 * 60 * 1000;
+    const second = await notifier.notify(notice(ticketId));
+    expect(second.slots).toEqual([{ slot: 'default', state: 'failed' }]);
     expect((await rows(ticketId))[0]).toMatchObject({
       state: 'failed',
-      errorCode: 'server',
+      errorCode: 'outcome_unknown',
       outcomeUnknown: true,
       sentAt: null,
     });
+    // A later attempt (a duplicate job, the sweep) posts nothing more.
+    clock.now += 10 * 60 * 1000;
+    await notifier.notify(notice(ticketId));
+    await notifier.sweep();
+    expect(requests).toHaveLength(2);
+  });
+
+  it('the row is claimed before the post is made (F-3)', async () => {
+    const ticketId = await addTicket();
+    let seen: { state: string; claimed: boolean; attempts: number } | undefined;
+    const spy: discord.DiscordTransport = {
+      kind: 'live',
+      execute: async () => {
+        const [row] = await rows(ticketId);
+        seen = {
+          state: row?.state ?? '',
+          claimed: row?.claimedAt != null,
+          attempts: row?.attempts ?? 0,
+        };
+        return { delivered: true, messageId: '1' };
+      },
+    };
+    const { notifier } = build({
+      urls: { default: webhookFor().url },
+      overrides: { liveTransport: spy },
+    });
+    await notifier.notify(notice(ticketId));
+    expect(seen).toEqual({ state: 'sending', claimed: true, attempts: 1 });
+    expect((await rows(ticketId))[0]).toMatchObject({ state: 'sent', claimedAt: null });
+  });
+
+  it('a claim whose worker died is an unknown outcome: posted once more, then failed, never silently "sent" (F-3)', async () => {
+    const { notifier, requests } = build({
+      urls: { default: webhookFor().url },
+      overrides: { claimLeaseMs: 0 },
+    });
+    const ticketId = await addTicket();
+    const dead = new Date(Date.now() - 60_000);
+    await owe(ticketId, { state: 'sending', claimedAt: dead, attempts: 1 });
+
+    const first = await notifier.sweep();
+    expect(first.recovered).toBe(1);
+    // Recovered as "may have been posted", and re-driven in the same pass: that is the one repost.
+    expect((await rows(ticketId))[0]).toMatchObject({ state: 'sent', outcomeUnknown: true });
+    expect(requests).toHaveLength(1);
+
+    // The same worker dying again after that repost: now it is given up, and nothing more is posted.
+    await owner()
+      .update(schema.discordNotification)
+      .set({ state: 'sending', claimedAt: dead, sentAt: null, providerMessageId: null })
+      .where(eq(schema.discordNotification.ticketId, ticketId));
+    const second = await notifier.sweep();
+    expect(second.recovered).toBe(1);
+    expect((await rows(ticketId))[0]).toMatchObject({
+      state: 'failed',
+      errorCode: 'outcome_unknown',
+      outcomeUnknown: true,
+    });
+    expect(requests).toHaveLength(1);
+  });
+
+  it('outcome_unknown is never reset by a later known answer (F-4)', async () => {
+    const { notifier, clock } = withClock({ urls: { default: webhookFor().url } }, [
+      status(502),
+      status(429, { 'retry-after': '30' }),
+      created(),
+    ]);
+    const ticketId = await addTicket();
+    await notifier.notify(notice(ticketId)); // 502: unknown
+    clock.now += 60_000;
+    await notifier.notify(notice(ticketId)); // 429: refused, not processed
+    expect((await rows(ticketId))[0]).toMatchObject({ state: 'pending', outcomeUnknown: true });
+    clock.now += 60_000;
+    await notifier.notify(notice(ticketId)); // accepted
+    expect((await rows(ticketId))[0]).toMatchObject({ state: 'sent', outcomeUnknown: true });
+  });
+
+  it('a database error after a successful post never turns it into a failure (F-4)', async () => {
+    const hiccup = { updates: 0, failOn: new Set<number>() };
+    const flaky = new Proxy(database.db, {
+      get(target, property, receiver) {
+        if (property === 'update') {
+          return (...args: Parameters<typeof target.update>) => {
+            hiccup.updates += 1;
+            if (hiccup.failOn.has(hiccup.updates)) throw new Error('database hiccup');
+            return target.update(...args);
+          };
+        }
+        return Reflect.get(target, property, receiver) as unknown;
+      },
+    });
+    const notifier = createDiscordNotifier({
+      database: { db: flaky },
+      logger: capture().logger,
+      channelMap: DEFAULT_DISCORD_CHANNEL_MAP,
+      ticketKeyPrefix: 'OPS',
+      appUrl: 'https://desk.example.test',
+      isProduction: false,
+      credentials: undefined,
+      overrides: {
+        webhookUrls: () => Promise.resolve({ default: webhookFor().url }),
+        fetch: scripted().fetch,
+        claimLeaseMs: 0,
+      },
+    });
+
+    // One hiccup on the write after the post (update #1 is the claim): the write is tried again.
+    const once = await addTicket();
+    hiccup.updates = 0;
+    hiccup.failOn = new Set([2]);
+    const outcome = await notifier.notify(notice(once));
+    expect(outcome.slots).toEqual([{ slot: 'default', state: 'sent' }]);
+    expect((await rows(once))[0]).toMatchObject({ state: 'sent' });
+
+    // Every write fails: the row stays `sending` (not `failed`) and the sweep calls it unknown.
+    const always = await addTicket();
+    hiccup.updates = 0;
+    hiccup.failOn = new Set([2, 3, 4]);
+    await notifier.notify(notice(always));
+    const [stuck] = await rows(always);
+    expect(stuck).toMatchObject({ state: 'sending' });
+    expect(stuck?.claimedAt).toBeInstanceOf(Date);
+    hiccup.failOn = new Set();
+    await notifier.sweep();
+    expect((await rows(always))[0]?.outcomeUnknown).toBe(true);
   });
 
   it('a deleted webhook (404) fails at once and is not retried', async () => {
     const { notifier } = build({ urls: { default: webhookFor().url }, steps: [status(404)] });
     const ticketId = await addTicket();
-    const result = await notifier.notify(notice(ticketId), { final: false });
+    const result = await notifier.notify(notice(ticketId));
     expect(result.slots).toEqual([{ slot: 'default', state: 'failed' }]);
     expect((await rows(ticketId))[0]).toMatchObject({ state: 'failed', errorCode: 'webhook_gone' });
   });
@@ -387,15 +549,63 @@ describe('failures', () => {
       urls: { default: webhookFor().url },
       map: { routes: [{ name: 'p1-only', slot: 'default', minPriority: 'P1' }] },
     });
-    expect(await notifier.notify(notice(randomUUID()), { final: false })).toMatchObject({
+    expect(await notifier.notify(notice(randomUUID()))).toMatchObject({
       status: 'ticket_missing',
     });
     const ticketId = await addTicket('P3');
-    expect(await notifier.notify(notice(ticketId), { final: false })).toMatchObject({
-      status: 'no_route',
-    });
+    expect(await notifier.notify(notice(ticketId))).toMatchObject({ status: 'no_route' });
     expect(await rows(ticketId)).toHaveLength(0);
     expect(requests).toHaveLength(0);
+  });
+});
+
+describe('the sweep (F-2)', () => {
+  it('re-drives due posts after an outage, most urgent ticket first', async () => {
+    const { notifier, requests } = build({ urls: { default: webhookFor().url } });
+    const calm = await addTicket('P4');
+    const hot = await addTicket('P1');
+    // Both are owed and due; the calm ticket has been waiting longer.
+    await owe(calm, { createdAt: new Date(Date.now() - 20 * 60 * 1000) });
+    await owe(hot);
+    const result = await notifier.sweep();
+    expect(result.redriven).toBe(2);
+    const titles = requests.map((request) => JSON.stringify(request.body));
+    const key = async (id: string) => {
+      const [row] = await owner()
+        .select({ number: schema.ticket.number })
+        .from(schema.ticket)
+        .where(eq(schema.ticket.id, id));
+      return `OPS-${String(row?.number)}`;
+    };
+    expect(titles[0]).toContain(await key(hot));
+    expect(titles[1]).toContain(await key(calm));
+    expect((await rows(calm))[0]?.state).toBe('sent');
+    expect((await rows(hot))[0]?.state).toBe('sent');
+  });
+
+  it('does not touch a post that is not due yet', async () => {
+    const { notifier, requests } = build({ urls: { default: webhookFor().url } });
+    const ticketId = await addTicket();
+    await owe(ticketId, { nextAttemptAt: new Date(Date.now() + 60 * 60 * 1000) });
+    await notifier.sweep();
+    expect(requests).toHaveLength(0);
+    expect((await rows(ticketId))[0]?.state).toBe('pending');
+  });
+
+  it('gives up on an owed post older than the retry age (expired) and keeps a younger one', async () => {
+    const { notifier } = build({
+      urls: { default: webhookFor().url },
+      overrides: { retryMaxAgeMs: 60 * 60 * 1000 },
+    });
+    const old = await addTicket();
+    const young = await addTicket();
+    const later = new Date(Date.now() + 60 * 60 * 1000);
+    await owe(old, { createdAt: new Date(Date.now() - 2 * 60 * 60 * 1000), nextAttemptAt: later });
+    await owe(young, { nextAttemptAt: later });
+    const result = await notifier.sweep();
+    expect(result.expired).toBe(1);
+    expect((await rows(old))[0]).toMatchObject({ state: 'failed', errorCode: 'expired' });
+    expect((await rows(young))[0]?.state).toBe('pending');
   });
 });
 
@@ -428,17 +638,13 @@ describe('credential store (ADR-004, ADR-012)', () => {
   it('is mock with an empty store, live with an encrypted database value, and the environment wins', async () => {
     const empty = scripted();
     const mockNotifier = notifierWith({}, empty);
-    expect((await mockNotifier.notify(notice(await addTicket()), { final: false })).mode).toBe(
-      'mock',
-    );
+    expect((await mockNotifier.notify(notice(await addTicket()))).mode).toBe('mock');
     expect(empty.requests).toHaveLength(0);
 
     const stored = webhookFor();
     await storeWith({}).put('discord', { webhookUrl: stored.url }, null);
     const dbFetch = scripted();
-    const dbResult = await notifierWith({}, dbFetch).notify(notice(await addTicket()), {
-      final: false,
-    });
+    const dbResult = await notifierWith({}, dbFetch).notify(notice(await addTicket()));
     expect(dbResult).toMatchObject({ mode: 'live', slots: [{ slot: 'default', state: 'sent' }] });
     expect(dbFetch.requests[0]?.url).toContain(`/webhooks/${stored.id}/`);
 
@@ -446,7 +652,6 @@ describe('credential store (ADR-004, ADR-012)', () => {
     const envFetch = scripted();
     await notifierWith({ DISCORD_WEBHOOK_URL: fromEnv.url }, envFetch).notify(
       notice(await addTicket()),
-      { final: false },
     );
     expect(envFetch.requests[0]?.url).toContain(`/webhooks/${fromEnv.id}/`);
     await storeWith({}).remove('discord', 'webhookUrl');
@@ -454,14 +659,26 @@ describe('credential store (ADR-004, ADR-012)', () => {
 });
 
 describe('processor', () => {
-  const job = (data: unknown, attemptsMade = 0, attempts = 5) =>
-    ({ name: 'notify', data, attemptsMade, opts: { attempts } }) as unknown as Job;
-  const run = (notifier: DiscordNotifier, ...args: Parameters<typeof job>) =>
-    createDiscordProcessor({ notifier })(job(...args));
+  const job = (data: unknown) => {
+    const moved: number[] = [];
+    const fake = {
+      name: 'notify',
+      data,
+      moveToDelayed: (timestamp: number) => {
+        moved.push(timestamp);
+        return Promise.resolve();
+      },
+    } as unknown as Job;
+    return { fake, moved };
+  };
+  const run = (notifier: DiscordNotifier, data: unknown) => {
+    const { fake, moved } = job(data);
+    return { result: createDiscordProcessor({ notifier })(fake, 'token'), moved };
+  };
 
   it('rejects a payload with extra meaning missing, and an unknown job name, without retrying', async () => {
     const { notifier } = build();
-    await expect(run(notifier, { event: 'ticket.created' })).rejects.toMatchObject({
+    await expect(run(notifier, { event: 'ticket.created' }).result).rejects.toMatchObject({
       name: 'UnrecoverableError',
     });
     await expect(
@@ -469,23 +686,25 @@ describe('processor', () => {
     ).rejects.toMatchObject({ name: 'UnrecoverableError' });
   });
 
-  it('fails the job (so the queue retries) while a post is still owed, and completes on the last attempt', async () => {
-    const { notifier } = build({
-      urls: { default: webhookFor().url },
-      steps: [status(429, { 'retry-after': '90' }), status(429, { 'retry-after': '90' })],
-    });
+  it('moves the job to the time the ledger says (Retry-After included) instead of failing it (F-2)', async () => {
+    const { notifier, clock } = withClock({ urls: { default: webhookFor().url } }, [
+      status(429, { 'retry-after': '90' }),
+    ]);
     const ticketId = await addTicket();
-    await expect(run(notifier, notice(ticketId), 0, 5)).rejects.toBeInstanceOf(DiscordRetryError);
-    // Attempt 5 of 5: the row is settled as failed and the job ends.
-    await expect(run(notifier, notice(ticketId), 4, 5)).resolves.toMatchObject({
-      status: 'processed',
-      slots: ['default:failed'],
-    });
+    const { result, moved } = run(notifier, notice(ticketId));
+    await expect(result).rejects.toMatchObject({ name: 'DelayedError' });
+    expect(moved).toEqual([clock.now + 90_000]);
     expect((await rows(ticketId))[0]).toMatchObject({
-      state: 'failed',
-      // The first attempt was refused by Discord; this one was refused locally, inside the 90 s it asked for.
-      errorCode: 'bucket_exhausted',
+      state: 'pending',
+      errorCode: 'rate_limited',
     });
+  });
+
+  it('runs the sweep job', async () => {
+    const { notifier } = build();
+    await expect(
+      createDiscordProcessor({ notifier })({ name: 'sweep', data: {} } as unknown as Job),
+    ).resolves.toMatchObject({ recovered: expect.any(Number) as number });
   });
 
   it('works from what the domain queued when a ticket is created', async () => {
@@ -500,7 +719,7 @@ describe('processor', () => {
     expect(queued).toMatchObject({ queue: 'discord', jobName: 'notify' });
 
     const { notifier } = build();
-    const outcome = await run(notifier, queued?.payload);
+    const outcome = await run(notifier, queued?.payload).result;
     expect(outcome).toMatchObject({ status: 'processed', mode: 'mock', slots: ['default:mock'] });
     expect((await rows(value.ticket.id))[0]?.state).toBe('mock');
   });

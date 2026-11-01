@@ -6,7 +6,7 @@ import type { ProcessorContext } from '../processors/index.js';
 import { createDiscordNotifier } from './notifier.js';
 import { createDiscordProcessor } from './processor.js';
 
-export { createDiscordNotifier, DiscordRetryError } from './notifier.js';
+export { createDiscordNotifier, retryBackoffMs } from './notifier.js';
 export type {
   DiscordMode,
   DiscordNotifier,
@@ -14,6 +14,7 @@ export type {
   DiscordOverrides,
   NotifyResult,
   SlotOutcome,
+  SweepResult,
 } from './notifier.js';
 export { createDiscordProcessor } from './processor.js';
 

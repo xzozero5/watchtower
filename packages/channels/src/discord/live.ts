@@ -12,7 +12,7 @@ import {
   discordWebhookMessageSchema,
   type DiscordWebhookMessage,
 } from './message.js';
-import { DiscordRateLimiter } from './rate-limit.js';
+import { DiscordRateLimiter, MAX_RATE_LIMIT_WAIT_MS, boundedWaitMs } from './rate-limit.js';
 import type { DiscordSendResult, DiscordTransport } from './transport.js';
 import { DISCORD_WEBHOOK_HOST, type DiscordWebhook } from './webhook.js';
 
@@ -47,7 +47,7 @@ const DEFAULT_MAX_INLINE_WAIT_MS = 5000;
 const DEFAULT_DEAD_WEBHOOK_MS = 10 * 60 * 1000;
 
 const createdMessageSchema = z.looseObject({ id: z.string().optional() });
-const rateLimitedBodySchema = z.looseObject({ retry_after: z.number().optional() });
+const rateLimitedBodySchema = z.looseObject({ retry_after: z.number().min(0).optional() });
 
 function failureKind(status: number): ChannelFailureKind {
   if (status === 401 || status === 403) return 'auth';
@@ -176,10 +176,15 @@ export class LiveDiscordTransport implements DiscordTransport {
     if (kind === 'auth' || kind === 'not_found') {
       this.#dead.set(webhook.id, this.#now() + this.#deadWebhookMs);
     }
+    // Whatever Discord (or something in the way) says, the wait we report has a ceiling.
+    const headerWait = parseRetryAfter(response.headers.get('retry-after'), this.#now());
     const retryAfterMs =
       response.status === 429
-        ? (parseRetryAfter(response.headers.get('retry-after'), this.#now()) ??
-          (bodyRetryAfter === undefined ? undefined : Math.ceil(bodyRetryAfter * 1000)))
+        ? headerWait === undefined
+          ? bodyRetryAfter === undefined
+            ? undefined
+            : boundedWaitMs(bodyRetryAfter)
+          : Math.min(MAX_RATE_LIMIT_WAIT_MS, headerWait)
         : undefined;
     throw new ChannelError({
       provider: 'discord',
@@ -215,6 +220,6 @@ export class LiveDiscordTransport implements DiscordTransport {
     const fromHeader = parseRetryAfter(response.headers.get('retry-after'), this.#now());
     if (fromHeader !== undefined) return fromHeader;
     const seconds = await this.#bodyRetryAfter(response);
-    return seconds === undefined ? undefined : Math.ceil(seconds * 1000);
+    return seconds === undefined ? undefined : boundedWaitMs(seconds);
   }
 }

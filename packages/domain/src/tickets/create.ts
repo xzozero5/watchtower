@@ -8,6 +8,7 @@ import {
   QUEUE_NAMES,
   TICKET_EVENT_TYPES,
   discordNotifyJobId,
+  discordNotifyPriority,
   type ChannelType,
   type TicketPriority,
 } from '@watchtower/shared';
@@ -242,7 +243,8 @@ export async function createTicket(
     name: DISCORD_JOBS.notify,
     jobId: discordNotifyJobId('ticket.created', ticket.id),
     payload: { event: 'ticket.created', ticketId: ticket.id },
-    options: DISCORD_OUTBOX_JOB_OPTIONS,
+    // A P1 notice goes ahead of a backlog of lower ones.
+    options: { ...DISCORD_OUTBOX_JOB_OPTIONS, priority: discordNotifyPriority(priority) },
   });
 
   fx.emit(ticketEvent(ctx, 'ticket.created', ticket, []));

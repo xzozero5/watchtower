@@ -30,7 +30,22 @@ export const DISCORD_QUEUES = {
 export const DISCORD_JOBS = {
   /** Post one domain event to the Discord channels the channel map selects. `jobId` is per event and ticket. */
   notify: 'notify',
+  /** Re-drives owed posts that are due, recovers abandoned claims, gives up on the ones past their age. */
+  sweep: 'sweep',
 } as const;
+
+/** How long a post is retried before it is given up (`failed`, code `expired`). `[ASSUMED]` one day: an outage should not lose a P1 notice. */
+export const DISCORD_RETRY_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+/** A claim (`sending`) older than this belongs to a worker that died. */
+export const DISCORD_CLAIM_LEASE_MS = 5 * 60 * 1000;
+
+/**
+ * BullMQ priority of a notify job (lower runs first). Every job gets one, because BullMQ runs jobs
+ * without a priority before all prioritized ones: a P1 notice then goes ahead of a backlog of P3s.
+ */
+export function discordNotifyPriority(priority: TicketPriority): number {
+  return TICKET_PRIORITIES.indexOf(priority) + 1;
+}
 
 /**
  * Domain events that can be posted. `[ASSUMED]` Phase 1 posts one: a ticket was created (PRD
@@ -166,7 +181,9 @@ export function parseDiscordChannelMap(text: string): DiscordChannelMap {
 
 /**
  * State of one post (`discord_notification.state`):
- * - `pending`: not delivered yet, will be tried again;
+ * - `pending`: not delivered yet, due at `next_attempt_at`;
+ * - `sending`: claimed before the post is made. A claim that is never settled means the worker died
+ *   after (or before) the post: the outcome is unknown and the row says so;
  * - `sent`: Discord accepted it (a live transport);
  * - `mock`: the in-memory transport recorded it. NOTHING was delivered. Kept apart from `sent` so a
  *   deployment that forgot to set a webhook never looks healthy;
@@ -175,6 +192,7 @@ export function parseDiscordChannelMap(text: string): DiscordChannelMap {
  */
 export const DISCORD_NOTIFICATION_STATES = [
   'pending',
+  'sending',
   'sent',
   'mock',
   'skipped',

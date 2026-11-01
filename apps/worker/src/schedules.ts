@@ -1,5 +1,6 @@
 import {
   CLEANUP_JOBS,
+  DISCORD_JOBS,
   LINE_JOBS,
   MAINTENANCE_JOBS,
   OUTBOUND_JOBS,
@@ -85,6 +86,16 @@ export const SCHEDULES: readonly ScheduleRegistration[] = [
   },
 
   // --- discord (T-104) ---
+  {
+    queue: QUEUE_NAMES.discord,
+    id: DISCORD_JOBS.sweep,
+    // Due retries, abandoned claims and posts past their age, every minute.
+    repeat: { every: 60_000 },
+    job: {
+      name: DISCORD_JOBS.sweep,
+      opts: { removeOnComplete: true, removeOnFail: { age: 24 * 3600 } },
+    },
+  },
 
   // --- notifications (T-105) ---
 
