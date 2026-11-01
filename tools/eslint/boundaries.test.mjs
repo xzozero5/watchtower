@@ -1,5 +1,5 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
-import { dirname, join, relative } from 'node:path';
+import { dirname, join, relative, sep } from 'node:path';
 
 import { ESLint } from 'eslint';
 import tseslint from 'typescript-eslint';
@@ -285,11 +285,13 @@ describe('every workspace, through its own eslint config (SR106-N1)', () => {
   function violationsFor(dir, file) {
     const { forbid, forbidHttpGlobals } = WORKSPACES[dir];
     const from = dirname(file);
-    const toSibling = relative(
-      from,
-      join(repoRoot, 'packages', siblingDir(dir), 'src', 'index.js'),
-    );
-    const toOutside = relative(from, join(repoRoot, '..', 'outside', 'file.js'));
+    // An import specifier uses `/` on every platform, whatever `relative` returns on Windows.
+    const toSibling = relative(from, join(repoRoot, 'packages', siblingDir(dir), 'src', 'index.js'))
+      .split(sep)
+      .join('/');
+    const toOutside = relative(from, join(repoRoot, '..', 'outside', 'file.js'))
+      .split(sep)
+      .join('/');
     const cases = [
       [`import x from '${otherWorkspace(dir)}';`, '@typescript-eslint/no-restricted-imports'],
       [`import x from '${toSibling}';`, 'watchtower/no-relative-escape'],
