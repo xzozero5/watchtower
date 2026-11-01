@@ -10,6 +10,7 @@ import {
   addQueue,
   addStaff,
   auditRows,
+  clockIn,
   eventTypes,
   startDomainTest,
   type DomainTestEnv,
@@ -258,6 +259,8 @@ describe('tickets.create, assignment', () => {
     const a = await addStaff(env);
     const b = await addStaff(env);
     const queue = await addQueue(env, { mode: 'round_robin', members: [a.id, b.id] });
+    await clockIn(env, a.id);
+    await clockIn(env, b.id);
     const org = await addOrg(env);
     const assignees: (string | null)[] = [];
     for (let i = 0; i < 4; i += 1) {

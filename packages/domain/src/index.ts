@@ -1,6 +1,13 @@
 import { REOPEN_WINDOW_DAYS } from '@watchtower/shared';
 
-import { assertAssignableStaff, nextRoundRobin, peekRoundRobin, takeTurn } from './assignment.js';
+import {
+  assertAssignableStaff,
+  nextAssignee,
+  nextRoundRobin,
+  peekAssignee,
+  peekRoundRobin,
+  takeTurn,
+} from './assignment.js';
 import { readAutonomyState, setAiSwitch, setIntentAutonomy } from './autonomy/state.js';
 import { findOrCreateContactByEmail } from './contacts.js';
 import { ingestInbound } from './inbound/ingest.js';
@@ -82,11 +89,20 @@ export {
   type AiRunRecorder,
 } from './ai/recorder.js';
 export {
+  ASSIGN_STRATEGIES,
   assertAssignableStaff,
+  isAssignStrategy,
+  nextAssignee,
   nextRoundRobin,
+  onShiftCondition,
+  openTicketCounts,
+  peekAssignee,
   peekRoundRobin,
+  pickLeastLoaded,
   pickNextMember,
   takeTurn,
+  type AssignHints,
+  type AssignStrategy,
 } from './assignment.js';
 export {
   contactSnapshot,
@@ -419,6 +435,8 @@ export interface Domain {
     readonly assertAssignableStaff: typeof assertAssignableStaff;
     readonly nextRoundRobin: typeof nextRoundRobin;
     readonly peekRoundRobin: typeof peekRoundRobin;
+    readonly nextAssignee: typeof nextAssignee;
+    readonly peekAssignee: typeof peekAssignee;
     readonly takeTurn: typeof takeTurn;
   };
   readonly outbox: { readonly enqueue: typeof enqueueJob };
@@ -502,7 +520,14 @@ export function createDomain(options: DomainOptions): Domain {
       finishedPauses: finishedSlaPauses,
       resume: resumeSla,
     },
-    assignment: { assertAssignableStaff, nextRoundRobin, peekRoundRobin, takeTurn },
+    assignment: {
+      assertAssignableStaff,
+      nextRoundRobin,
+      peekRoundRobin,
+      nextAssignee,
+      peekAssignee,
+      takeTurn,
+    },
     outbox: { enqueue: enqueueJob },
     outbound: {
       schedule: scheduleCustomerSend,

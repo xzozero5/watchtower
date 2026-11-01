@@ -14,6 +14,7 @@ import {
   seedSlaPolicies,
   type ReferenceSeedResult,
 } from './reference.js';
+import { seedShiftDefinitions, type ShiftSeedResult } from './shifts.js';
 
 export interface SeedOptions {
   /** `NODE_ENV` of the caller. The library never reads the environment; the CLI passes it. */
@@ -31,6 +32,7 @@ export interface SeedOptions {
 
 export interface SeedResult extends ReferenceSeedResult {
   readonly intents: { readonly inserted: readonly string[]; readonly existing: readonly string[] };
+  readonly shifts: ShiftSeedResult;
   readonly demo: DemoSeedResult;
   /** Example knowledge base articles from `examples/kb`; they become searchable once a worker indexes them. */
   readonly kb: KbSeedResult;
@@ -71,16 +73,17 @@ export async function runSeed(database: Database, options: SeedOptions = {}): Pr
     const calendars = await seedCalendars(tx, holidayFiles);
     const policies = await seedSlaPolicies(tx, policyFiles);
     const intents = await upsertIntentDefinitions(tx, intentDefinitions);
+    const shifts = await seedShiftDefinitions(tx);
     const demo = await seedDemo(tx, {
       now: options.now ?? new Date(),
       ticketKeyPrefix: options.ticketKeyPrefix ?? DEFAULT_TICKET_KEY_PREFIX,
     });
     const kb = await seedKbArticles(tx, kbArticles);
-    return { calendars, policies, intents, demo, kb };
+    return { calendars, policies, intents, shifts, demo, kb };
   });
   log(
     `calendars +${String(result.calendars.created.length)}, SLA policies +${String(result.policies.created.length)}, ` +
-      `intents +${String(result.intents.inserted.length)}, tickets +${String(result.demo.tickets)}, ` +
+      `intents +${String(result.intents.inserted.length)}, shifts +${String(result.shifts.created.length)}, tickets +${String(result.demo.tickets)}, ` +
       `organizations +${String(result.demo.organizations)}, users +${String(result.demo.users)}, ` +
       `knowledge base articles +${String(result.kb.created.length)}`,
   );
@@ -89,6 +92,7 @@ export async function runSeed(database: Database, options: SeedOptions = {}): Pr
 
 export { DEFAULT_EXAMPLES_DIR, SeedError } from './common.js';
 export { seedDemo, type DemoSeedResult } from './demo.js';
+export { seedShiftDefinitions, type ShiftSeedResult } from './shifts.js';
 export {
   loadKbArticleFiles,
   parseKbArticleFile,
