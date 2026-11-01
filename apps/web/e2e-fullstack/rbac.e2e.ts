@@ -275,6 +275,12 @@ test.describe.serial('RBAC: a client sees only their own organization', () => {
     await staff.page.goto(`/?ticket=${noted.key}`);
     const conversation = staff.page.getByRole('region', { name: 'Conversation' });
     await expect(conversation.getByText(noteText)).toBeVisible();
-    await expect(staff.page.getByRole('radio', { name: 'Internal note' })).toBeVisible();
+    // Staff can add internal notes: a dock button with an AI brief (T-128), a radio without one.
+    await expect(
+      staff.page
+        .getByRole('button', { name: /^Internal note\b/ })
+        .or(staff.page.getByRole('radio', { name: 'Internal note' }))
+        .first(),
+    ).toBeVisible();
   });
 });

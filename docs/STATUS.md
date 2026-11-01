@@ -38,6 +38,12 @@ snapshot สั้นสำหรับ cold start อยู่ที่ `HANDOF
 
 ## Log
 
+## 2026-11-01 13:40 (Asia/Bangkok) — ai-engineer + main thread — T-106 d+e ปิด (AI brief มีข้อมูลจากระบบ)
+- ทำอะไร: migration `0010_ai_runs` — `ai_run` (partition รายเดือน, append-only, input เป็น HMAC, output แบบ redacted, redaction report จาก session — SR106-R9), `ai_ticket_insight`, `ai_budget_event` · prompts `classifier.v1`, `summarizer.v1` · agents `classifyTicket`/`summarizeTicket` ผ่าน `createAuditedLlm` + redaction ต่อ ticket · `DevMockLlmProvider` ตอบ TH/EN แบบ deterministic (provenance `mock`) · ticket ใหม่ → outbox `ai/summarize` → worker → insight `classified`/`needs_human`/`failed` · เพดานรายวัน $1 / 500k tokens / เตือน 80% `[ASSUMED]` (mock ไม่นับ) · kill switch/budget/`NameMatchLimitError` → ไม่เรียก model · `serializeErrorForLog` ไม่พ่น `cause` + Anthropic `baseURL` https + allow-list (SR106-R10) · `GET /v1/tickets/:id/ai` (staff เท่านั้น, client 403) + list rows มี `ai`
+- main thread แก้หลังรวม: queue จัด `classified` ไว้ "Needs you" (ไม่มีอะไรทำงานต่อจนกว่า investigator T-108) `[ASSUMED]` · full-stack e2e เปิด composer ผ่าน dock (`openComposer`)
+- test: main thread รันบน main + `wip/t-106de`: lint, typecheck ผ่าน · unit ai 372, worker 74, api 183, web 664 … · integration api 466, db 140, domain 109, worker 33 · full-stack 23 ×2 `[TESTED]`
+- ไม่ยืนยัน: provider จริง (Anthropic/Vertex) ยังไม่ต่อ — key เป็น `[ASK-HUMAN]` · mock classifier เลือก intent ไม่ตรงกับ ticket บางใบ (เป็น mock) และ brief แสดง intent เป็น key ดิบ (`billing_report`) → T-108/T-109 ใช้ label
+
 ## 2026-11-01 11:55 (Asia/Bangkok) — frontend-dev + main thread — T-128 AI-first workspace (UI) ปิด
 - ที่มา: เจ้าของ feedback "ยังเหมือน mailbox, text เยอะ, ไม่ AI-driven" → `docs/design/ai-first-workspace.md`
 - ทำอะไร: contract `TicketAiInsight`/`TicketAiRow` + reject schema ใน `packages/shared/src/features/ai.ts` (+ `ai` optional ใน ticket summary) · queue เป็น triage board (Needs you / AI working / Waiting / Done พับไว้, แถว 2 บรรทัด: AI summary + SLA, priority + intent + AI state chip) · ticket เปิดด้วย AI brief (summary, intent + confidence meter + เหตุผล, next step, evidence chips → แท็บ Evidence, uncited flag, provenance + `StageBadge`) + draft inline A/E/R (Approve → preview → undo 5 s → reply เดิม; Reject + reason code) · conversation ย่อ, ไม่มี role label, composer ซ่อนหลัง dock · AI endpoint 404 → "AI brief unavailable" เท่านั้น (N5) · ลูกค้าเห็นรายการธรรมดา ไม่เห็น AI board · ticket ที่ยังไม่มี AI อยู่ใน "Needs you"

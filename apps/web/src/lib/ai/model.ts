@@ -21,8 +21,9 @@ export const COLLAPSED_BY_DEFAULT: ReadonlySet<TriageGroup> = new Set<TriageGrou
  *  - finished tickets (resolved, closed, merged) are `done`;
  *  - waiting on the customer or on dev is `waiting`, whatever the AI did;
  *  - a draft to approve, an AI that could not finish, or an SLA that is at risk needs a person:
- *    `needsYou`; so does a ticket the AI has not touched (nothing is working on it);
- *  - what is left (classified, investigating) is the AI's: `aiWorking`.
+ *    `needsYou`; so does a ticket the AI has not touched or has only classified (nothing else
+ *    is working on it: classification is the AI's whole job until the investigator, T-108);
+ *  - only a ticket the AI is still investigating is the AI's: `aiWorking`.
  */
 export function triageGroup(row: Pick<RowModel, 'status' | 'ai' | 'sla'>): TriageGroup {
   if (row.status === 'resolved' || row.status === 'closed' || row.status === 'merged') {
@@ -32,7 +33,7 @@ export function triageGroup(row: Pick<RowModel, 'status' | 'ai' | 'sla'>): Triag
   const state: AiState = row.ai?.state ?? 'none';
   if (state === 'draft_ready' || state === 'needs_human' || state === 'failed') return 'needsYou';
   if (row.sla.state === 'atRisk' || row.sla.state === 'breached') return 'needsYou';
-  if (state === 'classified' || state === 'investigating') return 'aiWorking';
+  if (state === 'investigating') return 'aiWorking';
   return 'needsYou';
 }
 

@@ -261,3 +261,19 @@ export async function newActor(browser: Browser): Promise<{ context: BrowserCont
   const context = await browser.newContext({ baseURL: stack().webUrl, locale: 'en-US' });
   return { context, page: await context.newPage() };
 }
+
+/**
+ * Opens the staff composer in the given mode. With an AI brief on the ticket (T-128) the composer
+ * sits behind a dock ("Write a reply" / "Internal note" buttons); without one it is already open
+ * with Reply / Internal note radios.
+ */
+export async function openComposer(page: Page, mode: 'reply' | 'note'): Promise<void> {
+  // The dock buttons carry their shortcut in the accessible name ("Write a reply C").
+  const dock = page.getByRole('button', {
+    name: mode === 'reply' ? /^Write a reply\b/ : /^Internal note\b/,
+  });
+  const radio = page.getByRole('radio', { name: mode === 'reply' ? 'Reply' : 'Internal note' });
+  await dock.or(radio).first().waitFor();
+  if (await dock.isVisible()) await dock.click();
+  if (mode === 'note' && (await radio.isVisible())) await radio.click();
+}

@@ -6,6 +6,7 @@ import {
   expect,
   Mailbox,
   newActor,
+  openComposer,
   ORGS,
   signInStaff,
   type StaffTicket,
@@ -238,6 +239,7 @@ test.describe.serial('AC-1: portal submission to resolution', () => {
   test('staff reply in the workspace; the customer sees it on the tracking page', async () => {
     const page = staff.page;
     await page.goto(`/?ticket=${ticketKey}`);
+    await openComposer(page, 'reply');
     const body = page.getByRole('textbox', { name: 'Public reply' });
     await body.fill(replyText);
     await page.getByRole('button', { name: 'Send reply', exact: true }).click();
@@ -267,7 +269,7 @@ test.describe.serial('AC-1: portal submission to resolution', () => {
   test('an internal note stays inside: not on the tracking page, no email', async () => {
     const page = staff.page;
     await page.goto(`/?ticket=${ticketKey}`);
-    await page.getByRole('radio', { name: 'Internal note' }).click();
+    await openComposer(page, 'note');
     await page.getByRole('textbox', { name: 'Internal note' }).fill(noteText);
     await page.getByRole('button', { name: 'Add note', exact: true }).click();
     await expect(page.getByText('Note added.')).toBeVisible();
