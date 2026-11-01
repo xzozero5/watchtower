@@ -1,10 +1,18 @@
 import { Module } from '@nestjs/common';
 
+import { CredentialsModule } from '../credentials/credentials.module.js';
+import { DiscordInteractionsController } from './interactions.controller.js';
+import { DiscordInteractionsService } from './interactions.service.js';
+
 /**
- * Discord notify channels and fan-out settings (T-104). Empty until the owning task adds its controllers and providers (T-123a). Add files in
- * this directory and list them here; `app.module.ts` already imports this module through
- * `features.module.ts`. Every route needs `@RequirePermission` / `@RequireAnyPermission` or
- * `@Public()`, and a public one must also be listed in `./public-routes.ts`.
+ * Discord: the interactions endpoint of the bot (T-202b: buttons, `/ack`, `/incident`). One-way
+ * notifications are posted by the worker (T-104). Every route needs `@RequirePermission` /
+ * `@RequireAnyPermission` or `@Public()`, and a public one must also be listed in
+ * `./public-routes.ts`.
  */
-@Module({})
+@Module({
+  imports: [CredentialsModule],
+  controllers: [DiscordInteractionsController],
+  providers: [DiscordInteractionsService],
+})
 export class DiscordModule {}

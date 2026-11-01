@@ -34,6 +34,17 @@ import {
   CHANNEL_ACCOUNTS_TICKET_EVENTS,
 } from './channel-accounts.js';
 
+import { ALERTS_AUDIT_ACTIONS, ALERTS_QUEUES, ALERTS_TICKET_EVENTS } from './alerts.js';
+import { INCIDENTS_AUDIT_ACTIONS, INCIDENTS_QUEUES, INCIDENTS_TICKET_EVENTS } from './incidents.js';
+import { TOOLS_AUDIT_ACTIONS, TOOLS_QUEUES, TOOLS_TICKET_EVENTS } from './tools.js';
+import {
+  STATUSPAGE_AUDIT_ACTIONS,
+  STATUSPAGE_QUEUES,
+  STATUSPAGE_TICKET_EVENTS,
+} from './statuspage.js';
+import { USAGE_AUDIT_ACTIONS, USAGE_QUEUES, USAGE_TICKET_EVENTS } from './usage.js';
+import { DASHBOARD_AUDIT_ACTIONS, DASHBOARD_QUEUES, DASHBOARD_TICKET_EVENTS } from './dashboard.js';
+
 export * from './inbound.js';
 export * from './outbound.js';
 export * from './gmail.js';
@@ -49,6 +60,12 @@ export * from './credentials.js';
 export * from './views.js';
 export * from './admin.js';
 export * from './channel-accounts.js';
+export * from './alerts.js';
+export * from './incidents.js';
+export * from './tools.js';
+export * from './statuspage.js';
+export * from './usage.js';
+export * from './dashboard.js';
 export { assertDisjoint } from './compose.js';
 
 export const FEATURES = [
@@ -132,6 +149,42 @@ export const FEATURES = [
     ticketEvents: CHANNEL_ACCOUNTS_TICKET_EVENTS,
     queues: CHANNEL_ACCOUNTS_QUEUES,
   },
+  {
+    name: 'alerts',
+    auditActions: ALERTS_AUDIT_ACTIONS,
+    ticketEvents: ALERTS_TICKET_EVENTS,
+    queues: ALERTS_QUEUES,
+  },
+  {
+    name: 'incidents',
+    auditActions: INCIDENTS_AUDIT_ACTIONS,
+    ticketEvents: INCIDENTS_TICKET_EVENTS,
+    queues: INCIDENTS_QUEUES,
+  },
+  {
+    name: 'tools',
+    auditActions: TOOLS_AUDIT_ACTIONS,
+    ticketEvents: TOOLS_TICKET_EVENTS,
+    queues: TOOLS_QUEUES,
+  },
+  {
+    name: 'statuspage',
+    auditActions: STATUSPAGE_AUDIT_ACTIONS,
+    ticketEvents: STATUSPAGE_TICKET_EVENTS,
+    queues: STATUSPAGE_QUEUES,
+  },
+  {
+    name: 'usage',
+    auditActions: USAGE_AUDIT_ACTIONS,
+    ticketEvents: USAGE_TICKET_EVENTS,
+    queues: USAGE_QUEUES,
+  },
+  {
+    name: 'dashboard',
+    auditActions: DASHBOARD_AUDIT_ACTIONS,
+    ticketEvents: DASHBOARD_TICKET_EVENTS,
+    queues: DASHBOARD_QUEUES,
+  },
 ] as const;
 
 export type FeatureName = (typeof FEATURES)[number]['name'];
@@ -153,6 +206,12 @@ export const FEATURE_AUDIT_ACTIONS = {
   ...VIEWS_AUDIT_ACTIONS,
   ...ADMIN_AUDIT_ACTIONS,
   ...CHANNEL_ACCOUNTS_AUDIT_ACTIONS,
+  ...ALERTS_AUDIT_ACTIONS,
+  ...INCIDENTS_AUDIT_ACTIONS,
+  ...TOOLS_AUDIT_ACTIONS,
+  ...STATUSPAGE_AUDIT_ACTIONS,
+  ...USAGE_AUDIT_ACTIONS,
+  ...DASHBOARD_AUDIT_ACTIONS,
 } as const;
 
 /** Every feature's ticket event types in one record. Composed into `TICKET_EVENT_TYPES`. */
@@ -172,6 +231,12 @@ export const FEATURE_TICKET_EVENTS = {
   ...VIEWS_TICKET_EVENTS,
   ...ADMIN_TICKET_EVENTS,
   ...CHANNEL_ACCOUNTS_TICKET_EVENTS,
+  ...ALERTS_TICKET_EVENTS,
+  ...INCIDENTS_TICKET_EVENTS,
+  ...TOOLS_TICKET_EVENTS,
+  ...STATUSPAGE_TICKET_EVENTS,
+  ...USAGE_TICKET_EVENTS,
+  ...DASHBOARD_TICKET_EVENTS,
 } as const;
 
 /** Every feature's queue names in one record. Composed into `QUEUE_NAMES`. */
@@ -191,4 +256,10 @@ export const FEATURE_QUEUES = {
   ...VIEWS_QUEUES,
   ...ADMIN_QUEUES,
   ...CHANNEL_ACCOUNTS_QUEUES,
+  ...ALERTS_QUEUES,
+  ...INCIDENTS_QUEUES,
+  ...TOOLS_QUEUES,
+  ...STATUSPAGE_QUEUES,
+  ...USAGE_QUEUES,
+  ...DASHBOARD_QUEUES,
 } as const;

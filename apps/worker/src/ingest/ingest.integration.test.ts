@@ -292,6 +292,7 @@ describe('ingest queue: an event becomes a ticket', () => {
       const mine = received.filter(
         (candidate) =>
           candidate.type !== 'notification.created' &&
+          candidate.type !== 'alert.updated' &&
           candidate.ticketId === ticket?.id &&
           !(candidate.type === 'ticket.updated' && candidate.data.changed.join() === 'ai'),
       );

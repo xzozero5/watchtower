@@ -75,6 +75,7 @@ export const WORKSPACES = {
       '@watchtower/domain',
       '@watchtower/ai',
       '@watchtower/channels',
+      '@watchtower/connectors',
       SHARED,
     ],
     forbid: [],
@@ -86,6 +87,7 @@ export const WORKSPACES = {
       '@watchtower/domain',
       '@watchtower/ai',
       '@watchtower/channels',
+      '@watchtower/connectors',
       SHARED,
     ],
     forbid: [],
@@ -107,6 +109,13 @@ export const WORKSPACES = {
     forbidHttpGlobals: true,
   },
   'packages/channels': { name: '@watchtower/channels', allow: [SHARED], forbid: ['persistence'] },
+  // Read-only clients of GCP, Git and data sources and the alert normalizers (ADR-015). Like
+  // channels it knows no database; it knows no other adapter package either.
+  'packages/connectors': {
+    name: '@watchtower/connectors',
+    allow: [SHARED],
+    forbid: ['persistence'],
+  },
   'packages/ui': { name: '@watchtower/ui', allow: [SHARED], forbid: ['persistence'] },
 };
 

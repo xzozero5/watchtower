@@ -1,0 +1,266 @@
+import { Inject, Injectable } from '@nestjs/common';
+import { schema, type Database } from '@watchtower/db';
+import {
+  UNMAPPED_WINDOW_DAYS,
+  type Alert,
+  type AlertAckVia,
+  type AlertChatState,
+  type AlertEscalation,
+  type EscalationTarget,
+  type AlertDetail,
+  type AlertEventType,
+  type AlertListQuery,
+  type AlertSeverity,
+  type AlertSource,
+  type AlertState,
+  type CorrelationGroup,
+  type NoiseQuery,
+  type NoiseReport,
+} from '@watchtower/shared';
+import { and, asc, desc, eq, isNotNull, isNull, ne, sql, type SQL } from 'drizzle-orm';
+
+import { notFound } from '../auth/http-errors.js';
+import { beforeCursor, decodeCursor, preciseTimestamp, toPage } from '../common/keyset.js';
+import { DATABASE } from '../database/database.module.js';
+
+type AlertRow = typeof schema.alert.$inferSelect;
+
+export function toAlert(row: AlertRow): Alert {
+  return {
+    id: row.id,
+    fingerprint: row.fingerprint,
+    source: row.source as AlertSource,
+    serviceId: row.serviceId,
+    severity: row.severity as AlertSeverity,
+    state: row.state as AlertState,
+    title: row.title,
+    summary: row.summary,
+    count: row.count,
+    firstSeenAt: row.firstSeenAt.toISOString(),
+    lastSeenAt: row.lastSeenAt.toISOString(),
+    resolvedAt: row.resolvedAt?.toISOString() ?? null,
+    ackedAt: row.ackedAt?.toISOString() ?? null,
+    ackedBy: row.ackedBy,
+    ackedVia: row.ackedVia as AlertAckVia | null,
+    escalationLevel: row.escalationLevel,
+    nextEscalationAt: row.nextEscalationAt?.toISOString() ?? null,
+    snoozedUntil: row.snoozedUntil?.toISOString() ?? null,
+    snoozeReason: row.snoozeReason,
+    correlationId: row.correlationId,
+    incidentId: row.incidentId,
+    payload: row.payload as Record<string, unknown>,
+  };
+}
+
+/**
+ * Reads alerts for staff (`alert.read`). Read only. The payload is returned as stored: it already
+ * holds allow-listed keys only (N4).
+ */
+@Injectable()
+export class AlertsReader {
+  constructor(@Inject(DATABASE) private readonly database: Database) {}
+
+  async list(query: AlertListQuery) {
+    const alert = schema.alert;
+    const conditions: (SQL | undefined)[] = [
+      query.state === undefined ? undefined : eq(alert.state, query.state),
+      query.source === undefined ? undefined : eq(alert.source, query.source),
+      query.serviceId === undefined ? undefined : eq(alert.serviceId, query.serviceId),
+      query.unmapped === true ? isNull(alert.serviceId) : undefined,
+      // Snoozed now: a snooze that is set and not yet lifted (the sweep lifts an expired one within seconds).
+      query.snoozed === true
+        ? and(isNotNull(alert.snoozedUntil), ne(alert.state, 'resolved'))
+        : undefined,
+      query.cursor === undefined
+        ? undefined
+        : beforeCursor(alert.lastSeenAt, alert.id, decodeCursor(query.cursor)),
+    ];
+    const rows = await this.database.db
+      .select({ alert, sortKey: preciseTimestamp(alert.lastSeenAt) })
+      .from(alert)
+      .where(and(...conditions))
+      .orderBy(desc(alert.lastSeenAt), desc(alert.id))
+      .limit(query.limit + 1);
+    const page = toPage(
+      rows.map((row) => ({ ...row, id: row.alert.id })),
+      query.limit,
+    );
+    return { items: page.rows.map((row) => toAlert(row.alert)), nextCursor: page.nextCursor };
+  }
+
+  /** One alert as the list shows it. */
+  async getOne(id: string): Promise<Alert> {
+    const [row] = await this.database.db
+      .select()
+      .from(schema.alert)
+      .where(eq(schema.alert.id, id))
+      .limit(1);
+    if (row === undefined) throw notFound('No such alert');
+    return toAlert(row);
+  }
+
+  /** The steps of the escalation policy that were carried out, in order (ids and counts only). */
+  async escalations(id: string): Promise<AlertEscalation[]> {
+    await this.getOne(id);
+    const rows = await this.database.db
+      .select()
+      .from(schema.alertEscalation)
+      .where(eq(schema.alertEscalation.alertId, id))
+      .orderBy(asc(schema.alertEscalation.level));
+    return rows.map((row) => ({
+      level: row.level,
+      target: row.target as EscalationTarget,
+      fallback: row.fallback === 'lead' ? 'lead' : null,
+      recipientCount: row.recipientCount,
+      chatState: row.chatState as AlertChatState,
+      createdAt: row.createdAt.toISOString(),
+    }));
+  }
+
+  async get(id: string): Promise<AlertDetail> {
+    const [row] = await this.database.db
+      .select()
+      .from(schema.alert)
+      .where(eq(schema.alert.id, id))
+      .limit(1);
+    if (row === undefined) throw notFound('No such alert');
+    const events = await this.database.db
+      .select()
+      .from(schema.alertEvent)
+      .where(eq(schema.alertEvent.alertId, id))
+      .orderBy(asc(schema.alertEvent.createdAt), asc(schema.alertEvent.id));
+    return {
+      ...toAlert(row),
+      events: events.map((event) => ({
+        id: event.id,
+        type: event.type as AlertEventType,
+        occurredAt: event.occurredAt?.toISOString() ?? null,
+        createdAt: event.createdAt.toISOString(),
+      })),
+    };
+  }
+
+  /**
+   * The "unmapped" bucket (R-3.7): alerts no service claims in the last `UNMAPPED_WINDOW_DAYS`,
+   * grouped by source and title. The window is measured on the database clock, the clock that
+   * stamped `last_seen_at`.
+   */
+  async unmapped() {
+    const alert = schema.alert;
+    const rows = await this.database.db
+      .select({
+        source: alert.source,
+        title: alert.title,
+        alerts: sql<number>`count(*)::int`,
+        occurrences: sql<number>`coalesce(sum(${alert.count}), 0)::int`,
+        openAlerts: sql<number>`count(*) FILTER (WHERE ${alert.state} <> 'resolved')::int`,
+        lastSeenAt: sql<Date>`max(${alert.lastSeenAt})`,
+      })
+      .from(alert)
+      .where(
+        and(
+          isNull(alert.serviceId),
+          sql`${alert.lastSeenAt} > clock_timestamp() - make_interval(days => ${UNMAPPED_WINDOW_DAYS})`,
+        ),
+      )
+      .groupBy(alert.source, alert.title)
+      .orderBy(desc(sql`max(${alert.lastSeenAt})`), asc(alert.title));
+    return {
+      windowDays: UNMAPPED_WINDOW_DAYS,
+      items: rows.map((row) => ({
+        source: row.source as AlertSource,
+        title: row.title,
+        alerts: row.alerts,
+        occurrences: row.occurrences,
+        openAlerts: row.openAlerts,
+        lastSeenAt: new Date(row.lastSeenAt).toISOString(),
+      })),
+    };
+  }
+
+  /**
+   * Groups of related alerts (R-3.6): the proposals for an incident. Newest activity first; a group
+   * that already has an incident is listed with it.
+   */
+  async correlations(): Promise<CorrelationGroup[]> {
+    const alert = schema.alert;
+    const rows = await this.database.db
+      .select({
+        correlationId: alert.correlationId,
+        serviceId: sql<string | null>`(array_agg(DISTINCT ${alert.serviceId}))[1]`,
+        alerts: sql<number>`count(*)::int`,
+        openAlerts: sql<number>`count(*) FILTER (WHERE ${alert.state} <> 'resolved')::int`,
+        severity: sql<AlertSeverity>`(array_agg(${alert.severity} ORDER BY CASE ${alert.severity} WHEN 'critical' THEN 4 WHEN 'error' THEN 3 WHEN 'warning' THEN 2 WHEN 'info' THEN 1 ELSE 0 END DESC))[1]`,
+        firstSeenAt: sql<Date>`min(${alert.firstSeenAt})`,
+        lastSeenAt: sql<Date>`max(${alert.lastSeenAt})`,
+        incidentId: sql<
+          string | null
+        >`(array_agg(${alert.incidentId}) FILTER (WHERE ${alert.incidentId} IS NOT NULL))[1]`,
+      })
+      .from(alert)
+      .where(isNotNull(alert.correlationId))
+      .groupBy(alert.correlationId)
+      .orderBy(desc(sql`max(${alert.lastSeenAt})`))
+      .limit(100);
+    return rows.flatMap((row) =>
+      row.correlationId === null
+        ? []
+        : [
+            {
+              correlationId: row.correlationId,
+              serviceId: row.serviceId,
+              alerts: row.alerts,
+              openAlerts: row.openAlerts,
+              severity: row.severity,
+              firstSeenAt: new Date(row.firstSeenAt).toISOString(),
+              lastSeenAt: new Date(row.lastSeenAt).toISOString(),
+              incidentId: row.incidentId,
+            },
+          ],
+    );
+  }
+
+  /**
+   * Noise metrics (R-3.11): per rule (source and title), over the last `days`, measured on the database
+   * clock. Actionable = acknowledged by a person or part of an incident; noise = resolved by itself with
+   * neither; still-open alerts are not judged. Noisiest first.
+   */
+  async noise(query: NoiseQuery): Promise<NoiseReport> {
+    const alert = schema.alert;
+    const acted = sql`(${alert.ackedAt} IS NOT NULL OR ${alert.incidentId} IS NOT NULL)`;
+    const rows = await this.database.db
+      .select({
+        source: alert.source,
+        title: alert.title,
+        alerts: sql<number>`count(*)::int`,
+        occurrences: sql<number>`coalesce(sum(${alert.count}), 0)::int`,
+        actionable: sql<number>`count(*) FILTER (WHERE ${acted})::int`,
+        noise: sql<number>`count(*) FILTER (WHERE NOT ${acted} AND ${alert.state} = 'resolved')::int`,
+        stillOpen: sql<number>`count(*) FILTER (WHERE NOT ${acted} AND ${alert.state} <> 'resolved')::int`,
+      })
+      .from(alert)
+      .where(sql`${alert.firstSeenAt} > clock_timestamp() - make_interval(days => ${query.days})`)
+      .groupBy(alert.source, alert.title)
+      .orderBy(
+        desc(sql`count(*) FILTER (WHERE NOT ${acted} AND ${alert.state} = 'resolved')`),
+        asc(alert.title),
+      )
+      .limit(query.limit);
+    return {
+      windowDays: query.days,
+      items: rows.map((row) => {
+        const judged = row.actionable + row.noise;
+        return {
+          source: row.source as AlertSource,
+          title: row.title,
+          alerts: row.alerts,
+          occurrences: row.occurrences,
+          actionable: row.actionable,
+          noise: row.noise,
+          stillOpen: row.stillOpen,
+          actionableRatio: judged === 0 ? null : row.actionable / judged,
+        };
+      }),
+    };
+  }
+}

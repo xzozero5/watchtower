@@ -115,7 +115,10 @@ function capture() {
   return { lines, logger: createLogger(testConfig({ LOG_LEVEL: 'debug' }), stream) };
 }
 
-async function addTicket(priority: 'P1' | 'P2' | 'P3' | 'P4' = 'P3'): Promise<string> {
+async function addTicket(
+  priority: 'P1' | 'P2' | 'P3' | 'P4' = 'P3',
+  channel: 'portal' | 'internal' = 'portal',
+): Promise<string> {
   const [account] = await owner()
     .select({ id: schema.channelAccount.id })
     .from(schema.channelAccount)
@@ -125,8 +128,8 @@ async function addTicket(priority: 'P1' | 'P2' | 'P3' | 'P4' = 'P3'): Promise<st
     .values({
       subject: 'A subject the customer wrote',
       orgId,
-      channel: 'portal',
-      channelAccountId: account?.id ?? '',
+      channel,
+      channelAccountId: channel === 'portal' ? (account?.id ?? '') : null,
       priority,
     })
     .returning({ id: schema.ticket.id });
@@ -553,6 +556,14 @@ describe('failures and retries', () => {
       status: 'ticket_missing',
     });
     const ticketId = await addTicket('P3');
+    expect(await notifier.notify(notice(ticketId))).toMatchObject({ status: 'no_route' });
+    expect(await rows(ticketId)).toHaveLength(0);
+    expect(requests).toHaveLength(0);
+  });
+
+  it('does not announce an internal ticket, and does not fail on one (T-200)', async () => {
+    const { notifier, requests } = build({ urls: { default: webhookFor().url } });
+    const ticketId = await addTicket('P1', 'internal');
     expect(await notifier.notify(notice(ticketId))).toMatchObject({ status: 'no_route' });
     expect(await rows(ticketId)).toHaveLength(0);
     expect(requests).toHaveLength(0);

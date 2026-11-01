@@ -9,6 +9,11 @@ import {
   peekRoundRobin,
   takeTurn,
 } from './assignment.js';
+import { ackAlert } from './alerts/ack.js';
+import { sweepEscalations } from './alerts/escalation.js';
+import { recordHeartbeat, sweepHeartbeats } from './alerts/heartbeat.js';
+import { ingestAlert } from './alerts/ingest.js';
+import { endExpiredSnoozes, snoozeAlert, unsnoozeAlert } from './alerts/snooze.js';
 import { readAutonomyState, setAiSwitch, setIntentAutonomy } from './autonomy/state.js';
 import { findOrCreateContactByEmail } from './contacts.js';
 import { decideCsatReopen } from './csat/reopen.js';
@@ -25,6 +30,16 @@ import {
 import { mintCsatToken, verifyCsatToken } from './csat/token.js';
 import { convertInboundMessage } from './inbound/convert.js';
 import { ingestInbound } from './inbound/ingest.js';
+import { draftIncidentComm, previewIncidentComm, sendIncidentComm } from './incidents/comms.js';
+import { recordDeploy } from './incidents/deploy.js';
+import {
+  addIncidentNote,
+  createIncident,
+  linkIncidentAlert,
+  linkIncidentTicket,
+  unlinkIncidentTicket,
+  updateIncident,
+} from './incidents/core.js';
 import { resolveIntent } from './intents.js';
 import {
   createKbArticle,
@@ -70,6 +85,58 @@ import type { Actor, CsatConfig, DomainConfig, DomainContext } from './types.js'
 import { workflowAllows } from './workflow.js';
 
 export { authorityNow } from './clock.js';
+export { ackAlert, type AckAlertInput, type AckAlertOutcome } from './alerts/ack.js';
+export {
+  escalationStepsFor,
+  resolveRecipients,
+  sweepEscalations,
+  type EscalationRecipients,
+  type EscalationSweepOptions,
+  type EscalationSweepResult,
+} from './alerts/escalation.js';
+export {
+  heartbeatFingerprint,
+  recordHeartbeat,
+  sweepHeartbeats,
+  type HeartbeatSweepResult,
+} from './alerts/heartbeat.js';
+export { ingestAlert, type IngestAlertInput, type IngestAlertOutcome } from './alerts/ingest.js';
+export {
+  endExpiredSnoozes,
+  snoozeAlert,
+  unsnoozeAlert,
+  type EndSnoozesResult,
+  type SnoozeAlertInput,
+  type SnoozeOutcome,
+} from './alerts/snooze.js';
+export { correlateOpenedAlert } from './alerts/correlate.js';
+export {
+  addIncidentNote,
+  createIncident,
+  linkIncidentAlert,
+  linkIncidentTicket,
+  unlinkIncidentTicket,
+  updateIncident,
+  type IncidentRef,
+  type UpdateIncidentInput,
+} from './incidents/core.js';
+export {
+  draftIncidentComm,
+  incidentCommAudience,
+  previewIncidentComm,
+  sendIncidentComm,
+  type SendIncidentCommInput,
+  type SendIncidentCommResult,
+} from './incidents/comms.js';
+export { recordDeploy } from './incidents/deploy.js';
+export { addTimelineEntry } from './incidents/timeline.js';
+export {
+  matchService,
+  ruleMatches,
+  ruleSpecificity,
+  type AlertFacts,
+  type CatalogEntry,
+} from './alerts/match.js';
 export { recordAuditInTx, type AuditEntry, type AuditWriter } from './audit.js';
 export {
   DEFAULT_AI_BUDGET_ALERT_PERCENT,
@@ -543,6 +610,36 @@ export interface Domain {
     readonly readSettings: typeof readOutboundSettings;
     readonly setUndoSendSeconds: typeof setUndoSendSeconds;
   };
+  /**
+   * Alerts from GCP and Alertmanager (T-201c, ADR-015): `ingest` takes one delivery per call,
+   * idempotent. `ack` and `sweepEscalations` are the escalation of R-3.8 (T-201d).
+   */
+  readonly alerts: {
+    readonly ingest: typeof ingestAlert;
+    readonly ack: typeof ackAlert;
+    readonly sweepEscalations: typeof sweepEscalations;
+    /** Snooze with a mandatory expiry and reason (R-3.9), lifted by hand or by `endExpiredSnoozes`. */
+    readonly snooze: typeof snoozeAlert;
+    readonly unsnooze: typeof unsnoozeAlert;
+    readonly endExpiredSnoozes: typeof endExpiredSnoozes;
+    /** Heartbeats / dead-man's switches (R-3.10). */
+    readonly recordHeartbeat: typeof recordHeartbeat;
+    readonly sweepHeartbeats: typeof sweepHeartbeats;
+  };
+  /** Incidents (R-3.12) and the deploy feed (R-5.4): written by people, never opened by the system. */
+  readonly incidents: {
+    readonly create: typeof createIncident;
+    readonly update: typeof updateIncident;
+    readonly linkTicket: typeof linkIncidentTicket;
+    readonly unlinkTicket: typeof unlinkIncidentTicket;
+    readonly linkAlert: typeof linkIncidentAlert;
+    readonly note: typeof addIncidentNote;
+    readonly recordDeploy: typeof recordDeploy;
+    /** Mass communication (R-3.14, N3): anyone may draft, only a person sends, the count is confirmed. */
+    readonly draftComm: typeof draftIncidentComm;
+    readonly previewComm: typeof previewIncidentComm;
+    readonly sendComm: typeof sendIncidentComm;
+  };
   /** Received messages (ADR-009): used by the worker's `ingest` consumer. */
   readonly inbound: {
     readonly ingest: typeof ingestInbound;
@@ -655,6 +752,28 @@ export function createDomain(options: DomainOptions): Domain {
       sweep: sweepDeliveries,
       readSettings: readOutboundSettings,
       setUndoSendSeconds,
+    },
+    alerts: {
+      ingest: ingestAlert,
+      ack: ackAlert,
+      sweepEscalations,
+      snooze: snoozeAlert,
+      unsnooze: unsnoozeAlert,
+      endExpiredSnoozes,
+      recordHeartbeat,
+      sweepHeartbeats,
+    },
+    incidents: {
+      create: createIncident,
+      update: updateIncident,
+      linkTicket: linkIncidentTicket,
+      unlinkTicket: unlinkIncidentTicket,
+      linkAlert: linkIncidentAlert,
+      note: addIncidentNote,
+      recordDeploy,
+      draftComm: draftIncidentComm,
+      previewComm: previewIncidentComm,
+      sendComm: sendIncidentComm,
     },
     ai: { rejectDraft: rejectAiDraft },
     inbound: { ingest: ingestInbound, convert: convertInboundMessage },

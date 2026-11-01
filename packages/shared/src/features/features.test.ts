@@ -22,10 +22,17 @@ const EXPECTED_FEATURES = [
   'views',
   'admin',
   'channelAccounts',
+  // Phase 2 (T-200): created empty, filled in by their own tasks.
+  'alerts',
+  'incidents',
+  'tools',
+  'statuspage',
+  'usage',
+  'dashboard',
 ];
 
 describe('feature records', () => {
-  it('has one entry per Phase 1 feature', () => {
+  it('has one entry per feature', () => {
     expect(FEATURES.map((feature) => feature.name)).toEqual(EXPECTED_FEATURES);
   });
 

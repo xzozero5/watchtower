@@ -5,10 +5,10 @@ import {
   DISCORD_RETRY_MAX_AGE_MS,
   DISCORD_SLOT_CREDENTIAL_FIELDS,
   DISCORD_WEBHOOK_SLOTS,
-  channelTypeSchema,
   discordNotifyEventSchema,
   formatTicketKey,
   matchDiscordRoutes,
+  ticketChannelSchema,
   ticketPrioritySchema,
   type DiscordChannelMap,
   type DiscordNotifyJob,
@@ -228,13 +228,17 @@ export function createDiscordNotifier(deps: DiscordNotifierDeps) {
       return { status: 'ticket_missing', mode: lastMode ?? 'mock', slots: [] };
 
     const priority = ticketPrioritySchema.parse(ticket.priority);
-    const channel = channelTypeSchema.parse(ticket.channel);
-    const matches = matchDiscordRoutes(deps.channelMap, { event: job.event, priority, channel });
+    const ticketChannel = ticketChannelSchema.parse(ticket.channel);
     const urls = await webhookUrls();
     const mode: DiscordMode = DISCORD_WEBHOOK_SLOTS.some((slot) => urls[slot] !== undefined)
       ? 'live'
       : 'mock';
     announceMode(mode);
+    // An internal ticket (T-200) has no customer channel for a route to select on: this notifier does
+    // not announce it. Alerts and anomalies reach Discord through their own path (T-201d, T-205c).
+    if (ticketChannel === 'internal') return { status: 'no_route', mode, slots: [] };
+    const channel = ticketChannel;
+    const matches = matchDiscordRoutes(deps.channelMap, { event: job.event, priority, channel });
     if (matches.length === 0) return { status: 'no_route', mode, slots: [] };
 
     const ticketKey = formatTicketKey(ticket.number, deps.ticketKeyPrefix);

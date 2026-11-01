@@ -4,4 +4,5 @@ export const channelEn = {
   portal: 'Portal',
   discord: 'Discord',
   webhook: 'Webhook',
+  internal: 'Internal',
 } as const;

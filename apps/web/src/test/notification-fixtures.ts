@@ -45,6 +45,8 @@ export const PREFERENCES: NotificationPreferences = {
     { kind: 'ticket.assigned', inApp: true, mandatory: false },
     { kind: 'shift.handoff_overdue', inApp: true, mandatory: false },
     { kind: 'shift.no_show', inApp: true, mandatory: false },
+    { kind: 'alert.fired', inApp: true, mandatory: false },
+    { kind: 'alert.escalated', inApp: true, mandatory: false },
   ],
 };
 

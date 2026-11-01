@@ -30,13 +30,17 @@ export const NOTIFICATIONS_QUEUES = {} as const satisfies Record<string, string>
  * What a notification is about.
  *  - `ticket.p1`: a P1 ticket was created or raised to P1 (sticky banner until read);
  *  - `ticket.assigned`: a ticket was handed to you by someone else;
- *  - `shift.handoff_overdue`, `shift.no_show`: for leads (R-7.3, AC-7), raised from the shift overview.
+ *  - `shift.handoff_overdue`, `shift.no_show`: for leads (R-7.3, AC-7), raised from the shift overview;
+ *  - `alert.fired`: an alert needs you (first step of its escalation policy: you are on shift);
+ *  - `alert.escalated`: nobody acknowledged an alert in time and it reached you (lead or head).
  */
 export const NOTIFICATION_KINDS = [
   'ticket.p1',
   'ticket.assigned',
   'shift.handoff_overdue',
   'shift.no_show',
+  'alert.fired',
+  'alert.escalated',
 ] as const;
 export type NotificationKind = (typeof NOTIFICATION_KINDS)[number];
 export const notificationKindSchema = z.enum(NOTIFICATION_KINDS);

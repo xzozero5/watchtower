@@ -50,6 +50,25 @@ describe('buildTimeline', () => {
     expect(JSON.stringify(entries)).not.toContain('internal staff reason');
   });
 
+  it('keeps opened, message, status in order when they share a millisecond', () => {
+    const same = at(5);
+    const opened: ViewEvent = {
+      id: 'ffffffff-0000-4000-8000-000000000001',
+      type: TICKET_EVENT_TYPES.created,
+      payload: {},
+      createdAt: same,
+    };
+    const written: ViewMessage = {
+      id: '00000000-0000-4000-8000-00000000000a',
+      direction: 'inbound',
+      bodyText: 'Hello',
+      createdAt: same,
+      staffName: null,
+    };
+    const timeline = buildTimeline([written], [opened]);
+    expect(timeline.map((entry) => entry.kind)).toEqual(['status', 'message']);
+  });
+
   it('leaves out a change that reads the same to the customer (triage to open)', () => {
     const entries = buildTimeline(
       [],

@@ -13,5 +13,7 @@
 - [ADR-011](ADR-011-autonomy-policy-gate.md) — Autonomy stage ต่อ intent + policy gate (`decide()`/`createPolicyGate`) + สวิตช์ฉุกเฉิน 2 ตัว + ceiling stage ≤ 2 ใน DB (T-112a) · Accepted 2026-11-01
 - [ADR-013](ADR-013-investigator-drafter-tools.md) — Investigator, drafter และ tools read-only: runbook ที่โค้ดสร้าง (model ไม่เลือก tool), scope จาก intent ที่คนยืนยันหรือ confidence ≥ เกณฑ์ (SR106-R8), budget ใน `tool_execution` นอก handle, role `watchtower_ai_ro` บน view allow-list, disclosure/citation ด้วยโค้ด, approve/edit/reject, KB author ที่ผู้สั่ง AI อนุมัติไม่ได้ (T-108) · Proposed 2026-11-01
 - [ADR-012](ADR-012-integration-credential-store.md) — Integration credential store: ตาราง `integration_credential` แยกจาก `channel_account`, envelope encryption (DEK ต่อแถว + KEK จาก HKDF + `KmsPort`), `key_version` + `credentials rotate`, env ชนะ DB, write-only ผ่าน HTTP (แก้ ADR-004, T-116a) · Accepted 2026-11-01
+- [ADR-014](ADR-014-gcp-deployment.md) — Deploy บน GCP: Cloud Run, Cloud SQL, Memorystore, GCS, Secret Manager (Terraform ยังไม่ apply)
+- [ADR-015](ADR-015-connectors-package.md) — workspace `packages/connectors` (client read-only + normalizer ของ alert, fake ก่อน live) แก้ matrix ของ ADR-002 และข้อตกลง alert ingest (idempotency, fingerprint, `closed` ไม่ปิด incident, นาฬิกา DB) (T-200/T-201) · Proposed 2026-11-02
 - ADR ใหม่: `ADR-00x-<slug>.md` ตาม `docs/templates/adr.template.md` แล้วเพิ่มบรรทัดที่นี่
 - Review records (security/po) เก็บเป็น `T-xxx-review.md` ในโฟลเดอร์นี้

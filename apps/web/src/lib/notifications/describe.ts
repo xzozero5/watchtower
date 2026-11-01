@@ -8,6 +8,8 @@ export const KIND_KEY = {
   'ticket.assigned': 'ticketAssigned',
   'shift.handoff_overdue': 'shiftHandoffOverdue',
   'shift.no_show': 'shiftNoShow',
+  'alert.fired': 'alertFired',
+  'alert.escalated': 'alertEscalated',
 } as const satisfies Record<NotificationKind, string>;
 
 export function kindMessageKey(kind: NotificationKind): MessageKey {
