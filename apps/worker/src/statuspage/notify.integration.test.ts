@@ -1,0 +1,160 @@
+import { randomBytes, randomUUID } from 'node:crypto';
+
+import { createDatabase, schema, type Database } from '@watchtower/db';
+import { createTestDatabase, type TestDatabase } from '@watchtower/db/testing';
+import { createDomain, newStatusNonce, type Domain } from '@watchtower/domain';
+import { CSAT_LANDING_PATH, STATUSPAGE_JOBS } from '@watchtower/shared';
+import { KEY_LABELS, deriveSubkey } from '@watchtower/shared/secret-box';
+import type { Job } from 'bullmq';
+import { eq } from 'drizzle-orm';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+
+import { createLogger } from '../logger.js';
+import type { Mailer, OutboundMessage } from '../mailer.js';
+import type { ProcessorContext } from '../processors/index.js';
+import { testConfig } from '../testing/support.js';
+import { createStatusPageRegistration } from './index.js';
+
+// The notice job on its own, against a real Postgres and a fake mailer: a closed page mails nobody, and one
+// reader the mail server refuses never stops the others from being told.
+let testDb: TestDatabase;
+let appDb: Database;
+let domain: Domain;
+let postId: string;
+const owner = () => testDb.owner.db;
+
+beforeAll(async () => {
+  testDb = await createTestDatabase(
+    process.env.TEST_DATABASE_URL ?? 'postgres://watchtower:watchtower@localhost:5432/watchtower',
+  );
+  appDb = createDatabase({ url: testDb.appUrl, max: 3, applicationName: 'wt-notify-test' });
+  const config = testConfig({ DATABASE_URL: testDb.appUrl });
+  domain = createDomain({
+    ticketKeyPrefix: config.TICKET_KEY_PREFIX,
+    sealKey: deriveSubkey(config.APP_ENCRYPTION_KEY, KEY_LABELS.outboxSecret),
+    csat: {
+      signingKey: deriveSubkey(config.APP_ENCRYPTION_KEY, KEY_LABELS.csatLink),
+      landingUrl: new URL(CSAT_LANDING_PATH, config.APP_URL).toString(),
+    },
+  });
+  const [lead] = await owner()
+    .insert(schema.users)
+    .values({ email: `lead-${randomUUID()}@example.test`, name: 'Lead', role: 'lead' })
+    .returning({ id: schema.users.id });
+  const ctx = domain.context({ actor: { type: 'user', id: lead?.id ?? null } });
+  const drafted = await appDb.db.transaction((tx) =>
+    domain.statusPage.draftPost(tx, ctx, {
+      title: 'We are investigating an issue',
+      body: 'Some requests are slow.',
+      phase: 'investigating',
+      impact: 'minor',
+      componentIds: [],
+      incidentId: null,
+    }),
+  );
+  postId = drafted.value.id;
+  await appDb.db.transaction((tx) => domain.statusPage.publishPost(tx, ctx, postId));
+});
+afterAll(async () => {
+  await appDb.close();
+  await testDb.cleanup();
+});
+
+async function addReader(label: string): Promise<string> {
+  const email = `${label}-${randomBytes(3).toString('hex')}@example.test`;
+  await owner().insert(schema.statusSubscription).values({
+    email,
+    state: 'confirmed',
+    confirmedAt: new Date(),
+    confirmNonce: newStatusNonce(),
+    unsubscribeNonce: newStatusNonce(),
+  });
+  return email;
+}
+
+function processor(open: boolean, send: (message: OutboundMessage) => Promise<void>) {
+  const config = testConfig({
+    DATABASE_URL: testDb.appUrl,
+    STATUS_PAGE_PUBLIC: open ? 'true' : 'false',
+  });
+  const mailer: Mailer = { send, close: () => undefined };
+  // Only the parts the statuspage consumer reads.
+  const context = {
+    config,
+    logger: createLogger(config),
+    database: appDb,
+    mailer,
+    domain,
+  } as unknown as ProcessorContext;
+  const run = createStatusPageRegistration(context);
+  return () =>
+    run({
+      name: STATUSPAGE_JOBS.notify,
+      data: { kind: 'post', refId: postId },
+    } as Job);
+}
+
+const claims = async () =>
+  (await owner().select().from(schema.statusNotification)).filter((row) => row.refId === postId);
+
+describe('the notice job', () => {
+  it('mails nobody while the page is closed, and claims nobody', async () => {
+    await addReader('closed');
+    const sent: string[] = [];
+    const result = await processor(false, (message) => {
+      sent.push(message.to);
+      return Promise.resolve();
+    })();
+    expect(result).toEqual({ sent: 0, skipped: 'page_closed' });
+    expect(sent).toEqual([]);
+    expect(await claims()).toHaveLength(0);
+    await owner().delete(schema.statusSubscription);
+  });
+
+  it('keeps going past a reader the mail server refuses for good, and does not mail that reader again', async () => {
+    const readers = [await addReader('a'), await addReader('b'), await addReader('c')];
+    const refused = readers[1] ?? '';
+    const sent: string[] = [];
+    const run = processor(true, (message) => {
+      if (message.to === refused) {
+        return Promise.reject(
+          Object.assign(new Error('mailbox unavailable'), { responseCode: 550 }),
+        );
+      }
+      sent.push(message.to);
+      return Promise.resolve();
+    });
+    expect(await run()).toMatchObject({ sent: 2, bounced: 1 });
+    expect(sent.toSorted()).toEqual(readers.filter((email) => email !== refused).toSorted());
+    // A second run finds everyone claimed: the refused address is not tried again.
+    expect(await run()).toMatchObject({ sent: 0 });
+    expect(sent).toHaveLength(2);
+    await owner().delete(schema.statusSubscription);
+  });
+
+  it('tells everyone else first when one send fails for a reason that may pass, then retries only that reader', async () => {
+    const readers = [await addReader('x'), await addReader('y'), await addReader('z')];
+    const flaky = readers[0] ?? '';
+    const sent: string[] = [];
+    let failing = true;
+    const run = processor(true, (message) => {
+      if (message.to === flaky && failing) return Promise.reject(new Error('connection reset'));
+      sent.push(message.to);
+      return Promise.resolve();
+    });
+    await expect(run()).rejects.toThrow('connection reset');
+    expect(sent.toSorted()).toEqual(readers.filter((email) => email !== flaky).toSorted());
+    // The failed reader has no claim, so the retry of the job reaches exactly that reader.
+    expect(await claims()).toHaveLength(readers.length - 1);
+    failing = false;
+    expect(await run()).toMatchObject({ sent: 1 });
+    expect(sent).toHaveLength(readers.length);
+    expect(sent.at(-1)).toBe(flaky);
+    expect(await claims()).toHaveLength(readers.length);
+    const row = await owner()
+      .select()
+      .from(schema.statusSubscription)
+      .where(eq(schema.statusSubscription.email, flaky));
+    expect(row[0]?.state).toBe('confirmed');
+  });
+});

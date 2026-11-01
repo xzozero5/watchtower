@@ -12,6 +12,7 @@ import { AUTONOMY_PUBLIC_ROUTES } from './autonomy/public-routes.js';
 import { CREDENTIALS_PUBLIC_ROUTES } from './credentials/public-routes.js';
 import { VIEWS_PUBLIC_ROUTES } from './views/public-routes.js';
 import { ALERTS_PUBLIC_ROUTES } from './alerts/public-routes.js';
+import { STATUSPAGE_PUBLIC_ROUTES } from './statuspage/public-routes.js';
 
 /** Public routes of every Phase 1 feature module, read by the route-policy test (T-123a). */
 export const FEATURE_PUBLIC_ROUTES: readonly string[] = [
@@ -29,4 +30,5 @@ export const FEATURE_PUBLIC_ROUTES: readonly string[] = [
   ...CREDENTIALS_PUBLIC_ROUTES,
   ...VIEWS_PUBLIC_ROUTES,
   ...ALERTS_PUBLIC_ROUTES,
+  ...STATUSPAGE_PUBLIC_ROUTES,
 ];
