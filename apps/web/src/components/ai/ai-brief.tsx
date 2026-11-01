@@ -2,20 +2,17 @@
 
 import type { UseQueryResult } from '@tanstack/react-query';
 import type { AiEvidenceKind, TicketAiInsight } from '@watchtower/shared';
-import { Button, cn, Skeleton, Tooltip } from '@watchtower/ui';
+import { Button, cn, Skeleton, StageBadge, Tooltip } from '@watchtower/ui';
 import {
   Bot,
   Database,
-  Eye,
   FileText,
   GitCommitHorizontal,
-  Lightbulb,
   type LucideIcon,
   ScrollText,
   Tag,
   Ticket,
   TriangleAlert,
-  UserCheck,
 } from 'lucide-react';
 import { useState } from 'react';
 
@@ -37,30 +34,19 @@ export const EVIDENCE_ICONS: Record<AiEvidenceKind, LucideIcon> = {
   repo: GitCommitHorizontal,
 };
 
-const STAGES = {
-  0: { icon: Eye, key: 'ai.stage.0' },
-  1: { icon: Lightbulb, key: 'ai.stage.1' },
-  2: { icon: UserCheck, key: 'ai.stage.2' },
-} as const;
+const STAGE_KEYS = { 0: 'ai.stage.0', 1: 'ai.stage.1', 2: 'ai.stage.2' } as const;
 
 /**
- * The autonomy stage in force (PRD section 6.4) as an icon and words. Phase 1 renders stages 0 to
- * 2 only: a higher number from the api draws nothing. A small local copy of the spec's
- * `StageBadge`; fold it into `packages/ui` when that component lands.
+ * The autonomy stage in force (PRD section 6.4), with its tooltip. Phase 1 renders stages 0 to 2
+ * only: a higher number from the api draws nothing (`StageBadge` in `packages/ui` has no value
+ * for it).
  */
-export function StageBadge({ stage }: { stage: number }) {
+export function AiStageBadge({ stage }: { stage: number }) {
   const { t } = useI18n();
   if (stage !== 0 && stage !== 1 && stage !== 2) return null;
-  const { icon: Icon, key } = STAGES[stage];
   return (
     <Tooltip content={t('ai.stage.tip')}>
-      <span
-        data-stage={stage}
-        className="inline-flex h-5 items-center gap-1 rounded-full border border-border px-2 text-xs font-medium whitespace-nowrap text-foreground"
-      >
-        <Icon aria-hidden className="size-3.5" />
-        {t(key)}
-      </span>
+      <StageBadge stage={stage} label={t(STAGE_KEYS[stage])} />
     </Tooltip>
   );
 }
@@ -217,7 +203,7 @@ export function AiBrief({
         <header className="flex flex-wrap items-center gap-x-2 gap-y-1">
           <Bot aria-hidden className="size-4 text-ai-accent" />
           <AiStateChip state={insight.state} />
-          <StageBadge stage={insight.stage} />
+          <AiStageBadge stage={insight.stage} />
           {uncited > 0 ? (
             <span
               title={t('ai.brief.uncitedTip')}

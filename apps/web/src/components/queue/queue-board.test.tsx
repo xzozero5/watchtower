@@ -173,4 +173,16 @@ describe('triage board', () => {
     expect(screen.queryByRole('button', { name: /^Needs you/ })).toBeNull();
     expect(screen.getAllByRole('option')).toHaveLength(2);
   });
+
+  it('reads the filters a Home link puts in the address and still groups the result', async () => {
+    window.history.replaceState(null, '', '/?assignee=unassigned&status=new');
+    const api = workspaceApi({ tickets: board });
+    renderWorkspace();
+    const queue = await screen.findByRole('region', { name: 'Queue' });
+    await within(queue).findByText('Locked out after a reset');
+    const search = api.callsTo('/v1/tickets')[0]?.search ?? '';
+    expect(search).toContain('assignee=unassigned');
+    expect(search).toContain('status=new');
+    expect(within(queue).getByRole('button', { name: /^Needs you/ })).toBeVisible();
+  });
 });

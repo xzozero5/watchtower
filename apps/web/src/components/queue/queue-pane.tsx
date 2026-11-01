@@ -32,6 +32,7 @@ import {
   activeFilterCount,
   DEFAULT_FILTERS,
   filtersEqual,
+  filtersFromSearch,
   type QueueFilters,
 } from '@/lib/tickets/filters';
 import { toRowModel } from '@/lib/tickets/model';
@@ -168,7 +169,10 @@ export function QueuePane({
   // Set when the keyboard moved the cursor: focus follows it once the right section is drawn.
   const refocus = useRef(false);
 
-  const [filters, setFilters] = useState<QueueFilters>(DEFAULT_FILTERS);
+  // A link from Home may name filters in the address (`/?assignee=unassigned&status=new`).
+  const [filters, setFilters] = useState<QueueFilters>(
+    () => filtersFromSearch(window.location.search) ?? DEFAULT_FILTERS,
+  );
   const [savedViews, setSavedViews] = useState<SavedView[]>(() =>
     loadSavedViews(browserStorage(), userId),
   );

@@ -2,6 +2,9 @@ import type { AiMessages } from './ai.en';
 
 /** Thai copy of the AI-first workspace. Same keys as ai.en.ts. */
 export const aiTh: AiMessages = {
+  paused: 'AI ถูกหยุดโดย {name} เมื่อ {time} — ตอบด้วยตนเองเท่านั้น',
+  pausedNoName: 'AI ถูกหยุดเมื่อ {time} — ตอบด้วยตนเองเท่านั้น',
+  pausedLink: 'การควบคุม AI',
   state: {
     classified: 'จัดประเภทแล้ว',
     investigating: 'กำลังตรวจสอบ',

@@ -1,0 +1,256 @@
+'use client';
+
+import { useIsFetching, useQueryClient } from '@tanstack/react-query';
+import { OPEN_STATUSES, type TicketSummary } from '@watchtower/shared';
+import { Button, cn, Skeleton } from '@watchtower/ui';
+import { RefreshCw } from 'lucide-react';
+import { useMemo } from 'react';
+
+import { AccessDenied, LoadError, PageHeader } from '@/components/admin/admin-page';
+import { RelativeTime } from '@/components/relative-time';
+import { useI18n } from '@/i18n/provider';
+import {
+  adminKeys,
+  useAutonomy,
+  useReadiness,
+  useSlaRiskTickets,
+  useTicketStats,
+  useOldestUnassigned,
+  useUsers,
+} from '@/lib/admin/queries';
+import { openInStatus } from '@/lib/admin/contracts';
+import { HOME_PERMISSION } from '@/lib/admin/sections';
+import { useSession, useUserId } from '@/lib/auth/session';
+import { queueHref } from '@/lib/tickets/filters';
+import { isStaffTicket } from '@/lib/tickets/model';
+import { useQueues } from '@/lib/tickets/queries';
+import { useNow } from '@/lib/use-now';
+
+import { AiStatus, BotMark, SystemHealth } from './home-status';
+import {
+  CountsUnavailable,
+  type LoadRowData,
+  LoadList,
+  oldestAge,
+  QueueBreakdown,
+  riskRows,
+  ShowAllLink,
+  SlaRiskList,
+  StatusBreakdown,
+  type Tile,
+  TileStrip,
+  HomeSection,
+} from './home-sections';
+
+const staffOnly = (items: readonly unknown[]): TicketSummary[] =>
+  items.filter((item): item is TicketSummary => isStaffTicket(item as TicketSummary));
+
+/**
+ * Head home (docs/06-UI-SPEC.md section 18.2, trimmed by docs/design/ai-first-workspace.md section
+ * 4): what needs the head's decision first, as a strip of numbers that link to the queue (SLA at
+ * risk, unassigned, new, needs triage), then the at-risk list, the AI state, the open load and the
+ * system health. Numbers and short labels only, no charts (Phase 2, T-206). Head and lead see it.
+ */
+export function HomePage() {
+  const { can } = useSession();
+  if (!can(HOME_PERMISSION)) return <AccessDenied role="lead" />;
+  return <HomeBody />;
+}
+
+function HomeBody() {
+  const { t, locale } = useI18n();
+  const queryClient = useQueryClient();
+  const userId = useUserId();
+  const now = useNow();
+
+  const stats = useTicketStats(true);
+  const slaList = useSlaRiskTickets(true);
+  const oldestUnassigned = useOldestUnassigned(true);
+  const ready = useReadiness(true);
+  const users = useUsers(true);
+  const queues = useQueues(true);
+  const autonomy = useAutonomy(true);
+  const fetching = useIsFetching({ queryKey: adminKeys(userId).all }) > 0;
+  const updatedAt = Math.max(stats.dataUpdatedAt, slaList.dataUpdatedAt);
+
+  const slaTickets = useMemo(() => staffOnly(slaList.data?.items ?? []), [slaList.data]);
+  const rows = useMemo(() => riskRows(slaTickets, now), [slaTickets, now]);
+
+  // The server's count when there is one; otherwise what the loaded page holds ("at least" if more).
+  const sla = stats.data?.total.sla;
+  const riskTotal = sla ? sla.at_risk + sla.breached : slaList.data ? rows.length : null;
+  const riskCapped = !sla && slaList.data?.nextCursor != null;
+  const overdue = sla ? sla.breached : rows.filter((row) => row.sla.state === 'breached').length;
+  const countText = (value: number | null, capped = false) =>
+    value === null ? null : capped ? t('home.atLeast', { count: value }) : String(value);
+
+  const unassignedCount = stats.data
+    ? (stats.data.byAssignee.find((entry) => entry.assigneeId === null)?.open ?? 0)
+    : null;
+  const oldest = oldestAge(oldestUnassigned.data?.items[0]?.createdAt, now, locale, (time) =>
+    t('home.oldest', { time }),
+  );
+  const newCount = stats.data ? openInStatus(stats.data, 'new') : null;
+  const triageCount = stats.data ? openInStatus(stats.data, 'triage') : null;
+
+  const tiles: Tile[] = [
+    {
+      id: 'sla',
+      label: t('home.slaRisk'),
+      value: countText(riskTotal, riskCapped),
+      ...(riskTotal !== null && overdue > 0
+        ? { sub: t('home.overdueCount', { count: overdue }) }
+        : {}),
+      href: queueHref({ sort: 'due_asc', status: OPEN_STATUSES }),
+    },
+    {
+      id: 'unassigned',
+      label: t('home.unassigned'),
+      value: unassignedCount,
+      ...(oldest && unassignedCount ? { sub: oldest } : {}),
+      href: queueHref({ assignee: 'unassigned', status: ['new', 'triage', 'open'] }),
+    },
+    {
+      id: 'new',
+      label: t('home.new'),
+      value: newCount,
+      href: queueHref({ status: ['new'] }),
+    },
+    {
+      id: 'triage',
+      label: t('home.triage'),
+      value: triageCount,
+      href: queueHref({ status: ['triage'] }),
+    },
+  ];
+
+  const queueNames = useMemo(
+    () => new Map((queues.data?.queues ?? []).map((queue) => [queue.id, queue.name])),
+    [queues.data],
+  );
+
+  const load = useMemo<LoadRowData[]>(() => {
+    if (!stats.data || !users.data) return [];
+    const byPerson = new Map(stats.data.byAssignee.map((entry) => [entry.assigneeId, entry]));
+    return users.data.users
+      .filter(
+        (user) => user.status === 'active' && user.role !== 'client' && user.role !== 'system',
+      )
+      .map((user) => {
+        const entry = byPerson.get(user.id);
+        return {
+          id: user.id,
+          name: user.name,
+          open: entry?.open ?? 0,
+          atRisk: (entry?.sla.at_risk ?? 0) + (entry?.sla.breached ?? 0),
+        };
+      })
+      .sort((a, b) => b.open - a.open || a.name.localeCompare(b.name));
+  }, [stats.data, users.data]);
+
+  const refresh = () => {
+    void queryClient.invalidateQueries({ queryKey: adminKeys(userId).all });
+    void queryClient.invalidateQueries({ queryKey: adminKeys(userId).autonomy });
+  };
+
+  return (
+    <div className="flex min-h-0 flex-1 flex-col">
+      <PageHeader
+        title={t('home.title')}
+        actions={
+          <>
+            {updatedAt > 0 ? (
+              <span className="text-xs text-muted-foreground" title={t('home.refreshHint')}>
+                <RelativeTime iso={new Date(updatedAt).toISOString()} />
+              </span>
+            ) : null}
+            <Button size="sm" onClick={refresh} aria-busy={fetching || undefined}>
+              <RefreshCw
+                aria-hidden
+                className={cn('size-3.5', fetching && 'motion-safe:animate-spin')}
+              />
+              {t('home.refresh')}
+            </Button>
+          </>
+        }
+      />
+      <main
+        id="main-content"
+        aria-busy={slaList.isPending || undefined}
+        className="min-h-0 flex-1 overflow-y-auto"
+      >
+        <TileStrip tiles={tiles} />
+
+        <div className="grid divide-border border-b border-border lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)] lg:divide-x">
+          <HomeSection id="home-sla" title={t('home.slaRisk')}>
+            {slaList.isPending ? (
+              <ListSkeleton />
+            ) : slaList.isError ? (
+              <LoadError onRetry={() => void slaList.refetch()} className="px-0" />
+            ) : rows.length === 0 ? (
+              <p className="text-sm text-muted-foreground">{t('home.empty.slaRisk')}</p>
+            ) : (
+              <>
+                <SlaRiskList rows={rows} />
+                {rows.length > 10 ? <ShowAllLink count={rows.length} /> : null}
+              </>
+            )}
+          </HomeSection>
+          <HomeSection id="home-ai" title={t('home.ai.title')} aside={<BotMark />}>
+            <AiStatus query={autonomy} />
+          </HomeSection>
+        </div>
+
+        <div className="grid divide-border border-b border-border md:grid-cols-2 md:divide-x">
+          <HomeSection id="home-status" title={t('home.byStatus')}>
+            {stats.isPending ? (
+              <Skeleton className="h-5" />
+            ) : stats.isError ? (
+              <CountsUnavailable onRetry={() => void stats.refetch()} />
+            ) : (
+              <StatusBreakdown stats={stats.data} />
+            )}
+          </HomeSection>
+          <HomeSection id="home-queue" title={t('home.byQueue')}>
+            {stats.isPending ? (
+              <Skeleton className="h-5" />
+            ) : stats.isError ? (
+              <CountsUnavailable onRetry={() => void stats.refetch()} />
+            ) : (
+              <QueueBreakdown stats={stats.data} names={queueNames} />
+            )}
+          </HomeSection>
+        </div>
+
+        <div className="grid divide-border md:grid-cols-2 md:divide-x">
+          <HomeSection id="home-load" title={t('home.load')}>
+            {stats.isPending || users.isPending ? (
+              <ListSkeleton />
+            ) : stats.isError ? (
+              <CountsUnavailable onRetry={() => void stats.refetch()} />
+            ) : users.isError ? (
+              <LoadError onRetry={() => void users.refetch()} className="px-0" />
+            ) : (
+              <LoadList rows={load} />
+            )}
+          </HomeSection>
+          <HomeSection id="home-health" title={t('home.healthTitle')}>
+            <SystemHealth query={ready} />
+          </HomeSection>
+        </div>
+      </main>
+    </div>
+  );
+}
+
+function ListSkeleton() {
+  const { t } = useI18n();
+  return (
+    <div role="status" aria-busy="true" className="flex flex-col gap-1.5">
+      <span className="sr-only">{t('home.loading')}</span>
+      {[0, 1, 2].map((index) => (
+        <Skeleton key={index} className="h-7" />
+      ))}
+    </div>
+  );
+}

@@ -4,6 +4,9 @@
  * merged into the catalogue by one line in en.ts. ai.th.ts must have the same keys.
  */
 export const aiEn = {
+  paused: 'AI paused by {name} at {time} — replies are manual.',
+  pausedNoName: 'AI paused at {time} — replies are manual.',
+  pausedLink: 'AI controls',
   state: {
     classified: 'Classified',
     investigating: 'Investigating',

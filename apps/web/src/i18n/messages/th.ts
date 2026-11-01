@@ -1,5 +1,6 @@
 import type { Messages } from './en';
 import { aiTh } from './ai.th';
+import { adminTh, homeTh } from './console.th';
 import { portalTh } from './portal.th';
 
 /** Thai UI copy. Same keys as en.ts. */
@@ -8,6 +9,7 @@ export const th: Messages = {
     name: 'Watchtower',
     description: 'ศูนย์ปฏิบัติการสำหรับทีม Tech Operations',
     skipToContent: 'ข้ามไปยังบทสนทนา',
+    skipToMain: 'ข้ามไปยังเนื้อหา',
   },
   topbar: {
     openPalette: 'เปิดแผงคำสั่ง',
@@ -343,6 +345,8 @@ export const th: Messages = {
     collapseQueue: 'ย่อหรือขยายคิวงาน',
     collapseAssistant: 'ย่อหรือขยายแผงรายละเอียด',
     goQueue: 'ไปที่คิวงาน',
+    goHome: 'ไปที่หน้าหลัก',
+    goAdmin: 'ไปที่ผู้ดูแลระบบ',
     goOtherMail: 'ไปที่อีเมลอื่น ๆ',
     goBrief: 'ไปที่สรุปก่อนเริ่มกะ',
     goHandoff: 'ไปที่การส่งต่องานระหว่างกะ',
@@ -454,10 +458,17 @@ export const th: Messages = {
       general: 'ทั่วไป',
       display: 'การแสดงผล',
       language: 'ภาษา',
+      admin: 'ผู้ดูแลระบบ',
     },
   },
   commands: {
     focusSearch: 'ค้นหาในคิวงาน',
+    goHome: 'ไปที่หน้าหลัก',
+    goAdmin: 'ไปที่ผู้ดูแลระบบ › {section}',
+    aiStop: 'AI: หยุด AI ทั้งหมด…',
+    aiResume: 'AI: ให้ AI ทำงานต่อ…',
+    aiLimit: 'AI: จำกัดทุก intent ไม่เกินขั้น 2…',
+    aiUnlimit: 'AI: ยกเลิกการจำกัดขั้น…',
     showShortcuts: 'แสดงคีย์ลัด',
     signOut: 'ออกจากระบบ',
     themeSystem: 'ธีม: ตามระบบ',
@@ -488,6 +499,8 @@ export const th: Messages = {
   rail: {
     label: 'เมนูหลัก',
     queue: 'คิวงาน',
+    home: 'หน้าหลัก',
+    admin: 'ผู้ดูแลระบบ',
     brief: 'สรุปประจำวัน',
     handoff: 'ส่งเวร',
     notifications: 'การแจ้งเตือน',
@@ -527,5 +540,14 @@ export const th: Messages = {
     notFoundBody: 'หน้านี้ไม่มีอยู่หรือถูกย้ายแล้ว',
     backHome: 'กลับไปที่คิวงาน',
   },
+  states: {
+    denied: {
+      title: 'คุณไม่มีสิทธิ์เข้าหน้านี้',
+      body: 'ต้องมีบทบาท{role}',
+      back: 'กลับไปที่คิวงาน',
+    },
+  },
+  home: homeTh,
+  admin: adminTh,
   portal: portalTh,
 };
