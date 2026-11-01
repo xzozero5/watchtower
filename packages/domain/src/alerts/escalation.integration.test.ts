@@ -226,7 +226,7 @@ describe('the people each step tells', () => {
     // Everybody clocked in by earlier tests is clocked out: this alert finds nobody on shift.
     await env.db.owner.db
       .update(schema.shiftSession)
-      .set({ clockedOutAt: sql`clock_timestamp()` })
+      .set({ clockedOutAt: sql`GREATEST(clock_timestamp(), ${schema.shiftSession.clockedInAt})` })
       .where(sql`${schema.shiftSession.clockedOutAt} IS NULL`);
     const lead = await addStaff(env, 'lead');
     const alertId = await openAlert();
@@ -239,7 +239,7 @@ describe('the people each step tells', () => {
   it('counts a person on an on-call roster window now as on shift without a clock-in', async () => {
     await env.db.owner.db
       .update(schema.shiftSession)
-      .set({ clockedOutAt: sql`clock_timestamp()` })
+      .set({ clockedOutAt: sql`GREATEST(clock_timestamp(), ${schema.shiftSession.clockedInAt})` })
       .where(sql`${schema.shiftSession.clockedOutAt} IS NULL`);
     const zoneRows = await env.db.owner.db
       .select({ tz: schema.businessCalendar.timezone })
@@ -453,5 +453,50 @@ describe('one clock', () => {
     await age(alertId, ownSeconds);
     await sweep();
     expect((await stepsOf(alertId)).map((entry) => entry.target)).toEqual(['on_shift', 'head']);
+  });
+});
+
+// Last in the file on purpose: it disables every lead and head of this database.
+describe('a step nobody can be told about is not silent (review)', () => {
+  const setRoleActive = (role: 'lead' | 'head', active: boolean) =>
+    env.db.owner.db
+      .update(schema.users)
+      .set({ status: active ? 'active' : 'disabled' })
+      .where(eq(schema.users.role, role));
+
+  it('with no lead the head is told in its place, and the step says so', async () => {
+    await setRoleActive('lead', false);
+    await setRoleActive('head', false);
+    const head = await addStaff(env, 'head');
+    const alertId = await openAlert();
+    await sweep();
+    await age(alertId, step(1).afterSeconds);
+    const result = await sweep();
+    const steps = await stepsOf(alertId);
+    expect(steps.map((entry) => [entry.target, entry.fallback])).toContainEqual(['lead', 'lead']);
+    expect(steps[1]?.recipientIds).toEqual([head.id]);
+    expect(result.unreached).not.toContain(alertId);
+  });
+
+  it('with no lead, no head and nobody on shift the step is recorded as reaching nobody, audited as a failure and reported', async () => {
+    // Nobody at all is active: no lead, no head, nobody clocked in, nobody on an on-call roster window.
+    await env.db.owner.db.update(schema.users).set({ status: 'disabled' });
+    await env.db.owner.db
+      .update(schema.shiftSession)
+      .set({ clockedOutAt: sql`GREATEST(clock_timestamp(), ${schema.shiftSession.clockedInAt})` })
+      .where(sql`${schema.shiftSession.clockedOutAt} IS NULL`);
+    const alertId = await openAlert();
+    const result = await sweep();
+    expect(result.unreached).toContain(alertId);
+    const [first] = await stepsOf(alertId);
+    expect(first).toMatchObject({ target: 'on_shift', recipientCount: 0 });
+    const audited = (await auditRows(env, ALERTS_AUDIT_ACTIONS.alertEscalate)).filter(
+      (row) => row.targetId === alertId,
+    );
+    expect(audited).toHaveLength(1);
+    expect(audited[0]).toMatchObject({ outcome: 'failure' });
+    expect(audited[0]?.metadata).toMatchObject({ noRecipients: true, recipients: 0 });
+    // The next step is still scheduled: the alert is not forgotten.
+    expect((await alertRow(alertId)).nextEscalationAt).not.toBeNull();
   });
 });

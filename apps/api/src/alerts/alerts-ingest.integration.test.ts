@@ -2,7 +2,11 @@ import { randomBytes } from 'node:crypto';
 
 import { alerts } from '@watchtower/connectors';
 import { schema } from '@watchtower/db';
-import { ALERT_WEBHOOK_SIGNATURE_HEADER, type AlertIngestResult } from '@watchtower/shared';
+import {
+  ALERT_SIGNATURE_ROUTES,
+  ALERT_WEBHOOK_SIGNATURE_HEADER,
+  type AlertIngestResult,
+} from '@watchtower/shared';
 import { disableNetConnect } from '@watchtower/shared/testing';
 import { asc, eq } from 'drizzle-orm';
 import {
@@ -116,6 +120,7 @@ async function sendWebhook(raw: string, header: string | undefined) {
 
 const signed = (raw: string, offsetSeconds = 0) =>
   alerts.signAlertWebhook({
+    route: ALERT_SIGNATURE_ROUTES.alertsWebhook,
     rawBody: raw,
     secret: WEBHOOK_SECRET,
     timestampSeconds: Math.floor(Date.now() / 1000) + offsetSeconds,
@@ -366,6 +371,7 @@ describe('POST /v1/inbound/alerts/webhook (R-3.3)', () => {
     await reset();
     const raw = amBody('HighErrorRate', 'checkout-2');
     const wrongSecret = alerts.signAlertWebhook({
+      route: ALERT_SIGNATURE_ROUTES.alertsWebhook,
       rawBody: raw,
       secret: randomBytes(24).toString('hex'),
       timestampSeconds: Math.floor(Date.now() / 1000),

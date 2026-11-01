@@ -2,7 +2,7 @@ import { HttpException, HttpStatus, Inject, Injectable } from '@nestjs/common';
 import { discord } from '@watchtower/channels';
 import { schema, type CredentialStore, type Database } from '@watchtower/db';
 import { incidentStatusSchema, parseIncidentKey, type Permission } from '@watchtower/shared';
-import { and, asc, eq, like, ne, sql } from 'drizzle-orm';
+import { and, asc, eq, like, sql } from 'drizzle-orm';
 
 import { badRequest, unauthenticated } from '../auth/http-errors.js';
 import { RateLimiter } from '../auth/rate-limiter.js';
@@ -22,6 +22,7 @@ const {
   buildAlertAckedMessage,
   ephemeralReply,
   interactionSchema,
+  interactionTimestampFresh,
   interactionUserId,
   parseCustomId,
   toDiscordComponents,
@@ -129,9 +130,13 @@ export class DiscordInteractionsService {
       timestamp: input.timestamp,
       rawBody: input.rawBody,
     });
-    if (!genuine || input.rawBody === undefined) {
+    // A genuine request that is too old (or too far ahead) is a replay: refused like a bad signature,
+    // with the same answer. Handled ids are kept a day, far longer than this window, so a replay is
+    // never both fresh and forgotten.
+    const fresh = interactionTimestampFresh(input.timestamp, Date.now());
+    if (!genuine || !fresh || input.rawBody === undefined) {
       // One answer for every kind of failure; the log says only that it happened.
-      this.logger.warn('discord interactions: signature rejected');
+      this.logger.warn({ fresh }, 'discord interactions: request rejected');
       throw unauthenticated('The request signature is missing or does not match');
     }
 
@@ -186,22 +191,21 @@ export class DiscordInteractionsService {
   private async presserOf(interaction: Interaction): Promise<Presser | null> {
     const discordUserId = interactionUserId(interaction);
     if (discordUserId === null) return null;
-    const [user] = await this.database.db
+    // The Discord account names one user (the column is unique, migration 0047). Looked up by that id
+    // alone and then judged, so an inactive or customer row can never be skipped in favour of another
+    // that happens to match; if the database ever held two, nobody is picked (fail closed).
+    const matches = await this.database.db
       .select({
         id: schema.users.id,
         role: schema.users.role,
+        status: schema.users.status,
         permissions: schema.users.permissions,
       })
       .from(schema.users)
-      .where(
-        and(
-          eq(schema.users.discordUserId, discordUserId),
-          eq(schema.users.status, 'active'),
-          ne(schema.users.role, 'client'),
-        ),
-      )
-      .limit(1);
-    if (user === undefined) return null;
+      .where(eq(schema.users.discordUserId, discordUserId))
+      .limit(2);
+    const user = matches.length === 1 ? matches[0] : undefined;
+    if (user === undefined || user.status !== 'active' || user.role === 'client') return null;
     const permissions = await this.rbac.effectivePermissions(
       user.role as Parameters<RbacService['effectivePermissions']>[0],
       Array.isArray(user.permissions) ? user.permissions : [],

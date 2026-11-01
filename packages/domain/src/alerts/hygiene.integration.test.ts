@@ -323,6 +323,40 @@ describe('snooze (R-3.9)', () => {
     expect(audits.find((row) => row.targetId === byExpiry)?.actorType).toBe('system');
   });
 
+  it('cannot be stretched for ever: snoozing again never goes past the longest pause from when it began (review)', async () => {
+    const person = await addStaff(env, 'lead');
+    const alertId = (await openAlert()).alertId;
+    const snooze = (minutes: number) =>
+      env.tx((tx) =>
+        env.domain.alerts.snooze(tx, env.ctx(person.actor), {
+          alertId,
+          minutes,
+          reason: 'Still working on it',
+        }),
+      );
+    const secondsLeft = async () =>
+      Number(
+        (
+          await env.db.owner.pool.query<{ secs: string }>(
+            `SELECT extract(epoch FROM snoozed_until - snoozed_at)::text AS secs FROM alert WHERE id = $1`,
+            [alertId],
+          )
+        ).rows[0]?.secs,
+      );
+    await snooze(ALERT_SNOOZE_MAX_MINUTES - 60);
+    // Ask for the maximum on top of it: the expiry moves, but only to the cap.
+    await snooze(ALERT_SNOOZE_MAX_MINUTES);
+    expect(await secondsLeft()).toBeLessThanOrEqual(ALERT_SNOOZE_MAX_MINUTES * MINUTE);
+    expect(await secondsLeft()).toBeGreaterThan((ALERT_SNOOZE_MAX_MINUTES - 1) * MINUTE);
+    // At the limit, asking for more says so and changes nothing.
+    const before = (await alertRow(alertId)).snoozedUntil;
+    await expect(snooze(ALERT_SNOOZE_MAX_MINUTES)).rejects.toMatchObject({ code: 'conflict' });
+    expect((await alertRow(alertId)).snoozedUntil).toEqual(before);
+    // A shorter one is still allowed (shortening is not stretching).
+    await snooze(30);
+    expect((await alertRow(alertId)).snoozedUntil?.getTime()).toBeLessThan(before?.getTime() ?? 0);
+  });
+
   it('still counts fires while snoozed', async () => {
     const person = await addStaff(env, 'lead');
     const opened = await openAlert();

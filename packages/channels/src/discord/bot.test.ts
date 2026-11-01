@@ -22,6 +22,8 @@ import {
   EPHEMERAL_FLAG,
   ephemeralReply,
   generateInteractionKeys,
+  INTERACTION_TOLERANCE_SECONDS,
+  interactionTimestampFresh,
   interactionSchema,
   interactionUserId,
   publicKeyFromHex,
@@ -87,6 +89,27 @@ describe('interaction signatures (Ed25519)', () => {
       expect(verifyInteractionSignature({ ...base, ...broken })).toBe(false);
     }
     expect(publicKeyFromHex('00'.repeat(31))).toBeNull();
+  });
+});
+
+describe('interaction timestamp freshness (replay)', () => {
+  const now = 1_793_600_000_000;
+  const at = (seconds: number): string => String(now / 1000 + seconds);
+
+  it('accepts a timestamp inside the tolerance either way and nothing outside it', () => {
+    const t = INTERACTION_TOLERANCE_SECONDS;
+    expect(interactionTimestampFresh(at(0), now)).toBe(true);
+    expect(interactionTimestampFresh(at(-t), now)).toBe(true);
+    expect(interactionTimestampFresh(at(t), now)).toBe(true);
+    expect(interactionTimestampFresh(at(-t - 1), now)).toBe(false);
+    expect(interactionTimestampFresh(at(t + 1), now)).toBe(false);
+    expect(interactionTimestampFresh(at(-30 * 24 * 3600), now)).toBe(false);
+  });
+
+  it('refuses a missing or odd timestamp', () => {
+    for (const odd of [undefined, '', 'now', '12.5', '-5', '1e9', ' 1793600000', '9'.repeat(13)]) {
+      expect(interactionTimestampFresh(odd, now), String(odd)).toBe(false);
+    }
   });
 });
 

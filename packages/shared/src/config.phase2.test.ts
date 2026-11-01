@@ -57,5 +57,7 @@ describe('Phase 2 variables', () => {
     expect(example.STATUS_PAGE_PUBLIC).toBe('false');
     expect(example.ALERT_PUSH_AUDIENCE).toBe('');
     expect(example.ALERT_WEBHOOK_SECRET).toBe('');
+    expect(example.ALERT_HEARTBEAT_SECRET).toBe('');
+    expect(example.DEPLOY_WEBHOOK_SECRET).toBe('');
   });
 });

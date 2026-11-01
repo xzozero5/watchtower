@@ -2,6 +2,7 @@ import { randomBytes, randomUUID } from 'node:crypto';
 
 import { alerts } from '@watchtower/connectors';
 import {
+  ALERT_SIGNATURE_ROUTES,
   ALERT_WEBHOOK_SIGNATURE_HEADER,
   INCIDENTS_AUDIT_ACTIONS,
   INCIDENTS_JOBS,
@@ -25,7 +26,9 @@ import {
 
 // T-202a on the real application module: incidents (open, change, link, note, resolve), RBAC on every
 // route, and the signed deploy feed. disableNetConnect allows loopback only.
+/** Keys of two purposes, generated per run: the deploy feed's and the alert webhook's. */
 const SECRET = randomBytes(24).toString('hex');
+const ALERT_SECRET = randomBytes(24).toString('hex');
 const net = disableNetConnect();
 const repo = new FakeRepoChanges();
 
@@ -42,7 +45,7 @@ const freshIp = (): string => `192.0.2.${String(++ipCounter % 250)}`;
 
 beforeAll(async () => {
   h = await startHarness({
-    env: { ALERT_WEBHOOK_SECRET: SECRET },
+    env: { DEPLOY_WEBHOOK_SECRET: SECRET, ALERT_WEBHOOK_SECRET: ALERT_SECRET },
     overrides: [{ token: REPO_CHANGES, value: repo }],
   });
   head = await signIn(h, 'head');
@@ -278,6 +281,7 @@ describe('the deploy feed (R-5.4)', () => {
   }
   const sign = (raw: string, offsetSeconds = 0) =>
     alerts.signAlertWebhook({
+      route: ALERT_SIGNATURE_ROUTES.deploys,
       rawBody: raw,
       secret: SECRET,
       timestampSeconds: Math.floor(Date.now() / 1000) + offsetSeconds,
@@ -329,6 +333,39 @@ describe('the deploy feed (R-5.4)', () => {
       service.slug,
     ]);
     expect(rows.rowCount).toBe(0);
+  });
+
+  it('is its own key and its own route: the alert key and another route’s signature do not post a deploy, and the deploy key does not post an alert', async () => {
+    const service = await addService();
+    const raw = event(service.slug);
+    const at = Math.floor(Date.now() / 1000);
+    const made = (route: string, secret: string) =>
+      alerts.signAlertWebhook({ route, rawBody: raw, secret, timestampSeconds: at });
+    // The alert webhook's key, even for the deploy route; the deploy key, for the alert route.
+    expect((await post(raw, made(ALERT_SIGNATURE_ROUTES.deploys, ALERT_SECRET))).status).toBe(401);
+    expect((await post(raw, made(ALERT_SIGNATURE_ROUTES.alertsWebhook, SECRET))).status).toBe(401);
+    expect((await post(raw, made(ALERT_SIGNATURE_ROUTES.deploys, SECRET))).status).toBe(200);
+
+    // CI holds the deploy key: it cannot post an alert, whatever route it signs for.
+    const alertBody = JSON.stringify({ version: '4', status: 'firing', alerts: [] });
+    for (const route of [ALERT_SIGNATURE_ROUTES.alertsWebhook, ALERT_SIGNATURE_ROUTES.deploys]) {
+      const header = alerts.signAlertWebhook({
+        route,
+        rawBody: alertBody,
+        secret: SECRET,
+        timestampSeconds: at,
+      });
+      const response = await fetch(`${h.base}/v1/inbound/alerts/webhook`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-forwarded-for': freshIp(),
+          [ALERT_WEBHOOK_SIGNATURE_HEADER]: header,
+        },
+        body: alertBody,
+      });
+      expect(response.status).toBe(401);
+    }
   });
 
   it('answers 404 for a service nobody catalogued and 400 for a body that is not a deploy', async () => {

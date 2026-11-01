@@ -316,7 +316,12 @@ describe('sending (N3)', () => {
     // The state a crash leaves: the person confirmed 2, one ticket was told, the comm is still sending.
     await owner()
       .update(schema.incidentComm)
-      .set({ status: 'sending', sentBy: person.id, confirmedRecipients: 2 })
+      .set({
+        status: 'sending',
+        sentBy: person.id,
+        confirmedRecipients: 2,
+        recipientTicketIds: [done, waiting],
+      })
       .where(eq(schema.incidentComm.id, commId));
     await env.tx((tx) =>
       env.domain.tickets.reply(tx, ctxOf(person.actor), {
@@ -334,6 +339,61 @@ describe('sending (N3)', () => {
     expect(await messagesOf(done)).toHaveLength(1);
     expect(await messagesOf(waiting)).toHaveLength(1);
     expect((await commRow(commId))?.status).toBe('sent');
+  });
+
+  it('keeps the audience that was confirmed: a ticket linked after it gets nothing when the send is resumed (review)', async () => {
+    const { incidentId, person } = await openIncident();
+    const confirmed = await linkedTicket(incidentId, 'portal');
+    const commId = await draft(incidentId, person.actor);
+    // The person confirmed 1; the first attempt stops before telling anyone (the process dies).
+    await owner()
+      .update(schema.incidentComm)
+      .set({
+        status: 'sending',
+        sentBy: person.id,
+        confirmedRecipients: 1,
+        recipientTicketIds: [confirmed],
+      })
+      .where(eq(schema.incidentComm.id, commId));
+    // Meanwhile somebody links another ticket to the incident.
+    const late = await linkedTicket(incidentId, 'portal');
+
+    // Resuming with a count that is not the confirmed one is refused ...
+    expect((await refusal(send(incidentId, commId, person.actor, 2))).details).toMatchObject({
+      reason: 'recipient_count_mismatch',
+      actual: 1,
+    });
+    expect(await messagesOf(late)).toHaveLength(0);
+    // ... and resuming with the confirmed count tells exactly the confirmed ticket.
+    const result = await send(incidentId, commId, person.actor, 1);
+    expect(result).toMatchObject({ recipients: 1, sent: 1, failed: 0 });
+    expect(await messagesOf(confirmed)).toHaveLength(1);
+    expect(await messagesOf(late)).toHaveLength(0);
+    expect((await commRow(commId))?.recipientTicketIds).toEqual([confirmed]);
+  });
+
+  it('records the confirmed audience when it starts: the list and the count agree, and the database insists', async () => {
+    const { incidentId, person } = await openIncident();
+    const a = await linkedTicket(incidentId, 'portal');
+    const b = await linkedTicket(incidentId, 'portal');
+    const commId = await draft(incidentId, person.actor);
+    await send(incidentId, commId, person.actor, 2);
+    const row = await commRow(commId);
+    expect(row?.recipientTicketIds?.toSorted()).toEqual([a, b].toSorted());
+    expect(row?.confirmedRecipients).toBe(2);
+    // A comm cannot be made `sending` with a list that is not the count it names.
+    const other = await draft(incidentId, person.actor);
+    await expect(
+      owner()
+        .update(schema.incidentComm)
+        .set({
+          status: 'sending',
+          sentBy: person.id,
+          confirmedRecipients: 2,
+          recipientTicketIds: [a],
+        })
+        .where(eq(schema.incidentComm.id, other)),
+    ).rejects.toThrow();
   });
 
   it('two presses at the same moment tell every ticket once', async () => {

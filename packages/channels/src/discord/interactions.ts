@@ -17,6 +17,28 @@ export const INTERACTION_TIMESTAMP_HEADER = 'x-signature-timestamp';
 /** Discord wants the first answer inside this many milliseconds; the handler's own budget is tested against it. */
 export const INTERACTION_DEADLINE_MS = 3000;
 
+/**
+ * How far the signed timestamp may be from the receiver's clock. `[ASSUMED]` 5 minutes: Discord documents
+ * no tolerance, so this is ours. It is what makes replay impossible rather than merely unlikely: a captured
+ * request is refused once it is older than this, and the ids of handled interactions are kept far longer
+ * (a day), so no window exists in which an old request is both fresh and forgotten.
+ */
+export const INTERACTION_TOLERANCE_SECONDS = 300;
+
+/**
+ * True when `timestamp` (Discord's `X-Signature-Timestamp`, epoch seconds as text) is within
+ * `toleranceSeconds` of `nowMs`. A freshness check on a number the sender wrote, made after the signature
+ * proved the sender wrote it; not a decision shared between processes.
+ */
+export function interactionTimestampFresh(
+  timestamp: string | undefined,
+  nowMs: number,
+  toleranceSeconds: number = INTERACTION_TOLERANCE_SECONDS,
+): boolean {
+  if (timestamp === undefined || !/^[0-9]{1,12}$/.test(timestamp)) return false;
+  return Math.abs(nowMs / 1000 - Number(timestamp)) <= toleranceSeconds;
+}
+
 /** The 12-byte DER prefix of an Ed25519 SubjectPublicKeyInfo; the 32 raw key bytes follow. */
 const ED25519_SPKI_PREFIX = Buffer.from('302a300506032b6570032100', 'hex');
 

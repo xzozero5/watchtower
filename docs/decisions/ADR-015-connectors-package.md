@@ -1,6 +1,6 @@
 # ADR-015 — workspace `packages/connectors` (read-only clients ของ GCP/Git/data) และ alert ingest (แก้ matrix ของ ADR-002, T-200/T-201)
 
-- **Status:** Proposed (รอ main thread รับรองตอน merge; ต้อง Accepted ก่อน merge โค้ดของ T-200)
+- **Status:** Accepted (main thread 2026-11-02, security review T-201)
 - **Date:** 2026-11-02 (เวลากรุงเทพ) · **ผู้ตัดสิน:** main thread · ร่างโดย `integration-engineer` ตาม `docs/plans/phase-2-breakdown.md` §G ข้อ 1 และ 3
 - **Context:**
   - Phase 2 ต้องมี client สำหรับระบบภายนอกที่ **อ่านอย่างเดียว**: Cloud Logging, Cloud Monitoring, BigQuery/Postgres, Git (R-5.x, N2) และ normalizer ของ alert จาก GCP/Alertmanager (R-3.1–R-3.3) ทุกตัวต้องมี fake ที่รันโดยไม่มี credential/เครือข่าย (เจ้าของสั่ง 2026-11-01: mock ก่อน, ปลายทางจริง `[ASK-HUMAN]`)

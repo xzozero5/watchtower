@@ -53,9 +53,12 @@ async function link(who: Persona): Promise<Persona> {
 }
 const discordOf = (who: Persona): string => discordIds.get(who.userId) ?? '';
 
-async function send(body: unknown, options: { signature?: string; tamper?: boolean } = {}) {
+async function send(
+  body: unknown,
+  options: { signature?: string; tamper?: boolean; ageSeconds?: number } = {},
+) {
   const raw = typeof body === 'string' ? body : JSON.stringify(body);
-  const timestamp = String(Math.floor(Date.now() / 1000));
+  const timestamp = String(Math.floor(Date.now() / 1000) - (options.ageSeconds ?? 0));
   const signature = options.signature ?? keys.sign(timestamp, raw);
   const started = Date.now();
   const response = await fetch(`${h.base}${URL_PATH}`, {
@@ -129,6 +132,27 @@ describe('the signature', () => {
   it('answers a PING with a PONG and nothing else needs a database', async () => {
     const response = await send({ id: nextId(), type: 1 });
     expect(response).toMatchObject({ status: 200, body: { type: 1 } });
+  });
+
+  it('refuses a genuine request that is too old or too far ahead (a replay), with the same 401, and does nothing (review)', async () => {
+    const alertId = await addAlert();
+    const body = {
+      id: nextId(),
+      type: 3,
+      member: { user: { id: discordOf(agent) } },
+      data: { custom_id: discord.customIds.alertAck(alertId), component_type: 2 },
+    };
+    const tolerance = discord.INTERACTION_TOLERANCE_SECONDS;
+    // Correctly signed, but from before the tolerance: the old press is a replay, however long ago.
+    expect((await send(body, { ageSeconds: tolerance + 60 })).status).toBe(401);
+    expect((await send(body, { ageSeconds: 3 * 24 * 3600 })).status).toBe(401);
+    expect((await send(body, { ageSeconds: -(tolerance + 60) })).status).toBe(401);
+    expect((await alertState(alertId))?.state).toBe('open');
+    const seen = await owner().query(`SELECT 1 FROM discord_interaction WHERE id = $1`, [body.id]);
+    expect(seen.rowCount).toBe(0);
+    // The same request, fresh, is handled; the stale copy of it stays refused afterwards.
+    expect((await send(body, { ageSeconds: 5 })).status).toBe(200);
+    expect((await send(body, { ageSeconds: tolerance + 60 })).status).toBe(401);
   });
 
   it('refuses a missing, wrong or tampered signature with 401 and writes nothing', async () => {

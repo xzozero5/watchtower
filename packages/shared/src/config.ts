@@ -188,6 +188,10 @@ export const phase2EnvShape = {
   ALERT_PUSH_AUDIENCE: optionalString,
   ALERT_PUSH_SERVICE_ACCOUNT: optionalString,
   ALERT_WEBHOOK_SECRET: optionalString,
+  // One signing secret per purpose (T-202 review): the secret of the deploy feed or of a heartbeat
+  // cannot sign an alert, and the other way round. Credentials, like ALERT_WEBHOOK_SECRET.
+  ALERT_HEARTBEAT_SECRET: optionalString,
+  DEPLOY_WEBHOOK_SECRET: optionalString,
   // The public status page (T-204) is closed unless the owner opens it: `false` answers 404 on every
   // /status route. An explicit opt-in, like DEV_LOGIN_ENABLED. [ASK-HUMAN] to open.
   STATUS_PAGE_PUBLIC: z.preprocess(emptyToUndefined, z.stringbool().default(false)),

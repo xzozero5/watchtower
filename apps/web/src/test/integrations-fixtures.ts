@@ -60,6 +60,7 @@ export function makeIntegrationList(
     github: makeIntegration('github'),
     ai: makeIntegration('ai', { anthropicApiKey: 'env' }),
     web_push: makeIntegration('web_push'),
+    alerting: makeIntegration('alerting'),
   };
   return {
     testMode,

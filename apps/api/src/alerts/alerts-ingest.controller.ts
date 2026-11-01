@@ -79,7 +79,7 @@ export class AlertsIngestController {
     summary: 'Alertmanager-compatible alert webhook',
     description:
       'Public, authenticated by `X-Watchtower-Signature: t=<unix seconds>,v1=<hex>` where `v1` is ' +
-      'HMAC-SHA256 of `"<t>." + raw body` keyed with the alerting webhook secret; `t` must be within ' +
+      'HMAC-SHA256 of `"<t>.alerts-webhook." + raw body` keyed with ALERT_WEBHOOK_SECRET; `t` must be within ' +
       '5 minutes of the server clock. Alertmanager payload version 4: each alert is applied once ' +
       '(keyed by fingerprint, `startsAt` and status), so a repeat notification is a duplicate and ' +
       '`resolved` closes the open alert. Alertmanager cannot sign a body itself, so a relay is needed.',
@@ -118,7 +118,7 @@ export class HeartbeatBeatController {
     summary: 'A heartbeat signal',
     description:
       'Public, authenticated by the X-Watchtower-Signature header exactly as the alert ' +
-      'webhook (HMAC-SHA256 of "<t>." + raw body; send a JSON body such as {}). Stamps the heartbeat with ' +
+      'webhook but keyed with ALERT_HEARTBEAT_SECRET and signed over "<t>.heartbeat:<slug>." + raw body; send a JSON body such as {}. Stamps the heartbeat with ' +
       'the database clock; if it was missing, it is ok again and its alert is resolved (recovered: true). ' +
       '401 for a bad or missing signature, 404 for a slug that does not exist, 429 over the per-IP limit.',
   })
@@ -155,7 +155,7 @@ export class DeployFeedController {
     summary: 'A deploy event from CI',
     description:
       'Public, authenticated by the X-Watchtower-Signature header exactly as the alert webhook ' +
-      '(HMAC-SHA256 of "<t>." + raw body). Body: id (the sender own id of the deploy), service (a catalog ' +
+      '(HMAC-SHA256 of "<t>.deploys." + raw body, keyed with DEPLOY_WEBHOOK_SECRET). Body: id (the sender own id of the deploy), service (a catalog ' +
       'slug), version, env, source (ci or github), optional actor, startedAt, finishedAt, url. The ' +
       'same source and id is one deploy: a repeat answers recorded false. 401 bad signature, 400 not a ' +
       'deploy event, 404 unknown service, 429 over the per-IP limit.',
