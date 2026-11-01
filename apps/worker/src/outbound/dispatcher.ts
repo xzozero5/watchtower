@@ -521,7 +521,8 @@ export function createOutboundDispatcher(deps: DispatcherDeps) {
         // Only a trigger that is a moment ahead of the delivery's time is parked until then. A trigger
         // that is far ahead (a stale one for a retry minutes away, a duplicate) is dropped: the
         // delivery has its own trigger at its own time, and the sweeper covers a lost one (T-122f P3).
-        const remainingMs = row.nextAttemptAt.getTime() - (await authorityNow(database.db, newContext())).getTime();
+        const remainingMs =
+          row.nextAttemptAt.getTime() - (await authorityNow(database.db, newContext())).getTime();
         if (remainingMs > 0 && remainingMs <= EARLY_TOLERANCE_MS) {
           return { status: 'early', notBefore: row.nextAttemptAt };
         }

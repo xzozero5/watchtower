@@ -239,4 +239,86 @@ describe('the worker delivers a scheduled reply', () => {
       await queue.close();
     }
   });
+
+  it('an undo made while the trigger is still delayed in the queue wins: the job fires and sends nothing (T-122f)', async () => {
+    const [org] = await owner()
+      .insert(schema.organization)
+      .values({ name: `Org ${randomUUID()}` })
+      .returning();
+    const [staff] = await owner()
+      .insert(schema.users)
+      .values({ email: `${randomUUID()}@example.test`, name: 'Staff', role: 'agent' })
+      .returning();
+    if (org === undefined || staff === undefined) throw new Error('setup failed');
+    const actor = { type: 'user', id: staff.id } as const;
+    const created = await database.db.transaction((tx) =>
+      domain.tickets.create(tx, domain.context({ actor }), {
+        orgId: org.id,
+        subject: 'Delayed',
+        body: 'Please help',
+        requester: { email: `${randomUUID()}@customer.example.test`, name: 'Customer' },
+      }),
+    );
+    const ticketId = created.value.ticket.id;
+    await owner()
+      .update(schema.ticket)
+      .set({ channel: 'gmail', channelAccountId: gmailId })
+      .where(eq(schema.ticket.id, ticketId));
+    const replied = await database.db.transaction((tx) =>
+      domain.tickets.reply(tx, domain.context({ actor }), {
+        ref: ticketId,
+        reply: { body: 'Undone while delayed' },
+        sender: { kind: 'staff', userId: staff.id },
+      }),
+    );
+    const delivery = replied.value.delivery;
+    if (delivery === null || delivery === undefined) throw new Error('no delivery');
+
+    // The trigger sits in BullMQ as a delayed job that fires after the hold; the relay's own copy is removed
+    // so this job is the only way the delivery could be sent.
+    await owner().execute(
+      `DELETE FROM outbox WHERE job_id LIKE '%${delivery.id}%' AND status = 'pending'`,
+    );
+    const queue = new Queue(QUEUE_NAMES.outbound, {
+      connection: parseRedisUrl(config.REDIS_URL),
+      prefix,
+    });
+    try {
+      const jobId = `delayed-${delivery.id}`;
+      const job = await queue.add(
+        OUTBOUND_JOBS.dispatch,
+        { deliveryId: delivery.id },
+        { jobId, delay: 2500 },
+      );
+      expect(await job.getState()).toBe('delayed');
+
+      const sentBefore = fake.sent.length;
+      const cancelled = await database.db.transaction((tx) =>
+        domain.outbound.cancel(tx, domain.context({ actor }), {
+          ref: ticketId,
+          deliveryId: delivery.id,
+          canCancelAny: false,
+        }),
+      );
+      expect(cancelled.value.state).toBe('cancelled');
+      // Still delayed: cancelling the delivery did not need to touch the queue.
+      expect(await job.getState()).toBe('delayed');
+
+      const done = await waitFor('the delayed job to run', async () => {
+        const current = await queue.getJob(jobId);
+        return current !== undefined && (await current.getState()) === 'completed'
+          ? current
+          : undefined;
+      });
+      expect(done.returnvalue).toEqual({ status: 'skipped' });
+      expect(fake.sent).toHaveLength(sentBefore);
+      const [row] = await owner()
+        .select()
+        .from(schema.outboundDelivery)
+        .where(eq(schema.outboundDelivery.id, delivery.id));
+      expect(row?.state).toBe('cancelled');
+    } finally {
+      await queue.close();
+    }
+  });
 });
