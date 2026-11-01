@@ -204,6 +204,8 @@ describe('approve, edit and undo (N3)', () => {
     const after = await getInsight(agent, ticketId);
     expect(after.body.state).toBe('classified');
     expect(after.body.draft).toBeUndefined();
+    // The suggestion to review the draft is stale once it went out.
+    expect(after.body.nextStep).toMatchObject({ kind: 'wait_customer' });
 
     const deliveryId = sent.body.message.delivery?.id ?? '';
     const undone = await agent.client.post<CancelSendResult>(
@@ -213,7 +215,11 @@ describe('approve, edit and undo (N3)', () => {
     expect(undone.status).toBe(200);
     expect(await draftRow(draftId)).toMatchObject({ status: 'draft', disposition: null, approved_by: null });
     const back = await getInsight(agent, ticketId);
-    expect(back.body).toMatchObject({ state: 'draft_ready', draft: { id: draftId } });
+    expect(back.body).toMatchObject({
+      state: 'draft_ready',
+      draft: { id: draftId },
+      nextStep: { kind: 'approve_draft' },
+    });
   });
 
   it('sending an edited version keeps the draft, the distance and an audit row, and sends as the person’s own text', async () => {
