@@ -67,3 +67,28 @@ watch). Nothing in this repo sets either.
   is retried. Reads retry on 429 / 5xx / timeout with full-jitter backoff and `Retry-After`.
 - **No secrets in output.** Errors carry status, operation and Google's reason code, never the token,
   a body or Google's free-text message.
+
+## Receiver, sync and send (T-102 b to d, 2026-11-01)
+
+The adapter above is wired into the services like this. Nothing here reaches Google unless the `gmail`
+integration is complete in the credential store (ADR-004 / ADR-012); until then every process runs on the
+in-memory `FakeGmailTransport`.
+
+| Piece | Where | What it does |
+|---|---|---|
+| Push receiver | `apps/api/src/gmail/` | `POST /v1/inbound/gmail/push`: per-IP rate limit, verify the Pub/Sub OIDC token (`jose`, RS256, `iss`/`aud`/`email`/`email_verified`/`exp`), set `gmail_account_state.last_push_at`, write ONE outbox job on the `gmail` queue (`jobId = push-<account>-<Pub/Sub messageId>`). Authentic but unreadable or unknown-mailbox messages are acknowledged and dropped (no poison loop). Not configured: 503. |
+| History sync | `apps/worker/src/gmail/sync.ts` | cursor in `gmail_account_state.history_id`; `history.list` (messageAdded) per page; one `inbound_event` (+ `ingest` job) per Gmail message id; 404 or no cursor = bounded full sync (`GMAIL_FULL_SYNC_DAYS`, `GMAIL_FULL_SYNC_MAX_MESSAGES`), audited. The existing ingest consumer fetches, normalises, and stores raw mail and attachments in object storage. |
+| Watch renewal | `watch.ts` + schedule | `users.watch` for every mailbox once a day (02:15 UTC) and at boot; failure = unhealthy + audit + retry. |
+| Heartbeat (R-2.8) | `heartbeat.ts` + schedule | every 10 min: business minutes since the last push against `GMAIL_HEARTBEAT_STALE_MINUTES`, or a lapsed watch: unhealthy + one audit entry + catch-up sync. |
+| Runtime | `runtime.ts` | one object for sync, ingest fetch and the outbound `GmailSender` (From = the mailbox in `gmail_account_state`). Live only with a complete credential and only for the mailbox it delegates to. |
+
+Checked against official documentation on 2026-11-01:
+
+| Fact | Status | Source |
+|---|---|---|
+| Push request carries `Authorization: Bearer <JWT>` (RS256, `kid`); claims `iss` = `https://accounts.google.com` (also `accounts.google.com` in the Go sample), `aud` = the subscription's audience, `email` = the push service account, `email_verified` = true, `exp` = `iat` + 3600; a token may be up to an hour old | `[CONFIRMED]` | https://docs.cloud.google.com/pubsub/docs/authenticate-push-subscriptions |
+| Wrapped push body: `message.data` (base64), `messageId`, `publishTime`, `attributes`, `subscription`; 102/200/201/202/204 acknowledge, anything else is a nack and is redelivered | `[CONFIRMED]` | https://docs.cloud.google.com/pubsub/docs/push |
+| Signing keys: `jwks_uri` of Google's OpenID discovery document is `https://www.googleapis.com/oauth2/v3/certs` (the Pub/Sub page itself does not name the URL) | `[CONFIRMED]` for Google ID tokens, `[VERIFY]` that push tokens use the same key set before the first live run | https://accounts.google.com/.well-known/openid-configuration |
+| Service account with domain-wide delegation: RS256 JWT assertion (`iss`, `sub`, `scope`, `aud` = `https://oauth2.googleapis.com/token`, `iat`, `exp` at most 1 h), POST `grant_type=urn:ietf:params:oauth:grant-type:jwt-bearer` + `assertion` | `[CONFIRMED]` | https://developers.google.com/identity/protocols/oauth2/service-account |
+| Scope `gmail.modify` for read, label and send | `[ASSUMED]` (PRD R-2.4) | |
+| Whether Gmail keeps the `Message-ID` we set on `messages.send` (the dispatcher stores it as the dedupe key for the answer) | `[VERIFY]` (ADR-010 section 6) | |

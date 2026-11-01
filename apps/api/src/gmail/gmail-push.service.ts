@@ -92,8 +92,10 @@ export class GmailPushService {
 
     const envelope = pubsubPushEnvelopeSchema.safeParse(input.body);
     let pushed: { emailAddress: string; historyId: string };
+    let messageId = '';
     try {
       if (!envelope.success) throw new Error('envelope');
+      messageId = envelope.data.message.messageId;
       pushed = gmail.decodeGmailPushData(envelope.data.message.data);
       if (!/^[0-9]{1,20}$/.test(pushed.historyId) || pushed.emailAddress.length > 320) {
         throw new Error('payload');
@@ -102,11 +104,9 @@ export class GmailPushService {
       this.logger.warn('gmail push: authentic message with an unreadable payload, dropped');
       return 'ignored';
     }
-    if (!envelope.success) return 'ignored';
 
     const address = normaliseMailboxAddress(pushed.emailAddress);
     const now = input.now ?? new Date();
-    const messageId = envelope.data.message.messageId;
 
     return this.database.db.transaction(async (tx) => {
       const [state] = await tx

@@ -46,7 +46,10 @@ export const gmailSyncJobSchema = z.object({
   channelAccountId: z.uuid(),
   reason: z.enum(GMAIL_SYNC_REASONS),
   /** The history id the push announced; informational (the cursor in the database is what is read from). */
-  pushHistoryId: z.string().regex(/^[0-9]{1,20}$/).optional(),
+  pushHistoryId: z
+    .string()
+    .regex(/^[0-9]{1,20}$/)
+    .optional(),
 });
 export type GmailSyncJob = z.infer<typeof gmailSyncJobSchema>;
 
