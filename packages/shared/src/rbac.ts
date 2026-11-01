@@ -72,6 +72,8 @@ export const PERMISSIONS = {
   'ai.run.read': 'View AI run records: prompt version, model, tools and cost',
   // Phase 1 (T-107a, migration 0013).
   'kb.read.customer': 'Search the customer-visible knowledge base (client)',
+  'kb.publish.break_glass':
+    'Publish a knowledge base article without a second person, with a reason (head)',
 } as const satisfies Record<string, string>;
 
 export type Permission = keyof typeof PERMISSIONS;
@@ -144,6 +146,7 @@ const HEAD: readonly Permission[] = [
   'rbac.manage',
   'session.revoke.any',
   'outbox.manage',
+  'kb.publish.break_glass',
 ];
 
 const CLIENT: readonly Permission[] = [

@@ -3,6 +3,9 @@ import { describe, expect, it } from 'vitest';
 import { AUDIT_ACTIONS } from '../auth.js';
 import { QUEUE_NAMES } from '../queues.js';
 import {
+  assertKbEmbeddingProvider,
+  breakGlassPublishKbArticleSchema,
+  publishKbArticleSchema,
   KB_AUDIT_ACTIONS,
   KB_CHUNK_DEFAULTS,
   KB_QUEUES,
@@ -102,5 +105,64 @@ describe('knowledge base contracts', () => {
     expect(KB_CHUNK_DEFAULTS.minChars).toBeLessThan(KB_CHUNK_DEFAULTS.targetChars);
     expect(KB_CHUNK_DEFAULTS.targetChars).toBeLessThan(KB_CHUNK_DEFAULTS.maxChars);
     expect(KB_CHUNK_DEFAULTS.overlapChars).toBeLessThan(KB_CHUNK_DEFAULTS.minChars + 1);
+  });
+});
+
+describe('publishing contracts', () => {
+  it('binds a publication to the version and the audience the approver saw', () => {
+    expect(publishKbArticleSchema.safeParse({ version: 2 }).success).toBe(false);
+    expect(publishKbArticleSchema.parse({ version: 2, visibility: 'internal' })).toEqual({
+      version: 2,
+      visibility: 'internal',
+      orgIds: [],
+    });
+    expect(publishKbArticleSchema.safeParse({ version: 2, visibility: 'public' }).success).toBe(
+      false,
+    );
+  });
+
+  it('needs a non-empty reason for break-glass', () => {
+    const base = { version: 1, visibility: 'customer' };
+    expect(breakGlassPublishKbArticleSchema.safeParse(base).success).toBe(false);
+    expect(breakGlassPublishKbArticleSchema.safeParse({ ...base, reason: '   ' }).success).toBe(
+      false,
+    );
+    expect(breakGlassPublishKbArticleSchema.safeParse({ ...base, reason: 'Outage' }).success).toBe(
+      true,
+    );
+  });
+
+  it('keeps its own audit actions for break-glass', () => {
+    expect(KB_AUDIT_ACTIONS.kbArticlePublishBreakGlass).toBe('kb.article.publish_break_glass');
+    expect(Object.values(AUDIT_ACTIONS)).toContain('kb.article.break_glass_review');
+  });
+});
+
+describe('text without NUL characters', () => {
+  it('refuses U+0000 in a search query, a title, a body, a note and a source', () => {
+    expect(kbSearchQuerySchema.safeParse({ q: 'a\u0000b' }).success).toBe(false);
+    const base = { slug: 'a', title: 'T', bodyMd: 'b', lang: 'en' };
+    expect(createKbArticleSchema.safeParse(base).success).toBe(true);
+    expect(createKbArticleSchema.safeParse({ ...base, title: 'T\u0000' }).success).toBe(false);
+    expect(createKbArticleSchema.safeParse({ ...base, bodyMd: 'b\u0000' }).success).toBe(false);
+    expect(createKbArticleSchema.safeParse({ ...base, changeNote: '\u0000' }).success).toBe(false);
+    expect(
+      createKbArticleSchema.safeParse({
+        ...base,
+        sources: [{ type: 'url', ref: 'https://example.com/\u0000' }],
+      }).success,
+    ).toBe(false);
+    expect(updateKbArticleSchema.safeParse({ bodyMd: 'x\u0000' }).success).toBe(false);
+  });
+});
+
+describe('assertKbEmbeddingProvider', () => {
+  it('accepts the mock and refuses anything else with a clear message', () => {
+    expect(() => {
+      assertKbEmbeddingProvider('mock');
+    }).not.toThrow();
+    expect(() => {
+      assertKbEmbeddingProvider('vertex');
+    }).toThrow(/EMBEDDING_PROVIDER=vertex is not wired yet.*Set EMBEDDING_PROVIDER=mock/);
   });
 });

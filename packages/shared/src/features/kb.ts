@@ -23,6 +23,10 @@ export const KB_AUDIT_ACTIONS = {
   kbArticleStatus: 'kb.article.status',
   /** A version went live (what search and customers see). */
   kbArticlePublish: 'kb.article.publish',
+  /** The head published without a second person, with a reason (flagged for review). */
+  kbArticlePublishBreakGlass: 'kb.article.publish_break_glass',
+  /** Another approver reviewed a break-glass publication and cleared its flag. */
+  kbArticleBreakGlassReview: 'kb.article.break_glass_review',
 } as const satisfies Record<string, string>;
 
 /** `ticket_event.type` strings written by this feature. */
@@ -71,10 +75,24 @@ export const KB_VISIBILITIES = ['internal', 'customer', 'orgs'] as const;
 export const kbVisibilitySchema = z.enum(KB_VISIBILITIES);
 export type KbVisibility = z.infer<typeof kbVisibilitySchema>;
 
+/**
+ * Text that Postgres can store: a NUL character (U+0000) is refused by the database, so it is
+ * refused here with a 400 instead of reaching a query (and a 500 and an error log) from there.
+ */
+export const noNul = (schema: z.ZodString) =>
+  schema.refine((value) => !value.includes('\u0000'), {
+    message: 'must not contain a NUL character',
+  });
+
+/**
+ * `sources[].ref` is free text, and a `url` source may hold any scheme. Like every text field and
+ * every search `snippet` below, it is raw: the UI (T-107e) must escape it, render Markdown without
+ * raw HTML, and open a link only when its scheme is http or https (never `javascript:`).
+ */
 export const KB_SOURCE_TYPES = ['ticket', 'incident', 'commit', 'runbook', 'url'] as const;
 export const kbSourceSchema = z.object({
   type: z.enum(KB_SOURCE_TYPES),
-  ref: z.string().trim().min(1).max(500),
+  ref: noNul(z.string().trim().min(1).max(500)),
 });
 export type KbSource = z.infer<typeof kbSourceSchema>;
 
@@ -84,14 +102,14 @@ export const kbSlugSchema = z
   .regex(KB_SLUG_PATTERN, 'lowercase letters, digits and hyphens, up to 120 characters');
 
 const INTENT_TAG = /^[a-z][a-z0-9_]{1,62}$/;
-export const kbTitleSchema = z.string().trim().min(1).max(300);
+export const kbTitleSchema = noNul(z.string().trim().min(1).max(300));
 /**
  * 30,000 characters `[ASSUMED]`: about 5,000 words, far above a help article. It also keeps a
  * request (Thai takes 3 bytes a character in UTF-8) under the 100 kB default JSON limit of the api;
  * raising it means raising that limit first.
  */
 export const KB_MAX_BODY_CHARS = 30_000;
-export const kbBodySchema = z.string().max(KB_MAX_BODY_CHARS);
+export const kbBodySchema = noNul(z.string().max(KB_MAX_BODY_CHARS));
 
 // --- articles ---
 
@@ -111,7 +129,7 @@ export const createKbArticleSchema = z
   .object({
     slug: kbSlugSchema,
     ...articleFields,
-    changeNote: z.string().trim().max(500).optional(),
+    changeNote: noNul(z.string().trim().max(500)).optional(),
   })
   .superRefine((value, ctx) => {
     if (value.visibility === 'orgs' && value.orgIds.length === 0) {
@@ -135,7 +153,7 @@ export const updateKbArticleSchema = z
     sources: z.array(kbSourceSchema).max(100),
     /** Set when a person has checked the article against reality (R-4.1 "last verified"). */
     lastVerifiedAt: z.iso.datetime().nullable(),
-    changeNote: z.string().trim().max(500),
+    changeNote: noNul(z.string().trim().max(500)),
     /**
      * The version the editor was looking at. When another edit came in meanwhile the request is
      * refused with 409 instead of silently overwriting it.
@@ -152,15 +170,38 @@ export type UpdateKbArticle = z.infer<typeof updateKbArticleSchema>;
 export const KB_TRANSITIONS = ['draft', 'in_review', 'deprecated'] as const;
 export const kbTransitionSchema = z.object({
   to: z.enum(KB_TRANSITIONS),
-  reason: z.string().trim().max(500).optional(),
+  reason: noNul(z.string().trim().max(500)).optional(),
 });
 export type KbTransition = z.infer<typeof kbTransitionSchema>;
 
 export const publishKbArticleSchema = z.object({
   /** The version to publish. Refused with 409 if it is no longer the latest, so no one publishes unseen text. */
   version: z.number().int().positive(),
+  /**
+   * Who will be able to read it, as the approver saw it (`visibility` and `orgIds` of the article).
+   * Refused with 409 if the audience changed since, so no one publishes to an audience they did not see.
+   */
+  visibility: kbVisibilitySchema,
+  orgIds: z.array(z.uuid()).max(500).default([]),
 });
 export type PublishKbArticle = z.infer<typeof publishKbArticleSchema>;
+
+/** Break-glass: the same as a publication, with the reason the second person was skipped. */
+export const breakGlassPublishKbArticleSchema = publishKbArticleSchema.extend({
+  reason: noNul(z.string().trim().min(1).max(1000)),
+});
+export type BreakGlassPublishKbArticle = z.infer<typeof breakGlassPublishKbArticleSchema>;
+
+export const kbBreakGlassSchema = z.object({
+  /** True until another approver has reviewed the publication. */
+  pending: z.boolean(),
+  by: z.uuid().nullable(),
+  at: z.iso.datetime().nullable(),
+  reason: z.string().nullable(),
+  reviewedBy: z.uuid().nullable(),
+  reviewedAt: z.iso.datetime().nullable(),
+});
+export type KbBreakGlass = z.infer<typeof kbBreakGlassSchema>;
 
 export const kbArticleSummarySchema = z.object({
   id: z.uuid(),
@@ -177,6 +218,8 @@ export const kbArticleSummarySchema = z.object({
   publishedVersion: z.number().int().nullable(),
   /** True when the latest edit is not the live one yet. */
   hasUnpublishedChanges: z.boolean(),
+  /** The live version was published break-glass and no other approver has reviewed it yet. */
+  breakGlassPending: z.boolean(),
   lastVerifiedAt: z.iso.datetime().nullable(),
   updatedAt: z.iso.datetime(),
 });
@@ -190,6 +233,8 @@ export const kbArticleSchema = kbArticleSummarySchema.extend({
   authorId: z.uuid().nullable(),
   reviewerId: z.uuid().nullable(),
   publishedAt: z.iso.datetime().nullable(),
+  /** Null unless the article was ever published break-glass. */
+  breakGlass: kbBreakGlassSchema.nullable(),
   createdAt: z.iso.datetime(),
 });
 export type KbArticle = z.infer<typeof kbArticleSchema>;
@@ -200,6 +245,8 @@ export const kbArticleListQuerySchema = z.object({
   lang: kbLangSchema.optional(),
   kind: kbKindSchema.optional(),
   intentTag: z.string().regex(INTENT_TAG).optional(),
+  /** `true`: only articles whose break-glass publication still waits for a review. */
+  breakGlassPending: z.stringbool().optional(),
   limit: pageLimit(50, 100),
   cursor: cursorSchema.optional(),
 });
@@ -242,7 +289,7 @@ export const KB_SEARCH_MODES = ['hybrid', 'keyword'] as const;
 export const kbSearchModeSchema = z.enum(KB_SEARCH_MODES);
 export type KbSearchMode = z.infer<typeof kbSearchModeSchema>;
 
-const searchQuery = z.string().trim().min(1).max(500);
+const searchQuery = noNul(z.string().trim().min(1).max(500));
 
 export const kbSearchQuerySchema = z.object({
   q: searchQuery,
@@ -312,3 +359,16 @@ export const KB_CHUNK_DEFAULTS = {
   /** Tail of the previous chunk repeated at the start of the next one when a section is split. */
   overlapChars: 120,
 } as const;
+
+/**
+ * Live embedding (Vertex) needs credentials and an egress decision, which are the owner's
+ * (`[ASK-HUMAN]`), so only `mock` is wired. A different `EMBEDDING_PROVIDER` stops the api and the
+ * worker at boot with this message instead of being ignored and silently searching by keyword (N5).
+ */
+export function assertKbEmbeddingProvider(provider: string): void {
+  if (provider !== 'mock') {
+    throw new Error(
+      `EMBEDDING_PROVIDER=${provider} is not wired yet: only "mock" is available until live embedding is approved by the owner. Set EMBEDDING_PROVIDER=mock.`,
+    );
+  }
+}
