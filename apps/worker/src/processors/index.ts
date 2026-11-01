@@ -34,7 +34,7 @@ export interface ProcessorContext {
   readonly domain: Domain;
   /** Publishes realtime events after a commit. */
   readonly realtime: RealtimeSink;
-  /** The AI layer (T-106e). Absent when `AI_PROVIDER` is not wired: AI stays off and rules decide. */
+  /** The AI layer (T-106e, T-132): the adapter `AI_PROVIDER` selects. Absent only in tests that leave AI out. */
   readonly ai: AiRuntime | undefined;
   /** How the worker reaches Gmail mailboxes: fakes in mock mode, the live transport only with a complete credential (T-102). */
   readonly gmail: GmailRuntime;

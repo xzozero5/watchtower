@@ -5,16 +5,16 @@ import {
   createAuditedLlm,
   createRedactor,
   loadPromptCatalog,
-  mockSettings,
   type AgentDeps,
   type AuditedEmbedder,
   type EmbeddingProvider,
+  type FetchLike,
   type LlmProvider,
   type PromptCatalog,
   type ProviderKind,
   type SettingsSource,
 } from '@watchtower/ai';
-import type { Database } from '@watchtower/db';
+import { createCredentialStore, type Database } from '@watchtower/db';
 import {
   createAiGuard,
   createAiRunRecorder,
@@ -24,12 +24,15 @@ import {
   type AiCaps,
   type BudgetEventNotice,
 } from '@watchtower/domain';
-import { assertKbEmbeddingProvider } from '@watchtower/shared';
+import { assertKbEmbeddingProvider, pickCredentialEnv } from '@watchtower/shared';
+import { localKmsFromConfig } from '@watchtower/shared/credential-box';
 
 import type { WorkerConfig } from '../config.js';
 import type { InboundClassifierFactory } from '../ingest/classifier.js';
 import type { WorkerLogger } from '../logger.js';
 import { createAiClassifierFactory } from './classifier-hook.js';
+import { createLiveProvider, type AiCredentialReader } from './live-provider.js';
+import { buildAiSettings } from './settings.js';
 
 /** What a test (or a later task) may replace; production uses the defaults. */
 export interface AiOverrides {
@@ -39,7 +42,19 @@ export interface AiOverrides {
   readonly embeddingProviders?: Partial<Record<ProviderKind, EmbeddingProvider>>;
   /** Replaces the provider and model settings (tests change the embedding model with it). */
   readonly settings?: SettingsSource;
+  /** Where the `ai` credentials come from. Default: the credential store (environment wins, ADR-012). */
+  readonly credentials?: AiCredentialReader;
+  /** The network access of a real provider. Default: the process `fetch`. Never used by mock. */
+  readonly fetch?: FetchLike;
+  /** Vertex only: an OAuth access token source. There is no default (see `createLiveProvider`). */
+  readonly vertexAccessToken?: () => Promise<string>;
   readonly now?: () => Date;
+}
+
+/** Whether the selected provider can be called now, and if not, why (no values, safe to log). */
+export interface AiReadiness {
+  readonly ready: boolean;
+  readonly problems: readonly string[];
 }
 
 /**
@@ -49,6 +64,7 @@ export interface AiOverrides {
  * of that ticket.
  */
 export interface AiRuntime {
+  /** The LLM adapter `AI_PROVIDER` selected. Embeddings have their own setting and stay mock. */
   readonly provider: ProviderKind;
   readonly caps: AiCaps;
   /** Agent dependencies whose redactor knows the names of the people in one ticket. */
@@ -63,36 +79,53 @@ export interface AiRuntime {
   readonly embedder: AuditedEmbedder;
   /** The provider and model settings in force (PRD section 6.7), for the embedding model among them. */
   readonly settings: SettingsSource;
+  /** Can the selected LLM provider be called right now? Reads the credentials; never returns a value. */
+  readiness(): Promise<AiReadiness>;
+}
+
+/** The `ai` integration of the credential store: environment first, then the database (ADR-012). */
+function storeCredentials(config: WorkerConfig, database: Database): AiCredentialReader {
+  const store = createCredentialStore({
+    database,
+    kms: localKmsFromConfig(config),
+    env: pickCredentialEnv(config),
+  });
+  return {
+    read: async () => {
+      const fields = await store.resolve('ai');
+      const text = (name: string): string | undefined => {
+        const value = fields[name]?.value.trim();
+        return value === undefined || value === '' ? undefined : value;
+      };
+      return {
+        anthropicApiKey: text('anthropicApiKey'),
+        vertexProjectId: text('vertexProjectId'),
+        vertexLocation: text('vertexLocation'),
+      };
+    },
+  };
 }
 
 /**
- * `AI_PROVIDER=mock` (the default) runs the whole pipeline on the offline dev mock. `anthropic` and
- * `vertex` need credentials and provider settings from the admin store (T-116, `[ASK-HUMAN]`), which
- * are not wired in the worker yet: the runtime is then absent, ingestion classifies by rules and a
- * ticket's AI brief says "needs a person" (fail closed to rules, never a silent mock).
+ * `AI_PROVIDER` picks the LLM adapter (T-132). `mock` (the default) runs the whole pipeline on the
+ * offline dev mock and never touches the network. `anthropic` and `vertex` use the real adapters of
+ * `@watchtower/ai` through the same audited path (redaction, `ai_run`, daily caps, kill switch).
+ *
+ * A selected provider that is not fully set up (no key, no model, no price) is never swapped for the
+ * mock: its calls fail with `ProviderUnavailableError`, which is audited as an error row, shown on
+ * the ticket's AI brief, retried by the brief job, and leaves ingestion on the header rules.
+ *
+ * Embeddings (T-107b) stay mock-only: `EMBEDDING_PROVIDER` other than a wired one stops the boot,
+ * and the embedder goes through the same guard, redactor and `ai_run` recorder as the LLM.
  */
 export function createAiRuntime(
-  config: Pick<
-    WorkerConfig,
-    | 'AI_PROVIDER'
-    | 'EMBEDDING_PROVIDER'
-    | 'AI_DAILY_COST_CAP_USD'
-    | 'AI_DAILY_TOKEN_CAP'
-    | 'AI_BUDGET_ALERT_PERCENT'
-  >,
+  config: WorkerConfig,
   database: Database,
   logger: WorkerLogger,
   overrides: AiOverrides = {},
-): AiRuntime | undefined {
+): AiRuntime {
   // A provider that is not wired stops the boot: it is never ignored in silence (N5).
   assertKbEmbeddingProvider(config.EMBEDDING_PROVIDER);
-  if (config.AI_PROVIDER !== 'mock') {
-    logger.error(
-      { provider: config.AI_PROVIDER },
-      'AI provider is not wired in the worker yet: AI stays off, ingestion uses rules',
-    );
-    return undefined;
-  }
 
   const caps = resolveAiCaps(config);
   const prompts = loadPromptCatalog();
@@ -112,17 +145,37 @@ export function createAiRuntime(
     db: database.db,
     budget,
   });
+
+  const built = buildAiSettings(config);
   const settings: SettingsSource = overrides.settings ?? {
-    load: () => Promise.resolve(mockSettings()),
+    load: () => Promise.resolve(built.settings),
   };
+  const credentials = overrides.credentials ?? storeCredentials(config, database);
+  const kind = config.AI_PROVIDER;
+  const providers: Partial<Record<ProviderKind, LlmProvider>> =
+    overrides.providers ??
+    (kind === 'mock'
+      ? { mock: new DevMockLlmProvider() }
+      : {
+          [kind]: createLiveProvider({
+            kind,
+            settings: built.settings,
+            credentials,
+            fetch: overrides.fetch ?? ((input, init) => globalThis.fetch(input, init)),
+            ...(overrides.vertexAccessToken === undefined
+              ? {}
+              : { vertexAccessToken: overrides.vertexAccessToken }),
+            logger,
+            now: () => now().getTime(),
+          }),
+        });
+  const sink = createAiRunRecorder({ db: database.db });
   const llm = createAuditedLlm({
     settings,
-    providers: overrides.providers ?? { mock: new DevMockLlmProvider() },
-    sink: createAiRunRecorder({ db: database.db }),
+    providers,
+    sink,
     now: () => now().getTime(),
   });
-
-  const sink = createAiRunRecorder({ db: database.db });
   const embedder = createAuditedEmbedder({
     settings,
     providers: overrides.embeddingProviders ?? { mock: new MockEmbeddingProvider() },
@@ -133,6 +186,27 @@ export function createAiRuntime(
     now: () => now().getTime(),
   });
 
+  const readiness = async (): Promise<AiReadiness> => {
+    if (kind === 'mock') return { ready: true, problems: [] };
+    const found = [...built.problems];
+    try {
+      const held = await credentials.read();
+      if (kind === 'anthropic' && held.anthropicApiKey === undefined) {
+        found.push('no Anthropic API key (ANTHROPIC_API_KEY or the credential store)');
+      }
+      if (kind === 'vertex') {
+        if (held.vertexProjectId === undefined) found.push('no Vertex project id');
+        if (held.vertexLocation === undefined) found.push('no Vertex location');
+        if (overrides.vertexAccessToken === undefined) {
+          found.push('no Vertex access token source is wired in the worker');
+        }
+      }
+    } catch {
+      found.push('the credential store could not be read');
+    }
+    return { ready: found.length === 0, problems: found };
+  };
+
   const agentDeps = (names: readonly string[]): AgentDeps => ({
     llm,
     redactor: createRedactor({ names: () => names }),
@@ -140,12 +214,13 @@ export function createAiRuntime(
     guard,
   });
   return {
-    provider: config.AI_PROVIDER,
+    provider: kind,
     caps,
     prompts,
     agentDeps,
     embedder,
     settings,
     classifierFor: createAiClassifierFactory({ agentDeps, database, logger }),
+    readiness,
   };
 }
