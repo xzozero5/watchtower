@@ -1,0 +1,336 @@
+import { randomBytes, randomUUID } from 'node:crypto';
+
+import { alerts } from '@watchtower/connectors';
+import {
+  ALERT_WEBHOOK_SIGNATURE_HEADER,
+  INCIDENTS_AUDIT_ACTIONS,
+  INCIDENTS_JOBS,
+  QUEUE_NAMES,
+  type Deploy,
+  type IncidentDetail,
+} from '@watchtower/shared';
+import { disableNetConnect } from '@watchtower/shared/testing';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+
+import { startHarness, type Harness } from '../testing/harness.js';
+import { apiOrg, fileTicket, signIn, type Persona } from '../testing/ticketing.js';
+
+// T-202a on the real application module: incidents (open, change, link, note, resolve), RBAC on every
+// route, and the signed deploy feed. disableNetConnect allows loopback only.
+const SECRET = randomBytes(24).toString('hex');
+const net = disableNetConnect();
+
+let h: Harness;
+let head: Persona;
+let lead: Persona;
+let agent: Persona;
+let client: Persona;
+let orgId: string;
+let counter = 12_000;
+let ipCounter = 0;
+const owner = () => h.db.owner.pool;
+const freshIp = (): string => `192.0.2.${String(++ipCounter % 250)}`;
+
+beforeAll(async () => {
+  h = await startHarness({ env: { ALERT_WEBHOOK_SECRET: SECRET } });
+  head = await signIn(h, 'head');
+  lead = await signIn(h, 'lead');
+  agent = await signIn(h, 'agent');
+  orgId = (await apiOrg(lead, { name: 'Incident Org' })).id;
+  client = await signIn(h, 'client', orgId);
+});
+afterAll(async () => {
+  await h.close();
+  expect(net.blocked()).toEqual([]);
+  net.restore();
+});
+
+const call = <T>(
+  who: Persona,
+  method: 'GET' | 'POST' | 'PATCH' | 'DELETE',
+  path: string,
+  body?: unknown,
+) => who.client.request<T>(method, path, body === undefined ? {} : { body });
+
+async function addService(): Promise<{ id: string; slug: string }> {
+  const slug = `svc-${randomUUID().slice(0, 8)}`;
+  const row = await owner().query<{ id: string }>(
+    `INSERT INTO service (slug, name) VALUES ($1, $1) RETURNING id`,
+    [slug],
+  );
+  return { id: row.rows[0]?.id ?? '', slug };
+}
+
+async function addAlert(): Promise<string> {
+  counter += 1;
+  const row = await owner().query<{ id: string }>(
+    `INSERT INTO alert (fingerprint, source, title) VALUES ($1, 'alertmanager', 'High error rate') RETURNING id`,
+    [counter.toString(16).padStart(64, '0')],
+  );
+  return row.rows[0]?.id ?? '';
+}
+
+const open = (who: Persona, body: Record<string, unknown> = {}) =>
+  call<IncidentDetail>(who, 'POST', '/v1/incidents', {
+    title: 'Checkout errors',
+    severity: 'SEV2',
+    ...body,
+  });
+
+describe('access (RBAC)', () => {
+  const someId = randomUUID();
+  const ROUTES: readonly [string, string, unknown, readonly ('agent' | 'lead' | 'head')[]][] = [
+    ['GET', '/v1/incidents', undefined, ['agent', 'lead', 'head']],
+    ['GET', `/v1/incidents/${someId}`, undefined, ['agent', 'lead', 'head']],
+    ['GET', '/v1/deploys', undefined, ['agent', 'lead', 'head']],
+    ['POST', '/v1/incidents', { title: 'rbac probe', severity: 'SEV4' }, ['agent', 'lead', 'head']],
+    ['PATCH', `/v1/incidents/${someId}`, { title: 'x' }, ['agent', 'lead', 'head']],
+    [
+      'POST',
+      `/v1/incidents/${someId}/tickets`,
+      { ticketId: randomUUID() },
+      ['agent', 'lead', 'head'],
+    ],
+    [
+      'DELETE',
+      `/v1/incidents/${someId}/tickets/${randomUUID()}`,
+      undefined,
+      ['agent', 'lead', 'head'],
+    ],
+    [
+      'POST',
+      `/v1/incidents/${someId}/alerts`,
+      { alertId: randomUUID() },
+      ['agent', 'lead', 'head'],
+    ],
+    ['POST', `/v1/incidents/${someId}/notes`, { text: 'rbac probe' }, ['agent', 'lead', 'head']],
+  ];
+
+  it.each(ROUTES)(
+    '%s %s: staff only, a customer and a visitor are refused',
+    async (method, path, body) => {
+      for (const who of [agent, lead, head]) {
+        const response = await call(who, method as 'GET', path, body);
+        expect([200, 201, 404, 409], `${who.email} ${method} ${path}`).toContain(response.status);
+      }
+      expect((await call(client, method as 'GET', path, body)).status, `client ${path}`).toBe(403);
+      const anonymous = await h
+        .client()
+        .request(method, path, body === undefined ? {} : { body, csrf: false });
+      expect(anonymous.status, `anonymous ${method} ${path}`).toBe(401);
+    },
+  );
+});
+
+describe('opening and changing an incident', () => {
+  it('opens one with services, an alert and a ticket, and shows them with the timeline', async () => {
+    const service = await addService();
+    const alertId = await addAlert();
+    const ticket = await fileTicket(agent, orgId);
+    const response = await open(agent, {
+      serviceIds: [service.id],
+      alertIds: [alertId],
+      ticketIds: [ticket.id],
+    });
+    expect(response.status).toBe(201);
+    expect(response.body).toMatchObject({
+      severity: 'SEV2',
+      status: 'investigating',
+      commanderId: agent.userId,
+      serviceIds: [service.id],
+      orgIds: [orgId],
+      tickets: 1,
+      alerts: 1,
+      ticketIds: [ticket.id],
+      alertIds: [alertId],
+      discordThreadState: 'pending',
+    });
+    expect(response.body.key).toBe(`INC-${String(response.body.number)}`);
+    expect(response.body.timeline.map((entry) => entry.type).toSorted()).toEqual(
+      ['alert_linked', 'created', 'ticket_linked'].toSorted(),
+    );
+    // The thread is queued through the outbox, with ids only.
+    const jobs = await owner().query<{ job_name: string; payload: Record<string, unknown> }>(
+      `SELECT job_name, payload FROM outbox WHERE queue = $1 AND payload->>'incidentId' = $2`,
+      [QUEUE_NAMES.incidents, response.body.id],
+    );
+    expect(jobs.rows.map((row) => row.job_name)).toContain(INCIDENTS_JOBS.thread);
+    expect(JSON.stringify(jobs.rows)).not.toContain('Checkout errors');
+    // The ticket now shows its incident.
+    const linked = await owner().query<{ incident_id: string }>(
+      `SELECT incident_id FROM ticket WHERE id = $1`,
+      [ticket.id],
+    );
+    expect(linked.rows[0]?.incident_id).toBe(response.body.id);
+  });
+
+  it('refuses nonsense and an alert that belongs to another incident', async () => {
+    expect((await open(agent, { severity: 'SEV9' })).status).toBe(400);
+    expect((await open(agent, { title: '  ' })).status).toBe(400);
+    expect((await open(agent, { serviceIds: [randomUUID()] })).status).toBe(400);
+    expect((await open(agent, { commanderId: randomUUID() })).status).toBe(400);
+    const alertId = await addAlert();
+    expect((await open(agent, { alertIds: [alertId] })).status).toBe(201);
+    expect((await open(agent, { alertIds: [alertId] })).status).toBe(409);
+  });
+
+  it('moves the status, and only incident.manage resolves; resolved is final', async () => {
+    const created = (await open(agent)).body;
+    const path = `/v1/incidents/${created.id}`;
+    expect(
+      (await call<IncidentDetail>(agent, 'PATCH', path, { status: 'identified' })).body.status,
+    ).toBe('identified');
+    expect((await call(agent, 'PATCH', path, { status: 'identified' })).status).toBe(409);
+    expect((await call(agent, 'PATCH', path, { status: 'resolved' })).status).toBe(400);
+    const resolved = await call<IncidentDetail>(lead, 'PATCH', path, {
+      status: 'resolved',
+      rootCause: 'A bad deploy',
+    });
+    expect(resolved.status).toBe(200);
+    expect(resolved.body).toMatchObject({ status: 'resolved', rootCause: 'A bad deploy' });
+    expect(resolved.body.resolvedAt).not.toBeNull();
+    expect((await call(lead, 'PATCH', path, { title: 'again' })).status).toBe(409);
+    expect((await call(lead, 'POST', `${path}/notes`, { text: 'late' })).status).toBe(409);
+
+    const audited = await owner().query<{ action: string; actor_id: string }>(
+      `SELECT action, actor_id FROM audit_log WHERE target_id = $1 AND outcome = 'success' ORDER BY created_at`,
+      [created.id],
+    );
+    expect(audited.rows.map((row) => row.action)).toEqual([
+      INCIDENTS_AUDIT_ACTIONS.incidentCreate,
+      INCIDENTS_AUDIT_ACTIONS.incidentUpdate,
+      INCIDENTS_AUDIT_ACTIONS.incidentResolve,
+    ]);
+    expect(audited.rows[2]?.actor_id).toBe(lead.userId);
+  });
+
+  it('links a ticket and an alert, unlinks the ticket, takes a note, and lists newest first', async () => {
+    const created = (await open(agent)).body;
+    const base = `/v1/incidents/${created.id}`;
+    const ticket = await fileTicket(agent, orgId);
+    const alertId = await addAlert();
+    expect(
+      (await call<{ changed: boolean }>(agent, 'POST', `${base}/tickets`, { ticketId: ticket.id }))
+        .body,
+    ).toEqual({ changed: true });
+    expect(
+      (await call<{ changed: boolean }>(agent, 'POST', `${base}/tickets`, { ticketId: ticket.id }))
+        .body,
+    ).toEqual({ changed: false });
+    expect(
+      (await call<{ changed: boolean }>(agent, 'POST', `${base}/alerts`, { alertId })).body,
+    ).toEqual({ changed: true });
+    expect(
+      (await call(agent, 'POST', `${base}/notes`, { text: 'Rolled back checkout' })).status,
+    ).toBe(201);
+    expect(
+      (await call<{ changed: boolean }>(agent, 'DELETE', `${base}/tickets/${ticket.id}`)).body,
+    ).toEqual({ changed: true });
+
+    const detail = (await call<IncidentDetail>(agent, 'GET', base)).body;
+    expect(detail.tickets).toBe(0);
+    expect(detail.alerts).toBe(1);
+    expect(detail.timeline.find((entry) => entry.type === 'note')?.payload).toEqual({
+      text: 'Rolled back checkout',
+    });
+
+    const another = (await open(agent)).body;
+    const list = await call<{ items: { id: string }[]; nextCursor: string | null }>(
+      agent,
+      'GET',
+      '/v1/incidents?limit=1',
+    );
+    expect(list.body.items.map((item) => item.id)).toEqual([another.id]);
+    expect(list.body.nextCursor).not.toBeNull();
+    const openOnly = await call<{ items: { status: string }[] }>(
+      agent,
+      'GET',
+      '/v1/incidents?open=true&limit=100',
+    );
+    expect(openOnly.body.items.every((item) => item.status !== 'resolved')).toBe(true);
+  });
+});
+
+describe('the deploy feed (R-5.4)', () => {
+  async function post(raw: string, header: string | undefined) {
+    const response = await fetch(`${h.base}/v1/inbound/deploys`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-forwarded-for': freshIp(),
+        ...(header === undefined ? {} : { [ALERT_WEBHOOK_SIGNATURE_HEADER]: header }),
+      },
+      body: raw,
+    });
+    return { status: response.status, body: await response.json().catch((): unknown => null) };
+  }
+  const sign = (raw: string, offsetSeconds = 0) =>
+    alerts.signAlertWebhook({
+      rawBody: raw,
+      secret: SECRET,
+      timestampSeconds: Math.floor(Date.now() / 1000) + offsetSeconds,
+    });
+  const event = (service: string, overrides: Record<string, unknown> = {}) =>
+    JSON.stringify({
+      id: `run-${randomUUID()}`,
+      service,
+      version: 'v2026.11.2',
+      env: 'production',
+      source: 'ci',
+      actor: 'ci-bot',
+      startedAt: '2026-11-02T03:00:00Z',
+      finishedAt: '2026-11-02T03:04:00Z',
+      url: 'https://ci.example.invalid/run/1',
+      ...overrides,
+    });
+
+  it('records a signed deploy once, and lists it for staff', async () => {
+    const service = await addService();
+    const raw = event(service.slug);
+    expect(await post(raw, sign(raw))).toEqual({ status: 200, body: { recorded: true } });
+    expect(await post(raw, sign(raw))).toEqual({ status: 200, body: { recorded: false } });
+    const list = await call<{ items: Deploy[] }>(
+      agent,
+      'GET',
+      `/v1/deploys?serviceId=${service.id}`,
+    );
+    expect(list.body.items).toHaveLength(1);
+    expect(list.body.items[0]).toMatchObject({
+      serviceSlug: service.slug,
+      version: 'v2026.11.2',
+      env: 'production',
+      actor: 'ci-bot',
+      source: 'ci',
+      occurredAt: '2026-11-02T03:04:00.000Z',
+    });
+  });
+
+  it('refuses a missing, wrong or old signature with one answer, before reading the body', async () => {
+    const service = await addService();
+    const raw = event(service.slug);
+    const unsigned = await post(raw, undefined);
+    const wrong = await post(raw, sign('{"other":1}'));
+    const old = await post(raw, sign(raw, -3600));
+    expect([unsigned.status, wrong.status, old.status]).toEqual([401, 401, 401]);
+    expect(unsigned.body).toEqual(wrong.body);
+    const rows = await owner().query(`SELECT 1 FROM deploy WHERE service_slug = $1`, [
+      service.slug,
+    ]);
+    expect(rows.rowCount).toBe(0);
+  });
+
+  it('answers 404 for a service nobody catalogued and 400 for a body that is not a deploy', async () => {
+    const unknown = event('no-such-service');
+    expect((await post(unknown, sign(unknown))).status).toBe(404);
+    const notJson = 'not json';
+    expect((await post(notJson, sign(notJson))).status).toBe(400);
+    const wrongShape = JSON.stringify({ service: 'x' });
+    expect((await post(wrongShape, sign(wrongShape))).status).toBe(400);
+    const service = await addService();
+    const backwards = event(service.slug, {
+      startedAt: '2026-11-02T04:00:00Z',
+      finishedAt: '2026-11-02T03:00:00Z',
+    });
+    expect((await post(backwards, sign(backwards))).status).toBe(400);
+  });
+});

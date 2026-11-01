@@ -23,6 +23,7 @@ import {
 import {
   ALERT_WEBHOOK_SIGNATURE_HEADER,
   alertIngestResultSchema,
+  deployRecordResultSchema,
   heartbeatBeatResultSchema,
   heartbeatSlugParamSchema,
   type HeartbeatSlugParam,
@@ -138,5 +139,42 @@ export class HeartbeatBeatController {
       ip: request.ip ?? null,
     });
     return parseResponse(heartbeatBeatResultSchema, result);
+  }
+}
+
+/** The deploy feed (R-5.4, T-202a): CI posts what it deployed; signed like the alert webhook. */
+@ApiTags('incidents')
+@Controller('v1/inbound/deploys')
+export class DeployFeedController {
+  constructor(@Inject(AlertIngestService) private readonly ingest: AlertIngestService) {}
+
+  @Post()
+  @Public()
+  @HttpCode(200)
+  @ApiOperation({
+    summary: 'A deploy event from CI',
+    description:
+      'Public, authenticated by the X-Watchtower-Signature header exactly as the alert webhook ' +
+      '(HMAC-SHA256 of "<t>." + raw body). Body: id (the sender own id of the deploy), service (a catalog ' +
+      'slug), version, env, source (ci or github), optional actor, startedAt, finishedAt, url. The ' +
+      'same source and id is one deploy: a repeat answers recorded false. 401 bad signature, 400 not a ' +
+      'deploy event, 404 unknown service, 429 over the per-IP limit.',
+  })
+  @ApiHeader({ name: ALERT_WEBHOOK_SIGNATURE_HEADER, required: true })
+  @ApiOkResponse({ standardSchema: deployRecordResultSchema })
+  @ApiUnauthorizedResponse({ description: 'No secret set, or the signature is missing or wrong' })
+  @ApiBadRequestResponse({ description: 'A signed body that is not a deploy event' })
+  @ApiNotFoundResponse({ description: 'No such service' })
+  @ApiTooManyRequestsResponse({ description: 'Per-IP rate limit' })
+  async record(
+    @Headers(ALERT_WEBHOOK_SIGNATURE_HEADER) signature: string | undefined,
+    @Req() request: RawBodyRequest<Request>,
+  ) {
+    const result = await this.ingest.acceptDeploy({
+      rawBody: request.rawBody,
+      signature,
+      ip: request.ip ?? null,
+    });
+    return parseResponse(deployRecordResultSchema, result);
   }
 }

@@ -4,6 +4,7 @@ import type { CredentialStore, Database } from '@watchtower/db';
 import type { Domain, IngestAlertOutcome } from '@watchtower/domain';
 import {
   alertPubsubEnvelopeSchema,
+  deployEventSchema,
   type AlertIngestResult,
   type NormalizedAlert,
 } from '@watchtower/shared';
@@ -231,6 +232,39 @@ export class AlertIngestService {
         this.domain.alerts.recordHeartbeat(tx, ctx, { slug: input.slug }),
       );
       return result.value;
+    });
+  }
+
+  /**
+   * `POST /v1/inbound/deploys`: a deploy event from CI (R-5.4), signed like the alert webhook. The same
+   * `(source, id)` is one deploy however often it is delivered (`recorded: false` for a repeat). A
+   * signed body that is not a deploy event is 400; a service nobody catalogued is 404.
+   */
+  async acceptDeploy(input: {
+    readonly rawBody: Buffer | undefined;
+    readonly signature: string | undefined;
+    readonly ip: string | null;
+    readonly nowMs?: number;
+  }): Promise<{ recorded: boolean }> {
+    await this.rateLimit(input.ip);
+    const rawBody = await this.authenticateSigned('deploy feed', input);
+    let json: unknown;
+    try {
+      json = JSON.parse(rawBody.toString('utf8'));
+    } catch {
+      throw badRequest('The body is not JSON');
+    }
+    const parsed = deployEventSchema.safeParse(json);
+    if (!parsed.success) throw badRequest('The body is not a deploy event');
+    const ctx = this.domain.context({
+      actor: { type: 'system', id: null },
+      auditMeta: { ip: input.ip, requestId: null },
+    });
+    return translating(async () => {
+      const result = await this.database.db.transaction((tx) =>
+        this.domain.incidents.recordDeploy(tx, ctx, parsed.data),
+      );
+      return { recorded: result.value.recorded };
     });
   }
 }

@@ -3,7 +3,11 @@ import { Module } from '@nestjs/common';
 import { APP_CONFIG, type ApiConfig } from '../config/config.js';
 import { CredentialsModule } from '../credentials/credentials.module.js';
 import { createGoogleKeySet, createOidcPushVerifier } from '../gmail/push-verifier.js';
-import { AlertsIngestController, HeartbeatBeatController } from './alerts-ingest.controller.js';
+import {
+  AlertsIngestController,
+  DeployFeedController,
+  HeartbeatBeatController,
+} from './alerts-ingest.controller.js';
 import { ALERT_PUSH_VERIFIER, AlertIngestService } from './alerts-ingest.service.js';
 import { AlertsActions } from './alerts-actions.service.js';
 import { AlertsReader } from './alerts-reader.service.js';
@@ -29,6 +33,7 @@ import { AlertsCatalog } from './catalog.service.js';
   controllers: [
     AlertsIngestController,
     HeartbeatBeatController,
+    DeployFeedController,
     AlertsController,
     ServicesController,
     EscalationPoliciesController,
