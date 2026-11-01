@@ -148,11 +148,13 @@ describe('the people each step tells', () => {
       .where(
         and(
           eq(schema.outbox.queue, QUEUE_NAMES.alerts),
-          eq(schema.outbox.jobId, `alert-chat:${alertId}:0`),
+          eq(schema.outbox.jobId, `alert-chat-${alertId}-0`),
         ),
       );
     expect(jobs).toHaveLength(1);
     expect(jobs[0]?.payload).toEqual({ alertId, level: 0 });
+    // BullMQ refuses a job id with a colon: the relay would never hand this job to the queue.
+    expect(jobs[0]?.jobId).not.toContain(':');
 
     const row = await alertRow(alertId);
     expect(row.escalationLevel).toBe(1);
@@ -416,7 +418,7 @@ describe('one clock', () => {
     const jobs = await env.db.owner.db
       .select()
       .from(schema.outbox)
-      .where(sql`${schema.outbox.jobId} LIKE ${`alert-chat:${alertId}:%`}`);
+      .where(sql`${schema.outbox.jobId} LIKE ${`alert-chat-${alertId}-%`}`);
     expect(jobs).toHaveLength(2);
   });
 

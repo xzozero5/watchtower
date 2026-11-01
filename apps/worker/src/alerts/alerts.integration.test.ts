@@ -169,6 +169,17 @@ describe('the alerts queue in the worker', () => {
 
     // A fake can never say sent: the ledger has no delivery time or message id.
     expect(step).toMatchObject({ chatState: 'mock', chatSentAt: null, chatMessageId: null });
+
+    // The chat job really travelled outbox -> BullMQ -> processor (a job id BullMQ refuses would have
+    // left the row pending, and only the sweep's redrive would have posted it).
+    const relayed = await waitFor(async () => {
+      const { rows } = await testDb.owner.pool.query<{ status: string }>(
+        'SELECT status FROM outbox WHERE job_id = $1',
+        [`alert-chat-${alertId}-0`],
+      );
+      return rows[0]?.status === 'sent' ? rows[0] : undefined;
+    }, 'the chat job to be relayed');
+    expect(relayed.status).toBe('sent');
   });
 
   it('carries the next step when it falls due and publishes a realtime event for it', async () => {

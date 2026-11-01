@@ -275,7 +275,7 @@ async function escalateOne(
     await enqueueJob(tx, ctx.config, {
       queue: QUEUE_NAMES.alerts,
       name: ALERTS_JOBS.chat,
-      jobId: `alert-chat:${due.id}:${String(due.level)}`,
+      jobId: `alert-chat-${due.id}-${String(due.level)}`,
       payload: { alertId: due.id, level: due.level },
     });
   }

@@ -217,7 +217,7 @@ describe('heartbeats (R-3.10)', () => {
       },
       body: raw,
     });
-    return { status: response.status, body: (await response.json().catch(() => null)) as unknown };
+    return { status: response.status, body: await response.json().catch((): unknown => null) };
   }
   const sign = (raw = '{}', offsetSeconds = 0) =>
     alerts.signAlertWebhook({
