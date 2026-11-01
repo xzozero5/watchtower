@@ -72,10 +72,15 @@ CREATE TABLE kb_article (
   break_glass_by uuid,
   break_glass_at timestamptz,
   break_glass_reason text,
-  -- The version that went live break-glass, and the number of the version that was live before it
-  -- (0: none). The reviewer must not have written any version after the second up to the first.
+  -- The version that went live break-glass, and the number of the version that was live before the
+  -- FIRST break-glass of the pending window (0: none). A second break-glass while the flag is up
+  -- keeps that number and adds its publisher to break_glass_publishers, so the range that needs a
+  -- second pair of eyes only grows. break_glass_by is the latest publisher, break_glass_publishers
+  -- is everybody who used break-glass in the window; none of them reviews it, nor does anybody who
+  -- wrote a version after prev_version up to the break-glass one.
   break_glass_version_id uuid,
   break_glass_prev_version integer,
+  break_glass_publishers uuid[] NOT NULL DEFAULT '{}',
   break_glass_reviewed_by uuid,
   break_glass_reviewed_at timestamptz,
   created_at timestamptz NOT NULL DEFAULT now(),
@@ -93,6 +98,7 @@ CREATE TABLE kb_article (
       AND length(btrim(break_glass_reason)) > 0
       AND break_glass_version_id IS NOT NULL
       AND break_glass_prev_version IS NOT NULL
+      AND break_glass_by = ANY (break_glass_publishers)
     )
   )
 );
@@ -112,6 +118,9 @@ CREATE TABLE kb_article_version (
   content_hash text NOT NULL,
   -- No foreign key: history must survive the user (see the header).
   created_by uuid,
+  -- True when an AI wrote the text (its created_by is null). Such a version never goes live by
+  -- break-glass: it needs a normal publication by a person (owner decision, AI drafts).
+  authored_by_ai boolean NOT NULL DEFAULT false,
   created_at timestamptz NOT NULL DEFAULT now(),
   CONSTRAINT kb_article_version_version_check CHECK (version >= 1),
   CONSTRAINT kb_article_version_title_check CHECK (length(btrim(title)) BETWEEN 1 AND 300),
@@ -180,58 +189,142 @@ CREATE INDEX kb_chunk_article_idx ON kb_chunk (article_id);
 CREATE INDEX kb_chunk_index_idx ON kb_chunk (embedding_index_id) WHERE embedding_index_id IS NOT NULL;
 CREATE INDEX kb_chunk_text_trgm_idx ON kb_chunk USING gin (text gin_trgm_ops);
 
--- Break-glass bookkeeping cannot be edited around the domain: the flag drops only with a reviewer
--- who is somebody else than the publisher and wrote none of the text that went live (every version
--- after the one that was live before, up to the break-glass one), and who, how, when, why and which
--- version are frozen while it is up, unless a newer break-glass publication replaces it (a later
--- time and a different live version).
+-- Break-glass bookkeeping cannot be edited around the domain. The break-glass columns change in
+-- exactly two ways:
+--   1. A real break-glass publication: the article is published, the live version really changes
+--      to the newest version (which is also the break-glass version and the latest one), nobody
+--      has reviewed it, the publisher exists, no version in the range is AI-authored, and a flag
+--      that was already up keeps its prev_version and only adds the publisher (with a later time).
+--   2. A review that clears the flag: the reviewer exists, is not any publisher of the window, and
+--      wrote none of the text that went live (every version after prev_version up to the
+--      break-glass one). Nothing else in the record changes with it.
+-- Anything else that touches these columns (while the flag is up, after a review, or on an article
+-- that never had one) is refused, so a reason or a publisher cannot be rewritten later.
 CREATE FUNCTION kb_article_guard_break_glass() RETURNS trigger
 LANGUAGE plpgsql
 AS $$
+DECLARE
+  live_number integer;
+  newest_number integer;
+  old_live_number integer;
+  expected_prev integer;
+  expected_publishers uuid[];
 BEGIN
-  IF OLD.break_glass_pending THEN
-    IF NOT NEW.break_glass_pending THEN
-      IF NEW.break_glass_reviewed_by IS NULL OR NEW.break_glass_reviewed_at IS NULL
-         OR NEW.break_glass_reviewed_by = OLD.break_glass_by THEN
-        RAISE EXCEPTION 'a break-glass flag is cleared by a review from somebody else than its publisher'
-          USING ERRCODE = 'check_violation';
-      END IF;
-      IF EXISTS (
-        SELECT 1
-        FROM kb_article_version written
-        JOIN kb_article_version live ON live.id = OLD.break_glass_version_id
-        WHERE written.article_id = OLD.id
-          AND written.version > coalesce(OLD.break_glass_prev_version, 0)
-          AND written.version <= live.version
-          AND written.created_by = NEW.break_glass_reviewed_by
-      ) THEN
-        RAISE EXCEPTION 'a break-glass flag is not cleared by somebody who wrote the text that went live'
-          USING ERRCODE = 'check_violation';
-      END IF;
-      IF NEW.break_glass_by IS DISTINCT FROM OLD.break_glass_by
-         OR NEW.break_glass_at IS DISTINCT FROM OLD.break_glass_at
-         OR NEW.break_glass_version_id IS DISTINCT FROM OLD.break_glass_version_id
-         OR NEW.break_glass_prev_version IS DISTINCT FROM OLD.break_glass_prev_version
-         OR NEW.break_glass_reason IS DISTINCT FROM OLD.break_glass_reason THEN
-        RAISE EXCEPTION 'break-glass history cannot change while it is reviewed'
-          USING ERRCODE = 'check_violation';
-      END IF;
-    ELSIF (NEW.break_glass_by IS DISTINCT FROM OLD.break_glass_by
-        OR NEW.break_glass_at IS DISTINCT FROM OLD.break_glass_at
-        OR NEW.break_glass_reason IS DISTINCT FROM OLD.break_glass_reason
-        OR NEW.break_glass_version_id IS DISTINCT FROM OLD.break_glass_version_id
-        OR NEW.break_glass_prev_version IS DISTINCT FROM OLD.break_glass_prev_version)
-       AND (NEW.published_version_id IS NOT DISTINCT FROM OLD.published_version_id
-         OR NEW.break_glass_at IS NULL OR NEW.break_glass_at <= OLD.break_glass_at) THEN
-      RAISE EXCEPTION 'break-glass history is frozen while the publication waits for a review'
+  IF TG_OP = 'INSERT' THEN
+    IF NEW.break_glass_pending OR NEW.break_glass_by IS NOT NULL OR NEW.break_glass_at IS NOT NULL
+       OR NEW.break_glass_reason IS NOT NULL OR NEW.break_glass_version_id IS NOT NULL
+       OR NEW.break_glass_prev_version IS NOT NULL OR cardinality(NEW.break_glass_publishers) > 0
+       OR NEW.break_glass_reviewed_by IS NOT NULL OR NEW.break_glass_reviewed_at IS NOT NULL THEN
+      RAISE EXCEPTION 'a new article carries no break-glass record'
         USING ERRCODE = 'check_violation';
     END IF;
+    RETURN NEW;
+  END IF;
+
+  IF NEW.break_glass_pending IS NOT DISTINCT FROM OLD.break_glass_pending
+     AND NEW.break_glass_by IS NOT DISTINCT FROM OLD.break_glass_by
+     AND NEW.break_glass_at IS NOT DISTINCT FROM OLD.break_glass_at
+     AND NEW.break_glass_reason IS NOT DISTINCT FROM OLD.break_glass_reason
+     AND NEW.break_glass_version_id IS NOT DISTINCT FROM OLD.break_glass_version_id
+     AND NEW.break_glass_prev_version IS NOT DISTINCT FROM OLD.break_glass_prev_version
+     AND NEW.break_glass_publishers IS NOT DISTINCT FROM OLD.break_glass_publishers
+     AND NEW.break_glass_reviewed_by IS NOT DISTINCT FROM OLD.break_glass_reviewed_by
+     AND NEW.break_glass_reviewed_at IS NOT DISTINCT FROM OLD.break_glass_reviewed_at THEN
+    RETURN NEW;
+  END IF;
+
+  IF NEW.break_glass_pending THEN
+    -- 1. A real break-glass publication.
+    IF NEW.status <> 'published' OR NEW.published_version_id IS NULL
+       OR NEW.published_version_id IS NOT DISTINCT FROM OLD.published_version_id
+       OR NEW.break_glass_version_id IS DISTINCT FROM NEW.published_version_id
+       OR NEW.current_version_id IS DISTINCT FROM NEW.published_version_id THEN
+      RAISE EXCEPTION 'a break-glass record is written only by a publication that changes the live version to the latest one'
+        USING ERRCODE = 'check_violation';
+    END IF;
+    SELECT version INTO live_number FROM kb_article_version WHERE id = NEW.published_version_id;
+    SELECT max(version) INTO newest_number FROM kb_article_version WHERE article_id = NEW.id;
+    IF live_number IS NULL OR live_number <> newest_number THEN
+      RAISE EXCEPTION 'a break-glass publication puts the newest version live'
+        USING ERRCODE = 'check_violation';
+    END IF;
+    IF NEW.break_glass_by IS NULL OR NOT EXISTS (SELECT 1 FROM users WHERE id = NEW.break_glass_by) THEN
+      RAISE EXCEPTION 'a break-glass publisher is a user'
+        USING ERRCODE = 'check_violation';
+    END IF;
+    IF NEW.break_glass_at IS NULL OR NEW.break_glass_reviewed_by IS NOT NULL
+       OR NEW.break_glass_reviewed_at IS NOT NULL
+       OR (OLD.break_glass_pending AND NEW.break_glass_at <= OLD.break_glass_at) THEN
+      RAISE EXCEPTION 'a break-glass publication is new and not yet reviewed'
+        USING ERRCODE = 'check_violation';
+    END IF;
+    IF OLD.break_glass_pending THEN
+      -- A second one while the first waits: the range and the publishers only grow.
+      expected_prev := OLD.break_glass_prev_version;
+      expected_publishers := OLD.break_glass_publishers;
+      IF NOT (NEW.break_glass_by = ANY (expected_publishers)) THEN
+        expected_publishers := expected_publishers || NEW.break_glass_by;
+      END IF;
+    ELSE
+      SELECT version INTO old_live_number FROM kb_article_version WHERE id = OLD.published_version_id;
+      expected_prev := coalesce(old_live_number, 0);
+      expected_publishers := ARRAY[NEW.break_glass_by];
+    END IF;
+    IF NEW.break_glass_prev_version IS DISTINCT FROM expected_prev
+       OR NEW.break_glass_publishers IS DISTINCT FROM expected_publishers THEN
+      RAISE EXCEPTION 'a break-glass publication keeps the earlier range and publishers of the flag'
+        USING ERRCODE = 'check_violation';
+    END IF;
+    IF EXISTS (
+      SELECT 1 FROM kb_article_version
+      WHERE article_id = NEW.id AND version > expected_prev AND version <= live_number
+        AND authored_by_ai
+    ) THEN
+      RAISE EXCEPTION 'text written by an AI does not go live by break-glass'
+        USING ERRCODE = 'check_violation';
+    END IF;
+  ELSIF OLD.break_glass_pending THEN
+    -- 2. A review that clears the flag.
+    IF NEW.break_glass_reviewed_by IS NULL OR NEW.break_glass_reviewed_at IS NULL
+       OR NEW.break_glass_reviewed_by = OLD.break_glass_by
+       OR NEW.break_glass_reviewed_by = ANY (OLD.break_glass_publishers) THEN
+      RAISE EXCEPTION 'a break-glass flag is cleared by a review from somebody else than its publishers'
+        USING ERRCODE = 'check_violation';
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM users WHERE id = NEW.break_glass_reviewed_by) THEN
+      RAISE EXCEPTION 'a break-glass review is made by a user'
+        USING ERRCODE = 'check_violation';
+    END IF;
+    IF EXISTS (
+      SELECT 1
+      FROM kb_article_version written
+      JOIN kb_article_version live ON live.id = OLD.break_glass_version_id
+      WHERE written.article_id = OLD.id
+        AND written.version > coalesce(OLD.break_glass_prev_version, 0)
+        AND written.version <= live.version
+        AND written.created_by = NEW.break_glass_reviewed_by
+    ) THEN
+      RAISE EXCEPTION 'a break-glass flag is not cleared by somebody who wrote the text that went live'
+        USING ERRCODE = 'check_violation';
+    END IF;
+    IF NEW.break_glass_by IS DISTINCT FROM OLD.break_glass_by
+       OR NEW.break_glass_at IS DISTINCT FROM OLD.break_glass_at
+       OR NEW.break_glass_version_id IS DISTINCT FROM OLD.break_glass_version_id
+       OR NEW.break_glass_prev_version IS DISTINCT FROM OLD.break_glass_prev_version
+       OR NEW.break_glass_publishers IS DISTINCT FROM OLD.break_glass_publishers
+       OR NEW.break_glass_reason IS DISTINCT FROM OLD.break_glass_reason THEN
+      RAISE EXCEPTION 'break-glass history cannot change while it is reviewed'
+        USING ERRCODE = 'check_violation';
+    END IF;
+  ELSE
+    RAISE EXCEPTION 'break-glass history is frozen once reviewed; only a new break-glass publication replaces it'
+      USING ERRCODE = 'check_violation';
   END IF;
   RETURN NEW;
 END
 $$;
 CREATE TRIGGER kb_article_guard_break_glass
-  BEFORE UPDATE ON kb_article
+  BEFORE INSERT OR UPDATE ON kb_article
   FOR EACH ROW EXECUTE FUNCTION kb_article_guard_break_glass();
 
 -- A vector must have the dimensions its index says; a mismatch would make every distance fail.

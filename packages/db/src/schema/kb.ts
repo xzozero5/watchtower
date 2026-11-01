@@ -84,6 +84,11 @@ export const kbArticle = pgTable(
     breakGlassReason: text('break_glass_reason'),
     breakGlassVersionId: uuid('break_glass_version_id'),
     breakGlassPrevVersion: integer('break_glass_prev_version'),
+    /** Everybody who used break-glass while the flag is up; none of them may review it. */
+    breakGlassPublishers: uuid('break_glass_publishers')
+      .array()
+      .notNull()
+      .default(sql`'{}'::uuid[]`),
     reviewVersionId: uuid('review_version_id'),
     breakGlassReviewedBy: uuid('break_glass_reviewed_by'),
     breakGlassReviewedAt: timestamptz('break_glass_reviewed_at'),
@@ -110,6 +115,8 @@ export const kbArticleVersion = pgTable(
     changeNote: text('change_note'),
     contentHash: text('content_hash').notNull(),
     createdBy: uuid('created_by'),
+    /** An AI wrote the text (created_by is null): never published by break-glass. */
+    authoredByAi: boolean('authored_by_ai').notNull().default(false),
     createdAt: timestamptz('created_at').notNull().defaultNow(),
   },
   (table) => [uniqueIndex('kb_article_version_number_key').on(table.articleId, table.version)],
