@@ -117,7 +117,7 @@ Build ของ package: ESM, `tsc` ออกที่ `dist/`, `exports` ชี
 | Email ขาออก | `SMTP_HOST`, `SMTP_PORT` | ส่ง SMTP จริงเข้า Mailpit ไม่ออกอินเทอร์เน็ต | T-007 |
 | Human verification | `PORTAL_POW_DIFFICULTY_BITS`, `PORTAL_MIN_FILL_SECONDS` | self-hosted proof-of-work + honeypot + rate limit (ADR-007) ไม่มีปลายทางภายนอกจึงไม่มี mock ที่ผ่านเสมอ · test ใช้ difficulty 8 bits / fill 0 s · provider ภายนอก (Turnstile/hCaptcha) = `[ASK-HUMAN]` | T-007 |
 | Object storage | `S3_*` | MinIO ผ่าน S3 interface เดียวกับ GCS | T-002 |
-| Gmail | `GMAIL_SERVICE_ACCOUNT_JSON_PATH`, `GMAIL_IMPERSONATE_USER` | recorded fixtures + Pub/Sub emulator | T-102 |
+| Gmail | `GMAIL_OAUTH_CLIENT_ID`, `GMAIL_OAUTH_CLIENT_SECRET`, `GMAIL_OAUTH_REFRESH_TOKEN`, `GMAIL_OAUTH_MAILBOX` (OAuth, ค่าเริ่มต้น) หรือ `GMAIL_SERVICE_ACCOUNT_JSON_PATH`, `GMAIL_IMPERSONATE_USER` (delegation, ทางเลือก) | recorded fixtures + Pub/Sub emulator | T-102 |
 | LINE | `LINE_CHANNEL_ID` และ credential ของ channel | webhook จำลอง, บันทึกการส่งแทนการยิงจริง | T-103 |
 | Discord | `DISCORD_BOT_TOKEN`, `DISCORD_ALERT_CHANNEL_ID` | บันทึกข้อความลง log | T-104 |
 | Web Push | `WEB_PUSH_VAPID_PUBLIC`, `WEB_PUSH_VAPID_PRIVATE` | แจ้งเตือนใน app อย่างเดียว | T-105 |

@@ -1,10 +1,11 @@
 import { ChannelError } from '@watchtower/channels';
 import { schema, type Database } from '@watchtower/db';
 import { recordAuditInTx, type Domain } from '@watchtower/domain';
-import { AUDIT_ACTIONS } from '@watchtower/shared';
+import { AUDIT_ACTIONS, GMAIL_NOT_CONNECTED_CODE } from '@watchtower/shared';
 import { eq, sql } from 'drizzle-orm';
 
 import type { WorkerLogger } from '../logger.js';
+import { isInvalidGrant } from './not-connected.js';
 import type { GmailRuntime } from './runtime.js';
 import { watchRequestFor } from './sync.js';
 
@@ -44,12 +45,19 @@ export function createGmailWatch(deps: GmailWatchDeps): GmailWatch {
   const { database, logger } = deps;
 
   async function markFailed(accountId: string, error: unknown): Promise<void> {
+    // The refresh token was refused: the token provider already marked the mailbox not connected
+    // (health, code, one audit entry). A watch failure on top would only bury that reason.
+    if (isInvalidGrant(error)) return;
     const code = error instanceof ChannelError ? `channel_${error.kind}` : 'watch_error';
     const ctx = deps.domain.context({ actor: SYSTEM_ACTOR });
     await database.db.transaction(async (tx) => {
       await tx
         .update(schema.gmailAccountState)
-        .set({ lastErrorCode: 'watch_failed', updatedAt: now() })
+        .set({
+          // Keep `not_connected` (a person has to act) over a watch failure that follows it.
+          lastErrorCode: sql`CASE WHEN ${schema.gmailAccountState.lastErrorCode} = ${GMAIL_NOT_CONNECTED_CODE} THEN ${schema.gmailAccountState.lastErrorCode} ELSE 'watch_failed' END`,
+          updatedAt: now(),
+        })
         .where(eq(schema.gmailAccountState.channelAccountId, accountId));
       await tx
         .update(schema.channelAccount)
