@@ -198,6 +198,18 @@ describe('LINE ingestor', () => {
     expect(item?.raw.contentType).toBe('application/json');
   });
 
+  it('keeps the reply token out of the raw copy that goes to object storage, and in the message', async () => {
+    const [item] = await ingestor.ingest(
+      lineAccount,
+      source('01EVENT', lineEvent({ type: 'text', id: 'L-9', text: 'hi' })),
+    );
+    expect(item?.message.replyToken).toBe('reply-1');
+    const raw = Buffer.from(item?.raw.body ?? []).toString('utf8');
+    expect(raw).not.toContain('reply-1');
+    expect(raw).not.toContain('replyToken');
+    expect(JSON.parse(raw)).toMatchObject({ webhookEventId: '01EVENT', message: { id: 'L-9' } });
+  });
+
   it('keeps other content as text placeholders, and stickers as noise', async () => {
     const [image] = await ingestor.ingest(
       lineAccount,

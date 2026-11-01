@@ -10,6 +10,7 @@ export const DOMAIN_ERROR_CODES = [
   'ticket_not_open',
   'bad_request',
   'policy_denied',
+  'forbidden',
 ] as const;
 export type DomainErrorCode = (typeof DOMAIN_ERROR_CODES)[number];
 
@@ -39,3 +40,4 @@ export const mergeNotAllowed = (message: string): DomainError =>
   new DomainError('merge_not_allowed', message);
 export const ticketNotOpen = (message: string): DomainError =>
   new DomainError('ticket_not_open', message);
+export const forbidden = (message: string): DomainError => new DomainError('forbidden', message);
