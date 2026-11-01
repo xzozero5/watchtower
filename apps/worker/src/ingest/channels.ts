@@ -269,6 +269,8 @@ export function createLineIngestor(): ChannelIngestor {
         receivedAt: new Date(event.occurredAt),
         rawObjectKey: null,
         automated,
+        // Single-use and short-lived; the domain seals it for the dispatcher (ADR-010 section 6).
+        replyToken: event.replyToken,
       };
       return Promise.resolve([
         {

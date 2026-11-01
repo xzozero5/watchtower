@@ -7,6 +7,7 @@ import type { Processor } from 'bullmq';
 import type { WorkerConfig } from '../config.js';
 import { createIngestRegistration, type IngestOverrides } from '../ingest/index.js';
 import type { WorkerLogger } from '../logger.js';
+import { createOutboundRegistration, type OutboundOverrides } from '../outbound/index.js';
 import type { Mailer } from '../mailer.js';
 import type { RealtimeSink } from '../realtime.js';
 import { createEmailProcessor } from './email.js';
@@ -29,6 +30,7 @@ export interface ProcessorContext {
 
 export interface ProcessorOverrides {
   readonly ingest?: IngestOverrides;
+  readonly outbound?: OutboundOverrides;
 }
 
 export interface ProcessorRegistration {
@@ -65,6 +67,7 @@ export const PROCESSORS: readonly ProcessorRegistration[] = [
   { queue: QUEUE_NAMES.ingest, create: createIngestRegistration },
 
   // --- outbound (T-122d) ---
+  { queue: QUEUE_NAMES.outbound, create: createOutboundRegistration },
 
   // --- gmail (T-102) ---
 

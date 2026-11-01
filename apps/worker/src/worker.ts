@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import type { AddressInfo } from 'node:net';
 
 import { createDatabase, type OutboxPublisher } from '@watchtower/db';
-import { createDomain } from '@watchtower/domain';
+import { createDomain, createPolicyGate } from '@watchtower/domain';
 import { parseRedisUrl, QUEUE_NAMES, type QueueName } from '@watchtower/shared';
 import { KEY_LABELS, deriveSubkey } from '@watchtower/shared/secret-box';
 import { Queue, Worker, type Processor } from 'bullmq';
@@ -81,10 +81,14 @@ export async function startWorker(
       requireTls: config.NODE_ENV === 'production',
     });
 
-  // The write logic shared with the api (ADR-009). No policy gate yet (T-112): fail closed.
+  // The write logic shared with the api (ADR-009), with the same policy gate (ADR-011): it reads the
+  // stage and the switches fresh on every call, through the worker's own database handle. The
+  // dispatcher asks it again when it claims a delivery (ADR-010 section 5).
   const domain = createDomain({
     ticketKeyPrefix: config.TICKET_KEY_PREFIX,
     sealKey: deriveSubkey(config.APP_ENCRYPTION_KEY, KEY_LABELS.outboxSecret),
+    portalUrl: new URL('/portal', config.APP_URL).toString(),
+    policyGate: createPolicyGate({ db: database.db }),
   });
   const realtimeRedis = new Redis({
     ...connection,
