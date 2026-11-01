@@ -23,6 +23,12 @@ export interface ToolClients {
   readonly data?: ((extraColumns: readonly string[]) => DataQueryClient) | undefined;
   /** The data is invented (a sandbox or a fake): results are labelled mock. */
   readonly dataMock?: boolean | undefined;
+  /**
+   * What the data login can do that it must not (empty: hardened). Absent for a fake, which runs no SQL.
+   * Ad-hoc statements are refused while there is a problem: a real product database whose owner does not
+   * allow the revokes of `product-mock.grants.sql` is used through saved templates only (T-208, ADR-016).
+   */
+  readonly dataHardening?: (() => Promise<readonly string[]>) | undefined;
   /** Releases what the clients hold (the product database pool). */
   close?(): Promise<void>;
 }
@@ -31,7 +37,13 @@ export interface ToolClientOptions {
   /** A directory with `fixtures.json` (`AI_TOOL_FIXTURES_DIR`). Absent: logs, metrics and repository are not connected. */
   readonly fixturesDir: string | undefined;
   /** The product database, behind its read-only login. Absent: the data tool uses the fixtures, or is not connected. */
-  readonly productDb?: (SqlExecutor & { readonly sandbox: boolean; close(): Promise<void> }) | undefined;
+  readonly productDb?:
+    | (SqlExecutor & {
+        readonly sandbox: boolean;
+        close(): Promise<void>;
+        hardeningProblems(): Promise<string[]>;
+      })
+    | undefined;
   /** Result columns that may be shown (the global allow-list). */
   readonly allowColumns: readonly string[];
 }
@@ -50,6 +62,7 @@ export function assembleToolClients(options: ToolClientOptions): ToolClients {
       repo: mock?.repo,
       data: (extra) => createGuardedSqlClient(executor, { allowColumns: allowed(extra) }),
       dataMock: executor.sandbox,
+      dataHardening: () => executor.hardeningProblems(),
       close: () => executor.close(),
     };
   }

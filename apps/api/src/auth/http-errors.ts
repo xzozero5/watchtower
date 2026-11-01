@@ -21,6 +21,14 @@ export const toolNotConnected = (): ApiHttpError =>
     'That system is not connected on this instance',
   );
 
+/** 503: ad-hoc statements are off because the product database login can do more than a reader may (ADR-016). */
+export const toolNotHardened = (): ApiHttpError =>
+  new ApiHttpError(
+    HttpStatus.SERVICE_UNAVAILABLE,
+    'tool_not_connected',
+    'Ad-hoc statements are off: the product database login is not hardened; saved templates still run',
+  );
+
 /** 502 or 504: the system answered badly or too slowly. Says nothing about the query or the system. */
 export const toolFailed = (timeout: boolean): ApiHttpError =>
   new ApiHttpError(

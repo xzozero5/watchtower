@@ -50,6 +50,9 @@ export {
 } from './outbox.js';
 export {
   createProductDbExecutor,
+  PRODUCT_RESULT_HARD_BYTES,
+  PRODUCT_RESULT_SOFT_BYTES,
+  ProductDbError,
   isSandboxDatabase,
   type ProductDbExecutor,
   type ProductDbOptions,

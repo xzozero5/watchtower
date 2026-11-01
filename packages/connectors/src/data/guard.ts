@@ -69,6 +69,9 @@ const FORBIDDEN_WORDS = [
   'dblink_exec',
 ];
 const FORBIDDEN = new RegExp(`\\b(?:${FORBIDDEN_WORDS.join('|')})\\b`, 'i');
+/** Families of functions that lock, write WAL, read files or control backends, by prefix (a courtesy: the database revokes them). */
+const FORBIDDEN_FAMILIES =
+  /\b(?:pg_(?:try_)?advisory|pg_logical|pg_replication|pg_notify|pg_read|pg_ls|pg_stat_file|pg_current_wal|pg_current_xact|pg_xact|pg_wal|pg_switch|pg_cancel|pg_terminate|pg_sleep|pg_import|pg_export|txid_|lo_(?:import|export|open|create|creat|unlink|read|write|from_bytea|get|put)|dblink)\w*/i;
 
 /**
  * Reduces a statement to its code the way Postgres reads it: a `--` comment ends at a line feed or a
@@ -139,6 +142,7 @@ function codeOf(sql: string): string {
     }
     if (char === '"') {
       index += 1;
+      const start = index;
       let closed = false;
       while (index < sql.length) {
         if (sql[index] === '"' && sql[index + 1] === '"') {
@@ -153,7 +157,8 @@ function codeOf(sql: string): string {
         index += 1;
       }
       if (!closed) throw new ConnectorQueryRejectedError('Unterminated identifier');
-      out += '""';
+      // Keep what the identifier says: "dblink"(...) is a call to dblink, and the word check must see it.
+      out += ` ${sql.slice(start, index - 1).replaceAll('""', '"')} `;
       continue;
     }
     if (char === '$' && (next === '$' || /[A-Za-z_]/.test(next))) {
@@ -182,7 +187,7 @@ export function assertReadOnlySql(sql: string): void {
   if (/\bexternal_query\b/i.test(code) && !(EXTERNAL_QUERY_ENABLED as boolean)) {
     throw new ConnectorQueryRejectedError('EXTERNAL_QUERY is turned off');
   }
-  if (FORBIDDEN.test(code)) {
+  if (FORBIDDEN.test(code) || FORBIDDEN_FAMILIES.test(code)) {
     throw new ConnectorQueryRejectedError('The statement holds a word that is not allowed');
   }
   if (/\bfor\s+(?:update|share|no\s+key\s+update|key\s+share)\b/i.test(code)) {
@@ -263,6 +268,18 @@ function translateDatabaseError(error: unknown): Error {
     case '57014': // query_canceled: statement_timeout
     case '55P03': // lock_not_available
       return new ConnectorTimeoutError();
+    case 'WT002': // the executor: more bytes than a result may carry
+      return new ConnectorQueryRejectedError('The result is larger than the limit; ask for fewer rows or columns');
+    case '53000':
+    case '53100': // disk_full
+    case '53200': // out_of_memory
+    case '53300':
+    case '53400': // configuration_limit_exceeded: temp_file_limit
+    case '54000': // program_limit_exceeded
+    case '54001':
+    case '54011':
+    case '54023':
+      return new ConnectorQueryRejectedError('The statement needs more resources than a run may use');
     case '42501': // insufficient_privilege: a column the login may not read
       return new ConnectorQueryRejectedError('The database login may not read that');
     case '42601': // syntax_error

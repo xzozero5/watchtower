@@ -76,6 +76,7 @@ beforeAll(async () => {
         allowColumns: new Set([...DATA_COLUMN_ALLOW_LIST, ...extra]),
       }),
     dataMock: executor.sandbox,
+    dataHardening: () => executor.hardeningProblems(),
     close: () => executor.close(),
   };
   h = await startHarness({ overrides: [{ token: TOOL_CLIENTS, value: toolClients }] });
@@ -522,6 +523,23 @@ describe('ad-hoc runs (lead, head)', () => {
     const jobs = await check.execute({ sql: 'SELECT count(*)::int AS n FROM jobs', params: [], maxRows: 1, timeoutMs: 1000 });
     await check.close();
     expect(jobs.rows).toEqual([[200]]);
+  });
+
+  it('keeps ad-hoc statements off while the product login is not hardened, and saved templates still run (T-208)', async () => {
+    await clearBudget();
+    const hardened = toolClients.dataHardening;
+    toolClients.dataHardening = () => Promise.resolve(['the reader can use advisory locks']);
+    try {
+      const refused = await call<ApiErrorBody>(head, 'POST', '/v1/investigate/adhoc/data', { sql: 'SELECT 1 AS n', ticketId: ticketRef });
+      expect(refused.status).toBe(503);
+      expect(refused.body.code).toBe('tool_not_connected');
+      expect(refused.body.message).toContain('not hardened');
+      const template = await newTemplate({ kind: 'data', name: `still-runs-${randomBytes(2).toString('hex')}`, title: 'Still runs', body: 'SELECT 1 AS n' });
+      expect((await call(agent, 'POST', `/v1/tickets/${ticketRef}/tools/run`, { templateId: template.id })).status).toBe(201);
+    } finally {
+      toolClients.dataHardening = hardened;
+    }
+    expect((await call(head, 'POST', '/v1/investigate/adhoc/data', { sql: 'SELECT 1 AS n', ticketId: ticketRef })).status).toBe(201);
   });
 
   it('runs a log filter of your own on an incident', async () => {

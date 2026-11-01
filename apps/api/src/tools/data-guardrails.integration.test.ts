@@ -10,7 +10,13 @@ import {
   DATA_HARD_MAX_ROWS,
   type DataQueryClient,
 } from '@watchtower/connectors';
-import { createProductDbExecutor, type ProductDbExecutor } from '@watchtower/db';
+import {
+  createProductDbExecutor,
+  PRODUCT_RESULT_HARD_BYTES,
+  PRODUCT_RESULT_SOFT_BYTES,
+  ProductDbError,
+  type ProductDbExecutor,
+} from '@watchtower/db';
 import { createProductMockDatabase, type ProductMockDatabase } from '@watchtower/db/testing';
 import { DATA_COLUMN_ALLOW_LIST } from '@watchtower/shared';
 import { disableNetConnect } from '@watchtower/shared/testing';
@@ -109,7 +115,7 @@ describe('read-only, timeout, row cap', () => {
   it('stops a statement at statement_timeout and says so', async () => {
     await expect(
       executor.execute({
-        sql: `SELECT count(*) FROM generate_series(1, 400000000) AS g (x) WHERE x % 7 = 0`,
+        sql: `SELECT count(*) FROM api_daily a CROSS JOIN api_daily b CROSS JOIN api_daily c CROSS JOIN api_daily d`,
         params: [],
         maxRows: 1,
         timeoutMs: 200,
@@ -118,7 +124,7 @@ describe('read-only, timeout, row cap', () => {
     // Through the client the same limit is a typed error, and the heavy statement never runs past it.
     const started = Date.now();
     await expect(
-      ask(`SELECT count(*) AS n FROM generate_series(1, 400000000) AS g (x) WHERE x % 7 = 0`, [], 10, 300),
+      ask(`SELECT count(*) AS n FROM api_daily a CROSS JOIN api_daily b CROSS JOIN api_daily c CROSS JOIN api_daily d`, [], 10, 300),
     ).rejects.toBeInstanceOf(ConnectorTimeoutError);
     expect(Date.now() - started).toBeLessThan(3000);
   });
@@ -292,7 +298,7 @@ describe('hostile statements (P1)', () => {
     const before = process.memoryUsage().rss;
     const started = Date.now();
     const result = await executor.execute({
-      sql: `SELECT x, repeat('y', 200) AS filler FROM generate_series(1, 30000000) AS g (x) -- cuts any LIMIT appended after it`,
+      sql: `SELECT a.day, repeat('y', 200) AS filler FROM api_daily a CROSS JOIN api_daily b CROSS JOIN api_daily c -- cuts any LIMIT appended after it`,
       params: [],
       maxRows: 20,
       timeoutMs: 10_000,
@@ -323,5 +329,134 @@ describe('hostile statements (P1)', () => {
         assertReadOnlySql(fine);
       }, fine).not.toThrow();
     }
+  });
+});
+
+// Second review of the same task. A denylist of function names kept losing: `pg_advisory_lock` took the
+// whole cluster to 53200 and held it until the pool closed, `pg_logical_emit_message` wrote 196 MB of WAL
+// in a READ ONLY transaction, one `repeat()` cost the process 737 MB. So the database side now revokes by
+// kind (every volatile pg_catalog function but a few, and whole families whatever their volatility), the
+// role carries work_mem and temp_file_limit, and the executor caps the bytes it reads. Two groups of
+// payloads, each shot at the executor with no guard in front.
+describe('hostile statements, second group (side effects and size)', () => {
+  const login = (): string => decodeURIComponent(new URL(mock.readOnlyUrl).username);
+
+  const SIDE_EFFECTS: readonly (readonly [string, string])[] = [
+    ['advisory locks, a hundred thousand of them', `SELECT pg_advisory_lock(g) FROM generate_series(1, 100000) AS g`],
+    ['one advisory lock', `SELECT pg_advisory_lock(1)`],
+    ['a try advisory lock', `SELECT pg_try_advisory_lock(1)`],
+    ['a transaction advisory lock', `SELECT pg_advisory_xact_lock(1)`],
+    ['a shared advisory lock', `SELECT pg_advisory_lock_shared(1)`],
+    ['a logical WAL message of 100 MB', `SELECT pg_logical_emit_message(true, 'x', repeat('y', 100000000))`],
+    ['a transactional logical WAL message', `SELECT pg_logical_emit_message(false, 'x', 'y')`],
+    ['pg_notify', `SELECT pg_notify('c', 'x')`],
+    ['lo_import', `SELECT lo_import('/etc/passwd')`],
+    ['lo_create', `SELECT lo_create(0)`],
+    ['pg_read_file', `SELECT pg_read_file('/etc/passwd')`],
+    ['pg_ls_dir', `SELECT pg_ls_dir('.')`],
+    ['txid_current', `SELECT txid_current()`],
+    ['pg_terminate_backend', `SELECT pg_terminate_backend(pg_backend_pid())`],
+    ['pg_cancel_backend', `SELECT pg_cancel_backend(pg_backend_pid())`],
+    ['setval', `SELECT setval('jobs_id_seq', 1)`],
+    ['dblink', `SELECT dblink('host=localhost', 'SELECT 1')`],
+    ['a quoted dblink', `SELECT "dblink"('host=localhost', 'SELECT 1')`],
+  ];
+
+  async function locksAndWal(): Promise<{ locks: number; lsn: bigint }> {
+    const state = await ownerExecutor.execute({
+      sql: `SELECT (SELECT count(*) FROM pg_locks WHERE locktype = 'advisory')::int,
+                   (pg_current_wal_lsn() - '0/0'::pg_lsn)::text`,
+      params: [],
+      maxRows: 1,
+      timeoutMs: 2000,
+    });
+    const [locks, lsn] = state.rows[0] ?? [];
+    return { locks: Number(locks), lsn: BigInt(String(lsn).split('.')[0] ?? '0') };
+  }
+
+  it('refuses every side-effect function at the database: no lock, no WAL, nothing held', async () => {
+    const before = await locksAndWal();
+    for (const [name, sql] of SIDE_EFFECTS) {
+      const error = await executor
+        .execute({ sql, params: [], maxRows: 5, timeoutMs: 3000 })
+        .catch((caught: unknown) => caught);
+      expect(error, name).toBeInstanceOf(Error);
+      // 42501: not allowed to execute. 42883: does not exist here (dblink is not installed).
+      expect(['42501', '42883'], name).toContain((error as { code?: string }).code);
+    }
+    const after = await locksAndWal();
+    expect(after.locks).toBe(0);
+    // Other things write a little WAL; a refused 100 MB message would show as far more than this.
+    expect(after.lsn - before.lsn).toBeLessThan(5n * 1024n * 1024n);
+    // And the same payloads never reach the database through the guarded client.
+    for (const [name, sql] of SIDE_EFFECTS) {
+      await expect(ask(sql), name).rejects.toBeInstanceOf(ConnectorQueryRejectedError);
+    }
+  });
+
+  it('says what the reader may not do, and finds nothing wrong with this database', async () => {
+    expect(await executor.hardeningProblems()).toEqual([]);
+    // A login that is not hardened (here the owner, standing in for a replica whose owner allowed no revokes) is named.
+    const problems = await ownerExecutor.hardeningProblems();
+    expect(problems.length).toBeGreaterThanOrEqual(5);
+    expect(problems).toContain('the reader can use advisory locks');
+    expect(problems).toContain('the reader can use being a superuser');
+  });
+
+  it('stops reading at a byte cap, drops the connection of a result that is far too big, and serves again', async () => {
+    const before = process.memoryUsage().rss;
+    const started = Date.now();
+    // 100 MB in one value: the temporary file limit of the role answers before a byte is sent.
+    const huge = await executor
+      .execute({ sql: `SELECT repeat('x', 100000000) AS v`, params: [], maxRows: 10, timeoutMs: 10_000 })
+      .catch((caught: unknown) => caught);
+    expect((huge as { code?: string }).code).toMatch(/^(53400|WT002)$/);
+    // 30 MB in one row: the server can build it, we must not hold it.
+    const error = await executor
+      .execute({ sql: `SELECT repeat('x', 30000000) AS v`, params: [], maxRows: 10, timeoutMs: 10_000 })
+      .catch((caught: unknown) => caught);
+    expect(error).toBeInstanceOf(ProductDbError);
+    expect((error as ProductDbError).code).toBe('WT002');
+    expect(Date.now() - started).toBeLessThan(8000);
+    expect(process.memoryUsage().rss - before).toBeLessThan(100 * 1024 * 1024);
+    // A message from the client layer too: the typed error of the connector, nothing about the statement.
+    await expect(
+      ask(`SELECT repeat('x', 30000000) AS v`, [], 10, 10_000),
+    ).rejects.toThrow(/larger than the limit/);
+    // The pool is whole.
+    expect((await executor.execute({ sql: 'SELECT 1 AS n', params: [], maxRows: 1, timeoutMs: 1000 })).rows).toEqual([[1]]);
+  });
+
+  it('stops at the soft cap with what it has when many wide rows come', async () => {
+    const result = await executor.execute({
+      sql: `SELECT repeat('x', 200000) AS v FROM generate_series(1, 500)`,
+      params: [],
+      maxRows: 500,
+      timeoutMs: 10_000,
+    });
+    expect(result.truncated).toBe(true);
+    expect(result.rows.length).toBeGreaterThan(0);
+    expect(result.rows.length).toBeLessThanOrEqual(50);
+    expect(PRODUCT_RESULT_SOFT_BYTES).toBeLessThan(PRODUCT_RESULT_HARD_BYTES);
+  });
+
+  it('holds a sort to the temporary file limit of the role', async () => {
+    const error = await executor
+      .execute({
+        sql: `SELECT x FROM generate_series(1, 60000000) AS g (x) ORDER BY md5(x::text)`,
+        params: [],
+        maxRows: 5,
+        timeoutMs: 15_000,
+      })
+      .catch((caught: unknown) => caught);
+    expect((error as { code?: string }).code).toMatch(/^(53400|57014)$/);
+    const limits = await ownerExecutor.execute({
+      sql: `SELECT rolconfig::text FROM pg_roles WHERE rolname = $1`,
+      params: [login()],
+      maxRows: 1,
+      timeoutMs: 2000,
+    });
+    expect(String(limits.rows[0]?.[0])).toContain('temp_file_limit=64MB');
+    expect(String(limits.rows[0]?.[0])).toContain('work_mem=16MB');
   });
 });

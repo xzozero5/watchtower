@@ -43,6 +43,12 @@ describe('assertReadOnlySql', () => {
     ['a nested comment', 'SELECT 1 /* a /* b */ c */ ; DELETE FROM t'],
     ['an unterminated quoted identifier', 'SELECT 1 AS "open'],
     ['nextval', "SELECT nextval('s')"],
+    ['a quoted dblink', `SELECT "dblink"('a', 'b')`],
+    ['an advisory lock', 'SELECT pg_advisory_lock(1)'],
+    ['a try advisory lock', 'SELECT pg_try_advisory_xact_lock(1)'],
+    ['a logical WAL message', "SELECT pg_logical_emit_message(true, 'x', 'y')"],
+    ['a file read', "SELECT pg_read_file('/etc/passwd')"],
+    ['a large object import', "SELECT lo_import('/etc/passwd')"],
     ['an empty statement', ''],
     ['a statement that is too long', `SELECT ${'1,'.repeat(5000)}1`],
   ])('refuses %s', (_name, sql) => {
@@ -130,6 +136,8 @@ describe('database errors reach the caller as typed errors that quote nothing', 
       code: 'invalid_query',
       message: 'The database refused the statement (42601)',
     });
+    expect(await run(Object.assign(new Error('x'), { code: 'WT002' }))).toMatchObject({ code: 'invalid_query', message: expect.stringContaining('larger than the limit') as string });
+    expect(await run(Object.assign(new Error('temporary file size exceeds temp_file_limit'), { code: '53400' }))).toMatchObject({ code: 'invalid_query', message: 'The statement needs more resources than a run may use' });
     const other = await run(new Error('connect ECONNREFUSED 10.0.0.5:5432 password=hunter2'));
     expect(other).toMatchObject({ code: 'upstream', message: 'The database could not answer' });
   });

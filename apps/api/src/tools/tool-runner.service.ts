@@ -42,6 +42,7 @@ import {
   notFound,
   RateLimitedError,
   toolFailed,
+  toolNotHardened,
   toolNotConnected,
 } from '../auth/http-errors.js';
 import type { Principal } from '../auth/principal.js';
@@ -333,6 +334,10 @@ export class ToolRunner implements OnModuleDestroy {
   async runAdhocData(body: AdhocData, principal: Principal): Promise<EvidenceCard> {
     const subject = await this.adhocSubject(body, principal);
     const data = this.requireData([]);
+    // A statement of one's own is only as safe as the database role behind it. A product database whose
+    // login can still take locks, write WAL or sleep (the revokes of product-mock.grants.sql are not all
+    // in place) is used through saved templates only.
+    if ((await this.hardeningProblems()).length > 0) throw toolNotHardened();
     const params: SqlValue[] = [...body.params];
     const attempt: Attempt = {
       templateId: null,
@@ -401,6 +406,31 @@ export class ToolRunner implements OnModuleDestroy {
     if (body.ticketId !== undefined) return this.ticketSubject(body.ticketId, principal);
     if (body.incidentId !== undefined) return this.incidentSubject(body.incidentId);
     throw badRequest('Say which ticket or incident the result is for');
+  }
+
+  #hardening:
+    | { check: () => Promise<readonly string[]>; at: number; problems: readonly string[] }
+    | undefined;
+
+  /** What the data login can do that it should not; looked at once a minute at most. */
+  private async hardeningProblems(): Promise<readonly string[]> {
+    const check = this.clients.dataHardening;
+    if (check === undefined) return [];
+    if (
+      this.#hardening?.check === check &&
+      Date.now() - this.#hardening.at < 60_000
+    ) {
+      return this.#hardening.problems;
+    }
+    let problems: readonly string[];
+    try {
+      problems = await check();
+    } catch {
+      // Cannot tell: treat it as not hardened.
+      problems = ['the check failed'];
+    }
+    this.#hardening = { check, at: Date.now(), problems };
+    return problems;
   }
 
   private isMock(kind: 'logs' | 'data'): boolean {

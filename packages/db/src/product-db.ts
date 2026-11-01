@@ -1,4 +1,6 @@
-import { Pool, type QueryConfig } from 'pg';
+import type { Socket } from 'node:net';
+
+import { Pool, type PoolClient, type QueryConfig } from 'pg';
 
 /**
  * The database side of the data tool (T-203c, R-5.2, N2): runs one statement of a saved template or
@@ -47,6 +49,12 @@ export interface ProductDbExecutor {
   execute(input: ProductQueryInput): Promise<ProductQueryResult>;
   /** True when the database is the invented `product_mock` one (results are labelled mock). */
   readonly sandbox: boolean;
+  /**
+   * What the reader role can do that it must not (advisory locks, WAL messages, set_config, sleeps,
+   * sequences, temporary tables, creating objects, being a superuser). Empty when the database was
+   * hardened with `examples/metrics/product-mock.grants.sql`. Ad-hoc statements are refused while it is not.
+   */
+  hardeningProblems(): Promise<string[]>;
   close(): Promise<void>;
 }
 
@@ -84,9 +92,47 @@ function plain(value: unknown): ProductValue {
 const ROLE_NAME = /^[A-Za-z_][A-Za-z0-9_]{0,62}$/;
 const quoteRole = (name: string): string => `"${name}"`;
 
+/**
+ * Bytes a result may carry. Past the soft cap the executor stops reading and says `truncated`; past the
+ * hard cap it drops the connection, because one row can be as large as the server can build (a
+ * `repeat('x', 700000000)` is one row) and nothing else would stop it from filling our memory.
+ */
+export const PRODUCT_RESULT_SOFT_BYTES = 1_000_000;
+export const PRODUCT_RESULT_HARD_BYTES = 16_000_000;
+/** Rows asked of the cursor at a time, so the soft cap is checked often. */
+const FETCH_BATCH = 25;
+
+/** Errors of the executor itself (not the database's): `code` is stable for the layer above. */
+export class ProductDbError extends Error {
+  readonly code: 'WT002';
+  constructor(code: 'WT002', message: string) {
+    super(message);
+    this.name = 'ProductDbError';
+    this.code = code;
+  }
+}
+
 /** The extended protocol only: one command per query, whatever the text holds. */
 const extended = (config: { text: string; values?: unknown[]; rowMode?: 'array' }): QueryConfig =>
   ({ ...config, queryMode: 'extended' }) as QueryConfig;
+
+/** The socket of a pg client, which the type does not show. */
+function socketOf(client: PoolClient): Socket | undefined {
+  return (client as unknown as { connection?: { stream?: Socket } }).connection?.stream;
+}
+
+/** What the reader must not be able to do. Each probe is one thing the reviews found a statement doing. */
+const HARDENING_PROBES: readonly (readonly [string, string])[] = [
+  ['advisory locks', `has_function_privilege(current_user, 'pg_advisory_lock(bigint)', 'EXECUTE')`],
+  ['logical messages (WAL)', `has_function_privilege(current_user, 'pg_logical_emit_message(boolean,text,text)', 'EXECUTE')`],
+  ['set_config', `has_function_privilege(current_user, 'set_config(text,text,boolean)', 'EXECUTE')`],
+  ['pg_sleep', `has_function_privilege(current_user, 'pg_sleep(double precision)', 'EXECUTE')`],
+  ['sequences', `has_function_privilege(current_user, 'nextval(regclass)', 'EXECUTE')`],
+  ['backend control', `has_function_privilege(current_user, 'pg_terminate_backend(integer,bigint)', 'EXECUTE')`],
+  ['temporary tables', `has_database_privilege(current_user, current_database(), 'TEMPORARY')`],
+  ['creating objects in public', `has_schema_privilege(current_user, 'public', 'CREATE')`],
+  ['being a superuser', `(SELECT rolsuper FROM pg_roles WHERE rolname = current_user)`],
+];
 
 export function createProductDbExecutor(options: ProductDbOptions): ProductDbExecutor {
   const login = decodeURIComponent(new URL(options.url).username);
@@ -107,6 +153,55 @@ export function createProductDbExecutor(options: ProductDbOptions): ProductDbExe
   // A pool error on an idle client (the server went away) must not crash the process.
   pool.on('error', () => undefined);
 
+  /** Runs `work` in a READ ONLY transaction as the reader, with the limits, and always gives the connection back clean. */
+  async function asReader<T>(
+    timeoutMs: number,
+    work: (client: PoolClient, bytes: () => number) => Promise<T>,
+  ): Promise<T> {
+    const client = await pool.connect();
+    const socket = socketOf(client);
+    let received = 0;
+    const state = { overflow: false, broken: false };
+    const onData = (chunk: Buffer): void => {
+      received += chunk.length;
+      if (received > PRODUCT_RESULT_HARD_BYTES && !state.overflow) {
+        state.overflow = true;
+        // Stop reading at once: what the server still sends is never buffered here.
+        socket?.destroy();
+      }
+    };
+    socket?.on('data', onData);
+    // A connection we drop on purpose (or the server drops) must not become an unhandled 'error' event.
+    const onError = (): void => undefined;
+    client.on('error', onError);
+    try {
+      // Our own fixed strings, simple protocol: no caller text in any of them.
+      await client.query('BEGIN READ ONLY');
+      await client.query(`SET LOCAL statement_timeout = ${String(timeoutMs)}`);
+      await client.query(`SET LOCAL lock_timeout = ${String(Math.min(timeoutMs, 2000))}`);
+      await client.query(`SET LOCAL ROLE ${quoteRole(readerRole)}`);
+      return await work(client, () => received);
+    } catch (error) {
+      if (state.overflow) {
+        throw new ProductDbError('WT002', 'The result is larger than the limit');
+      }
+      throw error;
+    } finally {
+      socket?.off('data', onData);
+      // Back to the pool only if the session ended clean; otherwise the connection is dropped. DISCARD ALL
+      // forgets any session state a statement might have left (locks, temporary objects, a changed role).
+      try {
+        await client.query('ROLLBACK');
+        await client.query('DISCARD ALL');
+      } catch {
+        state.broken = true;
+      }
+      client.release(state.broken || state.overflow ? true : undefined);
+      // A client that goes back to the pool is clean; one that is discarded may still say something as it dies.
+      if (!state.broken && !state.overflow) client.off('error', onError);
+    }
+  }
+
   return {
     sandbox: isSandboxDatabase(options.url),
     async execute(input) {
@@ -114,14 +209,7 @@ export function createProductDbExecutor(options: ProductDbOptions): ProductDbExe
       const maxRows = Math.max(1, Math.min(Math.trunc(input.maxRows), 10_000));
       const timeoutMs = Math.max(100, Math.min(Math.trunc(input.timeoutMs), 60_000));
       const statement = input.sql.trim().replace(/;\s*$/, '');
-      const client = await pool.connect();
-      let broken = false;
-      try {
-        // Our own fixed strings, simple protocol: no caller text in any of them.
-        await client.query('BEGIN READ ONLY');
-        await client.query(`SET LOCAL statement_timeout = ${String(timeoutMs)}`);
-        await client.query(`SET LOCAL lock_timeout = ${String(Math.min(timeoutMs, 2000))}`);
-        await client.query(`SET LOCAL ROLE ${quoteRole(readerRole)}`);
+      return asReader(timeoutMs, async (client, bytes) => {
         // The caller's text appears once, as the body of a cursor, in a query the server parses as one command.
         await client.query(
           extended({
@@ -129,28 +217,41 @@ export function createProductDbExecutor(options: ProductDbOptions): ProductDbExe
             values: [...input.params],
           }),
         );
-        const result = await client.query(
-          extended({
-            // The cap is an integer written by this code. One extra row says whether there was more.
-            text: `FETCH FORWARD ${String(maxRows + 1)} FROM watchtower_cursor`,
-            rowMode: 'array',
-          }),
-        );
-        const fetched = result.rows as unknown[][];
-        return {
-          columns: result.fields.map((field) => field.name),
-          rows: fetched.slice(0, maxRows).map((row) => row.map(plain)),
-          truncated: fetched.length > maxRows,
-        };
-      } finally {
-        // Back to the pool only if the transaction ended cleanly; otherwise the connection is dropped.
-        try {
-          await client.query('ROLLBACK');
-        } catch {
-          broken = true;
+        const columns: string[] = [];
+        const rows: ProductValue[][] = [];
+        let truncated = false;
+        for (;;) {
+          // Never more rows than are still wanted, plus one to learn whether there were more.
+          const want = Math.min(FETCH_BATCH, maxRows + 1 - rows.length);
+          const result = await client.query(
+            extended({ text: `FETCH FORWARD ${String(want)} FROM watchtower_cursor`, rowMode: 'array' }),
+          );
+          columns.splice(0, columns.length, ...result.fields.map((field) => field.name));
+          for (const row of result.rows as unknown[][]) rows.push(row.map(plain));
+          if (rows.length > maxRows) {
+            truncated = true;
+            break;
+          }
+          if (result.rows.length < want) break;
+          if (bytes() > PRODUCT_RESULT_SOFT_BYTES) {
+            truncated = true;
+            break;
+          }
         }
-        client.release(broken ? true : undefined);
-      }
+        return { columns, rows: rows.slice(0, maxRows), truncated };
+      });
+    },
+
+    async hardeningProblems() {
+      const select = HARDENING_PROBES.map(([, probe], index) => `${probe} AS p${String(index)}`).join(', ');
+      return asReader(5000, async (client) => {
+        const result = await client.query(extended({ text: `SELECT ${select}`, rowMode: 'array' }));
+        const row = (result.rows[0] ?? []) as unknown[];
+        // A probe that is true is a power the reader should not have.
+        return HARDENING_PROBES.filter((_probe, index) => row[index] !== false).map(
+          ([name]) => `the reader can use ${name}`,
+        );
+      });
     },
     close: () => pool.end(),
   };

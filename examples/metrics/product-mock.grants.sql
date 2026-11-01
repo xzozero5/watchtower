@@ -18,15 +18,48 @@ END
 $$;
 REVOKE CREATE ON SCHEMA public FROM PUBLIC;
 
--- The functions a statement could use to loosen its own limits or to hold a connection (a lead's
--- statement runs as the reader, which has no EXECUTE on them). The executor itself needs none: it
--- sets its limits with SET LOCAL.
-REVOKE EXECUTE ON FUNCTION pg_catalog.set_config(text, text, boolean) FROM PUBLIC;
-REVOKE EXECUTE ON FUNCTION pg_catalog.pg_sleep(double precision) FROM PUBLIC;
-REVOKE EXECUTE ON FUNCTION pg_catalog.pg_sleep_for(interval) FROM PUBLIC;
-REVOKE EXECUTE ON FUNCTION pg_catalog.pg_sleep_until(timestamp with time zone) FROM PUBLIC;
-REVOKE EXECUTE ON FUNCTION pg_catalog.pg_cancel_backend(integer) FROM PUBLIC;
-REVOKE EXECUTE ON FUNCTION pg_catalog.pg_terminate_backend(integer, bigint) FROM PUBLIC;
+-- Functions. PUBLIC may execute every function by default, and a denylist of names keeps losing
+-- (pg_advisory_lock held the whole cluster at 53200, pg_logical_emit_message wrote 196 MB of WAL in a
+-- READ ONLY transaction). So the rule is by kind, not by name:
+--   1. every VOLATILE function of pg_catalog loses EXECUTE for PUBLIC, except the few that only make a
+--      value (random, gen_random_uuid, clock_timestamp, timeofday). Volatile is exactly "may have a side
+--      effect or depend on more than its arguments": locks, sequences, WAL, notifications, settings,
+--      sleeps, large objects, backend control, file reads.
+--   2. whatever its volatility, a function of these families loses it too, in any schema: advisory
+--      locks, logical decoding and replication, notify, file and directory reads, large objects,
+--      transaction ids, WAL, dblink, backend control, sleeps, set_config.
+-- Immutable and stable functions (operators, casts, aggregates, date, string, math, JSON) stay: a
+-- statement needs them, and they cannot change anything. The reader, which runs the statement, and the
+-- login are PUBLIC for this purpose; the executor needs none of the revoked ones (it uses SET LOCAL).
+DO $$
+DECLARE
+  f record;
+BEGIN
+  FOR f IN
+    SELECT p.oid::regprocedure AS signature
+    FROM pg_proc p
+    JOIN pg_namespace n ON n.oid = p.pronamespace
+    WHERE p.prokind IN ('f', 'p')
+      AND n.nspname NOT IN ('information_schema')
+      AND (
+        (n.nspname = 'pg_catalog'
+          AND p.provolatile = 'v'
+          AND p.proname NOT IN ('random', 'random_normal', 'gen_random_uuid', 'clock_timestamp', 'timeofday'))
+        OR p.proname ~ '^(pg_advisory|pg_logical|pg_replication|pg_notify|pg_read|pg_ls|pg_stat_file|pg_current_wal|pg_current_xact|pg_xact|pg_wal|pg_switch|pg_create|pg_drop|pg_promote|pg_reload|pg_rotate|pg_import|pg_export|pg_cancel|pg_terminate|pg_sleep|pg_log|txid_|lo_|dblink|set_config)'
+      )
+  LOOP
+    EXECUTE format('REVOKE EXECUTE ON FUNCTION %s FROM PUBLIC', f.signature);
+  END LOOP;
+END
+$$;
+
+-- Limits that no statement can raise: the reader has no set_config, and these are set for the login
+-- by whoever created it (a superuser; temp_file_limit is superuser-only). work_mem and the temporary
+-- file cap bound what a sort or a hash can spill to disk; the executor adds a byte cap on what it reads.
+ALTER ROLE __RO_ROLE__ SET work_mem = '16MB';
+ALTER ROLE __RO_ROLE__ SET temp_file_limit = '64MB';
+ALTER ROLE __RO_ROLE__ SET max_parallel_workers_per_gather = 0;
+
 
 GRANT USAGE ON SCHEMA public TO __READER_ROLE__;
 GRANT SELECT (id, plan, region, created_at) ON tenants TO __READER_ROLE__;

@@ -40,14 +40,23 @@ What keeps a person's statement read-only does not depend on reading it (ADR-016
 3. **A `READ ONLY` transaction** with `statement_timeout` and `lock_timeout` set by us, plus read-only and
    time limits as session defaults at connection start.
 4. **A role that can do nothing else**: the executor `SET LOCAL ROLE`s to `*_reader`, which has column-level
-   `SELECT` and nothing more: no temporary tables, nothing created, no `set_config`, no `pg_sleep`, no
-   `pg_cancel_backend`. A role can always change its own defaults, so the one that runs the statement is not
-   the login that can. The personal columns (`display_name`, `contact_email`, `submitted_by`) are not granted.
+   `SELECT` and nothing more: no temporary tables, nothing created. A role can always change its own
+   defaults, so the one that runs the statement is not the login that can. The personal columns
+   (`display_name`, `contact_email`, `submitted_by`) are not granted.
+5. **Functions are revoked by kind, not by name** (a denylist of names kept losing): every volatile
+   `pg_catalog` function except `random`, `gen_random_uuid`, `clock_timestamp`, `timeofday`, and the whole
+   families of advisory locks, logical decoding and WAL, notify, file reads, large objects, transaction ids,
+   dblink, backend control, sleeps and `set_config`. Operators, casts and aggregates stay (they must).
+6. **Resource limits no statement can raise**: `work_mem=16MB`, `temp_file_limit=64MB` on the login, and a byte
+   cap on what the executor reads (stops at 1 MB with `truncated`, drops the connection at 16 MB).
+7. **A self-check**: `hardeningProblems()` asks what the reader can still do. While it names anything,
+   ad-hoc statements answer 503 and only saved templates run. A real product database (T-208) whose owner
+   does not allow these revokes is used that way; see ADR-016, items 5c and 5d.
 
 On top of that, in code (a courtesy and a second layer, not the barrier):
 
-5. Result columns are shown only if they are on the allow-list (`DATA_COLUMN_ALLOW_LIST`, plus the
+8. Result columns are shown only if they are on the allow-list (`DATA_COLUMN_ALLOW_LIST`, plus the
    `allowedColumns` of the saved template); any other column comes back null and is listed in `masked`.
-6. Text in results goes through the redactor before it is stored on an evidence card or reaches a model (N4).
-7. Only `SELECT` / `WITH ... SELECT` pass the text check. `EXTERNAL_QUERY` is refused (po decision 2).
-8. A statement of your own (`investigate.adhoc`) is for lead and head. A saved template is edited by head and audited.
+9. Text in results goes through the redactor before it is stored on an evidence card or reaches a model (N4).
+10. Only `SELECT` / `WITH ... SELECT` pass the text check. `EXTERNAL_QUERY` is refused (po decision 2).
+11. A statement of your own (`investigate.adhoc`) is for lead and head. A saved template is edited by head and audited.
