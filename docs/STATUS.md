@@ -40,6 +40,10 @@ snapshot สั้นสำหรับ cold start อยู่ที่ `HANDOF
 
 ## Log
 
+## 2026-11-01 23:38 (Asia/Bangkok) — main thread — T-130 compose env, SMTP auth + TLS, Gmail key mount ปิด
+- test: main thread รันเองบน Windows: lint, typecheck, unit ผ่าน · integration db 256, domain 270, api 635, worker 156 · e2e 134 · full-stack 23 · compose build + up healthy (รายงาน agent) `[TESTED]`
+- ค้าง/ไม่ยืนยัน: ยังไม่ส่งเมลผ่าน SMTP จริงที่มี AUTH + TLS · มีบั๊กนาฬิกาตัวที่สามใน AC-7 แก้แล้ว
+
 ## 2026-11-01 23:05 (Asia/Bangkok) — main thread — T-111a–e Shifts backend ปิด
 - test: main thread รันเองบน Windows: lint, typecheck, unit ผ่าน · integration db 256, domain 270, api 635, worker 156 · e2e 134 · full-stack 23 `[TESTED]`
 - ค้าง/ไม่ยืนยัน: T-111f หน้าจอยังไม่ทำ · AI summary ของ brief ยังไม่ทำ · P2 สองข้อ gate เลี่ยงได้ → T-125 · erasure ADR ต้องรวม handoff/shift_note
