@@ -18,3 +18,5 @@ export * from './shifts.js';
 export * from './autonomy.js';
 export * from './credentials.js';
 export * from './views.js';
+// Phase 2 tables (T-200/T-201). One file per feature.
+export * from './alerting.js';
