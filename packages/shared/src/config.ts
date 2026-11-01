@@ -249,6 +249,26 @@ function applyGuards(env: Readonly<Record<string, unknown>>, ctx: z.RefinementCt
   // rest, so the boot is refused.
   // (A production build has its own, stricter checks below.)
   const localOnly = isLoopbackUrl(text(env, 'APP_URL') ?? '');
+
+  // The product database login (T-203c) reads customer data. On a laptop the local mock's password is
+  // fine; anywhere else (production, or an APP_URL that is not this machine) it needs a real one: a
+  // password of at least 16 characters that is not the mock's name or a placeholder.
+  const productDb = text(env, 'PRODUCT_DB_URL');
+  if (productDb !== undefined && (env.NODE_ENV === 'production' || !localOnly)) {
+    let password = '';
+    try {
+      password = decodeURIComponent(new URL(productDb).password);
+    } catch {
+      fail('PRODUCT_DB_URL', 'is not a URL');
+    }
+    if (password.length < 16 || /change-?me|product_mock|password|example/i.test(password)) {
+      fail(
+        'PRODUCT_DB_URL',
+        'needs a real password (at least 16 characters, not a placeholder) outside a local run; the mock login is for APP_URL on localhost only',
+      );
+    }
+  }
+
   if (env.NODE_ENV !== 'production' && !localOnly) {
     for (const key of ['JWT_SECRET', 'APP_ENCRYPTION_KEY'] as const) {
       const value = text(env, key);

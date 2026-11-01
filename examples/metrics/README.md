@@ -15,22 +15,39 @@ any company** (N1). A deployment replaces all of it with its own database and qu
 A database of its own, never inside the Watchtower database (so a bug in a query cannot reach
 tickets):
 
-- **docker compose**: the `product-mock-init` one-shot creates `product_mock` and the login
-  `product_mock_ro` on the same Postgres server, loads the three files above, and exits. Point the api
-  and worker at it with `PRODUCT_DB_URL=postgres://product_mock_ro:product_mock_ro@postgres:5432/product_mock`
-  (from the host: `localhost:5432`). Empty `PRODUCT_DB_URL` = the data tool has no database.
-- **tests**: `createProductMockDatabase` (`@watchtower/db/testing`) makes a throwaway copy with a
-  random read-only login, using the same files.
+- **docker compose** (behind a profile, never started by a plain `up`; no default password):
+  `PRODUCT_MOCK_RO_PASSWORD=<12+ letters and digits> docker compose --profile product-mock up product-mock-init`
+  creates `product_mock`, the login `product_mock_ro` (`NOINHERIT`) and the group `product_mock_ro_reader`
+  (which holds the column grants) on the same Postgres server, loads the files above, and exits. Point the
+  api and worker at it with `PRODUCT_DB_URL=postgres://product_mock_ro:<that password>@localhost:5432/product_mock`
+  (inside compose the host is `postgres`). Empty `PRODUCT_DB_URL` = the data tool has no database. Outside a
+  local run (`APP_URL` not localhost, or production) the config refuses a `PRODUCT_DB_URL` without a real
+  password (16+ characters).
+- **tests**: `createProductMockDatabase` (`@watchtower/db/testing`) makes a throwaway copy with a random
+  login and reader, using the same files.
 
 A database named `product_mock` is treated as **sandbox** data: results are labelled mock (N5).
 
 ## Guardrails (T-203c)
 
-1. The login can read columns, not tables; personal columns are not granted.
-2. Every statement runs in a `READ ONLY` transaction with its own `statement_timeout`, and at most
-   `maxRows + 1` rows are read (the cap is 500).
-3. Result columns are shown only if they are on the allow-list (`DATA_COLUMN_ALLOW_LIST`, plus the
+What keeps a person's statement read-only does not depend on reading it (ADR-016):
+
+1. **One statement, by protocol**: every query goes by the extended protocol, which Postgres refuses to
+   parse as more than one command (`ROLLBACK; BEGIN READ WRITE; INSERT` is a syntax error).
+2. **A cursor**: the statement is the body of `DECLARE ... CURSOR FOR`, so only a `SELECT` is accepted,
+   a trailing `--` comment cannot swallow anything we append, and `FETCH` reads at most `maxRows + 1`
+   rows while reading (cap 500), not after the server has built the result.
+3. **A `READ ONLY` transaction** with `statement_timeout` and `lock_timeout` set by us, plus read-only and
+   time limits as session defaults at connection start.
+4. **A role that can do nothing else**: the executor `SET LOCAL ROLE`s to `*_reader`, which has column-level
+   `SELECT` and nothing more: no temporary tables, nothing created, no `set_config`, no `pg_sleep`, no
+   `pg_cancel_backend`. A role can always change its own defaults, so the one that runs the statement is not
+   the login that can. The personal columns (`display_name`, `contact_email`, `submitted_by`) are not granted.
+
+On top of that, in code (a courtesy and a second layer, not the barrier):
+
+5. Result columns are shown only if they are on the allow-list (`DATA_COLUMN_ALLOW_LIST`, plus the
    `allowedColumns` of the saved template); any other column comes back null and is listed in `masked`.
-4. Text in results goes through the redactor before it is stored on an evidence card or reaches a model (N4).
-5. Only `SELECT` / `WITH ... SELECT`. `EXTERNAL_QUERY` is refused (po decision 2).
-6. A statement of your own (`investigate.adhoc`) is for lead and head. A saved template is edited by head and audited.
+6. Text in results goes through the redactor before it is stored on an evidence card or reaches a model (N4).
+7. Only `SELECT` / `WITH ... SELECT` pass the text check. `EXTERNAL_QUERY` is refused (po decision 2).
+8. A statement of your own (`investigate.adhoc`) is for lead and head. A saved template is edited by head and audited.

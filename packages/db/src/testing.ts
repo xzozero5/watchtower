@@ -119,18 +119,24 @@ export async function createProductMockDatabase(adminUrl: string): Promise<Produ
   const suffix = randomBytes(6).toString('hex');
   const name = `wt_pm_${suffix}`;
   const role = `wt_pmro_${suffix}`;
+  const reader = `${role}_reader`;
   const password = randomBytes(18).toString('hex');
   const admin = new Pool({ connectionString: adminUrl, max: 1 });
   let pool: Pool | undefined;
   try {
     await admin.query(`CREATE DATABASE ${name}`);
-    await admin.query(`CREATE ROLE ${role} LOGIN PASSWORD '${password}'`);
+    await admin.query(`CREATE ROLE ${reader} NOLOGIN`);
+    await admin.query(`CREATE ROLE ${role} LOGIN NOINHERIT PASSWORD '${password}'`);
     const ownerUrl = withCredentials(adminUrl, name);
     pool = new Pool({ connectionString: ownerUrl, max: 1 });
     const read = (file: string): Promise<string> => readFile(new URL(file, METRICS_DIR), 'utf8');
     await pool.query(await read('product-mock.schema.sql'));
     await pool.query(await read('product-mock.seed.sql'));
-    await pool.query((await read('product-mock.grants.sql')).replaceAll('__RO_ROLE__', role));
+    await pool.query(
+      (await read('product-mock.grants.sql'))
+        .replaceAll('__RO_ROLE__', role)
+        .replaceAll('__READER_ROLE__', reader),
+    );
     await pool.end();
     pool = undefined;
     return {
@@ -141,6 +147,7 @@ export async function createProductMockDatabase(adminUrl: string): Promise<Produ
         await waitForNoSessions(admin, name);
         await admin.query(`DROP DATABASE IF EXISTS ${name} WITH (FORCE)`);
         await admin.query(`DROP ROLE IF EXISTS ${role}`);
+        await admin.query(`DROP ROLE IF EXISTS ${reader}`);
         await admin.end();
       },
     };
@@ -148,6 +155,7 @@ export async function createProductMockDatabase(adminUrl: string): Promise<Produ
     await pool?.end().catch(() => undefined);
     await admin.query(`DROP DATABASE IF EXISTS ${name} WITH (FORCE)`).catch(() => undefined);
     await admin.query(`DROP ROLE IF EXISTS ${role}`).catch(() => undefined);
+    await admin.query(`DROP ROLE IF EXISTS ${reader}`).catch(() => undefined);
     await admin.end();
     throw error;
   }

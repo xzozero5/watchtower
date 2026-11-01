@@ -80,17 +80,26 @@ export const DATA_RUN_TIMEOUT_MS = 5000;
 /**
  * `[CONFIRMED]` (PRD R-5.1): Cloud Logging `entries.list` allows 60 reads a minute a project. We use
  * at most 55 so a retry or a person outside Watchtower still fits, and the AI at most 30 of those so
- * a person at a ticket can run the same query while a batch of AI runs is going. The 55 and the 30 are
- * `[ASSUMED]` (the phase-2 breakdown); the 60 is the provider's.
+ * a person at a ticket can run the same query while a batch of AI runs is going. The other way round
+ * too: people (all of them together) never take the last `aiFloorPerMinute` units, so a busy minute of
+ * clicking cannot starve the AI to nothing, and one person takes at most `personPerMinute`, so one
+ * agent cannot starve their colleagues. The 55, 30, 10 and 20 are `[ASSUMED]`; the 60 is the provider's.
  */
 export const LOGGING_RATE_BUDGET = {
   providerQuotaPerMinute: 60,
   totalPerMinute: 55,
   aiPerMinute: AI_TOOL_BUDGETS.perToolPerMinute,
+  aiFloorPerMinute: 10,
+  personPerMinute: 20,
 } as const;
 
 /** `[ASSUMED]` budget of every other system a person and the AI both reach (data, repository, metrics). */
-export const SHARED_RATE_BUDGET = { totalPerMinute: 60, aiPerMinute: 30 } as const;
+export const SHARED_RATE_BUDGET = {
+  totalPerMinute: 60,
+  aiPerMinute: 30,
+  aiFloorPerMinute: 10,
+  personPerMinute: 20,
+} as const;
 
 /** Who is asking: the AI counts against its own share as well as the total. */
 export type RateActor = 'ai' | 'human' | 'system';
@@ -100,6 +109,10 @@ export interface RateBudgetSpec {
   readonly resource: string;
   readonly totalPerMinute: number;
   readonly aiPerMinute: number;
+  /** People and the system together may not use the last this-many units of the total (0: no floor). */
+  readonly aiFloorPerMinute: number;
+  /** One person's most units a minute (0: no personal cap). */
+  readonly personPerMinute: number;
 }
 
 /** The tool names the budget knows. Others get a window of their own (`tool:<name>`). */
@@ -136,6 +149,8 @@ export function rateBudgetFor(
         resource: `logging:${project}`,
         totalPerMinute: LOGGING_RATE_BUDGET.totalPerMinute,
         aiPerMinute: Math.min(LOGGING_RATE_BUDGET.aiPerMinute, perTool),
+        aiFloorPerMinute: LOGGING_RATE_BUDGET.aiFloorPerMinute,
+        personPerMinute: LOGGING_RATE_BUDGET.personPerMinute,
       };
     case RATE_TOOL_NAMES.data:
       return { resource: `data:${project}`, ...sharedSpec(perTool) };
@@ -144,16 +159,26 @@ export function rateBudgetFor(
     case RATE_TOOL_NAMES.metrics:
       return { resource: `monitoring:${project}`, ...sharedSpec(perTool) };
     default:
-      return { resource: `tool:${tool}`, totalPerMinute: perTool, aiPerMinute: perTool };
+      // Used by the AI alone: no person, so no floor and no personal cap.
+      return {
+        resource: `tool:${tool}`,
+        totalPerMinute: perTool,
+        aiPerMinute: perTool,
+        aiFloorPerMinute: 0,
+        personPerMinute: 0,
+      };
   }
 }
 
-function sharedSpec(perTool: number): { totalPerMinute: number; aiPerMinute: number } {
+function sharedSpec(perTool: number): Omit<RateBudgetSpec, 'resource'> {
   return {
     totalPerMinute: SHARED_RATE_BUDGET.totalPerMinute,
     aiPerMinute: Math.min(SHARED_RATE_BUDGET.aiPerMinute, perTool),
+    aiFloorPerMinute: SHARED_RATE_BUDGET.aiFloorPerMinute,
+    personPerMinute: SHARED_RATE_BUDGET.personPerMinute,
   };
 }
+
 
 // --- Templates, runs and evidence cards (T-203d): the HTTP schemas ---------------------------------
 

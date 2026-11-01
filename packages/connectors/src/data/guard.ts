@@ -61,6 +61,8 @@ const FORBIDDEN_WORDS = [
   'pg_terminate_backend',
   'pg_cancel_backend',
   'set_config',
+  'nextval',
+  'setval',
   'lo_import',
   'lo_export',
   'dblink',
@@ -69,9 +71,16 @@ const FORBIDDEN_WORDS = [
 const FORBIDDEN = new RegExp(`\\b(?:${FORBIDDEN_WORDS.join('|')})\\b`, 'i');
 
 /**
- * Reduces a statement to its code: comments are removed and string literals emptied, so a word inside
- * a literal or a comment neither hides a keyword nor trips the check. A dollar-quoted string, a
- * quoted identifier that holds a quote, or an unterminated literal is refused.
+ * Reduces a statement to its code the way Postgres reads it: a `--` comment ends at a line feed or a
+ * carriage return, `/* *\/` comments nest, `'...'` and `E'...'` strings are emptied (an `E` string
+ * takes a backslash as an escape), and `"..."` identifiers are emptied too, so a word inside any of
+ * them neither hides a keyword nor trips the check. A dollar-quoted string or an unterminated
+ * literal, identifier or comment is refused.
+ *
+ * This text check is defence in depth and a courtesy (a clear message before the database is asked).
+ * It is not what keeps the data tool read-only: the executor runs one statement as a cursor in a
+ * read-only transaction under a role that can read nothing else (T-203c, ADR-016). Anything this
+ * check cannot see therefore still cannot write.
  */
 function codeOf(sql: string): string {
   let out = '';
@@ -80,20 +89,39 @@ function codeOf(sql: string): string {
     const char = sql[index] ?? '';
     const next = sql[index + 1] ?? '';
     if (char === '-' && next === '-') {
-      while (index < sql.length && sql[index] !== '\n') index += 1;
+      while (index < sql.length && sql[index] !== '\n' && sql[index] !== '\r') index += 1;
+      out += ' ';
       continue;
     }
     if (char === '/' && next === '*') {
-      const end = sql.indexOf('*/', index + 2);
-      if (end === -1) throw new ConnectorQueryRejectedError('Unterminated comment');
+      let depth = 1;
+      index += 2;
+      while (index < sql.length && depth > 0) {
+        if (sql[index] === '/' && sql[index + 1] === '*') {
+          depth += 1;
+          index += 2;
+        } else if (sql[index] === '*' && sql[index + 1] === '/') {
+          depth -= 1;
+          index += 2;
+        } else {
+          index += 1;
+        }
+      }
+      if (depth > 0) throw new ConnectorQueryRejectedError('Unterminated comment');
       out += ' ';
-      index = end + 2;
       continue;
     }
     if (char === "'") {
+      // `E'...'` (not the tail of a longer word) reads a backslash as an escape.
+      const before = out.at(-1) ?? ' ';
+      const escapes = /[eE]/.test(before) && !/[A-Za-z0-9_$]/.test(out.at(-2) ?? ' ');
       index += 1;
       let closed = false;
       while (index < sql.length) {
+        if (escapes && sql[index] === '\\') {
+          index += 2;
+          continue;
+        }
         if (sql[index] === "'" && sql[index + 1] === "'") {
           index += 2;
           continue;
@@ -109,10 +137,26 @@ function codeOf(sql: string): string {
       out += "''";
       continue;
     }
-    if (char === '$' && /[A-Za-z_]/.test(next)) {
-      throw new ConnectorQueryRejectedError('Dollar-quoted strings are not allowed');
+    if (char === '"') {
+      index += 1;
+      let closed = false;
+      while (index < sql.length) {
+        if (sql[index] === '"' && sql[index + 1] === '"') {
+          index += 2;
+          continue;
+        }
+        if (sql[index] === '"') {
+          closed = true;
+          index += 1;
+          break;
+        }
+        index += 1;
+      }
+      if (!closed) throw new ConnectorQueryRejectedError('Unterminated identifier');
+      out += '""';
+      continue;
     }
-    if (char === '$' && next === '$') {
+    if (char === '$' && (next === '$' || /[A-Za-z_]/.test(next))) {
       throw new ConnectorQueryRejectedError('Dollar-quoted strings are not allowed');
     }
     out += char;

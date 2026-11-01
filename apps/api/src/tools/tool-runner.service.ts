@@ -482,6 +482,7 @@ export class ToolRunner implements OnModuleDestroy {
       inputHash: hmacJson(this.hashKey, attempt.paramsForHash),
       mock: attempt.mock,
       actor: 'human',
+      personId: principal.userId,
     });
     if (!decision.allowed) {
       throw new RateLimitedError(Math.max(1, Math.ceil(decision.retryAfterMs / 1000)));

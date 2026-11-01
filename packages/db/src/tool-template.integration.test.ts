@@ -54,8 +54,8 @@ afterAll(async () => {
 
 const template = (name: string, extra = '') =>
   app.query<{ id: string }>(
-    `INSERT INTO tool_template (kind, name, title, body${extra === '' ? '' : ', intent_id'})
-     VALUES ('logs', $1, 'Title', 'severity>=ERROR'${extra === '' ? '' : ', $2'}) RETURNING id`,
+    `INSERT INTO tool_template (kind, name, title, body, run_by_ai${extra === '' ? '' : ', intent_id'})
+     VALUES ('logs', $1, 'Title', 'severity>=ERROR', false${extra === '' ? '' : ', $2'}) RETURNING id`,
     extra === '' ? [name] : [name, extra],
   );
 
@@ -88,6 +88,20 @@ describe('0051 tool_template', () => {
     ).toBe(CHECK_VIOLATION);
     expect(
       await code(app.query(`INSERT INTO tool_template (kind, name, title, body) VALUES ('logs', 'empty', 't', '')`)),
+    ).toBe(CHECK_VIOLATION);
+  });
+
+  it('lets the AI run only a template about the ticket\'s organization (P3)', async () => {
+    const insert = (name: string, body: string, runByAi: boolean) =>
+      app.query(
+        `INSERT INTO tool_template (kind, name, title, body, run_by_ai) VALUES ('logs', $1, 't', $2, $3)`,
+        [name, body, runByAi],
+      );
+    expect(await code(insert('ai-all-orgs', 'severity>=ERROR', true))).toBe(CHECK_VIOLATION);
+    expect(await code(insert('ai-one-org', 'labels.org={{org_id}}', true))).toBeUndefined();
+    expect(await code(insert('person-all-orgs', 'severity>=ERROR', false))).toBeUndefined();
+    expect(
+      await code(app.query(`UPDATE tool_template SET run_by_ai = true WHERE name = 'person-all-orgs'`)),
     ).toBe(CHECK_VIOLATION);
   });
 

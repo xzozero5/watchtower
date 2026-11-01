@@ -2,7 +2,7 @@ import { schema, type Database } from '@watchtower/db';
 import { rateBudgetFor, type RateActor } from '@watchtower/shared';
 import { and, eq, sql } from 'drizzle-orm';
 
-import { acquireRateBudget } from './rate-budget.js';
+import { acquireRateBudget, type RateRefusal } from './rate-budget.js';
 
 /**
  * The audit and the budget of a tool run that a person (or the system, for the status panel)
@@ -21,11 +21,13 @@ export interface HumanToolEntry {
   /** The answer came from a fake or a sandbox, not the real system. */
   readonly mock: boolean;
   readonly actor: Exclude<RateActor, 'ai'>;
+  /** The person pressing the button: one person's share of the minute is capped. Absent for the system. */
+  readonly personId?: string | undefined;
 }
 
 export type HumanToolDecision =
   | { readonly allowed: true; readonly id: string }
-  | { readonly allowed: false; readonly retryAfterMs: number };
+  | { readonly allowed: false; readonly retryAfterMs: number; readonly reason: RateRefusal };
 
 export interface HumanToolLedger {
   begin(entry: HumanToolEntry): Promise<HumanToolDecision>;
@@ -54,6 +56,7 @@ export function createHumanToolLedger(options: {
         const decision = await acquireRateBudget(tx, {
           ...rateBudgetFor(entry.tool, options.project === undefined ? {} : { project: options.project }),
           actor: entry.actor,
+          personId: entry.personId,
         });
         const base = {
           ticketId: entry.ticketId,
@@ -69,10 +72,10 @@ export function createHumanToolLedger(options: {
           await tx.insert(schema.toolExecution).values({
             ...base,
             status: 'denied',
-            errorCode: 'tool_rate',
+            errorCode: decision.reason === 'person' ? 'person_rate' : 'tool_rate',
             finishedAt: sql`now()`,
           });
-          return { allowed: false, retryAfterMs: decision.retryAfterMs };
+          return { allowed: false, retryAfterMs: decision.retryAfterMs, reason: decision.reason };
         }
         const [created] = await tx
           .insert(schema.toolExecution)

@@ -1,6 +1,6 @@
 import { schema, type Database } from '@watchtower/db';
 import type { ToolKind } from '@watchtower/shared';
-import { and, asc, eq, isNull, or, type SQL } from 'drizzle-orm';
+import { and, asc, eq, isNull, or, sql, type SQL } from 'drizzle-orm';
 
 /**
  * Reads of the saved investigation templates (T-203d). Writing them is a head's act with its own
@@ -93,6 +93,8 @@ export async function templateForAi(
       eq(schema.toolTemplate.kind, kind),
       eq(schema.toolTemplate.active, true),
       eq(schema.toolTemplate.runByAi, true),
+      // Only a template about the ticket's organization (also a CHECK of the table).
+      sql`position('{{org_id}}' in ${schema.toolTemplate.body}) > 0`,
     ),
   ).limit(1);
   return row ?? null;

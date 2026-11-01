@@ -37,6 +37,12 @@ describe('assertReadOnlySql', () => {
     ['a dollar-quoted string', 'SELECT $$ x $$'],
     ['an unterminated string', "SELECT 'abc"],
     ['not a select', 'SHOW ALL'],
+    ['a comment that a carriage return ends', 'SELECT 1 --x\r; DELETE FROM t'],
+    ['an escaped quote in an E string', "SELECT E'\\'' ; DELETE FROM t"],
+    ['a quote as a quoted identifier', `SELECT 1 AS "'"; DELETE FROM t`],
+    ['a nested comment', 'SELECT 1 /* a /* b */ c */ ; DELETE FROM t'],
+    ['an unterminated quoted identifier', 'SELECT 1 AS "open'],
+    ['nextval', "SELECT nextval('s')"],
     ['an empty statement', ''],
     ['a statement that is too long', `SELECT ${'1,'.repeat(5000)}1`],
   ])('refuses %s', (_name, sql) => {

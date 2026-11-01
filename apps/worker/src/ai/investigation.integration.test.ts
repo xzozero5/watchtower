@@ -109,7 +109,8 @@ beforeAll(async () => {
 
   const [org] = await owner()
     .insert(schema.organization)
-    .values({ name: 'Example Org' })
+    // The fixture log lines carry this id in their org label (examples/tools/fixtures.json).
+    .values({ id: '11111111-1111-4111-8111-111111111111', name: 'Example Org' })
     .returning();
   orgId = org?.id ?? '';
   const [staff] = await owner()
@@ -143,14 +144,14 @@ beforeAll(async () => {
         name: 'delivery-warnings',
         title: 'Delivery warnings and errors',
         intentId: webhookIntent?.id ?? null,
-        body: 'service="example-delivery" severity>=WARNING',
+        body: 'service="example-delivery" labels.org_ref={{org_id}} severity>=WARNING',
       },
       {
         kind: 'data',
         name: 'webhook_not_received',
         title: 'Deliveries per hour',
         intentId: webhookIntent?.id ?? null,
-        body: 'SELECT hour, deliveries, failed FROM deliveries',
+        body: 'SELECT hour, deliveries, failed FROM deliveries WHERE org = {{org_id}}',
       },
     ]);
   await owner()

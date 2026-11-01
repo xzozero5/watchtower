@@ -39,31 +39,47 @@ async function usage(project: string): Promise<{ total: number; ai: number }> {
 }
 
 describe('the numbers', () => {
-  it('uses 55 of the provider\'s 60 a minute, and 30 of them for the AI', () => {
+  it('uses 55 of the provider\'s 60 a minute, 30 of them for the AI at most, 10 held for the AI, 20 a person', () => {
     expect(LOGGING_RATE_BUDGET).toEqual({
       providerQuotaPerMinute: 60,
       totalPerMinute: 55,
       aiPerMinute: 30,
+      aiFloorPerMinute: 10,
+      personPerMinute: 20,
     });
-    expect(logging('p')).toEqual({ resource: 'logging:p', totalPerMinute: 55, aiPerMinute: 30 });
-    // The AI-only tools keep the per-tool limit they had before (T-108).
+    expect(logging('p')).toEqual({
+      resource: 'logging:p',
+      totalPerMinute: 55,
+      aiPerMinute: 30,
+      aiFloorPerMinute: 10,
+      personPerMinute: 20,
+    });
+    // The AI-only tools keep the per-tool limit they had before (T-108); no person uses them.
     expect(rateBudgetFor('kb_search')).toEqual({
       resource: 'tool:kb_search',
       totalPerMinute: AI_TOOL_BUDGETS.perToolPerMinute,
       aiPerMinute: AI_TOOL_BUDGETS.perToolPerMinute,
+      aiFloorPerMinute: 0,
+      personPerMinute: 0,
     });
   });
 });
 
 describe('acquire', () => {
-  it('grants exactly the total, however many callers arrive at once', async () => {
+  it('grants people exactly the total less the AI floor, however many arrive at once, and the AI the rest', async () => {
     const project = `race-${randomBytes(3).toString('hex')}`;
     const results = await Promise.all(Array.from({ length: 120 }, () => take(project, 'human')));
-    expect(results.filter((r) => r.granted)).toHaveLength(LOGGING_RATE_BUDGET.totalPerMinute);
-    expect(await usage(project)).toEqual({ total: 55, ai: 0 });
+    const floor = LOGGING_RATE_BUDGET.aiFloorPerMinute;
+    expect(results.filter((r) => r.granted)).toHaveLength(LOGGING_RATE_BUDGET.totalPerMinute - floor);
+    expect(await usage(project)).toEqual({ total: 45, ai: 0 });
     const refused = results.find((r): r is Extract<RateDecision, { granted: false }> => !r.granted);
-    expect(refused).toMatchObject({ granted: false, reason: 'total' });
+    expect(refused).toMatchObject({ granted: false, reason: 'people' });
     expect(refused?.retryAfterMs).toBeGreaterThan(0);
+    // The floor is the AI's: ten more units, then the whole budget is used.
+    const ai = await Promise.all(Array.from({ length: 20 }, () => take(project, 'ai')));
+    expect(ai.filter((r) => r.granted)).toHaveLength(floor);
+    expect(await usage(project)).toEqual({ total: 55, ai: 10 });
+    expect(ai.find((r) => !r.granted)).toMatchObject({ reason: 'total' });
   });
 
   it('keeps the AI to its share when AI and people arrive together, and people use what is left', async () => {
@@ -73,12 +89,39 @@ describe('acquire', () => {
     const now = await usage(project);
     expect(now.total).toBe(55);
     expect(now.ai).toBeLessThanOrEqual(30);
+    // However the arrivals interleave, the AI got at least its floor.
+    expect(now.ai).toBeGreaterThanOrEqual(10);
     const grantedAi = results.filter((r, i) => r.granted && actors[i] === 'ai').length;
     const grantedHuman = results.filter((r, i) => r.granted && actors[i] === 'human').length;
     expect(grantedAi).toBe(now.ai);
     expect(grantedAi + grantedHuman).toBe(55);
-    // 80 people asked for 55 units: they got every unit the AI left over.
     expect(grantedHuman).toBe(55 - grantedAi);
+    expect(grantedHuman).toBeLessThanOrEqual(45);
+  });
+
+  it('caps one person at 20 a minute and leaves the rest to others, in parallel too', async () => {
+    const project = `person-${randomBytes(3).toString('hex')}`;
+    const ann = randomUUID();
+    const bob = randomUUID();
+    const mine = (id: string) =>
+      takeRateBudget(env.database.db, { ...logging(project), actor: 'human', personId: id });
+    const results = await Promise.all(Array.from({ length: 40 }, () => mine(ann)));
+    expect(results.filter((r) => r.granted)).toHaveLength(20);
+    expect(results.find((r) => !r.granted)).toMatchObject({ reason: 'person' });
+    // Ann used 20 of the 45 that people may take; Bob gets his 20 and then the floor stops the 46th.
+    const bobs = await Promise.all(Array.from({ length: 40 }, () => mine(bob)));
+    expect(bobs.filter((r) => r.granted)).toHaveLength(20);
+    expect(await usage(project)).toEqual({ total: 40, ai: 0 });
+    // A third person finds 5 units left for people, and the AI's floor untouched.
+    const cy = randomUUID();
+    const cys = await Promise.all(Array.from({ length: 10 }, () => mine(cy)));
+    expect(cys.filter((r) => r.granted)).toHaveLength(5);
+    expect(cys.find((r) => !r.granted)).toMatchObject({ reason: 'people' });
+    const after = await owner().query<{ resource: string }>(
+      `SELECT DISTINCT resource FROM rate_budget_window WHERE resource LIKE 'person_logging:%' AND resource LIKE $1`,
+      [`%${ann}`],
+    );
+    expect(after.rows).toHaveLength(1);
   });
 
   it('refuses the AI at its share while a person still gets a unit (the AI has the lower priority)', async () => {
@@ -93,7 +136,7 @@ describe('acquire', () => {
 
   it('is a sliding window on the database clock: units come back a minute later, not before', async () => {
     const project = `slide-${randomBytes(3).toString('hex')}`;
-    for (let i = 0; i < 55; i += 1) await take(project, 'human');
+    for (let i = 0; i < 45; i += 1) await take(project, 'human');
     expect((await take(project, 'human')).granted).toBe(false);
     // 30 seconds on: the same units are still inside the window.
     await owner().query(
@@ -122,7 +165,7 @@ describe('acquire', () => {
   it('keeps one window per resource and per project', async () => {
     const a = `iso-a-${randomBytes(3).toString('hex')}`;
     const b = `iso-b-${randomBytes(3).toString('hex')}`;
-    for (let i = 0; i < 55; i += 1) await take(a, 'human');
+    for (let i = 0; i < 45; i += 1) await take(a, 'human');
     expect((await take(a, 'human')).granted).toBe(false);
     expect((await take(b, 'human')).granted).toBe(true);
     const data = await takeRateBudget(env.database.db, { ...rateBudgetFor('bigquery_query', { project: a }), actor: 'human' });

@@ -129,7 +129,9 @@ async function newTemplate(
   body: Record<string, unknown>,
   who: Persona = head,
 ): Promise<ToolTemplate> {
-  const response = await call<ToolTemplate>(who, 'POST', '/v1/tools/templates', body);
+  // A template the AI may run must be about the organization of the ticket; the others are for people.
+  const withDefault = { runByAi: String(body.body).includes('{{org_id}}'), ...body };
+  const response = await call<ToolTemplate>(who, 'POST', '/v1/tools/templates', withDefault);
   if (response.status !== 201) throw new Error(`template: ${JSON.stringify(response.body)}`);
   return response.body;
 }
@@ -203,6 +205,7 @@ describe('templates (head, audited)', () => {
     const patched = await call<ToolTemplate>(head, 'PATCH', `/v1/tools/templates/${created.id}`, {
       body: 'service="example-delivery" severity>=ERROR',
       title: 'Delivery errors (all)',
+      runByAi: false,
     });
     expect(patched.status).toBe(200);
     expect(patched.body).toMatchObject({ placeholders: [], title: 'Delivery errors (all)' });
@@ -232,8 +235,26 @@ describe('templates (head, audited)', () => {
     expect((await call(head, 'POST', '/v1/tools/templates', { kind: 'logs', name: 'bad-intent', title: 'x', body: 'severity>=ERROR', intentKey: 'no_such_intent' })).status).toBe(400);
     expect((await call(head, 'POST', '/v1/tools/templates', { kind: 'logs', name: 'bad-cols', title: 'x', body: 'severity>=ERROR', allowedColumns: ['id'] })).status).toBe(400);
     const first = await newTemplate({ kind: 'logs', name: 'dup-name', title: 'x', body: 'severity>=ERROR' });
-    expect((await call(head, 'POST', '/v1/tools/templates', { kind: 'logs', name: 'dup-name', title: 'y', body: 'severity>=ERROR' })).status).toBe(409);
+    expect((await call(head, 'POST', '/v1/tools/templates', { kind: 'logs', name: 'dup-name', title: 'y', body: 'severity>=ERROR', runByAi: false })).status).toBe(409);
     await call(head, 'DELETE', `/v1/tools/templates/${first.id}`);
+  });
+
+  it('refuses a template for the AI that is not about the ticket\'s organization (P3), at save and in the table', async () => {
+    const aiBody = { kind: 'logs', title: 'x', intentKey, body: 'service="example-delivery" severity>=ERROR', runByAi: true };
+    expect((await call(head, 'POST', '/v1/tools/templates', { ...aiBody, name: 'ai-all-orgs' })).status).toBe(400);
+    const personal = await newTemplate({ ...aiBody, name: `person-only-${randomBytes(2).toString('hex')}`, runByAi: false });
+    expect(personal.runByAi).toBe(false);
+    // Turning the AI on for it, without {{org_id}}, is refused too; with it, accepted.
+    expect((await call(head, 'PATCH', `/v1/tools/templates/${personal.id}`, { runByAi: true })).status).toBe(400);
+    const both = await call<ToolTemplate>(head, 'PATCH', `/v1/tools/templates/${personal.id}`, {
+      runByAi: true,
+      body: 'service="example-delivery" labels.org_ref={{org_id}}',
+    });
+    expect(both.status).toBe(200);
+    // And the table itself says no, whatever the API does.
+    await expect(
+      owner().query(`UPDATE tool_template SET body = 'severity>=ERROR' WHERE id = $1`, [personal.id]),
+    ).rejects.toMatchObject({ code: '23514' });
   });
 
   it('lists by intent and kind', async () => {
@@ -494,7 +515,10 @@ describe('ad-hoc runs (lead, head)', () => {
     expect((await call(head, 'POST', '/v1/investigate/adhoc/logs', { filter: '' })).status).toBe(400);
     expect((await call(head, 'POST', '/v1/investigate/adhoc/logs', { filter: '', ticketId: ticketRef, incidentId: randomUUID() })).status).toBe(400);
     // Nothing was written: the invented product data is all still there.
-    const check = createProductDbExecutor({ url: mock.ownerUrl });
+    const check = createProductDbExecutor({
+      url: mock.ownerUrl,
+      readerRole: decodeURIComponent(new URL(mock.ownerUrl).username),
+    });
     const jobs = await check.execute({ sql: 'SELECT count(*)::int AS n FROM jobs', params: [], maxRows: 1, timeoutMs: 1000 });
     await check.close();
     expect(jobs.rows).toEqual([[200]]);
@@ -554,6 +578,29 @@ describe('the shared rate budget (N2)', () => {
     // Logs are used up, the data tool has a budget of its own.
     const data = await newTemplate({ kind: 'data', name: `budget-data-${randomBytes(2).toString('hex')}`, title: 'Data', body: 'SELECT 1 AS n' });
     expect((await call(agent, 'POST', `/v1/tickets/${ticketRef}/tools/run`, { templateId: data.id })).status).toBe(201);
+    await clearBudget();
+  });
+
+  it('caps one person at 20 a minute so one agent cannot starve the others, and holds the last 10 units for the AI', async () => {
+    await clearBudget();
+    const template = await newTemplate({ kind: 'logs', name: `person-cap-${randomBytes(2).toString('hex')}`, title: 'Cap', intentKey, body: LOG_FILTER });
+    const run = (who: Persona) => call<ApiErrorBody>(who, 'POST', `/v1/tickets/${ticketRef}/tools/run`, { templateId: template.id });
+    for (let i = 0; i < 20; i += 1) expect((await run(agent)).status, `run ${String(i)}`).toBe(201);
+    const before = logs.queries.length;
+    expect((await run(agent)).status).toBe(429);
+    expect(logs.queries).toHaveLength(before);
+    // A colleague still has the rest of the minute.
+    expect((await run(lead)).status).toBe(201);
+    // People together stop 10 units short of the total, which stay for the AI (55 - 10 = 45).
+    await owner().query(
+      `INSERT INTO rate_budget_window (resource, slot, total, ai) VALUES ('logging:default', date_trunc('second', clock_timestamp()) - interval '30 seconds', 23, 0)`,
+    );
+    expect((await run(head)).status).toBe(201);
+    expect((await run(head)).status).toBe(429);
+    const used = await owner().query<{ total: number; ai: number }>(
+      `SELECT sum(total)::int AS total, sum(ai)::int AS ai FROM rate_budget_window WHERE resource = 'logging:default'`,
+    );
+    expect(used.rows[0]).toEqual({ total: 45, ai: 0 });
     await clearBudget();
   });
 

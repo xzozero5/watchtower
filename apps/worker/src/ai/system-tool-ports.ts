@@ -54,6 +54,9 @@ async function ticketParams(
   body: string,
   ticketId: string,
 ): Promise<Record<string, string> | null> {
+  // The AI runs only a template about the ticket's organization (also a CHECK of the table, and
+  // `templateForAi` leaves the others out): defence in depth if one reaches here.
+  if (!templatePlaceholders(body).includes('org_id')) return null;
   if (templateInputParams(body).length > 0) return null;
   const orgId = await orgOfTicket(db, ticketId);
   if (orgId === null) return null;
@@ -77,7 +80,7 @@ export function createLogsToolPort(
       const template = await templateForAi(db, input.intentKey, 'logs');
       if (template === null) return { items: [], note: 'No log template for this intent.' };
       const params = await ticketParams(db, template.body, input.ticketId);
-      if (params === null) return { items: [], note: 'The log template needs input from a person.' };
+      if (params === null) return { items: [], note: 'The log template cannot run without a person.' };
       const run = await runLogsTemplate(logs, {
         body: template.body,
         params,
@@ -120,7 +123,7 @@ export function createDataToolPort(
       }
       const params = await ticketParams(db, template.body, input.ticketId);
       if (params === null) {
-        return { columns: [], items: [], note: 'The query template needs input from a person.' };
+        return { columns: [], items: [], note: 'The query template cannot run without a person.' };
       }
       const result = await runDataTemplate(data(template.allowedColumns), {
         name: template.name,

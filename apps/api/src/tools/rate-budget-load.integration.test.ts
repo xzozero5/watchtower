@@ -143,6 +143,10 @@ describe('with the shared budget in front (AC-5 load test)', () => {
     expect(logs.served).toBe(LOGGING_RATE_BUDGET.totalPerMinute);
     expect(count(results, 'served')).toBe(LOGGING_RATE_BUDGET.totalPerMinute);
     expect(count(ai, 'served')).toBeLessThanOrEqual(LOGGING_RATE_BUDGET.aiPerMinute);
+    expect(count(ai, 'served')).toBeGreaterThanOrEqual(LOGGING_RATE_BUDGET.aiFloorPerMinute);
+    expect(count(people, 'served')).toBeLessThanOrEqual(
+      LOGGING_RATE_BUDGET.totalPerMinute - LOGGING_RATE_BUDGET.aiFloorPerMinute,
+    );
     // People got every unit the AI did not use.
     expect(count(people, 'served')).toBe(LOGGING_RATE_BUDGET.totalPerMinute - count(ai, 'served'));
 
@@ -167,6 +171,9 @@ describe('with the shared budget in front (AC-5 load test)', () => {
     );
     const results = await Promise.all(Array.from({ length: 80 }, () => c.human()));
     expect(count(results, '429')).toBe(0);
-    expect(count(results, 'served')).toBe(LOGGING_RATE_BUDGET.totalPerMinute);
+    // Only people ask now, and they never take the last 10 units: those are the AI's.
+    expect(count(results, 'served')).toBe(
+      LOGGING_RATE_BUDGET.totalPerMinute - LOGGING_RATE_BUDGET.aiFloorPerMinute,
+    );
   });
 });

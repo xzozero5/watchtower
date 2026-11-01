@@ -199,6 +199,7 @@ export {
   takeRateBudget,
   type AcquireInput,
   type RateDecision,
+  type RateRefusal,
   type RateTx,
 } from './tools/rate-budget.js';
 export {

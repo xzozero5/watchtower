@@ -67,7 +67,7 @@ export class ToolTemplates {
   }
 
   async create(input: CreateToolTemplate, actorId: string): Promise<ToolTemplate> {
-    this.check(input.kind, input.body, input.allowedColumns);
+    this.check(input.kind, input.body, input.allowedColumns, input.runByAi);
     const id = await this.uow.run(async ({ tx }) => {
       const intentId = await this.intentId(tx, input.intentKey);
       try {
@@ -115,7 +115,12 @@ export class ToolTemplates {
     const current = await getToolTemplate(this.database.db, id);
     if (current === null) throw notFound('No such template');
     const kind = current.kind as 'logs' | 'data';
-    this.check(kind, input.body ?? current.body, input.allowedColumns ?? current.allowedColumns);
+    this.check(
+      kind,
+      input.body ?? current.body,
+      input.allowedColumns ?? current.allowedColumns,
+      input.runByAi ?? current.runByAi,
+    );
     await this.uow.run(async ({ tx }) => {
       const intentId =
         input.intentKey === undefined ? undefined : await this.intentId(tx, input.intentKey);
@@ -175,7 +180,17 @@ export class ToolTemplates {
     return toToolTemplate(row);
   }
 
-  private check(kind: 'logs' | 'data', body: string, allowedColumns: readonly string[]): void {
+  private check(
+    kind: 'logs' | 'data',
+    body: string,
+    allowedColumns: readonly string[],
+    runByAi: boolean,
+  ): void {
+    // The AI runs a template without a person choosing its parameters, so it must be about the ticket's
+    // organization; one that is not can only be for a person to press (runByAi: false).
+    if (runByAi && !templatePlaceholders(body).includes('org_id')) {
+      throw badRequest('A template the AI runs must use {{org_id}}; set runByAi to false for one that does not');
+    }
     if (kind === 'logs' && allowedColumns.length > 0) {
       throw badRequest('allowedColumns is for data templates');
     }

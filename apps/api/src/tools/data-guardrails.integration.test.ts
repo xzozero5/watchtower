@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 import {
+  assertReadOnlySql,
   bindSqlTemplate,
   ConnectorQueryRejectedError,
   ConnectorTimeoutError,
@@ -34,7 +35,11 @@ const ask = (sql: string, params: (string | number)[] = [], maxRows = 100, timeo
 beforeAll(async () => {
   mock = await createProductMockDatabase(adminUrl);
   executor = createProductDbExecutor({ url: mock.readOnlyUrl });
-  ownerExecutor = createProductDbExecutor({ url: mock.ownerUrl });
+  // The owner may be anyone: it "runs as" itself, which is what lets the read-only transaction be tested alone.
+  ownerExecutor = createProductDbExecutor({
+    url: mock.ownerUrl,
+    readerRole: decodeURIComponent(new URL(mock.ownerUrl).username),
+  });
   client = createGuardedSqlClient(executor, { allowColumns: new Set(DATA_COLUMN_ALLOW_LIST) });
 });
 afterAll(async () => {
@@ -103,7 +108,12 @@ describe('read-only, timeout, row cap', () => {
 
   it('stops a statement at statement_timeout and says so', async () => {
     await expect(
-      executor.execute({ sql: `SELECT pg_sleep(3)`, params: [], maxRows: 1, timeoutMs: 200 }),
+      executor.execute({
+        sql: `SELECT count(*) FROM generate_series(1, 400000000) AS g (x) WHERE x % 7 = 0`,
+        params: [],
+        maxRows: 1,
+        timeoutMs: 200,
+      }),
     ).rejects.toMatchObject({ code: '57014' });
     // Through the client the same limit is a typed error, and the heavy statement never runs past it.
     const started = Date.now();
@@ -177,8 +187,141 @@ describe('statements that are not reads, and EXTERNAL_QUERY', () => {
     await expect(ask(sql)).rejects.toBeInstanceOf(ConnectorQueryRejectedError);
   });
 
-  it('left the data untouched', async () => {
+  it('left the data untouched (before the hostile ones below)', async () => {
     const counts = await ownerExecutor.execute({ sql: `SELECT (SELECT count(*) FROM jobs)::int AS j, (SELECT count(*) FROM tenants)::int AS t`, params: [], maxRows: 1, timeoutMs: 1000 });
     expect(counts.rows).toEqual([[200, 5]]);
+  });
+});
+
+// P1 of the T-203 security review. A lead's statement used to get past the text check with `--x\r`,
+// `E'\''`, `"'"` or a nested comment, and, sent by the simple protocol, `ROLLBACK; BEGIN READ WRITE;
+// INSERT` ran. Nothing below depends on the text check: every payload goes straight to the executor
+// (no guard in front) on a real Postgres, and then the database is asked whether anything changed.
+describe('hostile statements (P1)', () => {
+  const login = (): string => decodeURIComponent(new URL(mock.readOnlyUrl).username);
+  const INSERT = `INSERT INTO tenants (id, display_name, contact_email, plan, region) VALUES ('pwned','x','x','x','x')`;
+
+  const PAYLOADS: readonly (readonly [string, string])[] = [
+    ['ROLLBACK; BEGIN READ WRITE; INSERT', `SELECT 1; ROLLBACK; BEGIN READ WRITE; ${INSERT}`],
+    ['a line comment ended by a carriage return', `SELECT 1 --x\r; ROLLBACK; BEGIN READ WRITE; ${INSERT}`],
+    ['a line comment ended by a carriage return and no space', `SELECT 1 --\r;${INSERT}`],
+    ["an escaped quote in an E string", `SELECT E'\\'' ; ${INSERT}`],
+    ['a quote as a quoted identifier', `SELECT 1 AS "'"; ${INSERT}`],
+    ['a nested comment', `SELECT 1 /* a /* b */ c */ ; ${INSERT}`],
+    ['a nested comment that closes early for a naive reader', `SELECT 1 /* /* */ */ ; ${INSERT}`],
+    ['ALTER ROLE on itself after a SELECT', `SELECT 1; ALTER ROLE LOGIN_ROLE SET default_transaction_read_only = off`],
+    ['ALTER ROLE on itself, alone', `ALTER ROLE LOGIN_ROLE SET statement_timeout = 0`],
+    ['a temporary table', `CREATE TEMP TABLE pwn AS SELECT 1 AS x`],
+    ['a temporary table after a SELECT', `SELECT 1; CREATE TEMP TABLE pwn (x int)`],
+    ['a table in public', `CREATE TABLE public.pwn (x int)`],
+    ['a data-modifying WITH', `WITH d AS (DELETE FROM jobs RETURNING id) SELECT id FROM d`],
+    ['an INSERT as a WITH', `WITH i AS (${INSERT} RETURNING id) SELECT id FROM i`],
+    ['SET LOCAL after a SELECT', `SELECT 1; SET LOCAL statement_timeout = 0`],
+    ['set_config of the statement timeout', `SELECT set_config('statement_timeout', '0', true)`],
+    ['set_config of the role', `SELECT set_config('role', 'none', true)`],
+    ['set_config of the read-only flag', `SELECT set_config('transaction_read_only', 'off', true)`],
+    ['pg_sleep', `SELECT pg_sleep(30)`],
+    ['nextval', `SELECT nextval('jobs_id_seq')`],
+    ['DO', `DO $x$ BEGIN DELETE FROM jobs; END $x$`],
+    ['COPY to a program', `COPY (SELECT 1) TO PROGRAM 'echo pwned'`],
+    ['a second DECLARE', `SELECT 1; DECLARE other CURSOR FOR SELECT 2`],
+  ];
+
+  /** The payloads that name the login get its real name. */
+  const payloads = (): readonly (readonly [string, string])[] =>
+    PAYLOADS.map(([name, sql]) => [name, sql.replace('LOGIN_ROLE', login())] as const);
+
+  async function nothingChanged(): Promise<void> {
+    // The owner looks: no row added or removed, no table, no role setting kept off.
+    const state = await ownerExecutor.execute({
+      sql: `SELECT (SELECT count(*) FROM tenants WHERE id = 'pwned')::int AS pwned,
+                   (SELECT count(*) FROM jobs)::int AS jobs,
+                   (SELECT count(*) FROM tenants)::int AS tenants,
+                   (SELECT count(*) FROM pg_class WHERE relname = 'pwn')::int AS tables,
+                   (SELECT count(*) FROM pg_roles WHERE rolname = $1
+                      AND rolconfig::text LIKE '%default_transaction_read_only=on%'
+                      AND rolconfig::text LIKE '%statement_timeout=15s%')::int AS settings_kept`,
+      params: [login()],
+      maxRows: 1,
+      timeoutMs: 2000,
+    });
+    expect(state.rows).toEqual([[0, 200, 5, 0, 1]]);
+  }
+
+  it('refuses every payload at the database, whatever the text check would say, and nothing changed', async () => {
+    for (const [name, sql] of payloads()) {
+      const error = await executor
+        .execute({ sql, params: [], maxRows: 10, timeoutMs: 2000 })
+        .catch((caught: unknown) => caught);
+      expect(error, name).toBeInstanceOf(Error);
+      expect((error as { code?: string }).code, name).toMatch(/^[0-9A-Z]{5}$/);
+    }
+    await nothingChanged();
+  });
+
+  it('does nothing through the guarded client either', async () => {
+    for (const [name, sql] of payloads()) {
+      await expect(ask(sql), name).rejects.toBeInstanceOf(Error);
+    }
+    await nothingChanged();
+  });
+
+  it('runs every statement as the reader, read-only, with the limits we set', async () => {
+    const who = await executor.execute({
+      sql: `SELECT current_user::text, current_setting('transaction_read_only'), current_setting('statement_timeout'),
+                   has_database_privilege(current_user, current_database(), 'TEMPORARY'),
+                   has_schema_privilege(current_user, 'public', 'CREATE')`,
+      params: [],
+      maxRows: 1,
+      timeoutMs: 2300,
+    });
+    expect(who.rows).toEqual([[`${login()}_reader`, 'on', '2300ms', false, false]]);
+    // The login itself is NOINHERIT and owns nothing, and the pool still serves after all of the above.
+    const meta = await ownerExecutor.execute({
+      sql: `SELECT rolinherit, rolsuper, rolcreaterole, rolcreatedb, rolreplication,
+                   (SELECT count(*) FROM pg_class c WHERE c.relowner = r.oid)::int
+            FROM pg_roles r WHERE rolname = $1`,
+      params: [login()],
+      maxRows: 1,
+      timeoutMs: 2000,
+    });
+    expect(meta.rows).toEqual([[false, false, false, false, false, 0]]);
+  });
+
+  it('applies the row cap while reading: a comment cannot cut it, and the server does not build the rest', async () => {
+    const before = process.memoryUsage().rss;
+    const started = Date.now();
+    const result = await executor.execute({
+      sql: `SELECT x, repeat('y', 200) AS filler FROM generate_series(1, 30000000) AS g (x) -- cuts any LIMIT appended after it`,
+      params: [],
+      maxRows: 20,
+      timeoutMs: 10_000,
+    });
+    expect(result.rows).toHaveLength(20);
+    expect(result.truncated).toBe(true);
+    expect(Date.now() - started).toBeLessThan(5000);
+    expect(process.memoryUsage().rss - before).toBeLessThan(100 * 1024 * 1024);
+    // A block comment left open is a syntax error, not a way to swallow the rest.
+    await expect(
+      executor.execute({ sql: `SELECT 1 /* open`, params: [], maxRows: 1, timeoutMs: 1000 }),
+    ).rejects.toMatchObject({ code: '42601' });
+  });
+
+  it('the text guard reads the payloads the way Postgres does, as a courtesy in front', () => {
+    for (const [name, sql] of payloads()) {
+      expect(() => {
+        assertReadOnlySql(sql);
+      }, name).toThrow(ConnectorQueryRejectedError);
+    }
+    // And does not refuse a harmless statement that carries the same marks.
+    for (const fine of [
+      `SELECT 'it''s' AS a -- a comment\r`,
+      `SELECT E'\\'' AS a`,
+      `SELECT 1 AS "it's" /* a /* nested */ comment */`,
+    ]) {
+      expect(() => {
+        assertReadOnlySql(fine);
+      }, fine).not.toThrow();
+    }
   });
 });

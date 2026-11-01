@@ -31,7 +31,10 @@ CREATE TABLE tool_template (
   CONSTRAINT tool_template_name_check CHECK (name ~ '^[a-z][a-z0-9_-]{1,60}$'),
   CONSTRAINT tool_template_title_check CHECK (length(title) BETWEEN 1 AND 120),
   CONSTRAINT tool_template_body_check CHECK (length(body) BETWEEN 1 AND 4000),
-  CONSTRAINT tool_template_name_key UNIQUE (kind, name)
+  CONSTRAINT tool_template_name_key UNIQUE (kind, name),
+  -- The AI runs a template on its own, so the template must be about the ticket's organization: without
+  -- {{org_id}} it would read every customer's rows or lines (P3 of the T-203 security review).
+  CONSTRAINT tool_template_ai_org_check CHECK (NOT run_by_ai OR position('{{org_id}}' in body) > 0)
 );
 CREATE INDEX tool_template_intent_idx ON tool_template (intent_id) WHERE active;
 
