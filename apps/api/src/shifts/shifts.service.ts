@@ -7,6 +7,7 @@ import {
   addDaysToDateKey,
   crossesMidnight,
   isGateOpen,
+  isHandoffRequiredPriority,
   lateMinutes,
   localDateKeyOf,
   pickRosterWindow,
@@ -24,9 +25,11 @@ import {
   type ShiftOverview,
   type ShiftSession,
   type ShiftStatus,
+  type TicketPriority,
   type UpdateShiftDefinition,
 } from '@watchtower/shared';
 import { and, asc, eq, gte, inArray, isNull, sql } from 'drizzle-orm';
+import { alias } from 'drizzle-orm/pg-core';
 
 import { AuditService } from '../audit/audit.service.js';
 import { badRequest, conflict, forbidden, notFound } from '../auth/http-errors.js';
@@ -567,17 +570,61 @@ export class ShiftsService {
         overdue: now.getTime() - confirmed.getTime() > alertMs,
       };
     });
-    const [questions] = await db
-      .select({ n: sql<number>`count(*)::int` })
+    // A question counts as acknowledged, but until it is answered (accepted or reassigned) nobody
+    // owns the item. For P1 and P2 tickets that is shown to the lead, overdue after the same 30
+    // minutes, counted from the question. Any confirmed handoff counts, named recipient or not.
+    const askers = alias(schema.users, 'asker');
+    const asked = await db
+      .select({
+        itemId: schema.handoffItem.id,
+        handoffId: schema.handoff.id,
+        title: schema.handoffItem.title,
+        ticketNumber: schema.ticket.number,
+        priority: schema.ticket.priority,
+        fromId: schema.handoff.fromUserId,
+        fromName: schema.users.name,
+        askerId: schema.handoffItem.ackBy,
+        askerName: askers.name,
+        askedAt: schema.handoffItem.ackAt,
+      })
       .from(schema.handoffItem)
       .innerJoin(schema.handoff, eq(schema.handoff.id, schema.handoffItem.handoffId))
+      .innerJoin(schema.users, eq(schema.users.id, schema.handoff.fromUserId))
+      .leftJoin(schema.ticket, eq(schema.ticket.id, schema.handoffItem.ticketId))
+      .leftJoin(askers, eq(askers.id, schema.handoffItem.ackBy))
       .where(
         and(
           eq(schema.handoffItem.ackStatus, 'question'),
           eq(schema.handoff.status, 'confirmed'),
           gte(schema.handoff.confirmedAt, since),
         ),
-      );
+      )
+      .orderBy(asc(schema.handoffItem.ackAt));
+    const questionItems = asked
+      .flatMap((row) =>
+        row.ticketNumber !== null &&
+        row.priority !== null &&
+        isHandoffRequiredPriority(row.priority)
+          ? [{ ...row, ticketNumber: row.ticketNumber, priority: row.priority }]
+          : [],
+      )
+      .map((row) => {
+        const askedAt = row.askedAt ?? now;
+        return {
+          itemId: row.itemId,
+          handoffId: row.handoffId,
+          title: row.title,
+          ticketKey: this.ticketKey(row.ticketNumber),
+          priority: row.priority as TicketPriority,
+          from: { id: row.fromId, name: row.fromName },
+          askedBy:
+            row.askerId !== null && row.askerName !== null
+              ? { id: row.askerId, name: row.askerName }
+              : null,
+          askedAt: askedAt.toISOString(),
+          overdue: now.getTime() - askedAt.getTime() > alertMs,
+        };
+      });
     return {
       timezone,
       generatedAt: now.toISOString(),
@@ -588,7 +635,11 @@ export class ShiftsService {
         overdue: items.filter((item) => item.overdue).length,
         items,
       },
-      openQuestions: questions?.n ?? 0,
+      openQuestions: asked.length,
+      questions: {
+        overdue: questionItems.filter((item) => item.overdue).length,
+        items: questionItems,
+      },
     };
   }
 

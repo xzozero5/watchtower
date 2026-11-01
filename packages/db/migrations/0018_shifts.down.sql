@@ -1,4 +1,4 @@
--- Reverts 0016. Lossy on purpose: rosters, clock records, handoffs and shift notes go away. A queue
+-- Reverts 0018. Lossy on purpose: rosters, clock records, handoffs and shift notes go away. A queue
 -- on `load_balanced` or `stay_with_last_handler` becomes `round_robin`, the nearest mode the older
 -- CHECK accepts. Apply the migration again to resume.
 DROP TABLE IF EXISTS shift_note_read;

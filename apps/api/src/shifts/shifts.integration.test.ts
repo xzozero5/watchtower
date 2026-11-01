@@ -10,6 +10,7 @@ import {
   type RosterList,
   type RosterEntry,
   type ShiftBrief,
+  type AckResult,
   type ShiftDefinition,
   type ShiftDefinitionList,
   type ShiftNote,
@@ -141,7 +142,7 @@ async function auditRows(action: string, actorId?: string) {
 
 interface GateBody extends ApiErrorBody {
   noConfirmedHandoff: boolean;
-  blockers: { ticketId: string; key: string; priority: string; reason: string }[];
+  blockers: { ticketId: string; key: string; priority: string; reason: string; cause?: string }[];
 }
 
 // --- who may call what ---
@@ -389,6 +390,27 @@ describe('shift definitions and the roster', () => {
     const live = await agentNamed('Live');
     expect((await lead.client.post('/v1/roster', body(live.userId))).status).toBe(400);
     expect((await lead.client.get('/v1/roster?from=2026-01-01&to=2026-12-31')).status).toBe(400);
+  });
+
+  it('answers 400, not 500, for a date that is not on the calendar', async () => {
+    const shift = (
+      await lead.client.post<ShiftDefinition>('/v1/shifts/definitions', {
+        name: `Calendar ${uniqueEmail('o')}`,
+        startsAt: '10:00',
+        endsAt: '11:00',
+      })
+    ).body;
+    const person = await agentNamed('Feb 31');
+    for (const workDate of ['2026-02-31', '2026-04-31', '2027-02-29']) {
+      const created = await lead.client.post('/v1/roster', {
+        shiftId: shift.id,
+        userId: person.userId,
+        workDate,
+      });
+      expect(created.status, workDate).toBe(400);
+    }
+    expect((await lead.client.get('/v1/roster?from=2026-02-31&to=2026-03-02')).status).toBe(400);
+    expect((await lead.client.get('/v1/roster?from=2026-03-01&to=2026-06-31')).status).toBe(400);
   });
 });
 
@@ -840,10 +862,10 @@ describe('the handoff draft', () => {
 // --- acknowledgment (R-7.6) ---
 
 describe('the incoming person acknowledges each item', () => {
-  async function outgoingWithTicket(name: string, toUserId?: string) {
+  async function outgoingWithTicket(name: string, toUserId?: string, priority: 'P1' | 'P3' = 'P1') {
     const outgoing = await agentNamed(name);
     await clockIn(outgoing);
-    const ticket = await assigned('P1', outgoing);
+    const ticket = await assigned(priority, outgoing);
     const handoff = await confirmHandoff(outgoing, {
       nextAction: 'Wait for the log file',
       ...(toUserId === undefined ? {} : { toUserId }),
@@ -923,6 +945,7 @@ describe('the incoming person acknowledges each item', () => {
     const incoming = await agentNamed('In Two');
     const third = await agentNamed('Third');
     await clockIn(incoming);
+    await clockIn(third); // a P1 can only go to someone who is on shift
     expect(
       (
         await incoming.client.post(`/v1/handoffs/items/${reassign.item.id}/ack`, {
@@ -1083,7 +1106,8 @@ describe('the incoming person acknowledges each item', () => {
     await clockIn(outgoing);
     const handoff = await confirmHandoff(outgoing);
     const reader = await agentNamed('Reader Old');
-    await clockIn(reader);
+    fakeNow = new Date('2026-11-13T10:00:00Z');
+    await clockIn(reader); // (a clock in older than 16 hours would not count as on shift)
     fakeNow = new Date('2026-11-13T11:00:00Z'); // 35 hours later
     expect(
       (await reader.client.get<IncomingHandoffs>('/v1/handoffs/incoming')).body.handoffs.map(
@@ -1096,6 +1120,335 @@ describe('the incoming person acknowledges each item', () => {
         (x) => x.id,
       ),
     ).not.toContain(handoff.id);
+  });
+
+  it('refuses a reassign of a P1 to someone off shift, and warns when a P3 goes to one', async () => {
+    const urgent = await outgoingWithTicket('Out Off1');
+    const incoming = await agentNamed('In Off1');
+    await clockIn(incoming);
+    const offShift = await agentNamed('Off Shift Target');
+    const onShift = await agentNamed('On Shift Target');
+    await clockIn(onShift);
+    const ack = (item: HandoffItem, assigneeId: string) =>
+      incoming.client.post<AckResult & ApiErrorBody>(`/v1/handoffs/items/${item.id}/ack`, {
+        decision: 'reassign',
+        assigneeId,
+      });
+
+    const refused = await ack(urgent.item, offShift.userId);
+    expect(refused.status).toBe(400);
+    expect(refused.body.message).toContain(urgent.ticket.key);
+    // Nothing happened: the item is still open and the ticket still sits with the outgoing person.
+    const again = await incoming.client.get<IncomingHandoffs>('/v1/handoffs/incoming');
+    const open = again.body.handoffs.find((entry) => entry.id === urgent.handoff.id);
+    expect(open?.items[0]?.ackStatus).toBe('pending');
+    expect(
+      (await incoming.client.get<TicketDetail>(`/v1/tickets/${urgent.ticket.id}`)).body.assignee
+        ?.id,
+    ).toBe(urgent.outgoing.userId);
+
+    const fine = await ack(urgent.item, onShift.userId);
+    expect(fine.status).toBe(200);
+    expect(fine.body.warnings).toEqual([]);
+
+    const calm = await outgoingWithTicket('Out Off3', undefined, 'P3');
+    const warned = await ack(calm.item, offShift.userId);
+    expect(warned.status).toBe(200);
+    expect(warned.body).toMatchObject({
+      ackStatus: 'reassigned',
+      warnings: ['assignee_off_shift'],
+    });
+    expect(
+      (await incoming.client.get<TicketDetail>(`/v1/tickets/${calm.ticket.id}`)).body.assignee?.id,
+    ).toBe(offShift.userId);
+  });
+
+  it('offers a handoff for 36 hours only, also when answering', async () => {
+    fakeNow = new Date('2026-12-01T00:00:00Z');
+    const old = await outgoingWithTicket('Out 36');
+    const incoming = await agentNamed('In 36');
+    fakeNow = new Date('2026-12-02T10:00:00Z');
+    await clockIn(incoming);
+    fakeNow = new Date('2026-12-02T13:00:00Z'); // 37 hours after the handoff was confirmed
+    const late = await incoming.client.post(`/v1/handoffs/items/${old.item.id}/ack`, {
+      decision: 'accept',
+    });
+    expect(late.status).toBe(404);
+    // A handoff inside the window can still be answered by the same person.
+    const inside = await outgoingWithTicket('Out 36 b');
+    const answered = await incoming.client.post(`/v1/handoffs/items/${inside.item.id}/ack`, {
+      decision: 'accept',
+    });
+    expect(answered.status).toBe(200);
+  });
+
+  it('does not count a clock in older than 16 hours as being on shift', async () => {
+    fakeNow = new Date('2026-12-05T00:00:00Z');
+    const forgotten = await agentNamed('Forgot To Clock Out');
+    await clockIn(forgotten);
+    fakeNow = new Date('2026-12-05T16:30:00Z'); // 16 and a half hours later
+    const open = await outgoingWithTicket('Out Stale'); // names nobody
+    expect(
+      (await forgotten.client.get<IncomingHandoffs>('/v1/handoffs/incoming')).body.handoffs,
+    ).toEqual([]);
+    const stale = await forgotten.client.post(`/v1/handoffs/items/${open.item.id}/ack`, {
+      decision: 'accept',
+    });
+    expect(stale.status).toBe(404);
+    // The same person after clocking out and in again is on shift.
+    await confirmHandoff(forgotten);
+    expect((await forgotten.client.post('/v1/shifts/clock-out', {})).status).toBe(200);
+    await clockIn(forgotten);
+    const fresh = await forgotten.client.post(`/v1/handoffs/items/${open.item.id}/ack`, {
+      decision: 'accept',
+    });
+    expect(fresh.status).toBe(200);
+  });
+
+  it('shows a question about a P1 or P2 as overdue after 30 minutes, with or without a named recipient', async () => {
+    const overdueOf = async (itemId: string) => {
+      const overview = await lead.client.get<ShiftOverview>('/v1/shifts/overview');
+      return {
+        overview: overview.body,
+        entry: overview.body.questions.items.find((entry) => entry.itemId === itemId),
+      };
+    };
+    for (const [day, named] of [
+      ['2026-12-10', false],
+      ['2026-12-11', true],
+    ] as const) {
+      fakeNow = new Date(`${day}T03:00:00Z`);
+      const incoming = await agentNamed(`Asker ${day}`);
+      const asked = await outgoingWithTicket(`Out Q ${day}`, named ? incoming.userId : undefined);
+      if (!named) await clockIn(incoming);
+      fakeNow = new Date(`${day}T03:02:00Z`);
+      const question = await incoming.client.post<AckResult>(
+        `/v1/handoffs/items/${asked.item.id}/ack`,
+        {
+          decision: 'question',
+          note: 'Which log file?',
+        },
+      );
+      expect(question.body.ackStatus).toBe('question');
+
+      fakeNow = new Date(`${day}T03:10:00Z`);
+      const soon = await overdueOf(asked.item.id);
+      expect(soon.entry).toMatchObject({
+        ticketKey: asked.ticket.key,
+        priority: 'P1',
+        overdue: false,
+        askedBy: { id: incoming.userId },
+        from: { id: asked.outgoing.userId },
+      });
+      // A question is an acknowledgment: it is not in the unacknowledged list.
+      expect(soon.overview.unacknowledged.items.map((entry) => entry.itemId)).not.toContain(
+        asked.item.id,
+      );
+
+      fakeNow = new Date(`${day}T03:33:00Z`);
+      const late = await overdueOf(asked.item.id);
+      expect(late.entry?.overdue).toBe(true);
+      expect(late.overview.questions.overdue).toBeGreaterThanOrEqual(1);
+
+      // Answering it takes it off the list.
+      expect(
+        (
+          await incoming.client.post(`/v1/handoffs/items/${asked.item.id}/ack`, {
+            decision: 'accept',
+          })
+        ).status,
+      ).toBe(200);
+      expect((await overdueOf(asked.item.id)).entry).toBeUndefined();
+    }
+  });
+
+  it('counts a question about a P3 as open but does not put it on the overdue list', async () => {
+    fakeNow = new Date('2026-12-12T03:00:00Z');
+    const incoming = await agentNamed('Asker P3');
+    await clockIn(incoming);
+    const calm = await outgoingWithTicket('Out Q P3', undefined, 'P3');
+    await incoming.client.post(`/v1/handoffs/items/${calm.item.id}/ack`, {
+      decision: 'question',
+      note: 'Why?',
+    });
+    fakeNow = new Date('2026-12-12T05:00:00Z');
+    const overview = (await lead.client.get<ShiftOverview>('/v1/shifts/overview')).body;
+    expect(overview.openQuestions).toBeGreaterThanOrEqual(1);
+    expect(overview.questions.items.map((entry) => entry.itemId)).not.toContain(calm.item.id);
+  });
+});
+
+// --- AC-7: shaking a ticket off ---
+
+describe('AC-7: a P1 ticket cannot be shaken off to get past the gate', () => {
+  const unassign = (who: Persona, ticketId: string) =>
+    who.client.post(`/v1/tickets/${ticketId}/assign`, { assigneeId: null });
+
+  it('unassigning a P1 keeps it on the gate: confirm and clock out need it listed with a next action', async () => {
+    const agent = await agentNamed('Shaker');
+    await clockIn(agent);
+    const p1 = await assigned('P1', agent);
+    expect((await unassign(agent, p1.id)).status).toBe(200);
+
+    const draft = await prefill(agent);
+    expect(draft.items).toHaveLength(0); // it is no longer assigned to the agent
+    const status = await agent.client.get<ShiftStatus>('/v1/shifts/status');
+    expect(status.body.clockOutBlocked?.blockers).toEqual([
+      { ticketId: p1.id, key: p1.key, priority: 'P1', reason: 'not_listed', cause: 'moved_away' },
+    ]);
+    const refused = await agent.client.post<GateBody>(`/v1/handoffs/${draft.id}/confirm`);
+    expect(refused.status).toBe(409);
+    expect(refused.body.blockers).toEqual([
+      { ticketId: p1.id, key: p1.key, priority: 'P1', reason: 'not_listed', cause: 'moved_away' },
+    ]);
+    expect((await agent.client.post('/v1/shifts/clock-out', {})).status).toBe(409);
+
+    // Listing it, then giving the next action, is what opens the gate.
+    const listed = await agent.client.put<Handoff>(`/v1/handoffs/${draft.id}`, {
+      items: [{ kind: 'pending', ticketId: p1.id, title: p1.subject }],
+    });
+    expect(listed.status).toBe(200);
+    const noAction = await agent.client.post<GateBody>(`/v1/handoffs/${draft.id}/confirm`);
+    expect(noAction.body.blockers[0]).toMatchObject({
+      reason: 'missing_next_action',
+      cause: 'moved_away',
+    });
+    await agent.client.put(`/v1/handoffs/${draft.id}`, {
+      items: [
+        {
+          id: listed.body.items[0]?.id,
+          kind: 'pending',
+          title: p1.subject,
+          nextAction: 'Back with the lead',
+        },
+      ],
+    });
+    expect((await agent.client.post(`/v1/handoffs/${draft.id}/confirm`)).status).toBe(200);
+    expect((await agent.client.post('/v1/shifts/clock-out', {})).status).toBe(200);
+  });
+
+  it('lowering a P1 to P3 keeps it on the gate at P1', async () => {
+    const agent = await agentNamed('Downgrader');
+    await clockIn(agent);
+    const p1 = await assigned('P1', agent);
+    const lowered = await agent.client.patch(`/v1/tickets/${p1.id}`, { priority: 'P3' });
+    expect(lowered.status).toBe(200);
+    const draft = await prefill(agent); // a P3 is still assigned to the agent, so it is listed
+    expect(draft.items.map((item) => item.ticket?.id)).toEqual([p1.id]);
+    const refused = await agent.client.post<GateBody>(`/v1/handoffs/${draft.id}/confirm`);
+    expect(refused.status).toBe(409);
+    expect(refused.body.blockers).toEqual([
+      {
+        ticketId: p1.id,
+        key: p1.key,
+        priority: 'P1',
+        reason: 'missing_next_action',
+        cause: 'downgraded',
+      },
+    ]);
+    await agent.client.put(`/v1/handoffs/${draft.id}`, {
+      items: [
+        { id: draft.items[0]?.id, kind: 'pending', title: p1.subject, nextAction: 'Watch the log' },
+      ],
+    });
+    expect((await agent.client.post(`/v1/handoffs/${draft.id}/confirm`)).status).toBe(200);
+    expect((await agent.client.post('/v1/shifts/clock-out', {})).status).toBe(200);
+  });
+
+  it('handing a P1 to someone off shift keeps it on the gate; handing it to someone on shift does not', async () => {
+    const agent = await agentNamed('Hander');
+    const onShift = await agentNamed('Takes It');
+    const offShift = await agentNamed('Is Away');
+    await clockIn(agent);
+    await clockIn(onShift);
+    const toAway = await assigned('P1', agent);
+    const toHere = await assigned('P1', agent);
+    const handOver = (ticketId: string, to: Persona) =>
+      agent.client.post(`/v1/tickets/${ticketId}/assign`, { assigneeId: to.userId });
+    expect((await handOver(toAway.id, offShift)).status).toBe(200);
+    expect((await handOver(toHere.id, onShift)).status).toBe(200);
+
+    const draft = await prefill(agent);
+    const refused = await agent.client.post<GateBody>(`/v1/handoffs/${draft.id}/confirm`);
+    expect(refused.body.blockers.map((blocker) => [blocker.ticketId, blocker.cause])).toEqual([
+      [toAway.id, 'moved_away'],
+    ]);
+  });
+
+  it('is checked again at clock out, and a lead override still works and is audited with the cause', async () => {
+    const agent = await agentNamed('Late Shaker');
+    await clockIn(agent);
+    await confirmHandoff(agent); // an empty handoff, confirmed first
+    const p1 = await assigned('P1', agent);
+    expect((await unassign(agent, p1.id)).status).toBe(200);
+    const refused = await agent.client.post<GateBody>('/v1/shifts/clock-out', {});
+    expect(refused.status).toBe(409);
+    expect(refused.body).toMatchObject({
+      noConfirmedHandoff: false,
+      blockers: [{ ticketId: p1.id, reason: 'not_listed', cause: 'moved_away' }],
+    });
+
+    const out = await lead.client.post<ClockOutResult>('/v1/shifts/clock-out', {
+      userId: agent.userId,
+      override: { reason: 'The lead took the ticket over and confirms it' },
+    });
+    expect(out.status).toBe(200);
+    expect(out.body.overridden).toBe(true);
+    const rows = await auditRows('shift.clock_out_override', lead.userId);
+    expect(rows.at(-1)?.metadata).toMatchObject({
+      userId: agent.userId,
+      blockers: [{ ticketId: p1.id, cause: 'moved_away' }],
+    });
+  });
+
+  it("someone else's change does not count against the person", async () => {
+    const agent = await agentNamed('Innocent');
+    await clockIn(agent);
+    const p1 = await assigned('P1', agent);
+    const downgraded = await assigned('P1', agent);
+    expect((await unassign(lead, p1.id)).status).toBe(200); // the lead took it away
+    expect(
+      (await lead.client.patch(`/v1/tickets/${downgraded.id}`, { priority: 'P3' })).status,
+    ).toBe(200);
+    const draft = await prefill(agent);
+    const items = draft.items.map((item) => ({
+      id: item.id,
+      kind: item.kind,
+      title: item.title,
+      nextAction: 'Carry on',
+    }));
+    await agent.client.put(`/v1/handoffs/${draft.id}`, { items });
+    expect((await agent.client.post(`/v1/handoffs/${draft.id}/confirm`)).status).toBe(200);
+    expect((await agent.client.post('/v1/shifts/clock-out', {})).status).toBe(200);
+  });
+});
+
+// --- reading is audited (PRD section 8.2) ---
+
+describe('personal data reads are on the audit log', () => {
+  it('writes pii.read for the handoff, the brief, the notes and the lead overview', async () => {
+    const person = await agentNamed('Reader Audit');
+    await clockIn(person);
+    expect((await person.client.get('/v1/handoffs/current')).status).toBe(200);
+    expect((await person.client.get('/v1/handoffs/incoming')).status).toBe(200);
+    expect((await person.client.get('/v1/shifts/brief')).status).toBe(200);
+    expect((await person.client.get('/v1/shift-notes')).status).toBe(200);
+    expect((await lead.client.get('/v1/shifts/overview')).status).toBe(200);
+
+    const targets = async (actorId: string) =>
+      (
+        await owner().query<{ target_type: string }>(
+          `SELECT target_type FROM audit_log WHERE action = 'pii.read' AND actor_id::text = $1`,
+          [actorId],
+        )
+      ).rows.map((row) => row.target_type);
+    expect((await targets(person.userId)).sort()).toEqual([
+      'handoff',
+      'handoff',
+      'shift_brief',
+      'shift_note',
+    ]);
+    expect(await targets(lead.userId)).toContain('shift_overview');
   });
 });
 
@@ -1607,6 +1960,26 @@ describe('RBAC: each permission is checked on its own', () => {
       expect((await ack()).status).toBe(403);
     });
     expect((await ack()).status).toBe(200);
+  });
+
+  it('saving a handoff does not return the subject of a ticket the caller may not read', async () => {
+    const agent = await agentNamed('No Ticket Access');
+    await clockIn(agent);
+    const draft = await prefill(agent);
+    const someone = await agentNamed('Other Holder');
+    const secret = await assigned('P3', someone);
+    const save = () =>
+      agent.client.put<Handoff & ApiErrorBody>(`/v1/handoffs/${draft.id}`, {
+        items: [{ kind: 'pending', ticketId: secret.id, title: 'Look at this' }],
+      });
+    await without('ticket.read', async () => {
+      const refused = await save();
+      expect(refused.status).toBe(403);
+      expect(JSON.stringify(refused.body)).not.toContain(secret.subject);
+    });
+    const allowed = await save();
+    expect(allowed.status).toBe(200);
+    expect(allowed.body.items[0]?.ticket?.subject).toBe(secret.subject);
   });
 
   it('managing the roster needs roster.manage even for a lead-like role on other routes', async () => {

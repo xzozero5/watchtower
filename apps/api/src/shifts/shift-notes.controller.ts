@@ -19,6 +19,7 @@ import {
 import type { z } from 'zod';
 
 import {
+  AuditPiiRead,
   Audited,
   CurrentPrincipal,
   RequirePermission,
@@ -36,6 +37,7 @@ export class ShiftNotesController {
 
   @Get()
   @RequirePermission('shift.note.write')
+  @AuditPiiRead('shift_note')
   @ApiOperation({
     summary: 'Shift notes: the inbox or the ones the caller sent',
     description:

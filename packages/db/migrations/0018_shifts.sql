@@ -12,7 +12,7 @@
 --   6. shift_note:        a message to the next shift, a person, or a date and time; shift_note_read is
 --                         the per-person "marked read".
 -- The application role gets SELECT, INSERT, UPDATE and DELETE from the default privileges of 0001, except
--- where noted. Reversible: see 0016_shifts.down.sql.
+-- where noted. Reversible: see 0018_shifts.down.sql.
 
 -- 1. Queue assignment modes.
 ALTER TABLE team_queue DROP CONSTRAINT team_queue_mode_check;

@@ -3,16 +3,18 @@ import { schema, type Database } from '@watchtower/db';
 import { assertAssignableStaff, type Domain } from '@watchtower/domain';
 import {
   AUDIT_ACTIONS,
+  HANDOFF_VISIBLE_HOURS,
   OPEN_STATUSES,
   addDaysToDateKey,
   handoffBlockers,
+  isHandoffRequiredPriority,
   itemRequiresAck,
   localDateKeyOf,
   shiftWindow,
   type AckHandoffItem,
+  type AckResult,
   type CurrentHandoff,
   type Handoff,
-  type HandoffItem,
   type IncomingHandoffs,
   type SaveHandoff,
 } from '@watchtower/shared';
@@ -20,12 +22,13 @@ import { and, asc, eq, inArray, notInArray, sql } from 'drizzle-orm';
 
 import { AuditService } from '../audit/audit.service.js';
 import { badRequest, conflict, notFound } from '../auth/http-errors.js';
-import type { Principal } from '../auth/principal.js';
+import { assertOrgAccess, type Principal } from '../auth/principal.js';
 import { DATABASE } from '../database/database.module.js';
 import { domainContext, settle } from '../domain/domain-context.js';
 import { translating } from '../domain/domain-errors.js';
 import { DOMAIN } from '../domain/domain.module.js';
 import { UnitOfWorkService, type UnitOfWork } from '../realtime/unit-of-work.js';
+import { assertCanRead } from '../tickets/ticket-reader.js';
 import { TICKET_KEYS, type TicketKeys } from '../tickets/ticket-keys.js';
 import { HandoffReader } from './handoff-reader.js';
 import {
@@ -268,11 +271,14 @@ export class HandoffService {
         let carried = 0;
         if (entry.kind === 'pending') {
           const [ticket] = await uow.tx
-            .select({ id: schema.ticket.id })
+            .select({ id: schema.ticket.id, orgId: schema.ticket.orgId })
             .from(schema.ticket)
             .where(eq(schema.ticket.id, entry.ticketId ?? ''))
             .limit(1);
           if (ticket === undefined) throw badRequest('ticketId does not refer to a ticket');
+          // The answer shows the ticket's subject: only someone who may read the ticket gets it.
+          assertCanRead(principal);
+          assertOrgAccess(principal, ticket.orgId);
           if (existing.some((item) => item.ticketId === ticket.id)) {
             throw conflict('That ticket is already in this handoff');
           }
@@ -343,7 +349,7 @@ export class HandoffService {
         .from(schema.handoffItem)
         .where(eq(schema.handoffItem.handoffId, handoffId));
       const blockers = handoffBlockers(
-        await this.reader.requiredTickets(uow.tx, principal.userId),
+        await this.reader.requiredFor(uow.tx, principal.userId, handoff.sessionId),
         items,
       );
       if (blockers.length > 0)
@@ -456,9 +462,10 @@ export class HandoffService {
     principal: Principal,
     itemId: string,
     input: AckHandoffItem,
-  ): Promise<HandoffItem> {
+  ): Promise<AckResult> {
     const actor = { type: 'user' as const, id: principal.userId };
     return this.uow.run(async (uow) => {
+      const warnings: AckResult['warnings'] = [];
       const [row] = await uow.tx
         .select({ item: schema.handoffItem, handoff: schema.handoff })
         .from(schema.handoffItem)
@@ -470,12 +477,16 @@ export class HandoffService {
 
       // Only a handoff that was confirmed and is addressed to the caller: the named person, or
       // whoever is clocked in when it names nobody. Anything else looks like a missing item.
-      const open = await openSessionOf(uow.tx, principal.userId);
+      // A handoff is offered for 36 hours, and "clocked in" means on shift (not a session left open
+      // for more than 16 hours), the same as in `GET /v1/handoffs/incoming`.
+      const onShift = await this.reader.isOnShift(uow.tx, principal.userId);
+      const horizon = new Date(this.now().getTime() - HANDOFF_VISIBLE_HOURS * 3_600_000);
       const addressed =
         handoff.status === 'confirmed' &&
+        handoff.confirmedAt !== null &&
+        handoff.confirmedAt >= horizon &&
         handoff.fromUserId !== principal.userId &&
-        (handoff.toUserId === principal.userId ||
-          (handoff.toUserId === null && open !== undefined));
+        (handoff.toUserId === principal.userId || (handoff.toUserId === null && onShift));
       if (!addressed) throw notFound('No such item');
       if (!item.requiresAck)
         throw badRequest('This item is for information; there is nothing to acknowledge');
@@ -503,6 +514,19 @@ export class HandoffService {
             : input.decision === 'reassign'
               ? input.assigneeId
               : undefined;
+        if (input.decision === 'reassign' && input.assigneeId !== undefined) {
+          // P1 and P2 must go to someone who is on shift; a P3 or P4 may wait for an off-shift
+          // colleague, and the answer says so.
+          await translating(() => assertAssignableStaff(uow.tx, [input.assigneeId as string]));
+          if (!(await this.reader.isOnShift(uow.tx, input.assigneeId))) {
+            if (isHandoffRequiredPriority(ticket.priority)) {
+              throw badRequest(
+                `${ticketKey} is ${ticket.priority}: reassign it to someone who is clocked in`,
+              );
+            }
+            warnings.push('assignee_off_shift');
+          }
+        }
         if (target !== undefined && movable && ticket.assigneeId !== target) {
           const result = await translating(() =>
             this.domain.tickets.assign(uow.tx, domainContext(this.domain, actor), {
@@ -511,8 +535,6 @@ export class HandoffService {
             }),
           );
           settle(uow, result);
-        } else if (input.decision === 'reassign' && input.assigneeId !== undefined) {
-          await translating(() => assertAssignableStaff(uow.tx, [input.assigneeId as string]));
         }
       } else if (input.decision === 'reassign') {
         throw badRequest('Only a ticket can be reassigned');
@@ -562,7 +584,7 @@ export class HandoffService {
       const items = await this.reader.items(uow.tx, [handoff.id]);
       const updated = items.get(handoff.id)?.find((entry) => entry.id === itemId);
       if (updated === undefined) throw new Error('item vanished');
-      return updated;
+      return { ...updated, warnings };
     });
   }
 }

@@ -6,9 +6,11 @@ import {
   SHIFT_EARLY_CLOCK_IN_MINUTES,
   ackHandoffItemSchema,
   clockOutSchema,
+  createRosterEntrySchema,
   createShiftDefinitionSchema,
   createShiftNoteSchema,
   crossesMidnight,
+  departedRequirements,
   handoffBlockers,
   isGateOpen,
   itemRequiresAck,
@@ -228,5 +230,71 @@ describe('contracts', () => {
         itemRequiresAck,
       ),
     ).toEqual(['pending', 'incident']);
+  });
+});
+
+describe('departedRequirements (tickets the person took off their own plate)', () => {
+  const ME = '8f14e45f-ceea-4a7b-9d6a-1b1c2d3e4f60';
+  const COLLEAGUE = '8f14e45f-ceea-4a7b-9d6a-1b1c2d3e4f61';
+  const ticket = (
+    over: Partial<Parameters<typeof departedRequirements>[0]['tickets'][number]> = {},
+  ) => ({
+    id: ID,
+    key: 'OPS-1',
+    priority: 'P1' as const,
+    open: true,
+    assigneeId: null as string | null,
+    assigneeOnShift: false,
+    ...over,
+  });
+  const moved = { ticketId: ID, kind: 'moved_away' as const, fromPriority: null };
+  const lowered = { ticketId: ID, kind: 'downgraded' as const, fromPriority: 'P1' as const };
+  const run = (tickets: ReturnType<typeof ticket>[], changes: (typeof moved | typeof lowered)[]) =>
+    departedRequirements({ userId: ME, tickets, changes });
+
+  it('keeps a P1 ticket the person unassigned', () => {
+    expect(run([ticket()], [moved])).toEqual([
+      { id: ID, key: 'OPS-1', priority: 'P1', cause: 'moved_away' },
+    ]);
+  });
+
+  it('keeps one handed to someone who is off shift, but not one handed to someone on shift', () => {
+    expect(run([ticket({ assigneeId: COLLEAGUE })], [moved])).toHaveLength(1);
+    expect(run([ticket({ assigneeId: COLLEAGUE, assigneeOnShift: true })], [moved])).toEqual([]);
+  });
+
+  it('keeps a ticket that was lowered from P1, at the priority it had', () => {
+    const now = ticket({ priority: 'P3', assigneeId: ME });
+    expect(run([now], [lowered])).toEqual([
+      { id: ID, key: 'OPS-1', priority: 'P1', cause: 'downgraded' },
+    ]);
+    const handedOn = ticket({ priority: 'P3', assigneeId: COLLEAGUE, assigneeOnShift: true });
+    expect(run([handedOn], [lowered])).toEqual([]);
+  });
+
+  it('leaves out what is done, never was P1/P2, or is back with the person at P1/P2', () => {
+    expect(run([ticket({ open: false })], [moved])).toEqual([]);
+    expect(run([ticket({ priority: 'P3' })], [moved])).toEqual([]);
+    expect(run([ticket({ assigneeId: ME })], [moved])).toEqual([]);
+    expect(run([ticket()], [])).toEqual([]);
+  });
+
+  it('a downgrade wins over a move when both happened', () => {
+    expect(run([ticket({ priority: 'P4' })], [moved, lowered])[0]?.cause).toBe('downgraded');
+  });
+});
+
+describe('dates on the calendar', () => {
+  it('refuses 02-31 and 04-31 for a roster date, and a leap day only in a leap year', () => {
+    const ok = (workDate: string) =>
+      createRosterEntrySchema.safeParse({ shiftId: ID, userId: ID, workDate }).success;
+    expect(ok('2026-02-31')).toBe(false);
+    expect(ok('2026-04-31')).toBe(false);
+    expect(ok('2026-02-29')).toBe(false);
+    expect(ok('2028-02-29')).toBe(true);
+    expect(ok('2026-12-31')).toBe(true);
+    expect(rosterQuerySchema.safeParse({ from: '2026-02-31', to: '2026-03-02' }).success).toBe(
+      false,
+    );
   });
 });

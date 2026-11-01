@@ -6,7 +6,7 @@ import { migrateDown, migrateUp } from './migrator.js';
 import { seedShiftDefinitions } from './seed/shifts.js';
 import { createTestDatabase, migrationsAfter, type TestDatabase } from './testing.js';
 
-// Migration 0016 (T-111): shift definitions, roster, clock-in sessions, handoff and its items, shift
+// Migration 0018 (T-111): shift definitions, roster, clock-in sessions, handoff and its items, shift
 // notes, and the two new queue assignment modes. Checks the constraints that keep AC-7's data
 // honest in the database itself, the column privileges of the application role, the starter seed
 // and the revert.
@@ -389,14 +389,14 @@ describe('the starter seed (owner decision po #7)', () => {
   });
 });
 
-describe('0016 can be reverted', () => {
+describe('0018 can be reverted', () => {
   it('drops the tables, turns the new queue modes into round_robin, and applies again', async () => {
     await owner().query(
       `INSERT INTO team_queue (name, assignment_mode) VALUES ('Revert LB', 'load_balanced'), ('Revert SL', 'stay_with_last_handler')`,
     );
-    const later = await migrationsAfter('0016_shifts');
+    const later = await migrationsAfter('0018_shifts');
     const reverted = await migrateDown(owner(), { steps: 1 + later.length });
-    expect(reverted).toEqual([...later.toReversed(), '0016_shifts']);
+    expect(reverted).toEqual([...later.toReversed(), '0018_shifts']);
 
     const gone = await owner().query<{ n: number }>(
       `SELECT count(*)::int AS n FROM pg_class WHERE relname IN ('shift_definition', 'roster_entry', 'shift_session', 'handoff', 'handoff_item', 'shift_note', 'shift_note_read')`,
@@ -413,7 +413,7 @@ describe('0016 can be reverted', () => {
       PG.checkViolation,
     );
 
-    expect(await migrateUp(owner())).toEqual(['0016_shifts', ...later]);
+    expect(await migrateUp(owner())).toEqual(['0018_shifts', ...later]);
     const back = await owner().query<{ n: number }>(
       `SELECT count(*)::int AS n FROM pg_class WHERE relname = 'shift_session'`,
     );

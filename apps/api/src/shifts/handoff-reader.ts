@@ -1,11 +1,19 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { schema, type Database } from '@watchtower/db';
+import { onShiftCondition } from '@watchtower/domain';
 import {
   HANDOFF_ACK_ALERT_MINUTES,
   HANDOFF_REQUIRED_PRIORITIES,
   HANDOFF_VISIBLE_HOURS,
   OPEN_STATUSES,
+  SHIFT_SESSION_MAX_HOURS,
+  TICKET_EVENT_TYPES,
+  TICKET_PRIORITIES,
+  departedRequirements,
   handoffBlockers,
+  isHandoffRequiredPriority,
+  type HandoffBlockerCause,
+  type OwnTicketChange,
   type Handoff,
   type HandoffAckStatus,
   type HandoffIncomplete,
@@ -180,6 +188,103 @@ export class HandoffReader {
   }
 
   /**
+   * What the gate requires of a person's session: their open P1/P2 tickets, plus the P1/P2 tickets
+   * they took off their own plate during the shift and left unattended: unassigned, handed to
+   * someone who is not on shift, or lowered in priority (the AC-7 bypass). Found in the ticket
+   * history (`ticket.assigned`: from/to; `ticket.updated`: priority from/to), which keeps who did
+   * it and when, so a colleague's or a lead's change to the ticket does not count against the person.
+   */
+  async requiredFor(
+    executor: Executor,
+    userId: string,
+    sessionId: string,
+  ): Promise<{ id: string; key: string; priority: TicketPriority; cause?: HandoffBlockerCause }[]> {
+    const base = await this.requiredTickets(executor, userId);
+    const [session] = await executor
+      .select({ since: schema.shiftSession.clockedInAt })
+      .from(schema.shiftSession)
+      .where(eq(schema.shiftSession.id, sessionId))
+      .limit(1);
+    if (session === undefined) return base;
+
+    const events = await executor
+      .select({
+        ticketId: schema.ticketEvent.ticketId,
+        type: schema.ticketEvent.type,
+        payload: schema.ticketEvent.payload,
+      })
+      .from(schema.ticketEvent)
+      .where(
+        and(
+          gte(schema.ticketEvent.createdAt, session.since),
+          eq(schema.ticketEvent.actorType, 'user'),
+          eq(schema.ticketEvent.actorId, userId),
+          inArray(schema.ticketEvent.type, [
+            TICKET_EVENT_TYPES.assigned,
+            TICKET_EVENT_TYPES.updated,
+          ]),
+        ),
+      )
+      .orderBy(asc(schema.ticketEvent.createdAt));
+
+    const priorityOf = (value: unknown): TicketPriority | null =>
+      typeof value === 'string' && (TICKET_PRIORITIES as readonly string[]).includes(value)
+        ? (value as TicketPriority)
+        : null;
+    const changes: OwnTicketChange[] = [];
+    for (const event of events) {
+      const payload = event.payload as Record<string, unknown>;
+      if (event.type === TICKET_EVENT_TYPES.assigned) {
+        if (payload.from === userId && payload.to !== userId) {
+          changes.push({ ticketId: event.ticketId, kind: 'moved_away', fromPriority: null });
+        }
+      } else {
+        const priority = (payload.priority ?? {}) as Record<string, unknown>;
+        const from = priorityOf(priority.from);
+        const to = priorityOf(priority.to);
+        if (
+          from !== null &&
+          isHandoffRequiredPriority(from) &&
+          (to === null || !isHandoffRequiredPriority(to))
+        ) {
+          changes.push({ ticketId: event.ticketId, kind: 'downgraded', fromPriority: from });
+        }
+      }
+    }
+    const known = new Set(base.map((ticket) => ticket.id));
+    const ids = [...new Set(changes.map((change) => change.ticketId))].filter(
+      (id) => !known.has(id),
+    );
+    if (ids.length === 0) return base;
+
+    const rows = await executor
+      .select({
+        id: schema.ticket.id,
+        number: schema.ticket.number,
+        priority: schema.ticket.priority,
+        status: schema.ticket.status,
+        assigneeId: schema.ticket.assigneeId,
+        assigneeOnShift: sql<boolean>`COALESCE(${onShiftCondition()}, false)`,
+      })
+      .from(schema.ticket)
+      .leftJoin(schema.users, eq(schema.users.id, schema.ticket.assigneeId))
+      .where(inArray(schema.ticket.id, ids));
+    const departed = departedRequirements({
+      userId,
+      changes,
+      tickets: rows.map((row) => ({
+        id: row.id,
+        key: this.keys.format(row.number),
+        priority: row.priority as TicketPriority,
+        open: (OPEN_STATUSES as readonly string[]).includes(row.status),
+        assigneeId: row.assigneeId,
+        assigneeOnShift: row.assigneeOnShift,
+      })),
+    });
+    return [...base, ...departed];
+  }
+
+  /**
    * The AC-7 gate for a person's session: what stops them clocking out. The handoff must be
    * confirmed, and every open P1/P2 ticket assigned to them must be one of its pending items with a
    * next action, which is checked again here because a ticket can be assigned after confirming.
@@ -190,7 +295,7 @@ export class HandoffReader {
       .from(schema.handoff)
       .where(eq(schema.handoff.sessionId, sessionId))
       .limit(1);
-    const required = await this.requiredTickets(executor, userId);
+    const required = await this.requiredFor(executor, userId, sessionId);
     const items =
       handoff === undefined
         ? []
@@ -209,6 +314,26 @@ export class HandoffReader {
   }
 
   /**
+   * Is the person on shift: clocked in, and not for longer than `SHIFT_SESSION_MAX_HOURS` (the same
+   * limit assignment uses, so a forgotten clock out does not keep someone "on shift" for ever).
+   */
+  async isOnShift(executor: Executor, userId: string): Promise<boolean> {
+    const cutoff = new Date(this.now().getTime() - SHIFT_SESSION_MAX_HOURS * 3_600_000);
+    const [open] = await executor
+      .select({ id: schema.shiftSession.id })
+      .from(schema.shiftSession)
+      .where(
+        and(
+          eq(schema.shiftSession.userId, userId),
+          isNull(schema.shiftSession.clockedOutAt),
+          gte(schema.shiftSession.clockedInAt, cutoff),
+        ),
+      )
+      .limit(1);
+    return open !== undefined;
+  }
+
+  /**
    * Handoffs addressed to a person, confirmed within the last `HANDOFF_VISIBLE_HOURS`: those that
    * name them, and those that name nobody if they are clocked in. Newest first, with every item so
    * the progress ("3 of 7 acknowledged") can be shown.
@@ -216,11 +341,7 @@ export class HandoffReader {
   async incoming(executor: Executor, userId: string): Promise<IncomingHandoffs> {
     const now = this.now();
     const cutoff = new Date(now.getTime() - HANDOFF_VISIBLE_HOURS * 3_600_000);
-    const [open] = await executor
-      .select({ id: schema.shiftSession.id })
-      .from(schema.shiftSession)
-      .where(and(eq(schema.shiftSession.userId, userId), isNull(schema.shiftSession.clockedOutAt)))
-      .limit(1);
+    const open = (await this.isOnShift(executor, userId)) ? { id: userId } : undefined;
 
     const rows = await executor
       .select({

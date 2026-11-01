@@ -23,6 +23,7 @@ import {
 } from '@watchtower/shared';
 
 import {
+  AuditPiiRead,
   Audited,
   CurrentPrincipal,
   RequireAnyPermission,
@@ -100,6 +101,7 @@ export class ShiftsController {
 
   @Get('shifts/overview')
   @RequireAnyPermission('roster.manage', 'performance.read.all')
+  @AuditPiiRead('shift_overview')
   @ApiOperation({
     summary:
       "The lead's view: who is on shift, no-shows, unacknowledged handoff items (lead, head)",
@@ -114,6 +116,7 @@ export class ShiftsController {
 
   @Get('shifts/brief')
   @RequirePermission('shift.clock')
+  @AuditPiiRead('shift_brief')
   @ApiOperation({
     summary: 'The daily brief',
     description:

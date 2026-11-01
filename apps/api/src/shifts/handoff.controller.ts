@@ -11,7 +11,7 @@ import {
   ackHandoffItemSchema,
   currentHandoffSchema,
   handoffItemParamSchema,
-  handoffItemSchema,
+  ackResultSchema,
   handoffSchema,
   idParamSchema,
   incomingHandoffsSchema,
@@ -22,6 +22,7 @@ import {
 import type { z } from 'zod';
 
 import {
+  AuditPiiRead,
   Audited,
   CurrentPrincipal,
   RequirePermission,
@@ -40,6 +41,7 @@ export class HandoffController {
 
   @Get('current')
   @RequirePermission('handoff.write')
+  @AuditPiiRead('handoff')
   @ApiOperation({
     summary: 'The handoff of the caller open shift',
     description:
@@ -72,6 +74,7 @@ export class HandoffController {
 
   @Get('incoming')
   @RequirePermission('handoff.ack')
+  @AuditPiiRead('handoff')
   @ApiOperation({
     summary: 'Handoffs addressed to the caller, with the items to acknowledge',
     description:
@@ -153,7 +156,7 @@ export class HandoffController {
       'the item open. A question counts as acknowledged. An accepted or reassigned item cannot be ' +
       'answered again (409 `handoff_locked`). An item of a handoff not addressed to the caller is a 404.',
   })
-  @ApiOkResponse({ standardSchema: handoffItemSchema })
+  @ApiOkResponse({ standardSchema: ackResultSchema })
   @ApiNotFoundResponse({ description: 'No such item, or not addressed to you' })
   @ApiConflictResponse({ description: 'handoff_locked: already acknowledged' })
   async acknowledge(
@@ -162,7 +165,7 @@ export class HandoffController {
     @CurrentPrincipal() principal: Principal,
   ) {
     return parseResponse(
-      handoffItemSchema,
+      ackResultSchema,
       await this.handoffs.acknowledge(principal, params.itemId, body),
     );
   }

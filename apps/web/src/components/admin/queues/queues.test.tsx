@@ -75,6 +75,26 @@ describe('Queues', () => {
     });
   });
 
+  it('offers the two modes that pick by load and by last handler, and says they only pick people on shift', async () => {
+    const user = userEvent.setup();
+    const api = consoleApi({ overrides: { 'POST /v1/queues': { status: 201, json: QUEUE } } });
+    renderConsole(<QueuesPage />);
+    await screen.findByRole('table', { name: 'Queues' });
+    await user.click(screen.getByRole('button', { name: 'New queue' }));
+    const sheet = await screen.findByRole('dialog', { name: 'New queue' });
+    expect(within(sheet).getByText(/only pick people who are clocked in/)).toBeVisible();
+    await user.type(within(sheet).getByLabelText('Name'), 'Support');
+    await user.click(within(sheet).getByRole('radio', { name: 'Least loaded' }));
+    await user.click(within(sheet).getByRole('button', { name: 'Save' }));
+    await waitFor(() => {
+      expect(api.callsTo('/v1/queues', 'POST')).toHaveLength(1);
+    });
+    expect(api.callsTo('/v1/queues', 'POST')[0]?.body).toMatchObject({
+      assignmentMode: 'load_balanced',
+    });
+    expect(within(sheet).queryByRole('radio', { name: 'Last handler' })).not.toBeNull();
+  });
+
   it('confirms before deleting and shows a refusal as text', async () => {
     const user = userEvent.setup();
     consoleApi({

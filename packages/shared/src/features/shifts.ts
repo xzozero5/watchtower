@@ -77,9 +77,19 @@ export const HANDOFF_CARRIED_WARNING = 3;
 // --- pure time rules ---
 
 const timeOfDaySchema = z.string().regex(/^(?:[01]\d|2[0-3]):[0-5]\d$/, 'expected HH:mm');
+/** `2026-02-31` has the right shape and is not a day: Postgres would refuse it with a 500. */
+function isRealDate(value: string): boolean {
+  const [year = 0, month = 0, day = 0] = value.split('-').map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  return (
+    date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day
+  );
+}
+
 const dateOnlySchema = z
   .string()
-  .regex(/^\d{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12]\d|3[01])$/, 'expected YYYY-MM-DD');
+  .regex(/^\d{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12]\d|3[01])$/, 'expected YYYY-MM-DD')
+  .refine(isRealDate, 'not a date on the calendar');
 
 export interface ShiftWindow {
   readonly start: Date;
@@ -143,11 +153,20 @@ export function lateMinutes(scheduledStart: Date | null, clockedInAt: Date): num
 export const HANDOFF_BLOCKER_REASONS = ['not_listed', 'missing_next_action'] as const;
 export type HandoffBlockerReason = (typeof HANDOFF_BLOCKER_REASONS)[number];
 
+/**
+ * Why a ticket is on the gate although it is no longer a plain "open P1/P2 assigned to me": the
+ * person unassigned it, handed it to someone who is not on shift, or lowered its priority during
+ * this shift (the AC-7 bypass). Absent for an ordinary assigned ticket.
+ */
+export const HANDOFF_BLOCKER_CAUSES = ['moved_away', 'downgraded'] as const;
+export type HandoffBlockerCause = (typeof HANDOFF_BLOCKER_CAUSES)[number];
+
 export const handoffBlockerSchema = z.object({
   ticketId: z.uuid(),
   key: z.string(),
   priority: ticketPrioritySchema,
   reason: z.enum(HANDOFF_BLOCKER_REASONS),
+  cause: z.enum(HANDOFF_BLOCKER_CAUSES).optional(),
 });
 export type HandoffBlocker = z.infer<typeof handoffBlockerSchema>;
 
@@ -160,20 +179,94 @@ export function isHandoffRequiredPriority(priority: string): boolean {
  * with a next action. Returns what is missing, in the order of `required`; empty means the gate opens.
  */
 export function handoffBlockers(
-  required: readonly { id: string; key: string; priority: z.infer<typeof ticketPrioritySchema> }[],
+  required: readonly {
+    id: string;
+    key: string;
+    priority: z.infer<typeof ticketPrioritySchema>;
+    cause?: HandoffBlockerCause;
+  }[],
   items: readonly { kind: string; ticketId: string | null; nextAction: string | null }[],
 ): HandoffBlocker[] {
   const blockers: HandoffBlocker[] = [];
   for (const ticket of required) {
     if (!isHandoffRequiredPriority(ticket.priority)) continue;
     const item = items.find((entry) => entry.kind === 'pending' && entry.ticketId === ticket.id);
-    const base = { ticketId: ticket.id, key: ticket.key, priority: ticket.priority };
+    const base = {
+      ticketId: ticket.id,
+      key: ticket.key,
+      priority: ticket.priority,
+      ...(ticket.cause === undefined ? {} : { cause: ticket.cause }),
+    };
     if (item === undefined) blockers.push({ ...base, reason: 'not_listed' });
     else if (item.nextAction === null || item.nextAction.trim() === '') {
       blockers.push({ ...base, reason: 'missing_next_action' });
     }
   }
   return blockers;
+}
+
+/** What the person themself did to a ticket during the shift that may take it off their plate. */
+export interface OwnTicketChange {
+  readonly ticketId: string;
+  readonly kind: HandoffBlockerCause;
+  /** For `downgraded`: the priority it had before the first downgrade of the shift. */
+  readonly fromPriority: z.infer<typeof ticketPrioritySchema> | null;
+}
+
+/**
+ * Tickets that still count at the gate although the person changed them (the AC-7 bypass): a ticket
+ * that is open, was unassigned or handed away by the person (`moved_away`) or had its priority
+ * lowered by them (`downgraded`) during the shift, and is now with nobody, with the person, or with
+ * someone who is off shift. A ticket handed to a colleague who is on shift is that colleague's.
+ * Returns the ticket at the priority that made it required (its current one, else the one it was
+ * lowered from); a ticket that never was P1/P2 is not returned.
+ */
+export function departedRequirements(input: {
+  readonly userId: string;
+  readonly tickets: readonly {
+    id: string;
+    key: string;
+    priority: z.infer<typeof ticketPrioritySchema>;
+    open: boolean;
+    assigneeId: string | null;
+    assigneeOnShift: boolean;
+  }[];
+  readonly changes: readonly OwnTicketChange[];
+}): {
+  id: string;
+  key: string;
+  priority: z.infer<typeof ticketPrioritySchema>;
+  cause: HandoffBlockerCause;
+}[] {
+  const out: {
+    id: string;
+    key: string;
+    priority: z.infer<typeof ticketPrioritySchema>;
+    cause: HandoffBlockerCause;
+  }[] = [];
+  for (const ticket of input.tickets) {
+    if (!ticket.open) continue;
+    const mine = input.changes.filter((change) => change.ticketId === ticket.id);
+    if (mine.length === 0) continue;
+    const unattended =
+      ticket.assigneeId === null || ticket.assigneeId === input.userId || !ticket.assigneeOnShift;
+    if (!unattended) continue;
+    const downgrade = mine.find((change) => change.kind === 'downgraded');
+    const moved = mine.find((change) => change.kind === 'moved_away');
+    // Held by the person again and still P1/P2: the ordinary rule already covers it.
+    if (ticket.assigneeId === input.userId && downgrade === undefined) continue;
+    const priority = isHandoffRequiredPriority(ticket.priority)
+      ? ticket.priority
+      : (downgrade?.fromPriority ?? null);
+    if (priority === null || !isHandoffRequiredPriority(priority)) continue;
+    out.push({
+      id: ticket.id,
+      key: ticket.key,
+      priority,
+      cause: downgrade !== undefined ? 'downgraded' : (moved?.kind ?? 'moved_away'),
+    });
+  }
+  return out;
 }
 
 /** True when nothing blocks a clock out: the handoff is confirmed and every required ticket is listed with a next action. */
@@ -532,6 +625,14 @@ export const ackHandoffItemSchema = z
   });
 export type AckHandoffItem = z.infer<typeof ackHandoffItemSchema>;
 
+/** The answer to an acknowledgment: the item, and what the server noticed while doing it. */
+export const ACK_WARNINGS = ['assignee_off_shift'] as const;
+export const ackResultSchema = handoffItemSchema.extend({
+  /** `assignee_off_shift`: a P3 or P4 ticket was reassigned to someone who is not clocked in (P1 and P2 are refused). */
+  warnings: z.array(z.enum(ACK_WARNINGS)),
+});
+export type AckResult = z.infer<typeof ackResultSchema>;
+
 export const handoffItemParamSchema = z.object({ itemId: z.uuid() });
 
 // --- lead overview (AC-7: "the lead's dashboard shows 0 unacknowledged items") ---
@@ -558,8 +659,29 @@ export const shiftOverviewSchema = z.object({
       }),
     ),
   }),
-  /** Items a person asked a question about, still open. */
+  /** Items a person asked a question about, still open (not yet accepted or reassigned). */
   openQuestions: z.number().int().min(0),
+  /**
+   * Open questions about a P1 or P2 ticket. A question counts as acknowledged (it is not in
+   * `unacknowledged`) but nobody owns the ticket until it is answered, so one that has waited more
+   * than 30 minutes is `overdue` here. Covers handoffs with and without a named recipient.
+   */
+  questions: z.object({
+    overdue: z.number().int().min(0),
+    items: z.array(
+      z.object({
+        itemId: z.uuid(),
+        handoffId: z.uuid(),
+        title: z.string(),
+        ticketKey: z.string(),
+        priority: ticketPrioritySchema,
+        from: z.object({ id: z.uuid(), name: z.string() }),
+        askedBy: z.object({ id: z.uuid(), name: z.string() }).nullable(),
+        askedAt: z.iso.datetime(),
+        overdue: z.boolean(),
+      }),
+    ),
+  }),
 });
 export type ShiftOverview = z.infer<typeof shiftOverviewSchema>;
 
