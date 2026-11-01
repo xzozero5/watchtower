@@ -46,6 +46,7 @@ async function article(
   pool: Pool,
   fields: { slug: string; status?: string; visibility?: string; lang?: string } & {
     publish?: boolean;
+    createdBy?: string;
   },
 ): Promise<{ articleId: string; versionId: string }> {
   const articleId = randomUUID();
@@ -67,9 +68,9 @@ async function article(
       ],
     );
     await client.query(
-      `INSERT INTO kb_article_version (id, article_id, version, title, body_md, content_hash)
-       VALUES ($1, $2, 1, 'Title', 'Body', $3)`,
-      [versionId, articleId, HASH],
+      `INSERT INTO kb_article_version (id, article_id, version, title, body_md, content_hash, created_by)
+       VALUES ($1, $2, 1, 'Title', 'Body', $3, $4)`,
+      [versionId, articleId, HASH, fields.createdBy ?? null],
     );
     await client.query('COMMIT');
   } catch (error) {
@@ -317,7 +318,11 @@ describe('0015_kb', () => {
   });
 
   it('keeps a pending break-glass publication tied to who did it and why', async () => {
-    const { articleId } = await article(app, { slug: 'glass', publish: true, status: 'published' });
+    const { articleId, versionId } = await article(app, {
+      slug: 'glass',
+      publish: true,
+      status: 'published',
+    });
     const pending = (set: string, params: unknown[] = []) =>
       app.query(`UPDATE kb_article SET break_glass_pending = true${set} WHERE id = $1`, [
         articleId,
@@ -327,9 +332,151 @@ describe('0015_kb', () => {
     expect(
       await code(pending(", break_glass_by = $2, break_glass_reason = '  '", [randomUUID()])),
     ).toBe(CHECK_VIOLATION);
+    // Without the version that went live and the one before it, the reviewer cannot be checked.
     expect(
       await code(pending(", break_glass_by = $2, break_glass_reason = 'outage'", [randomUUID()])),
+    ).toBe(CHECK_VIOLATION);
+    expect(
+      await code(
+        pending(
+          ', break_glass_by = $2, break_glass_reason = $3, break_glass_version_id = $4, break_glass_prev_version = 0',
+          [randomUUID(), 'outage', versionId],
+        ),
+      ),
     ).toBeUndefined();
+  });
+
+  describe('the break-glass guard trigger (P3-D)', () => {
+    const publisher = randomUUID();
+    const writer = randomUUID();
+    const reviewer = randomUUID();
+
+    /** A published article: v1 by `author` is live, v2 by `writer` is the break-glass version. */
+    async function glassArticle(slug: string, firstWriter: string | null = null): Promise<string> {
+      const { articleId } = await article(app, {
+        slug,
+        publish: true,
+        status: 'published',
+        ...(firstWriter === null ? {} : { createdBy: firstWriter }),
+      });
+      const v2 = randomUUID();
+      await app.query(
+        `INSERT INTO kb_article_version (id, article_id, version, title, body_md, content_hash, created_by)
+         VALUES ($1, $2, 2, 'Title', 'Body 2', $3, $4)`,
+        [v2, articleId, HASH, writer],
+      );
+      await app.query(
+        `UPDATE kb_article SET current_version_id = $2, published_version_id = $2,
+                break_glass_pending = true, break_glass_by = $3, break_glass_at = now(),
+                break_glass_reason = 'outage', break_glass_version_id = $2,
+                break_glass_prev_version = 1
+         WHERE id = $1`,
+        [articleId, v2, publisher],
+      );
+      return articleId;
+    }
+
+    const clear = (articleId: string, by: string | null, extra = '') =>
+      app.query(
+        `UPDATE kb_article SET break_glass_pending = false, break_glass_reviewed_by = $2,
+                break_glass_reviewed_at = CASE WHEN $2::uuid IS NULL THEN NULL ELSE now() END${extra}
+         WHERE id = $1`,
+        [articleId, by],
+      );
+
+    it('clears only with a review from somebody else than the publisher', async () => {
+      const articleId = await glassArticle('guard-publisher');
+      expect(await code(clear(articleId, null))).toBe(CHECK_VIOLATION);
+      expect(await code(clear(articleId, publisher))).toBe(CHECK_VIOLATION);
+      expect(
+        await code(
+          app.query('UPDATE kb_article SET break_glass_pending = false WHERE id = $1', [articleId]),
+        ),
+      ).toBe(CHECK_VIOLATION);
+      expect(await code(clear(articleId, reviewer))).toBeUndefined();
+    });
+
+    it('does not clear for somebody who wrote the text that went live (P2-A)', async () => {
+      const articleId = await glassArticle('guard-writer');
+      expect(await code(clear(articleId, writer))).toBe(CHECK_VIOLATION);
+      const { rows } = await app.query<{ break_glass_pending: boolean }>(
+        'SELECT break_glass_pending FROM kb_article WHERE id = $1',
+        [articleId],
+      );
+      expect(rows[0]?.break_glass_pending).toBe(true);
+      expect(await code(clear(articleId, reviewer))).toBeUndefined();
+    });
+
+    it('lets somebody who wrote only a version that was live before review', async () => {
+      const older = randomUUID();
+      const articleId = await glassArticle('guard-older', older);
+      expect(await code(clear(articleId, older))).toBeUndefined();
+    });
+
+    it('freezes who, when, why and which version while the flag is up and nothing new went live', async () => {
+      const articleId = await glassArticle('guard-frozen');
+      const edit = (set: string) =>
+        app.query(`UPDATE kb_article SET ${set} WHERE id = $1`, [articleId]);
+      expect(await code(edit(`break_glass_reason = 'something else'`))).toBe(CHECK_VIOLATION);
+      expect(await code(edit(`break_glass_by = '${randomUUID()}'`))).toBe(CHECK_VIOLATION);
+      expect(await code(edit(`break_glass_at = now() + interval '1 hour'`))).toBe(CHECK_VIOLATION);
+      expect(await code(edit('break_glass_prev_version = 0'))).toBe(CHECK_VIOLATION);
+      expect(await code(edit('break_glass_version_id = NULL'))).toBe(CHECK_VIOLATION);
+      // Clearing cannot rewrite the record either.
+      expect(await code(clear(articleId, reviewer, `, break_glass_reason = 'rewritten'`))).toBe(
+        CHECK_VIOLATION,
+      );
+      expect(await code(clear(articleId, reviewer, `, break_glass_prev_version = 5`))).toBe(
+        CHECK_VIOLATION,
+      );
+      // Unrelated columns stay free.
+      expect(await code(edit(`updated_at = now()`))).toBeUndefined();
+    });
+
+    it('lets a newer break-glass publication replace the one waiting', async () => {
+      const articleId = await glassArticle('guard-replace');
+      const v3 = randomUUID();
+      await app.query(
+        `INSERT INTO kb_article_version (id, article_id, version, title, body_md, content_hash, created_by)
+         VALUES ($1, $2, 3, 'Title', 'Body 3', $3, $4)`,
+        [v3, articleId, HASH, writer],
+      );
+      await app.query(
+        `UPDATE kb_article SET current_version_id = $2, published_version_id = $2,
+                break_glass_at = now() + interval '1 minute', break_glass_reason = 'again',
+                break_glass_version_id = $2, break_glass_prev_version = 2, break_glass_by = $3
+         WHERE id = $1`,
+        [articleId, v3, publisher],
+      );
+      const { rows } = await app.query<{ break_glass_reason: string }>(
+        'SELECT break_glass_reason FROM kb_article WHERE id = $1',
+        [articleId],
+      );
+      expect(rows[0]?.break_glass_reason).toBe('again');
+    });
+
+    it('points only at versions of its own article', async () => {
+      const mine = await article(app, { slug: 'guard-fk-a', publish: true, status: 'published' });
+      const other = await article(app, { slug: 'guard-fk-b' });
+      for (const column of ['break_glass_version_id', 'review_version_id']) {
+        expect(
+          await code(
+            app.query(`UPDATE kb_article SET ${column} = $2 WHERE id = $1`, [
+              mine.articleId,
+              other.versionId,
+            ]),
+          ),
+        ).toBe(FOREIGN_KEY_VIOLATION);
+      }
+      expect(
+        await code(
+          app.query('UPDATE kb_article SET review_version_id = $2 WHERE id = $1', [
+            mine.articleId,
+            mine.versionId,
+          ]),
+        ),
+      ).toBeUndefined();
+    });
   });
 
   it('removes an organization from the audience of its articles when the organization goes', async () => {
@@ -358,9 +505,18 @@ describe('0015_kb', () => {
       `SELECT to_regclass('kb_article') AS a, to_regclass('kb_article_version') AS b,
               to_regclass('kb_chunk') AS c, to_regclass('kb_embedding_index') AS d,
               to_regclass('kb_article_org') AS e,
+              to_regprocedure('kb_article_guard_break_glass()') AS f,
               (SELECT count(*) FROM permissions WHERE key IN ('kb.read.customer', 'kb.publish.break_glass'))::int AS p`,
     );
-    expect(gone.rows[0]).toEqual({ a: null, b: null, c: null, d: null, e: null, p: 0 });
+    expect(gone.rows[0]).toEqual({
+      a: null,
+      b: null,
+      c: null,
+      d: null,
+      e: null,
+      f: null,
+      p: 0,
+    });
     expect(await migrateUp(owner())).toEqual(['0015_kb', ...later]);
     const back = await owner().query(`SELECT to_regclass('kb_chunk') AS c`);
     expect(back.rows[0]).toEqual({ c: 'kb_chunk' });

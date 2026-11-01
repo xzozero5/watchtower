@@ -23,11 +23,7 @@ const PHASE_1 = [
 ] as const;
 
 // Permissions added by later migrations; they go when the steps are reverted too.
-const ADDED_LATER = [
-  'ticket.cancel.any',
-  'kb.read.customer',
-  'kb.publish.break_glass',
-] as const;
+const ADDED_LATER = ['ticket.cancel.any', 'kb.read.customer', 'kb.publish.break_glass'] as const;
 
 let testDb: TestDatabase;
 const owner = (): Pool => testDb.owner.pool;

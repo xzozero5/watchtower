@@ -905,8 +905,9 @@ describe('0014 revert', () => {
     // Under 0014 an AI-authored message cannot be sent as a person's.
     await rejects(insertDelivery(app, f), INTEGRITY);
 
-    const reverted = await migrateDown(owner(), { steps: 1 });
-    expect(reverted).toEqual(['0014_outbound_hardening']);
+    const later = await migrationsAfter('0014_outbound_hardening');
+    const reverted = await migrateDown(owner(), { steps: 1 + later.length });
+    expect(reverted).toEqual([...later.toReversed(), '0014_outbound_hardening']);
     const column = await owner().query<{ n: number }>(
       `SELECT count(*)::int AS n FROM information_schema.columns
         WHERE table_name = 'outbound_template_allowlist' AND column_name = 'body_pattern'`,
@@ -920,7 +921,7 @@ describe('0014 revert', () => {
     const id = (await insertDelivery(app, f)).rows[0]?.id ?? '';
     await owner().query(`DELETE FROM outbound_delivery WHERE id = $1`, [id]);
 
-    expect(await migrateUp(owner())).toEqual(['0014_outbound_hardening']);
+    expect(await migrateUp(owner())).toEqual(['0014_outbound_hardening', ...later]);
     await rejects(insertDelivery(app, f), INTEGRITY);
     const back = await owner().query<{ role: string }>(
       `SELECT role FROM role_permissions WHERE permission = 'ticket.cancel.any' ORDER BY role`,
