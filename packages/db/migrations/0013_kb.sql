@@ -95,12 +95,14 @@ CREATE UNIQUE INDEX kb_article_version_number_key ON kb_article_version (article
 CREATE UNIQUE INDEX kb_article_version_owner_key ON kb_article_version (id, article_id);
 
 ALTER TABLE kb_article
-  -- Deferred so an article and its first version can be inserted in either order in one transaction.
+  -- Both pointers are deferred so an article and its first version can be inserted in either order
+  -- in one transaction (the seed writes a published article in one go).
   ADD CONSTRAINT kb_article_current_version_fkey
     FOREIGN KEY (current_version_id, id) REFERENCES kb_article_version (id, article_id)
     DEFERRABLE INITIALLY DEFERRED,
   ADD CONSTRAINT kb_article_published_version_fkey
-    FOREIGN KEY (published_version_id, id) REFERENCES kb_article_version (id, article_id);
+    FOREIGN KEY (published_version_id, id) REFERENCES kb_article_version (id, article_id)
+    DEFERRABLE INITIALLY DEFERRED;
 
 CREATE TRIGGER kb_article_version_reject_update_delete
   BEFORE UPDATE OR DELETE ON kb_article_version
