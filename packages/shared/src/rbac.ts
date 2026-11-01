@@ -76,6 +76,16 @@ export const PERMISSIONS = {
   'kb.read.customer': 'Search the customer-visible knowledge base (client)',
   'kb.publish.break_glass':
     'Publish a knowledge base article without a second person, with a reason (head)',
+  // Phase 2 (T-200, migration 0040_phase2_permissions). `[ASSUMED]`, grants are explained above `AGENT`.
+  'alert.read': 'View alerts and the service catalog',
+  'alert.ack': 'Acknowledge an alert',
+  'alert.manage': 'Snooze or resolve alerts by hand and manage escalation policies',
+  'service.manage': 'Create and edit services in the catalog',
+  'investigate.adhoc': 'Run an ad-hoc investigation query outside a ticket template',
+  'metric.read': 'View product usage metrics',
+  'metric.manage': 'Create and edit product usage metric definitions',
+  'org.health.read': 'View the Client Health Score of an organization',
+  'dashboard.ops.read': 'View the ops dashboard and the service status panel',
 } as const satisfies Record<string, string>;
 
 export type Permission = keyof typeof PERMISSIONS;
@@ -94,6 +104,10 @@ export function isPermission(value: string): value is Permission {
  *   intents to stage 2, the safe direction), `csat.read` and `ai.run.read` (quality review).
  * - head adds `outbox.manage` (PRD section 8.3: dead letters are visible to the head).
  * - client and system get none.
+ * Phase 2 (T-200, `[ASSUMED]`): agent `alert.read`, `alert.ack` and `dashboard.ops.read` (whoever is on shift
+ * answers an alert and sees the service panel); lead adds `alert.manage`, `service.manage`,
+ * `investigate.adhoc`, `metric.read` and `org.health.read`; head adds `metric.manage` (a metric
+ * template is SQL against product data: head only, audited). The client gets none of them.
  * Migration 0006 seeds the same rows; the integration tests compare them with this file.
  */
 const AGENT: readonly Permission[] = [
@@ -113,6 +127,9 @@ const AGENT: readonly Permission[] = [
   'inbound.read',
   'shift.note.write',
   'handoff.ack',
+  'alert.read',
+  'alert.ack',
+  'dashboard.ops.read',
 ];
 
 const LEAD: readonly Permission[] = [
@@ -133,6 +150,11 @@ const LEAD: readonly Permission[] = [
   'csat.read',
   'ai.run.read',
   'ticket.cancel.any',
+  'alert.manage',
+  'service.manage',
+  'investigate.adhoc',
+  'metric.read',
+  'org.health.read',
 ];
 
 const HEAD: readonly Permission[] = [
@@ -150,6 +172,7 @@ const HEAD: readonly Permission[] = [
   'session.revoke.any',
   'outbox.manage',
   'kb.publish.break_glass',
+  'metric.manage',
 ];
 
 const CLIENT: readonly Permission[] = [

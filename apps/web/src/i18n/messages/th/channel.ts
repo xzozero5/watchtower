@@ -7,4 +7,5 @@ export const channelTh: Widen<typeof channelEn> = {
   portal: 'พอร์ทัล',
   discord: 'Discord',
   webhook: 'Webhook',
+  internal: 'ภายใน',
 };

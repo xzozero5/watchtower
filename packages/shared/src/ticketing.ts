@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-import { channelTypeSchema } from './channels.js';
+import { ticketChannelSchema } from './channels.js';
 import { csvList, cursorSchema, jsonRecordSchema, pageLimit, pageOf } from './common.js';
 import { emailSchema } from './auth.js';
 import { assertDisjoint } from './features/compose.js';
@@ -237,7 +237,7 @@ export const ticketSummarySchema = z.object({
   subject: z.string(),
   status: ticketStatusSchema,
   priority: ticketPrioritySchema,
-  channel: channelTypeSchema,
+  channel: ticketChannelSchema,
   org: ticketOrgRefSchema,
   requester: z.object({ id: z.uuid(), name: z.string() }).nullable(),
   intent: ticketIntentRefSchema.nullable(),
@@ -339,7 +339,7 @@ export const ticketListQuerySchema = z.object({
   /** Staff only; a client is always limited to their own organization. */
   orgId: z.uuid().optional(),
   intentId: z.uuid().optional(),
-  channel: channelTypeSchema.optional(),
+  channel: ticketChannelSchema.optional(),
   tag: z.string().trim().min(1).max(64).optional(),
   /** Free text over the subject and the visible messages, and an exact ticket number. */
   q: z.string().trim().min(MIN_SEARCH_LENGTH).max(200).optional(),
@@ -488,7 +488,7 @@ export const messageSchema = z.object({
   id: z.uuid(),
   ticketId: z.uuid(),
   ticketKey: z.string(),
-  channel: channelTypeSchema,
+  channel: ticketChannelSchema,
   direction: messageDirectionSchema,
   visibility: messageVisibilitySchema,
   sender: messageSenderSchema,

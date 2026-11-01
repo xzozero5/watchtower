@@ -172,6 +172,23 @@ export const phase1EnvShape = {
   ),
 } satisfies z.ZodRawShape;
 
+/**
+ * Phase 2 (T-200). Every integration variable here is empty by default, and empty means mock: no
+ * connector reaches an outside service until the owner supplies the value (`[ASK-HUMAN]`).
+ */
+export const phase2EnvShape = {
+  // Alert ingest (T-201c): how the Pub/Sub push receiver for GCP alert notifications recognises
+  // Pub/Sub (OIDC token audience and the service account that signs it). Both empty: it answers 503.
+  // The HMAC secret of the generic alert webhook is a credential: ALERT_WEBHOOK_SECRET or the
+  // credential store (integration "alerting"), see INTEGRATION_CATALOG.
+  ALERT_PUSH_AUDIENCE: optionalString,
+  ALERT_PUSH_SERVICE_ACCOUNT: optionalString,
+  ALERT_WEBHOOK_SECRET: optionalString,
+  // The public status page (T-204) is closed unless the owner opens it: `false` answers 404 on every
+  // /status route. An explicit opt-in, like DEV_LOGIN_ENABLED. [ASK-HUMAN] to open.
+  STATUS_PAGE_PUBLIC: z.preprocess(emptyToUndefined, z.stringbool().default(false)),
+} satisfies z.ZodRawShape;
+
 const MIN_PRODUCTION_SECRET_LENGTH = 32;
 const ENCRYPTION_KEY_BYTES = 32;
 /** Also enforced by the CLI that creates a break-glass account. */
@@ -381,9 +398,11 @@ function applyGuards(env: Readonly<Record<string, unknown>>, ctx: z.RefinementCt
 
 /** Builds a service env schema: the shared variables, the service's own, then the guards. */
 export function createEnvSchema<Shape extends z.ZodRawShape>(extra: Shape) {
-  return z.object({ ...baseEnvShape, ...phase1EnvShape, ...extra }).superRefine((env, ctx) => {
-    applyGuards(env, ctx);
-  });
+  return z
+    .object({ ...baseEnvShape, ...phase1EnvShape, ...phase2EnvShape, ...extra })
+    .superRefine((env, ctx) => {
+      applyGuards(env, ctx);
+    });
 }
 
 export interface ConfigIssue {

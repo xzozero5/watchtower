@@ -127,6 +127,14 @@ export const INTEGRATION_CATALOG = {
       }),
     },
   },
+  alerting: {
+    name: 'Alert ingest',
+    fields: {
+      webhookSecret: field('Alert webhook signing secret', 'ALERT_WEBHOOK_SECRET', {
+        required: false,
+      }),
+    },
+  },
   web_push: {
     name: 'Web Push',
     fields: {

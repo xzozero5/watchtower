@@ -31,6 +31,7 @@ export const LOG_REDACT_PATHS: readonly string[] = [
   '*.serviceAccountJson',
   '*.anthropicApiKey',
   '*.vapidPrivate',
+  '*.webhookSecret',
   '*.webhookUrl',
   '*.webhookUrlUrgent',
   '*.fields',
