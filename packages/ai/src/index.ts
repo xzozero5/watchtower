@@ -2,6 +2,7 @@ export const packageName = '@watchtower/ai';
 
 export * from './contract.js';
 export * from './audited.js';
+export * from './audited-embedding.js';
 export { hashJson, hmacInputHash, sha256Hex } from './hash.js';
 export * from './models.js';
 export * from './prompts.js';

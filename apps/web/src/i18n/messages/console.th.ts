@@ -272,6 +272,10 @@ export const adminTh: Widen<typeof adminEn> = {
     assignment: 'การมอบหมาย',
     manual: 'ด้วยมือ',
     roundRobin: 'หมุนเวียน',
+    loadBalanced: 'ภาระน้อยที่สุด',
+    stayWithLast: 'ผู้ดูแลล่าสุด',
+    onlyOnShift:
+      'โหมดอัตโนมัติเลือกเฉพาะคนที่ clock in แล้ว ภาระน้อยที่สุด = ให้คนที่มี ticket เปิดอยู่น้อยที่สุด ผู้ดูแลล่าสุด = ส่งผู้ติดต่อกลับไปหาคนที่ดูแล ticket ล่าสุดของเขา ถ้าไม่ได้จึงใช้ภาระน้อยที่สุด',
     members: 'สมาชิก',
     noMembers: 'ไม่มีสมาชิก',
     isDefault: 'ticket ใหม่ที่ไม่ระบุคิวจะเข้าคิวนี้',

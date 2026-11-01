@@ -262,6 +262,34 @@ function windowsOn(
   ]);
 }
 
+// --- wall-clock helpers for other features (shifts, T-111) ---
+
+function parseDateKey(key: string): LocalDate {
+  const [year = '0', month = '0', day = '0'] = key.split('-');
+  return { year: Number(year), month: Number(month), day: Number(day) };
+}
+
+/** The calendar date (`YYYY-MM-DD`) that `at` falls on in `timezone`. */
+export function localDateKeyOf(at: Date, timezone: string): string {
+  return dateKey(localDateOf(at.getTime(), timezone));
+}
+
+/** `key` moved by whole calendar days (negative goes back). Pure date arithmetic, no zone involved. */
+export function addDaysToDateKey(key: string, days: number): string {
+  const { year, month, day } = parseDateKey(key);
+  const moved = new Date(Date.UTC(year, month - 1, day + days));
+  return dateKey({
+    year: moved.getUTCFullYear(),
+    month: moved.getUTCMonth() + 1,
+    day: moved.getUTCDate(),
+  });
+}
+
+/** The instant at which the wall clock of `timezone` shows date `key` plus `minutes` after midnight. */
+export function zonedWallClockToUtc(key: string, minutes: number, timezone: string): Date {
+  return new Date(wallClockToUtc(parseDateKey(key), minutes, timezone));
+}
+
 function assertInstant(ms: number, label: string): void {
   if (!Number.isFinite(ms)) throw new SlaCalendarError(`${label} is not a valid instant`);
 }

@@ -35,9 +35,18 @@ snapshot สั้นสำหรับ cold start อยู่ที่ `HANDOF
 - (2026-11-01) หลังแก้ `packages/shared` ต้อง build/รัน test แบบ `turbo --force` ก่อนอ้างว่า package ที่ import shared ผ่าน — api import `dist` ของ shared จึงเห็นผลเก่าได้ (เคยรายงานผิดว่า api ผ่าน) `[TESTED]`
 - (2026-11-01) เวลาใน log/STATUS ต้องมาจาก `TZ=Asia/Bangkok date` เสมอ ห้ามพิมพ์เอง (เคยพิมพ์ผิดหลายชั่วโมง)
 - (2026-11-01) อย่าเทียบเวลาจาก DB กับเวลาแอปในการตัดสินใจเดียวกัน: เครื่องจริงมี skew หลายสิบ ms (host กับ Docker VM) ซึ่ง cloud ไม่เห็น · วัด skew ต้องวัดใน connection เดียว การเทียบ `docker exec date` กับ `date` นับเวลารันคำสั่งเข้าไป `[TESTED]`
+- (2026-11-01) **ผลบนเครื่องไม่แทน CI:** `main` บน GitHub แดงมาตั้งแต่ ingest เข้า (job integration ไม่มี MinIO) แต่ไม่มีใครเปิดดู จนเจ้าของทัก → ทุก merge ต้องดู `gh run list --branch main` ด้วย งานใหม่ที่พึ่ง service เพิ่มต้องแก้ CI ในงานนั้น `[TESTED]`
 - (2026-11-01) cloud session: `dockerd` ต้องสั่งเอง · Docker Hub 429 → pull ซ้ำทีละ image · build image ไม่ได้ (corepack ไม่เชื่อ CA ของ proxy) · Playwright ใช้ `PW_EXECUTABLE_PATH=/opt/pw-browsers/chromium` · หลาย worktree รัน e2e พร้อมกันต้องตั้ง `E2E_PORT` ต่างกัน · Redis counter ข้ามรอบ test → `RATE_LIMIT_NAMESPACE`
 
 ## Log
+
+## 2026-11-01 23:05 (Asia/Bangkok) — main thread — T-111a–e Shifts backend ปิด
+- test: main thread รันเองบน Windows: lint, typecheck, unit ผ่าน · integration db 256, domain 270, api 635, worker 156 · e2e 134 · full-stack 23 `[TESTED]`
+- ค้าง/ไม่ยืนยัน: T-111f หน้าจอยังไม่ทำ · AI summary ของ brief ยังไม่ทำ · P2 สองข้อ gate เลี่ยงได้ → T-125 · erasure ADR ต้องรวม handoff/shift_note
+
+## 2026-11-01 22:47 (Asia/Bangkok) — main thread — T-107a–c Knowledge base ปิด
+- test: main thread รันเองบน Windows: lint, typecheck, unit ผ่าน · integration db 240, domain 260, api 579, worker 156 · e2e 134 · full-stack 23 `[TESTED]`
+- ค้าง/ไม่ยืนยัน: embedding mock เท่านั้น ค้นเชิงความหมายยังไม่จริง · name dictionary ของ redactor ว่าง · P3 trigger + งบ customer search → T-125 · ผู้สั่ง AI ≠ approver → T-108e
 
 ## 2026-11-01 22:16 (Asia/Bangkok) — main thread — T-104 Discord webhook + fan-out (mock) ปิด
 - test: main thread รันเอง: lint, typecheck, unit ผ่าน, integration, e2e, full-stack ผ่านครบ `[TESTED]`

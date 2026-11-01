@@ -1,7 +1,7 @@
 'use client';
 
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import type { TeamQueue } from '@watchtower/shared';
+import { ASSIGNMENT_MODES, type AssignmentMode, type TeamQueue } from '@watchtower/shared';
 import {
   Avatar,
   Button,
@@ -80,8 +80,7 @@ function QueuesBody() {
     {
       id: 'mode',
       header: t('admin.queues.assignment'),
-      cell: (row) =>
-        t(row.assignmentMode === 'manual' ? 'admin.queues.manual' : 'admin.queues.roundRobin'),
+      cell: (row) => t(MODE_LABELS[row.assignmentMode]),
     },
     {
       id: 'default',
@@ -199,6 +198,13 @@ function QueuesBody() {
   );
 }
 
+const MODE_LABELS = {
+  manual: 'admin.queues.manual',
+  round_robin: 'admin.queues.roundRobin',
+  load_balanced: 'admin.queues.loadBalanced',
+  stay_with_last_handler: 'admin.queues.stayWithLast',
+} as const satisfies Record<AssignmentMode, string>;
+
 function QueueSheet({ queue, onClose }: { queue: TeamQueue | null; onClose: () => void }) {
   const t = useT();
   const api = useApi();
@@ -207,7 +213,7 @@ function QueueSheet({ queue, onClose }: { queue: TeamQueue | null; onClose: () =
   const users = useUsers(true);
   const base = useId();
   const [name, setName] = useState(queue?.name ?? '');
-  const [mode, setMode] = useState<'manual' | 'round_robin'>(queue?.assignmentMode ?? 'manual');
+  const [mode, setMode] = useState<AssignmentMode>(queue?.assignmentMode ?? 'manual');
   const [isDefault, setIsDefault] = useState(queue?.isDefault ?? false);
   const [members, setMembers] = useState<string[]>(
     queue?.members.map((member) => member.userId) ?? [],
@@ -307,11 +313,9 @@ function QueueSheet({ queue, onClose }: { queue: TeamQueue | null; onClose: () =
             aria-label={t('admin.queues.assignment')}
             value={mode}
             onValueChange={setMode}
-            options={[
-              { value: 'manual', label: t('admin.queues.manual') },
-              { value: 'round_robin', label: t('admin.queues.roundRobin') },
-            ]}
+            options={ASSIGNMENT_MODES.map((value) => ({ value, label: t(MODE_LABELS[value]) }))}
           />
+          <p className="text-xs text-muted-foreground">{t('admin.queues.onlyOnShift')}</p>
         </div>
         <label className="flex items-center gap-2 text-sm">
           <input

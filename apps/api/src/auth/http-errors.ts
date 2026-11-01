@@ -8,7 +8,16 @@ const REASONS: Readonly<Record<number, string>> = {
   [HttpStatus.NOT_FOUND]: 'Not Found',
   [HttpStatus.CONFLICT]: 'Conflict',
   [HttpStatus.TOO_MANY_REQUESTS]: 'Too Many Requests',
+  [HttpStatus.SERVICE_UNAVAILABLE]: 'Service Unavailable',
 };
+
+/** 503: a knowledge base search ran past its time limit and was stopped; a shorter query may work. */
+export const kbSearchTimeout = (): ApiHttpError =>
+  new ApiHttpError(
+    HttpStatus.SERVICE_UNAVAILABLE,
+    'kb_search_timeout',
+    'The search took too long; try fewer or more specific words',
+  );
 
 /**
  * An error whose body is `{ statusCode, error, code, message }` (apiErrorSchema in

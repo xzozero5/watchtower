@@ -7,6 +7,7 @@ import { assertDisjoint } from './features/compose.js';
 import { ticketAiRowSchema } from './features/ai.js';
 import { FEATURES, FEATURE_TICKET_EVENTS } from './features/index.js';
 import { deliverySummarySchema } from './features/outbound.js';
+import { ticketSlaViewSchema } from './features/shifts.js';
 import { slaStateSchema, ticketPrioritySchema } from './sla.js';
 
 /**
@@ -261,6 +262,11 @@ export const ticketSummarySchema = z.object({
   csatScore: z.number().int().nullable(),
   /** What the AI has done with the ticket (T-128). Absent until the api serves it. */
   ai: ticketAiRowSchema.optional(),
+  /**
+   * The running SLA target and the time left on it, counted by the server on the policy's own
+   * calendar (T-111e). Absent when no target runs (resolved, closed, no policy).
+   */
+  sla: ticketSlaViewSchema.optional(),
   createdAt: z.iso.datetime(),
   updatedAt: z.iso.datetime(),
 });
@@ -436,8 +442,12 @@ export const assignTicketSchema = z
   .object({
     /** A staff user id, or null to unassign. */
     assigneeId: z.uuid().nullable().optional(),
-    /** Pick the next active member of the ticket's queue (or of `queueId`) in turn. */
-    strategy: z.literal('round_robin').optional(),
+    /**
+     * Pick a member of the ticket's queue (or of `queueId`) who is clocked in: the next in turn
+     * (`round_robin`), the one with the fewest open tickets (`load_balanced`), or whoever handled
+     * the requester's last ticket (`stay_with_last_handler`, falling back to load) (R-1.7).
+     */
+    strategy: z.enum(['round_robin', 'load_balanced', 'stay_with_last_handler']).optional(),
     queueId: z.uuid().optional(),
   })
   .refine((value) => (value.assigneeId !== undefined) !== (value.strategy !== undefined), {

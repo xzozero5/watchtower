@@ -274,6 +274,10 @@ export const adminEn = {
     assignment: 'Assignment',
     manual: 'Manual',
     roundRobin: 'Round robin',
+    loadBalanced: 'Least loaded',
+    stayWithLast: 'Last handler',
+    onlyOnShift:
+      'The automatic modes only pick people who are clocked in. Least loaded gives the ticket to whoever has the fewest open tickets; Last handler returns a requester to the person who handled their last ticket, then falls back to least loaded.',
     members: 'Members',
     noMembers: 'No members',
     isDefault: 'New tickets without a queue go here',

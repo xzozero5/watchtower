@@ -109,10 +109,19 @@ export async function addOrg(
   return row;
 }
 
+/** Puts a person on shift: an open clock-in session, so round-robin and load balancing can pick them (T-111). */
+export async function clockIn(
+  env: DomainTestEnv,
+  userId: string,
+  at: Date = new Date(),
+): Promise<void> {
+  await env.db.owner.db.insert(schema.shiftSession).values({ userId, clockedInAt: at });
+}
+
 export async function addQueue(
   env: DomainTestEnv,
   fields: {
-    mode?: 'manual' | 'round_robin';
+    mode?: 'manual' | 'round_robin' | 'load_balanced' | 'stay_with_last_handler';
     isDefault?: boolean;
     members?: readonly string[];
   } = {},

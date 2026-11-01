@@ -771,8 +771,15 @@ describe('replies and notes', () => {
 });
 
 describe('assignment', () => {
+  /** Agents who are clocked in: assignment by turns only picks people on shift (T-111). */
   async function staffMembers(count: number): Promise<Persona[]> {
-    return Promise.all(Array.from({ length: count }, () => signIn(h, 'agent')));
+    return Promise.all(
+      Array.from({ length: count }, async () => {
+        const person = await signIn(h, 'agent');
+        expect((await person.client.post('/v1/shifts/clock-in', {})).status).toBe(200);
+        return person;
+      }),
+    );
   }
 
   it('assigns by hand, unassigns, and keeps every change in the history', async () => {

@@ -1,10 +1,25 @@
 import { REOPEN_WINDOW_DAYS } from '@watchtower/shared';
 
-import { assertAssignableStaff, nextRoundRobin, peekRoundRobin, takeTurn } from './assignment.js';
+import {
+  assertAssignableStaff,
+  nextAssignee,
+  nextRoundRobin,
+  peekAssignee,
+  peekRoundRobin,
+  takeTurn,
+} from './assignment.js';
 import { readAutonomyState, setAiSwitch, setIntentAutonomy } from './autonomy/state.js';
 import { findOrCreateContactByEmail } from './contacts.js';
 import { ingestInbound } from './inbound/ingest.js';
 import { resolveIntent } from './intents.js';
+import {
+  createKbArticle,
+  publishKbArticle,
+  publishKbArticleBreakGlass,
+  reviewKbBreakGlass,
+  transitionKbArticle,
+  updateKbArticle,
+} from './kb/articles.js';
 import { NO_NOTIFIER, type TicketNotifier } from './notifier.js';
 import { issueLineLinkCode, linkLineUser, redeemLineLinkCode } from './identity/line-link.js';
 import { cancelSend } from './outbound/cancel.js';
@@ -74,11 +89,20 @@ export {
   type AiRunRecorder,
 } from './ai/recorder.js';
 export {
+  ASSIGN_STRATEGIES,
   assertAssignableStaff,
+  isAssignStrategy,
+  nextAssignee,
   nextRoundRobin,
+  onShiftCondition,
+  openTicketCounts,
+  peekAssignee,
   peekRoundRobin,
+  pickLeastLoaded,
   pickNextMember,
   takeTurn,
+  type AssignHints,
+  type AssignStrategy,
 } from './assignment.js';
 export {
   contactSnapshot,
@@ -130,6 +154,62 @@ export {
   type ThreadMatchKind,
 } from './inbound/types.js';
 export { resolveIntent } from './intents.js';
+export {
+  kbContentHash,
+  createKbArticle,
+  publishKbArticle,
+  publishKbArticleBreakGlass,
+  reviewKbBreakGlass,
+  transitionKbArticle,
+  updateKbArticle,
+  type BreakGlassPublishKbArticleInput,
+  type KbWriteResult,
+  type PublishKbArticleInput,
+  type ReviewKbBreakGlassInput,
+  type TransitionKbArticleInput,
+  type UpdateKbArticleInput,
+} from './kb/articles.js';
+export {
+  ChunkOptionsError,
+  DEFAULT_CHUNK_OPTIONS,
+  assertChunkOptions,
+  chunkMarkdown,
+  type Chunk,
+  type ChunkOptions,
+} from './kb/chunker.js';
+export {
+  articlesNeedingEmbedding,
+  dropArticleChunksIfNotLive,
+  ensureActiveEmbeddingIndex,
+  readActiveEmbeddingIndex,
+  replaceArticleChunks,
+  type ChunkToStore,
+  type EmbeddingIndexRef,
+  type EmbeddingIndexSpec,
+  type ReembedTarget,
+  type ReplaceChunksInput,
+} from './kb/chunks.js';
+export { RRF_K, reciprocalRankFusion, type FusedItem, type RankedList } from './kb/rrf.js';
+export {
+  audienceWidens,
+  canMove,
+  canPublishFrom,
+  sameAudience,
+  type KbAudienceSpec,
+} from './kb/rules.js';
+export {
+  DEFAULT_MIN_VECTOR_SIMILARITY,
+  DEFAULT_SEARCH_TIMEOUT_MS,
+  KbSearchTimeoutError,
+  MAX_CANDIDATES,
+  audienceCondition,
+  candidateCount,
+  queryTerms,
+  searchKb,
+  type KbAudience,
+  type KbSearchInput,
+  type KbSearchOutcome,
+} from './kb/search.js';
 export { NO_NOTIFIER, type TicketNotifier } from './notifier.js';
 export { enqueueJob, type OutboxRequest } from './outbox.js';
 export { cancelSend, type CancelSendInput } from './outbound/cancel.js';
@@ -333,6 +413,15 @@ export interface Domain {
     readonly setSwitch: typeof setAiSwitch;
     readonly setIntentStage: typeof setIntentAutonomy;
   };
+  /** Knowledge base articles (T-107): create, edit, move between statuses, publish. */
+  readonly kb: {
+    readonly create: typeof createKbArticle;
+    readonly update: typeof updateKbArticle;
+    readonly transition: typeof transitionKbArticle;
+    readonly publish: typeof publishKbArticle;
+    readonly publishBreakGlass: typeof publishKbArticleBreakGlass;
+    readonly reviewBreakGlass: typeof reviewKbBreakGlass;
+  };
   readonly workflow: { readonly allows: typeof workflowAllows };
   readonly sla: {
     readonly resolvePolicy: typeof resolveSlaPolicy;
@@ -346,6 +435,8 @@ export interface Domain {
     readonly assertAssignableStaff: typeof assertAssignableStaff;
     readonly nextRoundRobin: typeof nextRoundRobin;
     readonly peekRoundRobin: typeof peekRoundRobin;
+    readonly nextAssignee: typeof nextAssignee;
+    readonly peekAssignee: typeof peekAssignee;
     readonly takeTurn: typeof takeTurn;
   };
   readonly outbox: { readonly enqueue: typeof enqueueJob };
@@ -412,6 +503,14 @@ export function createDomain(options: DomainOptions): Domain {
       setSwitch: setAiSwitch,
       setIntentStage: setIntentAutonomy,
     },
+    kb: {
+      create: createKbArticle,
+      update: updateKbArticle,
+      transition: transitionKbArticle,
+      publish: publishKbArticle,
+      publishBreakGlass: publishKbArticleBreakGlass,
+      reviewBreakGlass: reviewKbBreakGlass,
+    },
     workflow: { allows: workflowAllows },
     sla: {
       resolvePolicy: resolveSlaPolicy,
@@ -421,7 +520,14 @@ export function createDomain(options: DomainOptions): Domain {
       finishedPauses: finishedSlaPauses,
       resume: resumeSla,
     },
-    assignment: { assertAssignableStaff, nextRoundRobin, peekRoundRobin, takeTurn },
+    assignment: {
+      assertAssignableStaff,
+      nextRoundRobin,
+      peekRoundRobin,
+      nextAssignee,
+      peekAssignee,
+      takeTurn,
+    },
     outbox: { enqueue: enqueueJob },
     outbound: {
       schedule: scheduleCustomerSend,
