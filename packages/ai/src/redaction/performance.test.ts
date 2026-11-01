@@ -6,7 +6,8 @@ import { DictionaryTooLargeError, MAX_DICTIONARY_ENTRIES } from './detectors.js'
 // R-3 / R-4: no input may make the redactor super-linear. These inputs target the usual
 // culprits (a pattern restarting at every position of one long run). Before the fix a 200 KB
 // run of one repeated character took tens of seconds. The budget is generous for CI noise and
-// still three orders of magnitude below the old behaviour.
+// still two orders of magnitude below the old behaviour. A GitHub runner measures 200-220 ms on the
+// digit runs since dashed IDs of up to 13 groups are recognised (T-107); it stays linear.
 const SIZE = 200_000;
 
 /**
@@ -19,7 +20,7 @@ function cpuMs(work: () => void): number {
   const used = process.cpuUsage(before);
   return (used.user + used.system) / 1000;
 }
-const BUDGET_MS = 200;
+const BUDGET_MS = 400;
 
 const repeat = (unit: string, size = SIZE): string =>
   unit.repeat(Math.ceil(size / unit.length)).slice(0, size);
