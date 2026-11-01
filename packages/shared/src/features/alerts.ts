@@ -25,13 +25,56 @@ export const ALERTS_AUDIT_ACTIONS = {
   escalationPolicyUpdate: 'escalation_policy.update',
   /** An escalation policy was removed (its services fall back to the default policy). */
   escalationPolicyDelete: 'escalation_policy.delete',
+  /** A person (web or Discord) acknowledged an alert; the escalation stops. */
+  alertAck: 'alert.ack',
+  /** The sweep told the next target of an escalation policy. Written by the system actor. */
+  alertEscalate: 'alert.escalate',
 } as const satisfies Record<string, string>;
 
 /** `ticket_event.type` strings written by this feature. */
 export const ALERTS_TICKET_EVENTS = {} as const satisfies Record<string, string>;
 
-/** BullMQ queue names owned by this feature (T-201d adds the escalation sweep). */
-export const ALERTS_QUEUES = {} as const satisfies Record<string, string>;
+/** BullMQ queue names owned by this feature (producer: api, worker; consumer: worker). */
+export const ALERTS_QUEUES = {
+  alerts: 'alerts',
+} as const satisfies Record<string, string>;
+
+export const ALERTS_JOBS = {
+  /** Follows the escalation policies: tells whoever is due, wakes snoozed alerts, checks heartbeats. */
+  sweep: 'sweep',
+  /** Posts one escalation step to the chat channel (Discord). `jobId` is per alert and step. */
+  chat: 'chat',
+} as const;
+
+/** `alerts.chat` job payload: ids only. The worker loads the alert; no text rides the queue. */
+export const alertChatJobSchema = z.object({
+  alertId: z.uuid(),
+  level: z.number().int().min(0).max(10),
+});
+export type AlertChatJob = z.infer<typeof alertChatJobSchema>;
+
+/** Where an acknowledgment came from. */
+export const ALERT_ACK_VIAS = ['web', 'discord'] as const;
+export type AlertAckVia = (typeof ALERT_ACK_VIAS)[number];
+
+/**
+ * How a chat post of an escalation step went. `mock`: an in-memory transport recorded it and nothing
+ * was delivered (never `sent`, so a fake cannot pass for a real post). `skipped`: no channel configured.
+ */
+export const ALERT_CHAT_STATES = [
+  'pending',
+  'sending',
+  'sent',
+  'mock',
+  'skipped',
+  'failed',
+] as const;
+export type AlertChatState = (typeof ALERT_CHAT_STATES)[number];
+
+/** A claim older than this belongs to a worker that died (the post's outcome is then unknown). */
+export const ALERT_CHAT_CLAIM_LEASE_SECONDS = 300;
+/** A post still owed after this long is given up (`failed`, `expired`). `[ASSUMED]` */
+export const ALERT_CHAT_RETRY_MAX_SECONDS = 3600;
 
 // --- vocabulary ---------------------------------------------------------------------------------
 
@@ -397,10 +440,35 @@ export const alertSchema = z.object({
   resolvedAt: z.iso.datetime({ offset: true }).nullable(),
   ackedAt: z.iso.datetime({ offset: true }).nullable(),
   ackedBy: z.uuid().nullable(),
+  ackedVia: z.enum(ALERT_ACK_VIAS).nullable(),
+  /** Steps of the escalation policy already carried out. */
+  escalationLevel: z.number().int().min(0),
+  /** When the next step is due (database clock); null when acknowledged, resolved or at the last step. */
+  nextEscalationAt: z.iso.datetime({ offset: true }).nullable(),
   incidentId: z.uuid().nullable(),
   payload: z.record(z.string(), z.unknown()),
 });
 export type Alert = z.infer<typeof alertSchema>;
+
+/** One step of an escalation that was carried out. Ids and counts only. */
+export const alertEscalationSchema = z.object({
+  level: z.number().int().min(0),
+  target: z.enum(ESCALATION_TARGETS),
+  /** `lead` when nobody was on shift and the leads were told instead. */
+  fallback: z.enum(['lead']).nullable(),
+  recipientCount: z.number().int().min(0),
+  chatState: z.enum(ALERT_CHAT_STATES),
+  createdAt: z.iso.datetime({ offset: true }),
+});
+export type AlertEscalation = z.infer<typeof alertEscalationSchema>;
+export const alertEscalationListSchema = z.object({ items: z.array(alertEscalationSchema) });
+
+/** Result of an acknowledgment: `changed` is false when somebody had already acknowledged it. */
+export const alertAckResultSchema = z.object({
+  changed: z.boolean(),
+  alert: alertSchema,
+});
+export type AlertAckResult = z.infer<typeof alertAckResultSchema>;
 
 export const alertEventSchema = z.object({
   id: z.uuid(),

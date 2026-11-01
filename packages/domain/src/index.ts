@@ -8,6 +8,8 @@ import {
   peekRoundRobin,
   takeTurn,
 } from './assignment.js';
+import { ackAlert } from './alerts/ack.js';
+import { sweepEscalations } from './alerts/escalation.js';
 import { ingestAlert } from './alerts/ingest.js';
 import { readAutonomyState, setAiSwitch, setIntentAutonomy } from './autonomy/state.js';
 import { findOrCreateContactByEmail } from './contacts.js';
@@ -67,6 +69,19 @@ import { updateTicket } from './tickets/update.js';
 import type { Actor, CsatConfig, DomainConfig, DomainContext } from './types.js';
 import { workflowAllows } from './workflow.js';
 
+export {
+  ackAlert,
+  type AckAlertInput,
+  type AckAlertOutcome,
+} from './alerts/ack.js';
+export {
+  escalationStepsFor,
+  resolveRecipients,
+  sweepEscalations,
+  type EscalationRecipients,
+  type EscalationSweepOptions,
+  type EscalationSweepResult,
+} from './alerts/escalation.js';
 export { ingestAlert, type IngestAlertInput, type IngestAlertOutcome } from './alerts/ingest.js';
 export {
   matchService,
@@ -510,8 +525,15 @@ export interface Domain {
     readonly readSettings: typeof readOutboundSettings;
     readonly setUndoSendSeconds: typeof setUndoSendSeconds;
   };
-  /** Alerts from GCP and Alertmanager (T-201c, ADR-015): one delivery per call, idempotent. */
-  readonly alerts: { readonly ingest: typeof ingestAlert };
+  /**
+   * Alerts from GCP and Alertmanager (T-201c, ADR-015): `ingest` takes one delivery per call,
+   * idempotent. `ack` and `sweepEscalations` are the escalation of R-3.8 (T-201d).
+   */
+  readonly alerts: {
+    readonly ingest: typeof ingestAlert;
+    readonly ack: typeof ackAlert;
+    readonly sweepEscalations: typeof sweepEscalations;
+  };
   /** Received messages (ADR-009): used by the worker's `ingest` consumer. */
   readonly inbound: { readonly ingest: typeof ingestInbound };
   /** Who is behind a LINE user id: link codes and LINE Login (T-103d, R-2.11). */
@@ -617,7 +639,7 @@ export function createDomain(options: DomainOptions): Domain {
       readSettings: readOutboundSettings,
       setUndoSendSeconds,
     },
-    alerts: { ingest: ingestAlert },
+    alerts: { ingest: ingestAlert, ack: ackAlert, sweepEscalations },
     inbound: { ingest: ingestInbound },
     identity: { issueLineLinkCode, redeemLineLinkCode, linkLineUser },
     csat: {

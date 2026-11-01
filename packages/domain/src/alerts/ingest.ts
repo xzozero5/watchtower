@@ -12,6 +12,7 @@ import { and, asc, eq, ne, sql } from 'drizzle-orm';
 
 import { badRequest } from '../errors.js';
 import { Effects, type DbTransaction, type DomainContext, type DomainResult } from '../types.js';
+import { escalationStepsFor } from './escalation.js';
 import { matchService } from './match.js';
 
 export interface IngestAlertInput {
@@ -160,6 +161,9 @@ export async function ingestAlert(
   }
 
   const alertId = randomUUID();
+  // The first step of the policy (normally at 0) is due relative to this very insert: the sweep that
+  // follows tells whoever the policy names (T-201d). The time is the database clock, like the others.
+  const [firstStep] = await escalationStepsFor(tx, serviceId);
   await tx.insert(schema.alert).values({
     id: alertId,
     fingerprint: alert.fingerprint,
@@ -173,6 +177,7 @@ export async function ingestAlert(
     payload,
     firstSeenAt: dbNow,
     lastSeenAt: dbNow,
+    nextEscalationAt: sql`clock_timestamp() + make_interval(secs => ${firstStep?.afterSeconds ?? 0})`,
   });
   await recordEvent(alertId, 'fired');
   return fx.result({ kind: 'opened', alertId, serviceId });
