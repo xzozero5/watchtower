@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto';
+
 import { schema } from '@watchtower/db';
 import {
   AUDIT_ACTIONS,
@@ -8,13 +10,14 @@ import {
   QUEUE_NAMES,
   type DeliveryRoute,
 } from '@watchtower/shared';
-import { and, asc, eq, gte, lt, lte, or, sql } from 'drizzle-orm';
+import { and, asc, eq, gte, lt, lte, or, sql, type SQL } from 'drizzle-orm';
 
 import { recordAuditInTx } from '../audit.js';
 import { clearStaleReplyTokens } from './reply-token.js';
 import { enqueueJob } from '../outbox.js';
 import type { PolicyDecision } from '../policy.js';
 import type { MessageRow, OutboundDeliveryRow, TicketRow } from '../rows.js';
+import { TicketKeys } from '../ticket-keys.js';
 import { messageEvent, recordTicketEvent, ticketEvent } from '../tickets/support.js';
 import {
   Effects,
@@ -25,6 +28,7 @@ import {
   type ReadExecutor,
 } from '../types.js';
 import { contentHash, dispatchJobId, type FailureDecision } from './state.js';
+import { parseRenderInputs, renderSystemTemplate } from './templates.js';
 
 /**
  * The database half of the dispatcher (ADR-010 section 3). The worker composes these steps with the
@@ -42,6 +46,21 @@ import { contentHash, dispatchJobId, type FailureDecision } from './state.js';
  */
 
 const leaseUntil = (now: Date): Date => new Date(now.getTime() + DELIVERY_LEASE_SECONDS * 1000);
+
+/**
+ * "This claim still owns the row" (review O-1): the delivery is `sending` AND carries the token this
+ * worker was given. A worker that stalled past its lease, was swept back to `scheduled` and replaced by
+ * another claim presents a token that no longer exists, so none of its writes match.
+ */
+function owned(delivery: Pick<OutboundDeliveryRow, 'id' | 'claimToken'>): SQL {
+  return and(
+    eq(schema.outboundDelivery.id, delivery.id),
+    eq(schema.outboundDelivery.state, 'sending'),
+    delivery.claimToken === null
+      ? sql`false`
+      : eq(schema.outboundDelivery.claimToken, delivery.claimToken),
+  ) as SQL;
+}
 
 /** Who the gate sees as the sender of a delivery: reconstructed from the row, never supplied by a job. */
 export function actorOfDelivery(delivery: OutboundDeliveryRow): Actor {
@@ -70,6 +89,8 @@ export async function claimDelivery(
     .set({
       state: 'sending',
       attempts: sql`${schema.outboundDelivery.attempts} + 1`,
+      // Fencing (review O-1): every later write presents this token; a replaced worker's has changed.
+      claimToken: randomUUID(),
       leaseUntil: leaseUntil(now),
       updatedAt: now,
     })
@@ -140,6 +161,24 @@ export async function vetDelivery(
       return { ok: false, reason: 'ai_draft_content_mismatch' };
     }
   }
+  if (delivery.origin === 'system_template') {
+    // Review O-4: the text must be what the key renders from the inputs stored at schedule time, and
+    // those inputs must still be the ticket's own key and the instance's portal address.
+    const inputs = parseRenderInputs(delivery.renderInputs);
+    const rendered =
+      inputs === null || delivery.templateKey === null
+        ? null
+        : renderSystemTemplate(delivery.templateKey, inputs);
+    if (
+      inputs === null ||
+      rendered === null ||
+      rendered !== message.bodyText ||
+      inputs.ticketKey !== new TicketKeys(ctx.config.ticketKeyPrefix).format(ticket.number) ||
+      inputs.portalUrl !== (ctx.config.portalUrl ?? null)
+    ) {
+      return { ok: false, reason: 'template_body_mismatch' };
+    }
+  }
   const gate = ctx.policyGate;
   if (gate === undefined) return { ok: false, reason: 'no_policy_gate' };
   const decision: PolicyDecision = await gate.check({
@@ -180,6 +219,7 @@ export async function denyDelivery(
   reason: string,
 ): Promise<DomainResult<boolean>> {
   const fx = new Effects();
+  if (delivery.claimToken === null) return fx.result(false);
   const now = ctx.now();
   const [updated] = await tx
     .update(schema.outboundDelivery)
@@ -190,12 +230,7 @@ export async function denyDelivery(
       cancelledAt: now,
       updatedAt: now,
     })
-    .where(
-      and(
-        eq(schema.outboundDelivery.id, delivery.id),
-        eq(schema.outboundDelivery.state, 'sending'),
-      ),
-    )
+    .where(owned(delivery))
     .returning({ id: schema.outboundDelivery.id });
   if (updated === undefined) return fx.result(false);
   await tx
@@ -241,16 +276,14 @@ export async function denyDelivery(
 export async function markDispatched(
   tx: DbTransaction,
   ctx: DomainContext,
-  deliveryId: string,
+  delivery: Pick<OutboundDeliveryRow, 'id' | 'claimToken'>,
   route: DeliveryRoute,
 ): Promise<boolean> {
   const now = ctx.now();
   const rows = await tx
     .update(schema.outboundDelivery)
     .set({ route, dispatchedAt: now, leaseUntil: leaseUntil(now), updatedAt: now })
-    .where(
-      and(eq(schema.outboundDelivery.id, deliveryId), eq(schema.outboundDelivery.state, 'sending')),
-    )
+    .where(owned(delivery))
     .returning({ id: schema.outboundDelivery.id });
   return rows.length > 0;
 }
@@ -298,16 +331,21 @@ export async function recordSent(
       updatedAt: now,
     })
     .where(
-      and(
-        eq(schema.outboundDelivery.id, delivery.id),
-        or(
-          eq(schema.outboundDelivery.state, 'sending'),
-          and(
-            eq(schema.outboundDelivery.state, 'failed'),
-            eq(schema.outboundDelivery.outcomeUnknown, true),
+      // The claim that made the call; or, after the sweeper failed it as unknown, the same claim
+      // answering late. A newer claim has a different token.
+      delivery.claimToken === null
+        ? sql`false`
+        : and(
+            eq(schema.outboundDelivery.id, delivery.id),
+            eq(schema.outboundDelivery.claimToken, delivery.claimToken),
+            or(
+              eq(schema.outboundDelivery.state, 'sending'),
+              and(
+                eq(schema.outboundDelivery.state, 'failed'),
+                eq(schema.outboundDelivery.outcomeUnknown, true),
+              ),
+            ),
           ),
-        ),
-      ),
     )
     .returning({ id: schema.outboundDelivery.id });
   if (sent === undefined) return fx.result(false);
@@ -327,8 +365,18 @@ export async function recordSent(
   if (delivery.aiDraftId !== null) {
     await tx
       .update(schema.aiDraft)
-      .set({ status: 'sent' })
-      .where(and(eq(schema.aiDraft.id, delivery.aiDraftId), eq(schema.aiDraft.status, 'approved')));
+      // `draft` too: an unknown outcome reopened the draft and a late success closes it again.
+      .set({
+        status: 'sent',
+        approvedBy: delivery.approvedBy,
+        approvedAt: sql`COALESCE(${schema.aiDraft.approvedAt}, ${now})`,
+      })
+      .where(
+        and(
+          eq(schema.aiDraft.id, delivery.aiDraftId),
+          or(eq(schema.aiDraft.status, 'approved'), eq(schema.aiDraft.status, 'draft')),
+        ),
+      );
   }
   const firstResponse =
     delivery.origin === 'system_template'
@@ -399,16 +447,12 @@ export async function recordFailure(
       .set({
         state: 'scheduled',
         nextAttemptAt,
+        claimToken: null,
         leaseUntil: null,
         dispatchedAt: null,
         updatedAt: now,
       })
-      .where(
-        and(
-          eq(schema.outboundDelivery.id, delivery.id),
-          eq(schema.outboundDelivery.state, 'sending'),
-        ),
-      )
+      .where(owned(delivery))
       .returning({ id: schema.outboundDelivery.id });
     if (back === undefined) return fx.result(false);
     await enqueueJob(tx, ctx.config, {
@@ -431,12 +475,7 @@ export async function recordFailure(
       leaseUntil: null,
       updatedAt: now,
     })
-    .where(
-      and(
-        eq(schema.outboundDelivery.id, delivery.id),
-        eq(schema.outboundDelivery.state, 'sending'),
-      ),
-    )
+    .where(owned(delivery))
     .returning({ id: schema.outboundDelivery.id });
   if (failed === undefined) return fx.result(false);
   await finishFailed(
@@ -557,6 +596,7 @@ export async function sweepDeliveries(
         .set({
           state: 'scheduled',
           nextAttemptAt,
+          claimToken: null,
           leaseUntil: null,
           dispatchedAt: null,
           updatedAt: now,

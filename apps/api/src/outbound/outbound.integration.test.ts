@@ -223,12 +223,20 @@ describe('POST /v1/tickets/:id/deliveries/:deliveryId/cancel', () => {
       const ticketId = await gmailTicket();
       const response = await reply(agent, ticketId, `State ${state}`);
       const deliveryId = deliveryOf(response).id;
+      // A claim, then (for `sent`) the provider's answer: the database allows no shortcut.
       await pool().query(
-        state === 'sending'
-          ? `UPDATE outbound_delivery SET state = 'sending', lease_until = now() + interval '1 minute', attempts = 1 WHERE id = $1`
-          : `UPDATE outbound_delivery SET state = 'sent', sent_at = now() WHERE id = $1`,
+        `UPDATE outbound_delivery
+            SET state = 'sending', claim_token = gen_random_uuid(), attempts = 1,
+                lease_until = now() + interval '1 minute'
+          WHERE id = $1`,
         [deliveryId],
       );
+      if (state === 'sent') {
+        await pool().query(
+          `UPDATE outbound_delivery SET state = 'sent', sent_at = now(), lease_until = NULL WHERE id = $1`,
+          [deliveryId],
+        );
+      }
       const late = await cancel(agent, ticketId, deliveryId);
       expect(late.status, state).toBe(409);
     }

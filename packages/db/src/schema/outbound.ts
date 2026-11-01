@@ -62,6 +62,8 @@ export const outboundDelivery = pgTable(
     route: text('route'),
     origin: text('origin').notNull(),
     templateKey: text('template_key'),
+    /** Inputs the acknowledgment was rendered from; the dispatcher renders again and compares (review O-4). */
+    renderInputs: jsonb('render_inputs'),
     aiDraftId: uuid('ai_draft_id').references(() => aiDraft.id, { onDelete: 'restrict' }),
     contentHash: text('content_hash').notNull(),
     approvedBy: uuid('approved_by'),
@@ -70,6 +72,8 @@ export const outboundDelivery = pgTable(
     nextAttemptAt: timestamptz('next_attempt_at').notNull(),
     attempts: integer('attempts').notNull().default(0),
     leaseUntil: timestamptz('lease_until'),
+    /** Claim fencing: a fresh uuid per claim, required by every write after it (review O-1). */
+    claimToken: uuid('claim_token'),
     dispatchedAt: timestamptz('dispatched_at'),
     providerMessageId: text('provider_message_id'),
     rfc822MessageId: text('rfc822_message_id'),
@@ -132,3 +136,8 @@ export const instanceSetting = pgTable('instance_setting', {
 export type AiDraftRow = typeof aiDraft.$inferSelect;
 export type OutboundDeliveryRow = typeof outboundDelivery.$inferSelect;
 export type ChannelQuotaUsageRow = typeof channelQuotaUsage.$inferSelect;
+
+/** Keys of the automatic acknowledgments the database lets through (review O-3); read-only for the application. */
+export const outboundTemplateAllowlist = pgTable('outbound_template_allowlist', {
+  key: text('key').primaryKey(),
+});

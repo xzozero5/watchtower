@@ -196,6 +196,13 @@ export function createGmailIngestor(options: GmailIngestorOptions): ChannelInges
   };
 }
 
+/** The event as stored in raw form: everything but the reply token. */
+function withoutReplyToken(payload: Record<string, unknown>): Record<string, unknown> {
+  const rest = { ...payload };
+  delete rest.replyToken;
+  return rest;
+}
+
 // -- LINE -----------------------------------------------------------------------------------------
 
 function lineBody(
@@ -276,7 +283,11 @@ export function createLineIngestor(): ChannelIngestor {
         {
           message,
           raw: {
-            body: Uint8Array.from(Buffer.from(JSON.stringify(source.payload), 'utf8')),
+            // The reply token is a credential for one free reply (ADR-010): it lives sealed in the database
+            // and never in the object store, which keeps raw events for a long time (review O-5).
+            body: Uint8Array.from(
+              Buffer.from(JSON.stringify(withoutReplyToken(source.payload)), 'utf8'),
+            ),
             contentType: 'application/json',
             extension: 'json',
           },

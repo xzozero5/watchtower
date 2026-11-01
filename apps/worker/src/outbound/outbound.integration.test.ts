@@ -12,7 +12,7 @@ import {
 import { AUDIT_ACTIONS, type RealtimeEvent } from '@watchtower/shared';
 import { disableNetConnect } from '@watchtower/shared/testing';
 import { and, eq } from 'drizzle-orm';
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { createLogger } from '../logger.js';
 import { testConfig } from '../testing/support.js';
@@ -58,10 +58,13 @@ function makeChannels(): OutboundChannels {
   return { gmail: () => gmailSender, line: () => lineSender };
 }
 
-function buildDispatcher(overrideChannels: OutboundChannels = channels): OutboundDispatcher {
+function buildDispatcher(
+  overrideChannels: OutboundChannels = channels,
+  withDomain: Domain = domain,
+): OutboundDispatcher {
   return createOutboundDispatcher({
     database,
-    domain,
+    domain: withDomain,
     channels: overrideChannels,
     appHost: HOST,
     realtime: {
@@ -500,8 +503,9 @@ describe('Gmail', () => {
     const after = await staffReply(second.ticketId, 'Crash after');
     clock.now = at(300);
     await database.db.transaction(async (tx) => {
-      await domain.outbound.claim(tx, system(), after.delivery.id);
-      await domain.outbound.markDispatched(tx, system(), after.delivery.id, 'gmail_thread');
+      const claimed = await domain.outbound.claim(tx, system(), after.delivery.id);
+      if (claimed === null) throw new Error('not claimed');
+      await domain.outbound.markDispatched(tx, system(), claimed, 'gmail_thread');
     });
     clock.now = at(300 + 130);
     const second$ = await dispatcher.sweep();
@@ -723,5 +727,114 @@ describe('what the logs and audit rows hold', () => {
     expect(JSON.stringify(events$)).not.toContain('Secret customer words');
     const outbox = await owner().select().from(schema.outbox);
     expect(JSON.stringify(outbox)).not.toContain('Secret customer words');
+  });
+});
+
+describe('claim fencing (review O-1)', () => {
+  it('a worker that stalled past its lease and was replaced never calls the provider', async () => {
+    const { ticketId } = await gmailTicket();
+    const { delivery } = await staffReply(ticketId, 'Only one of us sends');
+    clock.now = at(6);
+
+    // Worker A claims, then stalls inside the policy gate.
+    let release: () => void = () => undefined;
+    const stalled = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const realGate = createPolicyGate({ db: database.db });
+    const slowDomain = createDomain({
+      ticketKeyPrefix: 'OPS',
+      sealKey: randomBytes(32),
+      policyGate: {
+        check: async (request) => {
+          await stalled;
+          return realGate.check(request);
+        },
+        checkAiAction: (request) => realGate.checkAiAction(request),
+      },
+      now: () => clock.now,
+    });
+    const workerA = buildDispatcher(channels, slowDomain).dispatch(delivery.id);
+    await vi.waitFor(async () => {
+      expect((await deliveryRow(delivery.id)).state).toBe('sending');
+    });
+
+    // The lease runs out, the sweeper releases the row, and worker B sends.
+    clock.now = at(6 + 130);
+    expect((await dispatcher.sweep()).released).toBe(1);
+    expect(await dispatcher.dispatch(delivery.id)).toEqual({
+      status: 'sent',
+      route: 'gmail_thread',
+    });
+    expect(fakeGmail.sent).toHaveLength(1);
+
+    // A wakes up. It no longer owns the row: it must not dispatch, and it does not.
+    release();
+    expect(await workerA).toEqual({ status: 'lost' });
+    expect(fakeGmail.calls.filter((call) => call.op === 'sendMessage')).toHaveLength(1);
+    expect(await deliveryRow(delivery.id)).toMatchObject({ state: 'sent', attempts: 2 });
+  });
+
+  it('the same for LINE: a replaced worker neither replies nor pushes, and keeps the reply token it never took', async () => {
+    const { ticketId } = await lineTicket();
+    const { delivery } = await staffReply(ticketId, 'Fenced LINE');
+    clock.now = at(6);
+    let release: () => void = () => undefined;
+    const stalled = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const realGate = createPolicyGate({ db: database.db });
+    const slowDomain = createDomain({
+      ticketKeyPrefix: 'OPS',
+      sealKey: randomBytes(32),
+      policyGate: {
+        check: async (request) => {
+          await stalled;
+          return realGate.check(request);
+        },
+        checkAiAction: (request) => realGate.checkAiAction(request),
+      },
+      now: () => clock.now,
+    });
+    const workerA = buildDispatcher(channels, slowDomain).dispatch(delivery.id);
+    await vi.waitFor(async () => {
+      expect((await deliveryRow(delivery.id)).state).toBe('sending');
+    });
+    clock.now = at(6 + 130);
+    await dispatcher.sweep();
+    // B pushes: the token is older than the router allows by now.
+    expect(await dispatcher.dispatch(delivery.id)).toEqual({ status: 'sent', route: 'line_push' });
+    release();
+    expect(await workerA).toEqual({ status: 'lost' });
+    expect(fakeLine.replies).toHaveLength(0);
+    expect(fakeLine.pushes).toHaveLength(1);
+    expect(await quotaUsed()).toBe(1);
+  });
+});
+
+describe('a LINE push is pinned to push (review O-2)', () => {
+  it('does not turn into a reply when a fresh reply token arrives after an unknown outcome', async () => {
+    const { ticketId, user } = await lineTicket({ token: null });
+    const { delivery } = await staffReply(ticketId, 'Push, then maybe');
+    clock.now = at(6);
+    fakeLine.failNext('message.push', timeout('line', 'message.push'));
+    expect((await dispatcher.dispatch(delivery.id)).status).toBe('retry');
+    expect((await deliveryRow(delivery.id)).route).toBe('line_push');
+
+    // The customer writes again; the new message carries a fresh, valid reply token.
+    clock.now = at(10);
+    await lineTicket({ user, token: fakeLine.issueReplyToken() });
+    clock.now = at(20);
+    expect(await dispatcher.dispatch(delivery.id)).toEqual({ status: 'sent', route: 'line_push' });
+    expect(fakeLine.replies).toHaveLength(0);
+    expect(fakeLine.pushes).toHaveLength(1);
+    expect(fakeLine.pushes[0]?.retryKey).toBe(delivery.id);
+    // The token was not spent: it is still there for the next, different message.
+    const next = await staffReply(ticketId, 'A different message');
+    clock.now = at(25);
+    expect(await dispatcher.dispatch(next.delivery.id)).toEqual({
+      status: 'sent',
+      route: 'line_reply',
+    });
   });
 });

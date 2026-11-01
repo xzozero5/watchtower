@@ -296,7 +296,7 @@ export function createOutboundDispatcher(deps: DispatcherDeps) {
     };
 
     const marked = await transact(async (tx, ctx) => {
-      const ok = await domain.outbound.markDispatched(tx, ctx, delivery.id, route);
+      const ok = await domain.outbound.markDispatched(tx, ctx, delivery, route);
       return { value: ok, events: [], audited: false };
     });
     if (!marked) return { status: 'lost' };
@@ -369,7 +369,7 @@ export function createOutboundDispatcher(deps: DispatcherDeps) {
           await moveQuota(tx, delivery.channelAccountId, period, 1, now);
         }
         const route = decision.route === 'reply' ? 'line_reply' : 'line_push';
-        if (!(await domain.outbound.markDispatched(tx, ctx, delivery.id, route))) {
+        if (!(await domain.outbound.markDispatched(tx, ctx, delivery, route))) {
           throw new ClaimLost();
         }
         return { kind: 'go', route, replyToken, period } as const;
@@ -393,7 +393,10 @@ export function createOutboundDispatcher(deps: DispatcherDeps) {
       return failNow(delivery, 'message_too_long');
     }
 
-    let allowReply = true;
+    // Review O-2: once a push was attempted (its outcome may be unknown) every later attempt of this
+    // delivery pushes with the same retry key. A fresh reply token must not turn it into a second,
+    // different message. `route` survives a retry or a sweep; only a new delivery starts clean.
+    let allowReply = delivery.route !== 'line_push';
     for (;;) {
       const plan = await planLine(delivery, allowReply);
       if (plan === 'lost') return { status: 'lost' };

@@ -18,7 +18,7 @@ import { insertMessage, lockTicketRow, ticketEvent, ticketKeysOf } from '../tick
 import { Effects, type DbTransaction, type DomainContext, type DomainResult } from '../types.js';
 import { readUndoSendSeconds } from './settings.js';
 import { contentHash, dispatchJobId } from './state.js';
-import { renderSystemTemplate } from './templates.js';
+import { renderInputsOf, renderSystemTemplate } from './templates.js';
 
 /**
  * Queues a message for delivery to a customer on Gmail or LINE (ADR-010 section 3). The message row
@@ -149,13 +149,16 @@ export async function scheduleCustomerSend(
     throw badRequest('aiDraftId is only for an AI draft sent by a person');
   }
   let templateKey: string | null = null;
+  let renderInputs: Record<string, string | null> | null = null;
   if (origin === 'system_template') {
     if (input.templateKey === undefined) throw denied('template_missing', 'No template key');
-    const rendered = renderSystemTemplate(input.templateKey, {
+    const vars = {
       ticketKey: ticketKeysOf(ctx).format(ticket.number),
       portalUrl: ctx.config.portalUrl ?? null,
       firstResponseDueAt: ticket.firstResponseDueAt,
-    });
+    };
+    renderInputs = renderInputsOf(vars);
+    const rendered = renderSystemTemplate(input.templateKey, vars);
     if (rendered === null || rendered !== message.bodyText) {
       throw denied(
         'template_body_mismatch',
@@ -198,6 +201,7 @@ export async function scheduleCustomerSend(
       channel,
       origin,
       templateKey,
+      renderInputs,
       aiDraftId: draft?.id ?? null,
       contentHash: hash,
       approvedBy: draft === undefined ? null : ctx.actor.id,

@@ -16,5 +16,8 @@ ALTER TABLE message ADD CONSTRAINT message_delivery_check CHECK (
 DROP TABLE IF EXISTS instance_setting;
 DROP TABLE IF EXISTS channel_quota_usage;
 DROP TABLE IF EXISTS outbound_delivery;
+DROP FUNCTION IF EXISTS outbound_delivery_guard();
+DROP TABLE IF EXISTS outbound_template_allowlist;
 DROP TABLE IF EXISTS ai_draft;
 DROP FUNCTION IF EXISTS ai_draft_set_hash();
+DROP FUNCTION IF EXISTS ai_draft_guard();

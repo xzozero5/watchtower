@@ -62,3 +62,24 @@ export function renderSystemTemplate(key: string, vars: TemplateVars): string | 
 export function safeKeysWithoutRenderer(): string[] {
   return [...SAFE_AUTO_ACK_TEMPLATES].filter((key) => !Object.hasOwn(RENDERERS, key));
 }
+
+/** The inputs as stored on the delivery (JSON), back to `TemplateVars`; null when they are damaged. */
+export function parseRenderInputs(value: unknown): TemplateVars | null {
+  if (typeof value !== 'object' || value === null) return null;
+  const { ticketKey, portalUrl, firstResponseDueAt } = value as Record<string, unknown>;
+  if (typeof ticketKey !== 'string') return null;
+  if (portalUrl !== null && typeof portalUrl !== 'string') return null;
+  if (firstResponseDueAt !== null && typeof firstResponseDueAt !== 'string') return null;
+  const due = firstResponseDueAt === null ? null : new Date(firstResponseDueAt);
+  if (due !== null && Number.isNaN(due.getTime())) return null;
+  return { ticketKey, portalUrl, firstResponseDueAt: due };
+}
+
+/** `TemplateVars` as JSON, the form stored on the delivery. */
+export function renderInputsOf(vars: TemplateVars): Record<string, string | null> {
+  return {
+    ticketKey: vars.ticketKey,
+    portalUrl: vars.portalUrl,
+    firstResponseDueAt: vars.firstResponseDueAt?.toISOString() ?? null,
+  };
+}

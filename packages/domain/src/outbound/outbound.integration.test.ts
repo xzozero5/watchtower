@@ -6,6 +6,7 @@ import { and, eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { createPolicyGate } from '../autonomy/gate.js';
+import { SAFE_AUTO_ACK_TEMPLATES } from '../autonomy/safe-templates.js';
 import { DomainError } from '../errors.js';
 import type { NormalisedInboundMessage } from '../inbound/types.js';
 import type { MessageRow, TicketRow } from '../rows.js';
@@ -654,16 +655,22 @@ describe('the gate is asked again at claim time', () => {
   it('refuses when the draft approval no longer matches (a different approver, or a different text)', async () => {
     const intent = await addIntent(env);
     const s = await scheduledDraft(intent.id);
-    await owner().execute(
-      `UPDATE ai_draft SET approved_by = '${randomUUID()}' WHERE id = '${s.draft.id}'`,
-    );
-    expect(await vetDelivery(env.database.db, ctxAt(SYSTEM, later(6)), s.delivery)).toEqual({
-      ok: false,
-      reason: 'ai_draft_not_approved',
-    });
-    await owner().execute(
-      `UPDATE ai_draft SET approved_by = '${s.staff.id}' WHERE id = '${s.draft.id}'`,
-    );
+    // The guard trigger would stop this swap; switch it off to prove the dispatcher checks as well.
+    await owner().execute(`ALTER TABLE ai_draft DISABLE TRIGGER ai_draft_guard`);
+    try {
+      await owner().execute(
+        `UPDATE ai_draft SET approved_by = '${randomUUID()}' WHERE id = '${s.draft.id}'`,
+      );
+      expect(await vetDelivery(env.database.db, ctxAt(SYSTEM, later(6)), s.delivery)).toEqual({
+        ok: false,
+        reason: 'ai_draft_not_approved',
+      });
+      await owner().execute(
+        `UPDATE ai_draft SET approved_by = '${s.staff.id}' WHERE id = '${s.draft.id}'`,
+      );
+    } finally {
+      await owner().execute(`ALTER TABLE ai_draft ENABLE TRIGGER ai_draft_guard`);
+    }
     await owner().execute(
       `UPDATE ai_draft SET status = 'draft', approved_by = NULL, approved_at = NULL WHERE id = '${s.draft.id}'`,
     );
@@ -720,7 +727,7 @@ describe('automatic acknowledgments render on the server (A-3)', () => {
     const claimed = await env.tx((tx) => claimDelivery(tx, ctxAt(SYSTEM), delivery.id));
     if (claimed === null) throw new Error('not claimed');
     expect((await vetDelivery(env.database.db, ctxAt(SYSTEM), claimed)).ok).toBe(true);
-    await env.tx((tx) => markDispatched(tx, ctxAt(SYSTEM), claimed.id, 'gmail_new'));
+    await env.tx((tx) => markDispatched(tx, ctxAt(SYSTEM), claimed, 'gmail_new'));
     await env.tx((tx) =>
       recordSent(
         tx,
@@ -825,9 +832,7 @@ describe('recording results', () => {
 
   it('sent: delivered, provider identity on the message, first response at the real send time, audited without text', async () => {
     const s = await claimed();
-    await env.tx((tx) =>
-      markDispatched(tx, ctxAt(SYSTEM, later(6)), s.delivery.id, 'gmail_thread'),
-    );
+    await env.tx((tx) => markDispatched(tx, ctxAt(SYSTEM, later(6)), s.delivery, 'gmail_thread'));
     const result = await env.tx((tx) =>
       recordSent(tx, ctxAt(SYSTEM, later(7)), s.delivery, sentArgsFor(s.delivery.id)),
     );
@@ -907,7 +912,12 @@ describe('recording results', () => {
 
     // A late "it did go out" heals an unknown outcome, and only that.
     const healed = await env.tx((tx) =>
-      recordSent(tx, ctxAt(SYSTEM, later(20)), s.delivery, sentArgsFor(s.delivery.id)),
+      recordSent(
+        tx,
+        ctxAt(SYSTEM, later(20)),
+        again as NonNullable<typeof again>,
+        sentArgsFor(s.delivery.id),
+      ),
     );
     expect(healed.value).toBe(true);
     expect((await messageOf(s.message.id)).deliveryStatus).toBe('delivered');
@@ -1035,6 +1045,200 @@ describe('recording results', () => {
   });
 });
 
+describe('claim fencing (review O-1)', () => {
+  const sentArgs = (id: string) => ({
+    route: 'gmail_thread' as const,
+    providerMessageId: `fence-${id}`,
+    rfc822MessageId: `wt.${id}@app.example.test`,
+    providerThreadId: null,
+    threadKey: null,
+    alreadyAccepted: false,
+  });
+
+  async function stalled() {
+    const ticket = await ticketOn('gmail');
+    const staff = await addStaff(env);
+    const { value } = await reply(ticket, staff, `Fence ${randomUUID()}`);
+    const id = value.delivery?.id ?? '';
+    // Worker A claims, then stalls past its lease.
+    const a = await env.tx((tx) => claimDelivery(tx, ctxAt(SYSTEM, later(6)), id));
+    if (a === null) throw new Error('A did not claim');
+    // The sweeper releases it; worker B claims.
+    await env.tx((tx) => sweepDeliveries(tx, ctxAt(SYSTEM, later(6 + 130))));
+    expect(await deliveryOf(id)).toMatchObject({ state: 'scheduled', claimToken: null });
+    const b = await env.tx((tx) => claimDelivery(tx, ctxAt(SYSTEM, later(6 + 131)), id));
+    if (b === null) throw new Error('B did not claim');
+    expect(b.claimToken).not.toBeNull();
+    expect(b.claimToken).not.toBe(a.claimToken);
+    return { id, a, b };
+  }
+
+  it('a worker that was replaced cannot dispatch', async () => {
+    const { id, a, b } = await stalled();
+    expect(
+      await env.tx((tx) => markDispatched(tx, ctxAt(SYSTEM, later(140)), a, 'gmail_thread')),
+    ).toBe(false);
+    expect((await deliveryOf(id)).dispatchedAt).toBeNull();
+    expect(
+      await env.tx((tx) => markDispatched(tx, ctxAt(SYSTEM, later(140)), b, 'gmail_thread')),
+    ).toBe(true);
+  });
+
+  it('a worker that was replaced cannot record a result, a failure or a refusal', async () => {
+    const { id, a, b } = await stalled();
+    const at140 = ctxAt(SYSTEM, later(140));
+    expect((await env.tx((tx) => recordSent(tx, at140, a, sentArgs(id)))).value).toBe(false);
+    expect(
+      (await env.tx((tx) => recordFailure(tx, at140, a, { action: 'retry', delaySeconds: 1 })))
+        .value,
+    ).toBe(false);
+    expect(
+      (
+        await env.tx((tx) =>
+          recordFailure(tx, at140, a, {
+            action: 'fail',
+            errorCode: 'channel_auth',
+            outcomeUnknown: false,
+          }),
+        )
+      ).value,
+    ).toBe(false);
+    expect((await env.tx((tx) => denyDelivery(tx, at140, a, 'x'))).value).toBe(false);
+    // Nothing changed for B, which still owns the row and can finish.
+    expect(await deliveryOf(id)).toMatchObject({ state: 'sending', claimToken: b.claimToken });
+    expect(
+      (await env.tx((tx) => recordSent(tx, ctxAt(SYSTEM, later(141)), b, sentArgs(id)))).value,
+    ).toBe(true);
+  });
+
+  it('a row with no token in hand, or the wrong one, is never written', async () => {
+    const { b } = await stalled();
+    const forged = { ...b, claimToken: null };
+    expect(await env.tx((tx) => markDispatched(tx, ctxAt(SYSTEM), forged, 'gmail_thread'))).toBe(
+      false,
+    );
+    expect(
+      (await env.tx((tx) => recordSent(tx, ctxAt(SYSTEM), forged, sentArgs(b.id)))).value,
+    ).toBe(false);
+    const wrong = { ...b, claimToken: randomUUID() };
+    expect(await env.tx((tx) => markDispatched(tx, ctxAt(SYSTEM), wrong, 'gmail_thread'))).toBe(
+      false,
+    );
+  });
+
+  it('a late answer from the claim that made the call still heals an unknown outcome', async () => {
+    const ticket = await ticketOn('gmail');
+    const staff = await addStaff(env);
+    const { value } = await reply(ticket, staff, `Heal ${randomUUID()}`);
+    const a = await env.tx((tx) =>
+      claimDelivery(tx, ctxAt(SYSTEM, later(6)), value.delivery?.id ?? ''),
+    );
+    if (a === null) throw new Error('not claimed');
+    await env.tx((tx) => markDispatched(tx, ctxAt(SYSTEM, later(6)), a, 'gmail_thread'));
+    await env.tx((tx) => sweepDeliveries(tx, ctxAt(SYSTEM, later(6 + 130))));
+    expect((await deliveryOf(a.id)).state).toBe('failed');
+    expect(
+      (await env.tx((tx) => recordSent(tx, ctxAt(SYSTEM, later(200)), a, sentArgs(a.id)))).value,
+    ).toBe(true);
+  });
+});
+
+describe('a draft closes when a late success heals its send', () => {
+  it('goes back to sent, with the same approver', async () => {
+    const ticket = await ticketOn('gmail', (await addIntent(env)).id);
+    const staff = await addStaff(env);
+    const draft = await addDraft(ticket.id, `Heal draft ${randomUUID()}`);
+    const { value } = await reply(ticket, staff, draft.bodyText, draft.id);
+    const a = await env.tx((tx) =>
+      claimDelivery(tx, ctxAt(SYSTEM, later(6)), value.delivery?.id ?? ''),
+    );
+    if (a === null) throw new Error('not claimed');
+    await env.tx((tx) =>
+      recordFailure(tx, ctxAt(SYSTEM, later(7)), a, {
+        action: 'fail',
+        errorCode: 'channel_timeout',
+        outcomeUnknown: true,
+      }),
+    );
+    expect(await draftOf(draft.id)).toMatchObject({ status: 'draft', approvedBy: null });
+    await env.tx((tx) =>
+      recordSent(tx, ctxAt(SYSTEM, later(8)), a, {
+        route: 'gmail_new',
+        providerMessageId: `late-${a.id}`,
+        rfc822MessageId: null,
+        providerThreadId: null,
+        threadKey: null,
+        alreadyAccepted: false,
+      }),
+    );
+    expect(await draftOf(draft.id)).toMatchObject({ status: 'sent', approvedBy: staff.id });
+  });
+});
+
+describe('automatic acknowledgments are re-rendered at claim time (review O-4)', () => {
+  async function ack() {
+    const ticket = await ticketOn('gmail');
+    const result = await env.tx((tx) =>
+      scheduleTemplateAck(tx, ctxAt(SYSTEM), { ref: ticket.id, templateKey: 'auto_ack.received' }),
+    );
+    const claimedRow = await env.tx((tx) =>
+      claimDelivery(tx, ctxAt(SYSTEM), result.value.delivery.id),
+    );
+    if (claimedRow === null) throw new Error('not claimed');
+    return { ticket, claimedRow, message: result.value.message };
+  }
+
+  it('stores the render inputs and accepts the text they render', async () => {
+    const s = await ack();
+    expect(s.claimedRow.renderInputs).toMatchObject({
+      ticketKey: `OPS-${String(s.ticket.number)}`,
+      portalUrl: null,
+      firstResponseDueAt: s.ticket.firstResponseDueAt?.toISOString() ?? null,
+    });
+    expect((await vetDelivery(env.database.db, ctxAt(SYSTEM), s.claimedRow)).ok).toBe(true);
+  });
+
+  it('refuses text that is not the render, even when the hash was brought along', async () => {
+    const s = await ack();
+    // A message rewritten and a delivery whose hash was made to follow it (owner; the app cannot).
+    await owner().execute(`ALTER TABLE outbound_delivery DISABLE TRIGGER outbound_delivery_guard`);
+    try {
+      await owner().execute(
+        `UPDATE message SET body_text = 'Click here to win' WHERE id = '${s.message.id}'`,
+      );
+      await owner().execute(
+        `UPDATE outbound_delivery SET content_hash = '${contentHash('Click here to win')}' WHERE id = '${s.claimedRow.id}'`,
+      );
+    } finally {
+      await owner().execute(`ALTER TABLE outbound_delivery ENABLE TRIGGER outbound_delivery_guard`);
+    }
+    const row = await deliveryOf(s.claimedRow.id);
+    expect(await vetDelivery(env.database.db, ctxAt(SYSTEM), row)).toEqual({
+      ok: false,
+      reason: 'template_body_mismatch',
+    });
+  });
+
+  it("refuses inputs that are not the ticket's own", async () => {
+    const s = await ack();
+    await owner().execute(`ALTER TABLE outbound_delivery DISABLE TRIGGER outbound_delivery_guard`);
+    try {
+      await owner().execute(
+        `UPDATE outbound_delivery SET render_inputs = jsonb_set(render_inputs, '{portalUrl}', '"https://evil.example/"') WHERE id = '${s.claimedRow.id}'`,
+      );
+    } finally {
+      await owner().execute(`ALTER TABLE outbound_delivery ENABLE TRIGGER outbound_delivery_guard`);
+    }
+    const row = await deliveryOf(s.claimedRow.id);
+    expect((await vetDelivery(env.database.db, ctxAt(SYSTEM), row)).ok).toBe(false);
+  });
+
+  it('keeps the database allow-list and the domain allow-list the same', async () => {
+    const rows = await owner().select().from(schema.outboundTemplateAllowlist);
+    expect(rows.map((row) => row.key).sort()).toEqual([...SAFE_AUTO_ACK_TEMPLATES].sort());
+  });
+});
+
 describe('the sweeper (ADR-010 section 7)', () => {
   async function sending(
     channel: 'gmail' | 'line',
@@ -1048,7 +1252,7 @@ describe('the sweeper (ADR-010 section 7)', () => {
     );
     if (claimedRow === null) throw new Error('not claimed');
     if (route !== null)
-      await env.tx((tx) => markDispatched(tx, ctxAt(SYSTEM, later(6)), claimedRow.id, route));
+      await env.tx((tx) => markDispatched(tx, ctxAt(SYSTEM, later(6)), claimedRow, route));
     return { ticket, claimedRow };
   }
 
