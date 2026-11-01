@@ -3,7 +3,7 @@ import { line } from '@watchtower/channels';
 import { schema, type CredentialStore, type Database } from '@watchtower/db';
 import type { Domain } from '@watchtower/domain';
 import { INBOUND_QUEUES, INGEST_JOBS, INGEST_OUTBOX_JOB_OPTIONS } from '@watchtower/shared';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, isNull } from 'drizzle-orm';
 
 import { RateLimitedError, badRequest, unauthenticated } from '../auth/http-errors.js';
 import { RateLimiter } from '../auth/rate-limiter.js';
@@ -81,6 +81,8 @@ export class LineWebhookService {
         and(
           eq(schema.channelAccount.id, input.channelAccountId),
           eq(schema.channelAccount.type, 'line'),
+          // A switched-off account answers like an unknown one (T-131).
+          isNull(schema.channelAccount.disabledAt),
         ),
       )
       .limit(1);
