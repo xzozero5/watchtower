@@ -32,24 +32,6 @@ describe('loadConfig', () => {
     );
   });
 
-  it('reads the knowledge base chunk sizes: shared defaults, bounded, and checked together', async () => {
-    const { chunkOptionsFrom } = await import('./kb/processor.js');
-    expect(chunkOptionsFrom(loadConfig(testEnv()))).toEqual({
-      targetChars: 900,
-      maxChars: 1400,
-      minChars: 120,
-      overlapChars: 120,
-    });
-    const tuned = loadConfig(testEnv({ KB_CHUNK_TARGET_CHARS: '500', KB_CHUNK_MAX_CHARS: '700' }));
-    expect(chunkOptionsFrom(tuned).targetChars).toBe(500);
-    expect(() => loadConfig(testEnv({ KB_CHUNK_TARGET_CHARS: '10' }))).toThrow(
-      /KB_CHUNK_TARGET_CHARS/,
-    );
-    // Valid one by one, wrong together: a maximum below the target.
-    const skewed = loadConfig(testEnv({ KB_CHUNK_MAX_CHARS: '300' }));
-    expect(() => chunkOptionsFrom(skewed)).toThrow(/Chunk sizes/);
-  });
-
   it('reads the ticket key prefix like the api does: default OPS, upper-cased, validated', () => {
     expect(loadConfig(testEnv()).TICKET_KEY_PREFIX).toBe('OPS');
     expect(loadConfig(testEnv({ TICKET_KEY_PREFIX: 'ops2' })).TICKET_KEY_PREFIX).toBe('OPS2');

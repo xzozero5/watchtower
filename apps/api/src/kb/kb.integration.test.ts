@@ -50,7 +50,7 @@ afterAll(async () => {
   await h.close();
 });
 
-const body = (fields: Partial<CreateKbArticle> = {}): Record<string, unknown> => {
+const body = (fields: Record<string, unknown> = {}): Record<string, unknown> => {
   counter += 1;
   return {
     slug: `api-article-${String(counter)}`,
