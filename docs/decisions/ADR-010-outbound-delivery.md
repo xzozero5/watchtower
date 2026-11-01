@@ -1,6 +1,6 @@
 # ADR-010 — Outbound delivery ถึงลูกค้าแบบ at-most-once + undo-send ฝั่ง server + policy gate (T-122a, ใช้ใน T-122d)
 
-- **Status:** Proposed
+- **Status:** Accepted 2026-11-01 (แบบมีเงื่อนไข — security re-review T-122e ไม่มี P0–P2 ค้าง; P3 F-1..F-4 อยู่ใน T-122f และ F-1 ต้องปิดก่อนเปิด LINE push จริง)
 - **Date:** 2026-11-01 (เวลากรุงเทพ) · **ผู้ตัดสิน:** main thread (ร่างโดย `architect`) · implement หลัง T-112a (policy gate) ตาม BACKLOG T-122d
 - **Context:**
   - ADR-006 ให้ outbox เป็น **at-least-once** และระบุว่า "consumer ของงานที่ซ้ำไม่ได้ (ตอบลูกค้า) ต้องทำ idempotency ของตัวเอง" · ข้อความถึงลูกค้าที่ส่งซ้ำ (อีเมลสองฉบับ, LINE สองครั้ง) เสียความน่าเชื่อถือและเปลือง quota มากกว่าการส่งไม่ออกแล้วมีคนเห็น
@@ -99,3 +99,10 @@ Migration `0013_outbound_delivery` (renumbered from 0010 at merge), `packages/do
 - **Template re-render at claim (O-4).** The delivery stores `render_inputs` (ticket key, portal link, first-response target); `vetDelivery` renders again from them and compares with the message, and checks the key and the link are the ticket's and the instance's own. `portalUrl` must therefore be the same in api and worker.
 - **Reply token out of raw storage (O-5).** The raw LINE event kept in the object store no longer contains `replyToken`.
 - **Not done here:** O-6 (quota reservation accounting across retries and sweeps; server-side confirm at 80-100 %) and O-7's DB-clock window (`now()` for schedule, claim and cancel: it changes every clock the tests drive, so it needs its own task) and the DMARC note. The draft is healed to `sent` by a late success (done).
+
+## Hardening T-122e (migration `0014_outbound_hardening`)
+- **N-1** `human` / `ai_approved` ต้องมี `message.sender_user_id = created_by`; `system_template` ต้องไม่มี sender/contact/html · ข้อจำกัดที่เหลือ: DB ตรวจไม่ได้ว่า `sender_user_id` เป็นคนจริงที่กด (app role เชื่อถือได้เท่านั้น) `[ASSUMED]`
+- **N-2** sweeper ใช้ `DELIVERY_MAX_ATTEMPTS` + อายุ retry key สูงสุด 20 ชม. `[ASSUMED]` (LINE จำ key ~24 ชม. `[VERIFY]`) → `failed(outcome_unknown)` · คืน quota เมื่อ re-queue, เก็บไว้เมื่อ fail
+- **N-3** trigger ล็อก `claim_token`/`attempts` นอกจังหวะ claim, `channel` = ชนิดของ `channel_account`, template ต้องตรง `body_pattern` · กฎ "ถึง provider แล้ว" และ "template ไม่มี free text" ฝั่ง DB **ยังพึ่งการรับรองจาก app** (`error_code`, `outcome_unknown`, re-render ใน `vetDelivery`) `[ASSUMED]`
+- **N-4** ยกเลิกการส่งของคนอื่นใช้ permission `ticket.cancel.any` (lead, head) + org scope · **N-5** pinned push ที่ fail ทีหลัง → `outcome_unknown` · **N-6** ลบ `replyToken` จาก payload ของ event ที่ fail
+- **ค้าง (T-122f, P3):** F-1 deny/cancel ของ pinned push ที่ re-queue แล้วต้องติด `outcome_unknown` (หรือห้าม undo เมื่อ attempts > 0) · F-2 `gate_unavailable` ส่ง route ให้ `decideFailure` · F-3 `route` write-once หลัง dispatch และห้ามล้าง `dispatched_at` ระหว่าง sending · F-4 DB render template เองแล้วเทียบเป๊ะ หรือบังคับ URL ทุกตัวใน body = portalUrl
