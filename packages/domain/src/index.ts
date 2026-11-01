@@ -10,6 +10,18 @@ import {
 } from './assignment.js';
 import { readAutonomyState, setAiSwitch, setIntentAutonomy } from './autonomy/state.js';
 import { findOrCreateContactByEmail } from './contacts.js';
+import { decideCsatReopen } from './csat/reopen.js';
+import {
+  answerSurvey,
+  findSurveyForLink,
+  readCsatDelayMinutes,
+  scheduleSurvey,
+  setCsatDelayMinutes,
+  setCsatOptOut,
+  sweepSurveys,
+  voidOpenSurveys,
+} from './csat/survey.js';
+import { mintCsatToken, verifyCsatToken } from './csat/token.js';
 import { ingestInbound } from './inbound/ingest.js';
 import { resolveIntent } from './intents.js';
 import {
@@ -50,7 +62,7 @@ import { mergeTickets } from './tickets/merge.js';
 import { addTicketNote, replyToTicket } from './tickets/messages.js';
 import { changeTicketStatus } from './tickets/status.js';
 import { updateTicket } from './tickets/update.js';
-import type { Actor, DomainConfig, DomainContext } from './types.js';
+import type { Actor, CsatConfig, DomainConfig, DomainContext } from './types.js';
 import { workflowAllows } from './workflow.js';
 
 export { recordAuditInTx, type AuditEntry, type AuditWriter } from './audit.js';
@@ -364,6 +376,26 @@ export {
   type ReadExecutor,
 } from './types.js';
 export { workflowAllows } from './workflow.js';
+export {
+  decideCsatReopen,
+  isWithinReopenWindow,
+  type CsatReopenDecision,
+  type CsatReopenInput,
+} from './csat/reopen.js';
+export type {
+  AnswerSurveyInput,
+  AnswerSurveyOutcome,
+  SurveyLookup,
+  SweepSurveysOptions,
+  SweepSurveysResult,
+} from './csat/survey.js';
+export {
+  mintCsatToken,
+  verifyCsatToken,
+  wholeSeconds,
+  type CsatTokenClaims,
+} from './csat/token.js';
+export type { CsatConfig };
 
 export interface DomainOptions {
   /** Ticket key prefix, the same value in api and worker (`TICKET_KEY_PREFIX`). */
@@ -374,6 +406,8 @@ export interface DomainOptions {
   readonly portalUrl?: string | undefined;
   /** Seconds a delivery may be retried under one LINE retry key; default `DELIVERY_RETRY_KEY_MAX_AGE_SECONDS`. */
   readonly retryKeyMaxAgeSeconds?: number | undefined;
+  /** CSAT survey links and page (T-110); absent means the scheduler cannot send. */
+  readonly csat?: CsatConfig | undefined;
   /** Days a resolved ticket still reopens on a customer reply. Default: `REOPEN_WINDOW_DAYS`. */
   readonly reopenWindowDays?: number;
   /** Absent means every customer-bound AI action is refused (fail closed, N3). `createPolicyGate` builds the real one. */
@@ -466,6 +500,20 @@ export interface Domain {
     readonly redeemLineLinkCode: typeof redeemLineLinkCode;
     readonly linkLineUser: typeof linkLineUser;
   };
+  /** CSAT surveys and the reopen rules they feed (T-110, R-10.x, R-1.10). */
+  readonly csat: {
+    readonly schedule: typeof scheduleSurvey;
+    readonly voidOpen: typeof voidOpenSurveys;
+    readonly sweep: typeof sweepSurveys;
+    readonly findForLink: typeof findSurveyForLink;
+    readonly answer: typeof answerSurvey;
+    readonly readDelayMinutes: typeof readCsatDelayMinutes;
+    readonly setDelayMinutes: typeof setCsatDelayMinutes;
+    readonly setOptOut: typeof setCsatOptOut;
+    readonly mintToken: typeof mintCsatToken;
+    readonly verifyToken: typeof verifyCsatToken;
+    readonly decideReopen: typeof decideCsatReopen;
+  };
 }
 
 export function createDomain(options: DomainOptions): Domain {
@@ -475,6 +523,7 @@ export function createDomain(options: DomainOptions): Domain {
     sealKey: options.sealKey,
     portalUrl: options.portalUrl,
     retryKeyMaxAgeSeconds: options.retryKeyMaxAgeSeconds,
+    csat: options.csat,
   };
   const now = options.now ?? ((): Date => new Date());
   return {
@@ -545,5 +594,18 @@ export function createDomain(options: DomainOptions): Domain {
     },
     inbound: { ingest: ingestInbound },
     identity: { issueLineLinkCode, redeemLineLinkCode, linkLineUser },
+    csat: {
+      schedule: scheduleSurvey,
+      voidOpen: voidOpenSurveys,
+      sweep: sweepSurveys,
+      findForLink: findSurveyForLink,
+      answer: answerSurvey,
+      readDelayMinutes: readCsatDelayMinutes,
+      setDelayMinutes: setCsatDelayMinutes,
+      setOptOut: setCsatOptOut,
+      mintToken: mintCsatToken,
+      verifyToken: verifyCsatToken,
+      decideReopen: decideCsatReopen,
+    },
   };
 }

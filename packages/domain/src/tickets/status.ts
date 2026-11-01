@@ -8,6 +8,7 @@ import {
 import { eq } from 'drizzle-orm';
 
 import { recordAuditInTx } from '../audit.js';
+import { scheduleSurvey, voidOpenSurveys } from '../csat/survey.js';
 import { invalidTransition, notFound } from '../errors.js';
 import type { TicketRow } from '../rows.js';
 import { resumeSla } from '../sla.js';
@@ -128,6 +129,9 @@ export async function applyStatus(
     after: ticketSnapshot(after),
     metadata: { from, to, ...(options.automatic === true ? { automatic: true } : {}) },
   });
+  // R-10.1: resolving owes the customer a survey after a delay; reopening voids one that is still owed.
+  if (to === 'resolved') await scheduleSurvey(tx, ctx, after);
+  if (reopened) await voidOpenSurveys(tx, ctx, fx, after.id);
   // Closing is final: the tracking links of the ticket stop working in the same transaction (C-13).
   if (to === 'closed') await ctx.notifier.closeLinks(tx, after.id);
   // Tell the customer of a portal ticket, in the same transaction (ADR-006). Not for a change the

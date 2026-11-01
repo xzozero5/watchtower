@@ -5,7 +5,7 @@ import { NestFactory } from '@nestjs/core';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 
-import { CSRF_HEADER, PORTAL_TOKEN_HEADER } from '@watchtower/shared';
+import { CSAT_TOKEN_HEADER, CSRF_HEADER, PORTAL_TOKEN_HEADER } from '@watchtower/shared';
 
 import { AppModule, type AppOptions } from './app.module.js';
 import { cookieNames } from './auth/cookies.js';
@@ -52,7 +52,13 @@ export function configureApp(
   app.enableCors({
     origin: [new URL(config.APP_URL).origin],
     credentials: true,
-    allowedHeaders: ['content-type', CSRF_HEADER, PORTAL_TOKEN_HEADER, 'x-request-id'],
+    allowedHeaders: [
+      'content-type',
+      CSRF_HEADER,
+      PORTAL_TOKEN_HEADER,
+      CSAT_TOKEN_HEADER,
+      'x-request-id',
+    ],
     exposedHeaders: ['x-request-id', 'retry-after'],
     maxAge: 600,
   });

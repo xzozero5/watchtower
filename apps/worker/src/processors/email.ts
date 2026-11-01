@@ -3,6 +3,7 @@ import { openFields, outboxAad } from '@watchtower/shared/secret-box';
 import { UnrecoverableError, type Job } from 'bullmq';
 
 import type { Mailer, OutboundMessage } from '../mailer.js';
+import { renderCsatEmail } from './csat-email.js';
 import { escapeHtml } from './html.js';
 import { renderPortalEmail } from './portal-email.js';
 
@@ -49,6 +50,8 @@ export function renderEmail(job: EmailJob): OutboundMessage {
     case 'portal_merged':
     case 'portal_link':
       return renderPortalEmail(job);
+    case 'csat_survey':
+      return renderCsatEmail(job);
   }
 }
 

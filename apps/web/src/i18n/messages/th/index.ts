@@ -8,6 +8,7 @@ import { channelTh } from './channel';
 import { commandsTh } from './commands';
 import { composerTh } from './composer';
 import { conversationTh } from './conversation';
+import { csatTh } from './csat';
 import { customerTh } from './customer';
 import { detailsTh } from './details';
 import { errorsTh } from './errors';
@@ -68,4 +69,5 @@ export const th: Messages = {
   home: homeTh,
   admin: adminTh,
   portal: portalTh,
+  csat: csatTh,
 };
