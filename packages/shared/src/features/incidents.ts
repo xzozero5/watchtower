@@ -20,6 +20,10 @@ export const INCIDENTS_AUDIT_ACTIONS = {
   incidentNote: 'incident.note',
   /** A deploy event arrived on the feed (system actor). */
   deployRecord: 'deploy.record',
+  /** An update for the customers of an incident was drafted (by a person or the AI). */
+  incidentCommDraft: 'incident.comm.draft',
+  /** A person pressed Send: the update went to the linked tickets, one by one. */
+  incidentCommSend: 'incident.comm.send',
 } as const satisfies Record<string, string>;
 
 /** `ticket_event.type` strings written by this feature. */
@@ -269,3 +273,51 @@ export const deployListQuerySchema = z.object({
 });
 export type DeployListQuery = z.infer<typeof deployListQuerySchema>;
 export const deployListSchema = z.object({ items: z.array(deploySchema) });
+
+// --- mass customer communication (R-3.14, N3) ----------------------------------------------------
+
+/** Channels an incident update reaches: the customer-facing ones. Machine and internal tickets are skipped. */
+export const INCIDENT_COMM_CHANNELS = ['gmail', 'line', 'portal'] as const;
+
+export const draftCommSchema = z.strictObject({ body: z.string().trim().min(1).max(5000) });
+export type DraftComm = z.infer<typeof draftCommSchema>;
+
+export const INCIDENT_COMM_STATUSES = ['draft', 'sending', 'sent', 'cancelled'] as const;
+export const incidentCommSchema = z.object({
+  id: z.uuid(),
+  incidentId: z.uuid(),
+  body: z.string(),
+  /** Who drafted it. Whoever drafted it, only a person sends it (N3). */
+  origin: z.enum(['human', 'ai']),
+  status: z.enum(INCIDENT_COMM_STATUSES),
+  draftedBy: z.uuid().nullable(),
+  sentBy: z.uuid().nullable(),
+  /** The recipient count the sender saw and confirmed. */
+  confirmedRecipients: z.number().int().nonnegative().nullable(),
+  sentAt: z.iso.datetime({ offset: true }).nullable(),
+  createdAt: z.iso.datetime({ offset: true }),
+});
+export type IncidentComm = z.infer<typeof incidentCommSchema>;
+export const incidentCommListSchema = z.object({ items: z.array(incidentCommSchema) });
+
+/** Who would get it now. `recipients` is the number to confirm; the rest is why a linked ticket is left out. */
+export const incidentCommPreviewSchema = z.object({
+  recipients: z.number().int().nonnegative(),
+  skippedChannel: z.number().int().nonnegative(),
+  skippedClosed: z.number().int().nonnegative(),
+});
+export type IncidentCommPreview = z.infer<typeof incidentCommPreviewSchema>;
+
+export const commIdParamSchema = z.object({ id: z.uuid(), commId: z.uuid() });
+export type CommIdParam = z.infer<typeof commIdParamSchema>;
+
+/** Sending needs the count of recipients the person saw. If the audience changed since, the send is refused (409). */
+export const sendCommSchema = z.strictObject({ confirmRecipients: z.number().int().min(0) });
+export type SendComm = z.infer<typeof sendCommSchema>;
+
+export const sendCommResultSchema = z.object({
+  recipients: z.number().int().nonnegative(),
+  sent: z.number().int().nonnegative(),
+  failed: z.number().int().nonnegative(),
+});
+export type SendCommResult = z.infer<typeof sendCommResultSchema>;

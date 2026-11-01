@@ -28,6 +28,7 @@ import {
 } from './csat/survey.js';
 import { mintCsatToken, verifyCsatToken } from './csat/token.js';
 import { ingestInbound } from './inbound/ingest.js';
+import { draftIncidentComm, previewIncidentComm, sendIncidentComm } from './incidents/comms.js';
 import { recordDeploy } from './incidents/deploy.js';
 import {
   addIncidentNote,
@@ -115,6 +116,14 @@ export {
   type IncidentRef,
   type UpdateIncidentInput,
 } from './incidents/core.js';
+export {
+  draftIncidentComm,
+  incidentCommAudience,
+  previewIncidentComm,
+  sendIncidentComm,
+  type SendIncidentCommInput,
+  type SendIncidentCommResult,
+} from './incidents/comms.js';
 export { recordDeploy } from './incidents/deploy.js';
 export { addTimelineEntry } from './incidents/timeline.js';
 export {
@@ -584,6 +593,10 @@ export interface Domain {
     readonly linkAlert: typeof linkIncidentAlert;
     readonly note: typeof addIncidentNote;
     readonly recordDeploy: typeof recordDeploy;
+    /** Mass communication (R-3.14, N3): anyone may draft, only a person sends, the count is confirmed. */
+    readonly draftComm: typeof draftIncidentComm;
+    readonly previewComm: typeof previewIncidentComm;
+    readonly sendComm: typeof sendIncidentComm;
   };
   /** Received messages (ADR-009): used by the worker's `ingest` consumer. */
   readonly inbound: { readonly ingest: typeof ingestInbound };
@@ -708,6 +721,9 @@ export function createDomain(options: DomainOptions): Domain {
       linkAlert: linkIncidentAlert,
       note: addIncidentNote,
       recordDeploy,
+      draftComm: draftIncidentComm,
+      previewComm: previewIncidentComm,
+      sendComm: sendIncidentComm,
     },
     inbound: { ingest: ingestInbound },
     identity: { issueLineLinkCode, redeemLineLinkCode, linkLineUser },
