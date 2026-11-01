@@ -1,7 +1,12 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { schema, type Database } from '@watchtower/db';
 import { assertAssignableStaff as assertStaff } from '@watchtower/domain';
-import { type CreateTeamQueue, type TeamQueue, type UpdateTeamQueue } from '@watchtower/shared';
+import {
+  assignmentModeSchema,
+  type CreateTeamQueue,
+  type TeamQueue,
+  type UpdateTeamQueue,
+} from '@watchtower/shared';
 import { and, asc, eq, inArray, ne, sql } from 'drizzle-orm';
 
 import { AuditScope } from '../audit/audit-scope.js';
@@ -24,7 +29,7 @@ function toApiQueue(row: QueueRow, members: readonly MemberView[]): TeamQueue {
   return {
     id: row.id,
     name: row.name,
-    assignmentMode: row.assignmentMode === 'round_robin' ? 'round_robin' : 'manual',
+    assignmentMode: assignmentModeSchema.catch('manual').parse(row.assignmentMode),
     isDefault: row.isDefault,
     members: [...members],
     createdAt: row.createdAt.toISOString(),
@@ -32,7 +37,7 @@ function toApiQueue(row: QueueRow, members: readonly MemberView[]): TeamQueue {
   };
 }
 
-/** Anyone who can be handed a ticket: active staff. (Shifts do not exist yet, so on-shift is `[ASSUMED]` to mean active.) */
+/** Anyone who can be handed a ticket by hand: active staff. */
 export async function assertAssignableStaff(
   executor: Pick<Database['db'], 'select'>,
   userIds: readonly string[],

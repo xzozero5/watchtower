@@ -2,7 +2,12 @@ import { schema } from '@watchtower/db';
 import { AUDIT_ACTIONS, TICKET_EVENT_TYPES, type AssignTicket } from '@watchtower/shared';
 import { eq } from 'drizzle-orm';
 
-import { assertAssignableStaff, peekRoundRobin, takeTurn } from '../assignment.js';
+import {
+  assertAssignableStaff,
+  peekAssignee,
+  takeTurn,
+  type AssignStrategy,
+} from '../assignment.js';
 import { recordAuditInTx } from '../audit.js';
 import { badRequest, conflict, notFound, ticketNotOpen } from '../errors.js';
 import type { TicketRow } from '../rows.js';
@@ -39,23 +44,27 @@ export async function assignTicket(
   }
 
   let assigneeId: string | null;
-  let strategy: 'manual' | 'round_robin';
-  if (assignment.strategy === 'round_robin') {
+  let strategy: 'manual' | AssignStrategy;
+  if (assignment.strategy !== undefined) {
     if (queueId === null)
       throw badRequest('The ticket has no queue to take turns in; give queueId');
-    // Look at whose turn it is without taking the turn: it is taken below only if the ticket moves.
-    assigneeId = await peekRoundRobin(tx, queueId);
-    if (assigneeId === null) throw conflict('The queue has no active member to assign to');
-    strategy = 'round_robin';
+    // Look at whom the strategy picks without taking the turn: it is taken below only if the ticket moves.
+    assigneeId = await peekAssignee(tx, queueId, assignment.strategy, {
+      requesterContactId: before.requesterContactId,
+      excludeTicketId: before.id,
+    });
+    if (assigneeId === null)
+      throw conflict('The queue has no member who is clocked in to assign to');
+    strategy = assignment.strategy;
   } else {
     assigneeId = assignment.assigneeId ?? null;
     if (assigneeId !== null) await assertAssignableStaff(tx, [assigneeId]);
     strategy = 'manual';
   }
 
-  // Nothing changes, so a round-robin turn is not used up: the same member stays next in line.
+  // Nothing changes, so a turn is not used up: the same member stays next in line.
   if (assigneeId === before.assigneeId && queueId === before.queueId) return fx.result(before);
-  if (strategy === 'round_robin' && queueId !== null && assigneeId !== null) {
+  if (strategy !== 'manual' && queueId !== null && assigneeId !== null) {
     await takeTurn(tx, queueId, assigneeId);
   }
   const [after] = await tx
