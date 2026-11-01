@@ -63,9 +63,13 @@ export class GmailPushService {
     readonly now?: Date;
   }): Promise<PushOutcome> {
     if (this.verifier === null) {
-      // Not configured: refuse rather than accept unauthenticated mail notifications.
+      // Not configured: refuse rather than accept unauthenticated mail notifications. The reason goes
+      // to the log, not to a caller nobody has authenticated.
+      this.logger.warn(
+        'gmail push: not configured (GMAIL_PUSH_AUDIENCE / GMAIL_PUSH_SERVICE_ACCOUNT)',
+      );
       throw new HttpException(
-        { statusCode: 503, error: 'Service Unavailable', code: 'gmail_push_not_configured' },
+        { statusCode: 503, error: 'Service Unavailable' },
         HttpStatus.SERVICE_UNAVAILABLE,
       );
     }
@@ -79,9 +83,11 @@ export class GmailPushService {
       await this.verifier.verify(match[1]);
     } catch (error) {
       if (error instanceof PushKeysUnavailableError) {
-        this.logger.error('gmail push: verification keys unavailable');
+        this.logger.error(
+          'gmail push: verification keys unavailable, answering 503 so Pub/Sub retries',
+        );
         throw new HttpException(
-          { statusCode: 503, error: 'Service Unavailable', code: 'push_keys_unavailable' },
+          { statusCode: 503, error: 'Service Unavailable' },
           HttpStatus.SERVICE_UNAVAILABLE,
         );
       }
@@ -118,21 +124,29 @@ export class GmailPushService {
             eq(schema.gmailAccountState.enabled, true),
           ),
         )
-        .returning({ channelAccountId: schema.gmailAccountState.channelAccountId });
+        .returning({
+          channelAccountId: schema.gmailAccountState.channelAccountId,
+          lastErrorCode: schema.gmailAccountState.lastErrorCode,
+        });
       if (state === undefined) {
         this.logger.warn('gmail push: no enabled mailbox for this notification, dropped');
         return 'ignored' as const;
       }
-      // A push is proof of life: a mailbox the heartbeat marked unhealthy is healthy again (R-2.8).
-      await tx
-        .update(schema.channelAccount)
-        .set({ health: 'healthy', updatedAt: now })
-        .where(
-          and(
-            eq(schema.channelAccount.id, state.channelAccountId),
-            ne(schema.channelAccount.health, 'healthy'),
-          ),
-        );
+      // A push is proof that Pub/Sub is delivering, so a mailbox the heartbeat marked unhealthy for
+      // silence is healthy again (R-2.8). It is not proof that we can read or send: with a recorded
+      // error (`watch_failed`, `transport_unavailable`, a failed sync) the worker clears the health
+      // when it clears the error.
+      if (state.lastErrorCode === null) {
+        await tx
+          .update(schema.channelAccount)
+          .set({ health: 'healthy', updatedAt: now })
+          .where(
+            and(
+              eq(schema.channelAccount.id, state.channelAccountId),
+              ne(schema.channelAccount.health, 'healthy'),
+            ),
+          );
+      }
       const payload: GmailSyncJob = {
         channelAccountId: state.channelAccountId,
         reason: 'push',

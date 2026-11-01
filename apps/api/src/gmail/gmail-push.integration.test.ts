@@ -23,7 +23,11 @@ import type { z } from 'zod';
 import { startHarness, type Harness } from '../testing/harness.js';
 import { captureLogs } from '../testing/support.js';
 import { GMAIL_PUSH_VERIFIER } from './gmail-push.service.js';
-import { PushAuthError, createOidcPushVerifier } from './push-verifier.js';
+import {
+  PushAuthError,
+  PushKeysUnavailableError,
+  createOidcPushVerifier,
+} from './push-verifier.js';
 
 // The Pub/Sub push receiver on the real application module, Postgres and Redis from docker compose.
 // The OIDC token is signed by a key pair made here and checked through a local key set: nothing is
@@ -260,6 +264,65 @@ describe('POST /v1/inbound/gmail/push', () => {
     expect(raw).not.toContain(SERVICE_ACCOUNT);
   });
 
+  it('does not mark a mailbox healthy while the worker has an error recorded for it', async () => {
+    const [account] = await harness.db.owner.db
+      .insert(schema.channelAccount)
+      .values({ type: 'gmail', name: 'Broken watch', health: 'unhealthy' })
+      .returning({ id: schema.channelAccount.id });
+    const id = account?.id ?? '';
+    const address = 'broken@example.com';
+    await harness.db.owner.db.insert(schema.gmailAccountState).values({
+      channelAccountId: id,
+      emailAddress: address,
+      historyId: '1000',
+      lastErrorCode: 'watch_failed',
+    });
+    const response = await harness.client().post(PATH, envelope('2000', undefined, address), {
+      headers: await bearer(),
+      origin: null,
+      csrf: false,
+    });
+    expect(response.status).toBe(204);
+    const [row] = await harness.db.owner.db
+      .select({ health: schema.channelAccount.health })
+      .from(schema.channelAccount)
+      .where(eq(schema.channelAccount.id, id));
+    expect(row?.health).toBe('unhealthy');
+    const [state] = await harness.db.owner.db
+      .select({ lastPushAt: schema.gmailAccountState.lastPushAt })
+      .from(schema.gmailAccountState)
+      .where(eq(schema.gmailAccountState.channelAccountId, id));
+    expect(state?.lastPushAt).toBeInstanceOf(Date);
+    // The sync is still queued: it is how the error gets cleared.
+    const jobs = (await outboxRows()).filter((job) => job.jobId.startsWith(`push-${id}-`));
+    expect(jobs).toHaveLength(1);
+  });
+
+  it('answers 503 (Pub/Sub retries), not 401, when Google keys cannot be fetched, and logs it apart from a rejected token', async () => {
+    const down = await startHarness({
+      logs,
+      env: { LOG_LEVEL: 'info' },
+      overrides: [
+        {
+          token: GMAIL_PUSH_VERIFIER,
+          value: { verify: () => Promise.reject(new PushKeysUnavailableError()) },
+        },
+      ],
+    });
+    try {
+      const response = await down.client().post(PATH, envelope('1'), {
+        headers: await bearer(),
+        origin: null,
+        csrf: false,
+      });
+      expect(response.status).toBe(503);
+      expect(response.body).toEqual({ statusCode: 503, error: 'Service Unavailable' });
+      expect(logs.raw()).toContain('verification keys unavailable');
+    } finally {
+      await down.close();
+    }
+  });
+
   it('made no outbound network connection', () => {
     expect(net.blocked()).toEqual([]);
   });
@@ -275,7 +338,8 @@ describe('POST /v1/inbound/gmail/push without push authentication configured', (
         csrf: false,
       });
       expect(response.status).toBe(503);
-      expect(response.body).toMatchObject({ code: 'gmail_push_not_configured' });
+      // An unauthenticated caller learns nothing about the configuration.
+      expect(response.body).toEqual({ statusCode: 503, error: 'Service Unavailable' });
     } finally {
       await bare.close();
     }

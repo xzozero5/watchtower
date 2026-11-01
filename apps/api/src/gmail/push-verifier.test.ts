@@ -2,6 +2,7 @@ import { disableNetConnect } from '@watchtower/shared/testing';
 import {
   SignJWT,
   createLocalJWKSet,
+  errors as joseErrors,
   exportJWK,
   generateKeyPair,
   type CryptoKey,
@@ -9,7 +10,12 @@ import {
 } from 'jose';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-import { PushAuthError, createOidcPushVerifier, type PushTokenVerifier } from './push-verifier.js';
+import {
+  PushAuthError,
+  PushKeysUnavailableError,
+  createOidcPushVerifier,
+  type PushTokenVerifier,
+} from './push-verifier.js';
 
 // The OIDC check of the Gmail push receiver, with a key pair generated here. The verifier is given
 // a local key set, so nothing is fetched from Google; disableNetConnect proves it (N1).
@@ -144,5 +150,68 @@ describe('createOidcPushVerifier', () => {
     ).toString('base64url')}.`;
     await expect(verifier.verify(unsigned)).rejects.toBeInstanceOf(PushAuthError);
     await expect(verifier.verify('not-a-jwt')).rejects.toBeInstanceOf(PushAuthError);
+  });
+});
+
+describe('token age', () => {
+  async function stamped(iat: number, exp: number): Promise<string> {
+    return new SignJWT({ email: SERVICE_ACCOUNT, email_verified: true })
+      .setProtectedHeader({ alg: 'RS256', kid: 'test-key-1' })
+      .setIssuer('https://accounts.google.com')
+      .setAudience(AUDIENCE)
+      .setIssuedAt(iat)
+      .setExpirationTime(exp)
+      .sign(privateKey);
+  }
+
+  it('rejects a token minted more than an hour ago even when its exp is still ahead', async () => {
+    await expect(
+      verifier.verify(await stamped(nowSeconds - 7200, nowSeconds + 3600)),
+    ).rejects.toBeInstanceOf(PushAuthError);
+    // Just inside the hour is fine.
+    await expect(
+      verifier.verify(await stamped(nowSeconds - 3500, nowSeconds + 100)),
+    ).resolves.toBeDefined();
+  });
+
+  it('rejects a token stamped in the future beyond the clock tolerance, accepts a small skew', async () => {
+    await expect(
+      verifier.verify(await stamped(nowSeconds + 3600, nowSeconds + 7200)),
+    ).rejects.toBeInstanceOf(PushAuthError);
+    await expect(
+      verifier.verify(await stamped(nowSeconds + 300, nowSeconds + 3900)),
+    ).rejects.toBeInstanceOf(PushAuthError);
+    await expect(
+      verifier.verify(await stamped(nowSeconds + 30, nowSeconds + 3630)),
+    ).resolves.toBeDefined();
+  });
+});
+
+describe('key source failures', () => {
+  const failing = (error: Error) =>
+    createOidcPushVerifier({
+      audience: AUDIENCE,
+      serviceAccountEmail: SERVICE_ACCOUNT,
+      keys: () => Promise.reject(error),
+      now: () => NOW,
+    });
+
+  it('are PushKeysUnavailableError (retryable 503), not a rejected token', async () => {
+    const token = await sign();
+    for (const error of [
+      new joseErrors.JWKSTimeout(),
+      new joseErrors.JWKSInvalid('bad key set'),
+      new joseErrors.JOSEError('Expected 200 OK from the JSON Web Key Set HTTP response'),
+      new TypeError('fetch failed'),
+    ]) {
+      await expect(failing(error).verify(token)).rejects.toBeInstanceOf(PushKeysUnavailableError);
+    }
+  });
+
+  it('stay a rejected token when the key set is fine and the token is not', async () => {
+    const token = await sign();
+    await expect(failing(new joseErrors.JWKSNoMatchingKey()).verify(token)).rejects.toBeInstanceOf(
+      PushAuthError,
+    );
   });
 });

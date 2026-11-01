@@ -25,6 +25,15 @@ export const GOOGLE_ISSUERS: readonly string[] = [
   'accounts.google.com',
 ];
 
+/** True when the failure is about reaching or reading the key set, not about the token. */
+function isKeySourceFailure(error: unknown): boolean {
+  if (error instanceof joseErrors.JWKSTimeout || error instanceof joseErrors.JWKSInvalid)
+    return true;
+  // A fetch that failed (TypeError, network) or answered something other than 200 (generic JOSE error).
+  if (!(error instanceof joseErrors.JOSEError)) return true;
+  return error.code === 'ERR_JOSE_GENERIC';
+}
+
 /** The token is missing, malformed, expired, for another audience or from another account. Never says which. */
 export class PushAuthError extends Error {
   constructor() {
@@ -69,20 +78,28 @@ export function createOidcPushVerifier(options: OidcPushVerifierOptions): PushTo
   return {
     async verify(token) {
       let payload;
+      const at = options.now?.() ?? new Date();
+      const tolerance = options.clockToleranceSeconds ?? 60;
       try {
         ({ payload } = await jwtVerify(token, options.keys, {
           algorithms: ['RS256'],
           issuer: issuers,
           audience: options.audience,
-          clockTolerance: options.clockToleranceSeconds ?? 60,
+          clockTolerance: tolerance,
+          // Pub/Sub tokens live for an hour (exp = iat + 3600): anything minted earlier than that is not one.
+          maxTokenAge: '1h',
           requiredClaims: ['exp', 'iat'],
-          ...(options.now === undefined ? {} : { currentDate: options.now() }),
+          currentDate: at,
         }));
       } catch (error) {
-        // Network trouble while fetching Google's keys is ours to retry (Pub/Sub will redeliver on 5xx).
-        if (error instanceof joseErrors.JWKSTimeout) throw new PushKeysUnavailableError();
-        if (error instanceof joseErrors.JOSEError) throw new PushAuthError();
-        throw new PushKeysUnavailableError();
+        // Failing to GET Google's keys is ours to retry (503, Pub/Sub redelivers); everything about the
+        // token itself is a 401. A key that does not match the `kid` is the token's fault.
+        if (isKeySourceFailure(error)) throw new PushKeysUnavailableError();
+        throw new PushAuthError();
+      }
+      // jose bounds the age; a token stamped in the future (beyond the tolerance) is not honest either.
+      if (typeof payload.iat !== 'number' || payload.iat > at.getTime() / 1000 + tolerance) {
+        throw new PushAuthError();
       }
       const email = typeof payload.email === 'string' ? payload.email.trim().toLowerCase() : '';
       if (email === '' || email !== expectedEmail) throw new PushAuthError();
