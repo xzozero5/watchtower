@@ -91,9 +91,15 @@ const WRITE_WORDS =
  * of the data port (T-203c) are the real ones. Returns the reason, or null when the shape is fine.
  */
 export function metricTemplateProblem(template: string): string | null {
-  const text = template.trim().replace(/;\s*$/, '');
-  if (text.length === 0) return 'The template is empty';
-  if (text.includes(';')) return 'Only one statement is allowed';
+  const raw = template.trim().replace(/;\s*$/, '');
+  if (raw.length === 0) return 'The template is empty';
+  // One statement: a semicolon anywhere (a comment included) is refused.
+  if (raw.includes(';')) return 'Only one statement is allowed';
+  // The comments are the author's notes (the starter templates open with some): judge the code.
+  const text = raw
+    .replace(/--[^\n]*/g, ' ')
+    .replace(/\/\*[\s\S]*?\*\//g, ' ')
+    .trim();
   if (!/^(select|with)\b/i.test(text)) return 'The template must start with SELECT or WITH';
   if (WRITE_WORDS.test(text)) return 'The template contains a statement that writes';
   const params = new Set([...text.matchAll(/\$(\d+)/g)].map((match) => match[1]));
