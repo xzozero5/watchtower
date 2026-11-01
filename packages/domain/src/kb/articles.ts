@@ -86,6 +86,22 @@ async function wroteVersion(
   return rows.length > 0;
 }
 
+/** True when an AI wrote a version of the article numbered above `after`. */
+async function hasAiVersion(tx: DbTransaction, articleId: string, after: number): Promise<boolean> {
+  const rows = await tx
+    .select({ id: schema.kbArticleVersion.id })
+    .from(schema.kbArticleVersion)
+    .where(
+      and(
+        eq(schema.kbArticleVersion.articleId, articleId),
+        gt(schema.kbArticleVersion.version, after),
+        eq(schema.kbArticleVersion.authoredByAi, true),
+      ),
+    )
+    .limit(1);
+  return rows.length > 0;
+}
+
 async function orgIdsOf(tx: DbTransaction, articleId: string): Promise<string[]> {
   const rows = await tx
     .select({ orgId: schema.kbArticleOrg.orgId })
@@ -178,6 +194,7 @@ export async function createKbArticle(
     changeNote: input.changeNote ?? null,
     contentHash: kbContentHash(input.title, input.bodyMd),
     createdBy: ctx.actor.id,
+    authoredByAi: ctx.actor.type === 'ai',
   });
   if (input.visibility === 'orgs') await setOrgs(tx, articleId, input.orgIds);
   await recordAuditInTx(tx, ctx, fx, {
@@ -267,6 +284,15 @@ export async function updateKbArticle(
       { visibility: article.visibility as KbVisibility, orgIds: oldOrgs },
       { visibility, orgIds: orgs },
     );
+  // Only a signed-in person does it: an AI or a system identity never widens a live article, even
+  // with an id and the permission.
+  if (wideningLive && (ctx.actor.type !== 'user' || ctx.actor.id === null)) {
+    throw new DomainError(
+      'policy_denied',
+      'Only a signed-in approver can show a live article to more people',
+      { reason: 'kb_audience_widen_not_human' },
+    );
+  }
   // (Editing the text in the same request would make the actor an author too, so it counts.)
   if (
     wideningLive &&
@@ -295,6 +321,25 @@ export async function updateKbArticle(
     JSON.stringify(sources) !== JSON.stringify(article.sources) ||
     (lastVerifiedAt?.getTime() ?? null) !== (article.lastVerifiedAt?.getTime() ?? null);
 
+  // [ASSUMED] Metadata that changes what a live article is found by (intent tags, kind, sources)
+  // needs what publishing needs: a signed-in person with `kb.approve`. `lastVerifiedAt` does not
+  // change retrieval and stays at the level of whoever may edit. Not live, no restriction.
+  const retrievalChanged =
+    kind !== article.kind ||
+    JSON.stringify(intentTags) !== JSON.stringify(article.intentTags) ||
+    JSON.stringify(sources) !== JSON.stringify(article.sources);
+  if (
+    retrievalChanged &&
+    article.status === 'published' &&
+    (!input.canApprove || ctx.actor.type !== 'user' || ctx.actor.id === null)
+  ) {
+    throw new DomainError(
+      'policy_denied',
+      'Changing the tags, kind or sources of a live article needs an approver',
+      { reason: 'kb_live_metadata_requires_approval' },
+    );
+  }
+
   if (!contentChanged && !metadataChanged) {
     return fx.result({
       articleId: article.id,
@@ -318,6 +363,7 @@ export async function updateKbArticle(
       changeNote: patch.changeNote ?? null,
       contentHash: hash,
       createdBy: ctx.actor.id,
+      authoredByAi: ctx.actor.type === 'ai',
     });
   }
   if (audienceChanged) await setOrgs(tx, article.id, orgs);
@@ -338,8 +384,24 @@ export async function updateKbArticle(
     action: wideningLive ? AUDIT_ACTIONS.kbArticleAudienceWiden : AUDIT_ACTIONS.kbArticleUpdate,
     targetType: 'kb_article',
     targetId: article.id,
-    before: { version: current.version, visibility: article.visibility, orgIds: oldOrgs },
-    after: { version, visibility, orgIds: orgs },
+    before: {
+      version: current.version,
+      visibility: article.visibility,
+      orgIds: oldOrgs,
+      kind: article.kind,
+      intentTags: article.intentTags,
+      sources: article.sources,
+      lastVerifiedAt: article.lastVerifiedAt?.toISOString() ?? null,
+    },
+    after: {
+      version,
+      visibility,
+      orgIds: orgs,
+      kind,
+      intentTags,
+      sources,
+      lastVerifiedAt: lastVerifiedAt?.toISOString() ?? null,
+    },
     metadata: { contentChanged, metadataChanged, status: article.status },
   });
   return fx.result({ articleId: article.id, version, versionId, changed: true });
@@ -452,7 +514,9 @@ type PublishMode =
 /**
  * Only a person publishes. An AI or a system identity never does, whatever permission it holds;
  * AI drafts (T-108e) go to `in_review` and wait for a human approver who is not the requester.
- * TODO(T-108e): record the requester of an AI draft and refuse that person as its approver.
+ * An AI-written version is marked (`authored_by_ai`) and never goes live by break-glass.
+ * TODO(T-108e): there is no "requested by" on an AI actor yet, so the person who triggered the AI
+ * is not recorded; record the requester of an AI draft and refuse that person as its approver.
  */
 function requireHuman(ctx: DomainContext): string {
   if (ctx.actor.type !== 'user' || ctx.actor.id === null) {
@@ -527,6 +591,24 @@ async function publishWith(
     }
   }
 
+  // A second break-glass while the first still waits for its review keeps the number of the version
+  // that was live before the FIRST one (the range that needs another pair of eyes only grows) and
+  // remembers every publisher of the window; none of them can clear the flag.
+  const windowOpen = article.breakGlassPending;
+  const prevVersion = windowOpen ? (article.breakGlassPrevVersion ?? liveVersion) : liveVersion;
+  const publishers = windowOpen
+    ? article.breakGlassPublishers.includes(publisherId)
+      ? article.breakGlassPublishers
+      : [...article.breakGlassPublishers, publisherId]
+    : [publisherId];
+  if (mode.kind === 'break_glass' && (await hasAiVersion(tx, article.id, prevVersion))) {
+    throw new DomainError(
+      'policy_denied',
+      'Text written by an AI is not published break-glass; send it for review and let another approver publish it',
+      { reason: 'kb_break_glass_ai_draft' },
+    );
+  }
+
   const now = ctx.now();
   const breakGlass =
     mode.kind === 'break_glass'
@@ -535,6 +617,7 @@ async function publishWith(
           breakGlassBy: publisherId,
           breakGlassAt: now,
           breakGlassReason: mode.reason.trim(),
+          breakGlassPublishers: publishers,
           breakGlassReviewedBy: null,
           breakGlassReviewedAt: null,
         }
@@ -550,7 +633,7 @@ async function publishWith(
       updatedAt: now,
       ...breakGlass,
       ...(mode.kind === 'break_glass'
-        ? { breakGlassVersionId: current.id, breakGlassPrevVersion: liveVersion }
+        ? { breakGlassVersionId: current.id, breakGlassPrevVersion: prevVersion }
         : {}),
     })
     .where(eq(schema.kbArticle.id, article.id));
@@ -566,7 +649,14 @@ async function publishWith(
     after: { status: 'published', publishedVersionId: current.id, version: current.version },
     metadata:
       mode.kind === 'break_glass'
-        ? { reason: mode.reason.trim(), visibility: article.visibility, orgIds }
+        ? {
+            reason: mode.reason.trim(),
+            visibility: article.visibility,
+            orgIds,
+            prevVersion,
+            publishers,
+            replacesPending: windowOpen,
+          }
         : { visibility: article.visibility, orgIds },
   });
   return fx.result({
@@ -634,7 +724,7 @@ export async function reviewKbBreakGlass(
       'The break-glass publication changed since you looked at it; look at the latest one',
     );
   }
-  if (article.breakGlassBy === reviewerId) {
+  if (article.breakGlassBy === reviewerId || article.breakGlassPublishers.includes(reviewerId)) {
     throw new DomainError(
       'policy_denied',
       'You published this break-glass, so another approver has to review it',

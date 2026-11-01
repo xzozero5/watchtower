@@ -328,8 +328,113 @@ describe('kb.update', () => {
       const live = await create({ bodyMd: 'live', visibility: 'customer' });
       await publish(live.articleId, 1);
       await update(live.articleId, { visibility: 'internal' }, false);
-      await update(live.articleId, { intentTags: ['x'] }, false);
+      await update(live.articleId, { lastVerifiedAt: '2026-10-01T00:00:00.000Z' }, false);
       expect(await widenAudit(live.articleId)).toHaveLength(0);
+    });
+
+    it('never lets an AI or a system identity widen a live article, even with an id and the permission (P3)', async () => {
+      const made = await create({ bodyMd: 'live internal text' });
+      await publish(made.articleId, 1);
+      for (const actor of [
+        { type: 'system' as const, id: lead.id },
+        { type: 'ai' as const, id: lead.id },
+        { type: 'system' as const, id: null },
+      ]) {
+        const denied = await refusal(
+          env.tx((tx) =>
+            env.domain.kb.update(tx, env.ctx(actor), {
+              articleId: made.articleId,
+              patch: { visibility: 'customer' },
+              canApprove: true,
+            }),
+          ),
+        );
+        expect(denied.details, actor.type).toMatchObject({ reason: 'kb_audience_widen_not_human' });
+      }
+      expect((await articleRow(made.articleId)).visibility).toBe('internal');
+      expect(await widenAudit(made.articleId)).toHaveLength(0);
+    });
+  });
+
+  describe('metadata that changes retrieval on a live article (P3)', () => {
+    const asActor = (
+      articleId: string,
+      patch: Parameters<typeof env.domain.kb.update>[2]['patch'],
+      actor: { type: 'user' | 'system' | 'ai'; id: string | null },
+      canApprove: boolean,
+    ) => env.tx((tx) => env.domain.kb.update(tx, env.ctx(actor), { articleId, patch, canApprove }));
+
+    it('needs a signed-in approver for tags, kind and sources, and leaves last-verified to an editor', async () => {
+      const made = await create({ bodyMd: 'live text', intentTags: ['billing'] });
+      await publish(made.articleId, 1);
+      const patches = [
+        { intentTags: ['billing', 'refund'] },
+        { kind: 'runbook' as const },
+        { sources: [{ type: 'url' as const, ref: 'https://example.test/a' }] },
+      ];
+      for (const patch of patches) {
+        const agent = await refusal(update(made.articleId, patch, false));
+        expect(agent.details, JSON.stringify(patch)).toMatchObject({
+          reason: 'kb_live_metadata_requires_approval',
+        });
+        for (const actor of [
+          { type: 'system' as const, id: lead.id },
+          { type: 'ai' as const, id: lead.id },
+          { type: 'ai' as const, id: null },
+        ]) {
+          const machine = await refusal(asActor(made.articleId, patch, actor, true));
+          expect(machine.details, actor.type).toMatchObject({
+            reason: 'kb_live_metadata_requires_approval',
+          });
+        }
+      }
+      expect(await articleRow(made.articleId)).toMatchObject({
+        intentTags: ['billing'],
+        kind: 'article',
+        sources: [],
+      });
+
+      // Last verified does not change retrieval: an editor may set it.
+      await update(made.articleId, { lastVerifiedAt: '2026-10-01T00:00:00.000Z' }, false);
+      // An approver may change the rest, and the audit row says from what to what.
+      await update(
+        made.articleId,
+        { intentTags: ['billing', 'refund'], kind: 'runbook' },
+        true,
+        lead,
+      );
+      expect(await articleRow(made.articleId)).toMatchObject({
+        intentTags: ['billing', 'refund'],
+        kind: 'runbook',
+      });
+      const rows = (await auditRows(env, 'kb.article.update')).filter(
+        (row) => row.targetId === made.articleId,
+      );
+      const last = rows.at(-1);
+      expect(last?.before).toMatchObject({
+        kind: 'article',
+        intentTags: ['billing'],
+        sources: [],
+        lastVerifiedAt: '2026-10-01T00:00:00.000Z',
+      });
+      expect(last?.after).toMatchObject({
+        kind: 'runbook',
+        intentTags: ['billing', 'refund'],
+        sources: [],
+        lastVerifiedAt: '2026-10-01T00:00:00.000Z',
+      });
+      const verifiedRow = rows.find((row) => row.before !== null && row !== last);
+      expect(verifiedRow?.before).toMatchObject({ lastVerifiedAt: null });
+      expect(verifiedRow?.after).toMatchObject({ lastVerifiedAt: '2026-10-01T00:00:00.000Z' });
+    });
+
+    it('does not restrict an article that is not live', async () => {
+      const draft = await create({ bodyMd: 'draft text' });
+      await update(draft.articleId, { intentTags: ['x'], kind: 'runbook' }, false);
+      expect(await articleRow(draft.articleId)).toMatchObject({
+        intentTags: ['x'],
+        kind: 'runbook',
+      });
     });
   });
 });
@@ -839,6 +944,132 @@ describe('kb.publishBreakGlass', () => {
       expect((await articleRow(made.articleId)).breakGlassPending).toBe(true);
       expect((await reviewOf(made.articleId, second, row.breakGlassAt)).value.changed).toBe(true);
       expect((await articleRow(made.articleId)).breakGlassPending).toBe(false);
+    });
+  });
+
+  describe('a second break-glass while the first waits (P2)', () => {
+    const review = (articleId: string, by: typeof lead) =>
+      env.tx(async (tx) =>
+        env.domain.kb.reviewBreakGlass(tx, env.ctx(by.actor), {
+          articleId,
+          breakGlassAt: (await articleRow(articleId)).breakGlassAt ?? new Date(0),
+        }),
+      );
+    const later = () => new Promise((resolve) => setTimeout(resolve, 15));
+
+    it('keeps the version that was live before the first one, so the author of the first text cannot clear it', async () => {
+      const made = await create({ bodyMd: 'v1 by the author' });
+      await publish(made.articleId, 1);
+      // `second` writes v2; the head publishes it break-glass, edits one spot as v3 and does it again.
+      await update(made.articleId, { bodyMd: 'v2 by second' }, true, second);
+      await glass(made.articleId, head, 'first', 2);
+      await update(made.articleId, { bodyMd: 'v3 by the head' }, true, head);
+      await later();
+      await glass(made.articleId, head, 'second', 3);
+      expect(await articleRow(made.articleId)).toMatchObject({
+        breakGlassPrevVersion: 1,
+        breakGlassPublishers: [head.id],
+        breakGlassReason: 'second',
+        breakGlassPending: true,
+      });
+      // Before the fix the second one moved the range to (2, 3] and `second` cleared it.
+      expect((await refusal(review(made.articleId, second))).details).toMatchObject({
+        reason: 'kb_reviewer_is_author',
+      });
+      expect((await articleRow(made.articleId)).breakGlassPending).toBe(true);
+      const audit = (await auditRows(env, 'kb.article.publish_break_glass')).filter(
+        (row) => row.targetId === made.articleId,
+      );
+      expect(audit.at(-1)?.metadata).toMatchObject({ prevVersion: 1, replacesPending: true });
+      // The author of v1, which was live before, may review.
+      expect((await review(made.articleId, author)).value.changed).toBe(true);
+    });
+
+    it('remembers every publisher of the window: with two heads, neither clears it', async () => {
+      const otherHead = await addStaff(env, 'head');
+      const made = await create({ bodyMd: 'urgent' });
+      await glass(made.articleId, head, 'first');
+      await update(made.articleId, { bodyMd: 'urgent, corrected' }, true, otherHead);
+      await later();
+      await glass(made.articleId, otherHead, 'second', 2);
+      expect(await articleRow(made.articleId)).toMatchObject({
+        breakGlassBy: otherHead.id,
+        breakGlassPublishers: [head.id, otherHead.id],
+      });
+      for (const publisher of [head, otherHead]) {
+        const error = await refusal(review(made.articleId, publisher));
+        expect(error.details, publisher.id).toMatchObject({ reason: 'kb_review_is_publisher' });
+      }
+      expect((await articleRow(made.articleId)).breakGlassPending).toBe(true);
+      expect((await review(made.articleId, second)).value.changed).toBe(true);
+    });
+
+    it('keeps the original range when the article is deprecated and published again in the window', async () => {
+      const made = await create({ bodyMd: 'v1' });
+      await publish(made.articleId, 1);
+      await update(made.articleId, { bodyMd: 'v2 by second' }, true, second);
+      await glass(made.articleId, head, 'first', 2);
+      await transition(made.articleId, 'deprecated');
+      await transition(made.articleId, 'draft');
+      await later();
+      await glass(made.articleId, head, 'again', 2);
+      expect(await articleRow(made.articleId)).toMatchObject({ breakGlassPrevVersion: 1 });
+    });
+  });
+
+  describe('text written by an AI (owner decision, AI drafts)', () => {
+    const aiActor = { type: 'ai' as const, id: null };
+    const aiCreate = async () =>
+      (await env.tx((tx) => env.domain.kb.create(tx, env.ctx(aiActor), input({ bodyMd: 'ai' }))))
+        .value;
+
+    it('marks the versions an AI wrote, and only those', async () => {
+      const made = await aiCreate();
+      await update(made.articleId, { bodyMd: 'human edit' }, false, author);
+      await env.tx((tx) =>
+        env.domain.kb.update(tx, env.ctx(aiActor), {
+          articleId: made.articleId,
+          patch: { bodyMd: 'ai again' },
+          canApprove: false,
+        }),
+      );
+      const { rows } = await pool().query<{ version: number; authored_by_ai: boolean }>(
+        'SELECT version, authored_by_ai FROM kb_article_version WHERE article_id = $1 ORDER BY version',
+        [made.articleId],
+      );
+      expect(rows.map((row) => [row.version, row.authored_by_ai])).toEqual([
+        [1, true],
+        [2, false],
+        [3, true],
+      ]);
+    });
+
+    it('is never published break-glass, not even after a person edited it, and nothing changes', async () => {
+      const made = await aiCreate();
+      const denied = await refusal(glass(made.articleId, head, 'urgent'));
+      expect(denied.code).toBe('policy_denied');
+      expect(denied.details).toMatchObject({ reason: 'kb_break_glass_ai_draft' });
+      await update(made.articleId, { bodyMd: 'a person tidied it' }, true, head);
+      const still = await refusal(glass(made.articleId, head, 'urgent', 2));
+      expect(still.details).toMatchObject({ reason: 'kb_break_glass_ai_draft' });
+      expect(await articleRow(made.articleId)).toMatchObject({
+        status: 'draft',
+        breakGlassPending: false,
+        publishedVersionId: null,
+      });
+      expect(
+        (await auditRows(env, 'kb.article.publish_break_glass')).filter(
+          (row) => row.targetId === made.articleId,
+        ),
+      ).toHaveLength(0);
+    });
+
+    it('goes live by the normal way: another person publishes it after review, and then the next human edit may use break-glass', async () => {
+      const made = await aiCreate();
+      expect((await publish(made.articleId, 1)).value.changed).toBe(true);
+      await update(made.articleId, { bodyMd: 'a person fixes it' }, true, second);
+      // The AI version is already live (reviewed): the range after it holds a person's text only.
+      expect((await glass(made.articleId, head, 'urgent', 2)).value.changed).toBe(true);
     });
   });
 
