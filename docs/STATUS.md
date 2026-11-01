@@ -38,6 +38,12 @@ snapshot สั้นสำหรับ cold start อยู่ที่ `HANDOF
 
 ## Log
 
+## 2026-11-01 11:40 (Asia/Bangkok) — main thread — pause ตามคำสั่งเจ้าของ (ไปทำต่อบน local)
+- ทำอะไร: หยุด agent และ test ทั้งหมด · push branch งานค้าง `verify/t-103bd`, `wip/t-102bd`, `wip/t-107ac` · เขียน HANDOFF ใหม่ (archive ฉบับ 04:20) · พรอมต์เริ่มงานต่อ `docs/prompts/resume-local.md`
+- สถานะงานค้าง: T-103b–d (security ผ่าน, test เหลือ api/worker integration) · T-102b–d (แก้ re-review N-1..N-3 แล้ว ยังไม่ re-review/ยังไม่มีผล test จาก main thread) · T-107a–c (`wip:` ครึ่งทาง P2-A/P2-B, จุดสะอาด `80e301e`)
+- test: ไม่มีงานใหม่เข้า `main` หลัง T-129 · `verify/t-103bd`: lint/typecheck/unit ผ่าน, db integration 200, domain 187, full-stack 23 `[TESTED]` · api/worker integration ถูกหยุดกลางทาง (ไม่มีผล ห้ามนับ)
+- ไม่ยืนยัน: ผล test ที่ agent รายงานของ T-102/T-107 รอบล่าสุด
+
 ## 2026-11-01 11:19 (Asia/Bangkok) — frontend-dev + po + main thread — T-129 friendly polish ปิด (คำขอเจ้าของ)
 - ทำอะไร: radius ใหญ่ขึ้นทั้งแอป, tint 12 ตระกูล light/dark, `IconButton`/`TintChip`/`IntentChip`/`ConfidenceDots`/`SectionHeading`, ปุ่มรองเป็น icon + tooltip (ปุ่มเสี่ยงยังมีคำ), home เป็น tile สี · รอบ 2 ตาม feedback เจ้าของ "status กับ tag รวมกันอ่านงง": status = pill ทึบคอลัมน์ขวา (ซ่อนถ้าซ้ำกับชื่อกลุ่ม แต่มี sr-only), tag/intent = ตัวจางไม่มีพื้น + title ชื่อเต็ม, priority = icon + ตัวอักษร (P1 ยังเป็น pill), SLA = outline · `po` P1 (N5) ตัวเลข confidence กลับมาบนจอ · "Unknown queue" แทน "…" · portal urgency คืน hint สั้น `[ASSUMED]` main thread
 - ไฟล์ที่แตะ: `packages/ui/**`, `apps/web/**`, `docs/design/friendly-polish.md`, `packages/ui/vitest.config.ts` (testTimeout 20 s)
