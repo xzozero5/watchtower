@@ -21,6 +21,37 @@ export interface AvatarColors {
   readonly bg: string;
 }
 
+/**
+ * Soft tint families for chips (docs/design/friendly-polish.md section 3). A chip is a 12-20 %
+ * tint of the hue behind a full-colour icon and dark text. Red is for P1 and breaches only and
+ * coral is not here at all (docs/brand/README.md).
+ */
+export const TINT_IDS = [
+  'red',
+  'amber',
+  'sky',
+  'slate',
+  'green',
+  'teal',
+  'violet',
+  'blue',
+  'indigo',
+  'purple',
+  'pink',
+  'orange',
+] as const;
+
+export type TintId = (typeof TINT_IDS)[number];
+
+export interface TintColors {
+  /** Chip text, drawn on `bg`. */
+  readonly fg: string;
+  /** The tinted chip ground. */
+  readonly bg: string;
+  /** The icon, in the full hue. Meets 3:1 on `bg` and on every surface. */
+  readonly icon: string;
+}
+
 export interface ColorTokens {
   /**
    * Canvas: the neutral ground behind the panes. Panes have no card of their own, they sit on it
@@ -50,6 +81,8 @@ export interface ColorTokens {
   readonly success: string;
   /** AI only: the seafoam from the logo, darkened until it reads as text. Never used for anything else. */
   readonly aiAccent: string;
+  /** A faint teal wash behind the AI brief and draft. Text on it is `foreground`. */
+  readonly aiSubtle: string;
   /** Brand moment ground (login, portal header): warm ivory. Not the app background. */
   readonly brandSurface: string;
   /** Text on `brandSurface`. */
@@ -59,7 +92,20 @@ export interface ColorTokens {
   readonly severity: Readonly<Record<SeverityId, SeverityColors>>;
   /** Muted hues for initials avatars, drawn from a stable id. Initials text passes AA on every one. */
   readonly avatar: readonly AvatarColors[];
+  /** Soft tints for priority, SLA, AI state, channel and intent chips. */
+  readonly tint: Readonly<Record<TintId, TintColors>>;
 }
+
+/**
+ * Corner radii (docs/design/friendly-polish.md section 2): controls 10 px, cards, the AI brief and
+ * popovers 16 px, dialogs 20 px, pills, avatars and icon buttons fully round. They do not change
+ * with the theme, so they live outside `ColorTokens`.
+ */
+export const RADIUS_TOKENS = {
+  control: '10px',
+  card: '16px',
+  dialog: '20px',
+} as const;
 
 /**
  * Brand palette, measured from the master PNG (docs/brand/README.md, confirmed 2026-10-31):
@@ -96,6 +142,7 @@ export const COLOR_TOKENS: Readonly<Record<ThemeName, ColorTokens>> = {
     danger: '#b91c1c',
     success: '#166534',
     aiAccent: '#0f766e',
+    aiSubtle: '#f0f9f7',
     brandSurface: '#f7f0d4',
     brandForeground: '#363839',
     scrim: 'rgb(15 23 42 / 0.55)',
@@ -115,6 +162,20 @@ export const COLOR_TOKENS: Readonly<Record<ThemeName, ColorTokens>> = {
       { bg: '#f0dfd2', fg: '#6e3b1f' },
       { bg: '#dde3e8', fg: '#364754' },
     ],
+    tint: {
+      red: { bg: '#fde7e7', fg: '#991b1b', icon: '#dc2626' },
+      amber: { bg: '#fef2df', fg: '#92400e', icon: '#b45309' },
+      sky: { bg: '#e0f3fc', fg: '#075985', icon: '#0284c7' },
+      slate: { bg: '#ebedf0', fg: '#334155', icon: '#64748b' },
+      green: { bg: '#e2f7ea', fg: '#166534', icon: '#15803d' },
+      teal: { bg: '#e0f6f3', fg: '#115e59', icon: '#0f766e' },
+      violet: { bg: '#f0eafe', fg: '#5b21b6', icon: '#7c3aed' },
+      blue: { bg: '#e6effe', fg: '#1e40af', icon: '#2563eb' },
+      indigo: { bg: '#ebebfd', fg: '#3730a3', icon: '#4f46e5' },
+      purple: { bg: '#f4e9fe', fg: '#6b21a8', icon: '#9333ea' },
+      pink: { bg: '#fde7f2', fg: '#9d174d', icon: '#db2777' },
+      orange: { bg: '#feede1', fg: '#9a3412', icon: '#c2410c' },
+    },
   },
   dark: {
     background: '#0e1219',
@@ -132,6 +193,7 @@ export const COLOR_TOKENS: Readonly<Record<ThemeName, ColorTokens>> = {
     danger: '#fca5a5',
     success: '#4ade80',
     aiAccent: '#80cfc0',
+    aiSubtle: '#142428',
     brandSurface: '#161b25',
     brandForeground: '#f7f7ed',
     scrim: 'rgb(2 6 23 / 0.72)',
@@ -151,5 +213,19 @@ export const COLOR_TOKENS: Readonly<Record<ThemeName, ColorTokens>> = {
       { bg: '#45301f', fg: '#eac9b0' },
       { bg: '#2b3640', fg: '#c6d2dc' },
     ],
+    tint: {
+      red: { bg: '#41232b', fg: '#fecaca', icon: '#f87171' },
+      amber: { bg: '#433520', fg: '#fde68a', icon: '#fbbf24' },
+      sky: { bg: '#14374c', fg: '#bae6fd', icon: '#38bdf8' },
+      slate: { bg: '#262d39', fg: '#e2e8f0', icon: '#94a3b8' },
+      green: { bg: '#183d30', fg: '#bbf7d0', icon: '#4ade80' },
+      teal: { bg: '#163a3f', fg: '#99f6e4', icon: '#2dd4bf' },
+      violet: { bg: '#2d284f', fg: '#ddd6fe', icon: '#a78bfa' },
+      blue: { bg: '#1d304f', fg: '#bfdbfe', icon: '#60a5fa' },
+      indigo: { bg: '#252a4e', fg: '#c7d2fe', icon: '#818cf8' },
+      purple: { bg: '#33274f', fg: '#e9d5ff', icon: '#c084fc' },
+      pink: { bg: '#41243c', fg: '#fbcfe8', icon: '#f472b6' },
+      orange: { bg: '#432d22', fg: '#fed7aa', icon: '#fb923c' },
+    },
   },
 };

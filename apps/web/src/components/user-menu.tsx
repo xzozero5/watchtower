@@ -19,9 +19,10 @@ import {
   parseDensity,
   parseThemePreference,
   THEME_PREFERENCES,
+  TINT_CLASSES,
   Tooltip,
 } from '@watchtower/ui';
-import { Globe, Keyboard, LogOut, Monitor, Rows3 } from 'lucide-react';
+import { Globe, Keyboard, LogOut, Rows3, SunMoon } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 
 import { isLocale, LOCALE_NAMES, LOCALES } from '@/i18n';
@@ -64,7 +65,7 @@ export function UserMenu({
                 ? `${user.name} ${t(`roles.${user.role}`)}, ${t('rail.account')}`
                 : t('rail.account')
             }
-            className="flex h-control items-center gap-2.5 rounded-md px-1 text-left transition-colors duration-(--wt-motion-duration-fast) ease-out hover:bg-surface-muted data-[state=open]:bg-surface-muted md:px-1.5"
+            className="flex h-control items-center gap-2.5 rounded-full px-1 text-left transition-colors duration-(--wt-motion-duration-fast) ease-out hover:bg-surface-muted data-[state=open]:bg-surface-muted md:px-1.5"
           >
             <Avatar name={user.name} id={user.id} size={24} />
             {showLabel ? (
@@ -137,7 +138,7 @@ function MenuBody({
 
       <DropdownMenuSub>
         <DropdownMenuSubTrigger>
-          <Monitor aria-hidden className="size-4 text-muted-foreground" />
+          <SunMoon aria-hidden className={`size-4 ${TINT_CLASSES.amber.icon}`} />
           {t('prefs.theme.label')}
         </DropdownMenuSubTrigger>
         <DropdownMenuSubContent>
@@ -158,7 +159,7 @@ function MenuBody({
 
       <DropdownMenuSub>
         <DropdownMenuSubTrigger>
-          <Rows3 aria-hidden className="size-4 text-muted-foreground" />
+          <Rows3 aria-hidden className={`size-4 ${TINT_CLASSES.sky.icon}`} />
           {t('prefs.density.label')}
         </DropdownMenuSubTrigger>
         <DropdownMenuSubContent>
@@ -179,7 +180,7 @@ function MenuBody({
 
       <DropdownMenuSub>
         <DropdownMenuSubTrigger>
-          <Globe aria-hidden className="size-4 text-muted-foreground" />
+          <Globe aria-hidden className={`size-4 ${TINT_CLASSES.green.icon}`} />
           {t('prefs.language.label')}
         </DropdownMenuSubTrigger>
         <DropdownMenuSubContent>
@@ -208,13 +209,13 @@ function MenuBody({
         {t('prefs.singleKey.label')}
       </DropdownMenuCheckboxItem>
       <DropdownMenuItem onSelect={onShowShortcuts}>
-        <Keyboard aria-hidden className="size-4 text-muted-foreground" />
+        <Keyboard aria-hidden className={`size-4 ${TINT_CLASSES.violet.icon}`} />
         {t('topbar.openKeymap')}
         <DropdownMenuHint>?</DropdownMenuHint>
       </DropdownMenuItem>
       <DropdownMenuSeparator />
       <DropdownMenuItem onSelect={onSignOut}>
-        <LogOut aria-hidden className="size-4 text-muted-foreground" />
+        <LogOut aria-hidden className={`size-4 ${TINT_CLASSES.slate.icon}`} />
         {t('topbar.signOut')}
       </DropdownMenuItem>
     </>

@@ -27,7 +27,7 @@ export interface StageBadgeProps extends Omit<HTMLAttributes<HTMLSpanElement>, '
 
 /**
  * An autonomy stage as an icon and words (eye = observe, lightbulb = suggest, user-check = a person
- * approves). Neutral outline: the stage is told apart by icon and text, never by colour.
+ * approves). A soft slate chip: the stage is told apart by icon and text, never by colour.
  */
 export function StageBadge({ stage, label, className, ...props }: StageBadgeProps) {
   const Icon = ICONS[stage];
@@ -35,12 +35,12 @@ export function StageBadge({ stage, label, className, ...props }: StageBadgeProp
     <span
       data-stage={stage}
       className={cn(
-        'inline-flex h-5 shrink-0 items-center gap-1 rounded-full border border-border-strong px-2 text-xs font-medium whitespace-nowrap text-foreground',
+        'inline-flex h-5 shrink-0 items-center gap-1 rounded-full bg-tint-slate-bg px-2 text-xs font-medium whitespace-nowrap text-tint-slate-fg',
         className,
       )}
       {...props}
     >
-      <Icon aria-hidden className="size-3.5 shrink-0" strokeWidth={1.75} />
+      <Icon aria-hidden className="size-3.5 shrink-0 text-tint-slate-icon" strokeWidth={2} />
       <span>{label}</span>
     </span>
   );

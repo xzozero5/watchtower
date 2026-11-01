@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { COLOR_TOKENS } from './colors.js';
+import { COLOR_TOKENS, TINT_IDS } from './colors.js';
 import { buildTailwindThemeCss, buildTokensCss, colorVariableNames } from './css.js';
 import { DENSITY_TOKENS } from './density.js';
 import { SEVERITY_IDS } from './severity.js';
@@ -67,6 +67,21 @@ describe('buildTokensCss', () => {
     }
   });
 
+  it('writes every tint family in both themes and the three radii', () => {
+    const dark = block(css, ":root[data-theme='dark']");
+    for (const id of TINT_IDS) {
+      for (const part of ['fg', 'bg', 'icon']) {
+        expect(dark).toContain(`--wt-color-tint-${id}-${part}:`);
+        expect(block(css, ':root')).toContain(`--wt-color-tint-${id}-${part}:`);
+      }
+    }
+    expect(dark).toContain('--wt-color-ai-subtle:');
+    const root = block(css, ':root');
+    expect(root).toContain('--wt-radius-control: 10px;');
+    expect(root).toContain('--wt-radius-card: 16px;');
+    expect(root).toContain('--wt-radius-dialog: 20px;');
+  });
+
   it('sets a 14-15px base and a compact density', () => {
     const root = block(css, ':root');
     expect(root).toContain(`--wt-font-scale: ${DENSITY_TOKENS.comfortable.fontScale};`);
@@ -100,6 +115,7 @@ describe('buildTokensCss', () => {
         known.add(theme.severity[id].fg).add(theme.severity[id].bg).add(theme.severity[id].border);
       }
       for (const { fg, bg } of theme.avatar) known.add(fg).add(bg);
+      for (const { fg, bg, icon } of Object.values(theme.tint)) known.add(fg).add(bg).add(icon);
     }
     for (const [hex] of css.matchAll(/#[0-9a-f]{6}\b/gi)) {
       expect(known.has(hex)).toBe(true);
@@ -132,6 +148,18 @@ describe('buildTailwindThemeCss', () => {
     expect(css).toContain('--text-xs: 0.8rem;');
     expect(css).toContain('--text-xs--line-height: 1.5;');
     expect(css).toContain('--text-xl: 1.3333rem;');
+  });
+
+  it('rounds the default md, lg and xl steps to the control, card and dialog radii', () => {
+    expect(css).toContain('--radius-md: var(--wt-radius-control);');
+    expect(css).toContain('--radius-lg: var(--wt-radius-card);');
+    expect(css).toContain('--radius-xl: var(--wt-radius-dialog);');
+    expect(css).toContain('--color-tint-amber-bg: var(--wt-color-tint-amber-bg);');
+  });
+
+  it('pops a check mark with a duration that reduced motion sets to zero', () => {
+    expect(css).toContain('--animate-check-pop: wt-check-pop var(--wt-motion-duration-base)');
+    expect(css).toContain('@keyframes wt-check-pop');
   });
 
   it('exposes the AI accent and avatar colours as utilities and one overlay shadow', () => {

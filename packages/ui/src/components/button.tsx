@@ -5,11 +5,12 @@ import type { ButtonHTMLAttributes, Ref } from 'react';
 import { cn } from '../lib/cn.js';
 
 /**
- * Buttons: 6px radius, `control` height (32px comfortable, 28px compact), 120ms colour transition.
+ * Buttons: 10px radius, `control` height (32px comfortable, 28px compact), 120ms colour transition and
+ * a 0.97 press squeeze (not under reduced motion).
  * Navy is the one primary colour; every other button is quiet until hovered.
  */
 export const buttonVariants = cva(
-  'inline-flex h-control shrink-0 items-center justify-center gap-1.5 rounded-md px-3 text-sm font-medium whitespace-nowrap transition-colors duration-(--wt-motion-duration-fast) ease-out focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:pointer-events-none disabled:opacity-50 aria-disabled:cursor-not-allowed aria-disabled:opacity-50',
+  'inline-flex h-control shrink-0 items-center justify-center gap-1.5 rounded-md px-3 text-sm font-medium whitespace-nowrap transition-[color,background-color,opacity,transform] duration-(--wt-motion-duration-fast) ease-out motion-safe:active:scale-[0.97] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:pointer-events-none disabled:opacity-50 aria-disabled:cursor-not-allowed aria-disabled:opacity-50',
   {
     variants: {
       variant: {
@@ -21,7 +22,7 @@ export const buttonVariants = cva(
       size: {
         default: '',
         sm: 'px-2 text-xs',
-        icon: 'w-control px-0',
+        icon: 'w-control rounded-full px-0',
       },
     },
     defaultVariants: { variant: 'secondary', size: 'default' },

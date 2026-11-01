@@ -89,6 +89,23 @@ export {
   type StageBadgeProps,
 } from './components/stage-badge.js';
 export { SeverityBadge, type SeverityBadgeProps } from './components/severity-badge.js';
+export { IconButton, type IconButtonProps } from './components/icon-button.js';
+export { TintChip, type ChipIcon, type TintChipProps } from './components/tint-chip.js';
+export { TINT_CLASSES } from './components/tint.js';
+export {
+  INTENT_TINTS,
+  IntentChip,
+  intentIcon,
+  intentTint,
+  type IntentChipProps,
+} from './components/intent-chip.js';
+export {
+  CONFIDENCE_DOTS,
+  ConfidenceDots,
+  litDots,
+  type ConfidenceDotsProps,
+} from './components/confidence-dots.js';
+export { SectionHeading, type SectionHeadingProps } from './components/section-heading.js';
 export { cn } from './lib/cn.js';
 export {
   DEFAULT_THEME_PREFERENCE,
@@ -103,11 +120,15 @@ export {
 export {
   AVATAR_HUE_COUNT,
   COLOR_TOKENS,
+  RADIUS_TOKENS,
   THEME_NAMES,
+  TINT_IDS,
   type AvatarColors,
   type ColorTokens,
   type SeverityColors,
   type ThemeName,
+  type TintColors,
+  type TintId,
 } from './tokens/colors.js';
 export {
   AA_TEXT_RATIO,

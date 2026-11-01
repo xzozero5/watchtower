@@ -597,7 +597,16 @@ describe('under 768 px: one pane at a time', () => {
     expect(bar.className).toContain('max-md:sticky');
     expect(bar.className).toContain('max-md:bottom-0');
     const buttons = within(bar).getAllByRole('button');
-    expect(buttons.map((button) => button.textContent)).toEqual(['ApproveA', 'EditE', 'RejectR']);
+    // Approve keeps its word and icon; Edit and Reject are round icon buttons named by aria-label.
+    expect(buttons.map((button) => button.getAttribute('aria-keyshortcuts'))).toEqual([
+      'A',
+      'E',
+      'R',
+    ]);
+    expect(buttons.map((button) => button.textContent)).toEqual(['Approve', '', '']);
+    expect(
+      buttons.map((button) => button.getAttribute('aria-label') ?? button.textContent),
+    ).toEqual(['Approve', 'Edit', 'Reject']);
     for (const button of buttons) {
       expect(button.className).toContain('max-md:min-h-[44px]');
       expect(button.className).toContain('max-md:min-w-[44px]');

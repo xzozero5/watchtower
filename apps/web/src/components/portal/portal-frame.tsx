@@ -21,7 +21,7 @@ export function PortalFrame({ children }: { children: ReactNode }) {
   const languageId = useId();
   return (
     <div className="flex min-h-dvh flex-col">
-      <header className="border-b border-border bg-background">
+      <header className="border-b border-border/60 bg-background">
         <div className="mx-auto flex w-full max-w-2xl items-center justify-between gap-3 px-pane py-3">
           <Link href="/portal" className="flex items-center gap-2 rounded-md">
             <Image
@@ -29,7 +29,7 @@ export function PortalFrame({ children }: { children: ReactNode }) {
               alt=""
               width={32}
               height={32}
-              className="size-8 rounded-md"
+              className="size-8 rounded-xl"
               priority
             />
             <span className="text-base font-semibold">{t('portal.frame.brand')}</span>

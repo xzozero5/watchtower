@@ -10,12 +10,21 @@ import {
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
   DropdownMenuTrigger,
+  IconButton,
   Kbd,
   SegmentedControl,
-  Tooltip,
   cn,
 } from '@watchtower/ui';
-import { ChevronDown, CornerDownLeft, FileText, Lock, Paperclip, Send } from 'lucide-react';
+import {
+  ChevronDown,
+  CornerDownLeft,
+  FileText,
+  Flag,
+  Lock,
+  MessageCircle,
+  Paperclip,
+  Send,
+} from 'lucide-react';
 import {
   type KeyboardEvent,
   type Ref,
@@ -87,7 +96,7 @@ function asQuote(text: string): string {
 /**
  * Reply and internal-note composer: one rounded box with a Reply / Internal note switch, a textarea
  * that grows from 3 to 12 rows, a toolbar (template; attach and AI draft are placeholders until
- * Phase 1) and the send button with its Ctrl/Cmd+Enter hint. The two modes are told apart by
+ * Phase 1) and the send button. The Ctrl/Cmd+Enter hint lives in the footer line, not in the button. The two modes are told apart by
  * words, an icon, the surface and the border (solid for something the customer will read, dashed
  * on a muted surface for the team only), so a note cannot be mistaken for a reply.
  */
@@ -284,9 +293,17 @@ export function Composer({
       : 'composer.hints.note';
   const channelName = 'channel' in ticket ? t(`channel.${ticket.channel}`) : null;
   const ModeIcon = mode === 'reply' ? Send : Lock;
+  const isNote = mode === 'note';
+  const submitLabel = mutation.isPending
+    ? t('composer.sending')
+    : isNote
+      ? t('composer.submit.note')
+      : nextStatus
+        ? t('composer.submit.replyAndSet', { status: t(statusKey(nextStatus)) })
+        : t('composer.submit.reply');
+  const SubmitIcon = isNote ? Lock : Send;
   const textareaId = `${ids}-body`;
   const hintId = `${ids}-hint`;
-  const isNote = mode === 'note';
   const placeholder = t(
     isNote
       ? 'composer.placeholders.note'
@@ -308,7 +325,7 @@ export function Composer({
       <div
         data-mode={mode}
         className={cn(
-          'rounded-lg border transition-colors duration-(--wt-motion-duration-fast) ease-out focus-within:outline-2 focus-within:outline-offset-1 focus-within:outline-ring',
+          'rounded-2xl border transition-colors duration-(--wt-motion-duration-fast) ease-out focus-within:outline-2 focus-within:outline-offset-1 focus-within:outline-ring',
           isNote
             ? 'border-dashed border-border-strong bg-surface-muted'
             : 'border-border-strong bg-surface',
@@ -327,11 +344,12 @@ export function Composer({
                 {
                   value: 'reply',
                   label: t('composer.modes.reply'),
-                  icon: <Send aria-hidden className="size-3.5" />,
+                  icon: <MessageCircle aria-hidden className="size-3.5" />,
                 },
                 {
                   value: 'note',
-                  label: t('composer.modes.note'),
+                  label: t('composer.modes.noteShort'),
+                  ariaLabel: t('composer.modes.note'),
                   icon: <Lock aria-hidden className="size-3.5" />,
                 },
               ]}
@@ -387,7 +405,7 @@ export function Composer({
               className="mx-0 h-control w-auto text-muted-foreground hover:text-foreground"
             >
               <FileText aria-hidden className="size-4" />
-              <span>
+              <span className="sr-only">
                 {templates.length === 0
                   ? t('composer.template.none')
                   : t('composer.template.choose')}
@@ -396,17 +414,13 @@ export function Composer({
           ) : null}
           {isStaff ? (
             <>
-              <Tooltip content={`${t('composer.toolbar.attach')} — ${soon}`}>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  aria-disabled="true"
-                  aria-label={t('composer.toolbar.attach')}
-                  className="text-muted-foreground"
-                >
-                  <Paperclip aria-hidden className="size-4" />
-                </Button>
-              </Tooltip>
+              <IconButton
+                aria-disabled="true"
+                label={t('composer.toolbar.attach')}
+                tooltip={`${t('composer.toolbar.attach')} — ${soon}`}
+                icon={<Paperclip aria-hidden className="size-4" />}
+                className="text-muted-foreground"
+              />
             </>
           ) : null}
 
@@ -416,12 +430,12 @@ export function Composer({
                 <DropdownMenuTrigger asChild>
                   <Button
                     variant="ghost"
-                    className="gap-1 px-2 text-muted-foreground"
+                    className="gap-1 rounded-full px-2 text-muted-foreground"
                     aria-label={`${t('composer.setStatus.label')}: ${nextStatus ? t(statusKey(nextStatus)) : t('composer.setStatus.keep')}`}
+                    title={t('composer.setStatus.label')}
                   >
-                    <span aria-hidden>
-                      {nextStatus ? t(statusKey(nextStatus)) : t('composer.setStatus.keep')}
-                    </span>
+                    <Flag aria-hidden className="size-4" />
+                    {nextStatus ? <span aria-hidden>{t(statusKey(nextStatus))}</span> : null}
                     <ChevronDown aria-hidden className="size-3.5" />
                   </Button>
                 </DropdownMenuTrigger>
@@ -445,23 +459,24 @@ export function Composer({
                 </DropdownMenuContent>
               </DropdownMenu>
             ) : null}
-            <Button type="submit" variant="primary" disabled={!canSend} className="gap-2 pr-2.5">
-              <span>
+            <Button
+              type="submit"
+              variant="primary"
+              disabled={!canSend}
+              className="gap-1.5 rounded-full px-4"
+              aria-label={submitLabel}
+              aria-keyshortcuts="Control+Enter Meta+Enter"
+            >
+              <SubmitIcon aria-hidden className="size-4" />
+              <span aria-hidden>
                 {mutation.isPending
                   ? t('composer.sending')
                   : isNote
                     ? t('composer.submit.note')
-                    : nextStatus
-                      ? t('composer.submit.replyAndSet', { status: t(statusKey(nextStatus)) })
-                      : t('composer.submit.reply')}
-              </span>
-              <span aria-hidden className="hidden items-center gap-0.5 sm:inline-flex">
-                <Kbd className="border-transparent bg-primary-foreground/20 text-primary-foreground">
-                  {isMac ? '⌘' : 'Ctrl'}
-                </Kbd>
-                <Kbd className="border-transparent bg-primary-foreground/20 text-primary-foreground">
-                  <CornerDownLeft className="size-3" />
-                </Kbd>
+                    : t('composer.submit.reply')}
+                {!isNote && !mutation.isPending && nextStatus
+                  ? ` · ${t(statusKey(nextStatus))}`
+                  : ''}
               </span>
             </Button>
           </div>
@@ -469,9 +484,15 @@ export function Composer({
       </div>
 
       {isNote ? null : (
-        <p id={hintId} className="mt-1.5 px-1 text-xs text-muted-foreground">
-          {t(hintKey, { channel: channelName ?? '' })}
-        </p>
+        <div className="mt-1.5 flex items-center justify-between gap-3 px-1 text-xs text-muted-foreground">
+          <p id={hintId}>{t(hintKey, { channel: channelName ?? '' })}</p>
+          <span aria-hidden className="hidden shrink-0 items-center gap-0.5 sm:inline-flex">
+            <Kbd>{isMac ? '⌘' : 'Ctrl'}</Kbd>
+            <Kbd>
+              <CornerDownLeft className="size-3" />
+            </Kbd>
+          </span>
+        </div>
       )}
 
       {unresolved.length > 0 ? (
