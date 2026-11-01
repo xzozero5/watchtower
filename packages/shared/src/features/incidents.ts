@@ -274,6 +274,53 @@ export const deployListQuerySchema = z.object({
 export type DeployListQuery = z.infer<typeof deployListQuerySchema>;
 export const deployListSchema = z.object({ items: z.array(deploySchema) });
 
+// --- "what changed" (R-3.15, R-5.3, R-5.4) ------------------------------------------------------
+
+/** `[ASSUMED]` an hour: most regressions show up soon after the change. Configurable per request. */
+export const WHAT_CHANGED_DEFAULT_MINUTES = 60;
+
+export const changesQuerySchema = z.object({
+  windowMinutes: z.coerce.number().int().min(5).max(1440).default(WHAT_CHANGED_DEFAULT_MINUTES),
+});
+export type ChangesQuery = z.infer<typeof changesQuerySchema>;
+
+export const REPO_CHANGE_KINDS = ['commit', 'pull_request', 'release'] as const;
+export const repoChangeSchema = z.object({
+  repo: z.string(),
+  kind: z.enum(REPO_CHANGE_KINDS),
+  /** A short sha, a PR number or a tag. */
+  ref: z.string(),
+  /** The repository's own words for it (a commit or PR title): shown to staff, never sent to chat. */
+  title: z.string().nullable(),
+  author: z.string().nullable(),
+  at: z.iso.datetime({ offset: true }),
+  url: z.string().nullable(),
+});
+export type RepoChange = z.infer<typeof repoChangeSchema>;
+
+/**
+ * What changed before the first alert of an incident. The window ends at the first alert linked to it
+ * (else the incident's start), both stamped by the database, and reaches `minutes` back. Deploys are the
+ * feed's (their times are the sender's and are only compared with that edge to line things up: a clock
+ * that runs a little off shifts the edge a little, nothing is decided by it). `repoSource` says where the
+ * repository changes came from: `none` (not connected), `fake` (an in-memory stand-in) or `live`.
+ */
+export const incidentChangesSchema = z.object({
+  window: z.object({
+    from: z.iso.datetime({ offset: true }),
+    to: z.iso.datetime({ offset: true }),
+    minutes: z.number().int().positive(),
+    /** `alert` when the window ends at the first alert, `incident` when there is none. */
+    endsAt: z.enum(['alert', 'incident']),
+  }),
+  deploys: z.array(deploySchema),
+  repoSource: z.enum(['none', 'fake', 'live']),
+  repoChanges: z.array(repoChangeSchema),
+  /** True when the repository could not be read: the deploys above are still right. */
+  repoUnavailable: z.boolean(),
+});
+export type IncidentChanges = z.infer<typeof incidentChangesSchema>;
+
 // --- mass customer communication (R-3.14, N3) ----------------------------------------------------
 
 /** Channels an incident update reaches: the customer-facing ones. Machine and internal tickets are skipped. */

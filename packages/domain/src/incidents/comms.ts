@@ -262,7 +262,8 @@ async function sendOne(
   } catch (error) {
     if (!(error instanceof DomainError)) throw error;
     // The reply was refused and its transaction rolled back, claim included: record why, once.
-    const reason = String(error.details?.reason ?? error.code);
+    const detail = error.details?.reason;
+    const reason = typeof detail === 'string' ? detail : error.code;
     await db
       .insert(schema.incidentCommDelivery)
       .values({ commId, ticketId, state: 'failed', reason: reason.slice(0, 60) })

@@ -12,7 +12,6 @@ import {
   updateIncidentSchema,
   type CreateIncident,
   type IncidentNote,
-  type IncidentSeverity,
   type IncidentStatus,
   type UpdateIncident,
 } from '@watchtower/shared';
@@ -283,7 +282,7 @@ export async function updateIncident(
   if (change.severity !== undefined && change.severity !== current.severity) {
     await addTimelineEntry(tx, ctx, incidentId, 'severity_changed', {
       from: current.severity,
-      to: change.severity as IncidentSeverity,
+      to: change.severity,
     });
   }
   if (change.commanderId !== undefined && change.commanderId !== current.commanderId) {
