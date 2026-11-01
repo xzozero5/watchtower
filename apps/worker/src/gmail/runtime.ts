@@ -268,7 +268,9 @@ export function createGmailRuntime(deps: GmailRuntimeDeps): GmailRuntime {
    */
   async function liveTransport(accountId: string): Promise<gmail.GmailTransport | undefined> {
     const cached = live.get(accountId);
-    if (cached !== undefined && now() - cached.at < refreshMs) return cached.transport;
+    // No time-based shortcut here: the credential is read at every use, so a mailbox that was switched
+    // (or a token that was replaced) never keeps using the old transport and its cached access token.
+    // The transport is reused only while the fingerprint (credential + mailbox of the account) is the same.
     let transport: gmail.GmailTransport | undefined;
     let fingerprint: string;
     try {
@@ -283,8 +285,11 @@ export function createGmailRuntime(deps: GmailRuntimeDeps): GmailRuntime {
       }
       if (address !== undefined && address === mailboxOfCredentials(credentials)) {
         const send = deps.fetch ?? ((input, init) => fetch(input, init));
+        const forMailbox = mailboxOfCredentials(credentials);
         transport = new gmail.LiveGmailTransport({
           fetch: send,
+          // OAuth: name the mailbox in the URL instead of `me`, so a token of another account is refused by Google.
+          ...(credentials.method === 'oauth' ? { userId: forMailbox } : {}),
           getAccessToken:
             credentials.method === 'oauth'
               ? gmail.createOAuthTokenProvider({
@@ -295,6 +300,10 @@ export function createGmailRuntime(deps: GmailRuntimeDeps): GmailRuntime {
                       // The way in effect changed under a cached transport: do not mint with the
                       // wrong kind of credential, look again at the next refresh.
                       throw new Error('gmail credential method changed');
+                    }
+                    if (mailboxOfCredentials(current) !== forMailbox) {
+                      // The grant now belongs to another mailbox: this transport must not use it.
+                      throw new Error('gmail credential mailbox changed');
                     }
                     return current;
                   },

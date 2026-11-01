@@ -113,12 +113,20 @@ What the callback checks, in order: the `state` exists (Redis, hashed key, ten m
 it was started by this person in this SESSION (the PKCE verifier stays on the server); Google did not return an error; the granted
 scopes are exactly the two; a refresh token was issued; the address that granted (`users.getProfile`) is the mailbox asked for at
 `start`. Only then is the refresh token written (one transaction with the audit entry, the mailbox row, and a catch-up sync job).
-Anything refused after Google issued a token revokes it (best effort). Result codes: `connected`, `denied`, `state_invalid`,
+Anything refused after Google issued a token revokes THAT token (best effort, the outcome `revoked` / `failed` is in the audit entry),
+except when a working grant is stored and the refused one may belong to the same account (same mailbox, or the account is not known
+yet): then nothing is revoked (`skipped_working_grant`), because whether revoking one refresh token ends the whole grant of an account
+is `[UNVERIFIED 50%]`. A reconnection that changes the mailbox revokes the old mailbox's token after the new one is saved (audit
+`gmail.oauth.disconnect`, reason `mailbox_changed`); the same mailbox reconnecting leaves the old token alone. `POST .../gmail/oauth/disconnect`
+revokes and deletes the grant; the generic `PUT` / `DELETE` of `oauthRefreshToken` and `oauthMailbox` are refused (400) so that no token
+can be stored without the scope and `getProfile` checks. The worker reads the credential at every use (no 60 s window), names the
+mailbox in the URL (`users/<address>` instead of `me`), and `not_connected` is not overwritten by later sync or watch errors. Result codes: `connected`, `denied`, `state_invalid`,
 `scope_mismatch`, `mailbox_mismatch`, `no_refresh_token`, `env_locked`, `unavailable`.
 
 **Which way is used** when both are complete (`chooseGmailMethod`, `packages/shared/src/features/gmail.ts`):
-1. a way with a field set by the ENVIRONMENT beats one that is only saved in the database (ADR-004/012: environment wins; a click on the
-   admin page must not override the operator's deployment);
+1. a way whose fields are ALL set by the ENVIRONMENT beats one that is not (ADR-004/012: environment wins; a click on the
+   admin page must not override the operator's deployment). One stray variable next to a database value does not count, and
+   `start` / the callback answer 409 / `env_locked` when connecting could not become the effective way;
 2. otherwise OAuth. A warning (no value) is logged once when both exist.
 If neither is complete the mailbox is not connected (no mock unless `GMAIL_MOCK_ENABLED`, and never after a live credential was seen).
 

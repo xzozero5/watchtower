@@ -293,7 +293,12 @@ export function createGmailSync(deps: GmailSyncDeps): GmailSync {
     await database.db
       .update(schema.gmailAccountState)
       .set({
-        lastErrorCode: code,
+        // `not_connected` stays until a sync succeeds or a head connects the mailbox again: a later,
+        // different failure must not hide that a person has to act.
+        lastErrorCode:
+          code === null
+            ? null
+            : sql`CASE WHEN ${schema.gmailAccountState.lastErrorCode} = ${GMAIL_NOT_CONNECTED_CODE} THEN ${schema.gmailAccountState.lastErrorCode} ELSE ${code} END`,
         ...(code === null ? { lastSyncAt: now() } : {}),
         updatedAt: now(),
       })

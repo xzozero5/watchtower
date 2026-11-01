@@ -374,3 +374,112 @@ describe('other token failures are not "not connected"', () => {
     expect(await healthOf(id)).toEqual({ health: 'unknown', code: null });
   });
 });
+
+describe('the mailbox the grant belongs to', () => {
+  it('names it in the API URL instead of `me`', async () => {
+    const { id, address } = await mailbox();
+    const g = google();
+    clock.now = T0;
+    const runtime = runtimeFor(() => oauth(address), g.fetch);
+    await (await runtime.transportFor({ id }))?.listMessages({ maxResults: 1 });
+    const call = g.requests.find((request) => request.url !== gmail.GOOGLE_OAUTH_TOKEN_URL);
+    expect(call?.url).toContain(`/users/${encodeURIComponent(address)}/messages`);
+    expect(call?.url).not.toContain('/users/me/');
+  });
+
+  it('stops using the old transport (and its cached access token) the moment the grant moves to another mailbox', async () => {
+    const { id, address } = await mailbox();
+    const g = google();
+    let granted = address;
+    clock.now = T0;
+    // The default refresh interval: the switch must not wait for it.
+    const runtime = runtimeFor(() => oauth(granted), g.fetch);
+    const transport = await runtime.transportFor({ id });
+    await transport?.listMessages({ maxResults: 1 }); // caches an access token
+    granted = `other-${address}`;
+    clock.now = T0 + 1000;
+    expect(await runtime.transportFor({ id })).toBeUndefined();
+    expect(await runtime.senderFor({ id, type: 'gmail', name: 'x' })).toBeUndefined();
+    // The old object, if somebody still holds it, cannot mint with the new grant either.
+    clock.now = T0 + 2 * 3600_000;
+    const requestsBefore = g.requests.length;
+    const stale = await transport
+      ?.listMessages({ maxResults: 1 })
+      .catch((caught: unknown) => caught);
+    expect(stale).toBeInstanceOf(ChannelError);
+    expect((stale as ChannelError).operation).toBe('oauth2.token');
+    expect(g.requests.length).toBe(requestsBefore);
+  });
+});
+
+describe('"not connected" is not overwritten by another error', () => {
+  /** A runtime whose transport fails every call with `error`. */
+  function failing(error: Error) {
+    const transport = new Proxy(
+      {},
+      // Not `then`: the object is returned from an async function and must not look like a promise.
+      { get: (_target, name) => (name === 'then' ? undefined : () => Promise.reject(error)) },
+    ) as unknown as gmail.GmailTransport;
+    return {
+      mode: () => Promise.resolve('live' as const),
+      transportFor: () => Promise.resolve(transport),
+      senderFor: () => Promise.resolve(undefined),
+    };
+  }
+  const serverError = () =>
+    new ChannelError({ provider: 'gmail', operation: 'users.messages.list', kind: 'server' });
+  const settings = { fullSyncDays: 7, fullSyncMaxMessages: 10, topicName: undefined };
+
+  it('keeps the code through a failed sync and a failed watch renewal, and clears it only when a sync succeeds', async () => {
+    const { id } = await mailbox();
+    await owner()
+      .update(schema.gmailAccountState)
+      .set({ lastErrorCode: GMAIL_NOT_CONNECTED_CODE })
+      .where(eq(schema.gmailAccountState.channelAccountId, id));
+    const runtime = failing(serverError());
+    const sync = createGmailSync({
+      database,
+      domain,
+      runtime,
+      logger,
+      now: () => new Date(clock.now),
+      settings,
+    });
+    await expect(sync.syncAccount(id, 'push')).rejects.toBeInstanceOf(ChannelError);
+    expect((await healthOf(id)).code).toBe(GMAIL_NOT_CONNECTED_CODE);
+
+    const watch = createGmailWatch({
+      database,
+      domain,
+      runtime,
+      topicName: TOPIC,
+      logger,
+      now: () => new Date(clock.now),
+    });
+    await expect(watch.renewAccount(id)).rejects.toBeInstanceOf(ChannelError);
+    expect((await healthOf(id)).code).toBe(GMAIL_NOT_CONNECTED_CODE);
+
+    // A mailbox without that code still records the failure as before.
+    const other = await mailbox();
+    await expect(sync.syncAccount(other.id, 'push')).rejects.toBeInstanceOf(ChannelError);
+    expect((await healthOf(other.id)).code).toBe('channel_server');
+
+    // A working connection clears it.
+    const g = google();
+    clock.now = T0;
+    const okSync = createGmailSync({
+      database,
+      domain,
+      runtime: runtimeFor(() => oauth(other.address), g.fetch),
+      logger,
+      now: () => new Date(clock.now),
+      settings,
+    });
+    await owner()
+      .update(schema.gmailAccountState)
+      .set({ lastErrorCode: GMAIL_NOT_CONNECTED_CODE })
+      .where(eq(schema.gmailAccountState.channelAccountId, other.id));
+    expect((await okSync.syncAccount(other.id, 'push')).status).toBe('synced');
+    expect((await healthOf(other.id)).code).toBeNull();
+  });
+});

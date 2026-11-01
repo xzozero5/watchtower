@@ -1,7 +1,7 @@
 import { ChannelError } from '@watchtower/channels';
 import { schema, type Database } from '@watchtower/db';
 import { recordAuditInTx, type Domain } from '@watchtower/domain';
-import { AUDIT_ACTIONS } from '@watchtower/shared';
+import { AUDIT_ACTIONS, GMAIL_NOT_CONNECTED_CODE } from '@watchtower/shared';
 import { eq, sql } from 'drizzle-orm';
 
 import type { WorkerLogger } from '../logger.js';
@@ -53,7 +53,11 @@ export function createGmailWatch(deps: GmailWatchDeps): GmailWatch {
     await database.db.transaction(async (tx) => {
       await tx
         .update(schema.gmailAccountState)
-        .set({ lastErrorCode: 'watch_failed', updatedAt: now() })
+        .set({
+          // Keep `not_connected` (a person has to act) over a watch failure that follows it.
+          lastErrorCode: sql`CASE WHEN ${schema.gmailAccountState.lastErrorCode} = ${GMAIL_NOT_CONNECTED_CODE} THEN ${schema.gmailAccountState.lastErrorCode} ELSE 'watch_failed' END`,
+          updatedAt: now(),
+        })
         .where(eq(schema.gmailAccountState.channelAccountId, accountId));
       await tx
         .update(schema.channelAccount)
