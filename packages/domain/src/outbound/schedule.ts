@@ -12,6 +12,7 @@ import { and, eq } from 'drizzle-orm';
 import { recordAuditInTx } from '../audit.js';
 import { DomainError, badRequest, conflict, notFound } from '../errors.js';
 import { enqueueJob } from '../outbox.js';
+import { syncInsightForDraft } from '../ai/drafts.js';
 import { requireCustomerSend } from '../policy.js';
 import type { AiDraftRow, MessageRow, OutboundDeliveryRow, TicketRow } from '../rows.js';
 import { insertMessage, lockTicketRow, ticketEvent, ticketKeysOf } from '../tickets/support.js';
@@ -181,10 +182,19 @@ export async function scheduleCustomerSend(
     if (actorId === null) throw denied('approval_missing', 'An AI draft needs a person to send it');
     const approved = await tx
       .update(schema.aiDraft)
-      .set({ status: 'approved', approvedBy: actorId, approvedAt: now })
+      .set({
+        status: 'approved',
+        approvedBy: actorId,
+        approvedAt: now,
+        disposition: 'approved',
+        editDistance: 0,
+        resolvedBy: actorId,
+        resolvedAt: now,
+      })
       .where(and(eq(schema.aiDraft.id, draft.id), eq(schema.aiDraft.status, 'draft')))
       .returning({ id: schema.aiDraft.id });
     if (approved.length === 0) throw conflict('This AI draft was just used');
+    await syncInsightForDraft(tx, draft.id, 'classified');
   }
 
   // A reply written by a person waits so it can be undone; an automatic acknowledgment does not.
@@ -269,8 +279,17 @@ export async function approveAiDraftSent(
   const now = ctx.now();
   await tx
     .update(schema.aiDraft)
-    .set({ status: 'sent', approvedBy: actorId, approvedAt: now })
+    .set({
+      status: 'sent',
+      approvedBy: actorId,
+      approvedAt: now,
+      disposition: 'approved',
+      editDistance: 0,
+      resolvedBy: actorId,
+      resolvedAt: now,
+    })
     .where(eq(schema.aiDraft.id, draft.id));
+  await syncInsightForDraft(tx, draft.id, 'classified');
   await recordAuditInTx(tx, ctx, fx, {
     action: AUDIT_ACTIONS.outboundSent,
     targetType: 'ticket',

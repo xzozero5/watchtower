@@ -4,7 +4,7 @@
   "description": "End-users are failing a core processing step.",
   "typicalEvidence": "Logs for the affected session IDs, failure rate for the organization against its baseline, recent deploys.",
   "defaultPriority": "P2",
-  "allowedTools": [],
+  "allowedTools": ["gcp_logs", "bigquery_query"],
   "replyTemplates": [
     {
       "key": "ack_en",

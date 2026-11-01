@@ -251,6 +251,11 @@ export interface ToolScope {
 
 export interface ToolContext extends ToolScope {
   abortSignal?: AbortSignal;
+  /**
+   * The ticket the run is about. A tool reads data of this ticket and its organization only: the
+   * id comes from the run, never from the model's arguments (N2, SR106-R8).
+   */
+  ticketId?: string | null;
 }
 
 /**
@@ -264,6 +269,8 @@ export interface ToolDefinition<
   name: string;
   description: string;
   readOnly: true;
+  /** The tool answers from a fixture, not from the real system (N5): its output is labelled so. */
+  mock?: boolean;
   input: Input;
   output: Output;
   execute(input: z.output<Input>, context: ToolContext): Promise<z.input<Output>>;
@@ -283,6 +290,7 @@ export interface ToolAllowRule {
 export interface ToolSummary {
   name: string;
   description: string;
+  mock: boolean;
 }
 
 export interface ToolCallRecord {
@@ -302,5 +310,8 @@ export interface ScopedTools {
 
 export interface ToolRegistry {
   register(tool: ToolDefinition): void;
-  scope(scope: ToolScope, options?: { abortSignal?: AbortSignal; maxCalls?: number }): ScopedTools;
+  scope(
+    scope: ToolScope,
+    options?: { abortSignal?: AbortSignal; maxCalls?: number; ticketId?: string | null },
+  ): ScopedTools;
 }

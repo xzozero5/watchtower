@@ -69,3 +69,45 @@ export async function provisionAppRole(
     client.release();
   }
 }
+
+/** Group role created by migration 0034. The login role of the AI tools is a member of it (N2). */
+export const AI_READONLY_ROLE_GROUP = 'watchtower_ai_ro';
+
+/**
+ * Creates (or updates the password of) the login role the AI tools read through (T-108a). It is a
+ * member of `watchtower_ai_ro` only, which can SELECT from the `ai_v_*` views and nothing else: no
+ * table, no write, no function of the application. Idempotent. Run it as the migration owner, after
+ * `migrateUp`.
+ */
+export async function provisionAiReadOnlyRole(
+  pool: Pool,
+  options: AppRoleOptions,
+): Promise<'created' | 'updated'> {
+  if (
+    !LOGIN_ROLE_NAME.test(options.user) ||
+    RESERVED_NAMES.has(options.user) ||
+    options.user === AI_READONLY_ROLE_GROUP
+  ) {
+    throw new Error('role name must be lowercase letters, digits or underscores and not reserved');
+  }
+  if (options.password.length < 8) throw new Error('role password must be at least 8 characters');
+
+  const client = await pool.connect();
+  try {
+    const role = client.escapeIdentifier(options.user);
+    const verifier = client.escapeLiteral(scramVerifier(options.password));
+    const exists = await client.query('SELECT 1 FROM pg_roles WHERE rolname = $1', [options.user]);
+    const created = exists.rowCount === 0;
+    await client.query(
+      created
+        ? `CREATE ROLE ${role} LOGIN PASSWORD ${verifier}`
+        : `ALTER ROLE ${role} WITH LOGIN PASSWORD ${verifier}`,
+    );
+    await client.query(`GRANT ${AI_READONLY_ROLE_GROUP} TO ${role}`);
+    // Whatever a hand-made role had, the AI login keeps only the group's rights.
+    await client.query(`REVOKE ${APP_ROLE_GROUP} FROM ${role}`);
+    return created ? 'created' : 'updated';
+  } finally {
+    client.release();
+  }
+}

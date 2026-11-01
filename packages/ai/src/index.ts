@@ -10,6 +10,13 @@ export * from './prompt-files.js';
 export * from './agents/common.js';
 export * from './agents/classify.js';
 export * from './agents/summarize.js';
+export * from './agents/evidence.js';
+export * from './agents/investigate.js';
+export * from './agents/draft.js';
+export * from './agents/kb-author.js';
+export * from './toolkit/ports.js';
+export * from './toolkit/tools.js';
+export * from './toolkit/budget.js';
 export * from './tools.js';
 
 export { joinRedacted, type RedactedText } from './redaction/redacted-text.js';

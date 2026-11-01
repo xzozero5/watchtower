@@ -16,6 +16,14 @@ export const AI_AUDIT_ACTIONS = {
   aiBudgetAlert: 'ai.budget_alert',
   /** A daily AI cap was reached: model calls stop for the rest of the UTC day (fail closed to rules). */
   aiBudgetStop: 'ai.budget_stop',
+  /** A person rejected an AI draft, with one reason code (T-108). */
+  aiDraftReject: 'ai.draft_reject',
+  /** A person edited an AI draft and sent their own version (T-108). */
+  aiDraftEdited: 'ai.draft_edited',
+  /** A person asked for a draft (stage 1) or a new investigation (T-108). */
+  aiRequest: 'ai.request',
+  /** The AI wrote a draft article for review after a ticket was resolved without a citation (T-108e). */
+  aiKbDraft: 'ai.kb_draft',
 } as const satisfies Record<string, string>;
 
 /** `ticket_event.type` strings written by this feature. */
@@ -30,7 +38,75 @@ export const AI_QUEUES = {
 export const AI_JOBS = {
   /** Classify and summarize one ticket and upsert its `ai_ticket_insight`. `jobId` is per ticket. */
   summarize: 'summarize',
+  /** Investigate one ticket (runbook tools, evidence, report) and draft a reply when the stage allows (T-108). */
+  investigate: 'investigate',
+  /** Draft a reply from the latest investigation, on request (stage 1) or again after a reject (T-108). */
+  draft: 'draft',
+  /** Write a draft article for review from a resolved ticket that cited nothing (T-108e, AC-4). */
+  kbAuthor: 'kb_author',
 } as const;
+
+/** Payload of an `ai` `investigate` job. `requestedBy` is the person who asked, or null when the system did. */
+export const aiInvestigateJobSchema = z.object({
+  ticketId: z.uuid(),
+  requestedBy: z.uuid().nullable().default(null),
+});
+export type AiInvestigateJob = z.infer<typeof aiInvestigateJobSchema>;
+
+export const aiDraftJobSchema = z.object({
+  ticketId: z.uuid(),
+  requestedBy: z.uuid().nullable().default(null),
+  /** A note from the person for `regenerate with note`. Redacted before it reaches a model. */
+  note: z.string().trim().max(500).optional(),
+});
+export type AiDraftJob = z.infer<typeof aiDraftJobSchema>;
+
+export const aiKbAuthorJobSchema = z.object({
+  ticketId: z.uuid(),
+  /** The person who resolved the ticket: they may not approve the article the AI writes. */
+  requestedBy: z.uuid().nullable().default(null),
+});
+export type AiKbAuthorJob = z.infer<typeof aiKbAuthorJobSchema>;
+
+/**
+ * [ASSUMED] The KB author waits this long after a resolve, so a quick reopen cancels it (the job checks the
+ * status). AC-4 wants the draft article within 5 minutes; the job itself takes seconds.
+ */
+export const KB_AUTHOR_DELAY_MS = 30_000;
+
+/**
+ * Budgets of the tools (N2, PRD R-5.1). Counted from `tool_execution`, outside any run's handle.
+ * `[ASSUMED]` values: the Logging API allows 60 reads a minute per project and a person must keep
+ * room to run the same query, so the AI may use half of that.
+ */
+export const AI_TOOL_BUDGETS = {
+  /** Calls one investigation or draft run may make. */
+  perRun: 12,
+  /** Calls all runs together may make for one ticket in an hour. */
+  perTicketPerHour: 40,
+  /** Calls of one tool, by all tickets, in a minute (AI share of the shared bucket). */
+  perToolPerMinute: 30,
+} as const;
+/**
+ * `[ASSUMED]` 0.75: the classifier's confidence an intent needs before its tools (logs, data, repo)
+ * may run. Below it, or with no intent, only the generic tools run. A person who set the intent on
+ * the ticket needs no threshold (SR106-R8: the intent that scopes tools is not the model's word alone).
+ */
+export const AI_INTENT_SCOPE_MIN_CONFIDENCE = 0.75;
+
+/**
+ * `[ASSUMED]` 110 s: the investigation job (tools, report, draft) stops before the 120 s p95 target
+ * of the plan; a model call that is still running is aborted and the job retries.
+ */
+export const AI_INVESTIGATION_DEADLINE_MS = 110_000;
+
+/**
+ * `[ASSUMED]` How often a person may ask the AI for a draft or a new investigation (`POST .../ai/requests`).
+ * A draft on request makes a model call without a tool call, so the tool budget does not bound it.
+ */
+export const AI_REQUEST_LIMITS = { perUserPerHour: 30, perTicketPerHour: 6 } as const;
+
+export type AiToolBudgets = { -readonly [K in keyof typeof AI_TOOL_BUDGETS]: number };
 
 /** Payload of an `ai` `summarize` job: only the id; the worker loads the ticket. */
 export const aiSummarizeJobSchema = z.object({ ticketId: z.uuid() });
@@ -124,11 +200,60 @@ export const aiDraftSchema = z.object({
   /** Shown as `prompt {promptVersion}`, for example `v3`. */
   promptVersion: z.string().min(1).max(40),
   createdAt: z.iso.datetime(),
+  /** Language of the body (`th` or `en`). Absent on a draft written before T-108. */
+  language: z.string().max(10).optional(),
+  /** The text holds a placeholder that is not the customer's own, or is in another language: read it first. */
+  needsReview: z.boolean().optional(),
+  /** `restricted`: the contact is not verified, the disclosure policy removed `removedSentences`. */
+  disclosure: z
+    .object({
+      level: z.enum(['verified', 'restricted']),
+      removedSentences: z.number().int().min(0),
+    })
+    .optional(),
 });
 export type AiDraft = z.infer<typeof aiDraftSchema>;
 
 /** The autonomy stage in force for the ticket's intent. Phase 1 renders 0 to 2 only (N3). */
 export const aiStageSchema = z.number().int().min(0).max(4);
+
+/** The investigation report (T-108b): what the tools found, and what they could not. */
+export const aiReportSchema = z.object({
+  /** One claim, and the evidence cards it rests on. A finding with no evidence is shown as `Uncited`. */
+  findings: z
+    .array(z.object({ text: z.string().max(600), evidenceIds: z.array(z.string().max(100)).max(10) }))
+    .max(12),
+  likelyCause: z.string().max(600).nullable(),
+  confidence: z.number().min(0).max(1),
+  openQuestions: z.array(z.string().max(300)).max(8),
+  /** Which tools ran. A denied or failed one is listed, so a gap is visible. */
+  tools: z
+    .array(
+      z.object({
+        name: z.string().max(64),
+        status: z.enum(['ok', 'error', 'denied']),
+        mock: z.boolean(),
+      }),
+    )
+    .max(20),
+  promptVersion: z.string().max(40),
+  /** The intent the tools were scoped to, and why it was trusted. Null: only the generic tools ran. */
+  scope: z
+    .object({
+      intent: z.string().max(100).nullable(),
+      basis: z.enum(['human_confirmed', 'confidence', 'none']),
+    })
+    .optional(),
+});
+export type AiReport = z.infer<typeof aiReportSchema>;
+
+/** Where a running job is. Sent with the insight so the web can show a step, not a spinner. */
+export const aiProgressSchema = z.object({
+  phase: z.enum(['queued', 'investigating', 'drafting']),
+  step: z.number().int().min(0),
+  steps: z.number().int().min(1),
+});
+export type AiProgress = z.infer<typeof aiProgressSchema>;
 
 export const ticketAiInsightSchema = z.object({
   state: aiStateSchema,
@@ -144,6 +269,8 @@ export const ticketAiInsightSchema = z.object({
   nextStep: z.object({ kind: aiNextStepKindSchema, label: z.string().max(120) }).optional(),
   evidence: z.array(aiEvidenceSchema),
   draft: aiDraftSchema.optional(),
+  report: aiReportSchema.optional(),
+  progress: aiProgressSchema.optional(),
   stage: aiStageSchema,
   generatedAt: z.iso.datetime(),
 });
@@ -175,3 +302,10 @@ export const rejectAiDraftSchema = z
     message: 'A comment is required when the reason is "other"',
   });
 export type RejectAiDraft = z.infer<typeof rejectAiDraftSchema>;
+
+/** Body of `POST /v1/tickets/:id/ai/requests`: ask for a draft (stage 1) or a fresh investigation. */
+export const aiRequestSchema = z.object({
+  kind: z.enum(['draft', 'investigate']),
+  note: z.string().trim().max(500).optional(),
+});
+export type AiRequest = z.infer<typeof aiRequestSchema>;

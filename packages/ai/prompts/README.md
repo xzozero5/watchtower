@@ -26,6 +26,10 @@ Rules:
   redactor** before it reaches a provider (slot values can carry PII).
 - No customer data, internal URLs or company-specific procedure text in these files (N1).
 
+T-108 adds `investigator.v1.md` (evidence list in, cited report out), `drafter.v1.md` (one reply in the
+customer's language, sentence by sentence, each with the evidence behind it; `{{language}}`,
+`{{disclosure}}` and `{{note}}` slots) and `kb_author.v1.md` (a draft article from a resolved ticket).
+
 Current prompts (T-106e): `classifier.v1.md` (type of message + intent + confidence, JSON answer) and
 `summarizer.v1.md` (one-line summary + one next step, JSON answer). The agents in `src/agents/` load
 the highest version through `loadPromptCatalog()`; `package.json` lists `prompts` in `files`, so a

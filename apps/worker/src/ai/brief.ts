@@ -25,7 +25,7 @@ const MAX_NAMES = 200;
 const MAX_MESSAGES = 60;
 
 /** What a person sees when the AI did not read the ticket. Stable copy, keyed by the reason code. */
-const NEEDS_HUMAN_LABELS: Readonly<Record<AiInsightReason, string>> = {
+export const NEEDS_HUMAN_LABELS: Readonly<Record<AiInsightReason, string>> = {
   kill_switch_on: 'AI is switched off. Read the ticket.',
   policy_denied: 'AI may not act here. Read the ticket.',
   budget_stop: 'AI daily budget reached. Read the ticket.',
