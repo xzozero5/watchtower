@@ -2,6 +2,7 @@ import {
   CLEANUP_JOBS,
   GMAIL_JOBS,
   DISCORD_JOBS,
+  KB_JOBS,
   LINE_JOBS,
   MAINTENANCE_JOBS,
   OUTBOUND_JOBS,
@@ -131,6 +132,18 @@ export const SCHEDULES: readonly ScheduleRegistration[] = [
   // --- ai (T-106, T-108) ---
 
   // --- kb (T-107) ---
+  {
+    queue: QUEUE_NAMES.kb,
+    id: KB_JOBS.reembedAll,
+    // Brings every published article up to the active embedding model, and fills in vectors that
+    // were skipped (kill switch, daily budget), at 04:00 UTC every day. Not at boot: publishing
+    // queues its own embed job.
+    repeat: { pattern: '0 4 * * *', tz: 'UTC' },
+    job: {
+      name: KB_JOBS.reembedAll,
+      opts: { removeOnComplete: true, removeOnFail: { age: 7 * 24 * 3600 } },
+    },
+  },
 
   // --- csat (T-110) ---
 

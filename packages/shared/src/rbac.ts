@@ -72,6 +72,10 @@ export const PERMISSIONS = {
   'ai.run.read': 'View AI run records: prompt version, model, tools and cost',
   // T-122e (migration 0014).
   'ticket.cancel.any': "Undo a colleague's send before it goes out",
+  // Phase 1 (T-107a, migration 0019_kb).
+  'kb.read.customer': 'Search the customer-visible knowledge base (client)',
+  'kb.publish.break_glass':
+    'Publish a knowledge base article without a second person, with a reason (head)',
 } as const satisfies Record<string, string>;
 
 export type Permission = keyof typeof PERMISSIONS;
@@ -145,6 +149,7 @@ const HEAD: readonly Permission[] = [
   'rbac.manage',
   'session.revoke.any',
   'outbox.manage',
+  'kb.publish.break_glass',
 ];
 
 const CLIENT: readonly Permission[] = [
@@ -153,6 +158,7 @@ const CLIENT: readonly Permission[] = [
   'ticket.reply.own',
   'statuspage.subscribe',
   'auth.session.self',
+  'kb.read.customer',
 ];
 
 /** What migration 0001 seeds. `system` has nothing: each service identity is granted scoped permissions. */
@@ -163,6 +169,19 @@ export const DEFAULT_ROLE_PERMISSIONS: Readonly<Record<Role, readonly Permission
   client: CLIENT,
   system: [],
 };
+
+/**
+ * Permissions that only the head role can hold. They are ignored on any other role (a row put in
+ * `role_permissions` by hand or by a mistaken grant does nothing) and refused by the role editor, so
+ * `rbac.manage` cannot hand the break-glass publication to anyone else.
+ */
+export const HEAD_ONLY_PERMISSIONS = [
+  'kb.publish.break_glass',
+] as const satisfies readonly Permission[];
+
+export function isHeadOnlyPermission(permission: string): boolean {
+  return (HEAD_ONLY_PERMISSIONS as readonly string[]).includes(permission);
+}
 
 /** Permissions a head can never remove from the head role, or nobody could undo a mistake. */
 export const LOCKED_HEAD_PERMISSIONS = [

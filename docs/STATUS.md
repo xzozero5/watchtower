@@ -39,6 +39,10 @@ snapshot สั้นสำหรับ cold start อยู่ที่ `HANDOF
 
 ## Log
 
+## 2026-11-01 22:47 (Asia/Bangkok) — main thread — T-107a–c Knowledge base ปิด
+- test: main thread รันเองบน Windows: lint, typecheck, unit ผ่าน · integration db 240, domain 260, api 579, worker 156 · e2e 134 · full-stack 23 `[TESTED]`
+- ค้าง/ไม่ยืนยัน: embedding mock เท่านั้น ค้นเชิงความหมายยังไม่จริง · name dictionary ของ redactor ว่าง · P3 trigger + งบ customer search → T-125 · ผู้สั่ง AI ≠ approver → T-108e
+
 ## 2026-11-01 22:16 (Asia/Bangkok) — main thread — T-104 Discord webhook + fan-out (mock) ปิด
 - test: main thread รันเอง: lint, typecheck, unit ผ่าน, integration, e2e, full-stack ผ่านครบ `[TESTED]`
 - ค้าง/ไม่ยืนยัน: P3 ใน T-125 · ไม่เคยยิง Discord จริง · ADR-010 alert ยังไม่ wire

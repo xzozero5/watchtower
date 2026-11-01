@@ -110,10 +110,16 @@ export async function startHarness(options: StartOptions = {}): Promise<Harness>
     emailQueue,
     relayOutbox: () =>
       relayOutbox(db.owner, async (row) => {
-        // The AI brief (T-106e) and the Discord notice (T-104) of a new ticket are queued with every
-        // ticket; no worker runs here, so they are marked relayed and dropped. Anything else but email
-        // is a test that forgot something.
-        if (row.queue === QUEUE_NAMES.ai || row.queue === QUEUE_NAMES.discord) return;
+        // The AI brief (T-106e), the Discord notice (T-104) and the knowledge base jobs (T-107) are
+        // queued by normal work; no worker runs here, so they are marked relayed and dropped. Anything
+        // else but email is a test that forgot something.
+        if (
+          row.queue === QUEUE_NAMES.ai ||
+          row.queue === QUEUE_NAMES.discord ||
+          row.queue === QUEUE_NAMES.kb
+        ) {
+          return;
+        }
         if (row.queue !== QUEUE_NAMES.email)
           throw new Error(`harness relays only the email queue, not ${row.queue}`);
         // Like the real relay: the row's expiry travels with the job as `notAfter`.

@@ -6,6 +6,7 @@ import type { Database } from '../client.js';
 import { SeedError, DEFAULT_EXAMPLES_DIR } from './common.js';
 import { seedDemo, type DemoSeedResult } from './demo.js';
 import { loadIntentDefinitions, upsertIntentDefinitions } from './intents.js';
+import { loadKbArticleFiles, seedKbArticles, type KbSeedResult } from './kb.js';
 import {
   loadHolidayFiles,
   loadSlaPolicyFiles,
@@ -31,6 +32,8 @@ export interface SeedOptions {
 export interface SeedResult extends ReferenceSeedResult {
   readonly intents: { readonly inserted: readonly string[]; readonly existing: readonly string[] };
   readonly demo: DemoSeedResult;
+  /** Example knowledge base articles from `examples/kb`; they become searchable once a worker indexes them. */
+  readonly kb: KbSeedResult;
 }
 
 /** Refuses to seed a production database unless the caller said so explicitly. */
@@ -57,10 +60,11 @@ export async function runSeed(database: Database, options: SeedOptions = {}): Pr
   const log = options.log ?? (() => undefined);
 
   // Read and check every file before the first write: a typo in an example file fails fast.
-  const [intentDefinitions, holidayFiles, policyFiles] = await Promise.all([
+  const [intentDefinitions, holidayFiles, policyFiles, kbArticles] = await Promise.all([
     loadIntentDefinitions(join(examples, 'intents')),
     loadHolidayFiles(join(examples, 'calendars')),
     loadSlaPolicyFiles(join(examples, 'sla')),
+    loadKbArticleFiles(join(examples, 'kb')),
   ]);
 
   const result = await database.db.transaction(async (tx) => {
@@ -71,18 +75,27 @@ export async function runSeed(database: Database, options: SeedOptions = {}): Pr
       now: options.now ?? new Date(),
       ticketKeyPrefix: options.ticketKeyPrefix ?? DEFAULT_TICKET_KEY_PREFIX,
     });
-    return { calendars, policies, intents, demo };
+    const kb = await seedKbArticles(tx, kbArticles);
+    return { calendars, policies, intents, demo, kb };
   });
   log(
     `calendars +${String(result.calendars.created.length)}, SLA policies +${String(result.policies.created.length)}, ` +
       `intents +${String(result.intents.inserted.length)}, tickets +${String(result.demo.tickets)}, ` +
-      `organizations +${String(result.demo.organizations)}, users +${String(result.demo.users)}`,
+      `organizations +${String(result.demo.organizations)}, users +${String(result.demo.users)}, ` +
+      `knowledge base articles +${String(result.kb.created.length)}`,
   );
   return result;
 }
 
 export { DEFAULT_EXAMPLES_DIR, SeedError } from './common.js';
 export { seedDemo, type DemoSeedResult } from './demo.js';
+export {
+  loadKbArticleFiles,
+  parseKbArticleFile,
+  seedKbArticles,
+  type KbSeedArticle,
+  type KbSeedResult,
+} from './kb.js';
 export {
   CALENDAR_24X7,
   loadHolidayFiles,

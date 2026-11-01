@@ -48,6 +48,9 @@ const TABLES = [
   'message',
   'ticket_event',
   'audit_log',
+  'kb_article',
+  'kb_article_version',
+  'outbox',
 ];
 
 async function snapshot(pool: Pool): Promise<Record<string, number>> {
@@ -80,6 +83,22 @@ describe('the first run', () => {
     expect(await count(owner(), 'intent')).toBe(11);
     // N3: nothing starts above draft-for-approval.
     expect(await count(owner(), 'intent', 'autonomy_stage <> 2')).toBe(0);
+  });
+
+  it('creates the example knowledge base articles as published, with one indexing job each', async () => {
+    expect(first.kb.created.length).toBeGreaterThanOrEqual(5);
+    expect(await count(owner(), 'kb_article', "status = 'published'")).toBe(
+      first.kb.created.length,
+    );
+    expect(await count(owner(), 'kb_article', 'published_version_id = current_version_id')).toBe(
+      first.kb.created.length,
+    );
+    expect(await count(owner(), 'outbox', "queue = 'kb' AND job_name = 'embed_article'")).toBe(
+      first.kb.created.length,
+    );
+    // Nothing is indexed by the seed itself: the worker does that, so there are no chunks yet.
+    expect(await count(owner(), 'kb_chunk')).toBe(0);
+    expect(second.kb).toEqual({ created: [], existing: first.kb.created });
   });
 
   it('loads the example Thai holidays into the default business calendar', async () => {
