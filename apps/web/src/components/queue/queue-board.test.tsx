@@ -52,6 +52,28 @@ const sectionOf = (key: string) =>
   screen.getByRole('option', { name: new RegExp(key) }).closest('section')?.dataset.group;
 
 describe('triage board', () => {
+  it('draws one filled status per row, and not the one that only repeats its section', async () => {
+    await openBoard();
+    const row = (key: string) => screen.getByRole('option', { name: new RegExp(key) });
+    // Draft ready is news inside Needs you; Investigating only repeats AI working.
+    expect(row('OPS-1').querySelector('[data-ai-state="draft_ready"][data-tone]')).not.toBeNull();
+    expect(row('OPS-2').querySelector('[data-ai-state][data-tone]')).toBeNull();
+    expect(within(row('OPS-2')).getByText('Investigating')).toHaveClass('sr-only');
+    // Waiting on the customer says who it waits on: shown as a filled status chip.
+    expect(
+      row('OPS-3').querySelector('[data-status="waiting_on_customer"][data-tone]'),
+    ).not.toBeNull();
+    // Priority is plain text with an icon, the SLA is outlined, the intent has no fill.
+    const p3 = row('OPS-1').querySelector('[data-severity="p3"]');
+    expect(p3?.className).not.toMatch(/bg-tint/);
+    expect(row('OPS-4').querySelector('[data-sla]')?.className).toContain('ring-1');
+    expect(row('OPS-4').querySelector('[data-sla]')?.className).not.toMatch(/\bbg-tint/);
+    const intent = row('OPS-1').querySelector('[data-intent]');
+    expect(intent?.className).toContain('text-muted-foreground');
+    expect(intent?.className).not.toMatch(/bg-/);
+    expect(intent).toHaveAttribute('title', 'Login issue');
+  });
+
   it('groups tickets into Needs you, AI working and Waiting, each with a count', async () => {
     const { queue } = await openBoard();
     expect(sectionOf('OPS-1')).toBe('needsYou'); // draft ready

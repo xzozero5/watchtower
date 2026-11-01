@@ -106,6 +106,8 @@ export const aiEn = {
   dock: {
     reply: 'Write a reply',
     note: 'Internal note',
+    replyShort: 'Reply',
+    noteShort: 'Note',
   },
 } as const;
 

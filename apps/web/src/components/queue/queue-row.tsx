@@ -1,10 +1,11 @@
-import { Avatar, cn, Pill, SeverityBadge } from '@watchtower/ui';
+import { Avatar, cn, IntentChip, SeverityBadge } from '@watchtower/ui';
 
 import { AiStateChip } from '@/components/ai/ai-state-chip';
 import { ChannelIcon } from '@/components/ticket/channel-icon';
 import { SlaBadge } from '@/components/ticket/sla-badge';
-import { StatusLabel } from '@/components/ticket/status-label';
-import { useI18n } from '@/i18n/provider';
+import { StatusChip, useStatusWords } from '@/components/ticket/status-label';
+import { useI18n, useT } from '@/i18n/provider';
+import type { RowGroup } from '@/lib/ai/model';
 import { type RowModel, severityOf } from '@/lib/tickets/model';
 
 export const rowDomId = (key: string) => `queue-row-${key}`;
@@ -17,6 +18,8 @@ export interface QueueRowProps {
   selected: boolean;
   /** One line (40px) instead of two (56px). */
   compact?: boolean;
+  /** The section the row is drawn in: a status that only repeats it is not drawn again. */
+  group?: RowGroup['id'];
   onSelect: (key: string) => void;
 }
 
@@ -24,18 +27,49 @@ export interface QueueRowProps {
 const QUIET_STATUSES = new Set(['new', 'triage', 'open']);
 
 /**
+ * The one status slot of a row: the workflow status when it says something (waiting on whom,
+ * resolved), else the AI's state. It is the only filled pill on the row. A status that merely
+ * repeats the section the row sits in ("Needs you" under Needs you) is not drawn, but its words
+ * stay for screen readers.
+ */
+function RowStatus({ row, group }: { row: RowModel; group: RowGroup['id'] | undefined }) {
+  const t = useT();
+  const workflow = useStatusWords(row.status);
+  const aiState = row.ai?.state ?? 'none';
+  if (!QUIET_STATUSES.has(row.status)) {
+    return group === 'done' && row.status === 'resolved' ? (
+      <span className="sr-only">{workflow.words}</span>
+    ) : (
+      <StatusChip status={row.status} className="max-w-full" />
+    );
+  }
+  if (aiState === 'none') return null;
+  const redundant =
+    (group === 'needsYou' && aiState === 'needs_human') ||
+    (group === 'aiWorking' && aiState === 'investigating');
+  return redundant ? (
+    <span className="sr-only">{t(`ai.state.${aiState}`)}</span>
+  ) : (
+    <AiStateChip state={aiState} className="max-w-full" />
+  );
+}
+
+/**
  * One ticket on the triage board, an `option` of a section's listbox
  * (docs/design/ai-first-workspace.md section 2). Keyboard focus stays on the listbox and
  * `aria-activedescendant` names the current row, so arrow keys, J/K and clicks move one pointer.
  *  - line 1: what the AI says is going on, in one line (the subject, muted, when it has said
  *    nothing), and the SLA;
- *  - line 2: priority, intent, the AI's state, then who it is for (organisation avatar) and the
- *    channel. A status is spelled out only when it is not "open".
+ *  - line 2, one style per role: priority as a coloured icon and code (no pill, P1 keeps its
+ *    pill), the intent as muted metadata (small icon and text, no fill), then one status slot, the
+ *    only filled pill, in a fixed column; who it is for (organisation avatar) and the channel
+ *    close the line. The SLA timer is outlined, so it never reads as a status.
  * Compact density keeps one line: priority, summary, the AI icon and the SLA.
- * A ticket nobody has touched yet is bold with a dot. The selected row has a 2px navy bar and
- * `aria-selected="true"`. Nothing relies on colour: icons, codes and words carry every state.
+ * A ticket nobody has touched yet is bold with a dot. The selected row is a soft tinted pill with
+ * `aria-selected="true"`. Nothing relies on colour: icons, codes and words carry every state
+ * (docs/design/friendly-polish.md).
  */
-export function QueueRow({ row, selected, compact = false, onSelect }: QueueRowProps) {
+export function QueueRow({ row, selected, compact = false, group, onSelect }: QueueRowProps) {
   const { t } = useI18n();
   const isNew = row.status === 'new';
   const summary = row.ai?.summary?.trim() || null;
@@ -75,16 +109,15 @@ export function QueueRow({ row, selected, compact = false, onSelect }: QueueRowP
         onSelect(row.key);
       }}
       className={cn(
-        'relative flex w-full cursor-pointer flex-col justify-center gap-1 border-b border-border px-3 text-left transition-colors duration-(--wt-motion-duration-fast) ease-out hover:bg-surface-muted',
-        'before:absolute before:inset-y-0 before:left-0 before:w-0.5 before:bg-transparent',
+        'relative mx-2 my-px flex cursor-pointer flex-col justify-center gap-1 rounded-xl px-2.5 text-left transition-colors duration-(--wt-motion-duration-fast) ease-out hover:bg-surface-muted',
         compact ? 'min-h-10 py-1.5' : 'min-h-14 py-2',
-        selected && 'bg-primary-subtle before:bg-primary hover:bg-primary-subtle',
+        selected && 'bg-primary-subtle hover:bg-primary-subtle',
       )}
     >
       {identity}
       {compact ? (
         <span className="flex min-w-0 items-center gap-2">
-          <SeverityBadge severity={severity} label={t(`severity.${severity}`)} hideLabel />
+          <SeverityBadge severity={severity} label={t(`severity.${severity}`)} hideLabel plain />
           <span className="min-w-0 flex-1">{title}</span>
           <AiStateChip state={aiState} iconOnly />
           <SlaBadge sla={row.sla} />
@@ -95,18 +128,20 @@ export function QueueRow({ row, selected, compact = false, onSelect }: QueueRowP
             <span className="min-w-0 flex-1">{title}</span>
             <SlaBadge sla={row.sla} />
           </span>
-          <span className="flex min-w-0 items-center gap-1.5">
-            <SeverityBadge severity={severity} label={t(`severity.${severity}`)} hideLabel />
+          <span className="flex min-w-0 items-center gap-2">
+            <SeverityBadge severity={severity} label={t(`severity.${severity}`)} hideLabel plain />
             {row.intentName ? (
-              <Pill className="min-w-0 max-w-[9rem] shrink font-normal text-muted-foreground">
-                <span className="truncate">{row.intentName}</span>
-              </Pill>
+              <IntentChip
+                plain
+                intentKey={row.intentKey ?? row.intentName}
+                name={row.intentName}
+                className="min-w-0 shrink"
+              />
             ) : null}
-            <AiStateChip state={aiState} />
-            {QUIET_STATUSES.has(row.status) ? null : (
-              <StatusLabel status={row.status} className="text-muted-foreground" />
-            )}
-            <span className="ml-auto flex shrink-0 items-center gap-1.5 text-muted-foreground">
+            <span className="ml-auto flex w-[7.5rem] shrink-0 justify-end">
+              <RowStatus row={row} group={group} />
+            </span>
+            <span className="flex shrink-0 items-center gap-1.5 text-muted-foreground">
               {row.orgName ? (
                 <span title={row.orgName}>
                   <Avatar name={row.orgName} size={20} aria-hidden />

@@ -22,6 +22,7 @@ export const homeTh: Widen<typeof homeEn> = {
   byStatus: 'ตามสถานะ',
   byQueue: 'ตามคิว',
   noQueue: 'ไม่อยู่ในคิวใด',
+  unknownQueue: 'คิวที่ไม่รู้จัก',
   load: 'งานที่เปิดอยู่ต่อคน',
   loading: 'กำลังโหลด…',
   healthTitle: 'ระบบ',

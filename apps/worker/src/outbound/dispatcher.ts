@@ -7,6 +7,7 @@ import {
   lockQuota,
   loadDeliveryContext,
   moveQuota,
+  retryKeyExpired,
   spendReplyToken,
   TicketKeys,
   type DbTransaction,
@@ -18,7 +19,11 @@ import {
   type FailureFacts,
   type OutboundDeliveryRow,
 } from '@watchtower/domain';
-import type { DeliveryRoute, RealtimeEvent } from '@watchtower/shared';
+import {
+  DELIVERY_RETRY_KEY_MAX_AGE_SECONDS,
+  type DeliveryRoute,
+  type RealtimeEvent,
+} from '@watchtower/shared';
 
 import type { WorkerLogger } from '../logger.js';
 import type { RealtimeSink } from '../realtime.js';
@@ -198,6 +203,11 @@ export function createOutboundDispatcher(deps: DispatcherDeps) {
     };
   }
 
+  /**
+   * Ends the delivery without calling the provider in this attempt. It is a certain non-delivery
+   * unless an earlier attempt already pushed (the row is pinned to `line_push`): that one may have
+   * reached the customer although we never heard back, so the person who retries must be told (N-5).
+   */
   const failNow = (
     delivery: OutboundDeliveryRow,
     errorCode: string,
@@ -205,7 +215,7 @@ export function createOutboundDispatcher(deps: DispatcherDeps) {
   ): Promise<DispatchOutcome> =>
     conclude(
       delivery,
-      { action: 'fail', errorCode, outcomeUnknown: false },
+      { action: 'fail', errorCode, outcomeUnknown: delivery.route === 'line_push' },
       reason === undefined ? {} : { reason },
     );
 
@@ -393,6 +403,18 @@ export function createOutboundDispatcher(deps: DispatcherDeps) {
       return failNow(delivery, 'message_too_long');
     }
 
+    // N-2: LINE remembers a retry key for a day only. Past our bound a repeat could be sent twice.
+    if (
+      delivery.route === 'line_push' &&
+      retryKeyExpired(
+        delivery.createdAt,
+        newContext().now(),
+        domain.config.retryKeyMaxAgeSeconds ?? DELIVERY_RETRY_KEY_MAX_AGE_SECONDS,
+      )
+    ) {
+      return failNow(delivery, 'retry_key_expired', 'retry_key_expired');
+    }
+
     // Review O-2: once a push was attempted (its outcome may be unknown) every later attempt of this
     // delivery pushes with the same retry key. A fresh reply token must not turn it into a second,
     // different message. `route` survives a retry or a sweep; only a new delivery starts clean.
@@ -495,15 +517,18 @@ export function createOutboundDispatcher(deps: DispatcherDeps) {
   /** Stuck `sending`, late `scheduled` rows and stale reply tokens. */
   async function sweep() {
     const ctx = newContext();
-    const result = await database.db.transaction((tx) => domain.outbound.sweep(tx, ctx));
+    const result = await database.db.transaction((tx) =>
+      domain.outbound.sweep(tx, ctx, { quotaPeriodOf: (date) => line.quotaPeriod(date) }),
+    );
     await publish(result.events);
-    if (result.unknownOutcome > 0 || result.retriggered.length > 0) {
+    if (result.unknownOutcome > 0 || result.retryLimited > 0 || result.retriggered.length > 0) {
       logger.error(
         {
           alert: 'outbound_sweep',
           released: result.released,
           unknownOutcome: result.unknownOutcome,
           retriedPush: result.retriedPush,
+          retryLimited: result.retryLimited,
           retriggered: result.retriggered.length,
         },
         'outbound sweeper found stuck deliveries',

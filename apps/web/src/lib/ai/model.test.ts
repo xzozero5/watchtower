@@ -33,6 +33,7 @@ function row(key: string, overrides: Partial<RowModel> = {}): RowModel {
     assigneeName: null,
     unassigned: true,
     intentName: null,
+    intentKey: null,
     ai: null,
     updatedAt: '2026-11-02T03:00:00.000Z',
     overdue: false,

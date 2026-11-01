@@ -12,6 +12,7 @@ import {
   PEOPLE,
   POLICY,
   QUEUE,
+  QUEUE_BILLING,
   STATS,
   USERS,
 } from '../src/test/console-fixtures';
@@ -103,7 +104,7 @@ export async function mockConsole(page: Page, role: Role = 'head', overrides: Ro
       },
       ...intentRoutes,
       'GET /v1/intents': () => ({ json: { intents: FULL_INTENTS } }),
-      'GET /v1/queues': () => ({ json: { queues: [QUEUE] } }),
+      'GET /v1/queues': () => ({ json: { queues: [QUEUE, QUEUE_BILLING] } }),
       'GET /v1/users': () => ({ json: { users: USERS } }),
       'GET /v1/sla-policies': () => ({ json: { policies: [POLICY] } }),
       'GET /v1/business-calendars': () => ({ json: { calendars: [CALENDAR] } }),

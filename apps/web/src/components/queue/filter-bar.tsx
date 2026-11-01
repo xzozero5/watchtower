@@ -15,11 +15,12 @@ import {
   DropdownMenuRadioItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
+  IconButton,
   Input,
   Select,
   Tooltip,
 } from '@watchtower/ui';
-import { Bookmark, ChevronDown, ListFilter, Search, Trash2 } from 'lucide-react';
+import { Bookmark, ChevronDown, FilterX, ListFilter, Search, Trash2 } from 'lucide-react';
 import { type ReactNode, type Ref, useEffect, useId, useState } from 'react';
 
 import { useT } from '@/i18n/provider';
@@ -132,7 +133,7 @@ export function FilterBar({
   const priorities: readonly TicketPriority[] = TICKET_PRIORITIES;
 
   return (
-    <div className="border-b border-border">
+    <div className="border-b border-border/60">
       <div className="flex h-[48px] items-center gap-2 px-3">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
@@ -181,7 +182,7 @@ export function FilterBar({
         <Tooltip content={t('queue.filters.title')}>
           <Button
             variant="ghost"
-            className="ml-auto gap-1 px-2"
+            className="ml-auto gap-1 rounded-full px-2.5"
             aria-expanded={open}
             aria-controls={panelId}
             onClick={() => {
@@ -225,7 +226,7 @@ export function FilterBar({
           aria-keyshortcuts="/"
           placeholder={t('queue.search.placeholder')}
           autoComplete="off"
-          className="w-full border-transparent bg-surface-muted pl-8 hover:bg-surface-muted"
+          className="w-full rounded-full border-transparent bg-surface-muted pl-9 hover:bg-surface-muted"
         />
       </form>
 
@@ -323,14 +324,13 @@ export function FilterBar({
             </label>
 
             <div className="flex flex-wrap items-center gap-2 border-t border-border py-3">
-              <Button
-                variant="ghost"
+              <IconButton
+                label={t('queue.filters.clear')}
+                icon={<FilterX aria-hidden className="size-4" />}
                 onClick={() => {
                   onChange({ ...DEFAULT_FILTERS });
                 }}
-              >
-                {t('queue.filters.clear')}
-              </Button>
+              />
               <form
                 className="flex min-w-0 flex-1 items-center gap-2"
                 onSubmit={(event) => {
@@ -350,21 +350,22 @@ export function FilterBar({
                   placeholder={t('queue.views.name')}
                   className="min-w-0 flex-1"
                 />
-                <Button type="submit" variant="secondary" disabled={viewName.trim() === ''}>
-                  <Bookmark aria-hidden className="size-4" />
-                  {t('queue.views.save')}
-                </Button>
+                <IconButton
+                  type="submit"
+                  variant="secondary"
+                  label={t('queue.views.save')}
+                  icon={<Bookmark aria-hidden className="size-4" />}
+                  disabled={viewName.trim() === ''}
+                />
               </form>
               {currentSaved ? (
-                <Button
-                  variant="ghost"
+                <IconButton
+                  label={t('queue.views.delete', { name: currentSaved.name })}
+                  icon={<Trash2 aria-hidden className="size-4" />}
                   onClick={() => {
                     onDeleteView(currentSaved.id);
                   }}
-                >
-                  <Trash2 aria-hidden className="size-4" />
-                  {t('queue.views.delete', { name: currentSaved.name })}
-                </Button>
+                />
               ) : null}
             </div>
           </>

@@ -838,3 +838,81 @@ describe('a LINE push is pinned to push (review O-2)', () => {
     });
   });
 });
+
+describe('a pinned push that cannot be repeated may already have reached the customer (N-5)', () => {
+  /** A push whose first attempt timed out: scheduled again, pinned to line_push, retry key = delivery id. */
+  async function timedOutPush(text: string) {
+    const { ticketId } = await lineTicket({ token: null });
+    const { delivery, message } = await staffReply(ticketId, text);
+    clock.now = at(6);
+    fakeLine.failNext('message.push', timeout('line', 'message.push'));
+    expect((await dispatcher.dispatch(delivery.id)).status).toBe('retry');
+    expect((await deliveryRow(delivery.id)).route).toBe('line_push');
+    return { ticketId, delivery, message };
+  }
+
+  it('records outcomeUnknown when the later attempt finds the monthly quota used up', async () => {
+    const { delivery, message } = await timedOutPush('Maybe sent');
+    await owner().execute(
+      `INSERT INTO channel_quota_usage (channel_account_id, period, used, quota_limit)
+       VALUES ('${lineId}', '${line.quotaPeriod(at(20))}', 300, 300)
+       ON CONFLICT (channel_account_id, period) DO UPDATE SET used = 300, quota_limit = 300`,
+    );
+    clock.now = at(20);
+    expect(await dispatcher.dispatch(delivery.id)).toEqual({
+      status: 'failed',
+      errorCode: 'quota_exhausted',
+      outcomeUnknown: true,
+    });
+    expect(await deliveryRow(delivery.id)).toMatchObject({
+      state: 'failed',
+      outcomeUnknown: true,
+    });
+    expect(fakeLine.pushes).toHaveLength(0);
+    expect((await messageRow(message.id)).deliveryStatus).toBe('failed');
+    // The audit row and the timeline event carry the flag staff see before they retry.
+    const audit = await owner()
+      .select()
+      .from(schema.auditLog)
+      .where(
+        and(
+          eq(schema.auditLog.action, AUDIT_ACTIONS.outboundFailed),
+          eq(schema.auditLog.targetId, delivery.id),
+        ),
+      );
+    expect((audit[0]?.metadata as { outcomeUnknown?: boolean }).outcomeUnknown).toBe(true);
+  });
+
+  it('records outcomeUnknown when the channel is no longer connected', async () => {
+    const { delivery } = await timedOutPush('Maybe sent too');
+    clock.now = at(20);
+    expect(await buildDispatcher(NO_CHANNELS).dispatch(delivery.id)).toEqual({
+      status: 'failed',
+      errorCode: 'channel_not_connected',
+      outcomeUnknown: true,
+    });
+  });
+
+  it('records outcomeUnknown when the retry key may have expired, and sends nothing', async () => {
+    const { delivery } = await timedOutPush('Too old to repeat');
+    clock.now = at(21 * 3600);
+    expect(await dispatcher.dispatch(delivery.id)).toEqual({
+      status: 'failed',
+      errorCode: 'retry_key_expired',
+      outcomeUnknown: true,
+    });
+    expect(fakeLine.pushes).toHaveLength(0);
+    expect(await quotaUsed()).toBe(0);
+  });
+
+  it('still says a first-attempt refusal is a certain non-delivery', async () => {
+    const { ticketId } = await lineTicket({ token: null });
+    const { delivery } = await staffReply(ticketId, 'Never pushed');
+    clock.now = at(6);
+    expect(await buildDispatcher(NO_CHANNELS).dispatch(delivery.id)).toEqual({
+      status: 'failed',
+      errorCode: 'channel_not_connected',
+      outcomeUnknown: false,
+    });
+  });
+});

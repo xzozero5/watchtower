@@ -1,8 +1,14 @@
 import { randomUUID } from 'node:crypto';
 
 import { schema } from '@watchtower/db';
-import { AUDIT_ACTIONS, OUTBOUND_TICKET_EVENTS, QUEUE_NAMES } from '@watchtower/shared';
-import { and, eq } from 'drizzle-orm';
+import {
+  AUDIT_ACTIONS,
+  DELIVERY_MAX_ATTEMPTS,
+  DELIVERY_RETRY_KEY_MAX_AGE_SECONDS,
+  OUTBOUND_TICKET_EVENTS,
+  QUEUE_NAMES,
+} from '@watchtower/shared';
+import { and, eq, sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { createPolicyGate } from '../autonomy/gate.js';
@@ -30,10 +36,11 @@ import {
   sweepDeliveries,
   vetDelivery,
 } from './dispatch.js';
-import { lockQuota, moveQuota } from './quota.js';
+import { billingPeriod, lockQuota, moveQuota } from './quota.js';
 import { findReplyToken, sealReplyToken, spendReplyToken } from './reply-token.js';
 import { readUndoSendSeconds, setUndoSendSeconds } from './settings.js';
 import { contentHash } from './state.js';
+import { renderSystemTemplate } from './templates.js';
 import { approveAiDraftSent, scheduleCustomerSend, scheduleTemplateAck } from './schedule.js';
 import { cancelSend } from './cancel.js';
 
@@ -1237,6 +1244,38 @@ describe('automatic acknowledgments are re-rendered at claim time (review O-4)',
     const rows = await owner().select().from(schema.outboundTemplateAllowlist);
     expect(rows.map((row) => row.key).sort()).toEqual([...SAFE_AUTO_ACK_TEMPLATES].sort());
   });
+
+  it('renders every key into text that the database body pattern accepts, and refuses free text (N-3)', async () => {
+    const rows = await owner().select().from(schema.outboundTemplateAllowlist);
+    const variants = [
+      { ticketKey: 'OPS-1', portalUrl: null, firstResponseDueAt: null },
+      { ticketKey: 'OPS-1', portalUrl: 'https://portal.example/portal', firstResponseDueAt: null },
+      {
+        ticketKey: 'XY9-123456',
+        portalUrl: 'http://localhost:3000/portal?x=1',
+        firstResponseDueAt: new Date('2026-11-02T02:30:00.000Z'),
+      },
+      {
+        ticketKey: 'OPS-7',
+        portalUrl: null,
+        firstResponseDueAt: new Date('2026-11-02T02:30:00.000Z'),
+      },
+    ];
+    for (const row of rows) {
+      for (const vars of variants) {
+        const text = renderSystemTemplate(row.key, vars);
+        expect(text, row.key).not.toBeNull();
+        const matches = async (body: string): Promise<boolean> => {
+          const result = await owner().execute<{ ok: boolean }>(
+            sql`SELECT ${body}::text ~ ${row.bodyPattern}::text AS ok`,
+          );
+          return result.rows[0]?.ok === true;
+        };
+        expect(await matches(String(text)), `${row.key}: ${String(text)}`).toBe(true);
+        expect(await matches(`${String(text)}\n\nBuy now`), row.key).toBe(false);
+      }
+    }
+  });
 });
 
 describe('the sweeper (ADR-010 section 7)', () => {
@@ -1321,6 +1360,135 @@ describe('the sweeper (ADR-010 section 7)', () => {
     const early = await env.tx((tx) => sweepDeliveries(tx, ctxAt(SYSTEM, later(10))));
     expect(early.unknownOutcome).toBe(0);
     expect((await deliveryOf(live.claimedRow.id)).state).toBe('failed');
+  });
+
+  // -- T-122e N-2: a repeat is bounded --------------------------------------------------------
+
+  const quotaUsed = async (period: string): Promise<number> =>
+    (await env.tx((tx) => lockQuota(tx, lineId, period, 300))).used;
+
+  /** One lost attempt of a LINE push: claim, reserve like the dispatcher does, dispatch, never answer. */
+  async function lostPushAttempt(deliveryId: string, claimAt: Date) {
+    const row = await env.tx((tx) => claimDelivery(tx, ctxAt(SYSTEM, claimAt), deliveryId));
+    if (row === null) throw new Error('not claimed');
+    const period = billingPeriod(claimAt);
+    await env.tx(async (tx) => {
+      await lockQuota(tx, lineId, period, 300);
+      await moveQuota(tx, lineId, period, 1, claimAt);
+      await markDispatched(tx, ctxAt(SYSTEM, claimAt), row, 'line_push');
+    });
+    return row;
+  }
+
+  it('gives a lost LINE push its quota reservation back when it goes round again (N-2)', async () => {
+    const s = await sending('line', null);
+    const id = s.claimedRow.id;
+    // sending() claimed it at later(6); turn that first attempt into a lost push.
+    const period = billingPeriod(later(6));
+    const before = await quotaUsed(period);
+    await env.tx(async (tx) => {
+      await moveQuota(tx, lineId, period, 1, later(6));
+      await markDispatched(tx, ctxAt(SYSTEM, later(6)), s.claimedRow, 'line_push');
+    });
+    expect(await quotaUsed(period)).toBe(before + 1);
+
+    const result = await env.tx((tx) => sweepDeliveries(tx, ctxAt(SYSTEM, later(6 + 121))));
+    expect(result.retriedPush).toBeGreaterThanOrEqual(1);
+    expect(await deliveryOf(id)).toMatchObject({ state: 'scheduled', route: 'line_push' });
+    // The next attempt reserves its own push; the lost one must not be counted twice.
+    expect(await quotaUsed(period)).toBe(before);
+  });
+
+  it('fails a LINE push that was lost DELIVERY_MAX_ATTEMPTS times as outcome_unknown and keeps its reservation (N-2)', async () => {
+    const ticket = await ticketOn('line');
+    const staff = await addStaff(env);
+    const { value } = await reply(ticket, staff, `Endless ${randomUUID()}`);
+    const id = value.delivery?.id ?? '';
+    const period = billingPeriod(later(6));
+    const before = await quotaUsed(period);
+
+    let at = 6;
+    for (let attempt = 1; attempt < DELIVERY_MAX_ATTEMPTS; attempt += 1) {
+      await lostPushAttempt(id, later(at));
+      const result = await env.tx((tx) => sweepDeliveries(tx, ctxAt(SYSTEM, later(at + 121))));
+      expect(result.retriedPush).toBeGreaterThanOrEqual(1);
+      expect((await deliveryOf(id)).state).toBe('scheduled');
+      expect(await quotaUsed(period)).toBe(before);
+      at += 121;
+    }
+    // The fifth lost attempt is the last one: the limit is a limit on claims, not on cycles.
+    await lostPushAttempt(id, later(at));
+    expect((await deliveryOf(id)).attempts).toBe(DELIVERY_MAX_ATTEMPTS);
+    const last = await env.tx((tx) => sweepDeliveries(tx, ctxAt(SYSTEM, later(at + 121))));
+    expect(last.retriedPush).toBe(0);
+    expect(last.retryLimited).toBeGreaterThanOrEqual(1);
+    expect(await deliveryOf(id)).toMatchObject({
+      state: 'failed',
+      errorCode: 'retry_exhausted',
+      outcomeUnknown: true,
+    });
+    expect((await messageOf((await deliveryOf(id)).messageId)).deliveryStatus).toBe('failed');
+    // This push may have reached LINE, which counts it: the reservation stays.
+    expect(await quotaUsed(period)).toBe(before + 1);
+    // No trigger is left for a failed row to be claimed again.
+    expect(await env.tx((tx) => claimDelivery(tx, ctxAt(SYSTEM, later(at + 1000)), id))).toBeNull();
+  });
+
+  it('stops repeating a LINE push once its retry key may have expired, whatever the attempt count (N-2)', async () => {
+    const s = await sending('line', 'line_push');
+    const created = s.claimedRow.createdAt;
+    const tooEarly = new Date(
+      created.getTime() + (DELIVERY_RETRY_KEY_MAX_AGE_SECONDS - 600) * 1000,
+    );
+    const pastTtl = new Date(created.getTime() + (DELIVERY_RETRY_KEY_MAX_AGE_SECONDS + 600) * 1000);
+    // Inside the window it is still repeated.
+    const inside = await env.tx((tx) => sweepDeliveries(tx, ctxAt(SYSTEM, tooEarly)));
+    expect(inside.retriedPush).toBeGreaterThanOrEqual(1);
+    expect((await deliveryOf(s.claimedRow.id)).state).toBe('scheduled');
+    // A second lost attempt past the window ends it.
+    const again = await env.tx((tx) => claimDelivery(tx, ctxAt(SYSTEM, tooEarly), s.claimedRow.id));
+    if (again === null) throw new Error('not claimed');
+    await env.tx((tx) => markDispatched(tx, ctxAt(SYSTEM, tooEarly), again, 'line_push'));
+    const result = await env.tx((tx) => sweepDeliveries(tx, ctxAt(SYSTEM, pastTtl)));
+    expect(result.retryLimited).toBeGreaterThanOrEqual(1);
+    expect(await deliveryOf(s.claimedRow.id)).toMatchObject({
+      state: 'failed',
+      errorCode: 'retry_key_expired',
+      outcomeUnknown: true,
+    });
+  });
+
+  it('reads the retry-key bound from the domain configuration (N-2)', async () => {
+    const s = await sending('line', 'line_push');
+    const base = ctxAt(SYSTEM, later(6 + 121));
+    const strict: DomainContext = {
+      ...base,
+      config: { ...base.config, retryKeyMaxAgeSeconds: 100 },
+    };
+    await env.tx((tx) => sweepDeliveries(tx, strict));
+    expect(await deliveryOf(s.claimedRow.id)).toMatchObject({
+      state: 'failed',
+      errorCode: 'retry_key_expired',
+    });
+  });
+
+  it('stops a claim that never reaches the provider after DELIVERY_MAX_ATTEMPTS too, as a certain non-delivery (N-2)', async () => {
+    const ticket = await ticketOn('gmail');
+    const staff = await addStaff(env);
+    const { value } = await reply(ticket, staff, `Never dispatched ${randomUUID()}`);
+    const id = value.delivery?.id ?? '';
+    let at = 6;
+    for (let attempt = 1; attempt <= DELIVERY_MAX_ATTEMPTS; attempt += 1) {
+      const row = await env.tx((tx) => claimDelivery(tx, ctxAt(SYSTEM, later(at)), id));
+      expect(row?.attempts).toBe(attempt);
+      await env.tx((tx) => sweepDeliveries(tx, ctxAt(SYSTEM, later(at + 121))));
+      at += 121;
+    }
+    expect(await deliveryOf(id)).toMatchObject({
+      state: 'failed',
+      errorCode: 'retry_exhausted',
+      outcomeUnknown: false,
+    });
   });
 });
 
