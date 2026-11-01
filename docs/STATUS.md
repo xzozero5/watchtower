@@ -39,6 +39,12 @@ snapshot สั้นสำหรับ cold start อยู่ที่ `HANDOF
 
 ## Log
 
+## 2026-11-01 22:01 (Asia/Bangkok) — integration-engineer + security-reviewer + main thread — T-102b–d Gmail ปิด
+- ทำอะไร: merge เข้า `main` (push receiver OIDC, history sync, watch, heartbeat, ส่ง in-thread; mock เท่านั้น) · main thread แก้ P3 F-1..F-3 + PRD R-2.4 · `security-reviewer` ตรวจ fix แล้วไม่มีข้อขวาง
+- test: main thread รันเอง: lint, typecheck, unit ผ่าน · integration db 200, domain 188, api 539, worker 123 · e2e 134 · full-stack 23 `[TESTED]` · worker ตก 2 ใน `outbound/worker` ตอนมี agent อื่นรัน test พร้อมกัน รันซ้ำ 6 รอบ และทั้ง package ผ่าน
+- ค้าง: T-102e OAuth กล่องเมล (เจ้าของตัดสิน) · P3 `runtime.ts:205` flag เปิด + credential ใหม่ใน cache 60 วิ fake ยังรับ reply (เฉพาะ loopback) → T-125
+- ไม่ยืนยัน: ไม่เคยคุยกับ Google จริง · JWKS และ `format=raw` ใต้ readonly `[VERIFY]`
+
 ## 2026-11-01 12:57 (Asia/Bangkok) — integration-engineer + security-reviewer + main thread — T-103b–d LINE ปิด
 - ทำอะไร: merge `verify/t-103bd` เข้า `main` (webhook, media, auto-ack ผ่าน policy gate, identity link; mock เท่านั้น) · แก้บั๊กนาฬิกาสองตัวและ boundary test บน Windows ก่อน merge
 - test: main thread รันเองบน Windows: lint, typecheck, unit ผ่าน · integration db 200, domain 188, api 528, worker 83 · e2e 134 · full-stack 23 `[TESTED]`
