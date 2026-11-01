@@ -1,5 +1,6 @@
 /**
- * Knowledge base (T-107): this feature's own audit actions, ticket event types and queue names (T-123a).
+ * Knowledge base (T-107): this feature's own audit actions, ticket event types and queue names (T-123a),
+ * and the API contracts of articles, versions and search (PRD R-4.1 to R-4.3).
  *
  * The task that owns this feature adds entries here and nowhere else in `packages/shared`. The
  * global `AUDIT_ACTIONS`, `TICKET_EVENT_TYPES` and `QUEUE_NAMES` are composed from these records
@@ -8,12 +9,302 @@
  * ticket events, the BullMQ queue name for queues). Start a value with the feature name so
  * collisions are unlikely.
  */
+import { z } from 'zod';
+
+import { cursorSchema, pageLimit } from '../common.js';
 
 /** Audit `action` strings written by this feature. */
-export const KB_AUDIT_ACTIONS = {} as const satisfies Record<string, string>;
+export const KB_AUDIT_ACTIONS = {
+  /** An article was created (draft, version 1). */
+  kbArticleCreate: 'kb.article.create',
+  /** An article was edited: a new immutable version was added (or only its metadata changed). */
+  kbArticleUpdate: 'kb.article.update',
+  /** The status moved (draft, in_review, deprecated) without publishing. */
+  kbArticleStatus: 'kb.article.status',
+  /** A version went live (what search and customers see). */
+  kbArticlePublish: 'kb.article.publish',
+} as const satisfies Record<string, string>;
 
 /** `ticket_event.type` strings written by this feature. */
 export const KB_TICKET_EVENTS = {} as const satisfies Record<string, string>;
 
 /** BullMQ queue names owned by this feature (producer: api, consumer: worker). */
-export const KB_QUEUES = {} as const satisfies Record<string, string>;
+export const KB_QUEUES = {
+  /** Chunk and embed published articles (T-107b). */
+  kb: 'kb',
+} as const satisfies Record<string, string>;
+
+export const KB_JOBS = {
+  /** Rebuild the chunks and embeddings of one published version. `jobId` is per version. */
+  embedArticle: 'embed_article',
+  /** Embed again everything whose vectors are not from the active embedding index. */
+  reembedAll: 'reembed_all',
+} as const;
+
+export const embedArticleJobSchema = z.object({ articleId: z.uuid(), versionId: z.uuid() });
+export type EmbedArticleJob = z.infer<typeof embedArticleJobSchema>;
+
+/** Retry with backoff; the chunks are the record, so a finished job is dropped. */
+export const KB_OUTBOX_JOB_OPTIONS = {
+  attempts: 4,
+  backoff: { type: 'exponential', delay: 5000 },
+  removeOnComplete: { age: 3600, count: 1000 },
+  removeOnFail: { age: 7 * 24 * 3600 },
+} as const;
+
+// --- vocabulary (PRD R-4.1) ---
+
+export const KB_LANGS = ['th', 'en'] as const;
+export const kbLangSchema = z.enum(KB_LANGS);
+export type KbLang = z.infer<typeof kbLangSchema>;
+
+export const KB_KINDS = ['article', 'runbook'] as const;
+export const kbKindSchema = z.enum(KB_KINDS);
+export type KbKind = z.infer<typeof kbKindSchema>;
+
+export const KB_STATUSES = ['draft', 'in_review', 'published', 'deprecated'] as const;
+export const kbStatusSchema = z.enum(KB_STATUSES);
+export type KbStatus = z.infer<typeof kbStatusSchema>;
+
+/** internal: staff only. customer: every client. orgs: only the organizations listed on the article. */
+export const KB_VISIBILITIES = ['internal', 'customer', 'orgs'] as const;
+export const kbVisibilitySchema = z.enum(KB_VISIBILITIES);
+export type KbVisibility = z.infer<typeof kbVisibilitySchema>;
+
+export const KB_SOURCE_TYPES = ['ticket', 'incident', 'commit', 'runbook', 'url'] as const;
+export const kbSourceSchema = z.object({
+  type: z.enum(KB_SOURCE_TYPES),
+  ref: z.string().trim().min(1).max(500),
+});
+export type KbSource = z.infer<typeof kbSourceSchema>;
+
+export const KB_SLUG_PATTERN = /^[a-z0-9]([a-z0-9-]{0,118}[a-z0-9])?$/;
+export const kbSlugSchema = z
+  .string()
+  .regex(KB_SLUG_PATTERN, 'lowercase letters, digits and hyphens, up to 120 characters');
+
+const INTENT_TAG = /^[a-z][a-z0-9_]{1,62}$/;
+export const kbTitleSchema = z.string().trim().min(1).max(300);
+/** 200,000 characters `[ASSUMED]`: far above any help article, small enough to chunk in memory. */
+export const KB_MAX_BODY_CHARS = 200_000;
+export const kbBodySchema = z.string().max(KB_MAX_BODY_CHARS);
+
+// --- articles ---
+
+const articleFields = {
+  title: kbTitleSchema,
+  bodyMd: kbBodySchema,
+  lang: kbLangSchema,
+  kind: kbKindSchema.default('article'),
+  visibility: kbVisibilitySchema.default('internal'),
+  /** The organizations that may see the article; used (and required) when `visibility` is `orgs`. */
+  orgIds: z.array(z.uuid()).max(500).default([]),
+  intentTags: z.array(z.string().regex(INTENT_TAG)).max(50).default([]),
+  sources: z.array(kbSourceSchema).max(100).default([]),
+};
+
+export const createKbArticleSchema = z
+  .object({
+    slug: kbSlugSchema,
+    ...articleFields,
+    changeNote: z.string().trim().max(500).optional(),
+  })
+  .superRefine((value, ctx) => {
+    if (value.visibility === 'orgs' && value.orgIds.length === 0) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['orgIds'],
+        message: 'visibility "orgs" needs at least one organization',
+      });
+    }
+  });
+export type CreateKbArticle = z.infer<typeof createKbArticleSchema>;
+
+export const updateKbArticleSchema = z
+  .object({
+    title: articleFields.title,
+    bodyMd: articleFields.bodyMd,
+    kind: kbKindSchema,
+    visibility: kbVisibilitySchema,
+    orgIds: z.array(z.uuid()).max(500),
+    intentTags: z.array(z.string().regex(INTENT_TAG)).max(50),
+    sources: z.array(kbSourceSchema).max(100),
+    /** Set when a person has checked the article against reality (R-4.1 "last verified"). */
+    lastVerifiedAt: z.iso.datetime().nullable(),
+    changeNote: z.string().trim().max(500),
+    /**
+     * The version the editor was looking at. When another edit came in meanwhile the request is
+     * refused with 409 instead of silently overwriting it.
+     */
+    expectedVersion: z.number().int().positive(),
+  })
+  .partial()
+  .refine(
+    (value) => Object.keys(value).some((key) => key !== 'expectedVersion' && key !== 'changeNote'),
+    { message: 'nothing to update' },
+  );
+export type UpdateKbArticle = z.infer<typeof updateKbArticleSchema>;
+
+export const KB_TRANSITIONS = ['draft', 'in_review', 'deprecated'] as const;
+export const kbTransitionSchema = z.object({
+  to: z.enum(KB_TRANSITIONS),
+  reason: z.string().trim().max(500).optional(),
+});
+export type KbTransition = z.infer<typeof kbTransitionSchema>;
+
+export const publishKbArticleSchema = z.object({
+  /** The version to publish. Refused with 409 if it is no longer the latest, so no one publishes unseen text. */
+  version: z.number().int().positive(),
+});
+export type PublishKbArticle = z.infer<typeof publishKbArticleSchema>;
+
+export const kbArticleSummarySchema = z.object({
+  id: z.uuid(),
+  slug: z.string(),
+  title: z.string(),
+  kind: kbKindSchema,
+  lang: kbLangSchema,
+  status: kbStatusSchema,
+  visibility: kbVisibilitySchema,
+  intentTags: z.array(z.string()),
+  /** Latest edit. */
+  version: z.number().int(),
+  /** The version that is live, if any. */
+  publishedVersion: z.number().int().nullable(),
+  /** True when the latest edit is not the live one yet. */
+  hasUnpublishedChanges: z.boolean(),
+  lastVerifiedAt: z.iso.datetime().nullable(),
+  updatedAt: z.iso.datetime(),
+});
+export type KbArticleSummary = z.infer<typeof kbArticleSummarySchema>;
+
+export const kbArticleSchema = kbArticleSummarySchema.extend({
+  /** Latest edit, which is what an editor works on. */
+  bodyMd: z.string(),
+  orgIds: z.array(z.uuid()),
+  sources: z.array(kbSourceSchema),
+  authorId: z.uuid().nullable(),
+  reviewerId: z.uuid().nullable(),
+  publishedAt: z.iso.datetime().nullable(),
+  createdAt: z.iso.datetime(),
+});
+export type KbArticle = z.infer<typeof kbArticleSchema>;
+
+export const kbArticleListQuerySchema = z.object({
+  status: kbStatusSchema.optional(),
+  visibility: kbVisibilitySchema.optional(),
+  lang: kbLangSchema.optional(),
+  kind: kbKindSchema.optional(),
+  intentTag: z.string().regex(INTENT_TAG).optional(),
+  limit: pageLimit(50, 100),
+  cursor: cursorSchema.optional(),
+});
+export type KbArticleListQuery = z.infer<typeof kbArticleListQuerySchema>;
+
+export const kbArticlePageSchema = z.object({
+  items: z.array(kbArticleSummarySchema),
+  nextCursor: z.string().nullable(),
+});
+export type KbArticlePage = z.infer<typeof kbArticlePageSchema>;
+
+export const kbVersionSummarySchema = z.object({
+  version: z.number().int(),
+  title: z.string(),
+  changeNote: z.string().nullable(),
+  createdBy: z.uuid().nullable(),
+  createdAt: z.iso.datetime(),
+  isCurrent: z.boolean(),
+  isPublished: z.boolean(),
+});
+export type KbVersionSummary = z.infer<typeof kbVersionSummarySchema>;
+
+export const kbVersionSchema = kbVersionSummarySchema.extend({ bodyMd: z.string() });
+export type KbVersion = z.infer<typeof kbVersionSchema>;
+
+export const kbVersionListSchema = z.object({ items: z.array(kbVersionSummarySchema) });
+export type KbVersionList = z.infer<typeof kbVersionListSchema>;
+
+export const kbVersionParamSchema = z.object({
+  id: z.uuid(),
+  version: z.coerce.number().int().positive(),
+});
+
+// --- search (R-4.2) ---
+
+export const KB_SEARCH_AUDIENCES = ['staff', 'customer'] as const;
+
+/** `hybrid`: keyword and vector were fused. `keyword`: no usable embedding, so keyword only (N5: it says so). */
+export const KB_SEARCH_MODES = ['hybrid', 'keyword'] as const;
+export const kbSearchModeSchema = z.enum(KB_SEARCH_MODES);
+export type KbSearchMode = z.infer<typeof kbSearchModeSchema>;
+
+const searchQuery = z.string().trim().min(1).max(500);
+
+export const kbSearchQuerySchema = z.object({
+  q: searchQuery,
+  limit: pageLimit(8, 20),
+  lang: kbLangSchema.optional(),
+  /**
+   * `customer` shows what a customer would get (preview for staff, and what the AI may cite to a
+   * customer). With `orgId` it applies that organization's audience too.
+   */
+  audience: z.enum(KB_SEARCH_AUDIENCES).default('staff'),
+  orgId: z.uuid().optional(),
+});
+export type KbSearchQuery = z.infer<typeof kbSearchQuerySchema>;
+
+export const kbCustomerSearchQuerySchema = z.object({
+  q: searchQuery,
+  limit: pageLimit(5, 10),
+  lang: kbLangSchema.optional(),
+});
+export type KbCustomerSearchQuery = z.infer<typeof kbCustomerSearchQuerySchema>;
+
+/** What a customer may see of a hit: no status, no internal tags, no scores. */
+export const kbCustomerHitSchema = z.object({
+  articleId: z.uuid(),
+  slug: z.string(),
+  title: z.string(),
+  lang: kbLangSchema,
+  /** Heading path of the section, for a citation down to section level. */
+  section: z.string(),
+  snippet: z.string(),
+});
+export type KbCustomerHit = z.infer<typeof kbCustomerHitSchema>;
+
+export const kbSearchHitSchema = kbCustomerHitSchema.extend({
+  chunkId: z.uuid(),
+  versionId: z.uuid(),
+  version: z.number().int(),
+  kind: kbKindSchema,
+  visibility: kbVisibilitySchema,
+  intentTags: z.array(z.string()),
+  lastVerifiedAt: z.iso.datetime().nullable(),
+  /** Reciprocal Rank Fusion score (higher is better). Only comparable within one response. */
+  score: z.number(),
+  /** 1-based rank of this chunk in each list, absent when it was not in that list. */
+  keywordRank: z.number().int().positive().nullable(),
+  vectorRank: z.number().int().positive().nullable(),
+});
+export type KbSearchHit = z.infer<typeof kbSearchHitSchema>;
+
+export const kbSearchResultSchema = z.object({
+  mode: kbSearchModeSchema,
+  hits: z.array(kbSearchHitSchema),
+});
+export type KbSearchResult = z.infer<typeof kbSearchResultSchema>;
+
+export const kbCustomerSearchResultSchema = z.object({ hits: z.array(kbCustomerHitSchema) });
+export type KbCustomerSearchResult = z.infer<typeof kbCustomerSearchResultSchema>;
+
+/** Chunking limits in characters `[ASSUMED]`; the worker reads overrides from its environment. */
+export const KB_CHUNK_DEFAULTS = {
+  /** Aim for chunks about this long. */
+  targetChars: 900,
+  /** Never longer than this (a longer paragraph is split at a sentence or grapheme boundary). */
+  maxChars: 1400,
+  /** A chunk this short is merged into its neighbour of the same section. */
+  minChars: 120,
+  /** Tail of the previous chunk repeated at the start of the next one when a section is split. */
+  overlapChars: 120,
+} as const;

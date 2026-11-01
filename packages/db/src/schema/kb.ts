@@ -34,11 +34,6 @@ export const vectorAny = customType<{ data: number[]; driverData: string }>({
   },
 });
 
-export const KB_ARTICLE_KINDS = ['article', 'runbook'] as const;
-export const KB_LANGS = ['th', 'en'] as const;
-export const KB_STATUSES = ['draft', 'in_review', 'published', 'deprecated'] as const;
-export const KB_VISIBILITIES = ['internal', 'customer', 'orgs'] as const;
-
 /** Which model made a set of vectors. At most one row is active (partial unique index). */
 export const kbEmbeddingIndex = pgTable(
   'kb_embedding_index',
