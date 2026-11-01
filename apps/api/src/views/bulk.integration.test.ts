@@ -166,7 +166,7 @@ describe('assign', () => {
 describe('one ticket failing does not undo the others', () => {
   it('reports each ticket: a merged one (409), one that does not exist (404), and the ones that worked', async () => {
     const [good1, good2, merged, target] = await tickets(4);
-    await head.client.post(`/v1/tickets/${merged?.id}/merge`, { intoTicketId: target?.id });
+    await head.client.post(`/v1/tickets/${merged?.id ?? ''}/merge`, { intoTicketId: target?.id });
     const missing = randomUUID();
 
     const response = await bulk(agent, [good1?.id ?? '', merged?.id ?? '', missing, good2?.id ?? ''], {

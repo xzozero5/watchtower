@@ -128,8 +128,8 @@ describe('the built-in views', () => {
   });
 
   it('counts each for the person asking', async () => {
-    const countsOf = async (who: Persona) =>
-      Object.fromEntries((await views(who)).map((view) => [view.key, view.count]));
+    const countsOf = async (who: Persona): Promise<Record<string, number | null>> =>
+      Object.fromEntries((await views(who)).map((view) => [view.key ?? view.id, view.count]));
     expect(await countsOf(agent)).toEqual({
       my_queue: 1,
       unassigned: 2,
