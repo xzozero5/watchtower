@@ -362,3 +362,43 @@ describe('tickets.note', () => {
     expect(error.code).toBe('ticket_not_open');
   });
 });
+
+describe('the timeline clock', () => {
+  // Messages and events are ordered together on screen. This process' clock (T0 is years away from
+  // the database's) must not reorder them: tens of milliseconds did, between a host and Docker.
+  it('stamps a message with the database clock, between the events around it', async () => {
+    const { ticket } = await ticketWithRequester();
+    await env.tx((tx) =>
+      env.domain.tickets.changeStatus(tx, env.ctx(undefined, { now: () => T0 }), {
+        ref: ticket.id,
+        status: 'triage',
+        reason: 'testing',
+      }),
+    );
+    const staff = await addStaff(env);
+    await env.tx((tx) =>
+      env.domain.tickets.note(tx, env.ctx(staff.actor, { now: () => T0 }), {
+        ref: ticket.id,
+        note: { body: 'a note' },
+        sender: { userId: staff.id },
+      }),
+    );
+
+    const messages = await env.db.owner.db
+      .select()
+      .from(schema.message)
+      .where(eq(schema.message.ticketId, ticket.id));
+    const events = await env.db.owner.db
+      .select()
+      .from(schema.ticketEvent)
+      .where(eq(schema.ticketEvent.ticketId, ticket.id));
+    const customer = messages.find((row) => row.direction === 'inbound');
+    const note = messages.find((row) => row.direction === 'internal');
+    const created = events.find((row) => row.type === 'ticket.created');
+    const moved = events.find((row) => row.type === 'ticket.status_changed');
+
+    expect(created?.createdAt.getTime()).toBeLessThanOrEqual(customer?.createdAt.getTime() ?? 0);
+    expect(customer?.createdAt.getTime()).toBeLessThanOrEqual(moved?.createdAt.getTime() ?? 0);
+    expect(moved?.createdAt.getTime()).toBeLessThanOrEqual(note?.createdAt.getTime() ?? 0);
+  });
+});
