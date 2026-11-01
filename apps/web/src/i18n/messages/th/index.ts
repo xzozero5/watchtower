@@ -25,6 +25,7 @@ import { queueTh } from './queue';
 import { railTh } from './rail';
 import { rolesTh } from './roles';
 import { severityTh } from './severity';
+import { shiftTh } from './shift';
 import { slaTh } from './sla';
 import { statesTh } from './states';
 import { statusTh } from './status';
@@ -68,4 +69,5 @@ export const th: Messages = {
   home: homeTh,
   admin: adminTh,
   portal: portalTh,
+  shift: shiftTh,
 };

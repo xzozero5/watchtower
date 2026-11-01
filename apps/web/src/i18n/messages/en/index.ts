@@ -32,6 +32,7 @@ import { queueEn } from './queue';
 import { railEn } from './rail';
 import { rolesEn } from './roles';
 import { severityEn } from './severity';
+import { shiftEn } from './shift';
 import { slaEn } from './sla';
 import { statesEn } from './states';
 import { statusEn } from './status';
@@ -74,6 +75,7 @@ export const en = {
   home: homeEn,
   admin: adminEn,
   portal: portalEn,
+  shift: shiftEn,
 } as const;
 
 /** The shape every language must fill in, with plain `string` leaves. */
