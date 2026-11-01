@@ -13,6 +13,7 @@ import type {
   KbTransition,
   KbVersion,
   KbVersionList,
+  BreakGlassPublishKbArticle,
   PublishKbArticle,
   UpdateKbArticle,
 } from '@watchtower/shared';
@@ -28,6 +29,7 @@ import { translating } from '../domain/domain-errors.js';
 import { DOMAIN } from '../domain/domain.module.js';
 import type { UnitOfWork } from '../realtime/unit-of-work.js';
 import { KbEmbeddingService } from './kb-embedding.service.js';
+import { KbSearchError } from './kb-errors.js';
 
 type Reader = Pick<Database['db'], 'select'>;
 type ArticleRow = typeof schema.kbArticle.$inferSelect;
@@ -51,6 +53,7 @@ function summaryOf(
     version: current.version,
     publishedVersion,
     hasUnpublishedChanges: publishedVersion !== current.version,
+    breakGlassPending: article.breakGlassPending,
     lastVerifiedAt: iso(article.lastVerifiedAt),
     updatedAt: article.updatedAt.toISOString(),
   };
@@ -91,6 +94,9 @@ export class KbService {
           query.visibility === undefined ? undefined : eq(article.visibility, query.visibility),
           query.lang === undefined ? undefined : eq(article.lang, query.lang),
           query.kind === undefined ? undefined : eq(article.kind, query.kind),
+          query.breakGlassPending === undefined
+            ? undefined
+            : eq(article.breakGlassPending, query.breakGlassPending),
           query.intentTag === undefined
             ? undefined
             : sql`${query.intentTag} = ANY(${article.intentTags})`,
@@ -139,6 +145,17 @@ export class KbService {
       authorId: row.article.authorId,
       reviewerId: row.article.reviewerId,
       publishedAt: iso(row.article.publishedAt),
+      breakGlass:
+        row.article.breakGlassAt === null
+          ? null
+          : {
+              pending: row.article.breakGlassPending,
+              by: row.article.breakGlassBy,
+              at: iso(row.article.breakGlassAt),
+              reason: row.article.breakGlassReason,
+              reviewedBy: row.article.breakGlassReviewedBy,
+              reviewedAt: iso(row.article.breakGlassReviewedAt),
+            },
       createdAt: row.article.createdAt.toISOString(),
     };
   }
@@ -244,15 +261,20 @@ export class KbService {
     lang: KbSearchQuery['lang'],
   ): Promise<KbSearchResult> {
     const embedding = await this.embeddings.embedQuery(q);
-    const outcome = await searchKb(this.database.db, {
-      query: q,
-      audience,
-      limit,
-      lang,
-      embedding,
-      minVectorSimilarity: this.config.KB_MIN_VECTOR_SIMILARITY,
-    });
-    return { mode: outcome.mode, hits: outcome.hits };
+    try {
+      const outcome = await searchKb(this.database.db, {
+        query: q,
+        audience,
+        limit,
+        lang,
+        embedding,
+        minVectorSimilarity: this.config.KB_MIN_VECTOR_SIMILARITY,
+      });
+      return { mode: outcome.mode, hits: outcome.hits };
+    } catch (error) {
+      // The driver's message holds the statement and the customer's words: log a code only.
+      throw new KbSearchError(error);
+    }
   }
 
   // --- writes ---
@@ -314,6 +336,39 @@ export class KbService {
         await this.domain.kb.publish(uow.tx, domainContext(this.domain, actor), {
           articleId: id,
           version: input.version,
+          audience: { visibility: input.visibility, orgIds: input.orgIds },
+        }),
+      ),
+    );
+    return this.get(result.articleId, uow.tx);
+  }
+
+  async publishBreakGlass(
+    uow: UnitOfWork,
+    actor: Actor,
+    id: string,
+    input: BreakGlassPublishKbArticle,
+  ): Promise<KbArticle> {
+    const result = await translating(async () =>
+      settle(
+        uow,
+        await this.domain.kb.publishBreakGlass(uow.tx, domainContext(this.domain, actor), {
+          articleId: id,
+          version: input.version,
+          audience: { visibility: input.visibility, orgIds: input.orgIds },
+          reason: input.reason,
+        }),
+      ),
+    );
+    return this.get(result.articleId, uow.tx);
+  }
+
+  async reviewBreakGlass(uow: UnitOfWork, actor: Actor, id: string): Promise<KbArticle> {
+    const result = await translating(async () =>
+      settle(
+        uow,
+        await this.domain.kb.reviewBreakGlass(uow.tx, domainContext(this.domain, actor), {
+          articleId: id,
         }),
       ),
     );

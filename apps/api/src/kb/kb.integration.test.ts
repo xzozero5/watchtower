@@ -67,10 +67,38 @@ async function create(fields: Partial<CreateKbArticle> = {}, who = agent): Promi
   return kbArticleSchema.parse(response.body);
 }
 
-async function publish(article: KbArticle, version = article.version): Promise<KbArticle> {
-  const response = await lead.client.post<KbArticle>(`/v1/kb/articles/${article.id}/publish`, {
-    version,
+async function fresh(id: string, who = agent): Promise<KbArticle> {
+  return kbArticleSchema.parse((await who.client.get<KbArticle>(`/v1/kb/articles/${id}`)).body);
+}
+
+/** What the approver's screen sends back: the version and the audience as they were shown. */
+const seen = (article: KbArticle, version = article.version) => ({
+  version,
+  visibility: article.visibility,
+  orgIds: article.orgIds,
+});
+
+/** The writer sends a draft for review, the way the web does. */
+async function submit(article: KbArticle): Promise<void> {
+  if ((await fresh(article.id)).status !== 'draft') return;
+  const response = await agent.client.post(`/v1/kb/articles/${article.id}/transition`, {
+    to: 'in_review',
   });
+  expect(response.status, JSON.stringify(response.body)).toBe(200);
+}
+
+/** Two people: the agent writes and submits, an approver publishes what they saw. */
+async function publish(
+  article: KbArticle,
+  version = article.version,
+  who = lead,
+): Promise<KbArticle> {
+  await submit(article);
+  const current = await fresh(article.id);
+  const response = await who.client.post<KbArticle>(
+    `/v1/kb/articles/${article.id}/publish`,
+    seen(current, version),
+  );
   expect(response.status, JSON.stringify(response.body)).toBe(200);
   return kbArticleSchema.parse(response.body);
 }
@@ -143,7 +171,7 @@ describe('permissions', () => {
     }
     expect((await clientA.client.post('/v1/kb/articles', body())).status).toBe(403);
     expect(
-      (await clientA.client.post(`/v1/kb/articles/${made.id}/publish`, { version: 1 })).status,
+      (await clientA.client.post(`/v1/kb/articles/${made.id}/publish`, seen(made))).status,
     ).toBe(403);
     // Staff have no customer permission: the customer route is for client accounts only.
     expect((await agent.client.get('/v1/kb/customer/search?q=reset')).status).toBe(403);
@@ -152,13 +180,15 @@ describe('permissions', () => {
 
   it('lets an agent write but not approve; a lead or head approves', async () => {
     const made = await create();
-    const asAgent = await agent.client.post<ApiErrorBody>(`/v1/kb/articles/${made.id}/publish`, {
-      version: 1,
-    });
+    await submit(made);
+    const asAgent = await agent.client.post<ApiErrorBody>(
+      `/v1/kb/articles/${made.id}/publish`,
+      seen(made),
+    );
     expect(asAgent.status).toBe(403);
-    expect(
-      (await head.client.post(`/v1/kb/articles/${made.id}/publish`, { version: 1 })).status,
-    ).toBe(200);
+    expect((await head.client.post(`/v1/kb/articles/${made.id}/publish`, seen(made))).status).toBe(
+      200,
+    );
     const toDeprecate = await create();
     expect(
       (
@@ -297,9 +327,10 @@ describe('articles', () => {
     await agent.client.patch(`/v1/kb/articles/${made.id}`, {
       bodyMd: 'edited after the review began',
     });
-    const stale = await lead.client.post<ApiErrorBody>(`/v1/kb/articles/${made.id}/publish`, {
-      version: 1,
-    });
+    const stale = await lead.client.post<ApiErrorBody>(
+      `/v1/kb/articles/${made.id}/publish`,
+      seen(made, 1),
+    );
     expect(stale.status).toBe(409);
     const live = await publish(made, 2);
     expect(live).toMatchObject({
@@ -349,7 +380,7 @@ describe('articles', () => {
     });
     expect(again.status).toBe(409);
     expect(
-      (await lead.client.post<ApiErrorBody>(`/v1/kb/articles/${made.id}/publish`, { version: 1 }))
+      (await lead.client.post<ApiErrorBody>(`/v1/kb/articles/${made.id}/publish`, seen(made)))
         .status,
     ).toBe(409);
   });
@@ -377,6 +408,257 @@ describe('articles', () => {
     const ids = [...first.body.items, ...second.body.items].map((item) => item.id);
     expect(new Set(ids).size).toBe(3);
     expect((await agent.client.get('/v1/kb/articles?cursor=garbage')).status).toBe(400);
+  });
+});
+
+describe('publishing: the approver publishes what they saw (P2-1)', () => {
+  it('refuses a publication whose audience is not the one the approver saw (409), also by omission (400)', async () => {
+    const made = await create({ bodyMd: 'reviewed as internal' });
+    await submit(made);
+    const asSeen = seen(await fresh(made.id));
+    expect(asSeen.visibility).toBe('internal');
+    // An approver widens it in another tab; the first approver still holds the internal view.
+    const widened = await lead.client.patch(`/v1/kb/articles/${made.id}`, {
+      visibility: 'customer',
+    });
+    expect(widened.status).toBe(200);
+    const stale = await head.client.post<ApiErrorBody>(
+      `/v1/kb/articles/${made.id}/publish`,
+      asSeen,
+    );
+    expect(stale.status).toBe(409);
+    expect((await fresh(made.id)).status).toBe('in_review');
+    const missing = await head.client.post(`/v1/kb/articles/${made.id}/publish`, { version: 1 });
+    expect(missing.status).toBe(400);
+    const live = await publish(made, 1, head);
+    expect(live.visibility).toBe('customer');
+  });
+
+  it('refuses to widen an article without kb.approve at any status', async () => {
+    for (const to of [undefined, 'in_review'] as const) {
+      const made = await create({ bodyMd: 'internal only' });
+      if (to !== undefined) await submit(made);
+      const denied = await agent.client.patch<ApiErrorBody>(`/v1/kb/articles/${made.id}`, {
+        visibility: 'customer',
+      });
+      expect(denied.status, String(to)).toBe(403);
+      expect((await fresh(made.id)).visibility).toBe('internal');
+    }
+  });
+
+  it('never lets the reported scenario reach a customer', async () => {
+    // internal, in review; the agent widens it; the lead publishes what they reviewed.
+    const made = await create({ bodyMd: 'Quarterly signing key procedure for staff only.' });
+    await submit(made);
+    const reviewed = seen(await fresh(made.id));
+    await agent.client.patch(`/v1/kb/articles/${made.id}`, { visibility: 'customer' });
+    const published = await lead.client.post(`/v1/kb/articles/${made.id}/publish`, reviewed);
+    expect(published.status).toBe(200);
+    expect((await fresh(made.id)).visibility).toBe('internal');
+    // The worker would index it now; a keyword-only chunk is enough to see who can find it.
+    await pool().query(
+      `INSERT INTO kb_chunk (article_id, version_id, ordinal, text, char_start, char_end)
+       SELECT id, published_version_id, 0, 'Quarterly signing key procedure for staff only.', 0, 50
+         FROM kb_article WHERE id = $1`,
+      [made.id],
+    );
+    const asStaff = await agent.client.get<KbSearchResult>(
+      '/v1/kb/search?q=signing%20key%20procedure',
+    );
+    expect(asStaff.body.hits.map((hit) => hit.articleId)).toContain(made.id);
+    const asClient = await clientA.client.get<KbCustomerSearchResult>(
+      '/v1/kb/customer/search?q=signing%20key%20procedure',
+    );
+    expect(JSON.stringify(asClient.body)).not.toContain(made.id);
+  });
+});
+
+describe('publishing: segregation of duties', () => {
+  it('does not publish from draft (409) and needs the article to be in review', async () => {
+    const made = await create();
+    const response = await lead.client.post<ApiErrorBody>(
+      `/v1/kb/articles/${made.id}/publish`,
+      seen(made),
+    );
+    expect(response.status).toBe(409);
+    expect((await fresh(made.id)).status).toBe('draft');
+  });
+
+  it('does not let a writer publish their own text: another approver does', async () => {
+    const made = await create({}, lead);
+    await lead.client.post(`/v1/kb/articles/${made.id}/transition`, { to: 'in_review' });
+    const own = await lead.client.post<ApiErrorBody>(
+      `/v1/kb/articles/${made.id}/publish`,
+      seen(made),
+    );
+    expect(own.status).toBe(403);
+    expect((await head.client.post(`/v1/kb/articles/${made.id}/publish`, seen(made))).status).toBe(
+      200,
+    );
+  });
+
+  it('makes an approver who edits during review its author', async () => {
+    const made = await create({ bodyMd: 'agent text' });
+    await submit(made);
+    const edit = await lead.client.patch<KbArticle>(`/v1/kb/articles/${made.id}`, {
+      bodyMd: 'lead tweak',
+    });
+    expect(edit.body.version).toBe(2);
+    const own = await lead.client.post<ApiErrorBody>(
+      `/v1/kb/articles/${made.id}/publish`,
+      seen(edit.body),
+    );
+    expect(own.status).toBe(403);
+    expect(
+      (await head.client.post(`/v1/kb/articles/${made.id}/publish`, seen(edit.body))).status,
+    ).toBe(200);
+  });
+
+  it('lets one person deprecate alone', async () => {
+    const made = await create();
+    await publish(made);
+    const response = await lead.client.post<KbArticle>(`/v1/kb/articles/${made.id}/transition`, {
+      to: 'deprecated',
+    });
+    expect(response.body.status).toBe('deprecated');
+  });
+});
+
+describe('break-glass publishing', () => {
+  const glass = (who: Persona, article: KbArticle, reason: unknown) =>
+    who.client.post<KbArticle & ApiErrorBody>(`/v1/kb/articles/${article.id}/publish-break-glass`, {
+      ...seen(article),
+      reason,
+    });
+
+  it('is for the head only: no permission for an agent or a lead (403)', async () => {
+    const made = await create();
+    for (const who of [agent, lead, clientA]) {
+      expect((await glass(who, made, 'urgent')).status).toBe(403);
+    }
+    expect((await fresh(made.id)).status).toBe('draft');
+  });
+
+  it('needs a non-empty reason (400)', async () => {
+    const made = await create();
+    for (const reason of ['', '   ', undefined]) {
+      expect((await glass(head, made, reason)).status).toBe(400);
+    }
+    expect((await fresh(made.id)).status).toBe('draft');
+  });
+
+  it('publishes from draft, flags the article, audits its own action, and is listed for review', async () => {
+    const made = await create({ bodyMd: 'urgent correction' });
+    const response = await glass(head, made, 'Wrong refund policy is live');
+    expect(response.status, JSON.stringify(response.body)).toBe(200);
+    expect(response.body).toMatchObject({
+      status: 'published',
+      breakGlassPending: true,
+      breakGlass: {
+        pending: true,
+        by: head.userId,
+        reason: 'Wrong refund policy is live',
+        reviewedBy: null,
+      },
+    });
+    const audit = await pool().query(
+      `SELECT actor_id, metadata FROM audit_log WHERE action = 'kb.article.publish_break_glass' AND target_id = $1 AND outcome = 'success'`,
+      [made.id],
+    );
+    expect(audit.rows).toHaveLength(1);
+    expect(audit.rows[0]).toMatchObject({
+      actor_id: head.userId,
+      metadata: { reason: 'Wrong refund policy is live' },
+    });
+    const waiting = await agent.client.get<KbArticlePage>(
+      '/v1/kb/articles?breakGlassPending=true&limit=100',
+    );
+    expect(waiting.body.items.map((item) => item.id)).toContain(made.id);
+  });
+
+  it('is reviewed by another approver, not by the head who used it', async () => {
+    const made = await create();
+    await glass(head, made, 'incident');
+    const own = await head.client.post<ApiErrorBody>(
+      `/v1/kb/articles/${made.id}/break-glass-review`,
+    );
+    expect(own.status).toBe(403);
+    expect((await agent.client.post(`/v1/kb/articles/${made.id}/break-glass-review`)).status).toBe(
+      403,
+    );
+    const done = await lead.client.post<KbArticle>(`/v1/kb/articles/${made.id}/break-glass-review`);
+    expect(done.status).toBe(200);
+    expect(done.body).toMatchObject({
+      breakGlassPending: false,
+      breakGlass: { pending: false, by: head.userId, reviewedBy: lead.userId },
+    });
+    const again = await lead.client.post(`/v1/kb/articles/${made.id}/break-glass-review`);
+    expect(again.status).toBe(409);
+    const waiting = await agent.client.get<KbArticlePage>(
+      '/v1/kb/articles?breakGlassPending=true&limit=100',
+    );
+    expect(waiting.body.items.map((item) => item.id)).not.toContain(made.id);
+  });
+});
+
+describe('input hygiene and limits (P3)', () => {
+  it('rejects a NUL character with 400 instead of reaching the database (P3-1)', async () => {
+    for (const path of ['/v1/kb/search?q=a%00b', '/v1/kb/customer/search?q=a%00b']) {
+      const who = path.includes('customer') ? clientA : agent;
+      const response = await who.client.get<ApiErrorBody>(path);
+      expect(response.status, path).toBe(400);
+      expect(JSON.stringify(response.body)).not.toContain('a\u0000b');
+    }
+    for (const field of ['title', 'bodyMd', 'changeNote']) {
+      const response = await agent.client.post('/v1/kb/articles', body({ [field]: 'x\u0000y' }));
+      expect(response.status, field).toBe(400);
+    }
+  });
+
+  it('rate limits staff search per user (P3-2)', async () => {
+    const busy = await signIn(h, 'agent');
+    let refused = 0;
+    for (let i = 0; i < 62; i += 1) {
+      const response = await busy.client.get('/v1/kb/search?q=password');
+      if (response.status === 429) refused += 1;
+    }
+    expect(refused).toBe(2);
+    expect((await agent.client.get('/v1/kb/search?q=password')).status).toBe(200);
+  });
+
+  it('refuses the staff routes to a client account even if kb permissions were granted by mistake (P3-3)', async () => {
+    await pool().query(
+      `INSERT INTO role_permissions (role, permission) VALUES ('client', 'kb.read'), ('client', 'kb.write'), ('client', 'kb.approve')`,
+    );
+    try {
+      const made = await create();
+      const reads = [
+        '/v1/kb/articles',
+        `/v1/kb/articles/${made.id}`,
+        `/v1/kb/articles/${made.id}/versions`,
+        `/v1/kb/articles/${made.id}/versions/1`,
+        '/v1/kb/search?q=password',
+      ];
+      for (const path of reads) expect((await clientA.client.get(path)).status, path).toBe(403);
+      expect((await clientA.client.post('/v1/kb/articles', body())).status).toBe(403);
+      expect(
+        (await clientA.client.patch(`/v1/kb/articles/${made.id}`, { bodyMd: 'x' })).status,
+      ).toBe(403);
+      expect(
+        (await clientA.client.post(`/v1/kb/articles/${made.id}/transition`, { to: 'in_review' }))
+          .status,
+      ).toBe(403);
+      expect(
+        (await clientA.client.post(`/v1/kb/articles/${made.id}/publish`, seen(made))).status,
+      ).toBe(403);
+      expect(
+        (await clientA.client.post(`/v1/kb/articles/${made.id}/break-glass-review`)).status,
+      ).toBe(403);
+    } finally {
+      await pool().query(
+        `DELETE FROM role_permissions WHERE role = 'client' AND permission IN ('kb.read', 'kb.write', 'kb.approve')`,
+      );
+    }
   });
 });
 

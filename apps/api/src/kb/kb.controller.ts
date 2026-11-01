@@ -11,6 +11,7 @@ import {
 } from '@nestjs/swagger';
 import {
   AUDIT_ACTIONS,
+  breakGlassPublishKbArticleSchema,
   createKbArticleSchema,
   idParamSchema,
   kbArticleListQuerySchema,
@@ -26,6 +27,7 @@ import {
   kbVersionSchema,
   publishKbArticleSchema,
   updateKbArticleSchema,
+  type BreakGlassPublishKbArticle,
   type CreateKbArticle,
   type KbArticleListQuery,
   type KbCustomerSearchQuery,
@@ -55,6 +57,18 @@ type VersionParam = z.infer<typeof kbVersionParamSchema>;
 /** Customer searches per user per minute `[ASSUMED]`: each one may cost an embedding call. */
 const CUSTOMER_SEARCH_PER_MINUTE = 30;
 
+/** Staff searches per user per minute `[ASSUMED]`: each one embeds the query and writes an `ai_run` row. */
+const STAFF_SEARCH_PER_MINUTE = 60;
+
+/**
+ * The staff routes are for staff accounts. `kb.read` and `kb.write` are not granted to a client, but
+ * a client account (one organization) is also refused here in case a permission is ever granted by
+ * mistake: this is defence in depth, not the first line.
+ */
+function staffOnly(principal: Principal): void {
+  if (principal.orgScope.kind !== 'all') throw forbidden('This is for staff accounts');
+}
+
 const actorOf = (principal: Principal) => ({ type: 'user' as const, id: principal.userId });
 
 @ApiTags('kb')
@@ -79,10 +93,17 @@ export class KbController {
       'provider is off, the AI kill switch or the daily budget stopped it), never a silent ' +
       'downgrade. `audience=customer` shows what a customer would get (with `orgId`, that ' +
       "organization's audience too). Drafts, deprecated articles and superseded versions are " +
-      'never returned.',
+      'never returned. Rate limited per user. `snippet`, `section` and `title` are raw text from ' +
+      'the article (Markdown): a client must escape them, not inject them as HTML.',
   })
   @ApiOkResponse({ standardSchema: kbSearchResultSchema })
-  async search(@Query({ schema: kbSearchQuerySchema }) query: KbSearchQuery) {
+  @ApiTooManyRequestsResponse({ description: 'Too many searches in a minute' })
+  async search(
+    @Query({ schema: kbSearchQuerySchema }) query: KbSearchQuery,
+    @CurrentPrincipal() principal: Principal,
+  ) {
+    staffOnly(principal);
+    await this.limiter.enforce('kb-search', principal.userId, STAFF_SEARCH_PER_MINUTE, 60);
     return parseResponse(kbSearchResultSchema, await this.kb.search(query));
   }
 
@@ -127,7 +148,11 @@ export class KbController {
       'Drafts and deprecated articles included. Keyset paginated: pass `nextCursor` back as `cursor`.',
   })
   @ApiOkResponse({ standardSchema: kbArticlePageSchema })
-  async list(@Query({ schema: kbArticleListQuerySchema }) query: KbArticleListQuery) {
+  async list(
+    @Query({ schema: kbArticleListQuerySchema }) query: KbArticleListQuery,
+    @CurrentPrincipal() principal: Principal,
+  ) {
+    staffOnly(principal);
     return parseResponse(kbArticlePageSchema, await this.kb.list(query));
   }
 
@@ -141,7 +166,11 @@ export class KbController {
   })
   @ApiOkResponse({ standardSchema: kbArticleSchema })
   @ApiNotFoundResponse({ description: 'No such article' })
-  async get(@Param({ schema: idParamSchema }) params: IdParam) {
+  async get(
+    @Param({ schema: idParamSchema }) params: IdParam,
+    @CurrentPrincipal() principal: Principal,
+  ) {
+    staffOnly(principal);
     return parseResponse(kbArticleSchema, await this.kb.get(params.id));
   }
 
@@ -150,7 +179,11 @@ export class KbController {
   @ApiOperation({ summary: 'The versions of an article, newest first (staff)' })
   @ApiOkResponse({ standardSchema: kbVersionListSchema })
   @ApiNotFoundResponse({ description: 'No such article' })
-  async versions(@Param({ schema: idParamSchema }) params: IdParam) {
+  async versions(
+    @Param({ schema: idParamSchema }) params: IdParam,
+    @CurrentPrincipal() principal: Principal,
+  ) {
+    staffOnly(principal);
     return parseResponse(kbVersionListSchema, await this.kb.versions(params.id));
   }
 
@@ -159,7 +192,11 @@ export class KbController {
   @ApiOperation({ summary: 'One version of an article with its text (staff)' })
   @ApiOkResponse({ standardSchema: kbVersionSchema })
   @ApiNotFoundResponse({ description: 'No such article or version' })
-  async version(@Param({ schema: kbVersionParamSchema }) params: VersionParam) {
+  async version(
+    @Param({ schema: kbVersionParamSchema }) params: VersionParam,
+    @CurrentPrincipal() principal: Principal,
+  ) {
+    staffOnly(principal);
     return parseResponse(kbVersionSchema, await this.kb.version(params.id, params.version));
   }
 
@@ -170,7 +207,9 @@ export class KbController {
     summary: 'Create a draft article (agent, lead, head)',
     description:
       'Starts as a draft at version 1. Nothing is searchable until an approver publishes it. ' +
-      '`visibility` is `internal` (staff), `customer` (every client) or `orgs` (the listed organizations).',
+      '`visibility` is `internal` (staff), `customer` (every client) or `orgs` (the listed ' +
+      'organizations). Text fields, including `sources[].ref` (any URL scheme), are stored raw: ' +
+      'a client must escape them, render Markdown without raw HTML, and link only http(s).',
   })
   @ApiCreatedResponse({ standardSchema: kbArticleSchema })
   @ApiConflictResponse({ description: 'The slug is already used' })
@@ -178,6 +217,7 @@ export class KbController {
     @Body({ schema: createKbArticleSchema }) body: CreateKbArticle,
     @CurrentPrincipal() principal: Principal,
   ) {
+    staffOnly(principal);
     const created = await this.uow.run((uow) => this.kb.create(uow, actorOf(principal), body));
     AuditScope.set({ targetId: created.id });
     return parseResponse(kbArticleSchema, created);
@@ -202,6 +242,7 @@ export class KbController {
     @Body({ schema: updateKbArticleSchema }) body: UpdateKbArticle,
     @CurrentPrincipal() principal: Principal,
   ) {
+    staffOnly(principal);
     AuditScope.set({ targetId: params.id });
     const updated = await this.uow.run((uow) =>
       this.kb.update(
@@ -235,6 +276,7 @@ export class KbController {
     @Body({ schema: kbTransitionSchema }) body: KbTransition,
     @CurrentPrincipal() principal: Principal,
   ) {
+    staffOnly(principal);
     if (body.to === 'deprecated' && !principal.permissions.has('kb.approve')) {
       throw forbidden('Deprecating an article needs an approver');
     }
@@ -253,21 +295,88 @@ export class KbController {
     summary: 'Publish the latest version (lead, head)',
     description:
       'Makes the version you looked at the live one, records you as reviewer and queues ' +
-      'indexing; it is searchable once the worker has embedded it. `version` must still be the ' +
-      'latest (409 otherwise), so nobody publishes text they have not seen.',
+      'indexing; it is searchable once the worker has embedded it. Two people: the article must ' +
+      'be in review (send it with `transition` to `in_review`), and you must not have written any ' +
+      'version newer than the live one (403 `policy_denied`: someone else publishes it). ' +
+      '`version` must still be the latest and `visibility` / `orgIds` must still be the ' +
+      "article's audience (409 otherwise), so nobody publishes text, or to people, they have not seen.",
   })
   @ApiOkResponse({ standardSchema: kbArticleSchema })
   @ApiNotFoundResponse({ description: 'No such article' })
-  @ApiConflictResponse({ description: 'Not the latest version, or the article is deprecated' })
+  @ApiConflictResponse({
+    description:
+      'Not the latest version, the audience changed, or the article is deprecated or not in review',
+  })
+  @ApiForbiddenResponse({
+    description: 'You wrote part of this text: another approver publishes it',
+  })
   async publish(
     @Param({ schema: idParamSchema }) params: IdParam,
     @Body({ schema: publishKbArticleSchema }) body: PublishKbArticle,
     @CurrentPrincipal() principal: Principal,
   ) {
+    staffOnly(principal);
     AuditScope.set({ targetId: params.id });
     const published = await this.uow.run((uow) =>
       this.kb.publish(uow, actorOf(principal), params.id, body),
     );
     return parseResponse(kbArticleSchema, published);
+  }
+
+  @Post('articles/:id/publish-break-glass')
+  @HttpCode(200)
+  @RequirePermission('kb.publish.break_glass')
+  @Audited({ action: AUDIT_ACTIONS.kbArticlePublishBreakGlass, targetType: 'kb_article' })
+  @ApiOperation({
+    summary: 'Publish without a second person, with a reason (head)',
+    description:
+      'The emergency path: it skips the review and the rule that the publisher did not write the ' +
+      'text. A non-empty `reason` is required and goes to the audit log; the article is flagged ' +
+      '(`breakGlassPending`) until another approver clears it with `break-glass-review`. Same ' +
+      'checks on `version` and the audience as `publish`.',
+  })
+  @ApiOkResponse({ standardSchema: kbArticleSchema })
+  @ApiNotFoundResponse({ description: 'No such article' })
+  @ApiConflictResponse({
+    description: 'Not the latest version, the audience changed, or deprecated',
+  })
+  @ApiForbiddenResponse({ description: 'Head only' })
+  async publishBreakGlass(
+    @Param({ schema: idParamSchema }) params: IdParam,
+    @Body({ schema: breakGlassPublishKbArticleSchema }) body: BreakGlassPublishKbArticle,
+    @CurrentPrincipal() principal: Principal,
+  ) {
+    staffOnly(principal);
+    AuditScope.set({ targetId: params.id });
+    const published = await this.uow.run((uow) =>
+      this.kb.publishBreakGlass(uow, actorOf(principal), params.id, body),
+    );
+    return parseResponse(kbArticleSchema, published);
+  }
+
+  @Post('articles/:id/break-glass-review')
+  @HttpCode(200)
+  @RequirePermission('kb.approve')
+  @Audited({ action: AUDIT_ACTIONS.kbArticleBreakGlassReview, targetType: 'kb_article' })
+  @ApiOperation({
+    summary: 'Review a break-glass publication (lead, head)',
+    description:
+      'Clears the `breakGlassPending` flag. Another approver than the one who published it: ' +
+      '403 for the publisher. List the waiting ones with `GET /v1/kb/articles?breakGlassPending=true`.',
+  })
+  @ApiOkResponse({ standardSchema: kbArticleSchema })
+  @ApiNotFoundResponse({ description: 'No such article' })
+  @ApiConflictResponse({ description: 'Nothing to review' })
+  @ApiForbiddenResponse({ description: 'You published it yourself' })
+  async reviewBreakGlass(
+    @Param({ schema: idParamSchema }) params: IdParam,
+    @CurrentPrincipal() principal: Principal,
+  ) {
+    staffOnly(principal);
+    AuditScope.set({ targetId: params.id });
+    const reviewed = await this.uow.run((uow) =>
+      this.kb.reviewBreakGlass(uow, actorOf(principal), params.id),
+    );
+    return parseResponse(kbArticleSchema, reviewed);
   }
 }

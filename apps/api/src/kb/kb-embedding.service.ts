@@ -15,11 +15,13 @@ import {
   readActiveEmbeddingIndex,
   resolveAiCaps,
 } from '@watchtower/domain';
+import { assertKbEmbeddingProvider } from '@watchtower/shared';
 import { randomUUID } from 'node:crypto';
 
 import { APP_CONFIG, type ApiConfig } from '../config/config.js';
 import { DATABASE } from '../database/database.module.js';
 import { LOGGER, type AppLogger } from '../logging/logger.js';
+import { safeErrorLabel } from './kb-errors.js';
 
 /** A search query as a vector, with the id of the embedding index it belongs to. */
 export interface QueryEmbedding {
@@ -38,22 +40,21 @@ export interface QueryEmbedding {
  * only, and says so (`mode: 'keyword'`). A vector from a different model than the stored ones
  * would rank nonsense, so it is never used.
  *
- * Only `AI_PROVIDER=mock` is wired here; `anthropic` and `vertex` need the provider settings from
- * the admin store (T-116, `[ASK-HUMAN]`) and give keyword-only search until then.
+ * Only `EMBEDDING_PROVIDER=mock` is wired; any other value stops the boot. Live embedding needs
+ * the provider settings from the admin store (T-116) and the owner's approval (`[ASK-HUMAN]`).
  */
 @Injectable()
 export class KbEmbeddingService {
-  private readonly embedder: AuditedEmbedder | undefined;
+  private readonly embedder: AuditedEmbedder;
 
   constructor(
     @Inject(DATABASE) private readonly database: Database,
     @Inject(APP_CONFIG) config: ApiConfig,
     @Inject(LOGGER) private readonly logger: AppLogger,
   ) {
-    if (config.AI_PROVIDER !== 'mock') {
-      this.embedder = undefined;
-      return;
-    }
+    // Only the mock is wired. Anything else stops the boot with a clear message instead of being
+    // ignored in silence (N5): live embedding is the owner's decision.
+    assertKbEmbeddingProvider(config.EMBEDDING_PROVIDER);
     const db = database.db;
     this.embedder = createAuditedEmbedder({
       settings: { load: () => Promise.resolve(mockSettings()) },
@@ -78,7 +79,6 @@ export class KbEmbeddingService {
   }
 
   async embedQuery(query: string): Promise<QueryEmbedding | undefined> {
-    if (this.embedder === undefined) return undefined;
     try {
       const index = await readActiveEmbeddingIndex(this.database.db);
       if (index === undefined) return undefined;
@@ -99,7 +99,10 @@ export class KbEmbeddingService {
       const vector = outcome.embeddings[0];
       return vector === undefined ? undefined : { vector, indexId: index.id };
     } catch (error) {
-      this.logger.warn({ err: error }, 'query embedding failed; searching by keyword only');
+      this.logger.warn(
+        { error: safeErrorLabel(error) },
+        'query embedding failed; searching by keyword only',
+      );
       return undefined;
     }
   }
