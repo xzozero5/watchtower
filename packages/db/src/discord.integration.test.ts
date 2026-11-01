@@ -2,10 +2,10 @@ import { Pool } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { PG, isPgError } from './errors.js';
-import { migrateDown, migrateUp } from './migrator.js';
+import { loadMigrations, migrateDown, migrateUp } from './migrator.js';
 import { createTestDatabase, migrationsAfter, type TestDatabase } from './testing.js';
 
-// Migration 0015 (T-104): the Discord notify ledger. The constraints below are what keep a mock
+// The discord_notify migration (T-104): the Discord notify ledger. The constraints below are what keep a mock
 // recording from ever being read as a delivery, and what stop a second post for the same event.
 const adminUrl =
   process.env.TEST_DATABASE_URL ?? 'postgres://watchtower:watchtower@localhost:5432/watchtower';
@@ -60,7 +60,7 @@ const insert = (pool: Pool, columns: string, values: unknown[]) => {
   );
 };
 
-describe('0015 discord_notification', () => {
+describe('discord_notification', () => {
   it('starts pending and records a post once per dedupe key', async () => {
     const first = await app.query<{ state: string }>(
       `INSERT INTO discord_notification (dedupe_key, event, ticket_id, slot)
@@ -146,13 +146,16 @@ describe('0015 discord_notification', () => {
   });
 
   it('goes down and up again', async () => {
-    const later = await migrationsAfter('0015_discord_notify');
+    // Found by name, so renumbering the migration (or a later one) does not break this test.
+    const own = (await loadMigrations()).find((m) => m.id.endsWith('_discord_notify'))?.id ?? '';
+    expect(own).not.toBe('');
+    const later = await migrationsAfter(own);
     const reverted = await migrateDown(owner(), { steps: 1 + later.length });
-    expect(reverted).toEqual([...later.toReversed(), '0015_discord_notify']);
+    expect(reverted).toEqual([...later.toReversed(), own]);
     const gone = await owner().query<{ n: number }>(
       `SELECT count(*)::int AS n FROM pg_class WHERE relname = 'discord_notification'`,
     );
     expect(gone.rows[0]?.n).toBe(0);
-    expect(await migrateUp(owner())).toEqual(['0015_discord_notify', ...later]);
+    expect(await migrateUp(owner())).toEqual([own, ...later]);
   });
 });

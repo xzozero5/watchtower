@@ -5,7 +5,7 @@
 -- transport recorded it and nothing left the machine) and from `skipped` (no webhook for the slot).
 -- Holds ids and codes only: no ticket subject, no customer, no message text, no webhook URL (N1, N4).
 -- The application may not delete rows, and may change only the outcome columns.
--- Reversible: see 0015_discord_notify.down.sql.
+-- Reversible: see 0016_discord_notify.down.sql.
 
 CREATE TABLE discord_notification (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),

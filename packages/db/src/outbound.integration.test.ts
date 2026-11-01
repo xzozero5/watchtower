@@ -905,9 +905,8 @@ describe('0014 revert', () => {
     // Under 0014 an AI-authored message cannot be sent as a person's.
     await rejects(insertDelivery(app, f), INTEGRITY);
 
-    // Later migrations (0015 and on) are undone first, then 0014.
     const later = await migrationsAfter('0014_outbound_hardening');
-    const reverted = await migrateDown(owner(), { steps: 1 + later.length });
+    const reverted = await migrateDown(owner(), { steps: later.length + 1 });
     expect(reverted).toEqual([...later.toReversed(), '0014_outbound_hardening']);
     const column = await owner().query<{ n: number }>(
       `SELECT count(*)::int AS n FROM information_schema.columns

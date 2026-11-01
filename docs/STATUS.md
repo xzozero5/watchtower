@@ -34,9 +34,22 @@ snapshot สั้นสำหรับ cold start อยู่ที่ `HANDOF
 - บรรทัดใน `.gitignore` ห้ามมี comment ต่อท้าย pattern
 - (2026-11-01) หลังแก้ `packages/shared` ต้อง build/รัน test แบบ `turbo --force` ก่อนอ้างว่า package ที่ import shared ผ่าน — api import `dist` ของ shared จึงเห็นผลเก่าได้ (เคยรายงานผิดว่า api ผ่าน) `[TESTED]`
 - (2026-11-01) เวลาใน log/STATUS ต้องมาจาก `TZ=Asia/Bangkok date` เสมอ ห้ามพิมพ์เอง (เคยพิมพ์ผิดหลายชั่วโมง)
+- (2026-11-01) อย่าเทียบเวลาจาก DB กับเวลาแอปในการตัดสินใจเดียวกัน: เครื่องจริงมี skew หลายสิบ ms (host กับ Docker VM) ซึ่ง cloud ไม่เห็น · วัด skew ต้องวัดใน connection เดียว การเทียบ `docker exec date` กับ `date` นับเวลารันคำสั่งเข้าไป `[TESTED]`
 - (2026-11-01) cloud session: `dockerd` ต้องสั่งเอง · Docker Hub 429 → pull ซ้ำทีละ image · build image ไม่ได้ (corepack ไม่เชื่อ CA ของ proxy) · Playwright ใช้ `PW_EXECUTABLE_PATH=/opt/pw-browsers/chromium` · หลาย worktree รัน e2e พร้อมกันต้องตั้ง `E2E_PORT` ต่างกัน · Redis counter ข้ามรอบ test → `RATE_LIMIT_NAMESPACE`
 
 ## Log
+
+## 2026-11-01 12:57 (Asia/Bangkok) — integration-engineer + security-reviewer + main thread — T-103b–d LINE ปิด
+- ทำอะไร: merge `verify/t-103bd` เข้า `main` (webhook, media, auto-ack ผ่าน policy gate, identity link; mock เท่านั้น) · แก้บั๊กนาฬิกาสองตัวและ boundary test บน Windows ก่อน merge
+- test: main thread รันเองบน Windows: lint, typecheck, unit ผ่าน · integration db 200, domain 188, api 528, worker 83 · e2e 134 · full-stack 23 `[TESTED]`
+- ค้าง: T-103e · mark-as-read/rich menu · T-122f (P2 O-7 จาก review fix นาฬิกา)
+- ไม่ยืนยัน: live LINE ยังไม่เคยคุยกับปลายทางจริง
+
+## 2026-11-01 12:47 (Asia/Bangkok) — main thread — safe pause ตามคำสั่งเจ้าของ (โควตา) ระหว่างทำต่อบน local
+- ทำอะไร: setup เครื่องจริง · T-102 re-review ผ่าน (P3 ค้าง) · T-107 แก้ finding, re-review พบ P2 ใหม่ · เริ่ม T-104, T-111 · แก้บั๊กนาฬิกาสองตัวบน `verify/t-103bd`
+- ไฟล์: `packages/domain/src/tickets/{create,messages,support}.ts`, `apps/worker/src/outbound/{dispatcher,processor}.ts`, `tools/eslint/boundaries.test.mjs` + test
+- test: ดู HANDOFF "ทำต่อจากตรงนี้" · integration ยังไม่เขียว ไม่มีงานใหม่เข้า main
+- ไม่ยืนยัน: สองข้อที่ตกรอบล่าสุดเกิดจากโหลดหรือไม่ · ผล test ที่ agent รายงานของ T-107/T-104/T-111
 
 ## 2026-11-01 11:40 (Asia/Bangkok) — main thread — pause ตามคำสั่งเจ้าของ (ไปทำต่อบน local)
 - ทำอะไร: หยุด agent และ test ทั้งหมด · push branch งานค้าง `verify/t-103bd`, `wip/t-102bd`, `wip/t-107ac` · เขียน HANDOFF ใหม่ (archive ฉบับ 04:20) · พรอมต์เริ่มงานต่อ `docs/prompts/resume-local.md`

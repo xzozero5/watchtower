@@ -33,6 +33,14 @@ import { queueHref } from '@/lib/tickets/filters';
 import { ContactSheet } from './contact-sheet';
 import { OrgSheet } from './org-sheet';
 
+/** What each way of linking a LINE account means for staff (T-103, PRD R-2.11). */
+const LINE_VIA_COPY = {
+  staff_code: 'admin.contacts.lineViaStaffCode',
+  line_login: 'admin.contacts.lineViaLogin',
+  email_code: 'admin.contacts.lineViaEmail',
+  none: 'admin.contacts.lineViaNone',
+} as const;
+
 export function OrgDetailPage({ orgId }: { orgId: string }) {
   return (
     <RequirePermission permission="org.manage" role="lead">
@@ -95,9 +103,21 @@ function OrgDetailBody({ orgId }: { orgId: string }) {
       header: 'LINE',
       cell: (row) =>
         row.lineUserId ? (
-          <span className="inline-flex items-center gap-1">
+          <span className="inline-flex flex-wrap items-center gap-1">
             <Link2 aria-hidden className="size-3.5" />
             {t('admin.contacts.linked')}
+            {/* A staff-issued code links the account but does not verify it: staff must be able to tell. */}
+            <Pill
+              className={row.lineVerified ? undefined : 'text-muted-foreground'}
+              title={t(LINE_VIA_COPY[row.lineLinkedVia ?? 'none'])}
+            >
+              {row.lineVerified ? <CircleCheck aria-hidden className="size-3" /> : null}
+              {t(
+                row.lineVerified
+                  ? 'admin.contacts.lineVerifiedChip'
+                  : 'admin.contacts.lineUnverifiedChip',
+              )}
+            </Pill>
           </span>
         ) : (
           <span className="text-muted-foreground">—</span>

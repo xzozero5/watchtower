@@ -78,20 +78,29 @@ const PAYLOAD_KEYS: ReadonlySet<string> = new Set([
  * a provider SDK error keeps the request and response bodies on its cause, which can hold the
  * prompt (SR106-R10). Our own errors never put a payload in their own `message`.
  */
+/**
+ * Drizzle's query error puts the bound values after the SQL: `Failed query: <sql>\nparams: a,b,c`.
+ * Those are row values (a LINE user id, an email), so they must not reach a log line, a stack or a
+ * queue's `failedReason`. Everything from `params:` on is replaced; the SQL text stays.
+ */
+export function stripQueryParams(text: string): string {
+  return text.replace(/(^|\r?\n)params:[\s\S]*?(?=\r?\n\s+at |$)/g, '$1params: [redacted]');
+}
+
 export function serializeErrorForLog(error: unknown): unknown {
   if (!(error instanceof Error)) {
     return typeof error === 'object' && error !== null ? { type: 'NonError' } : error;
   }
   const out: Record<string, unknown> = {
     type: error.name,
-    message: error.message,
-    ...(error.stack === undefined ? {} : { stack: error.stack }),
+    message: stripQueryParams(error.message),
+    ...(error.stack === undefined ? {} : { stack: stripQueryParams(error.stack) }),
   };
   for (const [key, value] of Object.entries(error)) {
     if (key in out || PAYLOAD_KEYS.has(key)) continue;
     if ((ERROR_CAUSE_KEYS as readonly string[]).includes(key)) continue;
     if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
-      out[key] = value;
+      out[key] = typeof value === 'string' ? stripQueryParams(value) : value;
     }
   }
   const causeTypes: string[] = [];

@@ -11,6 +11,8 @@ import type { LineConsumptionResponse, LineQuotaResponse } from './quota.js';
 
 export const LINE_MAX_MESSAGES_PER_REQUEST = 5;
 export const LINE_MAX_TEXT_LENGTH = 5000;
+/** The most media bytes one download may hold in memory and store `[ASSUMED]`. A bigger body is refused while streaming. */
+export const LINE_CONTENT_MAX_BYTES = 25 * 1024 * 1024;
 
 export const lineTextMessageSchema = z.object({
   type: z.literal('text'),

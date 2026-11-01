@@ -42,6 +42,8 @@ x-app-env: &app-env
   # Mock sign-in is an explicit opt-in: off unless DEV_LOGIN_ENABLED=true (copy .env.example to
   # .env for local work). Ignored, and refused at boot, with Google credentials or in production.
   DEV_LOGIN_ENABLED: ${DEV_LOGIN_ENABLED:-false}
+  # Fake LINE Login: the same kind of opt-in (refused at boot in production or off a loopback APP_URL).
+  LINE_LOGIN_FAKE_ENABLED: ${LINE_LOGIN_FAKE_ENABLED:-false}
   # Port 4000 is published directly here, so anyone can send the api a forged X-Forwarded-For and
   # it is not trusted (0): the audit log and rate limits use the socket address. Behind Caddy that
   # address is always Caddy's, which is wrong the other way round: use the proxy override

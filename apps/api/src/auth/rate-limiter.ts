@@ -56,6 +56,23 @@ export class RateLimiter {
     return { allowed: count <= limit, retryAfterSeconds: Math.max(1, ttl), count };
   }
 
+  /**
+   * Reads a counter without counting this call: true once `limit` hits were recorded in the current
+   * window. For endpoints that count only failures and must refuse a blocked subject before doing
+   * any work (a database lookup, a credential read, an HMAC).
+   */
+  async blocked(
+    scope: string,
+    subject: string,
+    limit: number,
+  ): Promise<{ readonly blocked: boolean; readonly retryAfterSeconds: number }> {
+    const digest = createHash('sha256').update(subject).digest('hex').slice(0, 32);
+    const key = `${this.namespace}:rl:${scope}:${digest}`;
+    const count = Number((await this.redis.get(key)) ?? 0);
+    if (count < limit) return { blocked: false, retryAfterSeconds: 0 };
+    return { blocked: true, retryAfterSeconds: Math.max(1, await this.redis.ttl(key)) };
+  }
+
   /** Throws RateLimitedError (429) once `limit` is exceeded. */
   async enforce(
     scope: string,

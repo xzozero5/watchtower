@@ -1,3 +1,6 @@
+import { line } from '@watchtower/channels';
+
+import { lineChannelsFrom } from '../line/transports.js';
 import type { ProcessorContext } from '../processors/index.js';
 import { NO_CHANNELS, type OutboundChannels } from './channels.js';
 import { createOutboundDispatcher, type DispatcherDeps } from './dispatcher.js';
@@ -21,17 +24,46 @@ export interface OutboundOverrides {
  * policy gate, built on the worker's own database handle, so the worker enforces the same rules as
  * the api (ADR-011 section 1).
  */
-export function createOutboundRegistration(context: ProcessorContext) {
+/** The providers this process can send through: an override, else what the deployment wired. */
+export function outboundChannelsFor(context: ProcessorContext): OutboundChannels {
+  return context.overrides.outbound?.channels ?? defaultChannels(context);
+}
+
+export function createOutboundDispatcherFor(context: ProcessorContext) {
   const outbound = context.overrides.outbound ?? {};
-  const dispatcher = createOutboundDispatcher({
+  return createOutboundDispatcher({
     database: context.database,
     domain: context.domain,
-    channels: outbound.channels ?? NO_CHANNELS,
+    channels: outboundChannelsFor(context),
     appHost: new URL(context.config.APP_URL).hostname,
     realtime: context.realtime,
     logger: context.logger,
     ...(outbound.lineQuotaLimit === undefined ? {} : { lineQuotaLimit: outbound.lineQuotaLimit }),
     ...(outbound.lineRouter === undefined ? {} : { lineRouter: outbound.lineRouter }),
   });
+}
+
+/**
+ * Without an override, LINE is reachable exactly where the deployment supplied a LINE transport
+ * (T-103); Gmail is not wired yet.
+ */
+function defaultChannels(context: ProcessorContext): OutboundChannels {
+  const transportFor = context.overrides.line?.transportFor;
+  if (transportFor === undefined) return NO_CHANNELS;
+  return {
+    ...NO_CHANNELS,
+    ...lineChannelsFrom(transportFor, (transport) => {
+      // The channel secret is for verifying webhooks, which the api does; sending never asks for it.
+      const adapter = new line.LineAdapter({
+        transport,
+        getChannelSecret: () => Promise.reject(new Error('the worker does not verify webhooks')),
+      });
+      return { send: (input) => adapter.send(input) };
+    }),
+  };
+}
+
+export function createOutboundRegistration(context: ProcessorContext) {
+  const dispatcher = createOutboundDispatcherFor(context);
   return createOutboundProcessor({ dispatcher, logger: context.logger });
 }

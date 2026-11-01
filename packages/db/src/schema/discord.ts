@@ -1,4 +1,4 @@
-// Discord notify ledger (T-104, migration 0015). Mirrors the SQL by hand; the SQL file is the source
+// Discord notify ledger (T-104, migration 0016). Mirrors the SQL by hand; the SQL file is the source
 // of truth (CHECKs, column-level privileges).
 import { sql } from 'drizzle-orm';
 import {

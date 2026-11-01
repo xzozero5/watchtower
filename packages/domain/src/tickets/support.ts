@@ -9,7 +9,7 @@ import {
   type TicketPriority,
   type TicketStatus,
 } from '@watchtower/shared';
-import { and, eq, type SQL } from 'drizzle-orm';
+import { and, eq, sql, type SQL } from 'drizzle-orm';
 
 import { badRequest, notFound } from '../errors.js';
 import type { MessageRow, TicketRow } from '../rows.js';
@@ -230,6 +230,13 @@ export async function findByExternalId(
 }
 
 /**
+ * When a message happened: the database clock, as on `ticket_event`. The timeline orders the two
+ * tables together, and this process does not share a clock with the database. Statement time, so a
+ * message stays after the event its transaction opened with.
+ */
+export const MESSAGE_CLOCK = sql`clock_timestamp()`;
+
+/**
  * Saves a message on a ticket and touches the ticket's `updated_at` (the shared tail of a reply and
  * a note). Returns the message and the ticket row as the update left it.
  */
@@ -238,7 +245,10 @@ export async function insertMessage(
   values: typeof schema.message.$inferInsert,
   ticketPatch: Partial<typeof schema.ticket.$inferInsert>,
 ): Promise<{ message: MessageRow; touched: TicketRow | undefined }> {
-  const [message] = await tx.insert(schema.message).values(values).returning();
+  const [message] = await tx
+    .insert(schema.message)
+    .values({ ...values, createdAt: MESSAGE_CLOCK })
+    .returning();
   if (!message) throw new Error('message insert returned no row');
   const [touched] = await tx
     .update(schema.ticket)
