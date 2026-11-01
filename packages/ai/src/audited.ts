@@ -33,13 +33,21 @@ export class AuditRecordError extends Error {
   override readonly name = 'AuditRecordError';
 }
 
+/** What the audit needs from a redaction session: its running counts (`RedactionSession` has it). */
+export interface RedactionReportSource {
+  report(): RedactionReport;
+}
+
 export interface AgentCall {
   agent: AgentName;
   prompt: PromptRef;
   system: RedactedText;
   messages: readonly LlmMessage[];
-  /** From `RedactionSession.report()`; counts only. */
-  redaction: RedactionReport;
+  /**
+   * The redaction session the prompt text came from. The audit row takes its counts from the
+   * session itself, when the call is made (SR106-R9): a caller cannot hand in a smaller number.
+   */
+  redaction: RedactionReportSource;
   tier?: ModelTier;
   intent?: string | null;
   ticketId?: string | null;
@@ -63,6 +71,8 @@ export interface AuditedLlmDeps {
 export interface AuditedResult {
   response: LlmResponse;
   run: AiRunRecord;
+  /** The id the sink gave the row (`ai_run.id`), when it reports one. */
+  runId: string | null;
 }
 
 const count = (value: unknown): number =>
@@ -102,6 +112,12 @@ export function createAuditedLlm(deps: AuditedLlmDeps) {
       const settings = await deps.settings.load();
       const resolved = resolveModel(settings, call.agent, call.tier);
       const startedAt = now();
+      let report: RedactionReport;
+      try {
+        report = call.redaction.report();
+      } catch {
+        throw new AuditInputError('Invalid audit fields: redaction');
+      }
 
       const base = {
         agent: call.agent,
@@ -110,7 +126,7 @@ export function createAuditedLlm(deps: AuditedLlmDeps) {
         tier: resolved.tier,
         prompt: call.prompt,
         inputHash: hmacInputHash(settings.inputHashKey, call),
-        redaction: { total: call.redaction.total, byKind: { ...call.redaction.byKind } },
+        redaction: { total: report.total, byKind: { ...report.byKind } },
         intent: call.intent ?? null,
         ticketId: call.ticketId ?? null,
         startedAt: new Date(startedAt).toISOString(),
@@ -134,9 +150,10 @@ export function createAuditedLlm(deps: AuditedLlmDeps) {
         throw new AuditInputError(`Invalid audit fields: ${fields.join(', ')}`);
       }
 
-      const write = async (run: AiRunRecord, original?: unknown): Promise<void> => {
+      const write = async (run: AiRunRecord, original?: unknown): Promise<string | null> => {
         try {
-          await deps.sink.record(run);
+          const receipt = await deps.sink.record(run);
+          return typeof receipt === 'object' && typeof receipt.id === 'string' ? receipt.id : null;
         } catch (error) {
           throw new AuditWriteError('Could not write the ai_run record', {
             cause: original === undefined ? error : new AggregateError([original, error]),
@@ -240,10 +257,10 @@ export function createAuditedLlm(deps: AuditedLlmDeps) {
       }
 
       const { run, degraded } = finish({ response });
-      await write(run);
+      const runId = await write(run);
       if (degraded)
         throw new AuditRecordError('The ai_run record was invalid; an error row was written');
-      return { response, run };
+      return { response, run, runId };
     },
   };
 }

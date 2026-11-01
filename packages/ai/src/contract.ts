@@ -221,7 +221,13 @@ export type AiRunRecord = z.infer<typeof aiRunRecordSchema>;
  * caller, but the failure must be loud; see `createAuditedLlm`.
  */
 export interface AiRunSink {
-  record(run: AiRunRecord): Promise<void>;
+  /** May return the id of the row it wrote, so the caller can link to it (`AuditedResult.runId`). */
+  record(run: AiRunRecord): Promise<void | AiRunReceipt>;
+}
+
+/** What a sink says about the row it wrote. */
+export interface AiRunReceipt {
+  id: string;
 }
 
 // ---------------------------------------------------------------------------------------------

@@ -47,7 +47,7 @@ function setup(options: { settings?: AiSettings; sinkFails?: boolean } = {}) {
     prompt: TEST_PROMPT,
     system: session.redact('You classify.'),
     messages: [{ role: 'user', content: session.redact('mail me at a@b.com or 0812345678') }],
-    redaction: session.report(),
+    redaction: session,
     intent: 'password_reset',
     ticketId: 'T-1',
   };
@@ -222,7 +222,7 @@ describe('createAuditedLlm: one audit row per provider call, on every path', () 
   it.each([
     ['prompt version 0', { prompt: { id: 'classifier', version: 0, hash: 'a'.repeat(64) } }],
     ['prompt id with spaces', { prompt: { id: 'Bad Id', version: 1, hash: 'a'.repeat(64) } }],
-    ['negative redaction total', { redaction: { total: -1, byKind: {} } }],
+    ['negative redaction total', { redaction: { report: () => ({ total: -1, byKind: {} }) } }],
   ])('%s: fails before the provider is called', async (_name, patch) => {
     const t = counted();
     await expect(t.llm.generate({ ...t.call, ...patch })).rejects.toBeInstanceOf(AuditInputError);
