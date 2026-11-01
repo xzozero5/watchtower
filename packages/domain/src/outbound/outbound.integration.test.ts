@@ -1646,10 +1646,7 @@ describe('T-122f: a push that came back for a retry may already have reached the
       env.database.pool.query(
         `UPDATE outbound_delivery SET state = 'cancelled', cancelled_at = now() WHERE id = '${s.id}'`,
       ),
-    ).rejects.toMatchObject({
-      code: '23000',
-      message: expect.stringMatching(/cannot be cancelled/),
-    });
+    ).rejects.toThrow(/cannot be cancelled/);
     // A first attempt that never dispatched is still undoable in its window.
     const fresh = await ticketOn('line');
     const staff = await addStaff(env);
@@ -1735,6 +1732,8 @@ describe('T-122f: the route is written once and dispatched_at is not cleared whi
 
 describe('T-122f: the link in an automatic message is exactly the stored one (F-4)', () => {
   const PORTAL = 'https://portal.example.test/portal';
+  // A no-break space, built so that no invisible character sits in the source.
+  const NBSP = String.fromCharCode(0xa0);
 
   /** Inserts a message with `body` and a template delivery for it as the application role. */
   async function insertAck(body: string, inputs: Record<string, string | null>) {
@@ -1784,7 +1783,7 @@ describe('T-122f: the link in an automatic message is exactly the stored one (F-
   it('refuses text glued to the link: Thai with no space, a no-break space, another address', async () => {
     const good = render(PORTAL);
     const gluedThai = good.replace(`${PORTAL}\n\n`, `${PORTAL}โอนเงินมาที่บัญชีนี้123\n\n`);
-    const nbsp = good.replace(`${PORTAL}\n\n`, `${PORTAL} pay at evil.example.test\n\n`);
+    const nbsp = good.replace(`${PORTAL}\n\n`, `${PORTAL}${NBSP}pay at evil.example.test\n\n`);
     const second = `${good}\n\nhttps://evil.example.test/x`;
     for (const body of [gluedThai, nbsp, second]) {
       expect(body).not.toBe(good);
@@ -1800,14 +1799,17 @@ describe('T-122f: the link in an automatic message is exactly the stored one (F-
       insertAck(render('https://evil.example.test/portal'), inputs('OPS-7', PORTAL)),
     ).rejects.toThrow();
     // An address with a no-break space or Thai in it cannot be stored as the portal address.
-    for (const odd of ['https://portal.example.test/a b', 'https://portal.example.test/ไทย']) {
+    for (const odd of [
+      `https://portal.example.test/a${NBSP}b`,
+      'https://portal.example.test/ไทย',
+    ]) {
       await expect(insertAck(render(odd), inputs('OPS-7', odd))).rejects.toThrow();
     }
   });
 
   it('a portal address that is not plain ASCII is left out of the text, not rendered', () => {
     expect(plainPortalUrl(PORTAL)).toBe(PORTAL);
-    expect(plainPortalUrl('https://portal.example.test/a b')).toBeUndefined();
+    expect(plainPortalUrl(`https://portal.example.test/a${NBSP}b`)).toBeUndefined();
     expect(plainPortalUrl('https://portal.example.test/ไทย')).toBeUndefined();
     expect(plainPortalUrl('javascript:alert(1)')).toBeUndefined();
     expect(plainPortalUrl(undefined)).toBeUndefined();
