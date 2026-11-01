@@ -21,6 +21,7 @@ const EXPECTED_FEATURES = [
   'credentials',
   'views',
   'admin',
+  'channelAccounts',
 ];
 
 describe('feature records', () => {

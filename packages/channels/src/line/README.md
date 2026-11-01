@@ -118,7 +118,9 @@ redelivered event is identical except `deliveryContext.isRedelivery`, and duplic
   the webhook secret is the same for every `:channelAccountId`: a body signed for one LINE Official Account is
   accepted at the URL of another. With a single Official Account (the Phase 1 case) there is nothing to cross.
   Binding the secret per account needs per-account credential keys in the store (a later task); until then do not
-  register a second LINE account with a different secret.
+  register a second LINE account with a different secret. Since T-131 the API and the `channel-accounts` CLI enforce
+  this: creating a second *active* LINE account is refused (409 / exit 1) until the first one is disabled, and a
+  disabled account's webhook answers 401 like an unknown one.
 - **Order of checks.** The failed-signature limiter is read first (a blocked address costs one Redis read), then the
   account, then the secret, then the HMAC. Only failures count, so LINE itself is never throttled.
 - **Fake LINE Login** is off unless `LINE_LOGIN_FAKE_ENABLED=true`, which the config guard refuses in production, with
