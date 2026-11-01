@@ -10,7 +10,8 @@ const USAGE =
   '  organizations and tickets. Idempotent; writes only to the database.\n' +
   '  MIGRATION_DATABASE_URL (or DATABASE_URL) must be set; run `pnpm db:migrate` first.\n' +
   '  --examples <dir>  directory with intents/, calendars/ and sla/ (or SEED_EXAMPLES_DIR)\n' +
-  '  --allow-production  required when NODE_ENV=production';
+  '  --allow-production  required when NODE_ENV=production; then only reference data is loaded\n' +
+  '                      (calendars, SLA policies, intents, shifts): no demo people, tickets or articles';
 
 async function main(argv: readonly string[]): Promise<number> {
   let examplesDir = process.env.SEED_EXAMPLES_DIR || undefined;
