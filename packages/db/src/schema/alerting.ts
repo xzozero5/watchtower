@@ -95,6 +95,8 @@ export const alert = pgTable(
     resolvedAt: timestamptz('resolved_at'),
     ackedAt: timestamptz('acked_at'),
     ackedBy: uuid('acked_by').references(() => users.id, { onDelete: 'set null' }),
+    /** `web` or `discord`. */
+    ackedVia: text('acked_via'),
     escalationLevel: smallint('escalation_level').notNull().default(0),
     nextEscalationAt: timestamptz('next_escalation_at'),
     snoozedUntil: timestamptz('snoozed_until'),
@@ -141,5 +143,44 @@ export const alertEvent = pgTable(
   (table) => [
     uniqueIndex('alert_event_provider_key').on(table.source, table.providerEventId),
     index('alert_event_alert_idx').on(table.alertId, table.createdAt),
+  ],
+);
+
+/**
+ * One step of an escalation policy that was carried out (T-201d, migration 0042): who was told
+ * (ids only) and how the chat post of that step went. `(alertId, level)` is unique, so a step happens
+ * once however often the sweep runs. The `chat*` columns follow the `discord_notification` ledger:
+ * claimed (`sending`) before the post; a mock transport can never record `sent`.
+ */
+export const alertEscalation = pgTable(
+  'alert_escalation',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    alertId: uuid('alert_id')
+      .notNull()
+      .references(() => alert.id, { onDelete: 'cascade' }),
+    level: smallint('level').notNull(),
+    target: text('target').notNull(),
+    fallback: text('fallback'),
+    recipientIds: uuid('recipient_ids')
+      .array()
+      .notNull()
+      .default(sql`'{}'`),
+    recipientCount: integer('recipient_count').notNull().default(0),
+    createdAt: timestamptz('created_at').notNull().defaultNow(),
+    chatState: text('chat_state').notNull().default('pending'),
+    chatNextAttemptAt: timestamptz('chat_next_attempt_at').notNull().defaultNow(),
+    chatClaimedAt: timestamptz('chat_claimed_at'),
+    chatAttempts: integer('chat_attempts').notNull().default(0),
+    chatErrorCode: text('chat_error_code'),
+    chatChannelId: text('chat_channel_id'),
+    chatMessageId: text('chat_message_id'),
+    chatSentAt: timestamptz('chat_sent_at'),
+  },
+  (table) => [
+    uniqueIndex('alert_escalation_step_key').on(table.alertId, table.level),
+    index('alert_escalation_chat_due_idx')
+      .on(table.chatNextAttemptAt)
+      .where(sql`${table.chatState} IN ('pending', 'sending')`),
   ],
 );
