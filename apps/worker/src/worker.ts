@@ -11,6 +11,7 @@ import { z } from 'zod';
 
 import { createAiRuntime } from './ai/runtime.js';
 import type { WorkerConfig } from './config.js';
+import { defaultGmailRuntime } from './gmail/index.js';
 import { createHealthServer } from './health.js';
 import type { WorkerLogger } from './logger.js';
 import { createSmtpMailer, type Mailer } from './mailer.js';
@@ -104,6 +105,9 @@ export async function startWorker(
   // The AI layer (T-106e): the mock provider by default; absent (rules only) for a provider not wired yet.
   const ai = createAiRuntime(config, database, logger, overrides.ai);
 
+  // How Gmail mailboxes are reached (T-102): the in-memory fake unless the `gmail` credential is complete.
+  const gmailRuntime = overrides.gmail?.runtime ?? defaultGmailRuntime(config, database, logger);
+
   const consumers: Worker[] = [];
   const consume = (queue: QueueName, processor: Processor, concurrency?: number): Worker => {
     const worker = new Worker(queue, processor, {
@@ -124,7 +128,17 @@ export async function startWorker(
   for (const registration of PROCESSORS) {
     consume(
       registration.queue,
-      registration.create({ config, logger, database, mailer, domain, realtime, ai, overrides }),
+      registration.create({
+        config,
+        logger,
+        database,
+        mailer,
+        domain,
+        realtime,
+        ai,
+        gmail: gmailRuntime,
+        overrides,
+      }),
       registration.concurrency,
     );
   }

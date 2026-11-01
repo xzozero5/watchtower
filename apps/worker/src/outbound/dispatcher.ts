@@ -265,7 +265,7 @@ export function createOutboundDispatcher(deps: DispatcherDeps) {
     delivery: OutboundDeliveryRow,
     context: DeliveryContext,
   ): Promise<DispatchOutcome> {
-    const sender = deps.channels.gmail(context.account);
+    const sender = await deps.channels.gmail(context.account);
     if (sender === undefined) return failNow(delivery, 'channel_not_connected');
     const { ticket, message, parent, requester } = context;
     const recipient = parent?.fromAddress ?? requester?.emails[0] ?? null;

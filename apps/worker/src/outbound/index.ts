@@ -26,7 +26,11 @@ export function createOutboundRegistration(context: ProcessorContext) {
   const dispatcher = createOutboundDispatcher({
     database: context.database,
     domain: context.domain,
-    channels: outbound.channels ?? NO_CHANNELS,
+    // Gmail goes through the worker's runtime (fake in mock mode, T-102d); LINE is wired by T-103.
+    channels: outbound.channels ?? {
+      ...NO_CHANNELS,
+      gmail: (account) => context.gmail.senderFor(account),
+    },
     appHost: new URL(context.config.APP_URL).hostname,
     realtime: context.realtime,
     logger: context.logger,
