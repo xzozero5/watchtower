@@ -38,6 +38,11 @@ snapshot สั้นสำหรับ cold start อยู่ที่ `HANDOF
 
 ## Log
 
+## 2026-11-01 11:10 (Asia/Bangkok) — frontend-dev + main thread — T-127 Head console (web) ปิด
+- ทำอะไร: `/home` (head + lead): tile SLA at risk/Unassigned/New/Needs triage, รายการ at-risk, แผง AI (สวิตช์, intent ต่อ stage 0–2, pinned; Draft ready/Needs you เป็นช่องว่างจนกว่าจะมี AI insight), ตามสถานะ/คิว, load ต่อคน, สุขภาพระบบ, refresh 60 s · `/admin/*`: users, orgs + `:id`, SLA + ปฏิทิน (holiday checked), intents + stage 0–2 + pin (stage 3 ไม่ render), queues, AI controls (สวิตช์สองตัว + dialog เหตุผล 3–500 ทั้งสองทาง; lead อ่านอย่างเดียว), audit (filter + CSV export สำหรับ head), integrations placeholder (T-116) · banner "AI paused" ทุกหน้าของ staff เมื่อ kill switch เปิด · rail Home/Admin ตามสิทธิ์, `g d`/`g a`, ⌘K admin · `packages/ui`: Dialog, Sheet, DataTable, Breadcrumb, StageBadge · ใช้กฎ "ลดข้อความ" ตาม feedback เจ้าของ
+- ยังไม่ทำ: filter target ใน audit, แท็บ Roles, เวลาทำการหลายช่วงต่อวัน (แก้ได้ช่วงแรกเท่านั้น)
+- test: main thread รันบน main + `wip/t-127-web`: lint, typecheck ผ่าน · ui 267, web 595 · e2e (mock) 123 · full-stack 23 (✘ เดียวคือ B-001 ที่เป็น `test.fail` ตามคาด) `[TESTED]` · ยังไม่ได้ลองกับ API จริงผ่าน browser นอกจาก full-stack เดิม
+
 ## 2026-11-01 09:50 (Asia/Bangkok) — backend-dev + main thread — T-127 API (หน้า head ยังทำอยู่)
 - ทำอะไร: `GET /v1/tickets/stats` (group by status/queue/assignee/priority + SLA state, CTE เดียว, client 403 `[ASSUMED]`) · list filter `slaState` + sort `created_asc`/`sla_due_asc` · `changedByName` ของสวิตช์ AI + `GET /v1/intents/:id/autonomy/history` (lead/head) · holiday `checked/checkedAt/checkedBy` + `PATCH …/holidays/:date` (head, audit) migration `0009_holiday_checked` · `contactCount` ใน org + `GET /v1/org-tiers` · audit `actorType` filter + CSV export (`audit.read` + `pii.export`, 6/ชม., กัน formula injection, audit ทุกครั้ง)
 - test เดิมที่แก้: field ใหม่ของ holiday, `features.test.ts` เพิ่ม `admin`, route-policy เพิ่ม route ใหม่, seed assert holiday unchecked

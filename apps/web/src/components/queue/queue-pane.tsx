@@ -24,6 +24,7 @@ import {
   activeFilterCount,
   DEFAULT_FILTERS,
   filtersEqual,
+  filtersFromSearch,
   type QueueFilters,
 } from '@/lib/tickets/filters';
 import { toRowModel } from '@/lib/tickets/model';
@@ -80,7 +81,10 @@ export function QueuePane({
   const searchRef = useRef<HTMLInputElement>(null);
   const listboxRef = useRef<HTMLUListElement>(null);
 
-  const [filters, setFilters] = useState<QueueFilters>(DEFAULT_FILTERS);
+  // A link from Home may name filters in the address (`/?assignee=unassigned&status=new`).
+  const [filters, setFilters] = useState<QueueFilters>(
+    () => filtersFromSearch(window.location.search) ?? DEFAULT_FILTERS,
+  );
   const [savedViews, setSavedViews] = useState<SavedView[]>(() =>
     loadSavedViews(browserStorage(), userId),
   );
