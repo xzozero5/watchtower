@@ -42,6 +42,8 @@ x-app-env: &app-env
   # Mock sign-in is an explicit opt-in: off unless DEV_LOGIN_ENABLED=true (copy .env.example to
   # .env for local work). Ignored, and refused at boot, with Google credentials or in production.
   DEV_LOGIN_ENABLED: ${DEV_LOGIN_ENABLED:-false}
+  # Fake LINE Login: the same kind of opt-in (refused at boot in production or off a loopback APP_URL).
+  LINE_LOGIN_FAKE_ENABLED: ${LINE_LOGIN_FAKE_ENABLED:-false}
   # Port 4000 is published directly here, so anyone can send the api a forged X-Forwarded-For and
   # it is not trusted (0): the audit log and rate limits use the socket address. Behind Caddy that
   # address is always Caddy's, which is wrong the other way round: use the proxy override
@@ -66,6 +68,19 @@ x-app-env: &app-env
   GMAIL_SERVICE_ACCOUNT_JSON_PATH: ${GMAIL_SERVICE_ACCOUNT_JSON_PATH:-}
   GMAIL_IMPERSONATE_USER: ${GMAIL_IMPERSONATE_USER:-}
   PUBSUB_EMULATOR_HOST: ${PUBSUB_EMULATOR_HOST:-}
+  # Gmail push (T-102b/c): topic for users.watch (worker), audience and signer of the push token (api).
+  # Empty = mock: no watch is called and the receiver answers 503.
+  PUBSUB_PROJECT_ID: ${PUBSUB_PROJECT_ID:-}
+  PUBSUB_TOPIC: ${PUBSUB_TOPIC:-}
+  GMAIL_PUSH_AUDIENCE: ${GMAIL_PUSH_AUDIENCE:-}
+  GMAIL_PUSH_SERVICE_ACCOUNT: ${GMAIL_PUSH_SERVICE_ACCOUNT:-}
+  # The in-memory Gmail (nothing is really sent): an explicit opt-in for a laptop, refused at boot in
+  # production and on a non-loopback APP_URL. Off here: without a Gmail credential a reply fails visibly.
+  GMAIL_MOCK_ENABLED: ${GMAIL_MOCK_ENABLED:-false}
+  GMAIL_PUSH_RATE_PER_MINUTE: ${GMAIL_PUSH_RATE_PER_MINUTE:-600}
+  GMAIL_HEARTBEAT_STALE_MINUTES: ${GMAIL_HEARTBEAT_STALE_MINUTES:-120}
+  GMAIL_FULL_SYNC_DAYS: ${GMAIL_FULL_SYNC_DAYS:-7}
+  GMAIL_FULL_SYNC_MAX_MESSAGES: ${GMAIL_FULL_SYNC_MAX_MESSAGES:-500}
   LINE_CHANNEL_ID: ${LINE_CHANNEL_ID:-}
   LINE_CHANNEL_SECRET: ${LINE_CHANNEL_SECRET:-}
   LINE_CHANNEL_ACCESS_TOKEN: ${LINE_CHANNEL_ACCESS_TOKEN:-}

@@ -192,6 +192,47 @@ describe('dev login needs an explicit opt-in (C-1)', () => {
   });
 });
 
+describe('the fake LINE Login needs an explicit opt-in (C-2)', () => {
+  it('is off unless LINE_LOGIN_FAKE_ENABLED is set to true', () => {
+    expect(parseEnv(schema, validEnv).LINE_LOGIN_FAKE_ENABLED).toBe(false);
+    expect(
+      parseEnv(schema, { ...validEnv, LINE_LOGIN_FAKE_ENABLED: '' }).LINE_LOGIN_FAKE_ENABLED,
+    ).toBe(false);
+    expect(
+      parseEnv(schema, { ...validEnv, LINE_LOGIN_FAKE_ENABLED: 'true' }).LINE_LOGIN_FAKE_ENABLED,
+    ).toBe(true);
+  });
+
+  it('is accepted on a loopback APP_URL outside production', () => {
+    expect(issuesFor({ ...validEnv, LINE_LOGIN_FAKE_ENABLED: 'true' }).size).toBe(0);
+  });
+
+  it('refuses to boot in production', () => {
+    const issues = issuesFor({ ...productionEnv, LINE_LOGIN_FAKE_ENABLED: 'true' });
+    expect(issues.get('LINE_LOGIN_FAKE_ENABLED')).toContain('production');
+  });
+
+  it('refuses to boot when LINE Login credentials are set', () => {
+    const issues = issuesFor({
+      ...validEnv,
+      LINE_LOGIN_FAKE_ENABLED: 'true',
+      LINE_LOGIN_CHANNEL_ID: '1234567890',
+    });
+    expect(issues.get('LINE_LOGIN_FAKE_ENABLED')).toContain('credentials');
+  });
+
+  it('refuses to boot on an APP_URL that is not loopback', () => {
+    const issues = issuesFor({
+      ...validEnv,
+      APP_URL: 'https://desk.example.com',
+      JWT_SECRET: 'x'.repeat(48),
+      APP_ENCRYPTION_KEY: 'y'.repeat(48),
+      LINE_LOGIN_FAKE_ENABLED: 'true',
+    });
+    expect(issues.get('LINE_LOGIN_FAKE_ENABLED')).toContain('loopback');
+  });
+});
+
 describe('weak secrets are refused off the local machine (C-1)', () => {
   const remote = { ...validEnv, APP_URL: 'https://staging.example.com' };
 
@@ -320,6 +361,54 @@ describe('dev login on a reachable host (C-16)', () => {
     expect(
       issuesFor({ ...validEnv, DEV_LOGIN_ENABLED: 'true', APP_URL: 'http://localhost:3000' }).has(
         'DEV_LOGIN_ENABLED',
+      ),
+    ).toBe(false);
+  });
+});
+
+describe('the in-memory Gmail needs an explicit opt-in (T-102 N-1)', () => {
+  it.each(['GMAIL_SERVICE_ACCOUNT_JSON_PATH', 'GMAIL_IMPERSONATE_USER'])(
+    'refuses the flag while %s is set',
+    (name) => {
+      expect(() =>
+        parseEnv(schema, { ...validEnv, GMAIL_MOCK_ENABLED: 'true', [name]: 'x' }),
+      ).toThrow(/GMAIL_MOCK_ENABLED/);
+    },
+  );
+
+  it('is off unless GMAIL_MOCK_ENABLED is true, including when NODE_ENV is development', () => {
+    expect(parseEnv(schema, validEnv).GMAIL_MOCK_ENABLED).toBe(false);
+    expect(parseEnv(schema, { ...validEnv, NODE_ENV: 'development' }).GMAIL_MOCK_ENABLED).toBe(
+      false,
+    );
+    expect(parseEnv(schema, { ...validEnv, GMAIL_MOCK_ENABLED: '' }).GMAIL_MOCK_ENABLED).toBe(
+      false,
+    );
+    expect(parseEnv(schema, { ...validEnv, GMAIL_MOCK_ENABLED: 'true' }).GMAIL_MOCK_ENABLED).toBe(
+      true,
+    );
+  });
+
+  it('refuses to boot in production', () => {
+    expect(
+      issuesFor({ ...productionEnv, GMAIL_MOCK_ENABLED: 'true' }).get('GMAIL_MOCK_ENABLED'),
+    ).toContain('production');
+  });
+
+  it('refuses to boot when APP_URL is not loopback, even under NODE_ENV=development (compose default)', () => {
+    const issues = issuesFor({
+      ...validEnv,
+      NODE_ENV: 'development',
+      GMAIL_MOCK_ENABLED: 'true',
+      APP_URL: 'https://support.example.com',
+    });
+    expect(issues.get('GMAIL_MOCK_ENABLED')).toContain('loopback');
+  });
+
+  it('is accepted on a loopback APP_URL', () => {
+    expect(
+      issuesFor({ ...validEnv, GMAIL_MOCK_ENABLED: 'true', APP_URL: 'http://localhost:3000' }).has(
+        'GMAIL_MOCK_ENABLED',
       ),
     ).toBe(false);
   });

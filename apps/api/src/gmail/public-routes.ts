@@ -4,4 +4,7 @@
  * decision: `auth/routes-policy.test.ts` fails if a public route is missing here, or listed here
  * but not public. A public route must authenticate itself (signature, token) before it acts.
  */
-export const GMAIL_PUBLIC_ROUTES: readonly string[] = [];
+export const GMAIL_PUBLIC_ROUTES: readonly string[] = [
+  // Pub/Sub push: authenticated by the OIDC token Pub/Sub signs (T-102b).
+  'POST /v1/inbound/gmail/push',
+];

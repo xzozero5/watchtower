@@ -308,9 +308,26 @@ describe('ingest queue: an event becomes a ticket', () => {
     const { payload } = mailPayload();
     const eventId = await receive(gmailId, payload.id, payload);
     await settled(eventId);
-    const tickets = await ticketCount();
-    const messages = (await owner().select().from(schema.message)).length;
-    const seen = received.length;
+    // Count only what belongs to this event: earlier cases leave retries and realtime events in flight
+    // that may land in the middle of this one, so database-wide counts made this test flaky.
+    const ticketId = (await messageFor(eventId))?.ticketId ?? '';
+    const own = async () => ({
+      inboundMessages: (
+        await owner()
+          .select({ id: schema.inboundMessage.id })
+          .from(schema.inboundMessage)
+          .where(eq(schema.inboundMessage.inboundEventId, eventId))
+      ).length,
+      messages: (
+        await owner()
+          .select({ id: schema.message.id })
+          .from(schema.message)
+          .where(eq(schema.message.ticketId, ticketId))
+      ).length,
+      events: received.filter((event) => JSON.stringify(event).includes(ticketId)).length,
+    });
+    const before = await own();
+    expect(ticketId).not.toBe('');
 
     // 1. BullMQ delivers the job again: the event is not pending any more, so nothing happens.
     const queue = new Queue(QUEUE_NAMES.ingest, {
@@ -357,10 +374,9 @@ describe('ingest queue: an event becomes a ticket', () => {
       await queue2.close();
     }
     expect((await eventRow(eventId)).status).toBe('processed');
-    expect(await ticketCount()).toBe(tickets);
-    expect((await owner().select().from(schema.message)).length).toBe(messages);
     await new Promise((resolve) => setTimeout(resolve, 200));
-    expect(received.length).toBe(seen);
+    expect(await own()).toEqual(before);
+    expect((await messageFor(eventId))?.ticketId).toBe(ticketId);
   });
 
   it('appends a reply from the same thread to the ticket and reopens one waiting on the customer', async () => {

@@ -72,7 +72,7 @@ export const PERMISSIONS = {
   'ai.run.read': 'View AI run records: prompt version, model, tools and cost',
   // T-122e (migration 0014).
   'ticket.cancel.any': "Undo a colleague's send before it goes out",
-  // Phase 1 (T-107a, migration 0015_kb).
+  // Phase 1 (T-107a, migration 0018_kb).
   'kb.read.customer': 'Search the customer-visible knowledge base (client)',
   'kb.publish.break_glass':
     'Publish a knowledge base article without a second person, with a reason (head)',

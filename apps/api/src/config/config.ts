@@ -84,6 +84,12 @@ const apiEnvSchema = createEnvSchema({
     .string()
     .regex(/^[a-z0-9-]{1,40}$/)
     .default('wt'),
+  /**
+   * Gmail push notifications accepted per minute per client IP, before the token is even checked
+   * (T-102b). Pub/Sub delivers from Google addresses, so the limit is generous `[ASSUMED]`; it is
+   * there to bound the cost of a flood of forged requests, not to pace real mail.
+   */
+  GMAIL_PUSH_RATE_PER_MINUTE: z.coerce.number().int().min(1).max(100_000).default(600),
   /** Portal submissions per hour: per client IP, per email address, per organization. */
   PORTAL_RATE_IP_PER_HOUR: z.coerce.number().int().min(1).max(10_000).default(20),
   PORTAL_RATE_EMAIL_PER_HOUR: z.coerce.number().int().min(1).max(1000).default(5),

@@ -270,9 +270,9 @@ describe('Gmail', () => {
     const { ticketId, threadId, messageId } = await gmailTicket();
     const { delivery, message } = await staffReply(ticketId, 'We are on it.');
 
-    // Before the window ends the trigger is a no-op.
+    // Before the window ends the trigger sends nothing and has to come back.
     clock.now = at(2);
-    expect(await dispatcher.dispatch(delivery.id)).toEqual({ status: 'skipped' });
+    expect(await dispatcher.dispatch(delivery.id)).toMatchObject({ status: 'early' });
     expect(fakeGmail.sent).toHaveLength(0);
 
     clock.now = at(6);
@@ -368,6 +368,20 @@ describe('Gmail', () => {
     expect(fakeGmail.calls.filter((call) => call.op === 'sendMessage')).toHaveLength(1);
   });
 
+  it('treats a failure to get a token as a certain non-delivery, not an unknown outcome', async () => {
+    const { ticketId } = await gmailTicket();
+    const { delivery } = await staffReply(ticketId, 'No token yet');
+    clock.now = at(6);
+    fakeGmail.failNext(
+      'users.messages.send',
+      new ChannelError({ provider: 'gmail', operation: 'oauth2.token', kind: 'network' }),
+    );
+    expect((await dispatcher.dispatch(delivery.id)).status).toBe('retry');
+    const waiting = await deliveryRow(delivery.id);
+    expect(waiting.state).toBe('scheduled');
+    expect(waiting.outcomeUnknown).toBe(false);
+  });
+
   it('retries a certain non-delivery (429) later, then sends', async () => {
     const { ticketId } = await gmailTicket();
     const { delivery } = await staffReply(ticketId, 'Rate limited once');
@@ -386,7 +400,8 @@ describe('Gmail', () => {
     const waiting = await deliveryRow(delivery.id);
     expect(waiting.state).toBe('scheduled');
     expect(waiting.nextAttemptAt).toEqual(at(36));
-    expect(await dispatcher.dispatch(delivery.id)).toEqual({ status: 'skipped' });
+    expect(waiting.outcomeUnknown).toBe(false);
+    expect(await dispatcher.dispatch(delivery.id)).toMatchObject({ status: 'early' });
     clock.now = at(37);
     expect(await dispatcher.dispatch(delivery.id)).toEqual({
       status: 'sent',

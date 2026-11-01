@@ -155,7 +155,7 @@ Channel abstraction: `Channel` → `ChannelAccount` (a specific mailbox / LINE O
 - **R-2.1** Receive via Gmail API **push** (`users.watch` → Pub/Sub). Renew the watch **daily** (expires in 7 days; failure is silent). Fetch deltas with `users.history.list`; on HTTP 404 (`historyId` too old) run a full sync. [CONFIRMED — Gmail docs]
 - **R-2.2** Dedupe inbound on RFC `Message-ID` and Gmail message id (Pub/Sub delivers at-least-once).
 - **R-2.3** Thread matching by Gmail `threadId`, then `In-Reply-To`/`References`, then a `[OPS-1234]` token in subject; outbound sets `threadId`, `In-Reply-To`, `References`, same subject.
-- **R-2.4** Mailbox access: shared support mailbox via service account with **domain-wide delegation** scoped to `gmail.modify` [ASSUMED], or OAuth from a dedicated support user. Send-as alias support.
+- **R-2.4** Mailbox access: shared support mailbox via service account with **domain-wide delegation** scoped to `gmail.readonly` + `gmail.send` (least privilege, T-102 review) [ASSUMED], or OAuth from a dedicated support user. Send-as alias support.
 - **R-2.5** Attachments stored in object storage, images passed to vision model for OCR/description before classification; HTML sanitized; inline images preserved.
 - **R-2.6** Auto-reply / bounce / out-of-office detection (`Auto-Submitted`, `X-Autoreply`, `Precedence: bulk`) → never creates a ticket, never triggers an auto-ack loop.
 - **R-2.7** Noise handling: newsletters, machine notifications and spam classified as `noise` → labeled, visible in an "Other mail" view, no ticket; one-click "this is a ticket" converts and feeds the classifier.

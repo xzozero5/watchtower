@@ -23,7 +23,7 @@
 --   kb.publish.break_glass: granted to the head only: publish without a second person (the
 --     break-glass columns of kb_article record it until another approver reviews it).
 -- Articles are never deleted (deprecate instead): the application role has no DELETE on them.
--- Reversible: see 0015_kb.down.sql.
+-- Reversible: see 0018_kb.down.sql.
 
 CREATE TABLE kb_embedding_index (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),

@@ -2,9 +2,11 @@ import { Inject, Injectable } from '@nestjs/common';
 import { schema, type Database } from '@watchtower/db';
 import { contactSnapshot } from '@watchtower/domain';
 import {
+  LINE_LINK_METHODS,
   type Contact,
   type ContactListQuery,
   type CreateContact,
+  type LineLinkMethod,
   type UpdateContact,
 } from '@watchtower/shared';
 import { and, arrayContains, desc, eq, ilike, or, sql } from 'drizzle-orm';
@@ -34,6 +36,10 @@ export function toApiContact(row: ContactRow): Contact {
     name: row.name,
     emails: row.emails,
     lineUserId: row.lineUserId,
+    lineLinkedVia: (LINE_LINK_METHODS as readonly (string | null)[]).includes(row.lineLinkedVia)
+      ? (row.lineLinkedVia as LineLinkMethod)
+      : null,
+    lineVerified: row.lineVerifiedAt !== null,
     phone: row.phone,
     verifiedAt: row.verifiedAt?.toISOString() ?? null,
     roleInOrg: row.roleInOrg,
@@ -129,7 +135,16 @@ export class ContactsService {
         .set({
           ...(patch.name === undefined ? {} : { name: patch.name }),
           ...(patch.emails === undefined ? {} : { emails: patch.emails }),
-          ...(patch.lineUserId === undefined ? {} : { lineUserId: patch.lineUserId }),
+          ...(patch.lineUserId === undefined || patch.lineUserId === before.lineUserId
+            ? {}
+            : // A different LINE id is a different identity: none of the old link facts, "verified"
+              // included, carries over (C-8; the database trigger enforces the same).
+              {
+                lineUserId: patch.lineUserId,
+                lineLinkedVia: null,
+                lineLinkedAt: null,
+                lineVerifiedAt: null,
+              }),
           ...(patch.phone === undefined ? {} : { phone: patch.phone }),
           ...(patch.roleInOrg === undefined ? {} : { roleInOrg: patch.roleInOrg }),
           ...(patch.notificationPrefs === undefined

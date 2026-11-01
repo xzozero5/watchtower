@@ -130,7 +130,6 @@ export async function replyToTicket(
       deliveryStatus: viaDispatcher
         ? 'scheduled'
         : replyDeliveryStatus(sender.kind, ticket.channel),
-      createdAt: now,
     },
     set,
   );
@@ -215,7 +214,6 @@ export async function addTicketNote(
       bodyText: input.note.body,
       visibility: 'internal',
       deliveryStatus: 'not_applicable',
-      createdAt: now,
     },
     { updatedAt: now },
   );

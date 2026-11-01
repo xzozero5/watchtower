@@ -9,6 +9,8 @@ import { createIngestProcessor } from './processor.js';
 import type { InboundClassifierFactory } from './classifier.js';
 import type { ProcessorContext } from '../processors/index.js';
 import type { gmail } from '@watchtower/channels';
+import { createOutboundDispatcherFor, outboundChannelsFor } from '../outbound/index.js';
+import { createLineAutoAck } from './auto-ack.js';
 
 export { createIngestProcessor, rawObjectKey, attachmentObjectKey } from './processor.js';
 export type { IngestDeps, IngestResult } from './processor.js';
@@ -19,7 +21,8 @@ export type {
   InboundClassifierInput,
   RedactedText,
 } from './classifier.js';
-export { PermanentIngestError } from './channels.js';
+export { PermanentIngestError, LINE_MEDIA_MAX_BYTES } from './channels.js';
+export { createLineAutoAck, LINE_ACK_TEMPLATE } from './auto-ack.js';
 export type { ChannelIngestor, IngestedItem } from './channels.js';
 export { createMemoryObjectStore, createS3ObjectStore } from './object-store.js';
 export type { ObjectStore } from './object-store.js';
@@ -29,7 +32,9 @@ export interface IngestOverrides {
   readonly store?: ObjectStore;
   readonly ingestors?: Readonly<Record<string, ChannelIngestor>>;
   /** One Gmail transport per mailbox. Absent: events that need a fetch fail as `gmail_transport_unavailable`. */
-  readonly gmailTransportFor?: (account: IngestAccount) => gmail.GmailTransport | undefined;
+  readonly gmailTransportFor?: (
+    account: IngestAccount,
+  ) => gmail.GmailTransport | undefined | Promise<gmail.GmailTransport | undefined>;
   readonly classifier?: InboundClassifierFactory;
 }
 
@@ -57,13 +62,26 @@ export function createIngestRegistration(context: ProcessorContext) {
     ingestors: ingest.ingestors ?? {
       gmail: createGmailIngestor({
         ticketKeyPrefix: config.TICKET_KEY_PREFIX,
-        ...(ingest.gmailTransportFor === undefined
-          ? {}
-          : { transportFor: ingest.gmailTransportFor }),
-        allowEmbedded: config.NODE_ENV !== 'production',
+        // The same runtime the sync job lists with fetches the message (T-102c).
+        transportFor:
+          ingest.gmailTransportFor ?? ((account) => context.gmail.transportFor(account)),
+        allowEmbedded: config.GMAIL_MOCK_ENABLED,
       }),
-      line: createLineIngestor(),
+      line: createLineIngestor({
+        ...(context.overrides.line?.transportFor === undefined
+          ? {}
+          : { transportFor: context.overrides.line.transportFor }),
+      }),
     },
+    // The instant LINE acknowledgment (T-103c): through the outbound pipeline, so the gate applies.
+    afterCommit: createLineAutoAck({
+      database: context.database,
+      domain: context.domain,
+      dispatcher: createOutboundDispatcherFor(context),
+      channels: outboundChannelsFor(context),
+      realtime: context.realtime,
+      logger: context.logger,
+    }),
     realtime: context.realtime,
     logger: context.logger,
     classifier: ingest.classifier ?? context.ai?.classifierFor,

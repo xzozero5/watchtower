@@ -7,8 +7,12 @@ import type { Processor } from 'bullmq';
 import type { WorkerConfig } from '../config.js';
 import { createAiProcessor } from '../ai/brief.js';
 import type { AiOverrides, AiRuntime } from '../ai/runtime.js';
+import { createGmailRegistration, type GmailOverrides } from '../gmail/index.js';
+import type { GmailRuntime } from '../gmail/runtime.js';
 import { createIngestRegistration, type IngestOverrides } from '../ingest/index.js';
 import type { WorkerLogger } from '../logger.js';
+import { createLineRegistration } from '../line/index.js';
+import type { LineOverrides } from '../line/transports.js';
 import { createOutboundRegistration, type OutboundOverrides } from '../outbound/index.js';
 import type { Mailer } from '../mailer.js';
 import type { RealtimeSink } from '../realtime.js';
@@ -30,6 +34,8 @@ export interface ProcessorContext {
   readonly realtime: RealtimeSink;
   /** The AI layer (T-106e). Absent when `AI_PROVIDER` is not wired: AI stays off and rules decide. */
   readonly ai: AiRuntime | undefined;
+  /** How the worker reaches Gmail mailboxes: fakes in mock mode, the live transport only with a complete credential (T-102). */
+  readonly gmail: GmailRuntime;
   /** Test doubles for the outside world (storage, provider transports, classifier). Production passes none. */
   readonly overrides: ProcessorOverrides;
 }
@@ -38,6 +44,8 @@ export interface ProcessorOverrides {
   readonly ingest?: IngestOverrides;
   readonly ai?: AiOverrides;
   readonly outbound?: OutboundOverrides;
+  readonly gmail?: GmailOverrides;
+  readonly line?: LineOverrides;
 }
 
 export interface ProcessorRegistration {
@@ -87,8 +95,11 @@ export const PROCESSORS: readonly ProcessorRegistration[] = [
   { queue: QUEUE_NAMES.outbound, create: createOutboundRegistration },
 
   // --- gmail (T-102) ---
+  // One at a time: a sync, a renewal and a heartbeat of the same mailbox must not race.
+  { queue: QUEUE_NAMES.gmail, create: createGmailRegistration, concurrency: 1 },
 
   // --- line (T-103) ---
+  { queue: QUEUE_NAMES.line, create: createLineRegistration, concurrency: 1 },
 
   // --- discord (T-104) ---
 

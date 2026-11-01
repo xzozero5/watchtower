@@ -241,6 +241,42 @@ describe('LiveLineTransport rate limits and quota', () => {
     expect(requests).toHaveLength(1);
   });
 
+  it('stops reading a media body that outgrows the cap, without holding it all (C-7)', async () => {
+    let pulled = 0;
+    const chunk = new Uint8Array(1024);
+    const endless = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        pulled += 1;
+        controller.enqueue(chunk);
+        // A server that never ends: only the cap can stop the read.
+        if (pulled > 10_000) controller.close();
+      },
+    });
+    const scripted = scriptedFetch([new Response(endless, { status: 200 })]);
+    const transport = new LiveLineTransport({
+      fetch: scripted.fetch,
+      getChannelAccessToken: () => Promise.resolve(token),
+      maxContentBytes: 4096,
+    });
+    const error = await transport.getContent('big').catch((c: unknown) => c);
+    expect(error).toMatchObject({ kind: 'client', code: 'content_too_large' });
+    expect((error as { retryable: boolean }).retryable).toBe(false);
+    // Cap 4 KiB at 1 KiB per chunk: a handful of pulls, nowhere near the 10,000 on offer.
+    expect(pulled).toBeLessThan(20);
+  });
+
+  it('refuses a declared length over the cap', async () => {
+    const scripted = scriptedFetch([
+      new Response(new Uint8Array(10), { status: 200, headers: { 'content-length': '999999' } }),
+    ]);
+    const transport = new LiveLineTransport({
+      fetch: scripted.fetch,
+      getChannelAccessToken: () => Promise.resolve(token),
+      maxContentBytes: 1000,
+    });
+    await expect(transport.getContent('big')).rejects.toMatchObject({ code: 'content_too_large' });
+  });
+
   it('maps 404 and 410 on content to not_found', async () => {
     const { transport } = transportFor([jsonResponse(404, {}), jsonResponse(410, {})]);
     expect(await transport.getContent('a').catch((c: unknown) => c)).toMatchObject({
