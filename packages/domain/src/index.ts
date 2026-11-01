@@ -193,6 +193,19 @@ export {
   type ToolLedgerLimits,
 } from './ai/tool-ledger.js';
 export {
+  acquireRateBudget,
+  takeRateBudget,
+  type AcquireInput,
+  type RateDecision,
+  type RateTx,
+} from './tools/rate-budget.js';
+export {
+  createHumanToolLedger,
+  type HumanToolDecision,
+  type HumanToolEntry,
+  type HumanToolLedger,
+} from './tools/human-ledger.js';
+export {
   createAiRunRecorder,
   type AiRunDatabase,
   type AiRunInput,
