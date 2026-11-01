@@ -68,6 +68,10 @@ export const ticketRefSchema = z
   });
 export const ticketRefParamSchema = z.object({ id: ticketRefSchema });
 
+/** The routes on one AI draft of a ticket (T-108): the ticket by id or number, and the draft. */
+export const aiDraftRefParamSchema = z.object({ id: ticketRefSchema, draftId: z.uuid() });
+export type AiDraftRefParam = z.infer<typeof aiDraftRefParamSchema>;
+
 // --- status workflow (R-1.2) ---
 
 export const TICKET_STATUSES = [
@@ -472,6 +476,11 @@ export const replySchema = z.object({
    * reply is the sender's own text.
    */
   aiDraftId: z.uuid().optional(),
+  /**
+   * Staff only: the AI draft this reply started from. The body is the person's own text; the server
+   * records the draft as edited with the distance between the two (T-108c). Not with `aiDraftId`.
+   */
+  editedFromDraftId: z.uuid().optional(),
 });
 export type Reply = z.infer<typeof replySchema>;
 

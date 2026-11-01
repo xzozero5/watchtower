@@ -4,7 +4,7 @@
   "description": "The customer did not receive a callback.",
   "typicalEvidence": "Webhook delivery logs, retry history and the responses of the customer endpoint.",
   "defaultPriority": "P3",
-  "allowedTools": [],
+  "allowedTools": ["gcp_logs", "bigquery_query", "repo_changes"],
   "replyTemplates": [
     {
       "key": "ack_en",

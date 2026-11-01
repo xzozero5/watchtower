@@ -1,11 +1,14 @@
 import {
   authConfigSchema,
   bulkResultSchema,
+  cancelSendResultSchema,
   convertOtherMailResultSchema,
   intentListSchema,
+  lineQuotaSchema,
   magicLinkAcceptedSchema,
   otherMailDetailSchema,
   otherMailPageSchema,
+  outboundSettingsSchema,
   replyResultSchema,
   savedViewListSchema,
   savedViewSchema,
@@ -16,6 +19,7 @@ import {
   ticketListSchema,
   timelinePageSchema,
   workflowSchema,
+  type AiRequest,
   type AssignTicket,
   type BreakGlassLogin,
   type BulkRequest,
@@ -31,6 +35,8 @@ import {
   type UpdateTicket,
 } from '@watchtower/shared';
 import { createAdminEndpoints } from './admin-endpoints';
+import { createNotificationEndpoints } from './notification-endpoints';
+import { createShiftEndpoints } from './shift-endpoints';
 import type { ApiClient } from './client';
 
 /** Query for the ticket list as the UI builds it: the schema defaults are applied by the api. */
@@ -58,6 +64,8 @@ export function createEndpoints(client: ApiClient) {
 
   return {
     ...createAdminEndpoints(client),
+    ...createNotificationEndpoints(client),
+    ...createShiftEndpoints(client),
 
     // --- auth (public) ---
     authConfig: (signal?: AbortSignal) =>
@@ -261,7 +269,7 @@ export function createEndpoints(client: ApiClient) {
         schema: convertOtherMailResultSchema,
       }),
 
-    // --- AI brief (T-128; the api serves these with T-106e / T-108, until then they answer 404) ---
+    // --- AI brief (T-106e / T-108; an api that has no brief for a ticket answers 404) ---
     ticketAi: (ref: string, signal?: AbortSignal) =>
       client.request({
         path: `${refPath(ref)}/ai`,
@@ -275,6 +283,37 @@ export function createEndpoints(client: ApiClient) {
         path: `${refPath(ref)}/ai/drafts/${encodeURIComponent(draftId)}/reject`,
         body,
         schema: null,
+      }),
+
+    /** "Draft a reply" or "Investigate again"; the api answers 202 and the brief shows progress. */
+    requestAi: (ref: string, body: AiRequest) =>
+      client.request({
+        method: 'POST',
+        path: `${refPath(ref)}/ai/requests`,
+        body,
+        schema: null,
+      }),
+
+    // --- sending (T-122d): the server holds a reply for the undo window ---
+    cancelDelivery: (ref: string, deliveryId: string) =>
+      client.request({
+        method: 'POST',
+        path: `${refPath(ref)}/deliveries/${encodeURIComponent(deliveryId)}/cancel`,
+        schema: cancelSendResultSchema,
+      }),
+
+    outboundSettings: (signal?: AbortSignal) =>
+      client.request({
+        path: '/v1/settings/outbound',
+        schema: outboundSettingsSchema,
+        ...(signal ? { signal } : {}),
+      }),
+
+    lineQuota: (signal?: AbortSignal) =>
+      client.request({
+        path: '/v1/line/quota',
+        schema: lineQuotaSchema,
+        ...(signal ? { signal } : {}),
       }),
 
     // --- reference data for the editors ---

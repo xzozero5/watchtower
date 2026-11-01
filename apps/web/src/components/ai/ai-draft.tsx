@@ -1,40 +1,31 @@
 'use client';
 
-import type { AiDraft, AiRejectReason } from '@watchtower/shared';
+import type { AiDraft, AiEvidence, AiRejectReason } from '@watchtower/shared';
 import { Button, cn, IconButton, TintChip, toast, Tooltip } from '@watchtower/ui';
-import { Check, Pencil, PenLine, RotateCcw, TriangleAlert, Undo2, X } from 'lucide-react';
+import {
+  Check,
+  Languages,
+  Pencil,
+  PenLine,
+  RotateCcw,
+  ShieldAlert,
+  TriangleAlert,
+  X,
+} from 'lucide-react';
 import { Fragment, useEffect, useId, useRef, useState } from 'react';
 
 import { useI18n } from '@/i18n/provider';
 import { changedFraction } from '@/lib/ai/model';
 import { useAiDraftActions } from '@/lib/ai/queries';
-import {
-  isScheduled,
-  scheduleSend,
-  type ScheduledSend,
-  UNDO_WINDOW_MS,
-} from '@/lib/ai/send-with-undo';
 import { useShortcut } from '@/lib/keyboard';
+import { isDraftPending } from '@/lib/outbound/pending-sends';
+import { useSendUndo } from '@/lib/outbound/queries';
 import { usePreferences } from '@/lib/preferences';
 import { isDetail, type TicketItem } from '@/lib/tickets/model';
 import { useTicketMutations } from '@/lib/tickets/queries';
 
 import { ApproveDialog, RejectDialog } from './draft-dialogs';
-
-/** Counts down the undo window in whole seconds. */
-function Countdown({ until }: { until: number }) {
-  const { t } = useI18n();
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    const timer = setInterval(() => {
-      setNow(Date.now());
-    }, 250);
-    return () => {
-      clearInterval(timer);
-    };
-  }, []);
-  return <>{t('ai.draft.sending', { seconds: Math.max(0, Math.ceil((until - now) / 1000)) })}</>;
-}
+import { EVIDENCE_ICONS } from './evidence-icons';
 
 /** The draft text with its `[n]` markers turned into buttons that open the cited evidence. */
 function DraftText({
@@ -87,12 +78,15 @@ function DraftText({
 export function AiDraftCard({
   ticket,
   draft,
+  evidence,
   onOpenEvidence,
   approveOpen,
   onApproveOpenChange,
 }: {
   ticket: TicketItem;
   draft: AiDraft;
+  /** The evidence of the brief; the cards the draft cites are listed under its text. */
+  evidence: readonly AiEvidence[];
   onOpenEvidence: (id: string) => void;
   /** The approve preview is open. Owned by the brief, whose primary button can open it too. */
   approveOpen: boolean;
@@ -102,17 +96,17 @@ export function AiDraftCard({
   const { singleKeyShortcuts } = usePreferences();
   const headingId = useId();
   const { reply } = useTicketMutations(ticket.key);
+  const { offer } = useSendUndo(ticket.key);
   const actions = useAiDraftActions(ticket.key);
   const [edited, setEdited] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
   const [rejectOpen, setRejectOpen] = useState(false);
-  const [scheduled, setScheduled] = useState<{ handle: ScheduledSend; until: number } | null>(null);
   const editRef = useRef<HTMLTextAreaElement>(null);
 
+  const cited = evidence.filter((entry) => draft.citations.includes(entry.id));
   const text = edited ?? draft.body;
   const changed = edited === null ? null : Math.round(changedFraction(draft.body, edited) * 100);
-  const sending = scheduled !== null;
-  const busy = sending || approveOpen || rejectOpen;
+  const busy = reply.isPending || approveOpen || rejectOpen;
 
   useEffect(() => {
     if (editing) editRef.current?.focus();
@@ -134,48 +128,31 @@ export function AiDraftCard({
   useShortcut('e', startEdit, !busy && !editing);
   useShortcut('r', startReject, !busy && !editing);
 
-  const toastId = `ai-send-${draft.id}`;
-  const undo = () => {
-    scheduled?.handle.cancel();
-    setScheduled(null);
-    toast.dismiss(toastId);
-  };
-  useShortcut('u', undo, sending);
-
   const confirm = () => {
     onApproveOpenChange(false);
-    if (isScheduled(draft.id)) {
+    if (reply.isPending || isDraftPending(draft.id)) {
       toast(t('ai.draft.alreadySending'));
       return;
     }
     const body = text.trim();
-    const handle = scheduleSend(draft.id, (done) => {
-      reply
-        .mutateAsync({ body })
-        .then(() => {
+    // Exactly the draft: the server records this person as its approver (N3, ADR-011). Any change:
+    // the person's own text, and the server records the draft as edited with the distance.
+    const unchanged = body === draft.body.trim();
+    reply.mutate(
+      { body, ...(unchanged ? { aiDraftId: draft.id } : { editedFromDraftId: draft.id }) },
+      {
+        onSuccess: (result) => {
+          // The server holds the reply for its undo window; Undo cancels it there.
+          offer(result.message, unchanged ? draft.id : null);
           actions.sent(draft.id);
-          toast(t('ai.draft.sent'));
-        })
-        .catch(() => {
+        },
+        onError: () => {
           toast(t('ai.draft.sendFailed'));
-        })
-        .finally(() => {
-          done();
-          setScheduled(null);
-        });
-    });
-    setScheduled({ handle, until: Date.now() + UNDO_WINDOW_MS });
-    toast(t('ai.draft.sending', { seconds: UNDO_WINDOW_MS / 1000 }), {
-      id: toastId,
-      duration: UNDO_WINDOW_MS,
-      action: {
-        label: t('ai.draft.undo'),
-        onClick: () => {
-          handle.cancel();
-          setScheduled(null);
+          // A draft that was replaced or already used must not stay on screen.
+          actions.refresh();
         },
       },
-    });
+    );
   };
 
   const submitReject = (reason: AiRejectReason, comment: string) => {
@@ -219,6 +196,25 @@ export function AiDraftCard({
             {t('ai.brief.uncited', { count: draft.uncitedClaims })}
           </TintChip>
         ) : null}
+        {draft.disclosure?.level === 'restricted' ? (
+          <TintChip
+            tone="amber"
+            icon={ShieldAlert}
+            title={t('ai.draft.restrictedTip', { count: draft.disclosure.removedSentences })}
+          >
+            {t('ai.draft.restricted')}
+          </TintChip>
+        ) : null}
+        {draft.needsReview ? (
+          <TintChip tone="amber" icon={TriangleAlert} title={t('ai.draft.needsReviewTip')}>
+            {t('ai.draft.needsReview')}
+          </TintChip>
+        ) : null}
+        {draft.language ? (
+          <TintChip tone="slate" icon={Languages}>
+            {t('ai.draft.language', { language: draft.language.toUpperCase() })}
+          </TintChip>
+        ) : null}
       </header>
 
       {editing ? (
@@ -245,6 +241,28 @@ export function AiDraftCard({
       ) : (
         <DraftText text={text} citations={draft.citations} onOpenEvidence={onOpenEvidence} />
       )}
+      {cited.length > 0 ? (
+        <ul aria-label={t('ai.draft.sources')} className="flex flex-wrap gap-1.5">
+          {cited.map((entry) => {
+            const Icon = EVIDENCE_ICONS[entry.kind];
+            return (
+              <li key={entry.id} className="min-w-0">
+                <button
+                  type="button"
+                  onClick={() => {
+                    onOpenEvidence(entry.id);
+                  }}
+                  className="inline-flex h-7 max-w-[16rem] items-center gap-1.5 rounded-full bg-ai-subtle px-2.5 text-xs focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring"
+                >
+                  <Icon aria-hidden className="size-3.5 shrink-0 text-ai-accent" />
+                  <span className="sr-only">{t(`ai.evidence.kinds.${entry.kind}`)}:</span>
+                  <span className="truncate">{entry.title}</span>
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      ) : null}
 
       <div
         role="group"
@@ -254,23 +272,7 @@ export function AiDraftCard({
           'max-md:sticky max-md:bottom-0 max-md:-mx-5 max-md:-mb-4 max-md:rounded-b-lg max-md:border-t max-md:border-border/60 max-md:bg-surface max-md:px-5 max-md:py-2.5',
         )}
       >
-        {sending ? (
-          <>
-            <p role="status" className="text-sm text-muted-foreground">
-              <Countdown until={scheduled.until} />
-            </p>
-            <Tooltip content={t('ai.draft.undo')} shortcut={singleKeyShortcuts ? ['U'] : []}>
-              <Button
-                className="rounded-full max-md:min-h-[44px]"
-                aria-keyshortcuts={singleKeyShortcuts ? 'U' : undefined}
-                onClick={undo}
-              >
-                <Undo2 aria-hidden className="size-4" />
-                {t('ai.draft.undo')}
-              </Button>
-            </Tooltip>
-          </>
-        ) : editing ? (
+        {editing ? (
           <>
             <Button
               variant="primary"

@@ -58,7 +58,7 @@ export interface IngestDeps {
   readonly ingestors: Readonly<Record<string, ChannelIngestor>>;
   readonly realtime: RealtimeSink;
   readonly logger: WorkerLogger;
-  /** Absent: header rules only (AI switched off at boot, or a provider that is not wired). */
+  /** Absent: header rules only (no AI layer, for example a test without one). */
   readonly classifier?: InboundClassifierFactory | undefined;
   readonly classifierTimeoutMs?: number;
   /**

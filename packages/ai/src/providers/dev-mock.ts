@@ -4,7 +4,7 @@ import { MockLlmProvider, type MockRule } from './mock.js';
 
 /**
  * The mock provider of `AI_PROVIDER=mock` for dev and e2e: it answers the real prompts
- * (`classifier`, `summarizer`) with plausible Thai or English JSON, so the whole pipeline (agents,
+ * (`classifier`, `summarizer`, `investigator`, `drafter`, `kb_author`) with plausible Thai or English JSON, so the whole pipeline (agents,
  * `ai_run`, `ai_ticket_insight`, the AI brief in the web) can be exercised with no key and no
  * network. It is not a model: the answer is a pure function of the prompt id and the redacted
  * input (the same input hash always gives the same answer), built from a small keyword table. Every
@@ -177,6 +177,133 @@ function summarize(request: LlmRequest, hash: string): string {
   return JSON.stringify({ summary, nextStep });
 }
 
+const PLACEHOLDER = /\[[A-Z][A-Z_]*_\d+\]/g;
+
+interface MockEvidence {
+  readonly id: string;
+  readonly kind: string;
+  readonly flags: string;
+  readonly text: string;
+}
+
+function evidenceOf(raw: string): MockEvidence[] {
+  return [...raw.matchAll(/^\[(ev-\d+)\] ([a-z]+)(?: \(([^)]*)\))?: (.*)$/gm)].map((match) => ({
+    id: match[1] ?? '',
+    kind: match[2] ?? '',
+    flags: match[3] ?? '',
+    text: (match[4] ?? '').replaceAll(/\s+/g, ' ').trim(),
+  }));
+}
+
+function firstSentence(text: string, max: number): string {
+  const cut = text.split(/(?<=[.!?])\s+/)[0] ?? text;
+  return cut.length > max ? `${cut.slice(0, max - 3)}...` : cut;
+}
+
+/** Investigator: one finding per evidence card (up to four), citing it; the next step follows the kinds found. */
+function investigate(request: LlmRequest, hash: string): string {
+  const raw = request.messages[0]?.content ?? '';
+  const thai = THAI.test(raw.split('<evidence>')[0] ?? '');
+  const cards = evidenceOf(raw);
+  const findings = cards.slice(0, 4).map((card) => ({
+    text: firstSentence(
+      `${card.flags.includes('mock') ? (thai ? 'ข้อมูลตัวอย่าง: ' : 'Example data: ') : ''}${card.text}`,
+      200,
+    ),
+    evidenceIds: [card.id],
+  }));
+  const runbook = cards.find((card) => card.kind === 'kb');
+  const system = cards.some((card) => card.kind === 'log' || card.kind === 'repo');
+  const nextStep = system
+    ? { kind: 'escalate_dev', label: thai ? 'ส่งต่อให้ทีมพัฒนาตรวจสอบ' : 'Ask an engineer to look' }
+    : runbook !== undefined
+      ? { kind: 'reply', label: thai ? 'ตอบลูกค้าตามคู่มือ' : 'Reply from the guide' }
+      : { kind: 'other', label: thai ? 'อ่านเรื่องนี้' : 'Read the ticket' };
+  return JSON.stringify({
+    findings,
+    likelyCause: null,
+    confidence: cards.length === 0 ? 0 : between(hash, 4, 0.35, 0.8),
+    openQuestions: [thai ? 'ยังไม่ทราบสาเหตุที่แน่ชัด' : 'The cause is not confirmed yet.'],
+    nextStep,
+  });
+}
+
+/** Drafter: a greeting, one fact per usable evidence card (cited), and a closing. */
+function draft(request: LlmRequest, hash: string): string {
+  const raw = request.messages[0]?.content ?? '';
+  const thai = /write in thai/i.test(request.system);
+  const restricted = /disclosure level: restricted/i.test(request.system);
+  const usable = evidenceOf(raw).filter(
+    (card) => !restricted || card.flags.includes('customer-safe'),
+  );
+  const sentences: { text: string; kind: string; evidenceIds: string[]; newParagraph: boolean }[] =
+    [
+      {
+        text: thai
+          ? 'สวัสดีครับ ขอบคุณที่แจ้งเรื่องให้เราทราบ'
+          : 'Hello, thank you for contacting us.',
+        kind: 'courtesy',
+        evidenceIds: [],
+        newParagraph: false,
+      },
+    ];
+  for (const card of usable.slice(0, 2)) {
+    sentences.push({
+      text: firstSentence(card.text.replaceAll(PLACEHOLDER, thai ? 'ลูกค้า' : 'you'), 240),
+      kind: 'fact',
+      evidenceIds: [card.id],
+      newParagraph: sentences.length === 1,
+    });
+  }
+  // About one draft in five makes a claim with no evidence, which the reviewer sees marked as uncited.
+  if (usable.length > 0 && unit(hash, 5) > 0.8) {
+    sentences.push({
+      text: thai ? 'เราคาดว่าจะแก้ไขได้ภายในวันนี้' : 'We expect this to be fixed today.',
+      kind: 'fact',
+      evidenceIds: [],
+      newParagraph: false,
+    });
+  }
+  sentences.push({
+    text: thai
+      ? 'หากมีข้อสงสัยเพิ่มเติม ตอบกลับข้อความนี้ได้เลยครับ'
+      : 'If you have any questions, just reply to this message.',
+    kind: 'courtesy',
+    evidenceIds: [],
+    newParagraph: true,
+  });
+  return JSON.stringify({ language: thai ? 'th' : 'en', sentences });
+}
+
+/** KB author: title from the subject, body from what staff wrote last; placeholders are left out. */
+function authorArticle(request: LlmRequest): string {
+  const raw = request.messages[0]?.content ?? '';
+  const thai = THAI.test(raw);
+  const clean = (text: string): string =>
+    text.replaceAll(PLACEHOLDER, thai ? 'ลูกค้า' : 'the customer');
+  const subject = clean(/^Subject: (.*)$/m.exec(raw)?.[1] ?? '').trim();
+  const turns = [...raw.matchAll(/^\[(customer|staff|note)\] (.*)$/gm)];
+  const answer = turns.filter((turn) => turn[1] === 'staff').at(-1)?.[2];
+  if (subject === '' || answer === undefined) {
+    return JSON.stringify({ title: '', bodyMd: '', intentTags: [], kind: 'article' });
+  }
+  const ask = clean(turns.find((turn) => turn[1] === 'customer')?.[2] ?? subject);
+  const heads = thai
+    ? ['อาการ', 'สาเหตุ', 'วิธีแก้ไข', 'เมื่อไรควรส่งต่อ']
+    : ['Symptoms', 'Cause', 'Resolution', 'When to escalate'];
+  const section = (head: string | undefined, text: string): string => `## ${head ?? ''}\n\n${text}`;
+  const bodyMd = [
+    section(heads[0], firstSentence(ask, 300)),
+    section(heads[1], thai ? 'ยังไม่ยืนยัน' : 'Not confirmed'),
+    section(heads[2], `1. ${firstSentence(clean(answer), 400)}`),
+    section(
+      heads[3],
+      thai ? 'หากยังไม่หาย ส่งต่อให้ทีมพัฒนา' : 'If it persists, ask an engineer to look.',
+    ),
+  ].join('\n\n');
+  return JSON.stringify({ title: subject.slice(0, 100), bodyMd, intentTags: [], kind: 'article' });
+}
+
 export class DevMockLlmProvider implements LlmProvider {
   readonly kind = 'mock';
   private readonly pinned: MockLlmProvider;
@@ -200,6 +327,15 @@ export class DevMockLlmProvider implements LlmProvider {
         break;
       case 'summarizer':
         text = summarize(request, hash);
+        break;
+      case 'investigator':
+        text = investigate(request, hash);
+        break;
+      case 'drafter':
+        text = draft(request, hash);
+        break;
+      case 'kb_author':
+        text = authorArticle(request);
         break;
       default:
         text = `[mock:${request.prompt.id}:${hash.slice(0, 8)}]`;

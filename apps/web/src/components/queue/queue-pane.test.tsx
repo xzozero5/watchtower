@@ -306,6 +306,42 @@ describe('the "N new" pill', () => {
     expect(api.callsTo('/v1/tickets')).toHaveLength(2);
   });
 
+  it('counts only the tickets that belong to the filter on screen (queue, assignee)', async () => {
+    const queueA = uuid(700);
+    const queueB = uuid(701);
+    window.history.replaceState({}, '', `/?queueId=${queueA}`);
+    try {
+      workspaceApi();
+      const { sockets } = await openQueue();
+      await screen.findByText('Cannot log in');
+      await waitFor(() => {
+        expect(sockets.sockets).toHaveLength(1);
+      });
+      await act(async () => {
+        sockets.last.ready();
+        await Promise.resolve();
+      });
+
+      // Another queue, then no queue at all: the pill stays away.
+      await emit(
+        sockets,
+        ticketCreatedEvent(makeTicket(20), { queueId: queueB, channel: 'gmail' }),
+      );
+      await emit(sockets, ticketCreatedEvent(makeTicket(21), { queueId: null }));
+      expect(screen.queryByRole('button', { name: /new — press/ })).not.toBeInTheDocument();
+
+      // This queue: counted, whatever the channel.
+      await emit(sockets, ticketCreatedEvent(makeTicket(22), { queueId: queueA, channel: 'line' }));
+      await emit(
+        sockets,
+        ticketCreatedEvent(makeTicket(23), { queueId: queueA, channel: 'gmail' }),
+      );
+      expect(await screen.findByRole('button', { name: '2 new — press .' })).toBeVisible();
+    } finally {
+      window.history.replaceState({}, '', '/');
+    }
+  });
+
   it('counts a ticket once even if its event is delivered twice, and . shows them', async () => {
     const user = userEvent.setup();
     const api = workspaceApi();

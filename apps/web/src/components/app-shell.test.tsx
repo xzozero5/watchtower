@@ -196,8 +196,8 @@ describe('AppShell for staff', () => {
     expect(within(dialog).getByText('Next ticket')).toBeVisible();
     expect(within(dialog).getByText('Previous ticket')).toBeVisible();
     expect(within(dialog).getByText('Approve the AI draft (opens a preview)')).toBeVisible();
-    // Only the three go-to keys that have no screen yet are marked as not available (Other mail has one now).
-    expect(within(dialog).getAllByText('coming soon')).toHaveLength(3);
+    // Only the go-to key without a screen yet (notifications) is marked as not available.
+    expect(within(dialog).getAllByText('coming soon')).toHaveLength(1);
 
     await user.keyboard('{Escape}');
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();

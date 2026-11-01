@@ -40,6 +40,38 @@ snapshot สั้นสำหรับ cold start อยู่ที่ `HANDOF
 
 ## Log
 
+## 2026-11-02 05:19 (Asia/Bangkok) — main thread — T-122f outbound hardening, DB clock for hold and claim ปิด
+- test: main thread รันเองบน Windows: lint, typecheck, unit ผ่าน · integration db 291, domain 341, api 732, worker 197 · e2e 143 · full-stack 23 · compose healthy `[TESTED]`
+- ค้าง/ไม่ยืนยัน: P2 สองข้อจาก review ต้องแก้ก่อนเปิด LINE push จริง (ลง T-125 แล้ว)
+
+## 2026-11-02 04:56 (Asia/Bangkok) — main thread — T-116c integrations admin page ปิด
+- test: main thread รันเองบน Windows: lint, typecheck, unit ผ่าน · integration db 291, domain 323, api 731, worker 191 · e2e 143 · full-stack 23 · compose healthy `[TESTED]`
+- ค้าง/ไม่ยืนยัน: ยังไม่ทดสอบกับ API จริงในหน้านี้ · ไม่มี reason ใน destructive action
+
+## 2026-11-02 04:13 (Asia/Bangkok) — main thread — T-109 AI sidebar จริง + server-side undo ปิด
+- test: main thread รันเองบน Windows: lint, typecheck, unit ผ่าน · integration db 291, domain 323, api 731, worker 191 · e2e 138 · full-stack 23 · compose healthy `[TESTED]`
+- ค้าง/ไม่ยืนยัน: Send via เป็นการแสดงช่องทางเท่านั้น · ยังไม่มี endpoint retry delivery ที่ fail
+
+## 2026-11-02 03:52 (Asia/Bangkok) — main thread — T-108a–e investigator, drafter, KB author, tools (mock provider) ปิด
+- test: main thread รันเองบน Windows: lint, typecheck, unit ผ่าน · integration db 291, domain 323, api 731, worker 191 · e2e 138 · full-stack 23 · compose healthy `[TESTED]`
+- ค้าง/ไม่ยืนยัน: คุณภาพ report/draft เป็นผลจาก mock provider · stub GCP/BigQuery/repo ไม่เคยคุยของจริง · p95 บน provider จริงยังไม่วัด · ตัวตรวจ leak ไม่จับ paraphrase
+
+## 2026-11-02 03:03 (Asia/Bangkok) — main thread — T-111f หน้าจอกะ ปิด
+- test: main thread รันเองบน Windows: lint, typecheck, unit ผ่าน · integration db 277, domain 308, api 713, worker 179 · e2e 138 · full-stack 23 · compose healthy `[TESTED]`
+- ค้าง/ไม่ยืนยัน: alert ไป lead ยังไม่ผูก scheduler · ไม่มี endpoint ตอบคำถาม handoff
+
+## 2026-11-02 02:43 (Asia/Bangkok) — main thread — T-102e Gmail OAuth ของกล่อง support ปิด
+- test: main thread รันเองบน Windows: lint, typecheck, unit ผ่าน · integration db 277, domain 308, api 713, worker 179 · e2e 134 · full-stack 23 · compose healthy `[TESTED]`
+- ค้าง/ไม่ยืนยัน: ไม่เคยยิง Google จริง · PKCE กับ web client และ revoke [VERIFY] · External + Testing refresh token หมดใน 7 วัน
+
+## 2026-11-02 02:24 (Asia/Bangkok) — main thread — T-105 in-app notifications + P1 banner ปิด
+- test: main thread รันเองบน Windows: lint, typecheck, unit ผ่าน · integration db 277, domain 308, api 682, worker 168 · e2e 134 · full-stack 23 · compose healthy `[TESTED]`
+- ค้าง/ไม่ยืนยัน: Web Push/digest/เสียง ไม่ทำตาม scope · alert กะยังไม่ถูกเรียกอัตโนมัติ · retention ยังไม่มี job
+
+## 2026-11-02 01:44 (Asia/Bangkok) — main thread — T-132 worker เลือก AI provider จาก AI_PROVIDER (fixture เท่านั้น) ปิด
+- test: main thread รันเองบน Windows: lint, typecheck, unit ผ่าน · integration db 268, domain 299, api 666, worker 168 · e2e 134 · full-stack 23 · compose healthy `[TESTED]`
+- ค้าง/ไม่ยืนยัน: ไม่เคยเรียก provider จริง · vertex ยังไม่มี token source · admin settings ของ model/price ยังไม่มี
+
 ## 2026-11-02 01:23 (Asia/Bangkok) — main thread — T-110a,b,d CSAT + reopen rules ปิด
 - test: main thread รันเองบน Windows: lint, typecheck, unit ผ่าน · integration db 268, domain 299, api 666, worker 160 · e2e 134 · full-stack 23 · compose healthy `[TESTED]`
 - ค้าง/ไม่ยืนยัน: T-110c LINE หลัง T-113 · lead notification ตอน reopen รอ T-105 · ไม่มี e2e ของหน้า /csat

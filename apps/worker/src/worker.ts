@@ -109,11 +109,29 @@ export async function startWorker(
   });
   const realtime = createRealtimeSink(realtimeRedis, options.realtimeChannel);
   const overrides = options.overrides ?? {};
-  // The AI layer (T-106e): the mock provider by default; absent (rules only) for a provider not wired yet.
+  // The AI layer (T-106e, T-132): AI_PROVIDER picks the adapter (mock by default). A real provider
+  // that is not fully set up is not replaced by the mock: its calls fail visibly. Say so at boot.
   const ai = createAiRuntime(config, database, logger, overrides.ai);
+  if (ai.provider !== 'mock') {
+    void ai.readiness().then(
+      (state) => {
+        if (state.ready) logger.info({ provider: ai.provider }, 'AI provider is ready');
+        else {
+          logger.error(
+            { provider: ai.provider, problems: state.problems },
+            'AI provider is selected but not ready: AI calls fail until this is fixed, ingestion uses rules',
+          );
+        }
+      },
+      () => {
+        logger.error({ provider: ai.provider }, 'AI provider readiness could not be checked');
+      },
+    );
+  }
 
   // How Gmail mailboxes are reached (T-102): the in-memory fake unless the `gmail` credential is complete.
-  const gmailRuntime = overrides.gmail?.runtime ?? defaultGmailRuntime(config, database, logger);
+  const gmailRuntime =
+    overrides.gmail?.runtime ?? defaultGmailRuntime(config, database, logger, domain);
 
   const consumers: Worker[] = [];
   const consume = (queue: QueueName, processor: Processor, concurrency?: number): Worker => {

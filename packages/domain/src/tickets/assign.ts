@@ -10,6 +10,7 @@ import {
 } from '../assignment.js';
 import { recordAuditInTx } from '../audit.js';
 import { badRequest, conflict, notFound, ticketNotOpen } from '../errors.js';
+import { notifyTicketAssigned } from '../notifications.js';
 import type { TicketRow } from '../rows.js';
 import { Effects, type DbTransaction, type DomainContext, type DomainResult } from '../types.js';
 import { lockTicketRow, recordTicketEvent, resolveQueue, ticketEvent } from './support.js';
@@ -94,5 +95,6 @@ export async function assignTicket(
     metadata: { strategy },
   });
   fx.emit(ticketEvent(ctx, 'ticket.updated', after, changed));
+  if (changed.includes('assignee')) await notifyTicketAssigned(tx, ctx, fx, after);
   return fx.result(after);
 }

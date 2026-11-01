@@ -85,7 +85,7 @@
 
 - `ToolDefinition.readOnly: true` เป็น literal type (declare tool ที่เขียนไม่ได้) และ `register` ตรวจ runtime ซ้ำ · ทุก tool มี Zod `input`/`output` ที่ตรวจทุก call
 - allow-list เป็นข้อมูล: `{ agent | '*', intent | '*', stages?, tools[] }` **deny by default** · intent `null` (ก่อน classify) ตรงเฉพาะ rule `'*'` · `scope()` ให้ handle ต่อหนึ่ง run ที่ `list()` เห็นเฉพาะ tool ที่ได้สิทธิ์, `call()` ปฏิเสธนอก scope (`ToolNotAllowedError`) และมี budget ต่อ run (ค่าเริ่มต้น 20 call → `ToolBudgetError`) · `calls()` คืน `{name, inputHash, ok, latencyMs, errorCode}` ไปใส่ `AiRunRecord.tools`
-- **budget ต่อ run/ticket อยู่นอก handle (ยังไม่ทำ — T-108):** `maxCalls` ของ `scope()` นับต่อ handle เท่านั้น ผู้เรียกที่สร้าง `scope()` ใหม่ได้ budget ใหม่ จึงยังไม่ใช่เพดานต่อ ticket · T-108a ต้องเพิ่ม budget ที่ผู้เรียกเป็นเจ้าของ (นับต่อ run id และต่อ ticket/วัน ที่เก็บนอก handle เช่น `tool_execution`) และ rate limit ต่อ tool ก่อนต่อ tool จริงตัวแรก
+- **budget ต่อ run/ticket อยู่นอก handle (ทำใน T-108a ตาม ADR-013: `tool_execution` + `withToolBudget`; ข้อความต่อไปนี้คือปัญหาเดิม):** `maxCalls` ของ `scope()` นับต่อ handle เท่านั้น ผู้เรียกที่สร้าง `scope()` ใหม่ได้ budget ใหม่ จึงยังไม่ใช่เพดานต่อ ticket · T-108a ต้องเพิ่ม budget ที่ผู้เรียกเป็นเจ้าของ (นับต่อ run id และต่อ ticket/วัน ที่เก็บนอก handle เช่น `tool_execution`) และ rate limit ต่อ tool ก่อนต่อ tool จริงตัวแรก
 - ชั้นบังคับจริงของ "อ่านอย่างเดียว" ที่ฐานข้อมูล/GCP คือ role `watchtower_ai_ro` และ IAM ตาม PRD §8.2 (T-108a) — registry เป็นชั้นป้องกันเพิ่ม ไม่ใช่ชั้นเดียว
 
 ### 7. Audit record (`AiRunRecord`, Zod) — ตาราง `ai_run` ใน T-106d

@@ -4,6 +4,7 @@ export const railEn = {
   otherMail: 'Other mail',
   home: 'Home',
   admin: 'Admin',
+  shift: 'My shift',
   brief: 'Daily brief',
   handoff: 'Shift handoff',
   notifications: 'Notifications',

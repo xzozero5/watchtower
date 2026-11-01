@@ -8,6 +8,8 @@ export class ApiRequestError extends Error {
     readonly status: number,
     readonly code: ApiErrorCode,
     message: string,
+    /** The whole JSON body of the answer, for a 409 that carries more than `message` (AC-7 `blockers`). */
+    readonly details?: unknown,
   ) {
     super(message);
     this.name = 'ApiRequestError';
@@ -41,7 +43,7 @@ export async function errorFromResponse(response: Response): Promise<ApiRequestE
   }
   const parsed = apiErrorSchema.safeParse(body);
   if (parsed.success) {
-    return new ApiRequestError(response.status, parsed.data.code, parsed.data.message);
+    return new ApiRequestError(response.status, parsed.data.code, parsed.data.message, body);
   }
   return new ApiRequestError(
     response.status,

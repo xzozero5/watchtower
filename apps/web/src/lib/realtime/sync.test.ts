@@ -2,6 +2,7 @@ import { QueryClient } from '@tanstack/react-query';
 import type { RealtimeEvent } from '@watchtower/shared';
 import { describe, expect, it, vi } from 'vitest';
 
+import { aiKey } from '@/lib/ai/queries';
 import { DEFAULT_FILTERS } from '@/lib/tickets/filters';
 import { ticketKeys } from '@/lib/tickets/queries';
 import { makeTicket } from '@/test/fixtures';
@@ -47,7 +48,9 @@ describe('applyRealtimeEvent', () => {
 
     applyRealtimeEvent(ticketCreatedEvent(makeTicket(2)), deps);
 
-    expect(onNewTicket).toHaveBeenCalledWith(makeTicket(2).id);
+    expect(onNewTicket).toHaveBeenCalledWith(
+      expect.objectContaining({ id: makeTicket(2).id, status: 'new', priority: 'P3' }),
+    );
     const list = queryClient.getQueryData<{ pages: { items: unknown[] }[] }>(
       keys.list(DEFAULT_FILTERS),
     );
@@ -81,6 +84,32 @@ describe('applyRealtimeEvent', () => {
       ]);
     });
     expect(queryClient.getQueryData(keys.detail(before.key))).toEqual(after);
+  });
+
+  it('reads the AI brief again when the event says the AI changed, even if the ticket is not cached', () => {
+    const { queryClient, getTicket, deps } = setup();
+    const ticket = makeTicket(7);
+    queryClient.setQueryData(aiKey(USER_ID, ticket.key), { state: 'investigating' });
+    const invalidate = vi.spyOn(queryClient, 'invalidateQueries');
+
+    const event = updatedEvent(ticket);
+    applyRealtimeEvent(
+      event.type === 'ticket.updated'
+        ? { ...event, data: { ...event.data, changed: ['ai'] } }
+        : event,
+      deps,
+    );
+
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: aiKey(USER_ID, ticket.key) });
+    expect(getTicket).not.toHaveBeenCalled();
+  });
+
+  it('leaves the AI brief alone when the change is about something else', () => {
+    const { queryClient, deps } = setup();
+    const ticket = makeTicket(8);
+    const invalidate = vi.spyOn(queryClient, 'invalidateQueries');
+    applyRealtimeEvent(updatedEvent(ticket), deps);
+    expect(invalidate).not.toHaveBeenCalled();
   });
 
   it('ignores updates to tickets this tab has never loaded', () => {

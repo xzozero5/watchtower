@@ -23,6 +23,8 @@ export const KEY_LABELS = {
   credentialKek: 'watchtower/credentials/kek/v1',
   /** HMAC key that signs CSAT survey links (T-110): the same subkey in the api and the worker. */
   csatLink: 'watchtower/csat/link/v1',
+  /** HMAC key for `ai_run.input_hash`: an audit row can prove an input without storing it (ADR-008). */
+  aiInputHash: 'watchtower/ai/input-hash/v1',
 } as const;
 
 const SALT = 'watchtower-subkeys';

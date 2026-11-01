@@ -11,6 +11,7 @@ import {
 import {
   Bot,
   Building2,
+  CalendarClock,
   ChevronDown,
   ListOrdered,
   type LucideIcon,
@@ -38,6 +39,7 @@ const SECTION_LOOK: Record<string, { icon: LucideIcon; tone: TintId }> = {
   sla: { icon: Timer, tone: 'amber' },
   intents: { icon: Tag, tone: 'pink' },
   queues: { icon: ListOrdered, tone: 'sky' },
+  shifts: { icon: CalendarClock, tone: 'green' },
   ai: { icon: Bot, tone: 'teal' },
   audit: { icon: ScrollText, tone: 'slate' },
   integrations: { icon: Plug, tone: 'violet' },

@@ -1,5 +1,12 @@
 import { Injectable } from '@nestjs/common';
-import { INTEGRATION_KEYS, integrationFields, type IntegrationKey } from '@watchtower/shared';
+import {
+  INTEGRATION_CATALOG,
+  INTEGRATION_KEYS,
+  integrationFields,
+  isIntegrationComplete,
+  type IntegrationDefinition,
+  type IntegrationKey,
+} from '@watchtower/shared';
 
 /** The values a check runs with, by field name. Never log or return them. */
 export type TesterConfig = Readonly<Record<string, string>>;
@@ -42,6 +49,26 @@ export function createFakeTester(
     integration,
     fake(config) {
       const present = (name: string): boolean => (config[name] ?? '') !== '';
+      const alternatives = (INTEGRATION_CATALOG[integration] as IntegrationDefinition).alternatives;
+      if (alternatives !== undefined && options.anyOf === undefined) {
+        // More than one way to connect: complete when every field of one way is set.
+        if (isIntegrationComplete(integration, present)) {
+          return {
+            ok: true,
+            identity: `mock:${integration}`,
+            message:
+              'Mock check passed: the required fields are set. Nothing was sent to the service.',
+          };
+        }
+        const ways = Object.values(alternatives).map((set) =>
+          set.map((name) => fields[name]?.label ?? name).join(' + '),
+        );
+        return {
+          ok: false,
+          identity: null,
+          message: `Set every field of one way: ${ways.join(' or ')}.`,
+        };
+      }
       const missing =
         options.anyOf === undefined
           ? Object.entries(fields)

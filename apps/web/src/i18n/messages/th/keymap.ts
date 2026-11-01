@@ -32,6 +32,7 @@ export const keymapTh: Widen<typeof keymapEn> = {
   goHome: 'ไปที่หน้าหลัก',
   goAdmin: 'ไปที่ผู้ดูแลระบบ',
   goOtherMail: 'ไปที่อีเมลอื่น ๆ',
+  goShift: 'ไปที่กะของฉัน',
   goBrief: 'ไปที่สรุปก่อนเริ่มกะ',
   goHandoff: 'ไปที่การส่งต่องานระหว่างกะ',
   goNotifications: 'ไปที่การแจ้งเตือน',

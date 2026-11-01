@@ -289,7 +289,12 @@ describe('ingest queue: an event becomes a ticket', () => {
 
     // Realtime events go out after the commit, with ids only.
     const realtime = await waitFor('realtime events', () => {
-      const mine = received.filter((candidate) => candidate.ticketId === ticket?.id);
+      const mine = received.filter(
+        (candidate) =>
+          candidate.type !== 'notification.created' &&
+          candidate.ticketId === ticket?.id &&
+          !(candidate.type === 'ticket.updated' && candidate.data.changed.join() === 'ai'),
+      );
       return mine.length >= 2 ? mine : undefined;
     });
     expect(realtime.map((candidate) => candidate.type).toSorted()).toEqual([
@@ -324,7 +329,13 @@ describe('ingest queue: an event becomes a ticket', () => {
           .from(schema.message)
           .where(eq(schema.message.ticketId, ticketId))
       ).length,
-      events: received.filter((event) => JSON.stringify(event).includes(ticketId)).length,
+      // The AI keeps working on the ticket after ingestion (T-108) and tells the web with a
+      // `changed: ['ai']` event; that is not ingestion replaying.
+      events: received.filter(
+        (event) =>
+          JSON.stringify(event).includes(ticketId) &&
+          !(event.type === 'ticket.updated' && event.data.changed.join() === 'ai'),
+      ).length,
     });
     const before = await own();
     expect(ticketId).not.toBe('');

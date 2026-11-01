@@ -1,5 +1,6 @@
 import { REOPEN_WINDOW_DAYS } from '@watchtower/shared';
 
+import { rejectAiDraft } from './ai/drafts.js';
 import {
   assertAssignableStaff,
   nextAssignee,
@@ -47,6 +48,8 @@ import {
 } from './outbound/dispatch.js';
 import { scheduleCustomerSend, scheduleTemplateAck } from './outbound/schedule.js';
 import { readOutboundSettings, setUndoSendSeconds } from './outbound/settings.js';
+import { plainPortalUrl } from './outbound/templates.js';
+import { notifyShiftAlerts } from './notifications.js';
 import { enqueueJob } from './outbox.js';
 import type { PolicyGate } from './policy.js';
 import {
@@ -66,6 +69,7 @@ import { updateTicket } from './tickets/update.js';
 import type { Actor, CsatConfig, DomainConfig, DomainContext } from './types.js';
 import { workflowAllows } from './workflow.js';
 
+export { authorityNow } from './clock.js';
 export { recordAuditInTx, type AuditEntry, type AuditWriter } from './audit.js';
 export {
   DEFAULT_AI_BUDGET_ALERT_PERCENT,
@@ -93,7 +97,37 @@ export {
   type AiGuardOptions,
   type AiGuardRequest,
 } from './ai/guard.js';
-export { upsertAiInsight, type AiInsightInput, type InsightWriter } from './ai/insight.js';
+export {
+  upsertAiInsight,
+  writeAiInvestigation,
+  type AiInsightInput,
+  type InsightWriter,
+  type InvestigationWrite,
+} from './ai/insight.js';
+export {
+  recordDraftEdited,
+  rejectAiDraft,
+  saveAiDraft,
+  type EditedDraftInput,
+  type NewAiDraft,
+  type RejectAiDraftInput,
+} from './ai/drafts.js';
+export {
+  createAiKbDraft,
+  ticketKbGap,
+  type AiKbDraftInput,
+  type KbGapVerdict,
+} from './ai/kb-draft.js';
+export {
+  createDbToolLedger,
+  type DbToolLedger,
+  type DbToolLedgerOptions,
+  type ToolDenialReason,
+  type ToolLedgerDecision,
+  type ToolLedgerEntry,
+  type ToolLedgerFinish,
+  type ToolLedgerLimits,
+} from './ai/tool-ledger.js';
 export {
   createAiRunRecorder,
   type AiRunDatabase,
@@ -229,6 +263,14 @@ export {
   type KbSearchOutcome,
 } from './kb/search.js';
 export { NO_NOTIFIER, type TicketNotifier } from './notifier.js';
+export {
+  notifyIn,
+  notifyShiftAlerts,
+  notifyTicketAssigned,
+  notifyTicketP1,
+  type NotifyInput,
+  type ShiftAlertInput,
+} from './notifications.js';
 export { enqueueJob, type OutboxRequest } from './outbox.js';
 export { cancelSend, type CancelSendInput } from './outbound/cancel.js';
 export { loadDeliveryContext, type DeliveryContext, type ParentMail } from './outbound/context.js';
@@ -287,6 +329,7 @@ export {
 export { toDeliverySummary } from './outbound/summary.js';
 export {
   RENDERABLE_TEMPLATE_KEYS,
+  plainPortalUrl,
   renderSystemTemplate,
   safeKeysWithoutRenderer,
   type TemplateVars,
@@ -423,6 +466,8 @@ export interface DomainOptions {
 
 export interface ContextOptions {
   readonly actor: Actor;
+  /** The person an AI actor works for (T-108e). */
+  readonly onBehalfOf?: string | null | undefined;
   readonly auditMeta?: { readonly ip: string | null; readonly requestId: string | null };
   /** Default: no customer notices. */
   readonly notifier?: TicketNotifier;
@@ -504,6 +549,8 @@ export interface Domain {
     /** A person turns a message from Other mail into a ticket (T-119). */
     readonly convert: typeof convertInboundMessage;
   };
+  /** AI drafts (T-108c): a person's verdict on a draft. */
+  readonly ai: { readonly rejectDraft: typeof rejectAiDraft };
   /** Who is behind a LINE user id: link codes and LINE Login (T-103d, R-2.11). */
   readonly identity: {
     readonly issueLineLinkCode: typeof issueLineLinkCode;
@@ -524,6 +571,11 @@ export interface Domain {
     readonly verifyToken: typeof verifyCsatToken;
     readonly decideReopen: typeof decideCsatReopen;
   };
+  /**
+   * In-app notifications (T-105). Ticket alerts (P1, assigned) are raised inside `tickets.*`; the
+   * shift alerts for leads are raised by whoever has the shift overview (T-111).
+   */
+  readonly notifications: { readonly shiftAlerts: typeof notifyShiftAlerts };
 }
 
 export function createDomain(options: DomainOptions): Domain {
@@ -531,7 +583,7 @@ export function createDomain(options: DomainOptions): Domain {
     ticketKeyPrefix: options.ticketKeyPrefix,
     reopenWindowDays: options.reopenWindowDays ?? REOPEN_WINDOW_DAYS,
     sealKey: options.sealKey,
-    portalUrl: options.portalUrl,
+    portalUrl: plainPortalUrl(options.portalUrl),
     retryKeyMaxAgeSeconds: options.retryKeyMaxAgeSeconds,
     csat: options.csat,
   };
@@ -540,8 +592,10 @@ export function createDomain(options: DomainOptions): Domain {
     config,
     context: (contextOptions) => ({
       actor: contextOptions.actor,
+      onBehalfOf: contextOptions.onBehalfOf ?? null,
       auditMeta: contextOptions.auditMeta ?? { ip: null, requestId: null },
       now,
+      databaseClock: options.now === undefined,
       config,
       policyGate: options.policyGate,
       notifier: contextOptions.notifier ?? NO_NOTIFIER,
@@ -602,6 +656,7 @@ export function createDomain(options: DomainOptions): Domain {
       readSettings: readOutboundSettings,
       setUndoSendSeconds,
     },
+    ai: { rejectDraft: rejectAiDraft },
     inbound: { ingest: ingestInbound, convert: convertInboundMessage },
     identity: { issueLineLinkCode, redeemLineLinkCode, linkLineUser },
     csat: {
@@ -617,5 +672,6 @@ export function createDomain(options: DomainOptions): Domain {
       verifyToken: verifyCsatToken,
       decideReopen: decideCsatReopen,
     },
+    notifications: { shiftAlerts: notifyShiftAlerts },
   };
 }

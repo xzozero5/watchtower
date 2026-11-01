@@ -5,7 +5,7 @@ import { KEY_LABELS, deriveSubkey } from '@watchtower/shared/secret-box';
 import type { Processor } from 'bullmq';
 
 import type { WorkerConfig } from '../config.js';
-import { createAiProcessor } from '../ai/brief.js';
+import { createAiPipelineProcessor } from '../ai/pipeline.js';
 import type { AiOverrides, AiRuntime } from '../ai/runtime.js';
 import { createGmailRegistration, type GmailOverrides } from '../gmail/index.js';
 import type { GmailRuntime } from '../gmail/runtime.js';
@@ -34,7 +34,7 @@ export interface ProcessorContext {
   readonly domain: Domain;
   /** Publishes realtime events after a commit. */
   readonly realtime: RealtimeSink;
-  /** The AI layer (T-106e). Absent when `AI_PROVIDER` is not wired: AI stays off and rules decide. */
+  /** The AI layer (T-106e, T-132): the adapter `AI_PROVIDER` selects. Absent only in tests that leave AI out. */
   readonly ai: AiRuntime | undefined;
   /** How the worker reaches Gmail mailboxes: fakes in mock mode, the live transport only with a complete credential (T-102). */
   readonly gmail: GmailRuntime;
@@ -112,7 +112,7 @@ export const PROCESSORS: readonly ProcessorRegistration[] = [
   // --- ai (T-106, T-108) ---
   {
     queue: QUEUE_NAMES.ai,
-    create: ({ database, ai, logger }) => createAiProcessor({ database, ai, logger }),
+    create: createAiPipelineProcessor,
   },
 
   // --- kb (T-107) ---

@@ -48,6 +48,7 @@ import { useShortcut, stepIndex } from '@/lib/keyboard';
 import { usePreferences } from '@/lib/preferences';
 import { useNow } from '@/lib/use-now';
 import { useThrottledValue } from '@/lib/use-throttled-value';
+import { countNewMatching } from '@/lib/realtime/new-tickets';
 import { useRealtime } from '@/lib/realtime/realtime-provider';
 import {
   activeFilterCount,
@@ -397,7 +398,12 @@ export function QueuePane({
     }
   };
 
-  const newCount = realtime.newTicketIds.length;
+  // Only the tickets that belong to the filter on screen are counted (a P1 in another queue does
+  // not light the pill of "My queue").
+  const newCount = useMemo(
+    () => countNewMatching(realtime.newTickets, filters, userId),
+    [realtime.newTickets, filters, userId],
+  );
   // Screen readers hear the count at most once per 30 s; the visible pill updates at once.
   const announcedCount = useThrottledValue(newCount, PILL_ANNOUNCE_INTERVAL_MS, isZero);
   const { clearNewTickets } = realtime;

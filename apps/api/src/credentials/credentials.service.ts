@@ -2,6 +2,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import { CredentialStoreError, type CredentialStore } from '@watchtower/db';
 import {
   AUDIT_ACTIONS,
+  GMAIL_OAUTH_GRANT_FIELDS,
   integrationFields,
   type IntegrationKey,
   type IntegrationList,
@@ -37,6 +38,10 @@ function definedFields(
   }
   return result;
 }
+
+const isGrantField = (name: string): boolean => GMAIL_OAUTH_GRANT_FIELDS.includes(name);
+const GRANT_FIELD_MESSAGE =
+  'The Gmail OAuth grant is written by connecting the mailbox and removed by disconnecting it, not saved or deleted here';
 
 /** How long a live check may run. */
 const LIVE_TEST_TIMEOUT_MS = 10_000;
@@ -84,6 +89,9 @@ export class CredentialsService {
     body: PutCredentials,
     actorId: string,
   ): Promise<IntegrationStatus> {
+    if (integration === 'gmail' && Object.keys(body.fields).some(isGrantField)) {
+      throw badRequest(GRANT_FIELD_MESSAGE);
+    }
     try {
       await this.uow.run(async ({ tx }) => {
         const written = await this.store.put(integration, definedFields(body.fields), actorId, tx);
@@ -103,6 +111,7 @@ export class CredentialsService {
   }
 
   async remove(integration: IntegrationKey, field: string, actorId: string): Promise<void> {
+    if (integration === 'gmail' && isGrantField(field)) throw badRequest(GRANT_FIELD_MESSAGE);
     try {
       await this.uow.run(async ({ tx }) => {
         const removed = await this.store.remove(integration, field, tx);

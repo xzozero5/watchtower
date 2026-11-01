@@ -30,6 +30,9 @@ export const adminKeys = (userId: string) => {
     calendars: [...all, 'calendars'] as const,
     calendar: (id: string) => [...all, 'calendar', id] as const,
     intentHistory: (id: string) => [...all, 'intent-history', id] as const,
+    integrations: [...all, 'integrations'] as const,
+    gmailStatus: [...all, 'gmail-status'] as const,
+    channelAccounts: [...all, 'channel-accounts'] as const,
     auditAll: [...all, 'audit'] as const,
     audit: (filters: unknown) => [...all, 'audit', filters] as const,
   };
@@ -229,5 +232,39 @@ export function useAuditLogs(filters: AuditFilters) {
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (last) => last.nextCursor ?? undefined,
     staleTime: 30_000,
+  });
+}
+
+/** Credential status per integration. Never a value (ADR-012). */
+export function useIntegrations(enabled = true) {
+  const api = useApi();
+  const userId = useUserId();
+  return useQuery({
+    queryKey: adminKeys(userId).integrations,
+    queryFn: ({ signal }) => api.integrations(signal),
+    enabled,
+    staleTime: 10_000,
+  });
+}
+
+export function useGmailStatus(enabled = true) {
+  const api = useApi();
+  const userId = useUserId();
+  return useQuery({
+    queryKey: adminKeys(userId).gmailStatus,
+    queryFn: ({ signal }) => api.gmailStatus(signal),
+    enabled,
+    staleTime: 10_000,
+  });
+}
+
+export function useChannelAccounts(enabled = true) {
+  const api = useApi();
+  const userId = useUserId();
+  return useQuery({
+    queryKey: adminKeys(userId).channelAccounts,
+    queryFn: ({ signal }) => api.channelAccounts(signal),
+    enabled,
+    staleTime: 10_000,
   });
 }

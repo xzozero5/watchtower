@@ -14,7 +14,9 @@ import {
 } from '@watchtower/shared';
 import { and, asc, eq, gte, lt, lte, or, sql, type SQL } from 'drizzle-orm';
 
+import { restoreAiDraft } from '../ai/drafts.js';
 import { recordAuditInTx } from '../audit.js';
+import { authorityNow } from '../clock.js';
 import { clearStaleReplyTokens } from './reply-token.js';
 import { enqueueJob } from '../outbox.js';
 import type { PolicyDecision } from '../policy.js';
@@ -86,7 +88,8 @@ export async function claimDelivery(
   ctx: DomainContext,
   deliveryId: string,
 ): Promise<OutboundDeliveryRow | null> {
-  const now = ctx.now();
+  // The same clock that stamped the hold (review O-7): a worker whose own clock is fast cannot claim early.
+  const now = await authorityNow(tx, ctx);
   const [claimed] = await tx
     .update(schema.outboundDelivery)
     .set({
@@ -204,10 +207,7 @@ async function ticketOf(tx: DbTransaction, ticketId: string): Promise<TicketRow 
 /** An approved AI draft goes back to waiting when its send did not happen. */
 async function reopenDraft(tx: DbTransaction, delivery: OutboundDeliveryRow): Promise<void> {
   if (delivery.aiDraftId === null) return;
-  await tx
-    .update(schema.aiDraft)
-    .set({ status: 'draft', approvedBy: null, approvedAt: null })
-    .where(and(eq(schema.aiDraft.id, delivery.aiDraftId), eq(schema.aiDraft.status, 'approved')));
+  await restoreAiDraft(tx, delivery.aiDraftId);
 }
 
 /**
@@ -223,16 +223,30 @@ export async function denyDelivery(
 ): Promise<DomainResult<boolean>> {
   const fx = new Effects();
   if (delivery.claimToken === null) return fx.result(false);
-  const now = ctx.now();
+  const now = await authorityNow(tx, ctx);
+  // T-122f F-1: a push that went out in an earlier attempt may have reached the customer. Refusing the
+  // next attempt must not read as "nothing was sent": it ends `failed` with the unknown outcome, so the
+  // person who retries is told it may arrive twice. Otherwise nothing was sent and it is `cancelled`.
+  const pinnedPush = delivery.route === 'line_push';
   const [updated] = await tx
     .update(schema.outboundDelivery)
-    .set({
-      state: 'cancelled',
-      errorCode: 'policy_denied',
-      leaseUntil: null,
-      cancelledAt: now,
-      updatedAt: now,
-    })
+    .set(
+      pinnedPush
+        ? {
+            state: 'failed',
+            errorCode: 'policy_denied',
+            outcomeUnknown: true,
+            leaseUntil: null,
+            updatedAt: now,
+          }
+        : {
+            state: 'cancelled',
+            errorCode: 'policy_denied',
+            leaseUntil: null,
+            cancelledAt: now,
+            updatedAt: now,
+          },
+    )
     .where(owned(delivery))
     .returning({ id: schema.outboundDelivery.id });
   if (updated === undefined) return fx.result(false);
@@ -248,7 +262,13 @@ export async function denyDelivery(
     OUTBOUND_TICKET_EVENTS.messageDeliveryFailed,
     ctx.actor,
     'internal',
-    { deliveryId: delivery.id, messageId: delivery.messageId, errorCode: 'policy_denied', reason },
+    {
+      deliveryId: delivery.id,
+      messageId: delivery.messageId,
+      errorCode: 'policy_denied',
+      reason,
+      ...(pinnedPush ? { outcomeUnknown: true } : {}),
+    },
   );
   await recordAuditInTx(tx, ctx, fx, {
     action: AUDIT_ACTIONS.outboundPolicyDenied,
@@ -265,6 +285,7 @@ export async function denyDelivery(
       approvedBy: delivery.approvedBy,
       reason,
       attempts: delivery.attempts,
+      outcomeUnknown: pinnedPush,
     },
   });
   if (ticket !== undefined) fx.emit(ticketEvent(ctx, 'ticket.updated', ticket, ['delivery']));
@@ -282,7 +303,7 @@ export async function markDispatched(
   delivery: Pick<OutboundDeliveryRow, 'id' | 'claimToken'>,
   route: DeliveryRoute,
 ): Promise<boolean> {
-  const now = ctx.now();
+  const now = await authorityNow(tx, ctx);
   const rows = await tx
     .update(schema.outboundDelivery)
     .set({ route, dispatchedAt: now, leaseUntil: leaseUntil(now), updatedAt: now })
@@ -318,7 +339,7 @@ export async function recordSent(
   result: SentResult,
 ): Promise<DomainResult<boolean>> {
   const fx = new Effects();
-  const now = ctx.now();
+  const now = await authorityNow(tx, ctx);
   const [sent] = await tx
     .update(schema.outboundDelivery)
     .set({
@@ -373,6 +394,10 @@ export async function recordSent(
         status: 'sent',
         approvedBy: delivery.approvedBy,
         approvedAt: sql`COALESCE(${schema.aiDraft.approvedAt}, ${now})`,
+        disposition: 'approved',
+        editDistance: 0,
+        resolvedBy: delivery.approvedBy,
+        resolvedAt: sql`COALESCE(${schema.aiDraft.resolvedAt}, ${now})`,
       })
       .where(
         and(
@@ -442,7 +467,7 @@ export async function recordFailure(
   extra: { readonly reason?: string } = {},
 ): Promise<DomainResult<boolean>> {
   const fx = new Effects();
-  const now = ctx.now();
+  const now = await authorityNow(tx, ctx);
   if (decision.action === 'retry') {
     const nextAttemptAt = new Date(now.getTime() + decision.delaySeconds * 1000);
     const [back] = await tx
@@ -588,7 +613,9 @@ export async function sweepDeliveries(
   options: SweepOptions = {},
 ): Promise<SweepResult> {
   const fx = new Effects();
-  const now = ctx.now();
+  // The lease was stamped by whichever worker claimed the row; the database clock judges it, so a
+  // sweeper (or a worker) whose own clock is minutes off cannot fail a live send (review O-7).
+  const now = await authorityNow(tx, ctx);
   const batch = options.batch ?? 50;
   const periodOf = options.quotaPeriodOf ?? billingPeriod;
   const keyMaxAge = ctx.config.retryKeyMaxAgeSeconds ?? DELIVERY_RETRY_KEY_MAX_AGE_SECONDS;
@@ -668,7 +695,10 @@ export async function sweepDeliveries(
   }
 
   const overdue = await tx
-    .select({ id: schema.outboundDelivery.id })
+    .select({
+      id: schema.outboundDelivery.id,
+      nextAttemptAt: schema.outboundDelivery.nextAttemptAt,
+    })
     .from(schema.outboundDelivery)
     .where(
       and(
@@ -682,13 +712,15 @@ export async function sweepDeliveries(
     .orderBy(asc(schema.outboundDelivery.nextAttemptAt))
     .limit(batch);
   const bucket = Math.floor(now.getTime() / (OVERDUE_GRACE_SECONDS * 1000));
-  for (const { id } of overdue) {
+  for (const { id, nextAttemptAt } of overdue) {
     await enqueueJob(tx, ctx.config, {
       queue: QUEUE_NAMES.outbound,
       name: OUTBOUND_JOBS.dispatch,
       // One re-trigger per delivery per two minutes, however often the sweeper runs.
       jobId: `delivery-${id}-sweep-${String(bucket)}`,
       payload: { deliveryId: id },
+      // Never ahead of the delivery's own time, whichever clock judged it overdue (review O-7).
+      notBefore: nextAttemptAt,
       options: OUTBOUND_DISPATCH_JOB_OPTIONS,
     });
   }

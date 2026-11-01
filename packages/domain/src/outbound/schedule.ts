@@ -7,11 +7,13 @@ import {
   QUEUE_NAMES,
   type DeliveryChannel,
 } from '@watchtower/shared';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, ne } from 'drizzle-orm';
 
 import { recordAuditInTx } from '../audit.js';
+import { authorityNow } from '../clock.js';
 import { DomainError, badRequest, conflict, notFound } from '../errors.js';
 import { enqueueJob } from '../outbox.js';
+import { syncInsightForDraft } from '../ai/drafts.js';
 import { requireCustomerSend } from '../policy.js';
 import type { AiDraftRow, MessageRow, OutboundDeliveryRow, TicketRow } from '../rows.js';
 import { insertMessage, lockTicketRow, ticketEvent, ticketKeysOf } from '../tickets/support.js';
@@ -95,6 +97,35 @@ async function lockMatchingDraft(
   return draft;
 }
 
+/**
+ * T-122f (N-1): a person's own reply cannot be the text of an AI draft nobody sent. That text would go out
+ * as `human` and skip the policy gate that judges `ai_approved`; the person sends the draft as the draft,
+ * or edits it first and the edit is theirs. (The database refuses it too.)
+ */
+async function refuseUnsentAiDraftText(
+  tx: DbTransaction,
+  ticket: TicketRow,
+  message: MessageRow,
+): Promise<void> {
+  const [same] = await tx
+    .select({ id: schema.aiDraft.id })
+    .from(schema.aiDraft)
+    .where(
+      and(
+        eq(schema.aiDraft.ticketId, ticket.id),
+        eq(schema.aiDraft.contentHash, contentHash(message.bodyText)),
+        ne(schema.aiDraft.status, 'sent'),
+      ),
+    )
+    .limit(1);
+  if (same !== undefined) {
+    throw denied(
+      'ai_draft_text_as_human',
+      'This is the text of an AI draft; send the draft itself, or change the text first',
+    );
+  }
+}
+
 function gateRequest(ctx: DomainContext, input: ScheduleSendInput) {
   return {
     ticketId: input.ticket.id,
@@ -148,6 +179,7 @@ export async function scheduleCustomerSend(
   } else if (input.aiDraftId !== undefined) {
     throw badRequest('aiDraftId is only for an AI draft sent by a person');
   }
+  if (origin === 'human') await refuseUnsentAiDraftText(tx, ticket, message);
   let templateKey: string | null = null;
   let renderInputs: Record<string, string | null> | null = null;
   if (origin === 'system_template') {
@@ -175,16 +207,26 @@ export async function scheduleCustomerSend(
   // Whatever a gate says, there is no stage-3 path in Phase 1 (the table refuses the origin too).
   if (origin === 'ai_auto') throw denied('ai_auto_send_disabled_phase1', 'AI auto-send is off');
 
-  const now = ctx.now();
+  // The hold is stamped by the clock the worker's claim and the cancel also read (review O-7).
+  const now = await authorityNow(tx, ctx);
   if (draft !== undefined) {
     const actorId = ctx.actor.id;
     if (actorId === null) throw denied('approval_missing', 'An AI draft needs a person to send it');
     const approved = await tx
       .update(schema.aiDraft)
-      .set({ status: 'approved', approvedBy: actorId, approvedAt: now })
+      .set({
+        status: 'approved',
+        approvedBy: actorId,
+        approvedAt: now,
+        disposition: 'approved',
+        editDistance: 0,
+        resolvedBy: actorId,
+        resolvedAt: now,
+      })
       .where(and(eq(schema.aiDraft.id, draft.id), eq(schema.aiDraft.status, 'draft')))
       .returning({ id: schema.aiDraft.id });
     if (approved.length === 0) throw conflict('This AI draft was just used');
+    await syncInsightForDraft(tx, draft.id, 'classified');
   }
 
   // A reply written by a person waits so it can be undone; an automatic acknowledgment does not.
@@ -269,8 +311,17 @@ export async function approveAiDraftSent(
   const now = ctx.now();
   await tx
     .update(schema.aiDraft)
-    .set({ status: 'sent', approvedBy: actorId, approvedAt: now })
+    .set({
+      status: 'sent',
+      approvedBy: actorId,
+      approvedAt: now,
+      disposition: 'approved',
+      editDistance: 0,
+      resolvedBy: actorId,
+      resolvedAt: now,
+    })
     .where(eq(schema.aiDraft.id, draft.id));
+  await syncInsightForDraft(tx, draft.id, 'classified');
   await recordAuditInTx(tx, ctx, fx, {
     action: AUDIT_ACTIONS.outboundSent,
     targetType: 'ticket',
@@ -320,7 +371,6 @@ export async function scheduleTemplateAck(
       bodyText: body,
       visibility: 'public',
       deliveryStatus: 'scheduled',
-      createdAt: now,
     },
     { updatedAt: now },
   );
