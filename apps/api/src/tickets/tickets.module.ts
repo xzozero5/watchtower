@@ -7,6 +7,7 @@ import { SlaModule } from '../sla/sla.module.js';
 import { TeamQueuesModule } from '../team-queues/team-queues.module.js';
 import { APP_CONFIG, type ApiConfig } from '../config/config.js';
 import { TICKET_KEYS, TicketKeys } from './ticket-keys.js';
+import { SlaRemaining } from './sla-remaining.js';
 import { TicketSlaStates } from './sla-states.js';
 import { TicketReader } from './ticket-reader.js';
 import { TicketsController } from './tickets.controller.js';
@@ -30,10 +31,18 @@ import { WorkflowController, WorkflowService } from './workflow.service.js';
     },
     TicketsService,
     TicketSlaStates,
+    SlaRemaining,
     TicketReader,
     TimelineService,
     WorkflowService,
   ],
-  exports: [TICKET_KEYS, TicketsService, TicketReader, TimelineService, WorkflowService],
+  exports: [
+    TICKET_KEYS,
+    TicketsService,
+    TicketReader,
+    SlaRemaining,
+    TimelineService,
+    WorkflowService,
+  ],
 })
 export class TicketsModule {}

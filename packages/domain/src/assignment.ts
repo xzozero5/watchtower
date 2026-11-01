@@ -1,7 +1,6 @@
 import { schema } from '@watchtower/db';
 import { OPEN_STATUSES, SHIFT_SESSION_MAX_HOURS, STAFF_ROLES } from '@watchtower/shared';
 import { and, asc, desc, eq, inArray, isNotNull, ne, sql, type SQL } from 'drizzle-orm';
-import type { AnyPgColumn } from 'drizzle-orm/pg-core';
 
 import { badRequest } from './errors.js';
 import type { DbTransaction, ReadExecutor } from './types.js';
@@ -56,13 +55,15 @@ export function pickLeastLoaded(
 }
 
 /**
- * Is the person clocked in? A session counts while it is open and younger than
- * `SHIFT_SESSION_MAX_HOURS` (a forgotten clock out must not keep tickets coming for ever).
+ * Is `users.id` of the surrounding query clocked in? A session counts while it is open and younger
+ * than `SHIFT_SESSION_MAX_HOURS` (a forgotten clock out must not keep tickets coming for ever).
+ * The outer id is written table-qualified on purpose: drizzle prints a bare column name in a query
+ * over one table, and inside the subquery that name would bind to `shift_session` itself.
  */
-export function onShiftCondition(userId: SQL | AnyPgColumn): SQL {
+export function onShiftCondition(): SQL {
   return sql`EXISTS (
     SELECT 1 FROM ${schema.shiftSession}
-     WHERE ${schema.shiftSession.userId} = ${userId}
+     WHERE ${schema.shiftSession.userId} = ${schema.users}."id"
        AND ${schema.shiftSession.clockedOutAt} IS NULL
        AND ${schema.shiftSession.clockedInAt} > now() - make_interval(hours => ${SHIFT_SESSION_MAX_HOURS})
   )`;
@@ -123,7 +124,7 @@ export async function peekAssignee(
         eq(schema.teamQueueMember.queueId, queueId),
         eq(schema.users.status, 'active'),
         inArray(schema.users.role, [...STAFF_ROLES]),
-        onShiftCondition(schema.users.id),
+        onShiftCondition(),
       ),
     )
     .orderBy(asc(schema.users.id));

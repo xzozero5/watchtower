@@ -76,7 +76,8 @@ describe('pickRosterWindow', () => {
   it('accepts an early clock in, up to the early limit', () => {
     expect(pickRosterWindow(entries, at('2026-11-02T00:30:00Z'))?.id).toBe('day'); // 07:30 local
     const tooEarly = new Date(
-      entries[0]!.window.start.getTime() - (SHIFT_EARLY_CLOCK_IN_MINUTES + 1) * 60_000,
+      shiftWindow(day, '2026-11-02', BANGKOK).start.getTime() -
+        (SHIFT_EARLY_CLOCK_IN_MINUTES + 1) * 60_000,
     );
     expect(pickRosterWindow(entries, tooEarly)).toBeNull();
   });
