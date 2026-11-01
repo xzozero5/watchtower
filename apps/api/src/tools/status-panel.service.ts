@@ -7,6 +7,7 @@ import { schema, type Database } from '@watchtower/db';
 import { createHumanToolLedger, type HumanToolLedger } from '@watchtower/domain';
 import {
   RATE_TOOL_NAMES,
+  budgetProjectFor,
   SERVICE_STATUS_SPARK,
   type ServiceStatus,
   type ServiceStatusList,
@@ -16,7 +17,6 @@ import { and, asc, desc, inArray, ne, sql } from 'drizzle-orm';
 
 import { APP_CONFIG, type ApiConfig } from '../config/config.js';
 import { DATABASE } from '../database/database.module.js';
-import { budgetProject } from './tool-runner.service.js';
 import { clientIsMock, TOOL_CLIENTS, type ToolClients } from './tool-clients.js';
 
 type Alerting = ServiceStatus['alerts']['worstSeverity'];
@@ -57,7 +57,7 @@ export class StatusPanel {
   ) {
     this.ledger = createHumanToolLedger({
       db: database.db,
-      project: budgetProject(config.GCP_PROJECT_ID),
+      project: budgetProjectFor(config.GCP_PROJECT_ID),
     });
     this.hashKey = deriveSubkey(config.APP_ENCRYPTION_KEY, KEY_LABELS.aiInputHash).toString('hex');
   }

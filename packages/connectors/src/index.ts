@@ -17,3 +17,4 @@ export * from './repo/types.js';
 export * from './repo/fake.js';
 export * from './mock.js';
 export * from './templates.js';
+export * from './clients.js';

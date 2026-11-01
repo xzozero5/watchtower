@@ -95,9 +95,10 @@ describe('read-only, timeout, row cap', () => {
   });
 
   it('gives the read-only login no way to write at all', async () => {
-    await expect(
-      executor.execute({ sql: `SELECT nextval('jobs_id_seq')`, params: [], maxRows: 1, timeoutMs: 1000 }),
-    ).rejects.toMatchObject({ code: expect.stringMatching(/^(25006|42501)$/) as unknown as string });
+    const error = await executor
+      .execute({ sql: `SELECT nextval('jobs_id_seq')`, params: [], maxRows: 1, timeoutMs: 1000 })
+      .catch((caught: unknown) => caught);
+    expect(['25006', '42501']).toContain((error as { code?: string }).code);
   });
 
   it('stops a statement at statement_timeout and says so', async () => {

@@ -112,6 +112,12 @@ export const RATE_TOOL_NAMES = {
 
 export const DEFAULT_BUDGET_PROJECT = 'default';
 
+/** The project whose quota the tools share: the GCP project when there is one, else `default`. */
+export function budgetProjectFor(gcpProjectId: string | undefined): string {
+  const cleaned = (gcpProjectId ?? '').replaceAll(/[^A-Za-z0-9_.-]/g, '-').slice(0, 100);
+  return cleaned === '' ? DEFAULT_BUDGET_PROJECT : cleaned;
+}
+
 /**
  * Which window a tool call is counted in. The logs tool, the data tool, the repository tool and the
  * metrics tool each have one window per project that people and the AI share. Any other tool (the

@@ -23,7 +23,7 @@ import {
 import {
   DATA_RUN_MAX_ROWS,
   DATA_RUN_TIMEOUT_MS,
-  DEFAULT_BUDGET_PROJECT,
+  budgetProjectFor,
   RATE_TOOL_NAMES,
   TOOL_AUTO_PARAMS,
   TOOLS_AUDIT_ACTIONS,
@@ -162,7 +162,7 @@ export class ToolRunner implements OnModuleDestroy {
     @Inject(APP_CONFIG) config: ApiConfig,
   ) {
     this.hashKey = deriveSubkey(config.APP_ENCRYPTION_KEY, KEY_LABELS.aiInputHash).toString('hex');
-    this.project = budgetProject(config.GCP_PROJECT_ID);
+    this.project = budgetProjectFor(config.GCP_PROJECT_ID);
     this.ledger = createHumanToolLedger({ db: database.db, project: this.project });
   }
 
@@ -561,10 +561,4 @@ export class ToolRunner implements OnModuleDestroy {
     });
     return toEvidenceCard(row);
   }
-}
-
-/** The project whose quota the tools share: the GCP project when there is one, else `default`. */
-export function budgetProject(gcpProjectId: string | undefined): string {
-  const cleaned = (gcpProjectId ?? '').replaceAll(/[^A-Za-z0-9_.-]/g, '-').slice(0, 100);
-  return cleaned === '' ? DEFAULT_BUDGET_PROJECT : cleaned;
 }
