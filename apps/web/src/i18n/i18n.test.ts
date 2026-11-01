@@ -1,3 +1,6 @@
+import { readdirSync } from 'node:fs';
+import { join } from 'node:path';
+
 import { describe, expect, it } from 'vitest';
 
 import { DEFAULT_LOCALE, getMessages, LOCALES, negotiateLocale, translate } from './index';
@@ -21,6 +24,26 @@ describe('message catalogues', () => {
 
   it('have the same keys in Thai and English', () => {
     expect(thEntries.map(([key]) => key)).toEqual(enEntries.map(([key]) => key));
+  });
+
+  it('have one file per namespace in both languages, with matching keys in each', () => {
+    const files = (lang: string) =>
+      readdirSync(join(__dirname, 'messages', lang))
+        .filter((f) => f.endsWith('.ts') && f !== 'index.ts')
+        .map((f) => f.replace(/\.ts$/, ''))
+        .sort();
+    const namespaces = files('en');
+    expect(files('th')).toEqual(namespaces);
+    // Every namespace file is wired into the catalogue, and nothing else is.
+    expect(Object.keys(en).sort()).toEqual(namespaces);
+    expect(Object.keys(th).sort()).toEqual(namespaces);
+
+    const enTree = en as Record<string, unknown>;
+    const thTree = th as Record<string, unknown>;
+    for (const ns of namespaces) {
+      const keys = (tree: Record<string, unknown>) => flatten(tree[ns], ns).map(([key]) => key);
+      expect(keys(thTree), ns).toEqual(keys(enTree));
+    }
   });
 
   it('have no empty text', () => {

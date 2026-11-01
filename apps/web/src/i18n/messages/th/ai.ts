@@ -1,7 +1,8 @@
-import type { AiMessages } from './ai.en';
+import type { aiEn } from '../en/ai';
+import type { Widen } from '../types';
 
-/** Thai copy of the AI-first workspace. Same keys as ai.en.ts. */
-export const aiTh: AiMessages = {
+/** Thai copy of the AI-first workspace. Same keys as en/ai.ts. */
+export const aiTh: Widen<typeof aiEn> = {
   paused: 'AI ถูกหยุดโดย {name} เมื่อ {time} — ตอบด้วยตนเองเท่านั้น',
   pausedNoName: 'AI ถูกหยุดเมื่อ {time} — ตอบด้วยตนเองเท่านั้น',
   pausedLink: 'การควบคุม AI',
