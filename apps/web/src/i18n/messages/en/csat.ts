@@ -48,5 +48,3 @@ export const csatEn = {
     body: 'The link may have expired or is not valid. If you still want to share feedback, reply to the email from our team.',
   },
 } as const;
-
-type Widen<T> = T extends string ? string : { readonly [K in keyof T]: Widen<T[K]> };
