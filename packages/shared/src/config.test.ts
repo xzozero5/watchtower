@@ -366,6 +366,54 @@ describe('dev login on a reachable host (C-16)', () => {
   });
 });
 
+describe('the in-memory Gmail needs an explicit opt-in (T-102 N-1)', () => {
+  it.each(['GMAIL_SERVICE_ACCOUNT_JSON_PATH', 'GMAIL_IMPERSONATE_USER'])(
+    'refuses the flag while %s is set',
+    (name) => {
+      expect(() =>
+        parseEnv(schema, { ...validEnv, GMAIL_MOCK_ENABLED: 'true', [name]: 'x' }),
+      ).toThrow(/GMAIL_MOCK_ENABLED/);
+    },
+  );
+
+  it('is off unless GMAIL_MOCK_ENABLED is true, including when NODE_ENV is development', () => {
+    expect(parseEnv(schema, validEnv).GMAIL_MOCK_ENABLED).toBe(false);
+    expect(parseEnv(schema, { ...validEnv, NODE_ENV: 'development' }).GMAIL_MOCK_ENABLED).toBe(
+      false,
+    );
+    expect(parseEnv(schema, { ...validEnv, GMAIL_MOCK_ENABLED: '' }).GMAIL_MOCK_ENABLED).toBe(
+      false,
+    );
+    expect(parseEnv(schema, { ...validEnv, GMAIL_MOCK_ENABLED: 'true' }).GMAIL_MOCK_ENABLED).toBe(
+      true,
+    );
+  });
+
+  it('refuses to boot in production', () => {
+    expect(
+      issuesFor({ ...productionEnv, GMAIL_MOCK_ENABLED: 'true' }).get('GMAIL_MOCK_ENABLED'),
+    ).toContain('production');
+  });
+
+  it('refuses to boot when APP_URL is not loopback, even under NODE_ENV=development (compose default)', () => {
+    const issues = issuesFor({
+      ...validEnv,
+      NODE_ENV: 'development',
+      GMAIL_MOCK_ENABLED: 'true',
+      APP_URL: 'https://support.example.com',
+    });
+    expect(issues.get('GMAIL_MOCK_ENABLED')).toContain('loopback');
+  });
+
+  it('is accepted on a loopback APP_URL', () => {
+    expect(
+      issuesFor({ ...validEnv, GMAIL_MOCK_ENABLED: 'true', APP_URL: 'http://localhost:3000' }).has(
+        'GMAIL_MOCK_ENABLED',
+      ),
+    ).toBe(false);
+  });
+});
+
 describe('Google OIDC domain restriction', () => {
   it('requires GOOGLE_ALLOWED_DOMAIN once OIDC credentials are set', () => {
     const withClient = {

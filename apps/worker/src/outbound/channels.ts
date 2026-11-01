@@ -25,7 +25,7 @@ export interface LineSender {
 
 export interface OutboundChannels {
   /** Undefined for an account this process cannot reach (no credentials). */
-  gmail(account: OutboundAccount): GmailSender | undefined;
+  gmail(account: OutboundAccount): GmailSender | undefined | Promise<GmailSender | undefined>;
   line(account: OutboundAccount): LineSender | undefined;
 }
 
