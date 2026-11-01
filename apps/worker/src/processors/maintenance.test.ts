@@ -3,7 +3,11 @@ import { MAINTENANCE_JOBS } from '@watchtower/shared';
 import { UnrecoverableError, type Job } from 'bullmq';
 import { describe, expect, it, vi } from 'vitest';
 
-import { createMaintenanceProcessor, PARTITION_MONTHS_AHEAD } from './maintenance.js';
+import {
+  createMaintenanceProcessor,
+  PARTITION_MONTHS_AHEAD,
+  PARTITIONED_TABLES,
+} from './maintenance.js';
 
 function fakeDatabase(created: number) {
   const query = vi.fn().mockResolvedValue({ rows: [{ created }] });
@@ -16,8 +20,8 @@ describe('maintenance processor', () => {
     const result = await createMaintenanceProcessor(database)({
       name: MAINTENANCE_JOBS.ensurePartitions,
     } as Job);
-    expect(result).toEqual({ created: 10 });
-    expect(query).toHaveBeenCalledTimes(5);
+    expect(result).toEqual({ created: 2 * PARTITIONED_TABLES.length });
+    expect(query).toHaveBeenCalledTimes(PARTITIONED_TABLES.length);
     const calls = query.mock.calls as [string, unknown[]][];
     expect(calls[0]?.[0]).toContain("ensure_monthly_partitions('audit_log'");
     expect(calls[1]?.[0]).toContain("ensure_monthly_partitions('ticket_event'");

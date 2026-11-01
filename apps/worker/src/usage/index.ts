@@ -28,7 +28,7 @@ const TICK_LIMIT = 20;
  *  - `health` (daily): computes today's Client Health Score of every active organization.
  */
 export function createUsageRegistration(context: ProcessorContext) {
-  const { database, domain, logger, overrides } = context;
+  const { database, domain, logger, overrides, realtime } = context;
   const port = overrides.usage?.port;
   const redactor = createRedactor();
   let announced = false;
@@ -90,6 +90,14 @@ export function createUsageRegistration(context: ProcessorContext) {
       ran += 1;
       if (outcome.state === 'ok') {
         anomalies += outcome.anomalies;
+        // Staff screens learn of the new alert after the commit; a failed publish loses a refresh, not data.
+        for (const event of outcome.events) {
+          try {
+            await realtime.publish(event);
+          } catch (error) {
+            log.warn({ err: error, eventType: event.type }, 'realtime publish failed');
+          }
+        }
         log.info(
           { points: outcome.points, anomalies: outcome.anomalies, capped: outcome.capped },
           'usage metric run',
