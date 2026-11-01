@@ -131,10 +131,11 @@ export {
   sweepDeliveries,
   vetDelivery,
   type SentResult,
+  type SweepOptions,
   type SweepResult,
   type Vetting,
 } from './outbound/dispatch.js';
-export { lockQuota, moveQuota, type QuotaSnapshot } from './outbound/quota.js';
+export { billingPeriod, lockQuota, moveQuota, type QuotaSnapshot } from './outbound/quota.js';
 export {
   clearStaleReplyTokens,
   findReplyToken,
@@ -165,6 +166,7 @@ export {
   dispatchJobId,
   hasIdempotencyKey,
   isFinal,
+  retryKeyExpired,
   type FailureDecision,
   type FailureFacts,
 } from './outbound/state.js';
@@ -274,6 +276,8 @@ export interface DomainOptions {
   readonly sealKey: Buffer;
   /** Portal address for the acknowledgment text (ADR-010); optional. */
   readonly portalUrl?: string | undefined;
+  /** Seconds a delivery may be retried under one LINE retry key; default `DELIVERY_RETRY_KEY_MAX_AGE_SECONDS`. */
+  readonly retryKeyMaxAgeSeconds?: number | undefined;
   /** Days a resolved ticket still reopens on a customer reply. Default: `REOPEN_WINDOW_DAYS`. */
   readonly reopenWindowDays?: number;
   /** Absent means every customer-bound AI action is refused (fail closed, N3). `createPolicyGate` builds the real one. */
@@ -357,6 +361,7 @@ export function createDomain(options: DomainOptions): Domain {
     reopenWindowDays: options.reopenWindowDays ?? REOPEN_WINDOW_DAYS,
     sealKey: options.sealKey,
     portalUrl: options.portalUrl,
+    retryKeyMaxAgeSeconds: options.retryKeyMaxAgeSeconds,
   };
   const now = options.now ?? ((): Date => new Date());
   return {

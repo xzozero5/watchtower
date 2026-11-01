@@ -61,6 +61,7 @@
 | [ ] 22 | human verification ของ portal (R-9.1 ยกตัวอย่าง Turnstile/hCaptcha) | self-hosted: proof-of-work + honeypot + rate limit หลัง `HumanVerificationProvider` (ADR-007) · ผู้ให้บริการภายนอก = `[ASK-HUMAN]` (ปลายทาง network ใหม่ + ส่ง IP ผู้ใช้ไป vendor) | po อนุมัติปลายทางใหม่ไม่ได้ |
 | [ ] 23 | emergency switch Phase 1 | สองปุ่ม: "จำกัดทุก intent ≤ stage 2" (ไม่ยก 0/1 ขึ้น) และ kill switch "หยุด AI ทั้งหมด" · เปิด/ปิด = confirm + เหตุผล + audit | N3 |
 | [ ] 24 | T-011 Phase 0 | ยังไม่ปิดจนกว่า CI (T-014) เขียว · เจ้าของตรวจตาม checklist แล้วค่อย tag | DoD |
+| [ ] 26 | LINE link แล้วถือว่า "ยืนยันตัวตน" ไหม (T-103d) | LINE Login จาก portal session ที่ login แล้ว → verified · code ที่ staff เห็นแล้วบอกลูกค้า → ผูกได้แต่ **unverified** (disclosure policy §6.6 ยังบังคับ) · code ที่ส่งไป email ที่ยืนยันแล้วเท่านั้น (R-2.11c) → verified · เก็บสถานะ LINE แยกจาก `contact.verified_at` · staff ยืนยันเองเป็น action แยก lead+ พร้อมเหตุผล+audit (อนาคต) | staff ถูก social engineering ทางโทรศัพท์ได้ · ทางที่ verified ต้องพิสูจน์ว่าคุมทั้ง email และ LINE · ย้อนกลับง่าย |
 | [ ] 25 | T-011 Phase 1 scope | T-122 ingest + `packages/domain`, T-123 scaffolding, AC-4 → T-108e KB-author ขั้นต่ำ, เลื่อน Discord bot / Web Push / digest / crawler / bulk ไปหลัง T-113, worktree ≤ 3, Phase 1 ปิดที่ "done pending pilot" | credit จำกัด ทำของมีค่าก่อน |
 
 ## การตัดสินใจของเจ้าของที่มีผลอยู่

@@ -22,13 +22,24 @@ import {
   RequirePermission,
   type Principal,
 } from '../auth/decorators.js';
+import { forbidden } from '../auth/http-errors.js';
 import { parseResponse } from '../common/zod-openapi.js';
 import { UnitOfWorkService } from '../realtime/unit-of-work.js';
 import { OutboundService } from './outbound.service.js';
 
-/** A lead or the head may undo a colleague's send; an agent only their own (ADR-010 section 4). */
+/**
+ * Undo is staff work (like `assertCanReplyAs` for replies): somebody scoped to one organization, a client,
+ * never undoes a send, whatever permissions its role was given. Anybody may undo their own send; undoing
+ * a colleague's needs the `ticket.cancel.any` permission, not a role name, so a head can change who
+ * holds it (ADR-010 section 4, T-122e N-4).
+ */
+function assertCanCancel(principal: Principal): void {
+  if (principal.orgScope.kind === 'org' || !principal.permissions.has('ticket.reply')) {
+    throw forbidden();
+  }
+}
 const canCancelAny = (principal: Principal): boolean =>
-  principal.role === 'lead' || principal.role === 'head';
+  principal.permissions.has('ticket.cancel.any');
 
 @ApiTags('outbound')
 @Controller('v1')
@@ -48,17 +59,21 @@ export class OutboundController {
       'Cancels a reply on Gmail or LINE while it is still waiting out the undo window (the ' +
       '`sendAt` of the delivery, UI spec 17 Q1). The message stays in the timeline as ' +
       '`cancelled` and nothing reaches the customer; the status the reply set stays. Only the ' +
-      'sender, a lead or the head may undo. Asking again for a delivery already undone succeeds. ' +
+      'sender, or a holder of `ticket.cancel.any` (lead and head by default), may undo; a client ' +
+      'never. Asking again for a delivery already undone succeeds. ' +
       'Once the window has ended the message is being sent: 409 (`conflict`).',
   })
   @ApiOkResponse({ standardSchema: cancelSendResultSchema })
   @ApiNotFoundResponse({ description: 'No such delivery on this ticket' })
-  @ApiForbiddenResponse({ description: 'Not the sender, and not a lead or the head' })
+  @ApiForbiddenResponse({
+    description: 'Not the sender and without `ticket.cancel.any`, or scoped to an organization',
+  })
   @ApiConflictResponse({ description: 'The window has ended or the message was already sent' })
   async cancel(
     @Param({ schema: deliveryParamSchema }) params: DeliveryParam,
     @CurrentPrincipal() principal: Principal,
   ) {
+    assertCanCancel(principal);
     const result = await this.uow.run((uow) =>
       this.outbound.cancel(
         uow,

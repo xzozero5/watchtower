@@ -275,6 +275,73 @@ describe('POST /v1/tickets/:id/deliveries/:deliveryId/cancel', () => {
   });
 });
 
+describe("who may undo a colleague's send (N-4)", () => {
+  // Through the head's endpoint, as a deployment would: it also drops the permission cache.
+  async function setRole(role: string, change: (current: string[]) => string[]): Promise<void> {
+    const roles = await head.client.get<{ roles: { role: string; permissions: string[] }[] }>(
+      '/v1/rbac/roles',
+    );
+    const current = roles.body.roles.find((entry) => entry.role === role)?.permissions ?? [];
+    const put = await head.client.put(`/v1/rbac/roles/${role}/permissions`, {
+      permissions: change(current),
+    });
+    expect(put.status).toBe(200);
+  }
+  const grant = (role: string, permission: string) =>
+    setRole(role, (current) => [...new Set([...current, permission])]);
+  const revoke = (role: string, permission: string) =>
+    setRole(role, (current) => current.filter((key) => key !== permission));
+
+  it('follows the permission, not the role name: a lead without it cannot, an agent with it can', async () => {
+    const ticketId = await gmailTicket();
+    const response = await reply(agent, ticketId, 'Mine, not yours');
+    const deliveryId = deliveryOf(response).id;
+
+    await revoke('lead', 'ticket.cancel.any');
+    try {
+      const denied = await cancel(lead, ticketId, deliveryId);
+      expect(denied.status).toBe(403);
+      expect(denied.body.code).toBe('forbidden');
+      // An agent holding it can undo a colleague's send.
+      await grant('agent', 'ticket.cancel.any');
+      const undone = await cancel(agent2, ticketId, deliveryId);
+      expect(undone.status).toBe(200);
+      expect(undone.body.deliveryStatus).toBe('cancelled');
+    } finally {
+      await revoke('agent', 'ticket.cancel.any');
+      await grant('lead', 'ticket.cancel.any');
+    }
+    // Back to the defaults: the lead may, the other agent may not.
+    const next = await reply(agent, await gmailTicket(), 'Mine again');
+    const nextTicket = next.body.message.ticketId;
+    expect((await cancel(agent2, nextTicket, deliveryOf(next).id)).status).toBe(403);
+    expect((await cancel(lead, nextTicket, deliveryOf(next).id)).status).toBe(200);
+  });
+
+  it('never lets somebody scoped to an organization undo a send, even with the reply permission', async () => {
+    const { clientOfNewOrg } = await import('../testing/ticketing.js');
+    const mine = await clientOfNewOrg(h);
+    const ticketId = await gmailTicket();
+    const response = await reply(agent, ticketId, 'Staff reply');
+    const deliveryId = deliveryOf(response).id;
+    await grant('client', 'ticket.reply');
+    await grant('client', 'ticket.cancel.any');
+    try {
+      const denied = await cancel(mine.persona, ticketId, deliveryId);
+      expect(denied.status).toBe(403);
+      expect(denied.body.code).toBe('forbidden');
+    } finally {
+      await revoke('client', 'ticket.reply');
+      await revoke('client', 'ticket.cancel.any');
+    }
+    const row = await pool().query<{ state: string }>(
+      `SELECT state FROM outbound_delivery WHERE id = $1`,
+      [deliveryId],
+    );
+    expect(row.rows[0]?.state).toBe('scheduled');
+  });
+});
+
 describe('sending an AI draft (N3, A-2)', () => {
   async function draftOn(ticketId: string, body: string): Promise<string> {
     const row = await pool().query<{ id: string }>(

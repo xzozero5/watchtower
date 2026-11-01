@@ -38,6 +38,12 @@ snapshot สั้นสำหรับ cold start อยู่ที่ `HANDOF
 
 ## Log
 
+## 2026-11-01 10:53 (Asia/Bangkok) — backend-dev + security-reviewer + main thread — T-122e outbound hardening ปิด
+- ทำอะไร: migration `0014_outbound_hardening` (guard ผู้เขียนข้อความ N-1, state machine N-3, `body_pattern` ของ template, permission `ticket.cancel.any`), sweeper มีเพดาน attempts + อายุ retry key (N-2), pinned push ที่ fail → `outcome_unknown` (N-5), ลบ replyToken จาก event ที่ fail (N-6), cancel endpoint เช็ค org scope + permission (N-4)
+- test: main thread รัน `--force` บน `verify/t-122e`: lint/typecheck ผ่าน · unit ทุก package ผ่าน (api 188, worker 79, domain 63, web 665 …) · integration db 200, domain 170, api 502, worker 67 · full-stack e2e 23 `[TESTED]`
+- security re-review: N-1/N-2/N-4/N-6 แก้แล้ว, N-3/N-5 บางส่วน · ไม่มี P0–P2 · P3 F-1..F-4 → T-122f (F-1 ต้องปิดก่อนเปิด LINE push จริง) · ADR-010 → Accepted แบบมีเงื่อนไข
+- ไม่ยืนยัน: อายุ retry key 20 ชม. `[ASSUMED]` (LINE ~24 ชม. `[VERIFY]`) · `ticket.cancel.any` ให้ lead/head `[ASSUMED]` · กฎ "ถึง provider แล้ว" ฝั่ง DB พึ่งการรับรองจาก app `[ASSUMED]`
+
 ## 2026-11-01 09:36 (Asia/Bangkok) — backend-dev + security-reviewer + main thread — T-122d outbound delivery ปิด
 - ทำอะไร: outbound dispatcher at-most-once (claim + `claim_token` fencing ทุก transition), undo-send ฝั่ง server + endpoint ยกเลิก, `aiDraftId` บน reply, สถานะการส่งบนข้อความ, LINE router reply-vs-push แบบ pin + quota ใน tx เดียว, re-render template ตอน claim, transport เป็น fake ทั้งหมด (production ใช้ `NO_CHANNELS`) · migration renumber `0010_outbound_delivery` → `0013_outbound_delivery` ตอน merge
 - ไฟล์ที่แตะ: `packages/db/migrations/0013_outbound_delivery*.sql`, `packages/domain/src/outbound/`, `apps/worker/src/outbound/`, `apps/api/src/outbound/`, `apps/api/src/tickets/*`, ADR-010
