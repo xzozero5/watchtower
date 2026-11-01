@@ -142,6 +142,7 @@ export {
 export { RRF_K, reciprocalRankFusion, type FusedItem, type RankedList } from './kb/rrf.js';
 export { audienceWidens, canMove, canPublishFrom, type KbAudienceSpec } from './kb/rules.js';
 export {
+  DEFAULT_MIN_VECTOR_SIMILARITY,
   audienceCondition,
   queryTerms,
   searchKb,

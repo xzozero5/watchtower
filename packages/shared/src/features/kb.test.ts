@@ -72,7 +72,7 @@ describe('knowledge base contracts', () => {
     const base = { slug: 'a', title: 'T', bodyMd: '', lang: 'en' };
     expect(createKbArticleSchema.safeParse({ ...base, lang: 'fr' }).success).toBe(false);
     expect(createKbArticleSchema.safeParse({ ...base, visibility: 'public' }).success).toBe(false);
-    expect(createKbArticleSchema.safeParse({ ...base, bodyMd: 'x'.repeat(200_001) }).success).toBe(
+    expect(createKbArticleSchema.safeParse({ ...base, bodyMd: 'x'.repeat(30_001) }).success).toBe(
       false,
     );
   });

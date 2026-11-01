@@ -85,8 +85,12 @@ export const kbSlugSchema = z
 
 const INTENT_TAG = /^[a-z][a-z0-9_]{1,62}$/;
 export const kbTitleSchema = z.string().trim().min(1).max(300);
-/** 200,000 characters `[ASSUMED]`: far above any help article, small enough to chunk in memory. */
-export const KB_MAX_BODY_CHARS = 200_000;
+/**
+ * 30,000 characters `[ASSUMED]`: about 5,000 words, far above a help article. It also keeps a
+ * request (Thai takes 3 bytes a character in UTF-8) under the 100 kB default JSON limit of the api;
+ * raising it means raising that limit first.
+ */
+export const KB_MAX_BODY_CHARS = 30_000;
 export const kbBodySchema = z.string().max(KB_MAX_BODY_CHARS);
 
 // --- articles ---

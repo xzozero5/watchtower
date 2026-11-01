@@ -651,6 +651,26 @@ describe('searchKb', () => {
     expect(result.hits[0]?.title).toBe('Invoice portal for A');
   });
 
+  it('keeps a chunk out of the vector list when its similarity is below the floor', async () => {
+    // Only a chunk exactly along x has similarity 1; the others are lower, and the floor decides.
+    const loose = await search('zzzz', staff, {
+      embedding: vec(1, 0, 0),
+      minVectorSimilarity: 0,
+      perArticle: 5,
+    });
+    const strict = await search('zzzz', staff, {
+      embedding: vec(1, 0, 0),
+      minVectorSimilarity: 0.999,
+      perArticle: 5,
+    });
+    expect(loose.hits.length).toBeGreaterThan(strict.hits.length);
+    expect(strict.hits.every((hit) => (hit.vectorRank ?? 0) > 0)).toBe(true);
+    expect(strict.hits.map((hit) => hit.section)).toEqual(['Steps']);
+    // Nothing is close to the z axis except the internal runbook: the default floor drops the rest.
+    const byDefault = await search('zzzz', staff, { embedding: vec(0, 0, 1), perArticle: 5 });
+    expect(titles(byDefault.hits)).toEqual(['Internal runbook']);
+  });
+
   it('never returns an internal article, a draft, a deprecated one or an old version to a customer', async () => {
     const queries = [
       'signing keys payment gateway',

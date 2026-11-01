@@ -29,7 +29,19 @@ export interface KbSearchInput {
   readonly perArticle?: number | undefined;
   /** How many candidates each list contributes to the fusion. Default 40. */
   readonly candidates?: number | undefined;
+  /**
+   * Cosine similarity a chunk needs to enter the vector list. Without a floor the nearest chunks
+   * are returned whatever they are about. Default `DEFAULT_MIN_VECTOR_SIMILARITY`.
+   */
+  readonly minVectorSimilarity?: number | undefined;
 }
+
+/**
+ * `[ASSUMED]` 0.25: unrelated passages score well below it and related ones well above it for the
+ * common sentence-embedding models, but the scale is the model's own. Tune it per model with the
+ * golden queries once a real embedding model is chosen (`KB_MIN_VECTOR_SIMILARITY` in the api).
+ */
+export const DEFAULT_MIN_VECTOR_SIMILARITY = 0.25;
 
 export interface KbSearchOutcome {
   readonly mode: KbSearchMode;
@@ -139,6 +151,7 @@ export async function searchKb(db: SearchDb, input: KbSearchInput): Promise<KbSe
         ).rows;
 
   const embedding = input.embedding;
+  const minSimilarity = input.minVectorSimilarity ?? DEFAULT_MIN_VECTOR_SIMILARITY;
   const vector =
     embedding === undefined
       ? []
@@ -149,6 +162,7 @@ export async function searchKb(db: SearchDb, input: KbSearchInput): Promise<KbSe
               JOIN kb_article a ON a.id = c.article_id AND a.published_version_id = c.version_id
              WHERE ${visible} AND ${lang}
                AND c.embedding_index_id = ${embedding.indexId}::uuid
+               AND c.embedding <=> ${toVector(embedding.vector)}::vector <= ${1 - minSimilarity}
              ORDER BY c.embedding <=> ${toVector(embedding.vector)}::vector, c.id
              LIMIT ${candidates}`)
         ).rows;
