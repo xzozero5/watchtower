@@ -72,19 +72,24 @@ const ADVERSARIAL: [string, string][] = [
 describe('redactor time on adversarial 200 KB inputs', () => {
   const redactor = createRedactor({ names: () => ['Somchai Jaidee', 'สมชาย'] });
 
-  it.each(ADVERSARIAL)('%s', (_name, input) => {
-    expect(input.length).toBeGreaterThanOrEqual(SIZE);
-    // Best of three, so a one-off pause (GC, a noisy neighbour) cannot fail the test.
-    let best = Infinity;
-    for (let attempt = 0; attempt < 3; attempt += 1) {
-      const session = redactor.session({ scope: 'ticket:test' });
-      best = Math.min(
-        best,
-        cpuMs(() => session.redact(input)),
-      );
-    }
-    expect(best).toBeLessThan(BUDGET_MS);
-  });
+  it.each(ADVERSARIAL)(
+    '%s',
+    (_name, input) => {
+      expect(input.length).toBeGreaterThanOrEqual(SIZE);
+      // Best of three, so a one-off pause (GC, a noisy neighbour) cannot fail the test.
+      let best = Infinity;
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        const session = redactor.session({ scope: 'ticket:test' });
+        best = Math.min(
+          best,
+          cpuMs(() => session.redact(input)),
+        );
+      }
+      expect(best).toBeLessThan(BUDGET_MS);
+      // The budget above is CPU time; wall time under a loaded runner says nothing about the redactor.
+    },
+    60_000,
+  );
 
   it('refuses input beyond the size limit', () => {
     expect(() =>
