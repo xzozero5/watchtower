@@ -40,6 +40,10 @@ snapshot สั้นสำหรับ cold start อยู่ที่ `HANDOF
 
 ## Log
 
+## 2026-11-02 02:43 (Asia/Bangkok) — main thread — T-102e Gmail OAuth ของกล่อง support ปิด
+- test: main thread รันเองบน Windows: lint, typecheck, unit ผ่าน · integration db 277, domain 308, api 713, worker 179 · e2e 134 · full-stack 23 · compose healthy `[TESTED]`
+- ค้าง/ไม่ยืนยัน: ไม่เคยยิง Google จริง · PKCE กับ web client และ revoke [VERIFY] · External + Testing refresh token หมดใน 7 วัน
+
 ## 2026-11-02 02:24 (Asia/Bangkok) — main thread — T-105 in-app notifications + P1 banner ปิด
 - test: main thread รันเองบน Windows: lint, typecheck, unit ผ่าน · integration db 277, domain 308, api 682, worker 168 · e2e 134 · full-stack 23 · compose healthy `[TESTED]`
 - ค้าง/ไม่ยืนยัน: Web Push/digest/เสียง ไม่ทำตาม scope · alert กะยังไม่ถูกเรียกอัตโนมัติ · retention ยังไม่มี job
