@@ -2,7 +2,6 @@
 
 import { cn, Kbd, TINT_CLASSES, type TintId, Tooltip } from '@watchtower/ui';
 import {
-  Bell,
   CalendarCheck,
   ClipboardList,
   Command as CommandIcon,
@@ -19,15 +18,14 @@ import type { ReactNode } from 'react';
 import { ApiStatus } from '@/components/api-status';
 import { AppLink } from '@/components/app-link';
 import { LiveStatus } from '@/components/live-status';
+import { NotificationCenter } from '@/components/notifications/notification-center';
+import { RAIL_ITEM_CLASSES } from '@/components/rail-styles';
 import { UserMenu } from '@/components/user-menu';
 import { useT } from '@/i18n/provider';
 import { adminSectionsFor, HOME_PERMISSION } from '@/lib/admin/sections';
 import { useSession } from '@/lib/auth/session';
 
 import { QUEUE_LISTBOX_ID } from '@/components/queue/queue-row';
-
-const ITEM =
-  'flex h-control w-full items-center gap-2.5 rounded-xl px-2 text-sm transition-colors duration-(--wt-motion-duration-fast) ease-out focus-visible:outline-2 focus-visible:outline-offset-0 focus-visible:outline-ring';
 
 /** One icon (plus its words when the rail is expanded) with a tooltip while it is narrow. */
 function RailButton({
@@ -66,7 +64,7 @@ function RailButton({
   hint?: ReactNode;
 }) {
   const classes = cn(
-    ITEM,
+    RAIL_ITEM_CLASSES,
     'max-md:w-control max-md:justify-center max-md:px-0',
     current
       ? 'bg-primary-subtle font-medium text-foreground'
@@ -157,6 +155,7 @@ export function NavRail({
   const t = useT();
   const { can } = useSession();
   const handler = can('ticket.handle');
+  const canReadTickets = can('ticket.read');
   const showHome = can(HOME_PERMISSION);
   const showAdmin = adminSectionsFor(can).length > 0;
   const adminHref = adminSectionsFor(can)[0]?.href ?? '/admin';
@@ -224,16 +223,9 @@ export function NavRail({
               unavailable
               hint={`${t('rail.handoff')} — ${t('rail.comingSoon')}`}
             />
-            <RailButton
-              icon={Bell}
-              tone="pink"
-              label={t('rail.notifications')}
-              expanded={expanded}
-              unavailable
-              hint={`${t('rail.notifications')} — ${t('rail.comingSoon')}`}
-            />
           </>
         ) : null}
+        {canReadTickets ? <NotificationCenter expanded={expanded} /> : null}
         {showHome || showAdmin ? (
           <div
             role="separator"

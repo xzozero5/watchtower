@@ -1,5 +1,6 @@
 import type { Messages } from './en';
 import { aiTh } from './ai.th';
+import { notificationsTh } from './notifications.th';
 import { adminTh, homeTh } from './console.th';
 import { portalTh } from './portal.th';
 
@@ -305,6 +306,7 @@ export const th: Messages = {
     expandAssistant: 'ขยายแผงรายละเอียด',
   },
   ai: aiTh,
+  notifications: notificationsTh,
   live: {
     label: 'การอัปเดตสด',
     open: 'สด',

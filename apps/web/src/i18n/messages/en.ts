@@ -4,6 +4,7 @@
  * (messages.test.ts checks it). Never put UI text in a component: add a key here and in th.ts.
  */
 import { aiEn } from './ai.en';
+import { notificationsEn } from './notifications.en';
 import { adminEn, homeEn } from './console.en';
 import { portalEn } from './portal.en';
 
@@ -308,6 +309,7 @@ export const en = {
     expandAssistant: 'Expand the details panel',
   },
   ai: aiEn,
+  notifications: notificationsEn,
   live: {
     label: 'Live updates',
     open: 'Live',
