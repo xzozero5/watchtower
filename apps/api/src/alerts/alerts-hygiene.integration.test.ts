@@ -42,6 +42,10 @@ beforeAll(async () => {
     `INSERT INTO organization (name) VALUES ('Hygiene org') RETURNING id`,
   );
   client = await signIn(h, 'client', org.rows[0]?.id);
+  // An incident for the alerts that count as part of one (the noise metrics).
+  await owner().query(
+    `INSERT INTO incident (title, severity) VALUES ('Existing incident', 'SEV3')`,
+  );
 });
 afterAll(async () => {
   await h.close();
@@ -71,7 +75,7 @@ async function insertAlert(
   const result = await owner().query<{ id: string }>(
     `INSERT INTO alert (fingerprint, source, title, state, count, acked_at, incident_id, correlation_id, service_id, resolved_at)
      VALUES ($1, 'alertmanager', $2, $3, $4,
-             CASE WHEN $5 THEN clock_timestamp() END, CASE WHEN $6 THEN gen_random_uuid() END, $7, $8,
+             CASE WHEN $5 THEN clock_timestamp() END, CASE WHEN $6 THEN (SELECT id FROM incident ORDER BY created_at LIMIT 1) END, $7, $8,
              CASE WHEN $3 = 'resolved' THEN clock_timestamp() END)
      RETURNING id`,
     [

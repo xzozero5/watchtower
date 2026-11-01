@@ -243,7 +243,11 @@ describe('POST /v1/inbound/alerts/gcp (AC-3, first half)', () => {
     await reset();
     await pushGcp(envelope(incident(), '7005'), await bearer());
     const [open] = await allAlerts();
-    const incidentId = '0f6b7f58-8d56-4a39-b6d2-6a3d0a2d1e11';
+    const [created] = await owner()
+      .insert(schema.incident)
+      .values({ title: 'Outage', severity: 'SEV1' })
+      .returning({ id: schema.incident.id });
+    const incidentId = created?.id ?? '';
     await owner()
       .update(schema.alert)
       .set({ incidentId })
