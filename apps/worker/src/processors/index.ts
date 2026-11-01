@@ -7,6 +7,7 @@ import type { Processor } from 'bullmq';
 import type { WorkerConfig } from '../config.js';
 import { createAiProcessor } from '../ai/brief.js';
 import type { AiOverrides, AiRuntime } from '../ai/runtime.js';
+import { createDiscordRegistration, type DiscordOverrides } from '../discord/index.js';
 import { createIngestRegistration, type IngestOverrides } from '../ingest/index.js';
 import type { WorkerLogger } from '../logger.js';
 import { createOutboundRegistration, type OutboundOverrides } from '../outbound/index.js';
@@ -37,6 +38,7 @@ export interface ProcessorOverrides {
   readonly ingest?: IngestOverrides;
   readonly ai?: AiOverrides;
   readonly outbound?: OutboundOverrides;
+  readonly discord?: DiscordOverrides;
 }
 
 export interface ProcessorRegistration {
@@ -90,6 +92,7 @@ export const PROCESSORS: readonly ProcessorRegistration[] = [
   // --- line (T-103) ---
 
   // --- discord (T-104) ---
+  { queue: QUEUE_NAMES.discord, create: createDiscordRegistration },
 
   // --- notifications (T-105) ---
 
