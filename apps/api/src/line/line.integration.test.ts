@@ -501,3 +501,87 @@ describe('LINE quota (R-2.10)', () => {
     expect((await client.client.get('/v1/line/quota')).status).toBe(403);
   });
 });
+
+describe('contacts API and the LINE link facts (C-8, C-11)', () => {
+  it('shows how a LINE id was linked, and does not carry "verified" over to an edited id', async () => {
+    const lead = await signIn(h, 'lead');
+    const org = await pool().query<{ id: string }>(
+      `INSERT INTO organization (name) VALUES ($1) RETURNING id`,
+      [`Acme ${randomUUID()}`],
+    );
+    const orgId = org.rows[0]?.id ?? '';
+    const oldId = `Ufake${randomBytes(12).toString('hex')}`;
+    const inserted = await pool().query<{ id: string }>(
+      `INSERT INTO contact (org_id, name, emails, line_user_id, line_linked_via, line_linked_at, line_verified_at)
+       VALUES ($1, 'Somchai', $2, $3, 'line_login', now(), now()) RETURNING id`,
+      [orgId, [uniqueEmail('somchai', 'acme.example.test')], oldId],
+    );
+    const id = inserted.rows[0]?.id ?? '';
+
+    const shown = await lead.client.get<{ lineLinkedVia: string | null; lineVerified: boolean }>(
+      `/v1/contacts/${id}`,
+    );
+    expect(shown.body).toMatchObject({ lineLinkedVia: 'line_login', lineVerified: true });
+
+    // Editing something else keeps the link as it is.
+    const renamed = await lead.client.patch<{ lineVerified: boolean }>(`/v1/contacts/${id}`, {
+      name: 'Somchai J.',
+    });
+    expect(renamed.body.lineVerified).toBe(true);
+
+    // A different LINE id is a different identity: nothing is inherited.
+    const edited = await lead.client.patch<{
+      lineUserId: string;
+      lineLinkedVia: string | null;
+      lineVerified: boolean;
+    }>(`/v1/contacts/${id}`, { lineUserId: `Ufake${randomBytes(12).toString('hex')}` });
+    expect(edited.status).toBe(200);
+    expect(edited.body).toMatchObject({ lineLinkedVia: null, lineVerified: false });
+    const row = await pool().query(
+      `SELECT line_linked_via, line_linked_at, line_verified_at FROM contact WHERE id = $1`,
+      [id],
+    );
+    expect(row.rows[0]).toEqual({
+      line_linked_via: null,
+      line_linked_at: null,
+      line_verified_at: null,
+    });
+
+    // Removing the id removes the facts with it.
+    await pool().query(
+      `UPDATE contact SET line_linked_via = 'staff_code', line_linked_at = now() WHERE id = $1`,
+      [id],
+    );
+    const removed = await lead.client.patch<{
+      lineUserId: string | null;
+      lineLinkedVia: string | null;
+    }>(`/v1/contacts/${id}`, { lineUserId: null });
+    expect(removed.body).toMatchObject({ lineUserId: null, lineLinkedVia: null });
+  });
+
+  it('shows a staff-code link as linked but not verified', async () => {
+    const lead = await signIn(h, 'lead');
+    const org = await pool().query<{ id: string }>(
+      `INSERT INTO organization (name) VALUES ($1) RETURNING id`,
+      [`Acme ${randomUUID()}`],
+    );
+    const contact = await pool().query<{ id: string }>(
+      `INSERT INTO contact (org_id, name, emails) VALUES ($1, 'Nok', $2) RETURNING id`,
+      [org.rows[0]?.id ?? '', [uniqueEmail('nok', 'acme.example.test')]],
+    );
+    const id = contact.rows[0]?.id ?? '';
+    const issued = await lead.client.post<{ code: string }>('/v1/line/link-codes', {
+      contactId: id,
+    });
+    expect(issued.status).toBe(201);
+    // What the worker does when the customer sends the code (its own tests cover the message path).
+    await pool().query(
+      `UPDATE contact SET line_user_id = $2, line_linked_via = 'staff_code', line_linked_at = now() WHERE id = $1`,
+      [id, `Ufake${randomBytes(12).toString('hex')}`],
+    );
+    const shown = await lead.client.get<{ lineLinkedVia: string | null; lineVerified: boolean }>(
+      `/v1/contacts/${id}`,
+    );
+    expect(shown.body).toMatchObject({ lineLinkedVia: 'staff_code', lineVerified: false });
+  });
+});
