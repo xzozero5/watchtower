@@ -40,6 +40,10 @@ snapshot สั้นสำหรับ cold start อยู่ที่ `HANDOF
 
 ## Log
 
+## 2026-11-02 05:20 (Asia/Bangkok) — main thread — T-118 GCP deploy ADR + Terraform skeleton + runbook ปิด
+- test: main thread รันเองบน Windows: เอกสารและ Terraform เท่านั้น ไม่แตะโค้ด: lint root ผ่าน `[TESTED]`
+- ค้าง/ไม่ยืนยัน: Terraform ไม่เคย validate (เครื่องไม่มี terraform) · ราคา [ASSUMED] · TRUST_PROXY_HOPS=2 [UNVERIFIED]
+
 ## 2026-11-02 05:19 (Asia/Bangkok) — main thread — T-122f outbound hardening, DB clock for hold and claim ปิด
 - test: main thread รันเองบน Windows: lint, typecheck, unit ผ่าน · integration db 291, domain 341, api 732, worker 197 · e2e 143 · full-stack 23 · compose healthy `[TESTED]`
 - ค้าง/ไม่ยืนยัน: P2 สองข้อจาก review ต้องแก้ก่อนเปิด LINE push จริง (ลง T-125 แล้ว)
