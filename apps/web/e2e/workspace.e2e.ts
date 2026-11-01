@@ -162,6 +162,8 @@ test.describe('queue and conversation', () => {
 
   test('shortcuts work with a Thai keyboard layout (physical key)', async ({ page }) => {
     await openWorkspace(page);
+    // The event is sent once: wait until the list has loaded, or J has nothing to move to.
+    await expect(row(page, 'OPS-1')).toBeVisible();
     await page.evaluate(() => {
       document.dispatchEvent(
         new KeyboardEvent('keydown', { key: '่', code: 'KeyJ', bubbles: true }),

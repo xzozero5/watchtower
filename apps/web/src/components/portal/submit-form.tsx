@@ -42,10 +42,22 @@ const CATEGORY_KEYS: Record<(typeof PORTAL_CATEGORIES)[number], MessageKey> = {
   other: 'portal.form.categories.other',
 };
 
-const URGENCY_KEYS: Record<(typeof PORTAL_URGENCIES)[number], { label: MessageKey }> = {
-  everything_down: { label: 'portal.form.urgencies.everythingDown' },
-  something_broken: { label: 'portal.form.urgencies.somethingBroken' },
-  question: { label: 'portal.form.urgencies.question' },
+const URGENCY_KEYS: Record<
+  (typeof PORTAL_URGENCIES)[number],
+  { label: MessageKey; hint: MessageKey }
+> = {
+  everything_down: {
+    label: 'portal.form.urgencies.everythingDown',
+    hint: 'portal.form.urgencyHints.everythingDown',
+  },
+  something_broken: {
+    label: 'portal.form.urgencies.somethingBroken',
+    hint: 'portal.form.urgencyHints.somethingBroken',
+  },
+  question: {
+    label: 'portal.form.urgencies.question',
+    hint: 'portal.form.urgencyHints.question',
+  },
 };
 
 /** Each urgency has an icon in its hue (red only for "everything is down"); the words stay beside it. */
@@ -347,7 +359,12 @@ export function SubmitForm() {
                   className="size-4 accent-primary"
                 />
                 <UrgencyIcon urgency={urgency} />
-                <span className="text-sm font-medium">{t(URGENCY_KEYS[urgency].label)}</span>
+                <span className="flex flex-col">
+                  <span className="text-sm font-medium">{t(URGENCY_KEYS[urgency].label)}</span>
+                  <span className="text-sm text-muted-foreground">
+                    {t(URGENCY_KEYS[urgency].hint)}
+                  </span>
+                </span>
               </label>
             );
           })}

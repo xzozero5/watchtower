@@ -79,7 +79,12 @@ export function ConfidenceMeter({ value, className }: { value: number; className
   });
   return (
     <span data-band={band} className={className}>
-      <ConfidenceDots value={value} label={text} low={band === 'low'} />
+      <ConfidenceDots
+        value={value}
+        label={text}
+        text={`${t(`ai.brief.band.${band}`)} ${formatConfidence(value)}`}
+        low={band === 'low'}
+      />
     </span>
   );
 }
@@ -247,7 +252,7 @@ export function AiBrief({
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
             <span title={t('ai.brief.intent')} className="inline-flex">
               <span className="sr-only">{t('ai.brief.intent')}: </span>
-              <IntentChip intentKey={intent.key} name={intent.key} />
+              <IntentChip plain intentKey={intent.key} name={intent.key} />
             </span>
             <ConfidenceMeter value={intent.confidence} />
             <span className="min-w-0 text-xs text-muted-foreground">{intent.reason}</span>

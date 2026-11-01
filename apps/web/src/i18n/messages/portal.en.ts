@@ -57,6 +57,11 @@ export const portalEn = {
       somethingBroken: 'Something is broken',
       question: 'A question',
     },
+    urgencyHints: {
+      everythingDown: 'Nothing works at all.',
+      somethingBroken: 'Part of it fails.',
+      question: 'Nothing is broken.',
+    },
     errors: {
       nameRequired: 'Enter your name.',
       nameTooLong: 'Use at most 200 characters for your name.',

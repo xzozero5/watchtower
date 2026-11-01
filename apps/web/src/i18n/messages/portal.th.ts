@@ -55,6 +55,11 @@ export const portalTh: PortalMessages = {
       somethingBroken: 'บางอย่างเสีย',
       question: 'คำถาม',
     },
+    urgencyHints: {
+      everythingDown: 'ใช้งานอะไรไม่ได้เลย',
+      somethingBroken: 'บางส่วนทำงานผิดพลาด',
+      question: 'ไม่มีอะไรเสีย',
+    },
     errors: {
       nameRequired: 'กรอกชื่อของคุณ',
       nameTooLong: 'ชื่อยาวได้ไม่เกิน 200 ตัวอักษร',

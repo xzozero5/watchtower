@@ -262,7 +262,11 @@ export function QueueBreakdown({
                 ? queueHref({ queueId: queue.queueId, status: OPEN_STATUSES })
                 : queueHref({})
             }
-            label={queue.queueId ? (names.get(queue.queueId) ?? '…') : t('home.noQueue')}
+            label={
+              queue.queueId
+                ? (names.get(queue.queueId) ?? t('home.unknownQueue'))
+                : t('home.noQueue')
+            }
             count={queue.count}
           />
         </li>

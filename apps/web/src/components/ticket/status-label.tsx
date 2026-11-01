@@ -1,5 +1,23 @@
 import { customerStatus, type TicketStatus } from '@watchtower/shared';
-import { cn, type DotTone, Pill, StatusDot } from '@watchtower/ui';
+import {
+  type ChipIcon,
+  cn,
+  type DotTone,
+  Pill,
+  StatusDot,
+  TintChip,
+  type TintId,
+} from '@watchtower/ui';
+import {
+  Archive,
+  CircleCheck,
+  CodeXml,
+  GitMerge,
+  Hourglass,
+  Inbox,
+  ListChecks,
+  Loader,
+} from 'lucide-react';
 
 import { customerStatusKey } from '@/components/portal/customer-status-label';
 import { useT } from '@/i18n/provider';
@@ -60,5 +78,44 @@ export function StatusLabel({
     >
       {content}
     </span>
+  );
+}
+
+const CHIP_LOOK: Record<TicketStatus, { icon: ChipIcon; tone: TintId }> = {
+  new: { icon: Inbox, tone: 'sky' },
+  triage: { icon: ListChecks, tone: 'violet' },
+  open: { icon: Loader, tone: 'sky' },
+  waiting_on_customer: { icon: Hourglass, tone: 'sky' },
+  waiting_on_dev: { icon: CodeXml, tone: 'indigo' },
+  resolved: { icon: CircleCheck, tone: 'green' },
+  closed: { icon: Archive, tone: 'slate' },
+  merged: { icon: GitMerge, tone: 'slate' },
+};
+
+/** The words of a status for this reader (a customer sees the customer words). */
+export function useStatusWords(status: TicketStatus): {
+  words: string;
+  attrs: Record<string, string>;
+} {
+  const t = useT();
+  const { isClient } = useSession();
+  const customer = isClient ? customerStatus(status) : undefined;
+  return {
+    words: customer ? t(customerStatusKey(customer)) : t(statusKey(status)),
+    attrs: customer ? { 'data-customer-status': customer } : { 'data-status': status },
+  };
+}
+
+/**
+ * The workflow status as a filled tinted chip, for the one status slot of a queue row (the same
+ * look as the AI state chip: a status is the only filled pill on a row).
+ */
+export function StatusChip({ status, className }: { status: TicketStatus; className?: string }) {
+  const { words, attrs } = useStatusWords(status);
+  const { icon, tone } = CHIP_LOOK[status];
+  return (
+    <TintChip tone={tone} icon={icon} className={className} {...attrs}>
+      {words}
+    </TintChip>
   );
 }

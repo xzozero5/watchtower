@@ -169,6 +169,7 @@ function Section({
               row={row}
               selected={row.key === selectedKey}
               compact={compact}
+              group={group.id}
               onSelect={onSelect}
             />
           ))}
