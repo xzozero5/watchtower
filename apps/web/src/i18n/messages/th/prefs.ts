@@ -1,0 +1,12 @@
+import type { prefsEn } from '../en/prefs';
+import type { Widen } from '../types';
+
+export const prefsTh: Widen<typeof prefsEn> = {
+  theme: { label: 'ธีม', system: 'ตามระบบ', light: 'สว่าง', dark: 'มืด' },
+  density: { label: 'ความหนาแน่น', comfortable: 'สบายตา', compact: 'กะทัดรัด' },
+  language: { label: 'ภาษา' },
+  singleKey: {
+    label: 'คีย์ลัดปุ่มเดี่ยว',
+    hint: 'ปุ่มตัวอักษรและสัญลักษณ์อย่าง J, K และ ? ปิดไว้หากกดโดยไม่ตั้งใจ เช่น เมื่อใช้เสียงสั่งงาน',
+  },
+};
