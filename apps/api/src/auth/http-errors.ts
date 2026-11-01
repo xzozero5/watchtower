@@ -9,7 +9,25 @@ const REASONS: Readonly<Record<number, string>> = {
   [HttpStatus.CONFLICT]: 'Conflict',
   [HttpStatus.TOO_MANY_REQUESTS]: 'Too Many Requests',
   [HttpStatus.SERVICE_UNAVAILABLE]: 'Service Unavailable',
+  [HttpStatus.BAD_GATEWAY]: 'Bad Gateway',
+  [HttpStatus.GATEWAY_TIMEOUT]: 'Gateway Timeout',
 };
+
+/** 503: the system an investigation tool reaches (logs, product data, repository) is not connected on this instance. */
+export const toolNotConnected = (): ApiHttpError =>
+  new ApiHttpError(
+    HttpStatus.SERVICE_UNAVAILABLE,
+    'tool_not_connected',
+    'That system is not connected on this instance',
+  );
+
+/** 502 or 504: the system answered badly or too slowly. Says nothing about the query or the system. */
+export const toolFailed = (timeout: boolean): ApiHttpError =>
+  new ApiHttpError(
+    timeout ? HttpStatus.GATEWAY_TIMEOUT : HttpStatus.BAD_GATEWAY,
+    'tool_failed',
+    timeout ? 'The system took too long to answer' : 'The system could not answer',
+  );
 
 /** 503: a knowledge base search ran past its time limit and was stopped; a shorter query may work. */
 export const kbSearchTimeout = (): ApiHttpError =>

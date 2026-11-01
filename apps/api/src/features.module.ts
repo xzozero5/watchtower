@@ -16,6 +16,7 @@ import { ViewsModule } from './views/views.module.js';
 import { ChannelAccountsModule } from './channel-accounts/channel-accounts.module.js';
 import { AlertsModule } from './alerts/alerts.module.js';
 import { IncidentsModule } from './incidents/incidents.module.js';
+import { ToolsModule } from './tools/tools.module.js';
 
 /**
  * The feature modules (Phase 1: T-123a; Phase 2 appends below), imported once so that parallel tasks add files inside
@@ -39,6 +40,7 @@ import { IncidentsModule } from './incidents/incidents.module.js';
     ChannelAccountsModule,
     AlertsModule,
     IncidentsModule,
+    ToolsModule,
   ],
 })
 export class FeaturesModule {}

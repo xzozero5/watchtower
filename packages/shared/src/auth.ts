@@ -44,6 +44,9 @@ export const AUTH_ERROR_CODES = [
   'handoff_incomplete',
   // Shifts (T-111): the handoff or the item is in a state that does not allow this (already confirmed, already acknowledged).
   'handoff_locked',
+  // Investigation tools (T-203d): the system a button reaches is not connected here (503), or it did not answer (502/504).
+  'tool_not_connected',
+  'tool_failed',
 ] as const;
 export type AuthErrorCode = (typeof AUTH_ERROR_CODES)[number];
 

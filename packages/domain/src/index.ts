@@ -200,6 +200,13 @@ export {
   type RateTx,
 } from './tools/rate-budget.js';
 export {
+  getToolTemplate,
+  listToolTemplates,
+  templateForAi,
+  templatesForTicket,
+  type ToolTemplateRecord,
+} from './tools/templates.js';
+export {
   createHumanToolLedger,
   type HumanToolDecision,
   type HumanToolEntry,
