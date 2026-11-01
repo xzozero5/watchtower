@@ -28,6 +28,8 @@ export const timelineEn = {
     slaPaused: 'SLA clock paused',
     slaResumed: 'SLA clock resumed',
     slaRecalculated: 'SLA due times recalculated',
+    sendCancelled: 'A reply was undone before it was sent',
+    deliveryFailed: 'A reply could not be delivered',
   },
   copy: 'Copy message',
   copied: 'Message copied',

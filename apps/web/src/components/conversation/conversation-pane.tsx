@@ -29,6 +29,7 @@ import { useTicket, useTimeline } from '@/lib/tickets/queries';
 import { useNow } from '@/lib/use-now';
 
 import type { ComposerHandle } from './composer';
+import { PendingSendBar } from './pending-send-bar';
 import { ReplyDock, type ReplyDockHandle } from './reply-dock';
 import { Timeline } from './timeline';
 
@@ -229,6 +230,7 @@ export function ConversationPane({
   const data = ticket.data;
   const canQuote = can('ticket.reply') || can('ticket.reply.own');
   const canWrite = canQuote || can('ticket.handle');
+  const canReplyHere = can('ticket.reply') && !isClient;
   const summary = canReviewAi
     ? ai.data?.summary?.trim() || ('ai' in data ? data.ai?.summary?.trim() : undefined) || null
     : null;
@@ -287,6 +289,7 @@ export function ConversationPane({
             query={ai}
             canReview={canReviewAi}
             canWrite={canWrite}
+            canRequest={can('ticket.handle')}
             onOpenEvidence={(id) => onOpenEvidence?.(id)}
             onWriteMyself={() => dockRef.current?.open('reply')}
           />
@@ -345,6 +348,7 @@ export function ConversationPane({
           )}
         </div>
       </div>
+      {canReplyHere ? <PendingSendBar ticketKey={data.key} /> : null}
       <ReplyDock
         key={data.key}
         ticket={data}

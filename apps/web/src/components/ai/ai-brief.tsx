@@ -1,15 +1,15 @@
 'use client';
 
 import type { UseQueryResult } from '@tanstack/react-query';
-import type { AiEvidenceKind, TicketAiInsight } from '@watchtower/shared';
+import type { AiProgress, TicketAiInsight } from '@watchtower/shared';
 import {
   Button,
-  ConfidenceDots,
   IconButton,
   IntentChip,
   Skeleton,
   StageBadge,
   TintChip,
+  toast,
   Tooltip,
 } from '@watchtower/ui';
 import {
@@ -17,15 +17,12 @@ import {
   Bot,
   Check,
   CircleCheck,
-  Database,
-  FileText,
-  GitCommitHorizontal,
   Hourglass,
   type LucideIcon,
+  PauseCircle,
   PenLine,
-  ScrollText,
+  RefreshCw,
   Send,
-  Ticket,
   TriangleAlert,
 } from 'lucide-react';
 import { useState } from 'react';
@@ -34,20 +31,18 @@ import { AiStateChip } from '@/components/ai/ai-state-chip';
 import { usePreferences } from '@/lib/preferences';
 import { useStatusMove } from '@/components/ticket/use-status-move';
 import { useI18n } from '@/i18n/provider';
+import { useAutonomy } from '@/lib/admin/queries';
 import { confidenceBand, formatConfidence, hasBrief } from '@/lib/ai/model';
+import { useAiRequest } from '@/lib/ai/queries';
+import { isApiError } from '@/lib/api/errors';
 import { formatAge, formatDateTime } from '@/lib/format';
 import { useNow } from '@/lib/use-now';
 import type { TicketItem } from '@/lib/tickets/model';
 
 import { AiDraftCard } from './ai-draft';
-
-export const EVIDENCE_ICONS: Record<AiEvidenceKind, LucideIcon> = {
-  kb: FileText,
-  ticket: Ticket,
-  log: ScrollText,
-  data: Database,
-  repo: GitCommitHorizontal,
-};
+import { AiReportDetails } from './ai-report';
+import { ConfidenceMeter } from './confidence-meter';
+import { EVIDENCE_ICONS } from './evidence-icons';
 
 const STAGE_KEYS = { 0: 'ai.stage.0', 1: 'ai.stage.1', 2: 'ai.stage.2' } as const;
 
@@ -63,29 +58,6 @@ export function AiStageBadge({ stage }: { stage: number }) {
     <Tooltip content={t('ai.stage.tip')}>
       <StageBadge stage={stage} label={t(STAGE_KEYS[stage])} />
     </Tooltip>
-  );
-}
-
-/**
- * A confidence as a five-dot bar (docs/design/friendly-polish.md section 4). The word and the
- * number (`High 0.86`) are the meter's accessible name and its tooltip, never the dots alone.
- */
-export function ConfidenceMeter({ value, className }: { value: number; className?: string }) {
-  const { t } = useI18n();
-  const band = confidenceBand(value);
-  const text = t('ai.brief.confidence', {
-    band: t(`ai.brief.band.${band}`),
-    value: formatConfidence(value),
-  });
-  return (
-    <span data-band={band} className={className}>
-      <ConfidenceDots
-        value={value}
-        label={text}
-        text={`${t(`ai.brief.band.${band}`)} ${formatConfidence(value)}`}
-        low={band === 'low'}
-      />
-    </span>
   );
 }
 
@@ -120,7 +92,34 @@ function Provenance({ insight }: { insight: TicketAiInsight }) {
   );
 }
 
-/** One line for the cases where there is no card: loading, unavailable, not looked at. */
+/** Where a running job is: a named step and a bar, not a spinner (T-108d). */
+function Progress({ progress }: { progress: AiProgress }) {
+  const { t } = useI18n();
+  const label = `${t(`ai.brief.phases.${progress.phase}`)} · ${t('ai.brief.progress', { step: Math.min(progress.step + 1, progress.steps), steps: progress.steps })}`;
+  return (
+    <div className="flex flex-col gap-1" data-testid="ai-progress">
+      <p role="status" className="flex items-center gap-1.5 text-sm text-muted-foreground">
+        <RefreshCw aria-hidden className="size-3.5 shrink-0 motion-safe:animate-spin" />
+        {label}
+      </p>
+      <div
+        role="progressbar"
+        aria-label={label}
+        aria-valuemin={0}
+        aria-valuemax={progress.steps}
+        aria-valuenow={progress.step}
+        className="h-1 max-w-xs overflow-hidden rounded-full bg-border/60"
+      >
+        <div
+          className="h-full bg-ai-accent transition-[width] duration-(--wt-motion-duration-fast)"
+          style={{ width: `${String(Math.round((progress.step / progress.steps) * 100))}%` }}
+        />
+      </div>
+    </div>
+  );
+}
+
+/** One line for the cases where there is no card/** One line for the cases where there is no card: loading, unavailable, not looked at. */
 function Quiet({ children, status = false }: { children: string; status?: boolean }) {
   return (
     <p
@@ -149,6 +148,7 @@ export function AiBrief({
   query,
   canReview,
   canWrite,
+  canRequest,
   onOpenEvidence,
   onWriteMyself,
 }: {
@@ -156,12 +156,16 @@ export function AiBrief({
   query: UseQueryResult<TicketAiInsight>;
   canReview: boolean;
   canWrite: boolean;
+  /** May ask the AI for a draft or a new investigation (`ticket.handle`). */
+  canRequest: boolean;
   onOpenEvidence: (id: string) => void;
   onWriteMyself: () => void;
 }) {
   const { t } = useI18n();
   const { singleKeyShortcuts } = usePreferences();
   const status = useStatusMove(ticket);
+  const autonomy = useAutonomy(true);
+  const aiRequest = useAiRequest(ticket.key);
   const [approveOpen, setApproveOpen] = useState(false);
 
   if (query.isPending) {
@@ -177,7 +181,28 @@ export function AiBrief({
   const insight = query.data;
   if (!hasBrief(insight)) return <Quiet>{t('ai.brief.none')}</Quiet>;
 
-  const { intent, nextStep, draft, evidence } = insight;
+  const { intent, nextStep, draft, evidence, report, progress } = insight;
+  const paused =
+    autonomy.data?.switches.some((item) => item.key === 'ai_kill_switch' && item.on) ?? false;
+  const running = insight.state === 'investigating' || aiRequest.isPending;
+  const canAsk = canRequest && !running && !paused;
+  const ask = (kind: 'draft' | 'investigate') => {
+    aiRequest.mutate(
+      { kind },
+      {
+        onSuccess: () => {
+          toast(t('ai.request.done'));
+        },
+        onError: (error) => {
+          toast(
+            isApiError(error) && error.status === 409
+              ? t('ai.request.conflict')
+              : t('ai.request.failed'),
+          );
+        },
+      },
+    );
+  };
   const lowConfidence = intent !== undefined && confidenceBand(intent.confidence) === 'low';
   const uncited = draft?.uncitedClaims ?? 0;
 
@@ -228,6 +253,11 @@ export function AiBrief({
           </span>
           <AiStateChip state={insight.state} />
           <AiStageBadge stage={insight.stage} />
+          {paused ? (
+            <TintChip tone="slate" icon={PauseCircle} title={t('ai.brief.pausedTip')}>
+              {t('ai.brief.paused')}
+            </TintChip>
+          ) : null}
           {uncited > 0 ? (
             <TintChip tone="amber" icon={TriangleAlert} title={t('ai.brief.uncitedTip')}>
               {t('ai.brief.uncited', { count: uncited })}
@@ -241,6 +271,8 @@ export function AiBrief({
         {insight.summary ? (
           <p className="max-w-[72ch] text-sm text-foreground">{insight.summary}</p>
         ) : null}
+
+        {progress && insight.state === 'investigating' ? <Progress progress={progress} /> : null}
 
         {insight.state === 'failed' ? (
           <p role="status" className="text-sm text-muted-foreground">
@@ -293,6 +325,32 @@ export function AiBrief({
           </div>
         ) : null}
 
+        {canRequest ? (
+          <div role="group" aria-label={t('ai.request.group')} className="flex flex-wrap gap-2">
+            {!draft && insight.stage >= 1 ? (
+              <Button
+                className="rounded-full"
+                disabled={!canAsk}
+                onClick={() => {
+                  ask('draft');
+                }}
+              >
+                <PenLine aria-hidden className="size-4" />
+                {t('ai.request.draft')}
+              </Button>
+            ) : null}
+            <IconButton
+              variant="secondary"
+              label={t('ai.request.investigate')}
+              icon={<RefreshCw aria-hidden className="size-4" />}
+              disabled={!canAsk}
+              onClick={() => {
+                ask('investigate');
+              }}
+            />
+          </div>
+        ) : null}
+
         {evidence.length > 0 ? (
           <ul aria-label={t('ai.brief.evidence')} className="flex flex-wrap gap-1.5">
             {evidence.map((entry) => {
@@ -319,6 +377,8 @@ export function AiBrief({
             })}
           </ul>
         ) : null}
+
+        {report ? <AiReportDetails report={report} evidence={evidence} /> : null}
       </section>
 
       {draft && canReview ? (
@@ -326,6 +386,7 @@ export function AiBrief({
           key={draft.id}
           ticket={ticket}
           draft={draft}
+          evidence={evidence}
           onOpenEvidence={onOpenEvidence}
           approveOpen={approveOpen}
           onApproveOpenChange={setApproveOpen}
