@@ -1,0 +1,414 @@
+import { createHash, randomUUID } from 'node:crypto';
+
+import { PG, pgCode, pgConstraint, schema } from '@watchtower/db';
+import {
+  AUDIT_ACTIONS,
+  KB_JOBS,
+  KB_OUTBOX_JOB_OPTIONS,
+  QUEUE_NAMES,
+  type CreateKbArticle,
+  type KbKind,
+  type KbStatus,
+  type KbVisibility,
+  type KbTransition,
+  type UpdateKbArticle,
+} from '@watchtower/shared';
+import { and, asc, eq } from 'drizzle-orm';
+
+import { recordAuditInTx } from '../audit.js';
+import { DomainError, badRequest, conflict, invalidTransition, notFound } from '../errors.js';
+import { enqueueJob } from '../outbox.js';
+import { Effects, type DbTransaction, type DomainContext, type DomainResult } from '../types.js';
+import { audienceWidens, canMove, canPublishFrom } from './rules.js';
+
+/** What a write tells the caller; the api reads the article back for the response. */
+export interface KbWriteResult {
+  readonly articleId: string;
+  /** The latest version number after the write. */
+  readonly version: number;
+  readonly versionId: string;
+  /** False when the request changed nothing (no new version, no new status). */
+  readonly changed: boolean;
+}
+
+/** sha256 of title and body: an edit that changes neither is not a new version. */
+export function contentHash(title: string, bodyMd: string): string {
+  return createHash('sha256')
+    .update(title, 'utf8')
+    .update('\u0000')
+    .update(bodyMd, 'utf8')
+    .digest('hex');
+}
+
+async function lockArticle(tx: DbTransaction, articleId: string) {
+  const [article] = await tx
+    .select()
+    .from(schema.kbArticle)
+    .where(eq(schema.kbArticle.id, articleId))
+    .for('update')
+    .limit(1);
+  if (article === undefined) throw notFound('No such article');
+  const [current] = await tx
+    .select()
+    .from(schema.kbArticleVersion)
+    .where(eq(schema.kbArticleVersion.id, article.currentVersionId))
+    .limit(1);
+  if (current === undefined) throw new Error('kb_article points at a version that does not exist');
+  return { article, current };
+}
+
+async function orgIdsOf(tx: DbTransaction, articleId: string): Promise<string[]> {
+  const rows = await tx
+    .select({ orgId: schema.kbArticleOrg.orgId })
+    .from(schema.kbArticleOrg)
+    .where(eq(schema.kbArticleOrg.articleId, articleId))
+    .orderBy(asc(schema.kbArticleOrg.orgId));
+  return rows.map((row) => row.orgId);
+}
+
+async function setOrgs(tx: DbTransaction, articleId: string, orgIds: readonly string[]) {
+  const wanted = [...new Set(orgIds)];
+  const have = new Set(await orgIdsOf(tx, articleId));
+  for (const orgId of have) {
+    if (!wanted.includes(orgId)) {
+      await tx
+        .delete(schema.kbArticleOrg)
+        .where(
+          and(eq(schema.kbArticleOrg.articleId, articleId), eq(schema.kbArticleOrg.orgId, orgId)),
+        );
+    }
+  }
+  const missing = wanted.filter((orgId) => !have.has(orgId));
+  if (missing.length > 0) {
+    try {
+      await tx.insert(schema.kbArticleOrg).values(missing.map((orgId) => ({ articleId, orgId })));
+    } catch (error) {
+      if (pgCode(error) === PG.foreignKeyViolation) throw badRequest('Unknown organization');
+      throw error;
+    }
+  }
+}
+
+/** Asks the worker to (re)build the chunks of an article, or to drop them when it is no longer live. */
+async function enqueueEmbed(
+  tx: DbTransaction,
+  ctx: DomainContext,
+  articleId: string,
+  versionId: string,
+): Promise<void> {
+  await enqueueJob(tx, ctx.config, {
+    queue: QUEUE_NAMES.kb,
+    name: KB_JOBS.embedArticle,
+    // The clock makes publishing the same version again (after a deprecation) a new job.
+    jobId: `kb-embed-${versionId}-${String(ctx.now().getTime())}`,
+    payload: { articleId, versionId },
+    options: KB_OUTBOX_JOB_OPTIONS,
+  });
+}
+
+/**
+ * Creates a draft article with its first version. The slug is the stable public name; it is
+ * unique, and a clash answers `conflict`.
+ */
+export async function createKbArticle(
+  tx: DbTransaction,
+  ctx: DomainContext,
+  input: CreateKbArticle,
+): Promise<DomainResult<KbWriteResult>> {
+  const fx = new Effects();
+  if (input.visibility === 'orgs' && input.orgIds.length === 0) {
+    throw badRequest('Visibility "orgs" needs at least one organization');
+  }
+  const articleId = randomUUID();
+  const versionId = randomUUID();
+  try {
+    // The article points at its first version through a deferred foreign key, so it goes in first.
+    await tx.insert(schema.kbArticle).values({
+      id: articleId,
+      slug: input.slug,
+      kind: input.kind,
+      lang: input.lang,
+      visibility: input.visibility,
+      intentTags: input.intentTags,
+      sources: input.sources,
+      authorId: ctx.actor.id,
+      currentVersionId: versionId,
+    });
+  } catch (error) {
+    if (pgCode(error) === PG.uniqueViolation && pgConstraint(error) === 'kb_article_slug_key') {
+      throw conflict('That slug is already used by another article');
+    }
+    throw error;
+  }
+  await tx.insert(schema.kbArticleVersion).values({
+    id: versionId,
+    articleId,
+    version: 1,
+    title: input.title,
+    bodyMd: input.bodyMd,
+    changeNote: input.changeNote ?? null,
+    contentHash: contentHash(input.title, input.bodyMd),
+    createdBy: ctx.actor.id,
+  });
+  if (input.visibility === 'orgs') await setOrgs(tx, articleId, input.orgIds);
+  await recordAuditInTx(tx, ctx, fx, {
+    action: AUDIT_ACTIONS.kbArticleCreate,
+    targetType: 'kb_article',
+    targetId: articleId,
+    after: {
+      slug: input.slug,
+      lang: input.lang,
+      kind: input.kind,
+      visibility: input.visibility,
+      title: input.title,
+    },
+  });
+  return fx.result({ articleId, version: 1, versionId, changed: true });
+}
+
+export interface UpdateKbArticleInput {
+  readonly articleId: string;
+  readonly patch: UpdateKbArticle;
+  /**
+   * The caller holds `kb.approve`. Without it, widening the audience of a published article is
+   * refused: it would show text to more people without an approver having seen that decision.
+   */
+  readonly canApprove: boolean;
+}
+
+/**
+ * Edits an article. A change of title or body adds an immutable version and moves the "latest"
+ * pointer; it never changes what is live (that is `publishKbArticle`). A change of metadata only
+ * (visibility, organizations, tags, sources, last verified) rewrites the article row, and takes
+ * effect at once because visibility is read at search time.
+ */
+export async function updateKbArticle(
+  tx: DbTransaction,
+  ctx: DomainContext,
+  input: UpdateKbArticleInput,
+): Promise<DomainResult<KbWriteResult>> {
+  const fx = new Effects();
+  const { patch } = input;
+  const { article, current } = await lockArticle(tx, input.articleId);
+  if (article.status === 'deprecated') {
+    throw conflict('A deprecated article cannot be edited; move it back to draft first');
+  }
+  if (patch.expectedVersion !== undefined && patch.expectedVersion !== current.version) {
+    throw conflict(
+      `The article changed meanwhile: it is now at version ${String(current.version)}`,
+    );
+  }
+
+  const title = patch.title ?? current.title;
+  const bodyMd = patch.bodyMd ?? current.bodyMd;
+  const hash = contentHash(title, bodyMd);
+  const contentChanged = hash !== current.contentHash;
+
+  const oldOrgs = await orgIdsOf(tx, article.id);
+  const visibility = patch.visibility ?? (article.visibility as KbVisibility);
+  const orgs = visibility === 'orgs' ? [...new Set(patch.orgIds ?? oldOrgs)].sort() : [];
+  if (visibility === 'orgs' && orgs.length === 0) {
+    throw badRequest('Visibility "orgs" needs at least one organization');
+  }
+  const audienceChanged =
+    visibility !== article.visibility || orgs.join(',') !== [...oldOrgs].sort().join(',');
+  if (
+    audienceChanged &&
+    article.status === 'published' &&
+    !input.canApprove &&
+    audienceWidens(
+      { visibility: article.visibility as KbVisibility, orgIds: oldOrgs },
+      { visibility, orgIds: orgs },
+    )
+  ) {
+    throw new DomainError(
+      'policy_denied',
+      'Showing a published article to more people needs an approver',
+      { reason: 'kb_audience_requires_approval' },
+    );
+  }
+
+  const intentTags = patch.intentTags ?? article.intentTags;
+  const sources = patch.sources ?? article.sources;
+  const kind = patch.kind ?? (article.kind as KbKind);
+  const lastVerifiedAt =
+    patch.lastVerifiedAt === undefined
+      ? article.lastVerifiedAt
+      : patch.lastVerifiedAt === null
+        ? null
+        : new Date(patch.lastVerifiedAt);
+  const metadataChanged =
+    audienceChanged ||
+    kind !== article.kind ||
+    JSON.stringify(intentTags) !== JSON.stringify(article.intentTags) ||
+    JSON.stringify(sources) !== JSON.stringify(article.sources) ||
+    (lastVerifiedAt?.getTime() ?? null) !== (article.lastVerifiedAt?.getTime() ?? null);
+
+  if (!contentChanged && !metadataChanged) {
+    return fx.result({
+      articleId: article.id,
+      version: current.version,
+      versionId: current.id,
+      changed: false,
+    });
+  }
+
+  let versionId = current.id;
+  let version = current.version;
+  if (contentChanged) {
+    version = current.version + 1;
+    versionId = randomUUID();
+    await tx.insert(schema.kbArticleVersion).values({
+      id: versionId,
+      articleId: article.id,
+      version,
+      title,
+      bodyMd,
+      changeNote: patch.changeNote ?? null,
+      contentHash: hash,
+      createdBy: ctx.actor.id,
+    });
+  }
+  if (audienceChanged) await setOrgs(tx, article.id, orgs);
+  await tx
+    .update(schema.kbArticle)
+    .set({
+      currentVersionId: versionId,
+      kind,
+      visibility,
+      intentTags,
+      sources,
+      lastVerifiedAt,
+      updatedAt: ctx.now(),
+    })
+    .where(eq(schema.kbArticle.id, article.id));
+
+  await recordAuditInTx(tx, ctx, fx, {
+    action: AUDIT_ACTIONS.kbArticleUpdate,
+    targetType: 'kb_article',
+    targetId: article.id,
+    before: { version: current.version, visibility: article.visibility, orgIds: oldOrgs },
+    after: { version, visibility, orgIds: orgs },
+    metadata: { contentChanged, metadataChanged, status: article.status },
+  });
+  return fx.result({ articleId: article.id, version, versionId, changed: true });
+}
+
+export interface TransitionKbArticleInput extends KbTransition {
+  readonly articleId: string;
+}
+
+/**
+ * Moves an article between statuses without publishing. Deprecating a live article takes it out of
+ * search at once (search only reads `published`) and asks the worker to drop its chunks.
+ */
+export async function transitionKbArticle(
+  tx: DbTransaction,
+  ctx: DomainContext,
+  input: TransitionKbArticleInput,
+): Promise<DomainResult<KbWriteResult>> {
+  const fx = new Effects();
+  const { article, current } = await lockArticle(tx, input.articleId);
+  const from = article.status as KbStatus;
+  if (from === input.to) {
+    return fx.result({
+      articleId: article.id,
+      version: current.version,
+      versionId: current.id,
+      changed: false,
+    });
+  }
+  if (!canMove(from, input.to)) {
+    throw invalidTransition(`An article cannot go from ${from} to ${input.to}`);
+  }
+  await tx
+    .update(schema.kbArticle)
+    .set({
+      status: input.to,
+      // A deprecated article has no live version; the text stays in its history.
+      ...(input.to === 'deprecated' ? { publishedVersionId: null } : {}),
+      updatedAt: ctx.now(),
+    })
+    .where(eq(schema.kbArticle.id, article.id));
+  if (from === 'published' && input.to === 'deprecated') {
+    await enqueueEmbed(tx, ctx, article.id, current.id);
+  }
+  await recordAuditInTx(tx, ctx, fx, {
+    action: AUDIT_ACTIONS.kbArticleStatus,
+    targetType: 'kb_article',
+    targetId: article.id,
+    before: { status: from },
+    after: { status: input.to },
+    metadata: input.reason === undefined ? {} : { reason: input.reason },
+  });
+  return fx.result({
+    articleId: article.id,
+    version: current.version,
+    versionId: current.id,
+    changed: true,
+  });
+}
+
+export interface PublishKbArticleInput {
+  readonly articleId: string;
+  /** The version the approver looked at. It must still be the latest. */
+  readonly version: number;
+}
+
+/**
+ * Puts the latest version live: what search and customers see becomes this text, the approver is
+ * recorded as reviewer, and the worker is asked to chunk and embed it. Asking for a version that
+ * is no longer the latest answers `conflict`, so nobody publishes text they have not seen.
+ * Publishing what is already live changes nothing.
+ */
+export async function publishKbArticle(
+  tx: DbTransaction,
+  ctx: DomainContext,
+  input: PublishKbArticleInput,
+): Promise<DomainResult<KbWriteResult>> {
+  const fx = new Effects();
+  const { article, current } = await lockArticle(tx, input.articleId);
+  if (!canPublishFrom(article.status as KbStatus)) {
+    throw invalidTransition(
+      'A deprecated article must go back to draft before it can be published',
+    );
+  }
+  if (input.version !== current.version) {
+    throw conflict(
+      `Version ${String(input.version)} is not the latest (${String(current.version)}); look at the latest first`,
+    );
+  }
+  if (article.status === 'published' && article.publishedVersionId === current.id) {
+    return fx.result({
+      articleId: article.id,
+      version: current.version,
+      versionId: current.id,
+      changed: false,
+    });
+  }
+  const now = ctx.now();
+  await tx
+    .update(schema.kbArticle)
+    .set({
+      status: 'published',
+      publishedVersionId: current.id,
+      publishedAt: now,
+      reviewerId: ctx.actor.id,
+      updatedAt: now,
+    })
+    .where(eq(schema.kbArticle.id, article.id));
+  await enqueueEmbed(tx, ctx, article.id, current.id);
+  await recordAuditInTx(tx, ctx, fx, {
+    action: AUDIT_ACTIONS.kbArticlePublish,
+    targetType: 'kb_article',
+    targetId: article.id,
+    before: { status: article.status, publishedVersionId: article.publishedVersionId },
+    after: { status: 'published', publishedVersionId: current.id, version: current.version },
+  });
+  return fx.result({
+    articleId: article.id,
+    version: current.version,
+    versionId: current.id,
+    changed: true,
+  });
+}

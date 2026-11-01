@@ -5,6 +5,12 @@ import { readAutonomyState, setAiSwitch, setIntentAutonomy } from './autonomy/st
 import { findOrCreateContactByEmail } from './contacts.js';
 import { ingestInbound } from './inbound/ingest.js';
 import { resolveIntent } from './intents.js';
+import {
+  createKbArticle,
+  publishKbArticle,
+  transitionKbArticle,
+  updateKbArticle,
+} from './kb/articles.js';
 import { NO_NOTIFIER, type TicketNotifier } from './notifier.js';
 import { enqueueJob } from './outbox.js';
 import type { PolicyGate } from './policy.js';
@@ -102,6 +108,47 @@ export {
   type ThreadMatchKind,
 } from './inbound/types.js';
 export { resolveIntent } from './intents.js';
+export {
+  contentHash,
+  createKbArticle,
+  publishKbArticle,
+  transitionKbArticle,
+  updateKbArticle,
+  type KbWriteResult,
+  type PublishKbArticleInput,
+  type TransitionKbArticleInput,
+  type UpdateKbArticleInput,
+} from './kb/articles.js';
+export {
+  ChunkOptionsError,
+  DEFAULT_CHUNK_OPTIONS,
+  assertChunkOptions,
+  chunkMarkdown,
+  type Chunk,
+  type ChunkOptions,
+} from './kb/chunker.js';
+export {
+  articlesNeedingEmbedding,
+  dropArticleChunksIfNotLive,
+  ensureActiveEmbeddingIndex,
+  readActiveEmbeddingIndex,
+  replaceArticleChunks,
+  type ChunkToStore,
+  type EmbeddingIndexRef,
+  type EmbeddingIndexSpec,
+  type ReembedTarget,
+  type ReplaceChunksInput,
+} from './kb/chunks.js';
+export { RRF_K, reciprocalRankFusion, type FusedItem, type RankedList } from './kb/rrf.js';
+export { audienceWidens, canMove, canPublishFrom, type KbAudienceSpec } from './kb/rules.js';
+export {
+  audienceCondition,
+  queryTerms,
+  searchKb,
+  type KbAudience,
+  type KbSearchInput,
+  type KbSearchOutcome,
+} from './kb/search.js';
 export { NO_NOTIFIER, type TicketNotifier } from './notifier.js';
 export { enqueueJob, type OutboxRequest } from './outbox.js';
 export {
@@ -232,6 +279,13 @@ export interface Domain {
     readonly setSwitch: typeof setAiSwitch;
     readonly setIntentStage: typeof setIntentAutonomy;
   };
+  /** Knowledge base articles (T-107): create, edit, move between statuses, publish. */
+  readonly kb: {
+    readonly create: typeof createKbArticle;
+    readonly update: typeof updateKbArticle;
+    readonly transition: typeof transitionKbArticle;
+    readonly publish: typeof publishKbArticle;
+  };
   readonly workflow: { readonly allows: typeof workflowAllows };
   readonly sla: {
     readonly resolvePolicy: typeof resolveSlaPolicy;
@@ -284,6 +338,12 @@ export function createDomain(options: DomainOptions): Domain {
       read: readAutonomyState,
       setSwitch: setAiSwitch,
       setIntentStage: setIntentAutonomy,
+    },
+    kb: {
+      create: createKbArticle,
+      update: updateKbArticle,
+      transition: transitionKbArticle,
+      publish: publishKbArticle,
     },
     workflow: { allows: workflowAllows },
     sla: {
