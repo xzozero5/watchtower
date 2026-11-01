@@ -61,6 +61,8 @@ const SNIPPET_CHARS = 300;
  */
 export function queryTerms(query: string): string[] {
   const terms = query
+    // Postgres refuses a NUL character in text; the api rejects it earlier, this keeps a direct caller safe.
+    .replaceAll('\u0000', '')
     .normalize('NFC')
     .split(/[\s,.;:!?()[\]{}"'`<>/\\|]+/u)
     .map((term) => term.trim().slice(0, MAX_TERM_CHARS))

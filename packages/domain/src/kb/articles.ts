@@ -13,13 +13,19 @@ import {
   type KbTransition,
   type UpdateKbArticle,
 } from '@watchtower/shared';
-import { and, asc, eq } from 'drizzle-orm';
+import { and, asc, eq, gt } from 'drizzle-orm';
 
 import { recordAuditInTx } from '../audit.js';
 import { DomainError, badRequest, conflict, invalidTransition, notFound } from '../errors.js';
 import { enqueueJob } from '../outbox.js';
 import { Effects, type DbTransaction, type DomainContext, type DomainResult } from '../types.js';
-import { audienceWidens, canMove, canPublishFrom } from './rules.js';
+import {
+  audienceWidens,
+  canMove,
+  canPublishFrom,
+  sameAudience,
+  type KbAudienceSpec,
+} from './rules.js';
 
 /** What a write tells the caller; the api reads the article back for the response. */
 export interface KbWriteResult {
@@ -170,8 +176,9 @@ export interface UpdateKbArticleInput {
   readonly articleId: string;
   readonly patch: UpdateKbArticle;
   /**
-   * The caller holds `kb.approve`. Without it, widening the audience of a published article is
-   * refused: it would show text to more people without an approver having seen that decision.
+   * The caller holds `kb.approve`. Without it, widening the audience of an article is refused, at
+   * any status: an approver decides who may read it (and publishing is bound to the audience the
+   * approver saw, so a change in between is refused there as well).
    */
   readonly canApprove: boolean;
 }
@@ -214,7 +221,6 @@ export async function updateKbArticle(
     visibility !== article.visibility || orgs.join(',') !== [...oldOrgs].sort().join(',');
   if (
     audienceChanged &&
-    article.status === 'published' &&
     !input.canApprove &&
     audienceWidens(
       { visibility: article.visibility as KbVisibility, orgIds: oldOrgs },
@@ -223,7 +229,7 @@ export async function updateKbArticle(
   ) {
     throw new DomainError(
       'policy_denied',
-      'Showing a published article to more people needs an approver',
+      'Showing an article to more people needs an approver, whatever its status',
       { reason: 'kb_audience_requires_approval' },
     );
   }
@@ -353,20 +359,43 @@ export interface PublishKbArticleInput {
   readonly articleId: string;
   /** The version the approver looked at. It must still be the latest. */
   readonly version: number;
+  /** The audience the approver looked at. It must still be the article's audience. */
+  readonly audience: KbAudienceSpec;
 }
 
+export interface BreakGlassPublishKbArticleInput extends PublishKbArticleInput {
+  /** Why the second person was skipped. Required, and written to the audit log. */
+  readonly reason: string;
+}
+
+type PublishMode =
+  { readonly kind: 'normal' } | { readonly kind: 'break_glass'; readonly reason: string };
+
 /**
- * Puts the latest version live: what search and customers see becomes this text, the approver is
- * recorded as reviewer, and the worker is asked to chunk and embed it. Asking for a version that
- * is no longer the latest answers `conflict`, so nobody publishes text they have not seen.
- * Publishing what is already live changes nothing.
+ * Only a person publishes. An AI or a system identity never does, whatever permission it holds;
+ * AI drafts (T-108e) go to `in_review` and wait for a human approver who is not the requester.
+ * TODO(T-108e): record the requester of an AI draft and refuse that person as its approver.
  */
-export async function publishKbArticle(
+function requireHuman(ctx: DomainContext): string {
+  if (ctx.actor.type !== 'user' || ctx.actor.id === null) {
+    throw new DomainError('policy_denied', 'Only a signed-in person can publish an article', {
+      reason: 'kb_publisher_not_human',
+    });
+  }
+  return ctx.actor.id;
+}
+
+async function publishWith(
   tx: DbTransaction,
   ctx: DomainContext,
   input: PublishKbArticleInput,
+  mode: PublishMode,
 ): Promise<DomainResult<KbWriteResult>> {
   const fx = new Effects();
+  const publisherId = requireHuman(ctx);
+  if (mode.kind === 'break_glass' && mode.reason.trim() === '') {
+    throw badRequest('Publishing break-glass needs a reason');
+  }
   const { article, current } = await lockArticle(tx, input.articleId);
   if (!canPublishFrom(article.status as KbStatus)) {
     throw invalidTransition(
@@ -378,6 +407,10 @@ export async function publishKbArticle(
       `Version ${String(input.version)} is not the latest (${String(current.version)}); look at the latest first`,
     );
   }
+  const orgIds = await orgIdsOf(tx, article.id);
+  if (!sameAudience(input.audience, { visibility: article.visibility as KbVisibility, orgIds })) {
+    throw conflict('The audience of this article changed since you looked at it; look at it again');
+  }
   if (article.status === 'published' && article.publishedVersionId === current.id) {
     return fx.result({
       articleId: article.id,
@@ -386,24 +419,162 @@ export async function publishKbArticle(
       changed: false,
     });
   }
+
+  if (mode.kind === 'normal') {
+    // Two people: it must have been sent for review (a published article with a newer version is
+    // already waiting for one), and the publisher wrote none of the text that goes live.
+    if (article.status !== 'in_review' && article.status !== 'published') {
+      throw invalidTransition('Send the article for review before it is published');
+    }
+    const [live] =
+      article.publishedVersionId === null
+        ? []
+        : await tx
+            .select({ version: schema.kbArticleVersion.version })
+            .from(schema.kbArticleVersion)
+            .where(eq(schema.kbArticleVersion.id, article.publishedVersionId))
+            .limit(1);
+    const written = await tx
+      .select({ id: schema.kbArticleVersion.id })
+      .from(schema.kbArticleVersion)
+      .where(
+        and(
+          eq(schema.kbArticleVersion.articleId, article.id),
+          gt(schema.kbArticleVersion.version, live?.version ?? 0),
+          eq(schema.kbArticleVersion.createdBy, publisherId),
+        ),
+      )
+      .limit(1);
+    if (written.length > 0) {
+      throw new DomainError(
+        'policy_denied',
+        'You wrote part of this text, so another approver has to publish it',
+        { reason: 'kb_publisher_is_author' },
+      );
+    }
+  }
+
   const now = ctx.now();
+  const breakGlass =
+    mode.kind === 'break_glass'
+      ? {
+          breakGlassPending: true,
+          breakGlassBy: publisherId,
+          breakGlassAt: now,
+          breakGlassReason: mode.reason.trim(),
+          breakGlassReviewedBy: null,
+          breakGlassReviewedAt: null,
+        }
+      : {};
   await tx
     .update(schema.kbArticle)
     .set({
       status: 'published',
       publishedVersionId: current.id,
       publishedAt: now,
-      reviewerId: ctx.actor.id,
+      reviewerId: publisherId,
       updatedAt: now,
+      ...breakGlass,
     })
     .where(eq(schema.kbArticle.id, article.id));
   await enqueueEmbed(tx, ctx, article.id, current.id);
   await recordAuditInTx(tx, ctx, fx, {
-    action: AUDIT_ACTIONS.kbArticlePublish,
+    action:
+      mode.kind === 'break_glass'
+        ? AUDIT_ACTIONS.kbArticlePublishBreakGlass
+        : AUDIT_ACTIONS.kbArticlePublish,
     targetType: 'kb_article',
     targetId: article.id,
     before: { status: article.status, publishedVersionId: article.publishedVersionId },
     after: { status: 'published', publishedVersionId: current.id, version: current.version },
+    metadata:
+      mode.kind === 'break_glass'
+        ? { reason: mode.reason.trim(), visibility: article.visibility, orgIds }
+        : { visibility: article.visibility, orgIds },
+  });
+  return fx.result({
+    articleId: article.id,
+    version: current.version,
+    versionId: current.id,
+    changed: true,
+  });
+}
+
+/**
+ * Puts the latest version live: what search and customers see becomes this text, the publisher is
+ * recorded as reviewer, and the worker is asked to chunk and embed it. Segregation of duties:
+ * the article must be in review (or already live with a newer version waiting), and the publisher
+ * must not have written any version newer than the live one; the approver who edits during review
+ * becomes its author, so another approver publishes. Asking for a version that is no longer the
+ * latest, or for an audience that is no longer the article's, answers `conflict`, so nobody
+ * publishes text, or to people, they have not seen. Publishing what is already live changes nothing.
+ */
+export function publishKbArticle(
+  tx: DbTransaction,
+  ctx: DomainContext,
+  input: PublishKbArticleInput,
+): Promise<DomainResult<KbWriteResult>> {
+  return publishWith(tx, ctx, input, { kind: 'normal' });
+}
+
+/**
+ * The emergency path: publishes without a second person and without review, with a mandatory
+ * reason, audited as its own action, and flags the article until another approver reviews it
+ * (`reviewKbBreakGlass`). Who may use it (the head) is the caller's check; the domain only refuses
+ * a non-person and an empty reason. An AI never can.
+ */
+export function publishKbArticleBreakGlass(
+  tx: DbTransaction,
+  ctx: DomainContext,
+  input: BreakGlassPublishKbArticleInput,
+): Promise<DomainResult<KbWriteResult>> {
+  return publishWith(tx, ctx, input, { kind: 'break_glass', reason: input.reason });
+}
+
+export interface ReviewKbBreakGlassInput {
+  readonly articleId: string;
+}
+
+/**
+ * Another approver confirms a break-glass publication was right (or that it has been corrected),
+ * which clears the flag. The person who published it cannot review it.
+ */
+export async function reviewKbBreakGlass(
+  tx: DbTransaction,
+  ctx: DomainContext,
+  input: ReviewKbBreakGlassInput,
+): Promise<DomainResult<KbWriteResult>> {
+  const fx = new Effects();
+  const reviewerId = requireHuman(ctx);
+  const { article, current } = await lockArticle(tx, input.articleId);
+  if (!article.breakGlassPending) {
+    throw conflict('This article has no break-glass publication to review');
+  }
+  if (article.breakGlassBy === reviewerId) {
+    throw new DomainError(
+      'policy_denied',
+      'You published this break-glass, so another approver has to review it',
+      { reason: 'kb_review_is_publisher' },
+    );
+  }
+  const now = ctx.now();
+  await tx
+    .update(schema.kbArticle)
+    .set({
+      breakGlassPending: false,
+      breakGlassReviewedBy: reviewerId,
+      breakGlassReviewedAt: now,
+      updatedAt: now,
+    })
+    .where(eq(schema.kbArticle.id, article.id));
+  await recordAuditInTx(tx, ctx, fx, {
+    action: AUDIT_ACTIONS.kbArticleBreakGlassReview,
+    targetType: 'kb_article',
+    targetId: article.id,
+    metadata: {
+      publishedBy: article.breakGlassBy,
+      publishedAt: article.breakGlassAt?.toISOString() ?? null,
+    },
   });
   return fx.result({
     articleId: article.id,

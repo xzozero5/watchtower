@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { RRF_K, reciprocalRankFusion } from './rrf.js';
-import { audienceWidens, canMove, canPublishFrom } from './rules.js';
+import { audienceWidens, canMove, canPublishFrom, sameAudience } from './rules.js';
 import { pgTextArray, queryTerms } from './search.js';
 
 describe('reciprocalRankFusion', () => {
@@ -67,6 +67,35 @@ describe('audienceWidens', () => {
     expect(audienceWidens(customer, org('a'))).toBe(false);
     expect(audienceWidens(org('a', 'b'), org('a'))).toBe(false);
     expect(audienceWidens(org('a'), internal)).toBe(false);
+  });
+});
+
+describe('sameAudience', () => {
+  it('compares visibility, and organizations only for "orgs", whatever their order or repeats', () => {
+    expect(
+      sameAudience(
+        { visibility: 'internal', orgIds: [] },
+        { visibility: 'internal', orgIds: ['x'] },
+      ),
+    ).toBe(true);
+    expect(
+      sameAudience({ visibility: 'internal', orgIds: [] }, { visibility: 'customer', orgIds: [] }),
+    ).toBe(false);
+    expect(
+      sameAudience(
+        { visibility: 'orgs', orgIds: ['a', 'b'] },
+        { visibility: 'orgs', orgIds: ['b', 'a', 'a'] },
+      ),
+    ).toBe(true);
+    expect(
+      sameAudience(
+        { visibility: 'orgs', orgIds: ['a'] },
+        { visibility: 'orgs', orgIds: ['a', 'b'] },
+      ),
+    ).toBe(false);
+    expect(
+      sameAudience({ visibility: 'orgs', orgIds: ['a'] }, { visibility: 'orgs', orgIds: [] }),
+    ).toBe(false);
   });
 });
 

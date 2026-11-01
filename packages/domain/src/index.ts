@@ -8,6 +8,8 @@ import { resolveIntent } from './intents.js';
 import {
   createKbArticle,
   publishKbArticle,
+  publishKbArticleBreakGlass,
+  reviewKbBreakGlass,
   transitionKbArticle,
   updateKbArticle,
 } from './kb/articles.js';
@@ -112,10 +114,14 @@ export {
   contentHash,
   createKbArticle,
   publishKbArticle,
+  publishKbArticleBreakGlass,
+  reviewKbBreakGlass,
   transitionKbArticle,
   updateKbArticle,
+  type BreakGlassPublishKbArticleInput,
   type KbWriteResult,
   type PublishKbArticleInput,
+  type ReviewKbBreakGlassInput,
   type TransitionKbArticleInput,
   type UpdateKbArticleInput,
 } from './kb/articles.js';
@@ -140,7 +146,13 @@ export {
   type ReplaceChunksInput,
 } from './kb/chunks.js';
 export { RRF_K, reciprocalRankFusion, type FusedItem, type RankedList } from './kb/rrf.js';
-export { audienceWidens, canMove, canPublishFrom, type KbAudienceSpec } from './kb/rules.js';
+export {
+  audienceWidens,
+  canMove,
+  canPublishFrom,
+  sameAudience,
+  type KbAudienceSpec,
+} from './kb/rules.js';
 export {
   DEFAULT_MIN_VECTOR_SIMILARITY,
   audienceCondition,
@@ -286,6 +298,8 @@ export interface Domain {
     readonly update: typeof updateKbArticle;
     readonly transition: typeof transitionKbArticle;
     readonly publish: typeof publishKbArticle;
+    readonly publishBreakGlass: typeof publishKbArticleBreakGlass;
+    readonly reviewBreakGlass: typeof reviewKbBreakGlass;
   };
   readonly workflow: { readonly allows: typeof workflowAllows };
   readonly sla: {
@@ -345,6 +359,8 @@ export function createDomain(options: DomainOptions): Domain {
       update: updateKbArticle,
       transition: transitionKbArticle,
       publish: publishKbArticle,
+      publishBreakGlass: publishKbArticleBreakGlass,
+      reviewBreakGlass: reviewKbBreakGlass,
     },
     workflow: { allows: workflowAllows },
     sla: {

@@ -62,8 +62,31 @@ const update = (
 ) =>
   env.tx((tx) => env.domain.kb.update(tx, env.ctx(author.actor), { articleId, patch, canApprove }));
 
-const publish = (articleId: string, version: number) =>
-  env.tx((tx) => env.domain.kb.publish(tx, env.ctx(lead.actor), { articleId, version }));
+/** The audience of an article as an approver sees it on screen. */
+const audienceOf = async (articleId: string) => {
+  const row = await articleRow(articleId);
+  const { rows } = await pool().query<{ org_id: string }>(
+    'SELECT org_id FROM kb_article_org WHERE article_id = $1',
+    [articleId],
+  );
+  return {
+    visibility: row.visibility as 'internal' | 'customer' | 'orgs',
+    orgIds: rows.map((r) => r.org_id),
+  };
+};
+
+/** Publishes the way the web does: the author sends it for review, an approver publishes what they saw. */
+const publish = async (articleId: string, version: number, by = lead) => {
+  if ((await articleRow(articleId)).status === 'draft') {
+    await env.tx((tx) =>
+      env.domain.kb.transition(tx, env.ctx(author.actor), { articleId, to: 'in_review' }),
+    );
+  }
+  const audience = await audienceOf(articleId);
+  return env.tx((tx) =>
+    env.domain.kb.publish(tx, env.ctx(by.actor), { articleId, version, audience }),
+  );
+};
 
 const transition = (articleId: string, to: 'draft' | 'in_review' | 'deprecated') =>
   env.tx((tx) => env.domain.kb.transition(tx, env.ctx(lead.actor), { articleId, to }));
@@ -230,10 +253,17 @@ describe('kb.update', () => {
     expect(rows).toHaveLength(0);
   });
 
-  it('lets an author widen a draft: publishing is where an approver decides', async () => {
-    const made = await create();
-    await update(made.articleId, { visibility: 'customer' });
-    expect((await articleRow(made.articleId)).visibility).toBe('customer');
+  it('refuses to widen the audience without an approver at any status, and lets an approver do it', async () => {
+    for (const status of ['draft', 'in_review'] as const) {
+      const made = await create({ bodyMd: 'internal procedure' });
+      if (status === 'in_review') await transition(made.articleId, 'in_review');
+      const denied = await refusal(update(made.articleId, { visibility: 'customer' }));
+      expect(denied.code, status).toBe('policy_denied');
+      expect(denied.details).toMatchObject({ reason: 'kb_audience_requires_approval' });
+      expect((await articleRow(made.articleId)).visibility).toBe('internal');
+      await update(made.articleId, { visibility: 'customer' }, true);
+      expect((await articleRow(made.articleId)).visibility).toBe('customer');
+    }
   });
 });
 
@@ -293,7 +323,7 @@ describe('kb.publish', () => {
     const made = await create();
     await update(made.articleId, { bodyMd: 'second' });
     expect((await refusal(publish(made.articleId, 1))).code).toBe('conflict');
-    expect((await articleRow(made.articleId)).status).toBe('draft');
+    expect((await articleRow(made.articleId)).status).toBe('in_review');
     expect((await publish(made.articleId, 2)).value.version).toBe(2);
   });
 
@@ -313,6 +343,330 @@ describe('kb.publish', () => {
     const made = await create();
     await transition(made.articleId, 'deprecated');
     expect((await refusal(publish(made.articleId, 1))).code).toBe('invalid_transition');
+  });
+});
+
+describe('kb.publish: the approver publishes what they saw', () => {
+  it('refuses to publish when the audience was widened after the approver looked (409)', async () => {
+    // The reported scenario: reviewed as internal, an agent widens it, the approver publishes.
+    const made = await create({ bodyMd: 'reviewed as internal' });
+    await transition(made.articleId, 'in_review');
+    const seen = await audienceOf(made.articleId);
+    expect(seen.visibility).toBe('internal');
+    // The agent has no approval: the widening itself is refused ...
+    expect((await refusal(update(made.articleId, { visibility: 'customer' }))).code).toBe(
+      'policy_denied',
+    );
+    // ... and an approver widening it meanwhile (another tab) makes the first approver's view stale.
+    await update(made.articleId, { visibility: 'customer' }, true);
+    const stale = await refusal(
+      env.tx((tx) =>
+        env.domain.kb.publish(tx, env.ctx(lead.actor), {
+          articleId: made.articleId,
+          version: 1,
+          audience: seen,
+        }),
+      ),
+    );
+    expect(stale.code).toBe('conflict');
+    expect((await articleRow(made.articleId)).status).toBe('in_review');
+    // Looking again and publishing the audience as it is now works.
+    expect((await publish(made.articleId, 1)).value.changed).toBe(true);
+    expect((await articleRow(made.articleId)).visibility).toBe('customer');
+  });
+
+  it('compares organizations too, in any order', async () => {
+    const orgs = [(await addOrg(env)).id, (await addOrg(env)).id];
+    const made = await create({ visibility: 'orgs', orgIds: [orgs[0] ?? ''] });
+    await transition(made.articleId, 'in_review');
+    const publishAs = (audience: { visibility: 'orgs'; orgIds: string[] }) =>
+      env.tx((tx) =>
+        env.domain.kb.publish(tx, env.ctx(lead.actor), {
+          articleId: made.articleId,
+          version: 1,
+          audience,
+        }),
+      );
+    expect((await refusal(publishAs({ visibility: 'orgs', orgIds: orgs }))).code).toBe('conflict');
+    expect((await refusal(publishAs({ visibility: 'orgs', orgIds: [] }))).code).toBe('conflict');
+    expect((await publishAs({ visibility: 'orgs', orgIds: [orgs[0] ?? ''] })).value.changed).toBe(
+      true,
+    );
+  });
+});
+
+describe('kb.publish: segregation of duties', () => {
+  const raw = (articleId: string, by: typeof lead, version = 1) =>
+    audienceOf(articleId).then((audience) =>
+      env.tx((tx) =>
+        env.domain.kb.publish(tx, env.ctx(by.actor), { articleId, version, audience }),
+      ),
+    );
+
+  let second: Awaited<ReturnType<typeof addStaff>>;
+  beforeAll(async () => {
+    second = await addStaff(env, 'lead');
+  });
+
+  it('does not publish from draft: it has to be sent for review first', async () => {
+    const made = await create();
+    const error = await refusal(raw(made.articleId, lead));
+    expect(error.code).toBe('invalid_transition');
+    expect((await articleRow(made.articleId)).status).toBe('draft');
+    await transition(made.articleId, 'in_review');
+    expect((await raw(made.articleId, lead)).value.changed).toBe(true);
+  });
+
+  it('does not let the author publish what they wrote', async () => {
+    const made = await create();
+    await transition(made.articleId, 'in_review');
+    const error = await refusal(raw(made.articleId, author));
+    expect(error.code).toBe('policy_denied');
+    expect(error.details).toMatchObject({ reason: 'kb_publisher_is_author' });
+    expect((await articleRow(made.articleId)).status).toBe('in_review');
+  });
+
+  it('makes the approver who edits during review the author, so another approver publishes', async () => {
+    const made = await create({ bodyMd: 'draft text' });
+    await transition(made.articleId, 'in_review');
+    // The lead tweaks the text during review: version 2 is theirs.
+    await env.tx((tx) =>
+      env.domain.kb.update(tx, env.ctx(lead.actor), {
+        articleId: made.articleId,
+        patch: { bodyMd: 'lead tweak' },
+        canApprove: true,
+      }),
+    );
+    const own = await refusal(raw(made.articleId, lead, 2));
+    expect(own.details).toMatchObject({ reason: 'kb_publisher_is_author' });
+    expect((await raw(made.articleId, second, 2)).value.changed).toBe(true);
+    expect((await articleRow(made.articleId)).reviewerId).toBe(second.id);
+  });
+
+  it('counts every version since the live one, not only the latest', async () => {
+    const made = await create({ bodyMd: 'v1' });
+    await transition(made.articleId, 'in_review');
+    await raw(made.articleId, lead);
+    // lead writes v2, the author writes v3: lead still wrote part of what would go live.
+    await env.tx((tx) =>
+      env.domain.kb.update(tx, env.ctx(lead.actor), {
+        articleId: made.articleId,
+        patch: { bodyMd: 'v2 by lead' },
+        canApprove: true,
+      }),
+    );
+    await update(made.articleId, { bodyMd: 'v3 by author' });
+    const error = await refusal(raw(made.articleId, lead, 3));
+    expect(error.details).toMatchObject({ reason: 'kb_publisher_is_author' });
+    expect((await raw(made.articleId, second, 3)).value.changed).toBe(true);
+  });
+
+  it('lets an approver who wrote only older, already published versions publish a later edit by someone else', async () => {
+    const made = await create({ bodyMd: 'first' });
+    await transition(made.articleId, 'in_review');
+    await raw(made.articleId, lead);
+    await update(made.articleId, { bodyMd: 'second by author' });
+    expect((await raw(made.articleId, lead, 2)).value.changed).toBe(true);
+  });
+
+  it('never lets an AI or a system identity publish, nor review a break-glass publication', async () => {
+    const made = await create();
+    await transition(made.articleId, 'in_review');
+    const audience = await audienceOf(made.articleId);
+    for (const actor of [
+      { type: 'ai' as const, id: null },
+      { type: 'system' as const, id: null },
+      { type: 'system' as const, id: lead.id },
+    ]) {
+      const normal = await refusal(
+        env.tx((tx) =>
+          env.domain.kb.publish(tx, env.ctx(actor), {
+            articleId: made.articleId,
+            version: 1,
+            audience,
+          }),
+        ),
+      );
+      expect(normal.details, actor.type).toMatchObject({ reason: 'kb_publisher_not_human' });
+      const glass = await refusal(
+        env.tx((tx) =>
+          env.domain.kb.publishBreakGlass(tx, env.ctx(actor), {
+            articleId: made.articleId,
+            version: 1,
+            audience,
+            reason: 'urgent',
+          }),
+        ),
+      );
+      expect(glass.details, actor.type).toMatchObject({ reason: 'kb_publisher_not_human' });
+    }
+    expect((await articleRow(made.articleId)).status).toBe('in_review');
+  });
+
+  it('lets anyone who may deprecate or withdraw do it alone', async () => {
+    const made = await create();
+    await transition(made.articleId, 'in_review');
+    await env.tx((tx) =>
+      env.domain.kb.transition(tx, env.ctx(author.actor), {
+        articleId: made.articleId,
+        to: 'draft',
+      }),
+    );
+    const live = await create();
+    await publish(live.articleId, 1);
+    await env.tx((tx) =>
+      env.domain.kb.transition(tx, env.ctx(lead.actor), {
+        articleId: live.articleId,
+        to: 'deprecated',
+      }),
+    );
+    expect((await articleRow(live.articleId)).status).toBe('deprecated');
+  });
+});
+
+describe('kb.publishBreakGlass', () => {
+  let second: Awaited<ReturnType<typeof addStaff>>;
+  let head: Awaited<ReturnType<typeof addStaff>>;
+  beforeAll(async () => {
+    second = await addStaff(env, 'lead');
+    head = await addStaff(env, 'head');
+  });
+
+  const glass = (articleId: string, by: typeof lead, reason: string, version = 1) =>
+    audienceOf(articleId).then((audience) =>
+      env.tx((tx) =>
+        env.domain.kb.publishBreakGlass(tx, env.ctx(by.actor), {
+          articleId,
+          version,
+          audience,
+          reason,
+        }),
+      ),
+    );
+
+  it('publishes from draft without a second person, flags the article and audits it as its own action', async () => {
+    const made = await create({ bodyMd: 'urgent fix' });
+    const result = await glass(made.articleId, head, '  Wrong refund policy is live  ');
+    expect(result.value.changed).toBe(true);
+    expect(result.audited).toBe(true);
+    expect(await articleRow(made.articleId)).toMatchObject({
+      status: 'published',
+      publishedVersionId: made.versionId,
+      breakGlassPending: true,
+      breakGlassBy: head.id,
+      breakGlassReason: 'Wrong refund policy is live',
+      breakGlassReviewedBy: null,
+    });
+    const audit = (await auditRows(env, 'kb.article.publish_break_glass')).filter(
+      (row) => row.targetId === made.articleId,
+    );
+    expect(audit).toHaveLength(1);
+    expect(audit[0]?.actorId).toBe(head.id);
+    expect(audit[0]?.metadata).toMatchObject({ reason: 'Wrong refund policy is live' });
+    expect(
+      (await auditRows(env, 'kb.article.publish')).filter((row) => row.targetId === made.articleId),
+    ).toHaveLength(0);
+    // Still indexed by the worker like any publication.
+    const { rows } = await pool().query(
+      `SELECT 1 FROM outbox WHERE queue = 'kb' AND payload->>'articleId' = $1`,
+      [made.articleId],
+    );
+    expect(rows).toHaveLength(1);
+  });
+
+  it('can publish text the head wrote themselves, which a normal publication refuses', async () => {
+    const made = await create({ bodyMd: 'head wrote this' });
+    await env.tx((tx) =>
+      env.domain.kb.update(tx, env.ctx(head.actor), {
+        articleId: made.articleId,
+        patch: { bodyMd: 'head edit' },
+        canApprove: true,
+      }),
+    );
+    const normal = await refusal(
+      audienceOf(made.articleId).then((audience) =>
+        env.tx((tx) =>
+          env.domain.kb.publish(tx, env.ctx(head.actor), {
+            articleId: made.articleId,
+            version: 2,
+            audience,
+          }),
+        ),
+      ),
+    );
+    expect(normal.code).toBe('invalid_transition');
+    expect((await glass(made.articleId, head, 'incident', 2)).value.changed).toBe(true);
+  });
+
+  it('needs a reason, the latest version and the audience the head saw', async () => {
+    const made = await create();
+    for (const reason of ['', '   ']) {
+      expect((await refusal(glass(made.articleId, head, reason))).code).toBe('bad_request');
+    }
+    expect((await refusal(glass(made.articleId, head, 'why', 5))).code).toBe('conflict');
+    const error = await refusal(
+      env.tx((tx) =>
+        env.domain.kb.publishBreakGlass(tx, env.ctx(head.actor), {
+          articleId: made.articleId,
+          version: 1,
+          audience: { visibility: 'customer', orgIds: [] },
+          reason: 'why',
+        }),
+      ),
+    );
+    expect(error.code).toBe('conflict');
+    expect((await articleRow(made.articleId)).status).toBe('draft');
+  });
+
+  it('is reviewed by another approver, never by the person who used it, and only once', async () => {
+    const made = await create();
+    await glass(made.articleId, head, 'incident');
+    const review = (by: typeof lead) =>
+      env.tx((tx) =>
+        env.domain.kb.reviewBreakGlass(tx, env.ctx(by.actor), { articleId: made.articleId }),
+      );
+    const own = await refusal(review(head));
+    expect(own.details).toMatchObject({ reason: 'kb_review_is_publisher' });
+    expect((await articleRow(made.articleId)).breakGlassPending).toBe(true);
+
+    const done = await review(second);
+    expect(done.audited).toBe(true);
+    expect(await articleRow(made.articleId)).toMatchObject({
+      breakGlassPending: false,
+      breakGlassReviewedBy: second.id,
+      breakGlassBy: head.id,
+    });
+    expect((await refusal(review(second))).code).toBe('conflict');
+    expect(
+      (await auditRows(env, 'kb.article.break_glass_review')).filter(
+        (row) => row.targetId === made.articleId,
+      ),
+    ).toHaveLength(1);
+  });
+
+  it('cannot be reviewed by a non-person, and a plain article has nothing to review', async () => {
+    const made = await create();
+    await glass(made.articleId, head, 'incident');
+    const system = refusal(
+      env.tx((tx) =>
+        env.domain.kb.reviewBreakGlass(tx, env.ctx({ type: 'system', id: null }), {
+          articleId: made.articleId,
+        }),
+      ),
+    );
+    expect((await system).details).toMatchObject({ reason: 'kb_publisher_not_human' });
+    const plain = await create();
+    expect(
+      (
+        await refusal(
+          env.tx((tx) =>
+            env.domain.kb.reviewBreakGlass(tx, env.ctx(second.actor), {
+              articleId: plain.articleId,
+            }),
+          ),
+        )
+      ).code,
+    ).toBe('conflict');
   });
 });
 

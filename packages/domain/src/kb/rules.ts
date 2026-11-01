@@ -42,3 +42,12 @@ export function canMove(from: KbStatus, to: KbStatus): boolean {
 export function canPublishFrom(status: KbStatus): boolean {
   return status !== 'deprecated';
 }
+
+/** The same readers: the same visibility and, for `orgs`, the same organizations. */
+export function sameAudience(a: KbAudienceSpec, b: KbAudienceSpec): boolean {
+  if (a.visibility !== b.visibility) return false;
+  if (a.visibility !== 'orgs') return true;
+  const left = [...new Set(a.orgIds)].sort();
+  const right = [...new Set(b.orgIds)].sort();
+  return left.length === right.length && left.every((id, at) => id === right[at]);
+}
