@@ -1,10 +1,14 @@
+import type { discord } from '@watchtower/channels';
 import { ALERTS_JOBS, alertChatJobSchema } from '@watchtower/shared';
 import { UnrecoverableError, type Job } from 'bullmq';
 
 import type { ProcessorContext } from '../processors/index.js';
-import { FakeAlertChat, type AlertChatPort } from './chat.js';
+import { BotAlertChat, createBotRuntime } from './bot.js';
+import type { AlertChatPort } from './chat.js';
 import { createAlertChatNotifier } from './notifier.js';
 
+export { BotAlertChat, createBotRuntime, FAKE_CHANNEL_ID } from './bot.js';
+export type { BotRuntime } from './bot.js';
 export { FakeAlertChat } from './chat.js';
 export type { AlertChatMessage, AlertChatPort, AlertChatResult } from './chat.js';
 export { chatBackoffMs, createAlertChatNotifier } from './notifier.js';
@@ -12,8 +16,10 @@ export type { AlertChatNotifier, ChatOutcome, ChatSweepResult } from './notifier
 
 /** What a test replaces; production passes none. */
 export interface AlertsOverrides {
-  /** The chat service the escalation posts to. Default: the in-memory fake. */
+  /** The chat service the escalation posts to. Default: the Discord bot (the in-memory fake in this build). */
   readonly chat?: AlertChatPort;
+  /** The bot transport behind the default chat port. Default: the in-memory fake. */
+  readonly bot?: discord.BotTransport;
 }
 
 /**
@@ -26,7 +32,9 @@ export interface AlertsOverrides {
  */
 export function createAlertsRegistration(context: ProcessorContext) {
   const { domain, database, logger, realtime, config } = context;
-  const chat: AlertChatPort = context.overrides.alerts?.chat ?? new FakeAlertChat();
+  const chat: AlertChatPort =
+    context.overrides.alerts?.chat ??
+    new BotAlertChat(createBotRuntime(context, context.overrides.alerts?.bot));
   const notifier = createAlertChatNotifier({
     database,
     logger,

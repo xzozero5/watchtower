@@ -59,3 +59,17 @@ export const discordNotification = pgTable(
 );
 
 export type DiscordNotificationRow = typeof discordNotification.$inferSelect;
+
+/**
+ * The Discord interactions already handled (T-202b, migration 0045). The id is Discord's snowflake;
+ * a second delivery of it is answered 'already handled' and changes nothing.
+ */
+export const discordInteraction = pgTable(
+  'discord_interaction',
+  {
+    id: text('id').primaryKey(),
+    outcome: text('outcome').notNull(),
+    handledAt: timestamp('handled_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow(),
+  },
+  (table) => [index('discord_interaction_handled_idx').on(table.handledAt)],
+);

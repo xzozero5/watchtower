@@ -11,6 +11,7 @@ import { createGmailRegistration, type GmailOverrides } from '../gmail/index.js'
 import type { GmailRuntime } from '../gmail/runtime.js';
 import { createDiscordRegistration, type DiscordOverrides } from '../discord/index.js';
 import { createAlertsRegistration, type AlertsOverrides } from '../alerts/index.js';
+import { createIncidentsRegistration, type IncidentsOverrides } from '../incidents/index.js';
 import { createCsatRegistration } from '../csat/index.js';
 import { createIngestRegistration, type IngestOverrides } from '../ingest/index.js';
 import type { WorkerLogger } from '../logger.js';
@@ -51,6 +52,7 @@ export interface ProcessorOverrides {
   readonly discord?: DiscordOverrides;
   readonly line?: LineOverrides;
   readonly alerts?: AlertsOverrides;
+  readonly incidents?: IncidentsOverrides;
 }
 
 export interface ProcessorRegistration {
@@ -138,4 +140,8 @@ export const PROCESSORS: readonly ProcessorRegistration[] = [
   // --- alerts (T-201d) ---
   // One at a time: two sweeps would only contend for the same alerts (the rows are locked anyway).
   { queue: QUEUE_NAMES.alerts, create: createAlertsRegistration, concurrency: 1 },
+
+  // --- incidents (T-202b) ---
+  // The Discord thread of an incident, then the lines mirrored into it.
+  { queue: QUEUE_NAMES.incidents, create: createIncidentsRegistration },
 ];
