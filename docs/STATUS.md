@@ -40,6 +40,10 @@ snapshot สั้นสำหรับ cold start อยู่ที่ `HANDOF
 
 ## Log
 
+## 2026-11-02 04:56 (Asia/Bangkok) — main thread — T-116c integrations admin page ปิด
+- test: main thread รันเองบน Windows: lint, typecheck, unit ผ่าน · integration db 291, domain 323, api 731, worker 191 · e2e 143 · full-stack 23 · compose healthy `[TESTED]`
+- ค้าง/ไม่ยืนยัน: ยังไม่ทดสอบกับ API จริงในหน้านี้ · ไม่มี reason ใน destructive action
+
 ## 2026-11-02 04:13 (Asia/Bangkok) — main thread — T-109 AI sidebar จริง + server-side undo ปิด
 - test: main thread รันเองบน Windows: lint, typecheck, unit ผ่าน · integration db 291, domain 323, api 731, worker 191 · e2e 138 · full-stack 23 · compose healthy `[TESTED]`
 - ค้าง/ไม่ยืนยัน: Send via เป็นการแสดงช่องทางเท่านั้น · ยังไม่มี endpoint retry delivery ที่ fail

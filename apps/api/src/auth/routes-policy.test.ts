@@ -125,7 +125,8 @@ describe('every route states who may call it', () => {
       (route) => !route.isPublic && route.permissions.length === 0 && route.anyOf.length === 0,
     );
     expect(unprotected.map((route) => route.key)).toEqual([]);
-  });
+    // The first test pays for importing every module of the api.
+  }, 60_000);
 
   it('keeps the list of public routes to exactly the expected ones', async () => {
     const routes = await collectRoutes();
