@@ -140,4 +140,6 @@ export type ChannelQuotaUsageRow = typeof channelQuotaUsage.$inferSelect;
 /** Keys of the automatic acknowledgments the database lets through (review O-3); read-only for the application. */
 export const outboundTemplateAllowlist = pgTable('outbound_template_allowlist', {
   key: text('key').primaryKey(),
+  /** Postgres regular expression the whole body of an automatic message must match (migration 0014). */
+  bodyPattern: text('body_pattern').notNull(),
 });

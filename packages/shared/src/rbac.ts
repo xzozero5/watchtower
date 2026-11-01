@@ -70,6 +70,8 @@ export const PERMISSIONS = {
   'handoff.ack': 'Acknowledge the items of a shift handoff',
   'csat.read': 'View CSAT responses',
   'ai.run.read': 'View AI run records: prompt version, model, tools and cost',
+  // T-122e (migration 0014).
+  'ticket.cancel.any': "Undo a colleague's send before it goes out",
 } as const satisfies Record<string, string>;
 
 export type Permission = keyof typeof PERMISSIONS;
@@ -126,6 +128,7 @@ const LEAD: readonly Permission[] = [
   'ai.emergency_switch',
   'csat.read',
   'ai.run.read',
+  'ticket.cancel.any',
 ];
 
 const HEAD: readonly Permission[] = [

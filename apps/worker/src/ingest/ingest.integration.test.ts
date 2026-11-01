@@ -479,6 +479,44 @@ describe('ingest queue: failures', () => {
     });
   });
 
+  it('keeps no LINE reply token on an event that failed, whichever way it failed (N-6)', async () => {
+    const userId = `U${randomBytes(8).toString('hex')}`;
+    const event = (id: string) => ({
+      type: 'message',
+      mode: 'active',
+      timestamp: Date.now(),
+      webhookEventId: `01${id}`,
+      deliveryContext: { isRedelivery: false },
+      source: { type: 'user', userId },
+      replyToken: `reply-secret-${id}`,
+      message: { type: 'text', id: `line-${prefix}-${id}`, text: 'hello' },
+    });
+    // Permanent: the payload cannot be read as a LINE event.
+    const broken = await receive(lineId, `01x-${prefix}`, {
+      type: 'message',
+      replyToken: 'reply-secret-x',
+      message: 'not an object',
+    });
+    const brokenEvent = await settled(broken);
+    expect(brokenEvent.status).toBe('failed');
+    expect(JSON.stringify(brokenEvent.payload)).not.toContain('reply-secret');
+    // Transient, then out of attempts.
+    behaviour.storeFailures = 100;
+    try {
+      const exhausted = await receive(lineId, `01y-${prefix}`, event('y'), {
+        attempts: 2,
+        backoff: { type: 'fixed', delay: 100 },
+      });
+      const row = await settled(exhausted);
+      expect(row).toMatchObject({ status: 'failed', errorCode: 'ingest_error' });
+      expect(JSON.stringify(row.payload)).not.toContain('reply-secret');
+      // The rest of the event stays for whoever investigates.
+      expect(row.payload).toMatchObject({ webhookEventId: '01y', source: { userId } });
+    } finally {
+      behaviour.storeFailures = 0;
+    }
+  });
+
   it('retries a storage outage and finishes the event once storage is back', async () => {
     const { payload } = mailPayload();
     behaviour.storeFailures = 2;

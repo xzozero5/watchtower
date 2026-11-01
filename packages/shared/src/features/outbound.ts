@@ -89,6 +89,13 @@ export const DELIVERY_MAX_ATTEMPTS = 5;
 export const DELIVERY_BACKOFF_CAP_SECONDS = 300;
 /** A `sending` row older than this lease is stuck (the worker died or hung). */
 export const DELIVERY_LEASE_SECONDS = 120;
+/**
+ * How long a delivery may keep being retried with the same LINE retry key (`X-Line-Retry-Key` = the
+ * delivery id). LINE remembers a key for 24 hours `[VERIFY]`; past that a repeat could be sent twice,
+ * so the sweeper and the dispatcher stop with `outcome_unknown` well before. 20 hours `[ASSUMED]`;
+ * the domain option `retryKeyMaxAgeSeconds` overrides it.
+ */
+export const DELIVERY_RETRY_KEY_MAX_AGE_SECONDS = 20 * 3600;
 
 /** What the UI needs to draw the Undo toast and the delivery state of a reply (staff only). */
 export const deliverySummarySchema = z.object({

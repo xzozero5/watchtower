@@ -4,6 +4,8 @@ import { schema } from '@watchtower/db';
 import {
   AUDIT_ACTIONS,
   DELIVERY_LEASE_SECONDS,
+  DELIVERY_MAX_ATTEMPTS,
+  DELIVERY_RETRY_KEY_MAX_AGE_SECONDS,
   OUTBOUND_DISPATCH_JOB_OPTIONS,
   OUTBOUND_JOBS,
   OUTBOUND_TICKET_EVENTS,
@@ -27,7 +29,8 @@ import {
   type DomainResult,
   type ReadExecutor,
 } from '../types.js';
-import { contentHash, dispatchJobId, type FailureDecision } from './state.js';
+import { billingPeriod, moveQuota } from './quota.js';
+import { contentHash, dispatchJobId, retryKeyExpired, type FailureDecision } from './state.js';
 import { parseRenderInputs, renderSystemTemplate } from './templates.js';
 
 /**
@@ -450,6 +453,9 @@ export async function recordFailure(
         claimToken: null,
         leaseUntil: null,
         dispatchedAt: null,
+        // The refusal that caused the retry: the database requires one before a delivery that
+        // reached the provider may go back to `scheduled` (migration 0014).
+        errorCode: decision.errorCode ?? 'retry_scheduled',
         updatedAt: now,
       })
       .where(owned(delivery))
@@ -546,10 +552,18 @@ export interface SweepResult {
   readonly unknownOutcome: number;
   /** `sending` LINE pushes put back to `scheduled`: the retry key makes a repeat safe. */
   readonly retriedPush: number;
+  /** Rows failed because they used `DELIVERY_MAX_ATTEMPTS` or outlived the LINE retry key (N-2). */
+  readonly retryLimited: number;
   /** `scheduled` rows more than the grace period late: a new trigger was written. */
   readonly retriggered: string[];
   readonly staleReplyTokens: number;
   readonly events: DomainResult<null>['events'];
+}
+
+export interface SweepOptions {
+  readonly batch?: number;
+  /** The billing month of a quota counter (`line.quotaPeriod`); default: Bangkok time. */
+  readonly quotaPeriodOf?: (date: Date) => string;
 }
 
 /** A `scheduled` delivery this long past its time without a claim has lost its trigger. */
@@ -561,19 +575,27 @@ export const REPLY_TOKEN_KEEP_SECONDS = 600;
  * Housekeeping (ADR-010 section 7), run every 30 s by the worker:
  *  - `sending` past its lease: back to `scheduled` if the provider was never called; otherwise
  *    `failed(outcome_unknown)`, except a LINE push, which a retry key makes safe to repeat;
+ *  - a repeat is bounded (N-2): after `DELIVERY_MAX_ATTEMPTS` claims, or once the retry key may have
+ *    been forgotten by LINE (`retryKeyMaxAgeSeconds`), the row is `failed` instead (`outcome_unknown`
+ *    when a push was ever attempted). A push that goes back gives its quota reservation back (the
+ *    next attempt reserves again); a push that fails keeps it, as LINE may have counted the message;
  *  - `scheduled` more than two minutes late: a fresh trigger (the earlier one may be dead-lettered);
  *  - reply tokens older than ten minutes are blanked.
  */
 export async function sweepDeliveries(
   tx: DbTransaction,
   ctx: DomainContext,
-  batch = 50,
+  options: SweepOptions = {},
 ): Promise<SweepResult> {
   const fx = new Effects();
   const now = ctx.now();
+  const batch = options.batch ?? 50;
+  const periodOf = options.quotaPeriodOf ?? billingPeriod;
+  const keyMaxAge = ctx.config.retryKeyMaxAgeSeconds ?? DELIVERY_RETRY_KEY_MAX_AGE_SECONDS;
   let released = 0;
   let unknownOutcome = 0;
   let retriedPush = 0;
+  let retryLimited = 0;
 
   const stuck = await tx
     .select()
@@ -589,7 +611,10 @@ export async function sweepDeliveries(
     .for('update', { skipLocked: true });
   for (const delivery of stuck) {
     const neverSent = delivery.dispatchedAt === null;
-    if (neverSent || delivery.route === 'line_push') {
+    const pinnedPush = delivery.route === 'line_push';
+    const exhausted = delivery.attempts >= DELIVERY_MAX_ATTEMPTS;
+    const keyExpired = pinnedPush && retryKeyExpired(delivery.createdAt, now, keyMaxAge);
+    if ((neverSent || pinnedPush) && !exhausted && !keyExpired) {
       const nextAttemptAt = now;
       await tx
         .update(schema.outboundDelivery)
@@ -610,21 +635,35 @@ export async function sweepDeliveries(
         notBefore: nextAttemptAt,
         options: OUTBOUND_DISPATCH_JOB_OPTIONS,
       });
-      if (neverSent) released += 1;
-      else retriedPush += 1;
+      if (neverSent) {
+        released += 1;
+      } else {
+        // The attempt that was lost reserved a push; the next one reserves its own.
+        await moveQuota(
+          tx,
+          delivery.channelAccountId,
+          periodOf(delivery.dispatchedAt ?? now),
+          -1,
+          now,
+        );
+        retriedPush += 1;
+      }
     } else {
+      // A pinned push may have reached the customer even if the lost attempt never got to dispatch
+      // (an earlier attempt's outcome was unknown), so it is unknown whenever it was ever a push.
+      const outcomeUnknown = !neverSent || pinnedPush;
+      const errorCode = keyExpired
+        ? 'retry_key_expired'
+        : exhausted
+          ? 'retry_exhausted'
+          : 'lease_expired';
       await tx
         .update(schema.outboundDelivery)
-        .set({
-          state: 'failed',
-          errorCode: 'lease_expired',
-          outcomeUnknown: true,
-          leaseUntil: null,
-          updatedAt: now,
-        })
+        .set({ state: 'failed', errorCode, outcomeUnknown, leaseUntil: null, updatedAt: now })
         .where(eq(schema.outboundDelivery.id, delivery.id));
-      await finishFailed(tx, ctx, fx, delivery, 'lease_expired', true, 'lease_expired');
-      unknownOutcome += 1;
+      await finishFailed(tx, ctx, fx, delivery, errorCode, outcomeUnknown, errorCode);
+      if (outcomeUnknown) unknownOutcome += 1;
+      if (errorCode !== 'lease_expired') retryLimited += 1;
     }
   }
 
@@ -662,6 +701,7 @@ export async function sweepDeliveries(
     released,
     unknownOutcome,
     retriedPush,
+    retryLimited,
     retriggered: overdue.map((row) => row.id),
     staleReplyTokens,
     events: fx.events,

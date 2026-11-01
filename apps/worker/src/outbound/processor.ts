@@ -31,6 +31,7 @@ export function createOutboundProcessor(deps: {
           released: result.released,
           unknownOutcome: result.unknownOutcome,
           retriedPush: result.retriedPush,
+          retryLimited: result.retryLimited,
           retriggered: result.retriggered.length,
           staleReplyTokens: result.staleReplyTokens,
         };
