@@ -15,6 +15,7 @@ import {
 import { useApi } from '@/lib/api/api-context';
 import { useUserId } from '@/lib/auth/session';
 import { isUnauthenticated } from '@/lib/api/errors';
+import { notificationKeys } from '@/lib/notifications/keys';
 import { useRuntimeConfig } from '@/lib/runtime-config-context';
 import { ticketKeys } from '@/lib/tickets/queries';
 
@@ -24,6 +25,7 @@ import {
   realtimeUrl,
   type SocketLike,
 } from './connection';
+import type { NewTicket } from './new-tickets';
 import { applyRealtimeEvent } from './sync';
 
 export type SocketFactory = (url: string) => SocketLike;
@@ -49,8 +51,11 @@ export const browserSocket: SocketFactory = (url) => {
 
 export interface RealtimeValue {
   state: ConnectionState;
-  /** Tickets created since the queue was last loaded. Drives the "N new" pill. */
-  newTicketIds: readonly string[];
+  /**
+   * Tickets created since the queue was last loaded, with their org, queue and channel. The "N new"
+   * pill counts the ones that match the filter on screen (`countNewMatching`).
+   */
+  newTickets: readonly NewTicket[];
   clearNewTickets: () => void;
   /** Reconnect now (after the server paused this tab, or the browser came back online). */
   retry: () => void;
@@ -71,7 +76,7 @@ export function RealtimeProvider({
   const userId = useUserId();
   const queryClient = useQueryClient();
   const [state, setState] = useState<ConnectionState>('connecting');
-  const [newTicketIds, setNewTicketIds] = useState<readonly string[]>([]);
+  const [newTickets, setNewTickets] = useState<readonly NewTicket[]>([]);
   const connectionRef = useRef<RealtimeConnection | null>(null);
 
   useEffect(() => {
@@ -84,13 +89,17 @@ export function RealtimeProvider({
           queryClient,
           userId,
           api,
-          onNewTicket: (ticketId) => {
-            setNewTicketIds((ids) => (ids.includes(ticketId) ? ids : [...ids, ticketId]));
+          onNewTicket: (ticket) => {
+            setNewTickets((known) =>
+              known.some((item) => item.id === ticket.id) ? known : [...known, ticket],
+            );
           },
         });
       },
       onResync: () => {
         void queryClient.invalidateQueries({ queryKey: ticketKeys(userId).all });
+        // Notifications have no replay either: a P1 that arrived while the socket was down shows now.
+        void queryClient.invalidateQueries({ queryKey: notificationKeys(userId).all });
       },
       ensureSession: async () => {
         try {
@@ -117,15 +126,15 @@ export function RealtimeProvider({
   }, [apiUrl, api, queryClient, userId, createSocket]);
 
   const clearNewTickets = useCallback(() => {
-    setNewTicketIds([]);
+    setNewTickets([]);
   }, []);
   const retry = useCallback(() => {
     connectionRef.current?.retryNow();
   }, []);
 
   const value = useMemo<RealtimeValue>(
-    () => ({ state, newTicketIds, clearNewTickets, retry }),
-    [state, newTicketIds, clearNewTickets, retry],
+    () => ({ state, newTickets, clearNewTickets, retry }),
+    [state, newTickets, clearNewTickets, retry],
   );
   return <RealtimeContext.Provider value={value}>{children}</RealtimeContext.Provider>;
 }

@@ -6,6 +6,7 @@ import {
   ticketStatusSchema,
 } from './ticketing.js';
 import { ticketPrioritySchema } from './sla.js';
+import { notificationKindSchema, notificationSeveritySchema } from './features/notifications.js';
 
 /**
  * Realtime contract (PRD section 8.3: updates in under 2 seconds).
@@ -26,6 +27,7 @@ export const REALTIME_EVENT_TYPES = [
   'ticket.created',
   'ticket.updated',
   'message.created',
+  'notification.created',
 ] as const;
 export type RealtimeEventType = (typeof REALTIME_EVENT_TYPES)[number];
 
@@ -57,6 +59,11 @@ export const ticketEventDataSchema = z.object({
   /** Staff only: dropped before an event goes to a client. */
   assigneeId: z.uuid().nullable().optional(),
   queueId: z.uuid().nullable().optional(),
+  /**
+   * The channel the ticket came in on (`gmail`, `line`, `portal`...). With `orgId` and `queueId` it
+   * lets the "N new" pill count only the tickets that match the filter the agent has on. Staff only.
+   */
+  channel: z.string().nullable().optional(),
   /** Which fields changed: subject, status, priority, intent, assignee, queue, tags, customFields, sla. */
   changed: z.array(z.string()),
 });
@@ -69,10 +76,34 @@ export const messageEventDataSchema = z.object({
   visibility: messageVisibilitySchema,
 });
 
+/**
+ * A notification for one person (T-105). It is addressed: only `recipientId` hears it, and a client
+ * never does. It carries ids and small facts, never text; the center fetches the rest over REST.
+ * `orgId`, `queueId` and `channel` are the facets of the ticket it is about (all null for a shift alert).
+ */
+export const notificationEventSchema = z.object({
+  id: z.uuid(),
+  type: z.literal('notification.created'),
+  occurredAt: z.iso.datetime(),
+  recipientId: z.uuid(),
+  data: z.object({
+    notificationId: z.uuid(),
+    kind: notificationKindSchema,
+    severity: notificationSeveritySchema,
+    orgId: z.uuid().nullable(),
+    queueId: z.uuid().nullable(),
+    channel: z.string().nullable(),
+    ticketId: z.uuid().nullable(),
+    ticketKey: z.string().nullable(),
+  }),
+});
+export type NotificationEvent = z.infer<typeof notificationEventSchema>;
+
 export const realtimeEventSchema = z.discriminatedUnion('type', [
   z.object({ ...base, type: z.literal('ticket.created'), data: ticketEventDataSchema }),
   z.object({ ...base, type: z.literal('ticket.updated'), data: ticketEventDataSchema }),
   z.object({ ...base, type: z.literal('message.created'), data: messageEventDataSchema }),
+  notificationEventSchema,
 ]);
 export type RealtimeEvent = z.infer<typeof realtimeEventSchema>;
 
@@ -85,7 +116,8 @@ export const realtimeReadySchema = z.object({
 });
 
 export type RealtimeAudience =
-  { readonly kind: 'staff' } | { readonly kind: 'client'; readonly orgId: string };
+  | { readonly kind: 'staff'; readonly userId?: string }
+  | { readonly kind: 'client'; readonly orgId: string };
 
 function clientTicketData(data: TicketEventData, changed: string[]): TicketEventData {
   return { subject: data.subject, status: data.status, priority: data.priority, changed };
@@ -96,12 +128,16 @@ function clientTicketData(data: TicketEventData, changed: string[]): TicketEvent
  * decides it, so the rules are tested once:
  *  - staff receive every event;
  *  - a client receives only events of their own organization;
- *  - a client never receives anything about an internal note, and never staff-only fields.
+ *  - a client never receives anything about an internal note, and never staff-only fields;
+ *  - a notification goes to its recipient alone, never to another staff member, never to a client.
  */
 export function realtimeEventFor(
   audience: RealtimeAudience,
   event: RealtimeEvent,
 ): RealtimeEvent | null {
+  if (event.type === 'notification.created') {
+    return audience.kind === 'staff' && audience.userId === event.recipientId ? event : null;
+  }
   if (audience.kind === 'staff') return event;
   if (event.orgId !== audience.orgId) return null;
 

@@ -24,6 +24,7 @@ import { keymapEn } from './keymap';
 import { liveEn } from './live';
 import { loadingEn } from './loading';
 import { loginEn } from './login';
+import { notificationsEn } from './notifications';
 import { paletteEn } from './palette';
 import { panelEn } from './panel';
 import { panesEn } from './panes';
@@ -75,6 +76,7 @@ export const en = {
   home: homeEn,
   admin: adminEn,
   portal: portalEn,
+  notifications: notificationsEn,
   csat: csatEn,
 } as const;
 

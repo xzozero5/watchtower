@@ -21,6 +21,7 @@ import {
   type UpdateTicket,
 } from '@watchtower/shared';
 import { createAdminEndpoints } from './admin-endpoints';
+import { createNotificationEndpoints } from './notification-endpoints';
 import type { ApiClient } from './client';
 
 /** Query for the ticket list as the UI builds it: the schema defaults are applied by the api. */
@@ -48,6 +49,7 @@ export function createEndpoints(client: ApiClient) {
 
   return {
     ...createAdminEndpoints(client),
+    ...createNotificationEndpoints(client),
 
     // --- auth (public) ---
     authConfig: (signal?: AbortSignal) =>
