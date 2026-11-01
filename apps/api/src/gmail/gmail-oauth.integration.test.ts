@@ -26,7 +26,9 @@ const REFRESH = 'PLAINTEXT-refresh-token-a83d02';
 const ACCESS = 'PLAINTEXT-access-token-71c5ef';
 const CODE = 'PLAINTEXT-auth-code-0f66b1';
 const ENV_REFRESH = 'PLAINTEXT-env-refresh-token-9b2e11';
-const MARKERS = [CLIENT_SECRET, REFRESH, ACCESS, CODE, ENV_REFRESH];
+const NEW_TOKEN = 'PLAINTEXT-second-refresh-token-2d8a41';
+const NEW_TOKEN_2 = 'PLAINTEXT-third-refresh-token-90c7e5';
+const MARKERS = [CLIENT_SECRET, REFRESH, ACCESS, CODE, ENV_REFRESH, NEW_TOKEN, NEW_TOKEN_2];
 const MAILBOX = 'support@example.com';
 const [READ_SCOPE, SEND_SCOPE] = gmail.GMAIL_OAUTH_SCOPES;
 const BOTH_SCOPES = gmail.GMAIL_OAUTH_SCOPES.join(' ');
@@ -43,6 +45,7 @@ class FakeGoogle {
   readonly calls: GoogleCall[] = [];
   token: () => Response = () => FakeGoogle.json(FakeGoogle.grant());
   profile: () => Response = () => FakeGoogle.json({ emailAddress: MAILBOX });
+  revoke: () => Response = () => new Response('', { status: 200 });
 
   static json(body: unknown, status = 200): Response {
     return new Response(JSON.stringify(body), {
@@ -66,6 +69,7 @@ class FakeGoogle {
     this.calls.length = 0;
     this.token = () => FakeGoogle.json(FakeGoogle.grant());
     this.profile = () => FakeGoogle.json({ emailAddress: MAILBOX });
+    this.revoke = () => new Response('', { status: 200 });
   }
 
   readonly fetch: FetchLike = (url, init) => {
@@ -81,7 +85,7 @@ class FakeGoogle {
       return Promise.resolve(this.token());
     }
     if (host === 'oauth2.googleapis.com' && url.endsWith('/revoke')) {
-      return Promise.resolve(new Response('', { status: 200 }));
+      return Promise.resolve(this.revoke());
     }
     if (host === 'gmail.googleapis.com') return Promise.resolve(this.profile());
     return Promise.reject(new Error(`unexpected host ${host}`));
@@ -99,7 +103,12 @@ let h: Harness;
 const seen: string[] = [];
 const owner = () => h.db.owner.pool;
 
-async function call<T>(who: Persona, method: 'GET' | 'PUT' | 'POST', path: string, body?: unknown) {
+async function call<T>(
+  who: Persona,
+  method: 'GET' | 'PUT' | 'POST' | 'DELETE',
+  path: string,
+  body?: unknown,
+) {
   const response = await who.client.request<T>(method, path, body === undefined ? {} : { body });
   seen.push(JSON.stringify(response.body), response.headers.get('location') ?? '');
   return response;
@@ -122,6 +131,7 @@ async function headWithClient(): Promise<Persona> {
 const START = '/v1/admin/integrations/gmail/oauth/start';
 const CALLBACK = '/v1/admin/integrations/gmail/oauth/callback';
 const STATUS = '/v1/admin/integrations/gmail/oauth/status';
+const DISCONNECT = '/v1/admin/integrations/gmail/oauth/disconnect';
 
 async function start(who: Persona, mailbox = MAILBOX) {
   const response = await call<GmailOauthStartResult>(who, 'POST', START, { mailbox });
@@ -192,6 +202,7 @@ describe('access', () => {
     ['POST', START, { mailbox: MAILBOX }],
     ['GET', `${CALLBACK}?state=x&code=y`, undefined],
     ['GET', STATUS, undefined],
+    ['POST', DISCONNECT, {}],
   ];
 
   it('is for the head only: lead, agent and client get 403, no session gets 401, nothing is written or sent', async () => {
@@ -528,6 +539,171 @@ describe('callback', () => {
   });
 });
 
+describe('the grant, once stored', () => {
+  const OTHER = 'other.mailbox@example.com';
+
+  /** Runs the whole flow for `mailbox` and answers the result. The token Google issues is `token`. */
+  async function connect(who: Persona, token: string, mailbox = MAILBOX) {
+    google.token = () => FakeGoogle.json(FakeGoogle.grant({ refresh_token: token }));
+    google.profile = () => FakeGoogle.json({ emailAddress: mailbox });
+    return (await finish(who, (await start(who, mailbox)).state)).result;
+  }
+
+  async function lastAudit(action: string) {
+    return (await auditRows(action)).at(-1);
+  }
+
+  it('cannot be saved or deleted through the generic credential routes, which would skip the scope and mailbox checks', async () => {
+    google.reset();
+    await clearConnection();
+    const who = await headWithClient();
+    const typed = 'TYPED-not-a-real-token';
+    for (const fields of [
+      { oauthRefreshToken: typed },
+      { oauthMailbox: OTHER },
+      { oauthMailbox: OTHER, oauthClientId: CLIENT_ID },
+    ]) {
+      const response = await call<ApiErrorBody>(who, 'PUT', '/v1/admin/integrations/gmail', {
+        fields,
+      });
+      expect(response.status, JSON.stringify(Object.keys(fields))).toBe(400);
+      expect(JSON.stringify(response.body)).not.toContain(typed);
+    }
+    expect(await storedFields()).not.toContain('oauthRefreshToken');
+    expect(await storedFields()).not.toContain('oauthMailbox');
+
+    expect(await connect(who, REFRESH)).toBe('connected');
+    for (const field of ['oauthRefreshToken', 'oauthMailbox']) {
+      const response = await call(who, 'DELETE', `/v1/admin/integrations/gmail/fields/${field}`);
+      expect(response.status, field).toBe(400);
+    }
+    expect(await storedFields()).toEqual(
+      expect.arrayContaining(['oauthMailbox', 'oauthRefreshToken']),
+    );
+    // The client fields stay editable the usual way.
+    const client = await call(who, 'PUT', '/v1/admin/integrations/gmail', {
+      fields: { oauthClientId: CLIENT_ID },
+    });
+    expect(client.status).toBe(200);
+  });
+
+  it('is not revoked by a rejected reconnect: the issued token is kept when a working grant may be the same', async () => {
+    google.reset();
+    await clearConnection();
+    const who = await headWithClient();
+    expect(await connect(who, REFRESH)).toBe('connected');
+    google.calls.length = 0;
+
+    // Fewer scopes, same mailbox: the account is the one in use, so nothing is revoked.
+    google.token = () =>
+      FakeGoogle.json(FakeGoogle.grant({ refresh_token: NEW_TOKEN, scope: READ_SCOPE }));
+    expect((await finish(who, (await start(who)).state)).result).toBe('scope_mismatch');
+    expect(google.ofKind('revoke')).toEqual([]);
+    expect((await lastAudit(AUDIT_ACTIONS.gmailOauthConnect))?.metadata).toMatchObject({
+      reason: 'scope_mismatch',
+      revoke: 'skipped_working_grant',
+    });
+
+    // Another account granted: its token is not the one in use and is revoked (and says so).
+    google.token = () => FakeGoogle.json(FakeGoogle.grant({ refresh_token: NEW_TOKEN }));
+    google.profile = () => FakeGoogle.json({ emailAddress: OTHER });
+    expect((await finish(who, (await start(who)).state)).result).toBe('mailbox_mismatch');
+    expect(google.ofKind('revoke').map((entry) => entry.form.get('token'))).toEqual([NEW_TOKEN]);
+    expect((await lastAudit(AUDIT_ACTIONS.gmailOauthConnect))?.metadata).toMatchObject({
+      reason: 'mailbox_mismatch',
+      revoke: 'revoked',
+    });
+
+    // The grant in use is untouched.
+    const status = await call<GmailConnectionStatus>(who, 'GET', STATUS);
+    expect(status.body).toMatchObject({ oauthConnected: true, oauthMailbox: MAILBOX });
+  });
+
+  it('audits a revoke that Google did not confirm', async () => {
+    google.reset();
+    await clearConnection();
+    const who = await headWithClient();
+    google.revoke = () => FakeGoogle.json({}, 500);
+    google.token = () =>
+      FakeGoogle.json(FakeGoogle.grant({ refresh_token: NEW_TOKEN, scope: READ_SCOPE }));
+    expect((await finish(who, (await start(who)).state)).result).toBe('scope_mismatch');
+    expect((await lastAudit(AUDIT_ACTIONS.gmailOauthConnect))?.metadata).toMatchObject({
+      revoke: 'failed',
+    });
+  });
+
+  it('is revoked when the mailbox changes, but not when the same mailbox reconnects', async () => {
+    google.reset();
+    await clearConnection();
+    const who = await headWithClient();
+    expect(await connect(who, REFRESH)).toBe('connected');
+
+    google.calls.length = 0;
+    expect(await connect(who, NEW_TOKEN)).toBe('connected'); // same mailbox
+    expect(google.ofKind('revoke')).toEqual([]);
+
+    expect(await connect(who, NEW_TOKEN_2, OTHER)).toBe('connected'); // another mailbox
+    expect(google.ofKind('revoke').map((entry) => entry.form.get('token'))).toEqual([NEW_TOKEN]);
+    expect(await lastAudit(AUDIT_ACTIONS.gmailOauthDisconnect)).toMatchObject({
+      outcome: 'success',
+      metadata: { reason: 'mailbox_changed', revoke: 'revoked' },
+    });
+    const status = await call<GmailConnectionStatus>(who, 'GET', STATUS);
+    expect(status.body.oauthMailbox).toBe(OTHER);
+
+    // And a revoke that fails is a failure entry, not silence.
+    google.revoke = () => FakeGoogle.json({}, 503);
+    expect(await connect(who, REFRESH, MAILBOX)).toBe('connected');
+    expect(await lastAudit(AUDIT_ACTIONS.gmailOauthDisconnect)).toMatchObject({
+      outcome: 'failure',
+      metadata: { reason: 'mailbox_changed', revoke: 'failed' },
+    });
+  });
+
+  it('disconnects: revokes at Google, deletes the grant, audits, and is a no-op the second time', async () => {
+    google.reset();
+    await clearConnection();
+    const who = await headWithClient();
+    expect(await connect(who, REFRESH)).toBe('connected');
+    google.calls.length = 0;
+
+    const done = await call<{ revoke: string }>(who, 'POST', DISCONNECT, {});
+    expect(done.status).toBe(200);
+    expect(done.body).toEqual({ revoke: 'revoked' });
+    expect(google.ofKind('revoke').map((entry) => entry.form.get('token'))).toEqual([REFRESH]);
+    const stored = await storedFields();
+    expect(stored).not.toContain('oauthRefreshToken');
+    expect(stored).not.toContain('oauthMailbox');
+    expect(stored).toContain('oauthClientSecret'); // the client stays
+    expect(await lastAudit(AUDIT_ACTIONS.gmailOauthDisconnect)).toMatchObject({
+      actor_id: who.userId,
+      outcome: 'success',
+      metadata: { reason: 'disconnect', revoke: 'revoked' },
+    });
+    const status = await call<GmailConnectionStatus>(who, 'GET', STATUS);
+    expect(status.body).toMatchObject({ oauthConnected: false, effectiveMethod: null });
+
+    google.calls.length = 0;
+    expect((await call(who, 'POST', DISCONNECT, {})).body).toEqual({ revoke: 'none' });
+    expect(google.calls).toEqual([]);
+  });
+
+  it('disconnects even when Google does not confirm the revoke, and says so', async () => {
+    google.reset();
+    await clearConnection();
+    const who = await headWithClient();
+    expect(await connect(who, REFRESH)).toBe('connected');
+    google.revoke = () => FakeGoogle.json({}, 500);
+    const done = await call<{ revoke: string }>(who, 'POST', DISCONNECT, {});
+    expect(done.body).toEqual({ revoke: 'failed' });
+    expect(await storedFields()).not.toContain('oauthRefreshToken');
+    expect(await lastAudit(AUDIT_ACTIONS.gmailOauthDisconnect)).toMatchObject({
+      outcome: 'failure',
+      metadata: { revoke: 'failed' },
+    });
+  });
+});
+
 describe('what never appears', () => {
   it('has no secret in any response, redirect, log line, audit row, outbox row or sealed value', async () => {
     const rows = await owner().query(`SELECT to_jsonb(audit_log) AS row FROM audit_log`);
@@ -571,6 +747,47 @@ describe('with the refresh token set by the environment', () => {
       });
       expect(JSON.stringify(status.body)).not.toContain(ENV_REFRESH);
       expect(logs.raw()).not.toContain(ENV_REFRESH);
+    } finally {
+      await env.close();
+    }
+  });
+
+  it('refuses to start when a service account set entirely by the environment would be used instead', async () => {
+    const env = await startHarness({
+      logs,
+      env: {
+        GMAIL_SERVICE_ACCOUNT_JSON_PATH: '/nonexistent/service-account.json',
+        GMAIL_IMPERSONATE_USER: MAILBOX,
+      },
+      overrides: [{ token: GMAIL_OAUTH_FETCH, value: google.fetch }],
+    });
+    try {
+      const who = await signIn(env, 'head');
+      await who.client.request('PUT', '/v1/admin/integrations/gmail', {
+        body: { fields: { oauthClientId: CLIENT_ID, oauthClientSecret: CLIENT_SECRET } },
+      });
+      const response = await who.client.post<ApiErrorBody>(START, { mailbox: MAILBOX });
+      expect(response.status).toBe(409);
+      expect(response.body.code).toBe('credential_env_locked');
+    } finally {
+      await env.close();
+    }
+  });
+
+  it('lets OAuth connect when only one stray variable of the service account is in the environment', async () => {
+    google.reset();
+    const env = await startHarness({
+      logs,
+      env: { GMAIL_IMPERSONATE_USER: MAILBOX },
+      overrides: [{ token: GMAIL_OAUTH_FETCH, value: google.fetch }],
+    });
+    try {
+      const who = await signIn(env, 'head');
+      await who.client.request('PUT', '/v1/admin/integrations/gmail', {
+        body: { fields: { oauthClientId: CLIENT_ID, oauthClientSecret: CLIENT_SECRET } },
+      });
+      const response = await who.client.post<GmailOauthStartResult>(START, { mailbox: MAILBOX });
+      expect(response.status).toBe(200);
     } finally {
       await env.close();
     }

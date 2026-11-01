@@ -11,6 +11,7 @@ import {
 import {
   AUDIT_ACTIONS,
   gmailConnectionStatusSchema,
+  gmailOauthDisconnectResultSchema,
   gmailOauthStartResultSchema,
   gmailOauthStartSchema,
   type GmailOauthStart,
@@ -80,6 +81,22 @@ export class GmailOauthController {
     @CurrentPrincipal() principal: Principal,
   ) {
     return parseResponse(gmailOauthStartResultSchema, await this.oauth.start(principal, body));
+  }
+
+  @Post('disconnect')
+  @HttpCode(200)
+  @Audited({ action: AUDIT_ACTIONS.gmailOauthDisconnect, targetType: 'integration' })
+  @ApiOperation({
+    summary: 'Disconnect the OAuth mailbox (head)',
+    description:
+      'Revokes the refresh token at Google (best effort; the result is in the answer and the audit ' +
+      'entry), then deletes it and the mailbox from the credential store. The generic credential ' +
+      'routes refuse those two fields. 409 when the environment sets them.',
+  })
+  @ApiOkResponse({ standardSchema: gmailOauthDisconnectResultSchema })
+  @ApiConflictResponse({ description: 'The grant is set by an environment variable' })
+  async disconnect(@CurrentPrincipal() principal: Principal) {
+    return parseResponse(gmailOauthDisconnectResultSchema, await this.oauth.disconnect(principal));
   }
 
   @Get('callback')

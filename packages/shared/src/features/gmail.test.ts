@@ -91,13 +91,28 @@ describe('chooseGmailMethod', () => {
     expect(
       chooseGmailMethod(presence({ ...all(OAUTH_FIELDS, 'env'), ...all(DELEGATION_FIELDS, 'db') })),
     ).toBe('oauth');
-    // One environment variable is enough to make a way "the operator's".
+  });
+
+  it('does not let one stray environment variable make a half-saved way "the operator\'s"', () => {
+    // GMAIL_IMPERSONATE_USER in the environment, the key saved in the database, OAuth connected.
     expect(
       chooseGmailMethod(
         presence({
           ...all(OAUTH_FIELDS, 'db'),
           ...all(DELEGATION_FIELDS, 'db'),
           impersonateUser: 'env',
+        }),
+      ),
+    ).toBe('oauth');
+    // The client in the environment and the grant in the database is still a normal OAuth setup:
+    // it does not stop a whole delegation set by the environment from winning, and does not beat it.
+    expect(
+      chooseGmailMethod(
+        presence({
+          ...all(OAUTH_FIELDS, 'db'),
+          oauthClientId: 'env',
+          oauthClientSecret: 'env',
+          ...all(DELEGATION_FIELDS, 'env'),
         }),
       ),
     ).toBe('service_account');

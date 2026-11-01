@@ -13,10 +13,13 @@ import {
   AUDIT_ACTIONS,
   GMAIL_JOBS,
   GMAIL_NOT_CONNECTED_CODE,
+  GMAIL_OAUTH_GRANT_FIELDS,
   GMAIL_QUEUES,
   GMAIL_SYNC_OUTBOX_JOB_OPTIONS,
+  INTEGRATION_CATALOG,
   chooseGmailMethod,
   type GmailConnectionStatus,
+  type GmailOauthDisconnectResult,
   type GmailOauthResult,
   type GmailOauthStart,
   type GmailOauthStartResult,
@@ -44,6 +47,15 @@ export const GMAIL_OAUTH_FETCH = Symbol('GMAIL_OAUTH_FETCH');
 const STATE_TTL_SECONDS = 600;
 const START_RATE = { limit: 10, windowSeconds: 60 } as const;
 const CALLBACK_RATE = { limit: 20, windowSeconds: 60 } as const;
+
+/** What happened to a token Google issued for a connection that was refused. */
+type RevokeOutcome = 'revoked' | 'failed' | 'skipped_working_grant';
+
+/** The grant already stored, as far as a refused or replacing connection needs to know it. */
+interface ExistingGrant {
+  readonly refreshToken: string;
+  readonly mailbox: string | undefined;
+}
 
 /** What is remembered between `start` and the callback. Held in Redis for ten minutes, deleted on first use. */
 interface PendingGrant {
@@ -127,25 +139,79 @@ export class GmailOauthService {
     return `${this.config.RATE_LIMIT_NAMESPACE}:gmail-oauth:${digest}`;
   }
 
-  /** The client credentials and whether the database may hold the grant (no environment variable sets it). */
+  /**
+   * The client credentials, and what stands in the way of storing a grant: `envLocked` when an
+   * environment variable sets the token or the mailbox, or when a way set entirely by the environment
+   * (a service account) would be used instead of OAuth even after a successful connection.
+   * `grant` is the grant already stored, if any (its token and mailbox are only read from the store).
+   */
   private async clientAndLocks(): Promise<{
     readonly client: { readonly clientId: string; readonly clientSecret: string } | null;
     readonly envLocked: boolean;
+    readonly grant: { readonly refreshToken: string; readonly mailbox: string | undefined } | null;
   }> {
     const [status] = await this.store.status('gmail');
-    const source = (name: string) => status?.fields.find((entry) => entry.field === name)?.source;
-    const envLocked = source('oauthRefreshToken') === 'env' || source('oauthMailbox') === 'env';
-    if (source('oauthClientId') === 'none' || source('oauthClientSecret') === 'none') {
-      return { client: null, envLocked };
-    }
-    const fields = await this.store.resolve('gmail');
-    const clientId = fields.oauthClientId?.value;
-    const clientSecret = fields.oauthClientSecret?.value;
+    const fields = status?.fields ?? [];
+    const source = (name: string) => fields.find((entry) => entry.field === name)?.source;
+    // Would OAuth be the way in use if it were complete? (The client being saved is checked separately.)
+    const oauthWays: readonly string[] = INTEGRATION_CATALOG.gmail.alternatives.oauth;
+    const wouldBeEffective =
+      chooseGmailMethod(
+        fields.map((entry) =>
+          oauthWays.includes(entry.field)
+            ? {
+                field: entry.field,
+                configured: true,
+                source: entry.source === 'env' ? 'env' : 'db',
+              }
+            : entry,
+        ),
+      ) === 'oauth';
+    const envLocked =
+      source('oauthRefreshToken') === 'env' ||
+      source('oauthMailbox') === 'env' ||
+      !wouldBeEffective;
+    // Nothing below is read when the environment decides: the files it names need not even exist.
+    if (envLocked) return { client: null, envLocked, grant: null };
+    const stored = source('oauthRefreshToken') === 'db';
+    const needClient = source('oauthClientId') !== 'none' && source('oauthClientSecret') !== 'none';
+    if (!needClient && !stored) return { client: null, envLocked, grant: null };
+    const resolved = await this.store.resolve('gmail');
+    const clientId = resolved.oauthClientId?.value;
+    const clientSecret = resolved.oauthClientSecret?.value;
+    const refreshToken = resolved.oauthRefreshToken?.value;
     return {
       client:
-        clientId === undefined || clientSecret === undefined ? null : { clientId, clientSecret },
+        !needClient || clientId === undefined || clientSecret === undefined
+          ? null
+          : { clientId, clientSecret },
       envLocked,
+      grant:
+        stored && refreshToken !== undefined
+          ? { refreshToken, mailbox: resolved.oauthMailbox?.value }
+          : null,
     };
+  }
+
+  /**
+   * Revokes a token Google just issued for a connection we refuse. Not when a working grant for this
+   * client may be the same grant: whether Google ends the whole grant of an account when one of its
+   * refresh tokens is revoked is `[UNVERIFIED 50%]`, so a rejected reconnect must not risk the one in
+   * use. It is safe to revoke when the account that granted is known to be another one.
+   */
+  private async revokeIssued(
+    grant: gmail.TokenGrant,
+    existing: { readonly mailbox: string | undefined } | null,
+    grantedBy?: string,
+  ): Promise<RevokeOutcome> {
+    if (existing !== null && (grantedBy === undefined || grantedBy === existing.mailbox)) {
+      return 'skipped_working_grant';
+    }
+    const done = await gmail.revokeToken({
+      fetch: this.send,
+      token: grant.refreshToken ?? grant.accessToken,
+    });
+    return done ? 'revoked' : 'failed';
   }
 
   async start(principal: Principal, input: GmailOauthStart): Promise<GmailOauthStartResult> {
@@ -158,7 +224,7 @@ export class GmailOauthService {
     const { client, envLocked } = await this.clientAndLocks();
     if (envLocked) {
       throw credentialEnvLocked(
-        'The refresh token or the mailbox is set by an environment variable; it cannot be replaced here',
+        'The refresh token or the mailbox is set by an environment variable, or a service account set by the environment is in use; OAuth cannot take over here',
       );
     }
     if (client === null) {
@@ -190,16 +256,17 @@ export class GmailOauthService {
 
   /** Finishes the flow. Always returns a result code (the controller redirects with it); never a token. */
   async finish(principal: Principal, input: OauthCallbackInput): Promise<GmailOauthResult> {
-    const result = await this.complete(principal, input);
+    const { result, revoke } = await this.complete(principal, input);
     if (result !== 'connected') {
-      // A refused callback is on the log with its reason code and nothing else. A successful one was
-      // written in the transaction that saved the token.
+      // A refused callback is on the log with its reason code, and what happened to the grant Google
+      // issued (revoked, failed to revoke, or kept because a working grant may share it). A successful
+      // one was written in the transaction that saved the token.
       AuditScope.set({
         action: AUDIT_ACTIONS.gmailOauthConnect,
         outcome: 'failure',
         targetType: 'integration',
         targetId: 'gmail',
-        metadata: { reason: result },
+        metadata: { reason: result, ...(revoke === undefined ? {} : { revoke }) },
       });
     }
     return result;
@@ -208,34 +275,34 @@ export class GmailOauthService {
   private async complete(
     principal: Principal,
     input: OauthCallbackInput,
-  ): Promise<GmailOauthResult> {
+  ): Promise<{ readonly result: GmailOauthResult; readonly revoke?: RevokeOutcome }> {
     await this.limiter.enforce(
       'gmail-oauth-callback',
       principal.userId,
       CALLBACK_RATE.limit,
       CALLBACK_RATE.windowSeconds,
     );
-    if (input.state === undefined || input.state === '') return 'state_invalid';
+    if (input.state === undefined || input.state === '') return { result: 'state_invalid' };
     // Atomic read-and-delete: the state works once.
     const raw = await this.redis.getdel(this.stateKey(input.state));
-    if (raw === null) return 'state_invalid';
+    if (raw === null) return { result: 'state_invalid' };
     let pending: unknown;
     try {
       pending = JSON.parse(raw);
     } catch {
-      return 'state_invalid';
+      return { result: 'state_invalid' };
     }
-    if (!isPendingGrant(pending)) return 'state_invalid';
+    if (!isPendingGrant(pending)) return { result: 'state_invalid' };
     // Bound to the person AND the session that started it.
     if (pending.userId !== principal.userId || pending.sessionId !== principal.sessionId) {
-      return 'state_invalid';
+      return { result: 'state_invalid' };
     }
-    if (input.error !== undefined) return 'denied';
-    if (input.code === undefined || input.code === '') return 'denied';
+    if (input.error !== undefined) return { result: 'denied' };
+    if (input.code === undefined || input.code === '') return { result: 'denied' };
 
-    const { client, envLocked } = await this.clientAndLocks();
-    if (envLocked) return 'env_locked';
-    if (client === null) return 'unavailable';
+    const { client, envLocked, grant: existing } = await this.clientAndLocks();
+    if (envLocked) return { result: 'env_locked' };
+    if (client === null) return { result: 'unavailable' };
 
     let grant: gmail.TokenGrant;
     try {
@@ -248,20 +315,16 @@ export class GmailOauthService {
       });
     } catch (error) {
       this.logFailure('gmail oauth: code exchange failed', error);
-      return error instanceof ChannelError && error.kind === 'auth' ? 'denied' : 'unavailable';
+      return {
+        result: error instanceof ChannelError && error.kind === 'auth' ? 'denied' : 'unavailable',
+      };
     }
-    // From here on a token exists. Whatever is refused is revoked.
-    const undo = async (): Promise<void> => {
-      await gmail.revokeToken({ fetch: this.send, token: grant.refreshToken ?? grant.accessToken });
-    };
-
+    // From here on a token exists. Whatever is refused is revoked, unless that could end a grant in use.
     if (!gmail.grantedScopesAreExact(grant.scopes)) {
-      await undo();
-      return 'scope_mismatch';
+      return { result: 'scope_mismatch', revoke: await this.revokeIssued(grant, existing) };
     }
     if (grant.refreshToken === undefined) {
-      await undo();
-      return 'no_refresh_token';
+      return { result: 'no_refresh_token', revoke: await this.revokeIssued(grant, existing) };
     }
     let granted: string;
     try {
@@ -271,21 +334,24 @@ export class GmailOauthService {
       });
     } catch (error) {
       this.logFailure('gmail oauth: profile lookup failed', error);
-      await undo();
-      return 'unavailable';
+      return { result: 'unavailable', revoke: await this.revokeIssued(grant, existing) };
     }
     if (granted !== pending.mailbox) {
-      await undo();
-      return 'mailbox_mismatch';
+      return {
+        result: 'mailbox_mismatch',
+        revoke: await this.revokeIssued(grant, existing, granted),
+      };
     }
     try {
-      await this.save(principal, granted, grant.refreshToken);
+      await this.save(principal, granted, grant.refreshToken, existing);
     } catch (error) {
-      await undo();
-      if (error instanceof CredentialStoreError && error.code === 'env_locked') return 'env_locked';
+      const revoke = await this.revokeIssued(grant, existing, granted);
+      if (error instanceof CredentialStoreError && error.code === 'env_locked') {
+        return { result: 'env_locked', revoke };
+      }
       throw error;
     }
-    return 'connected';
+    return { result: 'connected' };
   }
 
   /** The error's kind and code only: never its message chain, which could quote a request. */
@@ -303,7 +369,73 @@ export class GmailOauthService {
    * first connection, cleared of `not_connected` if it is a reconnection), a catch-up sync job, and
    * the audit entry (field names only).
    */
-  private async save(principal: Principal, mailbox: string, refreshToken: string): Promise<void> {
+  private async save(
+    principal: Principal,
+    mailbox: string,
+    refreshToken: string,
+    previous: ExistingGrant | null,
+  ): Promise<void> {
+    await this.persist(principal, mailbox, refreshToken);
+    // The mailbox changed: the grant of the old one is no longer used by anything, so end it at Google.
+    // (Same mailbox: the old token is left alone; whether revoking it would end the new one is
+    // `[UNVERIFIED]`, and Google keeps up to 100 per account and client.)
+    if (previous !== null && previous.mailbox !== undefined && previous.mailbox !== mailbox) {
+      const revoke = await this.revokeStored(previous.refreshToken);
+      await this.audit.record({
+        actor: { type: 'user', id: principal.userId },
+        action: AUDIT_ACTIONS.gmailOauthDisconnect,
+        outcome: revoke === 'revoked' ? 'success' : 'failure',
+        targetType: 'integration',
+        targetId: 'gmail',
+        ip: AuditScope.current()?.meta.ip ?? null,
+        requestId: AuditScope.current()?.meta.requestId ?? null,
+        metadata: { reason: 'mailbox_changed', revoke },
+      });
+    }
+  }
+
+  private async revokeStored(token: string): Promise<'revoked' | 'failed'> {
+    return (await gmail.revokeToken({ fetch: this.send, token })) ? 'revoked' : 'failed';
+  }
+
+  /**
+   * Disconnects the OAuth mailbox: revokes the refresh token at Google (best effort, the result is
+   * audited), then deletes it and the mailbox from the credential store. The generic credential
+   * routes refuse those fields, so this is the only way to remove a grant.
+   */
+  async disconnect(principal: Principal): Promise<GmailOauthDisconnectResult> {
+    const [status] = await this.store.status('gmail');
+    const source = (name: string) =>
+      status?.fields.find((entry) => entry.field === name)?.source ?? 'none';
+    if (source('oauthRefreshToken') === 'env' || source('oauthMailbox') === 'env') {
+      throw credentialEnvLocked('The grant is set by an environment variable; unset it there');
+    }
+    if (source('oauthRefreshToken') === 'none' && source('oauthMailbox') === 'none') {
+      return { revoke: 'none' };
+    }
+    const stored = await this.store.resolve('gmail');
+    const token = stored.oauthRefreshToken?.value;
+    const grant = token === undefined ? null : { refreshToken: token };
+    const revoke = grant === null ? 'none' : await this.revokeStored(grant.refreshToken);
+    await this.uow.run(async ({ tx }) => {
+      for (const field of GMAIL_OAUTH_GRANT_FIELDS) await this.store.remove('gmail', field, tx);
+      await this.audit.recordInTransaction(tx, {
+        actor: { type: 'user', id: principal.userId },
+        action: AUDIT_ACTIONS.gmailOauthDisconnect,
+        outcome: revoke === 'failed' ? 'failure' : 'success',
+        targetType: 'integration',
+        targetId: 'gmail',
+        metadata: { reason: 'disconnect', revoke },
+      });
+    });
+    return { revoke };
+  }
+
+  private async persist(
+    principal: Principal,
+    mailbox: string,
+    refreshToken: string,
+  ): Promise<void> {
     await this.uow.run(async ({ tx }) => {
       const written = await this.store.put(
         'gmail',

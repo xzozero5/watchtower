@@ -26,6 +26,8 @@ export const GMAIL_AUDIT_ACTIONS = {
   gmailOauthConnect: 'gmail.oauth.connect',
   /** Google refused the stored refresh token (`invalid_grant`): the mailbox is marked unhealthy and not connected (T-102e). */
   gmailNotConnected: 'gmail.not_connected',
+  /** A head disconnected the OAuth mailbox: the grant was deleted here and revoked at Google (best effort, result in metadata). */
+  gmailOauthDisconnect: 'gmail.oauth.disconnect',
 } as const satisfies Record<string, string>;
 
 /** `ticket_event.type` strings written by this feature. */
@@ -144,6 +146,13 @@ export const gmailOauthStartResultSchema = z.object({
 });
 export type GmailOauthStartResult = z.infer<typeof gmailOauthStartResultSchema>;
 
+/** `POST /v1/admin/integrations/gmail/oauth/disconnect`: what happened to the grant at Google. */
+export const gmailOauthDisconnectResultSchema = z.object({
+  /** `none`: nothing was stored to revoke. `failed`: deleted here, but Google did not confirm the revoke. */
+  revoke: z.enum(['revoked', 'failed', 'none']),
+});
+export type GmailOauthDisconnectResult = z.infer<typeof gmailOauthDisconnectResultSchema>;
+
 /** `GET /v1/admin/integrations/gmail/oauth/status`: what the admin page needs, never a value. */
 export const gmailConnectionStatusSchema = z.object({
   /** Client ID and secret are set (so a person can start the flow). */
@@ -163,6 +172,13 @@ export const gmailConnectionStatusSchema = z.object({
 });
 export type GmailConnectionStatus = z.infer<typeof gmailConnectionStatusSchema>;
 
+/**
+ * The two fields only the OAuth callback (and the disconnect route) may write: they are what proves that
+ * Google granted exactly the two scopes to the mailbox that was asked for (T-102e). The generic
+ * credential routes refuse them, so a typed-in token cannot skip those checks.
+ */
+export const GMAIL_OAUTH_GRANT_FIELDS: readonly string[] = ['oauthRefreshToken', 'oauthMailbox'];
+
 /** Why a mailbox shows as not connected. Stored in `gmail_account_state.last_error_code`. */
 export const GMAIL_NOT_CONNECTED_CODE = 'not_connected';
 
@@ -176,7 +192,7 @@ export interface GmailFieldPresence {
 /**
  * Which way the worker reaches the mailbox (T-102e). A way is usable when all of its fields are
  * configured (`INTEGRATION_CATALOG.gmail.alternatives`). When both are usable:
- *  1. the one with a field set by the ENVIRONMENT wins over one that lives only in the database
+ *  1. the one whose fields are ALL set by the ENVIRONMENT wins over one that is not
  *     (ADR-004/ADR-012: the environment is the operator's deployment-level decision, a head's
  *     click on the admin page must not override it);
  *  2. otherwise OAuth (the default, PRD R-2.4 and owner decision).
@@ -190,8 +206,10 @@ export function chooseGmailMethod(
     fields.find((entry) => entry.field === name);
   const usable = (method: GmailConnectionMethod): boolean =>
     alternatives[method].every((name) => presence(name)?.configured === true);
+  // "Set by the environment" means the WHOLE way is: one stray variable (say GMAIL_IMPERSONATE_USER)
+  // next to a key saved in the database is a half-made choice, not the operator's deployment.
   const fromEnv = (method: GmailConnectionMethod): boolean =>
-    alternatives[method].some((name) => presence(name)?.source === 'env');
+    alternatives[method].every((name) => presence(name)?.source === 'env');
   const oauth = usable('oauth');
   const delegation = usable('service_account');
   if (oauth && delegation) {
