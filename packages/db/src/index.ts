@@ -48,6 +48,15 @@ export {
   type RelayOptions,
   type RelayResult,
 } from './outbox.js';
+export {
+  createProductDbExecutor,
+  isSandboxDatabase,
+  type ProductDbExecutor,
+  type ProductDbOptions,
+  type ProductQueryInput,
+  type ProductQueryResult,
+  type ProductValue,
+} from './product-db.js';
 export { orgScopeCondition } from './scope.js';
 export {
   DEFAULT_EXAMPLES_DIR,

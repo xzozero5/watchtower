@@ -1,4 +1,5 @@
 import { randomBytes } from 'node:crypto';
+import { readFile } from 'node:fs/promises';
 
 import { Pool } from 'pg';
 
@@ -93,6 +94,60 @@ export async function createTestDatabase(adminUrl: string): Promise<TestDatabase
     await owner?.close().catch(() => undefined);
     await admin.query(`DROP DATABASE IF EXISTS ${name} WITH (FORCE)`).catch(() => undefined);
     await admin.query(`DROP ROLE IF EXISTS ${appUser}`).catch(() => undefined);
+    await admin.end();
+    throw error;
+  }
+}
+
+export interface ProductMockDatabase {
+  readonly name: string;
+  /** The read-only login the data tool uses (columns only, no personal ones). */
+  readonly readOnlyUrl: string;
+  /** The owner, for a test that needs to look at or change the data. */
+  readonly ownerUrl: string;
+  cleanup(): Promise<void>;
+}
+
+const METRICS_DIR = new URL('../../../examples/metrics/', import.meta.url);
+
+/**
+ * A throwaway copy of `product_mock` (T-203c): the schema, seed and grants of `examples/metrics/`, a
+ * database of its own (`wt_pm_*`, which `isSandboxDatabase` knows) and a random read-only login. The
+ * same three files build the one compose creates, so the tests exercise what a deployment has.
+ */
+export async function createProductMockDatabase(adminUrl: string): Promise<ProductMockDatabase> {
+  const suffix = randomBytes(6).toString('hex');
+  const name = `wt_pm_${suffix}`;
+  const role = `wt_pmro_${suffix}`;
+  const password = randomBytes(18).toString('hex');
+  const admin = new Pool({ connectionString: adminUrl, max: 1 });
+  let pool: Pool | undefined;
+  try {
+    await admin.query(`CREATE DATABASE ${name}`);
+    await admin.query(`CREATE ROLE ${role} LOGIN PASSWORD '${password}'`);
+    const ownerUrl = withCredentials(adminUrl, name);
+    pool = new Pool({ connectionString: ownerUrl, max: 1 });
+    const read = (file: string): Promise<string> => readFile(new URL(file, METRICS_DIR), 'utf8');
+    await pool.query(await read('product-mock.schema.sql'));
+    await pool.query(await read('product-mock.seed.sql'));
+    await pool.query((await read('product-mock.grants.sql')).replaceAll('__RO_ROLE__', role));
+    await pool.end();
+    pool = undefined;
+    return {
+      name,
+      readOnlyUrl: withCredentials(adminUrl, name, role, password),
+      ownerUrl,
+      async cleanup() {
+        await waitForNoSessions(admin, name);
+        await admin.query(`DROP DATABASE IF EXISTS ${name} WITH (FORCE)`);
+        await admin.query(`DROP ROLE IF EXISTS ${role}`);
+        await admin.end();
+      },
+    };
+  } catch (error) {
+    await pool?.end().catch(() => undefined);
+    await admin.query(`DROP DATABASE IF EXISTS ${name} WITH (FORCE)`).catch(() => undefined);
+    await admin.query(`DROP ROLE IF EXISTS ${role}`).catch(() => undefined);
     await admin.end();
     throw error;
   }

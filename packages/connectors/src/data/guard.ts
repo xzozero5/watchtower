@@ -1,4 +1,8 @@
-import { ConnectorQueryRejectedError } from '../common/errors.js';
+import {
+  ConnectorError,
+  ConnectorQueryRejectedError,
+  ConnectorTimeoutError,
+} from '../common/errors.js';
 import { checkParams, hasStrayBraces, placeholdersOf } from '../common/template.js';
 import {
   DATA_DEFAULT_MAX_ROWS,
@@ -208,6 +212,27 @@ export function withDataGuardrails(inner: DataQueryClient, guard: DataGuardrails
   };
 }
 
+/** What a Postgres error means to a caller. The message of the database is not passed on: it can name columns and values. */
+function translateDatabaseError(error: unknown): Error {
+  const code = (error as { code?: unknown } | null)?.code;
+  switch (code) {
+    case '57014': // query_canceled: statement_timeout
+    case '55P03': // lock_not_available
+      return new ConnectorTimeoutError();
+    case '42501': // insufficient_privilege: a column the login may not read
+      return new ConnectorQueryRejectedError('The database login may not read that');
+    case '42601': // syntax_error
+    case '42703': // undefined_column
+    case '42P01': // undefined_table
+    case '42883': // undefined_function
+    case '22P02': // invalid_text_representation
+    case '25006': // read_only_sql_transaction
+      return new ConnectorQueryRejectedError(`The database refused the statement (${code})`);
+    default:
+      return new ConnectorError('upstream', 'The database could not answer');
+  }
+}
+
 /** A client over an executor (the database side). `sandbox` marks invented data in a real engine. */
 export function createSqlDataQueryClient(
   executor: SqlExecutor,
@@ -216,14 +241,32 @@ export function createSqlDataQueryClient(
   return {
     source,
     async query(query) {
-      const raw = await executor.execute({
-        sql: query.sql,
-        params: query.params,
-        maxRows: query.maxRows,
-        timeoutMs: query.timeoutMs,
-        signal: query.signal,
-      });
-      return { ...raw, masked: [] };
+      try {
+        const raw = await executor.execute({
+          sql: query.sql,
+          params: query.params,
+          maxRows: query.maxRows,
+          timeoutMs: query.timeoutMs,
+          signal: query.signal,
+        });
+        return { ...raw, masked: [] };
+      } catch (error) {
+        throw translateDatabaseError(error);
+      }
     },
   };
+}
+
+/**
+ * The data client of a deployment: an executor over the product database, behind the guardrails.
+ * Labelled `sandbox` when the executor says its data is invented (the `product_mock` database).
+ */
+export function createGuardedSqlClient(
+  executor: SqlExecutor & { readonly sandbox: boolean },
+  guard: DataGuardrails,
+): DataQueryClient {
+  return withDataGuardrails(
+    createSqlDataQueryClient(executor, executor.sandbox ? 'sandbox' : 'live'),
+    guard,
+  );
 }

@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
-import { ConnectorQueryRejectedError } from '../common/errors.js';
+import { ConnectorQueryRejectedError, ConnectorTimeoutError } from '../common/errors.js';
 import { FakeDataQueryClient } from './fake.js';
 import {
   assertReadOnlySql,
   bindSqlTemplate,
+  createGuardedSqlClient,
   createSqlDataQueryClient,
   EXTERNAL_QUERY_ENABLED,
   withDataGuardrails,
@@ -102,6 +103,47 @@ describe('withDataGuardrails', () => {
       client.query({ label: 'q', sql: 'SELECT $2', params: ['a'], maxRows: 1, timeoutMs: 1000 }),
     ).rejects.toBeInstanceOf(ConnectorQueryRejectedError);
     expect(inner.queries).toHaveLength(0);
+  });
+});
+
+describe('database errors reach the caller as typed errors that quote nothing', () => {
+  const failing = (error: Error) =>
+    createSqlDataQueryClient({ execute: () => Promise.reject(error) }, 'live');
+  const run = (error: Error) =>
+    failing(error)
+      .query({ label: 'x', sql: 'SELECT 1', params: [], maxRows: 1, timeoutMs: 100 })
+      .catch((caught: unknown) => caught);
+
+  it('maps a timeout, a refused read, a bad statement and anything else', async () => {
+    expect(await run(Object.assign(new Error('canceling statement for secret_table'), { code: '57014' }))).toBeInstanceOf(ConnectorTimeoutError);
+    expect(await run(Object.assign(new Error('permission denied for column contact_email'), { code: '42501' }))).toMatchObject({
+      code: 'invalid_query',
+      message: 'The database login may not read that',
+    });
+    expect(await run(Object.assign(new Error('syntax error at or near "jane@example.com"'), { code: '42601' }))).toMatchObject({
+      code: 'invalid_query',
+      message: 'The database refused the statement (42601)',
+    });
+    const other = await run(new Error('connect ECONNREFUSED 10.0.0.5:5432 password=hunter2'));
+    expect(other).toMatchObject({ code: 'upstream', message: 'The database could not answer' });
+  });
+});
+
+describe('createGuardedSqlClient', () => {
+  it('labels a sandbox executor sandbox and a real one live, and masks by the allow-list either way', async () => {
+    const make = (sandbox: boolean) =>
+      createGuardedSqlClient(
+        {
+          sandbox,
+          execute: () => Promise.resolve({ columns: ['day', 'who'], rows: [['d', 'a@example.com']], truncated: false }),
+        },
+        { allowColumns: new Set(['day']) },
+      );
+    expect(make(true).source).toBe('sandbox');
+    expect(make(false).source).toBe('live');
+    const result = await make(true).query({ label: 'x', sql: 'SELECT 1', params: [], maxRows: 5, timeoutMs: 100 });
+    expect(result.rows).toEqual([['d', null]]);
+    expect(result.masked).toEqual(['who']);
   });
 });
 

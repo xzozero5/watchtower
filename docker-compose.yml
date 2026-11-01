@@ -131,6 +131,7 @@ x-app-env: &app-env
   ALERT_WEBHOOK_SECRET: ${ALERT_WEBHOOK_SECRET:-}
   ALERT_INGEST_RATE_PER_MINUTE: ${ALERT_INGEST_RATE_PER_MINUTE:-600}
   STATUS_PAGE_PUBLIC: ${STATUS_PAGE_PUBLIC:-false}
+  PRODUCT_DB_URL: ${PRODUCT_DB_URL:-}
   GITHUB_APP_ID: ${GITHUB_APP_ID:-}
   GITHUB_APP_PRIVATE_KEY_PATH: ${GITHUB_APP_PRIVATE_KEY_PATH:-}
   GCP_PROJECT_ID: ${GCP_PROJECT_ID:-}
@@ -198,6 +199,36 @@ services:
       timeout: 5s
       retries: 20
       start_period: 10s
+
+  product-mock-init:
+    # One-shot, local mock only (T-203c): creates the invented product database `product_mock` and its
+    # read-only login `product_mock_ro` on this Postgres server, loads examples/metrics (schema, seed
+    # with an anomaly, column grants) and exits 0. Does nothing if the database exists. The data tool
+    # reaches it when PRODUCT_DB_URL points there; it is not part of the Watchtower database.
+    image: pgvector/pgvector:0.8.7-pg16-trixie
+    restart: 'no'
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PGHOST: postgres
+      PGUSER: ${POSTGRES_USER:-watchtower}
+      PGPASSWORD: ${POSTGRES_PASSWORD:-watchtower}
+      PRODUCT_MOCK_RO_PASSWORD: ${PRODUCT_MOCK_RO_PASSWORD:-product_mock_ro}
+    volumes:
+      - ./examples/metrics:/metrics:ro
+    entrypoint: ['/bin/sh', '-c']
+    command:
+      - |
+        set -e
+        if psql -d postgres -tAc "SELECT 1 FROM pg_database WHERE datname = 'product_mock'" | grep -q 1; then
+          echo 'product_mock exists'; exit 0
+        fi
+        psql -d postgres -v ON_ERROR_STOP=1 -c 'CREATE DATABASE product_mock'
+        psql -d postgres -tAc "SELECT 1 FROM pg_roles WHERE rolname = 'product_mock_ro'" | grep -q 1 \
+          || psql -d postgres -v ON_ERROR_STOP=1 -c "CREATE ROLE product_mock_ro LOGIN PASSWORD '$$PRODUCT_MOCK_RO_PASSWORD'"
+        psql -d product_mock -v ON_ERROR_STOP=1 -q -f /metrics/product-mock.schema.sql -f /metrics/product-mock.seed.sql
+        sed 's/__RO_ROLE__/product_mock_ro/g' /metrics/product-mock.grants.sql | psql -d product_mock -v ON_ERROR_STOP=1 -q
 
   redis:
     image: redis:7.4-alpine

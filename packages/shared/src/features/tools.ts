@@ -26,6 +26,53 @@ export const TOOLS_TICKET_EVENTS = {} as const satisfies Record<string, string>;
 /** BullMQ queue names owned by this feature. */
 export const TOOLS_QUEUES = {} as const satisfies Record<string, string>;
 
+// --- The data tool's guardrails (T-203c, R-5.2) ----------------------------------------------------
+
+/**
+ * Result columns of a data query that may be shown (the name the statement gives the column, lower
+ * case). Any other column is masked: its cells come back null. These are names of things that count,
+ * measure, classify or date, never of a person; a saved template may add its own (`allowedColumns`,
+ * head only, audited). `[ASSUMED]` list: the owner reviews it against the real product schema.
+ */
+export const DATA_COLUMN_ALLOW_LIST: readonly string[] = [
+  'day',
+  'date',
+  'hour',
+  'week',
+  'month',
+  'bucket',
+  'tenant_id',
+  'org_id',
+  'service',
+  'event_type',
+  'kind',
+  'status',
+  'plan',
+  'region',
+  'requests',
+  'failed',
+  'deliveries',
+  'jobs',
+  'count',
+  'total',
+  'n',
+  'ratio',
+  'rate',
+  'p50_ms',
+  'p95_ms',
+  'p99_ms',
+  'avg_ms',
+  'duration_ms',
+  'submitted_at',
+  'created_at',
+  'value',
+];
+
+/** A data query returns at most this many rows to a person (the connector's hard cap is 500). */
+export const DATA_RUN_MAX_ROWS = 100;
+/** The longest a data query may run for a person. */
+export const DATA_RUN_TIMEOUT_MS = 5000;
+
 // --- The shared rate budget (T-203b, ADR-015 section 3) ------------------------------------------
 
 /**

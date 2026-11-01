@@ -191,6 +191,14 @@ export const phase2EnvShape = {
   // The public status page (T-204) is closed unless the owner opens it: `false` answers 404 on every
   // /status route. An explicit opt-in, like DEV_LOGIN_ENABLED. [ASK-HUMAN] to open.
   STATUS_PAGE_PUBLIC: z.preprocess(emptyToUndefined, z.stringbool().default(false)),
+  // The product database the data tool reads (T-203c): a read-only login, columns only, no personal
+  // ones. Empty = the data tool has no database. In compose the local `product_mock` database is
+  // `postgres://product_mock_ro:product_mock_ro@postgres:5432/product_mock`. A secret: environment only.
+  PRODUCT_DB_URL: optionalString,
+  // Mock mode for the GCP Logs, metrics and repository clients (T-203): a directory with
+  // `fixtures.json`, for example examples/tools. The worker (AI tools) and the api (the buttons a
+  // person presses) both read it. Empty = those clients are not connected.
+  AI_TOOL_FIXTURES_DIR: z.preprocess(emptyToUndefined, z.string().min(1).optional()),
 } satisfies z.ZodRawShape;
 
 const MIN_PRODUCTION_SECRET_LENGTH = 32;
