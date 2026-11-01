@@ -5,6 +5,10 @@ export * from './audited.js';
 export { hashJson, hmacInputHash, sha256Hex } from './hash.js';
 export * from './models.js';
 export * from './prompts.js';
+export * from './prompt-files.js';
+export * from './agents/common.js';
+export * from './agents/classify.js';
+export * from './agents/summarize.js';
 export * from './tools.js';
 
 export { joinRedacted, type RedactedText } from './redaction/redacted-text.js';
@@ -36,6 +40,7 @@ export {
 } from './redaction/detectors.js';
 
 export { createAnthropicProvider, type AnthropicProviderConfig } from './providers/anthropic.js';
+export { DevMockLlmProvider, type DevMockOptions } from './providers/dev-mock.js';
 export {
   MockEmbeddingProvider,
   MockLlmProvider,
@@ -43,7 +48,12 @@ export {
   type MockLlmOptions,
   type MockRule,
 } from './providers/mock.js';
-export { ProviderConfigError, ProviderError, type FetchLike } from './providers/sdk.js';
+export {
+  assertAllowedBaseUrl,
+  ProviderConfigError,
+  ProviderError,
+  type FetchLike,
+} from './providers/sdk.js';
 export {
   createVertexClaudeProvider,
   createVertexEmbeddingProvider,

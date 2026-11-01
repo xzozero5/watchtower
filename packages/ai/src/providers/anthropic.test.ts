@@ -40,6 +40,29 @@ describe('anthropic adapter', () => {
     }
   });
 
+  it('accepts a baseURL only when it is https and its host is on the allow-list (SR106-R10)', () => {
+    const build = (baseURL: string, allowedBaseUrlHosts?: string[]) => () =>
+      createAnthropicProvider({
+        apiKey: FAKE_KEY,
+        fetch: forbiddenFetch,
+        baseURL,
+        ...(allowedBaseUrlHosts === undefined ? {} : { allowedBaseUrlHosts }),
+      });
+    expect(build('https://api.anthropic.com/v1')).not.toThrow();
+    expect(build('https://llm-proxy.example.com/v1', ['llm-proxy.example.com'])).not.toThrow();
+    // Not on the list, plain http, credentials, a port, not a URL: all refused.
+    expect(build('https://llm-proxy.example.com/v1')).toThrow(ProviderConfigError);
+    expect(build('http://llm-proxy.example.com/v1', ['llm-proxy.example.com'])).toThrow(/https/);
+    expect(build('https://u:p@llm-proxy.example.com/v1', ['llm-proxy.example.com'])).toThrow(
+      ProviderConfigError,
+    );
+    expect(build('https://llm-proxy.example.com:8443/v1', ['llm-proxy.example.com'])).toThrow(
+      ProviderConfigError,
+    );
+    expect(build('https://evil.example.net/v1', ['llm-proxy.example.com'])).toThrow(/allow-list/);
+    expect(build('not a url', ['x'])).toThrow(ProviderConfigError);
+  });
+
   it('maps a request and replays the fixture through the injected fetch only', async () => {
     const replay = createReplayFetch(() => ({ json: fixture }));
     const provider = createAnthropicProvider({ apiKey: FAKE_KEY, fetch: replay.fetch });

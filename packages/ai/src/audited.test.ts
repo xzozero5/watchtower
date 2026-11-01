@@ -469,3 +469,45 @@ describe('createAuditedLlm: input hash is an HMAC with the server key', () => {
     expect(() => aiSettingsSchema.parse({ ...mockSettings(), inputHashKey: undefined })).toThrow();
   });
 });
+
+describe('what the record takes from the caller (SR106-R9)', () => {
+  it('reads the redaction counts from the session when the call is made', async () => {
+    const { llm, call } = setup();
+    const session = createRedactor().session({ scope: 'ticket:r9' });
+    const system = session.redact('You classify.');
+    const content = session.redact('a@b.com and c@d.com');
+    const { run } = await llm.generate({
+      ...call,
+      system,
+      messages: [{ role: 'user', content }],
+      redaction: session,
+    });
+    expect(run.redaction).toEqual({ total: 2, byKind: { EMAIL: 2 } });
+  });
+
+  it('refuses a source that throws, before the provider is called', async () => {
+    const { llm, call } = setup();
+    await expect(
+      llm.generate({
+        ...call,
+        redaction: {
+          report: () => {
+            throw new Error('boom');
+          },
+        },
+      }),
+    ).rejects.toBeInstanceOf(AuditInputError);
+  });
+
+  it('returns the id the sink gave the row, or null when it gives none', async () => {
+    const make = (receipt: { id: string } | undefined) =>
+      createAuditedLlm({
+        settings: { load: () => Promise.resolve(mockSettings()) },
+        providers: { mock: new MockLlmProvider() },
+        sink: { record: () => Promise.resolve(receipt) },
+      });
+    const { call } = setup();
+    expect((await make({ id: 'row-1' }).generate(call)).runId).toBe('row-1');
+    expect((await make(undefined).generate(call)).runId).toBeNull();
+  });
+});

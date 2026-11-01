@@ -6,7 +6,7 @@ import {
   INBOUND_TICKET_EVENTS,
   type InboundClassification,
 } from '@watchtower/shared';
-import { eq } from 'drizzle-orm';
+import { eq, ne } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import type { Actor } from '../types.js';
@@ -157,7 +157,13 @@ async function counts(): Promise<{
     tickets: (await db.select({ id: schema.ticket.id }).from(schema.ticket)).length,
     messages: (await db.select({ id: schema.message.id }).from(schema.message)).length,
     contacts: (await db.select({ id: schema.contact.id }).from(schema.contact)).length,
-    outbox: (await db.select({ id: schema.outbox.id }).from(schema.outbox)).length,
+    // Customer-bound jobs only: a new ticket also queues its AI brief (T-106e), which goes nowhere.
+    outbox: (
+      await db
+        .select({ id: schema.outbox.id })
+        .from(schema.outbox)
+        .where(ne(schema.outbox.queue, 'ai'))
+    ).length,
   };
 }
 

@@ -26,4 +26,8 @@ Rules:
   redactor** before it reaches a provider (slot values can carry PII).
 - No customer data, internal URLs or company-specific procedure text in these files (N1).
 
-The first prompts (`classifier`, `summarizer`) arrive with T-106e.
+Current prompts (T-106e): `classifier.v1.md` (type of message + intent + confidence, JSON answer) and
+`summarizer.v1.md` (one-line summary + one next step, JSON answer). The agents in `src/agents/` load
+the highest version through `loadPromptCatalog()`; `package.json` lists `prompts` in `files`, so a
+deployed copy carries them. The `{{intents}}` slot of the classifier is filled from the instance's
+own intent list at run time, so the file holds nothing organisation-specific.

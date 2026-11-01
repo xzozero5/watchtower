@@ -6,6 +6,7 @@ import {
   QUEUE_NAMES,
   parseRedisUrl,
   sanitizeUrlForLog,
+  serializeErrorForLog,
 } from './index.js';
 
 describe('parseRedisUrl', () => {
@@ -63,5 +64,58 @@ describe('logging and queue constants', () => {
   it('names the system queue and retries with backoff', () => {
     expect(QUEUE_NAMES.system).toBe('system');
     expect(DEFAULT_JOB_OPTIONS.attempts).toBeGreaterThan(1);
+  });
+});
+
+describe('serializeErrorForLog', () => {
+  class WithFields extends Error {
+    override readonly name = 'WithFields';
+    constructor(
+      readonly code: string,
+      readonly responseBody: string,
+      options?: { cause?: unknown },
+    ) {
+      super('failed', options);
+    }
+  }
+
+  it('keeps type, message, stack and flat fields, and drops payload fields', () => {
+    const out = serializeErrorForLog(new WithFields('E1', 'SECRET-BODY')) as Record<
+      string,
+      unknown
+    >;
+    expect(out).toMatchObject({ type: 'WithFields', message: 'failed', code: 'E1' });
+    expect(typeof out.stack).toBe('string');
+    expect(JSON.stringify(out)).not.toContain('SECRET-BODY');
+  });
+
+  it('replaces the cause chain, including an AggregateError, with type names only', () => {
+    const inner = Object.assign(new TypeError('INNER-MESSAGE'), { requestBodyValues: 'X' });
+    const error = new WithFields('E2', 'b', {
+      cause: new AggregateError([inner, new RangeError('RANGE-MESSAGE')], 'AGG-MESSAGE', {
+        cause: inner,
+      }),
+    });
+    const out = serializeErrorForLog(error) as Record<string, unknown>;
+    const json = JSON.stringify(out);
+    for (const text of ['INNER-MESSAGE', 'RANGE-MESSAGE', 'AGG-MESSAGE']) {
+      expect(json).not.toContain(text);
+    }
+    expect(out.causeTypes).toEqual(['AggregateError', 'TypeError', 'TypeError', 'RangeError']);
+    expect(out).not.toHaveProperty('cause');
+  });
+
+  it('passes a primitive through and does not walk an object that is not an Error', () => {
+    expect(serializeErrorForLog('plain')).toBe('plain');
+    expect(serializeErrorForLog({ secret: 'x' })).toEqual({ type: 'NonError' });
+  });
+
+  it('stops at a deep or circular chain', () => {
+    const a: Error & { cause?: unknown } = new Error('a');
+    const b: Error & { cause?: unknown } = new Error('b');
+    a.cause = b;
+    b.cause = a;
+    const out = serializeErrorForLog(a) as { causeTypes: string[] };
+    expect(out.causeTypes.length).toBeLessThanOrEqual(10);
   });
 });

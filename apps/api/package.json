@@ -30,6 +30,7 @@
     "@opentelemetry/resources": "^3.0.0",
     "@opentelemetry/sdk-metrics": "^3.0.0",
     "@opentelemetry/sdk-trace": "^3.0.0",
+    "@watchtower/ai": "workspace:*",
     "@watchtower/channels": "workspace:*",
     "@watchtower/db": "workspace:*",
     "@watchtower/domain": "workspace:*",

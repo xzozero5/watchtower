@@ -43,40 +43,66 @@ export function sanitizeUrlForLog(rawUrl: string): string {
   }
 }
 
-/** Keys under which a serialized error may hold another error (or the payload that caused it). */
+/** Keys under which an error may hold another error (or the payload that caused it). */
 const ERROR_CAUSE_KEYS = ['cause', 'errors', 'aggregateErrors'] as const;
+const MAX_CAUSE_DEPTH = 5;
+/** Fields HTTP and SDK errors use for the bodies of the request and the response. */
+const PAYLOAD_KEYS: ReadonlySet<string> = new Set([
+  'body',
+  'data',
+  'response',
+  'responseBody',
+  'requestBody',
+  'requestBodyValues',
+  'responseHeaders',
+  'text',
+]);
 
 /**
- * Makes an already serialized error (the output of pino's `err` serializer) safe to log: the
- * `cause` chain is replaced by the type names of the errors in it. A provider SDK error keeps the
- * request and response bodies on its `cause`, and those can hold the prompt, so the logger must not
- * serialise them (SR106-R10). The error's own `type`, `message`, `stack` and flat fields such as
- * `code` stay: our own errors never put a payload in `message`.
+ * The error serializer of the loggers (pino `serializers.err`). It logs the error's own `type`,
+ * `message`, `stack` and flat fields (strings, numbers, booleans such as `code` and `statusCode`),
+ * and for everything in its `cause` chain only the type names (`causeTypes`).
+ *
+ * Why not pino's standard serializer: it appends the cause's message and stack to the error's, and
+ * a provider SDK error keeps the request and response bodies on its cause, which can hold the
+ * prompt (SR106-R10). Our own errors never put a payload in their own `message`.
  */
-export function stripErrorCauses(serialized: unknown): unknown {
-  if (typeof serialized !== 'object' || serialized === null) return serialized;
-  const kept: Record<string, unknown> = {};
-  const causeTypes: string[] = [];
-  for (const [key, value] of Object.entries(serialized as Record<string, unknown>)) {
-    if ((ERROR_CAUSE_KEYS as readonly string[]).includes(key)) {
-      collectCauseTypes(value, causeTypes, 0);
-    } else {
-      kept[key] = value;
+export function serializeErrorForLog(error: unknown): unknown {
+  if (!(error instanceof Error)) {
+    return typeof error === 'object' && error !== null ? { type: 'NonError' } : error;
+  }
+  const out: Record<string, unknown> = {
+    type: error.name,
+    message: error.message,
+    ...(error.stack === undefined ? {} : { stack: error.stack }),
+  };
+  for (const [key, value] of Object.entries(error)) {
+    if (key in out || PAYLOAD_KEYS.has(key)) continue;
+    if ((ERROR_CAUSE_KEYS as readonly string[]).includes(key)) continue;
+    if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+      out[key] = value;
     }
   }
-  if (causeTypes.length > 0) kept.causeTypes = causeTypes.slice(0, 10);
-  return kept;
+  const causeTypes: string[] = [];
+  for (const key of ERROR_CAUSE_KEYS) {
+    collectCauseTypes((error as unknown as Record<string, unknown>)[key], causeTypes, 0);
+  }
+  if (causeTypes.length > 0) out.causeTypes = causeTypes.slice(0, 10);
+  return out;
 }
 
 function collectCauseTypes(value: unknown, into: string[], depth: number): void {
-  if (depth > 5) return;
+  if (depth > MAX_CAUSE_DEPTH || value === undefined || value === null) return;
   if (Array.isArray(value)) {
     for (const item of value as unknown[]) collectCauseTypes(item, into, depth + 1);
     return;
   }
-  if (typeof value !== 'object' || value === null) return;
-  const record = value as Record<string, unknown>;
-  const type = record.type ?? record.name;
-  into.push(typeof type === 'string' ? type.slice(0, 100) : 'Error');
-  for (const key of ERROR_CAUSE_KEYS) collectCauseTypes(record[key], into, depth + 1);
+  if (value instanceof Error) {
+    into.push(value.name.slice(0, 100));
+    for (const key of ERROR_CAUSE_KEYS) {
+      collectCauseTypes((value as unknown as Record<string, unknown>)[key], into, depth + 1);
+    }
+    return;
+  }
+  into.push('NonError');
 }

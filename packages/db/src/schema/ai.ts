@@ -48,7 +48,9 @@ export const aiRun = pgTable(
     inputHmac: text('input_hmac').notNull(),
     output: text('output'),
     confidence: real('confidence'),
-    redaction: jsonb('redaction').notNull().$type<{ total: number; byKind: Record<string, number> }>(),
+    redaction: jsonb('redaction')
+      .notNull()
+      .$type<{ total: number; byKind: Record<string, number> }>(),
     inputTokens: integer('input_tokens').notNull().default(0),
     outputTokens: integer('output_tokens').notNull().default(0),
     costUsd: numeric('cost_usd', { precision: 14, scale: 8 }),

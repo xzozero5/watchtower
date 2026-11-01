@@ -36,7 +36,8 @@ describe('importing the package', () => {
 
     expect(ai.packageName).toBe('@watchtower/ai');
     expect(seen).toEqual([]);
-  });
+    // Importing the SDKs takes seconds when the machine is busy (all packages test at once).
+  }, 30_000);
 
   it('imports only the Vertex entries that cannot probe for credentials', () => {
     // The default entry of @ai-sdk/google-vertex loads google-auth-library, which finds credentials
@@ -68,5 +69,5 @@ describe('importing the package', () => {
     vi.resetModules();
     await import('./index.js');
     expect(holder.AI_SDK_TELEMETRY_INTEGRATIONS).toBeUndefined();
-  });
+  }, 30_000);
 });

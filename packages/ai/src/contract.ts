@@ -222,6 +222,8 @@ export type AiRunRecord = z.infer<typeof aiRunRecordSchema>;
  */
 export interface AiRunSink {
   /** May return the id of the row it wrote, so the caller can link to it (`AuditedResult.runId`). */
+  // `void` stays in the union so a sink that returns nothing (`Promise<void>`) still fits.
+  // eslint-disable-next-line @typescript-eslint/no-invalid-void-type
   record(run: AiRunRecord): Promise<void | AiRunReceipt>;
 }
 
