@@ -79,3 +79,25 @@ export function formatDateTime(iso: string, locale: Locale): string {
     timeZone: DISPLAY_TIME_ZONE,
   }).format(new Date(iso));
 }
+
+const AGE_UNITS = [
+  ['day', 86_400_000],
+  ['hour', 3_600_000],
+  ['minute', 60_000],
+] as const;
+
+/**
+ * How long ago, as short as it gets: "2m", "3h", "5d" (narrow unit names in the UI language).
+ * Null under a minute, so the caller can say "now" in words. The exact time belongs in a tooltip.
+ */
+export function formatAge(iso: string, now: number, locale: Locale): string | null {
+  const age = now - Date.parse(iso);
+  for (const [unit, size] of AGE_UNITS) {
+    if (Math.abs(age) >= size) {
+      return new Intl.NumberFormat(locale, { style: 'unit', unit, unitDisplay: 'narrow' }).format(
+        Math.floor(Math.abs(age) / size),
+      );
+    }
+  }
+  return null;
+}

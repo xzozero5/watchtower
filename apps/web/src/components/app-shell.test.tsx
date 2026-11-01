@@ -40,7 +40,7 @@ async function openWorkspace(options: Parameters<typeof renderWorkspace>[0] = {}
 }
 
 describe('AppShell for staff', () => {
-  it('shows the three panes: the queue with tickets, an empty conversation, the AI placeholder', async () => {
+  it('shows the three panes: the queue with tickets, an empty conversation, the evidence panel', async () => {
     const user = userEvent.setup();
     workspaceApi();
     await openWorkspace();
@@ -50,11 +50,15 @@ describe('AppShell for staff', () => {
 
     expect(await within(queue).findByText('Cannot log in')).toBeVisible();
     expect(within(conversation).getByText('Select a ticket')).toBeVisible();
-    // The panel opens on Details; the AI tab holds the plain explanation.
+    // The panel opens on Details until the AI brings evidence; Evidence is the first tab.
     expect(within(assistant).getByText('Select a ticket to see its details here.')).toBeVisible();
-    await user.click(within(assistant).getByRole('tab', { name: 'AI' }));
-    expect(within(assistant).getByText('The AI assistant is not switched on yet')).toBeVisible();
-    expect(within(assistant).getByText(/arrives in Phase 1/)).toBeVisible();
+    expect(
+      within(assistant)
+        .getAllByRole('tab')
+        .map((t) => t.textContent),
+    ).toEqual(['Evidence', 'Details', 'Customer']);
+    await user.click(within(assistant).getByRole('tab', { name: 'Evidence' }));
+    expect(within(assistant).getByText('Select a ticket to see its details here.')).toBeVisible();
   });
 
   it('keeps the panes in reading order so they stack correctly on a narrow screen', async () => {
@@ -82,10 +86,10 @@ describe('AppShell for staff', () => {
     const user = userEvent.setup();
     workspaceApi();
     await openWorkspace({ locale: 'th' });
-    await user.click(screen.getByRole('tab', { name: 'AI' }));
+    await user.click(screen.getByRole('tab', { name: 'หลักฐาน' }));
     expect(screen.getByRole('region', { name: 'บทสนทนา' })).toBeInTheDocument();
     expect(screen.getByRole('region', { name: 'รายละเอียดและ AI' })).toBeInTheDocument();
-    expect(screen.getByText('ผู้ช่วย AI ยังไม่เปิดใช้งาน')).toBeInTheDocument();
+    expect(screen.getByText('เลือก ticket เพื่อดูรายละเอียดที่นี่')).toBeInTheDocument();
     expect(screen.queryByText('Select a ticket')).not.toBeInTheDocument();
   });
 
@@ -191,9 +195,9 @@ describe('AppShell for staff', () => {
     const dialog = await screen.findByRole('dialog', { name: 'Keyboard shortcuts' });
     expect(within(dialog).getByText('Next ticket')).toBeVisible();
     expect(within(dialog).getByText('Previous ticket')).toBeVisible();
-    expect(within(dialog).getByText('Approve the draft')).toBeVisible();
-    // The AI draft keys are listed but marked as not available yet.
-    expect(within(dialog).getAllByText('coming soon')).toHaveLength(7);
+    expect(within(dialog).getByText('Approve the AI draft (opens a preview)')).toBeVisible();
+    // Only the four go-to keys that have no screen yet are marked as not available.
+    expect(within(dialog).getAllByText('coming soon')).toHaveLength(4);
 
     await user.keyboard('{Escape}');
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
