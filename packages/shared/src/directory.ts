@@ -214,7 +214,19 @@ export const contactPageSchema = pageOf(contactSchema);
 
 // --- team queues ---
 
-export const ASSIGNMENT_MODES = ['manual', 'round_robin'] as const;
+/**
+ * How a new ticket of the queue gets its assignee (R-1.7). Every automatic mode picks only people
+ * who are clocked in (T-111): `round_robin` takes turns, `load_balanced` gives it to the one with
+ * the fewest open tickets, `stay_with_last_handler` to whoever handled the requester's last ticket
+ * (and falls back to load balancing).
+ */
+export const ASSIGNMENT_MODES = [
+  'manual',
+  'round_robin',
+  'load_balanced',
+  'stay_with_last_handler',
+] as const;
+export type AssignmentMode = (typeof ASSIGNMENT_MODES)[number];
 export const assignmentModeSchema = z.enum(ASSIGNMENT_MODES);
 
 export const teamQueueSchema = z.object({
