@@ -6,7 +6,15 @@ import {
   type TicketStatus,
   type TicketSummary,
 } from '@watchtower/shared';
-import { Avatar, cn, SeverityBadge } from '@watchtower/ui';
+import {
+  Avatar,
+  type ChipIcon,
+  cn,
+  SectionHeading,
+  SeverityBadge,
+  TINT_CLASSES,
+  type TintId,
+} from '@watchtower/ui';
 import { ArrowRight } from 'lucide-react';
 import type { ReactNode } from 'react';
 
@@ -24,25 +32,40 @@ import { statusKey } from '@/lib/tickets/status-key';
 /** A page of 200 is the most one request returns: a count taken from it is "at least". */
 export const LIST_CAP = 200;
 
-/** `section` with an `h2` of plain 14px/600 text, divided from the next one by a hairline. */
+/**
+ * A rounded card with an `h2`: a coloured dot, an icon in the same hue and 14px/600 text
+ * (docs/design/friendly-polish.md section 3).
+ */
 export function HomeSection({
   id,
   title,
+  tone,
+  icon,
   aside,
   children,
   className,
 }: {
   id: string;
   title: string;
+  tone: TintId;
+  icon: ChipIcon;
   aside?: ReactNode;
   children: ReactNode;
   className?: string;
 }) {
   return (
-    <section aria-labelledby={id} className={cn('min-w-0 px-4 py-3', className)}>
-      <div className="mb-2 flex items-baseline justify-between gap-3">
+    <section
+      aria-labelledby={id}
+      className={cn(
+        'min-w-0 rounded-2xl bg-surface px-5 py-4 ring-1 ring-border/60 ring-inset',
+        className,
+      )}
+    >
+      <div className="mb-3 flex items-center justify-between gap-3">
         <h2 id={id} className="text-sm font-semibold">
-          {title}
+          <SectionHeading tone={tone} icon={icon}>
+            {title}
+          </SectionHeading>
         </h2>
         {aside}
       </div>
@@ -70,33 +93,47 @@ export interface Tile {
   value: number | string | null;
   sub?: string;
   href: string;
+  /** The hue and icon of the tile: the number is the message, these make it findable. */
+  tone: TintId;
+  icon: ChipIcon;
 }
 
 /**
- * The numbers the head decides on, as one strip of tiles divided by hairlines: a big number, a
- * short label, a link to the queue with the matching filter. No sentences.
+ * The numbers the head decides on, as soft tinted tiles: an icon, a big number, a short label, a
+ * link to the queue with the matching filter. No sentences.
  */
 export function TileStrip({ tiles }: { tiles: readonly Tile[] }) {
   const t = useT();
   return (
-    <ul className="grid grid-cols-2 divide-x divide-y divide-border border-b border-border md:grid-cols-4 md:divide-y-0">
-      {tiles.map((tile) => (
-        <li key={tile.id}>
-          <AppLink
-            href={tile.href}
-            className="flex h-full flex-col gap-0.5 px-4 py-3 transition-colors duration-(--wt-motion-duration-fast) ease-out hover:bg-surface-muted focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
-          >
-            {/* Read in this order (label, number, note); drawn with the number on top. */}
-            <span className="order-2 text-xs text-muted-foreground">{tile.label}</span>
-            <span className="tabular order-1 text-xl leading-tight font-semibold">
-              {tile.value ?? <span title={t('home.unavailable')}>—</span>}
-            </span>
-            {tile.sub ? (
-              <span className="tabular order-3 text-xs text-foreground">{tile.sub}</span>
-            ) : null}
-          </AppLink>
-        </li>
-      ))}
+    <ul className="grid grid-cols-2 gap-3 p-4 md:grid-cols-4">
+      {tiles.map((tile) => {
+        const Icon = tile.icon;
+        return (
+          <li key={tile.id}>
+            <AppLink
+              href={tile.href}
+              data-tone={tile.tone}
+              className={cn(
+                'relative flex h-full flex-col gap-0.5 rounded-2xl px-4 py-3.5 transition-transform duration-(--wt-motion-duration-fast) ease-out motion-safe:hover:-translate-y-0.5 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring',
+                TINT_CLASSES[tile.tone].chip,
+              )}
+            >
+              {/* Read in this order (label, number, note); drawn with the number on top. */}
+              <span className="order-2 text-xs font-medium">{tile.label}</span>
+              <span className="tabular order-1 text-3xl leading-tight font-semibold">
+                {tile.value ?? <span title={t('home.unavailable')}>—</span>}
+              </span>
+              {tile.sub ? <span className="tabular order-3 text-xs">{tile.sub}</span> : null}
+              <span
+                aria-hidden
+                className="absolute top-3 right-3 inline-flex size-9 items-center justify-center rounded-full bg-surface/70"
+              >
+                <Icon className={cn('size-5', TINT_CLASSES[tile.tone].icon)} />
+              </span>
+            </AppLink>
+          </li>
+        );
+      })}
     </ul>
   );
 }
@@ -124,13 +161,13 @@ export function SlaRiskList({ rows }: { rows: readonly RiskRow[] }) {
           <button
             type="button"
             onClick={stable.apply}
-            className="rounded-md border border-border-strong px-2 py-0.5 text-xs font-medium hover:bg-surface-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+            className="rounded-full bg-primary-subtle px-3 py-1 text-xs font-medium hover:bg-surface-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
           >
             {t('home.changedPill', { count: stable.changed })}
           </button>
         </p>
       ) : null}
-      <ul aria-label={t('home.slaRisk')} className="divide-y divide-border">
+      <ul aria-label={t('home.slaRisk')} className="divide-y divide-border/60">
         {shown.map(({ ticket, sla }) => (
           <li key={ticket.id} className="flex min-h-row items-center gap-2 py-1">
             <SeverityBadge
@@ -188,7 +225,7 @@ export function StatusBreakdown({ stats }: { stats: TicketStats }) {
   // New and Needs triage are already tiles at the top of the page.
   const shown = counted.filter((entry) => entry.status !== 'new' && entry.status !== 'triage');
   return (
-    <ul className="flex flex-wrap gap-x-4 gap-y-1">
+    <ul className="flex flex-wrap gap-2">
       {shown.map((entry) => (
         <li key={entry.status}>
           <CountLink
@@ -216,7 +253,7 @@ export function QueueBreakdown({
     return <p className="text-sm text-muted-foreground">{t('home.empty.open')}</p>;
   }
   return (
-    <ul className="flex flex-wrap gap-x-4 gap-y-1">
+    <ul className="flex flex-wrap gap-2">
       {groups.map((queue) => (
         <li key={queue.queueId ?? 'none'}>
           <CountLink
@@ -239,7 +276,7 @@ export function CountLink({ href, label, count }: { href: string; label: string;
   return (
     <AppLink
       href={href}
-      className="inline-flex items-baseline gap-1.5 rounded-sm text-sm hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+      className="inline-flex items-baseline gap-1.5 rounded-full bg-surface-muted px-3 py-1 text-sm transition-colors duration-(--wt-motion-duration-fast) ease-out hover:bg-primary-subtle focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
     >
       <span className="text-muted-foreground">{label}</span>
       <span className="tabular font-semibold">{count}</span>
@@ -259,12 +296,12 @@ export function LoadList({ rows }: { rows: readonly LoadRowData[] }) {
   if (rows.length === 0)
     return <p className="text-sm text-muted-foreground">{t('home.empty.load')}</p>;
   return (
-    <ul className="divide-y divide-border">
+    <ul className="divide-y divide-border/60">
       {rows.map((row) => (
         <li key={row.id}>
           <AppLink
             href={queueHref({ assignee: row.id, status: OPEN_STATUSES })}
-            className="flex min-h-row items-center gap-2 rounded-sm hover:bg-surface-muted focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
+            className="flex min-h-row items-center gap-2 rounded-xl px-1 hover:bg-surface-muted focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
           >
             <Avatar name={row.name} id={row.id} size={20} />
             <span className="min-w-0 flex-1 truncate text-sm">{row.name}</span>

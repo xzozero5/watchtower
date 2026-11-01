@@ -48,12 +48,10 @@ export const en = {
     queue: {
       title: 'Queue',
       emptyTitle: 'All caught up.',
-      emptyBody: 'New tickets from every channel appear here.',
     },
     conversation: {
       title: 'Conversation',
       emptyTitle: 'Select a ticket',
-      emptyBody: 'Pick one from the queue.',
     },
     assistant: {
       title: 'Details & AI',
@@ -184,7 +182,7 @@ export const en = {
   composer: {
     label: 'Write a message',
     modeGroup: 'Kind of message',
-    modes: { reply: 'Reply', note: 'Internal note' },
+    modes: { reply: 'Reply', note: 'Internal note', noteShort: 'Note' },
     hints: {
       replyStaff: 'The customer will read this. It is sent by {channel}.',
       replyClient: 'Your message is added to this ticket and the support team is notified.',
@@ -375,7 +373,6 @@ export const en = {
   },
   login: {
     title: 'Sign in',
-    subtitle: 'Choose how you sign in to Watchtower.',
     loading: 'Loading sign-in options',
     email: 'Email address',
     password: 'Password',
@@ -392,7 +389,6 @@ export const en = {
     },
     staff: {
       title: 'Team members',
-      description: 'Use your organization account.',
     },
     sso: {
       button: 'Continue with {provider}',
@@ -418,7 +414,6 @@ export const en = {
     },
     client: {
       title: 'Customers',
-      description: 'Enter your email address and we will send you a one-time sign-in link.',
       button: 'Email me a sign-in link',
       sending: 'Sending',
       sentTitle: 'Check your email',
@@ -528,7 +523,6 @@ export const en = {
     requester: 'Requester',
     email: 'Email',
     noRequester: 'No requester is recorded for this ticket.',
-    more: 'Earlier tickets from this person will be listed here once the API provides them.',
   },
   toast: {
     region: 'Notifications',

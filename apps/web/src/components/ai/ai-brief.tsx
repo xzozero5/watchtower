@@ -2,21 +2,36 @@
 
 import type { UseQueryResult } from '@tanstack/react-query';
 import type { AiEvidenceKind, TicketAiInsight } from '@watchtower/shared';
-import { Button, cn, Skeleton, StageBadge, Tooltip } from '@watchtower/ui';
 import {
+  Button,
+  ConfidenceDots,
+  IconButton,
+  IntentChip,
+  Skeleton,
+  StageBadge,
+  TintChip,
+  Tooltip,
+} from '@watchtower/ui';
+import {
+  ArrowUpRight,
   Bot,
+  Check,
+  CircleCheck,
   Database,
   FileText,
   GitCommitHorizontal,
+  Hourglass,
   type LucideIcon,
+  PenLine,
   ScrollText,
-  Tag,
+  Send,
   Ticket,
   TriangleAlert,
 } from 'lucide-react';
 import { useState } from 'react';
 
 import { AiStateChip } from '@/components/ai/ai-state-chip';
+import { usePreferences } from '@/lib/preferences';
 import { useStatusMove } from '@/components/ticket/use-status-move';
 import { useI18n } from '@/i18n/provider';
 import { confidenceBand, formatConfidence, hasBrief } from '@/lib/ai/model';
@@ -51,7 +66,10 @@ export function AiStageBadge({ stage }: { stage: number }) {
   );
 }
 
-/** A confidence as a short bar plus the word and the number (`High 0.86`): never the bar alone. */
+/**
+ * A confidence as a five-dot bar (docs/design/friendly-polish.md section 4). The word and the
+ * number (`High 0.86`) are the meter's accessible name and its tooltip, never the dots alone.
+ */
 export function ConfidenceMeter({ value, className }: { value: number; className?: string }) {
   const { t } = useI18n();
   const band = confidenceBand(value);
@@ -60,30 +78,20 @@ export function ConfidenceMeter({ value, className }: { value: number; className
     value: formatConfidence(value),
   });
   return (
-    <span className={cn('inline-flex items-center gap-1.5 text-xs', className)} data-band={band}>
-      <span
-        role="meter"
-        aria-label={text}
-        aria-valuemin={0}
-        aria-valuemax={1}
-        aria-valuenow={value}
-        className="relative h-1.5 w-12 overflow-hidden rounded-full bg-surface-muted ring-1 ring-border-strong ring-inset"
-      >
-        <span
-          aria-hidden
-          className={cn(
-            'absolute inset-y-0 left-0 rounded-full',
-            band === 'low' ? 'bg-muted-foreground' : 'bg-ai-accent',
-          )}
-          style={{ width: `${String(Math.round(value * 100))}%` }}
-        />
-      </span>
-      <span aria-hidden className="tabular font-medium text-foreground">
-        {t(`ai.brief.band.${band}`)} {formatConfidence(value)}
-      </span>
+    <span data-band={band} className={className}>
+      <ConfidenceDots value={value} label={text} low={band === 'low'} />
     </span>
   );
 }
+
+/** What the suggested next step does, as an icon on its button. */
+const STEP_ICONS: Partial<Record<string, LucideIcon>> = {
+  approve_draft: Check,
+  reply: Send,
+  escalate_dev: ArrowUpRight,
+  wait_customer: Hourglass,
+  resolve: CircleCheck,
+};
 
 function Provenance({ insight }: { insight: TicketAiInsight }) {
   const { t, locale } = useI18n();
@@ -147,6 +155,7 @@ export function AiBrief({
   onWriteMyself: () => void;
 }) {
   const { t } = useI18n();
+  const { singleKeyShortcuts } = usePreferences();
   const status = useStatusMove(ticket);
   const [approveOpen, setApproveOpen] = useState(false);
 
@@ -198,20 +207,26 @@ export function AiBrief({
         aria-label={t('ai.brief.label')}
         data-testid="ai-brief"
         data-ai-state={insight.state}
-        className="mx-4 mt-3 flex flex-col gap-2.5 rounded-lg border border-ai-accent/50 bg-surface px-3 py-3"
+        className="relative mx-4 mt-3 flex shrink-0 flex-col gap-3 overflow-hidden rounded-lg bg-ai-subtle py-4 pr-5 pl-6 shadow-soft ring-1 ring-ai-accent/20 ring-inset"
       >
+        {/* The subtle teal edge: 4px, fading toward the bottom. */}
+        <span
+          aria-hidden
+          className="absolute inset-y-0 left-0 w-1 bg-linear-to-b from-ai-accent to-ai-accent/20"
+        />
         <header className="flex flex-wrap items-center gap-x-2 gap-y-1">
-          <Bot aria-hidden className="size-4 text-ai-accent" />
+          <span
+            aria-hidden
+            className="inline-flex size-6 items-center justify-center rounded-full bg-tint-teal-bg text-tint-teal-icon"
+          >
+            <Bot className="size-3.5" />
+          </span>
           <AiStateChip state={insight.state} />
           <AiStageBadge stage={insight.stage} />
           {uncited > 0 ? (
-            <span
-              title={t('ai.brief.uncitedTip')}
-              className="inline-flex h-5 items-center gap-1 rounded-full border border-border-strong px-2 text-xs font-medium"
-            >
-              <TriangleAlert aria-hidden className="size-3.5" />
+            <TintChip tone="amber" icon={TriangleAlert} title={t('ai.brief.uncitedTip')}>
               {t('ai.brief.uncited', { count: uncited })}
-            </span>
+            </TintChip>
           ) : null}
           <span className="ml-auto">
             <Provenance insight={insight} />
@@ -230,13 +245,9 @@ export function AiBrief({
 
         {intent ? (
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-            <span
-              title={t('ai.brief.intent')}
-              className="inline-flex h-5 items-center gap-1 rounded-full border border-border px-2 text-xs font-medium"
-            >
-              <Tag aria-hidden className="size-3.5 text-muted-foreground" />
+            <span title={t('ai.brief.intent')} className="inline-flex">
               <span className="sr-only">{t('ai.brief.intent')}: </span>
-              {intent.key}
+              <IntentChip intentKey={intent.key} name={intent.key} />
             </span>
             <ConfidenceMeter value={intent.confidence} />
             <span className="min-w-0 text-xs text-muted-foreground">{intent.reason}</span>
@@ -247,7 +258,7 @@ export function AiBrief({
             role="status"
             className="flex items-center gap-1.5 text-xs font-medium text-foreground"
           >
-            <TriangleAlert aria-hidden className="size-3.5 shrink-0" />
+            <TriangleAlert aria-hidden className="size-3.5 shrink-0 text-tint-amber-icon" />
             {t('ai.brief.lowConfidence')}
           </p>
         ) : null}
@@ -255,13 +266,25 @@ export function AiBrief({
         {nextStep || canWrite ? (
           <div role="group" aria-label={t('ai.brief.nextStep')} className="flex flex-wrap gap-2">
             {nextStep && stepAction ? (
-              <Button variant="primary" onClick={stepAction}>
+              <Button variant="primary" className="rounded-full px-4" onClick={stepAction}>
+                {(() => {
+                  const StepIcon = STEP_ICONS[nextStep.kind];
+                  return StepIcon ? <StepIcon aria-hidden className="size-4" /> : null;
+                })()}
                 {nextStep.label}
               </Button>
             ) : nextStep ? (
               <p className="self-center text-sm font-medium text-foreground">{nextStep.label}</p>
             ) : null}
-            {canWrite ? <Button onClick={onWriteMyself}>{t('ai.brief.writeMyself')}</Button> : null}
+            {canWrite ? (
+              <IconButton
+                variant="secondary"
+                label={t('ai.brief.writeMyself')}
+                shortcut={singleKeyShortcuts ? ['C'] : []}
+                icon={<PenLine aria-hidden className="size-4" />}
+                onClick={onWriteMyself}
+              />
+            ) : null}
           </div>
         ) : null}
 
@@ -279,7 +302,7 @@ export function AiBrief({
                     onClick={() => {
                       onOpenEvidence(entry.id);
                     }}
-                    className="inline-flex h-6 max-w-[16rem] items-center gap-1.5 rounded-full border border-border bg-surface px-2 text-xs transition-colors duration-(--wt-motion-duration-fast) ease-out hover:bg-surface-muted focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring"
+                    className="inline-flex h-7 max-w-[16rem] items-center gap-1.5 rounded-full bg-surface px-2.5 text-xs shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--color-border)_70%,transparent)] transition-[background-color,transform] duration-(--wt-motion-duration-fast) ease-out hover:bg-primary-subtle motion-safe:hover:-translate-y-px focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring"
                   >
                     <Icon aria-hidden className="size-3.5 shrink-0 text-ai-accent" />
                     <span className="sr-only">{kind}:</span>{' '}

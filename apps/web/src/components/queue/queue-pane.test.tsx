@@ -63,7 +63,7 @@ describe('queue rows', () => {
     expect(within(row as HTMLElement).getByText('Waiting on developers')).toBeVisible();
   });
 
-  it('has no card: a hairline strip with a selected bar, a new-ticket dot and the channel', async () => {
+  it('is a soft rounded pill with a tinted selection, a new-ticket dot and the channel', async () => {
     const user = userEvent.setup();
     workspaceApi({
       tickets: [
@@ -77,9 +77,9 @@ describe('queue rows', () => {
     );
     const old = within(queue).getByText('Old one').closest<HTMLElement>('[role="option"]');
     if (!fresh || !old) throw new Error('rows missing');
-    // No rounded border box around a row; rows are separated by a hairline.
-    expect(fresh.className).not.toMatch(/\brounded/);
-    expect(fresh.className).toContain('border-b');
+    // A row is a soft rounded pill with no border; the selected one is tinted (no hard bar).
+    expect(fresh.className).toContain('rounded-xl');
+    expect(fresh.className).not.toContain('border-b');
     // New: bold subject and a dot; an older ticket has neither.
     expect(within(fresh).getByText('Fresh one')).toHaveClass('font-semibold');
     expect(fresh.querySelector('span[aria-hidden="true"].bg-primary')).not.toBeNull();
@@ -90,12 +90,12 @@ describe('queue rows', () => {
     expect(fresh.querySelector('[data-channel="gmail"]')).toHaveAttribute('title', 'Email');
     expect(old.querySelector('[data-channel="line"]')).toBeInTheDocument();
 
-    // Selecting a row gives it the navy left bar and the tint.
-    expect(old.className).not.toContain('before:bg-primary');
+    // Selecting a row tints the whole pill; there is no left bar.
+    expect(old.className).not.toContain('bg-primary-subtle');
     await user.click(old);
     expect(old).toHaveAttribute('aria-selected', 'true');
-    expect(old.className).toContain('before:bg-primary');
     expect(old.className).toContain('bg-primary-subtle');
+    expect(old.className).not.toContain('before:bg-primary');
   });
 
   it('shows the AI summary as the title and the subject only when the AI said nothing', async () => {

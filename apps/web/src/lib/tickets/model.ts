@@ -46,6 +46,8 @@ export interface RowModel {
   assigneeName: string | null;
   unassigned: boolean;
   intentName: string | null;
+  /** Stable key of the intent: picks its colour and icon. */
+  intentKey: string | null;
   /** What the AI did with it, from the list row; null when the api sends nothing (T-128). */
   ai: TicketAiRow | null;
   updatedAt: string;
@@ -83,6 +85,7 @@ export function toRowModel(ticket: TicketItem, now: number): RowModel {
     assigneeName: staff ? (ticket.assignee?.name ?? null) : null,
     unassigned: staff && ticket.assignee === null,
     intentName: ticket.intent?.name ?? null,
+    intentKey: ticket.intent && 'key' in ticket.intent ? ticket.intent.key : null,
     ai: staff ? (ticket.ai ?? null) : null,
     updatedAt: ticket.updatedAt,
     overdue: isOverdue(ticket, now),

@@ -1,4 +1,4 @@
-import { Avatar, cn, Pill, SeverityBadge } from '@watchtower/ui';
+import { Avatar, cn, IntentChip, SeverityBadge } from '@watchtower/ui';
 
 import { AiStateChip } from '@/components/ai/ai-state-chip';
 import { ChannelIcon } from '@/components/ticket/channel-icon';
@@ -32,8 +32,9 @@ const QUIET_STATUSES = new Set(['new', 'triage', 'open']);
  *  - line 2: priority, intent, the AI's state, then who it is for (organisation avatar) and the
  *    channel. A status is spelled out only when it is not "open".
  * Compact density keeps one line: priority, summary, the AI icon and the SLA.
- * A ticket nobody has touched yet is bold with a dot. The selected row has a 2px navy bar and
- * `aria-selected="true"`. Nothing relies on colour: icons, codes and words carry every state.
+ * A ticket nobody has touched yet is bold with a dot. The selected row is a soft tinted pill with
+ * `aria-selected="true"`. Nothing relies on colour: icons, codes and words carry every state
+ * (docs/design/friendly-polish.md).
  */
 export function QueueRow({ row, selected, compact = false, onSelect }: QueueRowProps) {
   const { t } = useI18n();
@@ -75,10 +76,9 @@ export function QueueRow({ row, selected, compact = false, onSelect }: QueueRowP
         onSelect(row.key);
       }}
       className={cn(
-        'relative flex w-full cursor-pointer flex-col justify-center gap-1 border-b border-border px-3 text-left transition-colors duration-(--wt-motion-duration-fast) ease-out hover:bg-surface-muted',
-        'before:absolute before:inset-y-0 before:left-0 before:w-0.5 before:bg-transparent',
+        'relative mx-2 my-px flex cursor-pointer flex-col justify-center gap-1 rounded-xl px-2.5 text-left transition-colors duration-(--wt-motion-duration-fast) ease-out hover:bg-surface-muted',
         compact ? 'min-h-10 py-1.5' : 'min-h-14 py-2',
-        selected && 'bg-primary-subtle before:bg-primary hover:bg-primary-subtle',
+        selected && 'bg-primary-subtle hover:bg-primary-subtle',
       )}
     >
       {identity}
@@ -98,9 +98,11 @@ export function QueueRow({ row, selected, compact = false, onSelect }: QueueRowP
           <span className="flex min-w-0 items-center gap-1.5">
             <SeverityBadge severity={severity} label={t(`severity.${severity}`)} hideLabel />
             {row.intentName ? (
-              <Pill className="min-w-0 max-w-[9rem] shrink font-normal text-muted-foreground">
-                <span className="truncate">{row.intentName}</span>
-              </Pill>
+              <IntentChip
+                intentKey={row.intentKey ?? row.intentName}
+                name={row.intentName}
+                className="max-w-[9rem] min-w-0 shrink font-normal [&>span]:truncate"
+              />
             ) : null}
             <AiStateChip state={aiState} />
             {QUIET_STATUSES.has(row.status) ? null : (
