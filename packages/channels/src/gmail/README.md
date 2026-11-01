@@ -105,10 +105,16 @@ what limits the damage if the key leaks. So: grant exactly `gmail.readonly` and 
 could read it leaves, and prefer a dedicated support mailbox over a personal one. An OAuth refresh token
 of a dedicated support user is the narrower alternative (R-2.4).
 
-### Mock mode is for development only
+### Mock mode is an explicit opt-in
 
-`createGmailRuntime` hands out the in-memory fake only with `allowMock` (the worker sets it when
-`NODE_ENV` is not `production`). In production, with no complete `gmail` credential, the runtime returns
-no transport and no sender: sync records `transport_unavailable` and a customer reply fails visibly as
-`channel_not_connected`. If the credential store cannot be read, the transport / sender calls throw a
-retryable error (the ingest event is retried, the delivery goes back to `scheduled` through the sweeper).
+`createGmailRuntime` hands out the in-memory fake only with `allowMock`, which the worker sets from
+`GMAIL_MOCK_ENABLED=true` (default false, also in compose and `.env.example`). `NODE_ENV` is not used:
+compose defaults it to `development` on a real deployment. The config guard refuses the flag in
+production and on any `APP_URL` that is not loopback (the same pattern as `DEV_LOGIN_ENABLED`). Without
+the flag, with no complete `gmail` credential the runtime returns no transport and no sender: sync
+records `transport_unavailable` and a customer reply fails visibly as `channel_not_connected`. Once a
+complete credential has been seen the runtime never goes back to the fake, even with the flag: a revoked
+or half-edited credential reads as "not connected". If the credential store cannot be read, transport /
+sender calls throw a retryable error: the ingest event is retried, and the dispatcher backs off and,
+after `DELIVERY_MAX_ATTEMPTS`, fails the delivery as `channel_credentials_unavailable` (certain
+non-delivery, visible to the agent). The tests and the e2e stack (`tools/e2e-stack/up.mjs`) set the flag.

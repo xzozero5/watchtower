@@ -72,6 +72,9 @@ x-app-env: &app-env
   PUBSUB_TOPIC: ${PUBSUB_TOPIC:-}
   GMAIL_PUSH_AUDIENCE: ${GMAIL_PUSH_AUDIENCE:-}
   GMAIL_PUSH_SERVICE_ACCOUNT: ${GMAIL_PUSH_SERVICE_ACCOUNT:-}
+  # The in-memory Gmail (nothing is really sent): an explicit opt-in for a laptop, refused at boot in
+  # production and on a non-loopback APP_URL. Off here: without a Gmail credential a reply fails visibly.
+  GMAIL_MOCK_ENABLED: ${GMAIL_MOCK_ENABLED:-false}
   GMAIL_PUSH_RATE_PER_MINUTE: ${GMAIL_PUSH_RATE_PER_MINUTE:-600}
   GMAIL_HEARTBEAT_STALE_MINUTES: ${GMAIL_HEARTBEAT_STALE_MINUTES:-120}
   GMAIL_FULL_SYNC_DAYS: ${GMAIL_FULL_SYNC_DAYS:-7}

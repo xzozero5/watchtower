@@ -130,6 +130,9 @@ export const phase1EnvShape = {
   PUBSUB_SUBSCRIPTION: optionalString,
   GMAIL_PUSH_AUDIENCE: optionalString,
   GMAIL_PUSH_SERVICE_ACCOUNT: optionalString,
+  // The in-memory Gmail (a fake mailbox that "sends" nothing) stands in for Gmail only on an explicit
+  // opt-in, like DEV_LOGIN_ENABLED: see the guard below. Never the default, never in production.
+  GMAIL_MOCK_ENABLED: z.preprocess(emptyToUndefined, z.stringbool().default(false)),
   // LINE Login for customers (T-103d): a separate channel from the Messaging API one above.
   LINE_LOGIN_CHANNEL_ID: optionalString,
   LINE_LOGIN_CHANNEL_SECRET: optionalString,
@@ -312,6 +315,17 @@ function applyGuards(env: Readonly<Record<string, unknown>>, ctx: z.RefinementCt
     // A copied .env.example on a reachable host must not hand out head accounts (T-010 C-16).
     if (!isLoopbackUrl(text(env, 'APP_URL') ?? '')) {
       fail('DEV_LOGIN_ENABLED', 'must not be true unless APP_URL is a loopback address');
+    }
+  }
+  // The fake mailbox accepts a customer's reply and sends nothing. NODE_ENV alone cannot tell a
+  // laptop from a self-hosted deployment (compose defaults it to development), so the opt-in is
+  // refused in production and on any APP_URL that is not this machine (N-1, T-102 review).
+  if (env.GMAIL_MOCK_ENABLED === true) {
+    if (env.NODE_ENV === 'production') {
+      fail('GMAIL_MOCK_ENABLED', 'must not be true in production');
+    }
+    if (!isLoopbackUrl(text(env, 'APP_URL') ?? '')) {
+      fail('GMAIL_MOCK_ENABLED', 'must not be true unless APP_URL is a loopback address');
     }
   }
   const breakGlassEmail = text(env, 'BREAK_GLASS_EMAIL');

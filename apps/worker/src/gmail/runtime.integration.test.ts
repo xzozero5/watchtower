@@ -2,6 +2,7 @@ import { generateKeyPairSync, randomUUID } from 'node:crypto';
 
 import { ChannelError, gmail } from '@watchtower/channels';
 import { createDatabase, schema, type Database } from '@watchtower/db';
+import { eq } from 'drizzle-orm';
 import { createTestDatabase, type TestDatabase } from '@watchtower/db/testing';
 import { disableNetConnect } from '@watchtower/shared/testing';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -310,5 +311,79 @@ describe('gmail runtime in production (fakes not allowed)', () => {
     failing = true;
     clock = 5000;
     expect(await runtime.mode()).toBe('live');
+  });
+});
+
+describe('gmail runtime never falls back from live to mock (N-1)', () => {
+  const account = () => ({ id: accountId, type: 'gmail', name: 'x' });
+
+  it('answers "not connected" when the credential is revoked after it was live, even with the mock opt-in', async () => {
+    let clock = 0;
+    let configured = true;
+    const runtime = createGmailRuntime({
+      database,
+      logger,
+      allowMock: true,
+      refreshMs: 1000,
+      now: () => clock,
+      credentials: {
+        configured: () => Promise.resolve(configured),
+        read: () => Promise.resolve({ serviceAccountJson: KEY_JSON, impersonateUser: MAILBOX }),
+      },
+      fetch: () => Promise.reject(new Error('not used')),
+    });
+    expect(await runtime.mode()).toBe('live');
+    expect(await runtime.transportFor({ id: accountId })).toBeInstanceOf(gmail.LiveGmailTransport);
+    expect(await runtime.senderFor(account())).toBeDefined();
+
+    configured = false; // revoked or half-edited in the admin page
+    clock = 5000;
+    expect(await runtime.transportFor({ id: accountId })).toBeUndefined();
+    expect(await runtime.senderFor(account())).toBeUndefined();
+    // Not the fake either, whatever the state of the store says from now on.
+    configured = true;
+    clock = 10_000;
+    expect(await runtime.transportFor({ id: accountId })).toBeInstanceOf(gmail.LiveGmailTransport);
+  });
+
+  it('still starts on the mock when it is opted in and no credential has ever been seen', async () => {
+    const runtime = createGmailRuntime({
+      database,
+      logger,
+      allowMock: true,
+      credentials: source(false).credentials,
+    });
+    expect(await runtime.transportFor({ id: accountId })).toBeInstanceOf(gmail.FakeGmailTransport);
+  });
+
+  it('includes the mailbox address in the transport key: a mismatch is re-evaluated when the address is fixed', async () => {
+    const target = `target-${randomUUID().slice(0, 8)}@desk.example.test`;
+    const [other] = await testDb.owner.db
+      .insert(schema.channelAccount)
+      .values({ type: 'gmail', name: 'Address changes' })
+      .returning({ id: schema.channelAccount.id });
+    const id = other?.id ?? '';
+    await testDb.owner.db
+      .insert(schema.gmailAccountState)
+      .values({ channelAccountId: id, emailAddress: `wrong-${target}` });
+    let clock = 0;
+    const runtime = createGmailRuntime({
+      database,
+      logger,
+      refreshMs: 1000,
+      now: () => clock,
+      credentials: source(true, target).credentials,
+      fetch: () => Promise.reject(new Error('not used')),
+    });
+    expect(await runtime.transportFor({ id })).toBeUndefined(); // the credential delegates to `target`
+    clock = 1500;
+    expect(await runtime.transportFor({ id })).toBeUndefined();
+
+    await testDb.owner.db
+      .update(schema.gmailAccountState)
+      .set({ emailAddress: target })
+      .where(eq(schema.gmailAccountState.channelAccountId, id));
+    clock = 3000;
+    expect(await runtime.transportFor({ id })).toBeInstanceOf(gmail.LiveGmailTransport);
   });
 });

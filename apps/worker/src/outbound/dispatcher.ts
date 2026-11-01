@@ -27,7 +27,7 @@ import {
 
 import type { WorkerLogger } from '../logger.js';
 import type { RealtimeSink } from '../realtime.js';
-import type { OutboundChannels } from './channels.js';
+import type { GmailSender, OutboundChannels } from './channels.js';
 
 /**
  * The dispatcher (ADR-010 section 3): takes one due `outbound_delivery`, re-checks that the send is
@@ -275,7 +275,26 @@ export function createOutboundDispatcher(deps: DispatcherDeps) {
     delivery: OutboundDeliveryRow,
     context: DeliveryContext,
   ): Promise<DispatchOutcome> {
-    const sender = await deps.channels.gmail(context.account);
+    let sender: GmailSender | undefined;
+    try {
+      sender = await deps.channels.gmail(context.account);
+    } catch (error) {
+      // The credentials could not be read (store down). Nothing was dispatched, so this is a
+      // certain non-delivery: back off and try again, and after DELIVERY_MAX_ATTEMPTS fail it where
+      // the agent sees it (`channel_credentials_unavailable`) instead of leaving it in "sending".
+      logger.warn({ err: error, deliveryId: delivery.id }, 'gmail sender unavailable');
+      return conclude(
+        delivery,
+        decideFailure(
+          {
+            kind: 'credentials_unavailable',
+            retryable: error instanceof ChannelError ? error.retryable : true,
+            outcomeUnknown: false,
+          },
+          { route: null, attempts: delivery.attempts },
+        ),
+      );
+    }
     if (sender === undefined) return failNow(delivery, 'channel_not_connected');
     const { ticket, message, parent, requester } = context;
     const recipient = parent?.fromAddress ?? requester?.emails[0] ?? null;

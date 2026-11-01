@@ -68,8 +68,8 @@ export function defaultGmailRuntime(
     database,
     logger,
     credentials: gmailCredentialSource(store),
-    // Fakes are for development and tests; a production worker without a credential is "not connected".
-    allowMock: config.NODE_ENV !== 'production',
+    // The fake mailbox is an explicit opt-in (GMAIL_MOCK_ENABLED); otherwise "not connected".
+    allowMock: config.GMAIL_MOCK_ENABLED,
   });
 }
 

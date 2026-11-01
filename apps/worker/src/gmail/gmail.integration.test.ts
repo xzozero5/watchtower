@@ -6,6 +6,7 @@ import { createTestDatabase, type TestDatabase } from '@watchtower/db/testing';
 import { createDomain, createPolicyGate, type Domain } from '@watchtower/domain';
 import {
   AUDIT_ACTIONS,
+  DELIVERY_MAX_ATTEMPTS,
   GMAIL_JOBS,
   GMAIL_QUEUES,
   INBOUND_QUEUES,
@@ -697,5 +698,56 @@ describe('a production worker that is not connected to Gmail', () => {
     // Still pending, not failed: the next attempt (or the store coming back) processes it.
     const [after] = (await events()).filter((row) => row.id === event?.id);
     expect(after?.status).toBe('pending');
+  });
+
+  it('backs off and then fails the reply where the agent sees it when the credential store stays unreadable (N-2)', async () => {
+    const deliveryId = await ticketWithPendingReply();
+    const unreadable = createGmailRuntime({
+      database,
+      logger,
+      credentials: {
+        configured: () => Promise.reject(new Error('database unavailable')),
+        read: () => Promise.reject(new Error('unreachable')),
+      },
+    });
+    const dispatcher = createOutboundDispatcher({
+      database,
+      domain,
+      channels: { ...NO_CHANNELS, gmail: (account) => unreadable.senderFor(account) },
+      appHost: HOST,
+      realtime: { publish: () => Promise.resolve() },
+      logger,
+    });
+    const deliveryRow = async () => {
+      const [row] = await owner()
+        .select()
+        .from(schema.outboundDelivery)
+        .where(eq(schema.outboundDelivery.id, deliveryId));
+      if (!row) throw new Error('no delivery');
+      return row;
+    };
+    let outcome: Awaited<ReturnType<typeof dispatcher.dispatch>> = { status: 'skipped' };
+    for (let attempt = 1; attempt <= DELIVERY_MAX_ATTEMPTS; attempt += 1) {
+      clock.now = new Date(T0.getTime() + attempt * 3_600_000);
+      outcome = await dispatcher.dispatch(deliveryId);
+      if (attempt < DELIVERY_MAX_ATTEMPTS) {
+        expect(outcome.status).toBe('retry');
+        expect(await deliveryRow()).toMatchObject({
+          state: 'scheduled',
+          errorCode: 'channel_credentials_unavailable',
+        });
+      }
+    }
+    expect(outcome).toEqual({
+      status: 'failed',
+      errorCode: 'channel_credentials_unavailable',
+      outcomeUnknown: false,
+    });
+    expect(await deliveryRow()).toMatchObject({
+      state: 'failed',
+      attempts: DELIVERY_MAX_ATTEMPTS,
+      outcomeUnknown: false,
+    });
+    expect(fake.sent).toHaveLength(0);
   });
 });

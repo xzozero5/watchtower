@@ -105,6 +105,7 @@ describe('.env.example', () => {
   it('lists every Phase 1 variable, empty unless it has a harmless local default', () => {
     const defaults = new Map([
       ['PUBSUB_EMULATOR_HOST', 'localhost:8085'],
+      ['GMAIL_MOCK_ENABLED', 'false'],
       ['OUTBOUND_UNDO_SECONDS', '5'],
       ['EMBEDDING_PROVIDER', 'mock'],
       ['AI_BUDGET_ALERT_PERCENT', '80'],

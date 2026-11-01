@@ -8,7 +8,7 @@
 --   last_sync_at / last_full_sync_at / last_error_code: what the worker did last. A code never holds text from Gmail.
 -- The application role has the default grants of 0001 (SELECT, INSERT, UPDATE, DELETE): the receiver (api)
 -- writes last_push_at, the worker writes the rest.
--- Reversible: see 0014_gmail_account_state.down.sql.
+-- Reversible: see 0015_gmail_account_state.down.sql.
 
 CREATE TABLE gmail_account_state (
   channel_account_id uuid PRIMARY KEY REFERENCES channel_account (id) ON DELETE CASCADE,

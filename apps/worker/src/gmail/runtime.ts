@@ -17,9 +17,9 @@ import {
  * on mock or live.
  *
  *  - mock (no Gmail credential configured, ADR-004 order: environment, then the encrypted store),
- *    ONLY when `allowMock` (NODE_ENV is not production): one `FakeGmailTransport` per mailbox, in
+ *    ONLY when `allowMock` (`GMAIL_MOCK_ENABLED=true`, never in production): one `FakeGmailTransport` per mailbox, in
  *    memory. Nothing leaves the machine and no live client is constructed. This is what every test
- *    and a developer's machine runs. In production the same situation yields no transport and no
+ *    and a developer's machine runs. Without the opt-in the same situation yields no transport and no
  *    sender (`channel_not_connected`), and an unreadable credential store is a retryable error.
  *  - live (the `gmail` integration is complete in the credential store): a `LiveGmailTransport`
  *    over `fetch` with a service-account token (domain-wide delegation, `service-account.ts`), for
@@ -53,9 +53,10 @@ export interface GmailRuntimeDeps {
   /** Absent: no credential is ever read (mock when `allowMock`, else nothing is reachable). */
   readonly credentials?: GmailCredentialSource;
   /**
-   * The in-memory mailbox may stand in for Gmail (development and tests). False in production: a
-   * worker that is not connected to Gmail must say so (`channel_not_connected`), never pretend to send.
-   * Default false.
+   * The in-memory mailbox may stand in for Gmail (development and tests): the explicit opt-in
+   * `GMAIL_MOCK_ENABLED`, refused at boot in production and on a non-loopback APP_URL. Off: a worker
+   * that is not connected to Gmail must say so (`channel_not_connected`), never pretend to send.
+   * Even when on, it is off for good once a complete credential has been seen. Default false.
    */
   readonly allowMock?: boolean;
   /** Live mode only. Default: the global `fetch`. */
@@ -140,12 +141,21 @@ export function createMockGmailRuntime(
 }
 
 /** Sha-256 of what the credential says; kept in memory to tell "the same key" from "a rotated key". Never logged. */
-function fingerprintOf(credentials: ServiceAccountCredentials): string {
-  return createHash('sha256')
-    .update(credentials.serviceAccountJson)
-    .update('\0')
-    .update(credentials.impersonateUser.trim().toLowerCase())
-    .digest('hex');
+function fingerprintOf(
+  credentials: ServiceAccountCredentials,
+  address: string | undefined,
+): string {
+  return (
+    createHash('sha256')
+      .update(credentials.serviceAccountJson)
+      .update('\0')
+      .update(credentials.impersonateUser.trim().toLowerCase())
+      .update('\0')
+      // The mailbox of the account is part of the key: a changed address, or one that was missing or
+      // wrong when the transport was decided, is looked at again instead of being remembered.
+      .update(address ?? '')
+      .digest('hex')
+  );
 }
 
 const unavailable = (operation: string): ChannelError =>
@@ -177,6 +187,10 @@ export function createGmailRuntime(deps: GmailRuntimeDeps): GmailRuntime {
   const source: GmailCredentialSource = deps.credentials;
 
   let decided: { mode: GmailMode; at: number } | null = null;
+  // Once a complete credential has been seen the fake is off for good: a credential that is revoked
+  // or half-edited later must read as "not connected", never as a mailbox that accepts replies.
+  let sawLive = false;
+  const mockAllowed = (): boolean => allowMock && !sawLive;
   const live = new Map<
     string,
     { transport: gmail.GmailTransport | undefined; fingerprint: string; at: number }
@@ -195,8 +209,12 @@ export function createGmailRuntime(deps: GmailRuntimeDeps): GmailRuntime {
     } catch (error) {
       deps.logger.error({ err: error }, 'gmail credential status unavailable');
       if (decided !== null) next = decided.mode;
-      else if (allowMock) next = 'mock';
+      else if (mockAllowed()) next = 'mock';
       else throw unavailable('credentials.status');
+    }
+    if (next === 'live') sawLive = true;
+    if (next === 'mock' && sawLive) {
+      deps.logger.error('gmail credential is gone or incomplete after it was live; not connected');
     }
     if (next !== decided?.mode) deps.logger.info({ mode: next }, 'gmail mode');
     decided = { mode: next, at: now() };
@@ -218,7 +236,7 @@ export function createGmailRuntime(deps: GmailRuntimeDeps): GmailRuntime {
         mailboxOf(deps.database, accountId),
         source.read(),
       ]);
-      fingerprint = fingerprintOf(credentials);
+      fingerprint = fingerprintOf(credentials, address);
       if (cached !== undefined && cached.fingerprint === fingerprint) {
         live.set(accountId, { ...cached, at: now() });
         return cached.transport;
@@ -257,10 +275,10 @@ export function createGmailRuntime(deps: GmailRuntimeDeps): GmailRuntime {
     mode,
     async transportFor(account) {
       if ((await mode()) === 'live') return liveTransport(account.id);
-      return allowMock ? mock.transportFor(account) : undefined;
+      return mockAllowed() ? mock.transportFor(account) : undefined;
     },
     async senderFor(account) {
-      if ((await mode()) !== 'live') return allowMock ? mock.senderFor(account) : undefined;
+      if ((await mode()) !== 'live') return mockAllowed() ? mock.senderFor(account) : undefined;
       const [transport, address] = await Promise.all([
         liveTransport(account.id),
         mailboxOf(deps.database, account.id),

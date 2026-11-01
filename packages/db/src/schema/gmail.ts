@@ -4,7 +4,7 @@ import { boolean, check, pgTable, text, timestamp, uniqueIndex, uuid } from 'dri
 import { channelAccount } from './ticketing.js';
 
 /**
- * Mirrors migrations/0014_gmail_account_state.sql (T-102 b/c). The SQL file is the source of truth
+ * Mirrors migrations/0015_gmail_account_state.sql (T-102 b/c). The SQL file is the source of truth
  * (check constraints and comments live there); keep both in step by hand and let the integration
  * tests catch drift.
  */
