@@ -28,6 +28,11 @@ import {
 } from './credentials.js';
 import { VIEWS_AUDIT_ACTIONS, VIEWS_QUEUES, VIEWS_TICKET_EVENTS } from './views.js';
 import { ADMIN_AUDIT_ACTIONS, ADMIN_QUEUES, ADMIN_TICKET_EVENTS } from './admin.js';
+import {
+  CHANNEL_ACCOUNTS_AUDIT_ACTIONS,
+  CHANNEL_ACCOUNTS_QUEUES,
+  CHANNEL_ACCOUNTS_TICKET_EVENTS,
+} from './channel-accounts.js';
 
 export * from './inbound.js';
 export * from './outbound.js';
@@ -43,6 +48,7 @@ export * from './autonomy.js';
 export * from './credentials.js';
 export * from './views.js';
 export * from './admin.js';
+export * from './channel-accounts.js';
 export { assertDisjoint } from './compose.js';
 
 export const FEATURES = [
@@ -120,6 +126,12 @@ export const FEATURES = [
     ticketEvents: ADMIN_TICKET_EVENTS,
     queues: ADMIN_QUEUES,
   },
+  {
+    name: 'channelAccounts',
+    auditActions: CHANNEL_ACCOUNTS_AUDIT_ACTIONS,
+    ticketEvents: CHANNEL_ACCOUNTS_TICKET_EVENTS,
+    queues: CHANNEL_ACCOUNTS_QUEUES,
+  },
 ] as const;
 
 export type FeatureName = (typeof FEATURES)[number]['name'];
@@ -140,6 +152,7 @@ export const FEATURE_AUDIT_ACTIONS = {
   ...CREDENTIALS_AUDIT_ACTIONS,
   ...VIEWS_AUDIT_ACTIONS,
   ...ADMIN_AUDIT_ACTIONS,
+  ...CHANNEL_ACCOUNTS_AUDIT_ACTIONS,
 } as const;
 
 /** Every feature's ticket event types in one record. Composed into `TICKET_EVENT_TYPES`. */
@@ -158,6 +171,7 @@ export const FEATURE_TICKET_EVENTS = {
   ...CREDENTIALS_TICKET_EVENTS,
   ...VIEWS_TICKET_EVENTS,
   ...ADMIN_TICKET_EVENTS,
+  ...CHANNEL_ACCOUNTS_TICKET_EVENTS,
 } as const;
 
 /** Every feature's queue names in one record. Composed into `QUEUE_NAMES`. */
@@ -176,4 +190,5 @@ export const FEATURE_QUEUES = {
   ...CREDENTIALS_QUEUES,
   ...VIEWS_QUEUES,
   ...ADMIN_QUEUES,
+  ...CHANNEL_ACCOUNTS_QUEUES,
 } as const;

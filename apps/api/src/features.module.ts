@@ -13,6 +13,7 @@ import { ShiftsModule } from './shifts/shifts.module.js';
 import { AutonomyModule } from './autonomy/autonomy.module.js';
 import { CredentialsModule } from './credentials/credentials.module.js';
 import { ViewsModule } from './views/views.module.js';
+import { ChannelAccountsModule } from './channel-accounts/channel-accounts.module.js';
 
 /**
  * The Phase 1 feature modules (T-123a), imported once so that parallel tasks add files inside
@@ -33,6 +34,7 @@ import { ViewsModule } from './views/views.module.js';
     AutonomyModule,
     CredentialsModule,
     ViewsModule,
+    ChannelAccountsModule,
   ],
 })
 export class FeaturesModule {}
