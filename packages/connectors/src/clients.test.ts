@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest';
+import { disableNetConnect } from '@watchtower/shared/testing';
+import { afterAll, describe, expect, it } from 'vitest';
 
 import {
   dataContract,
@@ -18,6 +19,13 @@ import { FakeRepoClient } from './repo/fake.js';
 import type { RepoClient } from './repo/types.js';
 
 const NOW = Date.parse('2026-03-10T12:00:00.000Z');
+
+// The fakes never open a connection: the whole suite runs with the network shut and proves nothing tried.
+const net = disableNetConnect();
+afterAll(() => {
+  expect(net.blocked()).toEqual([]);
+  net.restore();
+});
 
 logsContract('FakeLogsClient', () => new FakeLogsClient({ entries: SEEDED_LOGS }));
 metricsContract('FakeMetricsClient', () => new FakeMetricsClient({ clock: () => NOW }));
