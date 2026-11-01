@@ -1,5 +1,6 @@
 import {
   CLEANUP_JOBS,
+  CSAT_JOBS,
   GMAIL_JOBS,
   DISCORD_JOBS,
   LINE_JOBS,
@@ -133,6 +134,16 @@ export const SCHEDULES: readonly ScheduleRegistration[] = [
   // --- kb (T-107) ---
 
   // --- csat (T-110) ---
+  {
+    queue: QUEUE_NAMES.csat,
+    id: CSAT_JOBS.sweep,
+    // Surveys that are due, the one 48-hour reminder, and links that ran out, every minute.
+    repeat: { every: 60_000 },
+    job: {
+      name: CSAT_JOBS.sweep,
+      opts: { removeOnComplete: true, removeOnFail: { age: 24 * 3600 } },
+    },
+  },
 
   // --- shifts (T-111) ---
 

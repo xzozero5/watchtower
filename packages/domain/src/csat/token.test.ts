@@ -42,7 +42,7 @@ describe('survey link', () => {
     expect(verifyCsatToken(KEY, [parts[0], parts[1], later, parts[3]].join('.'), NOW)).toBeNull();
   });
 
-  it.each(['', 'x', 'wtc1', 'wtc1.a.b.c', 'wtp1.abc.def.ghi', `${'a'.repeat(5000)}`])(
+  it.each(['', 'x', 'wtc1', 'wtc1.a.b.c', 'wtp1.abc.def.ghi', 'a'.repeat(5000)])(
     'refuses malformed input %#',
     (token) => {
       expect(verifyCsatToken(KEY, token, NOW)).toBeNull();
