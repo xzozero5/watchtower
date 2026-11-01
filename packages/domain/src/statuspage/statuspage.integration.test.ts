@@ -123,6 +123,7 @@ describe('publishing a post (N3)', () => {
   it('writes a draft from an incident out of the template: nothing of the incident reaches the words', async () => {
     const lead = await addStaff(env, 'lead');
     const componentId = await component('checkout');
+    const hiddenId = await component('hidden-one', false);
     const secret = 'Primary database failover in region xyz-internal';
     const { value: incident } = await env.tx((tx) =>
       env.domain.incidents.create(tx, env.ctx(lead.actor), {
@@ -141,7 +142,7 @@ describe('publishing a post (N3)', () => {
     const { value } = await env.tx((tx) =>
       env.domain.statusPage.draftPostFromIncident(tx, env.ctx(lead.actor), {
         incidentId: incident.incidentId,
-        componentIds: [componentId],
+        componentIds: [componentId, hiddenId],
         phase: 'identified',
         impact: 'major',
         locale: 'en',
@@ -151,6 +152,7 @@ describe('publishing a post (N3)', () => {
     expect(post?.incidentId).toBe(incident.incidentId);
     expect(post?.state).toBe('draft');
     expect(post?.body).toContain('Component checkout');
+    expect(post?.body).not.toContain('Component hidden-one');
     for (const text of [post?.title ?? '', post?.body ?? '']) {
       expect(text).not.toContain('failover');
       expect(text).not.toContain('migration');

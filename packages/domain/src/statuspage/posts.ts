@@ -11,7 +11,7 @@ import {
   type DraftFromIncident,
   type UpdateStatusPost,
 } from '@watchtower/shared';
-import { eq, inArray, sql } from 'drizzle-orm';
+import { and, eq, inArray, sql } from 'drizzle-orm';
 
 import { recordAuditInTx } from '../audit.js';
 import { DomainError, badRequest, conflict, notFound } from '../errors.js';
@@ -101,7 +101,10 @@ export async function draftStatusPostFromIncident(
   const names = await tx
     .select({ name: schema.statusComponent.name })
     .from(schema.statusComponent)
-    .where(inArray(schema.statusComponent.id, componentIds))
+    // Only components the page shows are named: the name of a hidden one is not for the public.
+    .where(
+      and(inArray(schema.statusComponent.id, componentIds), eq(schema.statusComponent.public, true)),
+    )
     .orderBy(schema.statusComponent.position, schema.statusComponent.name);
   const wording = statusPostTemplate({
     phase: parsed.data.phase,
