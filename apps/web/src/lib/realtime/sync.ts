@@ -2,6 +2,7 @@ import type { QueryClient } from '@tanstack/react-query';
 import type { RealtimeEvent } from '@watchtower/shared';
 
 import type { Endpoints } from '@/lib/api/endpoints';
+import { aiKey } from '@/lib/ai/queries';
 import { storeTicket, ticketKeys } from '@/lib/tickets/queries';
 
 interface CachedPage {
@@ -38,7 +39,8 @@ export interface SyncDeps {
  * text on the wire), so each one is a cue to fetch what changed:
  *  - `ticket.created`: counted for the "N new" pill; the list is not touched, so it never moves
  *    under the cursor;
- *  - `ticket.updated`: the ticket is re-read and its row is replaced in place;
+ *  - `ticket.updated`: the ticket is re-read and its row is replaced in place; when `changed` has
+ *    `ai`, the AI brief of the ticket is re-read too;
  *  - `message.created`: the timeline of that ticket is refetched if this tab has it.
  */
 export function applyRealtimeEvent(event: RealtimeEvent, deps: SyncDeps): void {
@@ -48,6 +50,11 @@ export function applyRealtimeEvent(event: RealtimeEvent, deps: SyncDeps): void {
       deps.onNewTicket(event.ticketId);
       return;
     case 'ticket.updated': {
+      // The AI made progress or finished (T-108d): read the brief again. Nothing happens when this
+      // tab never opened the brief of the ticket.
+      if (event.data.changed.includes('ai')) {
+        void queryClient.invalidateQueries({ queryKey: aiKey(deps.userId, event.ticketKey) });
+      }
       if (!isTicketCached(queryClient, deps.userId, event.ticketId, event.ticketKey)) return;
       api
         .getTicket(event.ticketKey)
