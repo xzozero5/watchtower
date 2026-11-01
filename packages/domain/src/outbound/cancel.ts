@@ -77,7 +77,15 @@ export async function cancelSend(
     // The approval belonged to this send; the draft is waiting for a person again.
     await tx
       .update(schema.aiDraft)
-      .set({ status: 'draft', approvedBy: null, approvedAt: null })
+      .set({
+      status: 'draft',
+      approvedBy: null,
+      approvedAt: null,
+      disposition: null,
+      editDistance: null,
+      resolvedBy: null,
+      resolvedAt: null,
+    })
       .where(and(eq(schema.aiDraft.id, delivery.aiDraftId), eq(schema.aiDraft.status, 'approved')));
   }
   const [ticket] = await tx

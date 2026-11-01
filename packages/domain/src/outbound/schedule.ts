@@ -181,7 +181,15 @@ export async function scheduleCustomerSend(
     if (actorId === null) throw denied('approval_missing', 'An AI draft needs a person to send it');
     const approved = await tx
       .update(schema.aiDraft)
-      .set({ status: 'approved', approvedBy: actorId, approvedAt: now })
+      .set({
+        status: 'approved',
+        approvedBy: actorId,
+        approvedAt: now,
+        disposition: 'approved',
+        editDistance: 0,
+        resolvedBy: actorId,
+        resolvedAt: now,
+      })
       .where(and(eq(schema.aiDraft.id, draft.id), eq(schema.aiDraft.status, 'draft')))
       .returning({ id: schema.aiDraft.id });
     if (approved.length === 0) throw conflict('This AI draft was just used');
@@ -269,7 +277,15 @@ export async function approveAiDraftSent(
   const now = ctx.now();
   await tx
     .update(schema.aiDraft)
-    .set({ status: 'sent', approvedBy: actorId, approvedAt: now })
+    .set({
+      status: 'sent',
+      approvedBy: actorId,
+      approvedAt: now,
+      disposition: 'approved',
+      editDistance: 0,
+      resolvedBy: actorId,
+      resolvedAt: now,
+    })
     .where(eq(schema.aiDraft.id, draft.id));
   await recordAuditInTx(tx, ctx, fx, {
     action: AUDIT_ACTIONS.outboundSent,

@@ -206,7 +206,15 @@ async function reopenDraft(tx: DbTransaction, delivery: OutboundDeliveryRow): Pr
   if (delivery.aiDraftId === null) return;
   await tx
     .update(schema.aiDraft)
-    .set({ status: 'draft', approvedBy: null, approvedAt: null })
+    .set({
+      status: 'draft',
+      approvedBy: null,
+      approvedAt: null,
+      disposition: null,
+      editDistance: null,
+      resolvedBy: null,
+      resolvedAt: null,
+    })
     .where(and(eq(schema.aiDraft.id, delivery.aiDraftId), eq(schema.aiDraft.status, 'approved')));
 }
 
@@ -373,6 +381,10 @@ export async function recordSent(
         status: 'sent',
         approvedBy: delivery.approvedBy,
         approvedAt: sql`COALESCE(${schema.aiDraft.approvedAt}, ${now})`,
+        disposition: 'approved',
+        editDistance: 0,
+        resolvedBy: delivery.approvedBy,
+        resolvedAt: sql`COALESCE(${schema.aiDraft.resolvedAt}, ${now})`,
       })
       .where(
         and(

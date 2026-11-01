@@ -7,6 +7,7 @@ import { badRequest, notFound, ticketNotOpen } from '../errors.js';
 import { approveAiDraftSent, scheduleCustomerSend, usesDispatcher } from '../outbound/schedule.js';
 import { requireCustomerSend } from '../policy.js';
 import type { MessageRow, OutboundDeliveryRow, TicketRow } from '../rows.js';
+import { recordDraftEdited } from '../ai/drafts.js';
 import { Effects, type DbTransaction, type DomainContext, type DomainResult } from '../types.js';
 import { applyStatus } from './status.js';
 import {
@@ -88,6 +89,12 @@ export async function replyToTicket(
   if (fromCustomer && body.aiDraftId !== undefined) {
     throw badRequest('A client cannot send an AI draft');
   }
+  if (fromCustomer && body.editedFromDraftId !== undefined) {
+    throw badRequest('A client cannot edit an AI draft');
+  }
+  if (body.aiDraftId !== undefined && body.editedFromDraftId !== undefined) {
+    throw badRequest('Send a draft as it is (aiDraftId) or as an edit (editedFromDraftId), not both');
+  }
   if (!fromCustomer && ctx.actor.type === 'ai') {
     await requireCustomerSend(ctx, {
       ticketId: ticket.id,
@@ -148,6 +155,16 @@ export async function replyToTicket(
   });
   fx.emit(messageEvent(ctx, ticket, message));
   if (firstResponse) fx.emit(ticketEvent(ctx, 'ticket.updated', ticket, ['sla']));
+
+  // The person started from an AI draft and sent their own text: keep the draft and the distance.
+  if (sender.kind === 'staff' && body.editedFromDraftId !== undefined) {
+    await recordDraftEdited(tx, ctx, fx, {
+      ticketId: ticket.id,
+      messageId: message.id,
+      bodyText: message.bodyText,
+      draftId: body.editedFromDraftId,
+    });
+  }
 
   // Customer-bound text goes through the policy gate and, on Gmail and LINE, waits in a delivery
   // that a person can undo (ADR-010). A refusal fails the whole request: nothing is saved.

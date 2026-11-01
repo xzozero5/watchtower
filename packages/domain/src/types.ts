@@ -41,6 +41,11 @@ export interface DomainConfig {
  */
 export interface DomainContext {
   readonly actor: Actor;
+  /**
+   * The person who asked an AI actor to do this (T-108e): the user who resolved the ticket that an AI
+   * turned into a draft article. Recorded on what the AI writes, and that person may not approve it.
+   */
+  readonly onBehalfOf?: string | null | undefined;
   /** Where the audit rows say the action came from (api: the request; worker: nulls). */
   readonly auditMeta: { readonly ip: string | null; readonly requestId: string | null };
   readonly now: () => Date;

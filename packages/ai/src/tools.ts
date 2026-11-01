@@ -80,7 +80,7 @@ export function createToolRegistry(allowList: readonly ToolAllowRule[]): ToolReg
         list(): ToolSummary[] {
           return [...granted].sort().map((name) => {
             const tool = tools.get(name);
-            return { name, description: tool?.description ?? '' };
+            return { name, description: tool?.description ?? '', mock: tool?.mock === true };
           });
         },
 
@@ -112,7 +112,11 @@ export function createToolRegistry(allowList: readonly ToolAllowRule[]): ToolReg
 
           let result: unknown;
           try {
-            result = await tool.execute(input.data, { ...scope, abortSignal: options.abortSignal });
+            result = await tool.execute(input.data, {
+              ...scope,
+              abortSignal: options.abortSignal,
+              ticketId: options.ticketId ?? null,
+            });
           } catch (error) {
             record(false, error instanceof Error ? error.name : 'UnknownError');
             throw error;
