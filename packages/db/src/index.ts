@@ -1,7 +1,9 @@
 export const packageName = '@watchtower/db';
 
 export {
+  AI_READONLY_ROLE_GROUP,
   APP_ROLE_GROUP,
+  provisionAiReadOnlyRole,
   provisionAppRole,
   scramVerifier,
   type AppRoleOptions,
