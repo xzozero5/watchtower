@@ -127,6 +127,9 @@ export async function recordTicketEvent(
     actorId: actor.id,
     visibility,
     payload,
+    // Statement time, like a message (`MESSAGE_CLOCK`): an event recorded after a message in the same
+    // transaction must not sort before it.
+    createdAt: MESSAGE_CLOCK,
   });
 }
 
@@ -231,7 +234,7 @@ export async function findByExternalId(
 }
 
 /**
- * When a message happened: the database clock, as on `ticket_event`. The timeline orders the two
+ * When a message or an event happened: the database clock (`ticket_event` uses it too). The timeline orders the two
  * tables together, and this process does not share a clock with the database. Statement time, so a
  * message stays after the event its transaction opened with.
  */
@@ -243,7 +246,7 @@ export const MESSAGE_CLOCK = sql`clock_timestamp()`;
  */
 export async function insertMessage(
   tx: DbTransaction,
-  values: typeof schema.message.$inferInsert,
+  values: Omit<typeof schema.message.$inferInsert, 'createdAt'>,
   ticketPatch: Partial<typeof schema.ticket.$inferInsert>,
 ): Promise<{ message: MessageRow; touched: TicketRow | undefined }> {
   const [message] = await tx

@@ -52,6 +52,10 @@ export async function startDomainTest(
         actor,
         auditMeta: { ip: '203.0.113.7', requestId: 'req-test' },
       }),
+      // A test that sets its own clock means that clock for everything, unless it says otherwise.
+      ...(overrides.now !== undefined && overrides.databaseClock === undefined
+        ? { databaseClock: false }
+        : {}),
       ...overrides,
     }),
     async close() {

@@ -40,6 +40,10 @@ snapshot สั้นสำหรับ cold start อยู่ที่ `HANDOF
 
 ## Log
 
+## 2026-11-02 05:19 (Asia/Bangkok) — main thread — T-122f outbound hardening, DB clock for hold and claim ปิด
+- test: main thread รันเองบน Windows: lint, typecheck, unit ผ่าน · integration db 291, domain 341, api 732, worker 197 · e2e 143 · full-stack 23 · compose healthy `[TESTED]`
+- ค้าง/ไม่ยืนยัน: P2 สองข้อจาก review ต้องแก้ก่อนเปิด LINE push จริง (ลง T-125 แล้ว)
+
 ## 2026-11-02 04:56 (Asia/Bangkok) — main thread — T-116c integrations admin page ปิด
 - test: main thread รันเองบน Windows: lint, typecheck, unit ผ่าน · integration db 291, domain 323, api 731, worker 191 · e2e 143 · full-stack 23 · compose healthy `[TESTED]`
 - ค้าง/ไม่ยืนยัน: ยังไม่ทดสอบกับ API จริงในหน้านี้ · ไม่มี reason ใน destructive action
