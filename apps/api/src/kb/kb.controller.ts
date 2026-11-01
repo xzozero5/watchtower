@@ -26,6 +26,7 @@ import {
   kbVersionParamSchema,
   kbVersionSchema,
   publishKbArticleSchema,
+  reviewKbBreakGlassSchema,
   updateKbArticleSchema,
   type BreakGlassPublishKbArticle,
   type CreateKbArticle,
@@ -34,6 +35,7 @@ import {
   type KbSearchQuery,
   type KbTransition,
   type PublishKbArticle,
+  type ReviewKbBreakGlass,
   type UpdateKbArticle,
 } from '@watchtower/shared';
 import type { z } from 'zod';
@@ -49,6 +51,7 @@ import { forbidden } from '../auth/http-errors.js';
 import { RateLimiter } from '../auth/rate-limiter.js';
 import { parseResponse } from '../common/zod-openapi.js';
 import { UnitOfWorkService } from '../realtime/unit-of-work.js';
+import { actorOf } from './kb-actor.js';
 import { KbService } from './kb.service.js';
 
 type IdParam = z.infer<typeof idParamSchema>;
@@ -68,8 +71,6 @@ const STAFF_SEARCH_PER_MINUTE = 60;
 function staffOnly(principal: Principal): void {
   if (principal.orgScope.kind !== 'all') throw forbidden('This is for staff accounts');
 }
-
-const actorOf = (principal: Principal) => ({ type: 'user' as const, id: principal.userId });
 
 @ApiTags('kb')
 @Controller('v1/kb')
@@ -263,7 +264,9 @@ export class KbController {
   @ApiOperation({
     summary: 'Move an article between draft, in review and deprecated',
     description:
-      'draft to in_review (submit) and back, any unpublished or published article to ' +
+      'draft to in_review (submit) and back; on a published article `in_review` asks for a review ' +
+      'of its newest version and the article stays published and searchable (`reviewRequested`); ' +
+      'any unpublished or published article to ' +
       'deprecated (needs `kb.approve`), deprecated back to draft. Publishing has its own route. ' +
       'Deprecating a live article removes it from search at once.',
   })
@@ -295,9 +298,11 @@ export class KbController {
     summary: 'Publish the latest version (lead, head)',
     description:
       'Makes the version you looked at the live one, records you as reviewer and queues ' +
-      'indexing; it is searchable once the worker has embedded it. Two people: the article must ' +
-      'be in review (send it with `transition` to `in_review`), and you must not have written any ' +
-      'version newer than the live one (403 `policy_denied`: someone else publishes it). ' +
+      'indexing; it is searchable once the worker has embedded it. Two people: the version must ' +
+      'have been sent for review (`transition` to `in_review`; for a live article this marks the ' +
+      'newest version, the article stays live and `reviewRequested` is true; an edit afterwards ' +
+      'needs a new request), and you must not have written any version newer than the live one ' +
+      '(403 `policy_denied`: someone else publishes it). ' +
       '`version` must still be the latest and `visibility` / `orgIds` must still be the ' +
       "article's audience (409 otherwise), so nobody publishes text, or to people, they have not seen.",
   })
@@ -361,21 +366,27 @@ export class KbController {
   @ApiOperation({
     summary: 'Review a break-glass publication (lead, head)',
     description:
-      'Clears the `breakGlassPending` flag. Another approver than the one who published it: ' +
-      '403 for the publisher. List the waiting ones with `GET /v1/kb/articles?breakGlassPending=true`.',
+      'Clears the `breakGlassPending` flag. Send `breakGlassAt` as you saw it in `breakGlass.at` ' +
+      '(a newer break-glass publication answers 409, so a stale review cannot clear it). Another ' +
+      'approver than the one who published it, and one who wrote none of the text that went live: ' +
+      '403 `policy_denied` otherwise. List the waiting ones with ' +
+      '`GET /v1/kb/articles?breakGlassPending=true`.',
   })
   @ApiOkResponse({ standardSchema: kbArticleSchema })
   @ApiNotFoundResponse({ description: 'No such article' })
-  @ApiConflictResponse({ description: 'Nothing to review' })
-  @ApiForbiddenResponse({ description: 'You published it yourself' })
+  @ApiConflictResponse({
+    description: 'Nothing to review, or the publication changed since you looked',
+  })
+  @ApiForbiddenResponse({ description: 'You published it, or wrote part of it' })
   async reviewBreakGlass(
     @Param({ schema: idParamSchema }) params: IdParam,
+    @Body({ schema: reviewKbBreakGlassSchema }) body: ReviewKbBreakGlass,
     @CurrentPrincipal() principal: Principal,
   ) {
     staffOnly(principal);
     AuditScope.set({ targetId: params.id });
     const reviewed = await this.uow.run((uow) =>
-      this.kb.reviewBreakGlass(uow, actorOf(principal), params.id),
+      this.kb.reviewBreakGlass(uow, actorOf(principal), params.id, body),
     );
     return parseResponse(kbArticleSchema, reviewed);
   }

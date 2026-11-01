@@ -16,7 +16,7 @@ import {
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { startHarness, type Harness } from '../testing/harness.js';
-import { apiOrg, signIn, type ApiErrorBody, type Persona } from '../testing/ticketing.js';
+import { apiOrg, signIn, sleep, type ApiErrorBody, type Persona } from '../testing/ticketing.js';
 
 // Knowledge base routes (T-107c) on the real application module: Postgres (restricted application
 // role), Redis and the mock embedding provider. No worker runs here, so the chunks that the worker
@@ -80,7 +80,13 @@ const seen = (article: KbArticle, version = article.version) => ({
 
 /** The writer sends a draft for review, the way the web does. */
 async function submit(article: KbArticle): Promise<void> {
-  if ((await fresh(article.id)).status !== 'draft') return;
+  const row = await fresh(article.id);
+  // A draft goes to review; a live article with a newer version that nobody asked to review does too
+  // (it stays live). Otherwise there is nothing to send.
+  const needsRequest =
+    row.status === 'draft' ||
+    (row.status === 'published' && row.hasUnpublishedChanges && !row.reviewRequested);
+  if (!needsRequest) return;
   const response = await agent.client.post(`/v1/kb/articles/${article.id}/transition`, {
     to: 'in_review',
   });
@@ -578,26 +584,126 @@ describe('break-glass publishing', () => {
 
   it('is reviewed by another approver, not by the head who used it', async () => {
     const made = await create();
-    await glass(head, made, 'incident');
-    const own = await head.client.post<ApiErrorBody>(
-      `/v1/kb/articles/${made.id}/break-glass-review`,
-    );
+    const published = await glass(head, made, 'incident');
+    const at = published.body.breakGlass?.at ?? '';
+    expect(at).not.toBe('');
+    const review = (who: Persona, payload: Record<string, unknown> = { breakGlassAt: at }) =>
+      who.client.post<KbArticle & ApiErrorBody>(
+        `/v1/kb/articles/${made.id}/break-glass-review`,
+        payload,
+      );
+    const own = await review(head);
     expect(own.status).toBe(403);
-    expect((await agent.client.post(`/v1/kb/articles/${made.id}/break-glass-review`)).status).toBe(
-      403,
-    );
-    const done = await lead.client.post<KbArticle>(`/v1/kb/articles/${made.id}/break-glass-review`);
+    expect((await review(agent)).status).toBe(403);
+    // The review names the publication it looked at.
+    expect((await review(lead, {})).status).toBe(400);
+    expect((await review(lead, { breakGlassAt: 'yesterday' })).status).toBe(400);
+    const done = await review(lead);
     expect(done.status).toBe(200);
     expect(done.body).toMatchObject({
       breakGlassPending: false,
       breakGlass: { pending: false, by: head.userId, reviewedBy: lead.userId },
     });
-    const again = await lead.client.post(`/v1/kb/articles/${made.id}/break-glass-review`);
+    const again = await lead.client.post(`/v1/kb/articles/${made.id}/break-glass-review`, {
+      breakGlassAt: at,
+    });
     expect(again.status).toBe(409);
     const waiting = await agent.client.get<KbArticlePage>(
       '/v1/kb/articles?breakGlassPending=true&limit=100',
     );
     expect(waiting.body.items.map((item) => item.id)).not.toContain(made.id);
+  });
+
+  it('is not cleared by somebody who wrote the text that went live, nor by a stale review (P2-A, P3-E)', async () => {
+    const other = await signIn(h, 'lead');
+    const made = await create({ bodyMd: 'written by the lead' }, lead);
+    const first = await glass(head, made, 'first');
+    expect(first.body.breakGlass?.version).toBe(1);
+    const review = (who: Persona, at: string | null | undefined) =>
+      who.client.post<KbArticle & ApiErrorBody>(`/v1/kb/articles/${made.id}/break-glass-review`, {
+        breakGlassAt: at,
+      });
+    const writer = await review(lead, first.body.breakGlass?.at);
+    expect(writer.status).toBe(403);
+    expect(writer.body.message).toMatch(/another approver/);
+    expect((await fresh(made.id)).breakGlassPending).toBe(true);
+
+    // A second emergency publication replaces the first; a review of the first one is stale.
+    const edited = await head.client.patch<KbArticle>(`/v1/kb/articles/${made.id}`, {
+      bodyMd: 'second emergency',
+    });
+    expect(edited.status).toBe(200);
+    await sleep(15);
+    const second = await glass(head, edited.body, 'second');
+    expect(second.status, JSON.stringify(second.body)).toBe(200);
+    expect(second.body.breakGlass?.at).not.toBe(first.body.breakGlass?.at);
+    const stale = await review(other, first.body.breakGlass?.at);
+    expect(stale.status).toBe(409);
+    expect((await fresh(made.id)).breakGlassPending).toBe(true);
+    // The lead wrote version 1, which is before the second publication's baseline (live: version 1),
+    // so only version 2 counts now, and it is the head's.
+    expect((await review(other, second.body.breakGlass?.at)).status).toBe(200);
+  });
+});
+
+describe('a live article is changed by two people (P2-B, P3-C)', () => {
+  it('refuses widening by somebody who wrote a version, lets another approver, and audits it as its own action', async () => {
+    const made = await create({ bodyMd: 'live internal text' }, lead);
+    await lead.client.post(`/v1/kb/articles/${made.id}/transition`, { to: 'in_review' });
+    expect(
+      (await head.client.post(`/v1/kb/articles/${made.id}/publish`, seen(await fresh(made.id))))
+        .status,
+    ).toBe(200);
+
+    const denied = await lead.client.patch<ApiErrorBody>(`/v1/kb/articles/${made.id}`, {
+      visibility: 'customer',
+    });
+    expect(denied.status).toBe(403);
+    expect(denied.body.message).toMatch(/another approver/);
+    expect((await fresh(made.id)).visibility).toBe('internal');
+
+    const allowed = await head.client.patch<KbArticle>(`/v1/kb/articles/${made.id}`, {
+      visibility: 'customer',
+    });
+    expect(allowed.status).toBe(200);
+    expect(allowed.body.visibility).toBe('customer');
+    const audit = await pool().query<{ actor_id: string }>(
+      `SELECT actor_id FROM audit_log WHERE action = 'kb.article.audience_widen' AND target_id = $1 AND outcome = 'success'`,
+      [made.id],
+    );
+    expect(audit.rows.map((row) => row.actor_id)).toEqual([head.userId]);
+  });
+
+  it('keeps a live article live while its new version is reviewed, and publishes only after the request', async () => {
+    const made = await create({ bodyMd: 'live' });
+    await publish(made);
+    const edited = await agent.client.patch<KbArticle>(`/v1/kb/articles/${made.id}`, {
+      bodyMd: 'newer',
+    });
+    expect(edited.body).toMatchObject({ status: 'published', reviewRequested: false });
+    const early = await lead.client.post<ApiErrorBody>(
+      `/v1/kb/articles/${made.id}/publish`,
+      seen(edited.body),
+    );
+    expect(early.status).toBe(409);
+    expect((await fresh(made.id)).publishedVersion).toBe(1);
+
+    const requested = await agent.client.post<KbArticle>(`/v1/kb/articles/${made.id}/transition`, {
+      to: 'in_review',
+    });
+    expect(requested.body).toMatchObject({
+      status: 'published',
+      publishedVersion: 1,
+      reviewRequested: true,
+    });
+    // Whoever wrote the newer version cannot publish it; another approver can.
+    const own = await agent.client.post(`/v1/kb/articles/${made.id}/publish`, seen(requested.body));
+    expect(own.status).toBe(403);
+    const live = await lead.client.post<KbArticle>(
+      `/v1/kb/articles/${made.id}/publish`,
+      seen(requested.body),
+    );
+    expect(live.body).toMatchObject({ publishedVersion: 2, reviewRequested: false });
   });
 });
 
@@ -652,7 +758,11 @@ describe('input hygiene and limits (P3)', () => {
         (await clientA.client.post(`/v1/kb/articles/${made.id}/publish`, seen(made))).status,
       ).toBe(403);
       expect(
-        (await clientA.client.post(`/v1/kb/articles/${made.id}/break-glass-review`)).status,
+        (
+          await clientA.client.post(`/v1/kb/articles/${made.id}/break-glass-review`, {
+            breakGlassAt: new Date().toISOString(),
+          })
+        ).status,
       ).toBe(403);
     } finally {
       await pool().query(

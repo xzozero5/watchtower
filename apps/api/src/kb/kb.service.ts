@@ -15,6 +15,7 @@ import type {
   KbVersionList,
   BreakGlassPublishKbArticle,
   PublishKbArticle,
+  ReviewKbBreakGlass,
   UpdateKbArticle,
 } from '@watchtower/shared';
 import { and, asc, desc, eq, sql } from 'drizzle-orm';
@@ -38,7 +39,7 @@ const iso = (value: Date | null): string | null => (value === null ? null : valu
 
 function summaryOf(
   article: ArticleRow,
-  current: { version: number; title: string },
+  current: { id: string; version: number; title: string },
   publishedVersion: number | null,
 ): KbArticleSummary {
   return {
@@ -53,6 +54,10 @@ function summaryOf(
     version: current.version,
     publishedVersion,
     hasUnpublishedChanges: publishedVersion !== current.version,
+    // A draft sent for review is `in_review`; a live article names the version in review_version_id.
+    reviewRequested:
+      article.status === 'in_review' ||
+      (article.status === 'published' && article.reviewVersionId === current.id),
     breakGlassPending: article.breakGlassPending,
     lastVerifiedAt: iso(article.lastVerifiedAt),
     updatedAt: article.updatedAt.toISOString(),
@@ -81,7 +86,7 @@ export class KbService {
     const rows = await this.database.db
       .select({
         article,
-        current: { version: version.version, title: version.title },
+        current: { id: version.id, version: version.version, title: version.title },
         publishedVersion: published.version,
         sortKey: preciseTimestamp(article.updatedAt),
       })
@@ -120,15 +125,18 @@ export class KbService {
   async get(id: string, reader: Reader = this.database.db): Promise<KbArticle> {
     const { kbArticle: article, kbArticleVersion: version } = schema;
     const published = alias(schema.kbArticleVersion, 'published_version');
+    const breakGlassVersion = alias(schema.kbArticleVersion, 'break_glass_version');
     const [row] = await reader
       .select({
         article,
         current: version,
         publishedVersion: published.version,
+        breakGlassVersion: breakGlassVersion.version,
       })
       .from(article)
       .innerJoin(version, eq(version.id, article.currentVersionId))
       .leftJoin(published, eq(published.id, article.publishedVersionId))
+      .leftJoin(breakGlassVersion, eq(breakGlassVersion.id, article.breakGlassVersionId))
       .where(eq(article.id, id))
       .limit(1);
     if (row === undefined) throw notFound('No such article');
@@ -150,6 +158,7 @@ export class KbService {
           ? null
           : {
               pending: row.article.breakGlassPending,
+              version: row.breakGlassVersion,
               by: row.article.breakGlassBy,
               at: iso(row.article.breakGlassAt),
               reason: row.article.breakGlassReason,
@@ -363,12 +372,18 @@ export class KbService {
     return this.get(result.articleId, uow.tx);
   }
 
-  async reviewBreakGlass(uow: UnitOfWork, actor: Actor, id: string): Promise<KbArticle> {
+  async reviewBreakGlass(
+    uow: UnitOfWork,
+    actor: Actor,
+    id: string,
+    input: ReviewKbBreakGlass,
+  ): Promise<KbArticle> {
     const result = await translating(async () =>
       settle(
         uow,
         await this.domain.kb.reviewBreakGlass(uow.tx, domainContext(this.domain, actor), {
           articleId: id,
+          breakGlassAt: new Date(input.breakGlassAt),
         }),
       ),
     );
