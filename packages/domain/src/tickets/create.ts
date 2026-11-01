@@ -10,7 +10,12 @@ import {
 } from '@watchtower/shared';
 import { eq, sql } from 'drizzle-orm';
 
-import { nextRoundRobin, assertAssignableStaff } from '../assignment.js';
+import {
+  assertAssignableStaff,
+  isAssignStrategy,
+  nextAssignee,
+  type AssignStrategy,
+} from '../assignment.js';
 import { recordAuditInTx } from '../audit.js';
 import { findOrCreateContactByEmailIn } from '../contacts.js';
 import { badRequest, conflict } from '../errors.js';
@@ -133,14 +138,17 @@ export async function createTicket(
 
   const queue = await resolveQueue(tx, input.queueId);
   let assigneeId: string | null = null;
-  let assignedBy: 'manual' | 'round_robin' | null = null;
+  let assignedBy: 'manual' | AssignStrategy | null = null;
   if (input.assigneeId !== undefined) {
     await assertAssignableStaff(tx, [input.assigneeId]);
     assigneeId = input.assigneeId;
     assignedBy = 'manual';
-  } else if (queue?.assignmentMode === 'round_robin') {
-    assigneeId = await nextRoundRobin(tx, queue.id);
-    assignedBy = assigneeId === null ? null : 'round_robin';
+  } else if (queue !== null && isAssignStrategy(queue.assignmentMode)) {
+    // Only people who are clocked in are candidates; nobody clocked in leaves the ticket unassigned.
+    assigneeId = await nextAssignee(tx, queue.id, queue.assignmentMode, {
+      requesterContactId: contactId,
+    });
+    assignedBy = assigneeId === null ? null : queue.assignmentMode;
   }
 
   const now = ctx.now();

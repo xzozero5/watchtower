@@ -10,6 +10,7 @@ import {
   addQueue,
   addStaff,
   auditRows,
+  clockIn,
   eventTypes,
   markMerged,
   recordingNotifier,
@@ -205,6 +206,8 @@ describe('tickets.assign', () => {
     const b = await addStaff(env);
     const [first = '', second = ''] = [a.id, b.id].toSorted();
     const queue = await addQueue(env, { mode: 'round_robin', members: [a.id, b.id] });
+    await clockIn(env, a.id);
+    await clockIn(env, b.id);
     const cursor = async () => {
       const [row] = await env.db.owner.db
         .select({ last: schema.teamQueue.lastAssignedUserId })
