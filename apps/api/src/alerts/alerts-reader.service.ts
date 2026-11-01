@@ -3,6 +3,10 @@ import { schema, type Database } from '@watchtower/db';
 import {
   UNMAPPED_WINDOW_DAYS,
   type Alert,
+  type AlertAckVia,
+  type AlertChatState,
+  type AlertEscalation,
+  type EscalationTarget,
   type AlertDetail,
   type AlertEventType,
   type AlertListQuery,
@@ -18,7 +22,7 @@ import { DATABASE } from '../database/database.module.js';
 
 type AlertRow = typeof schema.alert.$inferSelect;
 
-function toAlert(row: AlertRow): Alert {
+export function toAlert(row: AlertRow): Alert {
   return {
     id: row.id,
     fingerprint: row.fingerprint,
@@ -34,6 +38,9 @@ function toAlert(row: AlertRow): Alert {
     resolvedAt: row.resolvedAt?.toISOString() ?? null,
     ackedAt: row.ackedAt?.toISOString() ?? null,
     ackedBy: row.ackedBy,
+    ackedVia: row.ackedVia as AlertAckVia | null,
+    escalationLevel: row.escalationLevel,
+    nextEscalationAt: row.nextEscalationAt?.toISOString() ?? null,
     incidentId: row.incidentId,
     payload: row.payload as Record<string, unknown>,
   };
@@ -69,6 +76,35 @@ export class AlertsReader {
       query.limit,
     );
     return { items: page.rows.map((row) => toAlert(row.alert)), nextCursor: page.nextCursor };
+  }
+
+  /** One alert as the list shows it. */
+  async getOne(id: string): Promise<Alert> {
+    const [row] = await this.database.db
+      .select()
+      .from(schema.alert)
+      .where(eq(schema.alert.id, id))
+      .limit(1);
+    if (row === undefined) throw notFound('No such alert');
+    return toAlert(row);
+  }
+
+  /** The steps of the escalation policy that were carried out, in order (ids and counts only). */
+  async escalations(id: string): Promise<AlertEscalation[]> {
+    await this.getOne(id);
+    const rows = await this.database.db
+      .select()
+      .from(schema.alertEscalation)
+      .where(eq(schema.alertEscalation.alertId, id))
+      .orderBy(asc(schema.alertEscalation.level));
+    return rows.map((row) => ({
+      level: row.level,
+      target: row.target as EscalationTarget,
+      fallback: row.fallback === 'lead' ? 'lead' : null,
+      recipientCount: row.recipientCount,
+      chatState: row.chatState as AlertChatState,
+      createdAt: row.createdAt.toISOString(),
+    }));
   }
 
   async get(id: string): Promise<AlertDetail> {

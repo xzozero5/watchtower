@@ -1,4 +1,4 @@
-import type { RealtimeEvent } from '@watchtower/shared';
+import type { NotificationKind, RealtimeEvent } from '@watchtower/shared';
 
 import type { SocketLike } from '@/lib/realtime/connection';
 
@@ -103,7 +103,7 @@ let notificationCounter = 0;
 export function notificationEvent(
   fields: {
     recipientId?: string;
-    kind?: 'ticket.p1' | 'ticket.assigned' | 'shift.handoff_overdue' | 'shift.no_show';
+    kind?: NotificationKind;
     severity?: 'critical' | 'high' | 'normal';
     ticketKey?: string | null;
   } = {},

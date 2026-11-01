@@ -1,7 +1,9 @@
-import { Controller, Get, Inject, Param, Query } from '@nestjs/common';
+import { Controller, Get, HttpCode, Inject, Param, Post, Query } from '@nestjs/common';
 import { ApiNotFoundResponse, ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
 import {
+  alertAckResultSchema,
   alertDetailSchema,
+  alertEscalationListSchema,
   alertIdParamSchema,
   alertListQuerySchema,
   alertListSchema,
@@ -10,8 +12,10 @@ import {
   type AlertListQuery,
 } from '@watchtower/shared';
 
-import { RequirePermission } from '../auth/decorators.js';
+import { CurrentPrincipal, RequirePermission, type Principal } from '../auth/decorators.js';
 import { parseResponse } from '../common/zod-openapi.js';
+import { UnitOfWorkService } from '../realtime/unit-of-work.js';
+import { AlertsActions } from './alerts-actions.service.js';
 import { AlertsReader } from './alerts-reader.service.js';
 
 /** Alerts for staff (`alert.read`): the list, one alert with its deliveries, and the unmapped bucket. */
@@ -19,7 +23,11 @@ import { AlertsReader } from './alerts-reader.service.js';
 @Controller('v1/alerts')
 @RequirePermission('alert.read')
 export class AlertsController {
-  constructor(@Inject(AlertsReader) private readonly reader: AlertsReader) {}
+  constructor(
+    @Inject(AlertsReader) private readonly reader: AlertsReader,
+    @Inject(AlertsActions) private readonly actions: AlertsActions,
+    @Inject(UnitOfWorkService) private readonly uow: UnitOfWorkService,
+  ) {}
 
   @Get()
   @ApiOperation({
@@ -56,5 +64,46 @@ export class AlertsController {
   @ApiNotFoundResponse({ description: 'No such alert' })
   async get(@Param({ schema: alertIdParamSchema }) params: AlertIdParam) {
     return parseResponse(alertDetailSchema, await this.reader.get(params.id));
+  }
+
+  @Get(':id/escalations')
+  @ApiOperation({
+    summary: 'The escalation steps carried out for an alert',
+    description:
+      'One entry per step of the escalation policy already done: who was told (a count, never names), ' +
+      'whether nobody was on shift and the leads were told instead, and how the chat post went ' +
+      '("mock" means a fake recorded it and nothing was delivered).',
+  })
+  @ApiOkResponse({ standardSchema: alertEscalationListSchema })
+  @ApiNotFoundResponse({ description: 'No such alert' })
+  async escalations(@Param({ schema: alertIdParamSchema }) params: AlertIdParam) {
+    return parseResponse(alertEscalationListSchema, {
+      items: await this.reader.escalations(params.id),
+    });
+  }
+
+  @Post(':id/ack')
+  @HttpCode(200)
+  @RequirePermission('alert.ack')
+  @ApiOperation({
+    summary: 'Acknowledge an alert',
+    description:
+      'Stops the escalation (R-3.8). If somebody acknowledged first, or the alert is resolved, nothing ' +
+      'changes and "changed" is false; this is not an error. Staff see the change in realtime. ' +
+      'The audit row is written only for the press that changed the alert.',
+  })
+  @ApiOkResponse({ standardSchema: alertAckResultSchema })
+  @ApiNotFoundResponse({ description: 'No such alert' })
+  async ack(
+    @Param({ schema: alertIdParamSchema }) params: AlertIdParam,
+    @CurrentPrincipal() principal: Principal,
+  ) {
+    const { changed } = await this.uow.run((uow) =>
+      this.actions.ack(uow, { type: 'user', id: principal.userId }, params.id, 'web'),
+    );
+    return parseResponse(alertAckResultSchema, {
+      changed,
+      alert: await this.reader.getOne(params.id),
+    });
   }
 }

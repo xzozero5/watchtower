@@ -5,6 +5,7 @@ import { CredentialsModule } from '../credentials/credentials.module.js';
 import { createGoogleKeySet, createOidcPushVerifier } from '../gmail/push-verifier.js';
 import { AlertsIngestController } from './alerts-ingest.controller.js';
 import { ALERT_PUSH_VERIFIER, AlertIngestService } from './alerts-ingest.service.js';
+import { AlertsActions } from './alerts-actions.service.js';
 import { AlertsReader } from './alerts-reader.service.js';
 import { AlertsController } from './alerts.controller.js';
 import { EscalationPoliciesController, ServicesController } from './catalog.controller.js';
@@ -44,6 +45,7 @@ import { AlertsCatalog } from './catalog.service.js';
     },
     AlertIngestService,
     AlertsReader,
+    AlertsActions,
     AlertsCatalog,
   ],
 })
