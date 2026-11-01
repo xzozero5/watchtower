@@ -11,13 +11,13 @@ function fakeDatabase(created: number) {
 }
 
 describe('maintenance processor', () => {
-  it('asks for the next months of partitions of every append-only table, append-only', async () => {
+  it('asks for the next months of partitions of every partitioned table, append-only except the updatable ones', async () => {
     const { database, query } = fakeDatabase(2);
     const result = await createMaintenanceProcessor(database)({
       name: MAINTENANCE_JOBS.ensurePartitions,
     } as Job);
-    expect(result).toEqual({ created: 8 });
-    expect(query).toHaveBeenCalledTimes(4);
+    expect(result).toEqual({ created: 10 });
+    expect(query).toHaveBeenCalledTimes(5);
     const calls = query.mock.calls as [string, unknown[]][];
     expect(calls[0]?.[0]).toContain("ensure_monthly_partitions('audit_log'");
     expect(calls[1]?.[0]).toContain("ensure_monthly_partitions('ticket_event'");
@@ -25,8 +25,10 @@ describe('maintenance processor', () => {
     expect(calls[2]?.[0]).toContain("ensure_monthly_partitions('ai_run'");
     // The incident timeline (T-202a) is append-only and partitioned too.
     expect(calls[3]?.[0]).toContain("ensure_monthly_partitions('incident_timeline'");
+    // The cached usage points (T-205a) are upserted, so their partitions are not append-only.
+    expect(calls[4]?.[0]).toContain("ensure_monthly_partitions('usage_metric_point'");
     for (const [sql, params] of calls) {
-      expect(sql).toContain('true');
+      expect(sql).toContain(sql.includes('usage_metric_point') ? 'false' : 'true');
       expect(params).toEqual([PARTITION_MONTHS_AHEAD]);
     }
   });
