@@ -12,6 +12,7 @@
     "dev": "tsx watch --env-file-if-exists=../../.env src/main.ts",
     "start": "node dist/main.js",
     "break-glass": "node dist/cli/break-glass.js",
+    "credentials": "node dist/cli/credentials.js",
     "inbound:fake": "node dist/cli/inbound-fake.js",
     "lint": "eslint .",
     "test": "vitest run",

@@ -18,6 +18,8 @@ export const CORE_QUEUE_NAMES = {
   email: 'email',
   /** Scheduled housekeeping, for example creating next month's partitions. */
   maintenance: 'maintenance',
+  /** Deletes expired sessions, tokens and old lockout rows (T-117). */
+  cleanup: 'cleanup',
 } as const;
 
 /** Every queue: core plus every feature. */
@@ -36,6 +38,10 @@ export const EMAIL_JOBS = {
 
 export const MAINTENANCE_JOBS = {
   ensurePartitions: 'ensure-partitions',
+} as const;
+
+export const CLEANUP_JOBS = {
+  purgeExpired: 'purge-expired',
 } as const;
 
 const portalEmailBase = {

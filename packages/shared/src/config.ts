@@ -69,6 +69,17 @@ export const baseEnvShape = {
   S3_SECRET_KEY: z.string().min(1),
   JWT_SECRET: z.string().min(1),
   APP_ENCRYPTION_KEY: z.string().min(1),
+  // Version of APP_ENCRYPTION_KEY for the credential store (ADR-012). Raise it when the key is
+  // replaced, move the old key to ..._PREVIOUS (with its version) and run `credentials rotate`.
+  APP_ENCRYPTION_KEY_VERSION: z.preprocess(
+    emptyToUndefined,
+    z.coerce.number().int().min(1).max(1_000_000).default(1),
+  ),
+  APP_ENCRYPTION_KEY_PREVIOUS: optionalString,
+  APP_ENCRYPTION_KEY_PREVIOUS_VERSION: z.preprocess(
+    emptyToUndefined,
+    z.coerce.number().int().min(1).max(1_000_000).optional(),
+  ),
   SMTP_HOST: z.string().min(1),
   SMTP_PORT: portSchema,
   /** From address of every email the system sends. */
@@ -227,6 +238,41 @@ function applyGuards(env: Readonly<Record<string, unknown>>, ctx: z.RefinementCt
         'APP_ENCRYPTION_KEY',
         `must be ${String(ENCRYPTION_KEY_BYTES)} bytes encoded as base64 in production`,
       );
+    }
+  }
+
+  // The previous key exists only while credentials are being re-wrapped (ADR-012): both of its
+  // variables together, a version below the current one, and as strong as the current key.
+  const previousKey = text(env, 'APP_ENCRYPTION_KEY_PREVIOUS');
+  const previousVersion = env.APP_ENCRYPTION_KEY_PREVIOUS_VERSION;
+  if (previousKey !== undefined || previousVersion !== undefined) {
+    if (previousKey === undefined || typeof previousVersion !== 'number') {
+      fail(
+        previousKey === undefined
+          ? 'APP_ENCRYPTION_KEY_PREVIOUS'
+          : 'APP_ENCRYPTION_KEY_PREVIOUS_VERSION',
+        'must be set together with the other APP_ENCRYPTION_KEY_PREVIOUS* variable, or both left empty',
+      );
+    } else {
+      const currentVersion =
+        typeof env.APP_ENCRYPTION_KEY_VERSION === 'number' ? env.APP_ENCRYPTION_KEY_VERSION : 1;
+      if (previousVersion >= currentVersion) {
+        fail(
+          'APP_ENCRYPTION_KEY_PREVIOUS_VERSION',
+          'must be lower than APP_ENCRYPTION_KEY_VERSION (raise the version when you replace the key)',
+        );
+      }
+      if (env.NODE_ENV === 'production') {
+        const previousBytes = /^[A-Za-z0-9+/]+={0,2}$/.test(previousKey)
+          ? Buffer.from(previousKey, 'base64').length
+          : 0;
+        if (previousBytes !== ENCRYPTION_KEY_BYTES) {
+          fail(
+            'APP_ENCRYPTION_KEY_PREVIOUS',
+            `must be ${String(ENCRYPTION_KEY_BYTES)} bytes encoded as base64 in production`,
+          );
+        }
+      }
     }
   }
 

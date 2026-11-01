@@ -40,6 +40,10 @@ export const conflict = (message: string): ApiHttpError =>
 export const badRequest = (message: string): ApiHttpError =>
   new ApiHttpError(HttpStatus.BAD_REQUEST, 'validation_failed', message);
 
+/** 409 for saving a credential field that an environment variable sets (ADR-012). */
+export const credentialEnvLocked = (message: string): ApiHttpError =>
+  new ApiHttpError(HttpStatus.CONFLICT, 'credential_env_locked', message);
+
 export const invalidTransition = (message: string): ApiHttpError =>
   new ApiHttpError(HttpStatus.CONFLICT, 'invalid_transition', message);
 

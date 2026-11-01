@@ -25,6 +25,11 @@ const apiEnvSchema = createEnvSchema({
   /** Serve OpenAPI at /docs. Defaults to on outside production. */
   DOCS_ENABLED: z.preprocess(emptyToUndefined, z.stringbool().optional()),
   OTEL_SERVICE_NAME: z.string().min(1).default('watchtower-api'),
+  /**
+   * "Test connection" of the admin integrations page runs the adapter's real check instead of the
+   * offline fake (ADR-012). Off by default; turning it on needs real credentials and is the owner's call.
+   */
+  CREDENTIAL_LIVE_TEST_ENABLED: z.preprocess(emptyToUndefined, z.stringbool().default(false)),
   /** Lifetime of the access JWT. Short on purpose: refresh renews it. */
   ACCESS_TOKEN_TTL_SECONDS: seconds(900, 60, 3600),
   /** Lifetime of one refresh token (idle limit); every use issues a new one. */

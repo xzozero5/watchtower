@@ -21,6 +21,16 @@ export const LOG_REDACT_PATHS: readonly string[] = [
   '*.clientSecret',
   '*.databaseUrl',
   '*.redisUrl',
+  // Integration credential fields (ADR-012): a stored or typed value must never reach a log line.
+  '*.channelSecret',
+  '*.channelAccessToken',
+  '*.botToken',
+  '*.serviceAccountJson',
+  '*.anthropicApiKey',
+  '*.vapidPrivate',
+  '*.webhookUrl',
+  '*.fields',
+  '*.config',
 ];
 
 export const LOG_REDACT_CENSOR = '[Redacted]';

@@ -19,6 +19,8 @@ export const KEY_LABELS = {
   outboxSecret: 'watchtower/outbox/secret/v1',
   /** HMAC key for the non-reversible address tag written to the audit log. */
   emailTag: 'watchtower/audit/email-tag/v1',
+  /** Key-encryption key that wraps the per-row data keys of the integration credential store (ADR-012). */
+  credentialKek: 'watchtower/credentials/kek/v1',
 } as const;
 
 const SALT = 'watchtower-subkeys';

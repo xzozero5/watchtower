@@ -12,6 +12,7 @@ import type { WorkerLogger } from '../logger.js';
 import type { Mailer } from '../mailer.js';
 import type { RealtimeSink } from '../realtime.js';
 import { createEmailProcessor } from './email.js';
+import { createCleanupProcessor } from './cleanup.js';
 import { createMaintenanceProcessor } from './maintenance.js';
 import { processSystemJob } from './system.js';
 
@@ -64,6 +65,16 @@ export const PROCESSORS: readonly ProcessorRegistration[] = [
   {
     queue: QUEUE_NAMES.maintenance,
     create: ({ database }) => createMaintenanceProcessor(database),
+  },
+  {
+    // Strictly one at a time: two cleanups would only contend for the same rows.
+    queue: QUEUE_NAMES.cleanup,
+    create: ({ config, database, logger }) =>
+      createCleanupProcessor(database, logger, {
+        authRetentionDays: config.CLEANUP_AUTH_RETENTION_DAYS,
+        breakGlassRetentionDays: config.CLEANUP_BREAK_GLASS_RETENTION_DAYS,
+      }),
+    concurrency: 1,
   },
 
   // --- inbound (T-122) ---
