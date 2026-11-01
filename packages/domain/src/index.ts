@@ -183,7 +183,11 @@ export {
 } from './kb/rules.js';
 export {
   DEFAULT_MIN_VECTOR_SIMILARITY,
+  DEFAULT_SEARCH_TIMEOUT_MS,
+  KbSearchTimeoutError,
+  MAX_CANDIDATES,
   audienceCondition,
+  candidateCount,
   queryTerms,
   searchKb,
   type KbAudience,

@@ -168,7 +168,8 @@ const SEPARATORS = new Set([
   ')',
 ]);
 const MAX_SEPARATOR_RUN = 3;
-const MAX_WINDOW_GROUPS = 8;
+// 13: a Thai national ID typed one digit at a time ("1-2-3-...") is 13 groups.
+const MAX_WINDOW_GROUPS = 13;
 const MAX_WINDOW_DIGITS = 19;
 
 interface Group {
@@ -280,10 +281,10 @@ const MIXED_SEPARATOR_PHONE_SHAPES = new Set([
 
 /**
  * A Thai national ID is written 1-4-5-2-1, but people also write it as 4-4-4-1, 5-5-3, or in two
- * halves. The shape is only a bound here (at most six groups); the check
+ * halves, or even digit by digit. The shape is only a bound here (at most 13 groups); the check
  * digit and the first digit are what make a 13-digit window an ID.
  */
-const MAX_ID_GROUPS = 6;
+const MAX_ID_GROUPS = 13;
 
 function isThaiIdShape(lengths: readonly number[]): boolean {
   return lengths.length <= MAX_ID_GROUPS;

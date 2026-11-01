@@ -1,4 +1,4 @@
-import type { Database } from '@watchtower/db';
+import { PG, pgCode, type Database } from '@watchtower/db';
 import type { KbKind, KbLang, KbSearchHit, KbSearchMode, KbVisibility } from '@watchtower/shared';
 import { sql, type SQL } from 'drizzle-orm';
 
@@ -27,8 +27,17 @@ export interface KbSearchInput {
   readonly embedding?: { readonly vector: readonly number[]; readonly indexId: string } | undefined;
   /** Most chunks of one article in the answer. Default 2. */
   readonly perArticle?: number | undefined;
-  /** How many candidates each list contributes to the fusion. Default 40. */
+  /**
+   * How many candidates each list contributes to the fusion. Default 40, never more than
+   * `MAX_CANDIDATES` (a larger number only makes the database sort more).
+   */
   readonly candidates?: number | undefined;
+  /**
+   * Longest a statement of the search may run before the database stops it (`statement_timeout`,
+   * local to the search's transaction). Default `DEFAULT_SEARCH_TIMEOUT_MS`. A search that is stopped
+   * throws `KbSearchTimeoutError`.
+   */
+  readonly timeoutMs?: number | undefined;
   /**
    * Cosine similarity a chunk needs to enter the vector list. Without a floor the nearest chunks
    * are returned whatever they are about. Default `DEFAULT_MIN_VECTOR_SIMILARITY`.
@@ -43,12 +52,38 @@ export interface KbSearchInput {
  */
 export const DEFAULT_MIN_VECTOR_SIMILARITY = 0.25;
 
+/**
+ * [ASSUMED] 2 s: a search over thousands of chunks takes tens of milliseconds, so 2 s only stops a
+ * pathological query (several very common words over a large corpus, seen at ~3.6 s for 3,000
+ * chunks) before it holds a pool connection for long.
+ */
+export const DEFAULT_SEARCH_TIMEOUT_MS = 2000;
+
+/** [ASSUMED] Most candidates one list sends to the fusion, and most keyword matches ranked. */
+export const MAX_CANDIDATES = 100;
+export const MAX_KEYWORD_MATCHES = 600;
+
+/** The search ran longer than its time limit and the database stopped it. */
+export class KbSearchTimeoutError extends Error {
+  override readonly name = 'KbSearchTimeoutError';
+
+  constructor() {
+    super('Knowledge base search took too long');
+  }
+}
+
+/** Candidates per list: at least `limit`, at most `MAX_CANDIDATES`. */
+export function candidateCount(limit: number, candidates: number | undefined): number {
+  return Math.min(MAX_CANDIDATES, Math.max(limit, candidates ?? 40));
+}
+
 export interface KbSearchOutcome {
   readonly mode: KbSearchMode;
   readonly hits: KbSearchHit[];
 }
 
-type SearchDb = Pick<Database['db'], 'execute'>;
+type SearchDb = Pick<Database['db'], 'execute' | 'transaction'>;
+type SearchTx = Pick<Database['db'], 'execute'>;
 
 const MAX_TERMS = 8;
 const MAX_TERM_CHARS = 64;
@@ -132,7 +167,25 @@ function snippetOf(text: string): string {
  * threshold 0.6 `[ASSUMED]`) to a stretch of the chunk; the score is the mean over terms.
  */
 export async function searchKb(db: SearchDb, input: KbSearchInput): Promise<KbSearchOutcome> {
-  const candidates = Math.max(input.limit, input.candidates ?? 40);
+  const timeoutMs = Math.max(1, Math.floor(input.timeoutMs ?? DEFAULT_SEARCH_TIMEOUT_MS));
+  try {
+    // One read-only transaction so the time limit (SET LOCAL, written as set_config(.., true), which
+    // takes a parameter) applies to every statement of the search and never outlives it.
+    return await db.transaction(
+      async (tx) => {
+        await tx.execute(sql`SELECT set_config('statement_timeout', ${String(timeoutMs)}, true)`);
+        return await searchWith(tx, input);
+      },
+      { accessMode: 'read only' },
+    );
+  } catch (error) {
+    if (pgCode(error) === PG.queryCanceled) throw new KbSearchTimeoutError();
+    throw error;
+  }
+}
+
+async function searchWith(db: SearchTx, input: KbSearchInput): Promise<KbSearchOutcome> {
+  const candidates = candidateCount(input.limit, input.candidates);
   const perArticle = Math.max(1, input.perArticle ?? 2);
   const visible = audienceCondition(input.audience);
   const lang = input.lang === undefined ? sql`true` : sql`a.lang = ${input.lang}`;
@@ -143,12 +196,17 @@ export async function searchKb(db: SearchDb, input: KbSearchInput): Promise<KbSe
       ? []
       : (
           await db.execute<IdRow>(sql`
-            SELECT c.id::text AS id
-              FROM kb_chunk c
-              JOIN kb_article a ON a.id = c.article_id AND a.published_version_id = c.version_id
-             WHERE ${visible} AND ${lang} AND c.text %> ANY(${pgTextArray(terms)}::text[])
-             ORDER BY (SELECT avg(word_similarity(t, c.text)) FROM unnest(${pgTextArray(terms)}::text[]) AS t) DESC,
-                      c.id
+            WITH matched AS (
+              SELECT c.id, c.text
+                FROM kb_chunk c
+                JOIN kb_article a ON a.id = c.article_id AND a.published_version_id = c.version_id
+               WHERE ${visible} AND ${lang} AND c.text %> ANY(${pgTextArray(terms)}::text[])
+               LIMIT ${MAX_KEYWORD_MATCHES}
+            )
+            SELECT m.id::text AS id
+              FROM matched m
+             ORDER BY (SELECT avg(word_similarity(t, m.text)) FROM unnest(${pgTextArray(terms)}::text[]) AS t) DESC,
+                      m.id
              LIMIT ${candidates}`)
         ).rows;
 

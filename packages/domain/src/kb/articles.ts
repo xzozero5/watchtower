@@ -46,6 +46,29 @@ export function kbContentHash(title: string, bodyMd: string): string {
     .digest('hex');
 }
 
+/**
+ * JSON with object keys in a fixed order, to compare two values by content: jsonb does not keep the
+ * key order of what was stored, so `{type, ref}` and `{ref, type}` are the same source.
+ */
+export function canonicalJson(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`;
+  if (typeof value === 'object' && value !== null) {
+    return `{${Object.entries(value)
+      .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+      .map(([key, item]) => `${JSON.stringify(key)}:${canonicalJson(item)}`)
+      .join(',')}}`;
+  }
+  return JSON.stringify(value);
+}
+
+/**
+ * True when the actor is not a signed-in person (an AI, a system identity, anonymous). What such an
+ * actor writes is marked and never goes live by break-glass.
+ */
+function isMachine(ctx: DomainContext): boolean {
+  return ctx.actor.type !== 'user' || ctx.actor.id === null;
+}
+
 async function lockArticle(tx: DbTransaction, articleId: string) {
   const [article] = await tx
     .select()
@@ -86,8 +109,12 @@ async function wroteVersion(
   return rows.length > 0;
 }
 
-/** True when an AI wrote a version of the article numbered above `after`. */
-async function hasAiVersion(tx: DbTransaction, articleId: string, after: number): Promise<boolean> {
+/** True when a non-person (an AI or a system identity) wrote a version numbered above `after`. */
+async function hasMachineVersion(
+  tx: DbTransaction,
+  articleId: string,
+  after: number,
+): Promise<boolean> {
   const rows = await tx
     .select({ id: schema.kbArticleVersion.id })
     .from(schema.kbArticleVersion)
@@ -95,7 +122,7 @@ async function hasAiVersion(tx: DbTransaction, articleId: string, after: number)
       and(
         eq(schema.kbArticleVersion.articleId, articleId),
         gt(schema.kbArticleVersion.version, after),
-        eq(schema.kbArticleVersion.authoredByAi, true),
+        eq(schema.kbArticleVersion.authoredByMachine, true),
       ),
     )
     .limit(1);
@@ -194,7 +221,7 @@ export async function createKbArticle(
     changeNote: input.changeNote ?? null,
     contentHash: kbContentHash(input.title, input.bodyMd),
     createdBy: ctx.actor.id,
-    authoredByAi: ctx.actor.type === 'ai',
+    authoredByMachine: isMachine(ctx),
   });
   if (input.visibility === 'orgs') await setOrgs(tx, articleId, input.orgIds);
   await recordAuditInTx(tx, ctx, fx, {
@@ -318,7 +345,7 @@ export async function updateKbArticle(
     audienceChanged ||
     kind !== article.kind ||
     JSON.stringify(intentTags) !== JSON.stringify(article.intentTags) ||
-    JSON.stringify(sources) !== JSON.stringify(article.sources) ||
+    canonicalJson(sources) !== canonicalJson(article.sources) ||
     (lastVerifiedAt?.getTime() ?? null) !== (article.lastVerifiedAt?.getTime() ?? null);
 
   // [ASSUMED] Metadata that changes what a live article is found by (intent tags, kind, sources)
@@ -327,7 +354,7 @@ export async function updateKbArticle(
   const retrievalChanged =
     kind !== article.kind ||
     JSON.stringify(intentTags) !== JSON.stringify(article.intentTags) ||
-    JSON.stringify(sources) !== JSON.stringify(article.sources);
+    canonicalJson(sources) !== canonicalJson(article.sources);
   if (
     retrievalChanged &&
     article.status === 'published' &&
@@ -363,7 +390,7 @@ export async function updateKbArticle(
       changeNote: patch.changeNote ?? null,
       contentHash: hash,
       createdBy: ctx.actor.id,
-      authoredByAi: ctx.actor.type === 'ai',
+      authoredByMachine: isMachine(ctx),
     });
   }
   if (audienceChanged) await setOrgs(tx, article.id, orgs);
@@ -514,7 +541,7 @@ type PublishMode =
 /**
  * Only a person publishes. An AI or a system identity never does, whatever permission it holds;
  * AI drafts (T-108e) go to `in_review` and wait for a human approver who is not the requester.
- * An AI-written version is marked (`authored_by_ai`) and never goes live by break-glass.
+ * A version not written by a signed-in person is marked (`authored_by_machine`) and never goes live by break-glass.
  * TODO(T-108e): there is no "requested by" on an AI actor yet, so the person who triggered the AI
  * is not recorded; record the requester of an AI draft and refuse that person as its approver.
  */
@@ -601,11 +628,11 @@ async function publishWith(
       ? article.breakGlassPublishers
       : [...article.breakGlassPublishers, publisherId]
     : [publisherId];
-  if (mode.kind === 'break_glass' && (await hasAiVersion(tx, article.id, prevVersion))) {
+  if (mode.kind === 'break_glass' && (await hasMachineVersion(tx, article.id, prevVersion))) {
     throw new DomainError(
       'policy_denied',
-      'Text written by an AI is not published break-glass; send it for review and let another approver publish it',
-      { reason: 'kb_break_glass_ai_draft' },
+      'Text not written by a person is not published break-glass; send it for review and let another approver publish it',
+      { reason: 'kb_break_glass_machine_text' },
     );
   }
 

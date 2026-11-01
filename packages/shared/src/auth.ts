@@ -37,6 +37,8 @@ export const AUTH_ERROR_CODES = [
   'autonomy_stage_requires_owner',
   // Credential store (T-116a): a field that an environment variable sets cannot be saved.
   'credential_env_locked',
+  // Knowledge base (T-107): a search that ran past its time limit and was stopped (503).
+  'kb_search_timeout',
 ] as const;
 export type AuthErrorCode = (typeof AUTH_ERROR_CODES)[number];
 

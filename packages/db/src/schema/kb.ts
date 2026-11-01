@@ -115,8 +115,8 @@ export const kbArticleVersion = pgTable(
     changeNote: text('change_note'),
     contentHash: text('content_hash').notNull(),
     createdBy: uuid('created_by'),
-    /** An AI wrote the text (created_by is null): never published by break-glass. */
-    authoredByAi: boolean('authored_by_ai').notNull().default(false),
+    /** Not written by a signed-in person (an AI or a system identity): never published by break-glass. */
+    authoredByMachine: boolean('authored_by_machine').notNull().default(false),
     createdAt: timestamptz('created_at').notNull().defaultNow(),
   },
   (table) => [uniqueIndex('kb_article_version_number_key').on(table.articleId, table.version)],

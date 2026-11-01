@@ -23,7 +23,7 @@
 --   kb.publish.break_glass: granted to the head only: publish without a second person (the
 --     break-glass columns of kb_article record it until another approver reviews it).
 -- Articles are never deleted (deprecate instead): the application role has no DELETE on them.
--- Reversible: see 0018_kb.down.sql.
+-- Reversible: see 0019_kb.down.sql.
 
 CREATE TABLE kb_embedding_index (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -118,9 +118,10 @@ CREATE TABLE kb_article_version (
   content_hash text NOT NULL,
   -- No foreign key: history must survive the user (see the header).
   created_by uuid,
-  -- True when an AI wrote the text (its created_by is null). Such a version never goes live by
+  -- True when something other than a signed-in person wrote the text (an AI or a system identity;
+  -- its created_by may be null). Such a version never goes live by
   -- break-glass: it needs a normal publication by a person (owner decision, AI drafts).
-  authored_by_ai boolean NOT NULL DEFAULT false,
+  authored_by_machine boolean NOT NULL DEFAULT false,
   created_at timestamptz NOT NULL DEFAULT now(),
   CONSTRAINT kb_article_version_version_check CHECK (version >= 1),
   CONSTRAINT kb_article_version_title_check CHECK (length(btrim(title)) BETWEEN 1 AND 300),
@@ -193,7 +194,7 @@ CREATE INDEX kb_chunk_text_trgm_idx ON kb_chunk USING gin (text gin_trgm_ops);
 -- exactly two ways:
 --   1. A real break-glass publication: the article is published, the live version really changes
 --      to the newest version (which is also the break-glass version and the latest one), nobody
---      has reviewed it, the publisher exists, no version in the range is AI-authored, and a flag
+--      has reviewed it, the publisher exists, no version in the range is machine-authored, and a flag
 --      that was already up keeps its prev_version and only adds the publisher (with a later time).
 --   2. A review that clears the flag: the reviewer exists, is not any publisher of the window, and
 --      wrote none of the text that went live (every version after prev_version up to the
@@ -278,9 +279,9 @@ BEGIN
     IF EXISTS (
       SELECT 1 FROM kb_article_version
       WHERE article_id = NEW.id AND version > expected_prev AND version <= live_number
-        AND authored_by_ai
+        AND authored_by_machine
     ) THEN
-      RAISE EXCEPTION 'text written by an AI does not go live by break-glass'
+      RAISE EXCEPTION 'text not written by a person does not go live by break-glass'
         USING ERRCODE = 'check_violation';
     END IF;
   ELSIF OLD.break_glass_pending THEN

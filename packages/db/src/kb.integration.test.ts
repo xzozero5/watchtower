@@ -6,7 +6,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { migrateDown, migrateUp } from './migrator.js';
 import { createTestDatabase, migrationsAfter, type TestDatabase } from './testing.js';
 
-// Migration 0018 (T-107a): knowledge base articles, immutable versions, chunks with pgvector
+// Migration 0019 (T-107a): knowledge base articles, immutable versions, chunks with pgvector
 // embeddings and the embedding-index registry.
 const adminUrl =
   process.env.TEST_DATABASE_URL ?? 'postgres://watchtower:watchtower@localhost:5432/watchtower';
@@ -90,7 +90,7 @@ async function embeddingIndex(dimensions: number, model = `m-${String(dimensions
   return rows[0]?.id ?? '';
 }
 
-describe('0018_kb', () => {
+describe('0019_kb', () => {
   it('creates the tables, with the app role able to write articles and chunks', async () => {
     const { articleId, versionId } = await article(app, { slug: 'app-writes' });
     await app.query(`UPDATE kb_article SET status = 'in_review' WHERE id = $1`, [articleId]);
@@ -390,7 +390,7 @@ describe('0018_kb', () => {
     ): Promise<string> => {
       const id = randomUUID();
       await app.query(
-        `INSERT INTO kb_article_version (id, article_id, version, title, body_md, content_hash, created_by, authored_by_ai)
+        `INSERT INTO kb_article_version (id, article_id, version, title, body_md, content_hash, created_by, authored_by_machine)
          VALUES ($1, $2, $3, 'Title', $4, $5, $6, $7)`,
         [id, articleId, version, `Body ${String(version)}`, HASH, createdBy, ai],
       );
@@ -767,10 +767,10 @@ describe('0018_kb', () => {
   });
 
   it('reverts and applies again', async () => {
-    const later = await migrationsAfter('0018_kb');
+    const later = await migrationsAfter('0019_kb');
     expect(await migrateDown(owner(), { steps: 1 + later.length })).toEqual([
       ...later.toReversed(),
-      '0018_kb',
+      '0019_kb',
     ]);
     const gone = await owner().query(
       `SELECT to_regclass('kb_article') AS a, to_regclass('kb_article_version') AS b,
@@ -788,7 +788,7 @@ describe('0018_kb', () => {
       f: null,
       p: 0,
     });
-    expect(await migrateUp(owner())).toEqual(['0018_kb', ...later]);
+    expect(await migrateUp(owner())).toEqual(['0019_kb', ...later]);
     const back = await owner().query(`SELECT to_regclass('kb_chunk') AS c`);
     expect(back.rows[0]).toEqual({ c: 'kb_chunk' });
   });

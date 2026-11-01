@@ -1,6 +1,6 @@
 import { schema } from '@watchtower/db';
 import { KB_JOBS, QUEUE_NAMES, type CreateKbArticle } from '@watchtower/shared';
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { DomainError } from '../errors.js';
@@ -18,7 +18,13 @@ import {
   readActiveEmbeddingIndex,
   replaceArticleChunks,
 } from './chunks.js';
-import { searchKb, type KbAudience } from './search.js';
+import {
+  KbSearchTimeoutError,
+  MAX_CANDIDATES,
+  candidateCount,
+  searchKb,
+  type KbAudience,
+} from './search.js';
 
 let env: DomainTestEnv;
 let author: Awaited<ReturnType<typeof addStaff>>;
@@ -426,6 +432,26 @@ describe('kb.update', () => {
       const verifiedRow = rows.find((row) => row.before !== null && row !== last);
       expect(verifiedRow?.before).toMatchObject({ lastVerifiedAt: null });
       expect(verifiedRow?.after).toMatchObject({ lastVerifiedAt: '2026-10-01T00:00:00.000Z' });
+    });
+
+    it('compares sources by content, so sending the same ones back is not a change (P3)', async () => {
+      const source = { type: 'url' as const, ref: 'https://example.test/a' };
+      const made = await create({ bodyMd: 'live text', sources: [source] });
+      await publish(made.articleId, 1);
+      // jsonb stores {ref, type}; the client sends {type, ref}. Same content, no approver needed.
+      const same = await update(made.articleId, {
+        sources: [{ type: source.type, ref: source.ref }],
+      });
+      expect(same.value.changed).toBe(false);
+      const reordered = await update(made.articleId, {
+        sources: JSON.parse(`[{"ref":"${source.ref}","type":"url"}]`) as (typeof source)[],
+      });
+      expect(reordered.value.changed).toBe(false);
+      // A real change is still refused for an agent.
+      const other = await refusal(
+        update(made.articleId, { sources: [{ type: 'url', ref: 'https://example.test/b' }] }),
+      );
+      expect(other.details).toMatchObject({ reason: 'kb_live_metadata_requires_approval' });
     });
 
     it('does not restrict an article that is not live', async () => {
@@ -1033,11 +1059,11 @@ describe('kb.publishBreakGlass', () => {
           canApprove: false,
         }),
       );
-      const { rows } = await pool().query<{ version: number; authored_by_ai: boolean }>(
-        'SELECT version, authored_by_ai FROM kb_article_version WHERE article_id = $1 ORDER BY version',
+      const { rows } = await pool().query<{ version: number; authored_by_machine: boolean }>(
+        'SELECT version, authored_by_machine FROM kb_article_version WHERE article_id = $1 ORDER BY version',
         [made.articleId],
       );
-      expect(rows.map((row) => [row.version, row.authored_by_ai])).toEqual([
+      expect(rows.map((row) => [row.version, row.authored_by_machine])).toEqual([
         [1, true],
         [2, false],
         [3, true],
@@ -1048,10 +1074,10 @@ describe('kb.publishBreakGlass', () => {
       const made = await aiCreate();
       const denied = await refusal(glass(made.articleId, head, 'urgent'));
       expect(denied.code).toBe('policy_denied');
-      expect(denied.details).toMatchObject({ reason: 'kb_break_glass_ai_draft' });
+      expect(denied.details).toMatchObject({ reason: 'kb_break_glass_machine_text' });
       await update(made.articleId, { bodyMd: 'a person tidied it' }, true, head);
       const still = await refusal(glass(made.articleId, head, 'urgent', 2));
-      expect(still.details).toMatchObject({ reason: 'kb_break_glass_ai_draft' });
+      expect(still.details).toMatchObject({ reason: 'kb_break_glass_machine_text' });
       expect(await articleRow(made.articleId)).toMatchObject({
         status: 'draft',
         breakGlassPending: false,
@@ -1062,6 +1088,34 @@ describe('kb.publishBreakGlass', () => {
           (row) => row.targetId === made.articleId,
         ),
       ).toHaveLength(0);
+    });
+
+    it('treats text from a system identity like AI text, even with a user id', async () => {
+      for (const actor of [
+        { type: 'system' as const, id: null },
+        { type: 'system' as const, id: lead.id },
+        { type: 'anonymous' as const, id: null },
+      ]) {
+        const made = (
+          await env.tx((tx) => env.domain.kb.create(tx, env.ctx(actor), input({ bodyMd: 'sys' })))
+        ).value;
+        const { rows } = await pool().query<{ authored_by_machine: boolean }>(
+          'SELECT authored_by_machine FROM kb_article_version WHERE id = $1',
+          [made.versionId],
+        );
+        expect(rows[0]?.authored_by_machine, actor.type).toBe(true);
+        const denied = await refusal(glass(made.articleId, head, 'urgent'));
+        expect(denied.details, actor.type).toMatchObject({
+          reason: 'kb_break_glass_machine_text',
+        });
+      }
+      // A signed-in person's text is not marked.
+      const human = await create({ bodyMd: 'person' });
+      const { rows } = await pool().query<{ authored_by_machine: boolean }>(
+        'SELECT authored_by_machine FROM kb_article_version WHERE id = $1',
+        [human.versionId],
+      );
+      expect(rows[0]?.authored_by_machine).toBe(false);
     });
 
     it('goes live by the normal way: another person publishes it after review, and then the next human edit may use break-glass', async () => {
@@ -1531,5 +1585,64 @@ describe('searchKb', () => {
     // The cut is not between a consonant and the vowel or tone mark that belongs to it.
     expect(text.slice(kept.length)).not.toMatch(/^\p{M}/u);
     expect(snippet.length).toBeLessThanOrEqual(304);
+  });
+});
+
+describe('searchKb: load limits (P2)', () => {
+  const COMMON = 'the account password reset link sign page help';
+  let articleId = '';
+
+  beforeAll(async () => {
+    // 3,000 live chunks of one customer-visible article that all hold the common words.
+    const made = await create({ visibility: 'customer', title: 'Busy article' });
+    await publish(made.articleId, 1);
+    articleId = made.articleId;
+    await pool().query(
+      `INSERT INTO kb_chunk (article_id, version_id, ordinal, section, text, char_start, char_end)
+       SELECT $1, $2, g, '', $3 || ' number ' || g, 0, 10 FROM generate_series(0, 2999) g`,
+      [made.articleId, made.versionId, COMMON],
+    );
+  });
+  afterAll(async () => {
+    // Out of search for whoever runs after.
+    await pool().query(
+      `UPDATE kb_article SET status = 'deprecated', published_version_id = NULL WHERE id = $1`,
+      [articleId],
+    );
+  });
+
+  const customer: KbAudience = { kind: 'customer', orgId: null };
+
+  it('stops a search that runs too long with a clear error, and leaves no time limit behind', async () => {
+    const error = await searchKb(env.database.db, {
+      query: COMMON,
+      audience: customer,
+      limit: 10,
+      timeoutMs: 1,
+    }).catch((caught: unknown) => caught);
+    expect(error).toBeInstanceOf(KbSearchTimeoutError);
+    const setting = await env.database.db.execute<{ t: string }>(
+      sql`SELECT current_setting('statement_timeout') AS t`,
+    );
+    expect(setting.rows[0]?.t).toBe('0');
+  });
+
+  it('still answers a heavy query within the default limit, with at most the per-list cap', async () => {
+    const started = Date.now();
+    const outcome = await searchKb(env.database.db, {
+      query: COMMON,
+      audience: customer,
+      limit: 10,
+      candidates: 100_000,
+    });
+    console.info('heavy search ms', Date.now() - started);
+    expect(outcome.hits.length).toBeGreaterThan(0);
+    expect(outcome.hits.length).toBeLessThanOrEqual(10);
+  });
+
+  it('never asks a list for more candidates than the cap', () => {
+    expect(candidateCount(5, 100_000)).toBe(MAX_CANDIDATES);
+    expect(candidateCount(5, undefined)).toBe(40);
+    expect(candidateCount(60, 10)).toBe(60);
   });
 });

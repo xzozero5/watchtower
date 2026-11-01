@@ -1,6 +1,13 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { schema, type Database } from '@watchtower/db';
-import { searchKb, type Actor, type Domain, type KbAudience } from '@watchtower/domain';
+import {
+  DEFAULT_AI_DAILY_TOKEN_CAP,
+  KbSearchTimeoutError,
+  searchKb,
+  type Actor,
+  type Domain,
+  type KbAudience,
+} from '@watchtower/domain';
 import type {
   CreateKbArticle,
   KbArticle,
@@ -21,7 +28,8 @@ import type {
 import { and, asc, desc, eq, sql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 
-import { notFound } from '../auth/http-errors.js';
+import { kbSearchTimeout, notFound } from '../auth/http-errors.js';
+import { RateLimiter } from '../auth/rate-limiter.js';
 import { APP_CONFIG, type ApiConfig } from '../config/config.js';
 import { beforeCursor, decodeCursor, preciseTimestamp, toPage } from '../common/keyset.js';
 import { DATABASE } from '../database/database.module.js';
@@ -31,6 +39,30 @@ import { DOMAIN } from '../domain/domain.module.js';
 import type { UnitOfWork } from '../realtime/unit-of-work.js';
 import { KbEmbeddingService } from './kb-embedding.service.js';
 import { KbSearchError } from './kb-errors.js';
+
+/**
+ * `[ASSUMED]` Budget of customer search embeddings (po decision): customers draw on the app's AI
+ * budget, so they get their own daily slice. The slice is 20% of the daily token cap
+ * (`config/budgets.yaml` `app_ai_daily.tokens`), spent at a worst-case estimate of 100 tokens per
+ * query (a query is at most 500 characters; typical ones are a tenth of that), and one organization
+ * may use at most `CUSTOMER_EMBEDS_PER_ORG_PER_DAY` of it. When either is used up the search carries
+ * on by keyword only, with no error. The day is the UTC day, like the budget itself.
+ */
+export const CUSTOMER_EMBED_BUDGET_SHARE = 0.2;
+export const ESTIMATED_TOKENS_PER_QUERY = 100;
+export const CUSTOMER_EMBEDS_PER_ORG_PER_DAY = 200;
+const DAY_SECONDS = 24 * 60 * 60 + 3600;
+
+/** How many customer query embeddings the whole instance may make in one UTC day. */
+export function customerEmbedsPerDay(dailyTokenCap: number | undefined): number {
+  return Math.max(
+    1,
+    Math.floor(
+      ((dailyTokenCap ?? DEFAULT_AI_DAILY_TOKEN_CAP) * CUSTOMER_EMBED_BUDGET_SHARE) /
+        ESTIMATED_TOKENS_PER_QUERY,
+    ),
+  );
+}
 
 type Reader = Pick<Database['db'], 'select'>;
 type ArticleRow = typeof schema.kbArticle.$inferSelect;
@@ -75,8 +107,37 @@ export class KbService {
     @Inject(DOMAIN) private readonly domain: Domain,
     @Inject(DATABASE) private readonly database: Database,
     @Inject(KbEmbeddingService) private readonly embeddings: KbEmbeddingService,
-    @Inject(APP_CONFIG) private readonly config: Pick<ApiConfig, 'KB_MIN_VECTOR_SIMILARITY'>,
+    @Inject(APP_CONFIG)
+    private readonly config: Pick<ApiConfig, 'KB_MIN_VECTOR_SIMILARITY' | 'AI_DAILY_TOKEN_CAP'>,
+    @Inject(RateLimiter) private readonly limiter: Pick<RateLimiter, 'hit'>,
   ) {}
+
+  /**
+   * True while this customer's organization and the customers as a whole are within their daily
+   * slice of the AI budget. A counter that cannot be read (Redis down) counts as used up: spending
+   * is the thing that fails closed, the search itself goes on by keyword.
+   */
+  private async customerMayEmbed(orgId: string): Promise<boolean> {
+    const day = new Date().toISOString().slice(0, 10);
+    try {
+      const org = await this.limiter.hit(
+        'kb-customer-embed-org',
+        `${orgId}:${day}`,
+        CUSTOMER_EMBEDS_PER_ORG_PER_DAY,
+        DAY_SECONDS,
+      );
+      if (!org.allowed) return false;
+      const all = await this.limiter.hit(
+        'kb-customer-embed-day',
+        day,
+        customerEmbedsPerDay(this.config.AI_DAILY_TOKEN_CAP),
+        DAY_SECONDS,
+      );
+      return all.allowed;
+    } catch {
+      return false;
+    }
+  }
 
   // --- reads ---
 
@@ -249,7 +310,13 @@ export class KbService {
     orgId: string,
     query: { q: string; limit: number; lang?: KbSearchQuery['lang'] },
   ): Promise<KbCustomerSearchResult> {
-    const result = await this.run(query.q, { kind: 'customer', orgId }, query.limit, query.lang);
+    const result = await this.run(
+      query.q,
+      { kind: 'customer', orgId },
+      query.limit,
+      query.lang,
+      await this.customerMayEmbed(orgId),
+    );
     // Strip down to what a customer may see: no status, tags, scores or internal ids.
     return {
       hits: result.hits.map((hit) => ({
@@ -268,8 +335,9 @@ export class KbService {
     audience: KbAudience,
     limit: number,
     lang: KbSearchQuery['lang'],
+    mayEmbed = true,
   ): Promise<KbSearchResult> {
-    const embedding = await this.embeddings.embedQuery(q);
+    const embedding = mayEmbed ? await this.embeddings.embedQuery(q) : undefined;
     try {
       const outcome = await searchKb(this.database.db, {
         query: q,
@@ -281,6 +349,7 @@ export class KbService {
       });
       return { mode: outcome.mode, hits: outcome.hits };
     } catch (error) {
+      if (error instanceof KbSearchTimeoutError) throw kbSearchTimeout();
       // The driver's message holds the statement and the customer's words: log a code only.
       throw new KbSearchError(error);
     }
