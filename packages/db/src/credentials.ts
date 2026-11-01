@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises';
 import {
   INTEGRATION_CATALOG,
   integrationFields,
+  isIntegrationComplete,
   isIntegrationKey,
   type CredentialFieldStatus,
   type CredentialSource,
@@ -238,11 +239,9 @@ export function createCredentialStore(options: CredentialStoreOptions): Credenti
           },
         );
         const configured = fields.filter((entry) => entry.configured);
-        const required = fields.filter((entry) => entry.required);
-        const complete =
-          required.length === 0
-            ? configured.length > 0
-            : required.every((entry) => entry.configured);
+        const complete = isIntegrationComplete(key, (name) =>
+          fields.some((entry) => entry.field === name && entry.configured),
+        );
         result.push({
           key,
           name: INTEGRATION_CATALOG[key].name,

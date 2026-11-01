@@ -67,7 +67,7 @@ describe('tickets.create, staff path', () => {
 
     expect(result.audited).toBe(true);
     expect(result.events.map((event) => event.type)).toEqual(['ticket.created', 'message.created']);
-    expect(result.events[0]?.ticketKey).toBe(`OPS-${String(ticket.number)}`);
+    expect(result.events[0]).toMatchObject({ ticketKey: `OPS-${String(ticket.number)}` });
     expect(await eventTypes(env, ticket.id)).toContain('ticket.created');
 
     const creates = (await auditRows(env, 'ticket.create')).filter(

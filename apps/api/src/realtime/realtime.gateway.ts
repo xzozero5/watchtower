@@ -51,7 +51,9 @@ export function audienceFor(principal: Principal): RealtimeAudience | null {
       ? { kind: 'client', orgId: principal.orgScope.orgId }
       : null;
   }
-  return principal.permissions.has('ticket.read') ? { kind: 'staff' } : null;
+  return principal.permissions.has('ticket.read')
+    ? { kind: 'staff', userId: principal.userId }
+    : null;
 }
 
 function reject(socket: Duplex, status: string): void {

@@ -47,7 +47,9 @@ describe('applyRealtimeEvent', () => {
 
     applyRealtimeEvent(ticketCreatedEvent(makeTicket(2)), deps);
 
-    expect(onNewTicket).toHaveBeenCalledWith(makeTicket(2).id);
+    expect(onNewTicket).toHaveBeenCalledWith(
+      expect.objectContaining({ id: makeTicket(2).id, status: 'new', priority: 'P3' }),
+    );
     const list = queryClient.getQueryData<{ pages: { items: unknown[] }[] }>(
       keys.list(DEFAULT_FILTERS),
     );
