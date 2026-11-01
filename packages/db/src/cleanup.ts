@@ -166,6 +166,7 @@ export async function purgeExpired(
     magic_link_tokens: 0,
     portal_access_token: 0,
     break_glass_attempt: 0,
+    status_subscription: 0,
   };
   let more = false;
   for (const statement of STATEMENTS) {
