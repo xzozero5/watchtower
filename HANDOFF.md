@@ -4,15 +4,15 @@
 > อัปเดตล่าสุด: 2026-11-01 12:47 (เวลากรุงเทพ) โดย Claude Code (main thread, เครื่อง local) — **safe pause ตามคำสั่งเจ้าของ เพราะโควตาใกล้เต็ม ยังไม่จบ Phase 1**
 > กฎขนาด ≤ 40 KB — เขียนทับสถานะ ไม่ append ประวัติ · ฉบับก่อนหน้า `docs/handoff-archive/HANDOFF-2026-11-01-0420.md` · บันทึกรายชั่วโมง `logs/daily/2026-11-01.md` · log ต่อ task `docs/STATUS.md`
 
-## ทำต่อจากตรงนี้ (safe pause 2026-11-01 12:47)
-- **ยังไม่มีงานใหม่เข้า `main`** รอบ local นี้มีแต่ daily log · T-103 ยังไม่ merge เพราะ integration รอบล่าสุดยังไม่เขียว
-- **ขั้นแรก:** `git switch verify/t-103bd` → ปิดงานอื่นที่กินเครื่องให้หมด → `pnpm exec turbo run test:integration --force --continue --concurrency=1 --env-mode=loose` · รอบล่าสุดตก 2 ข้อขณะมี agent อื่นรัน test พร้อมกัน: db `followups` reversibility of 0003 (timeout 30 s) และ api `portal` "refuses an expired token" (`no portal email`) `[UNVERIFIED]` ยังไม่พิสูจน์ว่าเป็นเพราะโหลด ถ้าตกซ้ำตอนเครื่องว่างต้องหาสาเหตุ ห้าม merge
-- **ผลที่ `verify/t-103bd` บนเครื่องนี้ `[TESTED]`:** lint, typecheck ผ่าน · unit ผ่านครบ (web 667, api 191, worker 79, domain 67, shared 257, channels 330, db 50, ai 372, ui 609, boundaries 200) · integration domain 188, worker 83 ผ่าน, db 199/200, api 527/528 · e2e 134, full-stack 23 ผ่าน
-- **บั๊กจริงที่เจอเฉพาะบนเครื่องจริง แก้แล้วบน `verify/t-103bd`:** (1) `message.created_at` ใช้นาฬิกาแอป `ticket_event` ใช้นาฬิกา DB ทำ timeline ลูกค้าเรียงผิด (2) relay ใช้นาฬิกา DB แต่ claim ใช้นาฬิกา worker ทำ reply ลูกค้าค้างราว 2 นาที · security review ของสอง fix ไม่มี P0/P1
+## ทำต่อจากตรงนี้ (safe pause 2026-11-01 12:57)
+- **T-103b–d LINE merge เข้า `main` แล้ว** · ลำดับถัดไป: T-102 Gmail → T-107 KB → T-104, T-111 (ตารางด้านล่าง) → wave 3–4 ตาม BACKLOG → หยุดที่ T-115 · migration บน `main` ถึง `0015_line_identity`
+- **gate บนเครื่องนี้ของ T-103 `[TESTED]`:** lint, typecheck ผ่าน · unit web 667, api 191, worker 79, domain 67, shared 257, channels 330, db 50, ai 372, ui 609, boundaries 200 · integration db 200, domain 188, api 528, worker 83 (รอบเครื่องว่าง) · e2e 134 · full-stack 23 (`PW_CHANNEL=msedge`) · ยังไม่ได้ลอง `docker compose up` ด้วย image ที่ build เอง
+- **รัน integration ตอนเครื่องว่าง:** รอบที่มี agent รัน test พร้อมกัน ตกแบบหลอก 2 ข้อ (db `followups` timeout, api `portal` `no portal email`) รอบเครื่องว่างผ่านครบ
+- **บั๊กจริงที่เจอเฉพาะบนเครื่องจริง แก้แล้ว:** (1) `message.created_at` ใช้นาฬิกาแอป `ticket_event` ใช้นาฬิกา DB ทำ timeline ลูกค้าเรียงผิด (2) relay ใช้นาฬิกา DB แต่ claim ใช้นาฬิกา worker ทำ reply ลูกค้าค้างราว 2 นาที · security review ของสอง fix ไม่มี P0/P1
 
 ## อ่านก่อน (สรุป 2 นาที)
 - **Phase 0 เสร็จ** (CI บน GitHub เขียว) · ยังไม่ tag `v0.0.1` — รอเจ้าของตรวจบนเครื่อง (รายการด้านล่าง)
-- **Phase 1 กำลังทำ** · บน `main` แล้ว: T-101, T-102a, T-103a, T-106a–e, T-112a, T-116a, T-117, T-122a–e, T-123a, T-126–T-129 · **ค้างบน branch 3 งาน** (LINE, Gmail, KB — ตารางด้านล่าง) ทั้งหมดผ่าน security review รอบแรกและแก้ finding ไปแล้วบางส่วน
+- **Phase 1 กำลังทำ** · บน `main` แล้ว: T-101, T-102a, T-103a–d, T-106a–e, T-112a, T-116a, T-117, T-122a–e, T-123a, T-126–T-129 · **ค้างบน branch 3 งาน** (LINE, Gmail, KB — ตารางด้านล่าง) ทั้งหมดผ่าน security review รอบแรกและแก้ finding ไปแล้วบางส่วน
 - **กติกาที่ใช้ทั้ง session:** security finding P0/P1 ต้องแก้ก่อน merge · main thread รัน test เองบน branch `verify/<task>` (merge กับ `main` ล่าสุด) ก่อน merge เสมอ · migration เปลี่ยนเลขตอน merge
 - **`po` ตัดสินแทนเจ้าของ 27 ข้อ** (ตารางด้านล่าง) ติ๊กรับ/ไม่รับได้เลย · ข้อใหม่ #26 (LINE verified), #27 (KB publish แยกหน้าที่)
 - **UI:** T-124 → T-128 (AI-first board) → T-129 (มน/สี/icon, แยก status กับ tag ตาม feedback เจ้าของ) · ภาพหน้าจอส่งในแชตแล้ว (ไม่ได้ commit)
@@ -20,14 +20,13 @@
 ## สถานะปัจจุบัน
 - **Phase:** 0 รอเจ้าของตรวจ + tag · 1 อยู่ wave 2 (`docs/plans/phase-1-breakdown.md` §H)
 - **`main` (merge ล่าสุด T-129, 11:19):** main thread รัน `turbo --force` เอง: lint/typecheck ผ่าน · unit ทุก package (ui 609, web 666, api 188, worker 79, domain 63, ai 372, channels 325) · integration db 200, domain 170, api 502, worker 67 · web e2e 134 · full-stack e2e 23 `[TESTED]` บน cloud Linux
-- **Migration บน `main`:** 0000–0014 (`0013_outbound_delivery`, `0014_outbound_hardening`)
+- **Migration บน `main`:** 0000–0015 (`0013_outbound_delivery`, `0014_outbound_hardening`, `0015_line_identity`)
 - **Integration จริง:** ยังไม่มี ทุกตัวเป็น mock / fake transport
 - **เงิน:** Max plan (วัดเป็นดอลลาร์ไม่ได้) · token ของ sub-agent ดู daily log
 
 ## งานค้างบน branch (push ขึ้น origin แล้ว ทำต่อบนเครื่องได้เลย)
 | งาน | branch | สถานะ | ต้องทำต่อ |
 |---|---|---|---|
-| **T-103b–d LINE** webhook + media + auto-ack ผ่าน policy gate + identity link | `verify/t-103bd` (รวม `main` + fix นาฬิกาสองตัว + boundary test บน Windows) | security ไม่มี P0/P1 ค้าง · integration ยังไม่เขียว ดู "ทำต่อจากตรงนี้" | รัน integration ตอนเครื่องว่าง → เขียวแล้ว merge เข้า `main` (`--no-ff`) + STATUS/BACKLOG + เพิ่ม **T-103e** (`po` #26) |
 | **T-102b–d Gmail** push receiver (OIDC) + history sync/watch/heartbeat + ส่ง in-thread | `wip/t-102bd` @ `6f606ab` | security re-review: N-1..N-3 แก้แล้ว ไม่มี P0/P1/P2 · ผู้ตรวจไม่ได้รัน integration · main thread ยังไม่ได้รัน suite | 1) merge `main` หลัง T-103 (migration `0015_gmail_account_state` → `0016`) 2) แก้ P3: F-1 `runtime.ts:212` flag เปิด + store อ่านไม่ได้ได้ fake (ให้ throw + guard ปฏิเสธ flag เมื่อตั้ง `GMAIL_*`), F-2 `service-account.ts:112`/`dispatcher.ts:333` mint token ก่อน `markDispatched`, F-3 `ingest/index.ts:65` เลิกผูก `NODE_ENV` 3) suite เต็ม 4) แก้ PRD R-2.4 ให้ scope = readonly + send |
 | **T-107a–c KB** schema/versions + chunker + audited embedder (mock) + hybrid search + API | `wip/t-107ac` @ `62df4d2` | P2-A, P2-B, P3-C, P3-E แก้แล้ว · re-review (หยุดกลางทางเพราะ pause) ไม่มี P0/P1 แต่ **ยังไม่ merge:** **P2 ใหม่** `articles.ts:553` break-glass ซ้อนเขียนทับ `breakGlassPrevVersion` ทำให้ผู้เขียน v2 หรือ head คนแรกเคลียร์ธงเองได้ · P3-D ปิดไม่ครบ raw SQL 2 ขั้นผ่าน `0015_kb.sql:219-225` · P3 `articles.ts:271,341` actor `system` ขยายผู้อ่านได้, agent แก้ metadata ของ live โดย audit ไม่มี before/after · ยังไม่ตรวจ: api/worker integration, DoS ของ trgm, งบ AI ของ customer search | แก้ P2 (ขณะ pending คงค่า prev เดิม + จำผู้ publish ทุกคน) และ P3 → re-review ส่วนที่ค้าง → merge หลัง Gmail (เลข → `0017`, grep `0015_kb`) → suite เต็ม |
 | **T-104 Discord** webhook + fan-out (mock) | `wip/t-104` @ `fea760d` | agent รายงาน lint/typecheck/unit ผ่าน, integration db 207, domain 172, worker 84, api 500 + ตก 2 ใน portal timeline (อาการเดียวกับบั๊กนาฬิกาที่แก้บน `verify/t-103bd`, branch นี้ยังไม่มี fix) · ยังไม่มี security review · main thread ยังไม่ได้รันเอง | merge `main` หลัง T-103 → renumber `0015_discord_notify` → security review → suite เต็ม · `[ASSUMED]` ส่งเฉพาะ `ticket.created`, slot `default`/`urgent`, at-least-once (โพสต์ซ้ำได้ในกรณีหายาก), link `/tickets/<key>` ยังไม่มี route จริง · agent แก้ `parseRetryAfter` ให้อ่านทศนิยม กระทบทุก adapter |
@@ -37,6 +36,7 @@
 - **T-122f** (P3 จาก re-review T-122e) — **F-1 ต้องปิดก่อนเปิด LINE push จริง:** cancel/deny ของ pinned push ที่ re-queue แล้วต้องติด `outcome_unknown`
 - จาก review fix นาฬิกา เข้า T-122f: **P2 O-7** hold ใช้นาฬิกา API claim ใช้นาฬิกา worker จน undo เหลือ 0 ได้ + sweep trigger ไม่มี `notBefore` (`schedule.ts:178`, `dispatch.ts:686`) · P3 `dispatcher.ts:490`, `Retry-After` ไม่มีเพดาน (`state.ts:92`), `ingest.ts:414`, sweep lease เมื่อ skew ≥ 120 s
 - ก่อนเปิด AI live: name dictionary ของ redactor ว่าง ชื่อในคำค้น KB อาจไม่ถูก redact `[UNVERIFIED 70%]`
+- **T-103e** ส่งรหัสผูก LINE ไป email ที่ยืนยันแล้ว = verified (`po` #26) · อยู่ใน BACKLOG แล้ว
 - **T-125** security P3 รวม + test จับเวลาที่ flaky ภายใต้โหลด (break-glass timing, ui timeout) + B-001
 - **T-103e** (เพิ่มลง BACKLOG ตอน merge T-103) · ยังไม่มีโค้ดอ่าน `line_verified_at` ไปใช้ตัดสิน disclosure — ต้องทำใน T-108/T-109
 - T-109 ต้องเปลี่ยน web ไปใช้ cancel endpoint ฝั่ง server + `aiDraftId`
