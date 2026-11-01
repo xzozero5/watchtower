@@ -28,12 +28,22 @@ const SQLSTATE_PINNED = 'WT001';
 const SQLSTATE_CAP_ON = 'WT002';
 const SQLSTATE_NO_ROW = 'P0002';
 
-function toSwitch(row: typeof schema.aiSwitch.$inferSelect): AiSwitch {
+/** First word of a display name: what any staff reader may see of who flipped a switch (T-127 H3). */
+export function firstName(name: string | null): string | null {
+  const word = name?.trim().split(/\s+/)[0];
+  return word === undefined || word === '' ? null : word;
+}
+
+function toSwitch(
+  row: typeof schema.aiSwitch.$inferSelect,
+  changedByName: string | null,
+): AiSwitch {
   return {
     key: row.key as AiSwitchKey,
     on: row.isOn,
     reason: row.reason,
     changedBy: row.changedBy,
+    changedByName: firstName(changedByName),
     changedAt: row.changedAt.toISOString(),
   };
 }
@@ -54,18 +64,22 @@ export function toAutonomyIntent(row: IntentRow): AutonomyIntent {
 
 /** Both switches, in a fixed order. A row missing from the table (damaged) shows as ON. */
 export async function readSwitches(executor: ReadExecutor): Promise<AiSwitch[]> {
-  const rows = await executor.select().from(schema.aiSwitch);
+  const rows = await executor
+    .select({ row: schema.aiSwitch, userName: schema.users.name })
+    .from(schema.aiSwitch)
+    .leftJoin(schema.users, eq(schema.users.id, schema.aiSwitch.changedBy));
   return AI_SWITCH_KEYS.map((key) => {
-    const row = rows.find((candidate) => candidate.key === key);
-    return row === undefined
+    const found = rows.find((candidate) => candidate.row.key === key);
+    return found === undefined
       ? {
           key,
           on: true,
           reason: 'switch row missing',
           changedBy: null,
+          changedByName: null,
           changedAt: new Date(0).toISOString(),
         }
-      : toSwitch(row);
+      : toSwitch(found.row, found.userName);
   });
 }
 

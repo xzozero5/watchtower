@@ -38,6 +38,13 @@ snapshot สั้นสำหรับ cold start อยู่ที่ `HANDOF
 
 ## Log
 
+## 2026-11-01 09:50 (Asia/Bangkok) — backend-dev + main thread — T-127 API (หน้า head ยังทำอยู่)
+- ทำอะไร: `GET /v1/tickets/stats` (group by status/queue/assignee/priority + SLA state, CTE เดียว, client 403 `[ASSUMED]`) · list filter `slaState` + sort `created_asc`/`sla_due_asc` · `changedByName` ของสวิตช์ AI + `GET /v1/intents/:id/autonomy/history` (lead/head) · holiday `checked/checkedAt/checkedBy` + `PATCH …/holidays/:date` (head, audit) migration `0009_holiday_checked` · `contactCount` ใน org + `GET /v1/org-tiers` · audit `actorType` filter + CSV export (`audit.read` + `pii.export`, 6/ชม., กัน formula injection, audit ทุกครั้ง)
+- test เดิมที่แก้: field ใหม่ของ holiday, `features.test.ts` เพิ่ม `admin`, route-policy เพิ่ม route ใหม่, seed assert holiday unchecked
+- test: main thread รัน `--force`: lint, typecheck ผ่าน · unit api 182, shared 206 … · integration api 456, db 135, domain 94, worker 29 `[TESTED]`
+- ไม่ยืนยัน: ความเร็ว stats กับ ticket เปิดจำนวนมาก `[UNVERIFIED 70%]`
+- เจ้าของ feedback รอบสอง: UI "ยังเหมือน mailbox, text เยอะ, ไม่ AI-driven" → `docs/design/ai-first-workspace.md` + T-128 (กำลังทำ)
+
 ## 2026-11-01 08:45 (Asia/Bangkok) — backend-dev + main thread — T-122c ingestion pipeline
 - ทำอะไร: migration `0008_inbound` (agent ตั้งเป็น 0007 ชนกับ T-112a → main thread เปลี่ยนเลขตอน merge) — `inbound_event` (unique ต่อ account+provider event, payload ล้างหลังประมวลผล), `inbound_message` (disposition `pending|ticket|appended|noise|auto_reply|internal`, grant เฉพาะคอลัมน์ผลลัพธ์) · domain `ingestInbound`: idempotent, จับ thread ตาม threadId → In-Reply-To → References → `[OPS-n]` → heuristic (contact เดียวกัน, subject เดียวกัน, 14 วัน `[ASSUMED]`), key match เฉพาะผู้ส่ง org เดียวกัน (กันอ้างเลข ticket คนอื่น), auto-reply/noise ไม่สร้าง ticket, reopen ตามกฎ, ผู้ส่งไม่รู้จัก → contact unverified ใน org placeholder · worker `ingest` queue: normalise ด้วย adapter → raw ลง MinIO (SigV4 เขียนเอง ไม่เพิ่ม SDK) → classifier hook (timeout 3 s, fallback rules) → tx เดียว → realtime หลัง commit · fake channel CLI `inbound:fake`
 - main thread แก้: lint `no-redacted-text-cast` (T-126) จับ placeholder `RedactedText` ใน worker → เปลี่ยนเป็น type จริงจาก `@watchtower/ai` + test ใช้ `createRedactor()` (assert ใหม่: token `[PHONE_1]`/`[THAI_ID_1]`, ไม่มีเลขดิบ)

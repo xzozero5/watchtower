@@ -1,7 +1,10 @@
 import { Inject, Injectable } from '@nestjs/common';
-import type { Database } from '@watchtower/db';
+import { schema, type Database } from '@watchtower/db';
 import type { Actor } from '@watchtower/domain';
 import type {
+  AutonomyHistoryEntry,
+  AutonomyHistoryPage,
+  AutonomyHistoryQuery,
   AutonomyState,
   IntentAutonomyChange,
   SetAiSwitch,
@@ -9,6 +12,10 @@ import type {
   SetIntentAutonomy,
 } from '@watchtower/shared';
 
+import { and, desc, eq } from 'drizzle-orm';
+
+import { notFound } from '../auth/http-errors.js';
+import { beforeCursor, decodeCursor, preciseTimestamp, toPage } from '../common/keyset.js';
 import { DATABASE } from '../database/database.module.js';
 import { domainContext, settle } from '../domain/domain-context.js';
 import { translating } from '../domain/domain-errors.js';
@@ -29,6 +36,58 @@ export class AutonomyService {
 
   read(): Promise<AutonomyState> {
     return this.domain.autonomy.read(this.database.db);
+  }
+
+  /**
+   * Every stage and pin change of one intent, newest first, with who made it (T-127 H6). A read for
+   * display, so it stays in the api (ADR-009); the rows are written only by `set_intent_autonomy()`.
+   */
+  async history(intentId: string, query: AutonomyHistoryQuery): Promise<AutonomyHistoryPage> {
+    const { intent, intentAutonomyHistory: history, users } = schema;
+    const [found] = await this.database.db
+      .select({ id: intent.id })
+      .from(intent)
+      .where(eq(intent.id, intentId))
+      .limit(1);
+    if (found === undefined) throw notFound('No such intent');
+
+    const rows = await this.database.db
+      .select({
+        row: history,
+        userName: users.name,
+        sortKey: preciseTimestamp(history.changedAt),
+      })
+      .from(history)
+      .leftJoin(users, eq(users.id, history.changedBy))
+      .where(
+        and(
+          eq(history.intentId, intentId),
+          query.cursor === undefined
+            ? undefined
+            : beforeCursor(history.changedAt, history.id, decodeCursor(query.cursor)),
+        ),
+      )
+      .orderBy(desc(history.changedAt), desc(history.id))
+      .limit(query.limit + 1);
+    const page = toPage(
+      rows.map((entry) => ({ ...entry, id: entry.row.id })),
+      query.limit,
+    );
+    return {
+      items: page.rows.map(({ row, userName }): AutonomyHistoryEntry => ({
+        id: row.id,
+        intentId: row.intentId,
+        change: row.change as AutonomyHistoryEntry['change'],
+        fromStage: row.fromStage,
+        toStage: row.toStage,
+        pinned: row.pinned,
+        reason: row.reason,
+        changedBy: row.changedBy,
+        changedByName: userName,
+        changedAt: row.changedAt.toISOString(),
+      })),
+      nextCursor: page.nextCursor,
+    };
   }
 
   async setSwitch(uow: UnitOfWork, actor: Actor, input: SetAiSwitch): Promise<SetAiSwitchResult> {

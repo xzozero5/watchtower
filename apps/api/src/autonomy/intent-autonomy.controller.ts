@@ -1,4 +1,4 @@
-import { Body, Controller, HttpCode, Inject, Param, Post } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Inject, Param, Post, Query } from '@nestjs/common';
 import {
   ApiConflictResponse,
   ApiForbiddenResponse,
@@ -10,9 +10,12 @@ import {
 import {
   AUDIT_ACTIONS,
   PHASE_MAX_AUTONOMY_STAGE,
+  autonomyHistoryPageSchema,
+  autonomyHistoryQuerySchema,
   idParamSchema,
   intentAutonomyChangeSchema,
   setIntentAutonomySchema,
+  type AutonomyHistoryQuery,
   type SetIntentAutonomy,
 } from '@watchtower/shared';
 import type { z } from 'zod';
@@ -37,6 +40,26 @@ export class IntentAutonomyController {
     @Inject(AutonomyService) private readonly autonomy: AutonomyService,
     @Inject(UnitOfWorkService) private readonly uow: UnitOfWorkService,
   ) {}
+
+  @Get('history')
+  // `intent.manage` is what opens the Intents admin page (lead, head); the history is shown in it.
+  // Reading it needs no write permission, so a lead who cannot pin still sees who pinned.
+  @RequirePermission('intent.manage')
+  @ApiOperation({
+    summary: 'Stage and pin changes of an intent, newest first (lead, head)',
+    description:
+      'Who, when, from which stage to which, the pin state after it, and the reason given. Names ' +
+      'are display names; `changedByName` is null when the account no longer exists. Keyset ' +
+      'paginated: pass `nextCursor` back as `cursor`.',
+  })
+  @ApiOkResponse({ standardSchema: autonomyHistoryPageSchema })
+  @ApiNotFoundResponse({ description: 'No such intent' })
+  async history(
+    @Param({ schema: idParamSchema }) params: IdParam,
+    @Query({ schema: autonomyHistoryQuerySchema }) query: AutonomyHistoryQuery,
+  ) {
+    return parseResponse(autonomyHistoryPageSchema, await this.autonomy.history(params.id, query));
+  }
 
   @Post()
   @HttpCode(200)

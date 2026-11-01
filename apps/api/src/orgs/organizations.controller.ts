@@ -30,6 +30,7 @@ import {
   organizationListQuerySchema,
   organizationPageSchema,
   organizationSchema,
+  orgTierListSchema,
   updateContactSchema,
   updateOrganizationSchema,
   type ContactListQuery,
@@ -197,5 +198,24 @@ export class ContactsController {
   @ApiConflictResponse({ description: 'Tickets or messages still reference the contact' })
   async remove(@Param({ schema: idParamSchema }) params: IdParam): Promise<void> {
     await this.contacts.remove(params.id);
+  }
+}
+
+@ApiTags('organizations')
+@Controller('v1/org-tiers')
+export class OrgTiersController {
+  constructor(@Inject(OrganizationsService) private readonly orgs: OrganizationsService) {}
+
+  @Get()
+  @RequirePermission('ticket.read')
+  @ApiOperation({
+    summary: 'List organization tiers (staff)',
+    description:
+      'The tiers an organization or an SLA policy may name (`tier`), in display order. Read-only here; ' +
+      'creating and renaming tiers comes with T-121.',
+  })
+  @ApiOkResponse({ standardSchema: orgTierListSchema })
+  async list() {
+    return parseResponse(orgTierListSchema, { tiers: await this.orgs.tiers() });
   }
 }

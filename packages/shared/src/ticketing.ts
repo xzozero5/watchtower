@@ -6,7 +6,7 @@ import { emailSchema } from './auth.js';
 import { assertDisjoint } from './features/compose.js';
 import { ticketAiRowSchema } from './features/ai.js';
 import { FEATURES, FEATURE_TICKET_EVENTS } from './features/index.js';
-import { ticketPrioritySchema } from './sla.js';
+import { slaStateSchema, ticketPrioritySchema } from './sla.js';
 
 /**
  * HTTP contract of the ticket endpoints (PRD section 4.1) and the rules both sides share: the
@@ -284,7 +284,18 @@ export const duplicateSuggestionsSchema = z.object({
 });
 export type DuplicateSuggestions = z.infer<typeof duplicateSuggestionsSchema>;
 
-export const TICKET_SORTS = ['created_desc', 'updated_desc', 'due_asc'] as const;
+/**
+ * `due_asc` sorts by the first-response due time (kept for existing callers). `sla_due_asc` sorts by
+ * the due time of the target that is running now (first response until the ticket is answered, then
+ * resolution), tickets with no running target last. `created_asc` is oldest first.
+ */
+export const TICKET_SORTS = [
+  'created_desc',
+  'updated_desc',
+  'due_asc',
+  'created_asc',
+  'sla_due_asc',
+] as const;
 export const ticketSortSchema = z.enum(TICKET_SORTS);
 
 /**
@@ -309,11 +320,58 @@ export const ticketListQuerySchema = z.object({
   q: z.string().trim().min(MIN_SEARCH_LENGTH).max(200).optional(),
   /** Only open tickets that are past a first-response or resolution due time. */
   overdue: z.stringbool().optional(),
+  /**
+   * Only tickets whose running SLA target is in one of these states (staff only; computed on the
+   * server, UI spec 17 Q9). `at_risk` and `ok` are measured in business time; tickets with no
+   * running target (not open, or no due date) match none of them.
+   */
+  slaState: csvList(slaStateSchema),
   sort: ticketSortSchema.default('created_desc'),
   limit: pageLimit(50, 200),
   cursor: cursorSchema.optional(),
 });
 export type TicketListQuery = z.infer<typeof ticketListQuerySchema>;
+
+/** Counts take the same filters as the list; paging and sorting mean nothing for a count. */
+export const ticketStatsQuerySchema = ticketListQuerySchema.omit({
+  sort: true,
+  limit: true,
+  cursor: true,
+});
+export type TicketStatsQuery = z.infer<typeof ticketStatsQuerySchema>;
+
+/** Tickets per SLA state; a ticket with no running target is in none of them. */
+export const slaCountsSchema = z.object({
+  ok: z.number().int().min(0),
+  at_risk: z.number().int().min(0),
+  breached: z.number().int().min(0),
+  paused: z.number().int().min(0),
+});
+export type SlaCounts = z.infer<typeof slaCountsSchema>;
+
+/** The numbers every group carries: all tickets, the open ones, and the SLA state of those. */
+export const ticketStatsBucketSchema = z.object({
+  /** Tickets in the group, whatever their status (after the filters). */
+  count: z.number().int().min(0),
+  /** Of those, tickets in an open status (`OPEN_STATUSES`). */
+  open: z.number().int().min(0),
+  sla: slaCountsSchema,
+});
+export type TicketStatsBucket = z.infer<typeof ticketStatsBucketSchema>;
+
+export const ticketStatsSchema = z.object({
+  generatedAt: z.iso.datetime(),
+  total: ticketStatsBucketSchema,
+  /** Groups with no ticket are left out. In workflow order. */
+  byStatus: z.array(ticketStatsBucketSchema.extend({ status: ticketStatusSchema })),
+  /** `queueId: null` = tickets in no queue. Largest group first. */
+  byQueue: z.array(ticketStatsBucketSchema.extend({ queueId: z.uuid().nullable() })),
+  /** `assigneeId: null` = unassigned. Largest group first. */
+  byAssignee: z.array(ticketStatsBucketSchema.extend({ assigneeId: z.uuid().nullable() })),
+  /** P1 to P4. */
+  byPriority: z.array(ticketStatsBucketSchema.extend({ priority: ticketPrioritySchema })),
+});
+export type TicketStats = z.infer<typeof ticketStatsSchema>;
 
 const tagSchema = z.string().trim().min(1).max(64);
 export const ticketTagsSchema = z.array(tagSchema).max(30);

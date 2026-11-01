@@ -22,25 +22,36 @@ import {
   AUDIT_ACTIONS,
   businessCalendarListSchema,
   businessCalendarSchema,
+  calendarDateSchema,
   createBusinessCalendarSchema,
   createSlaPolicySchema,
   idParamSchema,
+  markHolidayCheckedSchema,
   slaPolicyListSchema,
   slaPolicySchema,
   updateBusinessCalendarSchema,
   updateSlaPolicySchema,
   type CreateBusinessCalendar,
   type CreateSlaPolicy,
+  type MarkHolidayChecked,
   type UpdateBusinessCalendar,
   type UpdateSlaPolicy,
 } from '@watchtower/shared';
 import type { z } from 'zod';
 
-import { Audited, RequirePermission } from '../auth/decorators.js';
+import {
+  Audited,
+  CurrentPrincipal,
+  RequirePermission,
+  type Principal,
+} from '../auth/decorators.js';
 import { parseResponse } from '../common/zod-openapi.js';
 import { SlaAdminService } from './sla-admin.service.js';
 
 type IdParam = z.infer<typeof idParamSchema>;
+
+const holidayParamSchema = idParamSchema.extend({ date: calendarDateSchema });
+type HolidayParam = z.infer<typeof holidayParamSchema>;
 
 @ApiTags('sla')
 @Controller('v1/sla-policies')
@@ -155,6 +166,30 @@ export class BusinessCalendarsController {
     @Body({ schema: updateBusinessCalendarSchema }) body: UpdateBusinessCalendar,
   ) {
     return parseResponse(businessCalendarSchema, await this.sla.updateCalendar(params.id, body));
+  }
+
+  @Patch(':id/holidays/:date')
+  @RequirePermission('sla.manage')
+  @Audited({ action: AUDIT_ACTIONS.calendarHolidayChecked, targetType: 'business_calendar' })
+  @ApiOperation({
+    summary: 'Mark a holiday as checked against the official announcement (head)',
+    description:
+      'Public holidays from example data or an import are `[VERIFY]` until a person compares the ' +
+      'date with the official announcement. This records who checked it and when; `checked: ' +
+      'false` takes the mark back. Editing the calendar keeps the mark of a holiday whose date ' +
+      'and name did not change and resets the others.',
+  })
+  @ApiOkResponse({ standardSchema: businessCalendarSchema })
+  @ApiNotFoundResponse({ description: 'No such calendar, or no holiday on that date' })
+  async markHoliday(
+    @Param({ schema: holidayParamSchema }) params: HolidayParam,
+    @Body({ schema: markHolidayCheckedSchema }) body: MarkHolidayChecked,
+    @CurrentPrincipal() principal: Principal,
+  ) {
+    return parseResponse(
+      businessCalendarSchema,
+      await this.sla.markHolidayChecked(params.id, params.date, body.checked, principal.userId),
+    );
   }
 
   @Delete(':id')

@@ -192,6 +192,9 @@ export type SetRolePermissions = z.infer<typeof setRolePermissionsSchema>;
 
 // --- audit log (PRD section 8.2) ---
 
+/** Most rows one CSV export returns; narrow the dates for more. */
+export const AUDIT_EXPORT_MAX_ROWS = 50_000;
+
 export const AUDIT_ACTOR_TYPES = ['user', 'system', 'ai', 'anonymous'] as const;
 export const AUDIT_OUTCOMES = ['success', 'failure', 'denied'] as const;
 export type AuditActorType = (typeof AUDIT_ACTOR_TYPES)[number];
@@ -216,6 +219,8 @@ export type AuditLogEntry = z.infer<typeof auditLogEntrySchema>;
 
 export const auditLogQuerySchema = z.object({
   actorId: z.string().max(100).optional(),
+  /** Who acted: a person, the system (jobs), the AI, or nobody signed in. */
+  actorType: z.enum(AUDIT_ACTOR_TYPES).optional(),
   action: z.string().max(100).optional(),
   outcome: z.enum(AUDIT_OUTCOMES).optional(),
   targetType: z.string().max(100).optional(),
@@ -227,6 +232,32 @@ export const auditLogQuerySchema = z.object({
   cursor: z.string().max(200).optional(),
 });
 export type AuditLogQuery = z.infer<typeof auditLogQuerySchema>;
+
+/** Filters of the CSV export: the list's filters without paging, and a cap on the rows. */
+export const auditLogExportQuerySchema = auditLogQuerySchema
+  .omit({ limit: true, cursor: true })
+  .extend({
+    maxRows: z.coerce
+      .number()
+      .int()
+      .min(1)
+      .max(AUDIT_EXPORT_MAX_ROWS)
+      .default(AUDIT_EXPORT_MAX_ROWS),
+  });
+export type AuditLogExportQuery = z.infer<typeof auditLogExportQuerySchema>;
+
+/** Columns of the CSV export, in order: no IP, no before/after, no free-form metadata. */
+export const AUDIT_EXPORT_COLUMNS = [
+  'id',
+  'createdAt',
+  'actorType',
+  'actorId',
+  'action',
+  'outcome',
+  'targetType',
+  'targetId',
+  'requestId',
+] as const;
 
 export const auditLogPageSchema = z.object({
   entries: z.array(auditLogEntrySchema),
