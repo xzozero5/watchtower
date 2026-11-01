@@ -30,6 +30,13 @@ import { SlaRemaining } from '../tickets/sla-remaining.js';
 import { TICKET_KEYS, type TicketKeys } from '../tickets/ticket-keys.js';
 import { SHIFT_NOW, type ShiftNow } from './shift-core.js';
 
+/**
+ * `clocked_in_at` is this process' clock and `ticket_event.created_at` the database's. A change made
+ * right after clocking in must not fall before the session because of the skew between them. Counting
+ * an event from just before the session errs toward the gate, and a lead can override it.
+ */
+const CLOCK_SKEW_MS = 60_000;
+
 type Executor = Pick<Database['db'], 'select' | 'execute'>;
 
 const ackUser = alias(schema.users, 'ack_user');
@@ -216,7 +223,7 @@ export class HandoffReader {
       .from(schema.ticketEvent)
       .where(
         and(
-          gte(schema.ticketEvent.createdAt, session.since),
+          gte(schema.ticketEvent.createdAt, new Date(session.since.getTime() - CLOCK_SKEW_MS)),
           eq(schema.ticketEvent.actorType, 'user'),
           eq(schema.ticketEvent.actorId, userId),
           inArray(schema.ticketEvent.type, [
