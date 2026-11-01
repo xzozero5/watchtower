@@ -85,6 +85,7 @@ export function ticketEvent(
       priority: row.priority as TicketPriority,
       assigneeId: row.assigneeId,
       queueId: row.queueId,
+      channel: row.channel,
       changed,
     },
   };

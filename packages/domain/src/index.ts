@@ -19,6 +19,7 @@ import {
 } from './outbound/dispatch.js';
 import { scheduleCustomerSend, scheduleTemplateAck } from './outbound/schedule.js';
 import { readOutboundSettings, setUndoSendSeconds } from './outbound/settings.js';
+import { notifyShiftAlerts } from './notifications.js';
 import { enqueueJob } from './outbox.js';
 import type { PolicyGate } from './policy.js';
 import {
@@ -131,6 +132,14 @@ export {
 } from './inbound/types.js';
 export { resolveIntent } from './intents.js';
 export { NO_NOTIFIER, type TicketNotifier } from './notifier.js';
+export {
+  notifyIn,
+  notifyShiftAlerts,
+  notifyTicketAssigned,
+  notifyTicketP1,
+  type NotifyInput,
+  type ShiftAlertInput,
+} from './notifications.js';
 export { enqueueJob, type OutboxRequest } from './outbox.js';
 export { cancelSend, type CancelSendInput } from './outbound/cancel.js';
 export { loadDeliveryContext, type DeliveryContext, type ParentMail } from './outbound/context.js';
@@ -375,6 +384,11 @@ export interface Domain {
     readonly redeemLineLinkCode: typeof redeemLineLinkCode;
     readonly linkLineUser: typeof linkLineUser;
   };
+  /**
+   * In-app notifications (T-105). Ticket alerts (P1, assigned) are raised inside `tickets.*`; the
+   * shift alerts for leads are raised by whoever has the shift overview (T-111).
+   */
+  readonly notifications: { readonly shiftAlerts: typeof notifyShiftAlerts };
 }
 
 export function createDomain(options: DomainOptions): Domain {
@@ -439,5 +453,6 @@ export function createDomain(options: DomainOptions): Domain {
     },
     inbound: { ingest: ingestInbound },
     identity: { issueLineLinkCode, redeemLineLinkCode, linkLineUser },
+    notifications: { shiftAlerts: notifyShiftAlerts },
   };
 }
