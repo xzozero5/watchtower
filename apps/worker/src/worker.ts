@@ -9,6 +9,7 @@ import { Queue, Worker, type Processor } from 'bullmq';
 import { Redis } from 'ioredis';
 import { z } from 'zod';
 
+import { createAiRuntime } from './ai/runtime.js';
 import type { WorkerConfig } from './config.js';
 import { createHealthServer } from './health.js';
 import type { WorkerLogger } from './logger.js';
@@ -96,6 +97,8 @@ export async function startWorker(
   });
   const realtime = createRealtimeSink(realtimeRedis, options.realtimeChannel);
   const overrides = options.overrides ?? {};
+  // The AI layer (T-106e): the mock provider by default; absent (rules only) for a provider not wired yet.
+  const ai = createAiRuntime(config, database, logger, overrides.ai);
 
   const consumers: Worker[] = [];
   const consume = (queue: QueueName, processor: Processor, concurrency?: number): Worker => {
@@ -117,7 +120,7 @@ export async function startWorker(
   for (const registration of PROCESSORS) {
     consume(
       registration.queue,
-      registration.create({ config, logger, database, mailer, domain, realtime, overrides }),
+      registration.create({ config, logger, database, mailer, domain, realtime, ai, overrides }),
       registration.concurrency,
     );
   }

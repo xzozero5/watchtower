@@ -5,6 +5,8 @@ import { KEY_LABELS, deriveSubkey } from '@watchtower/shared/secret-box';
 import type { Processor } from 'bullmq';
 
 import type { WorkerConfig } from '../config.js';
+import { createAiProcessor } from '../ai/brief.js';
+import type { AiOverrides, AiRuntime } from '../ai/runtime.js';
 import { createIngestRegistration, type IngestOverrides } from '../ingest/index.js';
 import type { WorkerLogger } from '../logger.js';
 import type { Mailer } from '../mailer.js';
@@ -23,12 +25,15 @@ export interface ProcessorContext {
   readonly domain: Domain;
   /** Publishes realtime events after a commit. */
   readonly realtime: RealtimeSink;
+  /** The AI layer (T-106e). Absent when `AI_PROVIDER` is not wired: AI stays off and rules decide. */
+  readonly ai: AiRuntime | undefined;
   /** Test doubles for the outside world (storage, provider transports, classifier). Production passes none. */
   readonly overrides: ProcessorOverrides;
 }
 
 export interface ProcessorOverrides {
   readonly ingest?: IngestOverrides;
+  readonly ai?: AiOverrides;
 }
 
 export interface ProcessorRegistration {
@@ -75,6 +80,10 @@ export const PROCESSORS: readonly ProcessorRegistration[] = [
   // --- notifications (T-105) ---
 
   // --- ai (T-106, T-108) ---
+  {
+    queue: QUEUE_NAMES.ai,
+    create: ({ database, ai, logger }) => createAiProcessor({ database, ai, logger }),
+  },
 
   // --- kb (T-107) ---
 

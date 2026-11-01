@@ -23,9 +23,9 @@ import type { WorkerLogger } from '../logger.js';
  * handed the raw subject or body by this code.
  *
  * `RedactedText` is the branded type of `@watchtower/ai` (T-106): a hook implements `redact` with a
- * redaction session (`createRedactor().session({ scope }).redact`). No hook is registered in
- * production yet (T-106e wires the classifier with the mock provider first), so ingestion
- * classifies by rules only.
+ * redaction session (`createRedactor().session({ scope }).redact`). The worker registers
+ * `createAiClassifierFactory` (`../ai/classifier-hook.ts`, T-106e), which calls the `classifyTicket`
+ * agent; with `AI_PROVIDER=mock` that is the offline dev mock.
  */
 
 export type { RedactedText };
@@ -37,6 +37,17 @@ export interface InboundClassifierInput {
   /** What the header rules already concluded, so the model can agree or add context. */
   readonly rules: AutomatedVerdict;
 }
+
+/**
+ * Builds the hook for one message. The scope names the message (`inbound:<account>:<provider id>`):
+ * a hook owns one redaction session, so the redaction counts in the `ai_run` row are the session's
+ * own and one message's placeholders never mix with another's (SR106-R9).
+ */
+export type InboundClassifierFactory = (
+  scope: string,
+  /** Names of the people in the message (the sender), for the session's name dictionary. */
+  participants: readonly string[],
+) => InboundClassifierHook;
 
 export interface InboundClassifierHook {
   /** Applies PII redaction (Thai ID numbers, phone numbers, emails, names). */

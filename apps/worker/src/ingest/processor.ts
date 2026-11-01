@@ -18,7 +18,7 @@ import { PermanentIngestError, type ChannelIngestor, type IngestedItem } from '.
 import {
   classifyMessage,
   DEFAULT_CLASSIFIER_TIMEOUT_MS,
-  type InboundClassifierHook,
+  type InboundClassifierFactory,
 } from './classifier.js';
 import { ObjectStoreError, type ObjectStore } from './object-store.js';
 
@@ -48,8 +48,8 @@ export interface IngestDeps {
   readonly ingestors: Readonly<Record<string, ChannelIngestor>>;
   readonly realtime: RealtimeSink;
   readonly logger: WorkerLogger;
-  /** Absent: header rules only (the state until T-106 lands). */
-  readonly classifier?: InboundClassifierHook | undefined;
+  /** Absent: header rules only (AI switched off at boot, or a provider that is not wired). */
+  readonly classifier?: InboundClassifierFactory | undefined;
   readonly classifierTimeoutMs?: number;
 }
 
@@ -164,7 +164,10 @@ export function createIngestProcessor(deps: IngestDeps) {
       const stored = await store(row.accountType, item);
       singleRawKey = stored.rawKey;
       const classification = await classifyMessage(stored.message, row.accountType as ChannelType, {
-        hook: deps.classifier,
+        hook: deps.classifier?.(
+          `inbound:${stored.message.channelAccountId}:${stored.message.providerMessageId}`,
+          stored.message.from.name === null ? [] : [stored.message.from.name],
+        ),
         timeoutMs,
         logger: deps.logger,
       });
