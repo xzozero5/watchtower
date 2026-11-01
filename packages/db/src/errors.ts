@@ -3,6 +3,8 @@ export const PG = {
   uniqueViolation: '23505',
   foreignKeyViolation: '23503',
   checkViolation: '23514',
+  /** statement_timeout (or a cancel) stopped the query. */
+  queryCanceled: '57014',
 } as const;
 
 /** The SQLSTATE of a database error. Drizzle wraps the driver error, so look at `cause` too. */

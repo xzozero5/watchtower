@@ -64,7 +64,9 @@ export class TeamQueuesController {
   @ApiOperation({
     summary: 'Create a team queue',
     description:
-      '`assignmentMode: round_robin` hands new tickets of the queue to its active members in turn. ' +
+      '`assignmentMode` `round_robin` hands new tickets of the queue to its members who are clocked in, in turn; ' +
+      '`load_balanced` to the one with the fewest open tickets; `stay_with_last_handler` to whoever handled ' +
+      "the requester's last ticket, falling back to load. Nobody clocked in leaves the ticket unassigned. " +
       'At most one queue is the default; tickets created without a queue go there.',
   })
   @ApiCreatedResponse({ standardSchema: teamQueueSchema })

@@ -18,6 +18,7 @@ import { createOutboundRegistration, type OutboundOverrides } from '../outbound/
 import type { Mailer } from '../mailer.js';
 import type { RealtimeSink } from '../realtime.js';
 import { createEmailProcessor } from './email.js';
+import { chunkOptionsFrom, createKbProcessor } from '../kb/processor.js';
 import { createCleanupProcessor } from './cleanup.js';
 import { createMaintenanceProcessor } from './maintenance.js';
 import { processSystemJob } from './system.js';
@@ -114,6 +115,11 @@ export const PROCESSORS: readonly ProcessorRegistration[] = [
   },
 
   // --- kb (T-107) ---
+  {
+    queue: QUEUE_NAMES.kb,
+    create: ({ config, database, ai, logger }) =>
+      createKbProcessor({ database, ai, logger, chunking: chunkOptionsFrom(config) }),
+  },
 
   // --- csat (T-110) ---
 

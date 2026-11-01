@@ -30,6 +30,12 @@ const apiEnvSchema = createEnvSchema({
    * offline fake (ADR-012). Off by default; turning it on needs real credentials and is the owner's call.
    */
   CREDENTIAL_LIVE_TEST_ENABLED: z.preprocess(emptyToUndefined, z.stringbool().default(false)),
+  /**
+   * Knowledge base search (T-107c): the cosine similarity a passage needs to count as a vector
+   * match. `[ASSUMED]` 0.25; the right value depends on the embedding model, so tune it with real
+   * queries once a model is chosen. 0 returns the nearest passages whatever they are about.
+   */
+  KB_MIN_VECTOR_SIMILARITY: z.preprocess(emptyToUndefined, z.coerce.number().min(0).max(1).default(0.25)),
   /** Lifetime of the access JWT. Short on purpose: refresh renews it. */
   ACCESS_TOKEN_TTL_SECONDS: seconds(900, 60, 3600),
   /** Lifetime of one refresh token (idle limit); every use issues a new one. */

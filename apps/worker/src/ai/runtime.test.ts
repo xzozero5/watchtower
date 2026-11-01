@@ -31,11 +31,29 @@ describe('createAiRuntime', () => {
     expect(deps.redactor.session({ scope: 'ticket-1' })).not.toBe(session);
   });
 
-  it('AI_PROVIDER selects the adapter: a real provider gets a runtime, never the mock (T-132)', () => {
+  it('stops the boot for an embedding provider that is not wired, never ignoring it (N5)', () => {
+    expect(() =>
+      createAiRuntime(
+        testConfig({ EMBEDDING_PROVIDER: 'vertex' }),
+        database,
+        createLogger(testConfig()),
+      ),
+    ).toThrow(/EMBEDDING_PROVIDER=vertex is not wired yet/);
+  });
+
+  it('AI_PROVIDER selects the LLM adapter: a real provider gets a runtime, never the mock (T-132)', () => {
     for (const provider of ['mock', 'anthropic', 'vertex'] as const) {
       const config = testConfig({ AI_PROVIDER: provider });
       expect(createAiRuntime(config, database, createLogger(config))).toMatchObject({ provider });
     }
+  });
+
+  it('keeps embeddings on the mock whatever AI_PROVIDER is, through the same runtime', async () => {
+    const config = testConfig({ AI_PROVIDER: 'anthropic' });
+    const runtime = createAiRuntime(config, database, createLogger(config));
+    const settings = await runtime.settings.load();
+    expect(settings.embedding.provider).toBe('mock');
+    expect(typeof runtime.embedder.embed).toBe('function');
   });
 
   it('is ready on mock without any credential', async () => {

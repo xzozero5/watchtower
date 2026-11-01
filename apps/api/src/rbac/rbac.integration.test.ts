@@ -379,6 +379,50 @@ describe('role editor (permissions change without a deploy)', () => {
     expect((await head.put('/v1/rbac/roles/agent/permissions', {})).status).toBe(400);
   });
 
+  it('keeps the break-glass publication with the head: no other role, hand-made row or per-user extra gets it', async () => {
+    const { client: head } = await login('head');
+    const { client: lead } = await login('lead');
+    const { client: agent, session: agentSession } = await login('agent');
+    const permissionsOf = async (client: TestClient) =>
+      (await client.get<SessionInfo>('/v1/auth/session')).body.permissions;
+
+    // The role editor refuses to give it to another role.
+    const refused = await head.put<{ code: string }>('/v1/rbac/roles/lead/permissions', {
+      permissions: [...DEFAULT_ROLE_PERMISSIONS.lead, 'kb.publish.break_glass'],
+    });
+    expect(refused.status).toBe(409);
+    expect(await permissionsOf(lead)).not.toContain('kb.publish.break_glass');
+
+    // A row put in role_permissions by hand, and a per-user extra, do nothing either. Saving a role
+    // drops the cache, so the next request reads the table again.
+    await pool().query(
+      `INSERT INTO role_permissions (role, permission) VALUES ('lead', 'kb.publish.break_glass')`,
+    );
+    await pool().query(
+      `UPDATE users SET permissions = ARRAY['kb.publish.break_glass'] WHERE id = $1`,
+      [agentSession.user.id],
+    );
+    try {
+      await restoreDefaults(head, 'agent');
+      expect(await permissionsOf(lead)).not.toContain('kb.publish.break_glass');
+      expect(await permissionsOf(agent)).not.toContain('kb.publish.break_glass');
+      const roles = await head.get<{ roles: { role: string; permissions: string[] }[] }>(
+        '/v1/rbac/roles',
+      );
+      const holders = roles.body.roles
+        .filter((entry) => entry.permissions.includes('kb.publish.break_glass'))
+        .map((entry) => entry.role);
+      expect(holders).toEqual(['head']);
+    } finally {
+      await pool().query(
+        `DELETE FROM role_permissions WHERE role = 'lead' AND permission = 'kb.publish.break_glass'`,
+      );
+      await pool().query(`UPDATE users SET permissions = ARRAY[]::text[] WHERE id = $1`, [
+        agentSession.user.id,
+      ]);
+    }
+  });
+
   it('is for the head only', async () => {
     for (const role of ['agent', 'lead'] as const) {
       const { client } = await login(role);

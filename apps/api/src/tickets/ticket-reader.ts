@@ -14,6 +14,7 @@ import {
   type TicketDetail,
   type TicketListQuery,
   type TicketPriority,
+  type TicketSlaView,
   type TicketStats,
   type TicketStatsQuery,
   type TicketStatus,
@@ -51,6 +52,7 @@ import {
 } from '../common/keyset.js';
 import { DATABASE } from '../database/database.module.js';
 import { translatingSync } from '../domain/domain-errors.js';
+import { SlaRemaining } from './sla-remaining.js';
 import { TicketSlaStates, runningDueSortKey } from './sla-states.js';
 import { TICKET_KEYS, type TicketKeys } from './ticket-keys.js';
 
@@ -109,7 +111,11 @@ function viewQuery<Extra extends Record<string, SQL>>(executor: Executor, extra:
 
 const iso = (date: Date | null): string | null => date?.toISOString() ?? null;
 
-export function toSummary(row: TicketViewRow, keys: TicketKeys): TicketSummary {
+export function toSummary(
+  row: TicketViewRow,
+  keys: TicketKeys,
+  sla: TicketSlaView | null = null,
+): TicketSummary {
   const t = row.t;
   return {
     id: t.id,
@@ -150,6 +156,8 @@ export function toSummary(row: TicketViewRow, keys: TicketKeys): TicketSummary {
     csatScore: t.csatScore,
     // Staff only: `toClientTicket` has no AI field (AI internals are never shown to customers).
     ai: toAiRow(row),
+    // Absent when no SLA target runs; the time left is counted by the server on the policy's calendar.
+    ...(sla === null ? {} : { sla }),
     createdAt: t.createdAt.toISOString(),
     updatedAt: t.updatedAt.toISOString(),
   };
@@ -208,6 +216,7 @@ export class TicketReader {
     @Inject(DATABASE) private readonly database: Database,
     @Inject(TICKET_KEYS) private readonly keys: TicketKeys,
     @Inject(TicketSlaStates) private readonly slaStates: TicketSlaStates,
+    @Inject(SlaRemaining) private readonly slaRemaining: SlaRemaining,
   ) {}
 
   /** One ticket the principal may see, as a row with names; 404 if it does not exist or is not theirs. */
@@ -272,7 +281,7 @@ export class TicketReader {
       .where(eq(schema.ticket.parentTicketId, row.t.id))
       .orderBy(asc(schema.ticket.number));
     return {
-      ...toSummary(row, this.keys),
+      ...toSummary(row, this.keys, await this.slaRemaining.view(row.t, new Date())),
       requester:
         row.t.requesterContactId && row.requesterName !== null
           ? { id: row.t.requesterContactId, name: row.requesterName, email: row.requesterEmail }
@@ -311,10 +320,16 @@ export class TicketReader {
       .orderBy(desc(ticket.createdAt), desc(ticket.id))
       .limit(DUPLICATE_SUGGESTION_LIMIT);
     const client = isClient(principal);
+    const slas = client
+      ? []
+      : await this.slaRemaining.viewMany(
+          rows.map((row) => row.t),
+          new Date(),
+        );
     return {
       ticketId: source.t.id,
-      items: rows.map((row) =>
-        client ? toClientTicket(row, this.keys) : toSummary(row, this.keys),
+      items: rows.map((row, index) =>
+        client ? toClientTicket(row, this.keys) : toSummary(row, this.keys, slas[index] ?? null),
       ),
     };
   }
@@ -445,9 +460,17 @@ export class TicketReader {
       rows.map((row) => ({ row, id: row.t.id, sortKey: row.sortKey })),
       query.limit,
     );
+    const slas = client
+      ? []
+      : await this.slaRemaining.viewMany(
+          page.rows.map((entry) => entry.row.t),
+          new Date(),
+        );
     return {
-      items: page.rows.map((entry) =>
-        client ? toClientTicket(entry.row, this.keys) : toSummary(entry.row, this.keys),
+      items: page.rows.map((entry, index) =>
+        client
+          ? toClientTicket(entry.row, this.keys)
+          : toSummary(entry.row, this.keys, slas[index] ?? null),
       ),
       nextCursor: page.nextCursor,
     };

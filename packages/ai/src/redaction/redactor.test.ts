@@ -66,6 +66,32 @@ describe('Thai national ID', () => {
     }
   });
 
+  it('redacts a dashed ID however it is grouped, up to one digit at a time (N4)', () => {
+    const grouped = (sizes: number[], separator = '-') => {
+      const parts: string[] = [];
+      let at = 0;
+      for (const size of sizes) {
+        parts.push(ID.slice(at, at + size));
+        at += size;
+      }
+      return parts.join(separator);
+    };
+    const forms = [
+      grouped([1, 2, 2, 2, 2, 2, 2]),
+      grouped([1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]),
+      grouped([2, 2, 2, 2, 2, 2, 1], '–'),
+      grouped([4, 4, 4, 1]),
+      grouped([5, 5, 3]),
+    ];
+    for (const form of forms) {
+      expect(redact(`ID: ${form}`), form).toBe('ID: [THAI_ID_1]');
+    }
+    // The checksum still decides: the same shapes with a wrong last digit are left alone.
+    const wrong = `${ID.slice(0, 12)}${String((Number(ID[12]) + 1) % 10)}`;
+    const wrongForms = [wrong.split('').join('-'), `${wrong.slice(0, 1)}-${wrong.slice(1)}`];
+    for (const form of wrongForms) expect(redact(form), form).toBe(form);
+  });
+
   it('redacts Thai-digit IDs', () => {
     const thaiDigits = ID.replace(/\d/g, (digit) => String.fromCharCode(0x0e50 + Number(digit)));
     expect(redact(`บัตร ${thaiDigits}`)).toBe('บัตร [THAI_ID_1]');

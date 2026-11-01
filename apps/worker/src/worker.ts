@@ -80,7 +80,10 @@ export async function startWorker(
       host: config.SMTP_HOST,
       port: config.SMTP_PORT,
       from: config.SMTP_FROM,
-      requireTls: config.NODE_ENV === 'production',
+      user: config.SMTP_USER,
+      password: config.SMTP_PASSWORD,
+      allowInsecure: config.SMTP_ALLOW_INSECURE,
+      production: config.NODE_ENV === 'production',
     });
 
   // The write logic shared with the api (ADR-009), with the same policy gate (ADR-011): it reads the

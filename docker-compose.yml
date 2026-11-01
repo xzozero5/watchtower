@@ -8,7 +8,11 @@
 # to .env to change ports or credentials. Every published port binds 127.0.0.1 only.
 #
 # Inside the network the containers always reach each other by service name, so DATABASE_URL,
-# REDIS_URL, S3_ENDPOINT and SMTP_HOST from .env are not passed through; they are built below.
+# REDIS_URL, S3_ENDPOINT, SMTP_HOST and SMTP_PORT from .env are not passed through; they are built
+# below (the mail relay from SMTP_RELAY_HOST / SMTP_RELAY_PORT, Mailpit by default).
+#
+# Everything the api and worker read from the environment is listed in x-app-env below; a test
+# (packages/shared/src/compose-env.test.ts) fails when a variable the code reads is missing here.
 # If you change POSTGRES_PASSWORD or APP_DB_PASSWORD, keep it URL-safe (letters and digits).
 #
 # The api and worker connect as the restricted login role APP_DB_USER (created by the `migrate` service),
@@ -30,8 +34,18 @@ x-app-env: &app-env
   S3_SECRET_KEY: ${S3_SECRET_KEY:-minio12345}
   JWT_SECRET: ${JWT_SECRET:-change-me}
   APP_ENCRYPTION_KEY: ${APP_ENCRYPTION_KEY:-change-me-32-bytes-base64}
-  SMTP_HOST: mailpit
-  SMTP_PORT: '1025'
+  APP_ENCRYPTION_KEY_VERSION: ${APP_ENCRYPTION_KEY_VERSION:-1}
+  APP_ENCRYPTION_KEY_PREVIOUS: ${APP_ENCRYPTION_KEY_PREVIOUS:-}
+  APP_ENCRYPTION_KEY_PREVIOUS_VERSION: ${APP_ENCRYPTION_KEY_PREVIOUS_VERSION:-}
+  CREDENTIAL_LIVE_TEST_ENABLED: ${CREDENTIAL_LIVE_TEST_ENABLED:-false}
+  # Mail relay: Mailpit unless SMTP_RELAY_HOST says otherwise. 465 is implicit TLS, 587 is STARTTLS.
+  # With NODE_ENV=production the worker refuses a plain or unauthenticated relay unless
+  # SMTP_ALLOW_INSECURE=true. SMTP_USER and SMTP_PASSWORD are optional and are never logged.
+  SMTP_HOST: ${SMTP_RELAY_HOST:-mailpit}
+  SMTP_PORT: ${SMTP_RELAY_PORT:-1025}
+  SMTP_USER: ${SMTP_USER:-}
+  SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+  SMTP_ALLOW_INSECURE: ${SMTP_ALLOW_INSECURE:-false}
   SMTP_FROM: ${SMTP_FROM:-Watchtower <no-reply@example.com>}
   BREAK_GLASS_EMAIL: ${BREAK_GLASS_EMAIL:-}
   BREAK_GLASS_PASSWORD: ${BREAK_GLASS_PASSWORD:-}
@@ -52,7 +66,15 @@ x-app-env: &app-env
   # X-Forwarded-For from a private address while this is 0.
   TRUST_PROXY_HOPS: ${TRUST_PROXY_HOPS:-0}
   TICKET_KEY_PREFIX: ${TICKET_KEY_PREFIX:-OPS}
+  DOCS_ENABLED: ${DOCS_ENABLED:-}
+  REALTIME_REVALIDATE_SECONDS: ${REALTIME_REVALIDATE_SECONDS:-10}
+  RATE_LIMIT_NAMESPACE: ${RATE_LIMIT_NAMESPACE:-wt}
+  WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-5}
   OUTBOX_POLL_INTERVAL_MS: ${OUTBOX_POLL_INTERVAL_MS:-1000}
+  INGEST_CLASSIFIER_TIMEOUT_MS: ${INGEST_CLASSIFIER_TIMEOUT_MS:-3000}
+  CLEANUP_AUTH_RETENTION_DAYS: ${CLEANUP_AUTH_RETENTION_DAYS:-7}
+  CLEANUP_BREAK_GLASS_RETENTION_DAYS: ${CLEANUP_BREAK_GLASS_RETENTION_DAYS:-30}
+  OUTBOUND_UNDO_SECONDS: ${OUTBOUND_UNDO_SECONDS:-5}
   PORTAL_TOKEN_SECRET: ${PORTAL_TOKEN_SECRET:-}
   PORTAL_TOKEN_TTL_DAYS: ${PORTAL_TOKEN_TTL_DAYS:-30}
   PORTAL_POW_DIFFICULTY_BITS: ${PORTAL_POW_DIFFICULTY_BITS:-18}
@@ -65,9 +87,12 @@ x-app-env: &app-env
   GOOGLE_OIDC_CLIENT_ID: ${GOOGLE_OIDC_CLIENT_ID:-}
   GOOGLE_OIDC_CLIENT_SECRET: ${GOOGLE_OIDC_CLIENT_SECRET:-}
   GOOGLE_ALLOWED_DOMAIN: ${GOOGLE_ALLOWED_DOMAIN:-example.com}
-  GMAIL_SERVICE_ACCOUNT_JSON_PATH: ${GMAIL_SERVICE_ACCOUNT_JSON_PATH:-}
+  # The key file is mounted read-only at this path (x-gmail-key below). The container is pointed at
+  # it only when a host path is set; otherwise the variable stays empty and Gmail stays mock.
+  GMAIL_SERVICE_ACCOUNT_JSON_PATH: ${GMAIL_SERVICE_ACCOUNT_JSON_PATH:+/run/secrets/gmail-service-account.json}
   GMAIL_IMPERSONATE_USER: ${GMAIL_IMPERSONATE_USER:-}
   PUBSUB_EMULATOR_HOST: ${PUBSUB_EMULATOR_HOST:-}
+  PUBSUB_SUBSCRIPTION: ${PUBSUB_SUBSCRIPTION:-}
   # Gmail push (T-102b/c): topic for users.watch (worker), audience and signer of the push token (api).
   # Empty = mock: no watch is called and the receiver answers 503.
   PUBSUB_PROJECT_ID: ${PUBSUB_PROJECT_ID:-}
@@ -84,16 +109,30 @@ x-app-env: &app-env
   LINE_CHANNEL_ID: ${LINE_CHANNEL_ID:-}
   LINE_CHANNEL_SECRET: ${LINE_CHANNEL_SECRET:-}
   LINE_CHANNEL_ACCESS_TOKEN: ${LINE_CHANNEL_ACCESS_TOKEN:-}
+  LINE_LOGIN_CHANNEL_ID: ${LINE_LOGIN_CHANNEL_ID:-}
+  LINE_LOGIN_CHANNEL_SECRET: ${LINE_LOGIN_CHANNEL_SECRET:-}
   DISCORD_BOT_TOKEN: ${DISCORD_BOT_TOKEN:-}
   DISCORD_ALERT_CHANNEL_ID: ${DISCORD_ALERT_CHANNEL_ID:-}
   DISCORD_WEBHOOK_URL: ${DISCORD_WEBHOOK_URL:-}
   DISCORD_WEBHOOK_URL_URGENT: ${DISCORD_WEBHOOK_URL_URGENT:-}
   DISCORD_CHANNEL_MAP: ${DISCORD_CHANNEL_MAP:-}
+  DISCORD_APPLICATION_ID: ${DISCORD_APPLICATION_ID:-}
+  DISCORD_PUBLIC_KEY: ${DISCORD_PUBLIC_KEY:-}
   GITHUB_APP_ID: ${GITHUB_APP_ID:-}
   GITHUB_APP_PRIVATE_KEY_PATH: ${GITHUB_APP_PRIVATE_KEY_PATH:-}
   GCP_PROJECT_ID: ${GCP_PROJECT_ID:-}
   GOOGLE_APPLICATION_CREDENTIALS: ${GOOGLE_APPLICATION_CREDENTIALS:-}
   AI_PROVIDER: ${AI_PROVIDER:-mock}
+  AI_DAILY_COST_CAP_USD: ${AI_DAILY_COST_CAP_USD:-}
+  AI_DAILY_TOKEN_CAP: ${AI_DAILY_TOKEN_CAP:-}
+  AI_BUDGET_ALERT_PERCENT: ${AI_BUDGET_ALERT_PERCENT:-80}
+  EMBEDDING_PROVIDER: ${EMBEDDING_PROVIDER:-mock}
+  KB_CRAWL_ALLOWED_HOSTS: ${KB_CRAWL_ALLOWED_HOSTS:-}
+  KB_CHUNK_TARGET_CHARS: ${KB_CHUNK_TARGET_CHARS:-}
+  KB_CHUNK_MAX_CHARS: ${KB_CHUNK_MAX_CHARS:-}
+  KB_CHUNK_MIN_CHARS: ${KB_CHUNK_MIN_CHARS:-}
+  KB_CHUNK_OVERLAP_CHARS: ${KB_CHUNK_OVERLAP_CHARS:-}
+  KB_MIN_VECTOR_SIMILARITY: ${KB_MIN_VECTOR_SIMILARITY:-}
   ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
   VERTEX_PROJECT_ID: ${VERTEX_PROJECT_ID:-}
   VERTEX_LOCATION: ${VERTEX_LOCATION:-asia-southeast1}
@@ -106,6 +145,16 @@ x-app-env: &app-env
   AI_BUDGET_ALERT_PERCENT: ${AI_BUDGET_ALERT_PERCENT:-80}
   WEB_PUSH_VAPID_PUBLIC: ${WEB_PUSH_VAPID_PUBLIC:-}
   WEB_PUSH_VAPID_PRIVATE: ${WEB_PUSH_VAPID_PRIVATE:-}
+  WEB_PUSH_SUBJECT: ${WEB_PUSH_SUBJECT:-}
+
+# Read-only mount of the Gmail service account key. GMAIL_SERVICE_ACCOUNT_JSON_PATH in .env is the
+# path on THIS machine. Unset, the mount is an empty placeholder file and the container variable
+# above is empty, so nothing reads it and Gmail stays mock.
+x-gmail-key: &gmail-key
+  type: bind
+  source: ${GMAIL_SERVICE_ACCOUNT_JSON_PATH:-./config/no-credential}
+  target: /run/secrets/gmail-service-account.json
+  read_only: true
 
 x-node-service: &node-service
   restart: unless-stopped
@@ -230,6 +279,8 @@ services:
       <<: *app-env
       HOST: 0.0.0.0
       API_PORT: '4000'
+    volumes:
+      - *gmail-key
     ports:
       - '127.0.0.1:${API_PORT:-4000}:4000'
     depends_on:
@@ -262,6 +313,8 @@ services:
       <<: *app-env
       HOST: 0.0.0.0
       WORKER_PORT: '4100'
+    volumes:
+      - *gmail-key
     ports:
       - '127.0.0.1:${WORKER_PORT:-4100}:4100'
     depends_on:

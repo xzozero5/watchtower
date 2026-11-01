@@ -1,13 +1,18 @@
 import {
   DevMockLlmProvider,
+  MockEmbeddingProvider,
+  createAuditedEmbedder,
   createAuditedLlm,
   createRedactor,
   loadPromptCatalog,
   type AgentDeps,
+  type AuditedEmbedder,
+  type EmbeddingProvider,
   type FetchLike,
   type LlmProvider,
   type PromptCatalog,
   type ProviderKind,
+  type SettingsSource,
 } from '@watchtower/ai';
 import { createCredentialStore, type Database } from '@watchtower/db';
 import {
@@ -19,7 +24,7 @@ import {
   type AiCaps,
   type BudgetEventNotice,
 } from '@watchtower/domain';
-import { pickCredentialEnv } from '@watchtower/shared';
+import { assertKbEmbeddingProvider, pickCredentialEnv } from '@watchtower/shared';
 import { localKmsFromConfig } from '@watchtower/shared/credential-box';
 
 import type { WorkerConfig } from '../config.js';
@@ -33,6 +38,10 @@ import { buildAiSettings } from './settings.js';
 export interface AiOverrides {
   /** Providers by kind. Tests use it to count calls or to fail on demand. */
   readonly providers?: Partial<Record<ProviderKind, LlmProvider>>;
+  /** Embedding providers by kind (T-107b). Tests use it to count calls or to fail on demand. */
+  readonly embeddingProviders?: Partial<Record<ProviderKind, EmbeddingProvider>>;
+  /** Replaces the provider and model settings (tests change the embedding model with it). */
+  readonly settings?: SettingsSource;
   /** Where the `ai` credentials come from. Default: the credential store (environment wins, ADR-012). */
   readonly credentials?: AiCredentialReader;
   /** The network access of a real provider. Default: the process `fetch`. Never used by mock. */
@@ -55,6 +64,7 @@ export interface AiReadiness {
  * of that ticket.
  */
 export interface AiRuntime {
+  /** The LLM adapter `AI_PROVIDER` selected. Embeddings have their own setting and stay mock. */
   readonly provider: ProviderKind;
   readonly caps: AiCaps;
   /** Agent dependencies whose redactor knows the names of the people in one ticket. */
@@ -62,7 +72,14 @@ export interface AiRuntime {
   /** The ingest classifier hook factory (ADR-009 step 4). */
   readonly classifierFor: InboundClassifierFactory;
   readonly prompts: PromptCatalog;
-  /** Can the selected provider be called right now? Reads the credentials; never returns a value. */
+  /**
+   * Embeddings for the knowledge base (T-107b): guarded like every model call, redacted before the
+   * provider sees any text (N4), and metered as `ai_run` rows of the `embedder` agent.
+   */
+  readonly embedder: AuditedEmbedder;
+  /** The provider and model settings in force (PRD section 6.7), for the embedding model among them. */
+  readonly settings: SettingsSource;
+  /** Can the selected LLM provider be called right now? Reads the credentials; never returns a value. */
   readiness(): Promise<AiReadiness>;
 }
 
@@ -90,13 +107,16 @@ function storeCredentials(config: WorkerConfig, database: Database): AiCredentia
 }
 
 /**
- * `AI_PROVIDER` picks the adapter (T-132). `mock` (the default) runs the whole pipeline on the
+ * `AI_PROVIDER` picks the LLM adapter (T-132). `mock` (the default) runs the whole pipeline on the
  * offline dev mock and never touches the network. `anthropic` and `vertex` use the real adapters of
  * `@watchtower/ai` through the same audited path (redaction, `ai_run`, daily caps, kill switch).
  *
  * A selected provider that is not fully set up (no key, no model, no price) is never swapped for the
  * mock: its calls fail with `ProviderUnavailableError`, which is audited as an error row, shown on
  * the ticket's AI brief, retried by the brief job, and leaves ingestion on the header rules.
+ *
+ * Embeddings (T-107b) stay mock-only: `EMBEDDING_PROVIDER` other than a wired one stops the boot,
+ * and the embedder goes through the same guard, redactor and `ai_run` recorder as the LLM.
  */
 export function createAiRuntime(
   config: WorkerConfig,
@@ -104,6 +124,9 @@ export function createAiRuntime(
   logger: WorkerLogger,
   overrides: AiOverrides = {},
 ): AiRuntime {
+  // A provider that is not wired stops the boot: it is never ignored in silence (N5).
+  assertKbEmbeddingProvider(config.EMBEDDING_PROVIDER);
+
   const caps = resolveAiCaps(config);
   const prompts = loadPromptCatalog();
   const now = overrides.now ?? ((): Date => new Date());
@@ -123,7 +146,10 @@ export function createAiRuntime(
     budget,
   });
 
-  const { settings, problems } = buildAiSettings(config);
+  const built = buildAiSettings(config);
+  const settings: SettingsSource = overrides.settings ?? {
+    load: () => Promise.resolve(built.settings),
+  };
   const credentials = overrides.credentials ?? storeCredentials(config, database);
   const kind = config.AI_PROVIDER;
   const providers: Partial<Record<ProviderKind, LlmProvider>> =
@@ -133,7 +159,7 @@ export function createAiRuntime(
       : {
           [kind]: createLiveProvider({
             kind,
-            settings,
+            settings: built.settings,
             credentials,
             fetch: overrides.fetch ?? ((input, init) => globalThis.fetch(input, init)),
             ...(overrides.vertexAccessToken === undefined
@@ -143,16 +169,26 @@ export function createAiRuntime(
             now: () => now().getTime(),
           }),
         });
+  const sink = createAiRunRecorder({ db: database.db });
   const llm = createAuditedLlm({
-    settings: { load: () => Promise.resolve(settings) },
+    settings,
     providers,
-    sink: createAiRunRecorder({ db: database.db }),
+    sink,
+    now: () => now().getTime(),
+  });
+  const embedder = createAuditedEmbedder({
+    settings,
+    providers: overrides.embeddingProviders ?? { mock: new MockEmbeddingProvider() },
+    sink,
+    // No name dictionary: knowledge base articles are written by staff, not by a ticket's people.
+    redactor: createRedactor(),
+    guard,
     now: () => now().getTime(),
   });
 
   const readiness = async (): Promise<AiReadiness> => {
     if (kind === 'mock') return { ready: true, problems: [] };
-    const found = [...problems];
+    const found = [...built.problems];
     try {
       const held = await credentials.read();
       if (kind === 'anthropic' && held.anthropicApiKey === undefined) {
@@ -182,6 +218,8 @@ export function createAiRuntime(
     caps,
     prompts,
     agentDeps,
+    embedder,
+    settings,
     classifierFor: createAiClassifierFactory({ agentDeps, database, logger }),
     readiness,
   };

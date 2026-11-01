@@ -37,6 +37,13 @@ export const AUTH_ERROR_CODES = [
   'autonomy_stage_requires_owner',
   // Credential store (T-116a): a field that an environment variable sets cannot be saved.
   'credential_env_locked',
+  // Knowledge base (T-107): a search that ran past its time limit and was stopped (503).
+  'kb_search_timeout',
+  // Shifts (T-111b): clock out refused because the handoff is missing or incomplete (AC-7). The body also
+  // carries `noConfirmedHandoff` and `blockers` (see `handoffIncompleteSchema`).
+  'handoff_incomplete',
+  // Shifts (T-111): the handoff or the item is in a state that does not allow this (already confirmed, already acknowledged).
+  'handoff_locked',
 ] as const;
 export type AuthErrorCode = (typeof AUTH_ERROR_CODES)[number];
 

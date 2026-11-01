@@ -34,6 +34,8 @@ export const AGENT_NAMES = [
   'kb_author',
   'roster_planner',
   'personal_assistant',
+  // Knowledge base indexing and query embedding (T-107b): no prompt, one embedding call per batch.
+  'embedder',
 ] as const;
 export const agentNameSchema = z.enum(AGENT_NAMES);
 export type AgentName = z.infer<typeof agentNameSchema>;
@@ -48,6 +50,7 @@ export const DEFAULT_AGENT_TIERS: Readonly<Record<AgentName, ModelTier>> = {
   kb_author: 'standard',
   roster_planner: 'standard',
   personal_assistant: 'standard',
+  embedder: 'light',
 };
 
 // ---------------------------------------------------------------------------------------------

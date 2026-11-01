@@ -5,7 +5,8 @@
 # break-glass account, JWT and encryption keys) is local to the runner and created at run time.
 #
 #   static     lint + typecheck + unit tests
-#   integration  pnpm test:integration against Postgres (pgvector), Redis and Mailpit service containers
+#   integration  pnpm test:integration against Postgres (pgvector), Redis and Mailpit service containers,
+#                plus MinIO from the compose file (ingest stores raw messages in object storage)
 #   e2e        Playwright UI tests (api mocked) + the full-stack e2e from source (real web, api, worker)
 #   compose    docker compose build, up --wait, probe /health of every published port, down -v
 #
@@ -104,6 +105,13 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      # From compose rather than a service container: MinIO needs a command, and the image digest and
+      # the bucket init stay in one place.
+      - name: Start object storage
+        # `up --wait` fails on a one-shot service even when it exits 0, so the bucket init runs apart.
+        run: |
+          docker compose up -d --wait minio
+          docker compose run --rm minio-init
       - run: pnpm test:integration
 
   e2e:

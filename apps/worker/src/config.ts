@@ -1,8 +1,10 @@
 import {
+  ConfigError,
   DEFAULT_DISCORD_CHANNEL_MAP,
   DEFAULT_TICKET_KEY_PREFIX,
   DiscordChannelMapError,
   parseDiscordChannelMap,
+  KB_CHUNK_DEFAULTS,
   createEnvSchema,
   emptyToUndefined,
   parseEnv,
@@ -11,6 +13,8 @@ import {
 } from '@watchtower/shared';
 import { z } from 'zod';
 
+import { smtpSettingsIssues } from './mailer.js';
+
 const workerEnvSchema = createEnvSchema({
   /** Interface for the health server. Loopback by default; Dockerfile and compose set 0.0.0.0. */
   HOST: z.string().min(1).default('127.0.0.1'),
@@ -18,6 +22,13 @@ const workerEnvSchema = createEnvSchema({
   /** Cloud Run injects PORT; it wins over WORKER_PORT when present. */
   PORT: z.preprocess(emptyToUndefined, portSchema.optional()),
   OTEL_SERVICE_NAME: z.string().min(1).default('watchtower-worker'),
+  /**
+   * SMTP account (optional). Both or neither. Port 465 is implicit TLS, 587 is STARTTLS; in
+   * production the worker refuses a plain unauthenticated send unless SMTP_ALLOW_INSECURE=true.
+   */
+  SMTP_USER: z.preprocess(emptyToUndefined, z.string().optional()),
+  SMTP_PASSWORD: z.preprocess(emptyToUndefined, z.string().optional()),
+  SMTP_ALLOW_INSECURE: z.preprocess(emptyToUndefined, z.stringbool().default(false)),
   /** Jobs processed in parallel per queue. */
   WORKER_CONCURRENCY: z.coerce.number().int().min(1).max(100).default(5),
   /** How often the outbox relay looks for pending jobs to hand to BullMQ (milliseconds, ADR-006). */
@@ -75,6 +86,27 @@ const workerEnvSchema = createEnvSchema({
     }),
   /** Days to keep a break-glass lockout counter after its last failed sign-in (still locked ones stay). `[ASSUMED]` 30. */
   CLEANUP_BREAK_GLASS_RETENTION_DAYS: z.coerce.number().int().min(1).max(365).default(30),
+  /**
+   * Knowledge base chunking (T-107b), in characters `[ASSUMED]`: aim for chunks of about TARGET, never
+   * longer than MAX, join a tail shorter than MIN to its neighbour, and repeat OVERLAP characters when
+   * a long paragraph is split. Defaults come from `KB_CHUNK_DEFAULTS` in `@watchtower/shared`.
+   */
+  KB_CHUNK_TARGET_CHARS: z.preprocess(
+    emptyToUndefined,
+    z.coerce.number().int().min(50).max(8000).default(KB_CHUNK_DEFAULTS.targetChars),
+  ),
+  KB_CHUNK_MAX_CHARS: z.preprocess(
+    emptyToUndefined,
+    z.coerce.number().int().min(50).max(16000).default(KB_CHUNK_DEFAULTS.maxChars),
+  ),
+  KB_CHUNK_MIN_CHARS: z.preprocess(
+    emptyToUndefined,
+    z.coerce.number().int().min(0).max(4000).default(KB_CHUNK_DEFAULTS.minChars),
+  ),
+  KB_CHUNK_OVERLAP_CHARS: z.preprocess(
+    emptyToUndefined,
+    z.coerce.number().int().min(0).max(2000).default(KB_CHUNK_DEFAULTS.overlapChars),
+  ),
 });
 
 export type WorkerConfig = z.output<typeof workerEnvSchema> & {
@@ -87,5 +119,15 @@ export function loadConfig(
   env: Readonly<Record<string, string | undefined>> = process.env,
 ): WorkerConfig {
   const parsed = parseEnv(workerEnvSchema, env);
+  const smtpIssues = smtpSettingsIssues({
+    host: parsed.SMTP_HOST,
+    port: parsed.SMTP_PORT,
+    from: parsed.SMTP_FROM,
+    user: parsed.SMTP_USER,
+    password: parsed.SMTP_PASSWORD,
+    allowInsecure: parsed.SMTP_ALLOW_INSECURE,
+    production: parsed.NODE_ENV === 'production',
+  });
+  if (smtpIssues.length > 0) throw new ConfigError(smtpIssues);
   return { ...parsed, listenPort: parsed.PORT ?? parsed.WORKER_PORT };
 }
