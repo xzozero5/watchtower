@@ -37,6 +37,10 @@ export const LINE_JOBS = {
   reconcileQuota: 'reconcile-quota',
 } as const;
 
+/** How a LINE user id got attached to a contact (`contact.line_linked_via`). Only the last two verify it. */
+export const LINE_LINK_METHODS = ['staff_code', 'line_login', 'email_code'] as const;
+export type LineLinkMethod = (typeof LINE_LINK_METHODS)[number];
+
 // -- HTTP contract (apps/api/src/line) ------------------------------------------------------------
 
 /** How long a link code works. Short on purpose: staff hand it over while the customer is chatting. */

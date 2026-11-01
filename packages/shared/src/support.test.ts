@@ -89,6 +89,21 @@ describe('serializeErrorForLog', () => {
     expect(JSON.stringify(out)).not.toContain('SECRET-BODY');
   });
 
+  it('strips the bound values of a failed query from the message and the stack (C-10)', () => {
+    const lineUserId = 'Ufake0123456789abcdef0123456789ab';
+    const error = new Error(
+      `Failed query: update "contact" set "line_user_id" = $1 where "id" = $2\nparams: ${lineUserId},0f0e0d`,
+    );
+    const out = serializeErrorForLog(error) as Record<string, unknown>;
+    const json = JSON.stringify(out);
+    expect(json).not.toContain(lineUserId);
+    expect(json).not.toContain('0f0e0d');
+    expect(String(out.message)).toContain('Failed query: update "contact"');
+    expect(String(out.message)).toContain('params: [redacted]');
+    // The stack repeats the message first; it is cleaned too, and its frames stay.
+    expect(String(out.stack)).toContain('at ');
+  });
+
   it('replaces the cause chain, including an AggregateError, with type names only', () => {
     const inner = Object.assign(new TypeError('INNER-MESSAGE'), { requestBodyValues: 'X' });
     const error = new WithFields('E2', 'b', {
