@@ -4,7 +4,7 @@
   "description": "A third-party dependency times out or returns a mismatching result.",
   "typicalEvidence": "Upstream latency metrics and the vendor status page.",
   "defaultPriority": "P2",
-  "allowedTools": [],
+  "allowedTools": ["gcp_logs", "bigquery_query", "repo_changes"],
   "replyTemplates": [
     {
       "key": "ack_en",

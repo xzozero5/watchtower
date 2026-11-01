@@ -177,6 +177,18 @@ async function insightOf(ticketId: string) {
   });
 }
 
+/**
+ * Waits until the AI has stopped calling the provider. A new ticket is investigated and drafted after
+ * its brief (T-108), so the work of an earlier case can still be running when the next one starts.
+ */
+async function quiet(): Promise<void> {
+  let last = -1;
+  while (last !== providerCalls) {
+    last = providerCalls;
+    await new Promise((resolve) => setTimeout(resolve, 1200));
+  }
+}
+
 const runsOf = (ticketId: string) =>
   owner().select().from(schema.aiRun).where(eq(schema.aiRun.ticketId, ticketId));
 
@@ -264,6 +276,7 @@ describe('AI brief, end to end on the mock provider', () => {
   });
 
   it('kill switch: no model call, rules classify the mail, the insight says a person is needed', async () => {
+    await quiet();
     await setKillSwitch(true);
     try {
       const before = providerCalls;
@@ -292,6 +305,7 @@ describe('AI brief, end to end on the mock provider', () => {
        VALUES (now(), 'summarizer', 'anthropic', 'priced-model', 'light', 'summarizer', 1,
                repeat('a', 64), repeat('b', 64), '{"total":0,"byKind":{}}', 100000, 'ok')`,
     );
+    await quiet();
     const before = providerCalls;
     const eventId = await receiveMail('Invoice question', 'My invoice is wrong');
     const inbound = await ticketOf(eventId);
