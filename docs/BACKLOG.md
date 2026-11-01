@@ -57,7 +57,7 @@
 
 ### งานเพิ่มจากการตรวจ credential (2026-11-01) — ต้องทำก่อน pilot
 - [x] T-130 `backend-dev` compose ส่ง env ครบ (`CREDENTIAL_LIVE_TEST_ENABLED`, `APP_ENCRYPTION_KEY_*`, `AI_DAILY_*`, `AI_BUDGET_ALERT_PERCENT`, `EMBEDDING_PROVIDER`, `KB_CRAWL_ALLOWED_HOSTS`, `OUTBOUND_UNDO_SECONDS`, `WEB_PUSH_SUBJECT`) · SMTP ตั้งได้จาก env (เลิก hardcode mailpit) + `SMTP_USER`/`SMTP_PASSWORD` + implicit TLS พอร์ต 465 · mount ไฟล์ service account แบบ read-only · ลบหรือติดป้ายตัวแปรใน `.env.example` ที่ไม่มีโค้ดอ่าน · รัน `docker compose up --build` จริง — merge 2026-11-01
-- [ ] T-131 `integration-engineer` เครื่องมือสร้าง `channel_account` ของ LINE และกล่อง Gmail จริง (API + CLI ส่วน UI อยู่ T-116c) รวม `gmail_account_state.email_address`
+- [x] T-131 `integration-engineer` เครื่องมือสร้าง `channel_account` ของ LINE และกล่อง Gmail จริง (API + CLI ส่วน UI อยู่ T-116c) รวม `gmail_account_state.email_address` — merge 2026-11-02
 - [ ] T-132 `ai-engineer` worker ต่อ provider จริงตาม `AI_PROVIDER` (anthropic/vertex ผ่าน abstraction, redaction + `ai_run` + caps เหมือนเดิม, ทดสอบด้วย fixture เท่านั้น ไม่เรียกจริง)
 - [ ] T-103f `integration-engineer` LINE Login live provider (`access.line.me` อยู่ใน egress ของ PRD) หลัง T-113
 
