@@ -1,9 +1,10 @@
 import { schema, type Database } from '@watchtower/db';
 import { AUDIT_ACTIONS, editDistance, type RejectAiDraft } from '@watchtower/shared';
-import { and, eq, sql } from 'drizzle-orm';
+import { and, eq, gt, ne, sql } from 'drizzle-orm';
 
 import { recordAuditInTx } from '../audit.js';
 import { DomainError, conflict, notFound } from '../errors.js';
+import { contentHash } from '../outbound/state.js';
 import { lockTicketRow, ticketEvent } from '../tickets/support.js';
 import { Effects, type DbTransaction, type DomainContext, type DomainResult } from '../types.js';
 
@@ -107,6 +108,45 @@ export async function syncInsightForDraft(
     .where(eq(schema.aiTicketInsight.draftId, draftId));
 }
 
+/**
+ * An approved draft whose send did not happen (undone, or refused) waits for a person again. If a newer
+ * draft was written while it was approved, it is the newer one that waits, and this one is superseded:
+ * at most one draft waits per ticket.
+ */
+export async function restoreAiDraft(tx: DbTransaction, draftId: string): Promise<void> {
+  const [restored] = await tx
+    .update(schema.aiDraft)
+    .set({
+      status: 'draft',
+      approvedBy: null,
+      approvedAt: null,
+      disposition: null,
+      editDistance: null,
+      resolvedBy: null,
+      resolvedAt: null,
+    })
+    .where(and(eq(schema.aiDraft.id, draftId), eq(schema.aiDraft.status, 'approved')))
+    .returning({ ticketId: schema.aiDraft.ticketId, createdAt: schema.aiDraft.createdAt });
+  if (restored === undefined) return;
+  const newer = await tx
+    .select({ id: schema.aiDraft.id })
+    .from(schema.aiDraft)
+    .where(
+      and(
+        eq(schema.aiDraft.ticketId, restored.ticketId),
+        eq(schema.aiDraft.status, 'draft'),
+        ne(schema.aiDraft.id, draftId),
+        gt(schema.aiDraft.createdAt, restored.createdAt),
+      ),
+    )
+    .limit(1);
+  if (newer.length > 0) {
+    await tx.update(schema.aiDraft).set({ status: 'superseded' }).where(eq(schema.aiDraft.id, draftId));
+    return;
+  }
+  await syncInsightForDraft(tx, draftId, 'draft_ready');
+}
+
 export interface RejectAiDraftInput {
   /** A ticket id or key. */
   readonly ref: string;
@@ -178,6 +218,21 @@ export async function rejectAiDraft(
   });
   fx.emit(ticketEvent(ctx, 'ticket.updated', ticket, ['ai']));
   return fx.result({ draftId: draft.id });
+}
+
+/** True when `text` is exactly the words of this draft of this ticket (compared by the stored hash). */
+export async function draftHasText(
+  tx: DbTransaction,
+  ticketId: string,
+  draftId: string,
+  text: string,
+): Promise<boolean> {
+  const [draft] = await tx
+    .select({ ticketId: schema.aiDraft.ticketId, hash: schema.aiDraft.contentHash })
+    .from(schema.aiDraft)
+    .where(eq(schema.aiDraft.id, draftId))
+    .limit(1);
+  return draft?.ticketId === ticketId && draft.hash === contentHash(text);
 }
 
 export interface EditedDraftInput {

@@ -8,7 +8,7 @@ import { createDbToolLedger, type DbToolLedger } from '@watchtower/domain';
 import { describe, expect, it } from 'vitest';
 
 import { disclosureFor } from './investigation.js';
-import { loadStubFixtures } from './tool-ports.js';
+import { loadStubFixtures, systemToolsAllowed } from './tool-ports.js';
 
 describe('disclosureFor (PRD section 6.6, po decision 26)', () => {
   const now = new Date();
@@ -61,5 +61,19 @@ describe('loadStubFixtures', () => {
     const dir = mkdtempSync(join(tmpdir(), 'wt-fixtures-'));
     writeFileSync(join(dir, 'fixtures.json'), JSON.stringify({ gcpLogs: [{ keywords: [] }] }));
     expect(() => loadStubFixtures(dir)).toThrow();
+  });
+});
+
+describe('systemToolsAllowed (N2, SR108 P2)', () => {
+  it('in production the logs, data and repo tools need the read-only database login', () => {
+    expect(systemToolsAllowed({ NODE_ENV: 'production' })).toBe(false);
+    expect(
+      systemToolsAllowed({ NODE_ENV: 'production', AI_READONLY_DATABASE_URL: 'postgres://ai@db/x' }),
+    ).toBe(true);
+  });
+
+  it('outside production the code alone keeps them read-only, for a local mock run', () => {
+    expect(systemToolsAllowed({ NODE_ENV: 'development' })).toBe(true);
+    expect(systemToolsAllowed({ NODE_ENV: 'test' })).toBe(true);
   });
 });

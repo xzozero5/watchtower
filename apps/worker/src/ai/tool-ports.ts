@@ -1,4 +1,5 @@
 import {
+  createRedactor,
   stubFixturesSchema,
   type KbHit,
   type KbSearchPort,
@@ -8,9 +9,9 @@ import {
   type SimilarTicketsPort,
   type StubFixtures,
 } from '@watchtower/ai';
-import type { Database } from '@watchtower/db';
+import { schema, type Database } from '@watchtower/db';
 import { readActiveEmbeddingIndex, searchKb, type TicketKeys } from '@watchtower/domain';
-import { sql } from 'drizzle-orm';
+import { and, eq, inArray, sql } from 'drizzle-orm';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
@@ -53,13 +54,16 @@ export function createSimilarTicketsPort(db: ReadDb, keys: TicketKeys): SimilarT
           const result = await tx.execute<SimilarRow>(sql`
             WITH me AS (SELECT id, org_id FROM ai_v_ticket WHERE id = ${input.ticketId}::uuid)
             SELECT t.id, t.number, t.subject, t.intent_key, t.status,
-                   (t.org_id = (SELECT org_id FROM me)) AS same_org,
+                   true AS same_org,
                    word_similarity(${input.query}, t.subject) AS similarity,
                    (SELECT left(m.body_text, 400) FROM ai_v_ticket_message m
                      WHERE m.ticket_id = t.id AND m.direction = 'inbound'
                      ORDER BY m.created_at LIMIT 1) AS snippet
             FROM ai_v_ticket t
             WHERE t.id <> ${input.ticketId}::uuid
+              -- The same organization only (SR108-2): another customer's ticket is not evidence for this one,
+              -- and its text would reach the model with names the redactor was not told about.
+              AND t.org_id = (SELECT org_id FROM me)
               AND word_similarity(${input.query}, t.subject) >= ${SIMILAR_TICKET_MIN_SIMILARITY}
             ORDER BY similarity DESC, t.created_at DESC
             LIMIT ${input.limit}
@@ -131,6 +135,8 @@ export function createOrgContextPort(db: ReadDb): OrgContextPort {
 
 export interface KbPortDeps {
   readonly db: Database['db'];
+  /** Names of the people of the ticket's organization, so the query is redacted with them before it is embedded. */
+  readonly names?: readonly string[];
   readonly ai: Pick<AiRuntime, 'embedder' | 'settings'>;
 }
 
@@ -150,8 +156,13 @@ async function embedQuery(
     ) {
       return undefined;
     }
+    // The embedder's own redactor knows no names; this one knows the ticket's people (N4). A name that
+    // is in nobody's record stays, as everywhere in the redactor (no NER).
+    const text = createRedactor({ names: () => deps.names ?? [] })
+      .session({ scope: 'kb-query' })
+      .redact(query);
     const outcome = await deps.ai.embedder.embed({
-      texts: [query],
+      texts: [text],
       scope: `kb-query:investigate`,
       action: 'kb_query',
     });
@@ -161,6 +172,16 @@ async function embedQuery(
     // Search never fails because of the embedding: it falls back to keywords.
     return undefined;
   }
+}
+
+async function orgOfTicket(db: Database['db'], ticketId: string | null): Promise<string | null> {
+  if (ticketId === null) return null;
+  const [row] = await db
+    .select({ orgId: schema.ticket.orgId })
+    .from(schema.ticket)
+    .where(eq(schema.ticket.id, ticketId))
+    .limit(1);
+  return row?.orgId ?? null;
 }
 
 export function createKbSearchPort(deps: KbPortDeps): KbSearchPort {
@@ -173,8 +194,22 @@ export function createKbSearchPort(deps: KbPortDeps): KbSearchPort {
         limit: input.limit,
         ...(embedding === undefined ? {} : { embedding }),
       });
-      const best = Math.max(0, ...outcome.hits.map((hit) => hit.score));
-      const hits = outcome.hits.map(
+      // An article written for chosen organizations is evidence only for those (SR108-2).
+      const orgId = await orgOfTicket(deps.db, input.ticketId);
+      const allowed = new Set<string>();
+      const scoped = outcome.hits.filter((hit) => hit.visibility === 'orgs').map((hit) => hit.articleId);
+      if (scoped.length > 0 && orgId !== null) {
+        const rows = await deps.db
+          .select({ articleId: schema.kbArticleOrg.articleId })
+          .from(schema.kbArticleOrg)
+          .where(and(eq(schema.kbArticleOrg.orgId, orgId), inArray(schema.kbArticleOrg.articleId, scoped)));
+        for (const row of rows) allowed.add(row.articleId);
+      }
+      const visible = outcome.hits.filter(
+        (hit) => hit.visibility !== 'orgs' || allowed.has(hit.articleId),
+      );
+      const best = Math.max(0, ...visible.map((hit) => hit.score));
+      const hits = visible.map(
         (hit): KbHit => ({
           articleId: hit.articleId,
           slug: hit.slug,
@@ -212,4 +247,17 @@ export function loadStubFixtures(dir: string | undefined): StubFixtures | undefi
     return undefined;
   }
   return stubFixturesSchema.parse(JSON.parse(raw));
+}
+
+/**
+ * The logs, data and repo tools reach past the application's own tables, so in production they run
+ * only behind the database's read-only login (`AI_READONLY_DATABASE_URL`, N2): an empty value there
+ * turns them off rather than falling back to "the code keeps them read-only". Outside production
+ * (a local mock run) the fallback is fine.
+ */
+export function systemToolsAllowed(config: {
+  readonly NODE_ENV: string;
+  readonly AI_READONLY_DATABASE_URL?: string | undefined;
+}): boolean {
+  return config.AI_READONLY_DATABASE_URL !== undefined || config.NODE_ENV !== 'production';
 }

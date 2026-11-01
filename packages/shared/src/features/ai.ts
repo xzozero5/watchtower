@@ -100,6 +100,12 @@ export const AI_INTENT_SCOPE_MIN_CONFIDENCE = 0.75;
  */
 export const AI_INVESTIGATION_DEADLINE_MS = 110_000;
 
+/**
+ * `[ASSUMED]` How often a person may ask the AI for a draft or a new investigation (`POST .../ai/requests`).
+ * A draft on request makes a model call without a tool call, so the tool budget does not bound it.
+ */
+export const AI_REQUEST_LIMITS = { perUserPerHour: 30, perTicketPerHour: 6 } as const;
+
 export type AiToolBudgets = { -readonly [K in keyof typeof AI_TOOL_BUDGETS]: number };
 
 /** Payload of an `ai` `summarize` job: only the id; the worker loads the ticket. */

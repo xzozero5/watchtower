@@ -414,6 +414,71 @@ describe('stages decide whether a draft is made (N3)', () => {
   });
 });
 
+describe('who may unlock the tools and the stage (SR108-1)', () => {
+  it('a client who is a signed-in user is not a confirmation: no system tools, no draft of its own', async () => {
+    classifierConfidence = AI_INTENT_SCOPE_MIN_CONFIDENCE - 0.3;
+    classifierIntent = null;
+    const [client] = await owner()
+      .insert(schema.users)
+      .values({ email: 'client-user@customer.example.test', name: 'Client User', role: 'client', orgId })
+      .returning();
+    const ticketId = await createTicket('Webhook not received', 'webhook is not received', {
+      intentKey: 'webhook_not_received',
+      actor: { type: 'user', id: client?.id ?? null },
+    });
+    const row = await settled(ticketId);
+    const report = row.report as AiReport;
+    expect(report.scope).toEqual({ intent: null, basis: 'none' });
+    expect(report.tools.map((tool) => tool.name)).not.toContain('gcp_logs');
+    // The intent is stage 2, but nobody trusted it: the draft waits until a person asks.
+    await new Promise((resolve) => setTimeout(resolve, 2000));
+    expect(await draftsOf(ticketId)).toEqual([]);
+    expect(row.state).toBe('classified');
+  });
+
+  it('an intent the model chose below the threshold does not make a draft on its own either', async () => {
+    classifierConfidence = AI_INTENT_SCOPE_MIN_CONFIDENCE - 0.3;
+    classifierIntent = 'webhook_not_received';
+    const ticketId = await createTicket('Webhook not received', 'webhook is not received', {
+      intentKey: 'webhook_not_received',
+    });
+    await settled(ticketId);
+    // Long enough for a draft to have been made if one was going to be.
+    await new Promise((resolve) => setTimeout(resolve, 2000));
+    expect(await draftsOf(ticketId)).toEqual([]);
+    // A person can still ask for it.
+    await enqueueAi(AI_JOBS.draft, { ticketId, requestedBy: staffId });
+    await settled(ticketId, 'draft_ready');
+    expect(await draftsOf(ticketId)).toHaveLength(1);
+  });
+});
+
+describe('another organization is not evidence (SR108-2)', () => {
+  it('similar tickets and their names stay inside the organization', async () => {
+    classifierConfidence = 0.9;
+    classifierIntent = 'webhook_not_received';
+    const [other] = await owner().insert(schema.organization).values({ name: 'Other Org' }).returning();
+    const stranger = 'stranger.person@other-customer.example.test';
+    await appDatabase.db.transaction((tx) =>
+      domain.tickets.create(tx, domain.context({ actor: { type: 'system', id: null } }), {
+        orgId: other?.id ?? '',
+        subject: 'Webhook not received for partner',
+        body: `The webhook is not received, write to ${stranger}`,
+        requester: { email: stranger, name: 'Stranger Person' },
+      }),
+    );
+    const ticketId = await createTicket('Webhook not received', 'Our webhook is not received at all.', {
+      intentKey: 'webhook_not_received',
+    });
+    const row = await settled(ticketId, 'draft_ready');
+    const cards = row.evidence as { kind: string; title: string; snippet: string }[];
+    expect(cards.some((card) => card.kind === 'ticket' && card.title.includes('partner'))).toBe(false);
+    expect(JSON.stringify(cards)).not.toContain('stranger');
+    expect(JSON.stringify(requests)).not.toContain(stranger);
+    expect(JSON.stringify(requests)).not.toContain('Stranger');
+  });
+});
+
 describe('KB author (AC-4)', () => {
   async function resolvedTicket(): Promise<string> {
     const ticketId = await createTicket('Export is empty', 'The export file is empty for last week.');

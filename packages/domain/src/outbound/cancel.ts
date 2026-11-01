@@ -2,7 +2,7 @@ import { schema } from '@watchtower/db';
 import { AUDIT_ACTIONS, OUTBOUND_TICKET_EVENTS } from '@watchtower/shared';
 import { and, eq, gt } from 'drizzle-orm';
 
-import { syncInsightForDraft } from '../ai/drafts.js';
+import { restoreAiDraft } from '../ai/drafts.js';
 import { recordAuditInTx } from '../audit.js';
 import { conflict, forbidden, notFound } from '../errors.js';
 import type { OutboundDeliveryRow } from '../rows.js';
@@ -76,19 +76,7 @@ export async function cancelSend(
     .where(eq(schema.message.id, delivery.messageId));
   if (delivery.aiDraftId !== null) {
     // The approval belonged to this send; the draft is waiting for a person again.
-    await tx
-      .update(schema.aiDraft)
-      .set({
-      status: 'draft',
-      approvedBy: null,
-      approvedAt: null,
-      disposition: null,
-      editDistance: null,
-      resolvedBy: null,
-      resolvedAt: null,
-    })
-      .where(and(eq(schema.aiDraft.id, delivery.aiDraftId), eq(schema.aiDraft.status, 'approved')));
-    await syncInsightForDraft(tx, delivery.aiDraftId, 'draft_ready');
+    await restoreAiDraft(tx, delivery.aiDraftId);
   }
   const [ticket] = await tx
     .select()

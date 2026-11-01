@@ -468,7 +468,6 @@ function draftRig(answer: unknown, extra: Partial<Parameters<typeof draftReply>[
       customerLanguage: 'en',
       disclosure: 'verified',
       evidence: [card('ev-1'), card('ev-2', { kind: 'log', customerSafe: false, tool: TOOL_NAMES.gcpLogs })],
-      report: null,
       ...extra,
     });
   return { r, run };
@@ -577,7 +576,6 @@ describe('draftReply (T-108c)', () => {
       customerLanguage: 'en',
       disclosure: 'verified',
       evidence: [],
-      report: null,
     });
     expect(outcome).toEqual({ status: 'skipped', reason: 'kill_switch_on' });
     expect(r.requests).toHaveLength(0);
@@ -593,7 +591,6 @@ describe('draftReply (T-108c)', () => {
       customerLanguage: 'en',
       disclosure: 'restricted',
       evidence: [card('ev-1'), card('ev-2', { kind: 'log', customerSafe: false, tool: TOOL_NAMES.gcpLogs })],
-      report: null,
     });
     if (ok.status !== 'ok') throw new Error('expected ok');
     expect(ok.value.citedEvidenceIds).toEqual(['ev-1']);

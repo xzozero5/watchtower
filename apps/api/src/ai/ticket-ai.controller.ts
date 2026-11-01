@@ -9,6 +9,7 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import {
+  AI_REQUEST_LIMITS,
   AUDIT_ACTIONS,
   aiDraftRefParamSchema,
   aiRequestSchema,
@@ -28,6 +29,7 @@ import {
   RequirePermission,
   type Principal,
 } from '../auth/decorators.js';
+import { RateLimiter } from '../auth/rate-limiter.js';
 import { parseResponse } from '../common/zod-openapi.js';
 import { UnitOfWorkService } from '../realtime/unit-of-work.js';
 import { actorOf } from '../kb/kb-actor.js';
@@ -45,6 +47,7 @@ export class TicketAiController {
   constructor(
     @Inject(TicketAiService) private readonly ai: TicketAiService,
     @Inject(UnitOfWorkService) private readonly uow: UnitOfWorkService,
+    @Inject(RateLimiter) private readonly limiter: RateLimiter,
   ) {}
 
   @Get(':id/ai')
@@ -125,6 +128,7 @@ export class TicketAiController {
     @Body({ schema: aiRequestSchema }) body: AiRequest,
     @CurrentPrincipal() principal: Principal,
   ) {
+    await this.limiter.enforce('ai-request', principal.userId, AI_REQUEST_LIMITS.perUserPerHour, 3600);
     const result = await this.uow.run((uow) => this.ai.request(uow, params.id, body, principal));
     AuditScope.set({ targetId: result.ticketId });
     return parseResponse(acceptedResponse, { accepted: true as const });

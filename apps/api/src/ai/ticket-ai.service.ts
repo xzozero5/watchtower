@@ -4,6 +4,7 @@ import type { Actor } from '@watchtower/domain';
 import {
   AI_JOBS,
   AI_OUTBOX_JOB_OPTIONS,
+  AI_REQUEST_LIMITS,
   QUEUE_NAMES,
   aiEvidenceSchema,
   aiProgressSchema,
@@ -14,7 +15,7 @@ import {
   type RejectAiDraft,
   type TicketAiInsight,
 } from '@watchtower/shared';
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { z } from 'zod';
 
 import { conflict, notFound } from '../auth/http-errors.js';
@@ -184,6 +185,17 @@ export class TicketAiService {
               .limit(1);
       if (intent === undefined) throw conflict('Set the intent of the ticket before asking for a draft');
       if (intent.stage < 1) throw conflict('Drafts are off for this intent (stage 0)');
+    }
+    // Per ticket and hour, whoever asks: a draft on request makes a model call with no tool call, so
+    // the tool budget does not bound it.
+    const recent = await uow.tx.execute<{ n: string }>(
+      sql`SELECT count(*) AS n FROM outbox
+           WHERE queue = ${QUEUE_NAMES.ai} AND job_name IN (${AI_JOBS.draft}, ${AI_JOBS.investigate})
+             AND payload->>'ticketId' = ${ticketId} AND payload->>'requestedBy' IS NOT NULL
+             AND created_at > now() - interval '1 hour'`,
+    );
+    if (Number(recent.rows[0]?.n ?? 0) >= AI_REQUEST_LIMITS.perTicketPerHour) {
+      throw conflict('The AI was asked about this ticket too often in the last hour');
     }
     const [row] = await uow.tx
       .select({

@@ -1,4 +1,4 @@
-import { detectLanguage, type AiReport } from '@watchtower/shared';
+import { detectLanguage } from '@watchtower/shared';
 import { z } from 'zod';
 
 import { renderPrompt } from '../prompts.js';
@@ -15,6 +15,7 @@ import {
   type AgentOutcome,
 } from './common.js';
 import type { InvestigationEvidence } from './evidence.js';
+import { fingerprintOf, leaks, neutralizeTags } from './leak-check.js';
 import type { TicketTurn } from './summarize.js';
 
 export const DRAFTER_PROMPT_ID = 'drafter';
@@ -58,19 +59,44 @@ export interface DraftSentence {
 export function applyDisclosure(
   sentences: readonly DraftSentence[],
   level: DisclosureLevel,
-  evidence: readonly Pick<InvestigationEvidence, 'id' | 'customerSafe'>[],
+  evidence: readonly Pick<InvestigationEvidence, 'id' | 'customerSafe' | 'title' | 'snippet'>[],
+  /** Staff-only text of the ticket (internal notes): no contact may read it back, verified or not. */
+  internalTexts: readonly string[] = [],
 ): { kept: DraftSentence[]; removed: number } {
-  if (level === 'verified') return { kept: [...sentences], removed: 0 };
-  const safe = new Set(evidence.filter((card) => card.customerSafe).map((card) => card.id));
+  const safeCards = evidence.filter((card) => card.customerSafe);
+  const safeIds = new Set(safeCards.map((card) => card.id));
+  const text = (card: Pick<InvestigationEvidence, 'title' | 'snippet'>): string =>
+    `${card.title} ${card.snippet}`;
+  // The model's claim about what a sentence cites is not trusted (SR108-3): the text is checked
+  // against what the customer may not read, whatever `evidenceIds` says.
+  const notes = fingerprintOf(internalTexts, safeCards.map(text));
+  const restricted =
+    level === 'restricted'
+      ? fingerprintOf(
+          [...evidence.filter((card) => !card.customerSafe).map(text), ...internalTexts],
+          safeCards.map(text),
+        )
+      : undefined;
   const kept: DraftSentence[] = [];
   let removed = 0;
   for (const sentence of sentences) {
-    const usesInternal = sentence.evidenceIds.some((id) => !safe.has(id));
-    const hasLink = /https?:\/\/|www\./i.test(sentence.text);
-    if (usesInternal || hasLink) removed += 1;
+    let drop = leaks(notes, sentence.text);
+    if (restricted !== undefined) {
+      const usesInternal = sentence.evidenceIds.some((id) => !safeIds.has(id));
+      // A statement of fact with no safe evidence behind it is not known to be clean.
+      const unsupported =
+        (CITED_KINDS as readonly string[]).includes(sentence.kind) && sentence.evidenceIds.length === 0;
+      drop = drop || usesInternal || unsupported || hasLink(sentence.text) || leaks(restricted, sentence.text);
+    }
+    if (drop) removed += 1;
     else kept.push(sentence);
   }
   return { kept, removed };
+}
+
+/** A URL, a `www.` address or a bare `host.tld/path` (`evil.example/x`): not for an unverified contact. */
+export function hasLink(text: string): boolean {
+  return /https?:\/\/|www\.|\b[a-z0-9][a-z0-9-]*(?:\.[a-z0-9-]+)*\.[a-z]{2,}(?:[/:?#]|\b)/i.test(text);
 }
 
 /** The sentences joined into the text a customer reads: a space between sentences, a blank line between paragraphs. */
@@ -92,7 +118,6 @@ export interface DraftInput {
   readonly customerLanguage: 'th' | 'en';
   readonly disclosure: DisclosureLevel;
   readonly evidence: readonly InvestigationEvidence[];
-  readonly report: AiReport | null;
   /** The person's note for a new draft (`regenerate with note`). */
   readonly note?: string | undefined;
   readonly abortSignal?: AbortSignal;
@@ -120,21 +145,14 @@ function renderTicket(input: DraftInput): string {
     input.turns.length <= MAX_TURNS
       ? input.turns
       : [...input.turns.slice(0, 1), ...input.turns.slice(input.turns.length - (MAX_TURNS - 1))];
-  const lines = [`Subject: ${clip(input.subject, 300)}`];
+  const lines = [`Subject: ${clip(neutralizeTags(input.subject), 300)}`];
   // Internal notes are for staff; the reply is for the customer, so they stay out of the prompt.
   for (const turn of turns) {
-    if (turn.from !== 'note') lines.push(`[${turn.from}] ${clip(turn.text, MAX_TURN_CHARS)}`);
+    if (turn.from !== 'note') {
+      lines.push(`[${turn.from}] ${clip(neutralizeTags(turn.text), MAX_TURN_CHARS)}`);
+    }
   }
   return `<ticket>\n${lines.join('\n')}\n</ticket>`;
-}
-
-function renderReport(report: AiReport | null): string {
-  if (report === null) return '<report>\nNo report.\n</report>';
-  const lines = report.findings.map(
-    (finding) => `- ${finding.text} [${finding.evidenceIds.join(', ')}]`,
-  );
-  if (report.likelyCause !== null) lines.push(`Likely cause: ${report.likelyCause}`);
-  return `<report>\n${lines.join('\n')}\n</report>`;
 }
 
 /**
@@ -173,14 +191,20 @@ export async function draftReply(
     );
     // The ticket first, so a detail that is in the ticket and in a tool result keeps the ticket's origin.
     const ticketText = session.redact(renderTicket(input));
-    const evidenceLines = input.evidence.map((card) =>
+    // The model reads only what the customer may be told: in restricted mode the internal cards are
+    // not in the prompt at all (SR108-3), and the investigation report, which is built from the
+    // whole ticket including internal notes, never goes to the drafter.
+    const readable = input.evidence.filter(
+      (card) => input.disclosure === 'verified' || card.customerSafe,
+    );
+    const evidenceLines = readable.map((card) =>
       joinRedacted(
         [
           session.redact(
             `[${card.id}] ${card.kind}${card.customerSafe ? ' (customer-safe)' : ''}${card.mock ? ' (mock data)' : ''}:`,
           ),
-          session.redactToolOutput(card.tool, card.title),
-          session.redactToolOutput(card.tool, card.snippet),
+          session.redactToolOutput(card.tool, neutralizeTags(card.title)),
+          session.redactToolOutput(card.tool, neutralizeTags(card.snippet)),
         ],
         ' ',
       ),
@@ -188,7 +212,6 @@ export async function draftReply(
     message = joinRedacted(
       [
         ticketText,
-        session.redact(renderReport(input.report)),
         session.redact('<evidence>'),
         joinRedacted(evidenceLines, '\n'),
         session.redact('</evidence>'),
@@ -223,12 +246,18 @@ export async function draftReply(
   if (!parsed.success) return { status: 'failed', reason: 'model_output_invalid' };
 
   const known = new Set(input.evidence.map((card) => card.id));
+  const internalTexts = input.turns.filter((turn) => turn.from === 'note').map((turn) => turn.text);
   const sentences: DraftSentence[] = parsed.data.sentences.map((sentence) => ({
     ...sentence,
     // An id the model made up supports nothing.
     evidenceIds: [...new Set(sentence.evidenceIds.filter((id) => known.has(id)))],
   }));
-  const { kept, removed } = applyDisclosure(sentences, input.disclosure, input.evidence);
+  const { kept, removed } = applyDisclosure(
+    sentences,
+    input.disclosure,
+    input.evidence,
+    internalTexts,
+  );
   if (kept.length === 0) return { status: 'failed', reason: 'model_output_invalid' };
 
   const restored = session.restore(composeBody(kept), 'customer');

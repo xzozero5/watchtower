@@ -1,3 +1,4 @@
+import { neutralizeTags } from './leak-check.js';
 import type { AiEvidence } from '@watchtower/shared';
 
 import { joinRedacted, type RedactedText } from '../redaction/redacted-text.js';
@@ -160,8 +161,8 @@ export function protectEvidence(
 ): ProtectedEvidence[] {
   return raw.map((item, index) => {
     const id = `ev-${String(firstId + index)}`;
-    const title = session.redactToolOutput(item.tool, item.title);
-    const snippet = session.redactToolOutput(item.tool, item.snippet);
+    const title = session.redactToolOutput(item.tool, neutralizeTags(item.title));
+    const snippet = session.redactToolOutput(item.tool, neutralizeTags(item.snippet));
     const show = (text: RedactedText): string => session.restore(text, 'customer').text;
     const flags = [item.mock ? 'mock data' : null, item.customerSafe ? 'customer-safe' : null]
       .filter((flag) => flag !== null)

@@ -71,6 +71,10 @@ const actorOf = (principal: Principal): Actor => ({ type: 'user', id: principal.
 
 /** Fields only staff may set when filing a ticket. A client who sends one is told so, not ignored. */
 const STAFF_ONLY_CREATE_FIELDS = [
+  // A client's intent is not a confirmation: it would pick the autonomy stage the gate reads and
+  // open the AI's tools for the ticket (SR108-1). The AI or a staff member sets it.
+  'intentId',
+  'intentKey',
   'requesterContactId',
   'requester',
   'priority',
@@ -171,8 +175,6 @@ export class TicketsController {
         body: body.body,
         requester: { email: principal.email, name: principal.name },
         senderUserId: principal.userId,
-        ...(body.intentId === undefined ? {} : { intentId: body.intentId }),
-        ...(body.intentKey === undefined ? {} : { intentKey: body.intentKey }),
       };
     } else {
       if (body.orgId === undefined) throw badRequest('orgId is required');
@@ -365,6 +367,13 @@ export class TicketsController {
     @CurrentPrincipal() principal: Principal,
   ) {
     assertCanReplyAs(principal);
+    // Approving or editing an AI draft is the verdict `ai.draft.review` is for, not just a reply.
+    if (
+      (body.aiDraftId !== undefined || body.editedFromDraftId !== undefined) &&
+      !principal.permissions.has('ai.draft.review')
+    ) {
+      throw forbidden('Approving or editing an AI draft needs the permission to review drafts');
+    }
     const sender: Sender =
       principal.orgScope.kind === 'org'
         ? {

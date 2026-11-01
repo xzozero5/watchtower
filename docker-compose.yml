@@ -262,6 +262,9 @@ services:
       DATABASE_URL: postgres://${POSTGRES_USER:-watchtower}:${POSTGRES_PASSWORD:-watchtower}@postgres:5432/${POSTGRES_DB:-watchtower}
       APP_DB_USER: ${APP_DB_USER:-watchtower_api}
       APP_DB_PASSWORD: ${APP_DB_PASSWORD:-watchtower_api}
+      # Optional: the AI tools' read-only login (watchtower_ai_ro). Both empty = not created.
+      AI_DB_USER: ${AI_DB_USER:-}
+      AI_DB_PASSWORD: ${AI_DB_PASSWORD:-}
     depends_on:
       postgres:
         condition: service_healthy

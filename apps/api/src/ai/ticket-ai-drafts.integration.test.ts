@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 
 import {
   AI_REJECT_REASONS,
+  AI_REQUEST_LIMITS,
   aiReportSchema,
   ticketAiInsightSchema,
   type CancelSendResult,
@@ -262,7 +263,8 @@ describe('approve, edit and undo (N3)', () => {
       body: 'z',
       editedFromDraftId: draftId,
     });
-    expect(mine.status).toBe(400);
+    // Refused before it gets that far: a client has no right to review drafts.
+    expect(mine.status).toBe(403);
   });
 });
 
@@ -319,6 +321,87 @@ describe('POST /v1/tickets/:id/ai/drafts/:draftId/reject', () => {
   });
 });
 
+describe('who may use a draft, and how (SR108 P1/P2)', () => {
+  it('a client cannot put an intent on the ticket it files: it would pick the stage and the tools', async () => {
+    for (const field of [{ intentId: stageTwoIntent }, { intentKey: 'anything' }]) {
+      const response = await client.client.post<ApiErrorBody>('/v1/tickets', {
+        subject: 'Hello',
+        body: 'A question',
+        ...field,
+      });
+      expect(response.status).toBe(403);
+    }
+    const plain = await client.client.post('/v1/tickets', { subject: 'Hello', body: 'A question' });
+    expect(plain.status).toBe(201);
+  });
+
+  it('approving or editing needs ai.draft.review, not only ticket.reply', async () => {
+    const head = await signIn(h, 'head');
+    const setAgent = async (change: (current: string[]) => string[]): Promise<void> => {
+      const roles = await head.client.get<{ roles: { role: string; permissions: string[] }[] }>(
+        '/v1/rbac/roles',
+      );
+      const current = roles.body.roles.find((entry) => entry.role === 'agent')?.permissions ?? [];
+      const put = await head.client.put('/v1/rbac/roles/agent/permissions', {
+        permissions: change(current),
+      });
+      expect(put.status).toBe(200);
+    };
+    const ticketId = await ticketWith(stageTwoIntent);
+    const draftId = await draftReady(ticketId, 'Hello there');
+    await setAgent((current) => current.filter((key) => key !== 'ai.draft.review'));
+    try {
+      expect((await reply(agent, ticketId, 'Hello there', { aiDraftId: draftId })).status).toBe(403);
+      expect((await reply(agent, ticketId, 'Hello!', { editedFromDraftId: draftId })).status).toBe(403);
+      expect((await reject(agent, ticketId, draftId, { reason: 'tone_style' })).status).toBe(403);
+      // Their own words are still a reply.
+      expect((await reply(agent, ticketId, 'My own words')).status).toBe(201);
+      expect((await draftRow(draftId)).status).toBe('draft');
+    } finally {
+      await setAgent((current) => [...new Set([...current, 'ai.draft.review'])]);
+    }
+    expect((await reply(agent, ticketId, 'Hello there', { aiDraftId: draftId })).status).toBe(201);
+  });
+
+  it('"edited" with the draft’s own words is an approval and meets the gate', async () => {
+    // Stage 0: nothing the AI wrote may be sent as an AI draft, and naming it "edited" does not change that.
+    const zero = await ticketWith(stageZeroIntent);
+    const stuck = await draftReady(zero, 'Same words');
+    const refused = await reply(agent, zero, 'Same words', { editedFromDraftId: stuck });
+    expect(refused.status).toBe(403);
+    expect((await draftRow(stuck)).status).toBe('draft');
+
+    // Stage 2: it goes as an approval, with no pretend edit of distance 0.
+    const ok = await ticketWith(stageTwoIntent);
+    const draftId = await draftReady(ok, 'Same words');
+    const sent = await reply(agent, ok, 'Same words', { editedFromDraftId: draftId });
+    expect(sent.status).toBe(201);
+    expect(sent.body.message.delivery).toMatchObject({ origin: 'ai_approved' });
+    expect(await draftRow(draftId)).toMatchObject({ disposition: 'approved', status: 'approved' });
+  });
+
+  it('an undone approval with a newer draft written meanwhile leaves one draft waiting', async () => {
+    const ticketId = await ticketWith(stageTwoIntent);
+    const first = await draftReady(ticketId, 'First draft');
+    const sent = await reply(agent, ticketId, 'First draft', { aiDraftId: first });
+    const second = await draftReady(ticketId, 'Second draft');
+    const undone = await agent.client.post<CancelSendResult>(
+      `/v1/tickets/${ticketId}/deliveries/${sent.body.message.delivery?.id ?? ''}/cancel`,
+      {},
+    );
+    expect(undone.status).toBe(200);
+    const rows = await pool().query<{ id: string; status: string }>(
+      `SELECT id, status FROM ai_draft WHERE ticket_id = $1`,
+      [ticketId],
+    );
+    expect(Object.fromEntries(rows.rows.map((row) => [row.id, row.status]))).toEqual({
+      [first]: 'superseded',
+      [second]: 'draft',
+    });
+    expect((await getInsight(agent, ticketId)).body.draft?.id).toBe(second);
+  });
+});
+
 describe('POST /v1/tickets/:id/ai/requests', () => {
   const request = (who: Persona, ticketId: string, body: unknown) =>
     who.client.post<{ accepted?: boolean } & Partial<ApiErrorBody>>(
@@ -366,6 +449,25 @@ describe('POST /v1/tickets/:id/ai/requests', () => {
     expect(refused.status).toBe(409);
     expect(await jobsFor(zero, 'draft')).toEqual([]);
     expect((await getInsight(agent, zero)).status).toBe(404);
+  });
+
+  it('caps the requests for one ticket per hour, and for one person per hour', async () => {
+    const ticketId = await ticketWith(stageOneIntent);
+    for (let index = 0; index < AI_REQUEST_LIMITS.perTicketPerHour; index += 1) {
+      // The brief is out of the working state between requests, as when each job has finished.
+      await pool().query(`UPDATE ai_ticket_insight SET state = 'classified', progress = NULL WHERE ticket_id = $1`, [ticketId]);
+      expect((await request(agent, ticketId, { kind: 'investigate' })).status).toBe(202);
+    }
+    await pool().query(`UPDATE ai_ticket_insight SET state = 'classified', progress = NULL WHERE ticket_id = $1`, [ticketId]);
+    expect((await request(agent, ticketId, { kind: 'draft' })).status).toBe(409);
+
+    // One person across tickets: the next one after the cap is 429.
+    const person = await signIn(h, 'agent', undefined, 'Busy Agent');
+    let last = 0;
+    for (let index = 0; index <= AI_REQUEST_LIMITS.perUserPerHour; index += 1) {
+      last = (await request(person, await ticketWith(null), { kind: 'investigate' })).status;
+    }
+    expect(last).toBe(429);
   });
 
   it('is for staff who handle tickets, validates the body, and hides a ticket the person cannot see', async () => {

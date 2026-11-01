@@ -14,7 +14,7 @@ import type { ProcessorContext } from '../processors/index.js';
 import { makeAiBrief } from './brief.js';
 import { runInvestigation } from './investigation.js';
 import { runKbAuthor } from './kb-author-job.js';
-import { loadStubFixtures, type ReadDb } from './tool-ports.js';
+import { loadStubFixtures, systemToolsAllowed, type ReadDb } from './tool-ports.js';
 
 /**
  * The consumer of the `ai` queue (T-106e, T-108). One queue, four jobs:
@@ -28,6 +28,12 @@ import { loadStubFixtures, type ReadDb } from './tool-ports.js';
 export function createAiPipelineProcessor(context: ProcessorContext): Processor {
   const { database, ai, logger, domain, realtime, config } = context;
   const fixtures = loadStubFixtures(config.AI_TOOL_FIXTURES_DIR);
+  const allowSystemTools = systemToolsAllowed(config);
+  if (!allowSystemTools) {
+    logger.warn(
+      'AI_READONLY_DATABASE_URL is empty in production: the logs, data and repo tools are off',
+    );
+  }
 
   // The AI tools' own read-only login, created on first use. With none configured they read the same
   // views through the worker's connection (a local mock run); production sets the URL (N2).
@@ -51,6 +57,7 @@ export function createAiPipelineProcessor(context: ProcessorContext): Processor 
     ai,
     ticketKeyPrefix: config.TICKET_KEY_PREFIX,
     fixtures,
+    allowSystemTools,
     realtime,
     logger,
   });

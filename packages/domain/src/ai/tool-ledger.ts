@@ -80,6 +80,9 @@ export function createDbToolLedger(options: DbToolLedgerOptions): DbToolLedger {
         await tx.execute(
           sql`SELECT pg_advisory_xact_lock(hashtextextended(${entry.ticketId ?? entry.runKey}, 0))`,
         );
+        // And one per tool, taken second (always in this order, so two callers cannot deadlock): the
+        // per-minute bucket of a tool is shared by every ticket, which the ticket lock does not cover.
+        await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${entry.tool}, 2))`);
         const counted = ne(schema.toolExecution.status, 'denied');
         const [inRun] = await tx
           .select({ n: count() })

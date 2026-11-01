@@ -13,7 +13,7 @@ import {
   startDomainTest,
   type DomainTestEnv,
 } from '../testing/support.js';
-import { rejectAiDraft, saveAiDraft } from './drafts.js';
+import { rejectAiDraft, restoreAiDraft, saveAiDraft } from './drafts.js';
 import { upsertAiInsight, writeAiInvestigation } from './insight.js';
 import { createAiKbDraft, ticketKbGap } from './kb-draft.js';
 import { createDbToolLedger, type ToolLedgerEntry } from './tool-ledger.js';
@@ -223,6 +223,56 @@ describe('rejecting a draft (T-108c)', () => {
       [first]: 'superseded',
       [second]: 'draft',
     });
+  });
+});
+
+describe('limits that hold under parallel jobs and undo (SR108 P3)', () => {
+  it('shares the per-minute bucket of a tool across tickets even when the jobs run at once', async () => {
+    const tight = createDbToolLedger({
+      db: env.database.db,
+      limits: { perRun: 100, perTicketPerHour: 100, perToolPerMinute: 3 },
+    });
+    const tickets = await Promise.all(Array.from({ length: 10 }, () => newTicket()));
+    const results = await Promise.all(
+      tickets.map((ticketId) => tight.begin(entry(ticketId, { tool: 'parallel_tool' }))),
+    );
+    expect(results.filter((result) => result.allowed)).toHaveLength(3);
+  });
+
+  it('an undone approval does not leave two drafts waiting: the older one is superseded', async () => {
+    const ticketId = await newTicket();
+    const draft = (body: string) =>
+      saveAiDraft(env.database.db, {
+        ticketId,
+        body,
+        aiRunId: null,
+        language: 'en',
+        customerLanguage: 'en',
+        citations: [],
+        uncitedClaims: 0,
+        promptId: 'drafter',
+        promptVersion: 1,
+        disclosureLevel: 'verified',
+        disclosureRemoved: 0,
+        needsReview: false,
+        requestedBy: null,
+      });
+    const first = await draft('first');
+    await owner()
+      .update(schema.aiDraft)
+      .set({ status: 'approved', approvedBy: agent.id, approvedAt: new Date() })
+      .where(eq(schema.aiDraft.id, first.id));
+    const second = await draft('second');
+    // The approved one is left alone when the new one is written.
+    const status = async () =>
+      Object.fromEntries(
+        (await owner().select().from(schema.aiDraft).where(eq(schema.aiDraft.ticketId, ticketId))).map(
+          (row) => [row.id, row.status],
+        ),
+      );
+    expect(await status()).toEqual({ [first.id]: 'approved', [second.id]: 'draft' });
+    await env.tx((tx) => restoreAiDraft(tx, first.id));
+    expect(await status()).toEqual({ [first.id]: 'superseded', [second.id]: 'draft' });
   });
 });
 

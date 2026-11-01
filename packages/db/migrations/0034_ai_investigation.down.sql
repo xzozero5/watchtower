@@ -1,6 +1,6 @@
 -- Reverts 0034. Lossy on purpose: tool executions, the investigation reports and what people did with
--- AI drafts (approve, edit, reject) go away. A draft that was superseded goes back to `rejected`-free
--- `draft` is not possible, so those rows are removed first. kb_article_version is immutable, so the
+-- AI drafts (approve, edit, reject) go away. A superseded draft becomes `rejected`, which 0013 knows.
+-- kb_article_version is immutable, so the
 -- `requested_by` column cannot be dropped while versions exist without the owner lifting the trigger; the
 -- column is dropped inside a transaction that disables the trigger for the owner.
 ALTER TABLE kb_article_version DISABLE TRIGGER USER;
@@ -14,8 +14,12 @@ ALTER TABLE ai_ticket_insight
   DROP COLUMN IF EXISTS progress,
   DROP COLUMN IF EXISTS report;
 
-UPDATE ai_ticket_insight SET draft_id = NULL WHERE draft_id IN (SELECT id FROM ai_draft WHERE status = 'superseded');
-DELETE FROM ai_draft WHERE status = 'superseded';
+-- A superseded draft may be referenced by a delivery (an undone send), so it is kept and becomes
+-- `rejected` (a status 0013 knows), not deleted. The guard trigger forbids leaving `superseded`, so it
+-- is off for this one statement.
+ALTER TABLE ai_draft DISABLE TRIGGER ai_draft_guard;
+UPDATE ai_draft SET status = 'rejected' WHERE status = 'superseded';
+ALTER TABLE ai_draft ENABLE TRIGGER ai_draft_guard;
 ALTER TABLE ai_draft
   DROP CONSTRAINT IF EXISTS ai_draft_reject_status_check,
   DROP CONSTRAINT IF EXISTS ai_draft_reject_check,

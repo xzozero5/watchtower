@@ -208,7 +208,53 @@ describe('0034 ai_ticket_insight and kb_article_version', () => {
 });
 
 describe('0034 down and up', () => {
-  it('reverts cleanly and applies again', async () => {
+  it('reverts cleanly and applies again, also with a superseded draft that a delivery points at', async () => {
+    // An approved draft whose send was undone and which a newer draft then replaced: the delivery
+    // (cancelled, kept for the record) still references it, so the down migration must not delete it.
+    const person = (
+      await owner().query<{ id: string }>(
+        `INSERT INTO users (email, name, role) VALUES ('down@example.test', 'Down', 'agent') RETURNING id`,
+      )
+    ).rows[0]?.id;
+    const account = (
+      await owner().query<{ id: string }>(
+        `INSERT INTO channel_account (type, name) VALUES ('gmail', 'Support') RETURNING id`,
+      )
+    ).rows[0]?.id;
+    await owner().query(`UPDATE ticket SET channel = 'gmail', channel_account_id = $2 WHERE id = $1`, [
+      ticketId,
+      account,
+    ]);
+    const message = (
+      await owner().query<{ id: string }>(
+        `INSERT INTO message (ticket_id, channel_account_id, direction, body_text, visibility, delivery_status, sender_user_id)
+         VALUES ($1, $2, 'outbound', 'hello', 'public', 'scheduled', $3) RETURNING id`,
+        [ticketId, account, person],
+      )
+    ).rows[0]?.id;
+    const draft = (
+      await owner().query<{ id: string; content_hash: string }>(
+        `INSERT INTO ai_draft (ticket_id, body_text) VALUES ($1, 'hello') RETURNING id, content_hash`,
+        [ticketId],
+      )
+    ).rows[0];
+    await owner().query(
+      `UPDATE ai_draft SET status = 'approved', approved_by = $2, approved_at = now() WHERE id = $1`,
+      [draft?.id, person],
+    );
+    await owner().query(
+      `INSERT INTO outbound_delivery (ticket_id, message_id, channel_account_id, channel, origin, ai_draft_id,
+         approved_by, content_hash, hold_seconds, next_attempt_at, created_by, state)
+       VALUES ($1, $2, $3, 'gmail', 'ai_approved', $4, $5, $6, 5, now(), $5, 'scheduled')`,
+      [ticketId, message, account, draft?.id, person, draft?.content_hash],
+    );
+    await owner().query(`UPDATE outbound_delivery SET state = 'cancelled', cancelled_at = now()`);
+    await owner().query(
+      `UPDATE ai_draft SET status = 'draft', approved_by = NULL, approved_at = NULL WHERE id = $1`,
+      [draft?.id],
+    );
+    await owner().query(`UPDATE ai_draft SET status = 'superseded' WHERE id = $1`, [draft?.id]);
+
     const later = await migrationsAfter('0034_ai_investigation');
     const reverted = await migrateDown(owner(), { steps: later.length + 1 });
     expect(reverted[reverted.length - 1]).toBe('0034_ai_investigation');

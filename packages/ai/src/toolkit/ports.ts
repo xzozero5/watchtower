@@ -32,6 +32,8 @@ export interface KbSearchPort {
     readonly limit: number;
     /** The scope intent, so the port can put the runbook of that intent first. */
     readonly intentKey: string | null;
+    /** The ticket the run is about, so the port can leave out what is not for its organization. */
+    readonly ticketId: string | null;
     readonly signal?: AbortSignal | undefined;
   }): Promise<readonly KbHit[]>;
 }

@@ -23,6 +23,7 @@ import {
   type AgentDeps,
   type AgentOutcome,
 } from './common.js';
+import { neutralizeTags } from './leak-check.js';
 import { protectEvidence, rawEvidenceFrom, type InvestigationEvidence } from './evidence.js';
 import type { TicketTurn } from './summarize.js';
 
@@ -136,8 +137,10 @@ function renderTicket(input: InvestigateInput): string {
     input.turns.length <= MAX_TURNS
       ? input.turns
       : [...input.turns.slice(0, 1), ...input.turns.slice(input.turns.length - (MAX_TURNS - 1))];
-  const lines = [`Subject: ${clip(input.subject, 300)}`];
-  for (const turn of turns) lines.push(`[${turn.from}] ${clip(turn.text, MAX_TURN_CHARS)}`);
+  const lines = [`Subject: ${clip(neutralizeTags(input.subject), 300)}`];
+  for (const turn of turns) {
+    lines.push(`[${turn.from}] ${clip(neutralizeTags(turn.text), MAX_TURN_CHARS)}`);
+  }
   return `<ticket>\n${lines.join('\n')}\n</ticket>`;
 }
 

@@ -14,7 +14,7 @@ import {
 } from '@watchtower/shared';
 import { and, asc, eq, gte, lt, lte, or, sql, type SQL } from 'drizzle-orm';
 
-import { syncInsightForDraft } from '../ai/drafts.js';
+import { restoreAiDraft } from '../ai/drafts.js';
 import { recordAuditInTx } from '../audit.js';
 import { clearStaleReplyTokens } from './reply-token.js';
 import { enqueueJob } from '../outbox.js';
@@ -205,19 +205,7 @@ async function ticketOf(tx: DbTransaction, ticketId: string): Promise<TicketRow 
 /** An approved AI draft goes back to waiting when its send did not happen. */
 async function reopenDraft(tx: DbTransaction, delivery: OutboundDeliveryRow): Promise<void> {
   if (delivery.aiDraftId === null) return;
-  await tx
-    .update(schema.aiDraft)
-    .set({
-      status: 'draft',
-      approvedBy: null,
-      approvedAt: null,
-      disposition: null,
-      editDistance: null,
-      resolvedBy: null,
-      resolvedAt: null,
-    })
-    .where(and(eq(schema.aiDraft.id, delivery.aiDraftId), eq(schema.aiDraft.status, 'approved')));
-  await syncInsightForDraft(tx, delivery.aiDraftId, 'draft_ready');
+  await restoreAiDraft(tx, delivery.aiDraftId);
 }
 
 /**

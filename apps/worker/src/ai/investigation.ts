@@ -27,10 +27,8 @@ import {
   AI_TOOL_BUDGETS,
   aiEvidenceSchema,
   detectLanguage,
-  aiReportSchema,
   type AiInsightReason,
   type AiProgress,
-  type AiReport,
 } from '@watchtower/shared';
 import { and, asc, eq, sql } from 'drizzle-orm';
 import { z } from 'zod';
@@ -56,6 +54,8 @@ export interface InvestigationDeps {
   readonly ai: AiRuntime | undefined;
   readonly ticketKeyPrefix: string;
   readonly fixtures: StubFixtures | undefined;
+  /** False in production with no read-only database login: no intent can name a system tool then. */
+  readonly allowSystemTools: boolean;
   readonly realtime: RealtimeSink;
   readonly logger: WorkerLogger;
   readonly now?: () => Date;
@@ -111,6 +111,9 @@ export async function resolveToolScope(
         and(
           eq(schema.ticketEvent.ticketId, input.ticketId),
           eq(schema.ticketEvent.actorType, 'user'),
+          // A person on the staff, not just any signed-in user: a client is a user too (SR108-1).
+          sql`EXISTS (SELECT 1 FROM users u WHERE u.id::text = ${schema.ticketEvent.actorId}
+                AND u.role IN ('agent', 'lead', 'head'))`,
           sql`(${schema.ticketEvent.type} = 'ticket.created'
                OR (${schema.ticketEvent.type} = 'ticket.updated' AND ${schema.ticketEvent.payload}->'changed' ? 'intent'))`,
         ),
@@ -295,32 +298,39 @@ export async function runInvestigation(
     await write({ state: 'investigating', progress: value, stage });
   };
 
+  const scope = await resolveToolScope(db, {
+    ticketId: ticket.id,
+    ticketIntentKey: ticketIntent?.key ?? null,
+    briefIntent: {
+      key: insightRow?.intentKey ?? null,
+      confidence: insightRow?.intentConfidence ?? null,
+    },
+    knownIntentKeys: new Set(intents.map((intent) => intent.key)),
+  });
+  // The ticket's own intent may have been put there by the model (ingest) or by a customer (the portal
+  // category). A draft on its own is only made when that intent is one we trust for the tools too; a
+  // person can still ask for one (SR108-1).
+  const intentTrusted = ticketIntent !== undefined && scope.intent === ticketIntent.key;
+
   // --- evidence: collect it now, or reuse what the last investigation stored (a draft on request) ---
   let evidence: InvestigationEvidence[];
-  let report: AiReport | null;
   let investigated = false;
   const stored = evidenceList.safeParse(insightRow?.evidence);
-  const storedReport = aiReportSchema.safeParse(insightRow?.report);
   const reuse = job.mode === 'draft' && stored.success && stored.data.length > 0;
 
   if (reuse) {
     evidence = [...stored.data];
-    report = storedReport.success ? storedReport.data : null;
   } else {
-    const scope = await resolveToolScope(db, {
-      ticketId: ticket.id,
-      ticketIntentKey: ticketIntent?.key ?? null,
-      briefIntent: {
-        key: insightRow?.intentKey ?? null,
-        confidence: insightRow?.intentConfidence ?? null,
-      },
-      knownIntentKeys: new Set(intents.map((intent) => intent.key)),
-    });
     const registry = createToolRegistry(
-      buildAllowList(intents.map((i) => ({ key: i.key, allowedTools: i.allowedTools }))),
+      buildAllowList(
+        intents.map((i) => ({
+          key: i.key,
+          allowedTools: deps.allowSystemTools ? i.allowedTools : [],
+        })),
+      ),
     );
     for (const tool of investigationTools({
-      kb: createKbSearchPort({ db, ai: runtime }),
+      kb: createKbSearchPort({ db, ai: runtime, names: contacts.map((contact) => contact.name) }),
       tickets: createSimilarTicketsPort(deps.readDb, keys),
       org: createOrgContextPort(deps.readDb),
       fixtures: deps.fixtures,
@@ -362,7 +372,6 @@ export async function runInvestigation(
       throw new InvestigationFailedError(outcome.reason);
     }
     evidence = [...outcome.value.evidence];
-    report = outcome.value.report;
     investigated = true;
     await write({
       state: 'classified',
@@ -370,7 +379,7 @@ export async function runInvestigation(
       progress: null,
       stage,
       evidence,
-      report,
+      report: outcome.value.report,
       nextStep: outcome.value.nextStep,
       requestedBy: job.requestedBy,
       investigatedAt: now(),
@@ -378,7 +387,7 @@ export async function runInvestigation(
   }
 
   // --- draft: stage 2 drafts on its own, stage 1 only when a person asked, stage 0 never (N3) ---
-  const draftsOnItsOwn = job.mode === 'investigate' && stage >= 2;
+  const draftsOnItsOwn = job.mode === 'investigate' && stage >= 2 && intentTrusted;
   const draftsOnRequest = job.mode === 'draft' && stage >= 1;
   // Not drafting: close the "working" state a request opened (an investigation already did).
   const finish = async (reason: 'stage' | 'no_intent'): Promise<InvestigationResult> => {
@@ -398,7 +407,6 @@ export async function runInvestigation(
     customerLanguage: detectLanguage(customerText),
     disclosure: disclosureFor(ticket.channel, requester),
     evidence,
-    report,
     note: job.note,
     abortSignal: signal,
   });

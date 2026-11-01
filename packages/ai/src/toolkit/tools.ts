@@ -121,6 +121,7 @@ export function createKbSearchTool(port: KbSearchPort) {
         query: input.query,
         limit: input.limit,
         intentKey: context.intent,
+        ticketId: context.ticketId ?? null,
         signal: context.abortSignal,
       });
       return { items: items.slice(0, input.limit) };
