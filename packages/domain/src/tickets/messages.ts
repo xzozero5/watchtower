@@ -3,6 +3,7 @@ import { AUDIT_ACTIONS, type Note, type Reply } from '@watchtower/shared';
 
 import { recordAuditInTx } from '../audit.js';
 import { findOrCreateContactByEmailIn } from '../contacts.js';
+import { isWithinReopenWindow } from '../csat/reopen.js';
 import { badRequest, notFound, ticketNotOpen } from '../errors.js';
 import { approveAiDraftSent, scheduleCustomerSend, usesDispatcher } from '../outbound/schedule.js';
 import { requireCustomerSend } from '../policy.js';
@@ -18,8 +19,6 @@ import {
   ticketKeysOf,
   type Sender,
 } from './support.js';
-
-const DAY_MS = 24 * 60 * 60 * 1000;
 
 export interface ReplyInput {
   /** A ticket id or key (`OPS-12`). */
@@ -78,8 +77,7 @@ export async function replyToTicket(
   if (
     fromCustomer &&
     ticket.status === 'resolved' &&
-    (ticket.resolvedAt === null ||
-      now.getTime() - ticket.resolvedAt.getTime() > windowDays * DAY_MS)
+    !isWithinReopenWindow(ticket.resolvedAt, now, windowDays)
   ) {
     throw ticketNotOpen(
       `This ticket was resolved more than ${String(windowDays)} days ago; open a new one`,
