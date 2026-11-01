@@ -1,61 +1,7 @@
-import type { adminEn, homeEn } from './console.en';
+import type { adminEn } from '../en/admin';
+import type { Widen } from '../types';
 
-type Widen<T> = T extends string ? string : { readonly [K in keyof T]: Widen<T[K]> };
-
-/** Thai copy of the head console. Same keys as console.en.ts (the compiler checks the shape). */
-export const homeTh: Widen<typeof homeEn> = {
-  title: 'หน้าหลัก',
-  refresh: 'รีเฟรช',
-  refreshHint: 'อัปเดตทุกนาที',
-  slaRisk: 'ใกล้หลุด SLA',
-  overdueCount: 'เกินกำหนด {count}',
-  unassigned: 'ยังไม่มีผู้รับ',
-  new: 'ใหม่',
-  triage: 'รอคัดแยก',
-  oldest: 'นานสุด {time}',
-  atLeast: '{count}+',
-  atRiskShort: 'ใกล้หลุด {count}',
-  unavailable: 'ยังไม่พร้อมใช้งาน',
-  statsUnavailable: 'ยังไม่มีตัวเลขสรุป',
-  changedPill: 'เปลี่ยน {count} รายการ — กด .',
-  showAll: 'ดูทั้งหมด {count}',
-  byStatus: 'ตามสถานะ',
-  byQueue: 'ตามคิว',
-  noQueue: 'ไม่อยู่ในคิวใด',
-  unknownQueue: 'คิวที่ไม่รู้จัก',
-  load: 'งานที่เปิดอยู่ต่อคน',
-  loading: 'กำลังโหลด…',
-  healthTitle: 'ระบบ',
-  health: {
-    ready: 'ฐานข้อมูลและ Redis: พร้อม',
-    notReady: 'ฐานข้อมูลหรือ Redis: ไม่ตอบสนอง',
-    outboxLabel: 'คิวส่งออก',
-    integrationsLabel: 'การเชื่อมต่อ',
-    unavailable: 'ยังไม่พร้อมใช้งาน',
-  },
-  ai: {
-    title: 'AI',
-    error: 'ไม่พบสถานะ AI',
-    runs: 'การทำงาน',
-    on: 'เปิด',
-    stopped: 'หยุด',
-    limit: 'จำกัดขั้น',
-    limitOn: 'เปิด',
-    limitOff: 'ปิด',
-    draftReady: 'ร่างพร้อม',
-    needsYou: 'รอคุณ',
-    stages: 'intent ต่อขั้น',
-    pinned: 'ปักไว้ {count}',
-    intents: 'intent',
-    controls: 'การควบคุม AI',
-  },
-  empty: {
-    slaRisk: 'ไม่มี ticket ที่ใกล้หลุด SLA',
-    open: 'ไม่มี ticket ที่เปิดอยู่',
-    load: 'ไม่มีเจ้าหน้าที่ที่ใช้งานอยู่',
-  },
-};
-
+/** Thai copy of the Admin console. Same keys as en/admin.ts. */
 export const adminTh: Widen<typeof adminEn> = {
   breadcrumb: 'เส้นทางหน้า',
   sectionsLabel: 'หมวดผู้ดูแลระบบ',

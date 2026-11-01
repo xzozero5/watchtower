@@ -1,0 +1,66 @@
+import type { queueEn } from '../en/queue';
+import type { Widen } from '../types';
+
+export const queueTh: Widen<typeof queueEn> = {
+  listLabel: 'รายการ ticket',
+  loading: 'กำลังโหลด ticket',
+  loadMore: 'โหลด ticket เพิ่ม',
+  loadingMore: 'กำลังโหลด ticket เพิ่ม',
+  unassigned: 'ยังไม่มีผู้รับผิดชอบ',
+  groups: {
+    needsYou: 'รอคุณ',
+    aiWorking: 'AI กำลังทำ',
+    waiting: 'รอการตอบกลับ',
+    done: 'เสร็จแล้ว',
+  },
+  newPill: 'ใหม่ {count} รายการ — กด .',
+  newPillClick: 'ใหม่ {count} รายการ — คลิกเพื่อแสดง',
+  emptyFilteredTitle: 'ไม่มี ticket ที่ตรงกับตัวกรองนี้',
+  emptyFilteredBody: 'ลองผ่อนตัวกรองหรือค้นหาด้วยคำอื่น',
+  error: {
+    title: 'โหลดคิวงานไม่สำเร็จ',
+    body: 'ตรวจสอบการเชื่อมต่อแล้วลองอีกครั้ง งานของคุณไม่ได้ถูกเปลี่ยนแปลง',
+  },
+  search: {
+    label: 'ค้นหา ticket',
+    placeholder: 'ค้นหา ticket',
+  },
+  views: {
+    label: 'มุมมอง',
+    builtIn: 'มุมมองมาตรฐาน',
+    saved: 'มุมมองที่บันทึกไว้',
+    custom: 'ตัวกรองที่กำหนดเอง',
+    open: 'ที่ยังเปิดทั้งหมด',
+    mine: 'คิวของฉัน',
+    unassigned: 'ยังไม่มีผู้รับผิดชอบ',
+    overdue: 'เกินกำหนด',
+    all: 'ticket ทั้งหมด',
+    name: 'ชื่อของมุมมองนี้',
+    save: 'บันทึกมุมมอง',
+    delete: 'ลบ "{name}"',
+  },
+  filters: {
+    title: 'ตัวกรอง',
+    activeCount: 'ใช้ตัวกรองอยู่ {count} รายการ',
+    status: 'สถานะ',
+    priority: 'ความสำคัญ',
+    assignee: 'ผู้รับผิดชอบ',
+    assignees: { any: 'ทุกคน', me: 'ฉัน', unassigned: 'ยังไม่มีผู้รับผิดชอบ' },
+    overdue: 'เฉพาะที่เกินกำหนด',
+    sort: 'เรียงตาม',
+    sorts: {
+      created_desc: 'ใหม่สุดก่อน',
+      updated_desc: 'อัปเดตล่าสุด',
+      due_asc: 'ใกล้ครบกำหนดก่อน',
+    },
+    clear: 'ล้างตัวกรอง',
+  },
+  count: '{count} ticket',
+  countMore: '{count}+ ticket',
+  emptyHint: 'กด / เพื่อค้นหา',
+  row: {
+    new: 'ใหม่',
+    assignedTo: 'มอบหมายให้ {name}',
+    via: 'ทาง{channel}',
+  },
+};
