@@ -40,6 +40,10 @@ snapshot สั้นสำหรับ cold start อยู่ที่ `HANDOF
 
 ## Log
 
+## 2026-11-02 02:24 (Asia/Bangkok) — main thread — T-105 in-app notifications + P1 banner ปิด
+- test: main thread รันเองบน Windows: lint, typecheck, unit ผ่าน · integration db 277, domain 308, api 682, worker 168 · e2e 134 · full-stack 23 · compose healthy `[TESTED]`
+- ค้าง/ไม่ยืนยัน: Web Push/digest/เสียง ไม่ทำตาม scope · alert กะยังไม่ถูกเรียกอัตโนมัติ · retention ยังไม่มี job
+
 ## 2026-11-02 01:44 (Asia/Bangkok) — main thread — T-132 worker เลือก AI provider จาก AI_PROVIDER (fixture เท่านั้น) ปิด
 - test: main thread รันเองบน Windows: lint, typecheck, unit ผ่าน · integration db 268, domain 299, api 666, worker 168 · e2e 134 · full-stack 23 · compose healthy `[TESTED]`
 - ค้าง/ไม่ยืนยัน: ไม่เคยเรียก provider จริง · vertex ยังไม่มี token source · admin settings ของ model/price ยังไม่มี
