@@ -1,52 +1,57 @@
 {
-  "gcpLogs": [
+  "services": ["example-delivery", "example-api", "example-worker"],
+  "logs": [
     {
-      "keywords": ["webhook", "callback"],
-      "entries": [
-        {
-          "timestamp": "2026-01-01T09:00:12Z",
-          "severity": "ERROR",
-          "service": "example-delivery",
-          "message": "webhook delivery failed: endpoint answered 503 after 3 retries"
-        },
-        {
-          "timestamp": "2026-01-01T09:05:40Z",
-          "severity": "WARNING",
-          "service": "example-delivery",
-          "message": "webhook endpoint slow: 9800 ms, close to the 10000 ms limit"
-        }
-      ]
+      "agoMinutes": 12,
+      "severity": "ERROR",
+      "service": "example-delivery",
+      "message": "webhook delivery failed: endpoint answered 503 after 3 retries (owner jane.doe@example.com, +66 81 234 5678)",
+      "labels": { "org_ref": "org-demo-1", "session_id": "sess-demo-1" }
     },
     {
-      "keywords": ["timeout", "timed out", "upstream"],
-      "entries": [
-        {
-          "timestamp": "2026-01-01T10:12:03Z",
-          "severity": "ERROR",
-          "service": "example-api",
-          "message": "upstream request timed out after 30000 ms"
-        },
-        {
-          "timestamp": "2026-01-01T10:12:09Z",
-          "severity": "ERROR",
-          "service": "example-api",
-          "message": "upstream request timed out after 30000 ms"
-        }
-      ]
+      "agoMinutes": 7,
+      "severity": "WARNING",
+      "service": "example-delivery",
+      "message": "webhook endpoint slow: 9800 ms, close to the 10000 ms limit",
+      "labels": { "org_ref": "org-demo-1", "session_id": "sess-demo-1" }
     },
     {
-      "keywords": ["fail", "error"],
-      "entries": [
-        {
-          "timestamp": "2026-01-01T11:30:00Z",
-          "severity": "ERROR",
-          "service": "example-worker",
-          "message": "job failed: validation error in input batch"
-        }
-      ]
+      "agoMinutes": 25,
+      "severity": "ERROR",
+      "service": "example-delivery",
+      "message": "webhook delivery failed for other customer: contact sam.example@example.org rejected the callback",
+      "labels": { "org_ref": "org-demo-2", "session_id": "sess-demo-2" }
+    },
+    {
+      "agoMinutes": 18,
+      "severity": "ERROR",
+      "service": "example-api",
+      "message": "upstream request timed out after 30000 ms",
+      "labels": { "org_ref": "org-demo-1", "session_id": "sess-demo-3" }
+    },
+    {
+      "agoMinutes": 17,
+      "severity": "ERROR",
+      "service": "example-api",
+      "message": "upstream request timed out after 30000 ms",
+      "labels": { "org_ref": "org-demo-1", "session_id": "sess-demo-3" }
+    },
+    {
+      "agoMinutes": 30,
+      "severity": "ERROR",
+      "service": "example-worker",
+      "message": "job failed: validation error in input batch",
+      "labels": { "org_ref": "org-demo-1", "session_id": "sess-demo-4" }
+    },
+    {
+      "agoMinutes": 3,
+      "severity": "INFO",
+      "service": "example-worker",
+      "message": "heartbeat ok",
+      "labels": {}
     }
   ],
-  "bigquery": [
+  "data": [
     {
       "template": "webhook_not_received",
       "columns": ["hour", "deliveries", "failed"],
@@ -72,32 +77,38 @@
       ]
     }
   ],
-  "repoChanges": [
+  "repo": [
     {
-      "service": "webhook_not_received",
+      "repo": "example/delivery",
       "changes": [
         {
-          "kind": "deploy",
+          "kind": "release",
           "ref": "v1.8.2",
-          "title": "Deploy v1.8.2 to production",
-          "at": "2026-01-01T08:45:00Z"
+          "title": "Release v1.8.2",
+          "author": "dev-a",
+          "agoHours": 3,
+          "url": "https://github.example.com/example/delivery/releases/tag/v1.8.2"
         },
         {
           "kind": "pull_request",
           "ref": "#1203",
           "title": "Lower the delivery retry count",
-          "at": "2026-01-01T08:20:00Z"
+          "author": "dev-b",
+          "agoHours": 4,
+          "url": "https://github.example.com/example/delivery/pull/1203"
         }
       ]
     },
     {
-      "service": "upstream_timeout",
+      "repo": "example/api",
       "changes": [
         {
           "kind": "release",
           "ref": "v2.4.0",
           "title": "Release v2.4.0",
-          "at": "2026-01-01T07:30:00Z"
+          "author": "dev-c",
+          "agoHours": 5,
+          "url": null
         }
       ]
     }
