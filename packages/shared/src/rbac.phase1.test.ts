@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
-import { DEFAULT_ROLE_PERMISSIONS, PERMISSIONS, isPermission } from './rbac.js';
+import {
+  DEFAULT_ROLE_PERMISSIONS,
+  HEAD_ONLY_PERMISSIONS,
+  PERMISSIONS,
+  isHeadOnlyPermission,
+  isPermission,
+} from './rbac.js';
 
 // The Phase 1 permission set (T-123a) is [ASSUMED]; migration 0006 seeds the same rows and the db
 // integration tests compare them with these defaults.
@@ -53,5 +59,19 @@ describe('Phase 1 permissions', () => {
     expect(phase1Of('head')).toEqual([...PHASE_1].toSorted());
     // Dead letters are for the head only (PRD section 8.3).
     expect(DEFAULT_ROLE_PERMISSIONS.lead).not.toContain('outbox.manage');
+  });
+});
+
+describe('head-only permissions', () => {
+  it('are held by the head and by no other default role', () => {
+    expect(HEAD_ONLY_PERMISSIONS.length).toBeGreaterThan(0);
+    for (const key of HEAD_ONLY_PERMISSIONS) {
+      expect(isHeadOnlyPermission(key), key).toBe(true);
+      expect(DEFAULT_ROLE_PERMISSIONS.head, key).toContain(key);
+      for (const role of ['agent', 'lead', 'client', 'system'] as const) {
+        expect(DEFAULT_ROLE_PERMISSIONS[role], `${role} ${key}`).not.toContain(key);
+      }
+    }
+    expect(isHeadOnlyPermission('kb.approve')).toBe(false);
   });
 });

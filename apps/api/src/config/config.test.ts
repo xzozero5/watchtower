@@ -17,6 +17,16 @@ const productionEnv = {
 };
 
 describe('loadConfig', () => {
+  it('reads the knowledge base similarity floor: default 0.25, between 0 and 1', () => {
+    expect(loadConfig(testEnv()).KB_MIN_VECTOR_SIMILARITY).toBe(0.25);
+    expect(loadConfig(testEnv({ KB_MIN_VECTOR_SIMILARITY: '0.4' })).KB_MIN_VECTOR_SIMILARITY).toBe(
+      0.4,
+    );
+    expect(() => loadConfig(testEnv({ KB_MIN_VECTOR_SIMILARITY: '1.5' }))).toThrow(
+      /KB_MIN_VECTOR_SIMILARITY/,
+    );
+  });
+
   it('defaults the portal tracking link to 30 days (C-13)', () => {
     expect(loadConfig(testEnv()).PORTAL_TOKEN_TTL_DAYS).toBe(30);
     expect(loadConfig(testEnv({ PORTAL_TOKEN_TTL_DAYS: '7' })).PORTAL_TOKEN_TTL_DAYS).toBe(7);

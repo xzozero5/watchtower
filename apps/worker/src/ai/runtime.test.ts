@@ -31,6 +31,16 @@ describe('createAiRuntime', () => {
     expect(deps?.redactor.session({ scope: 'ticket-1' })).not.toBe(session);
   });
 
+  it('stops the boot for an embedding provider that is not wired, never ignoring it (N5)', () => {
+    expect(() =>
+      createAiRuntime(
+        testConfig({ EMBEDDING_PROVIDER: 'vertex' }),
+        database,
+        createLogger(testConfig()),
+      ),
+    ).toThrow(/EMBEDDING_PROVIDER=vertex is not wired yet/);
+  });
+
   it('stays off for a provider that is not wired, and says so (fail closed to rules)', () => {
     const logger = createLogger(testConfig());
     const error = vi.spyOn(logger, 'error');

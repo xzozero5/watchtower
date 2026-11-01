@@ -1,10 +1,12 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { schema, type Database } from '@watchtower/db';
 import {
+  HEAD_ONLY_PERMISSIONS,
   LOCKED_HEAD_PERMISSIONS,
   PERMISSION_KEYS,
   PERMISSIONS,
   ROLES,
+  isHeadOnlyPermission,
   isPermission,
   type Permission,
   type Role,
@@ -44,7 +46,10 @@ export class RbacService {
     );
     for (const row of rows) {
       // Ignore strings the code does not know: a permission removed from the code stays inert.
-      if (isPermission(row.permission)) roles.get(row.role as Role)?.add(row.permission);
+      if (!isPermission(row.permission)) continue;
+      // A head-only permission on any other role (a row put there by hand) does nothing.
+      if (isHeadOnlyPermission(row.permission) && row.role !== 'head') continue;
+      roles.get(row.role as Role)?.add(row.permission);
     }
     this.cache = { at: now, roles };
     return roles;
@@ -62,7 +67,10 @@ export class RbacService {
     const fromRole = (await this.load()).get(role) ?? new Set<Permission>();
     const merged = new Set<Permission>(fromRole);
     for (const permission of extra) {
-      if (isPermission(permission)) merged.add(permission);
+      // Head-only permissions cannot be granted to a service identity or another role as extras.
+      if (isPermission(permission) && (role === 'head' || !isHeadOnlyPermission(permission))) {
+        merged.add(permission);
+      }
     }
     return merged;
   }
@@ -86,6 +94,12 @@ export class RbacService {
     permissions: readonly Permission[],
   ): Promise<{ before: Permission[]; after: Permission[] }> {
     const wanted = new Set(permissions);
+    if (role !== 'head') {
+      const headOnly = HEAD_ONLY_PERMISSIONS.filter((permission) => wanted.has(permission));
+      if (headOnly.length > 0) {
+        throw conflict(`${headOnly.join(', ')} can only be held by the head role`);
+      }
+    }
     if (role === 'head') {
       const missing = LOCKED_HEAD_PERMISSIONS.filter((permission) => !wanted.has(permission));
       if (missing.length > 0) {
