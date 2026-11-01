@@ -70,6 +70,8 @@ export const PERMISSIONS = {
   'handoff.ack': 'Acknowledge the items of a shift handoff',
   'csat.read': 'View CSAT responses',
   'ai.run.read': 'View AI run records: prompt version, model, tools and cost',
+  // Phase 1 (T-107a, migration 0013).
+  'kb.read.customer': 'Search the customer-visible knowledge base (client)',
 } as const satisfies Record<string, string>;
 
 export type Permission = keyof typeof PERMISSIONS;
@@ -150,6 +152,7 @@ const CLIENT: readonly Permission[] = [
   'ticket.reply.own',
   'statuspage.subscribe',
   'auth.session.self',
+  'kb.read.customer',
 ];
 
 /** What migration 0001 seeds. `system` has nothing: each service identity is granted scoped permissions. */
