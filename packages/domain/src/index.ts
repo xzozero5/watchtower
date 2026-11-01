@@ -8,6 +8,7 @@ import {
   peekRoundRobin,
   takeTurn,
 } from './assignment.js';
+import { ingestAlert } from './alerts/ingest.js';
 import { readAutonomyState, setAiSwitch, setIntentAutonomy } from './autonomy/state.js';
 import { findOrCreateContactByEmail } from './contacts.js';
 import { decideCsatReopen } from './csat/reopen.js';
@@ -65,6 +66,14 @@ import { updateTicket } from './tickets/update.js';
 import type { Actor, CsatConfig, DomainConfig, DomainContext } from './types.js';
 import { workflowAllows } from './workflow.js';
 
+export { ingestAlert, type IngestAlertInput, type IngestAlertOutcome } from './alerts/ingest.js';
+export {
+  matchService,
+  ruleMatches,
+  ruleSpecificity,
+  type AlertFacts,
+  type CatalogEntry,
+} from './alerts/match.js';
 export { recordAuditInTx, type AuditEntry, type AuditWriter } from './audit.js';
 export {
   DEFAULT_AI_BUDGET_ALERT_PERCENT,
@@ -492,6 +501,8 @@ export interface Domain {
     readonly readSettings: typeof readOutboundSettings;
     readonly setUndoSendSeconds: typeof setUndoSendSeconds;
   };
+  /** Alerts from GCP and Alertmanager (T-201c, ADR-015): one delivery per call, idempotent. */
+  readonly alerts: { readonly ingest: typeof ingestAlert };
   /** Received messages (ADR-009): used by the worker's `ingest` consumer. */
   readonly inbound: { readonly ingest: typeof ingestInbound };
   /** Who is behind a LINE user id: link codes and LINE Login (T-103d, R-2.11). */
@@ -592,6 +603,7 @@ export function createDomain(options: DomainOptions): Domain {
       readSettings: readOutboundSettings,
       setUndoSendSeconds,
     },
+    alerts: { ingest: ingestAlert },
     inbound: { ingest: ingestInbound },
     identity: { issueLineLinkCode, redeemLineLinkCode, linkLineUser },
     csat: {
