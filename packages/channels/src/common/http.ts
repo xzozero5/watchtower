@@ -65,6 +65,8 @@ export function parseRetryAfter(value: string | null, nowMs: number): number | u
   if (value === null) return undefined;
   const trimmed = value.trim();
   if (/^\d+$/.test(trimmed)) return Number(trimmed) * 1000;
+  // Discord answers with fractional seconds ("1.5"); without this the text would parse as a date.
+  if (/^\d+\.\d+$/.test(trimmed)) return Math.ceil(Number(trimmed) * 1000);
   const date = Date.parse(trimmed);
   if (Number.isNaN(date)) return undefined;
   return Math.max(0, date - nowMs);
