@@ -1,5 +1,5 @@
 import { ChannelError, gmail, line } from '@watchtower/channels';
-import type { Database } from '@watchtower/db';
+import { schema, type Database } from '@watchtower/db';
 import {
   decideFailure,
   countRecentFailures,
@@ -24,6 +24,7 @@ import {
   type DeliveryRoute,
   type RealtimeEvent,
 } from '@watchtower/shared';
+import { eq } from 'drizzle-orm';
 
 import type { WorkerLogger } from '../logger.js';
 import type { RealtimeSink } from '../realtime.js';
@@ -44,8 +45,10 @@ import type { OutboundChannels } from './channels.js';
  */
 
 export type DispatchOutcome =
-  /** Not claimable: undone, already sent, held, or somebody else has it. A duplicate trigger lands here. */
+  /** Not claimable: undone, already sent, or somebody else has it. A duplicate trigger lands here. */
   | { readonly status: 'skipped' }
+  /** Scheduled, not due yet by this process' clock: the job has to come back at `notBefore`. */
+  | { readonly status: 'early'; readonly notBefore: Date }
   | { readonly status: 'sent'; readonly route: DeliveryRoute }
   | { readonly status: 'retry'; readonly errorCode: string }
   | { readonly status: 'failed'; readonly errorCode: string; readonly outcomeUnknown: boolean }
@@ -474,7 +477,21 @@ export function createOutboundDispatcher(deps: DispatcherDeps) {
       const row = await domain.outbound.claim(tx, ctx, deliveryId);
       return { value: row, events: [], audited: false };
     });
-    if (claimed === null) return { status: 'skipped' };
+    if (claimed === null) {
+      // The outbox relay releases this job by the database clock and the claim reads this process'
+      // clock. A few milliseconds between them must not park a reply until the sweeper's next look.
+      const [row] = await database.db
+        .select({
+          state: schema.outboundDelivery.state,
+          nextAttemptAt: schema.outboundDelivery.nextAttemptAt,
+        })
+        .from(schema.outboundDelivery)
+        .where(eq(schema.outboundDelivery.id, deliveryId));
+      if (row?.state === 'scheduled' && row.nextAttemptAt > newContext().now()) {
+        return { status: 'early', notBefore: row.nextAttemptAt };
+      }
+      return { status: 'skipped' };
+    }
 
     let vetting: Awaited<ReturnType<Domain['outbound']['vet']>>;
     try {

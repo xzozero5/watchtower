@@ -2,6 +2,7 @@ import { z } from 'zod';
 
 import { emailSchema } from './auth.js';
 import { cursorSchema, jsonRecordSchema, pageLimit, pageOf } from './common.js';
+import { LINE_LINK_METHODS } from './features/line.js';
 import {
   holidayRecordSchema,
   holidaySchema,
@@ -170,6 +171,10 @@ export const contactSchema = z.object({
   name: z.string(),
   emails: z.array(z.string()),
   lineUserId: z.string().nullable(),
+  /** How the LINE id was linked; null when it came from a first message or staff typed it (T-103). */
+  lineLinkedVia: z.enum(LINE_LINK_METHODS).nullable(),
+  /** The LINE identity is verified (LINE Login or an email code). A staff-issued code does not verify it. */
+  lineVerified: z.boolean(),
   phone: z.string().nullable(),
   verifiedAt: z.iso.datetime().nullable(),
   roleInOrg: z.string().nullable(),

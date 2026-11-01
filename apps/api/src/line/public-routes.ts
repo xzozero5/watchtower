@@ -4,4 +4,7 @@
  * decision: `auth/routes-policy.test.ts` fails if a public route is missing here, or listed here
  * but not public. A public route must authenticate itself (signature, token) before it acts.
  */
-export const LINE_PUBLIC_ROUTES: readonly string[] = [];
+export const LINE_PUBLIC_ROUTES: readonly string[] = [
+  // The LINE webhook: authenticated by the HMAC signature of the raw body, checked before anything is written.
+  'POST /v1/inbound/line/:channelAccountId',
+];

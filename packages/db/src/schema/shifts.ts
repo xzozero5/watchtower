@@ -16,7 +16,7 @@ import { users } from './auth.js';
 import { ticket } from './ticketing.js';
 
 /**
- * Mirrors migrations/0015_shifts.sql (T-111). The SQL file is the source of truth (check
+ * Mirrors migrations/0016_shifts.sql (T-111). The SQL file is the source of truth (check
  * constraints, column privileges); keep both in step by hand and let the integration tests catch
  * drift.
  */

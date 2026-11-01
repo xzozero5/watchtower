@@ -270,9 +270,9 @@ describe('Gmail', () => {
     const { ticketId, threadId, messageId } = await gmailTicket();
     const { delivery, message } = await staffReply(ticketId, 'We are on it.');
 
-    // Before the window ends the trigger is a no-op.
+    // Before the window ends the trigger sends nothing and has to come back.
     clock.now = at(2);
-    expect(await dispatcher.dispatch(delivery.id)).toEqual({ status: 'skipped' });
+    expect(await dispatcher.dispatch(delivery.id)).toMatchObject({ status: 'early' });
     expect(fakeGmail.sent).toHaveLength(0);
 
     clock.now = at(6);
@@ -386,7 +386,7 @@ describe('Gmail', () => {
     const waiting = await deliveryRow(delivery.id);
     expect(waiting.state).toBe('scheduled');
     expect(waiting.nextAttemptAt).toEqual(at(36));
-    expect(await dispatcher.dispatch(delivery.id)).toEqual({ status: 'skipped' });
+    expect(await dispatcher.dispatch(delivery.id)).toMatchObject({ status: 'early' });
     clock.now = at(37);
     expect(await dispatcher.dispatch(delivery.id)).toEqual({
       status: 'sent',

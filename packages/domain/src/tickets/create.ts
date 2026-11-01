@@ -25,6 +25,7 @@ import type { MessageRow, TicketRow } from '../rows.js';
 import { slaForNewTicket } from '../sla.js';
 import { Effects, type DbTransaction, type DomainContext, type DomainResult } from '../types.js';
 import {
+  MESSAGE_CLOCK,
   channelAccountIdOf,
   findByExternalId,
   messageEvent,
@@ -201,7 +202,7 @@ export async function createTicket(
       visibility: 'public',
       // The customer wrote it to us; there is nothing for us to deliver.
       deliveryStatus: 'not_applicable',
-      createdAt: now,
+      createdAt: MESSAGE_CLOCK,
     })
     .returning();
   if (!message) throw new Error('message insert returned no row');
