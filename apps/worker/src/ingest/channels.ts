@@ -37,6 +37,12 @@ export interface IngestedItem {
   };
   /** Bytes per attachment `partId`. */
   readonly attachmentData: ReadonlyMap<string, Uint8Array>;
+  /**
+   * LINE: the text of the message was a one-time link code (T-103d). The message body is already
+   * replaced by `[link code]`, so the code is stored nowhere (not in a ticket, not for a model);
+   * the processor redeems it from here and drops it.
+   */
+  readonly linkCode?: string | undefined;
 }
 
 export interface ChannelIngestor {
@@ -204,10 +210,11 @@ export function createGmailIngestor(options: GmailIngestorOptions): ChannelInges
 }
 
 /**
- * The event as stored in raw form: everything but the reply token, and with the text of a link code
- * message blanked (the code is a credential for one link; `parseLinkCode` decides what counts).
+ * A LINE event without its credentials: no reply token, and the text of a link code message blanked
+ * (the code is a credential for one link; `parseLinkCode` decides what counts). Used for the raw copy
+ * in object storage and for the payload that stays on an event that failed for good.
  */
-function storableEvent(payload: Record<string, unknown>): Record<string, unknown> {
+export function scrubLineEvent(payload: Record<string, unknown>): Record<string, unknown> {
   const rest = { ...payload };
   delete rest.replyToken;
   const message = rest.message;
@@ -226,7 +233,7 @@ function storableEvent(payload: Record<string, unknown>): Record<string, unknown
 // -- LINE -----------------------------------------------------------------------------------------
 
 /** Images and files bigger than this are described, not downloaded `[ASSUMED]` (storage and memory). */
-export const LINE_MEDIA_MAX_BYTES = 25 * 1024 * 1024;
+export const LINE_MEDIA_MAX_BYTES = line.LINE_CONTENT_MAX_BYTES;
 
 const IMAGE_EXTENSIONS: Readonly<Record<string, string>> = {
   'image/jpeg': 'jpg',
@@ -380,6 +387,8 @@ export function createLineIngestor(options: LineIngestorOptions = {}): ChannelIn
         }
       }
 
+      const linkCode =
+        userId !== null && event.content.type === 'text' ? parseLinkCode(event.content.text) : null;
       const message: NormalisedInboundMessage = {
         channelAccountId: account.id,
         providerMessageId: event.messageId,
@@ -388,7 +397,8 @@ export function createLineIngestor(options: LineIngestorOptions = {}): ChannelIn
         threadCandidates: [{ kind: 'line_conversation', value: conversationId }],
         from: { address: null, name: null, lineUserId: userId },
         subject: '',
-        bodyText: lineBody(event.content),
+        // Whether or not the code works, it is never kept as the text of a message (C-3).
+        bodyText: linkCode === null ? lineBody(event.content) : '[link code]',
         bodyHtml: null,
         attachments,
         receivedAt: new Date(event.occurredAt),
@@ -404,12 +414,13 @@ export function createLineIngestor(options: LineIngestorOptions = {}): ChannelIn
             // The reply token is a credential for one free reply (ADR-010): it lives sealed in the database
             // and never in the object store, which keeps raw events for a long time (review O-5).
             body: Uint8Array.from(
-              Buffer.from(JSON.stringify(storableEvent(source.payload)), 'utf8'),
+              Buffer.from(JSON.stringify(scrubLineEvent(source.payload)), 'utf8'),
             ),
             contentType: 'application/json',
             extension: 'json',
           },
           attachmentData,
+          ...(linkCode === null ? {} : { linkCode }),
         },
       ];
     },

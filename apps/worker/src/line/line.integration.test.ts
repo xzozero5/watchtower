@@ -592,7 +592,8 @@ describe('LINE identity: link code (T-103d)', () => {
       .from(schema.contact)
       .where(eq(schema.contact.id, known?.id ?? ''));
     expect(contact).toMatchObject({ lineUserId: userId });
-    expect(contact?.verifiedAt).not.toBeNull();
+    // A staff-issued code links the account but does not verify it.
+    expect(contact).toMatchObject({ lineLinkedVia: 'staff_code', lineVerifiedAt: null });
     const [ticket] = await owner()
       .select()
       .from(schema.ticket)
@@ -636,11 +637,109 @@ describe('LINE identity: link code (T-103d)', () => {
     await settled(eventId);
     const message = await messageFor(eventId);
     expect(message?.disposition).toBe('ticket');
+    // A code that matched the shape is never stored as text, working or not (C-3).
+    expect(message?.bodyText).toBe('[link code]');
+    expect(message?.bodyText).not.toContain('ZZZZZ');
     const [contact] = await owner()
       .select()
       .from(schema.contact)
       .where(eq(schema.contact.lineUserId, userId));
     expect(contact?.verifiedAt).toBeNull();
+    expect(contact?.lineLinkedVia).toBeNull();
+  });
+
+  it('does not keep a still-valid code in the ticket when the link is refused (C-1, C-3)', async () => {
+    const userId = newUser();
+    // A contact that staff created in a real organization with this LINE id, and one of its tickets.
+    const [orgB] = await owner()
+      .insert(schema.organization)
+      .values({ name: `B ${prefix}` })
+      .returning();
+    const [holder] = await owner()
+      .insert(schema.contact)
+      .values({
+        orgId: orgB?.id ?? '',
+        name: 'B person',
+        emails: [`${randomUUID()}@b.example.test`],
+        lineUserId: userId,
+      })
+      .returning();
+    const [ticketB] = await owner()
+      .insert(schema.ticket)
+      .values({ subject: 'B ticket', orgId: orgB?.id ?? '', requesterContactId: holder?.id })
+      .returning();
+    const [orgA] = await owner()
+      .insert(schema.organization)
+      .values({ name: `A ${prefix}` })
+      .returning();
+    const [target] = await owner()
+      .insert(schema.contact)
+      .values({
+        orgId: orgA?.id ?? '',
+        name: 'A person',
+        emails: [`${randomUUID()}@a.example.test`],
+      })
+      .returning();
+    const database = createDatabase({ url: testDb.appUrl, max: 2, applicationName: 'wt-line-c1' });
+    let code: string;
+    try {
+      const domain = createDomain({
+        ticketKeyPrefix: config.TICKET_KEY_PREFIX,
+        sealKey: randomBytes(32),
+      });
+      const issued = await database.db.transaction((tx) =>
+        domain.identity.issueLineLinkCode(
+          tx,
+          domain.context({ actor: { type: 'system', id: null } }),
+          {
+            contactId: target?.id ?? '',
+          },
+        ),
+      );
+      code = issued.value.code;
+    } finally {
+      await database.close();
+    }
+    const eventId = await receive(lineEvent(userId, { type: 'text', text: code }));
+    await settled(eventId);
+    const message = await messageFor(eventId);
+    expect(message?.bodyText).toBe('[link code]');
+    const allBodies = await owner().select({ body: schema.message.bodyText }).from(schema.message);
+    expect(JSON.stringify(allBodies)).not.toContain(code);
+    expect(classifierSeen.join('\n')).not.toContain(code);
+    // The org-B contact and ticket are untouched; the code was not used.
+    const [after] = await owner()
+      .select()
+      .from(schema.ticket)
+      .where(eq(schema.ticket.id, ticketB?.id ?? ''));
+    expect(after).toMatchObject({ orgId: orgB?.id, requesterContactId: holder?.id });
+    const [unlinked] = await owner()
+      .select()
+      .from(schema.contact)
+      .where(eq(schema.contact.id, target?.id ?? ''));
+    expect(unlinked?.lineUserId).toBeNull();
+  });
+});
+
+describe('LINE events that fail for good (C-4)', () => {
+  it('keeps neither the reply token nor a link code in the payload', async () => {
+    const code = 'WT-ABCDE-FGHJK';
+    const token = `tok-${randomBytes(8).toString('hex')}`;
+    // Not a valid event (a user source without a user id): a permanent failure.
+    const bad = {
+      ...lineEvent(newUser(), { type: 'text', text: code }),
+      source: { type: 'user' },
+      replyToken: token,
+    };
+    const eventId = await receive(bad);
+    const row = await settled(eventId);
+    expect(row.status).toBe('failed');
+    expect(row.errorCode).toBe('line_invalid_event');
+    const payload = JSON.stringify(row.payload);
+    expect(payload).not.toContain(token);
+    expect(payload).not.toContain(code);
+    // What a person needs to look at is still there.
+    expect(payload).toContain(bad.webhookEventId);
   });
 });
 

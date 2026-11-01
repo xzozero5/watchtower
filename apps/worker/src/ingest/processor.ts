@@ -3,7 +3,6 @@ import type { Database } from '@watchtower/db';
 import { schema } from '@watchtower/db';
 import {
   isDomainError,
-  parseLinkCode,
   type Domain,
   type IngestOutcome,
   type NormalisedInboundMessage,
@@ -20,7 +19,12 @@ import { and, eq } from 'drizzle-orm';
 
 import type { WorkerLogger } from '../logger.js';
 import type { RealtimeSink } from '../realtime.js';
-import { PermanentIngestError, type ChannelIngestor, type IngestedItem } from './channels.js';
+import {
+  PermanentIngestError,
+  scrubLineEvent,
+  type ChannelIngestor,
+  type IngestedItem,
+} from './channels.js';
 import {
   classifyMessage,
   DEFAULT_CLASSIFIER_TIMEOUT_MS,
@@ -121,9 +125,24 @@ export function createIngestProcessor(deps: IngestDeps) {
   const timeoutMs = deps.classifierTimeoutMs ?? DEFAULT_CLASSIFIER_TIMEOUT_MS;
 
   async function markFailed(eventId: string, code: string): Promise<void> {
+    // A LINE event that failed for good keeps its payload for a person to look at, but not the reply
+    // token (a credential for one free reply) or the text of a link code (C-4).
+    const [held] = await deps.database.db
+      .select({ payload: schema.inboundEvent.payload, accountType: schema.channelAccount.type })
+      .from(schema.inboundEvent)
+      .innerJoin(
+        schema.channelAccount,
+        eq(schema.channelAccount.id, schema.inboundEvent.channelAccountId),
+      )
+      .where(eq(schema.inboundEvent.id, eventId))
+      .limit(1);
+    const scrubbed =
+      held?.accountType === 'line' && isRecord(held.payload)
+        ? { payload: scrubLineEvent(held.payload) }
+        : {};
     await deps.database.db
       .update(schema.inboundEvent)
-      .set({ status: 'failed', errorCode: code, processedAt: new Date() })
+      .set({ status: 'failed', errorCode: code, processedAt: new Date(), ...scrubbed })
       .where(and(eq(schema.inboundEvent.id, eventId), eq(schema.inboundEvent.status, 'pending')));
   }
 
@@ -177,14 +196,14 @@ export function createIngestProcessor(deps: IngestDeps) {
     const prepared: {
       message: NormalisedInboundMessage;
       classification: InboundClassification | undefined;
+      linkCode: string | undefined;
     }[] = [];
     let singleRawKey: string | null = null;
     for (const item of found) {
       const stored = await store(row.accountType, item);
       singleRawKey = stored.rawKey;
       // A link code is a credential: it never goes to a model, whatever becomes of the message.
-      const isLinkCode =
-        row.accountType === 'line' && parseLinkCode(stored.message.bodyText) !== null;
+      const isLinkCode = item.linkCode !== undefined;
       const classification = isLinkCode
         ? undefined
         : await classifyMessage(stored.message, row.accountType as ChannelType, {
@@ -195,7 +214,7 @@ export function createIngestProcessor(deps: IngestDeps) {
             timeoutMs,
             logger: deps.logger,
           });
-      prepared.push({ message: stored.message, classification });
+      prepared.push({ message: stored.message, classification, linkCode: item.linkCode });
     }
 
     const ctx = deps.domain.context({ actor: SYSTEM_ACTOR });
@@ -203,14 +222,10 @@ export function createIngestProcessor(deps: IngestDeps) {
     const dispositions: string[] = [];
     const committed: CommittedMessage[] = [];
     await deps.database.db.transaction(async (tx) => {
-      for (const { message, classification } of prepared) {
+      for (const { message, classification, linkCode: code } of prepared) {
         // A customer's one-time link code is not a conversation: it links the LINE user to the
         // contact the code was made for. A code that does not work is an ordinary message.
-        const code =
-          row.accountType === 'line' && message.from.lineUserId !== null
-            ? parseLinkCode(message.bodyText)
-            : null;
-        if (code !== null && message.from.lineUserId !== null) {
+        if (code !== undefined && message.from.lineUserId !== null) {
           const redeemed = await deps.domain.identity.redeemLineLinkCode(tx, ctx, {
             code,
             lineUserId: message.from.lineUserId,
