@@ -299,6 +299,19 @@ describe('credential store', () => {
     ).toMatchObject({ source: 'env', configured: true });
   });
 
+  it('refuses names every object has, and does not repeat what it was given', async () => {
+    const s = store();
+    for (const name of ['toString', '__proto__', 'constructor', 'hasOwnProperty']) {
+      const error = await s
+        .put('line', JSON.parse(`{"${name}":"x"}`) as Record<string, string>, actorId)
+        .catch((caught: unknown) => caught);
+      expect(error, name).toMatchObject({ code: 'unknown_field' });
+      expect((error as Error).message).not.toContain(name);
+      await expect(s.remove('line', name)).rejects.toMatchObject({ code: 'unknown_field' });
+    }
+    expect((await owner().query('SELECT 1 FROM integration_credential')).rowCount).toBe(0);
+  });
+
   it('refuses unknown integrations and fields', async () => {
     const s = store();
     await expect(s.put('line', { nope: 'x' }, actorId)).rejects.toMatchObject({
@@ -418,6 +431,67 @@ describe('rotation', () => {
       ]),
     );
     expect(result.failed).toHaveLength(2);
+    expect(JSON.stringify(result)).not.toContain(SECRET);
+    const left = await owner().query<{ field: string; key_version: number }>(
+      `SELECT field, key_version FROM integration_credential ORDER BY field`,
+    );
+    expect(left.rows).toEqual([
+      { field: 'botToken', key_version: 1 },
+      { field: 'channelSecret', key_version: 2 },
+      { field: 'webhookUrl', key_version: 7 },
+    ]);
+  });
+});
+
+describe('reseal', () => {
+  it('gives every row a new data key and sealed value under the current version, values unchanged', async () => {
+    await store().put('line', { channelSecret: SECRET, channelAccessToken: TOKEN }, actorId);
+    const before = await owner().query<{
+      field: string;
+      value_sealed: string;
+      dek_wrapped: string;
+    }>(`SELECT field, value_sealed, dek_wrapped FROM integration_credential ORDER BY field`);
+    const rotating = store(kmsV2());
+    let rows = 0;
+    const result = await rotating.reseal({
+      batchSize: 1,
+      onRow: () => {
+        rows += 1;
+      },
+    });
+    expect(result).toMatchObject({ resealed: 2, skipped: 0, failed: [], toVersion: 2 });
+    expect(rows).toBe(2);
+    expect(await rotating.versionCounts()).toEqual([{ keyVersion: 2, rows: 2 }]);
+
+    const after = await owner().query<{ field: string; value_sealed: string; dek_wrapped: string }>(
+      `SELECT field, value_sealed, dek_wrapped FROM integration_credential ORDER BY field`,
+    );
+    for (const [index, row] of after.rows.entries()) {
+      expect(row.value_sealed).not.toBe(before.rows[index]?.value_sealed);
+      expect(row.dek_wrapped).not.toBe(before.rows[index]?.dek_wrapped);
+    }
+    // The old root key plus the old rows no longer open these rows; the new key does.
+    await expect(store(kmsV1()).resolve('line')).rejects.toMatchObject({ code: 'cannot_open' });
+    const retired = store(new LocalKms({ current: { rootKey: ROOT_2, version: 2 } }));
+    expect((await retired.resolve('line')).channelSecret?.value).toBe(SECRET);
+    expect((await retired.resolve('line')).channelAccessToken?.value).toBe(TOKEN);
+  });
+
+  it('reports rows it cannot open and leaves them as they were', async () => {
+    await store().put('line', { channelSecret: SECRET }, actorId);
+    await owner().query(
+      `INSERT INTO integration_credential (integration, field, value_sealed, dek_wrapped, key_version)
+       VALUES ('discord', 'botToken', 'v1.AAAA.BBBB.CCCC', 'v1.AAAA.BBBB.CCCC', 1),
+              ('discord', 'webhookUrl', 'x', 'y', 7)`,
+    );
+    const result = await store(kmsV2()).reseal({ batchSize: 1 });
+    expect(result.resealed).toBe(1);
+    expect(result.failed).toEqual(
+      expect.arrayContaining([
+        { integration: 'discord', field: 'botToken', reason: 'cannot_open' },
+        { integration: 'discord', field: 'webhookUrl', reason: 'no_key' },
+      ]),
+    );
     expect(JSON.stringify(result)).not.toContain(SECRET);
     const left = await owner().query<{ field: string; key_version: number }>(
       `SELECT field, key_version FROM integration_credential ORDER BY field`,

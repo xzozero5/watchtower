@@ -16,7 +16,7 @@ import {
   sealCredential,
   type KmsPort,
 } from '@watchtower/shared/credential-box';
-import { and, asc, eq, ne, sql } from 'drizzle-orm';
+import { and, asc, eq, gt, ne, sql } from 'drizzle-orm';
 
 import type { Database } from './client.js';
 import { integrationCredential, users } from './schema/index.js';
@@ -93,6 +93,21 @@ export interface RotateResult {
   readonly toVersion: number;
 }
 
+export interface RotateOptions {
+  readonly batchSize?: number;
+  /** Called after each row that was changed, so a caller can report progress even if a later row throws. */
+  readonly onRow?: () => void;
+}
+
+export interface ResealResult {
+  /** Rows now sealed under a new data key. */
+  readonly resealed: number;
+  /** Rows changed by someone else while this ran; they are already on the current version. */
+  readonly skipped: number;
+  readonly failed: readonly RotateFailure[];
+  readonly toVersion: number;
+}
+
 export interface CredentialStore {
   /** Status of every integration, or of one. Never decrypts. */
   status(integration?: IntegrationKey, executor?: CredentialExecutor): Promise<IntegrationStatus[]>;
@@ -115,7 +130,13 @@ export interface CredentialStore {
     options?: ResolveOptions,
   ): Promise<Record<string, ResolvedField>>;
   /** Re-wraps every data key that is not under the current key version. Idempotent. */
-  rotate(options?: { readonly batchSize?: number }): Promise<RotateResult>;
+  rotate(options?: RotateOptions): Promise<RotateResult>;
+  /**
+   * Re-seals every value under a brand-new data key (and wraps it under the current key version).
+   * Stronger than `rotate`, which only re-wraps the data keys; still does not help against a leaked
+   * plaintext (the credential must then be rotated at the provider). Idempotent.
+   */
+  reseal(options?: RotateOptions): Promise<ResealResult>;
   /** How many rows use each key version. */
   versionCounts(): Promise<{ keyVersion: number; rows: number }[]>;
   readonly currentKeyVersion: number;
@@ -138,12 +159,15 @@ export function createCredentialStore(options: CredentialStoreOptions): Credenti
   };
 
   function definitionOf(integration: string, field: string) {
+    // Own properties only: `toString` or `__proto__` must not pass for a field name. The message
+    // does not repeat what the caller sent.
     if (!isIntegrationKey(integration)) {
-      throw new CredentialStoreError('unknown_field', `unknown integration "${integration}"`);
+      throw new CredentialStoreError('unknown_field', 'unknown integration or field');
     }
-    const definition = integrationFields(integration)[field];
+    const fields = integrationFields(integration);
+    const definition = Object.hasOwn(fields, field) ? fields[field] : undefined;
     if (definition === undefined) {
-      throw new CredentialStoreError('unknown_field', `unknown field "${integration}.${field}"`);
+      throw new CredentialStoreError('unknown_field', 'unknown integration or field');
     }
     return definition;
   }
@@ -385,6 +409,7 @@ export function createCredentialStore(options: CredentialStoreOptions): Credenti
             skipped += 1;
           } else {
             rewrapped += 1;
+            rotateOptions.onRow?.();
             fromVersions.add(row.keyVersion);
           }
         }
@@ -398,6 +423,63 @@ export function createCredentialStore(options: CredentialStoreOptions): Credenti
         fromVersions: [...fromVersions].sort((a, b) => a - b),
         toVersion: current,
       };
+    },
+
+    async reseal(resealOptions = {}) {
+      const batchSize = resealOptions.batchSize ?? 100;
+      const db = options.database.db;
+      const failed: RotateFailure[] = [];
+      let resealed = 0;
+      let skipped = 0;
+      // Keyset by id: a row that failed stays as it is, and the walk moves past it.
+      let after: string | undefined;
+      for (;;) {
+        const batch = await db
+          .select()
+          .from(integrationCredential)
+          .where(after === undefined ? undefined : gt(integrationCredential.id, after))
+          .orderBy(asc(integrationCredential.id))
+          .limit(batchSize);
+        if (batch.length === 0) break;
+        for (const row of batch) {
+          after = row.id;
+          const failure = { integration: row.integration, field: row.field };
+          if (!kms.canUnwrap(row.keyVersion)) {
+            failed.push({ ...failure, reason: 'no_key' });
+            continue;
+          }
+          const context = credentialContext(row.integration, row.field);
+          let next;
+          try {
+            next = await sealCredential(kms, context, await openCredential(kms, context, row));
+          } catch {
+            failed.push({ ...failure, reason: 'cannot_open' });
+            continue;
+          }
+          const updated = await db
+            .update(integrationCredential)
+            .set({
+              valueSealed: next.valueSealed,
+              dekWrapped: next.dekWrapped,
+              keyVersion: next.keyVersion,
+            })
+            .where(
+              and(
+                eq(integrationCredential.id, row.id),
+                eq(integrationCredential.valueSealed, row.valueSealed),
+                eq(integrationCredential.dekWrapped, row.dekWrapped),
+              ),
+            )
+            .returning({ id: integrationCredential.id });
+          if (updated.length === 0) {
+            skipped += 1;
+          } else {
+            resealed += 1;
+            resealOptions.onRow?.();
+          }
+        }
+      }
+      return { resealed, skipped, failed, toVersion: kms.currentKeyVersion };
     },
 
     async versionCounts() {

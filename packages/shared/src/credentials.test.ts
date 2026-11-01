@@ -1,11 +1,15 @@
 import { describe, expect, it } from 'vitest';
 
+import { AUTH_ERROR_CODES } from './auth.js';
+import { LOG_REDACT_PATHS } from './logging.js';
 import { baseEnvShape, phase1EnvShape, parseEnv, createEnvSchema, ConfigError } from './config.js';
 import {
   CREDENTIAL_ENV_VARS,
+  CREDENTIAL_FIELD_NAMES,
   CREDENTIAL_VALUE_MAX_LENGTH,
   INTEGRATION_CATALOG,
   INTEGRATION_KEYS,
+  integrationFieldParamSchema,
   integrationFields,
   pickCredentialEnv,
   putCredentialsSchema,
@@ -63,6 +67,55 @@ describe('request schemas', () => {
       }).success,
     ).toBe(false);
     expect(testConnectionSchema.parse({})).toEqual({});
+  });
+});
+
+describe('field names in requests', () => {
+  it('accept the names of the catalog only', () => {
+    expect(putCredentialsSchema.safeParse({ fields: { channelSecret: 'a' } }).success).toBe(true);
+    for (const name of ['toString', '__proto__', 'constructor', 'hasOwnProperty', 'nope']) {
+      const body = JSON.parse(`{"fields":{"${name}":"a"}}`) as unknown;
+      expect(putCredentialsSchema.safeParse(body).success, name).toBe(false);
+      expect(testConnectionSchema.safeParse(body).success, name).toBe(false);
+    }
+    expect(
+      integrationFieldParamSchema.safeParse({ integration: 'line', field: 'toString' }).success,
+    ).toBe(false);
+    expect(CREDENTIAL_FIELD_NAMES).toEqual(expect.arrayContaining(['botToken', 'vapidPrivate']));
+  });
+
+  it('are not echoed in the validation message', () => {
+    const result = putCredentialsSchema.safeParse({ fields: { someVeryUniqueFieldName: 'a' } });
+    expect(JSON.stringify(result.error?.issues)).not.toContain('someVeryUniqueFieldName');
+  });
+});
+
+describe('credential fields in logs and error codes', () => {
+  it('censors every catalog secret field and the objects that hold them', () => {
+    for (const name of [
+      'channelSecret',
+      'channelAccessToken',
+      'botToken',
+      'serviceAccountJson',
+      'anthropicApiKey',
+      'vapidPrivate',
+      'webhookUrl',
+    ]) {
+      expect(LOG_REDACT_PATHS, name).toContain(`*.${name}`);
+    }
+    expect(LOG_REDACT_PATHS).toEqual(expect.arrayContaining(['*.fields', '*.config']));
+    // Every secret field of the catalog is covered by name.
+    for (const integration of INTEGRATION_KEYS) {
+      for (const [name, definition] of Object.entries(integrationFields(integration))) {
+        if (definition.secret) {
+          expect(LOG_REDACT_PATHS, `${integration}.${name}`).toContain(`*.${name}`);
+        }
+      }
+    }
+  });
+
+  it('has a code for an env-locked field', () => {
+    expect(AUTH_ERROR_CODES).toContain('credential_env_locked');
   });
 });
 

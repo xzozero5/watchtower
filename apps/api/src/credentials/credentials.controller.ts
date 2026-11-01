@@ -7,6 +7,7 @@ import {
   ApiOkResponse,
   ApiOperation,
   ApiTags,
+  ApiTooManyRequestsResponse,
 } from '@nestjs/swagger';
 import {
   AUDIT_ACTIONS,
@@ -103,13 +104,15 @@ export class CredentialsController {
   })
   @ApiOkResponse({ standardSchema: testConnectionResultSchema })
   @ApiBadRequestResponse({ description: 'Unknown field' })
+  @ApiTooManyRequestsResponse({ description: 'More than 10 tests in a minute (code rate_limited)' })
   async test(
     @Param({ schema: integrationParamSchema }) params: IntegrationParam,
     @Body({ schema: testConnectionSchema }) body: TestConnection,
+    @CurrentPrincipal() principal: Principal,
   ) {
     return parseResponse(
       testConnectionResultSchema,
-      await this.credentials.test(params.integration, body),
+      await this.credentials.test(params.integration, body, principal.userId),
     );
   }
 }

@@ -6,8 +6,10 @@ import { AuditService } from '../audit/audit.service.js';
 import type { ApiConfig } from '../config/config.js';
 
 export const CREDENTIALS_USAGE = [
-  'usage: credentials.js rotate   re-wrap every stored credential under the current APP_ENCRYPTION_KEY_VERSION',
-  '       credentials.js status   count stored credentials per key version',
+  'usage: credentials.js rotate            re-wrap every data key under the current APP_ENCRYPTION_KEY_VERSION',
+  '       credentials.js rotate --reseal   also generate new data keys and re-seal every value',
+  '       credentials.js status            count stored credentials per key version',
+  'Neither helps once a value itself has leaked: change it at the provider and enter it again.',
 ].join('\n');
 
 export interface CredentialsCliIo {
@@ -26,7 +28,8 @@ export async function runCredentialsCli(
   io: CredentialsCliIo,
 ): Promise<number> {
   const [command, ...extra] = argv;
-  if ((command !== 'rotate' && command !== 'status') || extra.length > 0) {
+  const reseal = command === 'rotate' && extra.length === 1 && extra[0] === '--reseal';
+  if ((command !== 'rotate' && command !== 'status') || (extra.length > 0 && !reseal)) {
     io.err(CREDENTIALS_USAGE);
     return 2;
   }
@@ -48,31 +51,77 @@ export async function runCredentialsCli(
     return 0;
   }
 
-  const result = await store.rotate();
-  await new AuditService(database).record({
-    actor: { type: 'system', id: 'credentials-cli' },
-    action: AUDIT_ACTIONS.integrationCredentialRotate,
-    outcome: result.failed.length === 0 ? 'success' : 'failure',
-    targetType: 'integration_credential',
-    metadata: {
-      rewrapped: result.rewrapped,
-      alreadyCurrent: result.alreadyCurrent,
-      skipped: result.skipped,
-      failed: result.failed.length,
-      fromVersions: result.fromVersions,
-      toVersion: result.toVersion,
-    },
-  });
-  io.out(
-    `rotated to key version ${String(result.toVersion)}: ${String(result.rewrapped)} re-wrapped, ${String(result.alreadyCurrent)} already current, ${String(result.skipped)} skipped, ${String(result.failed.length)} failed`,
-  );
-  for (const failure of result.failed) {
+  // The audit row is written whatever happens: a run that stops half way says how far it got.
+  let done = 0;
+  let failures: number;
+  let outcome: 'success' | 'failure' = 'failure';
+  let summary: Record<string, unknown> = {};
+  try {
+    if (reseal) {
+      const result = await store.reseal({
+        onRow: () => {
+          done += 1;
+        },
+      });
+      failures = result.failed.length;
+      summary = {
+        mode: 'reseal',
+        resealed: result.resealed,
+        skipped: result.skipped,
+        failed: result.failed.length,
+        toVersion: result.toVersion,
+      };
+      io.out(
+        `re-sealed under key version ${String(result.toVersion)}: ${String(result.resealed)} re-sealed, ${String(result.skipped)} skipped, ${String(result.failed.length)} failed`,
+      );
+      reportFailures(result.failed, io);
+    } else {
+      const result = await store.rotate({
+        onRow: () => {
+          done += 1;
+        },
+      });
+      failures = result.failed.length;
+      summary = {
+        mode: 'rewrap',
+        rewrapped: result.rewrapped,
+        alreadyCurrent: result.alreadyCurrent,
+        skipped: result.skipped,
+        failed: result.failed.length,
+        fromVersions: result.fromVersions,
+        toVersion: result.toVersion,
+      };
+      io.out(
+        `rotated to key version ${String(result.toVersion)}: ${String(result.rewrapped)} re-wrapped, ${String(result.alreadyCurrent)} already current, ${String(result.skipped)} skipped, ${String(result.failed.length)} failed`,
+      );
+      reportFailures(result.failed, io);
+    }
+    outcome = failures === 0 ? 'success' : 'failure';
+    return failures === 0 ? 0 : 1;
+  } finally {
+    await new AuditService(database).record({
+      actor: { type: 'system', id: 'credentials-cli' },
+      action: AUDIT_ACTIONS.integrationCredentialRotate,
+      outcome,
+      targetType: 'integration_credential',
+      metadata:
+        Object.keys(summary).length > 0
+          ? summary
+          : { mode: reseal ? 'reseal' : 'rewrap', aborted: true, rowsDone: done },
+    });
+  }
+}
+
+function reportFailures(
+  failed: readonly { integration: string; field: string; reason: string }[],
+  io: CredentialsCliIo,
+): void {
+  for (const failure of failed) {
     io.err(`failed: ${failure.integration}.${failure.field} (${failure.reason})`);
   }
-  if (result.failed.length > 0) {
+  if (failed.length > 0) {
     io.err(
       'Some rows could not be opened: keep APP_ENCRYPTION_KEY_PREVIOUS (with its version) set, or enter those values again.',
     );
   }
-  return result.failed.length === 0 ? 0 : 1;
 }

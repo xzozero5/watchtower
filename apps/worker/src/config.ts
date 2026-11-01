@@ -38,7 +38,7 @@ const workerEnvSchema = createEnvSchema({
    */
   CLEANUP_AUTH_RETENTION_DAYS: z.coerce.number().int().min(0).max(365).default(7),
   /** Days to keep a break-glass lockout counter after its last failed sign-in (still locked ones stay). `[ASSUMED]` 30. */
-  CLEANUP_BREAK_GLASS_RETENTION_DAYS: z.coerce.number().int().min(0).max(365).default(30),
+  CLEANUP_BREAK_GLASS_RETENTION_DAYS: z.coerce.number().int().min(1).max(365).default(30),
 });
 
 export type WorkerConfig = z.output<typeof workerEnvSchema> & {

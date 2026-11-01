@@ -32,8 +32,9 @@ dek_wrapped = sealSecret(KEK_v, base64url(DEK), aad = "watchtower/credential/v1|
 ### 3. `key_version` และการหมุนกุญแจ (`credentials rotate`)
 - env: `APP_ENCRYPTION_KEY` (ตัวปัจจุบัน) + `APP_ENCRYPTION_KEY_VERSION` (จำนวนเต็ม ≥ 1, default 1) · ระหว่างหมุน: `APP_ENCRYPTION_KEY_PREVIOUS` + `APP_ENCRYPTION_KEY_PREVIOUS_VERSION` (ต้องต่ำกว่าเวอร์ชันปัจจุบัน) — รองรับ **ตัวก่อนหน้าหนึ่งตัว**
 - ขั้นตอน (runbook): (1) สร้างกุญแจใหม่ → ตั้งเป็น `APP_ENCRYPTION_KEY` + `_VERSION=N+1`, ย้ายตัวเก่าไป `_PREVIOUS` + `_PREVIOUS_VERSION=N` (2) deploy / restart api+worker (3) รัน CLI `node dist/cli/credentials.js rotate` — เปิด DEK ของทุกแถวที่ `key_version <> current` ด้วย KEK เก่า แล้ว **ห่อใหม่ด้วย KEK ปัจจุบัน** (ไม่แตะ `value_sealed` เพราะค่าไม่เปลี่ยน) ทีละแถวใน transaction ของตัวเอง (`UPDATE … WHERE id = $1 AND key_version = $old` กันแข่งกับการเขียนใหม่) · idempotent: รันซ้ำได้, รันตอนที่ไม่มีอะไรต้องหมุน = 0 แถว (4) `credentials status` ต้องแสดงว่าทุกแถวเป็นเวอร์ชันปัจจุบัน แล้วจึงลบ `_PREVIOUS` ออกจาก environment
+- **`rotate` ทำแค่ hygiene ไม่ใช่การกู้สถานการณ์ที่ค่ารั่ว (security review K-1):** มัน re-wrap เฉพาะ DEK ใต้ KEK ใหม่ ส่วน `value_sealed` และ DEK เดิมไม่เปลี่ยน → ใครถือ DB dump + root key เก่าแล้ว**ยังเปิดค่าเดิมได้** · `rotate --reseal` สร้าง DEK ใหม่ทุกแถวแล้ว seal ค่าใหม่ (เปิดค่าด้วยกุญแจที่มี → seal ใหม่ใต้เวอร์ชันปัจจุบัน; idempotent; ทำทีละแถวแบบ optimistic) ทำให้ dump เก่า + root key เก่าใช้กับแถวใหม่ไม่ได้ · **ทั้งสองแบบไม่ช่วยถ้า root key หรือค่า plaintext รั่วไปแล้ว:** runbook ต้อง (1) หมุน credential นั้นที่ผู้ให้บริการ (LINE/Discord/Google/Anthropic ฯลฯ) (2) กรอกค่าใหม่ผ่านหน้า admin (3) จึงหมุนกุญแจ + `--reseal` และเอา `_PREVIOUS` ออก
 - แถวที่เปิดไม่ได้ (ไม่มีกุญแจของเวอร์ชันนั้น หรือ tag ไม่ผ่าน) ถูกนับเป็น `failed` พร้อม id/integration/field (ไม่มีค่า) และ CLI จบด้วย exit 1 โดยไม่หยุดแถวอื่น
-- CLI เขียน audit `integration.credential.rotate` (actor `system:credentials-cli`; metadata = จำนวนแถว, เวอร์ชันต้นทาง/ปลายทาง; ไม่มีค่า)
+- CLI เขียน audit `integration.credential.rotate` เสมอ (actor `system:credentials-cli`; metadata = mode, จำนวนแถว, เวอร์ชันต้นทาง/ปลายทาง; ไม่มีค่า) · ถ้ารันพังกลางทางจะเขียนแถว `failure` พร้อม `aborted: true, rowsDone` (K-7)
 - **ผลข้างเคียงที่ต้องรู้ (ยอมรับ):** `APP_ENCRYPTION_KEY` เป็นรากของ subkey อื่นด้วย (outbox ADR-006, audit email tag, และ `PORTAL_TOKEN_SECRET` เมื่อเว้นว่าง ADR-007) การเปลี่ยนรากทำให้ job outbox ที่รออยู่เปิดไม่ออก (ถูกทิ้ง, ลูกค้าขอลิงก์ใหม่ — พฤติกรรมเดิมที่ `.env.example` บอกไว้), email tag เปลี่ยนค่า, และลิงก์ tracking เดิมใช้ไม่ได้ถ้าไม่ได้ตั้ง `PORTAL_TOKEN_SECRET` แยก → runbook ต้องบอกให้ตั้ง `PORTAL_TOKEN_SECRET` ให้ชัดก่อนหมุน และทำตอนที่ outbox ว่าง · ทางเลือกที่ไม่ผูกกับราก (กุญแจ KEK แยกต่างหาก) ถูกตัดตามโจทย์ ("KEK derive จาก `APP_ENCRYPTION_KEY`") — KMS port เปิดทางไว้แล้ว
 
 ### 4. Environment ชนะ DB ทุก key
@@ -48,13 +49,14 @@ dek_wrapped = sealSecret(KEK_v, base64url(DEK), aad = "watchtower/credential/v1|
 | Route | ทำอะไร | audit action |
 |---|---|---|
 | `GET /v1/admin/integrations` | รายการทุก integration ใน catalog + สถานะรายเขตข้อมูล + `testMode` (`mock`/`live`) | — (อ่าน) |
-| `PUT /v1/admin/integrations/:integration` | body `{ fields: { <field>: "<value>" } }` เขียน/แทนที่เฉพาะ field ที่ส่ง · คืนสถานะ (ไม่มีค่า) | `integration.credential.set` |
+| `PUT /v1/admin/integrations/:integration` | body `{ fields: { <field>: "<value>" } }` เขียน/แทนที่เฉพาะ field ที่ส่ง · คืนสถานะ (ไม่มีค่า) · key ต้องเป็นชื่อ field ใน catalog (enum) และเป็นของ integration นั้น (ตรวจด้วย `Object.hasOwn`) มิฉะนั้น 400 ข้อความกลาง ไม่สะท้อนชื่อที่ส่งมา (K-3, K-4) | `integration.credential.set` |
 | `DELETE /v1/admin/integrations/:integration/fields/:field` | ลบแถวของ field นั้น (204) | `integration.credential.delete` |
 | `POST /v1/admin/integrations/:integration/test` | ทดสอบ (body `{ fields? }` = ค่าที่ยังไม่ได้บันทึก) → `{ ok, mode, identity, message, checkedAt }` | `integration.credential.test` |
 
 - สถานะต่อ field: `{ field, label, secret, required, configured, source: 'env'|'db'|'none', envVar, updatedAt, updatedBy }` (`updatedBy` = `{ id, name }` หรือ null; ค่า `updatedAt/updatedBy` มีเฉพาะ `source: 'db'`) · ของ integration: `status: 'not_configured'|'partial'|'configured'`
 - **ไม่คืน last-4/mask/ความยาว** — เข้มกว่าที่ task อนุญาต ("masked last-4 at most") เพราะ UI spec §12 ห้ามแม้ mask หรือความยาว · ถ้าเจ้าของต้องการ last-4 เพิ่มได้โดยไม่แตะ schema DB (ต้องถอดรหัสตอน list = ไม่ทำ)
 - ทุก field เป็น write-only รวมที่ไม่ใช่ secret (เช่น channel id) — เรียบง่ายกว่าและ UI แสดงสถานะเดียวกัน; ตัวตนที่ไม่ลับเห็นได้จากผลทดสอบ
+- 409 ของ field ที่ env ล็อกใช้ `code: credential_env_locked` (K-5) · `test` จำกัด **10 ครั้ง/นาที/คน** (Redis `RateLimiter`, นับหลังตรวจ request แล้ว; เกิน = 429 `rate_limited`) `[ASSUMED]` (K-2)
 - ค่า: trim ช่องว่างหัวท้าย, 1–16 384 ตัวอักษร (service account JSON / PEM) · ชื่อ field ที่ไม่อยู่ใน catalog → 400
 - audit: ใช้ `AuditService.recordInTransaction` ใน transaction เดียวกับการเขียน · metadata มี**ชื่อ field**เท่านั้น ไม่มีค่า ไม่มี hash · response error / log ไม่ echo ค่า — มี test จับ log และ response แล้ว grep หา plaintext
 - ไม่มีการอ่านค่ากลับผ่าน HTTP ในทุกกรณี รวมถึง `test` (คืนแค่ identity ที่ไม่ลับ เช่น ชื่อ bot จาก adapter ในอนาคต)
@@ -62,6 +64,7 @@ dek_wrapped = sealSecret(KEK_v, base64url(DEK), aad = "watchtower/credential/v1|
 ### 6. ปุ่มทดสอบ: hook `testConnection` ต่อ adapter, mock ใช้ fake เสมอ
 - `ConnectionTester` ต่อ integration: `fake(config)` (offline, deterministic — ตรวจว่ามี field ที่จำเป็นครบ, คืน `identity: "mock:<integration>"`) และ `live?(config)` ที่ adapter จะเติมตอน T-102/T-103/T-104 · registry (`ConnectionTesterRegistry.register`) ให้ module ของ adapter เสียบเข้ามาโดยไม่แก้ credentials module
 - config ที่ใช้ทดสอบ = ค่า**ที่มีผลจริง**: env > ค่าที่ส่งมาในคำขอ (ยังไม่บันทึก) > ค่าใน DB
+- **เงื่อนไขบังคับก่อน T-116b / live tester ตัวแรกจะ merge (security review K-2):** (1) live tester ต้องมี **destination allow-list** — ยิงได้เฉพาะ host ของผู้ให้บริการนั้นตามที่ PRD §11/ADR ระบุ ห้ามรับ URL/host จากค่าที่ผู้ใช้กรอก (กัน SSRF และกันส่งความลับไปปลายทางอื่น) (2) **ห้ามผสมค่าที่ส่งมาในคำขอ (unsaved) กับ secret ที่เก็บไว้ของ integration เดียวกัน** ในการทดสอบ live — ถ้ามี field ใดถูกส่งมาแทน ต้องส่งครบทุก field ที่เป็น secret ของ integration นั้น ไม่งั้นปฏิเสธ (กันการเอาค่าที่ผู้โจมตีกรอกไปพร้อม secret จริงยิงไปปลายทางที่ผู้โจมตีคุม) (3) rate limit ของ endpoint `test` (ข้างบน) ต้องคงอยู่ · `security-reviewer` ตรวจซ้ำก่อนเปิด flag
 - **`CREDENTIAL_LIVE_TEST_ENABLED` (default `false`):** ปิด = ใช้ `fake` เสมอ ไม่มี network · เปิด = ใช้ `live` ถ้า adapter มี ไม่มี = ตอบ `ok:false` "no live check" · **การเปิด flag นี้และ implement `live` ที่ยิงออกนอกเครื่อง = `[ASK-HUMAN]`** (credential จริง + ปลายทาง network)
 
 ## Options considered

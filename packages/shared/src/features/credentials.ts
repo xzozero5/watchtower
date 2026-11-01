@@ -163,9 +163,21 @@ export const integrationKeySchema = z.enum(
 export const integrationParamSchema = z.object({ integration: integrationKeySchema });
 export type IntegrationParam = z.infer<typeof integrationParamSchema>;
 
+/**
+ * Every field name of the catalog. Request keys are checked against this list, so a name such as
+ * `toString` or `__proto__` is refused before any code looks it up; which fields belong to which
+ * integration is checked by the service.
+ */
+export const CREDENTIAL_FIELD_NAMES = [
+  ...new Set(
+    INTEGRATION_KEYS.flatMap((integration) => Object.keys(integrationFields(integration))),
+  ),
+] as [string, ...string[]];
+export const credentialFieldNameSchema = z.enum(CREDENTIAL_FIELD_NAMES);
+
 export const integrationFieldParamSchema = z.object({
   integration: integrationKeySchema,
-  field: z.string().min(1).max(60),
+  field: credentialFieldNameSchema,
 });
 export type IntegrationFieldParam = z.infer<typeof integrationFieldParamSchema>;
 
@@ -175,8 +187,21 @@ const credentialValueSchema = z
   .transform((value) => value.trim())
   .pipe(z.string().min(1).max(CREDENTIAL_VALUE_MAX_LENGTH));
 
-/** Field name to value. Which names are valid depends on the integration; the service checks. */
-const fieldValuesSchema = z.record(z.string().min(1).max(60), credentialValueSchema);
+/**
+ * Field name to value. Only names from the catalog are accepted as keys. The key check runs first
+ * and its message is fixed: the schema library's own "unrecognized key" issue would repeat what
+ * the caller sent.
+ */
+const fieldValuesSchema = z
+  .unknown()
+  .superRefine((input, ctx) => {
+    if (typeof input !== 'object' || input === null || Array.isArray(input)) return;
+    const known = new Set<string>(CREDENTIAL_FIELD_NAMES);
+    if (Object.keys(input).some((key) => !known.has(key))) {
+      ctx.addIssue({ code: 'custom', message: 'unknown field', fatal: true });
+    }
+  })
+  .pipe(z.record(z.string(), credentialValueSchema));
 
 export const putCredentialsSchema = z.object({
   fields: fieldValuesSchema.refine((fields) => Object.keys(fields).length > 0, {

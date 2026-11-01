@@ -196,6 +196,7 @@ describe('PUT /v1/admin/integrations/:integration', () => {
       fields: { channelSecret: 'PLAINTEXT-would-replace', channelAccessToken: TYPED },
     });
     expect(response.status).toBe(409);
+    expect(response.body.code).toBe('credential_env_locked');
     expect(response.body.message).toContain('LINE_CHANNEL_ACCESS_TOKEN');
     expect(response.body.message).not.toContain(TYPED);
     const rows = await owner().query(
@@ -223,11 +224,40 @@ describe('PUT /v1/admin/integrations/:integration', () => {
       ['/v1/admin/integrations/line', { fields: { channelId: '   ' } }],
       ['/v1/admin/integrations/line', { fields: { channelId: 12 } }],
       ['/v1/admin/integrations/line', { fields: { channelId: 'x'.repeat(20_000) } }],
+      // Names that exist on every object, and a real field of another integration.
+      ['/v1/admin/integrations/line', { fields: { toString: 'x' } }],
+      ['/v1/admin/integrations/line', JSON.parse('{"fields":{"__proto__":"x"}}')],
+      ['/v1/admin/integrations/line', { fields: { constructor: 'x' } }],
+      ['/v1/admin/integrations/line', { fields: { botToken: 'x' } }],
     ];
     for (const [path, body] of bodies) {
       const response = await call<ApiErrorBody>(head, 'PUT', path, body);
       expect(response.status, JSON.stringify(body).slice(0, 80)).toBe(400);
     }
+    // Nothing was stored under those names.
+    const stored = await owner().query<{ field: string }>(
+      `SELECT field FROM integration_credential WHERE field IN ('toString', '__proto__', 'constructor', 'botToken')`,
+    );
+    expect(stored.rows).toEqual([]);
+  });
+
+  it('answers a refused field name with a generic message that does not repeat it', async () => {
+    const wrongIntegration = await call<ApiErrorBody>(head, 'PUT', '/v1/admin/integrations/line', {
+      fields: { botToken: 'x' },
+    });
+    expect(wrongIntegration.status).toBe(400);
+    expect(wrongIntegration.body.message).not.toContain('botToken');
+    expect(wrongIntegration.body.message).not.toContain('line');
+    const unknown = await call<ApiErrorBody>(head, 'PUT', '/v1/admin/integrations/line', {
+      fields: { someVeryUniqueFieldName: 'x' },
+    });
+    expect(unknown.status).toBe(400);
+    expect(JSON.stringify(unknown.body)).not.toContain('someVeryUniqueFieldName');
+    const test = await call<ApiErrorBody>(head, 'POST', '/v1/admin/integrations/line/test', {
+      fields: { botToken: 'x' },
+    });
+    expect(test.status).toBe(400);
+    expect(JSON.stringify(test.body)).not.toContain('botToken');
   });
 
   it('replaces a value and keeps the other fields', async () => {
@@ -268,13 +298,15 @@ describe('DELETE /v1/admin/integrations/:integration/fields/:field', () => {
     });
   });
 
-  it('rejects a field that is not in the catalog', async () => {
-    const response = await call<ApiErrorBody>(
-      head,
-      'DELETE',
-      '/v1/admin/integrations/discord/fields/nope',
-    );
-    expect(response.status).toBe(400);
+  it('rejects a field that is not in the catalog, and names every object has', async () => {
+    for (const name of ['nope', 'toString', '__proto__', 'constructor', 'botToken']) {
+      const path =
+        name === 'botToken'
+          ? '/v1/admin/integrations/line/fields/botToken'
+          : `/v1/admin/integrations/discord/fields/${name}`;
+      const response = await call<ApiErrorBody>(head, 'DELETE', path);
+      expect(response.status, name).toBe(400);
+    }
   });
 });
 
@@ -345,6 +377,29 @@ describe('POST /v1/admin/integrations/:integration/test', () => {
     expect(result.body.ok).toBe(false);
     expect(result.body.message).toMatch(/cannot be opened/);
     await owner().query(`DELETE FROM integration_credential WHERE integration = 'web_push'`);
+  });
+});
+
+describe('test connection is rate limited', () => {
+  it('allows 10 a minute per person, then answers 429; malformed requests are not counted', async () => {
+    const busy = await signIn(h, 'head');
+    const run = (body: unknown = {}) =>
+      busy.client.post<TestConnectionResult & ApiErrorBody>(
+        '/v1/admin/integrations/github/test',
+        body,
+      );
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      expect((await run({ fields: { botToken: 'x' } })).status).toBe(400);
+    }
+    for (let attempt = 0; attempt < 10; attempt += 1) {
+      expect((await run()).status, `call ${String(attempt + 1)}`).toBe(200);
+    }
+    const refused = await run();
+    expect(refused.status).toBe(429);
+    expect(refused.body.code).toBe('rate_limited');
+    expect(refused.headers.get('retry-after')).not.toBeNull();
+    // Someone else is not affected.
+    expect((await head.client.post('/v1/admin/integrations/github/test', {})).status).toBe(200);
   });
 });
 
@@ -476,6 +531,99 @@ describe('rotation', () => {
     expect(JSON.stringify(audit)).not.toContain(newRoot);
     expect(out.join('\n') + err.join('\n')).not.toContain(SECRET);
     expect(out.join('\n') + err.join('\n')).not.toContain(newRoot);
+  });
+});
+
+describe('reseal and an interrupted run', () => {
+  const root = 'rotated-root-key-0123456789abcdef-new';
+  const config = () => ({
+    ...h.config,
+    APP_ENCRYPTION_KEY: root,
+    APP_ENCRYPTION_KEY_VERSION: 2,
+    APP_ENCRYPTION_KEY_PREVIOUS: undefined,
+    APP_ENCRYPTION_KEY_PREVIOUS_VERSION: undefined,
+  });
+
+  it('`rotate --reseal` gives every row a new data key and sealed value, and the values still open', async () => {
+    const before = await owner().query<{
+      field: string;
+      value_sealed: string;
+      dek_wrapped: string;
+    }>(`SELECT field, value_sealed, dek_wrapped FROM integration_credential ORDER BY field`);
+    expect(before.rowCount).toBe(2);
+    const app = createDatabase({ url: h.db.appUrl, max: 2 });
+    const out: string[] = [];
+    const err: string[] = [];
+    try {
+      const io = { out: (line: string) => out.push(line), err: (line: string) => err.push(line) };
+      expect(await runCredentialsCli(['rotate', '--reseal'], config(), app, io)).toBe(0);
+      expect(out.join('\n')).toContain('2 re-sealed');
+      expect(await runCredentialsCli(['rotate', '--bogus'], config(), app, io)).toBe(2);
+      expect(err.join('\n')).not.toContain(SECRET);
+    } finally {
+      await app.close();
+    }
+    const after = await owner().query<{ field: string; value_sealed: string; dek_wrapped: string }>(
+      `SELECT field, value_sealed, dek_wrapped FROM integration_credential ORDER BY field`,
+    );
+    for (const [index, row] of after.rows.entries()) {
+      expect(row.value_sealed).not.toBe(before.rows[index]?.value_sealed);
+      expect(row.dek_wrapped).not.toBe(before.rows[index]?.dek_wrapped);
+    }
+    const store = createCredentialStore({
+      database: h.db.owner,
+      kms: new LocalKms({ current: { rootKey: root, version: 2 } }),
+      env: {},
+    });
+    expect((await store.resolve('line')).channelSecret?.value).toBe(SECRET);
+    const audit = await auditRows('integration.credential.rotate');
+    expect(audit.at(-1)).toMatchObject({
+      outcome: 'success',
+      metadata: expect.objectContaining({ mode: 'reseal', resealed: 2 }) as unknown,
+    });
+  });
+
+  it('records a failed audit row with how far it got when the run stops half way', async () => {
+    // A row still on key version 1 so that `rotate` has work, then a database that fails on UPDATE.
+    const old = createCredentialStore({
+      database: h.db.owner,
+      kms: new LocalKms({ current: { rootKey: h.config.APP_ENCRYPTION_KEY, version: 1 } }),
+      env: {},
+    });
+    await old.put('discord', { botToken: 'PLAINTEXT-discord-interrupted' }, null);
+    const real = createDatabase({ url: h.db.appUrl, max: 2 });
+    const broken = {
+      ...real,
+      db: new Proxy(real.db, {
+        get(target, property, receiver) {
+          if (property === 'update') throw new Error('connection lost');
+          return Reflect.get(target, property, receiver) as unknown;
+        },
+      }),
+    };
+    const rotatingConfig = {
+      ...config(),
+      APP_ENCRYPTION_KEY_PREVIOUS: h.config.APP_ENCRYPTION_KEY,
+      APP_ENCRYPTION_KEY_PREVIOUS_VERSION: 1,
+    };
+    try {
+      await expect(
+        runCredentialsCli(['rotate'], rotatingConfig, broken, {
+          out: () => undefined,
+          err: () => undefined,
+        }),
+      ).rejects.toThrow('connection lost');
+    } finally {
+      await real.close();
+    }
+    const audit = await auditRows('integration.credential.rotate');
+    expect(audit.at(-1)).toMatchObject({
+      outcome: 'failure',
+      actor_id: 'credentials-cli',
+      metadata: expect.objectContaining({ aborted: true, rowsDone: 0, mode: 'rewrap' }) as unknown,
+    });
+    expect(JSON.stringify(audit)).not.toContain('PLAINTEXT-discord-interrupted');
+    await owner().query(`DELETE FROM integration_credential WHERE integration = 'discord'`);
   });
 });
 

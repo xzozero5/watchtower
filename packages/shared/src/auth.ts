@@ -35,6 +35,8 @@ export const AUTH_ERROR_CODES = [
   'verification_failed',
   // Autonomy (T-112a): asking for stage 3 or above, which only the owner may decide (N3).
   'autonomy_stage_requires_owner',
+  // Credential store (T-116a): a field that an environment variable sets cannot be saved.
+  'credential_env_locked',
 ] as const;
 export type AuthErrorCode = (typeof AUTH_ERROR_CODES)[number];
 

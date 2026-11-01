@@ -14,7 +14,8 @@ import {
 
 import { AuditScope } from '../audit/audit-scope.js';
 import { AuditService } from '../audit/audit.service.js';
-import { badRequest, conflict, notFound } from '../auth/http-errors.js';
+import { badRequest, credentialEnvLocked, notFound } from '../auth/http-errors.js';
+import { RateLimiter } from '../auth/rate-limiter.js';
 import { APP_CONFIG, type ApiConfig } from '../config/config.js';
 import { UnitOfWorkService } from '../realtime/unit-of-work.js';
 import { ConnectionTesterRegistry, type TestOutcome } from './connection-tester.js';
@@ -22,14 +23,29 @@ import { ConnectionTesterRegistry, type TestOutcome } from './connection-tester.
 /** DI token of the credential store (`createCredentialStore` from @watchtower/db). */
 export const CREDENTIAL_STORE = Symbol('CREDENTIAL_STORE');
 
+/** "Test connection" calls allowed per person per minute. `[ASSUMED]` */
+const TEST_RATE_LIMIT = 10;
+const TEST_RATE_WINDOW_SECONDS = 60;
+
+/** Drops the keys a schema left undefined (a partial record) so the store gets plain strings. */
+function definedFields(
+  fields: Readonly<Record<string, string | undefined>>,
+): Record<string, string> {
+  const result: Record<string, string> = {};
+  for (const [name, value] of Object.entries(fields)) {
+    if (value !== undefined) result[name] = value;
+  }
+  return result;
+}
+
 /** How long a live check may run. */
 const LIVE_TEST_TIMEOUT_MS = 10_000;
 
 /** What an HTTP caller learns from a store error: its message names fields and variables, never values. */
 function translate(error: unknown): never {
   if (error instanceof CredentialStoreError) {
-    if (error.code === 'unknown_field') throw badRequest(error.message);
-    if (error.code === 'env_locked') throw conflict(error.message);
+    if (error.code === 'unknown_field') throw badRequest('Unknown integration or field');
+    if (error.code === 'env_locked') throw credentialEnvLocked(error.message);
   }
   throw error;
 }
@@ -46,6 +62,7 @@ export class CredentialsService {
     @Inject(UnitOfWorkService) private readonly uow: UnitOfWorkService,
     @Inject(AuditService) private readonly audit: AuditService,
     @Inject(ConnectionTesterRegistry) private readonly testers: ConnectionTesterRegistry,
+    @Inject(RateLimiter) private readonly limiter: RateLimiter,
   ) {}
 
   private get testMode(): TestMode {
@@ -69,7 +86,7 @@ export class CredentialsService {
   ): Promise<IntegrationStatus> {
     try {
       await this.uow.run(async ({ tx }) => {
-        const written = await this.store.put(integration, body.fields, actorId, tx);
+        const written = await this.store.put(integration, definedFields(body.fields), actorId, tx);
         await this.audit.recordInTransaction(tx, {
           actor: { type: 'user', id: actorId },
           action: AUDIT_ACTIONS.integrationCredentialSet,
@@ -107,12 +124,24 @@ export class CredentialsService {
    * Runs the integration's check on the values in effect (environment, then the unsaved ones in
    * the request, then the saved ones). A failed check is an answer (`ok: false`), not an HTTP error.
    */
-  async test(integration: IntegrationKey, body: TestConnection): Promise<TestConnectionResult> {
-    const supplied = body.fields ?? {};
+  async test(
+    integration: IntegrationKey,
+    body: TestConnection,
+    actorId: string,
+  ): Promise<TestConnectionResult> {
+    const supplied = definedFields(body.fields ?? {});
     const known = integrationFields(integration);
     for (const name of Object.keys(supplied)) {
-      if (known[name] === undefined) throw badRequest(`unknown field "${integration}.${name}"`);
+      if (!Object.hasOwn(known, name)) throw badRequest('Unknown integration or field');
     }
+    // After validation, so a malformed request does not use up the allowance. A live check can cost
+    // money and reaches another service (ADR-012 §6), so this is metered per person.
+    await this.limiter.enforce(
+      'credential-test',
+      actorId,
+      TEST_RATE_LIMIT,
+      TEST_RATE_WINDOW_SECONDS,
+    );
     const mode = this.testMode;
     const outcome = await this.run(integration, supplied, mode);
     AuditScope.set({
