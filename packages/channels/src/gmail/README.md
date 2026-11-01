@@ -90,5 +90,25 @@ Checked against official documentation on 2026-11-01:
 | Wrapped push body: `message.data` (base64), `messageId`, `publishTime`, `attributes`, `subscription`; 102/200/201/202/204 acknowledge, anything else is a nack and is redelivered | `[CONFIRMED]` | https://docs.cloud.google.com/pubsub/docs/push |
 | Signing keys: `jwks_uri` of Google's OpenID discovery document is `https://www.googleapis.com/oauth2/v3/certs` (the Pub/Sub page itself does not name the URL) | `[CONFIRMED]` for Google ID tokens, `[VERIFY]` that push tokens use the same key set before the first live run | https://accounts.google.com/.well-known/openid-configuration |
 | Service account with domain-wide delegation: RS256 JWT assertion (`iss`, `sub`, `scope`, `aud` = `https://oauth2.googleapis.com/token`, `iat`, `exp` at most 1 h), POST `grant_type=urn:ietf:params:oauth:grant-type:jwt-bearer` + `assertion` | `[CONFIRMED]` | https://developers.google.com/identity/protocols/oauth2/service-account |
-| Scope `gmail.modify` for read, label and send | `[ASSUMED]` (PRD R-2.4) | |
+| Scopes requested: `gmail.readonly` + `gmail.send` (not `gmail.modify`). Each method the live transport calls accepts one of them: `users.history.list`, `users.messages.get`, `users.watch` and `users.stop` accept `gmail.readonly`; `users.messages.send` accepts `gmail.send` | `[CONFIRMED]` per method | https://developers.google.com/workspace/gmail/api/reference/rest/v1/users/watch , `.../users/stop` , `.../users.messages/send` , `.../users.messages/get` , `.../users.history/list` (read 2026-11-01) |
+| `messages.get` with `format=raw` under `gmail.readonly` (the page does not tie `raw` to a scope) | `[VERIFY]` on the first live run | same |
 | Whether Gmail keeps the `Message-ID` we set on `messages.send` (the dispatcher stores it as the dedupe key for the answer) | `[VERIFY]` (ADR-010 section 6) | |
+
+### Domain-wide delegation: blast radius (read before granting it)
+
+Domain-wide delegation lets the service account act as ANY user of the Workspace domain for the scopes
+the admin grants it in the Admin console, not only as the support mailbox. The code asks for the
+two narrowest scopes it needs and impersonates one user (`impersonateUser`), but the grant itself is
+what limits the damage if the key leaks. So: grant exactly `gmail.readonly` and `gmail.send` (never
+`gmail.modify`, `gmail.compose` or `https://mail.google.com/`), keep the key file outside the repo
+(environment or the encrypted credential store, N1), rotate it (`credentials rotate`) when anyone who
+could read it leaves, and prefer a dedicated support mailbox over a personal one. An OAuth refresh token
+of a dedicated support user is the narrower alternative (R-2.4).
+
+### Mock mode is for development only
+
+`createGmailRuntime` hands out the in-memory fake only with `allowMock` (the worker sets it when
+`NODE_ENV` is not `production`). In production, with no complete `gmail` credential, the runtime returns
+no transport and no sender: sync records `transport_unavailable` and a customer reply fails visibly as
+`channel_not_connected`. If the credential store cannot be read, the transport / sender calls throw a
+retryable error (the ingest event is retried, the delivery goes back to `scheduled` through the sweeper).

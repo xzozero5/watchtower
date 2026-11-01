@@ -21,8 +21,19 @@ import { z } from 'zod';
  */
 
 export const GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token';
-/** PRD R-2.4 `[ASSUMED]`: `gmail.modify` (read, label and send; no delete of the mailbox). */
-export const GMAIL_MODIFY_SCOPE = 'https://www.googleapis.com/auth/gmail.modify';
+/**
+ * Least privilege for domain-wide delegation (PRD R-2.4 had `gmail.modify` `[ASSUMED]`). The live
+ * transport calls only users.history.list, users.messages.list/get, users.messages.send, users.watch
+ * and users.stop. Official reference pages read 2026-11-01 `[CONFIRMED]`: history.list, messages.get,
+ * watch and stop each accept `gmail.readonly` (among others); messages.send accepts `gmail.send`.
+ * `[VERIFY]` that `format=raw` of messages.get works with `gmail.readonly` on the first live run (the
+ * page does not tie `raw` to a scope; `gmail.metadata` cannot return bodies, `readonly` can).
+ * Nothing needs `gmail.modify` (labels, trash, delete), `gmail.compose` or `https://mail.google.com/`.
+ */
+export const GMAIL_SCOPES = [
+  'https://www.googleapis.com/auth/gmail.readonly',
+  'https://www.googleapis.com/auth/gmail.send',
+].join(' ');
 
 const serviceAccountKeySchema = z.object({
   client_email: z.string().min(3),
@@ -111,7 +122,7 @@ export function createServiceAccountTokenProvider(
         key,
         credentials.impersonateUser,
         now(),
-        options.scope ?? GMAIL_MODIFY_SCOPE,
+        options.scope ?? GMAIL_SCOPES,
       );
     } catch {
       throw authFailure('service_account_key_unusable');

@@ -22,7 +22,7 @@ import { createLogger } from '../logger.js';
 import { createOutboundDispatcher } from '../outbound/dispatcher.js';
 import { NO_CHANNELS } from '../outbound/channels.js';
 import { testConfig } from '../testing/support.js';
-import { createMockGmailRuntime, type MockGmailRuntime } from './runtime.js';
+import { createGmailRuntime, createMockGmailRuntime, type MockGmailRuntime } from './runtime.js';
 import { createGmailSync, type GmailSync, type SyncSettings } from './sync.js';
 
 // History sync (T-102c), the ingest it feeds, and the in-thread send (T-102d), on the real
@@ -590,5 +590,112 @@ describe('sync feeds ingestion', () => {
         .from(schema.inboundEvent)
         .where(and(eq(schema.inboundEvent.channelAccountId, accountId))),
     ).toHaveLength(0);
+  });
+});
+
+describe('a production worker that is not connected to Gmail', () => {
+  async function ticketWithPendingReply() {
+    const store = createMemoryObjectStore();
+    fake.deliver(
+      gmail.buildFakeMime({
+        from: 'somchai@customer.example.com',
+        subject: 'ขอรีเซ็ตรหัสผ่าน',
+        body: 'ลืมรหัสผ่านครับ',
+        messageId: `${randomUUID()}@customer.example.com`,
+      }).raw,
+      { labelIds: ['INBOX', 'UNREAD'] },
+    );
+    await makeSync().syncAccount(accountId, 'push');
+    await runIngest(store);
+    const [inbound] = await owner()
+      .select()
+      .from(schema.inboundMessage)
+      .where(eq(schema.inboundMessage.channelAccountId, accountId));
+    const ticketId = inbound?.ticketId ?? '';
+    const [staffRow] = await owner()
+      .insert(schema.users)
+      .values({ email: `${randomUUID()}@example.test`, name: 'Staff', role: 'agent' })
+      .returning({ id: schema.users.id });
+    const staffId = staffRow?.id ?? '';
+    const result = await database.db.transaction((tx) =>
+      domain.tickets.reply(tx, domain.context({ actor: { type: 'user', id: staffId } }), {
+        ref: ticketId,
+        reply: { body: 'รีเซ็ตให้แล้วครับ' },
+        sender: { kind: 'staff', userId: staffId },
+      }),
+    );
+    return result.value.delivery?.id ?? '';
+  }
+
+  it('fails the reply as channel_not_connected instead of "sending" it into a fake mailbox', async () => {
+    const deliveryId = await ticketWithPendingReply();
+    const production = createGmailRuntime({ database, logger }); // allowMock is off by default
+    const dispatcher = createOutboundDispatcher({
+      database,
+      domain,
+      channels: { ...NO_CHANNELS, gmail: (account) => production.senderFor(account) },
+      appHost: HOST,
+      realtime: { publish: () => Promise.resolve() },
+      logger,
+    });
+    clock.now = new Date(T0.getTime() + 6000);
+    expect(await dispatcher.dispatch(deliveryId)).toEqual({
+      status: 'failed',
+      errorCode: 'channel_not_connected',
+      outcomeUnknown: false,
+    });
+    expect(fake.sent).toHaveLength(0);
+    const [delivery] = await owner()
+      .select()
+      .from(schema.outboundDelivery)
+      .where(eq(schema.outboundDelivery.id, deliveryId));
+    expect(delivery?.state).not.toBe('sent');
+  });
+
+  it('retries the ingest fetch (no permanent failure) while the credential store is unreadable', async () => {
+    fake.deliver(
+      gmail.buildFakeMime({
+        from: 'somchai@customer.example.com',
+        subject: 'ทดสอบ',
+        body: 'สวัสดี',
+      }).raw,
+      { labelIds: ['INBOX'] },
+    );
+    await makeSync().syncAccount(accountId, 'push');
+    const unreadable = createGmailRuntime({
+      database,
+      logger,
+      credentials: {
+        configured: () => Promise.reject(new Error('database unavailable')),
+        read: () => Promise.reject(new Error('unreachable')),
+      },
+    });
+    const processor = createIngestProcessor({
+      database,
+      domain,
+      store: createMemoryObjectStore(),
+      ingestors: {
+        gmail: createGmailIngestor({
+          ticketKeyPrefix: 'OPS',
+          transportFor: (account) => unreadable.transportFor(account),
+          allowEmbedded: false,
+        }),
+      },
+      realtime: { publish: () => Promise.resolve() },
+      logger,
+    });
+    const [event] = (await events()).filter((row) => row.status === 'pending');
+    const job = {
+      name: 'process',
+      data: { inboundEventId: event?.id },
+      opts: { attempts: 6 },
+      attemptsMade: 0,
+    } as unknown as Job;
+    const error = await processor(job).catch((caught: unknown) => caught);
+    expect(error).toBeInstanceOf(ChannelError);
+    expect(error).not.toMatchObject({ name: 'UnrecoverableError' });
+    // Still pending, not failed: the next attempt (or the store coming back) processes it.
+    const [after] = (await events()).filter((row) => row.id === event?.id);
+    expect(after?.status).toBe('pending');
   });
 });

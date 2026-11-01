@@ -5,7 +5,7 @@ import { disableNetConnect } from '@watchtower/shared/testing';
 import { afterAll, describe, expect, it } from 'vitest';
 
 import {
-  GMAIL_MODIFY_SCOPE,
+  GMAIL_SCOPES,
   GOOGLE_TOKEN_URL,
   createServiceAccountTokenProvider,
   signAssertion,
@@ -45,7 +45,7 @@ describe('signAssertion', () => {
       private_key: string;
       private_key_id: string;
     };
-    const jwt = signAssertion(key, 'support@example.com', NOW, GMAIL_MODIFY_SCOPE);
+    const jwt = signAssertion(key, 'support@example.com', NOW, GMAIL_SCOPES);
     const [header, claims, signature] = jwt.split('.') as [string, string, string];
     expect(JSON.parse(Buffer.from(header, 'base64url').toString())).toEqual({
       alg: 'RS256',
@@ -59,7 +59,7 @@ describe('signAssertion', () => {
     expect(payload).toEqual({
       iss: key.client_email,
       sub: 'support@example.com',
-      scope: GMAIL_MODIFY_SCOPE,
+      scope: GMAIL_SCOPES,
       aud: GOOGLE_TOKEN_URL,
       iat: NOW / 1000,
       exp: NOW / 1000 + 3600,

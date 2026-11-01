@@ -64,7 +64,13 @@ export function defaultGmailRuntime(
     kms: localKmsFromConfig(config),
     env: pickCredentialEnv(config),
   });
-  return createGmailRuntime({ database, logger, credentials: gmailCredentialSource(store) });
+  return createGmailRuntime({
+    database,
+    logger,
+    credentials: gmailCredentialSource(store),
+    // Fakes are for development and tests; a production worker without a credential is "not connected".
+    allowMock: config.NODE_ENV !== 'production',
+  });
 }
 
 /** Wires the `gmail` consumer: history sync, watch renewal and heartbeat over one runtime. */
