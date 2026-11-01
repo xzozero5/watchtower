@@ -7,7 +7,6 @@ import { PEOPLE, QUEUE } from '@/test/console-fixtures';
 import { apiError } from '@/test/mock-api';
 import { renderConsole } from '@/test/render-console';
 
-import { IntegrationsPage } from '../integrations/integrations-page';
 import { QueuesPage } from './queues-page';
 
 vi.mock('next/navigation', () => ({
@@ -118,18 +117,5 @@ describe('Queues', () => {
     consoleApi({ role: 'agent' });
     renderConsole(<QueuesPage />);
     expect(await screen.findByText('You don’t have access to this page.')).toBeVisible();
-  });
-});
-
-describe('Integrations', () => {
-  it('is a placeholder that points at the spec and T-116, for the head only', async () => {
-    consoleApi();
-    const { unmount } = renderConsole(<IntegrationsPage />);
-    expect(await screen.findByText('Integrations arrive with T-116')).toBeVisible();
-    expect(screen.getByText('docs/06-UI-SPEC.md §12')).toBeVisible();
-    unmount();
-    consoleApi({ role: 'lead' });
-    renderConsole(<IntegrationsPage />);
-    expect(await screen.findByText('It needs the Head role.')).toBeVisible();
   });
 });
