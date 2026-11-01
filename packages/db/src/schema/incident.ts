@@ -17,7 +17,7 @@ import {
 
 import { users } from './auth.js';
 import { kbArticle } from './kb.js';
-import { organization } from './ticketing.js';
+import { organization, ticket } from './ticketing.js';
 import { service } from './alerting.js';
 
 const timestamptz = (name: string) => timestamp(name, { withTimezone: true, mode: 'date' });
@@ -140,5 +140,53 @@ export const deploy = pgTable(
       .on(table.serviceId, table.occurredAt.desc())
       .where(sql`${table.serviceId} IS NOT NULL`),
     index('deploy_time_idx').on(table.occurredAt.desc()),
+  ],
+);
+
+/**
+ * One update drafted for the customers of an incident's tickets (T-202c, migration 0046). A person or the
+ * AI drafts it; only a person sends it (`sentBy` and `confirmedRecipients` are required once it leaves
+ * `draft`, by a CHECK).
+ */
+export const incidentComm = pgTable(
+  'incident_comm',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    incidentId: uuid('incident_id')
+      .notNull()
+      .references(() => incident.id, { onDelete: 'restrict' }),
+    body: text('body').notNull(),
+    /** `human` or `ai`: who drafted it. */
+    origin: text('origin').notNull(),
+    /** `draft`, `sending`, `sent`, `cancelled`. */
+    status: text('status').notNull().default('draft'),
+    draftedBy: uuid('drafted_by').references(() => users.id, { onDelete: 'set null' }),
+    sentBy: uuid('sent_by').references(() => users.id, { onDelete: 'set null' }),
+    confirmedRecipients: integer('confirmed_recipients'),
+    sentAt: timestamptz('sent_at'),
+    createdAt: timestamptz('created_at').notNull().defaultNow(),
+  },
+  (table) => [index('incident_comm_incident_idx').on(table.incidentId, table.createdAt.desc())],
+);
+
+/** What happened for one ticket: `(commId, ticketId)` is unique, so a ticket is told once. */
+export const incidentCommDelivery = pgTable(
+  'incident_comm_delivery',
+  {
+    commId: uuid('comm_id')
+      .notNull()
+      .references(() => incidentComm.id, { onDelete: 'cascade' }),
+    ticketId: uuid('ticket_id')
+      .notNull()
+      .references(() => ticket.id, { onDelete: 'restrict' }),
+    /** `sent` or `failed`. */
+    state: text('state').notNull(),
+    messageId: uuid('message_id'),
+    reason: text('reason'),
+    createdAt: timestamptz('created_at').notNull().defaultNow(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.commId, table.ticketId] }),
+    index('incident_comm_delivery_ticket_idx').on(table.ticketId),
   ],
 );
