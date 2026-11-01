@@ -1,0 +1,15 @@
+{
+  "id": "msg_fixture_classifier_01",
+  "type": "message",
+  "role": "assistant",
+  "model": "fixture-model-light",
+  "content": [
+    {
+      "type": "text",
+      "text": "{\"type\":\"new_customer_issue\",\"intentKey\":\"access_issue\",\"confidence\":0.9,\"reason\":\"The sender cannot sign in.\"}"
+    }
+  ],
+  "stop_reason": "end_turn",
+  "stop_sequence": null,
+  "usage": { "input_tokens": 1000, "output_tokens": 50 }
+}
