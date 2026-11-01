@@ -1,4 +1,5 @@
 import { schema } from '@watchtower/db';
+import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { DomainError } from '../errors.js';
@@ -141,6 +142,66 @@ describe('tickets.create, staff path', () => {
       }),
     ).rejects.toThrow('the caller failed');
     expect((await auditRows(env, 'ticket.create')).length).toBe(before);
+  });
+});
+
+describe('tickets.create, Discord notice (T-104)', () => {
+  it('writes one discord/notify outbox job that carries ids only, once per ticket', async () => {
+    const org = await addOrg(env);
+    const input = {
+      orgId: org.id,
+      subject: 'Secret subject line',
+      body: 'Secret body text',
+      requester: { email: 'private@example.test', name: 'Private Person' },
+    };
+    const { value } = await env.tx((tx) => env.domain.tickets.create(tx, env.ctx(), input));
+    const jobs = await env.db.owner.db
+      .select()
+      .from(schema.outbox)
+      .where(eq(schema.outbox.jobId, `discord-ticket-created-${value.ticket.id}`));
+    expect(jobs).toHaveLength(1);
+    expect(jobs[0]).toMatchObject({ queue: 'discord', jobName: 'notify' });
+    expect(jobs[0]?.payload).toEqual({ event: 'ticket.created', ticketId: value.ticket.id });
+    // A default P3 ticket runs at rank 3; a P1 one would run first (F-2).
+    expect((jobs[0]?.options as { priority?: number }).priority).toBe(3);
+    // Nothing a customer wrote rides the queue.
+    expect(JSON.stringify(jobs[0])).not.toMatch(/Secret|private@example|Private Person/);
+  });
+
+  it('queues a P1 notice with the first rank, so it goes ahead of a backlog (F-2)', async () => {
+    const org = await addOrg(env);
+    const { value } = await env.tx((tx) =>
+      env.domain.tickets.create(tx, env.ctx(), {
+        orgId: org.id,
+        subject: 'a',
+        body: 'b',
+        priority: 'P1',
+      }),
+    );
+    const [job] = await env.db.owner.db
+      .select()
+      .from(schema.outbox)
+      .where(eq(schema.outbox.jobId, `discord-ticket-created-${value.ticket.id}`));
+    expect((job?.options as { priority?: number }).priority).toBe(1);
+  });
+
+  it('a duplicate submission does not queue a second notice', async () => {
+    const org = await addOrg(env);
+    const anonymous = { type: 'anonymous', id: null } as const;
+    const input = {
+      orgId: org.id,
+      subject: 'a',
+      body: 'b',
+      channel: 'portal',
+      externalId: 'portal:discord-dup',
+    } as const;
+    const first = await env.tx((tx) => env.domain.tickets.create(tx, env.ctx(anonymous), input));
+    await env.tx((tx) => env.domain.tickets.create(tx, env.ctx(anonymous), input));
+    const jobs = await env.db.owner.db
+      .select()
+      .from(schema.outbox)
+      .where(eq(schema.outbox.jobId, `discord-ticket-created-${first.value.ticket.id}`));
+    expect(jobs).toHaveLength(1);
   });
 });
 

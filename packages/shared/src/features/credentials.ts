@@ -86,7 +86,12 @@ export const INTEGRATION_CATALOG = {
     name: 'Discord',
     fields: {
       botToken: field('Bot token', 'DISCORD_BOT_TOKEN', { required: false }),
-      webhookUrl: field('Webhook URL', 'DISCORD_WEBHOOK_URL', { required: false }),
+      webhookUrl: field('Webhook URL (default channel)', 'DISCORD_WEBHOOK_URL', {
+        required: false,
+      }),
+      webhookUrlUrgent: field('Webhook URL (urgent channel)', 'DISCORD_WEBHOOK_URL_URGENT', {
+        required: false,
+      }),
       alertChannelId: field('Alert channel ID', 'DISCORD_ALERT_CHANNEL_ID', {
         secret: false,
         required: false,

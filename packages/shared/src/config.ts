@@ -142,6 +142,7 @@ export const phase1EnvShape = {
   LINE_LOGIN_FAKE_ENABLED: z.preprocess(emptyToUndefined, z.stringbool().default(false)),
   // Discord (T-104): webhook notifications now; the bot interactions endpoint needs the public key.
   DISCORD_WEBHOOK_URL: optionalUrl,
+  DISCORD_WEBHOOK_URL_URGENT: optionalUrl,
   DISCORD_APPLICATION_ID: optionalString,
   DISCORD_PUBLIC_KEY: optionalString,
   // Web Push (T-105): the contact URL or mailto: sent to push services with the VAPID keys above.
