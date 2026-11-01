@@ -75,6 +75,18 @@ export async function saveAiDraft(
   });
 }
 
+/** The suggestion while a draft waits for a person. */
+const SUGGEST_REVIEW = {
+  nextStepKind: 'approve_draft',
+  nextStepLabel: 'Review the draft reply',
+} as const;
+
+/** A reply went out, so a suggestion to review the draft is stale; any other suggestion stays. */
+const AFTER_REPLY = {
+  nextStepKind: sql`CASE WHEN ${schema.aiTicketInsight.nextStepKind} = 'approve_draft' THEN 'wait_customer' ELSE ${schema.aiTicketInsight.nextStepKind} END`,
+  nextStepLabel: sql`CASE WHEN ${schema.aiTicketInsight.nextStepKind} = 'approve_draft' THEN 'Wait for the customer' ELSE ${schema.aiTicketInsight.nextStepLabel} END`,
+} as const;
+
 /**
  * Keeps the ticket's AI brief in step with its draft when the outbound path moves it: `classified`
  * once a person approved it (nothing waits any more), `draft_ready` again when the send is undone or
@@ -89,9 +101,7 @@ export async function syncInsightForDraft(
     .update(schema.aiTicketInsight)
     .set({
       state,
-      ...(state === 'draft_ready'
-        ? { nextStepKind: 'approve_draft', nextStepLabel: 'Review the draft reply' }
-        : {}),
+      ...(state === 'draft_ready' ? SUGGEST_REVIEW : AFTER_REPLY),
       updatedAt: sql`now()`,
     })
     .where(eq(schema.aiTicketInsight.draftId, draftId));
@@ -221,7 +231,7 @@ export async function recordDraftEdited(
     .where(eq(schema.aiDraft.id, draft.id));
   await tx
     .update(schema.aiTicketInsight)
-    .set({ draftId: null, state: 'classified', updatedAt: sql`now()` })
+    .set({ draftId: null, state: 'classified', ...AFTER_REPLY, updatedAt: sql`now()` })
     .where(
       and(
         eq(schema.aiTicketInsight.ticketId, input.ticketId),

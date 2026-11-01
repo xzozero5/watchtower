@@ -69,11 +69,10 @@ export const aiKbAuthorJobSchema = z.object({
 export type AiKbAuthorJob = z.infer<typeof aiKbAuthorJobSchema>;
 
 /**
- * [ASSUMED] A draft article is made within 5 minutes of the resolve (AC-4): the job waits a little
- * so a quick reopen cancels it, and runs well inside the limit.
+ * [ASSUMED] The KB author waits this long after a resolve, so a quick reopen cancels it (the job checks the
+ * status). AC-4 wants the draft article within 5 minutes; the job itself takes seconds.
  */
 export const KB_AUTHOR_DELAY_MS = 30_000;
-export const KB_AUTHOR_DEADLINE_MS = 5 * 60_000;
 
 /**
  * Budgets of the tools (N2, PRD R-5.1). Counted from `tool_execution`, outside any run's handle.
