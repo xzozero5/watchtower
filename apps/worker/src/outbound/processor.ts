@@ -1,19 +1,19 @@
 import { OUTBOUND_JOBS, dispatchJobSchema } from '@watchtower/shared';
-import { UnrecoverableError, type Job } from 'bullmq';
+import { DelayedError, UnrecoverableError, type Job } from 'bullmq';
 
 import type { WorkerLogger } from '../logger.js';
 import type { OutboundDispatcher } from './dispatcher.js';
 
 /**
  * Consumer of the `outbound` queue (ADR-010). A `dispatch` job is only a nudge: the delivery row
- * decides whether anything is sent, so a repeated, early or late job is harmless. `sweep` is the
- * repeating housekeeping job (`schedules.ts`).
+ * decides whether anything is sent, so a repeated or late job is harmless, and an early one waits
+ * for its time. `sweep` is the repeating housekeeping job (`schedules.ts`).
  */
 export function createOutboundProcessor(deps: {
   readonly dispatcher: OutboundDispatcher;
   readonly logger: WorkerLogger;
 }) {
-  return async (job: Job): Promise<unknown> => {
+  return async (job: Job, token?: string): Promise<unknown> => {
     switch (job.name) {
       case OUTBOUND_JOBS.dispatch: {
         const parsed = dispatchJobSchema.safeParse(job.data);
@@ -23,6 +23,10 @@ export function createOutboundProcessor(deps: {
           { deliveryId: parsed.data.deliveryId, outcome: outcome.status },
           'outbound dispatch',
         );
+        if (outcome.status === 'early') {
+          await job.moveToDelayed(outcome.notBefore.getTime(), token);
+          throw new DelayedError();
+        }
         return outcome;
       }
       case OUTBOUND_JOBS.sweep: {
