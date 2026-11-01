@@ -157,7 +157,6 @@ const SAFE_INPUTS = JSON.stringify({
   portalUrl: null,
   firstResponseDueAt: null,
 });
-('เราได้รับเรื่องของคุณแล้ว และบันทึกเป็นหมายเลข OPS-1 ทีมงานจะตรวจสอบและตอบกลับที่นี่');
 // What the domain renders for auto_ack.received with no portal link (templates.ts); the migration's
 // body_pattern must accept it (the domain test renders every key against the stored pattern).
 const ACK_BODY =
