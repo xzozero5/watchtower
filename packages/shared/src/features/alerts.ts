@@ -13,6 +13,8 @@ import { z } from 'zod';
 
 /** Audit `action` strings written by this feature. Metadata holds ids and counts, never a payload. */
 export const ALERTS_AUDIT_ACTIONS = {
+  /** A delivery changed an alert: opened, counted or resolved it (system actor; metadata has ids and counts only). */
+  alertIngest: 'alert.ingest',
   /** A service was added to the catalog. */
   serviceCreate: 'service.create',
   /** A service of the catalog was edited. */
@@ -140,6 +142,57 @@ export type AlertPayload = Partial<Record<AlertPayloadKey, AlertPayloadValue>>;
 const truncate = (value: string, max: number): string =>
   value.length <= max ? value : value.slice(0, max);
 
+/** Query parameter names whose value is a credential; they never survive into a stored link. */
+const SENSITIVE_QUERY_KEY = /token|secret|key|sig|auth|pass|pwd|credential|session|jwt|code/i;
+
+/**
+ * A link that is safe to store and show (N1, N4): http(s) only, no user name or password in it, no
+ * fragment, no query parameter that looks like a credential. With `keepQuery: false` the whole query goes
+ * (a Prometheus `generatorURL` carries the expression, which can name a customer). Null when it is not a
+ * usable link.
+ */
+export function sanitizeAlertUrl(
+  value: unknown,
+  options: { readonly keepQuery?: boolean } = {},
+): string | null {
+  if (typeof value !== 'string' || value.length === 0 || value.length > 1000) return null;
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    return null;
+  }
+  if (url.protocol !== 'https:' && url.protocol !== 'http:') return null;
+  url.username = '';
+  url.password = '';
+  url.hash = '';
+  if (options.keepQuery === false) url.search = '';
+  else {
+    for (const name of [...url.searchParams.keys()]) {
+      if (SENSITIVE_QUERY_KEY.test(name)) url.searchParams.delete(name);
+    }
+  }
+  return url.toString();
+}
+
+/**
+ * Best-effort scrub of free text that a provider generated or an operator wrote (`[ASSUMED]` patterns,
+ * not a guarantee; the real protection is that only the summary is kept at all, cut at 500 characters):
+ * email addresses, secrets after a keyword, Thai phone numbers, 13-digit national ids, and the user
+ * name and password of a URL inside the text.
+ */
+export function scrubAlertText(text: string): string {
+  return text
+    .replace(/(https?:\/\/)[^\s/@]+@/gi, '$1')
+    .replace(/[\w.+-]+@[\w-]+(?:\.[\w-]+)+/g, '[email]')
+    .replace(
+      /\b(bearer|token|secret|password|passwd|pwd|api[_-]?key)\b(\s*[:=]?\s*)[^\s,;]+/gi,
+      '$1$2[secret]',
+    )
+    .replace(/(?<![\w-])(?:\+?66|0)[\s-]?\d{1,2}[\s-]?\d{3}[\s-]?\d{4}(?![\w-])/g, '[phone]')
+    .replace(/(?<!\d)\d[\s-]?\d{4}[\s-]?\d{5}[\s-]?\d{2}[\s-]?\d(?!\d)/g, '[id]');
+}
+
 /** Label keys and values, allow-listed by key, bounded in count and length. */
 export function allowedLabels(input: unknown): Record<string, string> {
   const out: Record<string, string> = {};
@@ -168,8 +221,14 @@ export function sanitizeAlertPayload(raw: unknown): AlertPayload {
     if (key === 'labels' || key === 'userLabels') {
       const labels = allowedLabels(value);
       if (Object.keys(labels).length > 0) out[key] = labels;
+    } else if (key === 'url' || key === 'generatorUrl' || key === 'externalUrl') {
+      const link = sanitizeAlertUrl(value, { keepQuery: key === 'url' });
+      if (link !== null) out[key] = link;
     } else if (typeof value === 'string') {
-      out[key] = truncate(value, key === 'summary' ? ALERT_SUMMARY_MAX_CHARS : 500);
+      out[key] =
+        key === 'summary'
+          ? truncate(scrubAlertText(value), ALERT_SUMMARY_MAX_CHARS)
+          : truncate(value, 500);
     } else if (typeof value === 'number' && Number.isFinite(value)) {
       out[key] = value;
     } else if (typeof value === 'boolean') {
@@ -235,6 +294,8 @@ export type AlertPubsubEnvelope = z.infer<typeof alertPubsubEnvelopeSchema>;
 /** `X-Watchtower-Signature: t=<unix seconds>,v1=<hex HMAC-SHA256 of "<t>." + raw body>` */
 export const ALERT_WEBHOOK_SIGNATURE_HEADER = 'x-watchtower-signature';
 export const ALERT_WEBHOOK_TOLERANCE_SECONDS = 300;
+/** A signing secret shorter than this is refused (in the configuration, and again when it is used). */
+export const ALERT_WEBHOOK_MIN_SECRET_LENGTH = 32;
 
 // --- service catalog (R-3.7) ---------------------------------------------------------------------
 

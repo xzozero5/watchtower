@@ -52,7 +52,10 @@ describe('sanitizeAlertPayload (N4)', () => {
     const polluted = { ...everything, extra: 'x', __proto__: { polluted: true } };
     expect(Object.keys(sanitizeAlertPayload(polluted)).toSorted()).toEqual(
       Object.keys(everything)
-        .filter((key) => key !== 'labels' && key !== 'userLabels')
+        // 'v' is not a label set and not a link: those keys keep only what is valid.
+        .filter(
+          (key) => !['labels', 'userLabels', 'url', 'generatorUrl', 'externalUrl'].includes(key),
+        )
         .toSorted(),
     );
   });

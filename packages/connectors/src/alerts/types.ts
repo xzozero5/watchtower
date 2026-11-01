@@ -1,4 +1,4 @@
-import type { NormalizedAlert } from '@watchtower/shared';
+import { sanitizeAlertUrl, type AlertSeverity, type NormalizedAlert } from '@watchtower/shared';
 
 /** Why a delivery could not be turned into an alert. Never carries the payload. */
 export type RejectReason =
@@ -26,13 +26,23 @@ export function isoFromRfc3339(value: unknown): string | null {
   return new Date(time).toISOString();
 }
 
-/** `https://…` or `http://…` only, bounded; anything else is dropped (no `javascript:` into a link). */
-export function safeHttpUrl(value: unknown): string | null {
-  if (typeof value !== 'string' || value.length === 0 || value.length > 1000) return null;
-  try {
-    const url = new URL(value);
-    return url.protocol === 'https:' || url.protocol === 'http:' ? url.toString() : null;
-  } catch {
-    return null;
-  }
+/**
+ * `https://…` or `http://…` only, with no user name or password, no fragment and no credential-looking
+ * query parameter (see `sanitizeAlertUrl`); anything else is dropped (no `javascript:` into a link).
+ */
+export function safeHttpUrl(
+  value: unknown,
+  options: { readonly keepQuery?: boolean } = {},
+): string | null {
+  return sanitizeAlertUrl(value, options);
+}
+
+/** A severity word looked up in a fixed table: own keys only, so `constructor` is just an unknown word. */
+export function severityFrom(
+  table: Readonly<Record<string, AlertSeverity>>,
+  value: unknown,
+): AlertSeverity {
+  if (typeof value !== 'string') return 'unknown';
+  const word = value.trim().toLowerCase();
+  return Object.hasOwn(table, word) ? (table[word] ?? 'unknown') : 'unknown';
 }

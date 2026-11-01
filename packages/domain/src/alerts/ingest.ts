@@ -2,14 +2,17 @@ import { randomUUID } from 'node:crypto';
 
 import { schema } from '@watchtower/db';
 import {
+  ALERTS_AUDIT_ACTIONS,
   allowedLabels,
   normalizedAlertSchema,
   sanitizeAlertPayload,
+  scrubAlertText,
   type AlertSeverity,
   type NormalizedAlert,
 } from '@watchtower/shared';
 import { and, asc, eq, ne, sql } from 'drizzle-orm';
 
+import { recordAuditInTx } from '../audit.js';
 import { badRequest } from '../errors.js';
 import { Effects, type DbTransaction, type DomainContext, type DomainResult } from '../types.js';
 import { matchService } from './match.js';
@@ -25,7 +28,8 @@ export interface IngestAlertInput {
  *  - `counted`: the open alert fired again (count + 1), or was told once more (`renotified`: no count).
  *  - `resolved`: the provider closed the open alert. Nothing else is touched (PRD section 5.3).
  *  - `duplicate`: this delivery was already recorded (a redelivery): nothing changed.
- *  - `ignored`: a close for an alert we do not have open (never seen, or already closed).
+ *  - `ignored`: a close for an alert we do not have open (never seen, or already closed), or a close for an
+ *    older occurrence than the one that is open now (`stale_generation`, see `generationOf`).
  */
 export type IngestAlertOutcome =
   | { readonly kind: 'opened'; readonly alertId: string; readonly serviceId: string | null }
@@ -37,7 +41,7 @@ export type IngestAlertOutcome =
     }
   | { readonly kind: 'resolved'; readonly alertId: string }
   | { readonly kind: 'duplicate'; readonly alertId: string }
-  | { readonly kind: 'ignored'; readonly reason: 'no_open_alert' };
+  | { readonly kind: 'ignored'; readonly reason: 'no_open_alert' | 'stale_generation' };
 
 const SEVERITY_RANK: Readonly<Record<AlertSeverity, number>> = {
   unknown: 0,
@@ -47,8 +51,26 @@ const SEVERITY_RANK: Readonly<Record<AlertSeverity, number>> = {
   critical: 4,
 };
 
-const moreSevere = (a: AlertSeverity, b: AlertSeverity): AlertSeverity =>
-  SEVERITY_RANK[a] >= SEVERITY_RANK[b] ? a : b;
+const rankOf = (severity: string): number =>
+  Object.hasOwn(SEVERITY_RANK, severity) ? SEVERITY_RANK[severity as AlertSeverity] : 0;
+
+const moreSevere = (a: AlertSeverity, b: string): AlertSeverity =>
+  rankOf(a) >= rankOf(b) ? a : (b as AlertSeverity);
+
+/**
+ * Which occurrence of an alert a delivery speaks about: the GCP incident id, else the Alertmanager
+ * `startsAt`. A `closed` for an older occurrence must not close the newer alert that took its place.
+ * Null when the payload does not say (then the close applies).
+ */
+export function generationOf(payload: unknown): { kind: string; id: string } | null {
+  if (typeof payload !== 'object' || payload === null) return null;
+  const record = payload as Record<string, unknown>;
+  for (const kind of ['incidentId', 'startedAt']) {
+    const id = record[kind];
+    if (typeof id === 'string' && id !== '') return { kind, id };
+  }
+  return null;
+}
 
 /** The database clock at the moment the statement runs, so rows written under a lock stay in order. */
 const dbNow = sql`clock_timestamp()`;
@@ -69,7 +91,7 @@ const dbNow = sql`clock_timestamp()`;
  */
 export async function ingestAlert(
   tx: DbTransaction,
-  _ctx: DomainContext,
+  ctx: DomainContext,
   input: IngestAlertInput,
 ): Promise<DomainResult<IngestAlertOutcome>> {
   const fx = new Effects();
@@ -77,6 +99,7 @@ export async function ingestAlert(
   if (!parsed.success) throw badRequest('The alert is not a valid normalized alert');
   const alert = parsed.data;
   const payload = sanitizeAlertPayload(alert.payload);
+  const summary = alert.summary === null ? null : scrubAlertText(alert.summary).slice(0, 500);
 
   await tx.execute(
     sql`SELECT pg_advisory_xact_lock(hashtextextended(${`alert-event:${alert.source}:${alert.providerEventId}`}, 0))`,
@@ -101,6 +124,7 @@ export async function ingestAlert(
       id: schema.alert.id,
       severity: schema.alert.severity,
       serviceId: schema.alert.serviceId,
+      payload: schema.alert.payload,
     })
     .from(schema.alert)
     .where(and(eq(schema.alert.fingerprint, alert.fingerprint), ne(schema.alert.state, 'resolved')))
@@ -117,8 +141,27 @@ export async function ingestAlert(
     });
   };
 
+  const audit = (alertId: string, kind: string, extra: Record<string, unknown>) =>
+    recordAuditInTx(tx, ctx, fx, {
+      action: ALERTS_AUDIT_ACTIONS.alertIngest,
+      targetType: 'alert',
+      targetId: alertId,
+      // Ids, the source and counts only: never the payload, the labels or the summary.
+      metadata: { source: alert.source, kind, severity: alert.severity, ...extra },
+    });
+
   if (alert.state === 'resolved') {
     if (open === undefined) return fx.result({ kind: 'ignored', reason: 'no_open_alert' });
+    const closing = generationOf(payload);
+    const current = generationOf(open.payload);
+    if (
+      closing !== null &&
+      current !== null &&
+      closing.kind === current.kind &&
+      closing.id !== current.id
+    ) {
+      return fx.result({ kind: 'ignored', reason: 'stale_generation' });
+    }
     await tx
       .update(schema.alert)
       .set({
@@ -130,6 +173,7 @@ export async function ingestAlert(
       })
       .where(eq(schema.alert.id, open.id));
     await recordEvent(open.id, 'resolved');
+    await audit(open.id, 'resolved', {});
     return fx.result({ kind: 'resolved', alertId: open.id });
   }
 
@@ -143,14 +187,17 @@ export async function ingestAlert(
         count: alert.renotify ? sql`${schema.alert.count}` : sql`${schema.alert.count} + 1`,
         lastSeenAt: dbNow,
         updatedAt: dbNow,
-        severity: moreSevere(alert.severity, open.severity as AlertSeverity),
-        summary: alert.summary,
+        severity: moreSevere(alert.severity, open.severity),
+        summary,
         payload,
         serviceId: open.serviceId ?? serviceId,
       })
       .where(eq(schema.alert.id, open.id))
       .returning({ count: schema.alert.count });
     await recordEvent(open.id, alert.renotify ? 'renotified' : 'fired');
+    await audit(open.id, alert.renotify ? 'renotified' : 'counted', {
+      count: updated?.count ?? 1,
+    });
     return fx.result({
       kind: 'counted',
       alertId: open.id,
@@ -168,13 +215,14 @@ export async function ingestAlert(
     severity: alert.severity,
     state: 'open',
     title: alert.title,
-    summary: alert.summary,
+    summary,
     count: 1,
     payload,
     firstSeenAt: dbNow,
     lastSeenAt: dbNow,
   });
   await recordEvent(alertId, 'fired');
+  await audit(alertId, 'opened', { serviceMapped: serviceId !== null });
   return fx.result({ kind: 'opened', alertId, serviceId });
 }
 

@@ -1,5 +1,6 @@
 import {
   allowedLabels,
+  scrubAlertText,
   sanitizeAlertPayload,
   type AlertSeverity,
   type AlertSource,
@@ -7,7 +8,13 @@ import {
 } from '@watchtower/shared';
 
 import { alertFingerprint } from './fingerprint.js';
-import { isoFromUnixSeconds, rejected, safeHttpUrl, type NormalizeResult } from './types.js';
+import {
+  isoFromUnixSeconds,
+  rejected,
+  safeHttpUrl,
+  severityFrom,
+  type NormalizeResult,
+} from './types.js';
 
 /**
  * Cloud Monitoring alert notification delivered through a Pub/Sub notification channel
@@ -62,9 +69,7 @@ const SEVERITIES: Readonly<Record<string, AlertSeverity>> = {
 
 /** GCP says "no severity" when none is set `[CONFIRMED]`; anything we do not know stays `unknown`. */
 export function gcpSeverity(value: unknown): AlertSeverity {
-  return typeof value === 'string'
-    ? (SEVERITIES[value.trim().toLowerCase()] ?? 'unknown')
-    : 'unknown';
+  return severityFrom(SEVERITIES, value);
 }
 
 /** The text inside a Pub/Sub push `message.data` (base64, standard or url-safe alphabet). */
@@ -127,7 +132,8 @@ export function normalizeGcpAlert(data: unknown, delivery: GcpDelivery = {}): No
           endedAt ?? '',
         ].join('|');
 
-  const summary = text(incident.summary, 500);
+  const rawSummary = text(incident.summary, 500);
+  const summary = rawSummary === null ? null : scrubAlertText(rawSummary).slice(0, 500);
   const url = safeHttpUrl(incident.url);
   const labels = allowedLabels({ ...userLabels, ...resourceLabels });
   const metric = isRecord(incident.metric) ? incident.metric : {};

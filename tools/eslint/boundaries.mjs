@@ -115,6 +115,8 @@ export const WORKSPACES = {
     name: '@watchtower/connectors',
     allow: [SHARED],
     forbid: ['persistence'],
+    // A client gets its fetch injected (ADR-015); nothing here dials out by itself.
+    forbidHttpGlobals: true,
   },
   'packages/ui': { name: '@watchtower/ui', allow: [SHARED], forbid: ['persistence'] },
 };

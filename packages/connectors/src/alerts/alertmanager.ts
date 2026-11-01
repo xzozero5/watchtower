@@ -1,6 +1,7 @@
 import {
   allowedLabels,
   sanitizeAlertPayload,
+  scrubAlertText,
   type AlertSeverity,
   type NormalizedAlert,
 } from '@watchtower/shared';
@@ -10,6 +11,7 @@ import {
   isoFromRfc3339,
   rejected,
   safeHttpUrl,
+  severityFrom,
   type NormalizeResult,
   type RejectReason,
 } from './types.js';
@@ -64,9 +66,7 @@ const SEVERITIES: Readonly<Record<string, AlertSeverity>> = {
 
 /** `[ASSUMED]` Alertmanager has no severity field; `severity` is the convention. Others stay `unknown`. */
 export function alertmanagerSeverity(value: unknown): AlertSeverity {
-  return typeof value === 'string'
-    ? (SEVERITIES[value.trim().toLowerCase()] ?? 'unknown')
-    : 'unknown';
+  return severityFrom(SEVERITIES, value);
 }
 
 /** Alerts handled per request; a longer list is cut and the rest counted as rejected. */
@@ -105,8 +105,10 @@ function normalizeOne(raw: unknown, externalUrl: string | null): NormalizeResult
     state === 'resolved' ? (text(raw.endsAt, 40) ?? '') : '',
   ].join('|');
 
-  const summary = text(annotations.summary, 500) ?? text(annotations.description, 500);
-  const generatorUrl = safeHttpUrl(raw.generatorURL);
+  // Only `summary`: `description` is free text that operators fill with whatever they like, and is not kept.
+  const rawSummary = text(annotations.summary, 500);
+  const summary = rawSummary === null ? null : scrubAlertText(rawSummary).slice(0, 500);
+  const generatorUrl = safeHttpUrl(raw.generatorURL, { keepQuery: false });
   const labels = allowedLabels(allLabels);
 
   const alert: NormalizedAlert = {
@@ -153,7 +155,7 @@ export function normalizeAlertmanager(data: unknown): AlertmanagerBatch | Reject
   if (typeof body.version === 'string' && !/^4(?:\.\d+)?$/.test(body.version)) {
     return 'unsupported_version';
   }
-  const externalUrl = safeHttpUrl(body.externalURL);
+  const externalUrl = safeHttpUrl(body.externalURL, { keepQuery: false });
   const list: readonly unknown[] = body.alerts;
   return {
     results: list.slice(0, ALERTMANAGER_MAX_ALERTS).map((raw) => normalizeOne(raw, externalUrl)),

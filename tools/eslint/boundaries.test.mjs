@@ -83,6 +83,8 @@ const VIOLATIONS = [
   ['packages/connectors/src/a.ts', "import x from '@watchtower/db';"],
   ['packages/connectors/src/a.ts', "import { eq } from 'drizzle-orm';"],
   ['packages/connectors/src/a.ts', "import x from 'ioredis';"],
+  ['packages/connectors/src/a.ts', "const r = await fetch('https://example.com');"],
+  ['packages/connectors/src/a.ts', "const r = new WebSocket('wss://example.com');"],
   ['packages/connectors/src/a.ts', "import x from '@watchtower/api';"],
   ['packages/connectors/src/alerts/a.ts', "import x from '../../../db/src/index.js';"],
   ['packages/ai/src/a.ts', "import x from '@watchtower/connectors';"],

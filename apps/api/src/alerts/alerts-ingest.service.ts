@@ -1,8 +1,9 @@
 import { HttpException, HttpStatus, Inject, Injectable } from '@nestjs/common';
 import { alerts } from '@watchtower/connectors';
 import type { CredentialStore, Database } from '@watchtower/db';
-import type { Domain, IngestAlertOutcome } from '@watchtower/domain';
+import { isDomainError, type Domain, type IngestAlertOutcome } from '@watchtower/domain';
 import {
+  ALERT_WEBHOOK_MIN_SECRET_LENGTH as MIN_WEBHOOK_SECRET_LENGTH,
   alertPubsubEnvelopeSchema,
   type AlertIngestResult,
   type NormalizedAlert,
@@ -25,6 +26,13 @@ import { LOGGER, type AppLogger } from '../logging/logger.js';
 export const ALERT_PUSH_VERIFIER = Symbol('ALERT_PUSH_VERIFIER');
 
 const MINUTE = 60;
+/**
+ * Failed authentications per minute from one address before it is answered 429 without any work.
+ * Counted only when authentication fails, in a bucket of its own: real deliveries never use it up.
+ * `[ASSUMED]` Behind a proxy with the wrong `TRUST_PROXY_HOPS` every caller looks like one address;
+ * fix the hops, this limit is only there to bound what forged requests cost.
+ */
+const BAD_AUTH_LIMIT = 30;
 
 const serviceUnavailable = (): HttpException =>
   new HttpException(
@@ -75,17 +83,57 @@ export class AlertIngestService {
     @Inject(LOGGER) private readonly logger: AppLogger,
   ) {}
 
-  private async rateLimit(ip: string | null): Promise<void> {
+  /** First thing on a route: an address that keeps failing authentication costs a Redis read and nothing else. */
+  private async refuseFailingAddress(ip: string | null): Promise<void> {
+    const standing = await this.limiter.blocked('alert-bad-auth', ip ?? 'unknown', BAD_AUTH_LIMIT);
+    if (standing.blocked) throw new RateLimitedError(standing.retryAfterSeconds);
+  }
+
+  /** Counts a failed authentication against the address, then answers 401 like any other failure. */
+  private async authenticationFailed(ip: string | null, message: string): Promise<never> {
+    await this.limiter.hit('alert-bad-auth', ip ?? 'unknown', BAD_AUTH_LIMIT, MINUTE);
+    throw unauthenticated(message);
+  }
+
+  /**
+   * After authentication: the budget of one verified source (the Pub/Sub service account, the webhook
+   * secret), not of an address. Forged requests cannot use it up, and a proxy that hides the real
+   * address cannot make real alerts share a bucket with strangers.
+   */
+  private async limitSource(source: string): Promise<void> {
     const hit = await this.limiter.hit(
-      'alert-ingest-ip',
-      ip ?? 'unknown',
+      'alert-ingest-source',
+      source,
       this.config.ALERT_INGEST_RATE_PER_MINUTE,
       MINUTE,
     );
     if (!hit.allowed) throw new RateLimitedError(hit.retryAfterSeconds);
   }
 
-  private async ingestOne(alert: NormalizedAlert, ip: string | null): Promise<IngestAlertOutcome> {
+  /**
+   * One alert through the domain. A delivery the domain refuses as invalid (`bad_request`) will be
+   * refused every time, so it is logged by code and acknowledged as `ignored`; Pub/Sub would otherwise
+   * redeliver it forever. Anything else (the database is down) propagates and the sender retries.
+   */
+  private async ingestOne(
+    alert: NormalizedAlert,
+    ip: string | null,
+  ): Promise<IngestAlertOutcome['kind']> {
+    try {
+      return (await this.applyOne(alert, ip)).kind;
+    } catch (error) {
+      if (isDomainError(error) && error.code === 'bad_request') {
+        this.logger.warn(
+          { source: alert.source },
+          'alerts: a delivery the domain refuses as invalid was dropped, not retried',
+        );
+        return 'ignored';
+      }
+      throw error;
+    }
+  }
+
+  private async applyOne(alert: NormalizedAlert, ip: string | null): Promise<IngestAlertOutcome> {
     const ctx = this.domain.context({
       actor: { type: 'system', id: null },
       auditMeta: { ip, requestId: null },
@@ -108,12 +156,15 @@ export class AlertIngestService {
       );
       throw serviceUnavailable();
     }
-    await this.rateLimit(input.ip);
+    await this.refuseFailingAddress(input.ip);
 
     const match = /^Bearer ([A-Za-z0-9._-]{20,4096})$/.exec(input.authorization ?? '');
-    if (match?.[1] === undefined) throw unauthenticated('Authentication is required');
+    if (match?.[1] === undefined) {
+      return this.authenticationFailed(input.ip, 'Authentication is required');
+    }
+    let identity;
     try {
-      await this.verifier.verify(match[1]);
+      identity = await this.verifier.verify(match[1]);
     } catch (error) {
       if (error instanceof PushKeysUnavailableError) {
         this.logger.error('alerts gcp push: verification keys unavailable, answering 503 to retry');
@@ -121,8 +172,9 @@ export class AlertIngestService {
       }
       if (!(error instanceof PushAuthError)) throw error;
       this.logger.warn('alerts gcp push: token rejected');
-      throw unauthenticated('Authentication is required');
+      return this.authenticationFailed(input.ip, 'Authentication is required');
     }
+    await this.limitSource(`gcp:${identity.email}`);
 
     const envelope = alertPubsubEnvelopeSchema.safeParse(input.body);
     if (!envelope.success) {
@@ -142,15 +194,20 @@ export class AlertIngestService {
       );
       return tally([], 1);
     }
-    const outcome = await this.ingestOne(normalized.alert, input.ip);
-    return tally([outcome.kind]);
+    return tally([await this.ingestOne(normalized.alert, input.ip)]);
   }
 
   /** The signing secret in effect, or null when none is set. Read on every request so a rotation needs no restart. */
   private async webhookSecret(): Promise<string | null> {
     const fields = await this.credentials.resolve('alerting');
     const secret = fields.webhookSecret?.value ?? '';
-    return secret === '' ? null : secret;
+    if (secret === '') return null;
+    if (secret.length < MIN_WEBHOOK_SECRET_LENGTH) {
+      // A short secret is as good as none: refuse rather than accept signatures that can be guessed.
+      this.logger.warn('alerts webhook: the signing secret is shorter than the minimum, refusing');
+      return null;
+    }
+    return secret;
   }
 
   /** `POST /v1/inbound/alerts/webhook`: an Alertmanager-compatible payload signed with HMAC-SHA256. */
@@ -161,7 +218,7 @@ export class AlertIngestService {
     /** Epoch milliseconds, injected by tests; the process clock otherwise. */
     readonly nowMs?: number;
   }): Promise<AlertIngestResult> {
-    await this.rateLimit(input.ip);
+    await this.refuseFailingAddress(input.ip);
     const secret = await this.webhookSecret();
     const verdict =
       secret === null || input.rawBody === undefined
@@ -178,8 +235,12 @@ export class AlertIngestService {
       if (secret === null)
         this.logger.warn('alerts webhook: received but no signing secret is set');
       else this.logger.warn({ verdict }, 'alerts webhook: signature rejected');
-      throw unauthenticated('The request signature is missing or does not match');
+      return this.authenticationFailed(
+        input.ip,
+        'The request signature is missing or does not match',
+      );
     }
+    await this.limitSource('webhook');
 
     const batch = alerts.normalizeAlertmanager(input.rawBody.toString('utf8'));
     if (typeof batch === 'string') {
@@ -192,7 +253,7 @@ export class AlertIngestService {
         ignored += 1;
         continue;
       }
-      outcomes.push((await this.ingestOne(result.alert, input.ip)).kind);
+      outcomes.push(await this.ingestOne(result.alert, input.ip));
     }
     return tally(outcomes, ignored);
   }

@@ -234,7 +234,7 @@ export class PortalTrackingService implements OnApplicationShutdown {
         .from(schema.ticket)
         .where(eq(schema.ticket.number, number))
         .limit(1);
-      if (!ticket) return;
+      if (!ticket || ticket.channel === 'internal') return;
       const recipient = await this.notifier.recipient(tx, ticket);
       if (recipient?.email !== email.trim().toLowerCase()) return;
       await this.notifier.resendLink(tx, ticket, this.keys.format(ticket.number), recipient);
@@ -272,6 +272,8 @@ export class PortalTrackingService implements OnApplicationShutdown {
     if (
       !claims ||
       !ticket ||
+      // An internal ticket (T-200) has no portal page, whoever holds a token for its number.
+      ticket.channel === 'internal' ||
       ticket.id !== claims.ticketId ||
       ticket.requesterContactId !== claims.contactId
     ) {

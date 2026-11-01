@@ -35,7 +35,9 @@ export function ruleMatches(rule: ServiceMatchRule, alert: AlertFacts): boolean 
   ) {
     return false;
   }
-  return Object.entries(rule.labels).every(([key, value]) => alert.labels[key] === value);
+  return Object.entries(rule.labels).every(
+    ([key, value]) => Object.hasOwn(alert.labels, key) && alert.labels[key] === value,
+  );
 }
 
 function rulesOf(entry: CatalogEntry): ServiceMatchRule[] {

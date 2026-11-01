@@ -16,7 +16,7 @@ import {
 } from 'jose';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-import { createOidcPushVerifier } from '../gmail/push-verifier.js';
+import { createOidcPushVerifier, type PushTokenVerifier } from '../gmail/push-verifier.js';
 import { startHarness, type Harness } from '../testing/harness.js';
 import { captureLogs } from '../testing/support.js';
 import { ALERT_PUSH_VERIFIER } from './alerts-ingest.service.js';
@@ -34,6 +34,7 @@ const net = disableNetConnect();
 const logs = captureLogs();
 let h: Harness;
 let privateKey: CryptoKey;
+let pushVerifier: PushTokenVerifier;
 let counter = 0;
 let ipCounter = 0;
 const freshIp = (): string => `203.0.113.${String(++ipCounter % 250)}`;
@@ -100,12 +101,16 @@ const bearer = async (claims?: Record<string, unknown>, audience?: string) => ({
   authorization: `Bearer ${await token(claims, audience)}`,
 });
 
-async function sendWebhook(raw: string, header: string | undefined) {
-  const response = await fetch(`${h.base}${WEBHOOK}`, {
+async function sendWebhook(
+  raw: string,
+  header: string | undefined,
+  where: { base?: string; ip?: string } = {},
+) {
+  const response = await fetch(`${where.base ?? h.base}${WEBHOOK}`, {
     method: 'POST',
     headers: {
       'content-type': 'application/json',
-      'x-forwarded-for': freshIp(),
+      'x-forwarded-for': where.ip ?? freshIp(),
       ...(header === undefined ? {} : { [ALERT_WEBHOOK_SIGNATURE_HEADER]: header }),
     },
     body: raw,
@@ -164,19 +169,15 @@ beforeAll(async () => {
   const pair = await generateKeyPair('RS256');
   privateKey = pair.privateKey;
   const jwk: JWK = { ...(await exportJWK(pair.publicKey)), kid: 'test-key-1', alg: 'RS256' };
+  pushVerifier = createOidcPushVerifier({
+    audience: AUDIENCE,
+    serviceAccountEmail: SERVICE_ACCOUNT,
+    keys: createLocalJWKSet({ keys: [jwk] }),
+  });
   h = await startHarness({
     logs,
     env: { LOG_LEVEL: 'info', ALERT_WEBHOOK_SECRET: WEBHOOK_SECRET },
-    overrides: [
-      {
-        token: ALERT_PUSH_VERIFIER,
-        value: createOidcPushVerifier({
-          audience: AUDIENCE,
-          serviceAccountEmail: SERVICE_ACCOUNT,
-          keys: createLocalJWKSet({ keys: [jwk] }),
-        }),
-      },
-    ],
+    overrides: [{ token: ALERT_PUSH_VERIFIER, value: pushVerifier }],
   });
 });
 
@@ -478,18 +479,145 @@ describe('not configured, keys unavailable, flood', () => {
     }
   });
 
-  it('answers 429 over the per-IP limit, before the token or the signature is even checked', async () => {
-    const limited = await startHarness({ env: { ALERT_INGEST_RATE_PER_MINUTE: '3' } });
+  it('limits a verified source, and forged requests from the same address do not use its budget up', async () => {
+    const limited = await startHarness({
+      env: { ALERT_INGEST_RATE_PER_MINUTE: '3', ALERT_WEBHOOK_SECRET: WEBHOOK_SECRET },
+    });
     try {
-      const client = limited.client();
-      const statuses: number[] = [];
-      for (let attempt = 0; attempt < 5; attempt += 1) {
-        const response = await client.post(WEBHOOK, {}, { origin: null, csrf: false });
-        statuses.push(response.status);
+      const where = { base: limited.base, ip: '198.51.100.7' };
+      const raw = amBody('Budget', 'b-1');
+      // Ten forged requests from the very address the real sender uses (a proxy that hides the real one).
+      for (let attempt = 0; attempt < 10; attempt += 1) {
+        expect((await sendWebhook(raw, 'garbage', where)).status).toBe(401);
       }
-      expect(statuses).toEqual([401, 401, 401, 429, 429]);
+      // The real sender still gets its three deliveries per minute, from any address...
+      const statuses: number[] = [];
+      for (let attempt = 0; attempt < 4; attempt += 1) {
+        const body = amBody('Budget', `b-${String(attempt + 2)}`);
+        statuses.push((await sendWebhook(body, signed(body), where)).status);
+      }
+      // ...and the fourth is over the budget of the source, not of the address.
+      expect(statuses).toEqual([200, 200, 200, 429]);
+      const other = amBody('Budget', 'b-other');
+      expect((await sendWebhook(other, signed(other), { base: limited.base })).status).toBe(429);
     } finally {
       await limited.close();
     }
+  });
+
+  it('answers 429 to an address that keeps failing authentication, with no work done', async () => {
+    const where = { ip: '198.51.100.8' };
+    const raw = amBody('Flood', 'f-1');
+    const statuses: number[] = [];
+    for (let attempt = 0; attempt < 32; attempt += 1) {
+      statuses.push((await sendWebhook(raw, 'garbage', where)).status);
+    }
+    expect(statuses.slice(0, 30).every((status) => status === 401)).toBe(true);
+    expect(statuses.slice(30)).toEqual([429, 429]);
+    // Even a correct signature from that address waits; another address is not affected.
+    expect((await sendWebhook(raw, signed(raw), where)).status).toBe(429);
+    expect((await sendWebhook(raw, signed(raw))).status).toBe(200);
+  });
+
+  it('GCP: forged tokens do not use up the budget of the Pub/Sub service account', async () => {
+    const limited = await startHarness({
+      env: { ALERT_INGEST_RATE_PER_MINUTE: '2' },
+      overrides: [{ token: ALERT_PUSH_VERIFIER, value: pushVerifier }],
+    });
+    try {
+      const forged = { authorization: `Bearer ${'x'.repeat(40)}` };
+      for (let attempt = 0; attempt < 6; attempt += 1) {
+        const response = await limited.client().post(GCP, envelope(incident()), {
+          headers: forged,
+          origin: null,
+          csrf: false,
+        });
+        expect(response.status).toBe(401);
+      }
+      const statuses: number[] = [];
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        const response = await limited
+          .client()
+          .post(GCP, envelope(incident({}, `vm-${String(attempt)}`)), {
+            headers: await bearer(),
+            origin: null,
+            csrf: false,
+          });
+        statuses.push(response.status);
+      }
+      expect(statuses).toEqual([200, 200, 429]);
+    } finally {
+      await limited.close();
+    }
+  });
+});
+
+describe('payloads that can never be valid (review of T-200)', () => {
+  it('a severity word that exists on every object is just an unknown severity', async () => {
+    await reset();
+    for (const word of ['constructor', '__proto__', 'toString']) {
+      const response = await pushGcp(
+        envelope(incident({ severity: word }, `sev-${word}`)),
+        await bearer(),
+      );
+      expect(response.status, word).toBe(200);
+      expect(response.body).toEqual({ accepted: 1, duplicates: 0, ignored: 0 });
+    }
+    expect((await allAlerts()).map((row) => row.severity)).toEqual([
+      'unknown',
+      'unknown',
+      'unknown',
+    ]);
+    const raw = JSON.stringify({
+      version: '4',
+      alerts: [
+        {
+          status: 'firing',
+          labels: { alertname: 'Odd', severity: 'constructor' },
+          startsAt: '2026-11-02T03:00:00Z',
+        },
+      ],
+    });
+    expect((await sendWebhook(raw, signed(raw))).body).toEqual({
+      accepted: 1,
+      duplicates: 0,
+      ignored: 0,
+    });
+  });
+
+  it('a stale close from an old incident is acknowledged and leaves the newer alert open', async () => {
+    await reset();
+    await pushGcp(envelope(incident({ incident_id: '0.old' }), '8001'), await bearer());
+    await pushGcp(envelope(incident({ incident_id: '0.new' }), '8002'), await bearer());
+    const stale = await pushGcp(
+      envelope(
+        incident({ incident_id: '0.old', state: 'closed', ended_at: 1_793_585_400 }),
+        '8003',
+      ),
+      await bearer(),
+    );
+    expect(stale.status).toBe(200);
+    expect(stale.body).toEqual({ accepted: 0, duplicates: 0, ignored: 1 });
+    expect((await allAlerts())[0]).toMatchObject({ state: 'open', count: 2 });
+  });
+
+  it('every delivery that changes an alert is on the audit log, with no content', async () => {
+    await reset();
+    await pushGcp(
+      envelope(incident({ summary: 'Contact jane@example.invalid' }), '8101'),
+      await bearer(),
+    );
+    await pushGcp(envelope(incident(), '8102'), await bearer());
+    const audit = await h.db.owner.pool.query<{
+      metadata: Record<string, unknown>;
+      actor_type: string;
+    }>(
+      `SELECT metadata, actor_type FROM audit_log
+        WHERE action = 'alert.ingest' AND target_id = $1 ORDER BY created_at`,
+      [(await allAlerts())[0]?.id],
+    );
+    expect(audit.rows.map((row) => row.metadata.kind)).toEqual(['opened', 'counted']);
+    expect(audit.rows.every((row) => row.actor_type === 'system')).toBe(true);
+    expect(JSON.stringify(audit.rows)).not.toContain('jane');
   });
 });

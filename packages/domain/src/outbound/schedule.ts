@@ -304,6 +304,9 @@ export async function scheduleTemplateAck(
   input: TemplateAckInput,
 ): Promise<DomainResult<ScheduledSend & { message: MessageRow }>> {
   const ticket = await lockTicketRow(tx, ctx, input.ref);
+  // An internal ticket (T-200) has no customer to acknowledge; refused before anything is written.
+  if (ticket.channel === 'internal')
+    throw badRequest('An internal ticket has no customer to message');
   const body = renderSystemTemplate(input.templateKey, {
     ticketKey: ticketKeysOf(ctx).format(ticket.number),
     portalUrl: ctx.config.portalUrl ?? null,

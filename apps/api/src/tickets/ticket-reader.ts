@@ -209,6 +209,14 @@ export function isClient(principal: Principal): boolean {
   return principal.orgScope.kind === 'org';
 }
 
+/**
+ * A client never sees an internal ticket (T-200): it belongs to an organization (an anomaly in that
+ * organization's usage, say) but is for staff only. Added to every ticket query a client can run.
+ */
+export function clientVisibility(principal: Principal): SQL | undefined {
+  return isClient(principal) ? ne(schema.ticket.channel, 'internal') : undefined;
+}
+
 /** Reads tickets for the API: lists with filters and search, and the detail of one. */
 @Injectable()
 export class TicketReader {
@@ -231,6 +239,7 @@ export class TicketReader {
         and(
           refCondition(ref, this.keys),
           orgScopeCondition(schema.ticket.orgId, principal.orgScope),
+          clientVisibility(principal),
         ),
       )
       .limit(1);
@@ -310,6 +319,7 @@ export class TicketReader {
       .where(
         and(
           orgScopeCondition(ticket.orgId, principal.orgScope),
+          clientVisibility(principal),
           eq(ticket.orgId, source.t.orgId),
           eq(ticket.intentId, source.t.intentId),
           ne(ticket.id, source.t.id),
@@ -349,6 +359,7 @@ export class TicketReader {
     const conditions: (SQL | undefined)[] = [
       // Every query a client runs is limited to their organization, whatever else they ask for.
       orgScopeCondition(ticket.orgId, principal.orgScope),
+      clientVisibility(principal),
       client ? undefined : query.orgId === undefined ? undefined : eq(ticket.orgId, query.orgId),
       query.status === undefined ? undefined : inArray(ticket.status, query.status),
       query.priority === undefined ? undefined : inArray(ticket.priority, query.priority),

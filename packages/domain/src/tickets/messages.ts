@@ -59,6 +59,12 @@ export async function replyToTicket(
   const { reply: body, sender } = input;
   let ticket = await lockTicketRow(tx, ctx, input.ref);
   const fromCustomer = sender.kind !== 'staff';
+  // An internal ticket (T-200) has no customer: a client never finds it, and a public reply would go
+  // nowhere (and email the requester, if it has one). Staff use a note.
+  if (ticket.channel === 'internal') {
+    if (fromCustomer) throw notFound('No such ticket');
+    throw badRequest('An internal ticket has no customer to reply to; add an internal note');
+  }
   if (sender.kind !== 'staff' && ticket.orgId !== sender.orgId) throw notFound('No such ticket');
   if (sender.kind === 'contact' && ticket.requesterContactId !== sender.contactId) {
     throw notFound('No such ticket');

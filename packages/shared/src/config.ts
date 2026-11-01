@@ -187,7 +187,10 @@ export const phase2EnvShape = {
   // credential store (integration "alerting"), see INTEGRATION_CATALOG.
   ALERT_PUSH_AUDIENCE: optionalString,
   ALERT_PUSH_SERVICE_ACCOUNT: optionalString,
-  ALERT_WEBHOOK_SECRET: optionalString,
+  ALERT_WEBHOOK_SECRET: z.preprocess(
+    emptyToUndefined,
+    z.string().min(32, 'must be at least 32 characters').optional(),
+  ),
   // The public status page (T-204) is closed unless the owner opens it: `false` answers 404 on every
   // /status route. An explicit opt-in, like DEV_LOGIN_ENABLED. [ASK-HUMAN] to open.
   STATUS_PAGE_PUBLIC: z.preprocess(emptyToUndefined, z.stringbool().default(false)),
