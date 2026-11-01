@@ -1,0 +1,40 @@
+{
+  "version": "1.2",
+  "incident": {
+    "incident_id": "0.example-log-incident-7",
+    "scoping_project_id": "example-project",
+    "scoping_project_number": 123456789012,
+    "url": "https://console.cloud.google.com/monitoring/alerting/alerts/0.example-log-incident-7?project=example-project",
+    "started_at": 1793586000,
+    "ended_at": null,
+    "state": "open",
+    "summary": "Log match condition met: payment worker raised an unhandled exception.",
+    "observed_value": "",
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "project_id": "example-project",
+        "service_name": "payment-worker",
+        "revision_name": "payment-worker-00042",
+        "location": "asia-southeast1",
+        "configuration_name": "payment-worker"
+      }
+    },
+    "resource_type_display_name": "Cloud Run Revision",
+    "resource_display_name": "payment-worker",
+    "resource_name": "example-project payment-worker",
+    "metadata": { "system_labels": {}, "user_labels": {} },
+    "policy_name": "Unhandled exception in payment worker",
+    "policy_user_labels": { "team": "payments" },
+    "documentation": { "content": "See the runbook.", "mime_type": "text/markdown" },
+    "condition": {
+      "name": "projects/example-project/alertPolicies/9/conditions/10",
+      "displayName": "Log match: severity>=ERROR AND textPayload:\"unhandled\"",
+      "conditionMatchedLog": {
+        "filter": "resource.type=\"cloud_run_revision\" severity>=ERROR"
+      }
+    },
+    "condition_name": "Log match: severity>=ERROR AND textPayload:\"unhandled\"",
+    "severity": "ERROR"
+  }
+}

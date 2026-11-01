@@ -1,0 +1,53 @@
+{
+  "version": "1.2",
+  "incident": {
+    "incident_id": "0.example-incident-1",
+    "scoping_project_id": "example-project",
+    "scoping_project_number": 123456789012,
+    "url": "https://console.cloud.google.com/monitoring/alerting/alerts/0.example-incident-1?project=example-project",
+    "started_at": 1793584800,
+    "ended_at": null,
+    "state": "open",
+    "summary": "CPU utilization for example-project VM Instance labels {instance_id=1234567890123456789, zone=asia-southeast1-a} is above the threshold of 0.9 with a value of 0.95.",
+    "observed_value": "0.950",
+    "resource": {
+      "type": "gce_instance",
+      "labels": {
+        "instance_id": "1234567890123456789",
+        "project_id": "example-project",
+        "zone": "asia-southeast1-a",
+        "owner_email": "someone@example.invalid"
+      }
+    },
+    "resource_type_display_name": "VM Instance",
+    "resource_id": "1234567890123456789",
+    "resource_display_name": "api-vm-1",
+    "resource_name": "example-project api-vm-1",
+    "metric": {
+      "type": "compute.googleapis.com/instance/cpu/utilization",
+      "displayName": "CPU utilization",
+      "labels": { "instance_name": "api-vm-1" }
+    },
+    "metadata": { "system_labels": {}, "user_labels": { "team": "platform" } },
+    "policy_name": "High CPU on API VMs",
+    "policy_user_labels": { "team": "platform", "customer": "Example Customer Ltd" },
+    "documentation": {
+      "content": "Runbook: restart the worker. Contact jane.doe@example.invalid",
+      "mime_type": "text/markdown",
+      "subject": "High CPU on API VMs"
+    },
+    "condition": {
+      "name": "projects/example-project/alertPolicies/1/conditions/2",
+      "displayName": "CPU above 90% for 5 minutes",
+      "conditionThreshold": {
+        "filter": "metric.type=\"compute.googleapis.com/instance/cpu/utilization\" resource.type=\"gce_instance\"",
+        "comparison": "COMPARISON_GT",
+        "thresholdValue": 0.9,
+        "duration": "300s"
+      }
+    },
+    "condition_name": "CPU above 90% for 5 minutes",
+    "severity": "CRITICAL",
+    "threshold_value": "0.9"
+  }
+}
