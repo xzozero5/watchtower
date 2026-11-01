@@ -159,6 +159,10 @@ export const contact = pgTable(
     phone: text('phone'),
     verifiedAt: timestamptz('verified_at'),
     roleInOrg: text('role_in_org'),
+    /** A LINE-only placeholder that was linked to a known contact (T-103d, migration 0014): retired, not deleted. */
+    mergedIntoContactId: uuid('merged_into_contact_id').references((): AnyPgColumn => contact.id, {
+      onDelete: 'restrict',
+    }),
     notificationPrefs: jsonb('notification_prefs')
       .notNull()
       .default(sql`'{}'::jsonb`),
@@ -168,6 +172,9 @@ export const contact = pgTable(
   (table) => [
     index('contact_org_idx').on(table.orgId),
     index('contact_emails_idx').using('gin', table.emails),
+    index('contact_merged_into_idx')
+      .on(table.mergedIntoContactId)
+      .where(sql`${table.mergedIntoContactId} IS NOT NULL`),
   ],
 );
 
