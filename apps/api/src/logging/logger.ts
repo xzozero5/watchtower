@@ -1,5 +1,5 @@
 import type { LoggerService } from '@nestjs/common';
-import { LOG_REDACT_CENSOR, LOG_REDACT_PATHS, stripErrorCauses } from '@watchtower/shared';
+import { LOG_REDACT_CENSOR, LOG_REDACT_PATHS, serializeErrorForLog } from '@watchtower/shared';
 import { pino, type DestinationStream, type Logger } from 'pino';
 
 import type { ApiConfig } from '../config/config.js';
@@ -25,10 +25,7 @@ export function createLogger(
     redact: { paths: [...LOG_REDACT_PATHS], censor: LOG_REDACT_CENSOR },
     // An error's `cause` can hold the request or response body of a provider call (a prompt):
     // log the type names of the chain, never its contents (SR106-R10).
-    serializers: {
-      err: (error: Error) => stripErrorCauses(pino.stdSerializers.err(error)),
-      error: (error: Error) => stripErrorCauses(pino.stdSerializers.err(error)),
-    },
+    serializers: { err: serializeErrorForLog, error: serializeErrorForLog },
   };
   return destination ? pino(options, destination) : pino(options);
 }

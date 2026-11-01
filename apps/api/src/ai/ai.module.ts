@@ -1,10 +1,18 @@
 import { Module } from '@nestjs/common';
 
+import { TicketsModule } from '../tickets/tickets.module.js';
+import { TicketAiController } from './ticket-ai.controller.js';
+import { TicketAiService } from './ticket-ai.service.js';
+
 /**
- * AI sidebar endpoints: runs, drafts, settings (T-106, T-108). Empty until the owning task adds its controllers and providers (T-123a). Add files in
- * this directory and list them here; `app.module.ts` already imports this module through
- * `features.module.ts`. Every route needs `@RequirePermission` / `@RequireAnyPermission` or
- * `@Public()`, and a public one must also be listed in `./public-routes.ts`.
+ * AI endpoints: the AI brief of a ticket (T-106e); runs, drafts and settings follow with T-108 and
+ * T-116. Every route needs `@RequirePermission` / `@RequireAnyPermission` or `@Public()`, and a
+ * public one must also be listed in `./public-routes.ts`; `app.module.ts` already imports this
+ * module through `features.module.ts`.
  */
-@Module({})
+@Module({
+  imports: [TicketsModule],
+  controllers: [TicketAiController],
+  providers: [TicketAiService],
+})
 export class AiModule {}
