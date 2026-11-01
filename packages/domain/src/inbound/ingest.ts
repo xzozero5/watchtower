@@ -411,7 +411,6 @@ async function append(
       attachments: message.attachments.map((attachment) => ({ ...attachment })),
       visibility: 'public',
       deliveryStatus: 'not_applicable',
-      createdAt: now,
     },
     { updatedAt: now },
   );

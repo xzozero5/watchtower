@@ -424,6 +424,26 @@ describe('who may use a draft, and how (SR108 P1/P2)', () => {
     expect(await draftRow(draftId)).toMatchObject({ disposition: 'approved', status: 'approved' });
   });
 
+  it('pasting an unsent draft as a plain reply stays refused, while approving it and an identical "edit" work (T-122f N-1)', async () => {
+    const ticketId = await ticketWith(stageTwoIntent);
+    const draftId = await draftReady(ticketId, 'Pasted words');
+    const pasted = await reply(agent, ticketId, 'Pasted words');
+    expect(pasted.status).toBe(403);
+    expect((await draftRow(draftId)).status).toBe('draft');
+    // The same words as an approval or as an identical edit go through the gate and are sent.
+    const approved = await reply(agent, ticketId, 'Pasted words', { aiDraftId: draftId });
+    expect(approved.status).toBe(201);
+    expect(approved.body.message.delivery).toMatchObject({ origin: 'ai_approved' });
+    // A real edit is the person's own text and is not blocked by the draft it started from.
+    const other = await ticketWith(stageTwoIntent);
+    const second = await draftReady(other, 'Starting point');
+    const edited = await reply(agent, other, 'Starting point, reworded', {
+      editedFromDraftId: second,
+    });
+    expect(edited.status).toBe(201);
+    expect(edited.body.message.delivery).toMatchObject({ origin: 'human' });
+  });
+
   it('an undone approval with a newer draft written meanwhile leaves one draft waiting', async () => {
     const ticketId = await ticketWith(stageTwoIntent);
     const first = await draftReady(ticketId, 'First draft');

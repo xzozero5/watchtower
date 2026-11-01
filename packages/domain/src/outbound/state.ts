@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 import {
   DELIVERY_BACKOFF_CAP_SECONDS,
   DELIVERY_MAX_ATTEMPTS,
-  type DeliveryRoute,
+  DELIVERY_RETRY_AFTER_CAP_SECONDS,
   type DeliveryState,
 } from '@watchtower/shared';
 
@@ -72,8 +72,18 @@ export type FailureDecision =
       readonly outcomeUnknown: boolean;
     };
 
+/**
+ * A provider's `Retry-After` in whole seconds, never more than `DELIVERY_RETRY_AFTER_CAP_SECONDS`. A
+ * missing, negative or NaN value counts as none (the header is the provider's, not ours).
+ */
+export function retryAfterSeconds(retryAfterMs: number | undefined): number {
+  if (retryAfterMs === undefined || Number.isNaN(retryAfterMs) || retryAfterMs <= 0) return 0;
+  // Infinity (a header too long for a number) lands on the cap too.
+  return Math.min(DELIVERY_RETRY_AFTER_CAP_SECONDS, Math.ceil(retryAfterMs / 1000));
+}
+
 /** Only a LINE push carries a provider idempotency key, so only it may repeat after an unknown outcome. */
-export function hasIdempotencyKey(route: DeliveryRoute | null): boolean {
+export function hasIdempotencyKey(route: string | null): boolean {
   return route === 'line_push';
 }
 
@@ -85,15 +95,12 @@ export function hasIdempotencyKey(route: DeliveryRoute | null): boolean {
  */
 export function decideFailure(
   facts: FailureFacts,
-  context: { readonly route: DeliveryRoute | null; readonly attempts: number },
+  context: { readonly route: string | null; readonly attempts: number },
 ): FailureDecision {
   const code = `channel_${facts.kind}`;
   const exhausted = context.attempts >= DELIVERY_MAX_ATTEMPTS;
   const delay = (): number =>
-    Math.max(
-      backoffSeconds(context.attempts),
-      facts.retryAfterMs === undefined ? 0 : Math.ceil(facts.retryAfterMs / 1000),
-    );
+    Math.max(backoffSeconds(context.attempts), retryAfterSeconds(facts.retryAfterMs));
 
   if (facts.outcomeUnknown) {
     if (hasIdempotencyKey(context.route) && !exhausted) {

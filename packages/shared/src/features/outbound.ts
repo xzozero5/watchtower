@@ -87,6 +87,12 @@ export const UNDO_SEND_SETTING_KEY = 'outbound.undo_send_seconds';
 /** Automatic attempts before a delivery is `failed` (ADR-010 section 6). */
 export const DELIVERY_MAX_ATTEMPTS = 5;
 export const DELIVERY_BACKOFF_CAP_SECONDS = 300;
+/**
+ * The longest a provider's `Retry-After` can hold a delivery back (T-122f). A larger or malformed value
+ * (a header of `99999999999`) is read as this: the retry then meets the 429 again and uses an attempt,
+ * which ends in `failed` for a person instead of parking a customer's reply for days. 15 minutes `[ASSUMED]`.
+ */
+export const DELIVERY_RETRY_AFTER_CAP_SECONDS = 900;
 /** A `sending` row older than this lease is stuck (the worker died or hung). */
 export const DELIVERY_LEASE_SECONDS = 120;
 /**

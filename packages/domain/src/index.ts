@@ -62,6 +62,7 @@ import {
 } from './outbound/dispatch.js';
 import { scheduleCustomerSend, scheduleTemplateAck } from './outbound/schedule.js';
 import { readOutboundSettings, setUndoSendSeconds } from './outbound/settings.js';
+import { plainPortalUrl } from './outbound/templates.js';
 import { notifyShiftAlerts } from './notifications.js';
 import { enqueueJob } from './outbox.js';
 import type { PolicyGate } from './policy.js';
@@ -213,6 +214,7 @@ export {
   type AlertFacts,
   type CatalogEntry,
 } from './alerts/match.js';
+export { authorityNow } from './clock.js';
 export { recordAuditInTx, type AuditEntry, type AuditWriter } from './audit.js';
 export {
   DEFAULT_AI_BUDGET_ALERT_PERCENT,
@@ -467,6 +469,7 @@ export {
 export { toDeliverySummary } from './outbound/summary.js';
 export {
   RENDERABLE_TEMPLATE_KEYS,
+  plainPortalUrl,
   renderSystemTemplate,
   safeKeysWithoutRenderer,
   type TemplateVars,
@@ -773,7 +776,7 @@ export function createDomain(options: DomainOptions): Domain {
     ticketKeyPrefix: options.ticketKeyPrefix,
     reopenWindowDays: options.reopenWindowDays ?? REOPEN_WINDOW_DAYS,
     sealKey: options.sealKey,
-    portalUrl: options.portalUrl,
+    portalUrl: plainPortalUrl(options.portalUrl),
     retryKeyMaxAgeSeconds: options.retryKeyMaxAgeSeconds,
     csat: options.csat,
   };
@@ -785,6 +788,7 @@ export function createDomain(options: DomainOptions): Domain {
       onBehalfOf: contextOptions.onBehalfOf ?? null,
       auditMeta: contextOptions.auditMeta ?? { ip: null, requestId: null },
       now,
+      databaseClock: options.now === undefined,
       config,
       policyGate: options.policyGate,
       notifier: contextOptions.notifier ?? NO_NOTIFIER,

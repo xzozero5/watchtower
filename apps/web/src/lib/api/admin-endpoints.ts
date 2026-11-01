@@ -1,5 +1,13 @@
 import {
   autonomyHistoryPageSchema,
+  channelAccountListSchema,
+  channelAccountSchema,
+  gmailConnectionStatusSchema,
+  gmailOauthDisconnectResultSchema,
+  gmailOauthStartResultSchema,
+  integrationListSchema,
+  integrationStatusSchema,
+  testConnectionResultSchema,
   autonomyStateSchema,
   auditLogPageSchema,
   businessCalendarListSchema,
@@ -21,14 +29,17 @@ import {
   userSchema,
   type AuditLogQuery,
   type CreateBusinessCalendar,
+  type CreateChannelAccount,
   type CreateContact,
   type CreateOrganization,
   type CreateSlaPolicy,
   type CreateTeamQueue,
   type CreateUser,
   type OrganizationListQuery,
+  type PutCredentials,
   type SetAiSwitch,
   type SetIntentAutonomy,
+  type TestConnection,
   type UpdateBusinessCalendar,
   type UpdateContact,
   type UpdateIntent,
@@ -238,6 +249,76 @@ export function createAdminEndpoints(client: ApiClient) {
       }),
     deleteQueue: (queueId: string) =>
       client.request({ method: 'DELETE', path: `/v1/queues/${id(queueId)}`, schema: null }),
+
+    // --- integrations (head, ADR-012): write-only, no response carries a stored value ---
+    integrations: (signal?: AbortSignal) =>
+      client.request({
+        path: '/v1/admin/integrations',
+        schema: integrationListSchema,
+        ...withSignal(signal),
+      }),
+    putIntegration: (integration: string, body: PutCredentials) =>
+      client.request({
+        method: 'PUT',
+        path: `/v1/admin/integrations/${id(integration)}`,
+        body,
+        schema: integrationStatusSchema,
+      }),
+    deleteIntegrationField: (integration: string, field: string) =>
+      client.request({
+        method: 'DELETE',
+        path: `/v1/admin/integrations/${id(integration)}/fields/${id(field)}`,
+        schema: null,
+      }),
+    testIntegration: (integration: string, body: TestConnection) =>
+      client.request({
+        method: 'POST',
+        path: `/v1/admin/integrations/${id(integration)}/test`,
+        body,
+        schema: testConnectionResultSchema,
+      }),
+
+    // --- Gmail OAuth (head, T-102e) ---
+    gmailStatus: (signal?: AbortSignal) =>
+      client.request({
+        path: '/v1/admin/integrations/gmail/oauth/status',
+        schema: gmailConnectionStatusSchema,
+        ...withSignal(signal),
+      }),
+    gmailOauthStart: (mailbox: string) =>
+      client.request({
+        method: 'POST',
+        path: '/v1/admin/integrations/gmail/oauth/start',
+        body: { mailbox },
+        schema: gmailOauthStartResultSchema,
+      }),
+    gmailOauthDisconnect: () =>
+      client.request({
+        method: 'POST',
+        path: '/v1/admin/integrations/gmail/oauth/disconnect',
+        schema: gmailOauthDisconnectResultSchema,
+      }),
+
+    // --- channel accounts (head, T-131) ---
+    channelAccounts: (signal?: AbortSignal) =>
+      client.request({
+        path: '/v1/admin/channel-accounts',
+        schema: channelAccountListSchema,
+        ...withSignal(signal),
+      }),
+    createChannelAccount: (body: CreateChannelAccount) =>
+      client.request({
+        method: 'POST',
+        path: '/v1/admin/channel-accounts',
+        body,
+        schema: channelAccountSchema,
+      }),
+    disableChannelAccount: (accountId: string) =>
+      client.request({
+        method: 'POST',
+        path: `/v1/admin/channel-accounts/${id(accountId)}/disable`,
+        schema: channelAccountSchema,
+      }),
 
     // --- audit log (head) ---
     auditLogs: (query: Partial<AuditLogQuery>, signal?: AbortSignal) =>

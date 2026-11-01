@@ -61,6 +61,12 @@ export interface DomainContext {
   /** Where the audit rows say the action came from (api: the request; worker: nulls). */
   readonly auditMeta: { readonly ip: string | null; readonly requestId: string | null };
   readonly now: () => Date;
+  /**
+   * True when time windows shared between processes (the undo hold, claim leases, retry times) are read
+   * from the database clock instead of `now` (see `clock.ts`). `createDomain` sets it when no clock was
+   * injected; a test that injects `now` leaves it off.
+   */
+  readonly databaseClock?: boolean | undefined;
   readonly config: DomainConfig;
   /** Asked before anything is created that goes to a customer. Unset means refuse (fail closed). */
   readonly policyGate?: PolicyGate | undefined;
