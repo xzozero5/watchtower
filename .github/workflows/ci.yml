@@ -108,7 +108,10 @@ jobs:
       # From compose rather than a service container: MinIO needs a command, and the image digest and
       # the bucket init stay in one place.
       - name: Start object storage
-        run: docker compose up -d --wait minio minio-init
+        # `up --wait` fails on a one-shot service even when it exits 0, so the bucket init runs apart.
+        run: |
+          docker compose up -d --wait minio
+          docker compose run --rm minio-init
       - run: pnpm test:integration
 
   e2e:
