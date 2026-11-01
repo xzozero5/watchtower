@@ -101,6 +101,11 @@ export const alert = pgTable(
     nextEscalationAt: timestamptz('next_escalation_at'),
     snoozedUntil: timestamptz('snoozed_until'),
     snoozeReason: text('snooze_reason'),
+    snoozedBy: uuid('snoozed_by').references(() => users.id, { onDelete: 'set null' }),
+    /** When the snooze began; the escalation is paused from here until `snoozedUntil`. */
+    snoozedAt: timestamptz('snoozed_at'),
+    /** Alerts the correlation engine grouped share one id: a proposal for an incident. */
+    correlationId: uuid('correlation_id'),
     /** No foreign key until the incident table exists (T-202a). */
     incidentId: uuid('incident_id'),
     createdAt: timestamptz('created_at').notNull().defaultNow(),
@@ -182,5 +187,51 @@ export const alertEscalation = pgTable(
     index('alert_escalation_chat_due_idx')
       .on(table.chatNextAttemptAt)
       .where(sql`${table.chatState} IN ('pending', 'sending')`),
+  ],
+);
+
+/** "Same service within N minutes, at least M alerts" (R-3.6, migration 0043). */
+export const correlationRule = pgTable(
+  'correlation_rule',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    name: text('name').notNull(),
+    kind: text('kind').notNull().default('same_service'),
+    windowMinutes: integer('window_minutes').notNull(),
+    minAlerts: integer('min_alerts').notNull(),
+    active: boolean('active').notNull().default(true),
+    createdAt: timestamptz('created_at').notNull().defaultNow(),
+    updatedAt: timestamptz('updated_at').notNull().defaultNow(),
+  },
+  (table) => [uniqueIndex('correlation_rule_name_key').on(sql`lower(${table.name})`)],
+);
+
+/**
+ * An expected periodic signal (R-3.10, migration 0043). Missing for `expectedIntervalSeconds +
+ * graceSeconds` of the database clock opens an alert; the next beat resolves it.
+ */
+export const heartbeat = pgTable(
+  'heartbeat',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    slug: text('slug').notNull(),
+    name: text('name').notNull(),
+    expectedIntervalSeconds: integer('expected_interval_seconds').notNull(),
+    graceSeconds: integer('grace_seconds').notNull().default(0),
+    severity: text('severity').notNull().default('error'),
+    serviceId: uuid('service_id').references(() => service.id, { onDelete: 'set null' }),
+    active: boolean('active').notNull().default(true),
+    /** `ok` or `missing`. */
+    state: text('state').notNull().default('ok'),
+    lastBeatAt: timestamptz('last_beat_at'),
+    missingSince: timestamptz('missing_since'),
+    createdAt: timestamptz('created_at').notNull().defaultNow(),
+    updatedAt: timestamptz('updated_at').notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('heartbeat_slug_key').on(table.slug),
+    index('heartbeat_watch_idx')
+      .on(sql`COALESCE(${table.lastBeatAt}, ${table.createdAt})`)
+      .where(sql`${table.active} AND ${table.state} = 'ok'`),
   ],
 );
