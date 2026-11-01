@@ -10,7 +10,7 @@ import {
   type RealtimeEvent,
 } from '@watchtower/shared';
 import { UnrecoverableError, type Job } from 'bullmq';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 
 import type { WorkerLogger } from '../logger.js';
 import type { RealtimeSink } from '../realtime.js';
@@ -104,7 +104,14 @@ export function createIngestProcessor(deps: IngestDeps) {
   async function markFailed(eventId: string, code: string): Promise<void> {
     await deps.database.db
       .update(schema.inboundEvent)
-      .set({ status: 'failed', errorCode: code, processedAt: new Date() })
+      .set({
+        status: 'failed',
+        errorCode: code,
+        processedAt: new Date(),
+        // The LINE reply token is a credential for one free reply (ADR-010). A processed event drops its
+        // whole payload; a failed one is kept for a person to look at, so drop at least the token (N-6).
+        payload: sql`${schema.inboundEvent.payload}::jsonb - 'replyToken'`,
+      })
       .where(and(eq(schema.inboundEvent.id, eventId), eq(schema.inboundEvent.status, 'pending')));
   }
 
