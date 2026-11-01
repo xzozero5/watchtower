@@ -167,6 +167,19 @@ export const DEFAULT_ROLE_PERMISSIONS: Readonly<Record<Role, readonly Permission
   system: [],
 };
 
+/**
+ * Permissions that only the head role can hold. They are ignored on any other role (a row put in
+ * `role_permissions` by hand or by a mistaken grant does nothing) and refused by the role editor, so
+ * `rbac.manage` cannot hand the break-glass publication to anyone else.
+ */
+export const HEAD_ONLY_PERMISSIONS = [
+  'kb.publish.break_glass',
+] as const satisfies readonly Permission[];
+
+export function isHeadOnlyPermission(permission: string): boolean {
+  return (HEAD_ONLY_PERMISSIONS as readonly string[]).includes(permission);
+}
+
 /** Permissions a head can never remove from the head role, or nobody could undo a mistake. */
 export const LOCKED_HEAD_PERMISSIONS = [
   'rbac.manage',

@@ -9,4 +9,5 @@ DROP TABLE IF EXISTS kb_article_org;
 -- The article and version tables reference each other, so they go in one statement. The reject
 -- trigger on versions is dropped with the table (DROP TABLE is not a row mutation).
 DROP TABLE IF EXISTS kb_article, kb_article_version;
+DROP FUNCTION IF EXISTS kb_article_guard_break_glass();
 DROP TABLE IF EXISTS kb_embedding_index;

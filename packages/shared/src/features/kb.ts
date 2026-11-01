@@ -27,6 +27,8 @@ export const KB_AUDIT_ACTIONS = {
   kbArticlePublishBreakGlass: 'kb.article.publish_break_glass',
   /** Another approver reviewed a break-glass publication and cleared its flag. */
   kbArticleBreakGlassReview: 'kb.article.break_glass_review',
+  /** A live article was shown to more people (by someone who did not write it). */
+  kbArticleAudienceWiden: 'kb.article.audience_widen',
 } as const satisfies Record<string, string>;
 
 /** `ticket_event.type` strings written by this feature. */
@@ -192,9 +194,18 @@ export const breakGlassPublishKbArticleSchema = publishKbArticleSchema.extend({
 });
 export type BreakGlassPublishKbArticle = z.infer<typeof breakGlassPublishKbArticleSchema>;
 
+/** What the reviewer saw: which break-glass publication this review is about. */
+export const reviewKbBreakGlassSchema = z.object({
+  /** `breakGlass.at` of the article as the reviewer saw it. A newer break-glass publication is another one (409). */
+  breakGlassAt: z.iso.datetime(),
+});
+export type ReviewKbBreakGlass = z.infer<typeof reviewKbBreakGlassSchema>;
+
 export const kbBreakGlassSchema = z.object({
   /** True until another approver has reviewed the publication. */
   pending: z.boolean(),
+  /** The version number that went live break-glass. */
+  version: z.number().int().nullable(),
   by: z.uuid().nullable(),
   at: z.iso.datetime().nullable(),
   reason: z.string().nullable(),
@@ -218,6 +229,11 @@ export const kbArticleSummarySchema = z.object({
   publishedVersion: z.number().int().nullable(),
   /** True when the latest edit is not the live one yet. */
   hasUnpublishedChanges: z.boolean(),
+  /**
+   * The latest edit was sent for review and waits for an approver. A live article with a newer
+   * version needs this before it can be published (status stays `published`).
+   */
+  reviewRequested: z.boolean(),
   /** The live version was published break-glass and no other approver has reviewed it yet. */
   breakGlassPending: z.boolean(),
   lastVerifiedAt: z.iso.datetime().nullable(),

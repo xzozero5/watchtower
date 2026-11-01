@@ -13,7 +13,7 @@ import {
   type KbTransition,
   type UpdateKbArticle,
 } from '@watchtower/shared';
-import { and, asc, eq, gt } from 'drizzle-orm';
+import { and, asc, eq, gt, lte } from 'drizzle-orm';
 
 import { recordAuditInTx } from '../audit.js';
 import { DomainError, badRequest, conflict, invalidTransition, notFound } from '../errors.js';
@@ -61,6 +61,29 @@ async function lockArticle(tx: DbTransaction, articleId: string) {
     .limit(1);
   if (current === undefined) throw new Error('kb_article points at a version that does not exist');
   return { article, current };
+}
+
+/** True when `userId` wrote a version of the article numbered above `after` (and up to `upTo`, if given). */
+async function wroteVersion(
+  tx: DbTransaction,
+  articleId: string,
+  userId: string,
+  after = 0,
+  upTo?: number,
+): Promise<boolean> {
+  const rows = await tx
+    .select({ id: schema.kbArticleVersion.id })
+    .from(schema.kbArticleVersion)
+    .where(
+      and(
+        eq(schema.kbArticleVersion.articleId, articleId),
+        gt(schema.kbArticleVersion.version, after),
+        upTo === undefined ? undefined : lte(schema.kbArticleVersion.version, upTo),
+        eq(schema.kbArticleVersion.createdBy, userId),
+      ),
+    )
+    .limit(1);
+  return rows.length > 0;
 }
 
 async function orgIdsOf(tx: DbTransaction, articleId: string): Promise<string[]> {
@@ -234,6 +257,24 @@ export async function updateKbArticle(
     );
   }
 
+  // A live article reaches more people at once, with no publication to put a second pair of eyes
+  // on it. So the person who wrote it cannot do it alone: somebody who wrote none of its versions
+  // must. (Narrowing is the safe direction and stays immediate.)
+  const wideningLive =
+    audienceChanged &&
+    article.status === 'published' &&
+    audienceWidens(
+      { visibility: article.visibility as KbVisibility, orgIds: oldOrgs },
+      { visibility, orgIds: orgs },
+    );
+  if (wideningLive && ctx.actor.id !== null && (await wroteVersion(tx, article.id, ctx.actor.id))) {
+    throw new DomainError(
+      'policy_denied',
+      'You wrote this article, so another approver has to show it to more people',
+      { reason: 'kb_audience_widen_by_author' },
+    );
+  }
+
   const intentTags = patch.intentTags ?? article.intentTags;
   const sources = patch.sources ?? article.sources;
   const kind = patch.kind ?? (article.kind as KbKind);
@@ -290,7 +331,7 @@ export async function updateKbArticle(
     .where(eq(schema.kbArticle.id, article.id));
 
   await recordAuditInTx(tx, ctx, fx, {
-    action: AUDIT_ACTIONS.kbArticleUpdate,
+    action: wideningLive ? AUDIT_ACTIONS.kbArticleAudienceWiden : AUDIT_ACTIONS.kbArticleUpdate,
     targetType: 'kb_article',
     targetId: article.id,
     before: { version: current.version, visibility: article.visibility, orgIds: oldOrgs },
@@ -324,6 +365,38 @@ export async function transitionKbArticle(
       changed: false,
     });
   }
+  if (from === 'published' && input.to === 'in_review') {
+    // A live article stays live (and searchable) while its newer version is reviewed.
+    if (article.publishedVersionId === current.id) {
+      throw invalidTransition('There is no newer version to review');
+    }
+    if (article.reviewVersionId === current.id) {
+      return fx.result({
+        articleId: article.id,
+        version: current.version,
+        versionId: current.id,
+        changed: false,
+      });
+    }
+    await tx
+      .update(schema.kbArticle)
+      .set({ reviewVersionId: current.id, updatedAt: ctx.now() })
+      .where(eq(schema.kbArticle.id, article.id));
+    await recordAuditInTx(tx, ctx, fx, {
+      action: AUDIT_ACTIONS.kbArticleStatus,
+      targetType: 'kb_article',
+      targetId: article.id,
+      before: { status: from, reviewVersionId: article.reviewVersionId },
+      after: { status: from, reviewVersionId: current.id },
+      metadata: { reviewRequested: true, version: current.version },
+    });
+    return fx.result({
+      articleId: article.id,
+      version: current.version,
+      versionId: current.id,
+      changed: true,
+    });
+  }
   if (!canMove(from, input.to)) {
     throw invalidTransition(`An article cannot go from ${from} to ${input.to}`);
   }
@@ -331,6 +404,7 @@ export async function transitionKbArticle(
     .update(schema.kbArticle)
     .set({
       status: input.to,
+      reviewVersionId: null,
       // A deprecated article has no live version; the text stays in its history.
       ...(input.to === 'deprecated' ? { publishedVersionId: null } : {}),
       updatedAt: ctx.now(),
@@ -420,32 +494,27 @@ async function publishWith(
     });
   }
 
+  const [live] =
+    article.publishedVersionId === null
+      ? []
+      : await tx
+          .select({ version: schema.kbArticleVersion.version })
+          .from(schema.kbArticleVersion)
+          .where(eq(schema.kbArticleVersion.id, article.publishedVersionId))
+          .limit(1);
+  const liveVersion = live?.version ?? 0;
+
   if (mode.kind === 'normal') {
-    // Two people: it must have been sent for review (a published article with a newer version is
-    // already waiting for one), and the publisher wrote none of the text that goes live.
-    if (article.status !== 'in_review' && article.status !== 'published') {
-      throw invalidTransition('Send the article for review before it is published');
+    // Two people: the version must have been sent for review (a draft is `in_review`; a live
+    // article names the version sent in `review_version_id`), and the publisher wrote none of the
+    // text that goes live.
+    const sentForReview =
+      article.status === 'in_review' ||
+      (article.status === 'published' && article.reviewVersionId === current.id);
+    if (!sentForReview) {
+      throw invalidTransition('Send this version for review before it is published');
     }
-    const [live] =
-      article.publishedVersionId === null
-        ? []
-        : await tx
-            .select({ version: schema.kbArticleVersion.version })
-            .from(schema.kbArticleVersion)
-            .where(eq(schema.kbArticleVersion.id, article.publishedVersionId))
-            .limit(1);
-    const written = await tx
-      .select({ id: schema.kbArticleVersion.id })
-      .from(schema.kbArticleVersion)
-      .where(
-        and(
-          eq(schema.kbArticleVersion.articleId, article.id),
-          gt(schema.kbArticleVersion.version, live?.version ?? 0),
-          eq(schema.kbArticleVersion.createdBy, publisherId),
-        ),
-      )
-      .limit(1);
-    if (written.length > 0) {
+    if (await wroteVersion(tx, article.id, publisherId, liveVersion)) {
       throw new DomainError(
         'policy_denied',
         'You wrote part of this text, so another approver has to publish it',
@@ -473,8 +542,12 @@ async function publishWith(
       publishedVersionId: current.id,
       publishedAt: now,
       reviewerId: publisherId,
+      reviewVersionId: null,
       updatedAt: now,
       ...breakGlass,
+      ...(mode.kind === 'break_glass'
+        ? { breakGlassVersionId: current.id, breakGlassPrevVersion: liveVersion }
+        : {}),
     })
     .where(eq(schema.kbArticle.id, article.id));
   await enqueueEmbed(tx, ctx, article.id, current.id);
@@ -533,6 +606,8 @@ export function publishKbArticleBreakGlass(
 
 export interface ReviewKbBreakGlassInput {
   readonly articleId: string;
+  /** `breakGlassAt` of the publication the reviewer looked at. A newer one is a different publication. */
+  readonly breakGlassAt: Date;
 }
 
 /**
@@ -550,11 +625,42 @@ export async function reviewKbBreakGlass(
   if (!article.breakGlassPending) {
     throw conflict('This article has no break-glass publication to review');
   }
+  if (article.breakGlassAt?.getTime() !== input.breakGlassAt.getTime()) {
+    throw conflict(
+      'The break-glass publication changed since you looked at it; look at the latest one',
+    );
+  }
   if (article.breakGlassBy === reviewerId) {
     throw new DomainError(
       'policy_denied',
       'You published this break-glass, so another approver has to review it',
       { reason: 'kb_review_is_publisher' },
+    );
+  }
+  // Nor can somebody who wrote any of the text that went live, which is every version after the one
+  // that was live before, up to the break-glass one.
+  const [published] =
+    article.breakGlassVersionId === null
+      ? []
+      : await tx
+          .select({ version: schema.kbArticleVersion.version })
+          .from(schema.kbArticleVersion)
+          .where(eq(schema.kbArticleVersion.id, article.breakGlassVersionId))
+          .limit(1);
+  if (
+    published !== undefined &&
+    (await wroteVersion(
+      tx,
+      article.id,
+      reviewerId,
+      article.breakGlassPrevVersion ?? 0,
+      published.version,
+    ))
+  ) {
+    throw new DomainError(
+      'policy_denied',
+      'You wrote part of the text that went live, so another approver has to review it',
+      { reason: 'kb_reviewer_is_author' },
     );
   }
   const now = ctx.now();

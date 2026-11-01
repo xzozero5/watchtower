@@ -61,6 +61,10 @@ CREATE TABLE kb_article (
   current_version_id uuid NOT NULL,
   published_version_id uuid,
   published_at timestamptz,
+  -- The version an author sent for review while the article is live (status stays 'published', so
+  -- search keeps the live text). A normal publication of a newer version needs this to be that
+  -- version; an edit after it makes it stale. Draft articles use status 'in_review' instead.
+  review_version_id uuid,
   -- Break-glass publishing (po decision, segregation of duties): the head published without a
   -- second person, with a reason. The flag stays up until another approver reviews it. The reason is
   -- also in the audit log; it is kept here so the review queue can show it.
@@ -68,6 +72,10 @@ CREATE TABLE kb_article (
   break_glass_by uuid,
   break_glass_at timestamptz,
   break_glass_reason text,
+  -- The version that went live break-glass, and the number of the version that was live before it
+  -- (0: none). The reviewer must not have written any version after the second up to the first.
+  break_glass_version_id uuid,
+  break_glass_prev_version integer,
   break_glass_reviewed_by uuid,
   break_glass_reviewed_at timestamptz,
   created_at timestamptz NOT NULL DEFAULT now(),
@@ -161,6 +169,44 @@ CREATE UNIQUE INDEX kb_chunk_position_key ON kb_chunk (version_id, ordinal);
 CREATE INDEX kb_chunk_article_idx ON kb_chunk (article_id);
 CREATE INDEX kb_chunk_index_idx ON kb_chunk (embedding_index_id) WHERE embedding_index_id IS NOT NULL;
 CREATE INDEX kb_chunk_text_trgm_idx ON kb_chunk USING gin (text gin_trgm_ops);
+
+-- Break-glass bookkeeping cannot be edited around the domain: the flag drops only with a reviewer
+-- who is somebody else than the publisher, and who, how, when and why are frozen while it is up,
+-- unless a newer break-glass publication replaces it (a later time and a different live version).
+CREATE FUNCTION kb_article_guard_break_glass() RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  IF OLD.break_glass_pending THEN
+    IF NOT NEW.break_glass_pending THEN
+      IF NEW.break_glass_reviewed_by IS NULL OR NEW.break_glass_reviewed_at IS NULL
+         OR NEW.break_glass_reviewed_by = OLD.break_glass_by THEN
+        RAISE EXCEPTION 'a break-glass flag is cleared by a review from somebody else than its publisher'
+          USING ERRCODE = 'check_violation';
+      END IF;
+      IF NEW.break_glass_by IS DISTINCT FROM OLD.break_glass_by
+         OR NEW.break_glass_at IS DISTINCT FROM OLD.break_glass_at
+         OR NEW.break_glass_reason IS DISTINCT FROM OLD.break_glass_reason THEN
+        RAISE EXCEPTION 'break-glass history cannot change while it is reviewed'
+          USING ERRCODE = 'check_violation';
+      END IF;
+    ELSIF (NEW.break_glass_by IS DISTINCT FROM OLD.break_glass_by
+        OR NEW.break_glass_at IS DISTINCT FROM OLD.break_glass_at
+        OR NEW.break_glass_reason IS DISTINCT FROM OLD.break_glass_reason
+        OR NEW.break_glass_version_id IS DISTINCT FROM OLD.break_glass_version_id
+        OR NEW.break_glass_prev_version IS DISTINCT FROM OLD.break_glass_prev_version)
+       AND (NEW.published_version_id IS NOT DISTINCT FROM OLD.published_version_id
+         OR NEW.break_glass_at IS NULL OR NEW.break_glass_at <= OLD.break_glass_at) THEN
+      RAISE EXCEPTION 'break-glass history is frozen while the publication waits for a review'
+        USING ERRCODE = 'check_violation';
+    END IF;
+  END IF;
+  RETURN NEW;
+END
+$$;
+CREATE TRIGGER kb_article_guard_break_glass
+  BEFORE UPDATE ON kb_article
+  FOR EACH ROW EXECUTE FUNCTION kb_article_guard_break_glass();
 
 -- A vector must have the dimensions its index says; a mismatch would make every distance fail.
 CREATE FUNCTION kb_chunk_check_embedding() RETURNS trigger
