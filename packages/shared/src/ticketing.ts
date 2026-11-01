@@ -472,6 +472,11 @@ export const replySchema = z.object({
    * reply is the sender's own text.
    */
   aiDraftId: z.uuid().optional(),
+  /**
+   * Staff only: the AI draft this reply started from. The body is the person's own text; the server
+   * records the draft as edited with the distance between the two (T-108c). Not with `aiDraftId`.
+   */
+  editedFromDraftId: z.uuid().optional(),
 });
 export type Reply = z.infer<typeof replySchema>;
 
