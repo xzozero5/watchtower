@@ -1,12 +1,15 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { orgScopeCondition, schema, type Database } from '@watchtower/db';
-import type {
-  CreateOrganization,
-  OrgScope,
-  Organization,
-  OrganizationListQuery,
-  OrgTierRecord,
-  UpdateOrganization,
+import {
+  DEFAULT_ORG_TIER,
+  type CreateOrgTier,
+  type CreateOrganization,
+  type OrgScope,
+  type Organization,
+  type OrganizationListQuery,
+  type OrgTierRecord,
+  type UpdateOrgTier,
+  type UpdateOrganization,
 } from '@watchtower/shared';
 import { and, asc, count, desc, eq, ilike, inArray, sql } from 'drizzle-orm';
 
@@ -123,6 +126,85 @@ export class OrganizationsService {
       .from(schema.orgTier)
       .orderBy(asc(schema.orgTier.sortOrder), asc(schema.orgTier.slug));
     return rows.map((row) => ({ slug: row.slug, name: row.name, sortOrder: row.sortOrder }));
+  }
+
+  /** Adds a tier (T-121b). A slug is what organizations and SLA policies name, so it is unique. */
+  async createTier(input: CreateOrgTier): Promise<OrgTierRecord> {
+    try {
+      const [row] = await this.database.db
+        .insert(schema.orgTier)
+        .values({ slug: input.slug, name: input.name, sortOrder: input.sortOrder })
+        .returning();
+      if (!row) throw new Error('org_tier insert returned no row');
+      const record = { slug: row.slug, name: row.name, sortOrder: row.sortOrder };
+      AuditScope.set({ targetType: 'org_tier', targetId: row.slug, after: record });
+      return record;
+    } catch (error) {
+      if (isPgError(error, PG.uniqueViolation)) throw conflict('That tier already exists');
+      throw error;
+    }
+  }
+
+  /**
+   * Renames or reorders a tier. A new slug is followed by every organization and SLA policy that names
+   * it (the database cascades it). The default tier keeps its slug: new organizations start in it.
+   */
+  async updateTier(slug: string, patch: UpdateOrgTier): Promise<OrgTierRecord> {
+    const [before] = await this.database.db
+      .select()
+      .from(schema.orgTier)
+      .where(eq(schema.orgTier.slug, slug))
+      .limit(1);
+    if (!before) throw notFound('No such tier');
+    const beforeRecord = { slug: before.slug, name: before.name, sortOrder: before.sortOrder };
+    AuditScope.set({ targetType: 'org_tier', targetId: slug, before: beforeRecord });
+    if (patch.slug !== undefined && patch.slug !== slug && slug === DEFAULT_ORG_TIER) {
+      throw conflict(`The default tier "${DEFAULT_ORG_TIER}" keeps its slug; rename its display name instead`);
+    }
+    try {
+      const [row] = await this.database.db
+        .update(schema.orgTier)
+        .set({
+          ...(patch.slug === undefined ? {} : { slug: patch.slug }),
+          ...(patch.name === undefined ? {} : { name: patch.name }),
+          ...(patch.sortOrder === undefined ? {} : { sortOrder: patch.sortOrder }),
+        })
+        .where(eq(schema.orgTier.slug, slug))
+        .returning();
+      if (!row) throw notFound('No such tier');
+      const record = { slug: row.slug, name: row.name, sortOrder: row.sortOrder };
+      AuditScope.set({ targetId: row.slug, after: record });
+      return record;
+    } catch (error) {
+      if (isPgError(error, PG.uniqueViolation)) throw conflict('That tier already exists');
+      throw error;
+    }
+  }
+
+  /** Removes a tier nobody uses: refused (409) while an organization or an SLA policy still names it. */
+  async deleteTier(slug: string): Promise<void> {
+    const [before] = await this.database.db
+      .select()
+      .from(schema.orgTier)
+      .where(eq(schema.orgTier.slug, slug))
+      .limit(1);
+    if (!before) throw notFound('No such tier');
+    AuditScope.set({
+      targetType: 'org_tier',
+      targetId: slug,
+      before: { slug: before.slug, name: before.name, sortOrder: before.sortOrder },
+    });
+    if (slug === DEFAULT_ORG_TIER) {
+      throw conflict(`The default tier "${DEFAULT_ORG_TIER}" cannot be deleted: new organizations start in it`);
+    }
+    try {
+      await this.database.db.delete(schema.orgTier).where(eq(schema.orgTier.slug, slug));
+    } catch (error) {
+      if (isPgError(error, PG.foreignKeyViolation)) {
+        throw conflict('An organization or an SLA policy still uses this tier');
+      }
+      throw error;
+    }
   }
 
   async get(id: string, principal: Principal): Promise<Organization> {
