@@ -52,5 +52,3 @@ export const notificationsEn = {
     tabPrefix: '(P1)',
   },
 } as const;
-
-type Widen<T> = T extends string ? string : { [K in keyof T]: Widen<T[K]> };
