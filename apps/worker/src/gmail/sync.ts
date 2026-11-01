@@ -4,6 +4,7 @@ import { recordAuditInTx, type Domain } from '@watchtower/domain';
 import {
   AUDIT_ACTIONS,
   GMAIL_JOBS,
+  GMAIL_NOT_CONNECTED_CODE,
   GMAIL_QUEUES,
   GMAIL_SYNC_OUTBOX_JOB_OPTIONS,
   INBOUND_QUEUES,
@@ -14,6 +15,7 @@ import {
 import { and, eq, sql } from 'drizzle-orm';
 
 import type { WorkerLogger } from '../logger.js';
+import { isInvalidGrant } from './not-connected.js';
 import type { GmailRuntime } from './runtime.js';
 
 /**
@@ -342,7 +344,11 @@ export function createGmailSync(deps: GmailSyncDeps): GmailSync {
       } catch (error) {
         await record(
           accountId,
-          error instanceof ChannelError ? `channel_${error.kind}` : 'sync_error',
+          isInvalidGrant(error)
+            ? GMAIL_NOT_CONNECTED_CODE
+            : error instanceof ChannelError
+              ? `channel_${error.kind}`
+              : 'sync_error',
         ).catch(() => undefined);
         throw error;
       }

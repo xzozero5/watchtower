@@ -106,7 +106,8 @@ export async function startWorker(
   const ai = createAiRuntime(config, database, logger, overrides.ai);
 
   // How Gmail mailboxes are reached (T-102): the in-memory fake unless the `gmail` credential is complete.
-  const gmailRuntime = overrides.gmail?.runtime ?? defaultGmailRuntime(config, database, logger);
+  const gmailRuntime =
+    overrides.gmail?.runtime ?? defaultGmailRuntime(config, database, logger, domain);
 
   const consumers: Worker[] = [];
   const consume = (queue: QueueName, processor: Processor, concurrency?: number): Worker => {

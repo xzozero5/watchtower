@@ -22,9 +22,13 @@ import {
  *    and a developer's machine runs. Without the opt-in the same situation yields no transport and no
  *    sender (`channel_not_connected`), and an unreadable credential store is a retryable error.
  *  - live (the `gmail` integration is complete in the credential store): a `LiveGmailTransport`
- *    over `fetch` with a service-account token (domain-wide delegation, `service-account.ts`), for
- *    the ONE mailbox the credential names (ADR-012: credentials are not per mailbox yet, T-102e).
+ *    over `fetch` with either an OAuth refresh token (the default, T-102e; `gmail.createOAuthTokenProvider`)
+ *    or a service-account token (domain-wide delegation, `service-account.ts`); which one is decided
+ *    by the credential source (`chooseGmailMethod`: environment beats database, then OAuth). It reaches
+ *    the ONE mailbox the credential names (ADR-012: credentials are not per mailbox yet).
  *    A mailbox that is not that one gets no transport (`undefined`), so its jobs fail visibly.
+ *    A refresh token Google refuses (`invalid_grant`) is a failure of operation `oauth2.token`, the
+ *    mailbox is marked not connected (`onNotConnected`), and nothing falls back to the mock.
  *
  * Sending as the mailbox: the `From` address is the address in `gmail_account_state` (R-2.4); the
  * display name is left to the mail client until send-as settings exist (T-102e) `[ASSUMED]`.
@@ -32,11 +36,25 @@ import {
 
 export type GmailMode = 'mock' | 'live';
 
+/** OAuth of the support mailbox (T-102e, the default): a client and the refresh token a head granted. */
+export interface OAuthGmailCredentials extends gmail.OAuthMailboxCredentials {
+  readonly method: 'oauth';
+  /** The address the grant belongs to (checked against Google when it was connected). */
+  readonly mailbox: string;
+}
+
+/** Service account with domain-wide delegation (an option). `method` may be left out: it is the older shape. */
+export interface ServiceAccountGmailCredentials extends ServiceAccountCredentials {
+  readonly method?: 'service_account';
+}
+
+export type GmailCredentials = OAuthGmailCredentials | ServiceAccountGmailCredentials;
+
 export interface GmailCredentialSource {
-  /** Is the `gmail` integration complete? (status only; nothing is decrypted). */
+  /** Is the `gmail` integration complete (either way)? (status only; nothing is decrypted). */
   configured(): Promise<boolean>;
-  /** The values in effect. Only called in live mode. */
-  read(): Promise<ServiceAccountCredentials>;
+  /** The values of the way in effect (`chooseGmailMethod`). Only called in live mode. */
+  read(): Promise<GmailCredentials>;
 }
 
 export interface GmailRuntime {
@@ -64,6 +82,13 @@ export interface GmailRuntimeDeps {
   readonly now?: () => number;
   /** How long a mode decision and a live transport are kept before the credentials are looked at again. */
   readonly refreshMs?: number;
+  /**
+   * OAuth only: Google answered `invalid_grant` for this mailbox's refresh token (revoked, expired,
+   * password changed, consent screen in "Testing"...). Mark the mailbox not connected where a person
+   * can see it (health, audit). Awaited, its errors are ignored; it must be idempotent (every retry
+   * of every job calls it again). The failure itself still reaches the caller as a `ChannelError`.
+   */
+  readonly onNotConnected?: (accountId: string) => Promise<void>;
 }
 
 const DEFAULT_REFRESH_MS = 60_000;
@@ -141,22 +166,37 @@ export function createMockGmailRuntime(
 }
 
 /** Sha-256 of what the credential says; kept in memory to tell "the same key" from "a rotated key". Never logged. */
-function fingerprintOf(
-  credentials: ServiceAccountCredentials,
-  address: string | undefined,
-): string {
-  return (
-    createHash('sha256')
+function fingerprintOf(credentials: GmailCredentials, address: string | undefined): string {
+  const hash = createHash('sha256');
+  if (credentials.method === 'oauth') {
+    hash
+      .update('oauth\0')
+      .update(credentials.clientId)
+      .update('\0')
+      .update(credentials.clientSecret)
+      .update('\0')
+      .update(credentials.refreshToken)
+      .update('\0')
+      .update(credentials.mailbox.trim().toLowerCase());
+  } else {
+    hash
       .update(credentials.serviceAccountJson)
       .update('\0')
-      .update(credentials.impersonateUser.trim().toLowerCase())
-      .update('\0')
-      // The mailbox of the account is part of the key: a changed address, or one that was missing or
-      // wrong when the transport was decided, is looked at again instead of being remembered.
-      .update(address ?? '')
-      .digest('hex')
-  );
+      .update(credentials.impersonateUser.trim().toLowerCase());
+  }
+  // The mailbox of the account is part of the key: a changed address, or one that was missing or
+  // wrong when the transport was decided, is looked at again instead of being remembered.
+  return hash
+    .update('\0')
+    .update(address ?? '')
+    .digest('hex');
 }
+
+/** The mailbox a credential reaches: the delegated user, or the address the OAuth grant belongs to. */
+const mailboxOfCredentials = (credentials: GmailCredentials): string =>
+  (credentials.method === 'oauth' ? credentials.mailbox : credentials.impersonateUser)
+    .trim()
+    .toLowerCase();
 
 const unavailable = (operation: string): ChannelError =>
   // Retryable on purpose (kind `server`): a credential store that cannot be read is a glitch, not a verdict.
@@ -241,16 +281,41 @@ export function createGmailRuntime(deps: GmailRuntimeDeps): GmailRuntime {
         live.set(accountId, { ...cached, at: now() });
         return cached.transport;
       }
-      const delegated = credentials.impersonateUser.trim().toLowerCase();
-      if (address !== undefined && address === delegated) {
+      if (address !== undefined && address === mailboxOfCredentials(credentials)) {
         const send = deps.fetch ?? ((input, init) => fetch(input, init));
         transport = new gmail.LiveGmailTransport({
           fetch: send,
-          getAccessToken: createServiceAccountTokenProvider({
-            readCredentials: () => source.read(),
-            fetch: send,
-            now,
-          }),
+          getAccessToken:
+            credentials.method === 'oauth'
+              ? gmail.createOAuthTokenProvider({
+                  // Read again at every mint, so a refresh token that was replaced is used at once.
+                  readCredentials: async () => {
+                    const current = await source.read();
+                    if (current.method !== 'oauth') {
+                      // The way in effect changed under a cached transport: do not mint with the
+                      // wrong kind of credential, look again at the next refresh.
+                      throw new Error('gmail credential method changed');
+                    }
+                    return current;
+                  },
+                  fetch: send,
+                  now,
+                  onInvalidGrant: async () => {
+                    deps.logger.error({ accountId }, 'gmail refresh token refused (invalid_grant)');
+                    await deps.onNotConnected?.(accountId);
+                  },
+                })
+              : createServiceAccountTokenProvider({
+                  readCredentials: async () => {
+                    const current = await source.read();
+                    if (current.method === 'oauth') {
+                      throw new Error('gmail credential method changed');
+                    }
+                    return current;
+                  },
+                  fetch: send,
+                  now,
+                }),
         });
       } else {
         deps.logger.warn(

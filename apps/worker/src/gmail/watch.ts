@@ -5,6 +5,7 @@ import { AUDIT_ACTIONS } from '@watchtower/shared';
 import { eq, sql } from 'drizzle-orm';
 
 import type { WorkerLogger } from '../logger.js';
+import { isInvalidGrant } from './not-connected.js';
 import type { GmailRuntime } from './runtime.js';
 import { watchRequestFor } from './sync.js';
 
@@ -44,6 +45,9 @@ export function createGmailWatch(deps: GmailWatchDeps): GmailWatch {
   const { database, logger } = deps;
 
   async function markFailed(accountId: string, error: unknown): Promise<void> {
+    // The refresh token was refused: the token provider already marked the mailbox not connected
+    // (health, code, one audit entry). A watch failure on top would only bury that reason.
+    if (isInvalidGrant(error)) return;
     const code = error instanceof ChannelError ? `channel_${error.kind}` : 'watch_error';
     const ctx = deps.domain.context({ actor: SYSTEM_ACTOR });
     await database.db.transaction(async (tx) => {
