@@ -1,4 +1,4 @@
-import { MAINTENANCE_JOBS, QUEUE_NAMES, type QueueName } from '@watchtower/shared';
+import { CLEANUP_JOBS, MAINTENANCE_JOBS, QUEUE_NAMES, type QueueName } from '@watchtower/shared';
 import type { JobsOptions, RepeatOptions } from 'bullmq';
 
 export interface ScheduleRegistration {
@@ -36,6 +36,17 @@ export const SCHEDULES: readonly ScheduleRegistration[] = [
       opts: { removeOnComplete: true, removeOnFail: { age: 7 * 24 * 3600 } },
     },
     runAtBoot: true,
+  },
+  {
+    queue: QUEUE_NAMES.cleanup,
+    id: CLEANUP_JOBS.purgeExpired,
+    // Expired sessions, tokens and lockout counters at 03:30 UTC every day, after the partitions.
+    // Not at boot: an install that has just started has nothing worth deleting.
+    repeat: { pattern: '30 3 * * *', tz: 'UTC' },
+    job: {
+      name: CLEANUP_JOBS.purgeExpired,
+      opts: { removeOnComplete: true, removeOnFail: { age: 7 * 24 * 3600 } },
+    },
   },
 
   // --- inbound (T-122) ---

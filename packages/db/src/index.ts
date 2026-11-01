@@ -6,6 +6,30 @@ export {
   scramVerifier,
   type AppRoleOptions,
 } from './app-role.js';
+export {
+  CLEANUP_TARGETS,
+  DEFAULT_AUTH_RETENTION_DAYS,
+  DEFAULT_BREAK_GLASS_RETENTION_DAYS,
+  purgeExpired,
+  type CleanupOptions,
+  type CleanupResult,
+  type CleanupTarget,
+} from './cleanup.js';
+export {
+  CREDENTIAL_ERROR_CODES,
+  CredentialStoreError,
+  createCredentialStore,
+  type CredentialErrorCode,
+  type CredentialExecutor,
+  type CredentialStore,
+  type CredentialStoreOptions,
+  type ResealResult,
+  type ResolveOptions,
+  type RotateOptions,
+  type ResolvedField,
+  type RotateFailure,
+  type RotateResult,
+} from './credentials.js';
 export { createDatabase, type CreateDatabaseOptions, type Database } from './client.js';
 export { PG, isPgError, pgCode, pgConstraint } from './errors.js';
 export {

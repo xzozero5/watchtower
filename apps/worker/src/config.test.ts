@@ -23,6 +23,15 @@ describe('loadConfig', () => {
     );
   });
 
+  it('reads the cleanup retention: defaults 7 and 30 days, break-glass at least 1', () => {
+    const config = loadConfig(testEnv());
+    expect(config.CLEANUP_AUTH_RETENTION_DAYS).toBe(7);
+    expect(config.CLEANUP_BREAK_GLASS_RETENTION_DAYS).toBe(30);
+    expect(() => loadConfig(testEnv({ CLEANUP_BREAK_GLASS_RETENTION_DAYS: '0' }))).toThrow(
+      /CLEANUP_BREAK_GLASS_RETENTION_DAYS/,
+    );
+  });
+
   it('reads the ticket key prefix like the api does: default OPS, upper-cased, validated', () => {
     expect(loadConfig(testEnv()).TICKET_KEY_PREFIX).toBe('OPS');
     expect(loadConfig(testEnv({ TICKET_KEY_PREFIX: 'ops2' })).TICKET_KEY_PREFIX).toBe('OPS2');

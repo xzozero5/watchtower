@@ -2,7 +2,6 @@ import { sql } from 'drizzle-orm';
 import {
   bigint,
   boolean,
-  customType,
   index,
   integer,
   jsonb,
@@ -25,9 +24,6 @@ import { users } from './auth.js';
  */
 
 const timestamptz = (name: string) => timestamp(name, { withTimezone: true, mode: 'date' });
-const bytea = customType<{ data: Buffer; driverData: Buffer }>({
-  dataType: () => 'bytea',
-});
 
 export const businessCalendar = pgTable(
   'business_calendar',
@@ -179,7 +175,6 @@ export const channelAccount = pgTable('channel_account', {
   id: uuid('id').primaryKey().defaultRandom(),
   type: text('type').notNull(),
   name: text('name').notNull(),
-  configEncrypted: bytea('config_encrypted'),
   health: text('health').notNull().default('unknown'),
   quotaUsed: integer('quota_used').notNull().default(0),
   quotaLimit: integer('quota_limit'),
