@@ -22,6 +22,7 @@ import {
   voidOpenSurveys,
 } from './csat/survey.js';
 import { mintCsatToken, verifyCsatToken } from './csat/token.js';
+import { convertInboundMessage } from './inbound/convert.js';
 import { ingestInbound } from './inbound/ingest.js';
 import { resolveIntent } from './intents.js';
 import {
@@ -145,6 +146,11 @@ export {
   type SenderLookup,
   type SenderVia,
 } from './inbound/identity.js';
+export {
+  convertInboundMessage,
+  type ConvertInboundInput,
+  type ConvertInboundOutcome,
+} from './inbound/convert.js';
 export { ingestInbound, ruleClassification, ticketSubject } from './inbound/ingest.js';
 export {
   HEURISTIC_WINDOW_DAYS,
@@ -493,7 +499,11 @@ export interface Domain {
     readonly setUndoSendSeconds: typeof setUndoSendSeconds;
   };
   /** Received messages (ADR-009): used by the worker's `ingest` consumer. */
-  readonly inbound: { readonly ingest: typeof ingestInbound };
+  readonly inbound: {
+    readonly ingest: typeof ingestInbound;
+    /** A person turns a message from Other mail into a ticket (T-119). */
+    readonly convert: typeof convertInboundMessage;
+  };
   /** Who is behind a LINE user id: link codes and LINE Login (T-103d, R-2.11). */
   readonly identity: {
     readonly issueLineLinkCode: typeof issueLineLinkCode;
@@ -592,7 +602,7 @@ export function createDomain(options: DomainOptions): Domain {
       readSettings: readOutboundSettings,
       setUndoSendSeconds,
     },
-    inbound: { ingest: ingestInbound },
+    inbound: { ingest: ingestInbound, convert: convertInboundMessage },
     identity: { issueLineLinkCode, redeemLineLinkCode, linkLineUser },
     csat: {
       schedule: scheduleSurvey,
