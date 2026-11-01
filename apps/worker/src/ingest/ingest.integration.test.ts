@@ -292,13 +292,9 @@ describe('ingest queue: an event becomes a ticket', () => {
       const mine = received.filter(
         (candidate) =>
           candidate.type !== 'notification.created' &&
-<<<<<<< HEAD
           candidate.type !== 'alert.updated' &&
-          candidate.ticketId === ticket?.id,
-=======
           candidate.ticketId === ticket?.id &&
           !(candidate.type === 'ticket.updated' && candidate.data.changed.join() === 'ai'),
->>>>>>> origin/main
       );
       return mine.length >= 2 ? mine : undefined;
     });
