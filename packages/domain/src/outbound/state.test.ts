@@ -91,10 +91,11 @@ describe('retry or give up', () => {
     expect(decideFailure(limited, { route: 'gmail_thread', attempts: 1 })).toEqual({
       action: 'retry',
       delaySeconds: 2,
+      errorCode: 'channel_rate_limited',
     });
     expect(
       decideFailure({ ...limited, retryAfterMs: 90_000 }, { route: 'gmail_thread', attempts: 1 }),
-    ).toEqual({ action: 'retry', delaySeconds: 90 });
+    ).toEqual({ action: 'retry', delaySeconds: 90, errorCode: 'channel_rate_limited' });
   });
 
   it('gives up after five attempts, even for a push', () => {

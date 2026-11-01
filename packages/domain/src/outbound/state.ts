@@ -57,7 +57,15 @@ export interface FailureFacts {
 }
 
 export type FailureDecision =
-  | { readonly action: 'retry'; readonly delaySeconds: number }
+  | {
+      readonly action: 'retry';
+      readonly delaySeconds: number;
+      /**
+       * Why this attempt did not go through (`channel_<kind>`). Stored on the row: the database lets a
+       * delivery that reached the provider go back to `scheduled` only with a refusal on record.
+       */
+      readonly errorCode?: string;
+    }
   | {
       readonly action: 'fail';
       readonly errorCode: string;
@@ -89,12 +97,23 @@ export function decideFailure(
 
   if (facts.outcomeUnknown) {
     if (hasIdempotencyKey(context.route) && !exhausted) {
-      return { action: 'retry', delaySeconds: delay() };
+      return { action: 'retry', delaySeconds: delay(), errorCode: code };
     }
     return { action: 'fail', errorCode: code, outcomeUnknown: true };
   }
-  if (facts.retryable && !exhausted) return { action: 'retry', delaySeconds: delay() };
+  if (facts.retryable && !exhausted) {
+    return { action: 'retry', delaySeconds: delay(), errorCode: code };
+  }
   return { action: 'fail', errorCode: code, outcomeUnknown: false };
+}
+
+/**
+ * True when the LINE retry key of a delivery may no longer be remembered by LINE. The key is first sent
+ * with the first push, which is never before the delivery was created, so the age of the row is a safe
+ * (early) upper bound for the age of the key.
+ */
+export function retryKeyExpired(createdAt: Date, now: Date, maxAgeSeconds: number): boolean {
+  return now.getTime() - createdAt.getTime() >= maxAgeSeconds * 1000;
 }
 
 /**

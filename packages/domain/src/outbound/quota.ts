@@ -62,3 +62,20 @@ export async function moveQuota(
       ),
     );
 }
+
+/**
+ * Billing month `YYYY-MM` of a counter row in the instance's business zone (Bangkok, `[VERIFY]` whether
+ * LINE counts in it). The worker passes `line.quotaPeriod` from `packages/channels`, which this package
+ * does not import; this default keeps the domain usable alone.
+ */
+export function billingPeriod(date: Date): string {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Bangkok',
+    year: 'numeric',
+    month: '2-digit',
+  }).formatToParts(date);
+  const year = parts.find((part) => part.type === 'year')?.value;
+  const month = parts.find((part) => part.type === 'month')?.value;
+  if (year === undefined || month === undefined) throw new Error('cannot format quota period');
+  return `${year}-${month}`;
+}
