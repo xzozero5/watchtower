@@ -87,7 +87,13 @@ function scripted(steps: Step[] = []) {
   const requests: { url: string; body: Record<string, unknown> }[] = [];
   const queue = [...steps];
   const fetch: FetchLike = (url, init) => {
-    requests.push({ url, body: JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown> });
+    requests.push({
+      url,
+      body: JSON.parse(typeof init?.body === 'string' ? init.body : '{}') as Record<
+        string,
+        unknown
+      >,
+    });
     const step = queue.shift() ?? created();
     return step instanceof Error ? Promise.reject(step) : Promise.resolve(step);
   };
@@ -483,9 +489,9 @@ describe('processor', () => {
   });
 
   it('works from what the domain queued when a ticket is created', async () => {
-    const created = await domain.context({ actor: { type: 'system', id: null } });
+    const ctx = domain.context({ actor: { type: 'system', id: null } });
     const { value } = await database.db.transaction((tx) =>
-      domain.tickets.create(tx, created, { orgId, subject: 'Hello', body: 'Body text' }),
+      domain.tickets.create(tx, ctx, { orgId, subject: 'Hello', body: 'Body text' }),
     );
     const [queued] = await owner()
       .select()
