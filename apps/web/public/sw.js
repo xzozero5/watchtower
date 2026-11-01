@@ -7,8 +7,8 @@
  *    Page HTML is never cached: it depends on who is signed in.
  *  - Build output under /_next/static/ is content-hashed, so it is cached first and for good.
  *    The logo files are refreshed in the background.
- *  - The public client portal is never touched: /portal pages (HTML and the data requests behind
- *    them) and /v1/ api paths on this origin pass straight through, so a tracking page, a ticket
+ *  - The public client portal and the CSAT survey page are never touched: /portal and /csat
+ *    pages (HTML and the data requests behind them) and /v1/ api paths on this origin pass straight through, so a tracking page, a ticket
  *    number or a reply is never stored here and never answered from a cache (T-007).
  *  - No push, no background sync, no calls to any host of its own.
  */
@@ -16,7 +16,7 @@
 const CACHE = 'wt-static-v1';
 const OFFLINE_URL = '/offline.html';
 // Paths this worker must never handle, cache or answer. A path matches itself and everything below.
-const NEVER_HANDLE = ['/portal', '/v1'];
+const NEVER_HANDLE = ['/portal', '/csat', '/v1'];
 
 function neverHandle(pathname) {
   return NEVER_HANDLE.some((base) => pathname === base || pathname.startsWith(base + '/'));

@@ -129,4 +129,14 @@ describe('next.config headers()', () => {
       'no-store',
     );
   });
+
+  it('never caches the public portal or the CSAT survey page and never sends a Referer from them', async () => {
+    const rules = await config.headers?.();
+    for (const source of ['/portal/:path*', '/csat/:path*']) {
+      const rule = rules?.find((entry) => entry.source === source);
+      const byKey = new Map(rule?.headers.map((header) => [header.key, header.value]));
+      expect(byKey.get('Cache-Control'), source).toBe('no-store');
+      expect(byKey.get('Referrer-Policy'), source).toBe('no-referrer');
+    }
+  });
 });

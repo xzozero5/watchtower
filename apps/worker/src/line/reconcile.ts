@@ -3,7 +3,7 @@ import type { Database } from '@watchtower/db';
 import { schema } from '@watchtower/db';
 import { lockQuota } from '@watchtower/domain';
 import { AUDIT_ACTIONS } from '@watchtower/shared';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, isNull } from 'drizzle-orm';
 
 import type { WorkerLogger } from '../logger.js';
 import type { LineTransportFor } from './transports.js';
@@ -81,7 +81,7 @@ export function createQuotaReconciler(deps: ReconcileDeps) {
     const accounts = await deps.database.db
       .select({ id: schema.channelAccount.id, type: schema.channelAccount.type })
       .from(schema.channelAccount)
-      .where(eq(schema.channelAccount.type, 'line'));
+      .where(and(eq(schema.channelAccount.type, 'line'), isNull(schema.channelAccount.disabledAt)));
     let reconciled = 0;
     let skipped = 0;
     let failed = 0;

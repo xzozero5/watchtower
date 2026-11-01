@@ -10,6 +10,7 @@ import type { AiOverrides, AiRuntime } from '../ai/runtime.js';
 import { createGmailRegistration, type GmailOverrides } from '../gmail/index.js';
 import type { GmailRuntime } from '../gmail/runtime.js';
 import { createDiscordRegistration, type DiscordOverrides } from '../discord/index.js';
+import { createCsatRegistration } from '../csat/index.js';
 import { createIngestRegistration, type IngestOverrides } from '../ingest/index.js';
 import type { WorkerLogger } from '../logger.js';
 import { createLineRegistration } from '../line/index.js';
@@ -122,6 +123,7 @@ export const PROCESSORS: readonly ProcessorRegistration[] = [
   },
 
   // --- csat (T-110) ---
+  { queue: QUEUE_NAMES.csat, create: createCsatRegistration, concurrency: 1 },
 
   // --- shifts (T-111) ---
 

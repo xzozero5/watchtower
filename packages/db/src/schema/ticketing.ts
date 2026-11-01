@@ -190,6 +190,8 @@ export const channelAccount = pgTable('channel_account', {
   health: text('health').notNull().default('unknown'),
   quotaUsed: integer('quota_used').notNull().default(0),
   quotaLimit: integer('quota_limit'),
+  /** Null while in use; set when an administrator switched the account off (migration 0030). */
+  disabledAt: timestamptz('disabled_at'),
   createdAt: timestamptz('created_at').notNull().defaultNow(),
   updatedAt: timestamptz('updated_at').notNull().defaultNow(),
 });

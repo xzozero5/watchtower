@@ -1,7 +1,7 @@
 /**
  * English copy of the AI-first workspace (T-128): the AI brief, the draft with approve / edit /
- * reject, the evidence tab and the AI state chips. Kept in its own file, like the portal's, and
- * merged into the catalogue by one line in en.ts. ai.th.ts must have the same keys.
+ * reject, the evidence tab and the AI state chips. One file per namespace, wired in by a line in index.ts.
+ * ../th/ai.ts must have the same keys.
  */
 export const aiEn = {
   paused: 'AI paused by {name} at {time} — replies are manual.',
@@ -110,7 +110,3 @@ export const aiEn = {
     noteShort: 'Note',
   },
 } as const;
-
-type Widen<T> = T extends string ? string : { [K in keyof T]: Widen<T[K]> };
-
-export type AiMessages = Widen<typeof aiEn>;

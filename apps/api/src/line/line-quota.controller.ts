@@ -3,7 +3,7 @@ import { ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { line } from '@watchtower/channels';
 import { schema, type Database } from '@watchtower/db';
 import { lineQuotaSchema, type LineQuota } from '@watchtower/shared';
-import { eq } from 'drizzle-orm';
+import { and, eq, isNull } from 'drizzle-orm';
 
 import { RequirePermission } from '../auth/decorators.js';
 import { parseResponse } from '../common/zod-openapi.js';
@@ -37,7 +37,7 @@ export class LineQuotaController {
         name: schema.channelAccount.name,
       })
       .from(schema.channelAccount)
-      .where(eq(schema.channelAccount.type, 'line'));
+      .where(and(eq(schema.channelAccount.type, 'line'), isNull(schema.channelAccount.disabledAt)));
     const usage = await this.database.db
       .select()
       .from(schema.channelQuotaUsage)

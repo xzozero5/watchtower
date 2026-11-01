@@ -201,6 +201,8 @@ describe('service worker', () => {
       ['https://app.test/portal/submitted', 'navigate'],
       ['https://app.test/portal/tickets/OPS-12', 'navigate'],
       ['https://app.test/portal/tickets/OPS-12?_rsc=abc', undefined],
+      ['https://app.test/csat', 'navigate'],
+      ['https://app.test/v1/csat/survey', undefined],
       ['https://app.test/v1/portal/challenge', undefined],
       ['https://app.test/v1/portal/tickets/OPS-12', undefined],
     ];

@@ -88,7 +88,7 @@ Build ของ package: ESM, `tsc` ออกที่ `dist/`, `exports` ชี
 | `redis` | 6379 | `.env.example` |
 | `minio` | 9000 (S3), 9001 (console) | 9000 จาก `.env.example` · 9001 `[ASSUMED]` |
 | `mailpit` | 1025 (SMTP), 8025 (UI) | 1025 จาก `.env.example` · 8025 `[ASSUMED]` |
-| `pubsub` emulator | 8085 (เริ่ม T-102) | `.env.example` |
+| `pubsub` emulator | 8085 (ยังไม่มี service · `PUBSUB_EMULATOR_HOST` ใน `.env.example` ว่างและไม่มีโค้ดอ่าน) | `[ASSUMED]` |
 
 `[ASSUMED]` compose bind service ภายในที่ `127.0.0.1` เท่านั้น ให้ T-010 ตรวจ · `[ASSUMED]` caddy ส่ง `/api/*`, `/docs`, WebSocket ไป `api` ที่เหลือไป `web` · ตรวจ health ตรงที่ 3000 และ 4000 เพราะ `/health` ผ่าน caddy จะถึง `web` เท่านั้น
 
@@ -97,7 +97,7 @@ Build ของ package: ESM, `tsc` ออกที่ `dist/`, `exports` ชี
 - **12-factor:** config ของ infra ผ่าน environment เท่านั้น ส่วน credential ของ integration อยู่ใน environment หรือ DB แบบเข้ารหัส ตั้งผ่าน admin UI ได้ และ environment ชนะ (ADR-004, งาน T-116) · `apps/api` และ `apps/worker` validate ด้วย Zod ตอน boot แล้ว fail ทันทีถ้าค่าที่จำเป็นขาด · package ไม่อ่าน `process.env` เอง รับค่าผ่าน parameter
 - **รายการตัวแปร:** `.env.example` เป็นแหล่งเดียว · ค่า secret จริงอยู่นอก repo และไม่ลง log
 - **Guard ตอน boot (T-010):** `JWT_SECRET`/`APP_ENCRYPTION_KEY` เป็น placeholder หรือสั้นกว่า 32 byte → ล้ม ยกเว้นเมื่อ `APP_URL` เป็น loopback และ `NODE_ENV != production` · `DEV_LOGIN_ENABLED=true` ร่วมกับ Google credential หรือ production → ล้ม (ADR-005)
-- **host ใน `.env.example` เป็น `localhost`** (ใช้กับ `pnpm dev` และ integration test บนเครื่อง) ส่วน `docker-compose.yml` สร้าง `DATABASE_URL`, `REDIS_URL`, `S3_ENDPOINT`, `SMTP_HOST` ด้วยชื่อ service เองเสมอ ค่าเหล่านี้ใน `.env` จึงไม่กระทบ container `[TESTED]` (T-002)
+- **host ใน `.env.example` เป็น `localhost`** (ใช้กับ `pnpm dev` และ integration test บนเครื่อง) ส่วน `docker-compose.yml` สร้าง `DATABASE_URL`, `REDIS_URL`, `S3_ENDPOINT`, `SMTP_HOST`, `SMTP_PORT` ด้วยชื่อ service เองเสมอ ค่าเหล่านี้ใน `.env` จึงไม่กระทบ container `[TESTED]` (T-002) · ถ้าจะส่งผ่าน relay จริงจาก compose ใช้ `SMTP_RELAY_HOST` / `SMTP_RELAY_PORT` (default `mailpit:1025`) + `SMTP_USER` / `SMTP_PASSWORD` (T-130)
 - **CORS:** `apps/api` อนุญาต origin ของ `APP_URL` เพียงตัวเดียว ไม่ใช้ `*` · browser เรียก `API_URL` ตรง ใน compose `web` ได้ `API_URL=http://localhost:4000` `[TESTED]`
 - **MinIO:** image ทางการ `minio/minio` ถูกถอนจาก Docker Hub และ Quay (ตรวจ 2026-10-31) compose จึงใช้ fork `pgsty/minio` ปักเวอร์ชัน**และ digest** (`image: repo:tag@sha256:…` ทั้ง `minio` และ `minio-init`; tag ไว้ให้อ่านง่าย, digest คือตัวที่ Docker ใช้จริง — T-010 C-14) override ได้ด้วย `MINIO_IMAGE`/`MINIO_MC_IMAGE` (ถ้า override ให้ปัก digest เองด้วย) ปรับเวอร์ชันต้องแก้ tag กับ digest พร้อมกัน `[ASK-HUMAN]` ตัดสินว่าจะคงตัวนี้หรือเขียน ADR เปลี่ยนเป็น S3-compatible ตัวอื่น
 - **Google Workspace domain ของ SSO:** อ่านจาก `GOOGLE_ALLOWED_DOMAIN` ค่าตัวอย่าง `example.com` `[CONFIRMED]`

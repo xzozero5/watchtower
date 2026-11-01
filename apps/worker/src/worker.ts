@@ -3,7 +3,7 @@ import type { AddressInfo } from 'node:net';
 
 import { createDatabase, type OutboxPublisher } from '@watchtower/db';
 import { createDomain, createPolicyGate } from '@watchtower/domain';
-import { parseRedisUrl, QUEUE_NAMES, type QueueName } from '@watchtower/shared';
+import { CSAT_LANDING_PATH, parseRedisUrl, QUEUE_NAMES, type QueueName } from '@watchtower/shared';
 import { KEY_LABELS, deriveSubkey } from '@watchtower/shared/secret-box';
 import { Queue, Worker, type Processor } from 'bullmq';
 import { Redis } from 'ioredis';
@@ -80,7 +80,10 @@ export async function startWorker(
       host: config.SMTP_HOST,
       port: config.SMTP_PORT,
       from: config.SMTP_FROM,
-      requireTls: config.NODE_ENV === 'production',
+      user: config.SMTP_USER,
+      password: config.SMTP_PASSWORD,
+      allowInsecure: config.SMTP_ALLOW_INSECURE,
+      production: config.NODE_ENV === 'production',
     });
 
   // The write logic shared with the api (ADR-009), with the same policy gate (ADR-011): it reads the
@@ -90,6 +93,10 @@ export async function startWorker(
     ticketKeyPrefix: config.TICKET_KEY_PREFIX,
     sealKey: deriveSubkey(config.APP_ENCRYPTION_KEY, KEY_LABELS.outboxSecret),
     portalUrl: new URL('/portal', config.APP_URL).toString(),
+    csat: {
+      signingKey: deriveSubkey(config.APP_ENCRYPTION_KEY, KEY_LABELS.csatLink),
+      landingUrl: new URL(CSAT_LANDING_PATH, config.APP_URL).toString(),
+    },
     policyGate: createPolicyGate({ db: database.db }),
   });
   const realtimeRedis = new Redis({
