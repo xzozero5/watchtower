@@ -57,6 +57,24 @@ const workerEnvSchema = createEnvSchema({
   /** ... and the most messages one full sync reads. `[ASSUMED]` 500; the rest is logged as truncated. */
   GMAIL_FULL_SYNC_MAX_MESSAGES: z.coerce.number().int().min(10).max(10_000).default(500),
   /**
+   * Connection string of the AI tools' read-only login (a member of `watchtower_ai_ro`, T-108a): it
+   * can read the `ai_v_*` views and nothing else, so "the tools only read" (N2) is enforced by the
+   * database. Empty: the tools read the same views through the worker's own connection, and only the
+   * code keeps them read-only (fine for a local mock run; not for production `[ASSUMED]`).
+   */
+  AI_READONLY_DATABASE_URL: z.preprocess(
+    emptyToUndefined,
+    z
+      .string()
+      .regex(/^postgres(ql)?:\/\//, 'must be a postgres:// URL')
+      .optional(),
+  ),
+  /**
+   * Directory with `fixtures.json` that the GCP Logs, BigQuery and repo stubs answer from while those
+   * systems are not connected (mock mode, `examples/tools`). Empty: the stubs are not registered.
+   */
+  AI_TOOL_FIXTURES_DIR: z.preprocess(emptyToUndefined, z.string().min(1).optional()),
+  /**
    * Cleanup job (T-117): days to keep an expired or revoked session, refresh token, magic link or
    * tracking link before it is deleted. `[ASSUMED]` 7.
    */

@@ -20,7 +20,12 @@ export interface NewAiDraft {
   readonly aiRunId: string | null;
   readonly language: string;
   readonly customerLanguage: string;
-  readonly citations: readonly { readonly evidenceId: string; readonly sentence: number }[];
+  /** Which evidence supports which sentence; `kind` is the evidence kind, so a later check can ask "did it cite a KB article". */
+  readonly citations: readonly {
+    readonly evidenceId: string;
+    readonly sentence: number;
+    readonly kind?: string;
+  }[];
   readonly uncitedClaims: number;
   readonly promptId: string;
   readonly promptVersion: number;
@@ -68,6 +73,28 @@ export async function saveAiDraft(
     if (created === undefined) throw new Error('ai_draft insert returned no row');
     return { id: created.id, superseded: old.length };
   });
+}
+
+/**
+ * Keeps the ticket's AI brief in step with its draft when the outbound path moves it: `classified`
+ * once a person approved it (nothing waits any more), `draft_ready` again when the send is undone or
+ * did not happen. Only touches a brief that still points at this draft.
+ */
+export async function syncInsightForDraft(
+  tx: Pick<DbTransaction, 'update'>,
+  draftId: string,
+  state: 'classified' | 'draft_ready',
+): Promise<void> {
+  await tx
+    .update(schema.aiTicketInsight)
+    .set({
+      state,
+      ...(state === 'draft_ready'
+        ? { nextStepKind: 'approve_draft', nextStepLabel: 'Review the draft reply' }
+        : {}),
+      updatedAt: sql`now()`,
+    })
+    .where(eq(schema.aiTicketInsight.draftId, draftId));
 }
 
 export interface RejectAiDraftInput {
@@ -194,7 +221,7 @@ export async function recordDraftEdited(
     .where(eq(schema.aiDraft.id, draft.id));
   await tx
     .update(schema.aiTicketInsight)
-    .set({ draftId: null, updatedAt: sql`now()` })
+    .set({ draftId: null, state: 'classified', updatedAt: sql`now()` })
     .where(
       and(
         eq(schema.aiTicketInsight.ticketId, input.ticketId),

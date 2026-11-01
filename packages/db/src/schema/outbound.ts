@@ -47,7 +47,7 @@ export const aiDraft = pgTable(
     citations: jsonb('citations')
       .notNull()
       .default(sql`'[]'::jsonb`)
-      .$type<{ evidenceId: string; sentence: number }[]>(),
+      .$type<{ evidenceId: string; sentence: number; kind?: string }[]>(),
     uncitedClaims: integer('uncited_claims').notNull().default(0),
     promptId: text('prompt_id'),
     promptVersion: integer('prompt_version'),

@@ -14,6 +14,7 @@ import {
 } from '@watchtower/shared';
 import { and, asc, eq, gte, lt, lte, or, sql, type SQL } from 'drizzle-orm';
 
+import { syncInsightForDraft } from '../ai/drafts.js';
 import { recordAuditInTx } from '../audit.js';
 import { clearStaleReplyTokens } from './reply-token.js';
 import { enqueueJob } from '../outbox.js';
@@ -216,6 +217,7 @@ async function reopenDraft(tx: DbTransaction, delivery: OutboundDeliveryRow): Pr
       resolvedAt: null,
     })
     .where(and(eq(schema.aiDraft.id, delivery.aiDraftId), eq(schema.aiDraft.status, 'approved')));
+  await syncInsightForDraft(tx, delivery.aiDraftId, 'draft_ready');
 }
 
 /**
