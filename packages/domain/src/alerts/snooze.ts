@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { schema, type Database } from '@watchtower/db';
 import {
   ALERTS_AUDIT_ACTIONS,
+  ALERT_SNOOZE_MAX_MINUTES,
   snoozeAlertSchema,
   type AlertState,
   type RealtimeEvent,
@@ -84,10 +85,31 @@ export async function snoozeAlert(
     );
   }
   const reason = checked.data.reason;
+  // A snooze that already ran out but is still on the row is lifted first (its pause is credited), so
+  // this one starts fresh instead of stretching a pause that is over.
+  await tx
+    .update(schema.alert)
+    .set(liftSnooze())
+    .where(
+      and(
+        eq(schema.alert.id, input.alertId),
+        isNotNull(schema.alert.snoozedUntil),
+        sql`${schema.alert.snoozedUntil} <= clock_timestamp()`,
+      ),
+    );
+  const [before] = await tx
+    .select({ until: schema.alert.snoozedUntil })
+    .from(schema.alert)
+    .where(eq(schema.alert.id, input.alertId))
+    .for('update');
+  // The longest continuous pause is ALERT_SNOOZE_MAX_MINUTES from when it began: snoozing again moves the
+  // expiry, never past that. Otherwise "snooze 7 days" repeated would silence a page for ever.
+  const cap = sql`COALESCE(${schema.alert.snoozedAt}, clock_timestamp()) + make_interval(mins => ${ALERT_SNOOZE_MAX_MINUTES})`;
+  const asked = sql`clock_timestamp() + make_interval(mins => ${input.minutes})`;
   const [row] = await tx
     .update(schema.alert)
     .set({
-      snoozedUntil: sql`clock_timestamp() + make_interval(mins => ${input.minutes})`,
+      snoozedUntil: sql`LEAST(${asked}, ${cap})`,
       snoozeReason: reason,
       snoozedBy: ctx.actor.id,
       // Snoozing again keeps the original start, so the pause is one continuous stretch.
@@ -104,7 +126,21 @@ export async function snoozeAlert(
       id: schema.alert.id,
       state: schema.alert.state,
       level: schema.alert.escalationLevel,
+      until: schema.alert.snoozedUntil,
+      capped: sql<boolean>`${asked} > ${cap}`,
     });
+  // At the limit already and asking for more: say so (the transaction is rolled back by the throw).
+  if (
+    row !== undefined &&
+    row.capped &&
+    before?.until != null &&
+    row.until !== null &&
+    row.until.getTime() <= before.until.getTime()
+  ) {
+    throw conflict(
+      'This alert has been snoozed for as long as allowed: acknowledge it, fix it, or change its rule',
+    );
+  }
   if (row === undefined) {
     const [current] = await tx
       .select({ state: schema.alert.state })

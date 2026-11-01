@@ -163,6 +163,8 @@ export const incidentComm = pgTable(
     draftedBy: uuid('drafted_by').references(() => users.id, { onDelete: 'set null' }),
     sentBy: uuid('sent_by').references(() => users.id, { onDelete: 'set null' }),
     confirmedRecipients: integer('confirmed_recipients'),
+    /** The audience the person confirmed (migration 0047): a resumed send uses these tickets and no others. */
+    recipientTicketIds: uuid('recipient_ticket_ids').array(),
     sentAt: timestamptz('sent_at'),
     createdAt: timestamptz('created_at').notNull().defaultNow(),
   },

@@ -131,8 +131,16 @@ export async function resolveRecipients(
   target: EscalationTarget,
   serviceId: string | null,
 ): Promise<EscalationRecipients> {
-  if (target === 'lead') return { userIds: await leadsAndHeads(tx, ['lead']), fallback: null };
-  if (target === 'head') return { userIds: await leadsAndHeads(tx, ['head']), fallback: null };
+  if (target === 'lead' || target === 'head') {
+    const own = await leadsAndHeads(tx, [target]);
+    if (own.length > 0) return { userIds: own, fallback: null };
+    // Nobody holds the role: the other senior role is told in its place, and the step says so. If
+    // nobody holds either, the step reaches nobody and the sweep reports it (see `unreached`).
+    return {
+      userIds: await leadsAndHeads(tx, [target === 'lead' ? 'head' : 'lead']),
+      fallback: 'lead',
+    };
+  }
 
   const clockedIn = (queueId: string | null) =>
     tx
@@ -176,6 +184,11 @@ export interface EscalationSweepResult {
   readonly notified: number;
   /** Alerts whose policy had no step left: the clock was cleared. */
   readonly exhausted: number;
+  /**
+   * Alerts whose step reached nobody: no lead, no head, nobody on shift. The step is recorded (with
+   * 0 recipients) and audited as a failure, and the caller is expected to make noise about it.
+   */
+  readonly unreached: string[];
   readonly events: RealtimeEvent[];
 }
 
@@ -198,7 +211,7 @@ async function escalateOne(
   tx: DbTransaction,
   ctx: DomainContext,
   fx: Effects,
-  tally: { notified: number },
+  tally: { notified: number; unreached: string[] },
   already: readonly string[],
 ): Promise<{ outcome: StepOutcome; alertId: string | null }> {
   const [due] = await tx
@@ -279,11 +292,16 @@ async function escalateOne(
       payload: { alertId: due.id, level: due.level },
     });
   }
+  const reachedNobody = recipients.userIds.length === 0;
+  if (reachedNobody) tally.unreached.push(due.id);
   await recordAuditInTx(tx, ctx, fx, {
     action: ALERTS_AUDIT_ACTIONS.alertEscalate,
+    // A step that told nobody is a failure on the record, not a quiet success.
+    outcome: reachedNobody ? 'failure' : 'success',
     targetType: 'alert',
     targetId: due.id,
     metadata: {
+      noRecipients: reachedNobody,
       level: due.level,
       target: step.target,
       recipients: recipients.userIds.length,
@@ -321,7 +339,7 @@ export async function sweepEscalations(
   // Snoozes that ran out are lifted first, so the schedule they paused is moved before anything is due.
   const ended = await endExpiredSnoozes(db, ctx);
   const events: RealtimeEvent[] = [...ended.events];
-  const tally = { notified: 0 };
+  const tally: { notified: number; unreached: string[] } = { notified: 0, unreached: [] };
   let steps = 0;
   let exhausted = 0;
   // An alert moves one step per call, however overdue: if the worker was down for an hour the lead
@@ -338,5 +356,5 @@ export async function sweepEscalations(
     if (outcome === 'step') steps += 1;
     else exhausted += 1;
   }
-  return { steps, notified: tally.notified, exhausted, events };
+  return { steps, notified: tally.notified, exhausted, unreached: tally.unreached, events };
 }

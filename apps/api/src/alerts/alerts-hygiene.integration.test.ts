@@ -3,6 +3,7 @@ import { randomBytes, randomUUID } from 'node:crypto';
 import { alerts } from '@watchtower/connectors';
 import {
   ALERTS_AUDIT_ACTIONS,
+  ALERT_SIGNATURE_ROUTES,
   ALERT_WEBHOOK_SIGNATURE_HEADER,
   ALERT_SNOOZE_MAX_MINUTES,
   type AlertSnoozeResult,
@@ -20,7 +21,9 @@ import { signIn, type Persona } from '../testing/ticketing.js';
 
 // T-201e on the real application module: snooze with expiry and reason, heartbeats (CRUD and the signed
 // signal), correlation rules and groups, noise metrics. RBAC on every route, audit rows, validation.
+/** Keys of two purposes, generated per run: the heartbeat key and the alert webhook key. */
 const SECRET = randomBytes(24).toString('hex');
+const WEBHOOK_SECRET = randomBytes(24).toString('hex');
 const net = disableNetConnect();
 
 let h: Harness;
@@ -34,7 +37,9 @@ const owner = () => h.db.owner.pool;
 const freshIp = (): string => `198.51.100.${String(++ipCounter % 250)}`;
 
 beforeAll(async () => {
-  h = await startHarness({ env: { ALERT_WEBHOOK_SECRET: SECRET } });
+  h = await startHarness({
+    env: { ALERT_HEARTBEAT_SECRET: SECRET, ALERT_WEBHOOK_SECRET: WEBHOOK_SECRET },
+  });
   head = await signIn(h, 'head');
   lead = await signIn(h, 'lead');
   agent = await signIn(h, 'agent');
@@ -223,10 +228,11 @@ describe('heartbeats (R-3.10)', () => {
     });
     return { status: response.status, body: await response.json().catch((): unknown => null) };
   }
-  const sign = (raw = '{}', offsetSeconds = 0) =>
+  const sign = (slug: string, raw = '{}', offsetSeconds = 0, secret = SECRET, route = slug) =>
     alerts.signAlertWebhook({
+      route: ALERT_SIGNATURE_ROUTES.heartbeat(route),
       rawBody: raw,
-      secret: SECRET,
+      secret,
       timestampSeconds: Math.floor(Date.now() / 1000) + offsetSeconds,
     });
 
@@ -301,7 +307,7 @@ describe('heartbeats (R-3.10)', () => {
       name: 'Warehouse sync',
       expectedIntervalSeconds: 600,
     });
-    const response = await sendBeat('warehouse-sync', sign());
+    const response = await sendBeat('warehouse-sync', sign('warehouse-sync'));
     expect(response).toEqual({ status: 200, body: { recovered: false } });
     const row = await owner().query<{ last_beat_at: Date | null }>(
       `SELECT last_beat_at FROM heartbeat WHERE id = $1`,
@@ -326,7 +332,7 @@ describe('heartbeats (R-3.10)', () => {
       `INSERT INTO alert (fingerprint, source, title) VALUES ($1, 'heartbeat', 'Heartbeat missing: Report mailer')`,
       [fingerprint],
     );
-    const response = await sendBeat('report-mailer', sign());
+    const response = await sendBeat('report-mailer', sign('report-mailer'));
     expect(response).toEqual({ status: 200, body: { recovered: true } });
     const state = await owner().query<{ state: string }>(
       `SELECT state FROM alert WHERE fingerprint = $1`,
@@ -342,14 +348,51 @@ describe('heartbeats (R-3.10)', () => {
       expectedIntervalSeconds: 600,
     });
     const unsigned = await sendBeat('sig-check', undefined);
-    const wrong = await sendBeat('sig-check', sign('{"a":1}'));
-    const old = await sendBeat('sig-check', sign('{}', -3600));
+    const wrong = await sendBeat('sig-check', sign('sig-check', '{"a":1}'));
+    const old = await sendBeat('sig-check', sign('sig-check', '{}', -3600));
     expect([unsigned.status, wrong.status, old.status]).toEqual([401, 401, 401]);
     expect(unsigned.body).toEqual(wrong.body);
     expect(unsigned.body).toEqual(old.body);
     // The slug is not looked up before the signature checks out: unsigned unknown == unsigned known.
     expect((await sendBeat('does-not-exist', undefined)).status).toBe(401);
-    expect((await sendBeat('does-not-exist', sign())).status).toBe(404);
+    expect((await sendBeat('does-not-exist', sign('does-not-exist'))).status).toBe(404);
+  });
+
+  it('a signature is for its own slug and its own purpose: not another heartbeat, not the alert key', async () => {
+    for (const slug of ['bound-a', 'bound-b']) {
+      await call(lead, 'POST', '/v1/heartbeats', {
+        slug,
+        name: slug,
+        expectedIntervalSeconds: 600,
+      });
+    }
+    // Signed for bound-a, sent to bound-b: refused although the key is the right one.
+    expect((await sendBeat('bound-b', sign('bound-b', '{}', 0, SECRET, 'bound-a'))).status).toBe(
+      401,
+    );
+    // Signed with the alert webhook key (even for the right route): refused.
+    expect((await sendBeat('bound-b', sign('bound-b', '{}', 0, WEBHOOK_SECRET))).status).toBe(401);
+    expect((await sendBeat('bound-b', sign('bound-b'))).status).toBe(200);
+  });
+
+  it('the heartbeat key cannot post an alert', async () => {
+    const raw = JSON.stringify({ version: '4', status: 'firing', alerts: [] });
+    const header = alerts.signAlertWebhook({
+      route: ALERT_SIGNATURE_ROUTES.alertsWebhook,
+      rawBody: raw,
+      secret: SECRET,
+      timestampSeconds: Math.floor(Date.now() / 1000),
+    });
+    const response = await fetch(`${h.base}/v1/inbound/alerts/webhook`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-forwarded-for': freshIp(),
+        [ALERT_WEBHOOK_SIGNATURE_HEADER]: header,
+      },
+      body: raw,
+    });
+    expect(response.status).toBe(401);
   });
 });
 

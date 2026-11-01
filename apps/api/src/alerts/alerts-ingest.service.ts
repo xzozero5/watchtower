@@ -3,6 +3,7 @@ import { alerts } from '@watchtower/connectors';
 import type { CredentialStore, Database } from '@watchtower/db';
 import type { Domain, IngestAlertOutcome } from '@watchtower/domain';
 import {
+  ALERT_SIGNATURE_ROUTES,
   alertPubsubEnvelopeSchema,
   deployEventSchema,
   type AlertIngestResult,
@@ -148,35 +149,43 @@ export class AlertIngestService {
     return tally([outcome.kind]);
   }
 
-  /** The signing secret in effect, or null when none is set. Read on every request so a rotation needs no restart. */
-  private async webhookSecret(): Promise<string | null> {
+  /**
+   * The signing key of one purpose, or null when none is set. Each machine receiver has its own
+   * (T-202 review): the key CI holds for deploys cannot sign an alert or a heartbeat, and the alert
+   * relay's cannot post a deploy. Read on every request so a rotation needs no restart.
+   */
+  private async signingKey(purpose: 'webhookSecret' | 'heartbeatSecret' | 'deploySecret') {
     const fields = await this.credentials.resolve('alerting');
-    const secret = fields.webhookSecret?.value ?? '';
-    return secret === '' ? null : secret;
+    const value = fields[purpose]?.value ?? '';
+    return value === '' ? null : value;
   }
 
   /**
-   * Authenticates a signed body with the alerting secret (shared by the alert webhook and the heartbeat
-   * route). Throws 401 with one answer for "no secret", "bad header", "wrong signature" and "too old":
-   * a caller learns nothing about which. The verdict (a code) goes to the log, never the header or body.
+   * Authenticates a signed body with the key of the purpose, bound to `route` (which is part of the
+   * signed text). Throws 401 with one answer for "no key", "bad header", "wrong signature" and "too
+   * old": a caller learns nothing about which. The verdict (a code) goes to the log, never the header
+   * or body.
    */
   private async authenticateSigned(
+    label: string,
+    purpose: 'webhookSecret' | 'heartbeatSecret' | 'deploySecret',
     route: string,
     input: { rawBody: Buffer | undefined; signature: string | undefined; nowMs?: number },
   ): Promise<Buffer> {
-    const secret = await this.webhookSecret();
+    const secret = await this.signingKey(purpose);
     const verdict =
       secret === null || input.rawBody === undefined
         ? 'malformed'
         : alerts.verifyAlertWebhook({
+            route,
             rawBody: input.rawBody,
             header: input.signature,
             secret,
             nowMs: input.nowMs ?? Date.now(),
           });
     if (verdict !== 'ok' || input.rawBody === undefined) {
-      if (secret === null) this.logger.warn(route + ': received but no signing secret is set');
-      else this.logger.warn({ verdict }, route + ': signature rejected');
+      if (secret === null) this.logger.warn(label + ': received but no signing key is set');
+      else this.logger.warn({ verdict }, label + ': signature rejected');
       throw unauthenticated('The request signature is missing or does not match');
     }
     return input.rawBody;
@@ -191,7 +200,12 @@ export class AlertIngestService {
     readonly nowMs?: number;
   }): Promise<AlertIngestResult> {
     await this.rateLimit(input.ip);
-    const rawBody = await this.authenticateSigned('alerts webhook', input);
+    const rawBody = await this.authenticateSigned(
+      'alerts webhook',
+      'webhookSecret',
+      ALERT_SIGNATURE_ROUTES.alertsWebhook,
+      input,
+    );
 
     const batch = alerts.normalizeAlertmanager(rawBody.toString('utf8'));
     if (typeof batch === 'string') {
@@ -222,7 +236,12 @@ export class AlertIngestService {
     readonly nowMs?: number;
   }): Promise<{ recovered: boolean }> {
     await this.rateLimit(input.ip);
-    await this.authenticateSigned('heartbeat', input);
+    await this.authenticateSigned(
+      'heartbeat',
+      'heartbeatSecret',
+      ALERT_SIGNATURE_ROUTES.heartbeat(input.slug),
+      input,
+    );
     const ctx = this.domain.context({
       actor: { type: 'system', id: null },
       auditMeta: { ip: input.ip, requestId: null },
@@ -247,7 +266,12 @@ export class AlertIngestService {
     readonly nowMs?: number;
   }): Promise<{ recorded: boolean }> {
     await this.rateLimit(input.ip);
-    const rawBody = await this.authenticateSigned('deploy feed', input);
+    const rawBody = await this.authenticateSigned(
+      'deploy feed',
+      'deploySecret',
+      ALERT_SIGNATURE_ROUTES.deploys,
+      input,
+    );
     let json: unknown;
     try {
       json = JSON.parse(rawBody.toString('utf8'));

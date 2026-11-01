@@ -63,8 +63,16 @@ export function createAlertsRegistration(context: ProcessorContext) {
           steps: escalation.steps,
           notified: escalation.notified,
           exhausted: escalation.exhausted,
+          unreached: escalation.unreached.length,
           chat: chatSweep,
         };
+        if (escalation.unreached.length > 0) {
+          // Loud on purpose: an alert nobody could be told about. Ids only.
+          logger.error(
+            { alertIds: escalation.unreached },
+            'alert escalation step reached nobody: no lead, no head and nobody on shift',
+          );
+        }
         if (
           heartbeats.missing + escalation.steps + escalation.exhausted > 0 ||
           chatSweep.redriven > 0

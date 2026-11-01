@@ -161,20 +161,38 @@ export async function sendIncidentComm(
     if (comm.status === 'sent' || comm.status === 'cancelled') {
       throw conflict(`This update is already ${comm.status}`);
     }
-    const audience = await incidentCommAudience(tx, input.incidentId);
-    if (comm.status === 'draft') {
-      if (audience.recipients !== input.confirmRecipients) {
+    if (comm.status === 'sending') {
+      // Resuming: the audience is the one that was confirmed, kept at that moment. A ticket linked
+      // since is not in it and does not get the update unconfirmed (T-202 review); whoever resumes
+      // confirms the same count.
+      const snapshot = comm.recipientTicketIds ?? [];
+      if (snapshot.length !== input.confirmRecipients) {
         throw new DomainError(
           'conflict',
-          `The audience is ${String(audience.recipients)} ticket(s) now, not ${String(input.confirmRecipients)}: look again before sending`,
-          { reason: 'recipient_count_mismatch', actual: audience.recipients },
+          `This update was confirmed for ${String(snapshot.length)} ticket(s), not ${String(input.confirmRecipients)}`,
+          { reason: 'recipient_count_mismatch', actual: snapshot.length },
         );
       }
-      await tx
-        .update(schema.incidentComm)
-        .set({ status: 'sending', sentBy: senderId, confirmedRecipients: audience.recipients })
-        .where(eq(schema.incidentComm.id, comm.id));
+      return { body: comm.body, ticketIds: snapshot };
     }
+    const audience = await incidentCommAudience(tx, input.incidentId);
+    if (audience.recipients !== input.confirmRecipients) {
+      throw new DomainError(
+        'conflict',
+        `The audience is ${String(audience.recipients)} ticket(s) now, not ${String(input.confirmRecipients)}: look again before sending`,
+        { reason: 'recipient_count_mismatch', actual: audience.recipients },
+      );
+    }
+    await tx
+      .update(schema.incidentComm)
+      .set({
+        status: 'sending',
+        sentBy: senderId,
+        confirmedRecipients: audience.recipients,
+        // The audience the person confirmed, kept: a send that is resumed uses these tickets and no others.
+        recipientTicketIds: audience.ticketIds,
+      })
+      .where(eq(schema.incidentComm.id, comm.id));
     return { body: comm.body, ticketIds: audience.ticketIds };
   });
 

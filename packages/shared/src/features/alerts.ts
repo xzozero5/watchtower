@@ -299,6 +299,17 @@ export type AlertPubsubEnvelope = z.infer<typeof alertPubsubEnvelopeSchema>;
 export const ALERT_WEBHOOK_SIGNATURE_HEADER = 'x-watchtower-signature';
 export const ALERT_WEBHOOK_TOLERANCE_SECONDS = 300;
 
+/**
+ * What a machine signature is bound to: the text `"<t>.<route>."` is signed, so a signature made for one
+ * route is worthless on another. Each route also has its own key (alerting credentials
+ * `webhookSecret`, `heartbeatSecret`, `deploySecret`).
+ */
+export const ALERT_SIGNATURE_ROUTES = {
+  alertsWebhook: 'alerts-webhook',
+  deploys: 'deploys',
+  heartbeat: (slug: string): string => `heartbeat:${slug}`,
+} as const;
+
 // --- service catalog (R-3.7) ---------------------------------------------------------------------
 
 const labelKey = z.string().trim().min(1).max(64);

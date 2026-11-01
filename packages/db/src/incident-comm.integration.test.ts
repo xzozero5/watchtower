@@ -63,7 +63,7 @@ describe('0046 incident_comm (N3)', () => {
       await rejects(app.query(sql, [id]), PG.checkViolation);
     }
     await app.query(
-      `UPDATE incident_comm SET status = 'sending', sent_by = $2, confirmed_recipients = 3 WHERE id = $1`,
+      `UPDATE incident_comm SET status = 'sending', sent_by = $2, confirmed_recipients = 0, recipient_ticket_ids = '{}' WHERE id = $1`,
       [id, personId],
     );
     await app.query(`UPDATE incident_comm SET status = 'sent', sent_at = now() WHERE id = $1`, [
