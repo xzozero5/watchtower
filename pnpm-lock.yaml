@@ -116,6 +116,9 @@ importers:
       '@watchtower/channels':
         specifier: workspace:*
         version: link:../../packages/channels
+      '@watchtower/connectors':
+        specifier: workspace:*
+        version: link:../../packages/connectors
       '@watchtower/db':
         specifier: workspace:*
         version: link:../../packages/db
@@ -280,6 +283,9 @@ importers:
       '@watchtower/channels':
         specifier: workspace:*
         version: link:../../packages/channels
+      '@watchtower/connectors':
+        specifier: workspace:*
+        version: link:../../packages/connectors
       '@watchtower/db':
         specifier: workspace:*
         version: link:../../packages/db
@@ -359,6 +365,28 @@ importers:
         version: 5.0.5(@opentelemetry/api@1.10.0)(@types/node@22.20.5)(jsdom@29.1.1)(vite@8.3.5(@types/node@22.20.5)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15))
 
   packages/channels:
+    dependencies:
+      '@watchtower/shared':
+        specifier: workspace:*
+        version: link:../shared
+      zod:
+        specifier: ^4.6.7
+        version: 4.6.7
+    devDependencies:
+      '@types/node':
+        specifier: 'catalog:'
+        version: 22.20.5
+      eslint:
+        specifier: 'catalog:'
+        version: 10.14.0(jiti@2.7.0)
+      typescript:
+        specifier: 'catalog:'
+        version: 6.0.3
+      vitest:
+        specifier: 'catalog:'
+        version: 5.0.5(@opentelemetry/api@1.10.0)(@types/node@22.20.5)(jsdom@29.1.1)(vite@8.3.5(@types/node@22.20.5)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15))
+
+  packages/connectors:
     dependencies:
       '@watchtower/shared':
         specifier: workspace:*

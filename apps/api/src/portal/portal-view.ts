@@ -47,6 +47,8 @@ export function buildTimeline(
 ): PortalTimelineEntry[] {
   type Item = {
     at: Date;
+    /** Within one millisecond: the ticket opens, then the message, then what the message caused. */
+    rank: number;
     id: string;
     entry: (last: CustomerStatus | null) => PortalTimelineEntry | null;
   };
@@ -56,6 +58,7 @@ export function buildTimeline(
     const fromSupport = message.direction === 'outbound';
     items.push({
       at: message.createdAt,
+      rank: 1,
       id: message.id,
       entry: () => ({
         kind: 'message',
@@ -71,6 +74,7 @@ export function buildTimeline(
   for (const event of events) {
     items.push({
       at: event.createdAt,
+      rank: event.type === TICKET_EVENT_TYPES.created ? 0 : 2,
       id: event.id,
       entry: (last) => {
         let status: CustomerStatus;
@@ -103,7 +107,9 @@ export function buildTimeline(
     });
   }
 
-  items.sort((a, b) => a.at.getTime() - b.at.getTime() || (a.id < b.id ? -1 : 1));
+  items.sort(
+    (a, b) => a.at.getTime() - b.at.getTime() || a.rank - b.rank || (a.id < b.id ? -1 : 1),
+  );
   const entries: PortalTimelineEntry[] = [];
   let last: CustomerStatus | null = null;
   for (const item of items) {

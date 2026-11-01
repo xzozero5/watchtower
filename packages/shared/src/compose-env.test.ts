@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 
 import { describe, expect, it } from 'vitest';
 
-import { baseEnvShape, phase1EnvShape } from './config.js';
+import { baseEnvShape, phase1EnvShape, phase2EnvShape } from './config.js';
 import { INTEGRATION_CATALOG } from './features/credentials.js';
 
 // docker-compose.yml lists the environment of the api and worker containers one by one. A variable
@@ -34,6 +34,7 @@ const readByCode = [
   ...new Set([
     ...Object.keys(baseEnvShape),
     ...Object.keys(phase1EnvShape),
+    ...Object.keys(phase2EnvShape),
     ...appSchemaKeys(read('../../../apps/api/src/config/config.ts')),
     ...appSchemaKeys(read('../../../apps/worker/src/config.ts')),
     ...catalogEnv,

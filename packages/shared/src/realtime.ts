@@ -28,6 +28,7 @@ export const REALTIME_EVENT_TYPES = [
   'ticket.updated',
   'message.created',
   'notification.created',
+  'alert.updated',
 ] as const;
 export type RealtimeEventType = (typeof REALTIME_EVENT_TYPES)[number];
 
@@ -99,11 +100,30 @@ export const notificationEventSchema = z.object({
 });
 export type NotificationEvent = z.infer<typeof notificationEventSchema>;
 
+/**
+ * An alert changed (T-201d): escalated, acknowledged, resolved. Staff only; a client never hears it.
+ * Ids and the new state only, so the list fetches the rest over REST under the same access rules.
+ */
+export const alertUpdatedEventSchema = z.object({
+  id: z.uuid(),
+  type: z.literal('alert.updated'),
+  occurredAt: z.iso.datetime(),
+  data: z.object({
+    alertId: z.uuid(),
+    state: z.enum(['open', 'acknowledged', 'resolved']),
+    /** What changed: `state`, `escalation`. */
+    changed: z.array(z.string()),
+    escalationLevel: z.number().int().min(0),
+  }),
+});
+export type AlertUpdatedEvent = z.infer<typeof alertUpdatedEventSchema>;
+
 export const realtimeEventSchema = z.discriminatedUnion('type', [
   z.object({ ...base, type: z.literal('ticket.created'), data: ticketEventDataSchema }),
   z.object({ ...base, type: z.literal('ticket.updated'), data: ticketEventDataSchema }),
   z.object({ ...base, type: z.literal('message.created'), data: messageEventDataSchema }),
   notificationEventSchema,
+  alertUpdatedEventSchema,
 ]);
 export type RealtimeEvent = z.infer<typeof realtimeEventSchema>;
 
@@ -138,6 +158,7 @@ export function realtimeEventFor(
   if (event.type === 'notification.created') {
     return audience.kind === 'staff' && audience.userId === event.recipientId ? event : null;
   }
+  if (event.type === 'alert.updated') return audience.kind === 'staff' ? event : null;
   if (audience.kind === 'staff') return event;
   if (event.orgId !== audience.orgId) return null;
 

@@ -1,10 +1,10 @@
 import {
   OPEN_STATUSES,
-  type ChannelType,
   type ClientTicket,
   type TicketDetail,
   type TicketPriority,
   type TicketAiRow,
+  type TicketChannel,
   type TicketStatus,
   type TicketSummary,
 } from '@watchtower/shared';
@@ -42,7 +42,7 @@ export interface RowModel {
   requesterName: string | null;
   /** Stable id behind the avatar hue. */
   requesterId: string;
-  channel: ChannelType | null;
+  channel: TicketChannel | null;
   assigneeName: string | null;
   unassigned: boolean;
   intentName: string | null;

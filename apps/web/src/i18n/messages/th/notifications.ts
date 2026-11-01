@@ -28,12 +28,16 @@ export const notificationsTh: Widen<typeof notificationsEn> = {
     ticketAssigned: '{key} ถูกมอบหมายให้คุณ',
     shiftHandoffOverdue: 'รายการส่งต่องาน {count} รายการยังไม่มีคนรับทราบตามเวลา',
     shiftNoShow: 'มีคนยังไม่ลงเวลาเข้ากะ',
+    alertFired: 'มี alert ที่ต้องการคุณ',
+    alertEscalated: 'alert ยังไม่มีคนรับทราบและส่งต่อมาถึงคุณ',
   },
   kindName: {
     ticketP1: 'ตั๋ว P1',
     ticketAssigned: 'ตั๋วที่มอบหมายให้ฉัน',
     shiftHandoffOverdue: 'รายการส่งต่องานที่ยังไม่รับทราบ (หัวหน้ากะ)',
     shiftNoShow: 'คนไม่มาเข้ากะ (หัวหน้ากะ)',
+    alertFired: 'alert ที่ต้องการฉัน (ขณะอยู่ในกะ)',
+    alertEscalated: 'alert ที่ไม่มีคนรับทราบทันเวลา',
   },
   banner: {
     label: 'แจ้งเตือนวิกฤต',

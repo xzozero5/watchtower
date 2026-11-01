@@ -90,6 +90,12 @@ const apiEnvSchema = createEnvSchema({
    * there to bound the cost of a flood of forged requests, not to pace real mail.
    */
   GMAIL_PUSH_RATE_PER_MINUTE: z.coerce.number().int().min(1).max(100_000).default(600),
+  /**
+   * Alert deliveries (GCP push and the signed webhook) accepted per minute per client IP, before
+   * the token or the signature is even checked (T-201c). `[ASSUMED]`: generous, it only bounds the
+   * cost of a flood of forged requests.
+   */
+  ALERT_INGEST_RATE_PER_MINUTE: z.coerce.number().int().min(1).max(100_000).default(600),
   /** Portal submissions per hour: per client IP, per email address, per organization. */
   PORTAL_RATE_IP_PER_HOUR: z.coerce.number().int().min(1).max(10_000).default(20),
   PORTAL_RATE_EMAIL_PER_HOUR: z.coerce.number().int().min(1).max(1000).default(5),

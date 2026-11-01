@@ -275,6 +275,8 @@ describe('preferences', () => {
       ['ticket.assigned', true, false],
       ['shift.handoff_overdue', true, false],
       ['shift.no_show', true, false],
+      ['alert.fired', true, false],
+      ['alert.escalated', true, false],
     ]);
   });
 

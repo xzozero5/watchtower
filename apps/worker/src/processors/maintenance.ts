@@ -5,8 +5,13 @@ import { UnrecoverableError, type Job } from 'bullmq';
 /** How many months ahead of the current one partitions are kept ready. */
 export const PARTITION_MONTHS_AHEAD = 3;
 
-/** Append-only tables partitioned by month (migrations 0001, 0002 and 0010). */
-export const PARTITIONED_TABLES = ['audit_log', 'ticket_event', 'ai_run'] as const;
+/** Append-only tables partitioned by month (migrations 0001, 0002, 0010 and 0044). */
+export const PARTITIONED_TABLES = [
+  'audit_log',
+  'ticket_event',
+  'ai_run',
+  'incident_timeline',
+] as const;
 
 /**
  * Processor for the `maintenance` queue. `ensure-partitions` calls the SQL function from

@@ -1,0 +1,28 @@
+{
+  "version": "4",
+  "groupKey": "{}:{alertname=\"HighErrorRate\"}",
+  "truncatedAlerts": 0,
+  "status": "resolved",
+  "receiver": "watchtower",
+  "groupLabels": { "alertname": "HighErrorRate" },
+  "commonLabels": { "alertname": "HighErrorRate", "severity": "critical", "service": "checkout" },
+  "commonAnnotations": { "summary": "Error rate above 5% on checkout" },
+  "externalURL": "https://alertmanager.example.invalid",
+  "alerts": [
+    {
+      "status": "resolved",
+      "labels": {
+        "alertname": "HighErrorRate",
+        "severity": "critical",
+        "service": "checkout",
+        "instance": "checkout-1:8080",
+        "customer_email": "buyer@example.invalid"
+      },
+      "annotations": { "summary": "Error rate above 5% on checkout" },
+      "startsAt": "2026-11-02T03:00:00.000Z",
+      "endsAt": "2026-11-02T03:12:00.000Z",
+      "generatorURL": "https://prometheus.example.invalid/graph?g0.expr=up",
+      "fingerprint": "8a1b2c3d4e5f6a7b"
+    }
+  ]
+}
