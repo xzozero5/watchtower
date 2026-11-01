@@ -88,6 +88,19 @@ export const AI_TOOL_BUDGETS = {
   /** Calls of one tool, by all tickets, in a minute (AI share of the shared bucket). */
   perToolPerMinute: 30,
 } as const;
+/**
+ * `[ASSUMED]` 0.75: the classifier's confidence an intent needs before its tools (logs, data, repo)
+ * may run. Below it, or with no intent, only the generic tools run. A person who set the intent on
+ * the ticket needs no threshold (SR106-R8: the intent that scopes tools is not the model's word alone).
+ */
+export const AI_INTENT_SCOPE_MIN_CONFIDENCE = 0.75;
+
+/**
+ * `[ASSUMED]` 110 s: the investigation job (tools, report, draft) stops before the 120 s p95 target
+ * of the plan; a model call that is still running is aborted and the job retries.
+ */
+export const AI_INVESTIGATION_DEADLINE_MS = 110_000;
+
 export type AiToolBudgets = { -readonly [K in keyof typeof AI_TOOL_BUDGETS]: number };
 
 /** Payload of an `ai` `summarize` job: only the id; the worker loads the ticket. */

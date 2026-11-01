@@ -2,6 +2,7 @@ import { schema } from '@watchtower/db';
 import { AUDIT_ACTIONS, OUTBOUND_TICKET_EVENTS } from '@watchtower/shared';
 import { and, eq, gt } from 'drizzle-orm';
 
+import { syncInsightForDraft } from '../ai/drafts.js';
 import { recordAuditInTx } from '../audit.js';
 import { conflict, forbidden, notFound } from '../errors.js';
 import type { OutboundDeliveryRow } from '../rows.js';
@@ -87,6 +88,7 @@ export async function cancelSend(
       resolvedAt: null,
     })
       .where(and(eq(schema.aiDraft.id, delivery.aiDraftId), eq(schema.aiDraft.status, 'approved')));
+    await syncInsightForDraft(tx, delivery.aiDraftId, 'draft_ready');
   }
   const [ticket] = await tx
     .select()

@@ -68,6 +68,10 @@ export const ticketRefSchema = z
   });
 export const ticketRefParamSchema = z.object({ id: ticketRefSchema });
 
+/** The routes on one AI draft of a ticket (T-108): the ticket by id or number, and the draft. */
+export const aiDraftRefParamSchema = z.object({ id: ticketRefSchema, draftId: z.uuid() });
+export type AiDraftRefParam = z.infer<typeof aiDraftRefParamSchema>;
+
 // --- status workflow (R-1.2) ---
 
 export const TICKET_STATUSES = [
