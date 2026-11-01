@@ -1,4 +1,5 @@
 import {
+  ALERTS_JOBS,
   CLEANUP_JOBS,
   CSAT_JOBS,
   GMAIL_JOBS,
@@ -165,4 +166,17 @@ export const SCHEDULES: readonly ScheduleRegistration[] = [
   // --- credentials (T-116) ---
 
   // --- views (T-119) ---
+
+  // --- alerts (T-201d) ---
+  {
+    queue: QUEUE_NAMES.alerts,
+    id: ALERTS_JOBS.sweep,
+    // Escalation steps that are due and chat posts that are owed, every 15 s `[ASSUMED]`: the
+    // resolution of "unacknowledged for T1" is this interval. Not at boot: the first tick is soon enough.
+    repeat: { every: 15_000 },
+    job: {
+      name: ALERTS_JOBS.sweep,
+      opts: { removeOnComplete: true, removeOnFail: { age: 24 * 3600 } },
+    },
+  },
 ];

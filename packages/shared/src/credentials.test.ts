@@ -2,7 +2,14 @@ import { describe, expect, it } from 'vitest';
 
 import { AUTH_ERROR_CODES } from './auth.js';
 import { LOG_REDACT_PATHS } from './logging.js';
-import { baseEnvShape, phase1EnvShape, parseEnv, createEnvSchema, ConfigError } from './config.js';
+import {
+  baseEnvShape,
+  phase1EnvShape,
+  phase2EnvShape,
+  parseEnv,
+  createEnvSchema,
+  ConfigError,
+} from './config.js';
 import {
   CREDENTIAL_ENV_VARS,
   CREDENTIAL_FIELD_NAMES,
@@ -18,7 +25,11 @@ import {
 
 describe('INTEGRATION_CATALOG', () => {
   it('names only environment variables the configuration knows', () => {
-    const known = new Set([...Object.keys(baseEnvShape), ...Object.keys(phase1EnvShape)]);
+    const known = new Set([
+      ...Object.keys(baseEnvShape),
+      ...Object.keys(phase1EnvShape),
+      ...Object.keys(phase2EnvShape),
+    ]);
     for (const name of CREDENTIAL_ENV_VARS) {
       expect(known.has(name), `${name} is not in the shared env schema`).toBe(true);
     }

@@ -30,12 +30,16 @@ export const notificationsEn = {
     ticketAssigned: '{key} was assigned to you',
     shiftHandoffOverdue: '{count} handoff items were not acknowledged in time',
     shiftNoShow: 'Someone has not clocked in for their shift',
+    alertFired: 'An alert needs you',
+    alertEscalated: 'An alert was not acknowledged and has reached you',
   },
   kindName: {
     ticketP1: 'P1 tickets',
     ticketAssigned: 'Tickets assigned to me',
     shiftHandoffOverdue: 'Handoff items not acknowledged (leads)',
     shiftNoShow: 'Shift no-shows (leads)',
+    alertFired: 'Alerts that need me (on shift)',
+    alertEscalated: 'Alerts that were not acknowledged in time',
   },
   banner: {
     label: 'Critical alert',

@@ -159,6 +159,20 @@ export const INTEGRATION_CATALOG = {
       }),
     },
   },
+  alerting: {
+    name: 'Alert ingest',
+    fields: {
+      webhookSecret: field('Alert webhook signing secret', 'ALERT_WEBHOOK_SECRET', {
+        required: false,
+      }),
+      heartbeatSecret: field('Heartbeat signing secret', 'ALERT_HEARTBEAT_SECRET', {
+        required: false,
+      }),
+      deploySecret: field('Deploy feed signing secret', 'DEPLOY_WEBHOOK_SECRET', {
+        required: false,
+      }),
+    },
+  },
   web_push: {
     name: 'Web Push',
     fields: {
