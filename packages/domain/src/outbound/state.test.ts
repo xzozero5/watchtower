@@ -1,6 +1,11 @@
 import { createHash } from 'node:crypto';
 
-import { DELIVERY_MAX_ATTEMPTS, DELIVERY_STATES, type DeliveryRoute } from '@watchtower/shared';
+import {
+  DELIVERY_MAX_ATTEMPTS,
+  DELIVERY_RETRY_AFTER_CAP_SECONDS,
+  DELIVERY_STATES,
+  type DeliveryRoute,
+} from '@watchtower/shared';
 import { describe, expect, it } from 'vitest';
 
 import { SAFE_AUTO_ACK_TEMPLATES } from '../autonomy/safe-templates.js';
@@ -11,6 +16,7 @@ import {
   decideFailure,
   dispatchJobId,
   hasIdempotencyKey,
+  retryAfterSeconds,
 } from './state.js';
 import {
   RENDERABLE_TEMPLATE_KEYS,
@@ -96,6 +102,25 @@ describe('retry or give up', () => {
     expect(
       decideFailure({ ...limited, retryAfterMs: 90_000 }, { route: 'gmail_thread', attempts: 1 }),
     ).toEqual({ action: 'retry', delaySeconds: 90, errorCode: 'channel_rate_limited' });
+  });
+
+  it('never waits longer than the ceiling for a Retry-After, whatever the provider sends (T-122f)', () => {
+    const limited = { kind: 'rate_limited', retryable: true, outcomeUnknown: false } as const;
+    const wait = (retryAfterMs: number): number => {
+      const decision = decideFailure(
+        { ...limited, retryAfterMs },
+        { route: 'gmail_thread', attempts: 1 },
+      );
+      if (decision.action !== 'retry') throw new Error('expected a retry');
+      return decision.delaySeconds;
+    };
+    expect(wait(24 * 3600 * 1000)).toBe(DELIVERY_RETRY_AFTER_CAP_SECONDS);
+    // A header too long for a number reaches us as Infinity; a damaged one as NaN or a negative.
+    expect(wait(Number.POSITIVE_INFINITY)).toBe(DELIVERY_RETRY_AFTER_CAP_SECONDS);
+    expect(wait(Number.NaN)).toBe(2);
+    expect(wait(-5000)).toBe(2);
+    expect(wait(DELIVERY_RETRY_AFTER_CAP_SECONDS * 1000)).toBe(DELIVERY_RETRY_AFTER_CAP_SECONDS);
+    expect(retryAfterSeconds(1500)).toBe(2);
   });
 
   it('gives up after five attempts, even for a push', () => {

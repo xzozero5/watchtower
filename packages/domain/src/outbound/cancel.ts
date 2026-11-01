@@ -3,6 +3,7 @@ import { AUDIT_ACTIONS, OUTBOUND_TICKET_EVENTS } from '@watchtower/shared';
 import { and, eq, gt } from 'drizzle-orm';
 
 import { recordAuditInTx } from '../audit.js';
+import { authorityNow } from '../clock.js';
 import { conflict, forbidden, notFound } from '../errors.js';
 import type { OutboundDeliveryRow } from '../rows.js';
 import { recordTicketEvent, ticketEvent, ticketIdOf } from '../tickets/support.js';
@@ -49,7 +50,15 @@ export async function cancelSend(
   }
   if (delivery.state === 'cancelled') return fx.result(delivery);
 
-  const now = ctx.now();
+  // A push that went out before and came back for a retry may have reached the customer (its outcome
+  // was unknown): "cancelled" would tell staff it did not (T-122f F-1). It keeps retrying under its
+  // retry key and ends `sent`, or `failed` with the unknown outcome for a person to judge.
+  if (delivery.state === 'scheduled' && delivery.route === 'line_push' && delivery.attempts > 0) {
+    throw conflict(
+      'An earlier attempt of this message may already have reached the customer; it can no longer be undone',
+    );
+  }
+  const now = await authorityNow(tx, ctx);
   const [cancelled] = await tx
     .update(schema.outboundDelivery)
     .set({ state: 'cancelled', cancelledBy: actorId, cancelledAt: now, updatedAt: now })

@@ -21,6 +21,17 @@ export interface TemplateVars {
   readonly firstResponseDueAt: Date | null;
 }
 
+/**
+ * The portal address as the text of an automatic message may carry it (T-122f F-4): an ASCII web address
+ * with nothing in it that could pass for other text (no space, no no-break space, no Thai or other
+ * non-ASCII letters). The database holds the same rule. Anything else is treated as "no portal address":
+ * the sentence is left out rather than risking a message the database refuses.
+ */
+export const PLAIN_URL = /^https?:\/\/[A-Za-z0-9._~:/?#@!$&'()*+,;=%-]+$/;
+export function plainPortalUrl(value: string | undefined): string | undefined {
+  return value !== undefined && PLAIN_URL.test(value) ? value : undefined;
+}
+
 /** `2026-11-02 09:30` in Bangkok time (UTC+7), the instance's business zone `[ASSUMED]`. */
 function bangkokTime(date: Date): string {
   const shifted = new Date(date.getTime() + 7 * 3_600_000);
