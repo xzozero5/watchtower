@@ -6,6 +6,7 @@ import {
   assertKbEmbeddingProvider,
   breakGlassPublishKbArticleSchema,
   publishKbArticleSchema,
+  reviewKbBreakGlassSchema,
   KB_AUDIT_ACTIONS,
   KB_CHUNK_DEFAULTS,
   KB_QUEUES,
@@ -164,5 +165,18 @@ describe('assertKbEmbeddingProvider', () => {
     expect(() => {
       assertKbEmbeddingProvider('vertex');
     }).toThrow(/EMBEDDING_PROVIDER=vertex is not wired yet.*Set EMBEDDING_PROVIDER=mock/);
+  });
+});
+
+describe('reviewKbBreakGlassSchema', () => {
+  it('needs the time of the publication the reviewer looked at, as an ISO date-time', () => {
+    const ok = reviewKbBreakGlassSchema.safeParse({ breakGlassAt: '2026-11-01T10:00:00.000Z' });
+    expect(ok.success).toBe(true);
+    expect(reviewKbBreakGlassSchema.safeParse({}).success).toBe(false);
+    expect(reviewKbBreakGlassSchema.safeParse({ breakGlassAt: 'yesterday' }).success).toBe(false);
+  });
+
+  it('names the audit action of widening a live article', () => {
+    expect(KB_AUDIT_ACTIONS.kbArticleAudienceWiden).toBe('kb.article.audience_widen');
   });
 });
