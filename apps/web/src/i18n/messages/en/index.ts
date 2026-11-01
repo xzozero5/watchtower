@@ -23,6 +23,7 @@ import { keymapEn } from './keymap';
 import { liveEn } from './live';
 import { loadingEn } from './loading';
 import { loginEn } from './login';
+import { outboundEn } from './outbound';
 import { paletteEn } from './palette';
 import { panelEn } from './panel';
 import { panesEn } from './panes';
@@ -74,6 +75,7 @@ export const en = {
   home: homeEn,
   admin: adminEn,
   portal: portalEn,
+  outbound: outboundEn,
 } as const;
 
 /** The shape every language must fill in, with plain `string` leaves. */
