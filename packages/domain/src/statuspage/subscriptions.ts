@@ -27,11 +27,7 @@ const SEND_OPTIONS = {
 } as const;
 
 export type SubscriptionRequestOutcome =
-  | 'created'
-  | 'resent'
-  | 'reactivated'
-  | 'throttled'
-  | 'already_confirmed';
+  'created' | 'resent' | 'reactivated' | 'throttled' | 'already_confirmed';
 
 const dbNow = sql`clock_timestamp()`;
 

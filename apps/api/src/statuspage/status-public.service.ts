@@ -90,7 +90,9 @@ export class StatusPublicService {
       [...ongoing, ...upcoming].map((row) => row.id),
     );
     return {
-      overall: overallStatus(components.map((component) => component.status as StatusComponentStatus)),
+      overall: overallStatus(
+        components.map((component) => component.status as StatusComponentStatus),
+      ),
       components: components.map((component) => ({
         slug: component.slug,
         name: component.name,
@@ -98,8 +100,12 @@ export class StatusPublicService {
         status: component.status as StatusComponentStatus,
       })),
       activePosts: postRows.map((row) => this.toPost(row, refs.posts.get(row.id) ?? [])),
-      ongoingMaintenance: ongoing.map((row) => this.toMaintenance(row, refs.windows.get(row.id) ?? [])),
-      upcomingMaintenance: upcoming.map((row) => this.toMaintenance(row, refs.windows.get(row.id) ?? [])),
+      ongoingMaintenance: ongoing.map((row) =>
+        this.toMaintenance(row, refs.windows.get(row.id) ?? []),
+      ),
+      upcomingMaintenance: upcoming.map((row) =>
+        this.toMaintenance(row, refs.windows.get(row.id) ?? []),
+      ),
       generatedAt: iso(new Date(clock.rows[0]?.now ?? Date.now())),
     };
   }
@@ -205,7 +211,8 @@ export class StatusPublicService {
   private signingKey(): Buffer {
     const csat = this.domain.config.csat;
     // Without the key no link can be signed or checked: the page is not usable, and says so.
-    if (csat === undefined) throw new ApiHttpError(503, 'route_not_configured', 'Subscriptions are unavailable');
+    if (csat === undefined)
+      throw new ApiHttpError(503, 'route_not_configured', 'Subscriptions are unavailable');
     return csat.signingKey;
   }
 

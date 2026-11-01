@@ -64,7 +64,12 @@ export const ANOMALY_RUN_CAP = 5;
 
 /** What a run did, for the audit row and the metric's own status. */
 export type UsageRunResult =
-  | { readonly state: 'ok'; readonly points: number; readonly anomalies: number; readonly capped: number }
+  | {
+      readonly state: 'ok';
+      readonly points: number;
+      readonly anomalies: number;
+      readonly capped: number;
+    }
   | { readonly state: 'failed'; readonly code: UsageRunErrorCode };
 
 /** Stable codes of a failed run: the text of a database error never reaches a row or a log. */
@@ -117,7 +122,9 @@ const metricKeySchema = z
 const dimNameSchema = z
   .string()
   .regex(/^[a-z][a-z0-9_]{0,30}$/, 'Lower case letters, digits and underscores')
-  .refine((name) => name !== 'ts' && name !== 'value', { message: '`ts` and `value` are reserved' });
+  .refine((name) => name !== 'ts' && name !== 'value', {
+    message: '`ts` and `value` are reserved',
+  });
 
 const templateSchema = z
   .string()
@@ -236,7 +243,13 @@ export const anomalyQuerySchema = z.object({
  */
 export const HEALTH_FORMULA_VERSION = 1;
 
-export const HEALTH_COMPONENT_KEYS = ['ticket_volume', 'sla', 'csat', 'incidents', 'usage_anomalies'] as const;
+export const HEALTH_COMPONENT_KEYS = [
+  'ticket_volume',
+  'sla',
+  'csat',
+  'incidents',
+  'usage_anomalies',
+] as const;
 export type HealthComponentKey = (typeof HEALTH_COMPONENT_KEYS)[number];
 
 export const HEALTH_WEIGHTS_V1: Readonly<Record<HealthComponentKey, number>> = {

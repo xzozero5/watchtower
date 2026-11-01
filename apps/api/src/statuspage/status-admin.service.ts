@@ -68,7 +68,10 @@ export class StatusAdminService {
   ): Promise<StatusComponent> {
     await translating(() =>
       this.uow.run(async (uow) =>
-        settle(uow, await this.domain.statusPage.updateComponent(uow.tx, this.ctx(actor), id, input)),
+        settle(
+          uow,
+          await this.domain.statusPage.updateComponent(uow.tx, this.ctx(actor), id, input),
+        ),
       ),
     );
     return this.component(id);
@@ -221,7 +224,12 @@ export class StatusAdminService {
     const links = await this.database.db
       .select()
       .from(schema.statusPostComponent)
-      .where(inArray(schema.statusPostComponent.postId, rows.map((row) => row.id)));
+      .where(
+        inArray(
+          schema.statusPostComponent.postId,
+          rows.map((row) => row.id),
+        ),
+      );
     return rows.map((row) => ({
       id: row.id,
       incidentId: row.incidentId,

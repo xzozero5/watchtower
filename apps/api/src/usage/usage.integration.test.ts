@@ -1,10 +1,6 @@
 import { randomUUID } from 'node:crypto';
 
-import {
-  USAGE_AUDIT_ACTIONS,
-  type HealthSnapshot,
-  type Metric,
-} from '@watchtower/shared';
+import { USAGE_AUDIT_ACTIONS, type HealthSnapshot, type Metric } from '@watchtower/shared';
 import { disableNetConnect } from '@watchtower/shared/testing';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
@@ -39,10 +35,15 @@ afterAll(async () => {
   net.restore();
 });
 
-const call = <T>(who: Persona, method: 'GET' | 'POST' | 'PATCH' | 'DELETE', path: string, body?: unknown) =>
-  who.client.request<T>(method, path, body === undefined ? {} : { body });
+const call = <T>(
+  who: Persona,
+  method: 'GET' | 'POST' | 'PATCH' | 'DELETE',
+  path: string,
+  body?: unknown,
+) => who.client.request<T>(method, path, body === undefined ? {} : { body });
 
-const TEMPLATE = 'SELECT date_trunc(\'hour\', t) AS ts, count(*) AS value FROM x WHERE t >= $1 AND t < $2 GROUP BY 1';
+const TEMPLATE =
+  "SELECT date_trunc('hour', t) AS ts, count(*) AS value FROM x WHERE t >= $1 AND t < $2 GROUP BY 1";
 const definition = (key: string, extra: Record<string, unknown> = {}) => ({
   key,
   name: `Metric ${key}`,
@@ -94,9 +95,18 @@ describe('access (RBAC)', () => {
 
 describe('metric definitions', () => {
   it('lets a head define one, shows the SQL to a head only, and refuses what is not a window query', async () => {
-    const created = await call<Metric>(head, 'POST', '/v1/usage/metrics', definition('visible_key'));
+    const created = await call<Metric>(
+      head,
+      'POST',
+      '/v1/usage/metrics',
+      definition('visible_key'),
+    );
     expect(created.status).toBe(201);
-    expect(created.body).toMatchObject({ key: 'visible_key', templateVersion: 1, lastRunState: null });
+    expect(created.body).toMatchObject({
+      key: 'visible_key',
+      templateVersion: 1,
+      lastRunState: null,
+    });
     expect(created.body.sqlTemplate).toBe(TEMPLATE);
 
     const asLead = await call<Metric>(lead, 'GET', `/v1/usage/metrics/${created.body.id}`);
@@ -118,13 +128,21 @@ describe('metric definitions', () => {
       const response = await call<ApiErrorBody>(head, 'POST', '/v1/usage/metrics', bad);
       expect(response.status, JSON.stringify(bad).slice(0, 80)).toBe(400);
     }
-    expect((await call(head, 'POST', '/v1/usage/metrics', definition('visible_key'))).status).toBe(409);
+    expect((await call(head, 'POST', '/v1/usage/metrics', definition('visible_key'))).status).toBe(
+      409,
+    );
   });
 
   it('audits a template edit with hashes and a new version, and an ordinary edit without a new version', async () => {
-    const created = await call<Metric>(head, 'POST', '/v1/usage/metrics', definition('editable_metric'));
+    const created = await call<Metric>(
+      head,
+      'POST',
+      '/v1/usage/metrics',
+      definition('editable_metric'),
+    );
     const edited = await call<Metric>(head, 'PATCH', `/v1/usage/metrics/${created.body.id}`, {
-      sqlTemplate: 'SELECT date_trunc(\'hour\', t) AS ts, sum(n) AS value FROM x WHERE t >= $1 AND t < $2 GROUP BY 1',
+      sqlTemplate:
+        "SELECT date_trunc('hour', t) AS ts, sum(n) AS value FROM x WHERE t >= $1 AND t < $2 GROUP BY 1",
     });
     expect(edited.status).toBe(200);
     expect(edited.body.templateVersion).toBe(2);
@@ -137,13 +155,23 @@ describe('metric definitions', () => {
     expect(audit.rows[0]?.metadata).toMatchObject({ version: 2, templateChanged: true });
     expect(JSON.stringify(audit.rows)).not.toContain('sum(n)');
 
-    expect((await call(lead, 'PATCH', `/v1/usage/metrics/${created.body.id}`, { name: 'Lead edit' })).status).toBe(403);
-    const renamed = await call<Metric>(head, 'PATCH', `/v1/usage/metrics/${created.body.id}`, { name: 'Renamed' });
+    expect(
+      (await call(lead, 'PATCH', `/v1/usage/metrics/${created.body.id}`, { name: 'Lead edit' }))
+        .status,
+    ).toBe(403);
+    const renamed = await call<Metric>(head, 'PATCH', `/v1/usage/metrics/${created.body.id}`, {
+      name: 'Renamed',
+    });
     expect(renamed.body).toMatchObject({ name: 'Renamed', templateVersion: 2 });
   });
 
   it('serves cached points from our own database, newest first, filtered by organization', async () => {
-    const created = await call<Metric>(head, 'POST', '/v1/usage/metrics', definition('with_points', { dims: ['org'] }));
+    const created = await call<Metric>(
+      head,
+      'POST',
+      '/v1/usage/metrics',
+      definition('with_points', { dims: ['org'] }),
+    );
     const id = created.body.id;
     const hash = (n: number) => n.toString(16).padStart(64, '0');
     for (const [i, org] of [orgId, otherOrgId, orgId].entries()) {
@@ -153,15 +181,29 @@ describe('metric definitions', () => {
         [id, i, hash(i + 1), org, 10 + i],
       );
     }
-    const all = await call<{ items: { value: number; orgId: string }[] }>(lead, 'GET', `/v1/usage/metrics/${id}/points`);
+    const all = await call<{ items: { value: number; orgId: string }[] }>(
+      lead,
+      'GET',
+      `/v1/usage/metrics/${id}/points`,
+    );
     expect(all.body.items.map((p) => p.value)).toEqual([12, 11, 10]);
-    const one = await call<{ items: { value: number }[] }>(lead, 'GET', `/v1/usage/metrics/${id}/points?orgId=${otherOrgId}`);
+    const one = await call<{ items: { value: number }[] }>(
+      lead,
+      'GET',
+      `/v1/usage/metrics/${id}/points?orgId=${otherOrgId}`,
+    );
     expect(one.body.items.map((p) => p.value)).toEqual([11]);
   });
 });
 
 describe('the Client Health Score routes', () => {
-  async function snapshot(org: string, status: string, score: number | null, day = '2030-05-01', version = 1) {
+  async function snapshot(
+    org: string,
+    status: string,
+    score: number | null,
+    day = '2030-05-01',
+    version = 1,
+  ) {
     const components = Object.fromEntries(
       ['ticket_volume', 'sla', 'csat', 'incidents', 'usage_anomalies'].map((key) => [
         key,
@@ -175,13 +217,21 @@ describe('the Client Health Score routes', () => {
   }
 
   it('says there is no snapshot yet, then "not enough data" as such, then a score', async () => {
-    const none = await call<{ snapshot: HealthSnapshot | null }>(lead, 'GET', `/v1/orgs/${orgId}/health`);
+    const none = await call<{ snapshot: HealthSnapshot | null }>(
+      lead,
+      'GET',
+      `/v1/orgs/${orgId}/health`,
+    );
     expect(none.status).toBe(200);
     expect(none.body.snapshot).toBeNull();
 
     await snapshot(orgId, 'insufficient_data', null, '2030-05-01');
     const young = await call<{ snapshot: HealthSnapshot }>(lead, 'GET', `/v1/orgs/${orgId}/health`);
-    expect(young.body.snapshot).toMatchObject({ status: 'insufficient_data', score: null, formulaVersion: 1 });
+    expect(young.body.snapshot).toMatchObject({
+      status: 'insufficient_data',
+      score: null,
+      formulaVersion: 1,
+    });
     expect(young.body.snapshot.components.map((c) => c.status)).toEqual(Array(5).fill('no_data'));
 
     await snapshot(orgId, 'scored', 72, '2030-05-02');
@@ -193,12 +243,24 @@ describe('the Client Health Score routes', () => {
 
   it('lists organizations lowest first, with no rank, share or average anywhere', async () => {
     await snapshot(otherOrgId, 'scored', 40, '2030-05-02');
-    const list = await call<{ items: { orgId: string; score: number | null }[] }>(lead, 'GET', '/v1/health/orgs');
+    const list = await call<{ items: { orgId: string; score: number | null }[] }>(
+      lead,
+      'GET',
+      '/v1/health/orgs',
+    );
     expect(list.status).toBe(200);
     expect(list.body.items.map((item) => item.score)).toEqual([40, 72]);
-    for (const text of [JSON.stringify(list.body), JSON.stringify((await call(lead, 'GET', `/v1/orgs/${orgId}/health`)).body)]) {
+    for (const text of [
+      JSON.stringify(list.body),
+      JSON.stringify((await call(lead, 'GET', `/v1/orgs/${orgId}/health`)).body),
+    ]) {
       expect(text).not.toMatch(/rank|percentile|average|benchmark|median|peer/i);
     }
-    expect(Object.keys(list.body.items[0] ?? {}).toSorted()).toEqual(['day', 'orgId', 'score', 'status']);
+    expect(Object.keys(list.body.items[0] ?? {}).toSorted()).toEqual([
+      'day',
+      'orgId',
+      'score',
+      'status',
+    ]);
   });
 });

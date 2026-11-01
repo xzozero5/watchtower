@@ -27,7 +27,8 @@ interface Copy {
 const COPY: Readonly<Record<StatusLocale, Copy>> = {
   en: {
     confirmSubject: 'Confirm your subscription to status updates',
-    confirmLead: 'Someone asked to receive status updates by email at this address. Confirm that it was you:',
+    confirmLead:
+      'Someone asked to receive status updates by email at this address. Confirm that it was you:',
     confirmCta: 'Confirm my subscription',
     confirmTail:
       'The link opens a page where you press one button; nothing is subscribed until you do. If you did not ask for this, ignore this email and nothing will be sent to you.',

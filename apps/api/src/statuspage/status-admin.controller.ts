@@ -127,7 +127,10 @@ export class StatusAdminController {
     @Param({ schema: statusIdParamSchema }) params: StatusIdParam,
     @CurrentPrincipal() principal: Principal,
   ) {
-    return parseResponse(deletedSchema, await this.service.deleteComponent(userOf(principal), params.id));
+    return parseResponse(
+      deletedSchema,
+      await this.service.deleteComponent(userOf(principal), params.id),
+    );
   }
 
   // --- posts ---
@@ -162,7 +165,10 @@ export class StatusAdminController {
     @Body({ schema: createStatusPostSchema }) body: CreateStatusPost,
     @CurrentPrincipal() principal: Principal,
   ) {
-    return parseResponse(statusPostStaffSchema, await this.service.draftPost(userOf(principal), body));
+    return parseResponse(
+      statusPostStaffSchema,
+      await this.service.draftPost(userOf(principal), body),
+    );
   }
 
   @Post('posts/from-incident')
@@ -223,19 +229,28 @@ export class StatusAdminController {
     @Param({ schema: statusIdParamSchema }) params: StatusIdParam,
     @CurrentPrincipal() principal: Principal,
   ) {
-    return parseResponse(publishResultSchema, await this.service.publishPost(userOf(principal), params.id));
+    return parseResponse(
+      publishResultSchema,
+      await this.service.publishPost(userOf(principal), params.id),
+    );
   }
 
   @Delete('posts/:id')
   @RequirePermission('incident.create')
-  @ApiOperation({ summary: 'Delete a draft', description: 'A published post cannot be deleted (409).' })
+  @ApiOperation({
+    summary: 'Delete a draft',
+    description: 'A published post cannot be deleted (409).',
+  })
   @ApiOkResponse({ standardSchema: deletedSchema })
   @ApiConflictResponse({ description: 'The post is published' })
   async deletePost(
     @Param({ schema: statusIdParamSchema }) params: StatusIdParam,
     @CurrentPrincipal() principal: Principal,
   ) {
-    return parseResponse(deletedSchema, await this.service.deletePost(userOf(principal), params.id));
+    return parseResponse(
+      deletedSchema,
+      await this.service.deletePost(userOf(principal), params.id),
+    );
   }
 
   // --- maintenance ---
@@ -245,7 +260,9 @@ export class StatusAdminController {
   @ApiOperation({ summary: 'List maintenance windows' })
   @ApiOkResponse({ standardSchema: statusMaintenanceListSchema })
   async listMaintenance() {
-    return parseResponse(statusMaintenanceListSchema, { items: await this.service.listMaintenance() });
+    return parseResponse(statusMaintenanceListSchema, {
+      items: await this.service.listMaintenance(),
+    });
   }
 
   @Post('maintenance')

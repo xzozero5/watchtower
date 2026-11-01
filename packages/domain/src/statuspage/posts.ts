@@ -103,7 +103,10 @@ export async function draftStatusPostFromIncident(
     .from(schema.statusComponent)
     // Only components the page shows are named: the name of a hidden one is not for the public.
     .where(
-      and(inArray(schema.statusComponent.id, componentIds), eq(schema.statusComponent.public, true)),
+      and(
+        inArray(schema.statusComponent.id, componentIds),
+        eq(schema.statusComponent.public, true),
+      ),
     )
     .orderBy(schema.statusComponent.position, schema.statusComponent.name);
   const wording = statusPostTemplate({

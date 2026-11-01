@@ -4,7 +4,10 @@ import { StatusAdminController } from './status-admin.controller.js';
 import { StatusAdminService } from './status-admin.service.js';
 import { StatusPagePublicGuard } from './status-page.guard.js';
 import { StatusLimits } from './status-limits.js';
-import { StatusPublicController, StatusSubscriptionsController } from './status-public.controller.js';
+import {
+  StatusPublicController,
+  StatusSubscriptionsController,
+} from './status-public.controller.js';
 import { StatusPublicService } from './status-public.service.js';
 
 /**

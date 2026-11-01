@@ -47,7 +47,13 @@ const run = (
   options: Partial<RunUsageOptions> & Pick<RunUsageOptions, 'port'>,
   force = true,
 ) =>
-  env.domain.usage.run(env.database.db, env.ctx(SYSTEM), { sanitizeDim: keep, ...options }, id, force);
+  env.domain.usage.run(
+    env.database.db,
+    env.ctx(SYSTEM),
+    { sanitizeDim: keep, ...options },
+    id,
+    force,
+  );
 
 const pointCount = async (id: string): Promise<number> =>
   (
@@ -87,7 +93,10 @@ describe('the starter metrics on the seeded stand-in product schema', () => {
     expect(await run(failedId, { port: port() })).toMatchObject({ state: 'ok' });
     expect(await pointCount(failedId)).toBe(first);
 
-    const [def] = await owner().select().from(schema.usageMetricDef).where(eq(schema.usageMetricDef.id, failedId));
+    const [def] = await owner()
+      .select()
+      .from(schema.usageMetricDef)
+      .where(eq(schema.usageMetricDef.id, failedId));
     expect(def).toMatchObject({ lastRunState: 'ok', lastRunError: null });
     expect(def?.lastRunAt).toBeInstanceOf(Date);
   });
@@ -103,28 +112,50 @@ describe('the starter metrics on the seeded stand-in product schema', () => {
   });
 
   it('opened exactly one alert and one internal ticket, for the organization with the anomaly, once', async () => {
-    const anomalies = await owner().select().from(schema.usageAnomaly).where(eq(schema.usageAnomaly.metricId, failedId));
+    const anomalies = await owner()
+      .select()
+      .from(schema.usageAnomaly)
+      .where(eq(schema.usageAnomaly.metricId, failedId));
     expect(anomalies).toHaveLength(1);
     const anomaly = anomalies[0];
     expect(anomaly).toMatchObject({ orgId: orgB.id });
     expect(anomaly?.observed).toBeGreaterThan((anomaly?.baseline ?? 0) * 3);
     expect(anomaly?.baselineSamples).toBe(7);
 
-    const [alert] = await owner().select().from(schema.alert).where(eq(schema.alert.id, anomaly?.alertId ?? randomUUID()));
+    const [alert] = await owner()
+      .select()
+      .from(schema.alert)
+      .where(eq(schema.alert.id, anomaly?.alertId ?? randomUUID()));
     expect(alert).toMatchObject({ source: 'usage_anomaly', severity: 'warning', state: 'open' });
     // The alert goes to chat: it names the metric and never the organization.
-    expect(`${alert?.title ?? ''} ${alert?.summary ?? ''} ${JSON.stringify(alert?.payload)}`).not.toContain('Bravo');
+    expect(
+      `${alert?.title ?? ''} ${alert?.summary ?? ''} ${JSON.stringify(alert?.payload)}`,
+    ).not.toContain('Bravo');
     expect(alert?.title).toContain('Failed steps per organization');
 
-    const [ticket] = await owner().select().from(schema.ticket).where(eq(schema.ticket.id, anomaly?.ticketId ?? randomUUID()));
-    expect(ticket).toMatchObject({ channel: 'internal', orgId: orgB.id, status: 'new', channelAccountId: null });
-    const messages = await owner().select().from(schema.message).where(eq(schema.message.ticketId, ticket?.id ?? ''));
+    const [ticket] = await owner()
+      .select()
+      .from(schema.ticket)
+      .where(eq(schema.ticket.id, anomaly?.ticketId ?? randomUUID()));
+    expect(ticket).toMatchObject({
+      channel: 'internal',
+      orgId: orgB.id,
+      status: 'new',
+      channelAccountId: null,
+    });
+    const messages = await owner()
+      .select()
+      .from(schema.message)
+      .where(eq(schema.message.ticketId, ticket?.id ?? ''));
     expect(messages).toHaveLength(1);
     expect(messages[0]).toMatchObject({ direction: 'internal', visibility: 'internal' });
 
     // The T-108 pipeline is asked for a brief through the outbox; nothing is sent to anyone.
     const jobs = (await owner().select().from(schema.outbox)).filter(
-      (row) => row.queue === QUEUE_NAMES.ai && row.jobName === AI_JOBS.summarize && row.jobId.includes(ticket?.id ?? ''),
+      (row) =>
+        row.queue === QUEUE_NAMES.ai &&
+        row.jobName === AI_JOBS.summarize &&
+        row.jobId.includes(ticket?.id ?? ''),
     );
     expect(jobs).toHaveLength(1);
     const outbound = await owner().select().from(schema.outboundDelivery);
@@ -132,9 +163,18 @@ describe('the starter metrics on the seeded stand-in product schema', () => {
 
     // Another run sees the same hour and opens nothing new.
     expect(await run(failedId, { port: port() })).toMatchObject({ state: 'ok', anomalies: 0 });
-    expect(await owner().select().from(schema.usageAnomaly).where(eq(schema.usageAnomaly.metricId, failedId))).toHaveLength(1);
-    expect((await owner().select().from(schema.ticket)).filter((t) => t.channel === 'internal')).toHaveLength(1);
-    const audit = (await auditRows(env, USAGE_AUDIT_ACTIONS.anomalyDetect)).filter((row) => row.targetId === anomaly?.id);
+    expect(
+      await owner()
+        .select()
+        .from(schema.usageAnomaly)
+        .where(eq(schema.usageAnomaly.metricId, failedId)),
+    ).toHaveLength(1);
+    expect(
+      (await owner().select().from(schema.ticket)).filter((t) => t.channel === 'internal'),
+    ).toHaveLength(1);
+    const audit = (await auditRows(env, USAGE_AUDIT_ACTIONS.anomalyDetect)).filter(
+      (row) => row.targetId === anomaly?.id,
+    );
     expect(audit).toHaveLength(1);
     expect(audit[0]).toMatchObject({ actorType: 'system' });
   });
@@ -148,9 +188,15 @@ describe('the starter metrics on the seeded stand-in product schema', () => {
       expect(await run(id, { port: port() })).toMatchObject({ state: 'ok' });
       expect(await pointCount(id)).toBeGreaterThan(24 * 7);
     }
-    const [latency] = await owner().select().from(schema.usageMetricPoint)
-      .innerJoin(schema.usageMetricDef, eq(schema.usageMetricDef.id, schema.usageMetricPoint.metricId))
-      .where(eq(schema.usageMetricDef.key, 'p95_latency_per_flow_hour')).limit(1);
+    const [latency] = await owner()
+      .select()
+      .from(schema.usageMetricPoint)
+      .innerJoin(
+        schema.usageMetricDef,
+        eq(schema.usageMetricDef.id, schema.usageMetricPoint.metricId),
+      )
+      .where(eq(schema.usageMetricDef.key, 'p95_latency_per_flow_hour'))
+      .limit(1);
     expect(latency?.usage_metric_point.orgId).toBeNull();
     // Dropping transactions is not what happened: no anomaly for the 'down' metric.
     expect(await owner().select().from(schema.usageAnomaly)).toHaveLength(1);
@@ -180,8 +226,14 @@ describe('what a run refuses', () => {
       [{ columns: ['ts', 'value', 'flow'], rows: [], truncated: true }, 'truncated'],
     ];
     for (const [answer, code] of cases) {
-      expect(await run(id, { port: fixedDataPort(() => answer) })).toEqual({ state: 'failed', code });
-      const [def] = await owner().select().from(schema.usageMetricDef).where(eq(schema.usageMetricDef.id, id));
+      expect(await run(id, { port: fixedDataPort(() => answer) })).toEqual({
+        state: 'failed',
+        code,
+      });
+      const [def] = await owner()
+        .select()
+        .from(schema.usageMetricDef)
+        .where(eq(schema.usageMetricDef.id, id));
       expect(def).toMatchObject({ lastRunState: 'failed', lastRunError: code });
     }
     expect(await pointCount(id)).toBe(0);
@@ -211,14 +263,24 @@ describe('what a run refuses', () => {
     const id = await create(metric('pii_dim', ['flow']));
     const port = fixedDataPort((request) => ({
       columns: ['ts', 'value', 'flow'],
-      rows: hourly(request.params[0], request.params[1], () => 1).map((row) => ({ ...row, flow: 'alice@customer.example' })),
+      rows: hourly(request.params[0], request.params[1], () => 1).map((row) => ({
+        ...row,
+        flow: 'alice@customer.example',
+      })),
       truncated: false,
     }));
-    expect(await run(id, { port, sanitizeDim: (value) => value.replace(/\S+@\S+/g, '[EMAIL_1]') })).toMatchObject({ state: 'ok' });
-    const points = await owner().select().from(schema.usageMetricPoint).where(eq(schema.usageMetricPoint.metricId, id));
+    expect(
+      await run(id, { port, sanitizeDim: (value) => value.replace(/\S+@\S+/g, '[EMAIL_1]') }),
+    ).toMatchObject({ state: 'ok' });
+    const points = await owner()
+      .select()
+      .from(schema.usageMetricPoint)
+      .where(eq(schema.usageMetricPoint.metricId, id));
     expect(points.length).toBeGreaterThan(0);
     expect(JSON.stringify(points)).not.toContain('alice');
-    expect(new Set(points.map((point) => JSON.stringify(point.dims)))).toEqual(new Set(['{"flow":"[redacted]"}']));
+    expect(new Set(points.map((point) => JSON.stringify(point.dims)))).toEqual(
+      new Set(['{"flow":"[redacted]"}']),
+    );
   });
 });
 
@@ -240,7 +302,8 @@ describe('anomalies: history, the cap, the dedupe', () => {
   /** Steady 5 an hour for `days` days, then 100 in the last complete hour. */
   const portFor = (orgs: readonly string[], days: number) =>
     fixedDataPort((request) => {
-      const lastComplete = Math.floor(request.params[1].getTime() / 3_600_000) * 3_600_000 - 3_600_000;
+      const lastComplete =
+        Math.floor(request.params[1].getTime() / 3_600_000) * 3_600_000 - 3_600_000;
       const rows = orgs.flatMap((org) =>
         hourly(request.params[0], request.params[1], (ts) => {
           if (ts.getTime() === lastComplete) return 100;
@@ -253,24 +316,39 @@ describe('anomalies: history, the cap, the dedupe', () => {
   it('does not fire on a series with under seven days of data', async () => {
     const org = await addOrg(env);
     const id = await create(spikeMetric('young_series'));
-    expect(await run(id, { port: portFor([org.id], 5) })).toMatchObject({ state: 'ok', anomalies: 0 });
+    expect(await run(id, { port: portFor([org.id], 5) })).toMatchObject({
+      state: 'ok',
+      anomalies: 0,
+    });
     expect(await pointCount(id)).toBeGreaterThan(5 * 24);
-    expect(await owner().select().from(schema.usageAnomaly).where(eq(schema.usageAnomaly.metricId, id))).toHaveLength(0);
+    expect(
+      await owner().select().from(schema.usageAnomaly).where(eq(schema.usageAnomaly.metricId, id)),
+    ).toHaveLength(0);
     // With the week there, the very same spike fires.
     const old = await create(spikeMetric('old_series'));
-    expect(await run(old, { port: portFor([org.id], 8) })).toMatchObject({ state: 'ok', anomalies: 1 });
+    expect(await run(old, { port: portFor([org.id], 8) })).toMatchObject({
+      state: 'ok',
+      anomalies: 1,
+    });
   });
 
   it('opens at most the cap in one run and the rest in the next', async () => {
     const orgs = await Promise.all([addOrg(env), addOrg(env), addOrg(env), addOrg(env)]);
     const id = await create(spikeMetric('capped_series'));
-    const port = portFor(orgs.map((o) => o.id), 8);
+    const port = portFor(
+      orgs.map((o) => o.id),
+      8,
+    );
     const first = await run(id, { port, detect: { cap: 2 } });
     expect(first).toMatchObject({ state: 'ok', anomalies: 2, capped: 2 });
-    expect(await owner().select().from(schema.usageAnomaly).where(eq(schema.usageAnomaly.metricId, id))).toHaveLength(2);
+    expect(
+      await owner().select().from(schema.usageAnomaly).where(eq(schema.usageAnomaly.metricId, id)),
+    ).toHaveLength(2);
     const second = await run(id, { port, detect: { cap: 2 } });
     expect(second).toMatchObject({ anomalies: 2, capped: 0 });
-    expect(await owner().select().from(schema.usageAnomaly).where(eq(schema.usageAnomaly.metricId, id))).toHaveLength(4);
+    expect(
+      await owner().select().from(schema.usageAnomaly).where(eq(schema.usageAnomaly.metricId, id)),
+    ).toHaveLength(4);
     const third = await run(id, { port, detect: { cap: 2 } });
     expect(third).toMatchObject({ anomalies: 0, capped: 0 });
   });
@@ -278,15 +356,21 @@ describe('anomalies: history, the cap, the dedupe', () => {
   it('a series without an organization raises the alert but no ticket', async () => {
     const id = await create({ ...spikeMetric('no_org_series'), dims: ['flow'] });
     const port = fixedDataPort((request) => {
-      const lastComplete = Math.floor(request.params[1].getTime() / 3_600_000) * 3_600_000 - 3_600_000;
+      const lastComplete =
+        Math.floor(request.params[1].getTime() / 3_600_000) * 3_600_000 - 3_600_000;
       return {
         columns: ['ts', 'value', 'flow'],
-        rows: hourly(request.params[0], request.params[1], (ts) => (ts.getTime() === lastComplete ? 100 : 5)).map((row) => ({ ...row, flow: 'checkout' })),
+        rows: hourly(request.params[0], request.params[1], (ts) =>
+          ts.getTime() === lastComplete ? 100 : 5,
+        ).map((row) => ({ ...row, flow: 'checkout' })),
         truncated: false,
       };
     });
     expect(await run(id, { port })).toMatchObject({ state: 'ok', anomalies: 1 });
-    const [anomaly] = await owner().select().from(schema.usageAnomaly).where(eq(schema.usageAnomaly.metricId, id));
+    const [anomaly] = await owner()
+      .select()
+      .from(schema.usageAnomaly)
+      .where(eq(schema.usageAnomaly.metricId, id));
     expect(anomaly?.ticketId).toBeNull();
     expect(anomaly?.alertId).not.toBeNull();
   });
@@ -307,24 +391,37 @@ describe('who changes a metric, and what the audit says', () => {
       anomalyMinAbs: 10,
       active: true,
     });
-    await run(id, { port: fixedDataPort(() => ({ columns: ['ts', 'value'], rows: [], truncated: false })) });
+    await run(id, {
+      port: fixedDataPort(() => ({ columns: ['ts', 'value'], rows: [], truncated: false })),
+    });
     for (const actor of [SYSTEM, { type: 'ai', id: 'run-1' } as Actor]) {
       await expect(
         env.tx((tx) => env.domain.usage.updateMetric(tx, env.ctx(actor), id, { name: 'Hacked' })),
       ).rejects.toMatchObject({ code: 'policy_denied' });
     }
     await expect(
-      env.tx((tx) => env.domain.usage.updateMetric(tx, env.ctx(head.actor), id, { sqlTemplate: 'DELETE FROM x WHERE $1 < $2 AND $2 > $1' })),
+      env.tx((tx) =>
+        env.domain.usage.updateMetric(tx, env.ctx(head.actor), id, {
+          sqlTemplate: 'DELETE FROM x WHERE $1 < $2 AND $2 > $1',
+        }),
+      ),
     ).rejects.toMatchObject({ code: 'bad_request' });
 
     const edited = await env.tx((tx) =>
-      env.domain.usage.updateMetric(tx, env.ctx(head.actor), id, { sqlTemplate: 'SELECT 2 WHERE $1 < $2' }),
+      env.domain.usage.updateMetric(tx, env.ctx(head.actor), id, {
+        sqlTemplate: 'SELECT 2 WHERE $1 < $2',
+      }),
     );
     expect(edited.value.templateVersion).toBe(2);
-    const [def] = await owner().select().from(schema.usageMetricDef).where(eq(schema.usageMetricDef.id, id));
+    const [def] = await owner()
+      .select()
+      .from(schema.usageMetricDef)
+      .where(eq(schema.usageMetricDef.id, id));
     // The next run starts again from the backfill window under the new template.
     expect(def).toMatchObject({ templateVersion: 2, lastRunState: null, lastRunAt: null });
-    const audit = (await auditRows(env, USAGE_AUDIT_ACTIONS.metricTemplateEdit)).filter((row) => row.targetId === id);
+    const audit = (await auditRows(env, USAGE_AUDIT_ACTIONS.metricTemplateEdit)).filter(
+      (row) => row.targetId === id,
+    );
     expect(audit).toHaveLength(1);
     const metadata = audit[0]?.metadata as Record<string, unknown>;
     expect(metadata).toMatchObject({ version: 2, templateChanged: true });
@@ -334,8 +431,12 @@ describe('who changes a metric, and what the audit says', () => {
     expect(JSON.stringify(audit)).not.toContain('SELECT 2');
 
     // A change that is not the template is a plain update and keeps the version.
-    await env.tx((tx) => env.domain.usage.updateMetric(tx, env.ctx(head.actor), id, { name: 'Renamed' }));
-    expect((await auditRows(env, USAGE_AUDIT_ACTIONS.metricUpdate)).filter((row) => row.targetId === id)).toHaveLength(1);
+    await env.tx((tx) =>
+      env.domain.usage.updateMetric(tx, env.ctx(head.actor), id, { name: 'Renamed' }),
+    );
+    expect(
+      (await auditRows(env, USAGE_AUDIT_ACTIONS.metricUpdate)).filter((row) => row.targetId === id),
+    ).toHaveLength(1);
   });
 });
 
@@ -344,15 +445,23 @@ describe('the Client Health Score', () => {
     const fresh = await addOrg(env);
     const snapshot = await env.domain.usage.computeHealth(env.database.db, fresh.id);
     expect(snapshot).toMatchObject({ status: 'insufficient_data', score: null, formulaVersion: 1 });
-    const [row] = await owner().select().from(schema.orgHealthSnapshot).where(eq(schema.orgHealthSnapshot.orgId, fresh.id));
+    const [row] = await owner()
+      .select()
+      .from(schema.orgHealthSnapshot)
+      .where(eq(schema.orgHealthSnapshot.orgId, fresh.id));
     expect(row).toMatchObject({ status: 'insufficient_data', score: null });
-    const [org] = await owner().select().from(schema.organization).where(eq(schema.organization.id, fresh.id));
+    const [org] = await owner()
+      .select()
+      .from(schema.organization)
+      .where(eq(schema.organization.id, fresh.id));
     expect(org?.healthScore).toBeNull();
   });
 
   it('scores an organization with history from its own facts, once per day, and keeps organization.health_score in step', async () => {
     const old = await addOrg(env);
-    await owner().execute(sql`UPDATE organization SET created_at = clock_timestamp() - interval '90 days' WHERE id = ${old.id}`);
+    await owner().execute(
+      sql`UPDATE organization SET created_at = clock_timestamp() - interval '90 days' WHERE id = ${old.id}`,
+    );
     // 12 tickets 10 and 20 days ago, 3 of them breached their first response, 3 answered the CSAT survey with 5.
     for (let i = 0; i < 12; i += 1) {
       const daysAgo = i < 8 ? 10 : 20;
@@ -374,13 +483,21 @@ describe('the Client Health Score', () => {
 
     // The second computation the same day replaces the snapshot of that day.
     await env.domain.usage.computeHealth(env.database.db, old.id);
-    const rows = await owner().select().from(schema.orgHealthSnapshot).where(eq(schema.orgHealthSnapshot.orgId, old.id));
+    const rows = await owner()
+      .select()
+      .from(schema.orgHealthSnapshot)
+      .where(eq(schema.orgHealthSnapshot.orgId, old.id));
     expect(rows).toHaveLength(1);
-    const [org] = await owner().select().from(schema.organization).where(eq(schema.organization.id, old.id));
+    const [org] = await owner()
+      .select()
+      .from(schema.organization)
+      .where(eq(schema.organization.id, old.id));
     expect(org?.healthScore).toBe(snapshot.score);
 
     // The internal ticket of an anomaly is not customer volume: adding one changes no ticket count.
-    await owner().execute(sql`INSERT INTO ticket (subject, org_id, channel) VALUES ('anomaly', ${old.id}, 'internal')`);
+    await owner().execute(
+      sql`INSERT INTO ticket (subject, org_id, channel) VALUES ('anomaly', ${old.id}, 'internal')`,
+    );
     const again = await env.domain.usage.computeHealth(env.database.db, old.id);
     expect(again.components.find((c) => c.key === 'sla')?.detail).toMatchObject({ tickets: 13 });
   });

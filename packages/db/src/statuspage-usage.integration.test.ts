@@ -136,11 +136,17 @@ describe('0060 status_subscription', () => {
 });
 
 describe('0061 usage_metric_def', () => {
-  const define = (key: string, dims: string[], extra = '') =>
-    app.query(
-      `INSERT INTO usage_metric_def (key, name, sql_template, dims${extra === '' ? '' : ', ' + extra.split('=')[0]}) VALUES ($1, 'm', 'SELECT 1', $2${extra === '' ? '' : ', ' + extra.split('=')[1]})`,
-      [key, dims],
-    );
+  // `column` is one of the literals below, never input.
+  const define = (key: string, dims: string[], column?: string, value?: string | number) =>
+    column === undefined
+      ? app.query(
+          `INSERT INTO usage_metric_def (key, name, sql_template, dims) VALUES ($1, 'm', 'SELECT 1', $2)`,
+          [key, dims],
+        )
+      : app.query(
+          `INSERT INTO usage_metric_def (key, name, sql_template, dims, ${column}) VALUES ($1, 'm', 'SELECT 1', $2, $3)`,
+          [key, dims, value],
+        );
 
   it('accepts declared dimensions only: lower snake case, distinct, at most six, never ts or value', async () => {
     await define('ok_one', ['org', 'flow', 'step']);
@@ -158,9 +164,9 @@ describe('0061 usage_metric_def', () => {
 
   it('keeps the refresh interval, the rule and the key within bounds', async () => {
     await rejects(define('Bad Key', []), PG.checkViolation);
-    await rejects(define('fast_one', [], 'refresh_interval_seconds=10'), PG.checkViolation);
-    await rejects(define('flat_ratio', [], 'anomaly_ratio=1'), PG.checkViolation);
-    await rejects(define('wrong_way', [], `direction='sideways'`), PG.checkViolation);
+    await rejects(define('fast_one', [], 'refresh_interval_seconds', 10), PG.checkViolation);
+    await rejects(define('flat_ratio', [], 'anomaly_ratio', 1), PG.checkViolation);
+    await rejects(define('wrong_way', [], 'direction', 'sideways'), PG.checkViolation);
     await rejects(define('ok_one', []), PG.uniqueViolation);
   });
 });
@@ -235,9 +241,10 @@ describe('0062 usage_anomaly', () => {
       [hash('alert')],
     );
     await rejects(
-      app.query(`INSERT INTO alert (fingerprint, source, title) VALUES ($1, 'carrier_pigeon', 'x')`, [
-        hash('other'),
-      ]),
+      app.query(
+        `INSERT INTO alert (fingerprint, source, title) VALUES ($1, 'carrier_pigeon', 'x')`,
+        [hash('other')],
+      ),
       PG.checkViolation,
     );
   });
@@ -281,9 +288,10 @@ describe('0060 to 0063 are reversible', () => {
     expect(gone.rowCount).toBe(0);
     // The alert source CHECK is back to the narrower list.
     await rejects(
-      owner().query(`INSERT INTO alert (fingerprint, source, title) VALUES ($1, 'usage_anomaly', 'x')`, [
-        hash('after-down'),
-      ]),
+      owner().query(
+        `INSERT INTO alert (fingerprint, source, title) VALUES ($1, 'usage_anomaly', 'x')`,
+        [hash('after-down')],
+      ),
       PG.checkViolation,
     );
     expect(await migrateUp(owner())).toEqual([

@@ -75,7 +75,8 @@ export class StatusPublicController {
   @Header('Cache-Control', 'public, max-age=60')
   @ApiOperation({
     summary: 'The last 90 days',
-    description: 'Published posts of the last 90 days and the published maintenance windows that ended in them.',
+    description:
+      'Published posts of the last 90 days and the published maintenance windows that ended in them.',
   })
   @ApiOkResponse({ standardSchema: publicHistorySchema })
   @ApiNotFoundResponse({ description: 'The status page is closed' })
@@ -96,7 +97,10 @@ export class StatusSubscriptionsController {
   @Post()
   @Public()
   @HttpCode(202)
-  @Audited({ action: STATUSPAGE_AUDIT_ACTIONS.subscriptionRequest, targetType: 'status_subscription' })
+  @Audited({
+    action: STATUSPAGE_AUDIT_ACTIONS.subscriptionRequest,
+    targetType: 'status_subscription',
+  })
   @ApiOperation({
     summary: 'Ask to be told about the status page',
     description:
@@ -107,7 +111,9 @@ export class StatusSubscriptionsController {
   @ApiOkResponse({ standardSchema: subscribeResultSchema })
   @ApiBadRequestResponse({ description: 'Not an email address' })
   @ApiNotFoundResponse({ description: 'The status page is closed' })
-  @ApiTooManyRequestsResponse({ description: 'Rate limit (status_subscription.rate_limited is audited)' })
+  @ApiTooManyRequestsResponse({
+    description: 'Rate limit (status_subscription.rate_limited is audited)',
+  })
   async subscribe(@Body({ schema: subscribeSchema }) body: Subscribe, @Req() request: Request) {
     await this.service.subscribe(body, request.ip ?? null);
     return parseResponse(subscribeResultSchema, { status: 'check_your_email' });
@@ -116,7 +122,10 @@ export class StatusSubscriptionsController {
   @Post('confirm')
   @Public()
   @HttpCode(200)
-  @Audited({ action: STATUSPAGE_AUDIT_ACTIONS.subscriptionConfirm, targetType: 'status_subscription' })
+  @Audited({
+    action: STATUSPAGE_AUDIT_ACTIONS.subscriptionConfirm,
+    targetType: 'status_subscription',
+  })
   @ApiOperation({
     summary: 'Confirm a subscription',
     description:

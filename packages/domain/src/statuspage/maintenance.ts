@@ -182,7 +182,11 @@ export async function cancelStatusMaintenance(
   if (row.state === 'cancelled') return fx.result({ cancelled: false });
   await tx
     .update(schema.statusMaintenance)
-    .set({ state: 'cancelled', cancelledAt: sql`clock_timestamp()`, updatedAt: sql`clock_timestamp()` })
+    .set({
+      state: 'cancelled',
+      cancelledAt: sql`clock_timestamp()`,
+      updatedAt: sql`clock_timestamp()`,
+    })
     .where(eq(schema.statusMaintenance.id, id));
   await recordAuditInTx(tx, ctx, fx, {
     action: STATUSPAGE_AUDIT_ACTIONS.maintenanceCancel,

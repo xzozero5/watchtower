@@ -188,7 +188,12 @@ export {
 } from './statuspage/links.js';
 export { canonicalDims, dimsHash, templateHash, type DimSet } from './usage/dims.js';
 export { anomalyDedupeKey, detectUsageAnomalies, isAnomalous } from './usage/anomaly.js';
-export { computeAllOrgHealth, computeOrgHealth, scoreHealth, type HealthFacts } from './usage/health.js';
+export {
+  computeAllOrgHealth,
+  computeOrgHealth,
+  scoreHealth,
+  type HealthFacts,
+} from './usage/health.js';
 export { createUsageMetric, updateUsageMetric } from './usage/metrics.js';
 export { cleanDimValue, parseUsageRows, type ParsedPoint } from './usage/rows.js';
 export {

@@ -25,7 +25,10 @@ export async function loadExampleMetrics(): Promise<CreateMetric[]> {
 }
 
 /** Loads the stand-in product schema into `pool`'s database and seeds it for these organizations. */
-export async function loadProductMock(pool: Database['pool'], orgIds: readonly string[]): Promise<number> {
+export async function loadProductMock(
+  pool: Database['pool'],
+  orgIds: readonly string[],
+): Promise<number> {
   await pool.query(await readFile(join(EXAMPLES, 'product_mock.sql'), 'utf8'));
   const result = await pool.query<{ seed: number }>(
     'SELECT product_mock.seed($1::uuid[]) AS seed',

@@ -53,8 +53,12 @@ afterAll(async () => {
   net.restore();
 });
 
-const call = <T>(who: Persona, method: 'GET' | 'POST' | 'PATCH' | 'DELETE', path: string, body?: unknown) =>
-  who.client.request<T>(method, path, body === undefined ? {} : { body });
+const call = <T>(
+  who: Persona,
+  method: 'GET' | 'POST' | 'PATCH' | 'DELETE',
+  path: string,
+  body?: unknown,
+) => who.client.request<T>(method, path, body === undefined ? {} : { body });
 
 async function component(slug: string, isPublic: boolean): Promise<StatusComponent> {
   const response = await call<StatusComponent>(lead, 'POST', '/v1/status-page/components', {
@@ -175,15 +179,24 @@ describe('the public page is an allow-list', () => {
       rootCause: 'Bad migration of the orders table',
     });
 
-    const draft = await call<StatusPostStaff>(agent, 'POST', '/v1/status-page/posts/from-incident', {
-      incidentId: incident.body.id,
-      componentIds: [shown.id, hidden.id],
-      phase: 'investigating',
-      impact: 'major',
-      locale: 'en',
-    });
+    const draft = await call<StatusPostStaff>(
+      agent,
+      'POST',
+      '/v1/status-page/posts/from-incident',
+      {
+        incidentId: incident.body.id,
+        componentIds: [shown.id, hidden.id],
+        phase: 'investigating',
+        impact: 'major',
+        locale: 'en',
+      },
+    );
     expect(draft.status).toBe(201);
-    expect(draft.body).toMatchObject({ state: 'draft', origin: 'human', incidentId: incident.body.id });
+    expect(draft.body).toMatchObject({
+      state: 'draft',
+      origin: 'human',
+      incidentId: incident.body.id,
+    });
 
     // A draft is invisible, however it looks to staff.
     const before = await get<PublicStatus>('/v1/status');
@@ -191,7 +204,9 @@ describe('the public page is an allow-list', () => {
     expect(before.body.activePosts).toHaveLength(0);
 
     // Only a person with permission publishes: an agent cannot.
-    expect((await call(agent, 'POST', `/v1/status-page/posts/${draft.body.id}/publish`, {})).status).toBe(403);
+    expect(
+      (await call(agent, 'POST', `/v1/status-page/posts/${draft.body.id}/publish`, {})).status,
+    ).toBe(403);
     const published = await call<{ post: StatusPostStaff; subscribers: number }>(
       lead,
       'POST',
@@ -210,9 +225,21 @@ describe('the public page is an allow-list', () => {
     const publicPost = page.body.activePosts[0];
     expect(publicPost?.components).toEqual([{ slug: 'checkout', name: 'Name of checkout' }]);
     expect(Object.keys(publicPost ?? {}).toSorted()).toEqual([
-      'body', 'components', 'id', 'impact', 'phase', 'publishedAt', 'title', 'updatedAt',
+      'body',
+      'components',
+      'id',
+      'impact',
+      'phase',
+      'publishedAt',
+      'title',
+      'updatedAt',
     ]);
-    expect(Object.keys(page.body.components[0] ?? {}).toSorted()).toEqual(['description', 'name', 'slug', 'status']);
+    expect(Object.keys(page.body.components[0] ?? {}).toSorted()).toEqual([
+      'description',
+      'name',
+      'slug',
+      'status',
+    ]);
 
     // Nothing of the incident or its people reaches the page, in any field.
     const text = JSON.stringify(page.body);
@@ -240,9 +267,14 @@ describe('the public page is an allow-list', () => {
       await call<{ items: StatusPostStaff[] }>(lead, 'GET', '/v1/status-page/posts?state=published')
     ).body.items;
     expect(existing).toBeDefined();
-    const resolved = await call<StatusPostStaff>(lead, 'PATCH', `/v1/status-page/posts/${existing?.id}`, {
-      phase: 'resolved',
-    });
+    const resolved = await call<StatusPostStaff>(
+      lead,
+      'PATCH',
+      `/v1/status-page/posts/${existing?.id ?? ''}`,
+      {
+        phase: 'resolved',
+      },
+    );
     expect(resolved.status).toBe(200);
     const page = await get<PublicStatus>('/v1/status');
     expect(page.body.activePosts).toHaveLength(0);
@@ -267,13 +299,19 @@ describe('the public page is an allow-list', () => {
     const ongoing = await draftWindow(-3_600_000, day);
     expect((await get<PublicStatus>('/v1/status')).body.upcomingMaintenance).toHaveLength(0);
     for (const window of [upcoming, ongoing]) {
-      expect((await call(agent, 'POST', `/v1/status-page/maintenance/${window.id}/publish`, {})).status).toBe(403);
-      expect((await call(lead, 'POST', `/v1/status-page/maintenance/${window.id}/publish`, {})).status).toBe(200);
+      expect(
+        (await call(agent, 'POST', `/v1/status-page/maintenance/${window.id}/publish`, {})).status,
+      ).toBe(403);
+      expect(
+        (await call(lead, 'POST', `/v1/status-page/maintenance/${window.id}/publish`, {})).status,
+      ).toBe(200);
     }
     const page = await get<PublicStatus>('/v1/status');
     expect(page.body.upcomingMaintenance.map((w) => w.id)).toEqual([upcoming.id]);
     expect(page.body.ongoingMaintenance.map((w) => w.id)).toEqual([ongoing.id]);
-    expect((await call(lead, 'POST', `/v1/status-page/maintenance/${upcoming.id}/cancel`, {})).status).toBe(200);
+    expect(
+      (await call(lead, 'POST', `/v1/status-page/maintenance/${upcoming.id}/cancel`, {})).status,
+    ).toBe(200);
     expect((await get<PublicStatus>('/v1/status')).body.upcomingMaintenance).toHaveLength(0);
   });
 
@@ -296,9 +334,10 @@ describe('email subscriptions (double opt-in)', () => {
         state: string;
         confirm_nonce: string;
         unsubscribe_nonce: string;
-      }>(`SELECT id, state, confirm_nonce, unsubscribe_nonce FROM status_subscription WHERE email = $1`, [
-        email,
-      ])
+      }>(
+        `SELECT id, state, confirm_nonce, unsubscribe_nonce FROM status_subscription WHERE email = $1`,
+        [email],
+      )
     ).rows[0];
 
   it('answers the same for every address and sends one confirmation job; nobody is subscribed yet', async () => {
@@ -313,19 +352,22 @@ describe('email subscriptions (double opt-in)', () => {
     expect(row?.state).toBe('pending');
     const jobs = await owner().query(
       `SELECT 1 FROM outbox WHERE queue = $1 AND job_name = $2 AND job_id LIKE $3`,
-      [QUEUE_NAMES.statuspage, STATUSPAGE_JOBS.confirm, `%${row?.id}%`],
+      [QUEUE_NAMES.statuspage, STATUSPAGE_JOBS.confirm, `%${row?.id ?? ''}%`],
     );
     expect(jobs.rowCount).toBe(1);
     // The audit rows name the subscription, not the address.
-    const audit = await owner().query(`SELECT metadata::text AS m FROM audit_log WHERE action = $1`, [
-      STATUSPAGE_AUDIT_ACTIONS.subscriptionRequest,
-    ]);
-    expect(audit.rows.map((r) => String(r.m)).join('')).not.toContain(email);
+    const audit = await owner().query<{ m: string }>(
+      `SELECT metadata::text AS m FROM audit_log WHERE action = $1`,
+      [STATUSPAGE_AUDIT_ACTIONS.subscriptionRequest],
+    );
+    expect(audit.rows.map((r) => r.m).join('')).not.toContain(email);
   });
 
   it('rejects a body that is not an address or has other fields', async () => {
     expect((await subscribe('not-an-address')).status).toBe(400);
-    expect((await post('/v1/status/subscriptions', { email: 'a@b.test', admin: true })).status).toBe(400);
+    expect(
+      (await post('/v1/status/subscriptions', { email: 'a@b.test', admin: true })).status,
+    ).toBe(400);
   });
 
   it('confirms with the signed link in the body, once or twice, and refuses a wrong one', async () => {
@@ -355,7 +397,9 @@ describe('email subscriptions (double opt-in)', () => {
       token: mintStatusLink(linkKey(), 'confirm', row.id, row.confirm_nonce),
     });
     const confirmLink = mintStatusLink(linkKey(), 'confirm', row.id, row.confirm_nonce);
-    expect((await post('/v1/status/subscriptions/unsubscribe', { token: confirmLink })).status).toBe(400);
+    expect(
+      (await post('/v1/status/subscriptions/unsubscribe', { token: confirmLink })).status,
+    ).toBe(400);
     const token = mintStatusLink(linkKey(), 'unsubscribe', row.id, row.unsubscribe_nonce);
     expect((await post('/v1/status/subscriptions/unsubscribe', { token })).status).toBe(200);
     expect((await post('/v1/status/subscriptions/unsubscribe', { token })).status).toBe(200);
@@ -378,7 +422,10 @@ describe('email subscriptions (double opt-in)', () => {
       `SELECT metadata FROM audit_log WHERE action = $1 AND outcome = 'denied'`,
       [STATUSPAGE_AUDIT_ACTIONS.subscriptionRateLimited],
     );
-    expect(denied.rows.map((r) => r.metadata.scope).toSorted()).toEqual(['subscribe-email', 'subscribe-ip']);
+    expect(denied.rows.map((r) => r.metadata.scope).toSorted()).toEqual([
+      'subscribe-email',
+      'subscribe-ip',
+    ]);
     expect(JSON.stringify(denied.rows)).not.toContain(email);
     // Nobody got a second confirmation from the flood.
     const sent = await owner().query(

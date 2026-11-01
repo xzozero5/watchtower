@@ -68,7 +68,12 @@ export const STATUS_COMPONENT_STATUSES = [
 export type StatusComponentStatus = (typeof STATUS_COMPONENT_STATUSES)[number];
 export const statusComponentStatusSchema = z.enum(STATUS_COMPONENT_STATUSES);
 
-export const STATUS_POST_PHASES = ['investigating', 'identified', 'monitoring', 'resolved'] as const;
+export const STATUS_POST_PHASES = [
+  'investigating',
+  'identified',
+  'monitoring',
+  'resolved',
+] as const;
 export type StatusPostPhase = (typeof STATUS_POST_PHASES)[number];
 export const statusPostPhaseSchema = z.enum(STATUS_POST_PHASES);
 
@@ -113,15 +118,18 @@ const TEMPLATES: Readonly<
   en: {
     investigating: {
       title: 'We are investigating an issue',
-      body: (c) => `We are investigating an issue affecting ${c}. We will post an update as soon as we know more.`,
+      body: (c) =>
+        `We are investigating an issue affecting ${c}. We will post an update as soon as we know more.`,
     },
     identified: {
       title: 'We have identified the issue',
-      body: (c) => `We have identified the cause of the issue affecting ${c} and are working on a fix.`,
+      body: (c) =>
+        `We have identified the cause of the issue affecting ${c} and are working on a fix.`,
     },
     monitoring: {
       title: 'A fix is in place',
-      body: (c) => `A fix has been applied for the issue affecting ${c}. We are monitoring the results.`,
+      body: (c) =>
+        `A fix has been applied for the issue affecting ${c}. We are monitoring the results.`,
     },
     resolved: {
       title: 'The issue is resolved',
@@ -131,7 +139,8 @@ const TEMPLATES: Readonly<
   th: {
     investigating: {
       title: 'เรากำลังตรวจสอบปัญหา',
-      body: (c) => `เรากำลังตรวจสอบปัญหาที่กระทบ ${c} และจะแจ้งความคืบหน้าทันทีที่ทราบข้อมูลเพิ่มเติม`,
+      body: (c) =>
+        `เรากำลังตรวจสอบปัญหาที่กระทบ ${c} และจะแจ้งความคืบหน้าทันทีที่ทราบข้อมูลเพิ่มเติม`,
     },
     identified: {
       title: 'เราพบสาเหตุของปัญหาแล้ว',

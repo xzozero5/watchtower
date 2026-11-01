@@ -62,15 +62,26 @@ describe('publishing a post (N3)', () => {
       }),
     );
     const id = drafted.value.id;
-    const [draft] = await owner().select().from(schema.statusPost).where(eq(schema.statusPost.id, id));
-    expect(draft).toMatchObject({ state: 'draft', origin: 'ai', publishedBy: null, publishedAt: null });
+    const [draft] = await owner()
+      .select()
+      .from(schema.statusPost)
+      .where(eq(schema.statusPost.id, id));
+    expect(draft).toMatchObject({
+      state: 'draft',
+      origin: 'ai',
+      publishedBy: null,
+      publishedAt: null,
+    });
 
     for (const actor of [AI, SYSTEM, ANONYMOUS]) {
       await expect(
         env.tx((tx) => env.domain.statusPage.publishPost(tx, env.ctx(actor), id)),
       ).rejects.toMatchObject({ code: 'policy_denied' });
     }
-    const [still] = await owner().select().from(schema.statusPost).where(eq(schema.statusPost.id, id));
+    const [still] = await owner()
+      .select()
+      .from(schema.statusPost)
+      .where(eq(schema.statusPost.id, id));
     expect(still?.state).toBe('draft');
     expect(await outboxJobs(STATUSPAGE_JOBS.notify)).toHaveLength(0);
 
@@ -79,7 +90,10 @@ describe('publishing a post (N3)', () => {
       env.domain.statusPage.publishPost(tx, env.ctx(lead.actor), id),
     );
     expect(published.value.subscribers).toBe(0);
-    const [after] = await owner().select().from(schema.statusPost).where(eq(schema.statusPost.id, id));
+    const [after] = await owner()
+      .select()
+      .from(schema.statusPost)
+      .where(eq(schema.statusPost.id, id));
     expect(after).toMatchObject({ state: 'published', publishedBy: lead.id, origin: 'ai' });
     expect(after?.publishedAt).toBeInstanceOf(Date);
     const audit = (await auditRows(env, STATUSPAGE_AUDIT_ACTIONS.postPublish)).filter(
@@ -87,7 +101,9 @@ describe('publishing a post (N3)', () => {
     );
     expect(audit).toHaveLength(1);
     expect(audit[0]).toMatchObject({ actorType: 'user', actorId: lead.id });
-    expect((await outboxJobs(STATUSPAGE_JOBS.notify)).filter((row) => row.jobId.endsWith(id))).toHaveLength(1);
+    expect(
+      (await outboxJobs(STATUSPAGE_JOBS.notify)).filter((row) => row.jobId.endsWith(id)),
+    ).toHaveLength(1);
 
     await expect(
       env.tx((tx) => env.domain.statusPage.publishPost(tx, env.ctx(lead.actor), id)),
@@ -148,7 +164,10 @@ describe('publishing a post (N3)', () => {
         locale: 'en',
       }),
     );
-    const [post] = await owner().select().from(schema.statusPost).where(eq(schema.statusPost.id, value.id));
+    const [post] = await owner()
+      .select()
+      .from(schema.statusPost)
+      .where(eq(schema.statusPost.id, value.id));
     expect(post?.incidentId).toBe(incident.incidentId);
     expect(post?.state).toBe('draft');
     expect(post?.body).toContain('Component checkout');
@@ -178,13 +197,17 @@ describe('maintenance (N3)', () => {
     await expect(
       env.tx((tx) => env.domain.statusPage.publishMaintenance(tx, env.ctx(AI), value.id)),
     ).rejects.toBeInstanceOf(DomainError);
-    await env.tx((tx) => env.domain.statusPage.publishMaintenance(tx, env.ctx(lead.actor), value.id));
+    await env.tx((tx) =>
+      env.domain.statusPage.publishMaintenance(tx, env.ctx(lead.actor), value.id),
+    );
     const [row] = await owner()
       .select()
       .from(schema.statusMaintenance)
       .where(eq(schema.statusMaintenance.id, value.id));
     expect(row).toMatchObject({ state: 'published', publishedBy: lead.id, origin: 'ai' });
-    await env.tx((tx) => env.domain.statusPage.cancelMaintenance(tx, env.ctx(lead.actor), value.id));
+    await env.tx((tx) =>
+      env.domain.statusPage.cancelMaintenance(tx, env.ctx(lead.actor), value.id),
+    );
     await expect(
       env.tx((tx) => env.domain.statusPage.publishMaintenance(tx, env.ctx(lead.actor), value.id)),
     ).rejects.toMatchObject({ code: 'conflict' });
@@ -230,14 +253,20 @@ describe('subscriptions (double opt-in)', () => {
     await request(email);
     const row = await rowOf(email);
     const confirm = (token: string) =>
-      env.tx((tx) =>
-        env.domain.statusPage.confirmSubscription(tx, env.ctx(ANONYMOUS), key, token),
-      );
+      env.tx((tx) => env.domain.statusPage.confirmSubscription(tx, env.ctx(ANONYMOUS), key, token));
     expect((await confirm('garbage')).value.outcome).toBe('invalid');
-    expect((await confirm(mintStatusLink(randomBytes(32), 'confirm', row.id, row.confirmNonce))).value.outcome).toBe('invalid');
-    expect((await confirm(mintStatusLink(key, 'confirm', row.id, '0000000000000000'))).value.outcome).toBe('invalid');
+    expect(
+      (await confirm(mintStatusLink(randomBytes(32), 'confirm', row.id, row.confirmNonce))).value
+        .outcome,
+    ).toBe('invalid');
+    expect(
+      (await confirm(mintStatusLink(key, 'confirm', row.id, '0000000000000000'))).value.outcome,
+    ).toBe('invalid');
     // An unsubscribe link does not confirm.
-    expect((await confirm(mintStatusLink(key, 'unsubscribe', row.id, row.unsubscribeNonce))).value.outcome).toBe('invalid');
+    expect(
+      (await confirm(mintStatusLink(key, 'unsubscribe', row.id, row.unsubscribeNonce))).value
+        .outcome,
+    ).toBe('invalid');
 
     // A window that closed by the database clock.
     await owner()
@@ -270,8 +299,12 @@ describe('subscriptions (double opt-in)', () => {
     expect(second.confirmNonce).not.toBe(first.confirmNonce);
     const confirm = (token: string) =>
       env.tx((tx) => env.domain.statusPage.confirmSubscription(tx, env.ctx(ANONYMOUS), key, token));
-    expect((await confirm(mintStatusLink(key, 'confirm', first.id, first.confirmNonce))).value.outcome).toBe('invalid');
-    expect((await confirm(mintStatusLink(key, 'confirm', second.id, second.confirmNonce))).value.outcome).toBe('confirmed');
+    expect(
+      (await confirm(mintStatusLink(key, 'confirm', first.id, first.confirmNonce))).value.outcome,
+    ).toBe('invalid');
+    expect(
+      (await confirm(mintStatusLink(key, 'confirm', second.id, second.confirmNonce))).value.outcome,
+    ).toBe('confirmed');
 
     const unsubscribe = (token: string) =>
       env.tx((tx) => env.domain.statusPage.unsubscribe(tx, env.ctx(ANONYMOUS), key, token));
@@ -288,7 +321,12 @@ describe('subscriptions (double opt-in)', () => {
       await owner()
         .select()
         .from(schema.statusSubscription)
-        .where(and(eq(schema.statusSubscription.id, back.id), eq(schema.statusSubscription.state, 'pending'))),
+        .where(
+          and(
+            eq(schema.statusSubscription.id, back.id),
+            eq(schema.statusSubscription.state, 'pending'),
+          ),
+        ),
     ).toHaveLength(1);
   });
 });

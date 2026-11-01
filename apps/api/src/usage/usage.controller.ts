@@ -49,7 +49,10 @@ export class UsageController {
 
   @Get('metrics')
   @RequirePermission('metric.read')
-  @ApiOperation({ summary: 'List metric definitions', description: 'The SQL template is included for a head only.' })
+  @ApiOperation({
+    summary: 'List metric definitions',
+    description: 'The SQL template is included for a head only.',
+  })
   @ApiOkResponse({ standardSchema: metricListSchema })
   async list(@CurrentPrincipal() principal: Principal) {
     return parseResponse(metricListSchema, {
@@ -106,14 +109,17 @@ export class UsageController {
     @Body({ schema: updateMetricSchema }) body: UpdateMetric,
     @CurrentPrincipal() principal: Principal,
   ) {
-    return parseResponse(metricSchema, await this.service.updateMetric(userOf(principal), params.id, body));
+    return parseResponse(
+      metricSchema,
+      await this.service.updateMetric(userOf(principal), params.id, body),
+    );
   }
 
   @Get('metrics/:id/points')
   @RequirePermission('metric.read')
   @ApiOperation({
     summary: 'Cached hourly points of a metric, newest first',
-    description: 'Read from Watchtower\'s own database; this route never reaches the product data.',
+    description: "Read from Watchtower's own database; this route never reaches the product data.",
   })
   @ApiOkResponse({ standardSchema: metricPointsSchema })
   async points(

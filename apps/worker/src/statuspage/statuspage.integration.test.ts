@@ -112,7 +112,9 @@ const subscribe = (email: string, locale: 'en' | 'th' = 'en') =>
     domain.statusPage.requestSubscription(tx, ctx(ANONYMOUS), { email, locale }),
   );
 const confirm = (token: string) =>
-  appDb.db.transaction((tx) => domain.statusPage.confirmSubscription(tx, ctx(ANONYMOUS), key(), token));
+  appDb.db.transaction((tx) =>
+    domain.statusPage.confirmSubscription(tx, ctx(ANONYMOUS), key(), token),
+  );
 
 async function confirmedReader(label: string, locale: 'en' | 'th' = 'en'): Promise<string> {
   const email = address(label);
@@ -149,7 +151,9 @@ async function publishedPost(title: string, body: string, componentName: string)
       incidentId: null,
     }),
   );
-  await appDb.db.transaction((tx) => domain.statusPage.publishPost(tx, ctx(lead), drafted.value.id));
+  await appDb.db.transaction((tx) =>
+    domain.statusPage.publishPost(tx, ctx(lead), drafted.value.id),
+  );
   return drafted.value.id;
 }
 
@@ -194,7 +198,10 @@ describe('notices of a published post', () => {
     const quitter = await confirmedReader('quitter');
     const pending = address('pending');
     await subscribe(pending);
-    await waitFor(async () => ((await mailsFor(pending)).length > 0 ? true : undefined), 'pending confirmation');
+    await waitFor(
+      async () => ((await mailsFor(pending)).length > 0 ? true : undefined),
+      'pending confirmation',
+    );
 
     // The quitter follows the unsubscribe link of an earlier notice before the next post.
     await publishedPost('Earlier issue', 'We looked into an earlier issue.', 'Earlier component');
@@ -202,7 +209,10 @@ describe('notices of a published post', () => {
       const mails = await mailsFor(quitter);
       return mails.length > 0 ? mails : undefined;
     }, 'the earlier notice to the quitter');
-    await waitFor(async () => ((await mailsFor(reader)).length > 0 ? true : undefined), 'the earlier notice to the reader');
+    await waitFor(
+      async () => ((await mailsFor(reader)).length > 0 ? true : undefined),
+      'the earlier notice to the reader',
+    );
     const unsubscribeToken = tokenIn(earlier?.text ?? '');
     expect(unsubscribeToken).toMatch(/^wts1\.u\./);
     const unsubscribed = await appDb.db.transaction((tx) =>
@@ -236,7 +246,9 @@ describe('notices of a published post', () => {
     expect(await mailsFor(quitter)).toHaveLength(0);
     // The reader who never confirmed got the confirmation only.
     const pendingMails = await mailsFor(pending);
-    expect(pendingMails.map((mail) => mail.subject)).toEqual(['Confirm your subscription to status updates']);
+    expect(pendingMails.map((mail) => mail.subject)).toEqual([
+      'Confirm your subscription to status updates',
+    ]);
     const claims = (await owner().select().from(schema.statusNotification)).filter(
       (row) => row.refId === postId,
     );

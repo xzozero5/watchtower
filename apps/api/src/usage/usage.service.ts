@@ -59,7 +59,10 @@ export class UsageService {
   async createMetric(actor: Actor, input: CreateMetric): Promise<Metric> {
     const { id } = await translating(() =>
       this.uow.run(async (uow) =>
-        settle(uow, await this.domain.usage.createMetric(uow.tx, domainContext(this.domain, actor), input)),
+        settle(
+          uow,
+          await this.domain.usage.createMetric(uow.tx, domainContext(this.domain, actor), input),
+        ),
       ),
     );
     return this.getMetric(id, true);
@@ -70,7 +73,12 @@ export class UsageService {
       this.uow.run(async (uow) =>
         settle(
           uow,
-          await this.domain.usage.updateMetric(uow.tx, domainContext(this.domain, actor), id, input),
+          await this.domain.usage.updateMetric(
+            uow.tx,
+            domainContext(this.domain, actor),
+            id,
+            input,
+          ),
         ),
       ),
     );
@@ -92,7 +100,9 @@ export class UsageService {
           eq(schema.usageMetricPoint.metricId, id),
           orgScopeCondition(schema.usageMetricPoint.orgId, scope),
           query.orgId === undefined ? undefined : eq(schema.usageMetricPoint.orgId, query.orgId),
-          query.from === undefined ? undefined : gte(schema.usageMetricPoint.ts, new Date(query.from)),
+          query.from === undefined
+            ? undefined
+            : gte(schema.usageMetricPoint.ts, new Date(query.from)),
           query.to === undefined ? undefined : lte(schema.usageMetricPoint.ts, new Date(query.to)),
         ),
       )

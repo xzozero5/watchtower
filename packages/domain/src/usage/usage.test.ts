@@ -48,7 +48,9 @@ describe('the anomaly rule', () => {
     const morning = anomalyDedupeKey(metric, hash, new Date('2030-05-01T03:00:00Z'));
     expect(anomalyDedupeKey(metric, hash, new Date('2030-05-01T23:00:00Z'))).toBe(morning);
     expect(anomalyDedupeKey(metric, hash, new Date('2030-05-02T00:00:00Z'))).not.toBe(morning);
-    expect(anomalyDedupeKey(metric, dimsHash({ org: randomUUID() }), new Date('2030-05-01T03:00:00Z'))).not.toBe(morning);
+    expect(
+      anomalyDedupeKey(metric, dimsHash({ org: randomUUID() }), new Date('2030-05-01T03:00:00Z')),
+    ).not.toBe(morning);
   });
 });
 
@@ -64,7 +66,10 @@ describe('the Client Health Score formula v1', () => {
   };
 
   it('weights add up to one', () => {
-    expect(Object.values(HEALTH_WEIGHTS_V1).reduce((sum, weight) => sum + weight, 0)).toBeCloseTo(1, 10);
+    expect(Object.values(HEALTH_WEIGHTS_V1).reduce((sum, weight) => sum + weight, 0)).toBeCloseTo(
+      1,
+      10,
+    );
   });
 
   it('scores from the parts that have data and re-weights them', () => {
@@ -86,7 +91,13 @@ describe('the Client Health Score formula v1', () => {
   });
 
   it('says there is not enough data instead of inventing a score (N5)', () => {
-    const young = scoreHealth({ ...facts, ageDays: 3, tickets: { recent: 0, prior: 0, priorWeekly: 0 }, sla: { tickets: 1, breached: 0 }, csat: { answers: 0, average: null } });
+    const young = scoreHealth({
+      ...facts,
+      ageDays: 3,
+      tickets: { recent: 0, prior: 0, priorWeekly: 0 },
+      sla: { tickets: 1, breached: 0 },
+      csat: { answers: 0, average: null },
+    });
     expect(young).toMatchObject({ status: 'insufficient_data', score: null });
     expect(young.components.every((c) => c.status === 'no_data')).toBe(true);
     // Only the SLA (0.3) speaks: under half of the weights.
@@ -135,35 +146,73 @@ describe('reading the answer of a template', () => {
   });
 
   it('turns rows into points with the organization split out', () => {
-    const outcome = parse({ columns: ['ts', 'value', 'org', 'flow'], rows: [row()], truncated: false });
+    const outcome = parse({
+      columns: ['ts', 'value', 'org', 'flow'],
+      rows: [row()],
+      truncated: false,
+    });
     expect(outcome).toMatchObject({ ok: true });
     if (!outcome.ok) return;
-    expect(outcome.points[0]).toMatchObject({ orgId: org, dims: { flow: 'checkout' }, value: 12.5 });
+    expect(outcome.points[0]).toMatchObject({
+      orgId: org,
+      dims: { flow: 'checkout' },
+      value: 12.5,
+    });
     expect(outcome.points[0]?.dimsHash).toBe(dimsHash({ flow: 'checkout', org }));
   });
 
   it('refuses an extra column, a missing column, a stray key in a row', () => {
-    expect(parse({ columns: ['ts', 'value', 'org', 'flow', 'email'], rows: [], truncated: false })).toEqual({ ok: false, code: 'extra_column' });
-    expect(parse({ columns: ['ts', 'value', 'org'], rows: [], truncated: false })).toEqual({ ok: false, code: 'missing_column' });
-    expect(parse({ columns: ['ts', 'value', 'org', 'flow'], rows: [row({ email: 'a@b.test' })], truncated: false })).toEqual({ ok: false, code: 'extra_column' });
+    expect(
+      parse({ columns: ['ts', 'value', 'org', 'flow', 'email'], rows: [], truncated: false }),
+    ).toEqual({ ok: false, code: 'extra_column' });
+    expect(parse({ columns: ['ts', 'value', 'org'], rows: [], truncated: false })).toEqual({
+      ok: false,
+      code: 'missing_column',
+    });
+    expect(
+      parse({
+        columns: ['ts', 'value', 'org', 'flow'],
+        rows: [row({ email: 'a@b.test' })],
+        truncated: false,
+      }),
+    ).toEqual({ ok: false, code: 'extra_column' });
   });
 
   it('refuses a bucket that is not an hour inside the window, a value that is not finite, a bad organization', () => {
     const columns = ['ts', 'value', 'org', 'flow'];
-    expect(parse({ columns, rows: [row({ ts: new Date('2030-05-01T02:30:00Z') })], truncated: false })).toEqual({ ok: false, code: 'bad_bucket' });
-    expect(parse({ columns, rows: [row({ ts: new Date('2030-04-30T23:00:00Z') })], truncated: false })).toEqual({ ok: false, code: 'bad_bucket' });
-    expect(parse({ columns, rows: [row({ value: 'NaN' })], truncated: false })).toEqual({ ok: false, code: 'bad_row' });
-    expect(parse({ columns, rows: [row({ value: Infinity })], truncated: false })).toEqual({ ok: false, code: 'bad_row' });
-    expect(parse({ columns, rows: [row({ org: 'not-a-uuid' })], truncated: false })).toEqual({ ok: false, code: 'bad_row' });
+    expect(
+      parse({ columns, rows: [row({ ts: new Date('2030-05-01T02:30:00Z') })], truncated: false }),
+    ).toEqual({ ok: false, code: 'bad_bucket' });
+    expect(
+      parse({ columns, rows: [row({ ts: new Date('2030-04-30T23:00:00Z') })], truncated: false }),
+    ).toEqual({ ok: false, code: 'bad_bucket' });
+    expect(parse({ columns, rows: [row({ value: 'NaN' })], truncated: false })).toEqual({
+      ok: false,
+      code: 'bad_row',
+    });
+    expect(parse({ columns, rows: [row({ value: Infinity })], truncated: false })).toEqual({
+      ok: false,
+      code: 'bad_row',
+    });
+    expect(parse({ columns, rows: [row({ org: 'not-a-uuid' })], truncated: false })).toEqual({
+      ok: false,
+      code: 'bad_row',
+    });
     // The same series and hour twice: the template must group.
-    expect(parse({ columns, rows: [row(), row()], truncated: false })).toEqual({ ok: false, code: 'bad_row' });
+    expect(parse({ columns, rows: [row(), row()], truncated: false })).toEqual({
+      ok: false,
+      code: 'bad_row',
+    });
   });
 
   it('refuses an answer that was cut or is longer than the cap', () => {
     const columns = ['ts', 'value', 'org', 'flow'];
     expect(parse({ columns, rows: [], truncated: true })).toEqual({ ok: false, code: 'truncated' });
     const many = Array.from({ length: 3 }, (_, i) => row({ flow: `f${String(i)}` }));
-    expect(parse({ columns, rows: many, truncated: false }, ['org', 'flow'], keep, 2)).toEqual({ ok: false, code: 'too_many_rows' });
+    expect(parse({ columns, rows: many, truncated: false }, ['org', 'flow'], keep, 2)).toEqual({
+      ok: false,
+      code: 'too_many_rows',
+    });
   });
 
   it('passes dimension values through the sanitizer, whole or not at all', () => {
@@ -174,7 +223,11 @@ describe('reading the answer of a template', () => {
     expect(cleanDimValue(null, redact)).toBe('');
     expect(cleanDimValue('x'.repeat(500), redact)).toHaveLength(100);
     const outcome = parse(
-      { columns: ['ts', 'value', 'org', 'flow'], rows: [row({ flow: 'bob@example.test' })], truncated: false },
+      {
+        columns: ['ts', 'value', 'org', 'flow'],
+        rows: [row({ flow: 'bob@example.test' })],
+        truncated: false,
+      },
       ['org', 'flow'],
       redact,
     );
@@ -184,14 +237,22 @@ describe('reading the answer of a template', () => {
 
 describe('metric templates', () => {
   it('accepts one SELECT with the window bound as $1 and $2', () => {
-    expect(metricTemplateProblem('SELECT date_trunc(\'hour\', t) AS ts, 1 AS value FROM x WHERE t >= $1 AND t < $2')).toBeNull();
+    expect(
+      metricTemplateProblem(
+        "SELECT date_trunc('hour', t) AS ts, 1 AS value FROM x WHERE t >= $1 AND t < $2",
+      ),
+    ).toBeNull();
     expect(metricTemplateProblem('WITH a AS (SELECT 1) SELECT * FROM a WHERE $1 < $2;')).toBeNull();
     // Notes at the top do not count as code, so a note about a drop or an update is fine.
     expect(
-      metricTemplateProblem('-- A drop is the problem; update daily\n/* $9 */\nSELECT 1 WHERE $1 < $2'),
+      metricTemplateProblem(
+        '-- A drop is the problem; update daily\n/* $9 */\nSELECT 1 WHERE $1 < $2',
+      ),
     ).toBe('Only one statement is allowed');
     expect(
-      metricTemplateProblem('-- A drop is the problem, update daily\n/* note */\nSELECT 1 WHERE $1 < $2'),
+      metricTemplateProblem(
+        '-- A drop is the problem, update daily\n/* note */\nSELECT 1 WHERE $1 < $2',
+      ),
     ).toBeNull();
   });
 
@@ -215,7 +276,9 @@ describe('subscription links', () => {
     const token = mintStatusLink(key, 'confirm', id, nonce);
     expect(verifyStatusLink(key, token)).toEqual({ purpose: 'confirm', subscriptionId: id, nonce });
     expect(verifyStatusLink(randomBytes(32), token)).toBeNull();
-    expect(verifyStatusLink(key, token.slice(0, -1) + (token.endsWith('A') ? 'B' : 'A'))).toBeNull();
+    expect(
+      verifyStatusLink(key, token.slice(0, -1) + (token.endsWith('A') ? 'B' : 'A')),
+    ).toBeNull();
     expect(verifyStatusLink(key, token.replace('.c.', '.u.'))).toBeNull();
     expect(verifyStatusLink(key, 'nonsense')).toBeNull();
     expect(mintStatusLink(key, 'unsubscribe', id, nonce)).not.toBe(token);

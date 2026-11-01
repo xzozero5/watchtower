@@ -180,7 +180,9 @@ async function writePoints(
   points: readonly ParsedPoint[],
 ): Promise<{ written: number; skipped: number }> {
   return db.transaction(async (tx) => {
-    const orgIds = [...new Set(points.flatMap((point) => (point.orgId === null ? [] : [point.orgId])))];
+    const orgIds = [
+      ...new Set(points.flatMap((point) => (point.orgId === null ? [] : [point.orgId]))),
+    ];
     const known = new Set<string>();
     if (orgIds.length > 0) {
       const rows = await tx

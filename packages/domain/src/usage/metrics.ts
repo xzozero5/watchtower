@@ -103,7 +103,8 @@ export async function updateUsageMetric(
     .limit(1);
   if (before === undefined) throw notFound('No such metric');
 
-  const templateChanged = patch.sqlTemplate !== undefined && patch.sqlTemplate !== before.sqlTemplate;
+  const templateChanged =
+    patch.sqlTemplate !== undefined && patch.sqlTemplate !== before.sqlTemplate;
   const dimsChanged =
     patch.dims !== undefined && JSON.stringify(patch.dims) !== JSON.stringify(before.dims);
   const nextVersion = before.templateVersion + (templateChanged ? 1 : 0);
@@ -126,7 +127,9 @@ export async function updateUsageMetric(
   if (after === undefined) throw new Error('usage_metric_def update returned no row');
 
   await recordAuditInTx(tx, ctx, fx, {
-    action: templateChanged ? USAGE_AUDIT_ACTIONS.metricTemplateEdit : USAGE_AUDIT_ACTIONS.metricUpdate,
+    action: templateChanged
+      ? USAGE_AUDIT_ACTIONS.metricTemplateEdit
+      : USAGE_AUDIT_ACTIONS.metricUpdate,
     targetType: 'usage_metric',
     targetId: id,
     metadata: {

@@ -105,7 +105,10 @@ export function createStatusPageRegistration(context: ProcessorContext) {
       .select()
       .from(schema.statusMaintenance)
       .where(
-        and(eq(schema.statusMaintenance.id, refId), eq(schema.statusMaintenance.state, 'published')),
+        and(
+          eq(schema.statusMaintenance.id, refId),
+          eq(schema.statusMaintenance.state, 'published'),
+        ),
       )
       .limit(1);
     if (window === undefined) return null;

@@ -42,7 +42,8 @@ export function isAnomalous(input: AnomalyInput): boolean {
   if (!input.hasHistory || input.samples < ANOMALY_MIN_SAMPLES) return false;
   if (input.direction === 'up') {
     return (
-      input.observed > input.baseline * input.ratio && input.observed - input.baseline > input.minAbs
+      input.observed > input.baseline * input.ratio &&
+      input.observed - input.baseline > input.minAbs
     );
   }
   return (
@@ -100,13 +101,14 @@ function anomalyFingerprint(metricId: string, dimsHash: string): string {
  */
 async function candidatesOf(db: Database['db'], metric: MetricRow): Promise<Candidate[]> {
   const result = await db.execute<{
-    ts: Date;
+    // The driver returns what the column type says; numbers may arrive as text, so both are accepted.
+    ts: Date | string;
     dims_hash: string;
     org_id: string | null;
     dims: Record<string, string>;
-    observed: number;
-    baseline: number | null;
-    samples: number;
+    observed: number | string;
+    baseline: number | string | null;
+    samples: number | string;
     has_history: boolean;
   }>(sql`
     SELECT c.ts, c.dims_hash, c.org_id, c.dims, c.value AS observed, b.baseline, b.samples, b.has_history
@@ -134,7 +136,7 @@ async function candidatesOf(db: Database['db'], metric: MetricRow): Promise<Cand
     observed: Number(row.observed),
     baseline: row.baseline === null ? null : Number(row.baseline),
     samples: Number(row.samples),
-    hasHistory: Boolean(row.has_history),
+    hasHistory: row.has_history,
   }));
 }
 

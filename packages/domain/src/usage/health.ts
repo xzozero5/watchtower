@@ -29,7 +29,11 @@ function ramp(value: number, best: number, worst: number): number {
 export interface HealthFacts {
   /** Days since the organization was created. */
   readonly ageDays: number;
-  readonly tickets: { readonly recent: number; readonly priorWeekly: number; readonly prior: number };
+  readonly tickets: {
+    readonly recent: number;
+    readonly priorWeekly: number;
+    readonly prior: number;
+  };
   readonly sla: { readonly tickets: number; readonly breached: number };
   readonly csat: { readonly answers: number; readonly average: number | null };
   readonly incidents: number;
@@ -37,7 +41,10 @@ export interface HealthFacts {
   readonly anomalies: number;
 }
 
-const noData = (key: HealthComponentKey, detail: HealthComponent['detail'] = {}): HealthComponent => ({
+const noData = (
+  key: HealthComponentKey,
+  detail: HealthComponent['detail'] = {},
+): HealthComponent => ({
   key,
   weight: HEALTH_WEIGHTS_V1[key],
   status: 'no_data',
@@ -144,18 +151,20 @@ async function gatherFacts(
   db: Database['db'],
   orgId: string,
 ): Promise<{ facts: HealthFacts; day: string }> {
+  // Counts are int4 and the average a float8; the driver may still hand numbers over as text.
+  type Count = number | string;
   const result = await db.execute<{
     day: string;
-    age_days: number;
-    recent: number;
-    prior: number;
-    sla_tickets: number;
-    sla_breached: number;
-    csat_answers: number;
-    csat_avg: number | null;
-    incidents: number;
+    age_days: Count;
+    recent: Count;
+    prior: Count;
+    sla_tickets: Count;
+    sla_breached: Count;
+    csat_answers: Count;
+    csat_avg: Count | null;
+    incidents: Count;
     has_usage: boolean;
-    anomalies: number;
+    anomalies: Count;
   }>(sql`
     SELECT
       to_char(timezone('UTC', clock_timestamp()), 'YYYY-MM-DD') AS day,
@@ -204,7 +213,7 @@ async function gatherFacts(
         average: row.csat_avg === null ? null : Number(row.csat_avg),
       },
       incidents: Number(row.incidents),
-      hasUsageData: Boolean(row.has_usage),
+      hasUsageData: row.has_usage,
       anomalies: Number(row.anomalies),
     },
   };
@@ -215,10 +224,7 @@ async function gatherFacts(
  * of (organization, day, formula version) is replaced, and `organization.health_score` follows it (NULL when
  * there is not enough data). Only facts about this organization are read; nothing is compared with another.
  */
-export async function computeOrgHealth(
-  db: Database['db'],
-  orgId: string,
-): Promise<HealthSnapshot> {
+export async function computeOrgHealth(db: Database['db'], orgId: string): Promise<HealthSnapshot> {
   const { facts, day } = await gatherFacts(db, orgId);
   const result = scoreHealth(facts);
   await db.transaction(async (tx) => {
@@ -230,7 +236,9 @@ export async function computeOrgHealth(
         formulaVersion: HEALTH_FORMULA_VERSION,
         status: result.status,
         score: result.score,
-        components: Object.fromEntries(result.components.map((component) => [component.key, component])),
+        components: Object.fromEntries(
+          result.components.map((component) => [component.key, component]),
+        ),
       })
       .onConflictDoUpdate({
         target: [
@@ -280,7 +288,11 @@ export async function computeAllOrgHealth(
   await recordAuditInTx(db, ctx, fx, {
     action: USAGE_AUDIT_ACTIONS.healthCompute,
     targetType: 'organization',
-    metadata: { organizations: orgs.length, scored: scoredCount, formulaVersion: HEALTH_FORMULA_VERSION },
+    metadata: {
+      organizations: orgs.length,
+      scored: scoredCount,
+      formulaVersion: HEALTH_FORMULA_VERSION,
+    },
   });
   return { organizations: orgs.length, scored: scoredCount };
 }

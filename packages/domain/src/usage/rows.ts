@@ -50,13 +50,30 @@ function asFiniteNumber(value: unknown): number | null {
 
 function asDate(value: unknown): Date | null {
   const date =
-    value instanceof Date ? value : typeof value === 'string' ? new Date(value) : new Date(Number.NaN);
+    value instanceof Date
+      ? value
+      : typeof value === 'string'
+        ? new Date(value)
+        : new Date(Number.NaN);
   return Number.isNaN(date.getTime()) ? null : date;
 }
 
 /** A dimension value as stored: text, cut, and `[redacted]` whole if the redactor changed it. */
+/** Text of a plain value; null for an object, an array or anything else that has no honest text. */
+function plainText(value: unknown): string | null {
+  if (value === null || value === undefined) return '';
+  if (typeof value === 'string') return value;
+  if (typeof value === 'number' || typeof value === 'bigint' || typeof value === 'boolean') {
+    return String(value);
+  }
+  return null;
+}
+
 export function cleanDimValue(raw: unknown, sanitize: (value: string) => string): string {
-  const text = raw === null || raw === undefined ? '' : String(raw).trim();
+  // An object has no text to keep: it is stored as the fixed marker, not as `[object Object]`.
+  const plain = plainText(raw);
+  if (plain === null) return USAGE_REDACTED_DIM;
+  const text = plain.trim();
   if (text === '') return '';
   const cut = text.slice(0, USAGE_DIM_VALUE_MAX);
   // Deterministic: a value with personal data in it is one fixed marker, never a numbered token whose
@@ -111,7 +128,7 @@ export function parseUsageRows(
     const dims: Record<string, string> = {};
     for (const name of metric.dims) {
       if (name === USAGE_ORG_DIM) {
-        const text = String(row[name] ?? '').toLowerCase();
+        const text = (plainText(row[name]) ?? '').toLowerCase();
         if (!UUID.test(text)) return { ok: false, code: 'bad_row' };
         orgId = text;
       } else {

@@ -45,7 +45,11 @@ const port: UsageDataPort = {
     const [from, to] = request.params;
     const lastComplete = Math.floor(to.getTime() / 3_600_000) * 3_600_000 - 3_600_000;
     const rows: Record<string, unknown>[] = [];
-    for (let t = Math.ceil(from.getTime() / 3_600_000) * 3_600_000; t <= to.getTime(); t += 3_600_000) {
+    for (
+      let t = Math.ceil(from.getTime() / 3_600_000) * 3_600_000;
+      t <= to.getTime();
+      t += 3_600_000
+    ) {
       for (const org of [orgSteady, orgSpike]) {
         rows.push({
           ts: new Date(t),
@@ -131,7 +135,11 @@ const definition: CreateMetric = {
 describe('the usage queue in the worker', () => {
   it('runs a due metric through the port, redacts personal data in dimensions, opens the anomaly once', async () => {
     const created = await appDb.db.transaction((tx) =>
-      domain.usage.createMetric(tx, domain.context({ actor: { type: 'user', id: headId } }), definition),
+      domain.usage.createMetric(
+        tx,
+        domain.context({ actor: { type: 'user', id: headId } }),
+        definition,
+      ),
     );
     const metricId = created.value.id;
     await queue.add(USAGE_JOBS.tick, {}, { removeOnComplete: true });
@@ -145,24 +153,44 @@ describe('the usage queue in the worker', () => {
     expect(anomaly.baseline).toBe(5);
 
     // The alert and an internal ticket exist; nothing was sent to a customer.
-    const [alert] = await owner().select().from(schema.alert).where(eq(schema.alert.id, anomaly.alertId ?? randomUUID()));
+    const [alert] = await owner()
+      .select()
+      .from(schema.alert)
+      .where(eq(schema.alert.id, anomaly.alertId ?? randomUUID()));
     expect(alert?.source).toBe('usage_anomaly');
     expect(`${alert?.title ?? ''}${alert?.summary ?? ''}`).not.toContain('Spiky');
-    const [ticket] = await owner().select().from(schema.ticket).where(eq(schema.ticket.id, anomaly.ticketId ?? randomUUID()));
+    const [ticket] = await owner()
+      .select()
+      .from(schema.ticket)
+      .where(eq(schema.ticket.id, anomaly.ticketId ?? randomUUID()));
     expect(ticket).toMatchObject({ channel: 'internal', orgId: orgSpike });
     expect(await owner().select().from(schema.outboundDelivery)).toHaveLength(0);
     // The T-108 pipeline took the brief job for this internal ticket and made the insight a person reads.
     await waitFor(async () => {
-      const [insight] = await owner().select().from(schema.aiTicketInsight).where(eq(schema.aiTicketInsight.ticketId, ticket?.id ?? ''));
+      const [insight] = await owner()
+        .select()
+        .from(schema.aiTicketInsight)
+        .where(eq(schema.aiTicketInsight.ticketId, ticket?.id ?? ''));
       return insight;
     }, 'the AI brief of the internal ticket');
 
     // The personal data in a dimension value never reached the table.
-    const points = await owner().select().from(schema.usageMetricPoint).where(eq(schema.usageMetricPoint.metricId, metricId));
+    const points = await owner()
+      .select()
+      .from(schema.usageMetricPoint)
+      .where(eq(schema.usageMetricPoint.metricId, metricId));
     expect(points.length).toBeGreaterThan(2 * 24 * 7);
     expect(JSON.stringify(points)).not.toContain('jane.doe');
-    expect(points.filter((point) => point.orgId === orgSteady).every((point) => (point.dims as { flow: string }).flow === '[redacted]')).toBe(true);
-    expect(points.filter((point) => point.orgId === orgSpike).every((point) => (point.dims as { flow: string }).flow === 'checkout')).toBe(true);
+    expect(
+      points
+        .filter((point) => point.orgId === orgSteady)
+        .every((point) => (point.dims as { flow: string }).flow === '[redacted]'),
+    ).toBe(true);
+    expect(
+      points
+        .filter((point) => point.orgId === orgSpike)
+        .every((point) => (point.dims as { flow: string }).flow === 'checkout'),
+    ).toBe(true);
 
     // A second tick finds nothing due (the interval is an hour of the database clock), asks nobody and opens nothing.
     const before = asked;
@@ -173,14 +201,21 @@ describe('the usage queue in the worker', () => {
 
     // Make it due again: the repeated window changes no point and opens no second anomaly.
     const count = points.length;
-    await owner().execute(sql`UPDATE usage_metric_def SET last_run_at = clock_timestamp() - interval '2 hours' WHERE id = ${metricId}`);
+    await owner().execute(
+      sql`UPDATE usage_metric_def SET last_run_at = clock_timestamp() - interval '2 hours' WHERE id = ${metricId}`,
+    );
     await queue.add(USAGE_JOBS.tick, {}, { removeOnComplete: true });
-    await waitFor(async () => (asked > before ? true : undefined), 'the second run');
+    await waitFor(() => Promise.resolve(asked > before ? true : undefined), 'the second run');
     await new Promise((resolve) => setTimeout(resolve, 800));
-    const again = await owner().select().from(schema.usageMetricPoint).where(eq(schema.usageMetricPoint.metricId, metricId));
+    const again = await owner()
+      .select()
+      .from(schema.usageMetricPoint)
+      .where(eq(schema.usageMetricPoint.metricId, metricId));
     expect(again).toHaveLength(count);
     expect(await owner().select().from(schema.usageAnomaly)).toHaveLength(1);
-    expect((await owner().select().from(schema.ticket)).filter((t) => t.channel === 'internal')).toHaveLength(1);
+    expect(
+      (await owner().select().from(schema.ticket)).filter((t) => t.channel === 'internal'),
+    ).toHaveLength(1);
   });
 
   it('computes the health score daily and says "not enough data" for organizations with no history', async () => {
@@ -189,7 +224,9 @@ describe('the usage queue in the worker', () => {
       const found = await owner().select().from(schema.orgHealthSnapshot);
       return found.length >= 2 ? found : undefined;
     }, 'the snapshots');
-    expect(rows.every((row) => row.status === 'insufficient_data' && row.score === null)).toBe(true);
+    expect(rows.every((row) => row.status === 'insufficient_data' && row.score === null)).toBe(
+      true,
+    );
     const orgs = await owner().select().from(schema.organization);
     expect(orgs.every((org) => org.healthScore === null)).toBe(true);
   });
