@@ -25,6 +25,8 @@ export interface OutboxRequest {
   readonly secret?: Readonly<Record<string, string>>;
   /** After this instant the job is dropped unsent (the outbox relay dead-letters it, the worker skips it). */
   readonly expiresAt?: Date;
+  /** The relay holds the job back until this instant (a trigger that must wait, ADR-010). */
+  readonly notBefore?: Date;
   readonly options?: OutboxJobOptions;
 }
 
@@ -61,5 +63,6 @@ export async function enqueueJob(
     payload,
     options,
     ...(request.expiresAt === undefined ? {} : { expiresAt: request.expiresAt }),
+    ...(request.notBefore === undefined ? {} : { notBefore: request.notBefore }),
   });
 }

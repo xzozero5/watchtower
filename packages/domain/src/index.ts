@@ -6,6 +6,18 @@ import { findOrCreateContactByEmail } from './contacts.js';
 import { ingestInbound } from './inbound/ingest.js';
 import { resolveIntent } from './intents.js';
 import { NO_NOTIFIER, type TicketNotifier } from './notifier.js';
+import { cancelSend } from './outbound/cancel.js';
+import {
+  claimDelivery,
+  denyDelivery,
+  markDispatched,
+  recordFailure,
+  recordSent,
+  sweepDeliveries,
+  vetDelivery,
+} from './outbound/dispatch.js';
+import { scheduleCustomerSend, scheduleTemplateAck } from './outbound/schedule.js';
+import { readOutboundSettings, setUndoSendSeconds } from './outbound/settings.js';
 import { enqueueJob } from './outbox.js';
 import type { PolicyGate } from './policy.js';
 import {
@@ -70,6 +82,65 @@ export {
 export { resolveIntent } from './intents.js';
 export { NO_NOTIFIER, type TicketNotifier } from './notifier.js';
 export { enqueueJob, type OutboxRequest } from './outbox.js';
+export { cancelSend, type CancelSendInput } from './outbound/cancel.js';
+export { loadDeliveryContext, type DeliveryContext, type ParentMail } from './outbound/context.js';
+export {
+  OVERDUE_GRACE_SECONDS,
+  REPLY_TOKEN_KEEP_SECONDS,
+  actorOfDelivery,
+  claimDelivery,
+  countRecentFailures,
+  denyDelivery,
+  markDispatched,
+  recordFailure,
+  recordSent,
+  sweepDeliveries,
+  vetDelivery,
+  type SentResult,
+  type SweepResult,
+  type Vetting,
+} from './outbound/dispatch.js';
+export { lockQuota, moveQuota, type QuotaSnapshot } from './outbound/quota.js';
+export {
+  clearStaleReplyTokens,
+  findReplyToken,
+  sealReplyToken,
+  spendReplyToken,
+  type StoredToken,
+} from './outbound/reply-token.js';
+export {
+  approveAiDraftSent,
+  scheduleCustomerSend,
+  scheduleTemplateAck,
+  usesDispatcher,
+  type ScheduleOrigin,
+  type ScheduleSendInput,
+  type ScheduledSend,
+  type TemplateAckInput,
+} from './outbound/schedule.js';
+export {
+  readOutboundSettings,
+  readUndoSendSeconds,
+  setUndoSendSeconds,
+} from './outbound/settings.js';
+export {
+  backoffSeconds,
+  canTransition,
+  contentHash,
+  decideFailure,
+  dispatchJobId,
+  hasIdempotencyKey,
+  isFinal,
+  type FailureDecision,
+  type FailureFacts,
+} from './outbound/state.js';
+export { toDeliverySummary } from './outbound/summary.js';
+export {
+  RENDERABLE_TEMPLATE_KEYS,
+  renderSystemTemplate,
+  safeKeysWithoutRenderer,
+  type TemplateVars,
+} from './outbound/templates.js';
 export {
   SEND_ORIGINS,
   requireAiAction,
@@ -109,7 +180,15 @@ export {
   type SetIntentAutonomyInput,
   type SetIntentAutonomyResult,
 } from './autonomy/state.js';
-export type { ContactRow, IntentRow, MessageRow, SlaPolicyRow, TicketRow } from './rows.js';
+export type {
+  AiDraftRow,
+  ContactRow,
+  IntentRow,
+  MessageRow,
+  OutboundDeliveryRow,
+  SlaPolicyRow,
+  TicketRow,
+} from './rows.js';
 export {
   FALLBACK_CALENDAR,
   calendarFromRow,
@@ -159,6 +238,8 @@ export interface DomainOptions {
   readonly ticketKeyPrefix: string;
   /** The subkey that seals outbox secrets (`deriveSubkey(APP_ENCRYPTION_KEY, KEY_LABELS.outboxSecret)`). */
   readonly sealKey: Buffer;
+  /** Portal address for the acknowledgment text (ADR-010); optional. */
+  readonly portalUrl?: string | undefined;
   /** Days a resolved ticket still reopens on a customer reply. Default: `REOPEN_WINDOW_DAYS`. */
   readonly reopenWindowDays?: number;
   /** Absent means every customer-bound AI action is refused (fail closed, N3). `createPolicyGate` builds the real one. */
@@ -214,6 +295,24 @@ export interface Domain {
     readonly takeTurn: typeof takeTurn;
   };
   readonly outbox: { readonly enqueue: typeof enqueueJob };
+  /**
+   * Delivery to customers (T-122d, ADR-010). `schedule` is called by staff replies on Gmail and LINE
+   * (inside `tickets.reply`); the worker's dispatcher uses the claim / vet / record functions.
+   */
+  readonly outbound: {
+    readonly schedule: typeof scheduleCustomerSend;
+    readonly scheduleTemplateAck: typeof scheduleTemplateAck;
+    readonly cancel: typeof cancelSend;
+    readonly claim: typeof claimDelivery;
+    readonly vet: typeof vetDelivery;
+    readonly deny: typeof denyDelivery;
+    readonly markDispatched: typeof markDispatched;
+    readonly recordSent: typeof recordSent;
+    readonly recordFailure: typeof recordFailure;
+    readonly sweep: typeof sweepDeliveries;
+    readonly readSettings: typeof readOutboundSettings;
+    readonly setUndoSendSeconds: typeof setUndoSendSeconds;
+  };
   /** Received messages (ADR-009): used by the worker's `ingest` consumer. */
   readonly inbound: { readonly ingest: typeof ingestInbound };
 }
@@ -223,6 +322,7 @@ export function createDomain(options: DomainOptions): Domain {
     ticketKeyPrefix: options.ticketKeyPrefix,
     reopenWindowDays: options.reopenWindowDays ?? REOPEN_WINDOW_DAYS,
     sealKey: options.sealKey,
+    portalUrl: options.portalUrl,
   };
   const now = options.now ?? ((): Date => new Date());
   return {
@@ -262,6 +362,20 @@ export function createDomain(options: DomainOptions): Domain {
     },
     assignment: { assertAssignableStaff, nextRoundRobin, peekRoundRobin, takeTurn },
     outbox: { enqueue: enqueueJob },
+    outbound: {
+      schedule: scheduleCustomerSend,
+      scheduleTemplateAck,
+      cancel: cancelSend,
+      claim: claimDelivery,
+      vet: vetDelivery,
+      deny: denyDelivery,
+      markDispatched,
+      recordSent,
+      recordFailure,
+      sweep: sweepDeliveries,
+      readSettings: readOutboundSettings,
+      setUndoSendSeconds,
+    },
     inbound: { ingest: ingestInbound },
   };
 }

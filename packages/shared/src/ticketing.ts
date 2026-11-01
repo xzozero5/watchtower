@@ -5,6 +5,7 @@ import { csvList, cursorSchema, jsonRecordSchema, pageLimit, pageOf } from './co
 import { emailSchema } from './auth.js';
 import { assertDisjoint } from './features/compose.js';
 import { FEATURES, FEATURE_TICKET_EVENTS } from './features/index.js';
+import { deliverySummarySchema } from './features/outbound.js';
 import { slaStateSchema, ticketPrioritySchema } from './sla.js';
 
 /**
@@ -172,8 +173,26 @@ export const messageVisibilitySchema = z.enum(MESSAGE_VISIBILITIES);
 export const MESSAGE_DIRECTIONS = ['inbound', 'outbound', 'internal'] as const;
 export const messageDirectionSchema = z.enum(MESSAGE_DIRECTIONS);
 
-export const DELIVERY_STATUSES = ['not_applicable', 'pending', 'delivered', 'failed'] as const;
+/**
+ * `scheduled`/`cancelled` are the undo-send states of ADR-010: a staff reply on Gmail or LINE waits
+ * `scheduled` until the hold ends, then becomes `delivered` or `failed`; an undone one is `cancelled`.
+ * `pending` stays for channels without a dispatcher (Discord, webhook).
+ */
+export const DELIVERY_STATUSES = [
+  'not_applicable',
+  'pending',
+  'scheduled',
+  'delivered',
+  'failed',
+  'cancelled',
+] as const;
 export const deliveryStatusSchema = z.enum(DELIVERY_STATUSES);
+/**
+ * A customer never sees a reply that has not reached them (ADR-010 section 2): one still waiting out
+ * the undo window, one that was undone, or one that failed. Screens and queries for clients leave
+ * these out.
+ */
+export const CLIENT_HIDDEN_DELIVERY_STATUSES = ['scheduled', 'cancelled', 'failed'] as const;
 
 export const ASSIGNMENT_STRATEGIES = ['manual', 'round_robin'] as const;
 export const assignmentStrategySchema = z.enum(ASSIGNMENT_STRATEGIES);
@@ -434,6 +453,12 @@ export const replySchema = z.object({
   body: z.string().trim().min(1).max(20_000),
   /** "Reply and set status" (R-1.4). Staff only; checked against the workflow. */
   setStatus: ticketStatusSchema.optional(),
+  /**
+   * Staff only: the AI draft this reply sends. The body must be exactly the draft (its content hash
+   * is compared); sending it records the sender as the approver (N3, ADR-011 A-2). Without it the
+   * reply is the sender's own text.
+   */
+  aiDraftId: z.uuid().optional(),
 });
 export type Reply = z.infer<typeof replySchema>;
 
@@ -456,6 +481,8 @@ export const messageSchema = z.object({
   sender: messageSenderSchema,
   bodyText: z.string(),
   deliveryStatus: deliveryStatusSchema,
+  /** Staff only, outbound replies on Gmail or LINE: the delivery behind `deliveryStatus` (Undo, Retry). */
+  delivery: deliverySummarySchema.nullable().optional(),
   attachments: z.array(jsonRecordSchema),
   createdAt: z.iso.datetime(),
 });

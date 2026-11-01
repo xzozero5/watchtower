@@ -23,6 +23,11 @@ export interface DomainConfig {
   readonly reopenWindowDays: number;
   /** Subkey that seals the secret part of outbox jobs (`KEY_LABELS.outboxSecret`). */
   readonly sealKey: Buffer;
+  /**
+   * Where a customer can follow a request, for the automatic acknowledgment (ADR-010). Unset: the
+   * sentence is left out. The same value in api and worker (`APP_URL` + the portal path).
+   */
+  readonly portalUrl?: string | undefined;
 }
 
 /**

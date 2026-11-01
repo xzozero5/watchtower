@@ -4,8 +4,9 @@ import { AUDIT_ACTIONS, type Note, type Reply } from '@watchtower/shared';
 import { recordAuditInTx } from '../audit.js';
 import { findOrCreateContactByEmailIn } from '../contacts.js';
 import { badRequest, notFound, ticketNotOpen } from '../errors.js';
+import { approveAiDraftSent, scheduleCustomerSend, usesDispatcher } from '../outbound/schedule.js';
 import { requireCustomerSend } from '../policy.js';
-import type { MessageRow, TicketRow } from '../rows.js';
+import type { MessageRow, OutboundDeliveryRow, TicketRow } from '../rows.js';
 import { Effects, type DbTransaction, type DomainContext, type DomainResult } from '../types.js';
 import { applyStatus } from './status.js';
 import {
@@ -37,6 +38,8 @@ export interface NoteInput {
 export interface MessageResult {
   readonly message: MessageRow;
   readonly ticket: TicketRow;
+  /** Gmail and LINE replies: the delivery behind the message (Undo works until `nextAttemptAt`). */
+  readonly delivery?: OutboundDeliveryRow | null;
 }
 
 /**
@@ -82,6 +85,9 @@ export async function replyToTicket(
       `This ticket was resolved more than ${String(windowDays)} days ago; open a new one`,
     );
   }
+  if (fromCustomer && body.aiDraftId !== undefined) {
+    throw badRequest('A client cannot send an AI draft');
+  }
   if (!fromCustomer && ctx.actor.type === 'ai') {
     await requireCustomerSend(ctx, {
       ticketId: ticket.id,
@@ -105,7 +111,11 @@ export async function replyToTicket(
   }
 
   const set: Partial<typeof schema.ticket.$inferInsert> = { updatedAt: now };
-  const firstResponse = sender.kind === 'staff' && ticket.firstRespondedAt === null;
+  // Gmail and LINE replies go through the dispatcher (ADR-010): the first response is counted when
+  // the provider accepts the message, not when the button is pressed.
+  const viaDispatcher = sender.kind === 'staff' && usesDispatcher(ticket.channel);
+  const firstResponse =
+    sender.kind === 'staff' && ticket.firstRespondedAt === null && !viaDispatcher;
   if (firstResponse) set.firstRespondedAt = now;
   const { message, touched } = await insertMessage(
     tx,
@@ -117,7 +127,9 @@ export async function replyToTicket(
       senderContactId: contactId,
       bodyText: body.body,
       visibility: 'public',
-      deliveryStatus: replyDeliveryStatus(sender.kind, ticket.channel),
+      deliveryStatus: viaDispatcher
+        ? 'scheduled'
+        : replyDeliveryStatus(sender.kind, ticket.channel),
       createdAt: now,
     },
     set,
@@ -138,6 +150,30 @@ export async function replyToTicket(
   fx.emit(messageEvent(ctx, ticket, message));
   if (firstResponse) fx.emit(ticketEvent(ctx, 'ticket.updated', ticket, ['sla']));
 
+  // Customer-bound text goes through the policy gate and, on Gmail and LINE, waits in a delivery
+  // that a person can undo (ADR-010). A refusal fails the whole request: nothing is saved.
+  let delivery: OutboundDeliveryRow | null = null;
+  if (sender.kind === 'staff') {
+    if (viaDispatcher) {
+      const scheduled = await scheduleCustomerSend(tx, ctx, {
+        ticket,
+        message,
+        origin: body.aiDraftId === undefined ? 'human' : 'ai_approved',
+        aiDraftId: body.aiDraftId,
+      });
+      delivery = scheduled.value.delivery;
+      fx.events.push(...scheduled.events);
+      fx.audited = fx.audited || scheduled.audited;
+    } else if (body.aiDraftId !== undefined) {
+      const approved = await approveAiDraftSent(tx, ctx, {
+        ticket,
+        message,
+        aiDraftId: body.aiDraftId,
+      });
+      fx.events.push(...approved.events);
+    }
+  }
+
   if (fromCustomer) {
     // The customer answered: the clock restarts, and a ticket resolved in the window reopens.
     if (ticket.status === 'waiting_on_customer' || ticket.status === 'resolved') {
@@ -154,7 +190,7 @@ export async function replyToTicket(
   if (sender.kind === 'staff') {
     await ctx.notifier.staffReply(tx, ticket, ticketKeysOf(ctx).format(ticket.number), message);
   }
-  return fx.result({ message, ticket });
+  return fx.result({ message, ticket, delivery });
 }
 
 /** An internal note: staff only, never sent, never visible to a client. */
