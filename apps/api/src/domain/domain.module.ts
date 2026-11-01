@@ -1,6 +1,7 @@
 import { Global, Module } from '@nestjs/common';
 import type { Database } from '@watchtower/db';
 import { createDomain, createPolicyGate, type Domain } from '@watchtower/domain';
+import { CSAT_LANDING_PATH } from '@watchtower/shared';
 import { KEY_LABELS, deriveSubkey } from '@watchtower/shared/secret-box';
 
 import { APP_CONFIG, type ApiConfig } from '../config/config.js';
@@ -30,6 +31,10 @@ export type { Domain };
           ticketKeyPrefix: config.TICKET_KEY_PREFIX,
           sealKey: deriveSubkey(config.APP_ENCRYPTION_KEY, KEY_LABELS.outboxSecret),
           portalUrl: new URL('/portal', config.APP_URL).toString(),
+          csat: {
+            signingKey: deriveSubkey(config.APP_ENCRYPTION_KEY, KEY_LABELS.csatLink),
+            landingUrl: new URL(CSAT_LANDING_PATH, config.APP_URL).toString(),
+          },
           policyGate: createPolicyGate({ db: database.db }),
         }),
     },

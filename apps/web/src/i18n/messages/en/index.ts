@@ -15,6 +15,7 @@ import { channelEn } from './channel';
 import { commandsEn } from './commands';
 import { composerEn } from './composer';
 import { conversationEn } from './conversation';
+import { csatEn } from './csat';
 import { customerEn } from './customer';
 import { detailsEn } from './details';
 import { errorsEn } from './errors';
@@ -74,6 +75,7 @@ export const en = {
   home: homeEn,
   admin: adminEn,
   portal: portalEn,
+  csat: csatEn,
 } as const;
 
 /** The shape every language must fill in, with plain `string` leaves. */

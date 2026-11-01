@@ -105,6 +105,16 @@ export const emailJobSchema = z.discriminatedUnion('kind', [
   // tracking URL carries the access token in its fragment, so like a magic link it is sealed on the
   // wire (EMAIL_SECRET_FIELDS) and the outbox relay blanks the row once sent (ADR-006).
   ...portalEmailVariants(),
+  // CSAT survey (T-110). The link carries a bearer token in its fragment, so it is sealed on the wire
+  // like a tracking link. `reminder` is the one reminder after 48 hours (R-10.4).
+  z.object({
+    kind: z.literal('csat_survey'),
+    to: z.string().min(3).max(254),
+    locale: portalLocaleSchema,
+    ticketKey: z.string().min(3).max(32),
+    surveyUrl: z.url().max(1000),
+    reminder: z.boolean(),
+  }),
 ]);
 export type EmailJob = z.infer<typeof emailJobSchema>;
 
@@ -114,7 +124,7 @@ export type EmailJob = z.infer<typeof emailJobSchema>;
  * APP_ENCRYPTION_KEY) before the job is written to the outbox, so neither Postgres nor Redis ever
  * holds them in the clear; the worker opens them just before it talks to SMTP (ADR-006).
  */
-export const EMAIL_SECRET_FIELDS = ['link', 'trackingUrl'] as const;
+export const EMAIL_SECRET_FIELDS = ['link', 'trackingUrl', 'surveyUrl'] as const;
 
 /** Splits a validated email job into the fields that travel in the clear and the ones to seal. */
 export function splitEmailSecrets(job: EmailJob): {

@@ -40,6 +40,10 @@ snapshot สั้นสำหรับ cold start อยู่ที่ `HANDOF
 
 ## Log
 
+## 2026-11-02 01:23 (Asia/Bangkok) — main thread — T-110a,b,d CSAT + reopen rules ปิด
+- test: main thread รันเองบน Windows: lint, typecheck, unit ผ่าน · integration db 268, domain 299, api 666, worker 160 · e2e 134 · full-stack 23 · compose healthy `[TESTED]`
+- ค้าง/ไม่ยืนยัน: T-110c LINE หลัง T-113 · lead notification ตอน reopen รอ T-105 · ไม่มี e2e ของหน้า /csat
+
 ## 2026-11-02 00:30 (Asia/Bangkok) — main thread — T-131 เครื่องมือสร้าง channel account + fix ค่าว่างของ KB ใน compose ปิด
 - test: main thread รันเองบน Windows: lint, typecheck, unit ผ่าน · integration db 256, domain 270, api 647, worker 156 · e2e 134 · full-stack 23 · compose up --build ทุก service healthy + health ผ่าน `[TESTED]`
 - ค้าง/ไม่ยืนยัน: T-103e ยังไม่ทำ · outbound ของบัญชีที่ disable ยังไม่บล็อก [UNVERIFIED] · ยังไม่รัน CLI จาก dist

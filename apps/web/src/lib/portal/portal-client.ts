@@ -1,11 +1,17 @@
 import {
   apiErrorSchema,
+  CSAT_TOKEN_HEADER,
+  csatResponseResultSchema,
+  csatSurveyViewSchema,
   humanChallengeSchema,
   PORTAL_TOKEN_HEADER,
   portalAcceptedSchema,
   portalReplyResultSchema,
   portalSubmittedSchema,
   portalTicketViewSchema,
+  type CsatResponseInput,
+  type CsatResponseResult,
+  type CsatSurveyView,
   type HumanChallenge,
   type PortalReply,
   type PortalReplyResult,
@@ -87,8 +93,10 @@ interface Call<Output> {
   path: string;
   body?: unknown;
   schema: z.ZodType<Output>;
-  /** The tracking token for this ticket. Goes in a header only. */
+  /** The tracking token for this ticket (or survey link). Goes in a header only. */
   token?: string;
+  /** The header that carries it. Default: the portal tracking header. */
+  tokenHeader?: string;
   signal?: AbortSignal;
 }
 
@@ -139,6 +147,30 @@ export class PortalClient {
     });
   }
 
+  /** The request a CSAT survey link is about (T-110b). 401: bad link. 409: already answered. */
+  csatSurvey(token: string, signal?: AbortSignal): Promise<CsatSurveyView> {
+    return this.call({
+      method: 'GET',
+      path: '/v1/csat/survey',
+      schema: csatSurveyViewSchema,
+      token,
+      tokenHeader: CSAT_TOKEN_HEADER,
+      ...(signal ? { signal } : {}),
+    });
+  }
+
+  /** Answers the survey, once. 401: bad link. 409: already answered. */
+  csatAnswer(token: string, body: CsatResponseInput): Promise<CsatResponseResult> {
+    return this.call({
+      method: 'POST',
+      path: '/v1/csat/responses',
+      body,
+      schema: csatResponseResultSchema,
+      token,
+      tokenHeader: CSAT_TOKEN_HEADER,
+    });
+  }
+
   /** Always answers 202 `accepted`, whether or not the ticket and address match. */
   async resend(body: PortalResend): Promise<void> {
     await this.call({
@@ -153,7 +185,7 @@ export class PortalClient {
     const fetchFn = (this.options.fetchImpl ?? (() => fetch))();
     const headers: Record<string, string> = { accept: 'application/json' };
     if (call.body !== undefined) headers['content-type'] = 'application/json';
-    if (call.token !== undefined) headers[PORTAL_TOKEN_HEADER] = call.token;
+    if (call.token !== undefined) headers[call.tokenHeader ?? PORTAL_TOKEN_HEADER] = call.token;
 
     let response: Response;
     try {
