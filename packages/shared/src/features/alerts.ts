@@ -99,6 +99,8 @@ export const ALERT_SOURCES = [
   'gcp_logging',
   'alertmanager',
   'heartbeat',
+  /** A usage metric left its baseline (T-205c). Raised by the worker, not received from outside. */
+  'usage_anomaly',
 ] as const;
 export type AlertSource = (typeof ALERT_SOURCES)[number];
 export const alertSourceSchema = z.enum(ALERT_SOURCES);
