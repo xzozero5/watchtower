@@ -40,6 +40,10 @@ snapshot สั้นสำหรับ cold start อยู่ที่ `HANDOF
 
 ## Log
 
+## 2026-11-01 23:05 (Asia/Bangkok) — main thread — T-111a–e Shifts backend ปิด
+- test: main thread รันเองบน Windows: lint, typecheck, unit ผ่าน · integration db 256, domain 270, api 635, worker 156 · e2e 134 · full-stack 23 `[TESTED]`
+- ค้าง/ไม่ยืนยัน: T-111f หน้าจอยังไม่ทำ · AI summary ของ brief ยังไม่ทำ · P2 สองข้อ gate เลี่ยงได้ → T-125 · erasure ADR ต้องรวม handoff/shift_note
+
 ## 2026-11-01 22:47 (Asia/Bangkok) — main thread — T-107a–c Knowledge base ปิด
 - test: main thread รันเองบน Windows: lint, typecheck, unit ผ่าน · integration db 240, domain 260, api 579, worker 156 · e2e 134 · full-stack 23 `[TESTED]`
 - ค้าง/ไม่ยืนยัน: embedding mock เท่านั้น ค้นเชิงความหมายยังไม่จริง · name dictionary ของ redactor ว่าง · P3 trigger + งบ customer search → T-125 · ผู้สั่ง AI ≠ approver → T-108e

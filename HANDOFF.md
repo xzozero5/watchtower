@@ -1,14 +1,14 @@
 # HANDOFF — Watchtower
 
 > สถานะล่าสุดของโปรเจกต์ session ใหม่อ่านไฟล์นี้ต่อจาก `AGENTS.md` แล้วทำงานต่อได้โดยไม่ต้องอ่านบทสนทนาเดิม
-> อัปเดตล่าสุด: 2026-11-01 22:47 (เวลากรุงเทพ) โดย Claude Code (main thread, เครื่อง local) — **safe pause ตามคำสั่งเจ้าของ เพราะโควตาใกล้เต็ม ยังไม่จบ Phase 1**
+> อัปเดตล่าสุด: 2026-11-01 23:05 (เวลากรุงเทพ) โดย Claude Code (main thread, เครื่อง local) — **safe pause ตามคำสั่งเจ้าของ เพราะโควตาใกล้เต็ม ยังไม่จบ Phase 1**
 > กฎขนาด ≤ 40 KB — เขียนทับสถานะ ไม่ append ประวัติ · ฉบับก่อนหน้า `docs/handoff-archive/HANDOFF-2026-11-01-0420.md` · บันทึกรายชั่วโมง `logs/daily/2026-11-01.md` · log ต่อ task `docs/STATUS.md`
 
 ## คำสั่งล่าสุดของเจ้าของ (2026-11-01 22:15)
 ทำต่อด้วย mock ให้จบ Phase 2 เท่าที่เป็นไปได้มากที่สุด ให้ `po` ตัดสินแทน · ข้าม T-115 pilot ไปก่อน (ยังไม่มี credential จริง) · รายการ "ห้ามทำแทน" ยังใช้เหมือนเดิม · safe pause เมื่อโควตา 5 ชั่วโมงหรือ weekly ถึง 95%
 
 ## ทำต่อจากตรงนี้ (safe pause 2026-11-01 12:57)
-- **T-103b–d LINE และ T-102b–d Gmail merge เข้า `main` แล้ว** · ลำดับถัดไป: T-104, T-107, T-111 (ตารางด้านล่าง) → T-102e OAuth กล่อง Gmail → wave 3–4 ตาม BACKLOG → หยุดที่ T-115 · migration บน `main` ถึง `0019_kb`
+- **T-103b–d LINE และ T-102b–d Gmail merge เข้า `main` แล้ว** · ลำดับถัดไป: T-104, T-107, T-111 (ตารางด้านล่าง) → T-102e OAuth กล่อง Gmail → wave 3–4 ตาม BACKLOG → หยุดที่ T-115 · migration บน `main` ถึง `0020_shifts`
 - **gate บนเครื่องนี้ของ T-103 `[TESTED]`:** lint, typecheck ผ่าน · unit web 667, api 191, worker 79, domain 67, shared 257, channels 330, db 50, ai 372, ui 609, boundaries 200 · integration db 200, domain 188, api 528, worker 83 (รอบเครื่องว่าง) · e2e 134 · full-stack 23 (`PW_CHANNEL=msedge`) · ยังไม่ได้ลอง `docker compose up` ด้วย image ที่ build เอง
 - **รัน integration ตอนเครื่องว่าง:** รอบที่มี agent รัน test พร้อมกัน ตกแบบหลอก 2 ข้อ (db `followups` timeout, api `portal` `no portal email`) รอบเครื่องว่างผ่านครบ
 - **บั๊กจริงที่เจอเฉพาะบนเครื่องจริง แก้แล้ว:** (1) `message.created_at` ใช้นาฬิกาแอป `ticket_event` ใช้นาฬิกา DB ทำ timeline ลูกค้าเรียงผิด (2) relay ใช้นาฬิกา DB แต่ claim ใช้นาฬิกา worker ทำ reply ลูกค้าค้างราว 2 นาที · security review ของสอง fix ไม่มี P0/P1
@@ -30,7 +30,6 @@
 ## งานค้างบน branch (push ขึ้น origin แล้ว ทำต่อบนเครื่องได้เลย)
 | งาน | branch | สถานะ | ต้องทำต่อ |
 |---|---|---|---|
-| **T-111a–e Shifts** backend | `wip/t-111` @ `b67bfc5` | **หยุดกลางทางเพราะ pause** agent ไม่ได้รายงาน · ข้อความสุดท้ายบอกว่ากำลังแก้ expectation ของ test (audit success filter, paging, จำนวน brief-read) จึงถือว่า test ยังไม่ผ่าน · ไม่มีไฟล์ค้างนอก commit | อ่าน `git log main..wip/t-111` แล้วทำต่อ → test → security review (RBAC) → merge → T-111f หน้าจอ |
 
 ## Follow-up ที่เปิดไว้
 - **T-122f** (P3 จาก re-review T-122e) — **F-1 ต้องปิดก่อนเปิด LINE push จริง:** cancel/deny ของ pinned push ที่ re-queue แล้วต้องติด `outcome_unknown`
