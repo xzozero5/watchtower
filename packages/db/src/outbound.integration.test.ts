@@ -14,6 +14,8 @@ const adminUrl =
 
 const INSUFFICIENT_PRIVILEGE = '42501';
 const HASH = 'a'.repeat(64);
+const PERSON = '00000000-0000-4000-8000-000000000001';
+const OTHER_PERSON = '00000000-0000-4000-8000-000000000002';
 
 let testDb: TestDatabase;
 let app: Pool;
@@ -22,6 +24,12 @@ const owner = (): Pool => testDb.owner.pool;
 beforeAll(async () => {
   testDb = await createTestDatabase(adminUrl);
   app = new Pool({ connectionString: testDb.appUrl, max: 2 });
+  // The people the fixtures write messages as (message.sender_user_id is a real foreign key).
+  await owner().query(
+    `INSERT INTO users (id, email, name, role) VALUES
+       ($1, 'sender@example.com', 'Sender', 'agent'), ($2, 'other@example.com', 'Other', 'agent')`,
+    [PERSON, OTHER_PERSON],
+  );
 });
 
 afterAll(async () => {
@@ -45,22 +53,37 @@ interface Fixture {
   readonly accountId: string;
 }
 
-async function fixture(): Promise<Fixture> {
+interface FixtureOptions {
+  /** The message text; default 'hello'. */
+  readonly body?: string;
+  /** Who wrote the message; default PERSON, null for none (an automatic or AI-authored one). */
+  readonly sender?: string | null;
+  readonly accountType?: 'gmail' | 'line';
+}
+
+async function fixture(options: FixtureOptions = {}): Promise<Fixture> {
+  const accountType = options.accountType ?? 'gmail';
   const account = await owner().query<{ id: string }>(
-    `INSERT INTO channel_account (type, name) VALUES ('gmail', 'Support') RETURNING id`,
+    `INSERT INTO channel_account (type, name) VALUES ($1, 'Support') RETURNING id`,
+    [accountType],
   );
   const org = await owner().query<{ id: string }>(
     `INSERT INTO organization (name) VALUES ('Org ' || gen_random_uuid()) RETURNING id`,
   );
   const ticket = await owner().query<{ id: string }>(
     `INSERT INTO ticket (subject, org_id, channel, channel_account_id)
-     VALUES ('s', $1, 'gmail', $2) RETURNING id`,
-    [org.rows[0]?.id, account.rows[0]?.id],
+     VALUES ('s', $1, $3, $2) RETURNING id`,
+    [org.rows[0]?.id, account.rows[0]?.id, accountType],
   );
   const message = await owner().query<{ id: string }>(
-    `INSERT INTO message (ticket_id, channel_account_id, direction, body_text, visibility, delivery_status)
-     VALUES ($1, $2, 'outbound', 'hello', 'public', 'scheduled') RETURNING id`,
-    [ticket.rows[0]?.id, account.rows[0]?.id],
+    `INSERT INTO message (ticket_id, channel_account_id, direction, body_text, visibility, delivery_status, sender_user_id)
+     VALUES ($1, $2, 'outbound', $3, 'public', 'scheduled', $4) RETURNING id`,
+    [
+      ticket.rows[0]?.id,
+      account.rows[0]?.id,
+      options.body ?? 'hello',
+      options.sender === undefined ? PERSON : options.sender,
+    ],
   );
   return {
     ticketId: ticket.rows[0]?.id ?? '',
@@ -69,9 +92,7 @@ async function fixture(): Promise<Fixture> {
   };
 }
 
-const INTEGRITY = '23000'; // the guard triggers of migration 0010
-const PERSON = '00000000-0000-4000-8000-000000000001';
-const OTHER_PERSON = '00000000-0000-4000-8000-000000000002';
+const INTEGRITY = '23000'; // the guard triggers of migrations 0013 and 0014
 
 interface DeliveryExtra {
   readonly origin?: string;
@@ -82,6 +103,7 @@ interface DeliveryExtra {
   readonly approvedBy?: string | null;
   readonly state?: string;
   readonly hash?: string;
+  readonly channel?: string;
 }
 
 // Everything below runs as the application role: the guards must hold for the one that can be wrong.
@@ -90,7 +112,7 @@ const insertDelivery = (pool: Pool, f: Fixture, extra: DeliveryExtra = {}) =>
     `INSERT INTO outbound_delivery
        (ticket_id, message_id, channel_account_id, channel, origin, template_key, render_inputs, ai_draft_id,
         approved_by, content_hash, hold_seconds, next_attempt_at, created_by, state)
-     VALUES ($1, $2, $3, 'gmail', $4, $5, $6::jsonb, $7, $8, $9, 5, now(), $10, $11)
+     VALUES ($1, $2, $3, $12, $4, $5, $6::jsonb, $7, $8, $9, 5, now(), $10, $11)
      RETURNING id`,
     [
       f.ticketId,
@@ -104,6 +126,7 @@ const insertDelivery = (pool: Pool, f: Fixture, extra: DeliveryExtra = {}) =>
       extra.hash ?? HASH,
       extra.createdBy === undefined ? PERSON : extra.createdBy,
       extra.state ?? 'scheduled',
+      extra.channel ?? 'gmail',
     ],
   );
 
@@ -134,6 +157,13 @@ const SAFE_INPUTS = JSON.stringify({
   portalUrl: null,
   firstResponseDueAt: null,
 });
+('เราได้รับเรื่องของคุณแล้ว และบันทึกเป็นหมายเลข OPS-1 ทีมงานจะตรวจสอบและตอบกลับที่นี่');
+// What the domain renders for auto_ack.received with no portal link (templates.ts); the migration's
+// body_pattern must accept it (the domain test renders every key against the stored pattern).
+const ACK_BODY =
+  'We have received your request and filed it as OPS-1. Our team will review it and reply here.' +
+  '\n\n' +
+  'เราได้รับเรื่องของคุณแล้ว และบันทึกเป็นหมายเลข OPS-1 ทีมงานจะตรวจสอบและตอบกลับที่นี่';
 
 describe('0010 outbound_delivery', () => {
   it('allows one active delivery per message; a failed or cancelled one makes room for another', async () => {
@@ -249,7 +279,7 @@ describe('0010 outbound_delivery', () => {
   });
 
   it('lets only keys on the safe list through as a template, and ties the origins to their fields', async () => {
-    const f = await fixture();
+    const f = await fixture({ body: ACK_BODY, sender: null });
     await rejects(
       insertDelivery(app, f, {
         origin: 'system_template',
@@ -275,7 +305,11 @@ describe('0010 outbound_delivery', () => {
       }),
       PG.checkViolation,
     );
-    await rejects(insertDelivery(app, f, { template: 'auto_ack.received' }), PG.checkViolation);
+    const person = await fixture();
+    await rejects(
+      insertDelivery(app, person, { template: 'auto_ack.received' }),
+      PG.checkViolation,
+    );
     await insertDelivery(app, f, {
       origin: 'system_template',
       template: 'auto_ack.received',
@@ -314,7 +348,6 @@ describe('0010 outbound_delivery', () => {
       `content_hash = 'nope'`,
       `route = 'line_push'`,
       `channel = 'portal'`,
-      `attempts = -1`,
     ]) {
       const id = (await insertDelivery(app, g)).rows[0]?.id;
       await rejects(
@@ -425,6 +458,203 @@ describe('0010 outbound_delivery', () => {
     ]) {
       await rejects(app.query(sql, [id]), INSUFFICIENT_PRIVILEGE);
     }
+  });
+});
+
+describe('0014 who wrote the message (N-1)', () => {
+  it('refuses a human or ai_approved delivery whose message has no author or another author', async () => {
+    // An AI-authored message has no sender_user_id; pairing it with a person's origin must fail.
+    const aiWritten = await fixture({ sender: null });
+    await rejects(insertDelivery(app, aiWritten), INTEGRITY);
+    await rejects(insertDelivery(app, aiWritten, { createdBy: OTHER_PERSON }), INTEGRITY);
+    const draft = await approvedDraft(aiWritten);
+    await rejects(
+      insertDelivery(app, aiWritten, { origin: 'ai_approved', draft, approvedBy: PERSON }),
+      INTEGRITY,
+    );
+    // Written by one person, sent as another.
+    const theirs = await fixture({ sender: OTHER_PERSON });
+    await rejects(insertDelivery(app, theirs), INTEGRITY);
+    // Written and sent by the same person.
+    const mine = await fixture();
+    await insertDelivery(app, mine);
+  });
+
+  it('refuses an automatic delivery whose message has an author, a contact or HTML', async () => {
+    const inputs = {
+      origin: 'system_template',
+      template: 'auto_ack.received',
+      createdBy: null,
+      renderInputs: SAFE_INPUTS,
+    } as const;
+    const authored = await fixture({ body: ACK_BODY, sender: PERSON });
+    await rejects(insertDelivery(app, authored, inputs), INTEGRITY);
+    const html = await fixture({ body: ACK_BODY, sender: null });
+    await owner().query(`UPDATE message SET body_html = '<b>x</b>' WHERE id = $1`, [
+      html.messageId,
+    ]);
+    await rejects(insertDelivery(app, html, inputs), INTEGRITY);
+    const clean = await fixture({ body: ACK_BODY, sender: null });
+    await insertDelivery(app, clean, inputs);
+  });
+});
+
+describe('0014 template deliveries carry no free text (N-3)', () => {
+  const inputs = (renderInputs: string) =>
+    ({
+      origin: 'system_template',
+      template: 'auto_ack.received',
+      createdBy: null,
+      renderInputs,
+    }) as const;
+  const SLA_TAIL =
+    '\n\nWe aim to reply by 2026-11-02 09:30 (UTC+7).\n\nเราตั้งเป้าตอบกลับภายใน 2026-11-02 09:30 (UTC+7)';
+
+  it('refuses a body that is not the text of the key, even with a valid-looking key', async () => {
+    const pitch = await fixture({
+      body: `${ACK_BODY}\n\nBuy our premium plan today: https://example.com/offer`,
+      sender: null,
+    });
+    await rejects(insertDelivery(app, pitch, inputs(SAFE_INPUTS)), INTEGRITY);
+    const other = await fixture({ body: 'We have received your request. Pay us.', sender: null });
+    await rejects(insertDelivery(app, other, inputs(SAFE_INPUTS)), INTEGRITY);
+    // The plain key refuses the SLA text; the SLA key accepts it.
+    const sla = await fixture({ body: ACK_BODY + SLA_TAIL, sender: null });
+    await rejects(insertDelivery(app, sla, inputs(SAFE_INPUTS)), INTEGRITY);
+    await insertDelivery(app, sla, {
+      ...inputs(
+        JSON.stringify({
+          ticketKey: 'OPS-1',
+          portalUrl: null,
+          firstResponseDueAt: '2026-11-02T02:30:00.000Z',
+        }),
+      ),
+      template: 'auto_ack.received_with_sla',
+    });
+  });
+
+  it('refuses stored inputs that are not plain facts shown in the text', async () => {
+    const url = 'https://portal.example/portal';
+    const body = ACK_BODY.replace('reply here.', `reply here. You can follow it at ${url}`).replace(
+      'ตอบกลับที่นี่',
+      `ตอบกลับที่นี่ ติดตามสถานะได้ที่ ${url}`,
+    );
+    const f = await fixture({ body, sender: null });
+    for (const bad of [
+      { ticketKey: 'OPS-1', portalUrl: url, firstResponseDueAt: null, note: 'Wire money to X' },
+      { ticketKey: 'ops-1', portalUrl: null, firstResponseDueAt: null },
+      { ticketKey: 'OPS-1', portalUrl: 'javascript:alert(1)', firstResponseDueAt: null },
+      { ticketKey: 'OPS-1', portalUrl: 'https://elsewhere.example/', firstResponseDueAt: null },
+      { ticketKey: 'OPS-1', portalUrl: null, firstResponseDueAt: 'tomorrow' },
+      { ticketKey: 'OPS-2', portalUrl: null, firstResponseDueAt: null },
+    ]) {
+      await rejects(insertDelivery(app, f, inputs(JSON.stringify(bad))), INTEGRITY);
+    }
+    await insertDelivery(
+      app,
+      f,
+      inputs(JSON.stringify({ ticketKey: 'OPS-1', portalUrl: url, firstResponseDueAt: null })),
+    );
+  });
+});
+
+describe('0014 the channel is the type of the account (N-3)', () => {
+  it('refuses a delivery whose channel is not the type of its channel account', async () => {
+    const gmail = await fixture({ accountType: 'gmail' });
+    await rejects(insertDelivery(app, gmail, { channel: 'line' }), INTEGRITY);
+    const lineAccount = await fixture({ accountType: 'line' });
+    await rejects(insertDelivery(app, lineAccount, { channel: 'gmail' }), INTEGRITY);
+    await insertDelivery(app, lineAccount, { channel: 'line' });
+  });
+});
+
+describe('0014 claim and release rules (N-3)', () => {
+  const dispatch = (id: string, route: string) =>
+    app.query(`UPDATE outbound_delivery SET route = $2, dispatched_at = now() WHERE id = $1`, [
+      id,
+      route,
+    ]);
+  const releaseSql = (extra: string) =>
+    `UPDATE outbound_delivery
+        SET state = 'scheduled', claim_token = NULL, lease_until = NULL, dispatched_at = NULL ${extra}
+      WHERE id = $1`;
+
+  it('forbids changing the claim token while sending, or setting one on a scheduled row', async () => {
+    const f = await fixture();
+    const id = (await insertDelivery(app, f)).rows[0]?.id ?? '';
+    const retoken = `UPDATE outbound_delivery SET claim_token = gen_random_uuid() WHERE id = $1`;
+    await rejects(app.query(retoken, [id]), INTEGRITY);
+    await claim(id);
+    await rejects(app.query(retoken, [id]), INTEGRITY);
+    await rejects(
+      app.query(`UPDATE outbound_delivery SET claim_token = NULL WHERE id = $1`, [id]),
+      INTEGRITY,
+    );
+    // Swapping it while finishing is the same thing.
+    await rejects(
+      app.query(
+        `UPDATE outbound_delivery SET state = 'sent', sent_at = now(), claim_token = gen_random_uuid() WHERE id = $1`,
+        [id],
+      ),
+      INTEGRITY,
+    );
+    // The paths that exist leave it alone: dispatch, then finish.
+    await dispatch(id, 'gmail_new');
+    await app.query(
+      `UPDATE outbound_delivery SET state = 'failed', error_code = 'x' WHERE id = $1`,
+      [id],
+    );
+  });
+
+  it('counts attempts at a claim and nowhere else', async () => {
+    const f = await fixture();
+    const id = (await insertDelivery(app, f)).rows[0]?.id ?? '';
+    await rejects(
+      app.query(`UPDATE outbound_delivery SET attempts = 3 WHERE id = $1`, [id]),
+      INTEGRITY,
+    );
+    await claim(id);
+    await rejects(
+      app.query(`UPDATE outbound_delivery SET attempts = 0 WHERE id = $1`, [id]),
+      INTEGRITY,
+    );
+  });
+
+  it('does not send a Gmail row that reached the provider back to scheduled, unless the provider refused it', async () => {
+    const f = await fixture();
+    const id = (await insertDelivery(app, f)).rows[0]?.id ?? '';
+    await claim(id);
+    await dispatch(id, 'gmail_new');
+    // What a sweeper bug would do: no refusal on record.
+    await rejects(app.query(releaseSql(''), [id]), INTEGRITY);
+    await rejects(
+      app.query(releaseSql(`, error_code = 'channel_rate_limited', outcome_unknown = true`), [id]),
+      INTEGRITY,
+    );
+    // dispatched_at must be cleared by a release whatever else is true.
+    await rejects(
+      app.query(
+        `UPDATE outbound_delivery SET state = 'scheduled', claim_token = NULL, lease_until = NULL, error_code = 'x' WHERE id = $1`,
+        [id],
+      ),
+      INTEGRITY,
+    );
+    // The retry path: a refusal the provider gave, outcome known.
+    await app.query(releaseSql(`, error_code = 'channel_rate_limited'`), [id]);
+  });
+
+  it('lets a LINE push, and a row that never reached the provider, go back to scheduled', async () => {
+    const f = await fixture({ accountType: 'line' });
+    const id = (await insertDelivery(app, f, { channel: 'line' })).rows[0]?.id ?? '';
+    await claim(id);
+    await app.query(releaseSql(''), [id]);
+    await claim(id);
+    await dispatch(id, 'line_push');
+    await app.query(releaseSql(''), [id]);
+    // A LINE reply is not repeatable.
+    await claim(id);
+    await dispatch(id, 'line_reply');
+    await rejects(app.query(releaseSql(''), [id]), INTEGRITY);
   });
 });
 
@@ -667,5 +897,35 @@ describe('0010 revert', () => {
       `SELECT count(*)::int AS n FROM pg_class WHERE relname IN ('outbound_delivery', 'ai_draft', 'channel_quota_usage', 'instance_setting')`,
     );
     expect(back.rows[0]?.n).toBe(4);
+  });
+});
+
+describe('0014 revert', () => {
+  it('goes down to the 0013 guard and the 0013 permissions, and up again', async () => {
+    const f = await fixture({ sender: null });
+    // Under 0014 an AI-authored message cannot be sent as a person's.
+    await rejects(insertDelivery(app, f), INTEGRITY);
+
+    const reverted = await migrateDown(owner(), { steps: 1 });
+    expect(reverted).toEqual(['0014_outbound_hardening']);
+    const column = await owner().query<{ n: number }>(
+      `SELECT count(*)::int AS n FROM information_schema.columns
+        WHERE table_name = 'outbound_template_allowlist' AND column_name = 'body_pattern'`,
+    );
+    expect(column.rows[0]?.n).toBe(0);
+    const permission = await owner().query<{ n: number }>(
+      `SELECT count(*)::int AS n FROM permissions WHERE key = 'ticket.cancel.any'`,
+    );
+    expect(permission.rows[0]?.n).toBe(0);
+    // The 0013 guard lets through exactly what 0014 refuses (the hole N-1 describes).
+    const id = (await insertDelivery(app, f)).rows[0]?.id ?? '';
+    await owner().query(`DELETE FROM outbound_delivery WHERE id = $1`, [id]);
+
+    expect(await migrateUp(owner())).toEqual(['0014_outbound_hardening']);
+    await rejects(insertDelivery(app, f), INTEGRITY);
+    const back = await owner().query<{ role: string }>(
+      `SELECT role FROM role_permissions WHERE permission = 'ticket.cancel.any' ORDER BY role`,
+    );
+    expect(back.rows.map((row) => row.role)).toEqual(['head', 'lead']);
   });
 });

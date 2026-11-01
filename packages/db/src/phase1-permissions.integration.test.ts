@@ -22,6 +22,9 @@ const PHASE_1 = [
   'ai.run.read',
 ] as const;
 
+// Permissions added by later migrations; they go when the steps are reverted too.
+const ADDED_LATER = ['ticket.cancel.any'] as const;
+
 let testDb: TestDatabase;
 const owner = (): Pool => testDb.owner.pool;
 
@@ -85,7 +88,9 @@ describe('0006 Phase 1 permissions', () => {
     const remaining = await owner().query<{ n: number }>(
       'SELECT count(*)::int AS n FROM permissions',
     );
-    expect(remaining.rows[0]?.n).toBe(Object.keys(PERMISSIONS).length - PHASE_1.length);
+    expect(remaining.rows[0]?.n).toBe(
+      Object.keys(PERMISSIONS).length - PHASE_1.length - ADDED_LATER.length,
+    );
 
     expect(await migrateUp(owner())).toEqual(['0006_phase1_permissions', ...later]);
     expect(await phase1Rows()).toEqual(before);
