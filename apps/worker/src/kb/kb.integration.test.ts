@@ -282,6 +282,8 @@ describe('knowledge base indexing, end to end on the mock provider', () => {
         patch: { bodyMd: 'The new wording mentions kestrels.' },
         canApprove: true,
       });
+      // A new version of a live article is sent for review first; the article stays live meanwhile.
+      await domain.kb.transition(tx, ctx(), { articleId: made.articleId, to: 'in_review' });
       await domain.kb.publish(tx, ctx(approverId), {
         articleId: made.articleId,
         version: 2,
