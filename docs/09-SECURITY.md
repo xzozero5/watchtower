@@ -4,7 +4,8 @@
 > Non-negotiables N1, N2, N4, N9 in `AGENTS.md` are the root rules; PRD §8.2 is the requirement source.
 
 ## 1. Secrets and configuration (N1, ADR-004)
-- [ ] Infra secrets only in the environment; integration credentials in env or DB encrypted (envelope, ADR-004) — T-116 for the DB store `[OPEN]`
+- [ ] Infra secrets only in the environment; integration credentials in env or DB encrypted (envelope, ADR-004) — store + API + `credentials rotate` built in T-116a (ADR-012, `[TESTED]`); `security-reviewer` review and the admin UI (T-116c) `[OPEN]`
+- [x] Integration credentials are write-only over HTTP, env wins over DB, head only, audit rows hold field names only, a test greps logs, responses and audit for the plaintext — T-116a `[TESTED]`
 - [ ] No secret value in logs, audit rows, API responses, error messages, test output `[REVIEWED]`
 - [x] Boot refuses placeholder/weak `JWT_SECRET` / `APP_ENCRYPTION_KEY` outside loopback dev — T-010 C-1 `[TESTED]`
 - [x] Dev-login only with explicit `DEV_LOGIN_ENABLED=true`, mock Google, non-production, and only for dev-created accounts — T-010 C-1 `[TESTED]`

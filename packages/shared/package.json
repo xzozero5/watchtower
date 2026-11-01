@@ -12,6 +12,10 @@
       "types": "./dist/secret-box.d.ts",
       "default": "./dist/secret-box.js"
     },
+    "./credential-box": {
+      "types": "./dist/credential-box.d.ts",
+      "default": "./dist/credential-box.js"
+    },
     "./testing": {
       "types": "./dist/testing.d.ts",
       "default": "./dist/testing.js"

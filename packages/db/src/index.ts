@@ -6,6 +6,19 @@ export {
   scramVerifier,
   type AppRoleOptions,
 } from './app-role.js';
+export {
+  CREDENTIAL_ERROR_CODES,
+  CredentialStoreError,
+  createCredentialStore,
+  type CredentialErrorCode,
+  type CredentialExecutor,
+  type CredentialStore,
+  type CredentialStoreOptions,
+  type ResolveOptions,
+  type ResolvedField,
+  type RotateFailure,
+  type RotateResult,
+} from './credentials.js';
 export { createDatabase, type CreateDatabaseOptions, type Database } from './client.js';
 export { PG, isPgError, pgCode, pgConstraint } from './errors.js';
 export {
