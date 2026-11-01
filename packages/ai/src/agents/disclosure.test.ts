@@ -153,6 +153,65 @@ const base = {
   disclosure: 'restricted' as const,
 };
 
+describe('a placeholder in the draft is restored only from the drafter’s own session (SR108-4)', () => {
+  const NOTE_EMAIL = 'internal.person@staff-only.example.test';
+  const NOTE_PHONE = '0899998888';
+  const OWN_PHONE = '0812345678';
+  const turns = [
+    { from: 'customer' as const, text: `Please call me on ${OWN_PHONE} about the webhook.` },
+    { from: 'note' as const, text: `Escalated to ${NOTE_EMAIL}, phone ${NOTE_PHONE}.` },
+  ];
+
+  for (const disclosure of ['verified', 'restricted'] as const) {
+    it(`never puts a detail from an internal note in the draft (${disclosure})`, async () => {
+      // The model guesses the placeholders a ticket-wide session would have given the note.
+      const { deps } = rig({
+        sentences: [
+          { text: 'Hello.', kind: 'courtesy', evidenceIds: [] },
+          { text: 'Write to [EMAIL_1] please.', kind: 'courtesy', evidenceIds: [] },
+          { text: 'Or call [PHONE_2].', kind: 'courtesy', evidenceIds: [] },
+          { text: 'We will call you on [PHONE_1].', kind: 'courtesy', evidenceIds: [] },
+        ],
+      });
+      const outcome = await draftReply(deps, {
+        ...base,
+        disclosure,
+        evidence: [safe],
+        turns,
+      });
+      if (outcome.status !== 'ok') throw new Error('expected ok');
+      const body = outcome.value.body;
+      expect(body).not.toContain(NOTE_EMAIL);
+      expect(body).not.toContain(NOTE_PHONE);
+      expect(body).not.toMatch(/\[[A-Z]+_\d+\]/);
+      // The customer's own number, written by the customer, is still put back.
+      expect(body).toContain(OWN_PHONE);
+      expect(outcome.value.disclosure.removedSentences).toBe(2);
+      expect(outcome.value.needsReview).toBe(false);
+    });
+  }
+
+  it('removes a placeholder that came from a tool, or that nobody issued, instead of restoring it', async () => {
+    const withEmail = card('ev-1', { snippet: 'Contact other.customer@elsewhere.example.test for help.' });
+    const { deps } = rig({
+      sentences: [
+        { text: 'Hello.', kind: 'courtesy', evidenceIds: [] },
+        { text: 'Ask [EMAIL_1].', kind: 'instruction', evidenceIds: ['ev-1'] },
+        { text: 'Also [THAI_ID_7].', kind: 'courtesy', evidenceIds: [] },
+      ],
+    });
+    const outcome = await draftReply(deps, {
+      ...base,
+      disclosure: 'verified',
+      evidence: [withEmail],
+      turns: [{ from: 'customer', text: 'Help me with the webhook.' }],
+    });
+    if (outcome.status !== 'ok') throw new Error('expected ok');
+    expect(outcome.value.body).toBe('Hello.');
+    expect(outcome.value.disclosure.removedSentences).toBe(2);
+  });
+});
+
 describe('draftReply at a restricted level', () => {
   it('shows the model no internal evidence and no internal note, and keeps a closing tag in the ticket as data', async () => {
     const { deps, requests } = rig({

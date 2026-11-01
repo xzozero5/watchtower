@@ -459,7 +459,9 @@ describe('POST /v1/tickets/:id/ai/requests', () => {
       expect((await request(agent, ticketId, { kind: 'investigate' })).status).toBe(202);
     }
     await pool().query(`UPDATE ai_ticket_insight SET state = 'classified', progress = NULL WHERE ticket_id = $1`, [ticketId]);
-    expect((await request(agent, ticketId, { kind: 'draft' })).status).toBe(409);
+    // A counter, not the queue: the rows of the queue are cleared once relayed.
+    await pool().query(`DELETE FROM outbox WHERE payload->>'ticketId' = $1`, [ticketId]);
+    expect((await request(agent, ticketId, { kind: 'draft' })).status).toBe(429);
 
     // One person across tickets: the next one after the cap is 429.
     const person = await signIn(h, 'agent', undefined, 'Busy Agent');

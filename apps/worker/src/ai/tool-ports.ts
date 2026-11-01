@@ -250,14 +250,14 @@ export function loadStubFixtures(dir: string | undefined): StubFixtures | undefi
 }
 
 /**
- * The logs, data and repo tools reach past the application's own tables, so in production they run
- * only behind the database's read-only login (`AI_READONLY_DATABASE_URL`, N2): an empty value there
- * turns them off rather than falling back to "the code keeps them read-only". Outside production
- * (a local mock run) the fallback is fine.
+ * The logs, data and repo tools reach past the application's own tables, so they run only behind the
+ * database's read-only login (`AI_READONLY_DATABASE_URL`, N2). With none they are off, unless
+ * `AI_TOOLS_WITHOUT_READONLY_LOGIN` is set on purpose (a local mock run). It does not depend on
+ * `NODE_ENV`: a self-hosted compose runs as `development` by default.
  */
 export function systemToolsAllowed(config: {
-  readonly NODE_ENV: string;
   readonly AI_READONLY_DATABASE_URL?: string | undefined;
+  readonly AI_TOOLS_WITHOUT_READONLY_LOGIN: boolean;
 }): boolean {
-  return config.AI_READONLY_DATABASE_URL !== undefined || config.NODE_ENV !== 'production';
+  return config.AI_READONLY_DATABASE_URL !== undefined || config.AI_TOOLS_WITHOUT_READONLY_LOGIN;
 }

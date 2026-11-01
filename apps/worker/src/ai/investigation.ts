@@ -400,7 +400,6 @@ export async function runInvestigation(
   await progress({ phase: 'drafting', step: 0, steps: 1 });
   const drafted = await draftReply(agents, {
     ticketId: ticket.id,
-    session,
     subject: ticket.subject,
     turns,
     intentKey: ticketIntent.key,

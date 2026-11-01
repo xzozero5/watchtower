@@ -31,7 +31,7 @@ export function createAiPipelineProcessor(context: ProcessorContext): Processor 
   const allowSystemTools = systemToolsAllowed(config);
   if (!allowSystemTools) {
     logger.warn(
-      'AI_READONLY_DATABASE_URL is empty in production: the logs, data and repo tools are off',
+      'No read-only database login for the AI tools: the logs, data and repo tools are off',
     );
   }
 

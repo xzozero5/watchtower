@@ -547,13 +547,17 @@ describe('draftReply (T-108c)', () => {
     expect(r.runs[0]?.agent).toBe('drafter');
   });
 
-  it('flags a placeholder that is not the customer’s own instead of filling it in', async () => {
-    const { run } = draftRig(
-      { sentences: [{ text: 'We also spoke to [EMAIL_9].', kind: 'fact', evidenceIds: ['ev-1'] }] },
-    );
+  it('removes a placeholder that is not the customer’s own instead of filling it in or leaving it', async () => {
+    const { run } = draftRig({
+      sentences: [
+        { text: 'Hello.', kind: 'courtesy', evidenceIds: [] },
+        { text: 'We also spoke to [EMAIL_9].', kind: 'fact', evidenceIds: ['ev-1'] },
+      ],
+    });
     const outcome = await run();
     if (outcome.status !== 'ok') throw new Error('expected ok');
-    expect(outcome.value.needsReview).toBe(true);
+    expect(outcome.value.body).toBe('Hello.');
+    expect(outcome.value.disclosure.removedSentences).toBe(1);
   });
 
   it('fails, not throws, when nothing is left after the disclosure filter or the answer is malformed', async () => {

@@ -3,13 +3,11 @@ import { z } from 'zod';
 
 import { renderPrompt } from '../prompts.js';
 import { joinRedacted, type RedactedText } from '../redaction/redacted-text.js';
-import type { RedactionSession } from '../redaction/redactor.js';
 import {
   askGuard,
   clip,
   extractJsonObject,
   failedFor,
-  sessionFor,
   skippedFor,
   type AgentDeps,
   type AgentOutcome,
@@ -109,9 +107,11 @@ export function composeBody(sentences: readonly DraftSentence[]): string {
   return body;
 }
 
+/** What a redaction placeholder looks like: `[EMAIL_1]`, `[PHONE_2]`, `[LITERAL_3]`. */
+const TOKEN_SHAPE = /\[[A-Z][A-Z_]*_\d+\]/g;
+
 export interface DraftInput {
   readonly ticketId: string;
-  readonly session?: RedactionSession;
   readonly subject: string;
   readonly turns: readonly TicketTurn[];
   readonly intentKey: string | null;
@@ -174,7 +174,10 @@ export async function draftReply(
   if (!decision.allowed) return { status: 'skipped', reason: decision.reason };
 
   const prompt = deps.prompts.latest(DRAFTER_PROMPT_ID);
-  const session = sessionFor(deps, input.ticketId, input.session);
+  // The drafter's own session, never the one of the investigation (SR108-4): that one has issued tokens
+  // for the internal notes, and a token the model writes is restored from the session that made it. This
+  // session only ever sees what the customer may be told, so it can only restore that.
+  const session = deps.redactor.session({ scope: input.ticketId });
   let system: RedactedText;
   let message: RedactedText;
   try {
@@ -252,12 +255,15 @@ export async function draftReply(
     // An id the model made up supports nothing.
     evidenceIds: [...new Set(sentence.evidenceIds.filter((id) => known.has(id)))],
   }));
-  const { kept, removed } = applyDisclosure(
-    sentences,
-    input.disclosure,
-    input.evidence,
-    internalTexts,
+  const disclosed = applyDisclosure(sentences, input.disclosure, input.evidence, internalTexts);
+  // A placeholder in the answer is restored only if this session issued it for the ticket's own text.
+  // Any other (a tool's, one nobody issued, one the model made up) is removed with its sentence, and
+  // counted: it is never put back as a value, and never left as a token for the customer to read.
+  const issued = session.snapshot().tokens;
+  const kept = disclosed.kept.filter((sentence) =>
+    (sentence.text.match(TOKEN_SHAPE) ?? []).every((token) => issued[token]?.origin === 'ticket'),
   );
+  const removed = disclosed.removed + (disclosed.kept.length - kept.length);
   if (kept.length === 0) return { status: 'failed', reason: 'model_output_invalid' };
 
   const restored = session.restore(composeBody(kept), 'customer');

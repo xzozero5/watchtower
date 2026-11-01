@@ -7,6 +7,7 @@ import type { ToolLedger } from '@watchtower/ai';
 import { createDbToolLedger, type DbToolLedger } from '@watchtower/domain';
 import { describe, expect, it } from 'vitest';
 
+import { testConfig } from '../testing/support.js';
 import { disclosureFor } from './investigation.js';
 import { loadStubFixtures, systemToolsAllowed } from './tool-ports.js';
 
@@ -65,15 +66,21 @@ describe('loadStubFixtures', () => {
 });
 
 describe('systemToolsAllowed (N2, SR108 P2)', () => {
-  it('in production the logs, data and repo tools need the read-only database login', () => {
-    expect(systemToolsAllowed({ NODE_ENV: 'production' })).toBe(false);
+  it('needs the read-only database login, or an explicit opt-in, whatever NODE_ENV is', () => {
+    expect(systemToolsAllowed({ AI_TOOLS_WITHOUT_READONLY_LOGIN: false })).toBe(false);
     expect(
-      systemToolsAllowed({ NODE_ENV: 'production', AI_READONLY_DATABASE_URL: 'postgres://ai@db/x' }),
+      systemToolsAllowed({
+        AI_READONLY_DATABASE_URL: 'postgres://ai@db/x',
+        AI_TOOLS_WITHOUT_READONLY_LOGIN: false,
+      }),
     ).toBe(true);
+    expect(systemToolsAllowed({ AI_TOOLS_WITHOUT_READONLY_LOGIN: true })).toBe(true);
   });
 
-  it('outside production the code alone keeps them read-only, for a local mock run', () => {
-    expect(systemToolsAllowed({ NODE_ENV: 'development' })).toBe(true);
-    expect(systemToolsAllowed({ NODE_ENV: 'test' })).toBe(true);
+  it('is off by default in the worker config, also when NODE_ENV is development', () => {
+    const config = testConfig({ NODE_ENV: 'development' });
+    expect(config.AI_TOOLS_WITHOUT_READONLY_LOGIN).toBe(false);
+    expect(systemToolsAllowed(config)).toBe(false);
+    expect(systemToolsAllowed(testConfig({ AI_TOOLS_WITHOUT_READONLY_LOGIN: 'true' }))).toBe(true);
   });
 });

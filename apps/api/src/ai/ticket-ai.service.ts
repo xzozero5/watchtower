@@ -15,11 +15,12 @@ import {
   type RejectAiDraft,
   type TicketAiInsight,
 } from '@watchtower/shared';
-import { eq, sql } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { z } from 'zod';
 
 import { conflict, notFound } from '../auth/http-errors.js';
 import type { Principal } from '../auth/principal.js';
+import { RateLimiter } from '../auth/rate-limiter.js';
 import { DATABASE } from '../database/database.module.js';
 import { DOMAIN, type Domain } from '../domain/domain.module.js';
 import { domainContext, settle } from '../domain/domain-context.js';
@@ -102,6 +103,7 @@ export class TicketAiService {
     @Inject(DATABASE) private readonly database: Database,
     @Inject(TicketReader) private readonly tickets: TicketReader,
     @Inject(DOMAIN) private readonly domain: Domain,
+    @Inject(RateLimiter) private readonly limiter: RateLimiter,
   ) {}
 
   /**
@@ -186,17 +188,6 @@ export class TicketAiService {
       if (intent === undefined) throw conflict('Set the intent of the ticket before asking for a draft');
       if (intent.stage < 1) throw conflict('Drafts are off for this intent (stage 0)');
     }
-    // Per ticket and hour, whoever asks: a draft on request makes a model call with no tool call, so
-    // the tool budget does not bound it.
-    const recent = await uow.tx.execute<{ n: string }>(
-      sql`SELECT count(*) AS n FROM outbox
-           WHERE queue = ${QUEUE_NAMES.ai} AND job_name IN (${AI_JOBS.draft}, ${AI_JOBS.investigate})
-             AND payload->>'ticketId' = ${ticketId} AND payload->>'requestedBy' IS NOT NULL
-             AND created_at > now() - interval '1 hour'`,
-    );
-    if (Number(recent.rows[0]?.n ?? 0) >= AI_REQUEST_LIMITS.perTicketPerHour) {
-      throw conflict('The AI was asked about this ticket too often in the last hour');
-    }
     const [row] = await uow.tx
       .select({
         state: schema.aiTicketInsight.state,
@@ -214,6 +205,15 @@ export class TicketAiService {
     ) {
       throw conflict('The AI is already working on this ticket');
     }
+    // Per ticket and hour, whoever asks, from a counter (Redis): a draft on request makes a model call
+    // with no tool call, so the tool budget does not bound it, and the outbox row that carried the
+    // request is cleared once it is relayed, so it cannot be counted afterwards.
+    await this.limiter.enforce(
+      'ai-request-ticket',
+      ticketId,
+      AI_REQUEST_LIMITS.perTicketPerHour,
+      3600,
+    );
     const stamp = new Date(now);
     await uow.tx
       .insert(schema.aiTicketInsight)

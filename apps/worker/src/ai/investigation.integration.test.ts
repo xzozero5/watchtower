@@ -46,6 +46,8 @@ const requests: LlmRequest[] = [];
 /** Confidence the classifier answers with; a test sets it before it creates a ticket. */
 let classifierConfidence = 0.9;
 let classifierIntent: string | null = 'webhook_not_received';
+/** When set, the drafter answers with these sentences instead of the dev mock's. */
+let drafterAnswer: { text: string; kind: string; evidenceIds: string[] }[] | undefined;
 
 const owner = () => testDb.owner.db;
 
@@ -69,6 +71,14 @@ function provider(): LlmProvider {
           model: request.model,
         });
       }
+      if (request.prompt.id === 'drafter' && drafterAnswer !== undefined) {
+        return Promise.resolve({
+          text: JSON.stringify({ language: 'en', sentences: drafterAnswer }),
+          finishReason: 'stop' as const,
+          usage: { inputTokens: 1, outputTokens: 1 },
+          model: request.model,
+        });
+      }
       return inner.generate(request);
     },
   };
@@ -82,6 +92,7 @@ beforeAll(async () => {
       OUTBOX_POLL_INTERVAL_MS: '100',
       AI_DAILY_TOKEN_CAP: '100000',
       AI_TOOL_FIXTURES_DIR: FIXTURES_DIR,
+      AI_TOOLS_WITHOUT_READONLY_LOGIN: 'true',
     }),
     listenPort: 0,
   };
@@ -450,6 +461,50 @@ describe('who may unlock the tools and the stage (SR108-1)', () => {
     await enqueueAi(AI_JOBS.draft, { ticketId, requestedBy: staffId });
     await settled(ticketId, 'draft_ready');
     expect(await draftsOf(ticketId)).toHaveLength(1);
+  });
+});
+
+describe('a detail from an internal note does not reach the draft (SR108-4)', () => {
+  it('the drafter does not restore a placeholder the investigation issued for a note', async () => {
+    classifierConfidence = 0.9;
+    classifierIntent = 'webhook_not_received';
+    const noteEmail = 'internal.person@staff-only.example.test';
+    const noteTime = 'Escalated to ' + noteEmail + ', phone 0899998888';
+    // The model guesses the placeholders the ticket-wide session gave the note.
+    drafterAnswer = [
+      { text: 'Hello.', kind: 'courtesy', evidenceIds: [] },
+      { text: 'Please write to [EMAIL_1].', kind: 'courtesy', evidenceIds: [] },
+      { text: 'Or call [PHONE_1].', kind: 'courtesy', evidenceIds: [] },
+    ];
+    try {
+      const ticketId = await createTicket('Webhook not received', 'Our webhook is not received.', {
+        intentKey: 'webhook_not_received',
+      });
+      await owner().insert(schema.message).values({
+        ticketId,
+        direction: 'internal',
+        bodyText: noteTime,
+        visibility: 'internal',
+        senderUserId: staffId,
+      });
+      // The brief ran before the note existed, so ask again: the note is now in the investigation.
+      await enqueueAi(AI_JOBS.investigate, { ticketId, requestedBy: staffId });
+      await waitFor('a draft made after the note', async () => {
+        const rows = await draftsOf(ticketId);
+        return rows.length > 0 ? rows : undefined;
+      });
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+      const drafts = await draftsOf(ticketId);
+      expect(drafts.length).toBeGreaterThan(0);
+      for (const draft of drafts) {
+        expect(draft.bodyText).not.toContain(noteEmail);
+        expect(draft.bodyText).not.toContain('0899998888');
+        expect(draft.bodyText).not.toMatch(/\[[A-Z]+_\d+\]/);
+        expect(draft.disclosureRemoved).toBeGreaterThanOrEqual(2);
+      }
+    } finally {
+      drafterAnswer = undefined;
+    }
   });
 });
 

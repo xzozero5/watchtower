@@ -73,6 +73,13 @@ const workerEnvSchema = createEnvSchema({
    * Directory with `fixtures.json` that the GCP Logs, BigQuery and repo stubs answer from while those
    * systems are not connected (mock mode, `examples/tools`). Empty: the stubs are not registered.
    */
+  /**
+   * Explicit opt-in, like `GMAIL_MOCK_ENABLED`: let the logs, data and repo tools run with no read-only
+   * database login, so only the code keeps them read-only. For a local mock run. Default false: without a
+   * login (`AI_READONLY_DATABASE_URL`) those tools are off, whatever `NODE_ENV` says (compose defaults it to
+   * development).
+   */
+  AI_TOOLS_WITHOUT_READONLY_LOGIN: z.preprocess(emptyToUndefined, z.stringbool().default(false)),
   AI_TOOL_FIXTURES_DIR: z.preprocess(emptyToUndefined, z.string().min(1).optional()),
   /**
    * Cleanup job (T-117): days to keep an expired or revoked session, refresh token, magic link or
