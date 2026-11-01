@@ -37,12 +37,14 @@ import {
   useState,
 } from 'react';
 
+import { ChannelIcon } from '@/components/ticket/channel-icon';
 import { QUEUE_LISTBOX_ID } from '@/components/queue/queue-row';
 import { useI18n } from '@/i18n/provider';
 import type { MessageKey } from '@/i18n';
 import { isApiError } from '@/lib/api/errors';
 import { useSession } from '@/lib/auth/session';
 import { useShortcut } from '@/lib/keyboard';
+import { useLineQuota, useSendUndo } from '@/lib/outbound/queries';
 import { isClosedForReplies, isDetail, type TicketItem } from '@/lib/tickets/model';
 import { useIntents, useTicketMutations, useWorkflow } from '@/lib/tickets/queries';
 import { statusKey } from '@/lib/tickets/status-key';
@@ -54,6 +56,8 @@ import {
   type TemplateValues,
 } from '@/lib/tickets/templates';
 import { useIsMac } from '@/lib/use-is-mac';
+
+import { LineQuotaNote } from './line-quota-note';
 
 export type ComposerMode = 'reply' | 'note';
 type Mode = ComposerMode;
@@ -139,6 +143,9 @@ export function Composer({
   const intents = useIntents(isStaff);
   const workflow = useWorkflow(isStaff);
   const { reply, note } = useTicketMutations(ticket.key);
+  const { offer } = useSendUndo(ticket.key);
+  const viaLine = 'channel' in ticket && ticket.channel === 'line';
+  const quota = useLineQuota(isStaff && mode === 'reply' && viaLine);
   const mutation = mode === 'reply' ? reply : note;
 
   useEffect(() => {
@@ -232,6 +239,7 @@ export function Composer({
   const nextOptions = allowedNextStatuses(workflow.data, ticket.status);
   const showTemplates = mode === 'reply' && isStaff;
   const showStatus = mode === 'reply' && isStaff;
+  const showVia = mode === 'reply' && isStaff;
 
   const setBody = (text: string) => {
     setBodies((current) => ({ ...current, [mode]: text }));
@@ -267,7 +275,13 @@ export function Composer({
     if (mode === 'reply') {
       reply.mutate(
         { body: text, ...(nextStatus ? { setStatus: nextStatus } : {}) },
-        { onSuccess: done },
+        {
+          onSuccess: (result) => {
+            // The server holds a Gmail or LINE reply for its undo window; Undo cancels it there.
+            offer(result.message);
+            done();
+          },
+        },
       );
     } else {
       note.mutate({ body: text }, { onSuccess: done });
@@ -426,6 +440,17 @@ export function Composer({
           ) : null}
 
           <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
+            {showVia && 'channel' in ticket ? (
+              <Tooltip content={t('outbound.viaTip')}>
+                <span
+                  data-testid="send-via"
+                  className="inline-flex h-7 items-center gap-1.5 text-xs text-muted-foreground"
+                >
+                  <ChannelIcon channel={ticket.channel} />
+                  {t('outbound.via', { channel: t(`channel.${ticket.channel}`) })}
+                </span>
+              </Tooltip>
+            ) : null}
             {showStatus ? (
               <DropdownMenu>
                 <Tooltip content={t('composer.setStatus.label')}>
@@ -496,6 +521,8 @@ export function Composer({
           </span>
         </div>
       )}
+
+      {showVia && viaLine ? <LineQuotaNote quota={quota.data} /> : null}
 
       {unresolved.length > 0 ? (
         <Alert tone="error" title={t('composer.unresolved.title')} className="mt-2">

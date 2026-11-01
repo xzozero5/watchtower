@@ -139,6 +139,9 @@ x-app-env: &app-env
   AI_DAILY_COST_CAP_USD: ${AI_DAILY_COST_CAP_USD:-}
   AI_DAILY_TOKEN_CAP: ${AI_DAILY_TOKEN_CAP:-}
   AI_BUDGET_ALERT_PERCENT: ${AI_BUDGET_ALERT_PERCENT:-80}
+  AI_READONLY_DATABASE_URL: ${AI_READONLY_DATABASE_URL:-}
+  AI_TOOLS_WITHOUT_READONLY_LOGIN: ${AI_TOOLS_WITHOUT_READONLY_LOGIN:-false}
+  AI_TOOL_FIXTURES_DIR: ${AI_TOOL_FIXTURES_DIR:-}
   EMBEDDING_PROVIDER: ${EMBEDDING_PROVIDER:-mock}
   KB_CRAWL_ALLOWED_HOSTS: ${KB_CRAWL_ALLOWED_HOSTS:-}
   KB_CHUNK_TARGET_CHARS: ${KB_CHUNK_TARGET_CHARS:-}
@@ -277,6 +280,9 @@ services:
       DATABASE_URL: postgres://${POSTGRES_USER:-watchtower}:${POSTGRES_PASSWORD:-watchtower}@postgres:5432/${POSTGRES_DB:-watchtower}
       APP_DB_USER: ${APP_DB_USER:-watchtower_api}
       APP_DB_PASSWORD: ${APP_DB_PASSWORD:-watchtower_api}
+      # Optional: the AI tools' read-only login (watchtower_ai_ro). Both empty = not created.
+      AI_DB_USER: ${AI_DB_USER:-}
+      AI_DB_PASSWORD: ${AI_DB_PASSWORD:-}
     depends_on:
       postgres:
         condition: service_healthy

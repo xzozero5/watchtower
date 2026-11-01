@@ -1,7 +1,7 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { RejectAiDraft, TicketAiInsight } from '@watchtower/shared';
+import type { AiRequest, RejectAiDraft, TicketAiInsight } from '@watchtower/shared';
 
 import { useApi } from '@/lib/api/api-context';
 import { useUserId } from '@/lib/auth/session';
@@ -61,9 +61,31 @@ export function useAiDraftActions(ticketKey: string) {
         settle(draftId, 'needs_human');
       },
     }),
+    /** Read the brief again, for example after a send was refused. */
+    refresh: () => {
+      void queryClient.invalidateQueries({ queryKey: key });
+    },
     /** The draft was sent (a person approved it): it is no longer waiting for a decision. */
     sent: (draftId: string) => {
       settle(draftId, 'classified');
     },
   };
+}
+
+/**
+ * "Draft a reply" / "Investigate again": the api answers 202 at once and the job runs in the
+ * worker; its progress reaches this tab as `ticket.updated` events (`changed: ['ai']`) that
+ * re-read the brief. The brief is read once more here so the `investigating` state shows without
+ * waiting for the first event.
+ */
+export function useAiRequest(ticketKey: string) {
+  const api = useApi();
+  const userId = useUserId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: AiRequest) => api.requestAi(ticketKey, body),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: aiKey(userId, ticketKey) });
+    },
+  });
 }

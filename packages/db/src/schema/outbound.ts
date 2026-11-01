@@ -8,6 +8,7 @@ import {
   jsonb,
   pgTable,
   primaryKey,
+  real,
   text,
   timestamp,
   uniqueIndex,
@@ -34,12 +35,34 @@ export const aiDraft = pgTable(
     bodyText: text('body_text').notNull(),
     // Set by a trigger on INSERT (sha256 of the UTF-8 body, hex); whatever an insert says is overwritten.
     contentHash: text('content_hash').notNull().default(''),
-    /** `draft`, `approved`, `sent` or `rejected`. */
+    /** `draft`, `approved`, `sent`, `rejected` or `superseded` (a newer draft replaced it). */
     status: text('status').notNull().default('draft'),
     aiRunId: uuid('ai_run_id'),
     approvedBy: uuid('approved_by'),
     approvedAt: timestamptz('approved_at'),
     createdAt: timestamptz('created_at').notNull().defaultNow(),
+    // T-108 (migration 0034): what the drafter wrote and what a person did with it.
+    language: text('language'),
+    customerLanguage: text('customer_language'),
+    citations: jsonb('citations')
+      .notNull()
+      .default(sql`'[]'::jsonb`)
+      .$type<{ evidenceId: string; sentence: number; kind?: string }[]>(),
+    uncitedClaims: integer('uncited_claims').notNull().default(0),
+    promptId: text('prompt_id'),
+    promptVersion: integer('prompt_version'),
+    disclosureLevel: text('disclosure_level'),
+    disclosureRemoved: integer('disclosure_removed').notNull().default(0),
+    needsReview: boolean('needs_review').notNull().default(false),
+    requestedBy: uuid('requested_by'),
+    /** `approved`, `edited` or `rejected`: what a person did with the draft. */
+    disposition: text('disposition'),
+    editDistance: real('edit_distance'),
+    rejectReason: text('reject_reason'),
+    rejectComment: text('reject_comment'),
+    resolvedBy: uuid('resolved_by'),
+    resolvedAt: timestamptz('resolved_at'),
+    finalMessageId: uuid('final_message_id'),
   },
   (table) => [index('ai_draft_ticket_idx').on(table.ticketId, table.createdAt)],
 );

@@ -5,7 +5,7 @@ import { KEY_LABELS, deriveSubkey } from '@watchtower/shared/secret-box';
 import type { Processor } from 'bullmq';
 
 import type { WorkerConfig } from '../config.js';
-import { createAiProcessor } from '../ai/brief.js';
+import { createAiPipelineProcessor } from '../ai/pipeline.js';
 import type { AiOverrides, AiRuntime } from '../ai/runtime.js';
 import { createGmailRegistration, type GmailOverrides } from '../gmail/index.js';
 import type { GmailRuntime } from '../gmail/runtime.js';
@@ -116,7 +116,7 @@ export const PROCESSORS: readonly ProcessorRegistration[] = [
   // --- ai (T-106, T-108) ---
   {
     queue: QUEUE_NAMES.ai,
-    create: ({ database, ai, logger }) => createAiProcessor({ database, ai, logger }),
+    create: createAiPipelineProcessor,
   },
 
   // --- kb (T-107) ---

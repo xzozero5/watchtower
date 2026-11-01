@@ -3,6 +3,7 @@
 // CHECKs live there); keep both in step by hand and let the integration tests catch drift.
 import { sql } from 'drizzle-orm';
 import {
+  boolean,
   date,
   index,
   integer,
@@ -88,9 +89,48 @@ export const aiTicketInsight = pgTable(
     classifierRunId: uuid('classifier_run_id'),
     summarizerRunId: uuid('summarizer_run_id'),
     generatedAt: timestamptz('generated_at').notNull(),
+    // T-108 (migration 0034).
+    /** The investigation report: findings with the evidence they rest on, open questions. */
+    report: jsonb('report'),
+    /** Progress of the job while it runs: phase and step. */
+    progress: jsonb('progress'),
+    /** The person who asked for it (a draft on request); null when the system did. */
+    requestedBy: uuid('requested_by'),
+    investigatedAt: timestamptz('investigated_at'),
     updatedAt: timestamptz('updated_at').notNull().defaultNow(),
   },
   (table) => [index('ai_ticket_insight_state_idx').on(table.state, table.updatedAt.desc())],
+);
+
+/**
+ * One row per tool call of an AI run (T-108a, migration 0034): the budget ledger and the audit of what a
+ * tool was asked. Holds a keyed hash of the input and a count of the result, never either.
+ */
+export const toolExecution = pgTable(
+  'tool_execution',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    createdAt: timestamptz('created_at').notNull().defaultNow(),
+    finishedAt: timestamptz('finished_at'),
+    ticketId: uuid('ticket_id').references(() => ticket.id, { onDelete: 'restrict' }),
+    runKey: text('run_key').notNull(),
+    agent: text('agent').notNull(),
+    tool: text('tool').notNull(),
+    intent: text('intent'),
+    stage: smallint('stage'),
+    inputHash: text('input_hash').notNull(),
+    /** `running`, `ok`, `error` or `denied`. */
+    status: text('status').notNull(),
+    errorCode: text('error_code'),
+    latencyMs: integer('latency_ms'),
+    resultCount: integer('result_count'),
+    mock: boolean('mock').notNull().default(false),
+  },
+  (table) => [
+    index('tool_execution_ticket_idx').on(table.ticketId, table.createdAt.desc()),
+    index('tool_execution_tool_idx').on(table.tool, table.createdAt.desc()),
+    index('tool_execution_run_idx').on(table.runKey),
+  ],
 );
 
 /** First time per UTC day a daily cap reached its alert level (`alert`) or its limit (`stop`). */
@@ -109,5 +149,6 @@ export const aiBudgetEvent = pgTable(
 
 export type AiRunRow = typeof aiRun.$inferSelect;
 export type NewAiRunRow = typeof aiRun.$inferInsert;
+export type ToolExecutionRow = typeof toolExecution.$inferSelect;
 export type AiTicketInsightRow = typeof aiTicketInsight.$inferSelect;
 export type NewAiTicketInsightRow = typeof aiTicketInsight.$inferInsert;

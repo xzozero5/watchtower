@@ -293,7 +293,8 @@ describe('ingest queue: an event becomes a ticket', () => {
         (candidate) =>
           candidate.type !== 'notification.created' &&
           candidate.type !== 'alert.updated' &&
-          candidate.ticketId === ticket?.id,
+          candidate.ticketId === ticket?.id &&
+          !(candidate.type === 'ticket.updated' && candidate.data.changed.join() === 'ai'),
       );
       return mine.length >= 2 ? mine : undefined;
     });
@@ -329,7 +330,13 @@ describe('ingest queue: an event becomes a ticket', () => {
           .from(schema.message)
           .where(eq(schema.message.ticketId, ticketId))
       ).length,
-      events: received.filter((event) => JSON.stringify(event).includes(ticketId)).length,
+      // The AI keeps working on the ticket after ingestion (T-108) and tells the web with a
+      // `changed: ['ai']` event; that is not ingestion replaying.
+      events: received.filter(
+        (event) =>
+          JSON.stringify(event).includes(ticketId) &&
+          !(event.type === 'ticket.updated' && event.data.changed.join() === 'ai'),
+      ).length,
     });
     const before = await own();
     expect(ticketId).not.toBe('');

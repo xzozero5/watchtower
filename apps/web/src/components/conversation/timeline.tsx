@@ -7,11 +7,12 @@ import {
   type TimelineEntry,
 } from '@watchtower/shared';
 import { Avatar, cn, toast, Tooltip } from '@watchtower/ui';
-import { AlertTriangle, Bot, Clock, Copy, Lock, Quote, Settings2 } from 'lucide-react';
+import { AlertTriangle, Bot, Clock, Copy, Lock, Quote, Settings2, Undo2 } from 'lucide-react';
 
 import { ChannelIcon } from '@/components/ticket/channel-icon';
 import { useI18n } from '@/i18n/provider';
 import { formatAge, formatDateTime } from '@/lib/format';
+import { useSendUndo } from '@/lib/outbound/queries';
 import { useNow } from '@/lib/use-now';
 import { statusKey } from '@/lib/tickets/status-key';
 
@@ -73,6 +74,10 @@ function EventText({ entry }: { entry: EventEntry }) {
       return <>{t('timeline.events.slaResumed')}</>;
     case TICKET_EVENT_TYPES.slaRecalculated:
       return <>{t('timeline.events.slaRecalculated')}</>;
+    case TICKET_EVENT_TYPES.messageSendCancelled:
+      return <>{t('timeline.events.sendCancelled')}</>;
+    case TICKET_EVENT_TYPES.messageDeliveryFailed:
+      return <>{t('timeline.events.deliveryFailed')}</>;
     default:
       return <>{t('timeline.events.updated')}</>;
   }
@@ -106,19 +111,44 @@ function messageKind(message: Message): 'internal' | 'reply' | 'customer' {
   return message.direction === 'outbound' ? 'reply' : 'customer';
 }
 
+/**
+ * Where a staff reply is (ADR-010): waiting out the undo window (with Undo while the server still
+ * allows it), undone, or not delivered. Delivered and not-applicable say nothing.
+ */
 function DeliveryNote({ message }: { message: Message }) {
-  const t = useI18n().t;
+  const { t } = useI18n();
+  const { undo } = useSendUndo(message.ticketKey);
   if (message.deliveryStatus === 'not_applicable' || message.deliveryStatus === 'delivered') {
     return null;
   }
   const failed = message.deliveryStatus === 'failed';
-  const Icon = failed ? AlertTriangle : Clock;
+  const cancelled = message.deliveryStatus === 'cancelled';
+  const scheduled = message.deliveryStatus === 'scheduled';
+  const Icon = failed ? AlertTriangle : cancelled ? Undo2 : Clock;
+  const cancellable = scheduled && message.delivery?.cancellable === true;
   return (
     <p
       className={cn('mt-2 flex items-center gap-1 text-xs', failed && 'font-semibold text-danger')}
     >
       <Icon aria-hidden className="size-3.5" />
-      {failed ? t('timeline.delivery.failed') : t('timeline.delivery.pending')}
+      {failed
+        ? t('timeline.delivery.failed')
+        : cancelled
+          ? t('outbound.delivery.cancelled')
+          : scheduled
+            ? t('outbound.delivery.scheduled')
+            : t('timeline.delivery.pending')}
+      {cancellable && message.delivery ? (
+        <button
+          type="button"
+          onClick={() => {
+            void undo(message.delivery?.id ?? '');
+          }}
+          className="ml-1 rounded-sm font-medium text-link underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+        >
+          {t('outbound.undo')}
+        </button>
+      ) : null}
     </p>
   );
 }

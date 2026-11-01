@@ -1,6 +1,10 @@
 import { schema } from '@watchtower/db';
 import {
+  AI_JOBS,
+  AI_OUTBOX_JOB_OPTIONS,
   AUDIT_ACTIONS,
+  KB_AUTHOR_DELAY_MS,
+  QUEUE_NAMES,
   SLA_PAUSED_STATUSES,
   TICKET_EVENT_TYPES,
   type TicketStatus,
@@ -10,6 +14,7 @@ import { eq } from 'drizzle-orm';
 import { recordAuditInTx } from '../audit.js';
 import { scheduleSurvey, voidOpenSurveys } from '../csat/survey.js';
 import { invalidTransition, notFound } from '../errors.js';
+import { enqueueJob } from '../outbox.js';
 import type { TicketRow } from '../rows.js';
 import { resumeSla } from '../sla.js';
 import { Effects, type DbTransaction, type DomainContext, type DomainResult } from '../types.js';
@@ -138,6 +143,22 @@ export async function applyStatus(
   // customer caused, nor when the caller (a reply that sets the status) sends its own email.
   if (options.automatic !== true && options.silent !== true) {
     await ctx.notifier.statusChange(tx, after, ticketKeysOf(ctx).format(after.number), from, to);
+  }
+  if (to === 'resolved') {
+    // AC-4: a ticket resolved without a citation becomes a draft article for review (T-108e). The job
+    // is in the outbox with the ticket, waits a little (a quick reopen cancels it: the job checks the
+    // status), and names the person who resolved it, who may not approve what the AI writes.
+    await enqueueJob(tx, ctx.config, {
+      queue: QUEUE_NAMES.ai,
+      name: AI_JOBS.kbAuthor,
+      jobId: `ai-kb-author-${after.id}-${String(after.reopenCount)}`,
+      payload: {
+        ticketId: after.id,
+        requestedBy: ctx.actor.type === 'user' ? ctx.actor.id : null,
+      },
+      notBefore: new Date(now.getTime() + KB_AUTHOR_DELAY_MS),
+      options: AI_OUTBOX_JOB_OPTIONS,
+    });
   }
   fx.emit(ticketEvent(ctx, 'ticket.updated', after, changed));
   return after;

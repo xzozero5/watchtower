@@ -113,6 +113,38 @@ export function makeMessage(
   };
 }
 
+export const DELIVERY_ID = 'e0000000-0000-4000-8000-000000000001';
+
+/**
+ * A reply as the api answers it on Gmail or LINE: held by the server until `sendAt`, and still
+ * cancellable. `windowMs` is the undo window (the instance setting, 5 s by default).
+ */
+export function makeScheduledReply(
+  n: number,
+  ticket: { id: string; key: string },
+  windowMs = 5000,
+  overrides: Partial<Message> = {},
+) {
+  return makeMessage(n, ticket, {
+    direction: 'outbound',
+    sender: { type: 'user', id: uuid(900), name: 'Alex Agent' },
+    deliveryStatus: 'scheduled',
+    delivery: {
+      id: DELIVERY_ID,
+      state: 'scheduled',
+      origin: 'human',
+      channel: 'gmail',
+      sendAt: new Date(Date.now() + windowMs).toISOString(),
+      cancellable: true,
+      attempts: 0,
+      errorCode: null,
+      outcomeUnknown: false,
+      sentAt: null,
+    },
+    ...overrides,
+  });
+}
+
 export const INTENT = {
   id: uuid(700),
   key: 'login_issue',

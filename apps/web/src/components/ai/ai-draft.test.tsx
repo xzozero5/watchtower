@@ -2,11 +2,11 @@ import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { UNDO_WINDOW_MS } from '@/lib/ai/send-with-undo';
+import { resetPendingSends } from '@/lib/outbound/pending-sends';
 import { resetPreferencesCache } from '@/lib/preferences';
 import { renderWorkspace } from '@/test-utils';
-import { makeInsight, makeUncitedInsight } from '@/test/ai-fixtures';
-import { makeMessage, makeTicket, uuid } from '@/test/fixtures';
+import { DRAFT_ID, makeInsight, makeUncitedInsight } from '@/test/ai-fixtures';
+import { DELIVERY_ID, makeScheduledReply, makeTicket } from '@/test/fixtures';
 import { apiError, type MockHandler } from '@/test/mock-api';
 import { workspaceApi } from '@/test/scenarios';
 
@@ -15,6 +15,7 @@ vi.mock('next/navigation', () => ({
 }));
 
 beforeEach(() => {
+  resetPendingSends();
   localStorage.clear();
   resetPreferencesCache();
 });
@@ -24,33 +25,49 @@ afterEach(() => {
 });
 
 const ticket1 = makeTicket(1, { subject: 'Cannot log in' });
-const replyResult = {
+// Built per call: the hold is measured from now, so a result made at import time would be stale.
+const replyResult: MockHandler = () => ({
   status: 201,
+  // As on Gmail or LINE: the server holds the reply for its undo window.
+  json: { message: makeScheduledReply(50, ticket1, 5000), ticket: ticket1 },
+});
+const cancelResult = {
   json: {
-    message: makeMessage(50, ticket1, {
-      direction: 'outbound',
-      sender: { type: 'user', id: uuid(900), name: 'Alex Agent' },
-    }),
-    ticket: ticket1,
+    delivery: {
+      ...makeScheduledReply(50, ticket1).delivery,
+      state: 'cancelled',
+      cancellable: false,
+    },
+    messageId: makeScheduledReply(50, ticket1).id,
+    deliveryStatus: 'cancelled',
   },
 };
+const CANCEL_ROUTE = 'POST /v1/tickets/:id/deliveries/:deliveryId/cancel';
 
 /**
  * A ticket with a draft. Like the real api will, the brief stops carrying the draft once a reply
  * was sent or the draft was rejected.
  */
 async function openDraft(insight = makeInsight(), overrides: Record<string, MockHandler> = {}) {
+  // True while the draft is not waiting for a person: after a reply or a reject, until an Undo.
   let decided = false;
-  const decide = (handler: MockHandler): MockHandler => {
-    return (request) => {
-      decided = true;
-      return typeof handler === 'function' ? handler(request) : handler;
+  const settle = (handler: MockHandler, value: boolean): MockHandler => {
+    return async (request) => {
+      const result = typeof handler === 'function' ? await handler(request) : handler;
+      if ((result.status ?? 200) < 400) decided = value;
+      return result;
     };
   };
+  const routes: Record<string, MockHandler> = {
+    'POST /v1/tickets/:id/replies': replyResult,
+    [CANCEL_ROUTE]: cancelResult,
+    ...overrides,
+  };
   const wrapped = Object.fromEntries(
-    Object.entries({ 'POST /v1/tickets/:id/replies': replyResult, ...overrides }).map(
-      ([route, handler]) => [route, decide(handler)],
-    ),
+    Object.entries(routes).map(([route, handler]) => [
+      route,
+      settle(handler, route !== CANCEL_ROUTE),
+    ]),
   );
   const api = workspaceApi({
     tickets: [ticket1],
@@ -85,41 +102,70 @@ describe('approve (A)', () => {
     expect(api.callsTo('/v1/tickets/OPS-1/replies', 'POST')).toHaveLength(0);
   });
 
-  it('sends through the reply path only after the undo window, with the draft text', async () => {
+  it('posts the reply at once, bound to the draft; the server holds it for the undo window', async () => {
     const user = userEvent.setup();
     const { api, draft } = await openDraft();
     await user.click(within(draft).getByRole('button', { name: /^Approve/ }));
     await user.click(await screen.findByRole('button', { name: 'Approve and send' }));
     expect(screen.queryByRole('dialog')).toBeNull();
-    expect(within(draft).getByRole('status')).toHaveTextContent(/Sending in \d s/);
-    expect(api.callsTo('/v1/tickets/OPS-1/replies', 'POST')).toHaveLength(0);
 
-    await waitFor(
-      () => {
-        expect(api.callsTo('/v1/tickets/OPS-1/replies', 'POST')).toHaveLength(1);
-      },
-      { timeout: UNDO_WINDOW_MS + 3000 },
-    );
+    await waitFor(() => {
+      expect(api.callsTo('/v1/tickets/OPS-1/replies', 'POST')).toHaveLength(1);
+    });
     expect(api.callsTo('/v1/tickets/OPS-1/replies', 'POST')[0]?.body).toEqual({
       body: expect.stringContaining('Hello Riley, your account was locked') as unknown,
+      aiDraftId: DRAFT_ID,
     });
-    // The draft is dealt with: it leaves the page.
+    expect(await screen.findByTestId('pending-send')).toHaveTextContent(/Sending in [1-5] s/);
+    // The draft is dealt with: it leaves the page. Undo is on the bar, not on the card.
     await waitFor(() => {
       expect(screen.queryByTestId('ai-draft')).toBeNull();
     });
-  }, 15_000);
+  });
 
-  it('Undo takes the reply back: nothing is ever sent', async () => {
+  it('Undo calls the server cancel endpoint and the draft comes back', async () => {
     const user = userEvent.setup();
-    const { api, draft } = await openDraft();
-    await user.click(within(draft).getByRole('button', { name: /^Approve/ }));
+    const { api } = await openDraft();
+    await user.keyboard('a');
     await user.click(await screen.findByRole('button', { name: 'Approve and send' }));
-    await user.click(within(draft).getByRole('button', { name: /^Undo/ }));
-    // The draft is back, ready for another decision.
-    expect(within(draft).getByRole('button', { name: /^Approve/ })).toBeEnabled();
-    await new Promise((resolve) => setTimeout(resolve, UNDO_WINDOW_MS + 500));
-    expect(api.callsTo('/v1/tickets/OPS-1/replies', 'POST')).toHaveLength(0);
-  }, 15_000);
+    const bar = await screen.findByTestId('pending-send');
+    await user.click(within(bar).getByRole('button', { name: /^Undo/ }));
+
+    await waitFor(() => {
+      expect(
+        api.callsTo(`/v1/tickets/OPS-1/deliveries/${DELIVERY_ID}/cancel`, 'POST'),
+      ).toHaveLength(1);
+    });
+    expect(await screen.findByTestId('ai-draft')).toBeVisible();
+    expect(screen.queryByTestId('pending-send')).toBeNull();
+  });
+
+  it('U undoes the pending send', async () => {
+    const user = userEvent.setup();
+    const { api } = await openDraft();
+    await user.keyboard('a');
+    await user.click(await screen.findByRole('button', { name: 'Approve and send' }));
+    await screen.findByTestId('pending-send');
+    await user.keyboard('u');
+    await waitFor(() => {
+      expect(
+        api.callsTo(`/v1/tickets/OPS-1/deliveries/${DELIVERY_ID}/cancel`, 'POST'),
+      ).toHaveLength(1);
+    });
+  });
+
+  it('says it is too late when the window already ended (409)', async () => {
+    const user = userEvent.setup();
+    await openDraft(makeInsight(), { [CANCEL_ROUTE]: apiError(409, 'conflict') });
+    await user.keyboard('a');
+    await user.click(await screen.findByRole('button', { name: 'Approve and send' }));
+    const bar = await screen.findByTestId('pending-send');
+    await user.click(within(bar).getByRole('button', { name: /^Undo/ }));
+    expect(await screen.findByText('Too late: the reply is already being sent.')).toBeVisible();
+    await waitFor(() => {
+      expect(screen.queryByTestId('pending-send')).toBeNull();
+    });
+  });
 
   it('Escape in the preview backs out without sending', async () => {
     const user = userEvent.setup();
@@ -147,12 +193,11 @@ describe('approve (A)', () => {
     await user.click(within(draft).getByRole('button', { name: /^Approve/ }));
     await user.click(await screen.findByRole('button', { name: 'Approve and send' }));
     expect(
-      await screen.findByText('The reply was not sent. The draft is still here.', undefined, {
-        timeout: UNDO_WINDOW_MS + 3000,
-      }),
+      await screen.findByText('The reply was not sent. The draft is still here.'),
     ).toBeVisible();
     expect(screen.getByTestId('ai-draft')).toBeVisible();
-  }, 15_000);
+    expect(screen.queryByTestId('pending-send')).toBeNull();
+  });
 });
 
 describe('edit (E)', () => {
@@ -221,9 +266,9 @@ describe('reject (R)', () => {
     await user.click(submit);
 
     await waitFor(() => {
-      expect(api.callsTo('/v1/tickets/OPS-1/ai/drafts/draft-1/reject', 'POST')).toHaveLength(1);
+      expect(api.callsTo(`/v1/tickets/OPS-1/ai/drafts/${DRAFT_ID}/reject`, 'POST')).toHaveLength(1);
     });
-    expect(api.callsTo('/v1/tickets/OPS-1/ai/drafts/draft-1/reject', 'POST')[0]?.body).toEqual({
+    expect(api.callsTo(`/v1/tickets/OPS-1/ai/drafts/${DRAFT_ID}/reject`, 'POST')[0]?.body).toEqual({
       reason: 'tone_style',
     });
     await waitFor(() => {
@@ -247,7 +292,9 @@ describe('reject (R)', () => {
     expect(submit).toBeEnabled();
     await user.click(submit);
     await waitFor(() => {
-      expect(api.callsTo('/v1/tickets/OPS-1/ai/drafts/draft-1/reject', 'POST')[0]?.body).toEqual({
+      expect(
+        api.callsTo(`/v1/tickets/OPS-1/ai/drafts/${DRAFT_ID}/reject`, 'POST')[0]?.body,
+      ).toEqual({
         reason: 'other',
         comment: 'Wrong product',
       });

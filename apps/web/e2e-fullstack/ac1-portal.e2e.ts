@@ -161,6 +161,8 @@ test.describe.serial('AC-1: portal submission to resolution', () => {
     const page = staff.page;
     await page.goto(`/?ticket=${ticketKey}`);
     const details = panel();
+    // The AI evidence opens first once a brief exists; the properties are one tab away.
+    await details.getByRole('tab', { name: 'Details' }).click();
     const assigneeField = details.getByRole('button', { name: /^Assignee:/ });
     await expect(assigneeField).toBeVisible();
 
@@ -184,6 +186,7 @@ test.describe.serial('AC-1: portal submission to resolution', () => {
     await expect(assigneeField).not.toContainText('(me)');
     // ... and survives a reload, i.e. it was stored, not only shown optimistically.
     await page.reload();
+    await panel().getByRole('tab', { name: 'Details' }).click();
     await expect(panel().getByRole('button', { name: /^Assignee:/ })).toContainText(target);
 
     const after = await staffApi.get<StaffTicket>(`/v1/tickets/${ticketKey}`);
@@ -297,6 +300,7 @@ test.describe.serial('AC-1: portal submission to resolution', () => {
     const page = staff.page;
     await page.goto(`/?ticket=${ticketKey}`);
     const details = panel();
+    await details.getByRole('tab', { name: 'Details' }).click();
     await details.getByRole('button', { name: /^Status:/ }).click();
     await page.getByRole('option', { name: /^Resolved/ }).click();
     await expect(details.getByText('Saved.')).toBeVisible();
