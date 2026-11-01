@@ -30,6 +30,11 @@ export interface OutboxJob {
    * pending row that reaches it is dead-lettered and its payload blanked; the queue never sees it.
    */
   readonly expiresAt?: Date;
+  /**
+   * The relay does not hand the row to the queue before this instant (default: now). A trigger for
+   * something that must wait, such as the end of the undo-send hold (ADR-010 section 3).
+   */
+  readonly notBefore?: Date;
 }
 
 /**
@@ -46,6 +51,7 @@ export async function enqueueOutbox(writer: OutboxWriter, job: OutboxJob): Promi
       payload: job.payload,
       options: job.options ?? {},
       expiresAt: job.expiresAt ?? null,
+      ...(job.notBefore === undefined ? {} : { nextAttemptAt: job.notBefore }),
     })
     .onConflictDoNothing({ target: [outbox.queue, outbox.jobId] })
     .returning({ id: outbox.id });
