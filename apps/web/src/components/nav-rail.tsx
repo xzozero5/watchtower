@@ -6,18 +6,22 @@ import {
   CalendarCheck,
   ClipboardList,
   Command as CommandIcon,
+  Gauge,
   Inbox,
   Keyboard,
   type LucideIcon,
   PanelLeft,
+  Settings2,
 } from 'lucide-react';
 import Image from 'next/image';
 import type { ReactNode } from 'react';
 
 import { ApiStatus } from '@/components/api-status';
+import { AppLink } from '@/components/app-link';
 import { LiveStatus } from '@/components/live-status';
 import { UserMenu } from '@/components/user-menu';
 import { useT } from '@/i18n/provider';
+import { adminSectionsFor, HOME_PERMISSION } from '@/lib/admin/sections';
 import { useSession } from '@/lib/auth/session';
 
 import { QUEUE_LISTBOX_ID } from '@/components/queue/queue-row';
@@ -39,7 +43,10 @@ function RailButton({
   className,
   hint,
   shortLabel,
+  href,
 }: {
+  /** A destination on another route: rendered as a link. */
+  href?: string;
   icon: LucideIcon;
   label: string;
   /** What the expanded rail shows when the full name is too long for 220px; the name stays full. */
@@ -55,6 +62,33 @@ function RailButton({
   className?: string;
   hint?: ReactNode;
 }) {
+  const classes = cn(
+    ITEM,
+    'max-md:w-control max-md:justify-center max-md:px-0',
+    current
+      ? 'bg-primary-subtle font-medium text-foreground'
+      : 'text-muted-foreground hover:bg-surface-muted hover:text-foreground',
+    unavailable && 'opacity-60 hover:bg-transparent hover:text-muted-foreground',
+    className,
+  );
+  const content = (
+    <>
+      <Icon aria-hidden className="size-4 shrink-0" />
+      <span
+        aria-hidden={shortLabel ? true : undefined}
+        className={cn('truncate', !expanded && 'sr-only', 'max-md:sr-only')}
+      >
+        {shortLabel ?? label}
+      </span>
+      {expanded && shortcut ? (
+        <span className="ml-auto flex gap-0.5 max-md:hidden">
+          {shortcut.map((key) => (
+            <Kbd key={key}>{key}</Kbd>
+          ))}
+        </span>
+      ) : null}
+    </>
+  );
   return (
     <Tooltip
       content={hint ?? label}
@@ -62,44 +96,39 @@ function RailButton({
       side="right"
       disabled={expanded && !unavailable}
     >
-      <button
-        type="button"
-        aria-label={label}
-        aria-current={current ? 'page' : undefined}
-        aria-disabled={unavailable || undefined}
-        aria-keyshortcuts={keyShortcuts}
-        aria-expanded={expandedState}
-        onClick={unavailable ? undefined : onClick}
-        className={cn(
-          ITEM,
-          'max-md:w-control max-md:justify-center max-md:px-0',
-          current
-            ? 'bg-primary-subtle font-medium text-foreground'
-            : 'text-muted-foreground hover:bg-surface-muted hover:text-foreground',
-          unavailable && 'opacity-60 hover:bg-transparent hover:text-muted-foreground',
-          className,
-        )}
-      >
-        <Icon aria-hidden className="size-4 shrink-0" />
-        <span
-          aria-hidden={shortLabel ? true : undefined}
-          className={cn('truncate', !expanded && 'sr-only', 'max-md:sr-only')}
+      {href && !unavailable ? (
+        <AppLink
+          href={href}
+          aria-label={label}
+          aria-current={current ? 'page' : undefined}
+          aria-keyshortcuts={keyShortcuts}
+          className={classes}
         >
-          {shortLabel ?? label}
-        </span>
-        {expanded && shortcut ? (
-          <span className="ml-auto flex gap-0.5 max-md:hidden">
-            {shortcut.map((key) => (
-              <Kbd key={key}>{key}</Kbd>
-            ))}
-          </span>
-        ) : null}
-      </button>
+          {content}
+        </AppLink>
+      ) : (
+        <button
+          type="button"
+          aria-label={label}
+          aria-current={current ? 'page' : undefined}
+          aria-disabled={unavailable || undefined}
+          aria-keyshortcuts={keyShortcuts}
+          aria-expanded={expandedState}
+          onClick={unavailable ? undefined : onClick}
+          className={classes}
+        >
+          {content}
+        </button>
+      )}
     </Tooltip>
   );
 }
 
+export type RailDestination = 'queue' | 'home' | 'admin';
+
 export interface NavRailProps {
+  /** The page being shown. */
+  destination?: RailDestination;
   expanded: boolean;
   onToggleExpanded: () => void;
   onOpenPalette: () => void;
@@ -115,6 +144,7 @@ export interface NavRailProps {
  * palette, the status icons and the account menu.
  */
 export function NavRail({
+  destination = 'queue',
   expanded: railExpanded,
   onToggleExpanded,
   onOpenPalette,
@@ -124,6 +154,9 @@ export function NavRail({
   const t = useT();
   const { can } = useSession();
   const handler = can('ticket.handle');
+  const showHome = can(HOME_PERMISSION);
+  const showAdmin = adminSectionsFor(can).length > 0;
+  const adminHref = adminSectionsFor(can)[0]?.href ?? '/admin';
   // Words are only shown from 768px up; on a phone the bar is icons.
   const expanded = railExpanded;
   const mod = isMac ? '⌘' : 'Ctrl';
@@ -156,13 +189,18 @@ export function NavRail({
           icon={Inbox}
           label={t('rail.queue')}
           expanded={expanded}
-          current
+          current={destination === 'queue'}
           keyShortcuts="g q"
-          onClick={() => {
-            const target =
-              document.getElementById(QUEUE_LISTBOX_ID) ?? document.getElementById('pane-queue');
-            target?.focus();
-          }}
+          {...(destination === 'queue'
+            ? {
+                onClick: () => {
+                  const target =
+                    document.getElementById(QUEUE_LISTBOX_ID) ??
+                    document.getElementById('pane-queue');
+                  target?.focus();
+                },
+              }
+            : { href: '/' })}
         />
         {handler ? (
           <>
@@ -188,6 +226,33 @@ export function NavRail({
               hint={`${t('rail.notifications')} — ${t('rail.comingSoon')}`}
             />
           </>
+        ) : null}
+        {showHome || showAdmin ? (
+          <div
+            role="separator"
+            aria-orientation="horizontal"
+            className="mx-2 my-1 h-px bg-border"
+          />
+        ) : null}
+        {showHome ? (
+          <RailButton
+            icon={Gauge}
+            label={t('rail.home')}
+            expanded={expanded}
+            current={destination === 'home'}
+            keyShortcuts="g d"
+            href="/home"
+          />
+        ) : null}
+        {showAdmin ? (
+          <RailButton
+            icon={Settings2}
+            label={t('rail.admin')}
+            expanded={expanded}
+            current={destination === 'admin'}
+            keyShortcuts="g a"
+            href={adminHref}
+          />
         ) : null}
       </nav>
 

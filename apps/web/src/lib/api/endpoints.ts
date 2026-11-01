@@ -18,6 +18,7 @@ import {
   type TicketListQuery,
   type UpdateTicket,
 } from '@watchtower/shared';
+import { createAdminEndpoints } from './admin-endpoints';
 import type { ApiClient } from './client';
 
 /** Query for the ticket list as the UI builds it: the schema defaults are applied by the api. */
@@ -35,6 +36,7 @@ export type TicketListParams = Partial<
     | 'limit'
     | 'cursor'
     | 'queueId'
+    | 'slaState'
   >
 >;
 
@@ -43,6 +45,8 @@ export function createEndpoints(client: ApiClient) {
   const refPath = (ref: string) => `/v1/tickets/${encodeURIComponent(ref)}`;
 
   return {
+    ...createAdminEndpoints(client),
+
     // --- auth (public) ---
     authConfig: (signal?: AbortSignal) =>
       client.request({
