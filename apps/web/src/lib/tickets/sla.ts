@@ -1,4 +1,4 @@
-import { OPEN_STATUSES } from '@watchtower/shared';
+import { OPEN_STATUSES, type TicketSummary } from '@watchtower/shared';
 
 import type { TicketItem } from './model';
 
@@ -21,6 +21,31 @@ export const AT_RISK_MS = 30 * 60_000;
 
 const NONE: SlaView = { state: 'none', target: null, ms: 0, dueAt: null };
 
+const SERVER_STATE = {
+  ok: 'onTrack',
+  at_risk: 'atRisk',
+  breached: 'breached',
+  paused: 'paused',
+} as const;
+
+/**
+ * The SLA the api counted on the policy's own calendar (T-111e): the state and the minutes left are
+ * the server's, so a business-hours policy shows business time and not wall-clock time. Time past
+ * due has no business-time field and stays wall-clock.
+ */
+function serverView(sla: NonNullable<TicketSummary['sla']>, now: number): SlaView {
+  const state = SERVER_STATE[sla.state];
+  const target: SlaTarget = sla.target === 'first_response' ? 'firstResponse' : 'resolution';
+  const wallLeft = Date.parse(sla.dueAt) - now;
+  const ms =
+    state === 'breached'
+      ? Math.max(0, -wallLeft)
+      : sla.minutesLeft !== null
+        ? sla.minutesLeft * 60_000
+        : Math.max(0, wallLeft);
+  return { state, target, ms, dueAt: sla.dueAt };
+}
+
 /**
  * The SLA badge of a ticket: shows the next due target (first response until the ticket is
  * answered, then resolution). The length of the target is taken as due time minus creation time,
@@ -29,6 +54,7 @@ const NONE: SlaView = { state: 'none', target: null, ms: 0, dueAt: null };
 export function slaView(ticket: TicketItem, now: number): SlaView {
   // A customer's view of a ticket carries no SLA fields.
   if (!('channel' in ticket)) return NONE;
+  if (ticket.sla !== undefined) return serverView(ticket.sla, now);
 
   const waitingFirst = ticket.firstRespondedAt === null && ticket.firstResponseDueAt !== null;
   const waitingResolution =

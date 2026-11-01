@@ -2,6 +2,7 @@ export const commandsEn = {
   focusSearch: 'Search the queue',
   goHome: 'Go to Home',
   goAdmin: 'Go to Admin › {section}',
+  goShift: 'Go to Shift › {section}',
   aiStop: 'AI: Stop all AI runs…',
   aiResume: 'AI: Resume AI runs…',
   aiLimit: 'AI: Limit all intents to Stage 2…',
