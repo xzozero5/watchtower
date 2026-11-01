@@ -94,6 +94,56 @@ Checked against official documentation on 2026-11-01:
 | `messages.get` with `format=raw` under `gmail.readonly` (the page does not tie `raw` to a scope) | `[VERIFY]` on the first live run | same |
 | Whether Gmail keeps the `Message-ID` we set on `messages.send` (the dispatcher stores it as the dedupe key for the answer) | `[VERIFY]` (ADR-010 section 6) | |
 
+## OAuth of the support mailbox (T-102e, 2026-11-01)
+
+The default way to reach the mailbox (owner decision; service account with domain-wide delegation stays an option).
+A `head` runs Google's web server flow once; the worker then keeps using the refresh token.
+
+| Piece | Where | What it does |
+|---|---|---|
+| Helpers | `oauth.ts` (this package) | authorization URL, PKCE (S256), code exchange, refresh, `users.getProfile`, revoke, and `createOAuthTokenProvider` (a `TokenProvider`, same contract as the service-account one). Injected `fetch`, no Google client library. |
+| Routes | `apps/api/src/gmail/gmail-oauth.*` | `POST /v1/admin/integrations/gmail/oauth/start` (JSON `{ mailbox }` returns `{ authorizationUrl, expiresAt, redirectUri }`), `GET .../gmail/oauth/callback` (Google redirects here; answers 302 to `<APP_URL>/admin/integrations?gmail_oauth=<result>`), `GET .../gmail/oauth/status`. All `integration.manage` (head). |
+| Storage | credential store, integration `gmail` | `oauthClientId`, `oauthClientSecret` (typed on the admin page or env), `oauthRefreshToken`, `oauthMailbox` (written by the callback). Encrypted, write-only, audited by field name. |
+| Worker | `apps/worker/src/gmail/runtime.ts`, `not-connected.ts` | picks the OAuth or the service-account provider from what is configured; `invalid_grant` marks the mailbox not connected. |
+
+**Redirect URI** to register on the OAuth client (type "Web application"): `<API_URL>/v1/admin/integrations/gmail/oauth/callback`.
+**Scopes**: exactly `gmail.readonly` and `gmail.send`; the callback refuses any other grant (fewer, more or different) and revokes it.
+
+What the callback checks, in order: the `state` exists (Redis, hashed key, ten minutes, deleted on first use, so a replay is refused);
+it was started by this person in this SESSION (the PKCE verifier stays on the server); Google did not return an error; the granted
+scopes are exactly the two; a refresh token was issued; the address that granted (`users.getProfile`) is the mailbox asked for at
+`start`. Only then is the refresh token written (one transaction with the audit entry, the mailbox row, and a catch-up sync job).
+Anything refused after Google issued a token revokes it (best effort). Result codes: `connected`, `denied`, `state_invalid`,
+`scope_mismatch`, `mailbox_mismatch`, `no_refresh_token`, `env_locked`, `unavailable`.
+
+**Which way is used** when both are complete (`chooseGmailMethod`, `packages/shared/src/features/gmail.ts`):
+1. a way with a field set by the ENVIRONMENT beats one that is only saved in the database (ADR-004/012: environment wins; a click on the
+   admin page must not override the operator's deployment);
+2. otherwise OAuth. A warning (no value) is logged once when both exist.
+If neither is complete the mailbox is not connected (no mock unless `GMAIL_MOCK_ENABLED`, and never after a live credential was seen).
+
+**`invalid_grant`** (revoked, expired, password changed while the token holds Gmail scopes, 100-token cap, or a consent screen in
+"Testing", which lasts 7 days) is a `ChannelError` of operation `oauth2.token`, kind `auth`, code `invalid_grant`, not retryable by
+itself. The dispatcher already treats that operation as a certain non-delivery (the token comes before any send), so the delivery fails
+visibly as `channel_auth` and an agent can retry it after reconnecting. The token provider calls `onNotConnected`: the channel account
+goes `unhealthy`, `gmail_account_state.last_error_code = 'not_connected'` (the sync job and the watch renewal keep that code instead of
+overwriting it), and ONE `gmail.not_connected` audit entry per outage. The sync job fails, so BullMQ retries it. Connecting again
+clears the code, queues a sync, and the heartbeat marks the mailbox healthy.
+
+Checked against official documentation on 2026-11-01 (details in `oauth.ts`):
+
+| Fact | Status | Source |
+|---|---|---|
+| Authorization endpoint `https://accounts.google.com/o/oauth2/v2/auth`; `response_type=code`, `scope`, `state`, `access_type=offline`, `prompt=consent`, `login_hint`; the user may grant fewer scopes than requested, so the returned `scope` must be checked | `[CONFIRMED]` | https://developers.google.com/identity/protocols/oauth2/web-server |
+| Token endpoint `https://oauth2.googleapis.com/token`; exchange (`code`, `client_id`, `client_secret`, `redirect_uri`, `grant_type=authorization_code`) and refresh (`grant_type=refresh_token`); response `access_token`, `expires_in`, `refresh_token`, `scope`, `token_type` | `[CONFIRMED]` | same page, and https://developers.google.com/identity/protocols/oauth2/native-app |
+| PKCE `code_challenge` + `code_challenge_method=S256` + `code_verifier` (verifier 43 to 128 chars) | `[CONFIRMED]` on the native-app page; accepted for a Web application client with a secret `[VERIFY]` on the first live run (RFC 7636) | native-app page |
+| A refresh token stops working when revoked, unused 6 months, password changed (Gmail scopes), over 100 per account per client, 7 days for an External consent screen in "Testing", admin session policy; refresh then answers `invalid_grant` | `[CONFIRMED]` | https://developers.google.com/identity/protocols/oauth2#expiration |
+| `users.getProfile`: `GET https://gmail.googleapis.com/gmail/v1/users/{userId}/profile`, authorised by `gmail.readonly` (among others), returns `emailAddress` | `[CONFIRMED]` | https://developers.google.com/workspace/gmail/api/reference/rest/v1/users/getProfile |
+| Revoke `POST https://oauth2.googleapis.com/revoke` with `token` | `[VERIFY]` | Google "Revoking a token" |
+| Hosts reached: `accounts.google.com` (browser redirect only), `oauth2.googleapis.com`, `gmail.googleapis.com`. PRD §11 lists the Gmail API and "Google Workspace SSO" but names no host; this task adds the three hosts there. | `[CONFIRMED]` | PRD §11 |
+
+Never exercised against Google by this repository `[ASK-HUMAN]` before the first live run (needs the owner's OAuth client).
+
 ### Domain-wide delegation: blast radius (read before granting it)
 
 Domain-wide delegation lets the service account act as ANY user of the Workspace domain for the scopes
