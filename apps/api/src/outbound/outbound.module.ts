@@ -1,10 +1,16 @@
 import { Module } from '@nestjs/common';
 
+import { OutboundController } from './outbound.controller.js';
+import { OutboundService } from './outbound.service.js';
+
 /**
- * Outbound dispatcher endpoints: cancel send, dead-letter list (T-122d, T-121). Empty until the owning task adds its controllers and providers (T-123a). Add files in
- * this directory and list them here; `app.module.ts` already imports this module through
- * `features.module.ts`. Every route needs `@RequirePermission` / `@RequireAnyPermission` or
- * `@Public()`, and a public one must also be listed in `./public-routes.ts`.
+ * Outbound delivery endpoints (T-122d, ADR-010): undo a send and the undo-window setting. Sending
+ * itself is the worker's dispatcher; a reply is scheduled inside `POST /v1/tickets/:id/replies`.
+ * Every route needs `@RequirePermission` / `@RequireAnyPermission` or `@Public()`, and a public one
+ * must also be listed in `./public-routes.ts` (none here). The dead-letter list belongs to T-121.
  */
-@Module({})
+@Module({
+  controllers: [OutboundController],
+  providers: [OutboundService],
+})
 export class OutboundModule {}

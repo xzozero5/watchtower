@@ -1,7 +1,14 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { schema, type Database } from '@watchtower/db';
-import type { ChannelType, TimelineEntry, TimelineQuery } from '@watchtower/shared';
-import { and, asc, eq, gte, inArray, sql } from 'drizzle-orm';
+import { toDeliverySummary } from '@watchtower/domain';
+import {
+  CLIENT_HIDDEN_DELIVERY_STATUSES,
+  type ChannelType,
+  type DeliverySummary,
+  type TimelineEntry,
+  type TimelineQuery,
+} from '@watchtower/shared';
+import { and, asc, eq, gte, inArray, notInArray, sql } from 'drizzle-orm';
 
 import type { Principal } from '../auth/principal.js';
 import { afterCursor, decodeCursor, encodeCursor, preciseTimestamp } from '../common/keyset.js';
@@ -79,11 +86,30 @@ export class TimelineService {
         and(
           inArray(message.ticketId, ids),
           audience === 'client' ? eq(message.visibility, 'public') : undefined,
+          // A reply that has not reached the customer is not theirs to see (ADR-010).
+          audience === 'client'
+            ? notInArray(message.deliveryStatus, [...CLIENT_HIDDEN_DELIVERY_STATUSES])
+            : undefined,
           cursor ? afterCursor(message.createdAt, message.id, cursor) : undefined,
         ),
       )
       .orderBy(asc(message.createdAt), asc(message.id))
       .limit(query.limit + 1);
+
+    // Staff see the delivery behind a reply on Gmail or LINE (Undo, Retry). The newest one per message.
+    const deliveries = new Map<string, DeliverySummary>();
+    const outboundIds = messages
+      .filter((entry) => entry.row.direction === 'outbound')
+      .map((entry) => entry.row.id);
+    if (audience === 'staff' && outboundIds.length > 0) {
+      const rows = await this.database.db
+        .select()
+        .from(schema.outboundDelivery)
+        .where(inArray(schema.outboundDelivery.messageId, outboundIds))
+        .orderBy(asc(schema.outboundDelivery.createdAt));
+      const now = new Date();
+      for (const row of rows) deliveries.set(row.messageId, toDeliverySummary(row, now));
+    }
 
     const events = await this.database.db
       .select({
@@ -123,6 +149,9 @@ export class TimelineService {
               senderUserRole: entry.userRole,
               senderContactName: entry.contactName,
               audience,
+              ...(deliveries.has(entry.row.id)
+                ? { delivery: deliveries.get(entry.row.id) ?? null }
+                : {}),
             }),
           };
         },

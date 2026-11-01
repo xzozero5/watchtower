@@ -80,6 +80,8 @@ export const inboundMessage = pgTable(
     dispositionBy: text('disposition_by'),
     dispositionAt: timestamptz('disposition_at'),
     convertedFrom: text('converted_from'),
+    /** LINE reply token, sealed (T-122d, migration 0010); cleared when the dispatcher spends it. */
+    replyTokenSealed: text('reply_token_sealed'),
     createdAt: timestamptz('created_at').notNull().defaultNow(),
   },
   (table) => [

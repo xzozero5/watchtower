@@ -39,6 +39,7 @@ import {
   type TimelineQuery,
   type UpdateTicket,
 } from '@watchtower/shared';
+import { toDeliverySummary } from '@watchtower/domain';
 import type { z } from 'zod';
 
 import { AuditScope } from '../audit/audit-scope.js';
@@ -348,7 +349,13 @@ export class TicketsController {
       'Staff answer the customer (the first one is the first response for the SLA; `setStatus` ' +
       'replies and sets the status in one step). A client writes on a ticket of their own ' +
       'organization: that restarts a ticket waiting on the customer and reopens one resolved in the ' +
-      'last 7 days. Merged and closed tickets refuse replies (ticket_not_open).',
+      'last 7 days. Merged and closed tickets refuse replies (ticket_not_open). On a portal ticket ' +
+      'a staff reply is delivered at once. On Gmail and LINE it is queued (`deliveryStatus: ' +
+      'scheduled`, `delivery.cancellable`) and sent when the undo window of the instance ends ' +
+      '(`POST /v1/tickets/{id}/deliveries/{deliveryId}/cancel` undoes it before then); the first ' +
+      'response of the SLA counts from the moment it is sent. `aiDraftId` sends an AI draft: the ' +
+      'body must be exactly the draft, and the sender is recorded as its approver (403 ' +
+      'otherwise); an AI never sends to a customer without a person doing this (N3).',
   })
   @ApiCreatedResponse({ standardSchema: replyResultSchema })
   @ApiConflictResponse({ description: 'Ticket not open (ticket_not_open) or invalid_transition' })
@@ -379,6 +386,10 @@ export class TicketsController {
         senderUserRole: principal.role,
         senderContactName: null,
         audience: isClient(principal) ? 'client' : 'staff',
+        // Gmail and LINE: the delivery the Undo toast cancels.
+        ...(result.delivery == null
+          ? {}
+          : { delivery: toDeliverySummary(result.delivery, new Date()) }),
       }),
       ticket: await this.reader.detail(result.ticket.id, principal),
     });

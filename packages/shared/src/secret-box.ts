@@ -110,6 +110,15 @@ export function outboxAad(queue: string, jobId: string): string {
   return `watchtower/outbox/v1|${queue}|${jobId}`;
 }
 
+/**
+ * What a sealed LINE reply token is bound to: the `inbound_message` it came with (ADR-010 section 6).
+ * It shares the outbox subkey, so the binding is what keeps a value sealed for one purpose from
+ * opening as another (`[ASSUMED]` a separate label is a later hardening).
+ */
+export function replyTokenAad(inboundMessageId: string): string {
+  return `watchtower/line-reply-token/v1|${inboundMessageId}`;
+}
+
 /** Seals a flat set of named string fields (for example `{ link }`) into one value. */
 export function sealFields(
   key: Buffer,

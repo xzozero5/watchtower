@@ -87,6 +87,19 @@ async function ticketForCandidate(
         )
         .limit(1);
       if (viaInbound?.ticketId) return ticketById(tx, viaInbound.ticketId);
+      // Our own mail: the Message-ID the dispatcher stamped on a reply (T-122d, ADR-010).
+      const [viaOutbound] = await tx
+        .select({ ticketId: schema.outboundDelivery.ticketId })
+        .from(schema.outboundDelivery)
+        .where(
+          and(
+            eq(schema.outboundDelivery.channelAccountId, accountId),
+            eq(schema.outboundDelivery.rfc822MessageId, candidate.value),
+            eq(schema.outboundDelivery.state, 'sent'),
+          ),
+        )
+        .limit(1);
+      if (viaOutbound) return ticketById(tx, viaOutbound.ticketId);
       return byThreadKey(tx, accountId, `msgid:${candidate.value}`);
     }
     case 'subject_token': {

@@ -64,6 +64,11 @@ export interface NormalisedInboundMessage {
   readonly receivedAt: Date;
   readonly rawObjectKey: string | null;
   readonly automated: AutomatedVerdict;
+  /**
+   * LINE only: the single-use token that lets the dispatcher answer for free (ADR-010 section 6).
+   * The domain seals it before it is stored; it is never logged or put in an audit row.
+   */
+  readonly replyToken?: string | null | undefined;
 }
 
 export interface IngestInboundInput {

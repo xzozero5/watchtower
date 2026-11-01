@@ -1,5 +1,10 @@
 import type { schema } from '@watchtower/db';
-import { type ChannelType, type Message, type TimelineEntry } from '@watchtower/shared';
+import {
+  type ChannelType,
+  type DeliverySummary,
+  type Message,
+  type TimelineEntry,
+} from '@watchtower/shared';
 
 export type MessageRow = typeof schema.message.$inferSelect;
 export type TicketEventRow = typeof schema.ticketEvent.$inferSelect;
@@ -16,6 +21,8 @@ export interface MessageContext {
   readonly senderUserRole: string | null;
   readonly senderContactName: string | null;
   readonly audience: Audience;
+  /** The delivery behind an outbound reply on Gmail or LINE. Shown to staff only. */
+  readonly delivery?: DeliverySummary | null;
 }
 
 /**
@@ -47,6 +54,9 @@ export function toMessage(row: MessageRow, context: MessageContext): Message {
     sender,
     bodyText: row.bodyText,
     deliveryStatus: row.deliveryStatus as Message['deliveryStatus'],
+    ...(context.audience === 'staff' && context.delivery !== undefined
+      ? { delivery: context.delivery }
+      : {}),
     attachments: (Array.isArray(row.attachments) ? row.attachments : []) as Record<
       string,
       unknown
