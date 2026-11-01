@@ -33,6 +33,16 @@ const workerEnvSchema = createEnvSchema({
    */
   INGEST_CLASSIFIER_TIMEOUT_MS: z.coerce.number().int().min(100).max(30_000).default(3000),
   /**
+   * Gmail heartbeat (R-2.8): a mailbox that has had no push for this many minutes of business time
+   * (the default business calendar) is marked unhealthy. `[ASSUMED]` 120: a support mailbox that is
+   * silent for two working hours is worth a look; an instance with little mail raises it.
+   */
+  GMAIL_HEARTBEAT_STALE_MINUTES: z.coerce.number().int().min(5).max(10_080).default(120),
+  /** Bounded full sync (R-2.1, when `history.list` answers 404 or there is no cursor yet): how far back, in days. `[ASSUMED]` 7. */
+  GMAIL_FULL_SYNC_DAYS: z.coerce.number().int().min(1).max(365).default(7),
+  /** ... and the most messages one full sync reads. `[ASSUMED]` 500; the rest is logged as truncated. */
+  GMAIL_FULL_SYNC_MAX_MESSAGES: z.coerce.number().int().min(10).max(10_000).default(500),
+  /**
    * Cleanup job (T-117): days to keep an expired or revoked session, refresh token, magic link or
    * tracking link before it is deleted. `[ASSUMED]` 7.
    */

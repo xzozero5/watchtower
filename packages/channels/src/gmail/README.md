@@ -67,3 +67,54 @@ watch). Nothing in this repo sets either.
   is retried. Reads retry on 429 / 5xx / timeout with full-jitter backoff and `Retry-After`.
 - **No secrets in output.** Errors carry status, operation and Google's reason code, never the token,
   a body or Google's free-text message.
+
+## Receiver, sync and send (T-102 b to d, 2026-11-01)
+
+The adapter above is wired into the services like this. Nothing here reaches Google unless the `gmail`
+integration is complete in the credential store (ADR-004 / ADR-012); until then every process runs on the
+in-memory `FakeGmailTransport`.
+
+| Piece | Where | What it does |
+|---|---|---|
+| Push receiver | `apps/api/src/gmail/` | `POST /v1/inbound/gmail/push`: per-IP rate limit, verify the Pub/Sub OIDC token (`jose`, RS256, `iss`/`aud`/`email`/`email_verified`/`exp`), set `gmail_account_state.last_push_at`, write ONE outbox job on the `gmail` queue (`jobId = push-<account>-<Pub/Sub messageId>`). Authentic but unreadable or unknown-mailbox messages are acknowledged and dropped (no poison loop). Not configured: 503. |
+| History sync | `apps/worker/src/gmail/sync.ts` | cursor in `gmail_account_state.history_id`; `history.list` (messageAdded) per page; one `inbound_event` (+ `ingest` job) per Gmail message id; 404 or no cursor = bounded full sync (`GMAIL_FULL_SYNC_DAYS`, `GMAIL_FULL_SYNC_MAX_MESSAGES`), audited. The existing ingest consumer fetches, normalises, and stores raw mail and attachments in object storage. |
+| Watch renewal | `watch.ts` + schedule | `users.watch` for every mailbox once a day (02:15 UTC) and at boot; failure = unhealthy + audit + retry. |
+| Heartbeat (R-2.8) | `heartbeat.ts` + schedule | every 10 min: business minutes since the last push against `GMAIL_HEARTBEAT_STALE_MINUTES`, or a lapsed watch: unhealthy + one audit entry + catch-up sync. |
+| Runtime | `runtime.ts` | one object for sync, ingest fetch and the outbound `GmailSender` (From = the mailbox in `gmail_account_state`). Live only with a complete credential and only for the mailbox it delegates to. |
+
+Checked against official documentation on 2026-11-01:
+
+| Fact | Status | Source |
+|---|---|---|
+| Push request carries `Authorization: Bearer <JWT>` (RS256, `kid`); claims `iss` = `https://accounts.google.com` (also `accounts.google.com` in the Go sample), `aud` = the subscription's audience, `email` = the push service account, `email_verified` = true, `exp` = `iat` + 3600; a token may be up to an hour old | `[CONFIRMED]` | https://docs.cloud.google.com/pubsub/docs/authenticate-push-subscriptions |
+| Wrapped push body: `message.data` (base64), `messageId`, `publishTime`, `attributes`, `subscription`; 102/200/201/202/204 acknowledge, anything else is a nack and is redelivered | `[CONFIRMED]` | https://docs.cloud.google.com/pubsub/docs/push |
+| Signing keys: `jwks_uri` of Google's OpenID discovery document is `https://www.googleapis.com/oauth2/v3/certs` (the Pub/Sub page itself does not name the URL) | `[CONFIRMED]` for Google ID tokens, `[VERIFY]` that push tokens use the same key set before the first live run | https://accounts.google.com/.well-known/openid-configuration |
+| Service account with domain-wide delegation: RS256 JWT assertion (`iss`, `sub`, `scope`, `aud` = `https://oauth2.googleapis.com/token`, `iat`, `exp` at most 1 h), POST `grant_type=urn:ietf:params:oauth:grant-type:jwt-bearer` + `assertion` | `[CONFIRMED]` | https://developers.google.com/identity/protocols/oauth2/service-account |
+| Scopes requested: `gmail.readonly` + `gmail.send` (not `gmail.modify`). Each method the live transport calls accepts one of them: `users.history.list`, `users.messages.get`, `users.watch` and `users.stop` accept `gmail.readonly`; `users.messages.send` accepts `gmail.send` | `[CONFIRMED]` per method | https://developers.google.com/workspace/gmail/api/reference/rest/v1/users/watch , `.../users/stop` , `.../users.messages/send` , `.../users.messages/get` , `.../users.history/list` (read 2026-11-01) |
+| `messages.get` with `format=raw` under `gmail.readonly` (the page does not tie `raw` to a scope) | `[VERIFY]` on the first live run | same |
+| Whether Gmail keeps the `Message-ID` we set on `messages.send` (the dispatcher stores it as the dedupe key for the answer) | `[VERIFY]` (ADR-010 section 6) | |
+
+### Domain-wide delegation: blast radius (read before granting it)
+
+Domain-wide delegation lets the service account act as ANY user of the Workspace domain for the scopes
+the admin grants it in the Admin console, not only as the support mailbox. The code asks for the
+two narrowest scopes it needs and impersonates one user (`impersonateUser`), but the grant itself is
+what limits the damage if the key leaks. So: grant exactly `gmail.readonly` and `gmail.send` (never
+`gmail.modify`, `gmail.compose` or `https://mail.google.com/`), keep the key file outside the repo
+(environment or the encrypted credential store, N1), rotate it (`credentials rotate`) when anyone who
+could read it leaves, and prefer a dedicated support mailbox over a personal one. An OAuth refresh token
+of a dedicated support user is the narrower alternative (R-2.4).
+
+### Mock mode is an explicit opt-in
+
+`createGmailRuntime` hands out the in-memory fake only with `allowMock`, which the worker sets from
+`GMAIL_MOCK_ENABLED=true` (default false, also in compose and `.env.example`). `NODE_ENV` is not used:
+compose defaults it to `development` on a real deployment. The config guard refuses the flag in
+production and on any `APP_URL` that is not loopback (the same pattern as `DEV_LOGIN_ENABLED`). Without
+the flag, with no complete `gmail` credential the runtime returns no transport and no sender: sync
+records `transport_unavailable` and a customer reply fails visibly as `channel_not_connected`. Once a
+complete credential has been seen the runtime never goes back to the fake, even with the flag: a revoked
+or half-edited credential reads as "not connected". If the credential store cannot be read, transport /
+sender calls throw a retryable error: the ingest event is retried, and the dispatcher backs off and,
+after `DELIVERY_MAX_ATTEMPTS`, fails the delivery as `channel_credentials_unavailable` (certain
+non-delivery, visible to the agent). The tests and the e2e stack (`tools/e2e-stack/up.mjs`) set the flag.

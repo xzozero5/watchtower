@@ -32,7 +32,9 @@ export interface IngestOverrides {
   readonly store?: ObjectStore;
   readonly ingestors?: Readonly<Record<string, ChannelIngestor>>;
   /** One Gmail transport per mailbox. Absent: events that need a fetch fail as `gmail_transport_unavailable`. */
-  readonly gmailTransportFor?: (account: IngestAccount) => gmail.GmailTransport | undefined;
+  readonly gmailTransportFor?: (
+    account: IngestAccount,
+  ) => gmail.GmailTransport | undefined | Promise<gmail.GmailTransport | undefined>;
   readonly classifier?: InboundClassifierFactory;
 }
 
@@ -60,10 +62,10 @@ export function createIngestRegistration(context: ProcessorContext) {
     ingestors: ingest.ingestors ?? {
       gmail: createGmailIngestor({
         ticketKeyPrefix: config.TICKET_KEY_PREFIX,
-        ...(ingest.gmailTransportFor === undefined
-          ? {}
-          : { transportFor: ingest.gmailTransportFor }),
-        allowEmbedded: config.NODE_ENV !== 'production',
+        // The same runtime the sync job lists with fetches the message (T-102c).
+        transportFor:
+          ingest.gmailTransportFor ?? ((account) => context.gmail.transportFor(account)),
+        allowEmbedded: config.GMAIL_MOCK_ENABLED,
       }),
       line: createLineIngestor({
         ...(context.overrides.line?.transportFor === undefined

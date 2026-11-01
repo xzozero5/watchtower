@@ -212,6 +212,8 @@ async function main() {
     SMTP_PORT,
     E2E_QUEUE_PREFIX: `wt-e2e-${runId}`,
     OUTBOX_POLL_INTERVAL_MS: '250',
+    // The stack has no Gmail credential: the in-memory mailbox is an explicit opt-in (T-102).
+    GMAIL_MOCK_ENABLED: 'true',
   };
   start('worker', [join(import.meta.dirname, 'worker-runner.mjs')], {
     ...shared,
