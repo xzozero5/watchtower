@@ -6,6 +6,7 @@ import { and, eq, gt, isNull, ne } from 'drizzle-orm';
 
 import { recordAuditInTx } from '../audit.js';
 import { contactSnapshot } from '../contacts.js';
+import { UNIDENTIFIED_ORG_ID } from '../inbound/identity.js';
 import { conflict, isDomainError, notFound } from '../errors.js';
 import type { ContactRow } from '../rows.js';
 import { ticketEvent } from '../tickets/support.js';
@@ -21,9 +22,9 @@ import { Effects, type DbTransaction, type DomainContext, type DomainResult } fr
  *  - LINE Login on the portal, where a signed-in client proves a LINE account is theirs
  *    (`linkLineUser` is called by the api once the login completed).
  *
- * Linking marks the contact verified: either the staff member vouched for the person they gave the
- * code to, or the customer is signed in to the portal and in control of the LINE account `[ASSUMED]`
- * (po confirms at T-115).
+ * A staff-issued code links the LINE user but leaves the LINE identity unverified; LINE Login from the
+ * portal session verifies it (see `LinkVia`). The disclosure policy (PRD 6.6) still treats an
+ * unverified identity as a stranger.
  */
 
 // Crockford-like base 32 without 0 O 1 I L U: nothing to mistake when read aloud or retyped.
@@ -118,7 +119,18 @@ export async function issueLineLinkCode(
   return fx.result({ code, expiresAt, contactId: contact.id });
 }
 
-export type LinkVia = 'link_code' | 'line_login';
+/**
+ * How the link was made, which decides whether the LINE identity counts as verified (po decision
+ * `[ASSUMED]`, the owner reviews it at T-115). It never touches the contact's own `verified_at`:
+ *  - `staff_code`: staff saw the code and told the customer. Linked, but UNVERIFIED.
+ *  - `line_login`: the signed-in portal client proved the account (OAuth state and nonce checked by
+ *    the api, which takes the contact from the session, never from the request). Verified.
+ *  - `email_code`: the code reached only the contact's verified email (R-2.11 c). Verified. Not built
+ *    yet (T-103e); the value is here so the database and the audit trail are ready.
+ */
+export type LinkVia = 'staff_code' | 'line_login' | 'email_code';
+
+export const VERIFYING_LINK_METHODS: readonly LinkVia[] = ['line_login', 'email_code'];
 
 export interface LinkLineUserInput {
   readonly contactId: string;
@@ -167,8 +179,14 @@ export async function linkLineUser(
     .for('update');
   let moved: { id: string }[] = [];
   if (holder !== undefined) {
-    if (holder.verifiedAt !== null) {
+    if (holder.verifiedAt !== null || holder.lineVerifiedAt !== null) {
       throw conflict('This LINE account is already linked to another verified contact');
+    }
+    // Only the placeholder that the first LINE message created may be merged. A contact that staff
+    // put in a real organization with this LINE id belongs to that organization: moving its tickets
+    // would show one customer's tickets to another (cross-tenant), so a person must sort it out.
+    if (holder.orgId !== UNIDENTIFIED_ORG_ID) {
+      throw conflict('This LINE account is already linked to a contact of an organization');
     }
     // Free the id first: the unique index allows one holder.
     await tx
@@ -178,7 +196,12 @@ export async function linkLineUser(
     const tickets = await tx
       .update(schema.ticket)
       .set({ requesterContactId: target.id, orgId: target.orgId, updatedAt: now })
-      .where(eq(schema.ticket.requesterContactId, holder.id))
+      .where(
+        and(
+          eq(schema.ticket.requesterContactId, holder.id),
+          eq(schema.ticket.orgId, UNIDENTIFIED_ORG_ID),
+        ),
+      )
       .returning();
     moved = tickets;
     for (const ticket of tickets)
@@ -186,7 +209,15 @@ export async function linkLineUser(
   }
   const [updated] = await tx
     .update(schema.contact)
-    .set({ lineUserId: input.lineUserId, verifiedAt: target.verifiedAt ?? now, updatedAt: now })
+    .set({
+      lineUserId: input.lineUserId,
+      lineLinkedVia: input.via,
+      lineLinkedAt: now,
+      // Only a method that proves control of the LINE account verifies it. `verified_at` is the
+      // contact's own and is neither read nor written here.
+      lineVerifiedAt: VERIFYING_LINK_METHODS.includes(input.via) ? now : null,
+      updatedAt: now,
+    })
     .where(eq(schema.contact.id, target.id))
     .returning();
   if (updated === undefined) throw new Error('contact update returned no row');
@@ -247,7 +278,7 @@ export async function redeemLineLinkCode(
       const linked = await linkLineUser(savepoint, ctx, {
         contactId: spent.contactId,
         lineUserId: input.lineUserId,
-        via: 'link_code',
+        via: 'staff_code',
       });
       fx.events.push(...linked.events);
       fx.audited = fx.audited || linked.audited;

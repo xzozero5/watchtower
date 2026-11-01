@@ -9,6 +9,15 @@
 --                        refuse for a contact without an address, so the check also accepts a
 --                        retired placeholder. (`contact_line_user_key` already makes the LINE user
 --                        id unique: 0002.)
+--   contact.line_linked_via / line_linked_at / line_verified_at: how a LINE user id got attached to a
+--                        contact and whether that link is verified. Kept apart from `verified_at`
+--                        (the contact's own verification, e.g. a confirmed email): a LINE account that
+--                        was linked to an email-verified contact must not inherit "verified".
+--                          staff_code  a staff member generated the code and told the customer: linked,
+--                                      LINE identity stays UNVERIFIED (line_verified_at NULL)
+--                          line_login  the contact's own signed-in portal session proved the LINE account
+--                          email_code  the code went only to the contact's verified email (T-103e, not built)
+--                        `[ASSUMED]` po decision, reviewed by the owner at T-115.
 -- Reversible: see 0014_line_identity.down.sql.
 
 CREATE TABLE line_link_code (
@@ -32,6 +41,15 @@ CREATE INDEX line_link_code_expiry_idx ON line_link_code (expires_at);
 
 ALTER TABLE contact ADD COLUMN merged_into_contact_id uuid REFERENCES contact (id) ON DELETE RESTRICT;
 CREATE INDEX contact_merged_into_idx ON contact (merged_into_contact_id) WHERE merged_into_contact_id IS NOT NULL;
+ALTER TABLE contact ADD COLUMN line_linked_via text;
+ALTER TABLE contact ADD COLUMN line_linked_at timestamptz;
+ALTER TABLE contact ADD COLUMN line_verified_at timestamptz;
+ALTER TABLE contact ADD CONSTRAINT contact_line_linked_via_check
+  CHECK (line_linked_via IS NULL OR line_linked_via IN ('staff_code', 'line_login', 'email_code'));
+-- A verified LINE identity says how it was verified; a method with no LINE id is meaningless.
+ALTER TABLE contact ADD CONSTRAINT contact_line_verified_check CHECK (
+  line_verified_at IS NULL OR (line_linked_via IS NOT NULL AND line_linked_via <> 'staff_code')
+);
 ALTER TABLE contact DROP CONSTRAINT contact_has_email;
 ALTER TABLE contact ADD CONSTRAINT contact_has_email CHECK (
   cardinality(emails) >= 1 OR line_user_id IS NOT NULL OR merged_into_contact_id IS NOT NULL

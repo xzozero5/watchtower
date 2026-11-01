@@ -159,6 +159,11 @@ export const contact = pgTable(
     phone: text('phone'),
     verifiedAt: timestamptz('verified_at'),
     roleInOrg: text('role_in_org'),
+    /** How the LINE user id got attached: `staff_code`, `line_login`, `email_code`. Null for an id from a first message. */
+    lineLinkedVia: text('line_linked_via'),
+    lineLinkedAt: timestamptz('line_linked_at'),
+    /** The LINE identity is verified (never inherited from `verified_at`); null for `staff_code`. */
+    lineVerifiedAt: timestamptz('line_verified_at'),
     /** A LINE-only placeholder that was linked to a known contact (T-103d, migration 0014): retired, not deleted. */
     mergedIntoContactId: uuid('merged_into_contact_id').references((): AnyPgColumn => contact.id, {
       onDelete: 'restrict',

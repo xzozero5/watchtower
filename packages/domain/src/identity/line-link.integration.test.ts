@@ -116,7 +116,7 @@ describe('issueLineLinkCode', () => {
 });
 
 describe('redeemLineLinkCode', () => {
-  it('links the LINE user, verifies the contact and works once', async () => {
+  it('links the LINE user, leaves the LINE identity unverified and works once', async () => {
     const contact = await addContact();
     const { code } = (await issue(contact.id)).value;
     const userId = lineUser();
@@ -128,7 +128,14 @@ describe('redeemLineLinkCode', () => {
       .from(schema.contact)
       .where(eq(schema.contact.id, contact.id));
     expect(row).toMatchObject({ lineUserId: userId });
-    expect(row?.verifiedAt).toEqual(clock.now);
+    // Linked by a staff-issued code: the LINE identity is NOT verified, and the contact's own
+    // verification is untouched.
+    expect(row).toMatchObject({
+      lineLinkedVia: 'staff_code',
+      lineVerifiedAt: null,
+      verifiedAt: null,
+    });
+    expect(row?.lineLinkedAt).toEqual(clock.now);
     // A second use, even by the same person, is refused: the code is spent.
     expect((await redeem(code, userId)).value).toEqual({ status: 'invalid' });
     const audit = (await auditRows(env, AUDIT_ACTIONS.lineLinked)).filter(
@@ -137,6 +144,19 @@ describe('redeemLineLinkCode', () => {
     expect(audit).toHaveLength(1);
     expect(JSON.stringify(audit)).not.toContain(userId);
     expect(JSON.stringify(audit)).not.toContain(code);
+  });
+
+  it("does not hand an email-verified contact's verification to the LINE account", async () => {
+    const emailVerifiedAt = new Date('2026-10-01T00:00:00Z');
+    const contact = await addContact({ verifiedAt: emailVerifiedAt });
+    const { code } = (await issue(contact.id)).value;
+    await redeem(code, lineUser());
+    const [row] = await env.db.owner.db
+      .select()
+      .from(schema.contact)
+      .where(eq(schema.contact.id, contact.id));
+    expect(row?.verifiedAt).toEqual(emailVerifiedAt);
+    expect(row).toMatchObject({ lineLinkedVia: 'staff_code', lineVerifiedAt: null });
   });
 
   it('answers the same for an unknown, an expired and a used code', async () => {
@@ -195,6 +215,40 @@ describe('redeemLineLinkCode', () => {
     expect(next.value.ticketId).toBe(ticketId);
   });
 
+  it('never moves the tickets of a contact in a real organization (cross-tenant guard)', async () => {
+    const userId = lineUser();
+    // Staff created this contact in organization B with a LINE id; it is unverified but it is not a placeholder.
+    const orgB = (await addOrg(env, { name: 'Org B' })).id;
+    const holder = await addContact({ orgId: orgB, lineUserId: userId, name: 'B person' });
+    const [ticketB] = await env.db.owner.db
+      .insert(schema.ticket)
+      .values({ subject: 'Org B ticket', orgId: orgB, requesterContactId: holder.id })
+      .returning();
+    const target = await addContact({ name: 'A person' });
+    const { code } = (await issue(target.id)).value;
+    expect((await redeem(code, userId)).value).toEqual({ status: 'invalid' });
+    const [after] = await env.db.owner.db
+      .select()
+      .from(schema.ticket)
+      .where(eq(schema.ticket.id, ticketB?.id ?? ''));
+    expect(after).toMatchObject({ orgId: orgB, requesterContactId: holder.id });
+    const [still] = await env.db.owner.db
+      .select()
+      .from(schema.contact)
+      .where(eq(schema.contact.id, holder.id));
+    expect(still).toMatchObject({ lineUserId: userId, mergedIntoContactId: null });
+    // The same through the LINE Login path.
+    await expect(
+      env.tx((tx) =>
+        env.domain.identity.linkLineUser(tx, env.ctx(SYSTEM), {
+          contactId: target.id,
+          lineUserId: userId,
+          via: 'line_login',
+        }),
+      ),
+    ).rejects.toMatchObject({ code: 'conflict' });
+  });
+
   it('gives the code back when the LINE user already belongs to a verified contact', async () => {
     const userId = lineUser();
     await addContact({ lineUserId: userId, verifiedAt: clock.now, name: 'Verified' });
@@ -228,6 +282,39 @@ describe('linkLineUser', () => {
     expect(again.value.changed).toBe(false);
     expect(again.audited).toBe(false);
     await expect(link(lineUser())).rejects.toMatchObject({ code: 'conflict' });
+  });
+
+  it("verifies the LINE identity for LINE Login without touching the contact's own verification", async () => {
+    const contact = await addContact();
+    const linked = await env.tx((tx) =>
+      env.domain.identity.linkLineUser(tx, env.ctx(SYSTEM), {
+        contactId: contact.id,
+        lineUserId: lineUser(),
+        via: 'line_login',
+      }),
+    );
+    expect(linked.value.contact).toMatchObject({ lineLinkedVia: 'line_login', verifiedAt: null });
+    expect(linked.value.contact.lineVerifiedAt).toEqual(clock.now);
+    const audit = (await auditRows(env, AUDIT_ACTIONS.lineLinked)).filter(
+      (entry) => entry.targetId === contact.id,
+    );
+    expect(JSON.stringify(audit)).toContain('line_login');
+  });
+
+  it('refuses a verified LINE identity that says nothing about how (the database check)', async () => {
+    const contact = await addContact();
+    await expect(
+      env.db.owner.db
+        .update(schema.contact)
+        .set({ lineUserId: lineUser(), lineVerifiedAt: clock.now })
+        .where(eq(schema.contact.id, contact.id)),
+    ).rejects.toThrow();
+    await expect(
+      env.db.owner.db
+        .update(schema.contact)
+        .set({ lineUserId: lineUser(), lineLinkedVia: 'staff_code', lineVerifiedAt: clock.now })
+        .where(eq(schema.contact.id, contact.id)),
+    ).rejects.toThrow();
   });
 
   it('lets the database refuse two contacts with one LINE user id', async () => {
