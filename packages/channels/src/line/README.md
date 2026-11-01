@@ -90,3 +90,39 @@ official LINE for Business Thailand page on the date above. Caveats that stay `[
 - **No secrets in output.** Errors carry status, operation, a stable `code` and the `X-Line-Request-Id`; never a
   token, a body, or LINE's free-text error message.
 - **Egress hosts** are exactly the PRD section 11 list: `api.line.me` and `api-data.line.me`.
+
+## Webhook receiver, media, auto-ack and identity (T-103 b-d)
+
+Re-checked against https://developers.line.biz/en/docs/messaging-api/receiving-messages/ on 2026-11-01
+`[CONFIRMED]`: the bot server must answer `2xx` (anything else triggers redelivery) and should process events
+asynchronously; webhook redelivery is off by default and is switched on in the console (Messaging API tab:
+"Use webhook", then "Webhook redelivery"); the number and interval of redeliveries are not disclosed; a
+redelivered event is identical except `deliveryContext.isRedelivery`, and duplicates are detected with
+`webhookEventId`; events may arrive out of order (use `timestamp`). The response time limit is not published
+`[VERIFY]`, which is why the receiver does nothing slow. The signature header is `x-line-signature` (see above).
+
+- **Receiver** `POST /v1/inbound/line/:channelAccountId` (apps/api): signature over the raw bytes first, then
+  one `inbound_event` per event (unique on `webhookEventId`) plus an `ingest` outbox job in one transaction, then
+  200. A redelivery hits the unique key and is answered 200. The channel secret comes from the credential store.
+- **Media** (worker): images and files are fetched with `getContent` during ingestion and stored through the
+  object store; video, audio and external image URLs are not fetched. 25 MiB cap `[ASSUMED]`.
+- **Auto-ack** (worker): a new ticket on LINE is acknowledged with the reply token through the outbound pipeline
+  (template `auto_ack.received` on the policy gate's safe list, never a push, no quota). Nothing is sent where the
+  process has no LINE transport.
+- **Identity**: link code (`WT-XXXXX-XXXXX`, 15 min, once) and LINE Login through `LineLoginProvider`. Only the
+  fake provider exists; a live one is `[ASK-HUMAN]` (new network destination).
+
+### Known limits (security review of T-103 b-d)
+
+- **One channel secret per instance `[ASSUMED]`.** The credential store keeps one `line` integration (ADR-012), so
+  the webhook secret is the same for every `:channelAccountId`: a body signed for one LINE Official Account is
+  accepted at the URL of another. With a single Official Account (the Phase 1 case) there is nothing to cross.
+  Binding the secret per account needs per-account credential keys in the store (a later task); until then do not
+  register a second LINE account with a different secret.
+- **Order of checks.** The failed-signature limiter is read first (a blocked address costs one Redis read), then the
+  account, then the secret, then the HMAC. Only failures count, so LINE itself is never throttled.
+- **Fake LINE Login** is off unless `LINE_LOGIN_FAKE_ENABLED=true`, which the config guard refuses in production, with
+  LINE Login credentials set, or off a loopback `APP_URL`.
+- **LINE identity verification** is kept apart from the contact's own `verified_at`: a staff-issued code links the LINE
+  user but leaves `line_verified_at` empty (`line_linked_via = staff_code`); LINE Login from the portal session sets it.
+  A code sent only to the contact's verified email (R-2.11 c, `email_code`) is not built yet: T-103e.

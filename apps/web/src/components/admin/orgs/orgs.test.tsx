@@ -142,6 +142,30 @@ describe('Organization', () => {
     expect(screen.getByRole('link', { name: 'Open the queue' })).toBeVisible();
   });
 
+  it('tells staff whether a linked LINE account is verified (a staff-issued code does not verify it)', async () => {
+    const user = userEvent.setup();
+    const viaLogin = {
+      ...CONTACT,
+      id: '00000000-0000-4000-8000-000000000601',
+      name: 'Casey Login',
+      lineLinkedVia: 'line_login' as const,
+      lineVerified: true,
+    };
+    consoleApi({
+      overrides: { 'GET /v1/contacts': { json: { items: [CONTACT, viaLogin], nextCursor: null } } },
+    });
+    renderConsole(<OrgDetailPage orgId={ORG.id} />);
+    await user.click(await screen.findByRole('tab', { name: 'Contacts' }));
+    const staff = await screen.findByRole('row', { name: 'Riley Requester' });
+    const unverified = within(staff).getByText('LINE not verified');
+    expect(unverified).toHaveAttribute('title', expect.stringContaining('staff member issued'));
+    const login = await screen.findByRole('row', { name: 'Casey Login' });
+    expect(within(login).getByText('LINE verified')).toHaveAttribute(
+      'title',
+      expect.stringContaining('signed in to the portal'),
+    );
+  });
+
   it('adds a contact with one to ten valid addresses', async () => {
     const user = userEvent.setup();
     const api = consoleApi({ overrides: { 'POST /v1/contacts': { status: 201, json: CONTACT } } });

@@ -133,6 +133,10 @@ export const phase1EnvShape = {
   // LINE Login for customers (T-103d): a separate channel from the Messaging API one above.
   LINE_LOGIN_CHANNEL_ID: optionalString,
   LINE_LOGIN_CHANNEL_SECRET: optionalString,
+  // The fake LINE Login (approves at once as a synthetic LINE user) is for local work only. An explicit
+  // opt-in, like DEV_LOGIN_ENABLED: off unless true, and refused in production, with LINE Login
+  // credentials set, or off a loopback APP_URL (see applyGuards).
+  LINE_LOGIN_FAKE_ENABLED: z.preprocess(emptyToUndefined, z.stringbool().default(false)),
   // Discord (T-104): webhook notifications now; the bot interactions endpoint needs the public key.
   DISCORD_WEBHOOK_URL: optionalUrl,
   DISCORD_APPLICATION_ID: optionalString,
@@ -312,6 +316,22 @@ function applyGuards(env: Readonly<Record<string, unknown>>, ctx: z.RefinementCt
     // A copied .env.example on a reachable host must not hand out head accounts (T-010 C-16).
     if (!isLoopbackUrl(text(env, 'APP_URL') ?? '')) {
       fail('DEV_LOGIN_ENABLED', 'must not be true unless APP_URL is a loopback address');
+    }
+  }
+  // The fake LINE Login links any signed-in client to a made-up LINE account. Same rule as dev login:
+  // never where it could be reached from outside (C-2).
+  if (env.LINE_LOGIN_FAKE_ENABLED === true) {
+    if (env.NODE_ENV === 'production') {
+      fail('LINE_LOGIN_FAKE_ENABLED', 'must not be true in production');
+    }
+    if (text(env, 'LINE_LOGIN_CHANNEL_ID') || text(env, 'LINE_LOGIN_CHANNEL_SECRET')) {
+      fail(
+        'LINE_LOGIN_FAKE_ENABLED',
+        'must not be true while LINE Login credentials are set (the fake exists only in mock mode)',
+      );
+    }
+    if (!isLoopbackUrl(text(env, 'APP_URL') ?? '')) {
+      fail('LINE_LOGIN_FAKE_ENABLED', 'must not be true unless APP_URL is a loopback address');
     }
   }
   const breakGlassEmail = text(env, 'BREAK_GLASS_EMAIL');

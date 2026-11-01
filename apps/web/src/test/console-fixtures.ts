@@ -186,6 +186,8 @@ export const CONTACT: Contact = {
   name: 'Riley Requester',
   emails: ['riley@acme.example.com'],
   lineUserId: 'U-example',
+  lineLinkedVia: 'staff_code',
+  lineVerified: false,
   phone: null,
   verifiedAt: AT,
   roleInOrg: 'Operations',

@@ -1,5 +1,6 @@
 import {
   CLEANUP_JOBS,
+  LINE_JOBS,
   MAINTENANCE_JOBS,
   OUTBOUND_JOBS,
   QUEUE_NAMES,
@@ -72,6 +73,16 @@ export const SCHEDULES: readonly ScheduleRegistration[] = [
   // --- gmail (T-102): watch renewal, heartbeat ---
 
   // --- line (T-103) ---
+  {
+    queue: QUEUE_NAMES.line,
+    id: LINE_JOBS.reconcileQuota,
+    // Compare the push counter with LINE's own numbers once an hour (ADR-010 section 6, R-2.10).
+    repeat: { pattern: '5 * * * *', tz: 'UTC' },
+    job: {
+      name: LINE_JOBS.reconcileQuota,
+      opts: { removeOnComplete: true, removeOnFail: { age: 24 * 3600 } },
+    },
+  },
 
   // --- discord (T-104) ---
 

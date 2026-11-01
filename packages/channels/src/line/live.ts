@@ -16,6 +16,7 @@ import {
   type LineQuotaResponse,
 } from './quota.js';
 import {
+  LINE_CONTENT_MAX_BYTES,
   lineOutboundMessagesSchema,
   lineSendResponseSchema,
   loadingAnimationSchema,
@@ -45,6 +46,8 @@ export interface LiveLineOptions {
   readonly getChannelAccessToken: TokenProvider;
   readonly baseUrl?: string;
   readonly dataBaseUrl?: string;
+  /** Cap on one media download. Default `LINE_CONTENT_MAX_BYTES`. */
+  readonly maxContentBytes?: number;
   readonly http?: Pick<HttpClientOptions, 'timeoutMs' | 'retry' | 'sleep' | 'random' | 'now'>;
 }
 
@@ -77,6 +80,7 @@ export class LiveLineTransport implements LineTransport {
   readonly #base: string;
   readonly #dataBase: string;
   readonly #now: () => number;
+  readonly #maxContent: number;
 
   constructor(options: LiveLineOptions) {
     this.#http = new HttpClient({ provider: 'line', fetch: options.fetch, ...options.http });
@@ -84,6 +88,7 @@ export class LiveLineTransport implements LineTransport {
     this.#base = (options.baseUrl ?? LINE_API_BASE_URL).replace(/\/+$/, '');
     this.#dataBase = (options.dataBaseUrl ?? LINE_DATA_BASE_URL).replace(/\/+$/, '');
     this.#now = options.http?.now ?? Date.now;
+    this.#maxContent = options.maxContentBytes ?? LINE_CONTENT_MAX_BYTES;
   }
 
   async reply(request: LineReplyRequest): Promise<LineSendResult> {
@@ -166,9 +171,53 @@ export class LiveLineTransport implements LineTransport {
     if (!response.ok) throw await this.#toError('message.content', response);
     return {
       status: 'ready',
-      bytes: new Uint8Array(await response.arrayBuffer()),
+      bytes: await this.#readCapped('message.content', response),
       contentType: response.headers.get('content-type'),
     };
+  }
+
+  /**
+   * Reads a body with a running byte count: a declared length over the cap is refused before a byte
+   * is read, and a body that outgrows the cap (no length, or a lying one) is cancelled as soon as it
+   * does, so memory never holds more than the cap plus one chunk.
+   */
+  async #readCapped(operation: string, response: Response): Promise<Uint8Array> {
+    const tooLarge = (): ChannelError =>
+      new ChannelError({
+        provider: 'line',
+        operation,
+        kind: 'client',
+        status: response.status,
+        code: 'content_too_large',
+      });
+    const declared = Number(response.headers.get('content-length'));
+    if (Number.isFinite(declared) && declared > this.#maxContent) {
+      await response.body?.cancel();
+      throw tooLarge();
+    }
+    if (response.body === null) return new Uint8Array();
+    const reader = response.body.getReader();
+    const chunks: Uint8Array[] = [];
+    let total = 0;
+    for (;;) {
+      // The DOM-less lib types the reader loosely; this is the shape the stream spec gives.
+      const next = (await reader.read()) as { done: boolean; value?: Uint8Array };
+      if (next.done || next.value === undefined) break;
+      const value = next.value;
+      total += value.byteLength;
+      if (total > this.#maxContent) {
+        await reader.cancel();
+        throw tooLarge();
+      }
+      chunks.push(value);
+    }
+    const bytes = new Uint8Array(total);
+    let offset = 0;
+    for (const chunk of chunks) {
+      bytes.set(chunk, offset);
+      offset += chunk.byteLength;
+    }
+    return bytes;
   }
 
   async markAsRead(request: { readonly markAsReadToken: string }): Promise<void> {
