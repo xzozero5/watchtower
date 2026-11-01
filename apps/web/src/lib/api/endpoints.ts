@@ -1,8 +1,14 @@
 import {
   authConfigSchema,
+  bulkResultSchema,
+  convertOtherMailResultSchema,
   intentListSchema,
   magicLinkAcceptedSchema,
+  otherMailDetailSchema,
+  otherMailPageSchema,
   replyResultSchema,
+  savedViewListSchema,
+  savedViewSchema,
   sessionInfoSchema,
   teamQueueListSchema,
   ticketAiInsightSchema,
@@ -12,9 +18,13 @@ import {
   workflowSchema,
   type AssignTicket,
   type BreakGlassLogin,
+  type BulkRequest,
   type ChangeStatus,
+  type ConvertOtherMail,
+  type CreateSavedView,
   type DevLoginRequest,
   type Note,
+  type OtherMailQuery,
   type RejectAiDraft,
   type Reply,
   type TicketListQuery,
@@ -197,6 +207,58 @@ export function createEndpoints(client: ApiClient) {
         path: refPath(ref),
         body,
         schema: ticketDetailResponseSchema,
+      }),
+
+    // --- bulk actions and saved views (T-119) ---
+    /** Up to 100 tickets at once; the answer lists every ticket's outcome. */
+    bulk: (body: BulkRequest) =>
+      client.request({
+        method: 'POST',
+        path: '/v1/tickets/bulk',
+        body,
+        schema: bulkResultSchema,
+      }),
+
+    /** The built-in views with counts, then the team's and the caller's own. Staff only. */
+    views: (signal?: AbortSignal) =>
+      client.request({
+        path: '/v1/views',
+        schema: savedViewListSchema,
+        ...(signal ? { signal } : {}),
+      }),
+
+    createView: (body: CreateSavedView) =>
+      client.request({ method: 'POST', path: '/v1/views', body, schema: savedViewSchema }),
+
+    deleteView: (id: string) =>
+      client.request({
+        method: 'DELETE',
+        path: `/v1/views/${encodeURIComponent(id)}`,
+        schema: null,
+      }),
+
+    // --- Other mail (T-119) ---
+    otherMail: (params: Partial<OtherMailQuery>, signal?: AbortSignal) =>
+      client.request({
+        path: '/v1/inbound/other-mail',
+        query: params,
+        schema: otherMailPageSchema,
+        ...(signal ? { signal } : {}),
+      }),
+
+    otherMailItem: (id: string, signal?: AbortSignal) =>
+      client.request({
+        path: `/v1/inbound/other-mail/${encodeURIComponent(id)}`,
+        schema: otherMailDetailSchema,
+        ...(signal ? { signal } : {}),
+      }),
+
+    convertOtherMail: (id: string, body: ConvertOtherMail) =>
+      client.request({
+        method: 'POST',
+        path: `/v1/inbound/other-mail/${encodeURIComponent(id)}/convert`,
+        body,
+        schema: convertOtherMailResultSchema,
       }),
 
     // --- AI brief (T-128; the api serves these with T-106e / T-108, until then they answer 404) ---

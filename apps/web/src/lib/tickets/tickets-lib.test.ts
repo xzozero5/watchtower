@@ -8,19 +8,15 @@ import {
   BUILT_IN_VIEWS,
   DEFAULT_FILTERS,
   filtersEqual,
+  filtersFromSearch,
+  filtersFromView,
   filtersToParams,
+  filtersToView,
   matchBuiltInView,
+  queueHref,
+  SYSTEM_VIEW_OF,
 } from './filters';
 import { isOverdue, severityOf, toRowModel } from './model';
-import {
-  loadSavedViews,
-  MAX_SAVED_VIEWS,
-  persistSavedViews,
-  removeView,
-  SAVED_VIEWS_KEY_PREFIX,
-  type KeyValueStorage,
-  upsertView,
-} from './saved-views';
 import { readSelectedTicket, withSelectedTicket } from './selection';
 import { allowedNextStatuses, draftStore, findPlaceholders, renderTemplate } from './templates';
 
@@ -43,6 +39,7 @@ describe('queue filters', () => {
         assignee: 'me',
         q: '  login  ',
         overdue: true,
+        slaState: ['at_risk', 'breached'],
         sort: 'due_asc',
       }),
     ).toEqual({
@@ -51,6 +48,7 @@ describe('queue filters', () => {
       assignee: 'me',
       q: 'login',
       overdue: true,
+      slaState: ['at_risk', 'breached'],
       sort: 'due_asc',
       limit: 50,
     });
@@ -73,68 +71,77 @@ describe('queue filters', () => {
     expect(activeFilterCount({ ...DEFAULT_FILTERS, q: 'x', overdue: true, priority: ['P1'] })).toBe(
       3,
     );
+    expect(activeFilterCount({ ...DEFAULT_FILTERS, slaState: ['at_risk'] })).toBe(1);
+  });
+
+  it('has the three server views next to the old ones, each mapped to the view that counts it', () => {
+    const ids: string[] = BUILT_IN_VIEWS.map((view) => view.id);
+    expect(ids).toEqual(
+      expect.arrayContaining(['open', 'mine', 'unassigned', 'slaAtRisk', 'triage', 'waiting']),
+    );
+    expect(SYSTEM_VIEW_OF).toMatchObject({
+      slaAtRisk: 'sla_at_risk',
+      triage: 'triage',
+      waiting: 'waiting_on_customer',
+    });
+    const risk = BUILT_IN_VIEWS.find((view) => view.id === 'slaAtRisk');
+    expect(filtersToParams(risk?.filters ?? DEFAULT_FILTERS)).toMatchObject({
+      slaState: ['at_risk', 'breached'],
+      sort: 'sla_due_asc',
+    });
+  });
+
+  it('reads and writes the SLA state in the address of a link', () => {
+    expect(filtersFromSearch('?slaState=at_risk,breached&bogus=1')?.slaState).toEqual([
+      'at_risk',
+      'breached',
+    ]);
+    expect(filtersFromSearch('?slaState=nope')?.slaState).toEqual([]);
+    expect(queueHref({ slaState: ['at_risk'], sort: 'sla_due_asc' })).toBe(
+      '/?slaState=at_risk&sort=sla_due_asc',
+    );
   });
 });
 
-describe('saved views', () => {
-  const memory = (): KeyValueStorage & { data: Map<string, string> } => {
-    const data = new Map<string, string>();
-    return {
-      data,
-      getItem: (key) => data.get(key) ?? null,
-      setItem: (key, value) => void data.set(key, value),
+describe('saved views from the server', () => {
+  it('turns a saved view into queue filters and back without losing anything', () => {
+    const filters = {
+      ...DEFAULT_FILTERS,
+      status: ['open' as const],
+      priority: ['P1' as const],
+      assignee: 'unassigned' as const,
+      q: 'invoice',
+      slaState: ['breached' as const],
+      overdue: true,
+      sort: 'sla_due_asc' as const,
     };
-  };
-  let counter = 0;
-  const makeId = () => `id-${String((counter += 1))}`;
-
-  it('stores per user and reads back what it stored', () => {
-    const storage = memory();
-    const views = upsertView(
-      [],
-      'Night queue',
-      { ...DEFAULT_FILTERS, assignee: 'unassigned' },
-      makeId,
-    );
-    persistSavedViews(storage, 'user-1', views);
-
-    expect(loadSavedViews(storage, 'user-1')).toEqual(views);
-    expect(loadSavedViews(storage, 'user-2')).toEqual([]);
-    expect([...storage.data.keys()]).toEqual([`${SAVED_VIEWS_KEY_PREFIX}user-1`]);
+    const saved = filtersToView(filters);
+    expect(saved).toEqual({
+      sort: 'sla_due_asc',
+      filters: {
+        status: ['open'],
+        priority: ['P1'],
+        assignee: 'unassigned',
+        q: 'invoice',
+        overdue: true,
+        slaState: ['breached'],
+      },
+    });
+    expect(filtersFromView(saved)).toEqual(filters);
   });
 
-  it('replaces a view with the same name instead of duplicating it, and ignores blank names', () => {
-    const first = upsertView([], 'Mine', DEFAULT_FILTERS, makeId);
-    const second = upsertView(first, ' mine ', { ...DEFAULT_FILTERS, overdue: true }, makeId);
-    expect(second).toHaveLength(1);
-    expect(second[0]?.filters.overdue).toBe(true);
-    expect(upsertView(first, '   ', DEFAULT_FILTERS, makeId)).toEqual(first);
+  it('keeps "me" as it is for whoever opens the view, and a person as an id', () => {
+    const mine = filtersFromView({ filters: { assignee: 'me' }, sort: 'created_desc' });
+    expect(mine.assignee).toBe('me');
+    expect(mine.assigneeId).toBeUndefined();
+    const person = '3f0c1f4e-8f86-4c0e-9d52-0a1c7a9a3b11';
+    const theirs = filtersFromView({ filters: { assignee: person }, sort: 'created_desc' });
+    expect(theirs).toMatchObject({ assignee: 'any', assigneeId: person });
+    expect(filtersToView(theirs).filters.assignee).toBe(person);
   });
 
-  it('caps the number of views and deletes by id', () => {
-    let views = upsertView([], 'v0', DEFAULT_FILTERS, makeId);
-    for (let index = 1; index < MAX_SAVED_VIEWS + 5; index += 1) {
-      views = upsertView(views, `v${String(index)}`, DEFAULT_FILTERS, makeId);
-    }
-    expect(views).toHaveLength(MAX_SAVED_VIEWS);
-    const removed = removeView(views, views[0]?.id ?? '');
-    expect(removed).toHaveLength(MAX_SAVED_VIEWS - 1);
-  });
-
-  it('survives corrupt storage by dropping what does not parse', () => {
-    const storage = memory();
-    storage.setItem(`${SAVED_VIEWS_KEY_PREFIX}u`, '{not json');
-    expect(loadSavedViews(storage, 'u')).toEqual([]);
-    storage.setItem(
-      `${SAVED_VIEWS_KEY_PREFIX}u`,
-      JSON.stringify([
-        { id: 'ok', name: 'Fine', filters: DEFAULT_FILTERS },
-        { id: 'bad', name: '', filters: {} },
-        'junk',
-      ]),
-    );
-    expect(loadSavedViews(storage, 'u').map((view) => view.id)).toEqual(['ok']);
-    expect(loadSavedViews(null, 'u')).toEqual([]);
+  it('leaves out what is not set, and a search the server would refuse (under two characters)', () => {
+    expect(filtersToView({ ...DEFAULT_FILTERS, status: [], q: 'a' }).filters).toEqual({});
   });
 });
 

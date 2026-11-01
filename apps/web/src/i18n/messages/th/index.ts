@@ -4,6 +4,7 @@ import { aiTh } from './ai';
 import { apiStatusTh } from './apiStatus';
 import { appTh } from './app';
 import { authTh } from './auth';
+import { bulkTh } from './bulk';
 import { channelTh } from './channel';
 import { commandsTh } from './commands';
 import { composerTh } from './composer';
@@ -17,6 +18,7 @@ import { keymapTh } from './keymap';
 import { liveTh } from './live';
 import { loadingTh } from './loading';
 import { loginTh } from './login';
+import { otherMailTh } from './otherMail';
 import { paletteTh } from './palette';
 import { panelTh } from './panel';
 import { panesTh } from './panes';
@@ -70,4 +72,6 @@ export const th: Messages = {
   admin: adminTh,
   portal: portalTh,
   csat: csatTh,
+  bulk: bulkTh,
+  otherMail: otherMailTh,
 };

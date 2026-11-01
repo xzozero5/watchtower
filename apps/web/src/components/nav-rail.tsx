@@ -10,6 +10,7 @@ import {
   Inbox,
   Keyboard,
   type LucideIcon,
+  Mail,
   PanelLeft,
   Settings2,
 } from 'lucide-react';
@@ -127,7 +128,7 @@ function RailButton({
   );
 }
 
-export type RailDestination = 'queue' | 'home' | 'admin';
+export type RailDestination = 'queue' | 'home' | 'admin' | 'otherMail';
 
 export interface NavRailProps {
   /** The page being shown. */
@@ -157,6 +158,7 @@ export function NavRail({
   const t = useT();
   const { can } = useSession();
   const handler = can('ticket.handle');
+  const showOtherMail = can('inbound.read');
   const showHome = can(HOME_PERMISSION);
   const showAdmin = adminSectionsFor(can).length > 0;
   const adminHref = adminSectionsFor(can)[0]?.href ?? '/admin';
@@ -206,6 +208,17 @@ export function NavRail({
               }
             : { href: '/' })}
         />
+        {showOtherMail ? (
+          <RailButton
+            icon={Mail}
+            tone="sky"
+            label={t('rail.otherMail')}
+            expanded={expanded}
+            current={destination === 'otherMail'}
+            keyShortcuts="g o"
+            href="/other-mail"
+          />
+        ) : null}
         {handler ? (
           <>
             <RailButton

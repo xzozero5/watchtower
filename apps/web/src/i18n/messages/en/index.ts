@@ -11,6 +11,7 @@ import { aiEn } from './ai';
 import { apiStatusEn } from './apiStatus';
 import { appEn } from './app';
 import { authEn } from './auth';
+import { bulkEn } from './bulk';
 import { channelEn } from './channel';
 import { commandsEn } from './commands';
 import { composerEn } from './composer';
@@ -24,6 +25,7 @@ import { keymapEn } from './keymap';
 import { liveEn } from './live';
 import { loadingEn } from './loading';
 import { loginEn } from './login';
+import { otherMailEn } from './otherMail';
 import { paletteEn } from './palette';
 import { panelEn } from './panel';
 import { panesEn } from './panes';
@@ -76,6 +78,8 @@ export const en = {
   admin: adminEn,
   portal: portalEn,
   csat: csatEn,
+  bulk: bulkEn,
+  otherMail: otherMailEn,
 } as const;
 
 /** The shape every language must fill in, with plain `string` leaves. */

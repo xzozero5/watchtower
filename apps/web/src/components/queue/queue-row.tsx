@@ -21,6 +21,13 @@ export interface QueueRowProps {
   /** The section the row is drawn in: a status that only repeats it is not drawn again. */
   group?: RowGroup['id'];
   onSelect: (key: string) => void;
+  /** Staff can tick rows for a bulk action (T-119d); a customer's queue has no checkbox. */
+  selectable?: boolean;
+  /** The row is ticked. Not the same as `selected`, which is the ticket open in the conversation. */
+  checked?: boolean;
+  /** At least one row is ticked anywhere: every checkbox shows, not only on hover. */
+  selecting?: boolean;
+  onToggleChecked?: (key: string) => void;
 }
 
 /** Statuses the row does not spell out: "open" is the normal case and the group says the rest. */
@@ -69,7 +76,17 @@ function RowStatus({ row, group }: { row: RowModel; group: RowGroup['id'] | unde
  * `aria-selected="true"`. Nothing relies on colour: icons, codes and words carry every state
  * (docs/design/friendly-polish.md).
  */
-export function QueueRow({ row, selected, compact = false, group, onSelect }: QueueRowProps) {
+export function QueueRow({
+  row,
+  selected,
+  compact = false,
+  group,
+  onSelect,
+  selectable = false,
+  checked = false,
+  selecting = false,
+  onToggleChecked,
+}: QueueRowProps) {
   const { t } = useI18n();
   const isNew = row.status === 'new';
   const summary = row.ai?.summary?.trim() || null;
@@ -105,15 +122,38 @@ export function QueueRow({ row, selected, compact = false, group, onSelect }: Qu
       aria-selected={selected}
       data-ticket-key={row.key}
       data-ai-state={aiState}
+      data-checked={selectable ? checked : undefined}
       onClick={() => {
         onSelect(row.key);
       }}
       className={cn(
-        'relative mx-2 my-px flex cursor-pointer flex-col justify-center gap-1 rounded-xl px-2.5 text-left transition-colors duration-(--wt-motion-duration-fast) ease-out hover:bg-surface-muted',
+        'group relative mx-2 my-px flex cursor-pointer flex-col justify-center gap-1 rounded-xl px-2.5 text-left transition-colors duration-(--wt-motion-duration-fast) ease-out hover:bg-surface-muted',
         compact ? 'min-h-10 py-1.5' : 'min-h-14 py-2',
+        selectable && 'pl-8',
         selected && 'bg-primary-subtle hover:bg-primary-subtle',
+        checked && !selected && 'bg-surface-muted',
       )}
     >
+      {selectable ? (
+        // The mouse way to tick a row; the keyboard way is X on the open ticket. Not a tab stop:
+        // the listbox is one stop, and a checkbox inside an option would be a second one per row.
+        <input
+          type="checkbox"
+          tabIndex={-1}
+          checked={checked}
+          onChange={() => {
+            onToggleChecked?.(row.key);
+          }}
+          onClick={(event) => {
+            event.stopPropagation();
+          }}
+          aria-label={t('bulk.selectRow', { key: row.key })}
+          className={cn(
+            'absolute top-1/2 left-2.5 size-4 -translate-y-1/2 accent-primary',
+            !(checked || selecting) && 'opacity-0 group-hover:opacity-100 focus-visible:opacity-100',
+          )}
+        />
+      ) : null}
       {identity}
       {compact ? (
         <span className="flex min-w-0 items-center gap-2">

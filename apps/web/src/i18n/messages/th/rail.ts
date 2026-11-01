@@ -4,6 +4,7 @@ import type { Widen } from '../types';
 export const railTh: Widen<typeof railEn> = {
   label: 'เมนูหลัก',
   queue: 'คิวงาน',
+  otherMail: 'อีเมลอื่น ๆ',
   home: 'หน้าหลัก',
   admin: 'ผู้ดูแลระบบ',
   brief: 'สรุปประจำวัน',
