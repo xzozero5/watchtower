@@ -39,8 +39,10 @@ export function createAlertsRegistration(context: ProcessorContext) {
   return async (job: Job): Promise<unknown> => {
     switch (job.name) {
       case ALERTS_JOBS.sweep: {
+        // Heartbeats first: a missing one opens an alert that the escalation below can already page.
+        const heartbeats = await domain.alerts.sweepHeartbeats(database.db, system());
         const escalation = await domain.alerts.sweepEscalations(database.db, system());
-        for (const event of escalation.events) {
+        for (const event of [...heartbeats.events, ...escalation.events]) {
           try {
             await realtime.publish(event);
           } catch (error) {
@@ -48,23 +50,20 @@ export function createAlertsRegistration(context: ProcessorContext) {
           }
         }
         const chatSweep = await notifier.sweep();
-        if (escalation.steps + escalation.exhausted > 0 || chatSweep.redriven > 0) {
-          logger.info(
-            {
-              steps: escalation.steps,
-              notified: escalation.notified,
-              exhausted: escalation.exhausted,
-              chat: chatSweep,
-            },
-            'alerts sweep',
-          );
-        }
-        return {
+        const result = {
+          missingHeartbeats: heartbeats.missing,
           steps: escalation.steps,
           notified: escalation.notified,
           exhausted: escalation.exhausted,
           chat: chatSweep,
         };
+        if (
+          heartbeats.missing + escalation.steps + escalation.exhausted > 0 ||
+          chatSweep.redriven > 0
+        ) {
+          logger.info(result, 'alerts sweep');
+        }
+        return result;
       }
       case ALERTS_JOBS.chat: {
         const parsed = alertChatJobSchema.safeParse(job.data);

@@ -3,7 +3,7 @@ import { randomBytes, randomUUID } from 'node:crypto';
 import { ChannelError } from '@watchtower/channels';
 import { createDatabase, schema, type Database } from '@watchtower/db';
 import { createTestDatabase, type TestDatabase } from '@watchtower/db/testing';
-import { createDomain, type Domain } from '@watchtower/domain';
+import { createDomain, heartbeatFingerprint, type Domain } from '@watchtower/domain';
 import {
   ALERTS_JOBS,
   DEFAULT_ESCALATION_STEPS,
@@ -14,6 +14,7 @@ import {
 import { disableNetConnect } from '@watchtower/shared/testing';
 import { KEY_LABELS, deriveSubkey } from '@watchtower/shared/secret-box';
 import { Queue } from 'bullmq';
+import { Redis } from 'ioredis';
 import { eq, sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
@@ -43,6 +44,9 @@ let appDb: Database;
 let domain: Domain;
 let counter = 900;
 const chat = new FakeAlertChat();
+const realtimeChannel = `wt-alerts-test-${randomBytes(4).toString('hex')}`;
+const heard: unknown[] = [];
+let subscriber: Redis;
 const owner = () => testDb.owner.db;
 
 beforeAll(async () => {
@@ -60,14 +64,19 @@ beforeAll(async () => {
     connection: parseRedisUrl(config.REDIS_URL),
     prefix,
   });
+  subscriber = new Redis({ ...parseRedisUrl(config.REDIS_URL), maxRetriesPerRequest: 2 });
+  await subscriber.subscribe(realtimeChannel);
+  subscriber.on('message', (_channel, message) => heard.push(JSON.parse(message)));
   worker = await startWorker(config, createLogger(config), {
     queuePrefix: prefix,
+    realtimeChannel,
     overrides: { alerts: { chat } },
   });
 });
 
 afterAll(async () => {
   await worker.close();
+  subscriber.disconnect();
   await alertsQueue.obliterate({ force: true });
   await alertsQueue.close();
   await appDb.close();
@@ -182,9 +191,56 @@ describe('the alerts queue in the worker', () => {
         : undefined;
     }, 'step 1 to be posted');
     expect(rows.map((row) => row.target)).toEqual(['on_shift', 'lead']);
+    // The escalation told staff in realtime, ids only.
+    await waitFor(
+      () =>
+        Promise.resolve(
+          heard.some(
+            (event) =>
+              JSON.stringify(event).includes(alertId) &&
+              JSON.stringify(event).includes('alert.updated'),
+          )
+            ? true
+            : undefined,
+        ),
+      'the realtime event of the escalation',
+    );
     expect(
       chat.posted.filter((candidate) => candidate.alertId === alertId).map((m) => m.level),
     ).toEqual([0, 1]);
+  });
+});
+
+describe('heartbeats in the same sweep', () => {
+  it('a heartbeat silent past its time opens an alert that is escalated and posted in the same run', async () => {
+    const [row] = await owner()
+      .insert(schema.heartbeat)
+      .values({
+        slug: `hb-${randomUUID().slice(0, 8)}`,
+        name: 'Nightly export',
+        expectedIntervalSeconds: 60,
+        graceSeconds: 0,
+        lastBeatAt: sql`clock_timestamp() - interval '1 hour'`,
+      })
+      .returning({ id: schema.heartbeat.id });
+    const heartbeatId = row?.id ?? '';
+    await sweepNow();
+    const alertRow = await waitFor(async () => {
+      const found = await owner()
+        .select()
+        .from(schema.alert)
+        .where(eq(schema.alert.source, 'heartbeat'));
+      return found.find((candidate) => candidate.fingerprint === heartbeatFingerprint(heartbeatId));
+    }, 'the heartbeat alert');
+    const steps = await waitFor(async () => {
+      const found = await stepRows(alertRow.id);
+      return found[0]?.chatState === 'mock' ? found : undefined;
+    }, 'its first step to be posted');
+    expect(steps[0]?.level).toBe(0);
+    expect(
+      (await owner().select().from(schema.heartbeat).where(eq(schema.heartbeat.id, heartbeatId)))[0]
+        ?.state,
+    ).toBe('missing');
   });
 });
 
