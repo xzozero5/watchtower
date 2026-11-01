@@ -4,6 +4,7 @@ import {
   type ClientTicket,
   type TicketDetail,
   type TicketPriority,
+  type TicketAiRow,
   type TicketStatus,
   type TicketSummary,
 } from '@watchtower/shared';
@@ -45,6 +46,8 @@ export interface RowModel {
   assigneeName: string | null;
   unassigned: boolean;
   intentName: string | null;
+  /** What the AI did with it, from the list row; null when the api sends nothing (T-128). */
+  ai: TicketAiRow | null;
   updatedAt: string;
   overdue: boolean;
   sla: SlaView;
@@ -80,6 +83,7 @@ export function toRowModel(ticket: TicketItem, now: number): RowModel {
     assigneeName: staff ? (ticket.assignee?.name ?? null) : null,
     unassigned: staff && ticket.assignee === null,
     intentName: ticket.intent?.name ?? null,
+    ai: staff ? (ticket.ai ?? null) : null,
     updatedAt: ticket.updatedAt,
     overdue: isOverdue(ticket, now),
     sla: slaView(ticket, now),

@@ -1,0 +1,111 @@
+/**
+ * English copy of the AI-first workspace (T-128): the AI brief, the draft with approve / edit /
+ * reject, the evidence tab and the AI state chips. Kept in its own file, like the portal's, and
+ * merged into the catalogue by one line in en.ts. ai.th.ts must have the same keys.
+ */
+export const aiEn = {
+  state: {
+    classified: 'Classified',
+    investigating: 'Investigating',
+    draft_ready: 'Draft ready',
+    needs_human: 'Needs you',
+    failed: 'AI failed',
+  },
+  stage: {
+    '0': 'Stage 0 · Observe',
+    '1': 'Stage 1 · Suggest',
+    '2': 'Stage 2 · Draft for approval',
+    tip: 'A person approves every reply for this intent.',
+  },
+  brief: {
+    label: 'AI brief',
+    loading: 'Loading the AI brief',
+    unavailable: 'AI brief unavailable',
+    none: 'The AI has not looked at this yet',
+    failed: 'The AI could not finish. Over to you.',
+    lowConfidence: 'Low confidence. Check before relying on it.',
+    prompt: 'prompt {version}',
+    intent: 'Intent',
+    confidence: 'Confidence {band} {value}',
+    nextStep: 'Next step',
+    evidence: 'Evidence',
+    writeMyself: 'Write myself',
+    uncited: '{count} uncited',
+    uncitedTip: 'Claims in the draft that no evidence supports',
+    band: { high: 'High', medium: 'Medium', low: 'Low' },
+  },
+  draft: {
+    label: 'Draft reply',
+    approve: 'Approve',
+    edit: 'Edit',
+    reject: 'Reject',
+    done: 'Done',
+    revert: 'Revert',
+    editing: 'Editing the draft',
+    editField: 'Draft text',
+    edited: 'Edited · {percent}% changed',
+    sending: 'Sending in {seconds} s',
+    undo: 'Undo',
+    sent: 'Reply sent',
+    sendFailed: 'The reply was not sent. The draft is still here.',
+    alreadySending: 'This draft is already being sent',
+    citation: 'Evidence {number}',
+    actions: 'Draft actions',
+  },
+  approve: {
+    title: 'Send this reply?',
+    to: 'To {name} via {channel}',
+    toUnknown: 'Via {channel}',
+    preview: 'Reply preview',
+    uncited: '{count} uncited. Approve anyway?',
+    edited: 'You edited this draft · {percent}% changed',
+    confirm: 'Approve and send',
+    cancel: 'Cancel',
+  },
+  reject: {
+    title: 'Reject this draft',
+    reason: 'Why?',
+    comment: 'Comment',
+    commentRequired: 'Say what was wrong',
+    submit: 'Reject',
+    cancel: 'Cancel',
+    error: 'The rejection was not recorded. Try again.',
+    done: 'Draft rejected',
+    reasons: {
+      wrong_intent: 'Wrong intent / misunderstood the request',
+      factually_wrong: 'Factually wrong',
+      missing_info: 'Missing information or steps',
+      not_grounded: 'Not supported by evidence / bad citation',
+      disclosure_risk: "Shares something it shouldn't",
+      tone_style: 'Tone or style',
+      wrong_language: 'Wrong language',
+      no_reply_needed: 'No reply needed / already answered',
+      other: 'Other (explain)',
+    },
+  },
+  evidence: {
+    tab: 'Evidence',
+    empty: 'No evidence found.',
+    cited: 'Cited in draft',
+    open: 'Open source',
+    kinds: {
+      kb: 'KB article',
+      ticket: 'Similar ticket',
+      log: 'Log query',
+      data: 'Data query',
+      repo: 'Code change',
+    },
+  },
+  conversation: {
+    showEarlier: 'Show {count} earlier',
+    hideEarlier: 'Hide earlier',
+  },
+  dock: {
+    reply: 'Write a reply',
+    note: 'Internal note',
+  },
+} as const;
+
+type Widen<T> = T extends string ? string : { [K in keyof T]: Widen<T[K]> };
+
+export type AiMessages = Widen<typeof aiEn>;

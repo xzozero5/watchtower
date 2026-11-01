@@ -7,21 +7,12 @@ import {
   type TimelineEntry,
 } from '@watchtower/shared';
 import { Avatar, cn, toast, Tooltip } from '@watchtower/ui';
-import {
-  AlertTriangle,
-  Bot,
-  Clock,
-  Copy,
-  Lock,
-  MessageSquareReply,
-  Quote,
-  Send,
-  Settings2,
-} from 'lucide-react';
+import { AlertTriangle, Bot, Clock, Copy, Lock, Quote, Settings2 } from 'lucide-react';
 
 import { ChannelIcon } from '@/components/ticket/channel-icon';
 import { useI18n } from '@/i18n/provider';
-import { formatDateTime, formatMessageTime } from '@/lib/format';
+import { formatAge, formatDateTime } from '@/lib/format';
+import { useNow } from '@/lib/use-now';
 import { statusKey } from '@/lib/tickets/status-key';
 
 type EventEntry = Extract<TimelineEntry, { kind: 'event' }>;
@@ -88,7 +79,7 @@ function EventText({ entry }: { entry: EventEntry }) {
 }
 
 /** A system or AI event: one line (icon, sentence, time), not a bubble. */
-function EventRow({ entry }: { entry: EventEntry }) {
+function EventRow({ entry, now }: { entry: EventEntry; now: number }) {
   const { t, locale } = useI18n();
   const byAi = entry.actor.type === 'ai';
   const Icon = byAi ? Bot : entry.type.startsWith('sla.') ? Clock : Settings2;
@@ -102,7 +93,7 @@ function EventRow({ entry }: { entry: EventEntry }) {
       </p>
       <Tooltip content={formatDateTime(entry.createdAt, locale)} side="left">
         <time dateTime={entry.createdAt} className="tabular shrink-0">
-          {formatMessageTime(entry.createdAt, locale)}
+          {formatAge(entry.createdAt, now, locale) ?? t('timeline.now')}
         </time>
       </Tooltip>
     </li>
@@ -148,10 +139,12 @@ const ICON_BUTTON =
 function MessageRow({
   message,
   continued,
+  now,
   onQuote,
   canQuote,
 }: {
   message: MessageEntry;
+  now: number;
   /** True when this message continues the block above: no avatar or name again. */
   continued: boolean;
   onQuote?: (text: string) => void;
@@ -159,7 +152,6 @@ function MessageRow({
 }) {
   const { t, locale } = useI18n();
   const kind = messageKind(message);
-  const Icon = kind === 'internal' ? Lock : kind === 'reply' ? Send : MessageSquareReply;
   const author =
     message.sender.name ??
     (message.sender.type === 'system' ? t('timeline.system') : t('timeline.unknownSender'));
@@ -201,20 +193,19 @@ function MessageRow({
         >
           <Avatar name={author} id={message.sender.id ?? author} size={20} />
           <span className="text-sm font-medium text-foreground">{author}</span>
-          <span className="inline-flex items-center gap-1 text-muted-foreground">
-            <Icon aria-hidden className="size-3.5" />
-            {t(`timeline.kinds.${kind}`)}
-          </span>
+          {kind === 'internal' ? (
+            <span className="inline-flex items-center text-muted-foreground">
+              <Lock aria-hidden className="size-3.5" />
+              <span className="sr-only">{t('timeline.kinds.internal')}</span>
+            </span>
+          ) : null}
           <ChannelIcon channel={message.channel} className="text-muted-foreground" />
           <Tooltip content={exact}>
             <time dateTime={message.createdAt} className="tabular ml-auto text-muted-foreground">
-              {formatMessageTime(message.createdAt, locale)}
+              {formatAge(message.createdAt, now, locale) ?? t('timeline.now')}
             </time>
           </Tooltip>
         </header>
-        {kind === 'internal' && !continued ? (
-          <p className="mb-1 text-xs text-muted-foreground">{t('timeline.internalHint')}</p>
-        ) : null}
         {/* Plain text, preserved line breaks. Never rendered as HTML. */}
         <p className="text-sm break-words whitespace-pre-wrap text-foreground">
           {message.bodyText}
@@ -223,7 +214,7 @@ function MessageRow({
         {continued ? (
           <Tooltip content={t('timeline.at', { time: exact })}>
             <time dateTime={message.createdAt} className="sr-only">
-              {formatMessageTime(message.createdAt, locale)}
+              {formatAge(message.createdAt, now, locale) ?? t('timeline.now')}
             </time>
           </Tooltip>
         ) : null}
@@ -282,6 +273,7 @@ export function Timeline({
   canQuote?: boolean;
 }) {
   const t = useI18n().t;
+  const now = useNow();
   return (
     <ol aria-label={t('timeline.label')} className="flex flex-col pt-1 pb-3">
       {entries.map((entry, index) =>
@@ -290,11 +282,12 @@ export function Timeline({
             key={`m-${entry.id}`}
             message={entry}
             continued={sameBlock(entries[index - 1], entry)}
+            now={now}
             onQuote={onQuote}
             canQuote={canQuote}
           />
         ) : (
-          <EventRow key={`e-${entry.id}`} entry={entry} />
+          <EventRow key={`e-${entry.id}`} entry={entry} now={now} />
         ),
       )}
     </ol>

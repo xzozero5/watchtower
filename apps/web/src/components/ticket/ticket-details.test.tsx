@@ -232,7 +232,7 @@ describe('ticket details: editing', () => {
     const user = userEvent.setup();
     editable();
     await openDetails();
-    await user.click(screen.getByRole('tab', { name: 'AI' }));
+    await user.click(screen.getByRole('tab', { name: 'Evidence' }));
     expect(screen.queryByRole('button', { name: /^Status:/ })).not.toBeInTheDocument();
 
     await user.keyboard('s');
@@ -242,12 +242,12 @@ describe('ticket details: editing', () => {
     expect(screen.getByRole('tab', { name: 'Details' })).toHaveAttribute('aria-selected', 'true');
   });
 
-  it('has Details, AI and Customer tabs, and the Customer tab shows who wrote in', async () => {
+  it('has Evidence, Details and Customer tabs, and the Customer tab shows who wrote in', async () => {
     const user = userEvent.setup();
     editable();
     await openDetails();
-    const tabs = screen.getAllByRole('tab', { name: /^(Details|AI|Customer)$/ });
-    expect(tabs.map((tab) => tab.textContent)).toEqual(['Details', 'AI', 'Customer']);
+    const tabs = screen.getAllByRole('tab', { name: /^(Evidence|Details|Customer)$/ });
+    expect(tabs.map((tab) => tab.textContent)).toEqual(['Evidence', 'Details', 'Customer']);
     await user.click(screen.getByRole('tab', { name: 'Customer' }));
     const panel = screen.getByRole('tabpanel', { name: 'Customer' });
     expect(within(panel).getAllByText('Riley Requester').length).toBeGreaterThan(0);

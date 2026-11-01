@@ -34,7 +34,7 @@ const rowKeys = () =>
     .map((row) => row.getAttribute('data-ticket-key'));
 
 describe('queue rows', () => {
-  it('shows priority as icon + code, status as words and the assignee state', async () => {
+  it('shows priority as icon + code and keeps quiet about an ordinary open ticket', async () => {
     workspaceApi();
     const { queue } = await openQueue();
     const first = (await within(queue).findByText('Cannot log in')).closest<HTMLElement>(
@@ -44,12 +44,23 @@ describe('queue rows', () => {
 
     expect(within(first).getByText('P1')).toBeVisible();
     expect(first.querySelector('[data-severity="p1"] svg')).not.toBeNull();
-    expect(within(first).getByText('Open')).toBeVisible();
-    expect(within(first).getByText('Unassigned')).toBeVisible();
-    expect(first).toHaveTextContent('Riley Requester · Example Org');
-    // An initials avatar, never an image.
-    expect(first.querySelector('[data-hue]')).toHaveTextContent('RR');
+    // "Open" and "Unassigned" are the normal case: no words for them on the row.
+    expect(within(first).queryByText('Open')).toBeNull();
+    expect(within(first).queryByText('Unassigned')).toBeNull();
+    // Who wrote in is for screen readers; the sighted row shows an initials avatar for the organisation.
+    expect(first).toHaveTextContent('OPS-1, Riley Requester, Example Org');
+    expect(first.querySelector('[data-hue]')).toHaveTextContent('EO');
     expect(first.querySelector('img')).toBeNull();
+  });
+
+  it('spells out a status only when it is not "open"', async () => {
+    workspaceApi({ tickets: [makeTicket(1, { subject: 'Needs dev', status: 'waiting_on_dev' })] });
+    const { queue } = await openQueue();
+    const row = (await within(queue).findByText('Needs dev')).closest<HTMLElement>(
+      '[role="option"]',
+    );
+    expect(row).not.toBeNull();
+    expect(within(row as HTMLElement).getByText('Waiting on developers')).toBeVisible();
   });
 
   it('has no card: a hairline strip with a selected bar, a new-ticket dot and the channel', async () => {
@@ -87,19 +98,26 @@ describe('queue rows', () => {
     expect(old.className).toContain('bg-primary-subtle');
   });
 
-  it('shows the requester and organisation, the relative time with the exact time on hover', async () => {
+  it('shows the AI summary as the title and the subject only when the AI said nothing', async () => {
     workspaceApi({
-      tickets: [makeTicket(1, { updatedAt: new Date(Date.now() - 3 * 60_000).toISOString() })],
+      tickets: [
+        makeTicket(1, {
+          subject: 'Re: Re: login',
+          ai: { state: 'draft_ready', summary: 'Locked out after a reset' },
+        }),
+        makeTicket(2, { subject: 'Plain subject' }),
+      ],
     });
     const { queue } = await openQueue();
-    const row = (await within(queue).findByText('Subject of ticket 1')).closest<HTMLElement>(
-      '[role="option"]',
-    );
-    if (!row) throw new Error('row missing');
-    expect(row).toHaveTextContent('Riley Requester · Example Org');
-    const time = row.querySelector('time');
-    expect(time).toHaveTextContent('3 minutes ago');
-    expect(time?.getAttribute('title')).toMatch(/2026|2025/);
+    const withAi = (
+      await within(queue).findByText('Locked out after a reset')
+    ).closest<HTMLElement>('[role="option"]');
+    if (!withAi) throw new Error('row missing');
+    expect(within(withAi).queryByText('Re: Re: login')).toBeNull();
+    expect(within(withAi).getByText('Draft ready')).toBeVisible();
+    expect(withAi).toHaveAttribute('data-ai-state', 'draft_ready');
+    // Without an AI summary the subject stands in, muted.
+    expect(within(queue).getByText('Plain subject')).toHaveClass('text-muted-foreground');
   });
 
   it('counts the tickets next to the view name', async () => {
@@ -129,7 +147,7 @@ describe('queue rows', () => {
   it('shows a loading state, then the empty state when there are no tickets', async () => {
     workspaceApi({ tickets: [] });
     await openQueue();
-    expect(await screen.findByText('All caught up — nothing waiting in your queue.')).toBeVisible();
+    expect(await screen.findByText('All caught up.')).toBeVisible();
   });
 
   it('says so, with a retry, when the queue cannot be loaded', async () => {
@@ -182,8 +200,8 @@ describe('J and K navigation', () => {
     await user.keyboard('j');
     expect(screen.getByRole('option', { name: /OPS-1/ })).toHaveAttribute('aria-selected', 'true');
     // The listbox keeps the focus and names the current row.
-    expect(screen.getByRole('listbox', { name: 'Tickets' })).toHaveFocus();
-    expect(screen.getByRole('listbox', { name: 'Tickets' })).toHaveAttribute(
+    expect(screen.getByRole('listbox', { name: 'Needs you' })).toHaveFocus();
+    expect(screen.getByRole('listbox', { name: 'Needs you' })).toHaveAttribute(
       'aria-activedescendant',
       'queue-row-OPS-1',
     );

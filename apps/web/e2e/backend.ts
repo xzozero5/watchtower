@@ -5,6 +5,7 @@ import {
   type RealtimeEvent,
   type Role,
   type SessionInfo,
+  type TicketAiInsight,
   type TicketDetail,
   type TimelineEntry,
 } from '@watchtower/shared';
@@ -42,6 +43,8 @@ export interface BackendOptions {
   session?: SessionInfo | null;
   tickets?: (TicketDetail | ClientTicket)[];
   timelines?: Record<string, TimelineEntry[]>;
+  /** AI briefs by ticket key (GET /v1/tickets/:id/ai). A ticket without one answers 404, as the api does today. */
+  ai?: Record<string, TicketAiInsight>;
   authConfig?: AuthConfig;
   /** HTTP status for /health, or `'down'` for a refused connection. */
   health?: number | 'down';
@@ -131,6 +134,9 @@ export async function mockBackend(page: Page, options: BackendOptions = {}) {
       ? tickets.find((ticket) => ticket.key === ref || ticket.id === ref)
       : undefined;
 
+    const reject = /^\/v1\/tickets\/([^/]+)\/ai\/drafts\/([^/]+)\/reject$/.exec(url.pathname);
+    if (method === 'POST' && reject) return fulfill(route, 204);
+
     if (key === 'GET /v1/auth/config')
       return fulfill(route, 200, options.authConfig ?? LIVE_CONFIG);
     if (key === 'GET /v1/auth/session') {
@@ -142,6 +148,12 @@ export async function mockBackend(page: Page, options: BackendOptions = {}) {
     if (key === 'GET /v1/tickets') return fulfill(route, 200, { items: tickets, nextCursor: null });
     if (method === 'GET' && ticketMatch && !ticketMatch[2]) {
       return found ? fulfill(route, 200, found) : fulfill(route, 404, errorBody(404, 'not_found'));
+    }
+    if (method === 'GET' && ticketMatch?.[2] === '/ai') {
+      const insight = ref ? options.ai?.[ref] : undefined;
+      return insight
+        ? fulfill(route, 200, insight)
+        : fulfill(route, 404, errorBody(404, 'not_found'));
     }
     if (method === 'GET' && ticketMatch?.[2] === '/timeline') {
       const entries = ref

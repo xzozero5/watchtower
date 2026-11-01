@@ -49,11 +49,11 @@ test.describe('three-pane layout', () => {
     await expect(page.getByRole('region', { name: 'Conversation' })).toContainText(
       'Select a ticket',
     );
-    // The right-hand panel opens on Details; the AI tab holds the plain explanation.
+    // The right-hand panel opens on Details until the AI brings evidence.
     const panel = page.getByRole('region', { name: 'Details & AI' });
     await expect(panel).toContainText('Select a ticket to see its details here.');
-    await panel.getByRole('tab', { name: 'AI', exact: true }).click();
-    await expect(panel).toContainText('The AI assistant is not switched on yet');
+    await panel.getByRole('tab', { name: 'Evidence', exact: true }).click();
+    await expect(panel).toContainText('Select a ticket to see its details here.');
   });
 
   test('puts the rail and the panes side by side on a wide screen, with no gaps or cards', async ({
@@ -291,7 +291,7 @@ test.describe('accessibility (axe, WCAG 2.x A/AA)', () => {
       await page.getByRole('radio', { name: 'Internal note' }).click();
       await page.getByRole('textbox', { name: 'Internal note' }).fill('Looking into it');
       await check();
-      await page.getByRole('tab', { name: 'AI', exact: true }).click();
+      await page.getByRole('tab', { name: 'Evidence', exact: true }).click();
       await check();
       await page.getByRole('tab', { name: 'Customer' }).click();
       await check();

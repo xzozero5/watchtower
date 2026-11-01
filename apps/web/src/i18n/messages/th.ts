@@ -1,4 +1,5 @@
 import type { Messages } from './en';
+import { aiTh } from './ai.th';
 import { portalTh } from './portal.th';
 
 /** Thai UI copy. Same keys as en.ts. */
@@ -41,13 +42,13 @@ export const th: Messages = {
   panes: {
     queue: {
       title: 'คิวงาน',
-      emptyTitle: 'ไม่มีงานค้าง — คิวของคุณว่างแล้ว',
-      emptyBody: 'ticket ใหม่จากทุกช่องทางจะแสดงที่นี่ เรียงจากเร่งด่วนที่สุด',
+      emptyTitle: 'ไม่มีงานค้างแล้ว',
+      emptyBody: 'ticket ใหม่จากทุกช่องทางจะแสดงที่นี่',
     },
     conversation: {
       title: 'บทสนทนา',
       emptyTitle: 'เลือก ticket',
-      emptyBody: 'เลือก ticket จากคิวงาน บทสนทนาจะเปิดที่นี่',
+      emptyBody: 'เลือกจากคิวงาน',
     },
     assistant: {
       title: 'รายละเอียดและ AI',
@@ -59,6 +60,12 @@ export const th: Messages = {
     loadMore: 'โหลด ticket เพิ่ม',
     loadingMore: 'กำลังโหลด ticket เพิ่ม',
     unassigned: 'ยังไม่มีผู้รับผิดชอบ',
+    groups: {
+      needsYou: 'รอคุณ',
+      aiWorking: 'AI กำลังทำ',
+      waiting: 'รอการตอบกลับ',
+      done: 'เสร็จแล้ว',
+    },
     newPill: 'ใหม่ {count} รายการ — กด .',
     newPillClick: 'ใหม่ {count} รายการ — คลิกเพื่อแสดง',
     emptyFilteredTitle: 'ไม่มี ticket ที่ตรงกับตัวกรองนี้',
@@ -136,6 +143,7 @@ export const th: Messages = {
     system: 'ระบบ',
     unknownSender: 'ไม่ทราบผู้ส่ง',
     actorAi: 'AI',
+    now: 'ตอนนี้',
     byActor: 'โดย {name}',
     internalHint: 'เห็นได้เฉพาะทีมของคุณ และจะไม่ถูกส่งถึงลูกค้า',
     kinds: {
@@ -296,22 +304,7 @@ export const th: Messages = {
     collapseAssistant: 'ย่อแผงรายละเอียด',
     expandAssistant: 'ขยายแผงรายละเอียด',
   },
-  ai: {
-    title: 'ผู้ช่วย AI ยังไม่เปิดใช้งาน',
-    body: 'จะมาใน Phase 1 เมื่อถึงตอนนั้นแผงนี้จะแสดงรายงานการตรวจสอบ หลักฐาน และร่างคำตอบให้คุณอนุมัติ แก้ไข หรือปฏิเสธ จนกว่าจะถึงตอนนั้น ทุกคำตอบเขียนโดยคน',
-    draftBar: {
-      label: 'การทำงานกับร่างคำตอบจาก AI',
-      hint: 'ยังไม่มีร่างคำตอบให้ดำเนินการ',
-      approve: 'อนุมัติ',
-      edit: 'แก้ไข',
-      reject: 'ปฏิเสธ',
-    },
-    coming: {
-      report: 'รายงานการตรวจสอบพร้อมแหล่งอ้างอิง',
-      evidence: 'การ์ดหลักฐานจาก log ข้อมูล และโค้ด',
-      draft: 'ร่างคำตอบ อนุมัติ แก้ไข หรือปฏิเสธด้วยปุ่ม',
-    },
-  },
+  ai: aiTh,
   live: {
     label: 'การอัปเดตสด',
     open: 'สด',
@@ -338,7 +331,7 @@ export const th: Messages = {
       navigation: 'เลื่อนดู',
       ticket: 'บน ticket',
       general: 'ทุกที่',
-      ai: 'ร่างคำตอบจาก AI (Phase 1)',
+      ai: 'ร่างคำตอบจาก AI',
     },
     next: 'ticket ถัดไป',
     prev: 'ticket ก่อนหน้า',
@@ -361,9 +354,9 @@ export const th: Messages = {
     leave: 'ออกจากช่องกรอกและกลับไปที่คิวงาน',
     palette: 'เปิดแผงคำสั่ง',
     help: 'แสดงรายการนี้',
-    approve: 'อนุมัติร่างคำตอบ',
-    edit: 'แก้ไขร่างคำตอบ',
-    reject: 'ปฏิเสธร่างคำตอบ',
+    approve: 'อนุมัติร่างคำตอบจาก AI (เปิดตัวอย่างก่อน)',
+    edit: 'แก้ไขร่างคำตอบจาก AI',
+    reject: 'ปฏิเสธร่างคำตอบจาก AI',
     rail: 'ย่อหรือขยายเมนูหลัก',
   },
   auth: {
@@ -509,8 +502,8 @@ export const th: Messages = {
   },
   panel: {
     label: 'แผงข้อมูล ticket',
+    evidence: 'หลักฐาน',
     details: 'รายละเอียด',
-    ai: 'AI',
     customer: 'ลูกค้า',
     noTicket: 'เลือก ticket เพื่อดูรายละเอียดที่นี่',
   },

@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { SINGLE_KEY_STORAGE_KEY, resetPreferencesCache } from '@/lib/preferences';
 import { renderWorkspace } from '@/test-utils';
+import { makeInsight } from '@/test/ai-fixtures';
 import { workspaceApi } from '@/test/scenarios';
 
 vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: vi.fn(), replace: vi.fn() }) }));
@@ -65,7 +66,12 @@ async function toggleSingleKey(user: ReturnType<typeof userEvent.setup>) {
   item.focus();
   await user.keyboard('{Enter}');
 }
-const listbox = () => screen.getByRole('listbox', { name: 'Tickets' });
+/** The listbox that holds the keyboard: the board's section with the open ticket (id queue-listbox). */
+const listbox = () => {
+  const found = document.getElementById('queue-listbox');
+  if (!found) throw new Error('no active listbox');
+  return found;
+};
 
 describe('single-key shortcuts preference (WCAG 2.1.4)', () => {
   it('turns every single-character shortcut off, keeps Ctrl+K and the buttons, and is saved', async () => {
@@ -186,7 +192,7 @@ describe('keyboard map by permission', () => {
     for (const label of [
       'Write an internal note',
       'Change the status of the open ticket',
-      'Approve the draft',
+      'Approve the AI draft (opens a preview)',
       'Go to the queue',
     ]) {
       expect(within(dialog).getByText(label)).toBeVisible();
@@ -204,9 +210,9 @@ describe('keyboard map by permission', () => {
     for (const label of [
       'Write an internal note',
       'Change the status of the open ticket',
-      'Approve the draft',
-      'Edit the draft',
-      'Reject the draft',
+      'Approve the AI draft (opens a preview)',
+      'Edit the AI draft',
+      'Reject the AI draft',
       'Collapse or expand the details panel',
     ]) {
       expect(within(dialog).queryByText(label)).not.toBeInTheDocument();
@@ -351,7 +357,7 @@ describe('moving between panes', () => {
     workspaceApi();
     await openWorkspace();
     expect(listbox()).toHaveAttribute('tabindex', '0');
-    const options = within(listbox()).getAllByRole('option');
+    const options = screen.getAllByRole('option');
     expect(options).toHaveLength(3);
     expect(options.every((option) => option.getAttribute('aria-selected') === 'false')).toBe(true);
     expect(listbox()).not.toHaveAttribute('aria-activedescendant');
@@ -578,34 +584,33 @@ describe('under 768 px: one pane at a time', () => {
     expect(tab('Conversation')).toHaveAttribute('aria-selected', 'true');
   });
 
-  it('shows a sticky Approve / Edit / Reject bar with 44 px targets on the ticket tabs only', async () => {
+  it('keeps Approve / Edit / Reject with the draft: sticky at the bottom with 44 px targets', async () => {
     const user = userEvent.setup();
     stubViewport(375);
-    workspaceApi();
+    workspaceApi({ ai: { 'OPS-1': makeInsight() } });
     await openWorkspace();
-    expect(screen.queryByRole('group', { name: 'AI draft actions' })).not.toBeInTheDocument();
+    // There is no separate bar any more, and nothing to act on before a ticket is open.
+    expect(screen.queryByRole('group', { name: 'Draft actions' })).not.toBeInTheDocument();
 
-    await user.click(tab('Details & AI'));
-    const bar = screen.getByRole('group', { name: 'AI draft actions' });
-    expect(bar.className).toContain('sticky');
-    expect(bar.className).toContain('bottom-0');
-    expect(bar.className).toContain('md:hidden');
-    expect(bar).toHaveAccessibleDescription('There is no draft to act on yet.');
+    await user.click(screen.getByRole('option', { name: /OPS-1/ }));
+    const bar = await screen.findByRole('group', { name: 'Draft actions' });
+    expect(bar.className).toContain('max-md:sticky');
+    expect(bar.className).toContain('max-md:bottom-0');
     const buttons = within(bar).getAllByRole('button');
-    expect(buttons.map((button) => button.textContent)).toEqual(['Approve', 'Edit', 'Reject']);
+    expect(buttons.map((button) => button.textContent)).toEqual(['ApproveA', 'EditE', 'RejectR']);
     for (const button of buttons) {
-      expect(button).toBeDisabled();
-      expect(button.className).toContain('min-h-[44px]');
-      expect(button.className).toContain('min-w-[44px]');
+      expect(button.className).toContain('max-md:min-h-[44px]');
+      expect(button.className).toContain('max-md:min-w-[44px]');
     }
 
-    await user.click(tab('Conversation'));
-    expect(screen.getByRole('group', { name: 'AI draft actions' })).toBeInTheDocument();
+    // On the Queue tab the conversation, with its draft, is hidden.
     await user.click(tab('Queue'));
-    expect(screen.queryByRole('group', { name: 'AI draft actions' })).not.toBeInTheDocument();
+    expect(screen.getByRole('region', { name: 'Conversation', hidden: true }).className).toContain(
+      'max-md:hidden',
+    );
   });
 
-  it('a customer gets two tabs and no draft bar', async () => {
+  it('a customer gets two tabs and no draft', async () => {
     const user = userEvent.setup();
     stubViewport(375);
     workspaceApi({ role: 'client' });
@@ -616,7 +621,7 @@ describe('under 768 px: one pane at a time', () => {
         .map((t) => t.textContent),
     ).toEqual(['Queue', 'Conversation']);
     await user.click(tab('Conversation'));
-    expect(screen.queryByRole('group', { name: 'AI draft actions' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('group', { name: 'Draft actions' })).not.toBeInTheDocument();
   });
 
   it('J and K still move through the list without leaving the Queue tab', async () => {

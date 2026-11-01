@@ -14,7 +14,7 @@ export interface KeymapEntry {
   sequence?: boolean;
   labelKey: MessageKey;
   group: KeymapGroup;
-  /** False for a shortcut that is listed but not wired yet (the AI draft actions, Phase 1). */
+  /** False for a shortcut that is listed but not wired yet. */
   available: boolean;
   /**
    * True when `keys` is a single printable character, so the "single-key shortcuts" preference
@@ -236,7 +236,7 @@ export const KEYMAP: readonly KeymapEntry[] = [
     keys: ['A'],
     labelKey: 'keymap.approve',
     group: 'ai',
-    available: false,
+    available: true,
     singleKey: true,
     requires: CAN_REVIEW_AI,
   },
@@ -245,7 +245,7 @@ export const KEYMAP: readonly KeymapEntry[] = [
     keys: ['E'],
     labelKey: 'keymap.edit',
     group: 'ai',
-    available: false,
+    available: true,
     singleKey: true,
     requires: CAN_REVIEW_AI,
   },
@@ -254,7 +254,7 @@ export const KEYMAP: readonly KeymapEntry[] = [
     keys: ['R'],
     labelKey: 'keymap.reject',
     group: 'ai',
-    available: false,
+    available: true,
     singleKey: true,
     requires: CAN_REVIEW_AI,
   },
