@@ -38,7 +38,7 @@ export interface KbWriteResult {
 }
 
 /** sha256 of title and body: an edit that changes neither is not a new version. */
-export function contentHash(title: string, bodyMd: string): string {
+export function kbContentHash(title: string, bodyMd: string): string {
   return createHash('sha256')
     .update(title, 'utf8')
     .update('\u0000')
@@ -176,7 +176,7 @@ export async function createKbArticle(
     title: input.title,
     bodyMd: input.bodyMd,
     changeNote: input.changeNote ?? null,
-    contentHash: contentHash(input.title, input.bodyMd),
+    contentHash: kbContentHash(input.title, input.bodyMd),
     createdBy: ctx.actor.id,
   });
   if (input.visibility === 'orgs') await setOrgs(tx, articleId, input.orgIds);
@@ -231,7 +231,7 @@ export async function updateKbArticle(
 
   const title = patch.title ?? current.title;
   const bodyMd = patch.bodyMd ?? current.bodyMd;
-  const hash = contentHash(title, bodyMd);
+  const hash = kbContentHash(title, bodyMd);
   const contentChanged = hash !== current.contentHash;
 
   const oldOrgs = await orgIdsOf(tx, article.id);
@@ -267,7 +267,11 @@ export async function updateKbArticle(
       { visibility: article.visibility as KbVisibility, orgIds: oldOrgs },
       { visibility, orgIds: orgs },
     );
-  if (wideningLive && ctx.actor.id !== null && (await wroteVersion(tx, article.id, ctx.actor.id))) {
+  // (Editing the text in the same request would make the actor an author too, so it counts.)
+  if (
+    wideningLive &&
+    (ctx.actor.id === null || contentChanged || (await wroteVersion(tx, article.id, ctx.actor.id)))
+  ) {
     throw new DomainError(
       'policy_denied',
       'You wrote this article, so another approver has to show it to more people',
@@ -679,7 +683,7 @@ export async function reviewKbBreakGlass(
     targetId: article.id,
     metadata: {
       publishedBy: article.breakGlassBy,
-      publishedAt: article.breakGlassAt?.toISOString() ?? null,
+      publishedAt: input.breakGlassAt.toISOString(),
     },
   });
   return fx.result({

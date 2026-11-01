@@ -59,8 +59,8 @@ const update = (
   articleId: string,
   patch: Parameters<typeof env.domain.kb.update>[2]['patch'],
   canApprove = false,
-) =>
-  env.tx((tx) => env.domain.kb.update(tx, env.ctx(author.actor), { articleId, patch, canApprove }));
+  by: typeof author = author,
+) => env.tx((tx) => env.domain.kb.update(tx, env.ctx(by.actor), { articleId, patch, canApprove }));
 
 /** The audience of an article as an approver sees it on screen. */
 const audienceOf = async (articleId: string) => {
@@ -75,13 +75,26 @@ const audienceOf = async (articleId: string) => {
   };
 };
 
-/** Publishes the way the web does: the author sends it for review, an approver publishes what they saw. */
-const publish = async (articleId: string, version: number, by = lead) => {
-  if ((await articleRow(articleId)).status === 'draft') {
+/**
+ * Sends the latest version for review, as the web does: a draft becomes `in_review`; a live article
+ * stays live and names the version in `review_version_id`. Nothing happens if it is already so.
+ */
+const sendForReview = async (articleId: string, by = author) => {
+  const row = await articleRow(articleId);
+  const liveNeedsRequest =
+    row.status === 'published' &&
+    row.publishedVersionId !== row.currentVersionId &&
+    row.reviewVersionId !== row.currentVersionId;
+  if (row.status === 'draft' || liveNeedsRequest) {
     await env.tx((tx) =>
-      env.domain.kb.transition(tx, env.ctx(author.actor), { articleId, to: 'in_review' }),
+      env.domain.kb.transition(tx, env.ctx(by.actor), { articleId, to: 'in_review' }),
     );
   }
+};
+
+/** Publishes the way the web does: the author sends it for review, an approver publishes what they saw. */
+const publish = async (articleId: string, version: number, by = lead) => {
+  await sendForReview(articleId);
   const audience = await audienceOf(articleId);
   return env.tx((tx) =>
     env.domain.kb.publish(tx, env.ctx(by.actor), { articleId, version, audience }),
@@ -240,7 +253,8 @@ describe('kb.update', () => {
     expect(denied.details).toMatchObject({ reason: 'kb_audience_requires_approval' });
     expect((await articleRow(made.articleId)).visibility).toBe('internal');
 
-    await update(made.articleId, { visibility: 'customer' }, true);
+    // An approver who did not write the article widens it (the author with kb.approve cannot: see below).
+    await update(made.articleId, { visibility: 'customer' }, true, lead);
     expect((await articleRow(made.articleId)).visibility).toBe('customer');
     // Narrowing needs no approver.
     await update(made.articleId, { visibility: 'orgs', orgIds: [org.id] });
@@ -264,6 +278,59 @@ describe('kb.update', () => {
       await update(made.articleId, { visibility: 'customer' }, true);
       expect((await articleRow(made.articleId)).visibility).toBe('customer');
     }
+  });
+
+  describe('widening a live article (P2-B)', () => {
+    const widenAudit = async (articleId: string) =>
+      (await auditRows(env, 'kb.article.audience_widen')).filter((a) => a.targetId === articleId);
+
+    it('refuses an approver who wrote a version, and lets another approver do it with its own audit action', async () => {
+      const made = await create({ bodyMd: 'live internal text' });
+      await publish(made.articleId, 1);
+      // The author holds kb.approve here, yet wrote version 1.
+      const denied = await refusal(update(made.articleId, { visibility: 'customer' }, true));
+      expect(denied.code).toBe('policy_denied');
+      expect(denied.details).toMatchObject({ reason: 'kb_audience_widen_by_author' });
+      expect((await articleRow(made.articleId)).visibility).toBe('internal');
+      expect(await widenAudit(made.articleId)).toHaveLength(0);
+
+      // The publisher wrote nothing, so they may: audited as audience_widen, not as a plain update.
+      await update(made.articleId, { visibility: 'customer' }, true, lead);
+      expect((await articleRow(made.articleId)).visibility).toBe('customer');
+      const rows = await widenAudit(made.articleId);
+      expect(rows).toHaveLength(1);
+      expect(rows[0]?.actorId).toBe(lead.id);
+      expect(rows[0]?.metadata).toMatchObject({ status: 'published' });
+    });
+
+    it('also refuses an approver who edits the text in the same request, and one who wrote an older version', async () => {
+      const made = await create({ bodyMd: 'live internal text' });
+      await publish(made.articleId, 1);
+      const sameRequest = await refusal(
+        update(made.articleId, { visibility: 'customer', bodyMd: 'and a new line' }, true, lead),
+      );
+      expect(sameRequest.details).toMatchObject({ reason: 'kb_audience_widen_by_author' });
+      expect((await articleRow(made.articleId)).visibility).toBe('internal');
+      // Once the lead has written a version (a plain edit), they are an author too.
+      await update(made.articleId, { bodyMd: 'a tweak by the lead' }, true, lead);
+      const later = await refusal(update(made.articleId, { visibility: 'customer' }, true, lead));
+      expect(later.details).toMatchObject({ reason: 'kb_audience_widen_by_author' });
+      expect(await widenAudit(made.articleId)).toHaveLength(0);
+    });
+
+    it('does not change a draft, narrowing, or a metadata edit that does not widen', async () => {
+      const draft = await create({ bodyMd: 'draft text' });
+      // A draft is not live: an approver who wrote it may still choose its audience; the publisher
+      // is bound to the audience they saw.
+      await update(draft.articleId, { visibility: 'customer' }, true);
+      expect((await articleRow(draft.articleId)).visibility).toBe('customer');
+      expect(await widenAudit(draft.articleId)).toHaveLength(0);
+      const live = await create({ bodyMd: 'live', visibility: 'customer' });
+      await publish(live.articleId, 1);
+      await update(live.articleId, { visibility: 'internal' }, false);
+      await update(live.articleId, { intentTags: ['x'] }, false);
+      expect(await widenAudit(live.articleId)).toHaveLength(0);
+    });
   });
 });
 
@@ -456,6 +523,7 @@ describe('kb.publish: segregation of duties', () => {
       }),
     );
     await update(made.articleId, { bodyMd: 'v3 by author' });
+    await sendForReview(made.articleId);
     const error = await refusal(raw(made.articleId, lead, 3));
     expect(error.details).toMatchObject({ reason: 'kb_publisher_is_author' });
     expect((await raw(made.articleId, second, 3)).value.changed).toBe(true);
@@ -466,7 +534,72 @@ describe('kb.publish: segregation of duties', () => {
     await transition(made.articleId, 'in_review');
     await raw(made.articleId, lead);
     await update(made.articleId, { bodyMd: 'second by author' });
+    await sendForReview(made.articleId);
     expect((await raw(made.articleId, lead, 2)).value.changed).toBe(true);
+  });
+
+  describe('a new version of a live article passes review first (P3-C)', () => {
+    it('refuses a normal publish of a newer version that was never sent for review, and leaves the live text alone', async () => {
+      const made = await create({ bodyMd: 'live' });
+      await publish(made.articleId, 1);
+      const edited = await update(made.articleId, { bodyMd: 'newer' });
+      const error = await refusal(raw(made.articleId, second, 2));
+      expect(error.code).toBe('invalid_transition');
+      const row = await articleRow(made.articleId);
+      expect(row).toMatchObject({ status: 'published', publishedVersionId: made.versionId });
+      expect(row.currentVersionId).toBe(edited.value.versionId);
+    });
+
+    it('keeps the article live while the newer version waits, and publishes it after the request', async () => {
+      const made = await create({ bodyMd: 'live' });
+      await publish(made.articleId, 1);
+      const edited = await update(made.articleId, { bodyMd: 'newer' });
+      const requested = await transition(made.articleId, 'in_review');
+      expect(requested.value.changed).toBe(true);
+      expect(await articleRow(made.articleId)).toMatchObject({
+        status: 'published',
+        publishedVersionId: made.versionId,
+        reviewVersionId: edited.value.versionId,
+      });
+      // Asking twice changes nothing.
+      expect((await transition(made.articleId, 'in_review')).value.changed).toBe(false);
+      // The author of version 2 still cannot publish it; somebody else can.
+      const own = await refusal(raw(made.articleId, author, 2));
+      expect(own.details).toMatchObject({ reason: 'kb_publisher_is_author' });
+      expect((await raw(made.articleId, second, 2)).value.changed).toBe(true);
+      expect(await articleRow(made.articleId)).toMatchObject({
+        status: 'published',
+        publishedVersionId: edited.value.versionId,
+        reviewVersionId: null,
+      });
+    });
+
+    it('treats an edit after the request as not reviewed: the request names one version', async () => {
+      const made = await create({ bodyMd: 'live' });
+      await publish(made.articleId, 1);
+      await update(made.articleId, { bodyMd: 'reviewed text' });
+      await transition(made.articleId, 'in_review');
+      await update(made.articleId, { bodyMd: 'slipped in after the request' });
+      const error = await refusal(raw(made.articleId, second, 3));
+      expect(error.code).toBe('invalid_transition');
+      await transition(made.articleId, 'in_review');
+      expect((await raw(made.articleId, second, 3)).value.changed).toBe(true);
+    });
+
+    it('has nothing to review when the latest version is already live, and a deprecation drops the request', async () => {
+      const made = await create({ bodyMd: 'live' });
+      await publish(made.articleId, 1);
+      expect((await refusal(transition(made.articleId, 'in_review'))).code).toBe(
+        'invalid_transition',
+      );
+      await update(made.articleId, { bodyMd: 'newer' });
+      await transition(made.articleId, 'in_review');
+      await transition(made.articleId, 'deprecated');
+      expect(await articleRow(made.articleId)).toMatchObject({
+        status: 'deprecated',
+        reviewVersionId: null,
+      });
+    });
   });
 
   it('never lets an AI or a system identity publish, nor review a break-glass publication', async () => {
@@ -621,9 +754,13 @@ describe('kb.publishBreakGlass', () => {
   it('is reviewed by another approver, never by the person who used it, and only once', async () => {
     const made = await create();
     await glass(made.articleId, head, 'incident');
+    const seen = (await articleRow(made.articleId)).breakGlassAt ?? new Date(0);
     const review = (by: typeof lead) =>
       env.tx((tx) =>
-        env.domain.kb.reviewBreakGlass(tx, env.ctx(by.actor), { articleId: made.articleId }),
+        env.domain.kb.reviewBreakGlass(tx, env.ctx(by.actor), {
+          articleId: made.articleId,
+          breakGlassAt: seen,
+        }),
       );
     const own = await refusal(review(head));
     expect(own.details).toMatchObject({ reason: 'kb_review_is_publisher' });
@@ -644,13 +781,76 @@ describe('kb.publishBreakGlass', () => {
     ).toHaveLength(1);
   });
 
+  describe('who may review (P2-A, P3-E)', () => {
+    const reviewOf = (articleId: string, by: typeof lead, seen: Date | null) =>
+      env.tx(async (tx) => {
+        const at = seen ?? (await articleRow(articleId)).breakGlassAt ?? new Date(0);
+        return env.domain.kb.reviewBreakGlass(tx, env.ctx(by.actor), {
+          articleId,
+          breakGlassAt: at,
+        });
+      });
+
+    it('refuses a reviewer who wrote the text that went live, and keeps the flag up', async () => {
+      // The author wrote version 1; the head publishes it break-glass; the author must not clear
+      // the review of their own text.
+      const made = await create({ bodyMd: 'urgent text by the author' });
+      await glass(made.articleId, head, 'incident');
+      const own = await refusal(reviewOf(made.articleId, author, null));
+      expect(own.code).toBe('policy_denied');
+      expect(own.details).toMatchObject({ reason: 'kb_reviewer_is_author' });
+      expect(await articleRow(made.articleId)).toMatchObject({
+        breakGlassPending: true,
+        breakGlassReviewedBy: null,
+      });
+      expect((await reviewOf(made.articleId, second, null)).value.changed).toBe(true);
+    });
+
+    it('counts every version from the one after the live one up to the break-glass one', async () => {
+      const made = await create({ bodyMd: 'v1 by the author' });
+      await publish(made.articleId, 1);
+      // second writes v2, lead writes v3 (both unpublished), the head publishes v3 break-glass.
+      await update(made.articleId, { bodyMd: 'v2 by second' }, true, second);
+      await update(made.articleId, { bodyMd: 'v3 by lead' }, true, lead);
+      await glass(made.articleId, head, 'incident', 3);
+      expect(await articleRow(made.articleId)).toMatchObject({ breakGlassPrevVersion: 1 });
+      for (const writer of [second, lead]) {
+        const error = await refusal(reviewOf(made.articleId, writer, null));
+        expect(error.details, writer.id).toMatchObject({ reason: 'kb_reviewer_is_author' });
+      }
+      // The author wrote only version 1, which was live before: they may review.
+      expect((await reviewOf(made.articleId, author, null)).value.changed).toBe(true);
+    });
+
+    it('does not let a stale review clear a newer break-glass publication', async () => {
+      const made = await create({ bodyMd: 'first emergency' });
+      await glass(made.articleId, head, 'first');
+      const seenFirst = (await articleRow(made.articleId)).breakGlassAt ?? new Date(0);
+      // Another approver is looking at the first one while a second one goes live.
+      await update(made.articleId, { bodyMd: 'second emergency' });
+      await new Promise((resolve) => setTimeout(resolve, 15));
+      await glass(made.articleId, head, 'second', 2);
+      const row = await articleRow(made.articleId);
+      expect(row.breakGlassReason).toBe('second');
+      expect(row.breakGlassAt?.getTime()).toBeGreaterThan(seenFirst.getTime());
+
+      const stale = await refusal(reviewOf(made.articleId, second, seenFirst));
+      expect(stale.code).toBe('conflict');
+      expect((await articleRow(made.articleId)).breakGlassPending).toBe(true);
+      expect((await reviewOf(made.articleId, second, row.breakGlassAt)).value.changed).toBe(true);
+      expect((await articleRow(made.articleId)).breakGlassPending).toBe(false);
+    });
+  });
+
   it('cannot be reviewed by a non-person, and a plain article has nothing to review', async () => {
     const made = await create();
     await glass(made.articleId, head, 'incident');
+    const seen = (await articleRow(made.articleId)).breakGlassAt ?? new Date(0);
     const system = refusal(
       env.tx((tx) =>
         env.domain.kb.reviewBreakGlass(tx, env.ctx({ type: 'system', id: null }), {
           articleId: made.articleId,
+          breakGlassAt: seen,
         }),
       ),
     );
@@ -662,6 +862,7 @@ describe('kb.publishBreakGlass', () => {
           env.tx((tx) =>
             env.domain.kb.reviewBreakGlass(tx, env.ctx(second.actor), {
               articleId: plain.articleId,
+              breakGlassAt: new Date(),
             }),
           ),
         )

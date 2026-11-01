@@ -123,7 +123,7 @@ export {
 } from './inbound/types.js';
 export { resolveIntent } from './intents.js';
 export {
-  contentHash,
+  kbContentHash,
   createKbArticle,
   publishKbArticle,
   publishKbArticleBreakGlass,
