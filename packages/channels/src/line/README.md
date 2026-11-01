@@ -111,3 +111,18 @@ redelivered event is identical except `deliveryContext.isRedelivery`, and duplic
   process has no LINE transport.
 - **Identity**: link code (`WT-XXXXX-XXXXX`, 15 min, once) and LINE Login through `LineLoginProvider`. Only the
   fake provider exists; a live one is `[ASK-HUMAN]` (new network destination).
+
+### Known limits (security review of T-103 b-d)
+
+- **One channel secret per instance `[ASSUMED]`.** The credential store keeps one `line` integration (ADR-012), so
+  the webhook secret is the same for every `:channelAccountId`: a body signed for one LINE Official Account is
+  accepted at the URL of another. With a single Official Account (the Phase 1 case) there is nothing to cross.
+  Binding the secret per account needs per-account credential keys in the store (a later task); until then do not
+  register a second LINE account with a different secret.
+- **Order of checks.** The failed-signature limiter is read first (a blocked address costs one Redis read), then the
+  account, then the secret, then the HMAC. Only failures count, so LINE itself is never throttled.
+- **Fake LINE Login** is off unless `LINE_LOGIN_FAKE_ENABLED=true`, which the config guard refuses in production, with
+  LINE Login credentials set, or off a loopback `APP_URL`.
+- **LINE identity verification** is kept apart from the contact's own `verified_at`: a staff-issued code links the LINE
+  user but leaves `line_verified_at` empty (`line_linked_via = staff_code`); LINE Login from the portal session sets it.
+  A code sent only to the contact's verified email (R-2.11 c, `email_code`) is not built yet: T-103e.
