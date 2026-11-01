@@ -676,7 +676,7 @@ describe('navigation rail', () => {
     expect(tip).toHaveTextContent('K');
   });
 
-  it('links the shift screens for staff, keeps notifications disabled, and shows nothing for a customer', async () => {
+  it('links the shift screens and notifications for staff, and shows nothing for a customer', async () => {
     workspaceApi();
     const view = await openWorkspace();
     const nav = screen.getByRole('navigation', { name: 'Main navigation' });
@@ -693,7 +693,8 @@ describe('navigation rail', () => {
       '/shift/handoff',
     );
     expect(within(nav).getByRole('link', { name: 'My shift' })).toHaveAttribute('href', '/shift');
-    expect(within(nav).getByRole('button', { name: 'Notifications' })).toHaveAttribute(
+    // The notification center (T-105) is live now.
+    expect(within(nav).getByRole('button', { name: /Notifications/ })).not.toHaveAttribute(
       'aria-disabled',
       'true',
     );
