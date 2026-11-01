@@ -13,6 +13,7 @@ import { RateLimiter } from '../auth/rate-limiter.js';
 import { APP_CONFIG, type ApiConfig } from '../config/config.js';
 import { CREDENTIAL_STORE } from '../credentials/credentials.service.js';
 import { DATABASE } from '../database/database.module.js';
+import { translating } from '../domain/domain-errors.js';
 import { DOMAIN } from '../domain/domain.module.js';
 import {
   PushAuthError,
@@ -153,15 +154,15 @@ export class AlertIngestService {
     return secret === '' ? null : secret;
   }
 
-  /** `POST /v1/inbound/alerts/webhook`: an Alertmanager-compatible payload signed with HMAC-SHA256. */
-  async acceptWebhook(input: {
-    readonly rawBody: Buffer | undefined;
-    readonly signature: string | undefined;
-    readonly ip: string | null;
-    /** Epoch milliseconds, injected by tests; the process clock otherwise. */
-    readonly nowMs?: number;
-  }): Promise<AlertIngestResult> {
-    await this.rateLimit(input.ip);
+  /**
+   * Authenticates a signed body with the alerting secret (shared by the alert webhook and the heartbeat
+   * route). Throws 401 with one answer for "no secret", "bad header", "wrong signature" and "too old":
+   * a caller learns nothing about which. The verdict (a code) goes to the log, never the header or body.
+   */
+  private async authenticateSigned(
+    route: string,
+    input: { rawBody: Buffer | undefined; signature: string | undefined; nowMs?: number },
+  ): Promise<Buffer> {
     const secret = await this.webhookSecret();
     const verdict =
       secret === null || input.rawBody === undefined
@@ -173,15 +174,25 @@ export class AlertIngestService {
             nowMs: input.nowMs ?? Date.now(),
           });
     if (verdict !== 'ok' || input.rawBody === undefined) {
-      // One answer for "no secret", "bad header", "wrong signature" and "too old": a caller learns
-      // nothing about which. The verdict (a code) goes to the log, never the header or the body.
-      if (secret === null)
-        this.logger.warn('alerts webhook: received but no signing secret is set');
-      else this.logger.warn({ verdict }, 'alerts webhook: signature rejected');
+      if (secret === null) this.logger.warn(route + ': received but no signing secret is set');
+      else this.logger.warn({ verdict }, route + ': signature rejected');
       throw unauthenticated('The request signature is missing or does not match');
     }
+    return input.rawBody;
+  }
 
-    const batch = alerts.normalizeAlertmanager(input.rawBody.toString('utf8'));
+  /** `POST /v1/inbound/alerts/webhook`: an Alertmanager-compatible payload signed with HMAC-SHA256. */
+  async acceptWebhook(input: {
+    readonly rawBody: Buffer | undefined;
+    readonly signature: string | undefined;
+    readonly ip: string | null;
+    /** Epoch milliseconds, injected by tests; the process clock otherwise. */
+    readonly nowMs?: number;
+  }): Promise<AlertIngestResult> {
+    await this.rateLimit(input.ip);
+    const rawBody = await this.authenticateSigned('alerts webhook', input);
+
+    const batch = alerts.normalizeAlertmanager(rawBody.toString('utf8'));
     if (typeof batch === 'string') {
       throw badRequest('The body is not an Alertmanager webhook payload');
     }
@@ -195,5 +206,31 @@ export class AlertIngestService {
       outcomes.push((await this.ingestOne(result.alert, input.ip)).kind);
     }
     return tally(outcomes, ignored);
+  }
+
+  /**
+   * `POST /v1/inbound/heartbeats/:slug`: a heartbeat signal (R-3.10), signed like the alert webhook. The
+   * body is not read beyond the signature (send `{}`). An unknown slug is 404 only after the signature
+   * checked out, so the route does not tell an anonymous caller which heartbeats exist.
+   */
+  async acceptHeartbeat(input: {
+    readonly slug: string;
+    readonly rawBody: Buffer | undefined;
+    readonly signature: string | undefined;
+    readonly ip: string | null;
+    readonly nowMs?: number;
+  }): Promise<{ recovered: boolean }> {
+    await this.rateLimit(input.ip);
+    await this.authenticateSigned('heartbeat', input);
+    const ctx = this.domain.context({
+      actor: { type: 'system', id: null },
+      auditMeta: { ip: input.ip, requestId: null },
+    });
+    return translating(async () => {
+      const result = await this.database.db.transaction((tx) =>
+        this.domain.alerts.recordHeartbeat(tx, ctx, { slug: input.slug }),
+      );
+      return result.value;
+    });
   }
 }

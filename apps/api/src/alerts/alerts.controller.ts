@@ -1,4 +1,4 @@
-import { Controller, Get, HttpCode, Inject, Param, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Inject, Param, Post, Query } from '@nestjs/common';
 import { ApiNotFoundResponse, ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
 import {
   alertAckResultSchema,
@@ -7,9 +7,16 @@ import {
   alertIdParamSchema,
   alertListQuerySchema,
   alertListSchema,
+  alertSnoozeResultSchema,
+  correlationGroupListSchema,
+  noiseQuerySchema,
+  noiseReportSchema,
+  snoozeAlertSchema,
   unmappedAlertsSchema,
   type AlertIdParam,
   type AlertListQuery,
+  type NoiseQuery,
+  type SnoozeAlert,
 } from '@watchtower/shared';
 
 import { CurrentPrincipal, RequirePermission, type Principal } from '../auth/decorators.js';
@@ -53,6 +60,32 @@ export class AlertsController {
   @ApiOkResponse({ standardSchema: unmappedAlertsSchema })
   async unmapped() {
     return parseResponse(unmappedAlertsSchema, await this.reader.unmapped());
+  }
+
+  @Get('correlations')
+  @ApiOperation({
+    summary: 'Groups of related alerts: proposals for an incident (R-3.6)',
+    description:
+      'Alerts the correlation rules grouped (see /v1/correlation-rules). A group is only a proposal: no ' +
+      'incident is created for it. Newest activity first, at most 100.',
+  })
+  @ApiOkResponse({ standardSchema: correlationGroupListSchema })
+  async correlations() {
+    return parseResponse(correlationGroupListSchema, { items: await this.reader.correlations() });
+  }
+
+  @Get('noise')
+  @ApiOperation({
+    summary: 'Noise metrics per alert rule (R-3.11)',
+    description:
+      'Per rule (source and title) over the last `days` (default 7, database clock): alerts, fires, ' +
+      'how many were actionable (acknowledged or part of an incident), how many resolved by themselves ' +
+      'with neither (noise) and how many are still open. `actionableRatio` is actionable over ' +
+      '(actionable + noise), null when nothing was judged. Noisiest first.',
+  })
+  @ApiOkResponse({ standardSchema: noiseReportSchema })
+  async noise(@Query({ schema: noiseQuerySchema }) query: NoiseQuery) {
+    return parseResponse(noiseReportSchema, await this.reader.noise(query));
   }
 
   @Get(':id')
@@ -102,6 +135,56 @@ export class AlertsController {
       this.actions.ack(uow, { type: 'user', id: principal.userId }, params.id, 'web'),
     );
     return parseResponse(alertAckResultSchema, {
+      changed,
+      alert: await this.reader.getOne(params.id),
+    });
+  }
+
+  @Post(':id/snooze')
+  @HttpCode(200)
+  @RequirePermission('alert.manage')
+  @ApiOperation({
+    summary: 'Snooze an alert with an expiry and a reason (R-3.9)',
+    description:
+      'Pauses the escalation for `minutes` (1 to 7 days) counted from now on the server clock; the ' +
+      'reason is mandatory. When it ends the escalation resumes with the time it had left. The alert keeps ' +
+      'counting fires. Snoozing again replaces the expiry. A resolved alert cannot be snoozed (409). The ' +
+      'snoozed alerts are listed by `GET /v1/alerts?snoozed=true` for the shift handoff.',
+  })
+  @ApiOkResponse({ standardSchema: alertSnoozeResultSchema })
+  @ApiNotFoundResponse({ description: 'No such alert' })
+  async snooze(
+    @Param({ schema: alertIdParamSchema }) params: AlertIdParam,
+    @Body({ schema: snoozeAlertSchema }) body: SnoozeAlert,
+    @CurrentPrincipal() principal: Principal,
+  ) {
+    const { changed } = await this.uow.run((uow) =>
+      this.actions.snooze(uow, { type: 'user', id: principal.userId }, params.id, body),
+    );
+    return parseResponse(alertSnoozeResultSchema, {
+      changed,
+      alert: await this.reader.getOne(params.id),
+    });
+  }
+
+  @Post(':id/unsnooze')
+  @HttpCode(200)
+  @RequirePermission('alert.manage')
+  @ApiOperation({
+    summary: 'Lift a snooze now',
+    description:
+      'The escalation resumes with the time it had left. `changed` is false if it was not snoozed.',
+  })
+  @ApiOkResponse({ standardSchema: alertSnoozeResultSchema })
+  @ApiNotFoundResponse({ description: 'No such alert' })
+  async unsnooze(
+    @Param({ schema: alertIdParamSchema }) params: AlertIdParam,
+    @CurrentPrincipal() principal: Principal,
+  ) {
+    const { changed } = await this.uow.run((uow) =>
+      this.actions.unsnooze(uow, { type: 'user', id: principal.userId }, params.id),
+    );
+    return parseResponse(alertSnoozeResultSchema, {
       changed,
       alert: await this.reader.getOne(params.id),
     });

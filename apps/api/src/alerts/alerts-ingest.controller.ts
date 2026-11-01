@@ -4,6 +4,7 @@ import {
   Headers,
   HttpCode,
   Inject,
+  Param,
   Post,
   Req,
   type RawBodyRequest,
@@ -11,6 +12,7 @@ import {
 import {
   ApiBadRequestResponse,
   ApiHeader,
+  ApiNotFoundResponse,
   ApiOkResponse,
   ApiOperation,
   ApiServiceUnavailableResponse,
@@ -18,7 +20,13 @@ import {
   ApiTooManyRequestsResponse,
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
-import { ALERT_WEBHOOK_SIGNATURE_HEADER, alertIngestResultSchema } from '@watchtower/shared';
+import {
+  ALERT_WEBHOOK_SIGNATURE_HEADER,
+  alertIngestResultSchema,
+  heartbeatBeatResultSchema,
+  heartbeatSlugParamSchema,
+  type HeartbeatSlugParam,
+} from '@watchtower/shared';
 import type { Request } from 'express';
 
 import { Public } from '../auth/decorators.js';
@@ -90,5 +98,45 @@ export class AlertsIngestController {
       ip: request.ip ?? null,
     });
     return parseResponse(alertIngestResultSchema, result);
+  }
+}
+
+/**
+ * Where a heartbeat signal comes in (R-3.10, T-201e). Public in the route policy: the sender has no
+ * session and authenticates with the same HMAC signature as the alert webhook.
+ */
+@ApiTags('alerts')
+@Controller('v1/inbound/heartbeats')
+export class HeartbeatBeatController {
+  constructor(@Inject(AlertIngestService) private readonly ingest: AlertIngestService) {}
+
+  @Post(':slug')
+  @Public()
+  @HttpCode(200)
+  @ApiOperation({
+    summary: 'A heartbeat signal',
+    description:
+      'Public, authenticated by the X-Watchtower-Signature header exactly as the alert ' +
+      'webhook (HMAC-SHA256 of "<t>." + raw body; send a JSON body such as {}). Stamps the heartbeat with ' +
+      'the database clock; if it was missing, it is ok again and its alert is resolved (recovered: true). ' +
+      '401 for a bad or missing signature, 404 for a slug that does not exist, 429 over the per-IP limit.',
+  })
+  @ApiHeader({ name: ALERT_WEBHOOK_SIGNATURE_HEADER, required: true })
+  @ApiOkResponse({ standardSchema: heartbeatBeatResultSchema })
+  @ApiUnauthorizedResponse({ description: 'No secret set, or the signature is missing or wrong' })
+  @ApiNotFoundResponse({ description: 'No such heartbeat' })
+  @ApiTooManyRequestsResponse({ description: 'Per-IP rate limit' })
+  async beat(
+    @Param({ schema: heartbeatSlugParamSchema }) params: HeartbeatSlugParam,
+    @Headers(ALERT_WEBHOOK_SIGNATURE_HEADER) signature: string | undefined,
+    @Req() request: RawBodyRequest<Request>,
+  ) {
+    const result = await this.ingest.acceptHeartbeat({
+      slug: params.slug,
+      rawBody: request.rawBody,
+      signature,
+      ip: request.ip ?? null,
+    });
+    return parseResponse(heartbeatBeatResultSchema, result);
   }
 }

@@ -9,4 +9,6 @@ export const ALERTS_PUBLIC_ROUTES: readonly string[] = [
   'POST /v1/inbound/alerts/gcp',
   // Alertmanager-compatible webhook: authenticated by the HMAC signature over the raw body (T-201c).
   'POST /v1/inbound/alerts/webhook',
+  // Heartbeat signal: same HMAC signature as the webhook, checked before the slug is looked up (T-201e).
+  'POST /v1/inbound/heartbeats/:slug',
 ];

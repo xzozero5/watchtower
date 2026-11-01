@@ -13,8 +13,11 @@ import {
   type AlertSeverity,
   type AlertSource,
   type AlertState,
+  type CorrelationGroup,
+  type NoiseQuery,
+  type NoiseReport,
 } from '@watchtower/shared';
-import { and, asc, desc, eq, isNull, sql, type SQL } from 'drizzle-orm';
+import { and, asc, desc, eq, isNotNull, isNull, ne, sql, type SQL } from 'drizzle-orm';
 
 import { notFound } from '../auth/http-errors.js';
 import { beforeCursor, decodeCursor, preciseTimestamp, toPage } from '../common/keyset.js';
@@ -41,6 +44,9 @@ export function toAlert(row: AlertRow): Alert {
     ackedVia: row.ackedVia as AlertAckVia | null,
     escalationLevel: row.escalationLevel,
     nextEscalationAt: row.nextEscalationAt?.toISOString() ?? null,
+    snoozedUntil: row.snoozedUntil?.toISOString() ?? null,
+    snoozeReason: row.snoozeReason,
+    correlationId: row.correlationId,
     incidentId: row.incidentId,
     payload: row.payload as Record<string, unknown>,
   };
@@ -61,6 +67,10 @@ export class AlertsReader {
       query.source === undefined ? undefined : eq(alert.source, query.source),
       query.serviceId === undefined ? undefined : eq(alert.serviceId, query.serviceId),
       query.unmapped === true ? isNull(alert.serviceId) : undefined,
+      // Snoozed now: a snooze that is set and not yet lifted (the sweep lifts an expired one within seconds).
+      query.snoozed === true
+        ? and(isNotNull(alert.snoozedUntil), ne(alert.state, 'resolved'))
+        : undefined,
       query.cursor === undefined
         ? undefined
         : beforeCursor(alert.lastSeenAt, alert.id, decodeCursor(query.cursor)),
@@ -165,6 +175,92 @@ export class AlertsReader {
         openAlerts: row.openAlerts,
         lastSeenAt: new Date(row.lastSeenAt).toISOString(),
       })),
+    };
+  }
+
+  /**
+   * Groups of related alerts (R-3.6): the proposals for an incident. Newest activity first; a group
+   * that already has an incident is listed with it.
+   */
+  async correlations(): Promise<CorrelationGroup[]> {
+    const alert = schema.alert;
+    const rows = await this.database.db
+      .select({
+        correlationId: alert.correlationId,
+        serviceId: sql<string | null>`(array_agg(DISTINCT ${alert.serviceId}))[1]`,
+        alerts: sql<number>`count(*)::int`,
+        openAlerts: sql<number>`count(*) FILTER (WHERE ${alert.state} <> 'resolved')::int`,
+        severity: sql<AlertSeverity>`(array_agg(${alert.severity} ORDER BY CASE ${alert.severity} WHEN 'critical' THEN 4 WHEN 'error' THEN 3 WHEN 'warning' THEN 2 WHEN 'info' THEN 1 ELSE 0 END DESC))[1]`,
+        firstSeenAt: sql<Date>`min(${alert.firstSeenAt})`,
+        lastSeenAt: sql<Date>`max(${alert.lastSeenAt})`,
+        incidentId: sql<
+          string | null
+        >`(array_agg(${alert.incidentId}) FILTER (WHERE ${alert.incidentId} IS NOT NULL))[1]`,
+      })
+      .from(alert)
+      .where(isNotNull(alert.correlationId))
+      .groupBy(alert.correlationId)
+      .orderBy(desc(sql`max(${alert.lastSeenAt})`))
+      .limit(100);
+    return rows.flatMap((row) =>
+      row.correlationId === null
+        ? []
+        : [
+            {
+              correlationId: row.correlationId,
+              serviceId: row.serviceId,
+              alerts: row.alerts,
+              openAlerts: row.openAlerts,
+              severity: row.severity,
+              firstSeenAt: new Date(row.firstSeenAt).toISOString(),
+              lastSeenAt: new Date(row.lastSeenAt).toISOString(),
+              incidentId: row.incidentId,
+            },
+          ],
+    );
+  }
+
+  /**
+   * Noise metrics (R-3.11): per rule (source and title), over the last `days`, measured on the database
+   * clock. Actionable = acknowledged by a person or part of an incident; noise = resolved by itself with
+   * neither; still-open alerts are not judged. Noisiest first.
+   */
+  async noise(query: NoiseQuery): Promise<NoiseReport> {
+    const alert = schema.alert;
+    const acted = sql`(${alert.ackedAt} IS NOT NULL OR ${alert.incidentId} IS NOT NULL)`;
+    const rows = await this.database.db
+      .select({
+        source: alert.source,
+        title: alert.title,
+        alerts: sql<number>`count(*)::int`,
+        occurrences: sql<number>`coalesce(sum(${alert.count}), 0)::int`,
+        actionable: sql<number>`count(*) FILTER (WHERE ${acted})::int`,
+        noise: sql<number>`count(*) FILTER (WHERE NOT ${acted} AND ${alert.state} = 'resolved')::int`,
+        stillOpen: sql<number>`count(*) FILTER (WHERE NOT ${acted} AND ${alert.state} <> 'resolved')::int`,
+      })
+      .from(alert)
+      .where(sql`${alert.firstSeenAt} > clock_timestamp() - make_interval(days => ${query.days})`)
+      .groupBy(alert.source, alert.title)
+      .orderBy(
+        desc(sql`count(*) FILTER (WHERE NOT ${acted} AND ${alert.state} = 'resolved')`),
+        asc(alert.title),
+      )
+      .limit(query.limit);
+    return {
+      windowDays: query.days,
+      items: rows.map((row) => {
+        const judged = row.actionable + row.noise;
+        return {
+          source: row.source as AlertSource,
+          title: row.title,
+          alerts: row.alerts,
+          occurrences: row.occurrences,
+          actionable: row.actionable,
+          noise: row.noise,
+          stillOpen: row.stillOpen,
+          actionableRatio: judged === 0 ? null : row.actionable / judged,
+        };
+      }),
     };
   }
 }

@@ -3,11 +3,13 @@ import { Module } from '@nestjs/common';
 import { APP_CONFIG, type ApiConfig } from '../config/config.js';
 import { CredentialsModule } from '../credentials/credentials.module.js';
 import { createGoogleKeySet, createOidcPushVerifier } from '../gmail/push-verifier.js';
-import { AlertsIngestController } from './alerts-ingest.controller.js';
+import { AlertsIngestController, HeartbeatBeatController } from './alerts-ingest.controller.js';
 import { ALERT_PUSH_VERIFIER, AlertIngestService } from './alerts-ingest.service.js';
 import { AlertsActions } from './alerts-actions.service.js';
 import { AlertsReader } from './alerts-reader.service.js';
 import { AlertsController } from './alerts.controller.js';
+import { CorrelationRulesController, HeartbeatsController } from './hygiene.controller.js';
+import { AlertsHygiene } from './hygiene.service.js';
 import { EscalationPoliciesController, ServicesController } from './catalog.controller.js';
 import { AlertsCatalog } from './catalog.service.js';
 
@@ -26,9 +28,12 @@ import { AlertsCatalog } from './catalog.service.js';
   imports: [CredentialsModule],
   controllers: [
     AlertsIngestController,
+    HeartbeatBeatController,
     AlertsController,
     ServicesController,
     EscalationPoliciesController,
+    HeartbeatsController,
+    CorrelationRulesController,
   ],
   providers: [
     {
@@ -47,6 +52,7 @@ import { AlertsCatalog } from './catalog.service.js';
     AlertsReader,
     AlertsActions,
     AlertsCatalog,
+    AlertsHygiene,
   ],
 })
 export class AlertsModule {}

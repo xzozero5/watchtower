@@ -1,6 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
 import type { Actor } from '@watchtower/domain';
-import type { AlertAckVia } from '@watchtower/shared';
+import type { AlertAckVia, SnoozeAlert } from '@watchtower/shared';
 
 import { domainContext, settle } from '../domain/domain-context.js';
 import { translating } from '../domain/domain-errors.js';
@@ -31,6 +31,35 @@ export class AlertsActions {
       settle(
         uow,
         await this.domain.alerts.ack(uow.tx, domainContext(this.domain, actor), { alertId, via }),
+      ),
+    );
+  }
+
+  /** Snoozes `alertId` for `minutes` (database clock) with a reason (R-3.9). */
+  async snooze(
+    uow: UnitOfWork,
+    actor: Actor,
+    alertId: string,
+    input: SnoozeAlert,
+  ): Promise<{ changed: boolean }> {
+    return translating(async () =>
+      settle(
+        uow,
+        await this.domain.alerts.snooze(uow.tx, domainContext(this.domain, actor), {
+          alertId,
+          minutes: input.minutes,
+          reason: input.reason,
+        }),
+      ),
+    );
+  }
+
+  /** Lifts a snooze by hand; the escalation resumes with the time it had left. */
+  async unsnooze(uow: UnitOfWork, actor: Actor, alertId: string): Promise<{ changed: boolean }> {
+    return translating(async () =>
+      settle(
+        uow,
+        await this.domain.alerts.unsnooze(uow.tx, domainContext(this.domain, actor), { alertId }),
       ),
     );
   }
