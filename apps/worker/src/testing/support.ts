@@ -24,6 +24,8 @@ export function testEnv(
     SMTP_HOST: 'localhost',
     SMTP_PORT: '1025',
     WORKER_PORT: '4100',
+    // The tests run on the in-memory Gmail (T-102); it is an explicit opt-in.
+    GMAIL_MOCK_ENABLED: 'true',
     ...overrides,
   };
 }

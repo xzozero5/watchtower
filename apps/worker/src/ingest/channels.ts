@@ -80,7 +80,9 @@ export interface GmailIngestorOptions {
   /** The instance's ticket key prefix (`TICKET_KEY_PREFIX`) for `[OPS-n]` subject tokens. */
   readonly ticketKeyPrefix: string;
   /** The transport of one mailbox; undefined = this process has no way to reach it (no credentials). */
-  readonly transportFor?: (account: IngestAccount) => gmail.GmailTransport | undefined;
+  readonly transportFor?: (
+    account: IngestAccount,
+  ) => gmail.GmailTransport | undefined | Promise<gmail.GmailTransport | undefined>;
   readonly allowEmbedded: boolean;
 }
 
@@ -140,7 +142,7 @@ export function createGmailIngestor(options: GmailIngestorOptions): ChannelInges
         // The fake numbers its messages from 1 in every process: the id must come from the event.
         providerMessageId = embedded.data.id ?? source.providerEventId;
       } else if (fetched.success) {
-        const real = options.transportFor?.(account);
+        const real = await options.transportFor?.(account);
         if (real === undefined) throw new PermanentIngestError('gmail_transport_unavailable');
         transport = real;
         messageId = fetched.data.messageId;

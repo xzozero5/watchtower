@@ -1,5 +1,6 @@
 import {
   CLEANUP_JOBS,
+  GMAIL_JOBS,
   LINE_JOBS,
   MAINTENANCE_JOBS,
   OUTBOUND_JOBS,
@@ -71,6 +72,34 @@ export const SCHEDULES: readonly ScheduleRegistration[] = [
   },
 
   // --- gmail (T-102): watch renewal, heartbeat ---
+  {
+    queue: QUEUE_NAMES.gmail,
+    id: GMAIL_JOBS.renewWatch,
+    // `users.watch` once a day at 02:15 UTC (09:15 Bangkok, before the working day is under way);
+    // the watch lasts 7 days, so one failure leaves several retries (R-2.1). Also once at start, so a
+    // fresh install does not wait a day. A failing renewal is retried with backoff.
+    repeat: { pattern: '15 2 * * *', tz: 'UTC' },
+    job: {
+      name: GMAIL_JOBS.renewWatch,
+      opts: {
+        attempts: 4,
+        backoff: { type: 'exponential', delay: 60_000 },
+        removeOnComplete: true,
+        removeOnFail: { age: 7 * 24 * 3600 },
+      },
+    },
+    runAtBoot: true,
+  },
+  {
+    queue: QUEUE_NAMES.gmail,
+    id: GMAIL_JOBS.heartbeat,
+    // R-2.8: is push still arriving? Cheap (one query per mailbox), so every 10 minutes.
+    repeat: { every: 10 * 60_000 },
+    job: {
+      name: GMAIL_JOBS.heartbeat,
+      opts: { removeOnComplete: true, removeOnFail: { age: 24 * 3600 } },
+    },
+  },
 
   // --- line (T-103) ---
   {

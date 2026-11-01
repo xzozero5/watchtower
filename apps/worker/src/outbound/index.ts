@@ -44,14 +44,18 @@ export function createOutboundDispatcherFor(context: ProcessorContext) {
 }
 
 /**
- * Without an override, LINE is reachable exactly where the deployment supplied a LINE transport
- * (T-103); Gmail is not wired yet.
+ * Without an override, Gmail goes through the worker's mailbox runtime (T-102d) and LINE is reachable
+ * exactly where the deployment supplied a LINE transport (T-103).
  */
 function defaultChannels(context: ProcessorContext): OutboundChannels {
-  const transportFor = context.overrides.line?.transportFor;
-  if (transportFor === undefined) return NO_CHANNELS;
-  return {
+  const channels: OutboundChannels = {
     ...NO_CHANNELS,
+    gmail: (account) => context.gmail.senderFor(account),
+  };
+  const transportFor = context.overrides.line?.transportFor;
+  if (transportFor === undefined) return channels;
+  return {
+    ...channels,
     ...lineChannelsFrom(transportFor, (transport) => {
       // The channel secret is for verifying webhooks, which the api does; sending never asks for it.
       const adapter = new line.LineAdapter({

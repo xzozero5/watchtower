@@ -28,7 +28,7 @@ import { eq } from 'drizzle-orm';
 
 import type { WorkerLogger } from '../logger.js';
 import type { RealtimeSink } from '../realtime.js';
-import type { OutboundChannels } from './channels.js';
+import type { GmailSender, OutboundChannels } from './channels.js';
 
 /**
  * The dispatcher (ADR-010 section 3): takes one due `outbound_delivery`, re-checks that the send is
@@ -89,8 +89,11 @@ function factsOf(error: unknown, dispatched: boolean): FailureFacts {
     return {
       kind: error.kind,
       retryable: error.retryable,
-      // An answer we cannot read may follow a send that worked.
-      outcomeUnknown: error.outcomeUnknown || error.kind === 'invalid_response',
+      // An answer we cannot read may follow a send that worked. The token comes before any send, so
+      // a failure to get one is a certain non-delivery, however it failed.
+      outcomeUnknown:
+        error.operation !== 'oauth2.token' &&
+        (error.outcomeUnknown || error.kind === 'invalid_response'),
       retryAfterMs: error.retryAfterMs,
     };
   }
@@ -278,7 +281,26 @@ export function createOutboundDispatcher(deps: DispatcherDeps) {
     delivery: OutboundDeliveryRow,
     context: DeliveryContext,
   ): Promise<DispatchOutcome> {
-    const sender = deps.channels.gmail(context.account);
+    let sender: GmailSender | undefined;
+    try {
+      sender = await deps.channels.gmail(context.account);
+    } catch (error) {
+      // The credentials could not be read (store down). Nothing was dispatched, so this is a
+      // certain non-delivery: back off and try again, and after DELIVERY_MAX_ATTEMPTS fail it where
+      // the agent sees it (`channel_credentials_unavailable`) instead of leaving it in "sending".
+      logger.warn({ err: error, deliveryId: delivery.id }, 'gmail sender unavailable');
+      return conclude(
+        delivery,
+        decideFailure(
+          {
+            kind: 'credentials_unavailable',
+            retryable: error instanceof ChannelError ? error.retryable : true,
+            outcomeUnknown: false,
+          },
+          { route: null, attempts: delivery.attempts },
+        ),
+      );
+    }
     if (sender === undefined) return failNow(delivery, 'channel_not_connected');
     const { ticket, message, parent, requester } = context;
     const recipient = parent?.fromAddress ?? requester?.emails[0] ?? null;
