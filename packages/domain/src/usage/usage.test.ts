@@ -222,6 +222,10 @@ describe('reading the answer of a template', () => {
     expect(cleanDimValue('see alice@example.test please', redact)).toBe('[redacted]');
     expect(cleanDimValue(null, redact)).toBe('');
     expect(cleanDimValue('x'.repeat(500), redact)).toHaveLength(100);
+    // An email that straddles the cut is found, because the whole value is redacted before it is cut.
+    const straddling = `${'x'.repeat(90)}victim@example.test`;
+    expect(cleanDimValue(straddling, redact)).toBe('[redacted]');
+    expect(cleanDimValue('y'.repeat(5000), redact)).toBe('[redacted]');
     const outcome = parse(
       {
         columns: ['ts', 'value', 'org', 'flow'],
@@ -248,7 +252,7 @@ describe('metric templates', () => {
       metricTemplateProblem(
         '-- A drop is the problem; update daily\n/* $9 */\nSELECT 1 WHERE $1 < $2',
       ),
-    ).toBe('Only one statement is allowed');
+    ).toBeNull();
     expect(
       metricTemplateProblem(
         '-- A drop is the problem, update daily\n/* note */\nSELECT 1 WHERE $1 < $2',
@@ -260,6 +264,21 @@ describe('metric templates', () => {
     expect(metricTemplateProblem('DELETE FROM x WHERE a >= $1 AND b < $2')).not.toBeNull();
     expect(metricTemplateProblem('SELECT 1 WHERE $1 < $2; DROP TABLE x')).not.toBeNull();
     expect(metricTemplateProblem('SELECT 1 WHERE $1 < $2 AND (SELECT 1) = 1 -- ok')).toBeNull();
+    // A "--" inside a string is not a comment: what follows on the line is still code.
+    expect(
+      metricTemplateProblem(
+        "SELECT 1 WHERE $1 < $2 AND a = '--' OR EXISTS (WITH d AS (DELETE FROM t RETURNING 1) SELECT 1 FROM d)",
+      ),
+    ).toBe('The template contains a statement that writes');
+    expect(metricTemplateProblem("SELECT '--' WHERE $1 < $2\n; DROP TABLE x")).toBe(
+      'Only one statement is allowed',
+    );
+    expect(metricTemplateProblem("SELECT 'it''s; fine' WHERE $1 < $2")).toBeNull();
+    // Quotes and notes that cannot be read with confidence, and dollar quoting, are refused.
+    expect(metricTemplateProblem("SELECT 'open WHERE $1 < $2")).not.toBeNull();
+    expect(metricTemplateProblem('SELECT 1 /* open WHERE $1 < $2')).not.toBeNull();
+    expect(metricTemplateProblem(String.raw`SELECT E'\'' WHERE $1 < $2`)).not.toBeNull();
+    expect(metricTemplateProblem('SELECT $x$ text $x$ WHERE $1 < $2')).not.toBeNull();
     expect(metricTemplateProblem('SELECT 1 FROM x')).not.toBeNull();
     expect(metricTemplateProblem('SELECT 1 WHERE $1 < $2 AND a = $3')).not.toBeNull();
     expect(metricTemplateProblem('SELECT 1 WHERE $1 < $1')).not.toBeNull();

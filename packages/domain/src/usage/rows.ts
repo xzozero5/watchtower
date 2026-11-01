@@ -33,6 +33,9 @@ export type ParseOutcome =
   | { readonly ok: true; readonly points: ParsedPoint[] }
   | { readonly ok: false; readonly code: UsageRunErrorCode };
 
+/** The longest dimension value that is scanned for personal data at all; more is dropped as a whole. */
+const USAGE_DIM_VALUE_SCAN_MAX = 2000;
+
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 /** A number from the driver: a JS number, or the text of a numeric. Never NaN or infinite. */
@@ -75,10 +78,13 @@ export function cleanDimValue(raw: unknown, sanitize: (value: string) => string)
   if (plain === null) return USAGE_REDACTED_DIM;
   const text = plain.trim();
   if (text === '') return '';
-  const cut = text.slice(0, USAGE_DIM_VALUE_MAX);
+  // Redact the WHOLE value first, then cut: cutting first can leave half an email or a phone number that
+  // the redactor no longer recognizes. A value too long to have been written by hand is not kept at all.
+  if (text.length > USAGE_DIM_VALUE_SCAN_MAX) return USAGE_REDACTED_DIM;
   // Deterministic: a value with personal data in it is one fixed marker, never a numbered token whose
   // number depends on the order of the rows (that would make a repeated run write different series).
-  return sanitize(cut) === cut ? cut : USAGE_REDACTED_DIM;
+  if (sanitize(text) !== text) return USAGE_REDACTED_DIM;
+  return text.slice(0, USAGE_DIM_VALUE_MAX);
 }
 
 /**

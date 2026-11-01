@@ -7,6 +7,7 @@ export const CLEANUP_TARGETS = [
   'magic_link_tokens',
   'portal_access_token',
   'break_glass_attempt',
+  'status_subscription',
 ] as const;
 export type CleanupTarget = (typeof CLEANUP_TARGETS)[number];
 
@@ -100,6 +101,18 @@ const STATEMENTS: readonly Statement[] = [
       'ctid',
       `last_failed_at < now() - make_interval(days => $1::int)
          AND (locked_until IS NULL OR locked_until < now())`,
+    ),
+  },
+  {
+    table: 'status_subscription',
+    retention: 'auth',
+    // A subscription nobody confirmed: its link is dead after the window, and the address (personal data)
+    // is not kept for a reader who never opted in. Confirmed and unsubscribed rows stay (the latter is the
+    // record that this address asked to stop).
+    sql: batch(
+      'status_subscription',
+      'id',
+      `state = 'pending' AND confirm_expires_at < now() - make_interval(days => $1::int)`,
     ),
   },
 ];

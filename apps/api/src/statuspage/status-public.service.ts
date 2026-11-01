@@ -2,6 +2,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import { schema, type Database } from '@watchtower/db';
 import {
   STATUS_HISTORY_DAYS,
+  statusEmailLimitKey,
   overallStatus,
   type PublicHistory,
   type PublicMaintenance,
@@ -10,10 +11,12 @@ import {
   type StatusComponentStatus,
   type Subscribe,
 } from '@watchtower/shared';
+import { KEY_LABELS, deriveSubkey } from '@watchtower/shared/secret-box';
 import { and, desc, eq, inArray, ne, sql } from 'drizzle-orm';
 
 import { AuditScope } from '../audit/audit-scope.js';
 import { ApiHttpError } from '../auth/http-errors.js';
+import { APP_CONFIG, type ApiConfig } from '../config/config.js';
 import { DATABASE } from '../database/database.module.js';
 import { domainContext, settle } from '../domain/domain-context.js';
 import { translating } from '../domain/domain-errors.js';
@@ -39,7 +42,13 @@ export class StatusPublicService {
     @Inject(DOMAIN) private readonly domain: Domain,
     @Inject(UnitOfWorkService) private readonly uow: UnitOfWorkService,
     @Inject(StatusLimits) private readonly limits: StatusLimits,
-  ) {}
+    @Inject(APP_CONFIG) config: Pick<ApiConfig, 'APP_ENCRYPTION_KEY'>,
+  ) {
+    // Its own subkey: a status link can never be a survey link, or the other way round.
+    this.linkKey = deriveSubkey(config.APP_ENCRYPTION_KEY, KEY_LABELS.statusLink);
+  }
+
+  private readonly linkKey: Buffer;
 
   async current(ip: string | null): Promise<PublicStatus> {
     await this.limits.enforce('read-ip', ip ?? 'unknown');
@@ -153,7 +162,7 @@ export class StatusPublicService {
    */
   async subscribe(input: Subscribe, ip: string | null): Promise<void> {
     await this.limits.enforce('subscribe-ip', ip ?? 'unknown');
-    await this.limits.enforce('subscribe-email', input.email);
+    await this.limits.enforce('subscribe-email', statusEmailLimitKey(input.email));
     await translating(() =>
       this.uow.run(async (uow) =>
         settle(
@@ -209,11 +218,7 @@ export class StatusPublicService {
   }
 
   private signingKey(): Buffer {
-    const csat = this.domain.config.csat;
-    // Without the key no link can be signed or checked: the page is not usable, and says so.
-    if (csat === undefined)
-      throw new ApiHttpError(503, 'route_not_configured', 'Subscriptions are unavailable');
-    return csat.signingKey;
+    return this.linkKey;
   }
 
   private invalidLink(): ApiHttpError {

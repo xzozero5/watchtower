@@ -196,6 +196,31 @@ describe('metric definitions', () => {
   });
 });
 
+describe('the stored score does not leak through the organization record', () => {
+  it('is shown to a lead and hidden from an agent and from the customer, on the record and in the list', async () => {
+    await owner().query('UPDATE organization SET health_score = 64 WHERE id = $1', [orgId]);
+    type Org = { id: string; healthScore: number | null };
+    for (const [who, expected] of [
+      [lead, 64],
+      [head, 64],
+      [agent, null],
+      [client, null],
+    ] as const) {
+      const one = await call<Org>(who, 'GET', `/v1/orgs/${orgId}`);
+      expect(one.status).toBe(200);
+      expect(one.body.healthScore, who.email).toBe(expected);
+      const list = await call<{ items: Org[] }>(who, 'GET', '/v1/orgs');
+      expect(list.body.items.find((org) => org.id === orgId)?.healthScore, who.email).toBe(
+        expected,
+      );
+      expect(JSON.stringify(one.body)).toContain('healthScore');
+    }
+    // Setting it by hand needs the permission to read it.
+    const asLead = await call<Org>(lead, 'PATCH', `/v1/orgs/${orgId}`, { healthScore: 70 });
+    expect(asLead.body.healthScore).toBe(70);
+  });
+});
+
 describe('the Client Health Score routes', () => {
   async function snapshot(
     org: string,

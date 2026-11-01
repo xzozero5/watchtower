@@ -90,21 +90,79 @@ const WRITE_WORDS =
   /\b(insert|update|delete|drop|alter|create|truncate|grant|revoke|copy|call|execute|merge|vacuum|do)\b/i;
 
 /**
+ * The code of a template with its comments removed and its string literals and quoted identifiers emptied,
+ * so the checks below read what the database would execute and not what is written inside a quote or a
+ * note. A `--` inside a string is not a comment; a `/* ... *\/` nests, as in PostgreSQL. Returns null when
+ * the text cannot be read with confidence: an unterminated quote or comment, an escape string (`E'...'`) or
+ * a dollar-quoted string, whose rules differ.
+ */
+export function templateCode(sql: string): string | null {
+  let out = '';
+  let i = 0;
+  while (i < sql.length) {
+    const c = sql.charAt(i);
+    const next = sql.charAt(i + 1);
+    if (c === "'" || c === '"') {
+      // `E'..'` allows backslash escapes: not read here.
+      if (c === "'" && /[eE]/.test(sql.charAt(i - 1)) && !/[A-Za-z0-9_]/.test(sql.charAt(i - 2))) {
+        return null;
+      }
+      let j = i + 1;
+      for (;;) {
+        if (j >= sql.length) return null;
+        if (sql.charAt(j) === c) {
+          if (sql.charAt(j + 1) === c) {
+            j += 2;
+            continue;
+          }
+          break;
+        }
+        j += 1;
+      }
+      out += `${c}${c}`;
+      i = j + 1;
+    } else if (c === '-' && next === '-') {
+      while (i < sql.length && sql.charAt(i) !== '\n') i += 1;
+      out += ' ';
+    } else if (c === '/' && next === '*') {
+      let depth = 1;
+      i += 2;
+      while (depth > 0) {
+        if (i >= sql.length) return null;
+        if (sql.charAt(i) === '/' && sql.charAt(i + 1) === '*') {
+          depth += 1;
+          i += 2;
+        } else if (sql.charAt(i) === '*' && sql.charAt(i + 1) === '/') {
+          depth -= 1;
+          i += 2;
+        } else {
+          i += 1;
+        }
+      }
+      out += ' ';
+    } else {
+      out += c;
+      i += 1;
+    }
+  }
+  return out;
+}
+
+/**
  * Whether a template is shaped like a window query: one `SELECT` (or `WITH`), no second statement, no
  * write keyword, and the window bound as `$1` (from) and `$2` (to) with no other parameter. This is a
  * first line of defence for a head who types a template; the read-only login, the timeout and the row cap
  * of the data port (T-203c) are the real ones. Returns the reason, or null when the shape is fine.
  */
 export function metricTemplateProblem(template: string): string | null {
-  const raw = template.trim().replace(/;\s*$/, '');
-  if (raw.length === 0) return 'The template is empty';
-  // One statement: a semicolon anywhere (a comment included) is refused.
-  if (raw.includes(';')) return 'Only one statement is allowed';
-  // The comments are the author's notes (the starter templates open with some): judge the code.
-  const text = raw
-    .replace(/--[^\n]*/g, ' ')
-    .replace(/\/\*[\s\S]*?\*\//g, ' ')
-    .trim();
+  if (template.trim().length === 0) return 'The template is empty';
+  const code = templateCode(template);
+  if (code === null) return 'The template could not be read: check its quotes and comments';
+  const text = code.trim().replace(/;\s*$/, '').trim();
+  if (text.length === 0) return 'The template is empty';
+  if (text.includes(';')) return 'Only one statement is allowed';
+  // A dollar-quoted string ($$...$$ or $tag$...$tag$) hides text from every check here.
+  if (/\$[A-Za-z_$]/.test(text)) return 'Dollar-quoted strings are not allowed';
   if (!/^(select|with)\b/i.test(text)) return 'The template must start with SELECT or WITH';
   if (WRITE_WORDS.test(text)) return 'The template contains a statement that writes';
   const params = new Set([...text.matchAll(/\$(\d+)/g)].map((match) => match[1]));

@@ -35,7 +35,7 @@ const anonymous = () => h.client();
 const get = <T>(path: string) => anonymous().request<T>('GET', path);
 const post = <T>(path: string, body: unknown, who = anonymous()) =>
   who.request<T>('POST', path, { body, csrf: false });
-const linkKey = () => deriveSubkey(h.config.APP_ENCRYPTION_KEY, KEY_LABELS.csatLink);
+const linkKey = () => deriveSubkey(h.config.APP_ENCRYPTION_KEY, KEY_LABELS.statusLink);
 
 beforeAll(async () => {
   h = await startHarness({ env: { STATUS_PAGE_PUBLIC: 'true' } });
@@ -368,6 +368,32 @@ describe('email subscriptions (double opt-in)', () => {
     expect(
       (await post('/v1/status/subscriptions', { email: 'a@b.test', admin: true })).status,
     ).toBe(400);
+  });
+
+  it('refuses a display-name form or a list, which would mail someone else', async () => {
+    for (const email of [
+      'foo1<victim@example.test>',
+      'Name <victim@example.test>',
+      'a@example.test, b@example.test',
+      '"quoted name"@example.test',
+      'victim@example.test (comment)',
+      'no-domain@localhost',
+    ]) {
+      expect((await subscribe(email)).status, email).toBe(400);
+    }
+    const stored = await owner().query('SELECT 1 FROM status_subscription WHERE email LIKE $1', [
+      '%<%',
+    ]);
+    expect(stored.rowCount).toBe(0);
+  });
+
+  it('counts name+tag@ and name@ as one address for the per-address limit', async () => {
+    const [local = '', domain = ''] = uniqueEmail('tagged').split('@');
+    const caller = h.client();
+    for (const tag of ['a', 'b', 'c']) {
+      expect((await subscribe(`${local}+${tag}@${domain}`, caller)).status).toBe(202);
+    }
+    expect((await subscribe(`${local}@${domain}`, caller)).status).toBe(429);
   });
 
   it('confirms with the signed link in the body, once or twice, and refuses a wrong one', async () => {

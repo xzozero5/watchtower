@@ -27,12 +27,16 @@ let domain: Domain;
 let leadId: string;
 const owner = () => testDb.owner.db;
 const ANONYMOUS = { type: 'anonymous', id: null } as const;
-const key = () => deriveSubkey(config.APP_ENCRYPTION_KEY, KEY_LABELS.csatLink);
+const key = () => deriveSubkey(config.APP_ENCRYPTION_KEY, KEY_LABELS.statusLink);
 
 beforeAll(async () => {
   testDb = await createTestDatabase(adminUrl);
   config = {
-    ...testConfig({ DATABASE_URL: testDb.appUrl, OUTBOX_POLL_INTERVAL_MS: '100' }),
+    ...testConfig({
+      DATABASE_URL: testDb.appUrl,
+      OUTBOX_POLL_INTERVAL_MS: '100',
+      STATUS_PAGE_PUBLIC: 'true',
+    }),
     listenPort: 0,
   };
   appDb = createDatabase({ url: testDb.appUrl, max: 3, applicationName: 'wt-statuspage-test' });

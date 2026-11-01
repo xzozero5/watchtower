@@ -228,14 +228,29 @@ export type PublicHistory = z.infer<typeof publicHistorySchema>;
 
 // --- subscriptions (public) ----------------------------------------------------------------------
 
-/** The address, normalized. The shape check is loose on purpose: the confirmation email is the real test. */
+/**
+ * A plain address: lower case, ASCII, `local@domain.tld` and nothing else. A display-name form such as
+ * `Name <victim@example.test>`, a comma list, a quoted local part or a comment is refused outright, so
+ * what is stored and mailed is exactly one mailbox and the per-address limit counts that mailbox.
+ */
 export const statusEmailSchema = z
   .string()
   .trim()
   .toLowerCase()
   .min(3)
   .max(254)
-  .regex(/^[^@\s]+@[^@\s]+$/, 'Not an email address');
+  .regex(/^[a-z0-9._%+-]{1,64}@[a-z0-9-]+(?:\.[a-z0-9-]+)+$/, 'Not an email address');
+
+/**
+ * The key the per-address limit counts under: the mailbox without a `+tag`, so `a+1@x`, `a+2@x` and `a@x`
+ * are one address for the limit (they reach the same person) while the address that is mailed stays as typed.
+ */
+export function statusEmailLimitKey(email: string): string {
+  const at = email.lastIndexOf('@');
+  const local = email.slice(0, at);
+  const plus = local.indexOf('+');
+  return `${plus > 0 ? local.slice(0, plus) : local}${email.slice(at)}`.toLowerCase();
+}
 
 export const subscribeSchema = z.strictObject({
   email: statusEmailSchema,
