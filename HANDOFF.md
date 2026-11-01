@@ -1,8 +1,14 @@
 # HANDOFF — Watchtower
 
 > สถานะล่าสุดของโปรเจกต์ session ใหม่อ่านไฟล์นี้ต่อจาก `AGENTS.md` แล้วทำงานต่อได้โดยไม่ต้องอ่านบทสนทนาเดิม
-> อัปเดตล่าสุด: 2026-11-01 11:40 (เวลากรุงเทพ) โดย Claude Code (main thread, cloud session) — **เจ้าของสั่ง pause เพื่อไปทำต่อบนเครื่อง local**
+> อัปเดตล่าสุด: 2026-11-01 12:47 (เวลากรุงเทพ) โดย Claude Code (main thread, เครื่อง local) — **safe pause ตามคำสั่งเจ้าของ เพราะโควตาใกล้เต็ม ยังไม่จบ Phase 1**
 > กฎขนาด ≤ 40 KB — เขียนทับสถานะ ไม่ append ประวัติ · ฉบับก่อนหน้า `docs/handoff-archive/HANDOFF-2026-11-01-0420.md` · บันทึกรายชั่วโมง `logs/daily/2026-11-01.md` · log ต่อ task `docs/STATUS.md`
+
+## ทำต่อจากตรงนี้ (safe pause 2026-11-01 12:47)
+- **ยังไม่มีงานใหม่เข้า `main`** รอบ local นี้มีแต่ daily log · T-103 ยังไม่ merge เพราะ integration รอบล่าสุดยังไม่เขียว
+- **ขั้นแรก:** `git switch verify/t-103bd` → ปิดงานอื่นที่กินเครื่องให้หมด → `pnpm exec turbo run test:integration --force --continue --concurrency=1 --env-mode=loose` · รอบล่าสุดตก 2 ข้อขณะมี agent อื่นรัน test พร้อมกัน: db `followups` reversibility of 0003 (timeout 30 s) และ api `portal` "refuses an expired token" (`no portal email`) `[UNVERIFIED]` ยังไม่พิสูจน์ว่าเป็นเพราะโหลด ถ้าตกซ้ำตอนเครื่องว่างต้องหาสาเหตุ ห้าม merge
+- **ผลที่ `verify/t-103bd` บนเครื่องนี้ `[TESTED]`:** lint, typecheck ผ่าน · unit ผ่านครบ (web 667, api 191, worker 79, domain 67, shared 257, channels 330, db 50, ai 372, ui 609, boundaries 200) · integration domain 188, worker 83 ผ่าน, db 199/200, api 527/528 · e2e 134, full-stack 23 ผ่าน
+- **บั๊กจริงที่เจอเฉพาะบนเครื่องจริง แก้แล้วบน `verify/t-103bd`:** (1) `message.created_at` ใช้นาฬิกาแอป `ticket_event` ใช้นาฬิกา DB ทำ timeline ลูกค้าเรียงผิด (2) relay ใช้นาฬิกา DB แต่ claim ใช้นาฬิกา worker ทำ reply ลูกค้าค้างราว 2 นาที · security review ของสอง fix ไม่มี P0/P1
 
 ## อ่านก่อน (สรุป 2 นาที)
 - **Phase 0 เสร็จ** (CI บน GitHub เขียว) · ยังไม่ tag `v0.0.1` — รอเจ้าของตรวจบนเครื่อง (รายการด้านล่าง)
@@ -21,12 +27,16 @@
 ## งานค้างบน branch (push ขึ้น origin แล้ว ทำต่อบนเครื่องได้เลย)
 | งาน | branch | สถานะ | ต้องทำต่อ |
 |---|---|---|---|
-| **T-103b–d LINE** webhook + media + auto-ack ผ่าน policy gate + identity link | `verify/t-103bd` (= `wip/t-103bd` + merge `main` + แก้ conflict + migration → `0015_line_identity` + แก้ revert test ของ 0014) | security: C-1 (P1 ticket ข้าม tenant) และ C-2..C-11 แก้แล้ว, re-review ไม่มี P0/P1 ค้าง · main thread test: lint/typecheck/unit ผ่าน, db integration 200, full-stack 23 · domain/api/worker integration ดู "ปิด session" ท้ายไฟล์ | ถ้าเขียวครบ → merge `verify/t-103bd` เข้า `main` (`--no-ff`) + STATUS/BACKLOG + เพิ่ม **T-103e** (ส่งรหัสผูก LINE ไป email ที่ยืนยันแล้ว = verified, `po` #26) |
-| **T-102b–d Gmail** push receiver (OIDC) + history sync/watch/heartbeat + ส่ง in-thread | `wip/t-102bd` | security รอบ 1: P1-1 (mock กลืน reply) แก้แล้ว, P2-1 scope เหลือ `gmail.readonly`+`gmail.send` · re-review พบ **N-1 P1** (compose default `NODE_ENV=development` ทำให้ mock ยังกลืน reply ได้) → agent แก้เป็น opt-in `GMAIL_MOCK_ENABLED` + boot guard + ห้ามสลับ live→mock (`6f606ab`, ดู "ปิด session") · **ยังไม่ผ่าน security re-review และ main thread ยังไม่ได้รัน test** | 1) security re-review N-1..N-3 2) merge `main` หลัง T-103 (เลข migration ชน: Gmail `0015_gmail_account_state` → `0016`) 3) suite เต็ม 4) main thread แก้ PRD R-2.4 ให้ scope = readonly + send |
-| **T-107a–c KB** schema/versions + chunker + audited embedder (mock) + hybrid search + API | `wip/t-107ac` | security รอบ 1: P2-1 + P3 แก้แล้ว (`80e301e` สะอาด, test ผ่านตาม agent) · re-review พบ **P2-A** ผู้เขียนเคลียร์ break-glass review เองได้, **P2-B** approver คนเดียวขยายผู้อ่านบทความ published ได้ทันที, P3-C..F · **`2bcac4a` เป็น `wip:` ครึ่งทาง build ไม่ผ่าน ห้าม merge** | ทำต่อจาก `2bcac4a` (หรือย้อน `80e301e`): P2-A, P2-B, P3-C (version ใหม่ของบทความ published ต้องผ่าน in_review — main thread ตัดสิน `[ASSUMED]`), P3-D trigger, P3-E, P3-F (`actorOf` + `HEAD_ONLY_PERMISSIONS`) · migration `0013_kb` เป็นเลขชั่วคราว · แล้ว security re-review |
+| **T-103b–d LINE** webhook + media + auto-ack ผ่าน policy gate + identity link | `verify/t-103bd` (รวม `main` + fix นาฬิกาสองตัว + boundary test บน Windows) | security ไม่มี P0/P1 ค้าง · integration ยังไม่เขียว ดู "ทำต่อจากตรงนี้" | รัน integration ตอนเครื่องว่าง → เขียวแล้ว merge เข้า `main` (`--no-ff`) + STATUS/BACKLOG + เพิ่ม **T-103e** (`po` #26) |
+| **T-102b–d Gmail** push receiver (OIDC) + history sync/watch/heartbeat + ส่ง in-thread | `wip/t-102bd` @ `6f606ab` | security re-review: N-1..N-3 แก้แล้ว ไม่มี P0/P1/P2 · ผู้ตรวจไม่ได้รัน integration · main thread ยังไม่ได้รัน suite | 1) merge `main` หลัง T-103 (migration `0015_gmail_account_state` → `0016`) 2) แก้ P3: F-1 `runtime.ts:212` flag เปิด + store อ่านไม่ได้ได้ fake (ให้ throw + guard ปฏิเสธ flag เมื่อตั้ง `GMAIL_*`), F-2 `service-account.ts:112`/`dispatcher.ts:333` mint token ก่อน `markDispatched`, F-3 `ingest/index.ts:65` เลิกผูก `NODE_ENV` 3) suite เต็ม 4) แก้ PRD R-2.4 ให้ scope = readonly + send |
+| **T-107a–c KB** schema/versions + chunker + audited embedder (mock) + hybrid search + API | `wip/t-107ac` @ `62df4d2` | P2-A, P2-B, P3-C, P3-E แก้แล้ว · re-review (หยุดกลางทางเพราะ pause) ไม่มี P0/P1 แต่ **ยังไม่ merge:** **P2 ใหม่** `articles.ts:553` break-glass ซ้อนเขียนทับ `breakGlassPrevVersion` ทำให้ผู้เขียน v2 หรือ head คนแรกเคลียร์ธงเองได้ · P3-D ปิดไม่ครบ raw SQL 2 ขั้นผ่าน `0015_kb.sql:219-225` · P3 `articles.ts:271,341` actor `system` ขยายผู้อ่านได้, agent แก้ metadata ของ live โดย audit ไม่มี before/after · ยังไม่ตรวจ: api/worker integration, DoS ของ trgm, งบ AI ของ customer search | แก้ P2 (ขณะ pending คงค่า prev เดิม + จำผู้ publish ทุกคน) และ P3 → re-review ส่วนที่ค้าง → merge หลัง Gmail (เลข → `0017`, grep `0015_kb`) → suite เต็ม |
+| **T-104 Discord** webhook + fan-out (mock) | `wip/t-104` @ `fea760d` | agent รายงาน lint/typecheck/unit ผ่าน, integration db 207, domain 172, worker 84, api 500 + ตก 2 ใน portal timeline (อาการเดียวกับบั๊กนาฬิกาที่แก้บน `verify/t-103bd`, branch นี้ยังไม่มี fix) · ยังไม่มี security review · main thread ยังไม่ได้รันเอง | merge `main` หลัง T-103 → renumber `0015_discord_notify` → security review → suite เต็ม · `[ASSUMED]` ส่งเฉพาะ `ticket.created`, slot `default`/`urgent`, at-least-once (โพสต์ซ้ำได้ในกรณีหายาก), link `/tickets/<key>` ยังไม่มี route จริง · agent แก้ `parseRetryAfter` ให้อ่านทศนิยม กระทบทุก adapter |
+| **T-111a–e Shifts** backend | `wip/t-111` @ `b67bfc5` | **หยุดกลางทางเพราะ pause** agent ไม่ได้รายงาน ไม่รู้ว่าเสร็จส่วนไหน commit `wip:` สุดท้ายยังไม่ผ่านการรัน test ใด ๆ | อ่าน `git log main..wip/t-111` แล้วทำต่อ → test → security review (RBAC) → merge → T-111f หน้าจอ |
 
 ## Follow-up ที่เปิดไว้
 - **T-122f** (P3 จาก re-review T-122e) — **F-1 ต้องปิดก่อนเปิด LINE push จริง:** cancel/deny ของ pinned push ที่ re-queue แล้วต้องติด `outcome_unknown`
+- จาก review fix นาฬิกา เข้า T-122f: **P2 O-7** hold ใช้นาฬิกา API claim ใช้นาฬิกา worker จน undo เหลือ 0 ได้ + sweep trigger ไม่มี `notBefore` (`schedule.ts:178`, `dispatch.ts:686`) · P3 `dispatcher.ts:490`, `Retry-After` ไม่มีเพดาน (`state.ts:92`), `ingest.ts:414`, sweep lease เมื่อ skew ≥ 120 s
+- ก่อนเปิด AI live: name dictionary ของ redactor ว่าง ชื่อในคำค้น KB อาจไม่ถูก redact `[UNVERIFIED 70%]`
 - **T-125** security P3 รวม + test จับเวลาที่ flaky ภายใต้โหลด (break-glass timing, ui timeout) + B-001
 - **T-103e** (เพิ่มลง BACKLOG ตอน merge T-103) · ยังไม่มีโค้ดอ่าน `line_verified_at` ไปใช้ตัดสิน disclosure — ต้องทำใน T-108/T-109
 - T-109 ต้องเปลี่ยน web ไปใช้ cancel endpoint ฝั่ง server + `aiDraftId`
@@ -89,6 +99,7 @@
 - [ ] รายการตรวจก่อน tag ข้างบน
 - [ ] รายการคำต้องห้ามจริง + เรื่อง commit `47f2ae9`
 - [ ] integration จริงทุกตัว (T-115) และการทดสอบ live ครั้งแรก: Gmail (service account + domain-wide delegation, scope readonly + send, `format=raw` ใต้ readonly `[VERIFY]`, JWKS ของ push `[VERIFY]`), LINE (pricing `[VERIFY]`, อายุ retry key ~24 ชม. `[VERIFY]`), AI provider, embedding provider (ตอนนี้ mock เท่านั้น — ตั้งเป็นอย่างอื่นแล้ว boot ไม่ขึ้นโดยตั้งใจ)
+- [ ] รับทราบ: approver ที่ไม่ใช่ผู้เขียนหนึ่งคนขยายผู้อ่านบทความ live ได้ทันที ไม่ต้องมีคนที่สอง (ไม่ขัดกฎ `po` #27 แต่ควรรู้)
 - [ ] hosted CAPTCHA / Web Push / KB crawl live — ปลายทาง network ใหม่
 - [ ] ยก autonomy ของ intent ใด ≥ 3 — ห้าม agent ทำ
 
@@ -101,8 +112,9 @@
 ## วันตรวจซ้ำ
 - LINE pricing/feature: ก่อนปิด T-103 · Google managed MCP: ก่อน T-203 · วันหยุดราชการไทยปีถัดไป: ธันวาคม 2026
 
-## ปิด session (cloud, 2026-11-01)
-- หยุด agent และ test ทั้งหมดแล้ว ไม่มีงานค้างใน container · worktree ของ cloud ไม่ตามไป — ทุกอย่างอยู่ใน branch ที่ push แล้ว
-- `verify/t-103bd`: integration db 200 ผ่าน (หลังแก้ revert test), domain 187 ผ่าน · **api/worker integration ถูกหยุดกลางทาง ยังไม่มีผล** → รันใหม่บน local ก่อน merge (`pnpm exec turbo run test:integration --force --concurrency=1`)
-- `wip/t-102bd` @ `6f606ab`: agent รายงานว่าแก้ N-1..N-3 และ merge `main` (ก่อน T-103) แล้ว · agent ถูกหยุดระหว่างรัน gate เต็ม — **ยังไม่มีผล test ที่เชื่อได้ และยังไม่ผ่าน security re-review**
-- `wip/t-107ac` @ `2bcac4a` (`wip:` build ไม่ผ่าน) · จุดสะอาดล่าสุด `80e301e`
+## ปิด session (local, 2026-11-01 12:47)
+- เครื่อง: Windows · compose postgres/redis/minio/mailpit รันอยู่ · `.git/info/forbidden-terms` มีรายการจริงแล้ว hook ใช้ได้ (ยังไม่ได้สแกน history)
+- **เว็บยังไม่ได้เปิดให้ดู** ที่เจ้าของถาม: รอจังหวะไม่มี test แล้ว `pnpm db:migrate && pnpm db:seed && pnpm dev` ที่ `http://localhost:3000`
+- ยังไม่ได้เริ่ม: T-108, T-109, T-105, T-110, T-119, T-121, T-116c, T-123b, T-118, T-122f, T-113, T-114, T-125, T-115
+- scan N1 ทั้ง diff ของ T-107 ถูก `guard.py` บล็อกตอน review จึงไม่ได้รัน ไม่ได้อ้อม · อ่าน `examples/kb` แล้วไม่พบชื่อองค์กรจริง
+- บทเรียน: gate ต้องใส่ `--continue` ไม่งั้น turbo หยุดงานอื่นตอนตัวแรกตก · อย่ารัน integration พร้อม agent ที่รัน test หนัก
