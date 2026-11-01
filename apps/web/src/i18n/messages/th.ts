@@ -1,6 +1,7 @@
 import type { Messages } from './en';
 import { aiTh } from './ai.th';
 import { adminTh, homeTh } from './console.th';
+import { csatTh } from './csat.th';
 import { portalTh } from './portal.th';
 
 /** Thai UI copy. Same keys as en.ts. */
@@ -544,4 +545,5 @@ export const th: Messages = {
   home: homeTh,
   admin: adminTh,
   portal: portalTh,
+  csat: csatTh,
 };

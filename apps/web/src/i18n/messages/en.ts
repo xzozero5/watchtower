@@ -5,6 +5,7 @@
  */
 import { aiEn } from './ai.en';
 import { adminEn, homeEn } from './console.en';
+import { csatEn } from './csat.en';
 import { portalEn } from './portal.en';
 
 export const en = {
@@ -548,6 +549,7 @@ export const en = {
   home: homeEn,
   admin: adminEn,
   portal: portalEn,
+  csat: csatEn,
 } as const;
 
 type Widen<T> = T extends string ? string : { readonly [K in keyof T]: Widen<T[K]> };
