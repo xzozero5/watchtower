@@ -1,3 +1,4 @@
+import { sql } from 'drizzle-orm';
 import { index, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
 
 import { contact, ticket } from './ticketing.js';
@@ -30,5 +31,8 @@ export const portalAccessToken = pgTable(
     index('portal_access_token_ticket_idx').on(table.ticketId),
     index('portal_access_token_contact_idx').on(table.contactId),
     index('portal_access_token_expiry_idx').on(table.expiresAt),
+    index('portal_access_token_revoked_idx')
+      .on(table.revokedAt)
+      .where(sql`${table.revokedAt} IS NOT NULL`),
   ],
 );

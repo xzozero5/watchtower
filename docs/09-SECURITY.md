@@ -18,7 +18,7 @@
 - [x] CSRF: HMAC token + Origin check, `null` origin rejected `[TESTED]`
 - [x] Cookies use `__Host-` prefix when Secure; duplicate auth cookies rejected — T-010 C-6 `[TESTED]`
 - [x] Break-glass lockout per (account, IP) with backoff + CLI unlock — T-010 C-7 `[TESTED]`
-- [ ] Expired sessions / refresh / magic-link tokens purged — T-117 `[OPEN]`
+- [x] Expired sessions / refresh / magic-link tokens, tracking links and old break-glass counters purged daily by the worker (`cleanup` queue, batches, indexes in 0011); a counter that still locks is kept — T-117 `[TESTED]`
 
 ## 3. Authorization and data scoping
 - [x] RBAC deny-by-default; every route must be in the policy table (`route_not_configured`) `[TESTED]`

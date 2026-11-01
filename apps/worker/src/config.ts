@@ -32,6 +32,13 @@ const workerEnvSchema = createEnvSchema({
    * step 4, milliseconds). `[ASSUMED]` 3 s: PRD AC-1 wants a ticket within 10 s.
    */
   INGEST_CLASSIFIER_TIMEOUT_MS: z.coerce.number().int().min(100).max(30_000).default(3000),
+  /**
+   * Cleanup job (T-117): days to keep an expired or revoked session, refresh token, magic link or
+   * tracking link before it is deleted. `[ASSUMED]` 7.
+   */
+  CLEANUP_AUTH_RETENTION_DAYS: z.coerce.number().int().min(0).max(365).default(7),
+  /** Days to keep a break-glass lockout counter after its last failed sign-in (still locked ones stay). `[ASSUMED]` 30. */
+  CLEANUP_BREAK_GLASS_RETENTION_DAYS: z.coerce.number().int().min(0).max(365).default(30),
 });
 
 export type WorkerConfig = z.output<typeof workerEnvSchema> & {

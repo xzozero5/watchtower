@@ -7,6 +7,15 @@ export {
   type AppRoleOptions,
 } from './app-role.js';
 export {
+  CLEANUP_TARGETS,
+  DEFAULT_AUTH_RETENTION_DAYS,
+  DEFAULT_BREAK_GLASS_RETENTION_DAYS,
+  purgeExpired,
+  type CleanupOptions,
+  type CleanupResult,
+  type CleanupTarget,
+} from './cleanup.js';
+export {
   CREDENTIAL_ERROR_CODES,
   CredentialStoreError,
   createCredentialStore,

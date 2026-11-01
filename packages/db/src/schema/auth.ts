@@ -96,6 +96,11 @@ export const sessions = pgTable(
     index('sessions_user_active_idx')
       .on(table.userId)
       .where(sql`${table.revokedAt} IS NULL`),
+    // 0011: the cleanup job (T-117) filters on these.
+    index('sessions_expires_idx').on(table.expiresAt),
+    index('sessions_revoked_idx')
+      .on(table.revokedAt)
+      .where(sql`${table.revokedAt} IS NOT NULL`),
   ],
 );
 
@@ -117,6 +122,7 @@ export const refreshTokens = pgTable(
   (table) => [
     uniqueIndex('refresh_tokens_hash_key').on(table.tokenHash),
     index('refresh_tokens_session_idx').on(table.sessionId),
+    index('refresh_tokens_expires_idx').on(table.expiresAt),
   ],
 );
 
@@ -138,6 +144,10 @@ export const magicLinkTokens = pgTable(
     index('magic_link_tokens_user_open_idx')
       .on(table.userId)
       .where(sql`${table.consumedAt} IS NULL`),
+    index('magic_link_tokens_expires_idx').on(table.expiresAt),
+    index('magic_link_tokens_consumed_idx')
+      .on(table.consumedAt)
+      .where(sql`${table.consumedAt} IS NOT NULL`),
   ],
 );
 
@@ -160,5 +170,8 @@ export const breakGlassAttempt = pgTable(
     lockedUntil: timestamptz('locked_until'),
     lastFailedAt: timestamptz('last_failed_at').notNull().defaultNow(),
   },
-  (table) => [primaryKey({ columns: [table.userId, table.ip] })],
+  (table) => [
+    primaryKey({ columns: [table.userId, table.ip] }),
+    index('break_glass_attempt_last_failed_idx').on(table.lastFailedAt),
+  ],
 );
