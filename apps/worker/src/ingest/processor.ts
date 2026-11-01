@@ -1,7 +1,13 @@
 import { ChannelError } from '@watchtower/channels';
 import type { Database } from '@watchtower/db';
 import { schema } from '@watchtower/db';
-import { isDomainError, type Domain, type NormalisedInboundMessage } from '@watchtower/domain';
+import {
+  isDomainError,
+  parseLinkCode,
+  type Domain,
+  type IngestOutcome,
+  type NormalisedInboundMessage,
+} from '@watchtower/domain';
 import {
   INGEST_JOBS,
   ingestJobSchema,
@@ -51,11 +57,24 @@ export interface IngestDeps {
   /** Absent: header rules only (AI switched off at boot, or a provider that is not wired). */
   readonly classifier?: InboundClassifierFactory | undefined;
   readonly classifierTimeoutMs?: number;
+  /**
+   * Runs after the commit, with what was ingested, for work that must never undo or repeat the
+   * ingestion: the LINE auto-ack (T-103c). An error is logged and swallowed.
+   */
+  readonly afterCommit?: ((committed: readonly CommittedMessage[]) => Promise<void>) | undefined;
+}
+
+/** One message that was ingested by this run (not one that an earlier run had already handled). */
+export interface CommittedMessage {
+  readonly channelAccountId: string;
+  readonly channel: ChannelType;
+  readonly outcome: IngestOutcome;
 }
 
 export interface IngestResult {
   readonly status: 'processed' | 'skipped';
   readonly messages: number;
+  /** `link_code` is a LINE message that was a one-time link code and linked the sender (T-103d): no ticket. */
   readonly dispositions: readonly string[];
 }
 
@@ -163,22 +182,45 @@ export function createIngestProcessor(deps: IngestDeps) {
     for (const item of found) {
       const stored = await store(row.accountType, item);
       singleRawKey = stored.rawKey;
-      const classification = await classifyMessage(stored.message, row.accountType as ChannelType, {
-        hook: deps.classifier?.(
-          `inbound:${stored.message.channelAccountId}:${stored.message.providerMessageId}`,
-          stored.message.from.name === null ? [] : [stored.message.from.name],
-        ),
-        timeoutMs,
-        logger: deps.logger,
-      });
+      // A link code is a credential: it never goes to a model, whatever becomes of the message.
+      const isLinkCode =
+        row.accountType === 'line' && parseLinkCode(stored.message.bodyText) !== null;
+      const classification = isLinkCode
+        ? undefined
+        : await classifyMessage(stored.message, row.accountType as ChannelType, {
+            hook: deps.classifier?.(
+              `inbound:${stored.message.channelAccountId}:${stored.message.providerMessageId}`,
+              stored.message.from.name === null ? [] : [stored.message.from.name],
+            ),
+            timeoutMs,
+            logger: deps.logger,
+          });
       prepared.push({ message: stored.message, classification });
     }
 
     const ctx = deps.domain.context({ actor: SYSTEM_ACTOR });
     const realtime: RealtimeEvent[] = [];
     const dispositions: string[] = [];
+    const committed: CommittedMessage[] = [];
     await deps.database.db.transaction(async (tx) => {
       for (const { message, classification } of prepared) {
+        // A customer's one-time link code is not a conversation: it links the LINE user to the
+        // contact the code was made for. A code that does not work is an ordinary message.
+        const code =
+          row.accountType === 'line' && message.from.lineUserId !== null
+            ? parseLinkCode(message.bodyText)
+            : null;
+        if (code !== null && message.from.lineUserId !== null) {
+          const redeemed = await deps.domain.identity.redeemLineLinkCode(tx, ctx, {
+            code,
+            lineUserId: message.from.lineUserId,
+          });
+          realtime.push(...redeemed.events);
+          if (redeemed.value.status === 'linked') {
+            dispositions.push('link_code');
+            continue;
+          }
+        }
         const result = await deps.domain.inbound.ingest(tx, ctx, {
           message,
           inboundEventId: event.id,
@@ -186,6 +228,13 @@ export function createIngestProcessor(deps: IngestDeps) {
         });
         realtime.push(...result.events);
         dispositions.push(result.value.disposition);
+        if (!result.value.alreadyIngested) {
+          committed.push({
+            channelAccountId: event.channelAccountId,
+            channel: row.accountType as ChannelType,
+            outcome: result.value,
+          });
+        }
       }
       await tx
         .update(schema.inboundEvent)
@@ -208,6 +257,14 @@ export function createIngestProcessor(deps: IngestDeps) {
       } catch (error) {
         deps.logger.warn({ err: error, eventType: realtimeEvent.type }, 'realtime publish failed');
         break;
+      }
+    }
+    if (deps.afterCommit !== undefined && committed.length > 0) {
+      try {
+        await deps.afterCommit(committed);
+      } catch (error) {
+        // The messages are ingested; whatever follows (an acknowledgment) is not worth a retry of the event.
+        deps.logger.warn({ err: error, eventId: event.id }, 'post-ingest step failed');
       }
     }
     return { status: 'processed', messages: prepared.length, dispositions };

@@ -1,5 +1,12 @@
-import { gmail, line } from '@watchtower/channels';
-import type { NormalisedInboundMessage, ThreadCandidate } from '@watchtower/domain';
+import { createHash } from 'node:crypto';
+
+import { ChannelError, gmail, line } from '@watchtower/channels';
+import {
+  parseLinkCode,
+  type InboundAttachment,
+  type NormalisedInboundMessage,
+  type ThreadCandidate,
+} from '@watchtower/domain';
 import { z } from 'zod';
 
 /**
@@ -196,14 +203,37 @@ export function createGmailIngestor(options: GmailIngestorOptions): ChannelInges
   };
 }
 
-/** The event as stored in raw form: everything but the reply token. */
-function withoutReplyToken(payload: Record<string, unknown>): Record<string, unknown> {
+/**
+ * The event as stored in raw form: everything but the reply token, and with the text of a link code
+ * message blanked (the code is a credential for one link; `parseLinkCode` decides what counts).
+ */
+function storableEvent(payload: Record<string, unknown>): Record<string, unknown> {
   const rest = { ...payload };
   delete rest.replyToken;
+  const message = rest.message;
+  if (
+    typeof message === 'object' &&
+    message !== null &&
+    'text' in message &&
+    typeof message.text === 'string' &&
+    parseLinkCode(message.text) !== null
+  ) {
+    rest.message = { ...message, text: '[link code]' };
+  }
   return rest;
 }
 
 // -- LINE -----------------------------------------------------------------------------------------
+
+/** Images and files bigger than this are described, not downloaded `[ASSUMED]` (storage and memory). */
+export const LINE_MEDIA_MAX_BYTES = 25 * 1024 * 1024;
+
+const IMAGE_EXTENSIONS: Readonly<Record<string, string>> = {
+  'image/jpeg': 'jpg',
+  'image/png': 'png',
+  'image/gif': 'gif',
+  'image/webp': 'webp',
+};
 
 function lineBody(
   content: Extract<line.NormalizedLineEvent, { kind: 'message' }>['content'],
@@ -233,22 +263,94 @@ function lineBody(
   }
 }
 
+/** A file name from LINE or a customer, safe as a display name: no path, no control characters. */
+function displayFileName(name: string): string {
+  const base = name.split(/[\\/]/).pop() ?? '';
+  const cleaned = Array.from(base)
+    .filter((character) => character.charCodeAt(0) >= 0x20 && character.charCodeAt(0) !== 0x7f)
+    .join('')
+    .trim()
+    .slice(0, 200);
+  return cleaned === '' ? 'file' : cleaned;
+}
+
+export interface LineIngestorOptions {
+  /**
+   * The Messaging API client of one Official Account, for downloading images and files (R-2.12).
+   * Undefined for an account this process has no credentials for: the message is kept and the media
+   * is only described. Tests give it a `FakeLineTransport`.
+   */
+  readonly transportFor?: (account: IngestAccount) => line.LineTransport | undefined;
+}
+
+interface Downloaded {
+  readonly attachment: InboundAttachment;
+  readonly bytes: Uint8Array;
+}
+
+/**
+ * Fetches the bytes of an image or file message right away: LINE deletes content after an
+ * unspecified time (R-2.12). Returns null when there is nothing to store (an external image URL,
+ * content that is gone or too big, or no way to reach LINE): the message itself is still kept. A
+ * failure that may pass (timeout, 5xx, rate limit) is thrown so the job is retried.
+ */
+async function downloadLineMedia(
+  transport: line.LineTransport,
+  messageId: string,
+  content: Extract<line.LineContent, { type: 'image' | 'file' }>,
+): Promise<Downloaded | null> {
+  if (content.type === 'image' && content.provider !== 'line') return null;
+  if (content.type === 'file' && content.fileSize > LINE_MEDIA_MAX_BYTES) return null;
+  let result: line.LineContentResult;
+  try {
+    result = await transport.getContent(messageId);
+  } catch (error) {
+    // Gone or never available: no reason to ask again.
+    if (error instanceof ChannelError && !error.retryable && error.kind !== 'auth') return null;
+    throw error;
+  }
+  // 202: a large item is still being prepared. Images and files should not be, but retry rather than lose it.
+  if (result.status === 'preparing') throw new Error('line_content_preparing');
+  if (result.bytes.length > LINE_MEDIA_MAX_BYTES) return null;
+  const contentType =
+    (result.contentType ?? 'application/octet-stream').split(';')[0]?.trim() ?? '';
+  const name =
+    content.type === 'file'
+      ? displayFileName(content.fileName)
+      : `line-image-${messageId}.${IMAGE_EXTENSIONS[contentType] ?? 'bin'}`;
+  return {
+    bytes: result.bytes,
+    attachment: {
+      partId: messageId,
+      filename: name,
+      contentType: contentType === '' ? 'application/octet-stream' : contentType,
+      size: result.bytes.length,
+      sha256: createHash('sha256').update(result.bytes).digest('hex'),
+      objectKey: null,
+      disposition: 'attachment',
+      contentId: null,
+      referencedByHtml: false,
+    },
+  };
+}
+
 /**
  * LINE: the receiver (T-103b) verified the signature on the raw body and wrote one event per row,
  * so the payload is a single event object. Only message events become messages; follow, unfollow,
  * events in `standby` mode and the rest are recorded by their `inbound_event` row and nothing more.
  * Stickers and message types this version does not know are kept as `noise` (R-2.12), and so is a
- * message whose sender LINE did not reveal (a group member who has not consented).
+ * message whose sender LINE did not reveal (a group member who has not consented). Images and
+ * files are downloaded now and stored with the message (T-103c).
  */
-export function createLineIngestor(): ChannelIngestor {
+export function createLineIngestor(options: LineIngestorOptions = {}): ChannelIngestor {
   return {
-    ingest(account, source) {
+    async ingest(account, source) {
       const event = line.normalizeLineEvent(source.payload);
       if (typeof event === 'string') {
-        return Promise.reject(new PermanentIngestError(`line_${event}`));
+        throw new PermanentIngestError(`line_${event}`);
       }
       if (event.kind !== 'message' || event.mode !== 'active' || event.source === null) {
-        return Promise.resolve([]);
+        return [];
       }
       const userId = event.source.userId;
       const sticker = event.content.type === 'sticker';
@@ -262,6 +364,22 @@ export function createLineIngestor(): ChannelIngestor {
               ? { disposition: 'noise' as const, subtype: 'unsupported_content', signals: [] }
               : { disposition: 'human' as const, subtype: 'none', signals: [] };
       const conversationId = event.source.conversationId;
+
+      const attachments: InboundAttachment[] = [];
+      const attachmentData = new Map<string, Uint8Array>();
+      const transport = options.transportFor?.(account);
+      if (
+        transport !== undefined &&
+        automated.disposition === 'human' &&
+        (event.content.type === 'image' || event.content.type === 'file')
+      ) {
+        const downloaded = await downloadLineMedia(transport, event.messageId, event.content);
+        if (downloaded !== null) {
+          attachments.push(downloaded.attachment);
+          attachmentData.set(downloaded.attachment.partId, downloaded.bytes);
+        }
+      }
+
       const message: NormalisedInboundMessage = {
         channelAccountId: account.id,
         providerMessageId: event.messageId,
@@ -272,28 +390,28 @@ export function createLineIngestor(): ChannelIngestor {
         subject: '',
         bodyText: lineBody(event.content),
         bodyHtml: null,
-        attachments: [],
+        attachments,
         receivedAt: new Date(event.occurredAt),
         rawObjectKey: null,
         automated,
         // Single-use and short-lived; the domain seals it for the dispatcher (ADR-010 section 6).
         replyToken: event.replyToken,
       };
-      return Promise.resolve([
+      return [
         {
           message,
           raw: {
             // The reply token is a credential for one free reply (ADR-010): it lives sealed in the database
             // and never in the object store, which keeps raw events for a long time (review O-5).
             body: Uint8Array.from(
-              Buffer.from(JSON.stringify(withoutReplyToken(source.payload)), 'utf8'),
+              Buffer.from(JSON.stringify(storableEvent(source.payload)), 'utf8'),
             ),
             contentType: 'application/json',
             extension: 'json',
           },
-          attachmentData: new Map<string, Uint8Array>(),
+          attachmentData,
         },
-      ]);
+      ];
     },
   };
 }
