@@ -5,6 +5,9 @@ UPDATE contact SET line_user_id = 'retired:' || id::text
 WHERE merged_into_contact_id IS NOT NULL AND line_user_id IS NULL AND cardinality(emails) = 0;
 ALTER TABLE contact DROP CONSTRAINT contact_has_email;
 ALTER TABLE contact ADD CONSTRAINT contact_has_email CHECK (cardinality(emails) >= 1 OR line_user_id IS NOT NULL);
+DROP TRIGGER IF EXISTS contact_line_facts_reset ON contact;
+DROP FUNCTION IF EXISTS contact_line_facts_reset();
+ALTER TABLE contact DROP CONSTRAINT IF EXISTS contact_line_facts_need_id_check;
 ALTER TABLE contact DROP CONSTRAINT IF EXISTS contact_line_verified_check;
 ALTER TABLE contact DROP CONSTRAINT IF EXISTS contact_line_linked_via_check;
 ALTER TABLE contact DROP COLUMN IF EXISTS line_verified_at;

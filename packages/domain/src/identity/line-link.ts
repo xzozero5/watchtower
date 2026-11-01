@@ -1,6 +1,6 @@
 import { createHash, randomInt } from 'node:crypto';
 
-import { schema } from '@watchtower/db';
+import { PG, isPgError, schema } from '@watchtower/db';
 import { AUDIT_ACTIONS, LINE_LINK_CODE_TTL_SECONDS } from '@watchtower/shared';
 import { and, eq, gt, isNull, ne } from 'drizzle-orm';
 
@@ -92,6 +92,10 @@ export async function issueLineLinkCode(
     .where(eq(schema.contact.id, input.contactId))
     .for('update');
   if (contact === undefined) throw notFound('No such contact');
+  // A retired placeholder was merged into another contact: a code for it would link a LINE user to nobody.
+  if (contact.mergedIntoContactId !== null) {
+    throw conflict('This contact was merged into another one; use that contact');
+  }
   const now = ctx.now();
   const expiresAt = new Date(
     now.getTime() + (input.ttlSeconds ?? LINE_LINK_CODE_TTL_SECONDS) * 1000,
@@ -166,8 +170,31 @@ export async function linkLineUser(
     .where(eq(schema.contact.id, input.contactId))
     .for('update');
   if (target === undefined) throw notFound('No such contact');
+  if (target.mergedIntoContactId !== null) {
+    throw conflict('This contact was merged into another one; use that contact');
+  }
   if (target.lineUserId === input.lineUserId) {
-    return fx.result({ contact: target, ticketsMoved: 0, changed: false });
+    // Already linked to this very LINE user. A stronger proof upgrades the link (a staff-issued code
+    // first, then LINE Login from the portal session); a weaker or equal one changes nothing, and
+    // a verified link is never downgraded.
+    if (target.lineVerifiedAt !== null || !VERIFYING_LINK_METHODS.includes(input.via)) {
+      return fx.result({ contact: target, ticketsMoved: 0, changed: false });
+    }
+    const [upgraded] = await tx
+      .update(schema.contact)
+      .set({ lineLinkedVia: input.via, lineLinkedAt: now, lineVerifiedAt: now, updatedAt: now })
+      .where(eq(schema.contact.id, target.id))
+      .returning();
+    if (upgraded === undefined) throw new Error('contact update returned no row');
+    await recordAuditInTx(tx, ctx, fx, {
+      action: AUDIT_ACTIONS.lineLinked,
+      targetType: 'contact',
+      targetId: target.id,
+      before: contactSnapshot(target),
+      after: contactSnapshot(upgraded),
+      metadata: { via: input.via, ticketsMoved: 0, mergedPlaceholder: false, upgraded: true },
+    });
+    return fx.result({ contact: upgraded, ticketsMoved: 0, changed: true });
   }
   if (target.lineUserId !== null) {
     throw conflict('This contact is already linked to another LINE account');
@@ -207,19 +234,32 @@ export async function linkLineUser(
     for (const ticket of tickets)
       fx.emit(ticketEvent(ctx, 'ticket.updated', ticket, ['requester']));
   }
-  const [updated] = await tx
-    .update(schema.contact)
-    .set({
-      lineUserId: input.lineUserId,
-      lineLinkedVia: input.via,
-      lineLinkedAt: now,
-      // Only a method that proves control of the LINE account verifies it. `verified_at` is the
-      // contact's own and is neither read nor written here.
-      lineVerifiedAt: VERIFYING_LINK_METHODS.includes(input.via) ? now : null,
-      updatedAt: now,
-    })
-    .where(eq(schema.contact.id, target.id))
-    .returning();
+  let updated: ContactRow | undefined;
+  try {
+    // A savepoint: losing a race for the LINE id must not abort the caller's transaction.
+    [updated] = await tx.transaction((savepoint) =>
+      savepoint
+        .update(schema.contact)
+        .set({
+          lineUserId: input.lineUserId,
+          lineLinkedVia: input.via,
+          lineLinkedAt: now,
+          // Only a method that proves control of the LINE account verifies it. `verified_at` is the
+          // contact's own and is neither read nor written here.
+          lineVerifiedAt: VERIFYING_LINK_METHODS.includes(input.via) ? now : null,
+          updatedAt: now,
+        })
+        .where(eq(schema.contact.id, target.id))
+        .returning(),
+    );
+  } catch (error) {
+    // The unique index on `line_user_id`: someone linked the same LINE user a moment ago. The driver
+    // error carries the bound values (the LINE user id), so it is replaced, not passed on (C-10).
+    if (isPgError(error, PG.uniqueViolation)) {
+      throw conflict('This LINE account was just linked to another contact');
+    }
+    throw error;
+  }
   if (updated === undefined) throw new Error('contact update returned no row');
   await recordAuditInTx(tx, ctx, fx, {
     action: AUDIT_ACTIONS.lineLinked,

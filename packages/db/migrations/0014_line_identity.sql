@@ -46,10 +46,37 @@ ALTER TABLE contact ADD COLUMN line_linked_at timestamptz;
 ALTER TABLE contact ADD COLUMN line_verified_at timestamptz;
 ALTER TABLE contact ADD CONSTRAINT contact_line_linked_via_check
   CHECK (line_linked_via IS NULL OR line_linked_via IN ('staff_code', 'line_login', 'email_code'));
--- A verified LINE identity says how it was verified; a method with no LINE id is meaningless.
+-- A verified LINE identity says how it was verified, and a staff-issued code never verifies.
 ALTER TABLE contact ADD CONSTRAINT contact_line_verified_check CHECK (
   line_verified_at IS NULL OR (line_linked_via IS NOT NULL AND line_linked_via <> 'staff_code')
 );
+-- The link facts describe the LINE user id on the row: with no id there is nothing to describe.
+ALTER TABLE contact ADD CONSTRAINT contact_line_facts_need_id_check CHECK (
+  line_user_id IS NOT NULL
+  OR (line_linked_via IS NULL AND line_linked_at IS NULL AND line_verified_at IS NULL)
+);
+-- A new or removed LINE user id starts unlinked (C-8). A staff edit of `line_user_id` (the contacts
+-- API) must not leave the old id's "verified" on the new one, so the link facts are cleared whenever
+-- the id changes unless the same statement sets them (the LINE link code and LINE Login do).
+CREATE FUNCTION contact_line_facts_reset() RETURNS trigger
+LANGUAGE plpgsql
+SET search_path = pg_catalog, pg_temp
+AS $$
+BEGIN
+  IF NEW.line_user_id IS DISTINCT FROM OLD.line_user_id
+     AND NEW.line_linked_via IS NOT DISTINCT FROM OLD.line_linked_via
+     AND NEW.line_linked_at IS NOT DISTINCT FROM OLD.line_linked_at
+     AND NEW.line_verified_at IS NOT DISTINCT FROM OLD.line_verified_at THEN
+    NEW.line_linked_via := NULL;
+    NEW.line_linked_at := NULL;
+    NEW.line_verified_at := NULL;
+  END IF;
+  RETURN NEW;
+END
+$$;
+CREATE TRIGGER contact_line_facts_reset
+  BEFORE UPDATE OF line_user_id ON contact
+  FOR EACH ROW EXECUTE FUNCTION contact_line_facts_reset();
 ALTER TABLE contact DROP CONSTRAINT contact_has_email;
 ALTER TABLE contact ADD CONSTRAINT contact_has_email CHECK (
   cardinality(emails) >= 1 OR line_user_id IS NOT NULL OR merged_into_contact_id IS NOT NULL

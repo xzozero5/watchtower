@@ -317,6 +317,141 @@ describe('linkLineUser', () => {
     ).rejects.toThrow();
   });
 
+  it('upgrades a staff-code link to verified when LINE Login proves the same account, never the reverse', async () => {
+    const userId = lineUser();
+    const contact = await addContact();
+    const { code } = (await issue(contact.id)).value;
+    await redeem(code, userId);
+    const link = (via: 'line_login' | 'staff_code') =>
+      env.tx((tx) =>
+        env.domain.identity.linkLineUser(tx, env.ctx(SYSTEM), {
+          contactId: contact.id,
+          lineUserId: userId,
+          via,
+        }),
+      );
+    const upgraded = await link('line_login');
+    expect(upgraded.value.changed).toBe(true);
+    expect(upgraded.audited).toBe(true);
+    expect(upgraded.value.contact).toMatchObject({ lineLinkedVia: 'line_login', verifiedAt: null });
+    expect(upgraded.value.contact.lineVerifiedAt).toEqual(clock.now);
+    // A staff code afterwards changes nothing: a verified link is never downgraded.
+    const again = await link('staff_code');
+    expect(again.value.changed).toBe(false);
+    expect(again.value.contact).toMatchObject({ lineLinkedVia: 'line_login' });
+    expect(again.value.contact.lineVerifiedAt).not.toBeNull();
+  });
+
+  it('clears the link facts whenever the LINE user id changes or goes away (C-8, the database)', async () => {
+    const contact = await addContact();
+    const first = lineUser();
+    await env.tx((tx) =>
+      env.domain.identity.linkLineUser(tx, env.ctx(SYSTEM), {
+        contactId: contact.id,
+        lineUserId: first,
+        via: 'line_login',
+      }),
+    );
+    const read = async () =>
+      (
+        await env.db.owner.db.select().from(schema.contact).where(eq(schema.contact.id, contact.id))
+      )[0];
+    expect((await read())?.lineVerifiedAt).not.toBeNull();
+    // A plain edit of the id, as the contacts API does: the new id is not verified.
+    await env.db.owner.db
+      .update(schema.contact)
+      .set({ lineUserId: lineUser() })
+      .where(eq(schema.contact.id, contact.id));
+    expect(await read()).toMatchObject({
+      lineLinkedVia: null,
+      lineLinkedAt: null,
+      lineVerifiedAt: null,
+    });
+    // Same for removing it, and the CHECK refuses facts without an id.
+    await env.db.owner.db
+      .update(schema.contact)
+      .set({
+        lineUserId: first,
+        lineLinkedVia: 'line_login',
+        lineLinkedAt: clock.now,
+        lineVerifiedAt: clock.now,
+      })
+      .where(eq(schema.contact.id, contact.id));
+    await env.db.owner.db
+      .update(schema.contact)
+      .set({ lineUserId: null })
+      .where(eq(schema.contact.id, contact.id));
+    expect(await read()).toMatchObject({
+      lineUserId: null,
+      lineVerifiedAt: null,
+      lineLinkedVia: null,
+    });
+    await expect(
+      env.db.owner.db
+        .update(schema.contact)
+        .set({ lineVerifiedAt: clock.now, lineLinkedVia: 'line_login' })
+        .where(eq(schema.contact.id, contact.id)),
+    ).rejects.toThrow();
+  });
+
+  it('refuses to issue a code for, or link to, a contact that was merged into another (C-9)', async () => {
+    const keeper = await addContact();
+    const retired = await addContact({ mergedIntoContactId: keeper.id });
+    await expect(issue(retired.id)).rejects.toMatchObject({ code: 'conflict' });
+    await expect(
+      env.tx((tx) =>
+        env.domain.identity.linkLineUser(tx, env.ctx(SYSTEM), {
+          contactId: retired.id,
+          lineUserId: lineUser(),
+          via: 'line_login',
+        }),
+      ),
+    ).rejects.toMatchObject({ code: 'conflict' });
+  });
+
+  it('turns a lost race for the LINE user into a conflict that does not carry the id (C-10)', async () => {
+    const userId = lineUser();
+    const winner = await addContact();
+    const loser = await addContact();
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let winnerLinked: () => void = () => undefined;
+    const linked = new Promise<void>((resolve) => {
+      winnerLinked = resolve;
+    });
+    const first = env.tx(async (tx) => {
+      await env.domain.identity.linkLineUser(tx, env.ctx(SYSTEM), {
+        contactId: winner.id,
+        lineUserId: userId,
+        via: 'line_login',
+      });
+      winnerLinked();
+      await gate;
+    });
+    await linked;
+    // The second sees no holder (the first has not committed) and then waits on the unique index.
+    const second = env.tx((tx) =>
+      env.domain.identity.linkLineUser(tx, env.ctx(SYSTEM), {
+        contactId: loser.id,
+        lineUserId: userId,
+        via: 'line_login',
+      }),
+    );
+    const outcome = second.then(
+      () => null,
+      (error: unknown) => error,
+    );
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    release();
+    await first;
+    const error = await outcome;
+    expect(error).toMatchObject({ code: 'conflict' });
+    expect(JSON.stringify(error)).not.toContain(userId);
+    expect((error as Error).message).not.toContain(userId);
+  });
+
   it('lets the database refuse two contacts with one LINE user id', async () => {
     const userId = lineUser();
     await addContact({ lineUserId: userId });
