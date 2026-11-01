@@ -2,6 +2,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import { orgScopeCondition, schema, type Database } from '@watchtower/db';
 import { ticketRefCondition } from '@watchtower/domain';
 import {
+  CLIENT_HIDDEN_DELIVERY_STATUSES,
   DUPLICATE_SUGGESTION_LIMIT,
   DUPLICATE_WINDOW_HOURS,
   OPEN_STATUSES,
@@ -352,6 +353,9 @@ export class TicketReader {
                   eq(message.ticketId, ticket.id),
                   ilike(message.bodyText, pattern),
                   client ? eq(message.visibility, 'public') : undefined,
+                  client
+                    ? notInArray(message.deliveryStatus, [...CLIENT_HIDDEN_DELIVERY_STATUSES])
+                    : undefined,
                 ),
               ),
           ),

@@ -29,6 +29,7 @@ export type { Domain };
         createDomain({
           ticketKeyPrefix: config.TICKET_KEY_PREFIX,
           sealKey: deriveSubkey(config.APP_ENCRYPTION_KEY, KEY_LABELS.outboxSecret),
+          portalUrl: new URL('/portal', config.APP_URL).toString(),
           policyGate: createPolicyGate({ db: database.db }),
         }),
     },

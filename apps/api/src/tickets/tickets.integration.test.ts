@@ -634,16 +634,45 @@ describe('replies and notes', () => {
     expect(note.body.message).toMatchObject({ direction: 'internal', visibility: 'internal' });
   });
 
-  it('delivers a staff reply at once on the portal and leaves it pending on every other channel', async () => {
+  it('delivers a staff reply at once on the portal, queues it for the dispatcher on Gmail and LINE, and leaves it pending elsewhere', async () => {
     const portal = await fileTicket(agent, orgId);
     const onPortal = await agent.client.post<{ message: Message }>(
       `/v1/tickets/${portal.id}/replies`,
       { body: 'Visible as soon as it is saved.' },
     );
     expect(onPortal.body.message.deliveryStatus).toBe('delivered');
+    expect(onPortal.body.message.delivery ?? null).toBeNull();
 
-    // No channel adapter exists yet: a reply on another channel waits for its adapter to send it.
-    for (const channel of ['gmail', 'line', 'discord', 'webhook']) {
+    // T-122d (ADR-010): Gmail and LINE replies wait out the undo window in `scheduled`, then the
+    // worker's dispatcher sends them. Channels without an adapter stay `pending`.
+    for (const channel of ['gmail', 'line']) {
+      const account = await pool().query<{ id: string }>(
+        `INSERT INTO channel_account (type, name) VALUES ($1, $2) RETURNING id`,
+        [channel, `${channel} test account`],
+      );
+      const other = await fileTicket(agent, orgId);
+      await pool().query(`UPDATE ticket SET channel = $2, channel_account_id = $3 WHERE id = $1`, [
+        other.id,
+        channel,
+        account.rows[0]?.id,
+      ]);
+      const reply = await agent.client.post<{ message: Message }>(
+        `/v1/tickets/${other.id}/replies`,
+        { body: `Reply over ${channel}` },
+      );
+      expect(reply.status, channel).toBe(201);
+      expect(reply.body.message, channel).toMatchObject({
+        direction: 'outbound',
+        deliveryStatus: 'scheduled',
+        delivery: { state: 'scheduled', origin: 'human', channel, cancellable: true },
+      });
+      const stored = await pool().query<{ delivery_status: string }>(
+        `SELECT delivery_status FROM message WHERE id = $1`,
+        [reply.body.message.id],
+      );
+      expect(stored.rows[0]?.delivery_status, channel).toBe('scheduled');
+    }
+    for (const channel of ['discord', 'webhook']) {
       const other = await fileTicket(agent, orgId);
       await pool().query(`UPDATE ticket SET channel = $2 WHERE id = $1`, [other.id, channel]);
       const reply = await agent.client.post<{ message: Message }>(
@@ -655,11 +684,6 @@ describe('replies and notes', () => {
         direction: 'outbound',
         deliveryStatus: 'pending',
       });
-      const stored = await pool().query<{ delivery_status: string }>(
-        `SELECT delivery_status FROM message WHERE id = $1`,
-        [reply.body.message.id],
-      );
-      expect(stored.rows[0]?.delivery_status, channel).toBe('pending');
     }
   });
 

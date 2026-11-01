@@ -2,6 +2,7 @@ import { Inject, Injectable, type OnApplicationShutdown } from '@nestjs/common';
 import { schema, type Database } from '@watchtower/db';
 import {
   AUDIT_ACTIONS,
+  CLIENT_HIDDEN_DELIVERY_STATUSES,
   CUSTOMER_STATUS_LABELS,
   PORTAL_TIMELINE_LIMIT,
   customerStatus,
@@ -11,7 +12,7 @@ import {
   type PortalTicketView,
   type TicketStatus,
 } from '@watchtower/shared';
-import { and, desc, eq, gte, inArray, sql } from 'drizzle-orm';
+import { and, desc, eq, gte, inArray, notInArray, sql } from 'drizzle-orm';
 
 import { AuditScope } from '../audit/audit-scope.js';
 import { AuditService } from '../audit/audit.service.js';
@@ -92,7 +93,14 @@ export class PortalTrackingService implements OnApplicationShutdown {
       })
       .from(schema.message)
       .leftJoin(schema.users, eq(schema.users.id, schema.message.senderUserId))
-      .where(and(eq(schema.message.ticketId, ticket.id), eq(schema.message.visibility, 'public')))
+      .where(
+        and(
+          eq(schema.message.ticketId, ticket.id),
+          eq(schema.message.visibility, 'public'),
+          // A reply that has not reached the customer is not theirs to see (ADR-010).
+          notInArray(schema.message.deliveryStatus, [...CLIENT_HIDDEN_DELIVERY_STATUSES]),
+        ),
+      )
       .orderBy(desc(schema.message.createdAt), desc(schema.message.id))
       .limit(PORTAL_TIMELINE_LIMIT + 1);
     const eventRows = await this.database.db
