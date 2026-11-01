@@ -813,7 +813,8 @@ describe('POST /v1/portal/tickets/:key/replies', () => {
       [numberOf(t.key)],
     );
     expect(rows[0]?.days).toBeGreaterThan(29.9);
-    expect(rows[0]?.days).toBeLessThanOrEqual(30);
+    // The expiry is this process' clock and `now()` the database's: a moment of skew either way.
+    expect(rows[0]?.days).toBeLessThanOrEqual(30.001);
   });
 
   it('cannot answer another customer of the same organization', async () => {

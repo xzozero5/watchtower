@@ -289,7 +289,10 @@ describe('ingest queue: an event becomes a ticket', () => {
 
     // Realtime events go out after the commit, with ids only.
     const realtime = await waitFor('realtime events', () => {
-      const mine = received.filter((candidate) => candidate.ticketId === ticket?.id);
+      const mine = received.filter(
+        (candidate) =>
+          candidate.type !== 'notification.created' && candidate.ticketId === ticket?.id,
+      );
       return mine.length >= 2 ? mine : undefined;
     });
     expect(realtime.map((candidate) => candidate.type).toSorted()).toEqual([

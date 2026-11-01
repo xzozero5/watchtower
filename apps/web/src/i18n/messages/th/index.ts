@@ -17,6 +17,7 @@ import { keymapTh } from './keymap';
 import { liveTh } from './live';
 import { loadingTh } from './loading';
 import { loginTh } from './login';
+import { notificationsTh } from './notifications';
 import { paletteTh } from './palette';
 import { panelTh } from './panel';
 import { panesTh } from './panes';
@@ -69,5 +70,6 @@ export const th: Messages = {
   home: homeTh,
   admin: adminTh,
   portal: portalTh,
+  notifications: notificationsTh,
   csat: csatTh,
 };

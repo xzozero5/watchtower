@@ -106,3 +106,57 @@ describe('realtimeEventFor', () => {
     );
   });
 });
+
+describe('notification events (T-105)', () => {
+  const RECIPIENT = '66666666-6666-4666-8666-666666666666';
+  const OTHER = '77777777-7777-4777-8777-777777777777';
+  const notification: RealtimeEvent = {
+    id: IDS.id,
+    type: 'notification.created',
+    occurredAt: '2026-11-02T03:00:00.000Z',
+    recipientId: RECIPIENT,
+    data: {
+      notificationId: IDS.messageId,
+      kind: 'ticket.p1',
+      severity: 'critical',
+      orgId: ORG_A,
+      queueId: '55555555-5555-4555-8555-555555555555',
+      channel: 'gmail',
+      ticketId: IDS.ticketId,
+      ticketKey: 'OPS-1001',
+    },
+  };
+
+  it('goes to its recipient and to nobody else, staff or not', () => {
+    expect(realtimeEventFor({ kind: 'staff', userId: RECIPIENT }, notification)).toBe(notification);
+    expect(realtimeEventFor({ kind: 'staff', userId: OTHER }, notification)).toBeNull();
+    // A staff audience without a user id cannot be matched to anyone: fail closed.
+    expect(realtimeEventFor({ kind: 'staff' }, notification)).toBeNull();
+  });
+
+  it('never goes to a client, not even one of the same organization', () => {
+    expect(realtimeEventFor({ kind: 'client', orgId: ORG_A }, notification)).toBeNull();
+  });
+
+  it('carries no ticket text and rejects an unknown kind', () => {
+    expect(JSON.stringify(notification)).not.toContain('Cannot log in');
+    expect(realtimeEventSchema.safeParse(notification).success).toBe(true);
+    expect(
+      realtimeEventSchema.safeParse({ ...notification, data: { ...notification.data, kind: 'x' } })
+        .success,
+    ).toBe(false);
+  });
+
+  it('keeps the channel of a ticket away from a client', () => {
+    const created = ticketEvent('ticket.created', []);
+    const withChannel: RealtimeEvent =
+      created.type === 'ticket.created'
+        ? { ...created, data: { ...created.data, channel: 'gmail' } }
+        : created;
+    expect(realtimeEventFor({ kind: 'staff' }, withChannel)).toMatchObject({
+      data: { channel: 'gmail' },
+    });
+    const forClient = realtimeEventFor({ kind: 'client', orgId: ORG_A }, withChannel);
+    expect(forClient?.type === 'ticket.created' && forClient.data.channel).toBeUndefined();
+  });
+});
