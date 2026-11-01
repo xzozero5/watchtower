@@ -19,6 +19,8 @@ const productionEnv = {
 describe('loadConfig', () => {
   it('reads the knowledge base similarity floor: default 0.25, between 0 and 1', () => {
     expect(loadConfig(testEnv()).KB_MIN_VECTOR_SIMILARITY).toBe(0.25);
+    // Compose passes an unset variable as empty: that must mean the default, not 0.
+    expect(loadConfig(testEnv({ KB_MIN_VECTOR_SIMILARITY: '' })).KB_MIN_VECTOR_SIMILARITY).toBe(0.25);
     expect(loadConfig(testEnv({ KB_MIN_VECTOR_SIMILARITY: '0.4' })).KB_MIN_VECTOR_SIMILARITY).toBe(
       0.4,
     );

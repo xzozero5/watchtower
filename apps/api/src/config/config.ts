@@ -35,7 +35,7 @@ const apiEnvSchema = createEnvSchema({
    * match. `[ASSUMED]` 0.25; the right value depends on the embedding model, so tune it with real
    * queries once a model is chosen. 0 returns the nearest passages whatever they are about.
    */
-  KB_MIN_VECTOR_SIMILARITY: z.coerce.number().min(0).max(1).default(0.25),
+  KB_MIN_VECTOR_SIMILARITY: z.preprocess(emptyToUndefined, z.coerce.number().min(0).max(1).default(0.25)),
   /** Lifetime of the access JWT. Short on purpose: refresh renews it. */
   ACCESS_TOKEN_TTL_SECONDS: seconds(900, 60, 3600),
   /** Lifetime of one refresh token (idle limit); every use issues a new one. */

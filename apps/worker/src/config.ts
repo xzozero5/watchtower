@@ -91,25 +91,22 @@ const workerEnvSchema = createEnvSchema({
    * longer than MAX, join a tail shorter than MIN to its neighbour, and repeat OVERLAP characters when
    * a long paragraph is split. Defaults come from `KB_CHUNK_DEFAULTS` in `@watchtower/shared`.
    */
-  KB_CHUNK_TARGET_CHARS: z.coerce
-    .number()
-    .int()
-    .min(50)
-    .max(8000)
-    .default(KB_CHUNK_DEFAULTS.targetChars),
-  KB_CHUNK_MAX_CHARS: z.coerce
-    .number()
-    .int()
-    .min(50)
-    .max(16000)
-    .default(KB_CHUNK_DEFAULTS.maxChars),
-  KB_CHUNK_MIN_CHARS: z.coerce.number().int().min(0).max(4000).default(KB_CHUNK_DEFAULTS.minChars),
-  KB_CHUNK_OVERLAP_CHARS: z.coerce
-    .number()
-    .int()
-    .min(0)
-    .max(2000)
-    .default(KB_CHUNK_DEFAULTS.overlapChars),
+  KB_CHUNK_TARGET_CHARS: z.preprocess(
+    emptyToUndefined,
+    z.coerce.number().int().min(50).max(8000).default(KB_CHUNK_DEFAULTS.targetChars),
+  ),
+  KB_CHUNK_MAX_CHARS: z.preprocess(
+    emptyToUndefined,
+    z.coerce.number().int().min(50).max(16000).default(KB_CHUNK_DEFAULTS.maxChars),
+  ),
+  KB_CHUNK_MIN_CHARS: z.preprocess(
+    emptyToUndefined,
+    z.coerce.number().int().min(0).max(4000).default(KB_CHUNK_DEFAULTS.minChars),
+  ),
+  KB_CHUNK_OVERLAP_CHARS: z.preprocess(
+    emptyToUndefined,
+    z.coerce.number().int().min(0).max(2000).default(KB_CHUNK_DEFAULTS.overlapChars),
+  ),
 });
 
 export type WorkerConfig = z.output<typeof workerEnvSchema> & {

@@ -96,3 +96,20 @@ describe('loadConfig', () => {
     expect(() => loadConfig(testEnv({ WORKER_CONCURRENCY: '0' }))).toThrow(/WORKER_CONCURRENCY/);
   });
 });
+
+describe('knowledge base chunk settings', () => {
+  // Compose passes an unset variable as empty: that must mean the default, not 0 (the worker then
+  // refused to boot in the container, seen only in CI).
+  it('takes empty as the default', () => {
+    const config = loadConfig(
+      testEnv({
+        KB_CHUNK_TARGET_CHARS: '',
+        KB_CHUNK_MAX_CHARS: '',
+        KB_CHUNK_MIN_CHARS: '',
+        KB_CHUNK_OVERLAP_CHARS: '',
+      }),
+    );
+    expect(config.KB_CHUNK_TARGET_CHARS).toBeGreaterThanOrEqual(50);
+    expect(config.KB_CHUNK_MAX_CHARS).toBeGreaterThanOrEqual(50);
+  });
+});
