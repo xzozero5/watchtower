@@ -38,6 +38,12 @@ snapshot สั้นสำหรับ cold start อยู่ที่ `HANDOF
 
 ## Log
 
+## 2026-11-01 11:55 (Asia/Bangkok) — frontend-dev + main thread — T-128 AI-first workspace (UI) ปิด
+- ที่มา: เจ้าของ feedback "ยังเหมือน mailbox, text เยอะ, ไม่ AI-driven" → `docs/design/ai-first-workspace.md`
+- ทำอะไร: contract `TicketAiInsight`/`TicketAiRow` + reject schema ใน `packages/shared/src/features/ai.ts` (+ `ai` optional ใน ticket summary) · queue เป็น triage board (Needs you / AI working / Waiting / Done พับไว้, แถว 2 บรรทัด: AI summary + SLA, priority + intent + AI state chip) · ticket เปิดด้วย AI brief (summary, intent + confidence meter + เหตุผล, next step, evidence chips → แท็บ Evidence, uncited flag, provenance + `StageBadge`) + draft inline A/E/R (Approve → preview → undo 5 s → reply เดิม; Reject + reason code) · conversation ย่อ, ไม่มี role label, composer ซ่อนหลัง dock · AI endpoint 404 → "AI brief unavailable" เท่านั้น (N5) · ลูกค้าเห็นรายการธรรมดา ไม่เห็น AI board · ticket ที่ยังไม่มี AI อยู่ใน "Needs you"
+- test: main thread รันบน main + `wip/t-128`: lint, typecheck ผ่าน · web 664, ui 267, shared 226 · e2e (mock) 134 · full-stack 23 `[TESTED]`
+- ค้าง `[ASSUMED]`: undo 5 s ฝั่ง client (ปิดแท็บในช่วงนั้น = ไม่ส่ง) → server-side ใน T-122d · Approve ยังไม่ผูก `aiDraftId` (T-122d) · `POST /v1/tickets/:id/ai/drafts/:draftId/reject` ยังไม่มีใน API (T-108) · ข้อมูล AI จริงมาจาก T-106e/T-108 (ตอนนี้มีแค่ใน test)
+
 ## 2026-11-01 11:10 (Asia/Bangkok) — frontend-dev + main thread — T-127 Head console (web) ปิด
 - ทำอะไร: `/home` (head + lead): tile SLA at risk/Unassigned/New/Needs triage, รายการ at-risk, แผง AI (สวิตช์, intent ต่อ stage 0–2, pinned; Draft ready/Needs you เป็นช่องว่างจนกว่าจะมี AI insight), ตามสถานะ/คิว, load ต่อคน, สุขภาพระบบ, refresh 60 s · `/admin/*`: users, orgs + `:id`, SLA + ปฏิทิน (holiday checked), intents + stage 0–2 + pin (stage 3 ไม่ render), queues, AI controls (สวิตช์สองตัว + dialog เหตุผล 3–500 ทั้งสองทาง; lead อ่านอย่างเดียว), audit (filter + CSV export สำหรับ head), integrations placeholder (T-116) · banner "AI paused" ทุกหน้าของ staff เมื่อ kill switch เปิด · rail Home/Admin ตามสิทธิ์, `g d`/`g a`, ⌘K admin · `packages/ui`: Dialog, Sheet, DataTable, Breadcrumb, StageBadge · ใช้กฎ "ลดข้อความ" ตาม feedback เจ้าของ
 - ยังไม่ทำ: filter target ใน audit, แท็บ Roles, เวลาทำการหลายช่วงต่อวัน (แก้ได้ช่วงแรกเท่านั้น)
