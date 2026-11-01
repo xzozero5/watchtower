@@ -1,5 +1,6 @@
 import {
   DEFAULT_TICKET_KEY_PREFIX,
+  KB_CHUNK_DEFAULTS,
   createEnvSchema,
   emptyToUndefined,
   parseEnv,
@@ -39,6 +40,30 @@ const workerEnvSchema = createEnvSchema({
   CLEANUP_AUTH_RETENTION_DAYS: z.coerce.number().int().min(0).max(365).default(7),
   /** Days to keep a break-glass lockout counter after its last failed sign-in (still locked ones stay). `[ASSUMED]` 30. */
   CLEANUP_BREAK_GLASS_RETENTION_DAYS: z.coerce.number().int().min(1).max(365).default(30),
+  /**
+   * Knowledge base chunking (T-107b), in characters `[ASSUMED]`: aim for chunks of about TARGET, never
+   * longer than MAX, join a tail shorter than MIN to its neighbour, and repeat OVERLAP characters when
+   * a long paragraph is split. Defaults come from `KB_CHUNK_DEFAULTS` in `@watchtower/shared`.
+   */
+  KB_CHUNK_TARGET_CHARS: z.coerce
+    .number()
+    .int()
+    .min(50)
+    .max(8000)
+    .default(KB_CHUNK_DEFAULTS.targetChars),
+  KB_CHUNK_MAX_CHARS: z.coerce
+    .number()
+    .int()
+    .min(50)
+    .max(16000)
+    .default(KB_CHUNK_DEFAULTS.maxChars),
+  KB_CHUNK_MIN_CHARS: z.coerce.number().int().min(0).max(4000).default(KB_CHUNK_DEFAULTS.minChars),
+  KB_CHUNK_OVERLAP_CHARS: z.coerce
+    .number()
+    .int()
+    .min(0)
+    .max(2000)
+    .default(KB_CHUNK_DEFAULTS.overlapChars),
 });
 
 export type WorkerConfig = z.output<typeof workerEnvSchema> & {
