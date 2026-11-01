@@ -265,7 +265,10 @@ describe('signing in with a link', () => {
       `SELECT extract(epoch FROM (expires_at - created_at))::int AS seconds FROM magic_link_tokens WHERE token_hash = $1`,
       [sha256(token)],
     );
-    expect(row.rows[0]?.seconds).toBe(h.config.MAGIC_LINK_TTL_SECONDS);
+    // Expiry comes from this process' clock and created_at from the database's: a second either way.
+    expect(
+      Math.abs((row.rows[0]?.seconds ?? 0) - h.config.MAGIC_LINK_TTL_SECONDS),
+    ).toBeLessThanOrEqual(2);
     expect(h.config.MAGIC_LINK_TTL_SECONDS).toBeLessThanOrEqual(3600);
   });
 

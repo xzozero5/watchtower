@@ -1,10 +1,12 @@
-import { pickCredentialEnv } from '@watchtower/shared';
+import { chooseGmailMethod, pickCredentialEnv } from '@watchtower/shared';
 import { createCredentialStore, type CredentialStore, type Database } from '@watchtower/db';
+import type { Domain } from '@watchtower/domain';
 import { localKmsFromConfig } from '@watchtower/shared/credential-box';
 
 import type { WorkerConfig } from '../config.js';
 import type { ProcessorContext } from '../processors/index.js';
 import { createGmailHeartbeat } from './heartbeat.js';
+import { createMarkNotConnected } from './not-connected.js';
 import { createGmailProcessor } from './processor.js';
 import { createGmailRuntime, type GmailCredentialSource, type GmailRuntime } from './runtime.js';
 import { createGmailSync } from './sync.js';
@@ -38,17 +40,64 @@ export function gmailTopicName(
 }
 
 /** The `gmail` integration of the credential store (environment first, then the database; ADR-004, ADR-012). */
-export function gmailCredentialSource(store: CredentialStore): GmailCredentialSource {
+export function gmailCredentialSource(
+  store: CredentialStore,
+  logger?: ProcessorContext['logger'],
+): GmailCredentialSource {
+  /** Which way is in effect: `chooseGmailMethod` over where each field comes from (no value is read). */
+  const methodOf = async () => {
+    const [status] = await store.status('gmail');
+    return chooseGmailMethod(status?.fields ?? []);
+  };
+  let warnedBoth = false;
+  const warnIfBoth = (method: string, fields: Record<string, unknown>): void => {
+    const both =
+      ['oauthClientId', 'oauthClientSecret', 'oauthRefreshToken', 'oauthMailbox'].every(
+        (name) => fields[name] !== undefined,
+      ) &&
+      fields.serviceAccountJson !== undefined &&
+      fields.impersonateUser !== undefined;
+    if (both && !warnedBoth) {
+      warnedBoth = true;
+      logger?.warn(
+        { method },
+        'gmail: OAuth and a service account are both configured; one is used (see packages/channels/src/gmail/README.md)',
+      );
+    }
+  };
   return {
-    configured: async () => (await store.status('gmail'))[0]?.status === 'configured',
+    configured: async () => (await methodOf()) !== null,
     read: async () => {
+      const method = await methodOf();
+      if (method === null) throw new Error('the gmail integration is incomplete');
       const fields = await store.resolve('gmail');
+      if (method === 'oauth') {
+        const clientId = fields.oauthClientId?.value;
+        const clientSecret = fields.oauthClientSecret?.value;
+        const refreshToken = fields.oauthRefreshToken?.value;
+        const mailbox = fields.oauthMailbox?.value;
+        if (
+          clientId === undefined ||
+          clientSecret === undefined ||
+          refreshToken === undefined ||
+          mailbox === undefined
+        ) {
+          throw new Error('the gmail integration is incomplete');
+        }
+        warnIfBoth(method, fields);
+        return { method: 'oauth' as const, clientId, clientSecret, refreshToken, mailbox };
+      }
       const json = fields.serviceAccountJson?.value;
       const user = fields.impersonateUser?.value;
       if (json === undefined || user === undefined) {
         throw new Error('the gmail integration is incomplete');
       }
-      return { serviceAccountJson: json, impersonateUser: user };
+      warnIfBoth(method, fields);
+      return {
+        method: 'service_account' as const,
+        serviceAccountJson: json,
+        impersonateUser: user,
+      };
     },
   };
 }
@@ -58,6 +107,7 @@ export function defaultGmailRuntime(
   config: WorkerConfig,
   database: Database,
   logger: ProcessorContext['logger'],
+  domain: Domain,
 ): GmailRuntime {
   const store = createCredentialStore({
     database,
@@ -67,7 +117,8 @@ export function defaultGmailRuntime(
   return createGmailRuntime({
     database,
     logger,
-    credentials: gmailCredentialSource(store),
+    credentials: gmailCredentialSource(store, logger),
+    onNotConnected: createMarkNotConnected({ database, domain, logger }),
     // The fake mailbox is an explicit opt-in (GMAIL_MOCK_ENABLED); otherwise "not connected".
     allowMock: config.GMAIL_MOCK_ENABLED,
   });

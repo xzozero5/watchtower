@@ -367,14 +367,18 @@ describe('dev login on a reachable host (C-16)', () => {
 });
 
 describe('the in-memory Gmail needs an explicit opt-in (T-102 N-1)', () => {
-  it.each(['GMAIL_SERVICE_ACCOUNT_JSON_PATH', 'GMAIL_IMPERSONATE_USER'])(
-    'refuses the flag while %s is set',
-    (name) => {
-      expect(() =>
-        parseEnv(schema, { ...validEnv, GMAIL_MOCK_ENABLED: 'true', [name]: 'x' }),
-      ).toThrow(/GMAIL_MOCK_ENABLED/);
-    },
-  );
+  it.each([
+    'GMAIL_SERVICE_ACCOUNT_JSON_PATH',
+    'GMAIL_IMPERSONATE_USER',
+    'GMAIL_OAUTH_CLIENT_ID',
+    'GMAIL_OAUTH_CLIENT_SECRET',
+    'GMAIL_OAUTH_REFRESH_TOKEN',
+    'GMAIL_OAUTH_MAILBOX',
+  ])('refuses the flag while %s is set', (name) => {
+    expect(() =>
+      parseEnv(schema, { ...validEnv, GMAIL_MOCK_ENABLED: 'true', [name]: 'x' }),
+    ).toThrow(/GMAIL_MOCK_ENABLED/);
+  });
 
   it('is off unless GMAIL_MOCK_ENABLED is true, including when NODE_ENV is development', () => {
     expect(parseEnv(schema, validEnv).GMAIL_MOCK_ENABLED).toBe(false);

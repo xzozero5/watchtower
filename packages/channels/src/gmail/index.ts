@@ -6,6 +6,7 @@ export * from './html.js';
 export * from './live.js';
 export * from './mime.js';
 export * from './normalize.js';
+export * from './oauth.js';
 export * from './reply.js';
 export * from './threads.js';
 export * from './transport.js';

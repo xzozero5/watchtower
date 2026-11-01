@@ -13,6 +13,7 @@ import { buildCommands } from '@/components/command-palette/commands';
 import { usePaletteShortcut } from '@/components/command-palette/use-palette-shortcut';
 import { KeyboardMap } from '@/components/keyboard-map';
 import { NavRail, type RailDestination } from '@/components/nav-rail';
+import { CriticalBanner } from '@/components/notifications/critical-banner';
 import { useT } from '@/i18n/provider';
 import { useAutonomy } from '@/lib/admin/queries';
 import { adminSectionsFor, HOME_PERMISSION } from '@/lib/admin/sections';
@@ -156,6 +157,7 @@ export function ConsoleShell({ destination, skipTo, children }: ConsoleShellProp
         isMac={isMac}
       />
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+        <CriticalBanner />
         <AiPausedBanner />
         {children}
       </div>

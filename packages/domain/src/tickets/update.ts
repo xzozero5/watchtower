@@ -10,6 +10,7 @@ import { eq } from 'drizzle-orm';
 import { recordAuditInTx } from '../audit.js';
 import { notFound, ticketNotOpen } from '../errors.js';
 import { resolveIntent } from '../intents.js';
+import { notifyTicketP1 } from '../notifications.js';
 import type { IntentRow, TicketRow } from '../rows.js';
 import { recomputeSla, resolveSlaPolicy } from '../sla.js';
 import { Effects, type DbTransaction, type DomainContext, type DomainResult } from '../types.js';
@@ -152,5 +153,7 @@ export async function updateTicket(
     metadata: { changed },
   });
   fx.emit(ticketEvent(ctx, 'ticket.updated', after, changed));
+  // Raised to P1 (T-105): the queue and the leads are told, once per ticket.
+  if (priorityChanged && after.priority === 'P1') await notifyTicketP1(tx, ctx, fx, after);
   return fx.result(after);
 }
