@@ -1,6 +1,7 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, type Page, test } from '@playwright/test';
 
+import { makeInsight } from '../src/test/ai-fixtures';
 import { makeSession, uuid } from '../src/test/fixtures';
 
 import { type BackendOptions, mockBackend, makeTicket } from './backend';
@@ -18,9 +19,9 @@ async function openWorkspace(page: Page, options: BackendOptions = {}, path = '/
 const queue = (page: Page) => page.getByRole('region', { name: 'Queue' });
 const conversation = (page: Page) => page.getByRole('region', { name: 'Conversation' });
 const assistant = (page: Page) => page.getByRole('region', { name: 'Details & AI' });
-const listbox = (page: Page) => page.getByRole('listbox', { name: 'Tickets' });
-const row = (page: Page, key: string) =>
-  listbox(page).getByRole('option', { name: new RegExp(key) });
+// The board has a listbox per section; the one holding the keyboard has this id.
+const listbox = (page: Page) => page.locator('#queue-listbox');
+const row = (page: Page, key: string) => page.getByRole('option', { name: new RegExp(key) });
 
 test.describe('pane keys (docs/06-UI-SPEC.md section 14)', () => {
   test('F6 and Alt+1..3 move focus between panes, even from the search box', async ({ page }) => {
@@ -104,17 +105,17 @@ test.describe('pane keys (docs/06-UI-SPEC.md section 14)', () => {
   });
 
   for (const scheme of ['light', 'dark'] as const) {
-    test(`the phone tabs and A/E/R bar have no axe violations in ${scheme} mode`, async ({
+    test(`the phone tabs and the draft's A/E/R buttons have no axe violations in ${scheme} mode`, async ({
       page,
     }) => {
       await page.emulateMedia({ colorScheme: scheme });
       await page.setViewportSize({ width: 375, height: 800 });
-      await openWorkspace(page, {}, '/?ticket=OPS-1');
+      await openWorkspace(page, { ai: { 'OPS-1': makeInsight() } }, '/?ticket=OPS-1');
       await expect(page.getByRole('tab', { name: 'Conversation' })).toHaveAttribute(
         'aria-selected',
         'true',
       );
-      await expect(page.getByRole('group', { name: 'AI draft actions' })).toBeVisible();
+      await expect(page.getByRole('group', { name: 'Draft actions' })).toBeVisible();
       let results = await new AxeBuilder({ page }).withTags(WCAG_TAGS).analyze();
       expect(results.violations).toEqual([]);
 

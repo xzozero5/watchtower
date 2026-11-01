@@ -83,16 +83,13 @@ describe('timeline', () => {
     const [customer, reply, note] = messages;
     if (!customer || !reply || !note) throw new Error('messages missing');
 
-    expect(within(customer).getByText('Customer message')).toBeVisible();
-    expect(within(reply).getByText('Public reply')).toBeVisible();
-    expect(within(note).getByText('Internal note')).toBeVisible();
-    expect(
-      within(note).getByText('Only your team can see this. It is never sent to the customer.'),
-    ).toBeVisible();
-    // The distinction is not colour alone: an icon in each label, a dashed border on the note.
-    for (const message of messages) {
-      expect(message.querySelector('header svg')).not.toBeNull();
-    }
+    // No role label on a message: avatar, name and time are enough. Only a note keeps a lock
+    // (with its words for screen readers) and the dashed border, so it cannot pass for a reply.
+    expect(within(customer).queryByText('Customer message')).toBeNull();
+    expect(within(reply).queryByText('Public reply')).toBeNull();
+    expect(within(note).getByText('Internal note')).toHaveClass('sr-only');
+    expect(note.querySelector('header svg.lucide-lock')).not.toBeNull();
+    expect(customer.querySelector('header svg.lucide-lock')).toBeNull();
     expect(note).toHaveClass('border-dashed');
     expect(reply).not.toHaveClass('border-dashed');
     expect(reply).toHaveAccessibleName('Public reply');
@@ -314,7 +311,7 @@ describe('composer: reply', () => {
     await openTicket();
     await user.click(await screen.findByRole('textbox', { name: 'Public reply' }));
     await user.keyboard('{Escape}');
-    expect(screen.getByRole('listbox', { name: 'Tickets' })).toHaveFocus();
+    expect(document.getElementById('queue-listbox')).toHaveFocus();
   });
 
   it('C and N jump to the reply and note boxes', async () => {
@@ -414,9 +411,6 @@ describe('composer: internal notes', () => {
 
     await user.click(screen.getByRole('radio', { name: 'Internal note' }));
     expect(screen.getByRole('radio', { name: 'Internal note' })).toBeChecked();
-    expect(
-      screen.getByText('Only your team sees this note. It is never sent to the customer.'),
-    ).toBeVisible();
     // The banner, the lock, the muted surface and the dashed border all say "not sent".
     expect(screen.getByText('Internal note — not sent to the customer')).toBeVisible();
     expect(
@@ -483,25 +477,16 @@ describe('composer: one box', () => {
     expect(box.style.height).toMatch(/^\d+px$/);
   });
 
-  it('keeps attach and AI draft as placeholders that say "Coming in Phase 1" and do nothing', async () => {
+  it('keeps attach as a placeholder that says "Coming in Phase 1" and does nothing; the AI lives in the brief', async () => {
     const user = userEvent.setup();
     const api = workspaceApi({ tickets: [ticket1] });
     await openTicket();
     const attach = await screen.findByRole('button', { name: 'Attach a file' });
-    const draft = screen.getByRole('button', { name: 'Draft with AI' });
-    for (const button of [attach, draft]) {
-      expect(button).toHaveAttribute('aria-disabled', 'true');
-    }
-    draft.focus();
-    expect(await screen.findByRole('tooltip')).toHaveTextContent(
-      'Draft with AI — Coming in Phase 1',
-    );
+    expect(attach).toHaveAttribute('aria-disabled', 'true');
+    expect(screen.queryByRole('button', { name: 'Draft with AI' })).toBeNull();
     const before = api.calls.length;
-    await user.click(draft);
+    await user.click(attach);
     expect(api.calls).toHaveLength(before);
-    // No sparkle icon anywhere: the AI is marked with the Bot glyph and the word "AI".
-    expect(draft.querySelector('svg.lucide-bot')).not.toBeNull();
-    expect(draft.querySelector('svg[class*="sparkle"]')).toBeNull();
   });
 
   it('puts a customer message into the reply as a quote from its hover action', async () => {

@@ -148,9 +148,10 @@ describe('timeline: events', () => {
 });
 
 describe('timeline: time and actions', () => {
-  it('shows a short time and the exact date and time in a tooltip on focus', async () => {
+  it('shows how long ago (2m, 3h, 5d) and the exact date and time in a tooltip on focus', async () => {
     renderApp(<Timeline entries={[reply(1, 0)]} />);
-    const time = screen.getByText(/\d{1,2}:\d{2}|Nov 2/, { selector: 'time' });
+    const time = screen.getAllByText(/^\d+[mhd]$|^now$/, { selector: 'time' })[0];
+    if (!time) throw new Error('no time shown');
     expect(time).toHaveAttribute('dateTime', at(0));
     fireEvent.focus(time);
     fireEvent.pointerMove(time);

@@ -15,7 +15,7 @@ import {
   Tooltip,
   cn,
 } from '@watchtower/ui';
-import { Bot, ChevronDown, CornerDownLeft, FileText, Lock, Paperclip, Send } from 'lucide-react';
+import { ChevronDown, CornerDownLeft, FileText, Lock, Paperclip, Send } from 'lucide-react';
 import {
   type KeyboardEvent,
   type Ref,
@@ -45,12 +45,15 @@ import {
 } from '@/lib/tickets/templates';
 import { useIsMac } from '@/lib/use-is-mac';
 
-type Mode = 'reply' | 'note';
+export type ComposerMode = 'reply' | 'note';
+type Mode = ComposerMode;
 
 /** What the timeline can ask of the composer. */
 export interface ComposerHandle {
   /** Puts a customer's words into the reply as a quote and moves the caret there. */
   quote: (text: string) => void;
+  /** Moves the caret into the box, optionally switching to the reply or the note tab. */
+  focus: (mode?: ComposerMode) => void;
 }
 
 const MIN_ROWS = 3;
@@ -91,9 +94,18 @@ function asQuote(text: string): string {
 export function Composer({
   ticket,
   handleRef,
+  initialMode,
+  autoFocus = false,
+  initialQuote,
 }: {
   ticket: TicketItem;
   handleRef?: Ref<ComposerHandle>;
+  /** Which tab opens first; reply unless the person cannot reply. */
+  initialMode?: Mode;
+  /** Put the caret in the box when it appears (the person asked for it with "Write myself" or C). */
+  autoFocus?: boolean;
+  /** A customer's words to quote as soon as the box appears. */
+  initialQuote?: string;
 }) {
   const { t } = useI18n();
   const { can, session } = useSession();
@@ -105,14 +117,14 @@ export function Composer({
   const canNote = can('ticket.handle');
   const isStaff = can('ticket.reply');
 
-  const [mode, setMode] = useState<Mode>(canReply ? 'reply' : 'note');
+  const [mode, setMode] = useState<Mode>(initialMode === 'note' || !canReply ? 'note' : 'reply');
   const [bodies, setBodies] = useState<Record<Mode, string>>(() => ({
     reply: draftStore.get(ticket.key, 'reply'),
     note: draftStore.get(ticket.key, 'note'),
   }));
   const [nextStatus, setNextStatus] = useState<TicketStatus | ''>('');
   const [sent, setSent] = useState<Mode | null>(null);
-  const [focusTick, setFocusTick] = useState(0);
+  const [focusTick, setFocusTick] = useState(autoFocus ? 1 : 0);
 
   const intents = useIntents(isStaff);
   const workflow = useWorkflow(isStaff);
@@ -154,19 +166,34 @@ export function Composer({
     canNote,
   );
 
+  const quote = (text: string) => {
+    if (!canReply) return;
+    setMode('reply');
+    setBodies((current) => {
+      const next = `${current.reply}${current.reply && !current.reply.endsWith('\n') ? '\n\n' : ''}${asQuote(text)}`;
+      draftStore.set(ticket.key, 'reply', next);
+      return { ...current, reply: next };
+    });
+    setSent(null);
+    setFocusTick((tick) => tick + 1);
+  };
   useImperativeHandle(handleRef, () => ({
-    quote: (text: string) => {
-      if (!canReply) return;
-      setMode('reply');
-      setBodies((current) => {
-        const next = `${current.reply}${current.reply && !current.reply.endsWith('\n') ? '\n\n' : ''}${asQuote(text)}`;
-        draftStore.set(ticket.key, 'reply', next);
-        return { ...current, reply: next };
-      });
-      setSent(null);
+    quote,
+    focus: (target) => {
+      if (target === 'reply' && canReply) setMode('reply');
+      if (target === 'note' && canNote) setMode('note');
       setFocusTick((tick) => tick + 1);
     },
   }));
+
+  const quoted = useRef(false);
+  useEffect(() => {
+    if (initialQuote === undefined || quoted.current) return;
+    quoted.current = true;
+    quote(initialQuote);
+    // Runs once, when the box appears with a quote waiting.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   if (!canReply && !canNote) return null;
 
@@ -336,7 +363,7 @@ export function Composer({
             setBody(event.target.value);
           }}
           onKeyDown={onKeyDown}
-          aria-describedby={hintId}
+          aria-describedby={isNote ? undefined : hintId}
           aria-keyshortcuts="Control+Enter Meta+Enter"
           className="block w-full resize-none bg-transparent px-3 py-2 text-sm leading-normal text-foreground outline-hidden placeholder:text-muted-foreground"
         />
@@ -378,17 +405,6 @@ export function Composer({
                   className="text-muted-foreground"
                 >
                   <Paperclip aria-hidden className="size-4" />
-                </Button>
-              </Tooltip>
-              <Tooltip content={`${t('composer.toolbar.aiDraft')} — ${soon}`}>
-                <Button
-                  variant="ghost"
-                  aria-disabled="true"
-                  aria-label={t('composer.toolbar.aiDraft')}
-                  className="gap-1.5 px-2 text-muted-foreground"
-                >
-                  <Bot aria-hidden className="size-4 text-ai-accent" />
-                  <span>AI</span>
                 </Button>
               </Tooltip>
             </>
@@ -452,9 +468,11 @@ export function Composer({
         </div>
       </div>
 
-      <p id={hintId} className="mt-1.5 px-1 text-xs text-muted-foreground">
-        {t(hintKey, { channel: channelName ?? '' })}
-      </p>
+      {isNote ? null : (
+        <p id={hintId} className="mt-1.5 px-1 text-xs text-muted-foreground">
+          {t(hintKey, { channel: channelName ?? '' })}
+        </p>
+      )}
 
       {unresolved.length > 0 ? (
         <Alert tone="error" title={t('composer.unresolved.title')} className="mt-2">

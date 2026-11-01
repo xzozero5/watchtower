@@ -5,6 +5,7 @@ import {
   replyResultSchema,
   sessionInfoSchema,
   teamQueueListSchema,
+  ticketAiInsightSchema,
   ticketDetailResponseSchema,
   ticketListSchema,
   timelinePageSchema,
@@ -14,6 +15,7 @@ import {
   type ChangeStatus,
   type DevLoginRequest,
   type Note,
+  type RejectAiDraft,
   type Reply,
   type TicketListQuery,
   type UpdateTicket,
@@ -195,6 +197,22 @@ export function createEndpoints(client: ApiClient) {
         path: refPath(ref),
         body,
         schema: ticketDetailResponseSchema,
+      }),
+
+    // --- AI brief (T-128; the api serves these with T-106e / T-108, until then they answer 404) ---
+    ticketAi: (ref: string, signal?: AbortSignal) =>
+      client.request({
+        path: `${refPath(ref)}/ai`,
+        schema: ticketAiInsightSchema,
+        ...(signal ? { signal } : {}),
+      }),
+
+    rejectAiDraft: (ref: string, draftId: string, body: RejectAiDraft) =>
+      client.request({
+        method: 'POST',
+        path: `${refPath(ref)}/ai/drafts/${encodeURIComponent(draftId)}/reject`,
+        body,
+        schema: null,
       }),
 
     // --- reference data for the editors ---
