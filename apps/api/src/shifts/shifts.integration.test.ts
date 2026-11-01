@@ -1,5 +1,7 @@
 import {
+  DEFAULT_ROLE_PERMISSIONS,
   shiftWindow,
+  type Permission,
   type AssigneeList,
   type Handoff,
   type HandoffItem,
@@ -1544,5 +1546,150 @@ describe('the time zone is the business calendar zone', () => {
     );
     const list = await a.client.get<ShiftDefinitionList>('/v1/shifts/definitions');
     expect(list.body.timezone).toBe('Asia/Tokyo');
+  });
+});
+
+// --- deny by default: a permission taken from a role closes the route ---
+
+describe('RBAC: each permission is checked on its own', () => {
+  async function without(permission: Permission, run: () => Promise<void>): Promise<void> {
+    const keep = DEFAULT_ROLE_PERMISSIONS.agent;
+    const set = (permissions: readonly Permission[]) =>
+      head.client.put(`/v1/rbac/roles/agent/permissions`, { permissions: [...permissions] });
+    expect((await set(keep.filter((key) => key !== permission))).status).toBe(200);
+    try {
+      await run();
+    } finally {
+      expect((await set(keep)).status).toBe(200);
+    }
+  }
+
+  it('clock in and out need shift.clock, the handoff needs handoff.write, notes need shift.note.write', async () => {
+    const agent = await agentNamed('Stripped');
+    const draftOwner = await agentNamed('Stripped Owner');
+    await clockIn(draftOwner);
+    await without('shift.clock', async () => {
+      expect((await agent.client.post('/v1/shifts/clock-in', {})).status).toBe(403);
+      expect((await agent.client.post('/v1/shifts/clock-out', {})).status).toBe(403);
+      expect((await agent.client.get('/v1/shifts/status')).status).toBe(403);
+      expect((await agent.client.get('/v1/shifts/brief')).status).toBe(403);
+    });
+    await without('handoff.write', async () => {
+      expect((await draftOwner.client.post('/v1/handoffs/prefill')).status).toBe(403);
+      expect((await draftOwner.client.get('/v1/handoffs/current')).status).toBe(403);
+    });
+    await without('shift.note.write', async () => {
+      expect(
+        (await agent.client.post('/v1/shift-notes', { audience: 'next_shift', body: 'x' })).status,
+      ).toBe(403);
+      expect((await agent.client.get('/v1/shift-notes')).status).toBe(403);
+    });
+    // Back to normal afterwards.
+    expect((await agent.client.post('/v1/shifts/clock-in', {})).status).toBe(200);
+  });
+
+  it('acknowledging needs both handoff.ack and ticket.handle, because accepting moves a ticket', async () => {
+    const outgoing = await agentNamed('Out Stripped');
+    await clockIn(outgoing);
+    const ticket = await assigned('P1', outgoing);
+    const handoff = await confirmHandoff(outgoing);
+    const item = handoff.items.find((entry) => entry.ticket?.id === ticket.id) as HandoffItem;
+    await outgoing.client.post('/v1/shifts/clock-out', {});
+    const incoming = await agentNamed('In Stripped');
+    await clockIn(incoming);
+    const ack = () =>
+      incoming.client.post(`/v1/handoffs/items/${item.id}/ack`, { decision: 'accept' });
+    await without('handoff.ack', async () => {
+      expect((await ack()).status).toBe(403);
+      expect((await incoming.client.get('/v1/handoffs/incoming')).status).toBe(403);
+    });
+    await without('ticket.handle', async () => {
+      expect((await ack()).status).toBe(403);
+    });
+    expect((await ack()).status).toBe(200);
+  });
+
+  it('managing the roster needs roster.manage even for a lead-like role on other routes', async () => {
+    const agent = await agentNamed('Roster Peek');
+    expect((await agent.client.get('/v1/shifts/overview')).status).toBe(403);
+    const leadRole = DEFAULT_ROLE_PERMISSIONS.lead.filter((key) => key !== 'roster.manage');
+    const set = (permissions: readonly Permission[]) =>
+      head.client.put(`/v1/rbac/roles/lead/permissions`, { permissions: [...permissions] });
+    expect((await set(leadRole)).status).toBe(200);
+    try {
+      expect(
+        (
+          await lead.client.post('/v1/roster', {
+            shiftId: ID0,
+            userId: ID0,
+            workDate: '2026-12-02',
+          })
+        ).status,
+      ).toBe(403);
+      // performance.read.all still opens the overview.
+      expect((await lead.client.get('/v1/shifts/overview')).status).toBe(200);
+      expect(
+        (
+          await lead.client.post('/v1/shifts/clock-out', {
+            override: { reason: 'Not allowed any more' },
+          })
+        ).status,
+      ).toBe(403);
+    } finally {
+      expect((await set(DEFAULT_ROLE_PERMISSIONS.lead)).status).toBe(200);
+    }
+  });
+});
+
+const ID0 = '00000000-0000-4000-8000-000000000001';
+
+// --- OpenAPI ---
+
+describe('OpenAPI', () => {
+  interface Operation {
+    'x-required-permissions'?: string[];
+    responses: Record<string, unknown>;
+    summary?: string;
+  }
+
+  it('documents every shift route with the permission it needs and a success response', async () => {
+    const response = await fetch(`${h.base}/docs-json`);
+    const document = (await response.json()) as {
+      paths: Record<string, Record<string, Operation>>;
+    };
+    const prefixes = [
+      '/v1/shifts',
+      '/v1/roster',
+      '/v1/handoffs',
+      '/v1/shift-notes',
+      '/v1/assignees',
+    ];
+    const operations = Object.entries(document.paths)
+      .filter(([path]) => prefixes.some((prefix) => path.startsWith(prefix)))
+      .flatMap(([path, methods]) =>
+        Object.entries(methods).map(([method, operation]) => ({ path, method, operation })),
+      );
+    expect(operations.length).toBeGreaterThanOrEqual(23);
+    for (const { path, method, operation } of operations) {
+      const label = `${method.toUpperCase()} ${path}`;
+      expect(operation['x-required-permissions']?.length, label).toBeGreaterThan(0);
+      expect(operation.summary, label).toBeTruthy();
+      expect(
+        ['200', '201', '204'].some((status) => status in operation.responses),
+        label,
+      ).toBe(true);
+    }
+    const permissions = (method: string, path: string) =>
+      document.paths[path]?.[method]?.['x-required-permissions'];
+    expect(permissions('post', '/v1/handoffs/items/{itemId}/ack')).toEqual([
+      'handoff.ack',
+      'ticket.handle',
+    ]);
+    expect(permissions('get', '/v1/shifts/overview')).toEqual([
+      'roster.manage',
+      'performance.read.all',
+    ]);
+    expect(permissions('post', '/v1/shifts/clock-out')).toEqual(['shift.clock']);
+    expect(document.paths['/v1/shifts/clock-out']?.post?.responses).toHaveProperty('409');
   });
 });
