@@ -73,7 +73,7 @@ export function Avatar({ name, id, size = 24, className, ...props }: AvatarProps
       aria-hidden={labelled ? undefined : true}
       role={labelled ? 'img' : undefined}
       className={cn(
-        'inline-flex shrink-0 items-center justify-center rounded-full font-medium select-none',
+        'inline-flex shrink-0 items-center justify-center rounded-full font-medium ring-2 ring-background select-none',
         SIZE[size],
         HUES[avatarHue(id ?? name) - 1],
         className,

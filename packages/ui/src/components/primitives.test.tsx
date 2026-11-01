@@ -78,19 +78,22 @@ describe('pills', () => {
     expect(hollow?.className).toContain('border');
   });
 
-  it('is a 20px rounded-full outline by default', () => {
+  it('is a 20px rounded-full soft pill without an outline by default', () => {
     render(<Pill>vip</Pill>);
-    expect(screen.getByText('vip')).toHaveClass('h-5', 'rounded-full', 'border');
+    expect(screen.getByText('vip')).toHaveClass('h-5', 'rounded-full', 'bg-surface-muted');
+    expect(screen.getByText('vip')).not.toHaveClass('border');
   });
 });
 
 describe('SeverityBadge as a pill', () => {
-  it('fills only P1; the other levels are outlined', () => {
+  it('tints every level softly and makes only P1 heavier', () => {
     const { container, rerender } = render(<SeverityBadge severity="p1" label="Critical" />);
-    expect(container.firstElementChild).toHaveClass('bg-sev-p1-bg', 'rounded-full', 'h-5');
+    expect(container.firstElementChild).toHaveClass('bg-tint-red-bg', 'rounded-full', 'h-5');
+    expect(container.firstElementChild).toHaveClass('font-semibold');
     for (const id of ['p2', 'p3', 'p4'] as const) {
       rerender(<SeverityBadge severity={id} label="x" />);
-      expect(container.firstElementChild).toHaveClass('bg-transparent');
+      expect(container.firstElementChild).not.toHaveClass('font-semibold');
+      expect(container.firstElementChild).not.toHaveClass('bg-tint-red-bg');
     }
   });
 

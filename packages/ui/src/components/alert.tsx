@@ -35,7 +35,7 @@ export function Alert({ tone = 'info', title, children, className, ...props }: A
       role={tone === 'error' ? 'alert' : 'status'}
       data-tone={tone}
       className={cn(
-        'flex gap-2.5 rounded-lg border border-border-strong bg-surface px-3 py-2.5 text-sm',
+        'flex gap-2.5 rounded-lg border border-border-strong bg-surface px-3.5 py-3 text-sm',
         className,
       )}
       {...props}

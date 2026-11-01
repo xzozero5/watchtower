@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { COLOR_TOKENS, THEME_NAMES } from './colors.js';
+import { COLOR_TOKENS, THEME_NAMES, TINT_IDS } from './colors.js';
 import {
   AA_TEXT_RATIO,
   AA_UI_RATIO,
@@ -55,6 +55,21 @@ describe('design token contrast (WCAG 2.x AA)', () => {
           expect(ratio).toBeGreaterThanOrEqual(requirement.minimum);
         },
       );
+
+      it('covers every tint family, text and icon, on its chip and on every surface', () => {
+        for (const id of TINT_IDS) {
+          expect(requirements.some((r) => r.name.includes(`tint ${id} fg on bg`))).toBe(true);
+          expect(requirements.some((r) => r.name.includes(`tint ${id} icon on bg`))).toBe(true);
+          expect(requirements.some((r) => r.name.includes(`tint ${id} icon on aiSubtle`))).toBe(
+            true,
+          );
+        }
+      });
+
+      it('covers the AI wash behind the brief', () => {
+        expect(requirements.some((r) => r.name.includes('aiAccent on aiSubtle'))).toBe(true);
+        expect(requirements.some((r) => r.name.includes('foreground on aiSubtle'))).toBe(true);
+      });
 
       it('covers every severity level', () => {
         for (const id of SEVERITY_IDS) {

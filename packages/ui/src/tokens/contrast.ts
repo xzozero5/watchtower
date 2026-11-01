@@ -1,4 +1,4 @@
-import { type ColorTokens, COLOR_TOKENS, THEME_NAMES, type ThemeName } from './colors.js';
+import { type ColorTokens, COLOR_TOKENS, THEME_NAMES, TINT_IDS, type ThemeName } from './colors.js';
 import { SEVERITY_IDS } from './severity.js';
 
 /** WCAG 2.x AA thresholds (PRD section 10). */
@@ -44,7 +44,7 @@ export interface ContrastRequirement {
   readonly kind: 'text' | 'ui';
 }
 
-const SURFACES = ['background', 'surface', 'surfaceMuted', 'primarySubtle'] as const;
+const SURFACES = ['background', 'surface', 'surfaceMuted', 'primarySubtle', 'aiSubtle'] as const;
 
 /**
  * Every colour pair the UI is allowed to draw, with the AA ratio it must reach. Add a pair here
@@ -100,6 +100,22 @@ export function contrastRequirements(
   tokens.avatar.forEach((colors, index) => {
     requirements.push(text(`avatar ${String(index + 1)} fg on bg`, colors.fg, colors.bg));
   });
+
+  // Soft tinted chips (priority, SLA, AI state, channel, intent): dark text and a full-colour icon
+  // on the tint, and the same text and icon when they stand alone on a surface (section headers).
+  for (const id of TINT_IDS) {
+    const colors = tokens.tint[id];
+    requirements.push(
+      text(`tint ${id} fg on bg`, colors.fg, colors.bg),
+      ui(`tint ${id} icon on bg`, colors.icon, colors.bg),
+    );
+    for (const surface of SURFACES) {
+      requirements.push(
+        text(`tint ${id} fg on ${surface}`, colors.fg, tokens[surface]),
+        ui(`tint ${id} icon on ${surface}`, colors.icon, tokens[surface]),
+      );
+    }
+  }
 
   for (const id of SEVERITY_IDS) {
     const colors = tokens.severity[id];

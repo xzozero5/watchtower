@@ -60,6 +60,7 @@ describe('brand palette in the tokens', () => {
         ...Object.values(theme).filter((value) => typeof value === 'string'),
         ...Object.values(theme.severity).flatMap(({ fg, bg, border }) => [fg, bg, border]),
         ...theme.avatar.flatMap(({ fg, bg }) => [fg, bg]),
+        ...Object.values(theme.tint).flatMap(({ fg, bg, icon }) => [fg, bg, icon]),
       ];
       expect(used).not.toContain(BRAND.coral);
     }
