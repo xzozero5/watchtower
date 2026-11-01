@@ -170,6 +170,63 @@ describe('the worker delivers a scheduled reply', () => {
     expect(fake.sent).toHaveLength(1);
   });
 
+  it('holds a job that arrives before its time instead of dropping the reply', async () => {
+    const [org] = await owner()
+      .insert(schema.organization)
+      .values({ name: `Org ${randomUUID()}` })
+      .returning();
+    const [staff] = await owner()
+      .insert(schema.users)
+      .values({ email: `${randomUUID()}@example.test`, name: 'Staff', role: 'agent' })
+      .returning();
+    if (org === undefined || staff === undefined) throw new Error('setup failed');
+    const created = await database.db.transaction((tx) =>
+      domain.tickets.create(tx, domain.context({ actor: { type: 'user', id: staff.id } }), {
+        orgId: org.id,
+        subject: 'Early',
+        body: 'Please help',
+        requester: { email: `${randomUUID()}@customer.example.test`, name: 'Customer' },
+      }),
+    );
+    const ticketId = created.value.ticket.id;
+    await owner()
+      .update(schema.ticket)
+      .set({ channel: 'gmail', channelAccountId: gmailId })
+      .where(eq(schema.ticket.id, ticketId));
+    const replied = await database.db.transaction((tx) =>
+      domain.tickets.reply(tx, domain.context({ actor: { type: 'user', id: staff.id } }), {
+        ref: ticketId,
+        reply: { body: 'Early nudge' },
+        sender: { kind: 'staff', userId: staff.id },
+      }),
+    );
+    const delivery = replied.value.delivery;
+    if (delivery === null || delivery === undefined) throw new Error('no delivery');
+    // The only trigger left is one that fires before the delivery is due, as clock skew makes it.
+    await owner().execute(
+      `DELETE FROM outbox WHERE job_id LIKE '%${delivery.id}%' AND status = 'pending'`,
+    );
+    const queue = new Queue(QUEUE_NAMES.outbound, {
+      connection: parseRedisUrl(config.REDIS_URL),
+      prefix,
+    });
+    await queue.add(
+      OUTBOUND_JOBS.dispatch,
+      { deliveryId: delivery.id },
+      { jobId: `early-${delivery.id}` },
+    );
+    await queue.close();
+
+    await waitFor('the early delivery to be sent', async () => {
+      const [row] = await owner()
+        .select()
+        .from(schema.outboundDelivery)
+        .where(eq(schema.outboundDelivery.id, delivery.id));
+      return row?.state === 'sent' ? row : undefined;
+    });
+    expect(fake.sent).toHaveLength(2);
+  });
+
   it('registers the repeating sweeper', async () => {
     const queue = new Queue(QUEUE_NAMES.outbound, {
       connection: parseRedisUrl(config.REDIS_URL),

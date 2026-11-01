@@ -14,6 +14,8 @@ export function contactSnapshot(row: ContactRow): Record<string, unknown> {
     orgId: row.orgId,
     emailCount: row.emails.length,
     hasLineUserId: row.lineUserId !== null,
+    lineLinkedVia: row.lineLinkedVia,
+    lineVerified: row.lineVerifiedAt !== null,
     hasPhone: row.phone !== null,
   };
 }

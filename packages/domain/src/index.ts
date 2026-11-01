@@ -6,6 +6,7 @@ import { findOrCreateContactByEmail } from './contacts.js';
 import { ingestInbound } from './inbound/ingest.js';
 import { resolveIntent } from './intents.js';
 import { NO_NOTIFIER, type TicketNotifier } from './notifier.js';
+import { issueLineLinkCode, linkLineUser, redeemLineLinkCode } from './identity/line-link.js';
 import { cancelSend } from './outbound/cancel.js';
 import {
   claimDelivery,
@@ -84,6 +85,21 @@ export {
   findOrCreateContactByEmail,
   type FindOrCreateContactInput,
 } from './contacts.js';
+export {
+  generateLinkCode,
+  hashLinkCode,
+  issueLineLinkCode,
+  linkLineUser,
+  parseLinkCode,
+  redeemLineLinkCode,
+  type IssueLinkCodeInput,
+  type IssuedLinkCode,
+  type LinkLineUserInput,
+  type LinkVia,
+  type LinkedLineUser,
+  type RedeemInput,
+  type RedeemOutcome,
+} from './identity/line-link.js';
 export { DOMAIN_ERROR_CODES, DomainError, isDomainError, type DomainErrorCode } from './errors.js';
 export {
   UNIDENTIFIED_ORG_ID,
@@ -353,6 +369,12 @@ export interface Domain {
   };
   /** Received messages (ADR-009): used by the worker's `ingest` consumer. */
   readonly inbound: { readonly ingest: typeof ingestInbound };
+  /** Who is behind a LINE user id: link codes and LINE Login (T-103d, R-2.11). */
+  readonly identity: {
+    readonly issueLineLinkCode: typeof issueLineLinkCode;
+    readonly redeemLineLinkCode: typeof redeemLineLinkCode;
+    readonly linkLineUser: typeof linkLineUser;
+  };
 }
 
 export function createDomain(options: DomainOptions): Domain {
@@ -416,5 +438,6 @@ export function createDomain(options: DomainOptions): Domain {
       setUndoSendSeconds,
     },
     inbound: { ingest: ingestInbound },
+    identity: { issueLineLinkCode, redeemLineLinkCode, linkLineUser },
   };
 }
