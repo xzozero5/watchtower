@@ -309,6 +309,29 @@ describe('0013_kb', () => {
     expect(rows.map((row) => row.role)).toEqual(['client']);
   });
 
+  it('seeds kb.publish.break_glass for the head only', async () => {
+    const { rows } = await owner().query<{ role: string }>(
+      `SELECT role FROM role_permissions WHERE permission = 'kb.publish.break_glass' ORDER BY role`,
+    );
+    expect(rows.map((row) => row.role)).toEqual(['head']);
+  });
+
+  it('keeps a pending break-glass publication tied to who did it and why', async () => {
+    const { articleId } = await article(app, { slug: 'glass', publish: true, status: 'published' });
+    const pending = (set: string, params: unknown[] = []) =>
+      app.query(`UPDATE kb_article SET break_glass_pending = true${set} WHERE id = $1`, [
+        articleId,
+        ...params,
+      ]);
+    expect(await code(pending(''))).toBe(CHECK_VIOLATION);
+    expect(
+      await code(pending(", break_glass_by = $2, break_glass_reason = '  '", [randomUUID()])),
+    ).toBe(CHECK_VIOLATION);
+    expect(
+      await code(pending(", break_glass_by = $2, break_glass_reason = 'outage'", [randomUUID()])),
+    ).toBeUndefined();
+  });
+
   it('removes an organization from the audience of its articles when the organization goes', async () => {
     const { articleId } = await article(app, { slug: 'orgs', visibility: 'orgs' });
     const org = await owner().query<{ id: string }>(
@@ -335,7 +358,7 @@ describe('0013_kb', () => {
       `SELECT to_regclass('kb_article') AS a, to_regclass('kb_article_version') AS b,
               to_regclass('kb_chunk') AS c, to_regclass('kb_embedding_index') AS d,
               to_regclass('kb_article_org') AS e,
-              (SELECT count(*) FROM permissions WHERE key = 'kb.read.customer')::int AS p`,
+              (SELECT count(*) FROM permissions WHERE key IN ('kb.read.customer', 'kb.publish.break_glass'))::int AS p`,
     );
     expect(gone.rows[0]).toEqual({ a: null, b: null, c: null, d: null, e: null, p: 0 });
     expect(await migrateUp(owner())).toEqual(['0013_kb', ...later]);

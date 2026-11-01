@@ -20,6 +20,8 @@
 --   Keyword search uses pg_trgm (word_similarity) on kb_chunk.text; it works on Thai because it
 --     needs no word boundaries.
 --   kb.read.customer: new permission, granted to the client role only: customer-facing search.
+--   kb.publish.break_glass: granted to the head only: publish without a second person (the
+--     break-glass columns of kb_article record it until another approver reviews it).
 -- Articles are never deleted (deprecate instead): the application role has no DELETE on them.
 -- Reversible: see 0013_kb.down.sql.
 
@@ -59,6 +61,15 @@ CREATE TABLE kb_article (
   current_version_id uuid NOT NULL,
   published_version_id uuid,
   published_at timestamptz,
+  -- Break-glass publishing (po decision, segregation of duties): the head published without a
+  -- second person, with a reason. The flag stays up until another approver reviews it. The reason is
+  -- also in the audit log; it is kept here so the review queue can show it.
+  break_glass_pending boolean NOT NULL DEFAULT false,
+  break_glass_by uuid,
+  break_glass_at timestamptz,
+  break_glass_reason text,
+  break_glass_reviewed_by uuid,
+  break_glass_reviewed_at timestamptz,
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now(),
   CONSTRAINT kb_article_slug_check CHECK (slug ~ '^[a-z0-9]([a-z0-9-]{0,118}[a-z0-9])?$'),
@@ -67,11 +78,15 @@ CREATE TABLE kb_article (
   CONSTRAINT kb_article_status_check CHECK (status IN ('draft', 'in_review', 'published', 'deprecated')),
   CONSTRAINT kb_article_visibility_check CHECK (visibility IN ('internal', 'customer', 'orgs')),
   CONSTRAINT kb_article_published_check CHECK (status <> 'published' OR published_version_id IS NOT NULL),
-  CONSTRAINT kb_article_sources_check CHECK (jsonb_typeof(sources) = 'array')
+  CONSTRAINT kb_article_sources_check CHECK (jsonb_typeof(sources) = 'array'),
+  CONSTRAINT kb_article_break_glass_check CHECK (
+    NOT break_glass_pending OR (break_glass_by IS NOT NULL AND length(btrim(break_glass_reason)) > 0)
+  )
 );
 CREATE UNIQUE INDEX kb_article_slug_key ON kb_article (slug);
 CREATE INDEX kb_article_status_idx ON kb_article (status, updated_at DESC);
 CREATE INDEX kb_article_intent_tags_idx ON kb_article USING gin (intent_tags);
+CREATE INDEX kb_article_break_glass_idx ON kb_article (break_glass_at) WHERE break_glass_pending;
 
 CREATE TABLE kb_article_version (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -172,5 +187,8 @@ CREATE TRIGGER kb_chunk_check_embedding
 
 -- Customer-facing search: the client role may search customer-visible articles of its organization.
 INSERT INTO permissions (key, description) VALUES
-  ('kb.read.customer', 'Search the customer-visible knowledge base (client)');
-INSERT INTO role_permissions (role, permission) VALUES ('client', 'kb.read.customer');
+  ('kb.read.customer', 'Search the customer-visible knowledge base (client)'),
+  ('kb.publish.break_glass', 'Publish a knowledge base article without a second person, with a reason (head)');
+INSERT INTO role_permissions (role, permission) VALUES
+  ('client', 'kb.read.customer'),
+  ('head', 'kb.publish.break_glass');

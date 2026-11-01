@@ -49,7 +49,7 @@ async function phase1Rows(): Promise<{ keys: string[]; grants: string[] }> {
 }
 
 /** Permission strings introduced by a migration after 0006; reverting past 0006 removes them as well. */
-const ADDED_AFTER_0006 = ['kb.read.customer'];
+const ADDED_AFTER_0006 = ['kb.read.customer', 'kb.publish.break_glass'];
 
 describe('0006 Phase 1 permissions', () => {
   it('seeds the permission strings with the descriptions of the shared vocabulary', async () => {
@@ -88,7 +88,7 @@ describe('0006 Phase 1 permissions', () => {
     const remaining = await owner().query<{ n: number }>(
       'SELECT count(*)::int AS n FROM permissions',
     );
-    // Permissions that later migrations add are gone too (0013 adds kb.read.customer).
+    // Permissions that later migrations add are gone too (0013 adds kb.read.customer and kb.publish.break_glass).
     expect(remaining.rows[0]?.n).toBe(
       Object.keys(PERMISSIONS).length - PHASE_1.length - ADDED_AFTER_0006.length,
     );
