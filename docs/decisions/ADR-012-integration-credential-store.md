@@ -1,6 +1,6 @@
 # ADR-012 — Integration credential store: ตาราง `integration_credential`, envelope encryption, หมุนกุญแจ (T-116a)
 
-- **Status:** Proposed 2026-11-01 · แก้ (amends) ADR-004 ในส่วนที่ ADR-004 ทิ้งไว้เป็น "envelope encryption … ต้องมีวิธีหมุนกุญแจ" · รอ `security-reviewer` (N7 — ผู้เขียนคนละคนกับผู้ตรวจ) และ `po`
+- **Status:** Accepted 2026-11-01 · `security-reviewer` ไม่มี P0/P1, K-1…K-8 แก้แล้ว
 - **Date:** 2026-11-01 (เวลากรุงเทพ) · **ผู้ตัดสิน:** `backend-dev` เสนอ → main thread / เจ้าของรับรอง
 - **Context:**
   - ADR-004 (Accepted): infra secret อยู่ใน environment; credential ของ integration อยู่ใน environment **หรือ** DB แบบเข้ารหัส ตั้งผ่านหน้า admin โดย `head`, อ่านกลับไม่ได้, audit ไม่มีค่า, environment ชนะ, มีปุ่มทดสอบ, มีวิธีหมุนกุญแจ
