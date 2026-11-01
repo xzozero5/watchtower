@@ -53,7 +53,7 @@ function IntentDetailBody({ intentId }: { intentId: string }) {
   const canHistory = can('ai.autonomy.set');
   const history = useIntentHistory(intentId, canHistory);
 
-  const pinEntry = history.data?.entries.find((entry) => entry.change === 'pin');
+  const pinEntry = history.data?.items.find((entry) => entry.change === 'pin');
   const pinnedBy =
     state?.pinned && pinEntry
       ? { name: pinEntry.changedByName ?? null, at: pinEntry.changedAt }
@@ -111,18 +111,18 @@ function IntentDetailBody({ intentId }: { intentId: string }) {
                 </p>
               ) : history.isPending ? (
                 <Skeleton className="h-24 max-w-xl" />
-              ) : history.data.entries.length === 0 ? (
+              ) : history.data.items.length === 0 ? (
                 <p className="text-sm text-muted-foreground">{t('admin.intents.historyEmpty')}</p>
               ) : (
                 <ul className="max-w-2xl divide-y divide-border">
-                  {history.data.entries.map((entry) => {
-                    const from = entry.fromStage === null ? null : asStage(entry.fromStage);
-                    const to = entry.toStage === null ? null : asStage(entry.toStage);
+                  {history.data.items.map((entry) => {
+                    const from = asStage(entry.fromStage);
+                    const to = asStage(entry.toStage);
                     return (
                       <li key={entry.id} className="flex flex-col gap-0.5 py-2 text-sm">
                         <div className="flex flex-wrap items-center gap-x-2">
                           <span className="font-medium">
-                            {entry.change === 'stage' && from !== null && to !== null
+                            {entry.change === 'stage'
                               ? `${t(STAGE_LABEL_KEYS[from])} → ${t(STAGE_LABEL_KEYS[to])}`
                               : entry.change === 'pin'
                                 ? t('admin.intents.pinned')

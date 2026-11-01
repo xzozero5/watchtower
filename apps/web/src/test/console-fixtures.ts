@@ -1,19 +1,18 @@
 import type {
   AuditLogEntry,
+  AutonomyState,
+  BusinessCalendarRecord,
+  TicketStats,
   Contact,
   Intent,
   Organization,
-  Role,
   SlaPolicy,
   TeamQueue,
   TicketDetail,
   User,
 } from '@watchtower/shared';
 
-import type { AutonomyView, CalendarView, TicketStats } from '@/lib/admin/contracts';
-
-import { INTENT, makeSession, makeTicket, uuid } from './fixtures';
-import { type MockHandler, mockApi } from './mock-api';
+import { INTENT, makeTicket, uuid } from './fixtures';
 
 /** Fictional people and organizations only: example.com, invented names (N1). */
 export const PEOPLE = {
@@ -52,20 +51,39 @@ export const USERS: User[] = [
   }),
 ];
 
+const NO_SLA = { ok: 0, at_risk: 0, breached: 0, paused: 0 };
+const bucket = (count: number, open = count, sla: Partial<typeof NO_SLA> = {}) => ({
+  count,
+  open,
+  sla: { ...NO_SLA, ...sla },
+});
+
 export const STATS: TicketStats = {
-  byStatus: { new: 4, triage: 2, open: 31, waiting_on_dev: 6, waiting_on_customer: 12 },
+  generatedAt: AT,
+  total: bucket(55, 55, { ok: 36, at_risk: 5, breached: 2, paused: 12 }),
+  byStatus: [
+    { status: 'new', ...bucket(4) },
+    { status: 'triage', ...bucket(2) },
+    { status: 'open', ...bucket(31) },
+    { status: 'waiting_on_customer', ...bucket(12) },
+    { status: 'waiting_on_dev', ...bucket(6) },
+  ],
   byQueue: [
-    { queueId: uuid(800), name: 'Support', n: 22 },
-    { queueId: uuid(801), name: 'Billing', n: 9 },
-    { queueId: null, name: null, n: 3 },
+    { queueId: uuid(800), ...bucket(22) },
+    { queueId: uuid(801), ...bucket(9) },
+    { queueId: null, ...bucket(3) },
   ],
   byAssignee: [
-    { userId: null, name: null, n: 3 },
-    { userId: PEOPLE.mana.id, name: 'Mana K.', n: 9 },
-    { userId: PEOPLE.pim.id, name: 'Pim S.', n: 4 },
+    { assigneeId: null, ...bucket(3) },
+    { assigneeId: PEOPLE.mana.id, ...bucket(9, 9, { at_risk: 2 }) },
+    { assigneeId: PEOPLE.pim.id, ...bucket(4) },
   ],
-  byPriority: { P1: 2, P2: 8, P3: 30, P4: 15 },
-  bySlaState: { ok: 40, at_risk: 5, breached: 2, paused: 12 },
+  byPriority: [
+    { priority: 'P1', ...bucket(2) },
+    { priority: 'P2', ...bucket(8) },
+    { priority: 'P3', ...bucket(30) },
+    { priority: 'P4', ...bucket(15) },
+  ],
 };
 
 /** A ticket whose first response was due `minutes` ago (negative: still to come). */
@@ -85,7 +103,7 @@ export function dueTicket(
   });
 }
 
-export function makeAutonomy(overrides: Partial<AutonomyView> = {}): AutonomyView {
+export function makeAutonomy(overrides: Partial<AutonomyState> = {}): AutonomyState {
   const intent = (n: number, key: string, stage: 0 | 1 | 2, pinned = false) => ({
     id: uuid(700 + n),
     key,
@@ -99,8 +117,22 @@ export function makeAutonomy(overrides: Partial<AutonomyView> = {}): AutonomyVie
   return {
     stageCeiling: 2,
     switches: [
-      { key: 'ai_stage_cap_pinned', on: false, reason: '', changedBy: null, changedAt: AT },
-      { key: 'ai_kill_switch', on: false, reason: '', changedBy: null, changedAt: AT },
+      {
+        key: 'ai_stage_cap_pinned',
+        on: false,
+        reason: '',
+        changedBy: null,
+        changedByName: null,
+        changedAt: AT,
+      },
+      {
+        key: 'ai_kill_switch',
+        on: false,
+        reason: '',
+        changedBy: null,
+        changedByName: null,
+        changedAt: AT,
+      },
     ],
     intents: [
       intent(0, 'login_issue', 1),
@@ -141,6 +173,7 @@ export const ORG: Organization = {
   lineGroupIds: [],
   healthScore: null,
   primaryContactId: null,
+  contactCount: 1,
   notes: 'Pilot customer.',
   status: 'active',
   createdAt: AT,
@@ -174,7 +207,7 @@ export const POLICY: SlaPolicy = {
   updatedAt: AT,
 };
 
-export const CALENDAR: CalendarView = {
+export const CALENDAR: BusinessCalendarRecord = {
   id: uuid(310),
   name: 'Bangkok office hours',
   timezone: 'Asia/Bangkok',
@@ -188,8 +221,20 @@ export const CALENDAR: CalendarView = {
     sat: [],
   },
   holidays: [
-    { date: '2026-12-31', name: 'New Year’s Eve', checked: false },
-    { date: '2027-01-01', name: 'New Year’s Day', checked: true },
+    {
+      date: '2026-12-31',
+      name: 'New Year’s Eve',
+      checked: false,
+      checkedAt: null,
+      checkedBy: null,
+    },
+    {
+      date: '2027-01-01',
+      name: 'New Year’s Day',
+      checked: true,
+      checkedAt: AT,
+      checkedBy: PEOPLE.head.id,
+    },
   ],
   isDefault: true,
   createdAt: AT,
@@ -226,72 +271,4 @@ export function auditEntry(n: number, overrides: Partial<AuditLogEntry> = {}): A
     metadata: {},
     ...overrides,
   };
-}
-
-export interface ConsoleOptions {
-  role?: Role;
-  stats?: TicketStats | MockHandler;
-  autonomy?: AutonomyView;
-  tickets?: TicketDetail[];
-  overrides?: Record<string, MockHandler>;
-}
-
-/**
- * Every read the head console makes, answered with the fixtures above. A test overrides only what
- * it is about; `overrides` win. Stubs `fetch`.
- */
-export function consoleApi({
-  role = 'head',
-  stats = STATS,
-  autonomy = makeAutonomy(),
-  tickets = [dueTicket(1, 30, { priority: 'P1' }), dueTicket(2, -10, { priority: 'P2' })],
-  overrides = {},
-}: ConsoleOptions = {}) {
-  const defaults: Record<string, MockHandler> = {
-    'GET /health': { json: { status: 'ok' } },
-    'GET /health/ready': {
-      json: {
-        status: 'ok',
-        checks: { database: { status: 'up' }, redis: { status: 'up' } },
-      },
-    },
-    'GET /v1/auth/session': { json: makeSession(role) },
-    'GET /v1/tickets/stats': typeof stats === 'function' ? stats : { json: stats },
-    'GET /v1/tickets': { json: { items: tickets, nextCursor: null } },
-    'GET /v1/autonomy': { json: autonomy },
-    'GET /v1/users': { json: { users: USERS } },
-    'GET /v1/queues': { json: { queues: [QUEUE] } },
-    'GET /v1/intents': { json: { intents: FULL_INTENTS } },
-    'GET /v1/sla-policies': { json: { policies: [POLICY] } },
-    'GET /v1/business-calendars': { json: { calendars: [CALENDAR] } },
-    'GET /v1/business-calendars/:id': { json: CALENDAR },
-    'GET /v1/orgs': { json: { items: [ORG], nextCursor: null } },
-    'GET /v1/orgs/:id': { json: ORG },
-    'GET /v1/contacts': { json: { items: [CONTACT], nextCursor: null } },
-    'GET /v1/audit-logs': {
-      json: { entries: [auditEntry(1), auditEntry(2, { outcome: 'denied' })], nextCursor: null },
-    },
-    'GET /v1/intents/:id/autonomy/history': {
-      json: {
-        entries: [
-          {
-            id: 'h1',
-            change: 'stage',
-            fromStage: 1,
-            toStage: 2,
-            pinned: null,
-            reason: 'eval run passed',
-            changedBy: PEOPLE.mana.id,
-            changedByName: 'Mana K.',
-            changedAt: AT,
-          },
-        ],
-      },
-    },
-  };
-  // The first matching route wins, so a test's own routes go first and replace same-named defaults.
-  return mockApi({
-    ...overrides,
-    ...Object.fromEntries(Object.entries(defaults).filter(([key]) => !(key in overrides))),
-  });
 }

@@ -10,7 +10,7 @@ import { EntitySheet } from '@/components/admin/entity-sheet';
 import { FormField } from '@/components/portal/form-field';
 import { useT } from '@/i18n/provider';
 import { describeError } from '@/lib/admin/errors';
-import { adminKeys, useSlaPolicies } from '@/lib/admin/queries';
+import { adminKeys, useOrgTiers, useSlaPolicies } from '@/lib/admin/queries';
 import { useApi } from '@/lib/api/api-context';
 import { useUserId } from '@/lib/auth/session';
 
@@ -23,20 +23,18 @@ export function OrgSheet({
   org,
   onClose,
   onSaved,
-  extraTiers = [],
 }: {
   open: boolean;
   org: Organization | null;
   onClose: () => void;
   onSaved?: (org: Organization) => void;
-  /** Tiers seen on organizations already loaded (the tier list has no endpoint yet). */
-  extraTiers?: readonly string[];
 }) {
   const t = useT();
   const api = useApi();
   const userId = useUserId();
   const queryClient = useQueryClient();
   const policies = useSlaPolicies(open);
+  const tierList = useOrgTiers(open);
   const base = useId();
   const [name, setName] = useState(org?.name ?? '');
   const [tier, setTier] = useState(org?.tier ?? 'standard');
@@ -110,7 +108,10 @@ export function OrgSheet({
     save.mutate();
   };
 
-  const tiers = [...new Set<string>([...ORG_TIERS, ...extraTiers, tier])];
+  const tierOptions = tierList.data?.tiers ?? ORG_TIERS.map((slug) => ({ slug, name: slug }));
+  const tiers = tierOptions.some((item) => item.slug === tier)
+    ? tierOptions
+    : [...tierOptions, { slug: tier, name: tier }];
 
   return (
     <EntitySheet
@@ -156,9 +157,9 @@ export function OrgSheet({
                 setTier(event.target.value);
               }}
             >
-              {tiers.map((value) => (
-                <option key={value} value={value}>
-                  {value}
+              {tiers.map((item) => (
+                <option key={item.slug} value={item.slug}>
+                  {item.name}
                 </option>
               ))}
             </Select>

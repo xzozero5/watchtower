@@ -1,6 +1,10 @@
 'use client';
 
-import type { SlaPolicy, SlaTargets } from '@watchtower/shared';
+import type {
+  BusinessCalendarRecord as CalendarView,
+  SlaPolicy,
+  SlaTargets,
+} from '@watchtower/shared';
 import {
   Button,
   DataTable,
@@ -18,7 +22,6 @@ import { AdminBody, AdminHeader } from '@/components/admin/admin-layout';
 import { LoadError, RequirePermission, TableSkeleton } from '@/components/admin/admin-page';
 import { AppLink } from '@/components/app-link';
 import { useI18n } from '@/i18n/provider';
-import type { CalendarView } from '@/lib/admin/contracts';
 import { useCalendars, useSlaPolicies } from '@/lib/admin/queries';
 import { formatDuration } from '@/lib/format';
 import { usePreferences } from '@/lib/preferences';

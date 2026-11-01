@@ -2,7 +2,8 @@ import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { consoleApi, FULL_INTENTS, makeAutonomy } from '@/test/console-fixtures';
+import { consoleApi } from '@/test/console-api';
+import { FULL_INTENTS, makeAutonomy } from '@/test/console-fixtures';
 import { uuid } from '@/test/fixtures';
 import { apiError } from '@/test/mock-api';
 import { renderConsole } from '@/test/render-console';
@@ -144,9 +145,17 @@ describe('Intent autonomy control', () => {
             on: true,
             reason: 'eval regression',
             changedBy: null,
+            changedByName: null,
             changedAt: AT,
           },
-          { key: 'ai_kill_switch', on: false, reason: '', changedBy: null, changedAt: AT },
+          {
+            key: 'ai_kill_switch',
+            on: false,
+            reason: '',
+            changedBy: null,
+            changedByName: null,
+            changedAt: AT,
+          },
         ],
       }),
     });
@@ -166,19 +175,21 @@ describe('Intent autonomy control', () => {
       overrides: {
         [`GET /v1/intents/${WEBHOOK}/autonomy/history`]: {
           json: {
-            entries: [
+            items: [
               {
-                id: 'p1',
+                id: uuid(1101),
+                intentId: WEBHOOK,
                 change: 'pin',
-                fromStage: null,
-                toStage: null,
+                fromStage: 2,
+                toStage: 2,
                 pinned: true,
                 reason: 'freeze for the audit',
-                changedBy: null,
-                changedByName: 'Mana K.',
+                changedBy: uuid(910),
+                changedByName: 'Mana',
                 changedAt: AT,
               },
             ],
+            nextCursor: null,
           },
         },
       },
@@ -187,7 +198,7 @@ describe('Intent autonomy control', () => {
     await openAutonomy(user);
     const group = await screen.findByRole('radiogroup', { name: 'Stage' });
     for (const option of within(group).getAllByRole('radio')) expect(option).toBeDisabled();
-    expect(await screen.findByText(/Pinned by Mana K\. on .* — unpin to change/)).toBeVisible();
+    expect(await screen.findByText(/Pinned by Mana on .* — unpin to change/)).toBeVisible();
   });
 
   it('lets the head pin with a reason of its own', async () => {

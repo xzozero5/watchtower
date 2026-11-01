@@ -2,7 +2,8 @@ import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { consoleApi, PEOPLE, USERS } from '@/test/console-fixtures';
+import { consoleApi } from '@/test/console-api';
+import { PEOPLE, USERS } from '@/test/console-fixtures';
 import { apiError } from '@/test/mock-api';
 import { renderConsole } from '@/test/render-console';
 
@@ -17,7 +18,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-const rowOf = (name: string) => screen.getByRole('row', { name }) as HTMLElement;
+const rowOf = (name: string) => screen.getByRole('row', { name });
 
 /** Radix menus ignore the synthetic pointer click in jsdom: choose with the keyboard, as the other tests do. */
 async function choose(user: ReturnType<typeof userEvent.setup>, item: HTMLElement) {

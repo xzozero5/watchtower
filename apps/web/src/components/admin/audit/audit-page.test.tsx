@@ -2,7 +2,8 @@ import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { auditEntry, consoleApi } from '@/test/console-fixtures';
+import { consoleApi } from '@/test/console-api';
+import { auditEntry } from '@/test/console-fixtures';
 import { apiError } from '@/test/mock-api';
 import { renderConsole } from '@/test/render-console';
 
@@ -80,6 +81,28 @@ describe('Audit log', () => {
       const last = api.callsTo('/v1/audit-logs', 'GET').at(-1);
       expect(new URLSearchParams(last?.search).get('outcome')).toBe('denied');
     });
+  });
+
+  it('filters by actor type', async () => {
+    const user = userEvent.setup();
+    const api = consoleApi();
+    renderConsole(<AuditPage />);
+    await screen.findByRole('table', { name: 'Audit log' });
+    await user.selectOptions(screen.getByLabelText('Actor type'), 'system');
+    await waitFor(() => {
+      const last = api.callsTo('/v1/audit-logs', 'GET').at(-1);
+      expect(new URLSearchParams(last?.search).get('actorType')).toBe('system');
+    });
+  });
+
+  it('offers a CSV export with the same filters to the head', async () => {
+    consoleApi();
+    renderConsole(<AuditPage />);
+    const link = await screen.findByRole('link', { name: 'Export CSV' });
+    expect(link).toHaveAttribute('download');
+    const url = new URL(link.getAttribute('href') ?? '');
+    expect(url.pathname).toBe('/v1/audit-logs/export');
+    expect(url.searchParams.has('from')).toBe(true);
   });
 
   it('loads more with the cursor', async () => {

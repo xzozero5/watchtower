@@ -8,7 +8,8 @@ import { ConsoleShell } from '@/components/console-shell';
 import type { RailDestination } from '@/components/nav-rail';
 import { resetPreferencesCache } from '@/lib/preferences';
 import { RealtimeProvider } from '@/lib/realtime/realtime-provider';
-import { consoleApi, makeAutonomy } from '@/test/console-fixtures';
+import { consoleApi } from '@/test/console-api';
+import { makeAutonomy } from '@/test/console-fixtures';
 import { socketFactory } from '@/test/fake-socket';
 import { renderApp } from '@/test-utils';
 import type { Role } from '@watchtower/shared';
@@ -164,8 +165,8 @@ describe('command palette', () => {
     const options = within(dialog)
       .getAllByRole('option')
       .map((o) => o.textContent);
-    expect(options.some((text) => text?.startsWith('Go to Admin › Users'))).toBe(true);
-    expect(options.some((text) => text?.startsWith('Go to Admin › Audit log'))).toBe(false);
+    expect(options.some((text) => text.startsWith('Go to Admin › Users'))).toBe(true);
+    expect(options.some((text) => text.startsWith('Go to Admin › Audit log'))).toBe(false);
     await user.clear(within(dialog).getByRole('combobox'));
     await user.type(within(dialog).getByRole('combobox'), 'AI:');
     expect(within(dialog).queryByText(/Stop all AI runs/)).not.toBeInTheDocument();
@@ -197,8 +198,22 @@ describe('command palette', () => {
     consoleApi({
       autonomy: makeAutonomy({
         switches: [
-          { key: 'ai_stage_cap_pinned', on: true, reason: 'x', changedBy: null, changedAt: AT },
-          { key: 'ai_kill_switch', on: true, reason: 'x', changedBy: null, changedAt: AT },
+          {
+            key: 'ai_stage_cap_pinned',
+            on: true,
+            reason: 'x',
+            changedBy: null,
+            changedByName: null,
+            changedAt: AT,
+          },
+          {
+            key: 'ai_kill_switch',
+            on: true,
+            reason: 'x',
+            changedBy: null,
+            changedByName: null,
+            changedAt: AT,
+          },
         ],
       }),
     });
@@ -224,14 +239,21 @@ describe('AI paused banner', () => {
   const paused = (name?: string) =>
     makeAutonomy({
       switches: [
-        { key: 'ai_stage_cap_pinned', on: false, reason: '', changedBy: null, changedAt: AT },
+        {
+          key: 'ai_stage_cap_pinned',
+          on: false,
+          reason: '',
+          changedBy: null,
+          changedByName: null,
+          changedAt: AT,
+        },
         {
           key: 'ai_kill_switch',
           on: true,
           reason: 'provider outage',
           changedBy: null,
+          changedByName: name ?? null,
           changedAt: AT,
-          ...(name ? { changedByName: name } : {}),
         },
       ],
     });
@@ -262,8 +284,22 @@ describe('AI paused banner', () => {
     consoleApi({
       autonomy: makeAutonomy({
         switches: [
-          { key: 'ai_stage_cap_pinned', on: true, reason: 'x', changedBy: null, changedAt: AT },
-          { key: 'ai_kill_switch', on: false, reason: '', changedBy: null, changedAt: AT },
+          {
+            key: 'ai_stage_cap_pinned',
+            on: true,
+            reason: 'x',
+            changedBy: null,
+            changedByName: null,
+            changedAt: AT,
+          },
+          {
+            key: 'ai_kill_switch',
+            on: false,
+            reason: '',
+            changedBy: null,
+            changedByName: null,
+            changedAt: AT,
+          },
         ],
       }),
     });

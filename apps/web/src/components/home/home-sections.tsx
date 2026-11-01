@@ -1,6 +1,11 @@
 'use client';
 
-import { OPEN_STATUSES, type TicketStatus, type TicketSummary } from '@watchtower/shared';
+import {
+  OPEN_STATUSES,
+  type TicketStats,
+  type TicketStatus,
+  type TicketSummary,
+} from '@watchtower/shared';
 import { Avatar, cn, SeverityBadge } from '@watchtower/ui';
 import { ArrowRight } from 'lucide-react';
 import type { ReactNode } from 'react';
@@ -8,8 +13,7 @@ import type { ReactNode } from 'react';
 import { LoadError } from '@/components/admin/admin-page';
 import { AppLink } from '@/components/app-link';
 import { SlaBadge } from '@/components/ticket/sla-badge';
-import { useI18n, useT } from '@/i18n/provider';
-import { statCount, type TicketStats } from '@/lib/admin/contracts';
+import { useT } from '@/i18n/provider';
 import { formatDuration } from '@/lib/format';
 import { useStableList } from '@/lib/use-stable-list';
 import { queueHref } from '@/lib/tickets/filters';
@@ -66,8 +70,6 @@ export interface Tile {
   value: number | string | null;
   sub?: string;
   href: string;
-  /** Read as one phrase: "Unassigned, 3 tickets". */
-  phrase: string;
 }
 
 /**
@@ -82,14 +84,16 @@ export function TileStrip({ tiles }: { tiles: readonly Tile[] }) {
         <li key={tile.id}>
           <AppLink
             href={tile.href}
-            aria-label={tile.phrase}
             className="flex h-full flex-col gap-0.5 px-4 py-3 transition-colors duration-(--wt-motion-duration-fast) ease-out hover:bg-surface-muted focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
           >
-            <span className="tabular text-xl leading-tight font-semibold">
+            {/* Read in this order (label, number, note); drawn with the number on top. */}
+            <span className="order-2 text-xs text-muted-foreground">{tile.label}</span>
+            <span className="tabular order-1 text-xl leading-tight font-semibold">
               {tile.value ?? <span title={t('home.unavailable')}>—</span>}
             </span>
-            <span className="text-xs text-muted-foreground">{tile.label}</span>
-            {tile.sub ? <span className="tabular text-xs text-foreground">{tile.sub}</span> : null}
+            {tile.sub ? (
+              <span className="tabular order-3 text-xs text-foreground">{tile.sub}</span>
+            ) : null}
           </AppLink>
         </li>
       ))}
@@ -102,11 +106,9 @@ export interface RiskRow {
   sla: SlaView;
 }
 
-/** Open tickets whose clock is at risk or past due, most urgent first (the list is sorted by due). */
+/** The tickets the server says are at risk or past due, with the badge the queue shows for them. */
 export function riskRows(tickets: readonly TicketSummary[], now: number): RiskRow[] {
-  return tickets
-    .map((ticket) => ({ ticket, sla: slaView(ticket, now) }))
-    .filter((row) => row.sla.state === 'atRisk' || row.sla.state === 'breached');
+  return tickets.map((ticket) => ({ ticket, sla: slaView(ticket, now) }));
 }
 
 const RISK_ROWS_SHOWN = 10;
@@ -177,20 +179,22 @@ export function ShowAllLink({ count }: { count: number }) {
 /** "New 4 · Triage 2 · Open 31": one labelled number per status, each a link to the queue. */
 export function StatusBreakdown({ stats }: { stats: TicketStats }) {
   const t = useT();
-  const counted = OPEN_STATUSES.filter((status) => statCount(stats.byStatus, status) > 0);
+  const counted = stats.byStatus.filter(
+    (entry) => OPEN_STATUSES.includes(entry.status) && entry.count > 0,
+  );
   if (counted.length === 0) {
     return <p className="text-sm text-muted-foreground">{t('home.empty.open')}</p>;
   }
   // New and Needs triage are already tiles at the top of the page.
-  const statuses = counted.filter((status) => status !== 'new' && status !== 'triage');
+  const shown = counted.filter((entry) => entry.status !== 'new' && entry.status !== 'triage');
   return (
     <ul className="flex flex-wrap gap-x-4 gap-y-1">
-      {statuses.map((status: TicketStatus) => (
-        <li key={status}>
+      {shown.map((entry) => (
+        <li key={entry.status}>
           <CountLink
-            href={queueHref({ status: [status] })}
-            label={t(statusKey(status))}
-            count={statCount(stats.byStatus, status)}
+            href={queueHref({ status: [entry.status satisfies TicketStatus] })}
+            label={t(statusKey(entry.status))}
+            count={entry.count}
           />
         </li>
       ))}
@@ -198,13 +202,22 @@ export function StatusBreakdown({ stats }: { stats: TicketStats }) {
   );
 }
 
-export function QueueBreakdown({ stats }: { stats: TicketStats }) {
+export function QueueBreakdown({
+  stats,
+  names,
+}: {
+  stats: TicketStats;
+  /** Queue names by id: the counts carry ids only. */
+  names: ReadonlyMap<string, string>;
+}) {
   const t = useT();
-  if (stats.byQueue.length === 0)
+  const groups = stats.byQueue.filter((queue) => queue.count > 0);
+  if (groups.length === 0) {
     return <p className="text-sm text-muted-foreground">{t('home.empty.open')}</p>;
+  }
   return (
     <ul className="flex flex-wrap gap-x-4 gap-y-1">
-      {stats.byQueue.map((queue) => (
+      {groups.map((queue) => (
         <li key={queue.queueId ?? 'none'}>
           <CountLink
             href={
@@ -212,8 +225,8 @@ export function QueueBreakdown({ stats }: { stats: TicketStats }) {
                 ? queueHref({ queueId: queue.queueId, status: OPEN_STATUSES })
                 : queueHref({})
             }
-            label={queue.name ?? t('home.noQueue')}
-            count={queue.n}
+            label={queue.queueId ? (names.get(queue.queueId) ?? '…') : t('home.noQueue')}
+            count={queue.count}
           />
         </li>
       ))}
@@ -223,11 +236,9 @@ export function QueueBreakdown({ stats }: { stats: TicketStats }) {
 
 /** A label and a number, one link: read as "Unassigned, 3 tickets". */
 export function CountLink({ href, label, count }: { href: string; label: string; count: number }) {
-  const t = useT();
   return (
     <AppLink
       href={href}
-      aria-label={t('home.countPhrase', { label, count })}
       className="inline-flex items-baseline gap-1.5 rounded-sm text-sm hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
     >
       <span className="text-muted-foreground">{label}</span>
@@ -272,18 +283,13 @@ export function LoadList({ rows }: { rows: readonly LoadRowData[] }) {
   );
 }
 
-/** "oldest 18m" for the unassigned tile, from the loaded page of unassigned tickets. */
+/** "oldest 18m" for the unassigned tile, from the oldest unassigned ticket. */
 export function oldestAge(
-  tickets: readonly TicketSummary[],
+  createdAt: string | undefined,
   now: number,
   locale: 'en' | 'th',
   words: (time: string) => string,
 ): string | undefined {
-  if (tickets.length === 0) return undefined;
-  const oldest = Math.min(...tickets.map((ticket) => Date.parse(ticket.createdAt)));
-  return words(formatDuration(Math.max(0, now - oldest), locale));
-}
-
-export function useLocale() {
-  return useI18n().locale;
+  if (createdAt === undefined) return undefined;
+  return words(formatDuration(Math.max(0, now - Date.parse(createdAt)), locale));
 }

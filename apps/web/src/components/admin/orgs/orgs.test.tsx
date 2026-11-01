@@ -2,7 +2,8 @@ import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { consoleApi, CONTACT, ORG } from '@/test/console-fixtures';
+import { consoleApi } from '@/test/console-api';
+import { CONTACT, ORG } from '@/test/console-fixtures';
 import { apiError } from '@/test/mock-api';
 import { renderConsole } from '@/test/render-console';
 
@@ -35,6 +36,30 @@ describe('Organizations', () => {
     expect(within(row).getByText('acme.example.com')).toBeVisible();
     expect(within(row).getByText('+1')).toBeVisible();
     expect(within(row).getByText('Gold')).toBeVisible();
+  });
+
+  it('shows how many contacts each organization has', async () => {
+    consoleApi();
+    renderConsole(<OrgsPage />);
+    const table = await screen.findByRole('table', { name: 'Organizations' });
+    expect(
+      within(within(table).getAllByRole('row')[1] as HTMLElement).getByText('1'),
+    ).toBeVisible();
+  });
+
+  it('offers the tiers the server lists, by name', async () => {
+    const user = userEvent.setup();
+    consoleApi();
+    renderConsole(<OrgsPage />);
+    await screen.findByRole('table', { name: 'Organizations' });
+    await user.click(screen.getByRole('button', { name: 'New organization' }));
+    const sheet = await screen.findByRole('dialog', { name: 'New organization' });
+    await waitFor(() => {
+      expect(within(within(sheet).getByLabelText('Tier')).getAllByRole('option')).toHaveLength(3);
+    });
+    expect(
+      within(within(sheet).getByLabelText('Tier')).getByRole('option', { name: 'Gold' }),
+    ).toBeInTheDocument();
   });
 
   it('searches on the server', async () => {
@@ -109,7 +134,7 @@ describe('Organization', () => {
     expect(await screen.findByText('Pilot customer.')).toBeVisible();
     expect(screen.getByText('acme.example.com, acme-logistics.example.com')).toBeVisible();
     await user.click(screen.getByRole('tab', { name: 'Contacts' }));
-    const row = (await screen.findByRole('row', { name: 'Riley Requester' })) as HTMLElement;
+    const row = await screen.findByRole('row', { name: 'Riley Requester' });
     expect(within(row).getByText('riley@acme.example.com')).toBeVisible();
     expect(within(row).getByText('Linked')).toBeVisible();
     expect(within(row).getByText('Verified')).toBeVisible();

@@ -2,7 +2,8 @@ import { screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { apiError } from '@/test/mock-api';
-import { consoleApi, makeAutonomy, STATS } from '@/test/console-fixtures';
+import { consoleApi } from '@/test/console-api';
+import { makeAutonomy, STATS } from '@/test/console-fixtures';
 import { renderConsole } from '@/test/render-console';
 
 import { HomePage } from './home-page';
@@ -24,15 +25,44 @@ describe('Home', () => {
   it('leads with the numbers the head decides on, each a link to the queue', async () => {
     consoleApi();
     renderConsole(<HomePage />);
-    const sla = await screen.findByRole('link', { name: 'SLA at risk, 7 tickets' });
+    const sla = await screen.findByRole('link', { name: /^SLA at risk\s*7/ });
     // 5 at risk and 2 overdue from the counts endpoint: 7 in all.
     expect(sla).toHaveTextContent('7');
     expect(sla).toHaveTextContent('2 overdue');
     expect(sla.getAttribute('href')).toContain('sort=due_asc');
-    const unassigned = tile('Unassigned, 3 tickets');
+    const unassigned = tile(/^Unassigned\s*3/);
     expect(unassigned).toHaveAttribute('href', expect.stringContaining('assignee=unassigned'));
-    expect(tile('New, 4 tickets')).toHaveAttribute('href', '/?status=new');
-    expect(tile('Needs triage, 2 tickets')).toHaveAttribute('href', '/?status=triage');
+    expect(tile(/^New\s*4/)).toHaveAttribute('href', '/?status=new');
+    expect(tile(/^Needs triage\s*2/)).toHaveAttribute('href', '/?status=triage');
+  });
+
+  it('asks the counts endpoint about open work only, and the list about at-risk tickets only', async () => {
+    const api = consoleApi();
+    renderConsole(<HomePage />);
+    await screen.findByRole('link', { name: /^SLA at risk\s*7/ });
+    const stats = new URLSearchParams(api.callsTo('/v1/tickets/stats', 'GET')[0]?.search);
+    expect(stats.get('status')).toBe('new,triage,open,waiting_on_customer,waiting_on_dev');
+    const list = api
+      .callsTo('/v1/tickets', 'GET')
+      .map((call) => new URLSearchParams(call.search))
+      .find((params) => params.has('slaState'));
+    expect(list?.get('slaState')).toBe('at_risk,breached');
+    expect(list?.get('sort')).toBe('sla_due_asc');
+    const oldest = api
+      .callsTo('/v1/tickets', 'GET')
+      .map((call) => new URLSearchParams(call.search))
+      .find((params) => params.get('assignee') === 'unassigned');
+    expect(oldest?.get('sort')).toBe('created_asc');
+    expect(oldest?.get('limit')).toBe('1');
+  });
+
+  it('shows how many open tickets and how many at risk each person holds', async () => {
+    consoleApi();
+    renderConsole(<HomePage />);
+    const load = await screen.findByRole('region', { name: 'Open per person' });
+    const mana = (await within(load).findByText('Mana K.')).closest('a') as HTMLElement;
+    expect(mana).toHaveTextContent('9');
+    expect(mana).toHaveTextContent('2 at risk');
   });
 
   it('lists the tickets at risk with severity, key, SLA and who has them', async () => {
@@ -52,13 +82,13 @@ describe('Home', () => {
   it('shows open counts by status and by queue, and the load of each active person', async () => {
     consoleApi();
     renderConsole(<HomePage />);
-    expect(await screen.findByRole('link', { name: 'Open, 31 tickets' })).toBeVisible();
-    expect(screen.getByRole('link', { name: 'Waiting on customer, 12 tickets' })).toBeVisible();
-    expect(screen.getByRole('link', { name: 'Support, 22 tickets' })).toHaveAttribute(
+    expect(await screen.findByRole('link', { name: /^Open\s*31/ })).toBeVisible();
+    expect(screen.getByRole('link', { name: /^Waiting on customer\s*12/ })).toBeVisible();
+    expect(screen.getByRole('link', { name: /^Support\s*22/ })).toHaveAttribute(
       'href',
       expect.stringContaining('queueId='),
     );
-    expect(screen.getByRole('link', { name: 'No queue, 3 tickets' })).toBeVisible();
+    expect(screen.getByRole('link', { name: /^No queue\s*3/ })).toBeVisible();
     const load = screen.getByRole('region', { name: 'Open per person' });
     expect(within(load).getByText('Mana K.')).toBeVisible();
     expect(within(load).getByText('Pim S.')).toBeVisible();
@@ -75,6 +105,7 @@ describe('Home', () => {
             on: false,
             reason: '',
             changedBy: null,
+            changedByName: null,
             changedAt: '2026-11-02T03:00:00.000Z',
           },
           {
@@ -82,6 +113,7 @@ describe('Home', () => {
             on: true,
             reason: 'provider outage',
             changedBy: null,
+            changedByName: null,
             changedAt: '2026-11-02T03:00:00.000Z',
           },
         ],
@@ -133,13 +165,13 @@ describe('Home', () => {
     consoleApi({ stats: () => apiError(404, 'not_found') });
     renderConsole(<HomePage />);
     // Both fixture tickets are at risk or overdue, counted from the loaded page.
-    expect(await screen.findByRole('link', { name: 'SLA at risk, 2 tickets' })).toBeVisible();
+    expect(await screen.findByRole('link', { name: /^SLA at risk\s*2/ })).toBeVisible();
     // The sections that need the endpoint say so once each, and keep a Try again.
     const messages = await screen.findAllByText('Counts are not available.');
     expect(messages.length).toBeGreaterThanOrEqual(3);
     expect(screen.getAllByRole('button', { name: 'Try again' }).length).toBeGreaterThanOrEqual(3);
     // Unassigned has no number, only a dash.
-    expect(tile('Unassigned, 0 tickets')).toHaveTextContent('—');
+    expect(tile(/^Unassigned/)).toHaveTextContent('—');
     // The rest of the page still works.
     expect(screen.getByRole('list', { name: 'SLA at risk' })).toBeVisible();
   });
@@ -149,10 +181,10 @@ describe('Home', () => {
       tickets: [],
       stats: {
         ...STATS,
-        byStatus: {},
+        total: { count: 0, open: 0, sla: { ok: 0, at_risk: 0, breached: 0, paused: 0 } },
+        byStatus: [],
         byQueue: [],
         byAssignee: [],
-        bySlaState: { ok: 0, at_risk: 0, breached: 0, paused: 0 },
       },
     });
     renderConsole(<HomePage />);
@@ -177,7 +209,7 @@ describe('Home', () => {
   it('reads in Thai', async () => {
     consoleApi();
     renderConsole(<HomePage />, { locale: 'th' });
-    expect(await screen.findByRole('link', { name: 'ใกล้หลุด SLA 7 ticket' })).toBeVisible();
+    expect(await screen.findByRole('link', { name: /^ใกล้หลุด SLA\s*7/ })).toBeVisible();
     expect(screen.getByRole('region', { name: 'งานที่เปิดอยู่ต่อคน' })).toBeVisible();
   });
 });

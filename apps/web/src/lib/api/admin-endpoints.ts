@@ -1,9 +1,16 @@
 import {
+  autonomyHistoryPageSchema,
+  autonomyStateSchema,
   auditLogPageSchema,
+  businessCalendarListSchema,
+  businessCalendarSchema,
   contactPageSchema,
   contactSchema,
   forceLogoutResultSchema,
   intentAutonomyChangeSchema,
+  orgTierListSchema,
+  setAiSwitchResultSchema,
+  ticketStatsSchema,
   intentSchema,
   organizationPageSchema,
   organizationSchema,
@@ -30,15 +37,7 @@ import {
   type UpdateTeamQueue,
   type UpdateUser,
 } from '@watchtower/shared';
-import {
-  autonomyHistorySchema,
-  autonomyViewSchema,
-  calendarViewListSchema,
-  calendarViewSchema,
-  readinessViewSchema,
-  setSwitchResultViewSchema,
-  ticketStatsSchema,
-} from '@/lib/admin/contracts';
+import { readinessViewSchema } from '@/lib/admin/contracts';
 
 import type { ApiClient, QueryParams } from './client';
 
@@ -54,7 +53,7 @@ export function createAdminEndpoints(client: ApiClient) {
 
   return {
     // --- Home ---
-    /** Counts for the head home. `[ASSUMED]` contract H2 in docs/06-UI-SPEC.md section 18.9. */
+    /** Counts for the head home (same filters as the list; heads and leads only). */
     ticketStats: (params: QueryParams, signal?: AbortSignal) =>
       client.request({
         path: '/v1/tickets/stats',
@@ -74,14 +73,14 @@ export function createAdminEndpoints(client: ApiClient) {
 
     // --- AI controls ---
     autonomy: (signal?: AbortSignal) =>
-      client.request({ path: '/v1/autonomy', schema: autonomyViewSchema, ...withSignal(signal) }),
+      client.request({ path: '/v1/autonomy', schema: autonomyStateSchema, ...withSignal(signal) }),
 
     setAiSwitch: (body: SetAiSwitch) =>
       client.request({
         method: 'POST',
         path: '/v1/autonomy/switches',
         body,
-        schema: setSwitchResultViewSchema,
+        schema: setAiSwitchResultSchema,
       }),
 
     setIntentAutonomy: (intentId: string, body: SetIntentAutonomy) =>
@@ -95,7 +94,8 @@ export function createAdminEndpoints(client: ApiClient) {
     intentAutonomyHistory: (intentId: string, signal?: AbortSignal) =>
       client.request({
         path: `/v1/intents/${id(intentId)}/autonomy/history`,
-        schema: autonomyHistorySchema,
+        query: { limit: 50 },
+        schema: autonomyHistoryPageSchema,
         ...withSignal(signal),
       }),
 
@@ -119,6 +119,8 @@ export function createAdminEndpoints(client: ApiClient) {
       }),
 
     // --- organizations and contacts ---
+    orgTiers: (signal?: AbortSignal) =>
+      client.request({ path: '/v1/org-tiers', schema: orgTierListSchema, ...withSignal(signal) }),
     orgs: (query: Partial<OrganizationListQuery>, signal?: AbortSignal) =>
       client.request({
         path: '/v1/orgs',
@@ -185,13 +187,13 @@ export function createAdminEndpoints(client: ApiClient) {
     calendars: (signal?: AbortSignal) =>
       client.request({
         path: '/v1/business-calendars',
-        schema: calendarViewListSchema,
+        schema: businessCalendarListSchema,
         ...withSignal(signal),
       }),
     calendar: (calendarId: string, signal?: AbortSignal) =>
       client.request({
         path: `/v1/business-calendars/${id(calendarId)}`,
-        schema: calendarViewSchema,
+        schema: businessCalendarSchema,
         ...withSignal(signal),
       }),
     createCalendar: (body: Partial<CreateBusinessCalendar> & { name: string }) =>
@@ -199,22 +201,22 @@ export function createAdminEndpoints(client: ApiClient) {
         method: 'POST',
         path: '/v1/business-calendars',
         body,
-        schema: calendarViewSchema,
+        schema: businessCalendarSchema,
       }),
     updateCalendar: (calendarId: string, body: UpdateBusinessCalendar) =>
       client.request({
         method: 'PATCH',
         path: `/v1/business-calendars/${id(calendarId)}`,
         body,
-        schema: calendarViewSchema,
+        schema: businessCalendarSchema,
       }),
-    /** Ticks or unticks "checked against the official announcement". `[ASSUMED]` contract H4. */
+    /** Ticks or unticks "checked against the official announcement" (head). */
     checkHoliday: (calendarId: string, date: string, checked: boolean) =>
       client.request({
         method: 'PATCH',
         path: `/v1/business-calendars/${id(calendarId)}/holidays/${id(date)}`,
         body: { checked },
-        schema: calendarViewSchema,
+        schema: businessCalendarSchema,
       }),
 
     // --- intents and queues (the list reads are in createEndpoints) ---

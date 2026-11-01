@@ -98,6 +98,13 @@ function OrgsBody() {
         ),
     },
     {
+      id: 'contacts',
+      header: t('admin.orgs.contacts'),
+      sortValue: (row) => row.contactCount,
+      className: 'tabular',
+      cell: (row) => row.contactCount ?? '—',
+    },
+    {
       id: 'sla',
       header: t('admin.orgs.slaPolicy'),
       cell: (row) =>
@@ -198,7 +205,6 @@ function OrgsBody() {
         <OrgSheet
           open
           org={null}
-          extraTiers={rows.map((row) => row.tier)}
           onClose={() => {
             setCreating(false);
           }}

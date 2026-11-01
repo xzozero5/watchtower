@@ -1,6 +1,11 @@
 'use client';
 
-import { type AuditLogEntry, AUDIT_ACTIONS } from '@watchtower/shared';
+import {
+  type AuditActorType,
+  type AuditLogEntry,
+  AUDIT_ACTIONS,
+  AUDIT_ACTOR_TYPES,
+} from '@watchtower/shared';
 import {
   Button,
   Combobox,
@@ -17,6 +22,7 @@ import {
   CircleCheck,
   CircleX,
   Copy,
+  Download,
   Eye,
   EyeOff,
   Lock,
@@ -30,7 +36,9 @@ import { RelativeTime } from '@/components/relative-time';
 import { useI18n } from '@/i18n/provider';
 import { type AuditFilters, useAuditLogs, useUsers } from '@/lib/admin/queries';
 import { formatDateTime } from '@/lib/format';
+import { useSession } from '@/lib/auth/session';
 import { usePreferences } from '@/lib/preferences';
+import { useRuntimeConfig } from '@/lib/runtime-config-context';
 
 const RANGES = [
   { id: '24h', ms: 24 * 3_600_000 },
@@ -69,6 +77,9 @@ function AuditBody() {
   const [actorId, setActorId] = useState('');
   const [action, setAction] = useState('');
   const [outcome, setOutcome] = useState<OutcomeFilter>('any');
+  const [actorType, setActorType] = useState<AuditActorType | ''>('');
+  const { can } = useSession();
+  const { apiUrl } = useRuntimeConfig();
   const [range, setRange] = useState<{ id: RangeId; from: string }>(() => ({
     id: '24h',
     from: new Date(Date.now() - RANGES[0].ms).toISOString(),
@@ -79,12 +90,15 @@ function AuditBody() {
     () => ({
       from: range.from,
       ...(actorId ? { actorId } : {}),
+      ...(actorType ? { actorType } : {}),
       ...(action ? { action } : {}),
       ...(outcome === 'any' ? {} : { outcome }),
     }),
-    [range.from, actorId, action, outcome],
+    [range.from, actorId, actorType, action, outcome],
   );
   const log = useAuditLogs(filters);
+  // The export takes the filters of the list, without paging. The browser sends the session cookie.
+  const exportHref = `${apiUrl}/v1/audit-logs/export?${new URLSearchParams(filters).toString()}`;
   const entries = useMemo(
     () => (log.data?.pages ?? []).flatMap((page) => page.entries),
     [log.data],
@@ -166,7 +180,19 @@ function AuditBody() {
           { label: t('rail.admin'), href: '/admin' },
           { label: t('admin.sections.audit') },
         ]}
-        actions={<span className="text-xs text-muted-foreground">{t('admin.audit.readNote')}</span>}
+        actions={
+          <>
+            <span className="text-xs text-muted-foreground">{t('admin.audit.readNote')}</span>
+            {can('pii.export') ? (
+              <Button asChild>
+                <a href={exportHref} download>
+                  <Download aria-hidden className="size-4" />
+                  {t('admin.audit.export')}
+                </a>
+              </Button>
+            ) : null}
+          </>
+        }
       />
       <AdminBody>
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-border px-4 py-2">
@@ -204,6 +230,20 @@ function AuditBody() {
               <ChevronDown aria-hidden className="size-4 shrink-0 text-muted-foreground" />
             </Combobox>
           </div>
+          <Select
+            aria-label={t('admin.audit.actorType')}
+            value={actorType}
+            onChange={(event) => {
+              setActorType(event.target.value as AuditActorType | '');
+            }}
+          >
+            <option value="">{t('admin.audit.anyType')}</option>
+            {AUDIT_ACTOR_TYPES.map((value) => (
+              <option key={value} value={value}>
+                {t(`admin.audit.type.${value}`)}
+              </option>
+            ))}
+          </Select>
           <SegmentedControl
             aria-label={t('admin.audit.col.outcome')}
             value={outcome}

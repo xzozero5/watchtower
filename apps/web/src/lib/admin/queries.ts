@@ -2,8 +2,8 @@
 
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import type { AuditLogQuery, OrganizationListQuery } from '@watchtower/shared';
-import { OPEN_STATUSES } from '@watchtower/shared';
 
+import { OPEN_WORK_STATUSES } from '@/lib/admin/contracts';
 import { useApi } from '@/lib/api/api-context';
 import { useUserId } from '@/lib/auth/session';
 import { userScope } from '@/lib/tickets/queries';
@@ -57,14 +57,14 @@ export function useTicketStats(enabled: boolean) {
   const userId = useUserId();
   return useQuery({
     queryKey: adminKeys(userId).stats,
-    queryFn: ({ signal }) => api.ticketStats({ status: OPEN_STATUSES }, signal),
+    queryFn: ({ signal }) => api.ticketStats({ status: OPEN_WORK_STATUSES }, signal),
     enabled,
     refetchInterval: HOME_REFRESH_MS,
     staleTime: HOME_REFRESH_MS / 2,
   });
 }
 
-/** Open tickets that still run an SLA clock, most urgent first: the source of the top-10 list. */
+/** Tickets whose SLA is at risk or past due, most urgent first (the server decides): the top-10 list. */
 export function useSlaRiskTickets(enabled: boolean) {
   const api = useApi();
   const userId = useUserId();
@@ -72,7 +72,7 @@ export function useSlaRiskTickets(enabled: boolean) {
     queryKey: adminKeys(userId).slaList,
     queryFn: ({ signal }) =>
       api.listTickets(
-        { status: ['new', 'triage', 'open', 'waiting_on_dev'], sort: 'due_asc', limit: 200 },
+        { slaState: ['at_risk', 'breached'], sort: 'sla_due_asc', limit: 50 },
         signal,
       ),
     enabled,
@@ -81,20 +81,36 @@ export function useSlaRiskTickets(enabled: boolean) {
   });
 }
 
-/** Tickets nobody owns yet, for the "oldest" age. */
-export function useUnassignedTickets(enabled: boolean) {
+/** The oldest ticket nobody owns yet, for the "oldest" age on the Unassigned tile. */
+export function useOldestUnassigned(enabled: boolean) {
   const api = useApi();
   const userId = useUserId();
   return useQuery({
     queryKey: adminKeys(userId).unassignedList,
     queryFn: ({ signal }) =>
       api.listTickets(
-        { status: ['new', 'triage', 'open'], assignee: 'unassigned', limit: 200 },
+        {
+          status: ['new', 'triage', 'open'],
+          assignee: 'unassigned',
+          sort: 'created_asc',
+          limit: 1,
+        },
         signal,
       ),
     enabled,
     refetchInterval: HOME_REFRESH_MS,
     staleTime: HOME_REFRESH_MS / 2,
+  });
+}
+
+export function useOrgTiers(enabled = true) {
+  const api = useApi();
+  const userId = useUserId();
+  return useQuery({
+    queryKey: [...adminKeys(userId).all, 'org-tiers'],
+    queryFn: ({ signal }) => api.orgTiers(signal),
+    enabled,
+    staleTime: 5 * 60_000,
   });
 }
 
@@ -200,7 +216,7 @@ export function useIntentHistory(intentId: string, enabled: boolean) {
 
 export type AuditFilters = Pick<
   AuditLogQuery,
-  'actorId' | 'action' | 'outcome' | 'targetType' | 'targetId' | 'from' | 'to'
+  'actorId' | 'actorType' | 'action' | 'outcome' | 'targetType' | 'targetId' | 'from' | 'to'
 >;
 
 export function useAuditLogs(filters: AuditFilters) {

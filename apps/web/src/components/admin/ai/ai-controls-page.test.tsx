@@ -2,7 +2,8 @@ import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { consoleApi, makeAutonomy } from '@/test/console-fixtures';
+import { consoleApi } from '@/test/console-api';
+import { makeAutonomy } from '@/test/console-fixtures';
 import { apiError } from '@/test/mock-api';
 import { renderConsole } from '@/test/render-console';
 
@@ -20,7 +21,14 @@ afterEach(() => {
 const AT = '2026-11-02T03:00:00.000Z';
 const killOn = makeAutonomy({
   switches: [
-    { key: 'ai_stage_cap_pinned', on: false, reason: '', changedBy: null, changedAt: AT },
+    {
+      key: 'ai_stage_cap_pinned',
+      on: false,
+      reason: '',
+      changedBy: null,
+      changedByName: null,
+      changedAt: AT,
+    },
     {
       key: 'ai_kill_switch',
       on: true,
@@ -60,12 +68,20 @@ describe('AI controls', () => {
           json: {
             changed: true,
             switches: [
-              { key: 'ai_stage_cap_pinned', on: false, reason: '', changedBy: null, changedAt: AT },
+              {
+                key: 'ai_stage_cap_pinned',
+                on: false,
+                reason: '',
+                changedBy: null,
+                changedByName: null,
+                changedAt: AT,
+              },
               {
                 key: 'ai_kill_switch',
                 on: (body as { on: boolean }).on,
                 reason: (body as { reason: string }).reason,
                 changedBy: null,
+                changedByName: null,
                 changedAt: AT,
               },
             ],

@@ -2,7 +2,8 @@ import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { consoleApi, PEOPLE, QUEUE } from '@/test/console-fixtures';
+import { consoleApi } from '@/test/console-api';
+import { PEOPLE, QUEUE } from '@/test/console-fixtures';
 import { apiError } from '@/test/mock-api';
 import { renderConsole } from '@/test/render-console';
 

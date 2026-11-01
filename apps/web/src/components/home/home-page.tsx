@@ -15,20 +15,21 @@ import {
   useReadiness,
   useSlaRiskTickets,
   useTicketStats,
-  useUnassignedTickets,
+  useOldestUnassigned,
   useUsers,
 } from '@/lib/admin/queries';
+import { openInStatus } from '@/lib/admin/contracts';
 import { HOME_PERMISSION } from '@/lib/admin/sections';
 import { useSession, useUserId } from '@/lib/auth/session';
 import { queueHref } from '@/lib/tickets/filters';
 import { isStaffTicket } from '@/lib/tickets/model';
+import { useQueues } from '@/lib/tickets/queries';
 import { useNow } from '@/lib/use-now';
 
 import { AiStatus, BotMark, SystemHealth } from './home-status';
 import {
   CountsUnavailable,
   type LoadRowData,
-  LIST_CAP,
   LoadList,
   oldestAge,
   QueueBreakdown,
@@ -64,48 +65,43 @@ function HomeBody() {
 
   const stats = useTicketStats(true);
   const slaList = useSlaRiskTickets(true);
-  const unassigned = useUnassignedTickets(true);
+  const oldestUnassigned = useOldestUnassigned(true);
   const ready = useReadiness(true);
   const users = useUsers(true);
+  const queues = useQueues(true);
   const autonomy = useAutonomy(true);
   const fetching = useIsFetching({ queryKey: adminKeys(userId).all }) > 0;
   const updatedAt = Math.max(stats.dataUpdatedAt, slaList.dataUpdatedAt);
 
   const slaTickets = useMemo(() => staffOnly(slaList.data?.items ?? []), [slaList.data]);
   const rows = useMemo(() => riskRows(slaTickets, now), [slaTickets, now]);
-  const unassignedTickets = useMemo(
-    () => staffOnly(unassigned.data?.items ?? []),
-    [unassigned.data],
-  );
 
-  // The server's count when it has one; otherwise what the loaded page shows, "at least" if full.
-  const slaFull = slaTickets.length >= LIST_CAP;
-  const riskTotal = stats.data
-    ? stats.data.bySlaState.at_risk + stats.data.bySlaState.breached
-    : slaList.data
-      ? rows.length
-      : null;
-  const overdue = stats.data
-    ? stats.data.bySlaState.breached
-    : rows.filter((row) => row.sla.state === 'breached').length;
+  // The server's count when there is one; otherwise what the loaded page holds ("at least" if more).
+  const sla = stats.data?.total.sla;
+  const riskTotal = sla ? sla.at_risk + sla.breached : slaList.data ? rows.length : null;
+  const riskCapped = !sla && slaList.data?.nextCursor != null;
+  const overdue = sla ? sla.breached : rows.filter((row) => row.sla.state === 'breached').length;
   const countText = (value: number | null, capped = false) =>
     value === null ? null : capped ? t('home.atLeast', { count: value }) : String(value);
 
   const unassignedCount = stats.data
-    ? (stats.data.byAssignee.find((entry) => entry.userId === null)?.n ?? 0)
+    ? (stats.data.byAssignee.find((entry) => entry.assigneeId === null)?.open ?? 0)
     : null;
-  const oldest = oldestAge(unassignedTickets, now, locale, (time) => t('home.oldest', { time }));
+  const oldest = oldestAge(oldestUnassigned.data?.items[0]?.createdAt, now, locale, (time) =>
+    t('home.oldest', { time }),
+  );
+  const newCount = stats.data ? openInStatus(stats.data, 'new') : null;
+  const triageCount = stats.data ? openInStatus(stats.data, 'triage') : null;
 
   const tiles: Tile[] = [
     {
       id: 'sla',
       label: t('home.slaRisk'),
-      value: countText(riskTotal, !stats.data && slaFull),
+      value: countText(riskTotal, riskCapped),
       ...(riskTotal !== null && overdue > 0
         ? { sub: t('home.overdueCount', { count: overdue }) }
         : {}),
       href: queueHref({ sort: 'due_asc', status: OPEN_STATUSES }),
-      phrase: t('home.countPhrase', { label: t('home.slaRisk'), count: riskTotal ?? 0 }),
     },
     {
       id: 'unassigned',
@@ -113,47 +109,44 @@ function HomeBody() {
       value: unassignedCount,
       ...(oldest && unassignedCount ? { sub: oldest } : {}),
       href: queueHref({ assignee: 'unassigned', status: ['new', 'triage', 'open'] }),
-      phrase: t('home.countPhrase', { label: t('home.unassigned'), count: unassignedCount ?? 0 }),
     },
     {
       id: 'new',
       label: t('home.new'),
-      value: stats.data ? (stats.data.byStatus.new ?? 0) : null,
+      value: newCount,
       href: queueHref({ status: ['new'] }),
-      phrase: t('home.countPhrase', { label: t('home.new'), count: stats.data?.byStatus.new ?? 0 }),
     },
     {
       id: 'triage',
       label: t('home.triage'),
-      value: stats.data ? (stats.data.byStatus.triage ?? 0) : null,
+      value: triageCount,
       href: queueHref({ status: ['triage'] }),
-      phrase: t('home.countPhrase', {
-        label: t('home.triage'),
-        count: stats.data?.byStatus.triage ?? 0,
-      }),
     },
   ];
 
+  const queueNames = useMemo(
+    () => new Map((queues.data?.queues ?? []).map((queue) => [queue.id, queue.name])),
+    [queues.data],
+  );
+
   const load = useMemo<LoadRowData[]>(() => {
     if (!stats.data || !users.data) return [];
-    const open = new Map(stats.data.byAssignee.map((entry) => [entry.userId, entry.n]));
-    const atRisk = new Map<string, number>();
-    for (const row of rows) {
-      const id = row.ticket.assignee?.id;
-      if (id) atRisk.set(id, (atRisk.get(id) ?? 0) + 1);
-    }
+    const byPerson = new Map(stats.data.byAssignee.map((entry) => [entry.assigneeId, entry]));
     return users.data.users
       .filter(
         (user) => user.status === 'active' && user.role !== 'client' && user.role !== 'system',
       )
-      .map((user) => ({
-        id: user.id,
-        name: user.name,
-        open: open.get(user.id) ?? 0,
-        atRisk: atRisk.get(user.id) ?? 0,
-      }))
+      .map((user) => {
+        const entry = byPerson.get(user.id);
+        return {
+          id: user.id,
+          name: user.name,
+          open: entry?.open ?? 0,
+          atRisk: (entry?.sla.at_risk ?? 0) + (entry?.sla.breached ?? 0),
+        };
+      })
       .sort((a, b) => b.open - a.open || a.name.localeCompare(b.name));
-  }, [stats.data, users.data, rows]);
+  }, [stats.data, users.data]);
 
   const refresh = () => {
     void queryClient.invalidateQueries({ queryKey: adminKeys(userId).all });
@@ -224,7 +217,7 @@ function HomeBody() {
             ) : stats.isError ? (
               <CountsUnavailable onRetry={() => void stats.refetch()} />
             ) : (
-              <QueueBreakdown stats={stats.data} />
+              <QueueBreakdown stats={stats.data} names={queueNames} />
             )}
           </HomeSection>
         </div>

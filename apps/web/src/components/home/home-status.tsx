@@ -1,6 +1,7 @@
 'use client';
 
 import type { UseQueryResult } from '@tanstack/react-query';
+import type { AutonomyState } from '@watchtower/shared';
 import { AUTONOMY_STAGES, Skeleton, StageBadge } from '@watchtower/ui';
 import {
   Bot,
@@ -16,7 +17,7 @@ import {
 import { LoadError } from '@/components/admin/admin-page';
 import { AppLink } from '@/components/app-link';
 import { useT } from '@/i18n/provider';
-import type { AutonomyView, ReadinessView } from '@/lib/admin/contracts';
+import type { ReadinessView } from '@/lib/admin/contracts';
 import { asStage, STAGE_LABEL_KEYS } from '@/lib/admin/stages';
 import { useSession } from '@/lib/auth/session';
 
@@ -25,7 +26,7 @@ import { useSession } from '@/lib/auth/session';
  * slots for "Draft ready" and "Needs you" that fill in when the AI insight endpoint exists
  * (docs/design/ai-first-workspace.md section 6). Until then they show a dash, never a made-up number.
  */
-export function AiStatus({ query }: { query: UseQueryResult<AutonomyView> }) {
+export function AiStatus({ query }: { query: UseQueryResult<AutonomyState> }) {
   const t = useT();
   const { can } = useSession();
   if (query.isPending) return <Skeleton className="h-20" />;

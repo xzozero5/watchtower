@@ -2,8 +2,10 @@
 
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import {
+  type BusinessCalendarRecord as CalendarView,
   holidaySchema,
   type Holiday,
+  type HolidayRecord as HolidayView,
   type Weekday,
   WEEKDAYS,
   type WeeklyHours,
@@ -33,7 +35,6 @@ import { z } from 'zod';
 import { AdminBody, AdminHeader } from '@/components/admin/admin-layout';
 import { LoadError, RequirePermission, TableSkeleton } from '@/components/admin/admin-page';
 import { useI18n } from '@/i18n/provider';
-import type { CalendarView, HolidayView } from '@/lib/admin/contracts';
 import { describeError } from '@/lib/admin/errors';
 import { adminKeys, useCalendar } from '@/lib/admin/queries';
 import { isApiError } from '@/lib/api/errors';

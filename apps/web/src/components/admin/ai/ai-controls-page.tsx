@@ -1,6 +1,6 @@
 'use client';
 
-import type { AiSwitchKey } from '@watchtower/shared';
+import type { AiSwitch, AiSwitchKey } from '@watchtower/shared';
 import { AUTONOMY_STAGES, Button, Skeleton, StageBadge } from '@watchtower/ui';
 import { CircleCheck, CircleStop, Lock, ShieldCheck, ShieldOff } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
@@ -12,7 +12,6 @@ import { AppLink } from '@/components/app-link';
 import { RelativeTime } from '@/components/relative-time';
 import type { MessageKey } from '@/i18n';
 import { useT } from '@/i18n/provider';
-import type { AiSwitchView } from '@/lib/admin/contracts';
 import { useAutonomy } from '@/lib/admin/queries';
 import { canFlipSwitches } from '@/lib/admin/sections';
 import { asStage, STAGE_LABEL_KEYS } from '@/lib/admin/stages';
@@ -120,7 +119,7 @@ function SwitchRow({
   onFlip,
 }: {
   row: (typeof ROWS)[number];
-  state: AiSwitchView | undefined;
+  state: AiSwitch | undefined;
   canFlip: boolean;
   onFlip: (on: boolean) => void;
 }) {

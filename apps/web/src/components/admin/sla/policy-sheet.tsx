@@ -15,7 +15,7 @@ import { EntitySheet } from '@/components/admin/entity-sheet';
 import { FormField } from '@/components/portal/form-field';
 import { useT } from '@/i18n/provider';
 import { describeError } from '@/lib/admin/errors';
-import { adminKeys, useCalendars } from '@/lib/admin/queries';
+import { adminKeys, useCalendars, useOrgTiers } from '@/lib/admin/queries';
 import { useApi } from '@/lib/api/api-context';
 import { useUserId } from '@/lib/auth/session';
 
@@ -57,6 +57,7 @@ export function PolicySheet({
   const userId = useUserId();
   const queryClient = useQueryClient();
   const calendars = useCalendars(open);
+  const tierList = useOrgTiers(open);
   const base = useId();
   const [name, setName] = useState(policy?.name ?? '');
   const [tier, setTier] = useState(policy?.tier ?? '');
@@ -192,16 +193,14 @@ export function PolicySheet({
               }}
             >
               <option value="">—</option>
-              {[
-                'gold',
-                'silver',
-                'standard',
-                ...(tier && !['gold', 'silver', 'standard'].includes(tier) ? [tier] : []),
-              ].map((value) => (
-                <option key={value} value={value}>
-                  {value}
+              {(tierList.data?.tiers ?? []).map((item) => (
+                <option key={item.slug} value={item.slug}>
+                  {item.name}
                 </option>
               ))}
+              {tier && !(tierList.data?.tiers ?? []).some((item) => item.slug === tier) ? (
+                <option value={tier}>{tier}</option>
+              ) : null}
             </Select>
           </FormField>
           <FormField id={`${base}-calendar`} label={t('admin.sla.calendar')}>

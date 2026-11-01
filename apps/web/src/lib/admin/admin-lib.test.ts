@@ -6,12 +6,13 @@ import { DEFAULT_FILTERS, filtersFromSearch, queueHref } from '@/lib/tickets/fil
 import { uuid } from '@/test/fixtures';
 
 import {
-  autonomyHistorySchema,
-  autonomyViewSchema,
-  calendarViewSchema,
-  statCount,
+  autonomyHistoryPageSchema,
+  autonomyStateSchema,
+  businessCalendarSchema,
   ticketStatsSchema,
-} from './contracts';
+} from '@watchtower/shared';
+
+import { openInStatus } from './contracts';
 import { describeError } from './errors';
 import { adminSectionsFor, canFlipSwitches, HOME_PERMISSION } from './sections';
 import { asStage } from './stages';
@@ -22,35 +23,20 @@ const holds =
   (permission: string) =>
     permissions.includes(permission);
 
-describe('contracts assumed for the api tasks', () => {
-  it('reads the counts endpoint and treats a missing status as zero', () => {
+describe('contracts from @watchtower/shared', () => {
+  const bucket = { count: 3, open: 3, sla: { ok: 1, at_risk: 2, breached: 0, paused: 0 } };
+
+  it('reads the counts endpoint, and a status with no ticket counts as zero open', () => {
     const stats = ticketStatsSchema.parse({
-      byStatus: { open: 3 },
-      byQueue: [{ queueId: null, name: null, n: 1 }],
-      byAssignee: [{ userId: null, name: null, n: 1 }],
-      byPriority: { P1: 1 },
-      bySlaState: { ok: 1, at_risk: 2, breached: 3, paused: 4 },
+      generatedAt: AT,
+      total: bucket,
+      byStatus: [{ status: 'open', ...bucket }],
+      byQueue: [{ queueId: null, ...bucket }],
+      byAssignee: [{ assigneeId: null, ...bucket }],
+      byPriority: [{ priority: 'P1', ...bucket }],
     });
-    expect(statCount(stats.byStatus, 'open')).toBe(3);
-    expect(statCount(stats.byStatus, 'new')).toBe(0);
-  });
-
-  it('rejects counts that are not the agreed shape', () => {
-    expect(ticketStatsSchema.safeParse({ byStatus: { open: 'many' } }).success).toBe(false);
-  });
-
-  it('accepts the autonomy state with and without the name of who flipped a switch', () => {
-    const base = {
-      stageCeiling: 2,
-      intents: [],
-      switches: [{ key: 'ai_kill_switch', on: true, reason: 'x', changedBy: null, changedAt: AT }],
-    };
-    expect(autonomyViewSchema.parse(base).switches[0]?.changedByName).toBeUndefined();
-    const named = autonomyViewSchema.parse({
-      ...base,
-      switches: [{ ...base.switches[0], changedByName: 'Mana K.' }],
-    });
-    expect(named.switches[0]?.changedByName).toBe('Mana K.');
+    expect(openInStatus(stats, 'open')).toBe(3);
+    expect(openInStatus(stats, 'new')).toBe(0);
   });
 
   it('refuses a stage above 2 in the autonomy state (N3)', () => {
@@ -65,12 +51,27 @@ describe('contracts assumed for the api tasks', () => {
       updatedAt: AT,
     };
     expect(
-      autonomyViewSchema.safeParse({ stageCeiling: 2, switches: [], intents: [intent] }).success,
+      autonomyStateSchema.safeParse({ stageCeiling: 2, switches: [], intents: [intent] }).success,
     ).toBe(false);
   });
 
-  it('accepts a holiday with or without a check state', () => {
-    const calendar = {
+  it('reads who flipped a switch, and a holiday that nobody checked', () => {
+    const state = autonomyStateSchema.parse({
+      stageCeiling: 2,
+      intents: [],
+      switches: [
+        {
+          key: 'ai_kill_switch',
+          on: true,
+          reason: 'x',
+          changedBy: null,
+          changedByName: 'Mana',
+          changedAt: AT,
+        },
+      ],
+    });
+    expect(state.switches[0]?.changedByName).toBe('Mana');
+    const calendar = businessCalendarSchema.parse({
       id: uuid(2),
       name: 'c',
       timezone: 'Asia/Bangkok',
@@ -86,32 +87,30 @@ describe('contracts assumed for the api tasks', () => {
       isDefault: false,
       createdAt: AT,
       updatedAt: AT,
-    };
-    const parsed = calendarViewSchema.parse({
-      ...calendar,
-      holidays: [
-        { date: '2026-12-31', name: 'a' },
-        { date: '2027-01-01', name: 'b', checked: true },
-      ],
+      holidays: [{ date: '2026-12-31', name: 'a' }],
     });
-    expect(parsed.holidays.map((h) => h.checked)).toEqual([undefined, true]);
+    expect(calendar.holidays[0]).toMatchObject({ checked: false, checkedAt: null });
   });
 
-  it('reads the intent history', () => {
-    const parsed = autonomyHistorySchema.parse({
-      entries: [
+  it('reads the intent history page', () => {
+    const parsed = autonomyHistoryPageSchema.parse({
+      items: [
         {
-          id: '1',
+          id: uuid(3),
+          intentId: uuid(4),
           change: 'stage',
           fromStage: 1,
           toStage: 2,
+          pinned: false,
           reason: 'r',
-          changedBy: null,
+          changedBy: uuid(5),
+          changedByName: 'Mana',
           changedAt: AT,
         },
       ],
+      nextCursor: null,
     });
-    expect(parsed.entries[0]?.toStage).toBe(2);
+    expect(parsed.items[0]?.toStage).toBe(2);
   });
 });
 

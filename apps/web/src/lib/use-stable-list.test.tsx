@@ -11,7 +11,9 @@ function Harness({ initial }: { initial: string[] }) {
     <div>
       <button
         type="button"
-        onClick={() => setItems(['c', ...items.filter((item) => item !== 'a')])}
+        onClick={() => {
+          setItems(['c', ...items.filter((item) => item !== 'a')]);
+        }}
       >
         change
       </button>
