@@ -82,3 +82,43 @@ describe('formatDuration', () => {
     expect(formatDuration(42 * 60_000, 'th')).not.toBe('42m');
   });
 });
+
+describe('slaView with the server SLA (T-111e)', () => {
+  const server = (overrides: Partial<NonNullable<ReturnType<typeof makeTicket>['sla']>>) => ({
+    target: 'resolution' as const,
+    state: 'ok' as const,
+    dueAt: at(600),
+    calendar: 'business' as const,
+    minutesLeft: 90,
+    ...overrides,
+  });
+
+  it('takes the state and the minutes left from the server, not from wall-clock time', () => {
+    // Wall clock says 10 hours left; the server counted 90 business minutes (the night is closed).
+    const view = slaView(makeTicket(1, { createdAt: created, sla: server({}) }), NOW);
+    expect(view).toMatchObject({ state: 'onTrack', target: 'resolution', ms: 90 * 60_000 });
+    const atRisk = slaView(
+      makeTicket(1, { createdAt: created, sla: server({ state: 'at_risk', minutesLeft: 20 }) }),
+      NOW,
+    );
+    expect(atRisk).toMatchObject({ state: 'atRisk', ms: 20 * 60_000 });
+  });
+
+  it('breached counts the time past due on the wall clock, paused has no minutes', () => {
+    const breached = slaView(
+      makeTicket(1, { sla: server({ state: 'breached', dueAt: at(-12), minutesLeft: 0 }) }),
+      NOW,
+    );
+    expect(breached).toMatchObject({ state: 'breached', ms: 12 * 60_000 });
+    const paused = slaView(
+      makeTicket(1, { sla: server({ state: 'paused', dueAt: at(60), minutesLeft: null }) }),
+      NOW,
+    );
+    expect(paused).toMatchObject({ state: 'paused', ms: 60 * 60_000 });
+  });
+
+  it('maps the first response target', () => {
+    const view = slaView(makeTicket(1, { sla: server({ target: 'first_response' }) }), NOW);
+    expect(view.target).toBe('firstResponse');
+  });
+});
