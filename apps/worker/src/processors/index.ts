@@ -9,6 +9,7 @@ import { createAiProcessor } from '../ai/brief.js';
 import type { AiOverrides, AiRuntime } from '../ai/runtime.js';
 import { createGmailRegistration, type GmailOverrides } from '../gmail/index.js';
 import type { GmailRuntime } from '../gmail/runtime.js';
+import { createDiscordRegistration, type DiscordOverrides } from '../discord/index.js';
 import { createIngestRegistration, type IngestOverrides } from '../ingest/index.js';
 import type { WorkerLogger } from '../logger.js';
 import { createLineRegistration } from '../line/index.js';
@@ -44,6 +45,7 @@ export interface ProcessorOverrides {
   readonly ai?: AiOverrides;
   readonly outbound?: OutboundOverrides;
   readonly gmail?: GmailOverrides;
+  readonly discord?: DiscordOverrides;
   readonly line?: LineOverrides;
 }
 
@@ -101,6 +103,7 @@ export const PROCESSORS: readonly ProcessorRegistration[] = [
   { queue: QUEUE_NAMES.line, create: createLineRegistration, concurrency: 1 },
 
   // --- discord (T-104) ---
+  { queue: QUEUE_NAMES.discord, create: createDiscordRegistration },
 
   // --- notifications (T-105) ---
 

@@ -183,6 +183,8 @@ export const outboxJobOptionsSchema = z
       .min(0)
       .max(7 * 24 * 3600 * 1000)
       .optional(),
+    /** BullMQ priority: 1 runs first. Jobs without one run before every prioritized job. */
+    priority: z.number().int().min(1).max(100).optional(),
   })
   .strict();
 export type OutboxJobOptions = z.infer<typeof outboxJobOptionsSchema>;

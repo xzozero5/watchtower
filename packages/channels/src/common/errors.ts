@@ -3,7 +3,7 @@
  * human" (ADR-010) without ever holding a credential, a request body or a message text (N1, N4).
  */
 
-export type ChannelProvider = 'gmail' | 'line';
+export type ChannelProvider = 'gmail' | 'line' | 'discord';
 
 export type ChannelFailureKind =
   /** The request did not finish in time. The provider may or may not have acted on it. */

@@ -53,6 +53,36 @@ describe('loadConfig', () => {
     expect(loadConfig(testEnv({ WORKER_PORT: '4101', PORT: '8080' })).listenPort).toBe(8080);
   });
 
+  it('reads the Discord channel map: empty means every new ticket to the default slot', () => {
+    expect(loadConfig(testEnv()).DISCORD_CHANNEL_MAP.routes).toEqual([
+      { name: 'all-tickets', slot: 'default', events: ['ticket.created'] },
+    ]);
+    const map = loadConfig(
+      testEnv({
+        DISCORD_CHANNEL_MAP:
+          '{"routes":[{"name":"all","slot":"default"},{"name":"hot","slot":"urgent","minPriority":"P2"}]}',
+      }),
+    ).DISCORD_CHANNEL_MAP;
+    expect(map.routes.map((route) => route.slot)).toEqual(['default', 'urgent']);
+  });
+
+  it('fails the boot on a bad Discord channel map, naming the variable and never repeating the text', () => {
+    for (const bad of [
+      '{nope',
+      '{"routes":[]}',
+      '{"routes":[{"name":"x","slot":"https://leak.example/x"}]}',
+    ]) {
+      let message = '';
+      try {
+        loadConfig(testEnv({ DISCORD_CHANNEL_MAP: bad }));
+      } catch (error) {
+        message = error instanceof Error ? error.message : '';
+      }
+      expect(message).toMatch(/DISCORD_CHANNEL_MAP/);
+      expect(message).not.toContain('leak.example');
+    }
+  });
+
   it('fails the boot when a required variable is missing', () => {
     expect(() => loadConfig(testEnv({ REDIS_URL: undefined }))).toThrow(ConfigError);
     expect(() => loadConfig({})).toThrow(/DATABASE_URL/);

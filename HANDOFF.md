@@ -4,15 +4,18 @@
 > อัปเดตล่าสุด: 2026-11-01 12:47 (เวลากรุงเทพ) โดย Claude Code (main thread, เครื่อง local) — **safe pause ตามคำสั่งเจ้าของ เพราะโควตาใกล้เต็ม ยังไม่จบ Phase 1**
 > กฎขนาด ≤ 40 KB — เขียนทับสถานะ ไม่ append ประวัติ · ฉบับก่อนหน้า `docs/handoff-archive/HANDOFF-2026-11-01-0420.md` · บันทึกรายชั่วโมง `logs/daily/2026-11-01.md` · log ต่อ task `docs/STATUS.md`
 
+## คำสั่งล่าสุดของเจ้าของ (2026-11-01 22:15)
+ทำต่อด้วย mock ให้จบ Phase 2 เท่าที่เป็นไปได้มากที่สุด ให้ `po` ตัดสินแทน · ข้าม T-115 pilot ไปก่อน (ยังไม่มี credential จริง) · รายการ "ห้ามทำแทน" ยังใช้เหมือนเดิม · safe pause เมื่อโควตา 5 ชั่วโมงหรือ weekly ถึง 95%
+
 ## ทำต่อจากตรงนี้ (safe pause 2026-11-01 12:57)
-- **T-103b–d LINE และ T-102b–d Gmail merge เข้า `main` แล้ว** · ลำดับถัดไป: T-104, T-107, T-111 (ตารางด้านล่าง) → T-102e OAuth กล่อง Gmail → wave 3–4 ตาม BACKLOG → หยุดที่ T-115 · migration บน `main` ถึง `0016_gmail_account_state`
+- **T-103b–d LINE และ T-102b–d Gmail merge เข้า `main` แล้ว** · ลำดับถัดไป: T-104, T-107, T-111 (ตารางด้านล่าง) → T-102e OAuth กล่อง Gmail → wave 3–4 ตาม BACKLOG → หยุดที่ T-115 · migration บน `main` ถึง `0017_discord_notify`
 - **gate บนเครื่องนี้ของ T-103 `[TESTED]`:** lint, typecheck ผ่าน · unit web 667, api 191, worker 79, domain 67, shared 257, channels 330, db 50, ai 372, ui 609, boundaries 200 · integration db 200, domain 188, api 528, worker 83 (รอบเครื่องว่าง) · e2e 134 · full-stack 23 (`PW_CHANNEL=msedge`) · ยังไม่ได้ลอง `docker compose up` ด้วย image ที่ build เอง
 - **รัน integration ตอนเครื่องว่าง:** รอบที่มี agent รัน test พร้อมกัน ตกแบบหลอก 2 ข้อ (db `followups` timeout, api `portal` `no portal email`) รอบเครื่องว่างผ่านครบ
 - **บั๊กจริงที่เจอเฉพาะบนเครื่องจริง แก้แล้ว:** (1) `message.created_at` ใช้นาฬิกาแอป `ticket_event` ใช้นาฬิกา DB ทำ timeline ลูกค้าเรียงผิด (2) relay ใช้นาฬิกา DB แต่ claim ใช้นาฬิกา worker ทำ reply ลูกค้าค้างราว 2 นาที · security review ของสอง fix ไม่มี P0/P1
 
 ## อ่านก่อน (สรุป 2 นาที)
 - **Phase 0 เสร็จ** (CI บน GitHub เขียว) · ยังไม่ tag `v0.0.1` — รอเจ้าของตรวจบนเครื่อง (รายการด้านล่าง)
-- **Phase 1 กำลังทำ** · บน `main` แล้ว: T-101, T-102a–d, T-103a–d, T-106a–e, T-112a, T-116a, T-117, T-122a–e, T-123a, T-126–T-129 · **ค้างบน branch 3 งาน** (LINE, Gmail, KB — ตารางด้านล่าง) ทั้งหมดผ่าน security review รอบแรกและแก้ finding ไปแล้วบางส่วน
+- **Phase 1 กำลังทำ** · บน `main` แล้ว: T-101, T-102a–d, T-103a–d, T-104, T-106a–e, T-112a, T-116a, T-117, T-122a–e, T-123a, T-126–T-129 · **ค้างบน branch 3 งาน** (LINE, Gmail, KB — ตารางด้านล่าง) ทั้งหมดผ่าน security review รอบแรกและแก้ finding ไปแล้วบางส่วน
 - **กติกาที่ใช้ทั้ง session:** security finding P0/P1 ต้องแก้ก่อน merge · main thread รัน test เองบน branch `verify/<task>` (merge กับ `main` ล่าสุด) ก่อน merge เสมอ · migration เปลี่ยนเลขตอน merge
 - **`po` ตัดสินแทนเจ้าของ 27 ข้อ** (ตารางด้านล่าง) ติ๊กรับ/ไม่รับได้เลย · ข้อใหม่ #26 (LINE verified), #27 (KB publish แยกหน้าที่)
 - **UI:** T-124 → T-128 (AI-first board) → T-129 (มน/สี/icon, แยก status กับ tag ตาม feedback เจ้าของ) · ภาพหน้าจอส่งในแชตแล้ว (ไม่ได้ commit)
@@ -28,7 +31,6 @@
 | งาน | branch | สถานะ | ต้องทำต่อ |
 |---|---|---|---|
 | **T-107a–c KB** schema/versions + chunker + audited embedder (mock) + hybrid search + API | `wip/t-107ac` @ `62df4d2` | P2-A, P2-B, P3-C, P3-E แก้แล้ว · re-review (หยุดกลางทางเพราะ pause) ไม่มี P0/P1 แต่ **ยังไม่ merge:** **P2 ใหม่** `articles.ts:553` break-glass ซ้อนเขียนทับ `breakGlassPrevVersion` ทำให้ผู้เขียน v2 หรือ head คนแรกเคลียร์ธงเองได้ · P3-D ปิดไม่ครบ raw SQL 2 ขั้นผ่าน `0015_kb.sql:219-225` · P3 `articles.ts:271,341` actor `system` ขยายผู้อ่านได้, agent แก้ metadata ของ live โดย audit ไม่มี before/after · ยังไม่ตรวจ: api/worker integration, DoS ของ trgm, งบ AI ของ customer search | แก้ P2 (ขณะ pending คงค่า prev เดิม + จำผู้ publish ทุกคน) และ P3 → re-review ส่วนที่ค้าง → merge หลัง Gmail (เลข → `0017`, grep `0015_kb`) → suite เต็ม |
-| **T-104 Discord** webhook + fan-out (mock) | `wip/t-104` @ `fea760d` | agent รายงาน lint/typecheck/unit ผ่าน, integration db 207, domain 172, worker 84, api 500 + ตก 2 ใน portal timeline (อาการเดียวกับบั๊กนาฬิกาที่แก้บน `verify/t-103bd`, branch นี้ยังไม่มี fix) · ยังไม่มี security review · main thread ยังไม่ได้รันเอง | merge `main` หลัง T-103 → renumber `0015_discord_notify` → security review → suite เต็ม · `[ASSUMED]` ส่งเฉพาะ `ticket.created`, slot `default`/`urgent`, at-least-once (โพสต์ซ้ำได้ในกรณีหายาก), link `/tickets/<key>` ยังไม่มี route จริง · agent แก้ `parseRetryAfter` ให้อ่านทศนิยม กระทบทุก adapter |
 | **T-111a–e Shifts** backend | `wip/t-111` @ `b67bfc5` | **หยุดกลางทางเพราะ pause** agent ไม่ได้รายงาน · ข้อความสุดท้ายบอกว่ากำลังแก้ expectation ของ test (audit success filter, paging, จำนวน brief-read) จึงถือว่า test ยังไม่ผ่าน · ไม่มีไฟล์ค้างนอก commit | อ่าน `git log main..wip/t-111` แล้วทำต่อ → test → security review (RBAC) → merge → T-111f หน้าจอ |
 
 ## Follow-up ที่เปิดไว้
@@ -72,6 +74,11 @@
 | [x] 24 | T-011 Phase 0 | ยังไม่ปิดจนกว่า CI (T-014) เขียว · เจ้าของตรวจตาม checklist แล้วค่อย tag | DoD |
 | [x] 26 | LINE link แล้วถือว่า "ยืนยันตัวตน" ไหม (T-103d) | LINE Login จาก portal session ที่ login แล้ว → verified · code ที่ staff เห็นแล้วบอกลูกค้า → ผูกได้แต่ **unverified** (disclosure policy §6.6 ยังบังคับ) · code ที่ส่งไป email ที่ยืนยันแล้วเท่านั้น (R-2.11c) → verified · เก็บสถานะ LINE แยกจาก `contact.verified_at` · staff ยืนยันเองเป็น action แยก lead+ พร้อมเหตุผล+audit (อนาคต) | staff ถูก social engineering ทางโทรศัพท์ได้ · ทางที่ verified ต้องพิสูจน์ว่าคุมทั้ง email และ LINE · ย้อนกลับง่าย |
 | [x] 27 | KB publish ต้องแยกหน้าที่ไหม (T-107, ISO 27001 A.5.3/A.8.32) | ต้องผ่าน `in_review` เสมอ · ผู้อนุมัติต้องไม่ใช่ผู้เขียน version นั้น · break-glass เฉพาะ `head` ต้องมีเหตุผล + audit แยก + ธงรีวิวย้อนหลัง · AI draft ต้องมีคนอนุมัติที่ไม่ใช่ผู้สั่ง AI ใช้ break-glass ไม่ได้ · deprecate ไม่ต้องรอคนที่สอง | ตรง PRD R-4.1/R-4.4 · seed มีผู้อนุมัติ 4 คน · เป็นกฎใน domain ย้อนกลับง่าย |
+| [ ] 28 | AC-7 gate ถูกเลี่ยงด้วยการ unassign/ลด priority ก่อน clock out | gate นับ P1/P2 ที่ผู้ใช้ unassign, ลด priority หรือโอนให้คนนอกกะในกะนั้นด้วย · ติดจริงใช้ override ได้และมี audit | ไม่ขวาง triage จริง |
+| [ ] 29 | ack handoff โอนให้คนนอกกะ | P1/P2 ปฏิเสธ, P3/P4 อนุญาตพร้อมเตือน | ไม่งั้น "0" ของ AC-7 ไม่จริง |
+| [ ] 30 | ค่าของ T-111 | รับ: override ใช้ `roster.manage`, P2 ต้องอยู่ใน handoff, handoff ไม่ระบุผู้รับเห็นได้ 36 ชม. ใครตอบก่อนได้, reopen ไม่ได้หลังมีคำตอบ, session เกิน 16 ชม. ไม่นับ on shift, clock-in ก่อน 60 นาที, grace 5 นาที, note 48 ชม., stay_with_last fallback load_balanced, เก็บแค่ consent ไม่เก็บพิกัด · แก้: "question" นับเป็น ack แต่ P1/P2 ไม่มีคำตอบ 30 นาทีต้องเตือน lead | ลดภาระ, ไม่ปล่อย P1 ไร้เจ้าของ |
+| [ ] 31 | ค่าของ T-104 | รับ: ส่งเฉพาะ `ticket.created`, slot `default`/`urgent`, โพสต์ซ้ำไม่เกิน 2, retry 24 ชม., wait สูงสุด 10 นาที · โพสต์ล่าช้าต้องแสดงเวลาสร้าง ticket | ซ้ำดีกว่าหาย |
+| [ ] 32 | KB metadata + งบ customer search | `intentTags`/`kind`/`sources` ของบทความ live ต้องมี approver · `lastVerifiedAt` ระดับ editor + audit · customer search มี daily cap แยก 20% ของ `app_ai_daily` เต็มแล้ว fallback keyword | ตรง #27, portal เปิดสาธารณะ |
 | [x] 25 | T-011 Phase 1 scope | T-122 ingest + `packages/domain`, T-123 scaffolding, AC-4 → T-108e KB-author ขั้นต่ำ, เลื่อน Discord bot / Web Push / digest / crawler / bulk ไปหลัง T-113, worktree ≤ 3, Phase 1 ปิดที่ "done pending pilot" | credit จำกัด ทำของมีค่าก่อน |
 
 ## การตัดสินใจของเจ้าของที่มีผลอยู่

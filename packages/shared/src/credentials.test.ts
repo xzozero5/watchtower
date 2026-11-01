@@ -100,6 +100,7 @@ describe('credential fields in logs and error codes', () => {
       'anthropicApiKey',
       'vapidPrivate',
       'webhookUrl',
+      'webhookUrlUrgent',
     ]) {
       expect(LOG_REDACT_PATHS, name).toContain(`*.${name}`);
     }

@@ -1,5 +1,8 @@
 import {
+  DEFAULT_DISCORD_CHANNEL_MAP,
   DEFAULT_TICKET_KEY_PREFIX,
+  DiscordChannelMapError,
+  parseDiscordChannelMap,
   createEnvSchema,
   emptyToUndefined,
   parseEnv,
@@ -47,6 +50,29 @@ const workerEnvSchema = createEnvSchema({
    * tracking link before it is deleted. `[ASSUMED]` 7.
    */
   CLEANUP_AUTH_RETENTION_DAYS: z.coerce.number().int().min(0).max(365).default(7),
+  /**
+   * Which events go to which Discord channel (T-104c, po decision #6: Discord is for notification and
+   * coordination). JSON of the form `{"routes":[{"name":"all","slot":"default"}]}`, each route with
+   * optional `events`, `minPriority` and `channels`. A slot is a destination name, never a URL (the
+   * webhook URLs are credentials, ADR-012). Empty: every new
+   * ticket goes to the default slot. An invalid value fails the boot, naming the variable only.
+   */
+  DISCORD_CHANNEL_MAP: z
+    .preprocess(emptyToUndefined, z.string().optional())
+    .transform((text, ctx) => {
+      if (text === undefined) return DEFAULT_DISCORD_CHANNEL_MAP;
+      try {
+        return parseDiscordChannelMap(text);
+      } catch (error) {
+        const reason = error instanceof DiscordChannelMapError ? error.reason : 'invalid_shape';
+        ctx.addIssue({
+          code: 'custom',
+          // Never the text itself: it is operator input and the message may end up in a log.
+          message: `is not a valid channel map (${reason})`,
+        });
+        return z.NEVER;
+      }
+    }),
   /** Days to keep a break-glass lockout counter after its last failed sign-in (still locked ones stay). `[ASSUMED]` 30. */
   CLEANUP_BREAK_GLASS_RETENTION_DAYS: z.coerce.number().int().min(1).max(365).default(30),
 });

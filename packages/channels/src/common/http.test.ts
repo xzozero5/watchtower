@@ -36,6 +36,11 @@ describe('parseRetryAfter', () => {
     ).toBe(0);
   });
 
+  it('reads fractional seconds (Discord) and rounds up, never as a date', () => {
+    expect(parseRetryAfter('1.5', 0)).toBe(1500);
+    expect(parseRetryAfter('0.0004', 0)).toBe(1);
+  });
+
   it('returns undefined for absent or garbage values', () => {
     expect(parseRetryAfter(null, 0)).toBeUndefined();
     expect(parseRetryAfter('soon', 0)).toBeUndefined();

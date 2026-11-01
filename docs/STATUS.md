@@ -39,6 +39,10 @@ snapshot สั้นสำหรับ cold start อยู่ที่ `HANDOF
 
 ## Log
 
+## 2026-11-01 22:16 (Asia/Bangkok) — main thread — T-104 Discord webhook + fan-out (mock) ปิด
+- test: main thread รันเอง: lint, typecheck, unit ผ่าน, integration, e2e, full-stack ผ่านครบ `[TESTED]`
+- ค้าง/ไม่ยืนยัน: P3 ใน T-125 · ไม่เคยยิง Discord จริง · ADR-010 alert ยังไม่ wire
+
 ## 2026-11-01 22:01 (Asia/Bangkok) — integration-engineer + security-reviewer + main thread — T-102b–d Gmail ปิด
 - ทำอะไร: merge เข้า `main` (push receiver OIDC, history sync, watch, heartbeat, ส่ง in-thread; mock เท่านั้น) · main thread แก้ P3 F-1..F-3 + PRD R-2.4 · `security-reviewer` ตรวจ fix แล้วไม่มีข้อขวาง
 - test: main thread รันเอง: lint, typecheck, unit ผ่าน · integration db 200, domain 188, api 539, worker 123 · e2e 134 · full-stack 23 `[TESTED]` · worker ตก 2 ใน `outbound/worker` ตอนมี agent อื่นรัน test พร้อมกัน รันซ้ำ 6 รอบ และทั้ง package ผ่าน
