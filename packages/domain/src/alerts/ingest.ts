@@ -12,12 +12,18 @@ import { and, asc, eq, ne, sql } from 'drizzle-orm';
 
 import { badRequest } from '../errors.js';
 import { Effects, type DbTransaction, type DomainContext, type DomainResult } from '../types.js';
+import { correlateOpenedAlert } from './correlate.js';
 import { escalationStepsFor } from './escalation.js';
 import { matchService } from './match.js';
 
 export interface IngestAlertInput {
   /** What a connector produced. It is validated again here: the domain does not trust its caller. */
   readonly alert: NormalizedAlert;
+  /**
+   * The service this alert belongs to when the caller already knows it (a heartbeat names its own
+   * service). Absent: the catalog's match rules decide, as for every alert from a provider.
+   */
+  readonly serviceId?: string | null;
 }
 
 /**
@@ -29,7 +35,13 @@ export interface IngestAlertInput {
  *  - `ignored`: a close for an alert we do not have open (never seen, or already closed).
  */
 export type IngestAlertOutcome =
-  | { readonly kind: 'opened'; readonly alertId: string; readonly serviceId: string | null }
+  | {
+      readonly kind: 'opened';
+      readonly alertId: string;
+      readonly serviceId: string | null;
+      /** The group of related alerts this one joined (R-3.6), if any. */
+      readonly correlationId: string | null;
+    }
   | {
       readonly kind: 'counted';
       readonly alertId: string;
@@ -128,13 +140,19 @@ export async function ingestAlert(
         lastSeenAt: dbNow,
         updatedAt: dbNow,
         nextEscalationAt: null,
+        // A resolved alert is not snoozed any more: "snoozed" lists show what is still suppressed.
+        snoozedUntil: null,
+        snoozeReason: null,
+        snoozedBy: null,
+        snoozedAt: null,
       })
       .where(eq(schema.alert.id, open.id));
     await recordEvent(open.id, 'resolved');
     return fx.result({ kind: 'resolved', alertId: open.id });
   }
 
-  const serviceId = await resolveServiceId(tx, alert);
+  const serviceId =
+    input.serviceId !== undefined ? input.serviceId : await resolveServiceId(tx, alert);
 
   if (open !== undefined) {
     const [updated] = await tx
@@ -180,7 +198,8 @@ export async function ingestAlert(
     nextEscalationAt: sql`clock_timestamp() + make_interval(secs => ${firstStep?.afterSeconds ?? 0})`,
   });
   await recordEvent(alertId, 'fired');
-  return fx.result({ kind: 'opened', alertId, serviceId });
+  const correlationId = await correlateOpenedAlert(tx, alertId, serviceId);
+  return fx.result({ kind: 'opened', alertId, serviceId, correlationId });
 }
 
 async function resolveServiceId(tx: DbTransaction, alert: NormalizedAlert): Promise<string | null> {

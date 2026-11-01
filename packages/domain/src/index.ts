@@ -10,7 +10,9 @@ import {
 } from './assignment.js';
 import { ackAlert } from './alerts/ack.js';
 import { sweepEscalations } from './alerts/escalation.js';
+import { recordHeartbeat, sweepHeartbeats } from './alerts/heartbeat.js';
 import { ingestAlert } from './alerts/ingest.js';
+import { endExpiredSnoozes, snoozeAlert, unsnoozeAlert } from './alerts/snooze.js';
 import { readAutonomyState, setAiSwitch, setIntentAutonomy } from './autonomy/state.js';
 import { findOrCreateContactByEmail } from './contacts.js';
 import { decideCsatReopen } from './csat/reopen.js';
@@ -69,11 +71,7 @@ import { updateTicket } from './tickets/update.js';
 import type { Actor, CsatConfig, DomainConfig, DomainContext } from './types.js';
 import { workflowAllows } from './workflow.js';
 
-export {
-  ackAlert,
-  type AckAlertInput,
-  type AckAlertOutcome,
-} from './alerts/ack.js';
+export { ackAlert, type AckAlertInput, type AckAlertOutcome } from './alerts/ack.js';
 export {
   escalationStepsFor,
   resolveRecipients,
@@ -82,7 +80,22 @@ export {
   type EscalationSweepOptions,
   type EscalationSweepResult,
 } from './alerts/escalation.js';
+export {
+  heartbeatFingerprint,
+  recordHeartbeat,
+  sweepHeartbeats,
+  type HeartbeatSweepResult,
+} from './alerts/heartbeat.js';
 export { ingestAlert, type IngestAlertInput, type IngestAlertOutcome } from './alerts/ingest.js';
+export {
+  endExpiredSnoozes,
+  snoozeAlert,
+  unsnoozeAlert,
+  type EndSnoozesResult,
+  type SnoozeAlertInput,
+  type SnoozeOutcome,
+} from './alerts/snooze.js';
+export { correlateOpenedAlert } from './alerts/correlate.js';
 export {
   matchService,
   ruleMatches,
@@ -533,6 +546,13 @@ export interface Domain {
     readonly ingest: typeof ingestAlert;
     readonly ack: typeof ackAlert;
     readonly sweepEscalations: typeof sweepEscalations;
+    /** Snooze with a mandatory expiry and reason (R-3.9), lifted by hand or by `endExpiredSnoozes`. */
+    readonly snooze: typeof snoozeAlert;
+    readonly unsnooze: typeof unsnoozeAlert;
+    readonly endExpiredSnoozes: typeof endExpiredSnoozes;
+    /** Heartbeats / dead-man's switches (R-3.10). */
+    readonly recordHeartbeat: typeof recordHeartbeat;
+    readonly sweepHeartbeats: typeof sweepHeartbeats;
   };
   /** Received messages (ADR-009): used by the worker's `ingest` consumer. */
   readonly inbound: { readonly ingest: typeof ingestInbound };
@@ -639,7 +659,16 @@ export function createDomain(options: DomainOptions): Domain {
       readSettings: readOutboundSettings,
       setUndoSendSeconds,
     },
-    alerts: { ingest: ingestAlert, ack: ackAlert, sweepEscalations },
+    alerts: {
+      ingest: ingestAlert,
+      ack: ackAlert,
+      sweepEscalations,
+      snooze: snoozeAlert,
+      unsnooze: unsnoozeAlert,
+      endExpiredSnoozes,
+      recordHeartbeat,
+      sweepHeartbeats,
+    },
     inbound: { ingest: ingestInbound },
     identity: { issueLineLinkCode, redeemLineLinkCode, linkLineUser },
     csat: {

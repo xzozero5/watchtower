@@ -7,7 +7,7 @@ import { and, eq } from 'drizzle-orm';
 import { recordAuditInTx } from '../audit.js';
 import { badRequest, notFound } from '../errors.js';
 import { Effects, type DbTransaction, type DomainContext, type DomainResult } from '../types.js';
-import { dbNow } from './escalation.js';
+import { dbNow } from './clock.js';
 
 export interface AckAlertInput {
   readonly alertId: string;

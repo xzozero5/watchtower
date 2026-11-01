@@ -29,6 +29,21 @@ export const ALERTS_AUDIT_ACTIONS = {
   alertAck: 'alert.ack',
   /** The sweep told the next target of an escalation policy. Written by the system actor. */
   alertEscalate: 'alert.escalate',
+  /** A lead snoozed an alert for a stated time and reason. */
+  alertSnooze: 'alert.snooze',
+  /** A snooze was lifted by hand, or ran out (written by the system actor). */
+  alertUnsnooze: 'alert.unsnooze',
+  /** A heartbeat (dead-man's switch) was added, edited or removed. */
+  heartbeatCreate: 'heartbeat.create',
+  heartbeatUpdate: 'heartbeat.update',
+  heartbeatDelete: 'heartbeat.delete',
+  /** A heartbeat went missing or came back (written by the system actor). */
+  heartbeatMissing: 'heartbeat.missing',
+  heartbeatRecovered: 'heartbeat.recovered',
+  /** A correlation rule was added, edited or removed. */
+  correlationRuleCreate: 'correlation_rule.create',
+  correlationRuleUpdate: 'correlation_rule.update',
+  correlationRuleDelete: 'correlation_rule.delete',
 } as const satisfies Record<string, string>;
 
 /** `ticket_event.type` strings written by this feature. */
@@ -79,7 +94,12 @@ export const ALERT_CHAT_RETRY_MAX_SECONDS = 3600;
 // --- vocabulary ---------------------------------------------------------------------------------
 
 /** Where an alert came from. `gcp_logging` = a log-based alert policy; both GCP ones arrive over Pub/Sub. */
-export const ALERT_SOURCES = ['gcp_monitoring', 'gcp_logging', 'alertmanager'] as const;
+export const ALERT_SOURCES = [
+  'gcp_monitoring',
+  'gcp_logging',
+  'alertmanager',
+  'heartbeat',
+] as const;
 export type AlertSource = (typeof ALERT_SOURCES)[number];
 export const alertSourceSchema = z.enum(ALERT_SOURCES);
 
@@ -445,6 +465,11 @@ export const alertSchema = z.object({
   escalationLevel: z.number().int().min(0),
   /** When the next step is due (database clock); null when acknowledged, resolved or at the last step. */
   nextEscalationAt: z.iso.datetime({ offset: true }).nullable(),
+  /** Set while the alert is snoozed (R-3.9): the escalation waits until then. Both set or both null. */
+  snoozedUntil: z.iso.datetime({ offset: true }).nullable(),
+  snoozeReason: z.string().nullable(),
+  /** Alerts the correlation engine grouped share this id (a proposal for an incident, R-3.6). */
+  correlationId: z.uuid().nullable(),
   incidentId: z.uuid().nullable(),
   payload: z.record(z.string(), z.unknown()),
 });
@@ -486,6 +511,8 @@ export const alertListQuerySchema = z.object({
   serviceId: z.uuid().optional(),
   /** `true`: only alerts no service claims. */
   unmapped: z.stringbool().optional(),
+  /** `true`: only alerts that are snoozed now (what the shift handoff lists, R-3.9). */
+  snoozed: z.stringbool().optional(),
   limit: z.coerce.number().int().min(1).max(100).default(50),
   cursor: z.string().min(1).max(300).optional(),
 });
@@ -524,3 +551,160 @@ export const alertIngestResultSchema = z.object({
   ignored: z.number().int().nonnegative(),
 });
 export type AlertIngestResult = z.infer<typeof alertIngestResultSchema>;
+
+// --- snooze (R-3.9) ------------------------------------------------------------------------------
+
+/** Longest snooze, in minutes. `[ASSUMED]` 7 days: past that an alert should be fixed or its rule changed. */
+export const ALERT_SNOOZE_MAX_MINUTES = 7 * 24 * 60;
+
+/**
+ * Snooze is a duration, never a timestamp from the client: the expiry is `now() + minutes` on the
+ * database clock, so a client with a wrong clock cannot snooze forever or for no time. The expiry and
+ * the reason are both mandatory.
+ */
+export const snoozeAlertSchema = z.strictObject({
+  minutes: z.number().int().min(1).max(ALERT_SNOOZE_MAX_MINUTES),
+  reason: z.string().trim().min(3).max(500),
+});
+export type SnoozeAlert = z.infer<typeof snoozeAlertSchema>;
+
+/** `changed` is false when there was nothing to do (already snoozed again by someone, or not snoozed). */
+export const alertSnoozeResultSchema = z.object({ changed: z.boolean(), alert: alertSchema });
+export type AlertSnoozeResult = z.infer<typeof alertSnoozeResultSchema>;
+
+// --- heartbeats (R-3.10) -------------------------------------------------------------------------
+
+export const heartbeatFieldsSchema = z.strictObject({
+  slug: z
+    .string()
+    .regex(/^[a-z0-9]+(-[a-z0-9]+)*$/)
+    .min(2)
+    .max(64),
+  name: z.string().trim().min(1).max(120),
+  /** How often the signal should arrive. */
+  expectedIntervalSeconds: z.number().int().min(30).max(604_800),
+  /** Extra time allowed before it counts as missing. */
+  graceSeconds: z.number().int().min(0).max(86_400),
+  /** Severity of the alert it raises. */
+  severity: z.enum(['critical', 'error', 'warning', 'info']),
+  /** The service the raised alert belongs to; null = unmapped. */
+  serviceId: z.uuid().nullable(),
+  active: z.boolean(),
+});
+
+export const createHeartbeatSchema = heartbeatFieldsSchema.partial({
+  graceSeconds: true,
+  severity: true,
+  serviceId: true,
+  active: true,
+});
+export type CreateHeartbeat = z.infer<typeof createHeartbeatSchema>;
+export const updateHeartbeatSchema = heartbeatFieldsSchema
+  .partial()
+  .refine((body) => Object.keys(body).length > 0, { message: 'Nothing to change' });
+export type UpdateHeartbeat = z.infer<typeof updateHeartbeatSchema>;
+
+export const heartbeatSchema = heartbeatFieldsSchema.extend({
+  id: z.uuid(),
+  state: z.enum(['ok', 'missing']),
+  lastBeatAt: z.iso.datetime({ offset: true }).nullable(),
+  missingSince: z.iso.datetime({ offset: true }).nullable(),
+  createdAt: z.iso.datetime({ offset: true }),
+  updatedAt: z.iso.datetime({ offset: true }),
+});
+export type Heartbeat = z.infer<typeof heartbeatSchema>;
+export const heartbeatListSchema = z.object({ items: z.array(heartbeatSchema) });
+export const heartbeatIdParamSchema = z.object({ id: z.uuid() });
+export type HeartbeatIdParam = z.infer<typeof heartbeatIdParamSchema>;
+export const heartbeatSlugParamSchema = z.object({
+  slug: z
+    .string()
+    .regex(/^[a-z0-9]+(-[a-z0-9]+)*$/)
+    .min(2)
+    .max(64),
+});
+
+export type HeartbeatSlugParam = z.infer<typeof heartbeatSlugParamSchema>;
+
+/** What a beat answers. `recovered`: the heartbeat was missing and its alert is now resolved. */
+export const heartbeatBeatResultSchema = z.object({ recovered: z.boolean() });
+
+// --- correlation (R-3.6) -------------------------------------------------------------------------
+
+export const CORRELATION_KINDS = ['same_service'] as const;
+
+export const correlationRuleFieldsSchema = z.strictObject({
+  name: z.string().trim().min(1).max(120),
+  kind: z.enum(CORRELATION_KINDS),
+  /** Alerts of the service that opened within this many minutes of each other are grouped. */
+  windowMinutes: z.number().int().min(1).max(1440),
+  /** The group exists from this many alerts. */
+  minAlerts: z.number().int().min(2).max(50),
+  active: z.boolean(),
+});
+export const createCorrelationRuleSchema = correlationRuleFieldsSchema.partial({
+  kind: true,
+  active: true,
+});
+export type CreateCorrelationRule = z.infer<typeof createCorrelationRuleSchema>;
+export const updateCorrelationRuleSchema = correlationRuleFieldsSchema
+  .partial()
+  .refine((body) => Object.keys(body).length > 0, { message: 'Nothing to change' });
+export type UpdateCorrelationRule = z.infer<typeof updateCorrelationRuleSchema>;
+export const correlationRuleSchema = correlationRuleFieldsSchema.extend({
+  id: z.uuid(),
+  createdAt: z.iso.datetime({ offset: true }),
+  updatedAt: z.iso.datetime({ offset: true }),
+});
+export type CorrelationRule = z.infer<typeof correlationRuleSchema>;
+export const correlationRuleListSchema = z.object({ items: z.array(correlationRuleSchema) });
+export const correlationRuleIdParamSchema = z.object({ id: z.uuid() });
+export type CorrelationRuleIdParam = z.infer<typeof correlationRuleIdParamSchema>;
+
+/** A group of alerts the engine thinks belong together: a proposal for an incident, never an incident by itself. */
+export const correlationGroupSchema = z.object({
+  correlationId: z.uuid(),
+  serviceId: z.uuid().nullable(),
+  alerts: z.number().int().positive(),
+  openAlerts: z.number().int().nonnegative(),
+  severity: alertSeveritySchema,
+  firstSeenAt: z.iso.datetime({ offset: true }),
+  lastSeenAt: z.iso.datetime({ offset: true }),
+  /** Set once somebody opened an incident from the group (T-202). */
+  incidentId: z.uuid().nullable(),
+});
+export type CorrelationGroup = z.infer<typeof correlationGroupSchema>;
+export const correlationGroupListSchema = z.object({ items: z.array(correlationGroupSchema) });
+
+// --- noise metrics (R-3.11) ----------------------------------------------------------------------
+
+export const NOISE_DEFAULT_DAYS = 7;
+export const noiseQuerySchema = z.object({
+  days: z.coerce.number().int().min(1).max(90).default(NOISE_DEFAULT_DAYS),
+  limit: z.coerce.number().int().min(1).max(100).default(20),
+});
+export type NoiseQuery = z.infer<typeof noiseQuerySchema>;
+
+/**
+ * One rule (source and title) over the window. An alert is *actionable* when a person acknowledged it
+ * or it belongs to an incident; it is *noise* when it resolved by itself with neither. Still-open
+ * alerts are not judged yet. `actionableRatio` is actionable / (actionable + noise), null when
+ * nothing has been judged.
+ */
+export const noiseRuleSchema = z.object({
+  source: alertSourceSchema,
+  title: z.string(),
+  alerts: z.number().int().nonnegative(),
+  occurrences: z.number().int().nonnegative(),
+  actionable: z.number().int().nonnegative(),
+  noise: z.number().int().nonnegative(),
+  stillOpen: z.number().int().nonnegative(),
+  actionableRatio: z.number().min(0).max(1).nullable(),
+});
+export type NoiseRule = z.infer<typeof noiseRuleSchema>;
+export const noiseReportSchema = z.object({
+  windowDays: z.number().int().positive(),
+  /** Noisiest first: most noise, then lowest ratio. */
+  items: z.array(noiseRuleSchema),
+});
+export type NoiseReport = z.infer<typeof noiseReportSchema>;

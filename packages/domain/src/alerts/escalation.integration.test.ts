@@ -446,7 +446,7 @@ describe('one clock', () => {
       `SELECT extract(epoch FROM next_escalation_at - first_seen_at)::text AS secs FROM alert WHERE id = $1`,
       [alertId],
     );
-    expect(Number(gap.rows[0]?.secs)).toBe(ownSeconds);
+    expect(Math.round(Number(gap.rows[0]?.secs))).toBe(ownSeconds);
     expect(afterFirst.escalationLevel).toBe(1);
     await age(alertId, ownSeconds);
     await sweep();

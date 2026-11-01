@@ -12,25 +12,24 @@ import {
   type EscalationTarget,
   type RealtimeEvent,
 } from '@watchtower/shared';
-import { and, asc, eq, inArray, isNotNull, notInArray, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNotNull, isNull, notInArray, sql } from 'drizzle-orm';
 
 import { recordAuditInTx } from '../audit.js';
 import { onShiftCondition } from '../assignment.js';
 import { notifyIn } from '../notifications.js';
 import { enqueueJob } from '../outbox.js';
 import { Effects, type DbTransaction, type DomainContext, type ReadExecutor } from '../types.js';
+import { dbNow } from './clock.js';
+import { endExpiredSnoozes } from './snooze.js';
 
 /**
- * The database clock at the moment the statement runs. Every time the escalation decides with (is a
- * step due, is a snooze over, is a roster window open) is compared with this and nothing else, so a
- * process whose clock is a few seconds off cannot page too early or too late (ADR-015 section 2,
- * STATUS lesson of T-122: one clock per comparison).
+ * When the step after one that just ran is due: the step's own scheduled time plus the policy's gap to
+ * the next one. Chained from the *scheduled* time, not from when the sweep happened to run it, so
+ * sweep latency never accumulates, and a snooze that moves one scheduled time moves the whole chain.
+ * (`next_escalation_at` on the right is the value before this update.)
  */
-export const dbNow = sql`clock_timestamp()`;
-
-/** `first_seen_at + afterSeconds`: when a step is due, computed by the database. */
-export function stepDueAt(afterSeconds: number) {
-  return sql`${schema.alert.firstSeenAt} + make_interval(secs => ${afterSeconds})`;
+export function nextStepDueAt(gapSeconds: number) {
+  return sql`${schema.alert.nextEscalationAt} + make_interval(secs => ${gapSeconds})`;
 }
 
 /**
@@ -216,7 +215,9 @@ async function escalateOne(
         already.length === 0 ? undefined : notInArray(schema.alert.id, [...already]),
         isNotNull(schema.alert.nextEscalationAt),
         sql`${schema.alert.nextEscalationAt} <= clock_timestamp()`,
-        sql`(${schema.alert.snoozedUntil} IS NULL OR ${schema.alert.snoozedUntil} <= clock_timestamp())`,
+        // Any snooze blocks, expired or not: `endExpiredSnoozes` (run first, below) lifts an expired
+        // one and moves the schedule by the time the alert was paused.
+        isNull(schema.alert.snoozedUntil),
       ),
     )
     .orderBy(asc(schema.alert.nextEscalationAt), asc(schema.alert.id))
@@ -264,7 +265,8 @@ async function escalateOne(
     .update(schema.alert)
     .set({
       escalationLevel: due.level + 1,
-      nextEscalationAt: next === undefined ? null : stepDueAt(next.afterSeconds),
+      nextEscalationAt:
+        next === undefined ? null : nextStepDueAt(next.afterSeconds - step.afterSeconds),
       updatedAt: dbNow,
     })
     .where(eq(schema.alert.id, due.id));
@@ -316,7 +318,9 @@ export async function sweepEscalations(
   options: EscalationSweepOptions = {},
 ): Promise<EscalationSweepResult> {
   const limit = options.limit ?? 50;
-  const events: RealtimeEvent[] = [];
+  // Snoozes that ran out are lifted first, so the schedule they paused is moved before anything is due.
+  const ended = await endExpiredSnoozes(db, ctx);
+  const events: RealtimeEvent[] = [...ended.events];
   const tally = { notified: 0 };
   let steps = 0;
   let exhausted = 0;
