@@ -246,6 +246,16 @@ describe('the delivery summary for staff', () => {
     expect(toDeliverySummary(row({ state: 'cancelled' }), now).cancellable).toBe(false);
   });
 
+  it('is not cancellable with no hold, nor once a push was attempted (T-122f)', () => {
+    const now = new Date('2030-01-07T10:00:00.000Z');
+    expect(toDeliverySummary(row({ holdSeconds: 0 }), now).cancellable).toBe(false);
+    expect(toDeliverySummary(row({ holdSeconds: 5 }), now).cancellable).toBe(true);
+    const retriedPush = row({ route: 'line_push', attempts: 1, holdSeconds: 5 });
+    expect(toDeliverySummary(retriedPush, now).cancellable).toBe(false);
+    const retriedGmail = row({ route: 'gmail_thread', attempts: 1, holdSeconds: 5 });
+    expect(toDeliverySummary(retriedGmail, now).cancellable).toBe(true);
+  });
+
   it('carries no provider id, no hash and no text', () => {
     const summary = toDeliverySummary(
       row({ state: 'failed', errorCode: 'channel_auth' }),

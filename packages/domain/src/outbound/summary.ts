@@ -10,7 +10,13 @@ export function toDeliverySummary(row: OutboundDeliveryRow, now: Date): Delivery
     origin: row.origin as DeliverySummary['origin'],
     channel: row.channel as DeliverySummary['channel'],
     sendAt: row.nextAttemptAt.toISOString(),
-    cancellable: row.state === 'scheduled' && row.nextAttemptAt.getTime() > now.getTime(),
+    // A hold of 0 is "send now"; and a push that was attempted before can no longer be undone (T-122f F-1).
+    // The endpoint decides; this is the hint that draws the button, read with the caller's clock.
+    cancellable:
+      row.state === 'scheduled' &&
+      row.holdSeconds !== 0 &&
+      !(row.route === 'line_push' && row.attempts > 0) &&
+      row.nextAttemptAt.getTime() > now.getTime(),
     attempts: row.attempts,
     errorCode: row.errorCode,
     outcomeUnknown: row.outcomeUnknown,
