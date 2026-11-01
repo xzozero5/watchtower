@@ -676,7 +676,7 @@ describe('navigation rail', () => {
     expect(tip).toHaveTextContent('K');
   });
 
-  it('lists what is coming as disabled destinations for staff, and nothing for a customer', async () => {
+  it('links the shift screens and notifications for staff, and shows nothing for a customer', async () => {
     workspaceApi();
     const view = await openWorkspace();
     const nav = screen.getByRole('navigation', { name: 'Main navigation' });
@@ -684,7 +684,17 @@ describe('navigation rail', () => {
       'aria-current',
       'page',
     );
-    expect(within(nav).getByRole('button', { name: 'Daily brief' })).toHaveAttribute(
+    expect(within(nav).getByRole('link', { name: 'Daily brief' })).toHaveAttribute(
+      'href',
+      '/shift/brief',
+    );
+    expect(within(nav).getByRole('link', { name: 'Shift handoff' })).toHaveAttribute(
+      'href',
+      '/shift/handoff',
+    );
+    expect(within(nav).getByRole('link', { name: 'My shift' })).toHaveAttribute('href', '/shift');
+    // The notification center (T-105) is live now.
+    expect(within(nav).getByRole('button', { name: /Notifications/ })).not.toHaveAttribute(
       'aria-disabled',
       'true',
     );
@@ -692,7 +702,8 @@ describe('navigation rail', () => {
 
     workspaceApi({ role: 'client' });
     await openWorkspace();
-    expect(screen.queryByRole('button', { name: 'Daily brief' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Daily brief' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'My shift' })).not.toBeInTheDocument();
   });
 
   it('moves live and API status into the rail without losing their words', async () => {

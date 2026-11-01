@@ -115,6 +115,23 @@ describe('g d, g a and g q', () => {
     expect(push).toHaveBeenLastCalledWith('/');
   });
 
+  it('goes to the shift screens with g s, g b and g h, and the rail links My shift', async () => {
+    consoleApi({ role: 'agent' });
+    renderShell();
+    await ready();
+    press('g');
+    press('s');
+    expect(push).toHaveBeenLastCalledWith('/shift');
+    press('g');
+    press('b');
+    expect(push).toHaveBeenLastCalledWith('/shift/brief');
+    press('g');
+    press('h');
+    expect(push).toHaveBeenLastCalledWith('/shift/handoff');
+    const nav = screen.getByRole('navigation', { name: 'Main navigation' });
+    expect(within(nav).getByRole('link', { name: 'My shift' })).toHaveAttribute('href', '/shift');
+  });
+
   it('does nothing for a person without Home or Admin', async () => {
     consoleApi({ role: 'agent' });
     renderShell();
@@ -334,14 +351,21 @@ describe('admin layout', () => {
     const names = within(nav)
       .getAllByRole('link')
       .map((link) => link.textContent);
-    expect(names).toEqual(['Users', 'Organizations', 'Intents', 'Queues', 'AI controls']);
+    expect(names).toEqual([
+      'Users',
+      'Organizations',
+      'Intents',
+      'Queues',
+      'Shifts and roster',
+      'AI controls',
+    ]);
     expect(within(nav).getByRole('link', { name: 'Intents' })).toHaveAttribute(
       'aria-current',
       'page',
     );
   });
 
-  it('lists all eight for the head', async () => {
+  it('lists all nine for the head', async () => {
     consoleApi({ role: 'head' });
     renderApp(
       <AuthGate>
@@ -351,7 +375,7 @@ describe('admin layout', () => {
       </AuthGate>,
     );
     const nav = await screen.findByRole('navigation', { name: 'Admin sections' });
-    expect(within(nav).getAllByRole('link')).toHaveLength(8);
+    expect(within(nav).getAllByRole('link')).toHaveLength(9);
   });
 
   it('shows the denied page when the role has no admin section', async () => {
