@@ -3,6 +3,7 @@
  * same keys (the compiler checks it), and every `{placeholder}` must appear in both languages
  * (messages.test.ts checks it). Never put UI text in a component: add a key here and in th.ts.
  */
+import { aiEn } from './ai.en';
 import { adminEn, homeEn } from './console.en';
 import { portalEn } from './portal.en';
 
@@ -46,13 +47,13 @@ export const en = {
   panes: {
     queue: {
       title: 'Queue',
-      emptyTitle: 'All caught up — nothing waiting in your queue.',
-      emptyBody: 'New tickets from every channel will appear here, most urgent first.',
+      emptyTitle: 'All caught up.',
+      emptyBody: 'New tickets from every channel appear here.',
     },
     conversation: {
       title: 'Conversation',
       emptyTitle: 'Select a ticket',
-      emptyBody: 'Pick a ticket from the queue and the thread opens here.',
+      emptyBody: 'Pick one from the queue.',
     },
     assistant: {
       title: 'Details & AI',
@@ -64,6 +65,12 @@ export const en = {
     loadMore: 'Load more tickets',
     loadingMore: 'Loading more tickets',
     unassigned: 'Unassigned',
+    groups: {
+      needsYou: 'Needs you',
+      aiWorking: 'AI working',
+      waiting: 'Waiting',
+      done: 'Done',
+    },
     newPill: '{count} new — press .',
     newPillClick: '{count} new — click to show',
     emptyFilteredTitle: 'No tickets match these filters.',
@@ -141,6 +148,7 @@ export const en = {
     system: 'System',
     unknownSender: 'Unknown sender',
     actorAi: 'AI',
+    now: 'now',
     byActor: 'by {name}',
     internalHint: 'Only your team can see this. It is never sent to the customer.',
     kinds: {
@@ -301,25 +309,7 @@ export const en = {
     collapseAssistant: 'Collapse the details panel',
     expandAssistant: 'Expand the details panel',
   },
-  ai: {
-    paused: 'AI paused by {name} at {time} — replies are manual.',
-    pausedNoName: 'AI paused at {time} — replies are manual.',
-    pausedLink: 'AI controls',
-    title: 'The AI assistant is not switched on yet',
-    body: 'It arrives in Phase 1. Then this panel will show an investigation report, the evidence behind it and a draft reply for you to approve, edit or reject. Until then every reply is written by a person.',
-    draftBar: {
-      label: 'AI draft actions',
-      hint: 'There is no draft to act on yet.',
-      approve: 'Approve',
-      edit: 'Edit',
-      reject: 'Reject',
-    },
-    coming: {
-      report: 'Investigation report with sources',
-      evidence: 'Evidence cards from logs, data and code',
-      draft: 'Draft reply: approve, edit or reject with',
-    },
-  },
+  ai: aiEn,
   live: {
     label: 'Live updates',
     open: 'Live',
@@ -346,7 +336,7 @@ export const en = {
       navigation: 'Move around',
       ticket: 'On a ticket',
       general: 'Anywhere',
-      ai: 'AI drafts (Phase 1)',
+      ai: 'AI draft',
     },
     next: 'Next ticket',
     prev: 'Previous ticket',
@@ -371,9 +361,9 @@ export const en = {
     leave: 'Leave the field and go back to the queue',
     palette: 'Open the command palette',
     help: 'Show this list',
-    approve: 'Approve the draft',
-    edit: 'Edit the draft',
-    reject: 'Reject the draft',
+    approve: 'Approve the AI draft (opens a preview)',
+    edit: 'Edit the AI draft',
+    reject: 'Reject the AI draft',
     rail: 'Collapse or expand the navigation',
   },
   auth: {
@@ -529,8 +519,8 @@ export const en = {
   },
   panel: {
     label: 'Ticket panel',
+    evidence: 'Evidence',
     details: 'Details',
-    ai: 'AI',
     customer: 'Customer',
     noTicket: 'Select a ticket to see its details here.',
   },

@@ -1,103 +1,122 @@
-import { Avatar, cn, SeverityBadge } from '@watchtower/ui';
+import { Avatar, cn, Pill, SeverityBadge } from '@watchtower/ui';
 
+import { AiStateChip } from '@/components/ai/ai-state-chip';
 import { ChannelIcon } from '@/components/ticket/channel-icon';
 import { SlaBadge } from '@/components/ticket/sla-badge';
 import { StatusLabel } from '@/components/ticket/status-label';
 import { useI18n } from '@/i18n/provider';
-import { formatDateTime, formatRelative } from '@/lib/format';
 import { type RowModel, severityOf } from '@/lib/tickets/model';
 
 export const rowDomId = (key: string) => `queue-row-${key}`;
 
-/** The id of the queue's listbox, the element that holds keyboard focus while the queue is in use. */
+/** The id of the active listbox of the queue, the element that holds keyboard focus while it is used. */
 export const QUEUE_LISTBOX_ID = 'queue-listbox';
 
 export interface QueueRowProps {
   row: RowModel;
   selected: boolean;
-  now: number;
+  /** One line (40px) instead of two (56px). */
+  compact?: boolean;
   onSelect: (key: string) => void;
 }
 
+/** Statuses the row does not spell out: "open" is the normal case and the group says the rest. */
+const QUIET_STATUSES = new Set(['new', 'triage', 'open']);
+
 /**
- * One ticket in the queue, an `option` of the queue's listbox. Keyboard focus stays on the listbox
- * and `aria-activedescendant` names the current row, so arrow keys, J/K and clicks all move the
- * same pointer. There is no card: the row is a hairline-separated strip (avatar, who wrote in,
- * when; the subject; a meta line). The selected row has a 2px navy bar on its left, a tint and
- * `aria-selected="true"`. A new ticket (nobody has touched it yet) has a bold subject and a dot.
- * Priority is an icon + code, the status a dot + words, the SLA an icon + words: nothing relies
- * on colour.
+ * One ticket on the triage board, an `option` of a section's listbox
+ * (docs/design/ai-first-workspace.md section 2). Keyboard focus stays on the listbox and
+ * `aria-activedescendant` names the current row, so arrow keys, J/K and clicks move one pointer.
+ *  - line 1: what the AI says is going on, in one line (the subject, muted, when it has said
+ *    nothing), and the SLA;
+ *  - line 2: priority, intent, the AI's state, then who it is for (organisation avatar) and the
+ *    channel. A status is spelled out only when it is not "open".
+ * Compact density keeps one line: priority, summary, the AI icon and the SLA.
+ * A ticket nobody has touched yet is bold with a dot. The selected row has a 2px navy bar and
+ * `aria-selected="true"`. Nothing relies on colour: icons, codes and words carry every state.
  */
-export function QueueRow({ row, selected, now, onSelect }: QueueRowProps) {
-  const { t, locale } = useI18n();
+export function QueueRow({ row, selected, compact = false, onSelect }: QueueRowProps) {
+  const { t } = useI18n();
   const isNew = row.status === 'new';
+  const summary = row.ai?.summary?.trim() || null;
+  const aiState = row.ai?.state ?? 'none';
   const who = row.requesterName ?? row.key;
+  const severity = severityOf(row.priority);
+  const title = (
+    <span className="flex min-w-0 items-center gap-1.5">
+      {isNew ? <span aria-hidden className="size-1.5 shrink-0 rounded-full bg-primary" /> : null}
+      <span
+        className={cn(
+          'truncate text-sm',
+          summary ? 'text-foreground' : 'text-muted-foreground',
+          isNew ? 'font-semibold' : 'font-normal',
+        )}
+        title={summary ? row.subject : undefined}
+      >
+        {summary ?? row.subject}
+      </span>
+    </span>
+  );
+  const identity = (
+    <span className="sr-only">
+      {row.key}, {who}
+      {row.orgName ? `, ${row.orgName}` : ''}
+    </span>
+  );
+
   return (
     <li
       id={rowDomId(row.key)}
       role="option"
       aria-selected={selected}
       data-ticket-key={row.key}
+      data-ai-state={aiState}
       onClick={() => {
         onSelect(row.key);
       }}
       className={cn(
-        'relative flex w-full cursor-pointer gap-2.5 border-b border-border px-3 py-2.5 text-left transition-colors duration-(--wt-motion-duration-fast) ease-out hover:bg-surface-muted',
+        'relative flex w-full cursor-pointer flex-col justify-center gap-1 border-b border-border px-3 text-left transition-colors duration-(--wt-motion-duration-fast) ease-out hover:bg-surface-muted',
         'before:absolute before:inset-y-0 before:left-0 before:w-0.5 before:bg-transparent',
+        compact ? 'min-h-10 py-1.5' : 'min-h-14 py-2',
         selected && 'bg-primary-subtle before:bg-primary hover:bg-primary-subtle',
       )}
     >
-      <Avatar name={who} id={row.requesterId} size={24} className="mt-0.5" />
-      <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-        <span className="flex items-baseline gap-2">
-          <span className="min-w-0 truncate text-sm">
-            <span className={cn('text-foreground', isNew ? 'font-semibold' : 'font-medium')}>
-              {who}
-            </span>
-            {row.orgName ? <span className="text-muted-foreground"> · {row.orgName}</span> : null}
-          </span>
-          <time
-            dateTime={row.updatedAt}
-            title={formatDateTime(row.updatedAt, locale)}
-            className="tabular ml-auto shrink-0 text-xs whitespace-nowrap text-muted-foreground"
-          >
-            {formatRelative(row.updatedAt, now, locale)}
-          </time>
+      {identity}
+      {compact ? (
+        <span className="flex min-w-0 items-center gap-2">
+          <SeverityBadge severity={severity} label={t(`severity.${severity}`)} hideLabel />
+          <span className="min-w-0 flex-1">{title}</span>
+          <AiStateChip state={aiState} iconOnly />
+          <SlaBadge sla={row.sla} />
         </span>
-        <span className="flex items-center gap-1.5">
-          {isNew ? (
-            <span aria-hidden className="size-1.5 shrink-0 rounded-full bg-primary" />
-          ) : null}
-          <span
-            className={cn(
-              'truncate text-sm text-foreground',
-              isNew ? 'font-semibold' : 'font-normal',
+      ) : (
+        <>
+          <span className="flex min-w-0 items-center gap-2">
+            <span className="min-w-0 flex-1">{title}</span>
+            <SlaBadge sla={row.sla} />
+          </span>
+          <span className="flex min-w-0 items-center gap-1.5">
+            <SeverityBadge severity={severity} label={t(`severity.${severity}`)} hideLabel />
+            {row.intentName ? (
+              <Pill className="min-w-0 max-w-[9rem] shrink font-normal text-muted-foreground">
+                <span className="truncate">{row.intentName}</span>
+              </Pill>
+            ) : null}
+            <AiStateChip state={aiState} />
+            {QUIET_STATUSES.has(row.status) ? null : (
+              <StatusLabel status={row.status} className="text-muted-foreground" />
             )}
-          >
-            {row.subject}
+            <span className="ml-auto flex shrink-0 items-center gap-1.5 text-muted-foreground">
+              {row.orgName ? (
+                <span title={row.orgName}>
+                  <Avatar name={row.orgName} size={20} aria-hidden />
+                </span>
+              ) : null}
+              {row.channel ? <ChannelIcon channel={row.channel} /> : null}
+            </span>
           </span>
-        </span>
-        <span className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
-          <span className="font-mono text-xs">{row.key}</span>
-          <SeverityBadge
-            severity={severityOf(row.priority)}
-            label={t(`severity.${severityOf(row.priority)}`)}
-            hideLabel
-          />
-          <StatusLabel status={row.status} className="text-muted-foreground" />
-          {row.channel ? <ChannelIcon channel={row.channel} /> : null}
-          {row.assigneeName ? (
-            <Avatar
-              name={row.assigneeName}
-              size={20}
-              aria-label={t('queue.row.assignedTo', { name: row.assigneeName })}
-            />
-          ) : row.unassigned ? (
-            <span className="sr-only">{t('queue.unassigned')}</span>
-          ) : null}
-          <SlaBadge sla={row.sla} className="ml-auto" />
-        </span>
-      </span>
+        </>
+      )}
     </li>
   );
 }

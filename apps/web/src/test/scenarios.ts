@@ -2,6 +2,7 @@ import {
   defaultTransitionList,
   type ClientTicket,
   type Role,
+  type TicketAiInsight,
   type TicketDetail,
   type TimelineEntry,
 } from '@watchtower/shared';
@@ -13,6 +14,8 @@ export interface Scenario {
   role?: Role;
   tickets?: (TicketDetail | ClientTicket)[];
   timelines?: Record<string, TimelineEntry[]>;
+  /** AI briefs by ticket key. A ticket without one answers 404, like an api that has none yet. */
+  ai?: Record<string, TicketAiInsight>;
   overrides?: Record<string, MockHandler>;
 }
 
@@ -24,6 +27,7 @@ export function workspaceApi({
   role = 'agent',
   tickets,
   timelines = {},
+  ai = {},
   overrides = {},
 }: Scenario = {}) {
   const list =
@@ -49,6 +53,15 @@ export function workspaceApi({
       const found = list.find((ticket) => ticket.key === id || ticket.id === id);
       return found
         ? { json: found }
+        : {
+            status: 404,
+            json: { statusCode: 404, error: 'Not Found', code: 'not_found', message: 'x' },
+          };
+    },
+    'GET /v1/tickets/:id/ai': ({ params }) => {
+      const insight = ai[params.id ?? ''];
+      return insight
+        ? { json: insight }
         : {
             status: 404,
             json: { statusCode: 404, error: 'Not Found', code: 'not_found', message: 'x' },

@@ -4,15 +4,16 @@ import { Avatar, cn, Skeleton, Tabs, TabsContent, TabsList, TabsTrigger } from '
 import { Bot } from 'lucide-react';
 import type { ReactNode } from 'react';
 
-import { AiSidebar } from '@/components/ai-sidebar';
+import { EvidencePanel } from '@/components/ai/evidence-panel';
 import { useI18n } from '@/i18n/provider';
+import { useTicketAi } from '@/lib/ai/queries';
 import { isDetail, isStaffTicket, type TicketItem } from '@/lib/tickets/model';
 import { useTicket } from '@/lib/tickets/queries';
 
 import { ChannelIcon } from './channel-icon';
 import { Row, TicketDetails } from './ticket-details';
 
-export type PanelTab = 'details' | 'ai' | 'customer';
+export type PanelTab = 'evidence' | 'details' | 'customer';
 
 function CustomerTab({ ticket }: { ticket: TicketItem }) {
   const { t } = useI18n();
@@ -51,35 +52,43 @@ function CustomerTab({ ticket }: { ticket: TicketItem }) {
 }
 
 /**
- * The right-hand panel: tabs Details / AI / Customer for the open ticket. The AI tab is only
- * there for someone who may review AI drafts. `collapsed` folds it to a rail with the toggle
- * button (1024px and wider).
+ * The right-hand panel: tabs Evidence / Details / Customer for the open ticket. The Evidence tab
+ * is only there for someone who may review AI drafts, and it is the one that opens first when the
+ * AI brought evidence (`tab` null means "pick for me"). `collapsed` folds the panel to a rail with
+ * the toggle button (1024px and wider).
  */
 export function TicketPanel({
   ticketKey,
   tab,
   onTabChange,
   showAi,
+  highlightId = null,
   actions,
   collapsed,
 }: {
   ticketKey: string | null;
-  tab: PanelTab;
+  /** The tab the person chose; null until they do. */
+  tab: PanelTab | null;
   onTabChange: (tab: PanelTab) => void;
   showAi: boolean;
+  /** The evidence card to outline (set when a chip or a citation pointed at it). */
+  highlightId?: string | null;
   /** Buttons at the end of the tab row (close the drawer, collapse the panel). */
   actions?: ReactNode;
   collapsed: boolean;
 }) {
   const { t } = useI18n();
   const ticket = useTicket(ticketKey);
-  const active: PanelTab = tab === 'ai' && !showAi ? 'details' : tab;
+  const ai = useTicketAi(ticketKey, showAi);
+  const hasEvidence = (ai.data?.evidence.length ?? 0) > 0;
+  const chosen = tab ?? (showAi && hasEvidence ? 'evidence' : 'details');
+  const active: PanelTab = chosen === 'evidence' && !showAi ? 'details' : chosen;
 
   return (
     <Tabs
       value={active}
       onValueChange={(value) => {
-        if (value === 'details' || value === 'customer' || (value === 'ai' && showAi)) {
+        if (value === 'details' || value === 'customer' || (value === 'evidence' && showAi)) {
           onTabChange(value);
         }
       }}
@@ -95,13 +104,13 @@ export function TicketPanel({
           aria-label={t('panel.label')}
           className={cn('min-w-0 flex-1', collapsed && 'lg:hidden')}
         >
-          <TabsTrigger value="details">{t('panel.details')}</TabsTrigger>
           {showAi ? (
-            <TabsTrigger value="ai" className="gap-1.5">
+            <TabsTrigger value="evidence" className="gap-1.5">
               <Bot aria-hidden className="size-3.5 text-ai-accent" />
-              {t('panel.ai')}
+              {t('panel.evidence')}
             </TabsTrigger>
           ) : null}
+          <TabsTrigger value="details">{t('panel.details')}</TabsTrigger>
           <TabsTrigger value="customer">{t('panel.customer')}</TabsTrigger>
         </TabsList>
         {actions}
@@ -124,8 +133,8 @@ export function TicketPanel({
           )}
         </TabsContent>
         {showAi ? (
-          <TabsContent value="ai">
-            <AiSidebar />
+          <TabsContent value="evidence">
+            <EvidencePanel ticketKey={ticketKey} highlightId={highlightId} />
           </TabsContent>
         ) : null}
         <TabsContent value="customer">

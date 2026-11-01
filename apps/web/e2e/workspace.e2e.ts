@@ -3,6 +3,8 @@ import { expect, type Page, test } from '@playwright/test';
 
 import { makeSession } from '../src/test/fixtures';
 
+import { makeInsight } from '../src/test/ai-fixtures';
+
 import { APP_ORIGIN, type BackendOptions, LIVE_CONFIG, mockBackend, makeTicket } from './backend';
 
 const WCAG_TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'];
@@ -16,9 +18,9 @@ async function openWorkspace(page: Page, options: BackendOptions = {}, path = '/
 }
 
 const queue = (page: Page) => page.getByRole('region', { name: 'Queue' });
-const listbox = (page: Page) => page.getByRole('listbox', { name: 'Tickets' });
-const row = (page: Page, key: string) =>
-  listbox(page).getByRole('option', { name: new RegExp(key) });
+// The board has a listbox per section; the one holding the keyboard has this id.
+const listbox = (page: Page) => page.locator('#queue-listbox');
+const row = (page: Page, key: string) => page.getByRole('option', { name: new RegExp(key) });
 const conversation = (page: Page) => page.getByRole('region', { name: 'Conversation' });
 
 test.describe('sign-in', () => {
@@ -200,7 +202,6 @@ test.describe('queue and conversation', () => {
     expect(reply?.csrf).toBe('csrf-token-for-tests');
 
     await conversation(page).getByRole('radio', { name: 'Internal note' }).click();
-    await expect(conversation(page).getByText('Only your team sees this note.')).toBeVisible();
     await expect(
       conversation(page).getByText('Internal note — not sent to the customer'),
     ).toBeVisible();
@@ -437,23 +438,21 @@ test.describe('layout by width (docs/06-UI-SPEC.md section 3.2)', () => {
     await expect(row(page, 'OPS-2')).toHaveAttribute('aria-selected', 'true');
   });
 
-  test('under 768 px: a sticky Approve / Edit / Reject bar with 44 px targets on the AI tab', async ({
+  test("under 768 px: the draft's Approve / Edit / Reject stick to the bottom with 44 px targets", async ({
     page,
   }) => {
     await page.setViewportSize({ width: 375, height: 800 });
-    await openWorkspace(page);
-    const bar = page.getByRole('group', { name: 'AI draft actions' });
-    await expect(bar).toHaveCount(0);
-    await page.getByRole('tab', { name: 'Details & AI' }).click();
+    await openWorkspace(page, { ai: { 'OPS-1': makeInsight() } }, '/?ticket=OPS-1');
+    const bar = page.getByRole('group', { name: 'Draft actions' });
     await expect(bar).toBeVisible();
     for (const name of ['Approve', 'Edit', 'Reject']) {
       const box = await bar.getByRole('button', { name }).boundingBox();
       expect(box?.height ?? 0).toBeGreaterThanOrEqual(44);
       expect(box?.width ?? 0).toBeGreaterThanOrEqual(44);
     }
-    // Pinned to the bottom edge of the window.
+    // Pinned inside the window, above the reply dock.
     const barBox = await bar.boundingBox();
-    expect(Math.abs((barBox?.y ?? 0) + (barBox?.height ?? 0) - 800)).toBeLessThan(2);
+    expect((barBox?.y ?? 0) + (barBox?.height ?? 0)).toBeLessThanOrEqual(800);
   });
 
   test('1024 px and wider: [ and ] fold the side panes into rails and back', async ({ page }) => {

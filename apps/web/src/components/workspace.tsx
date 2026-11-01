@@ -18,6 +18,7 @@ import {
   useState,
 } from 'react';
 
+import { evidenceDomId } from '@/components/ai/evidence-panel';
 import { ConversationPane } from '@/components/conversation/conversation-pane';
 import { QueuePane } from '@/components/queue/queue-pane';
 import { QUEUE_LISTBOX_ID } from '@/components/queue/queue-row';
@@ -117,7 +118,6 @@ function SeverityKey() {
       <summary className="cursor-pointer font-medium text-muted-foreground hover:text-foreground">
         {t('severity.keyTitle')}
       </summary>
-      <p className="mt-2 text-muted-foreground">{t('severity.keyHint')}</p>
       <ul className="mt-2 flex flex-wrap gap-2">
         {SEVERITY_IDS.map((id) => (
           <li key={id}>
@@ -143,36 +143,6 @@ const TWO_COLUMNS = {
   closed: 'lg:grid-cols-[48px_minmax(0,1fr)]',
 } as const;
 
-/** The A / E / R bar of the phone layout. The real actions arrive with the AI drafts (T-109). */
-function DraftActionBar() {
-  const t = useT();
-  const hintId = 'draft-bar-hint';
-  return (
-    <div
-      role="group"
-      aria-label={t('ai.draftBar.label')}
-      aria-describedby={hintId}
-      className="sticky bottom-0 z-20 flex flex-col gap-1 border-t border-border bg-surface p-3 md:hidden"
-    >
-      <p id={hintId} className="text-xs text-muted-foreground">
-        {t('ai.draftBar.hint')}
-      </p>
-      <div className="flex gap-2">
-        {(['approve', 'edit', 'reject'] as const).map((action) => (
-          <Button
-            key={action}
-            variant="secondary"
-            disabled
-            className="min-h-[44px] min-w-[44px] flex-1"
-          >
-            {t(`ai.draftBar.${action}`)}
-          </Button>
-        ))}
-      </div>
-    </div>
-  );
-}
-
 /**
  * Queue | conversation | details panel (docs/06-UI-SPEC.md sections 3.2 and 14, amended by
  * docs/design/ui-refresh-2026-11.md):
@@ -181,7 +151,7 @@ function DraftActionBar() {
  *  - 768 to 1023 px: queue and conversation, with the panel as a right-hand drawer that a button
  *    (or `]`) opens (a plain region, not a modal, so the conversation stays readable);
  *  - narrower: one pane at a time, chosen with tabs (Queue / Conversation / Details), and a sticky
- *    A / E / R bar with 44 px targets for the AI draft.
+ *    the AI draft's Approve / Edit / Reject buttons stick to the bottom edge with 44 px targets.
  * F6 and Shift+F6 cycle the visible panes, Alt+1/2/3 jump to one, `g q` goes to the queue, `s`
  * opens the status field. The panel (Details, Customer, and AI for someone who may review AI
  * drafts) is for staff; a customer never gets it and sees the ticket's facts in the conversation.
@@ -198,7 +168,9 @@ export function Workspace() {
   const [queueCollapsed, setQueueCollapsed] = useState(false);
   const [assistantCollapsed, setAssistantCollapsed] = useState(false);
   const [tab, setTab] = useState<PaneId>(selectedKey ? 'conversation' : 'queue');
-  const [panelTab, setPanelTab] = useState<PanelTab>('details');
+  // null: the panel picks (Evidence when the AI brought some, else Details) until the person chooses.
+  const [panelTab, setPanelTab] = useState<PanelTab | null>(null);
+  const [highlightId, setHighlightId] = useState<string | null>(null);
   const [focusRequest, setFocusRequest] = useState<{ id: string; tick: number } | null>(null);
   const toggleRef = useRef<HTMLButtonElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
@@ -350,6 +322,16 @@ export function Workspace() {
     showPanel && canEdit && selectedKey !== null,
   );
 
+  // An evidence chip or a citation: open the panel on the Evidence tab and move to that card.
+  const openEvidence = (id: string) => {
+    setPanelTab('evidence');
+    setHighlightId(id);
+    if (layout === 'narrow') setTab('assistant');
+    if (layout === 'wide') setAssistantCollapsed(false);
+    if (layout === 'medium') setDrawerOpen(true);
+    requestFocus(evidenceDomId(id));
+  };
+
   const onTabKeyDown = (event: ReactKeyboardEvent<HTMLElement>) => {
     const delta = event.key === 'ArrowRight' ? 1 : event.key === 'ArrowLeft' ? -1 : 0;
     const edge = event.key === 'Home' ? 0 : event.key === 'End' ? panes.length - 1 : null;
@@ -467,6 +449,7 @@ export function Workspace() {
         >
           <ConversationPane
             ticketKey={selectedKey}
+            onOpenEvidence={showPanel && showAi ? openEvidence : undefined}
             trailing={
               showPanel ? (
                 <Button
@@ -507,6 +490,7 @@ export function Workspace() {
               tab={panelTab}
               onTabChange={setPanelTab}
               showAi={showAi}
+              highlightId={highlightId}
               collapsed={assistantCollapsed}
               actions={
                 <>
@@ -560,7 +544,6 @@ export function Workspace() {
           </section>
         ) : null}
       </main>
-      {showAi && tab !== 'queue' ? <DraftActionBar /> : null}
     </>
   );
 }

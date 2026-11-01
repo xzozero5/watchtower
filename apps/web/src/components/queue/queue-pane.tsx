@@ -2,7 +2,7 @@
 
 import { useQueryClient } from '@tanstack/react-query';
 import { Alert, Button, EmptyState, Skeleton } from '@watchtower/ui';
-import { ArrowUp, Inbox, SearchX } from 'lucide-react';
+import { ArrowUp, ChevronDown, ChevronRight, Inbox, SearchX } from 'lucide-react';
 import {
   type KeyboardEvent,
   type ReactNode,
@@ -14,6 +14,14 @@ import {
 } from 'react';
 
 import { useT } from '@/i18n/provider';
+import {
+  COLLAPSED_BY_DEFAULT,
+  groupRows,
+  navigableRows,
+  type PinnedRow,
+  type RowGroup,
+  triageGroup,
+} from '@/lib/ai/model';
 import { useSession } from '@/lib/auth/session';
 import { useShortcut, stepIndex } from '@/lib/keyboard';
 import { usePreferences } from '@/lib/preferences';
@@ -60,6 +68,83 @@ const isZero = (count: number) => count === 0;
 let viewCounter = 0;
 const makeViewId = () => `v${String(Date.now())}-${String((viewCounter += 1))}`;
 
+const GROUP_ICON = { open: ChevronDown, closed: ChevronRight } as const;
+
+/**
+ * One section of the board: a header button (title, count; folds the section; reachable with Tab)
+ * and, while open, the section's listbox. Only the section with the cursor is in the tab order,
+ * carries `aria-activedescendant` and the shared listbox id, so the board behaves as one list.
+ */
+function Section({
+  group,
+  open,
+  active,
+  activeDescendant,
+  selectedKey,
+  compact,
+  onToggle,
+  onKeyDown,
+  onSelect,
+}: {
+  group: RowGroup;
+  open: boolean;
+  active: boolean;
+  activeDescendant: string | undefined;
+  selectedKey: string | null;
+  compact: boolean;
+  onToggle: () => void;
+  onKeyDown: (event: KeyboardEvent<HTMLUListElement>) => void;
+  onSelect: (key: string) => void;
+}) {
+  const t = useT();
+  const listId = active ? QUEUE_LISTBOX_ID : `queue-section-${group.id}`;
+  const Chevron = GROUP_ICON[open ? 'open' : 'closed'];
+  const flat = group.id === 'all';
+  const title = group.id === 'all' ? t('queue.listLabel') : t(`queue.groups.${group.id}`);
+  return (
+    <section data-group={group.id} className="flex flex-col">
+      {flat ? null : (
+        <h3 className="m-0 border-b border-border bg-background text-xs font-medium">
+          <button
+            type="button"
+            aria-expanded={open}
+            aria-controls={open ? listId : undefined}
+            onClick={onToggle}
+            className="flex min-h-8 w-full items-center gap-1.5 px-3 text-left text-muted-foreground transition-colors duration-(--wt-motion-duration-fast) ease-out hover:text-foreground focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
+          >
+            <Chevron aria-hidden className="size-3.5 shrink-0" />
+            <span>{title}</span>
+            <span className="tabular rounded-full bg-surface-muted px-1.5 text-foreground">
+              {group.rows.length}
+            </span>
+          </button>
+        </h3>
+      )}
+      {open ? (
+        <ul
+          id={listId}
+          role="listbox"
+          tabIndex={active ? 0 : -1}
+          aria-label={title}
+          aria-activedescendant={active ? activeDescendant : undefined}
+          onKeyDown={onKeyDown}
+          className="flex flex-col outline-hidden focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
+        >
+          {group.rows.map((row) => (
+            <QueueRow
+              key={row.id}
+              row={row}
+              selected={row.key === selectedKey}
+              compact={compact}
+              onSelect={onSelect}
+            />
+          ))}
+        </ul>
+      ) : null}
+    </section>
+  );
+}
+
 /**
  * The queue: filters and saved views, the ticket list with J/K navigation, and the "N new" pill.
  * New tickets from the realtime feed are only counted; the list changes when the user asks
@@ -77,9 +162,12 @@ export function QueuePane({
   const { session, isClient } = useSession();
   const userId = session?.user.id ?? 'anonymous';
   const realtime = useRealtime();
-  const { singleKeyShortcuts } = usePreferences();
+  const { singleKeyShortcuts, density } = usePreferences();
+  const compact = density === 'compact';
   const searchRef = useRef<HTMLInputElement>(null);
-  const listboxRef = useRef<HTMLUListElement>(null);
+  const [folded, setFolded] = useState<ReadonlySet<string>>(COLLAPSED_BY_DEFAULT);
+  // Set when the keyboard moved the cursor: focus follows it once the right section is drawn.
+  const refocus = useRef(false);
 
   // A link from Home may name filters in the address (`/?assignee=unassigned&status=new`).
   const [filters, setFilters] = useState<QueueFilters>(
@@ -97,39 +185,76 @@ export function QueuePane({
     [list.data, now],
   );
 
-  // The listbox keeps the keyboard focus; the current row is named by aria-activedescendant.
+  // The board: sections in order, and the rows J and K walk through, top to bottom as drawn.
+  const [pinned, setPinned] = useState<PinnedRow | null>(null);
+  const openRow = rows.find((row) => row.key === selectedKey);
+  if ((openRow?.key ?? null) !== (pinned?.key ?? null)) {
+    // A new ticket was opened: remember its section, so it stays there while it is open.
+    setPinned(openRow ? { key: openRow.key, group: triageGroup(openRow) } : null);
+  }
+  const groups = useMemo<RowGroup[]>(
+    () => (isClient ? (rows.length > 0 ? [{ id: 'all', rows }] : []) : groupRows(rows, pinned)),
+    [isClient, rows, pinned],
+  );
+  const walkable = useMemo(
+    () => navigableRows(groups, folded, selectedKey),
+    [groups, folded, selectedKey],
+  );
+  const selectedIndex = walkable.findIndex((row) => row.key === selectedKey);
+  const activeDescendant = selectedIndex >= 0 && selectedKey ? rowDomId(selectedKey) : undefined;
+  // One section's listbox holds focus at a time: the one with the open ticket, else the first.
+  const holder =
+    selectedIndex >= 0
+      ? groups.find((group) => group.rows.some((row) => row.key === selectedKey))
+      : undefined;
+  const activeGroup: RowGroup['id'] | undefined = (
+    holder && !folded.has(holder.id) ? holder : groups.find((group) => !folded.has(group.id))
+  )?.id;
+
   const focusList = useCallback(() => {
-    listboxRef.current?.focus();
+    document.getElementById(QUEUE_LISTBOX_ID)?.focus();
   }, []);
 
-  const selectedIndex = rows.findIndex((row) => row.key === selectedKey);
-  const activeDescendant = selectedIndex >= 0 && selectedKey ? rowDomId(selectedKey) : undefined;
-
-  // Keep the current row in view as it moves (J/K, arrows, a ticket opened from the address).
+  // Keep the current row in view as it moves (J/K, arrows, a ticket opened from the address), and
+  // carry keyboard focus into its section.
   useEffect(() => {
     if (activeDescendant)
       document.getElementById(activeDescendant)?.scrollIntoView({ block: 'nearest' });
-  }, [activeDescendant]);
+    if (refocus.current) {
+      refocus.current = false;
+      focusList();
+    }
+  }, [activeDescendant, focusList]);
+
+  const toggleGroup = (id: RowGroup['id']) => {
+    setFolded((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
 
   const moveTo = useCallback(
     (next: number) => {
-      const target = rows[next];
+      const target = walkable[next];
       if (!target) return;
+      refocus.current = true;
       onSelect(target.key);
       focusList();
       // Reaching the end of what is loaded fetches the next page, so J never hits a wall.
-      if (next >= rows.length - 3 && list.hasNextPage && !list.isFetchingNextPage) {
+      if (next >= walkable.length - 3 && list.hasNextPage && !list.isFetchingNextPage) {
         void list.fetchNextPage();
       }
     },
-    [rows, onSelect, focusList, list],
+    [walkable, onSelect, focusList, list],
   );
 
   const move = useCallback(
     (delta: number) => {
-      moveTo(stepIndex(selectedIndex, delta, rows.length));
+      moveTo(stepIndex(selectedIndex, delta, walkable.length));
     },
-    [moveTo, selectedIndex, rows.length],
+    [moveTo, selectedIndex, walkable.length],
   );
 
   const onListKeyDown = (event: KeyboardEvent<HTMLUListElement>) => {
@@ -149,7 +274,7 @@ export function QueuePane({
         return;
       case 'End':
         event.preventDefault();
-        moveTo(rows.length - 1);
+        moveTo(walkable.length - 1);
         return;
       case 'Enter':
         // Only acts while the list has focus, so it is not a character-key shortcut (WCAG 2.1.4).
@@ -254,13 +379,9 @@ export function QueuePane({
           <div role="status" className="flex flex-col">
             <span className="sr-only">{t('queue.loading')}</span>
             {[0, 1, 2, 3, 4].map((index) => (
-              <div key={index} className="flex gap-2.5 border-b border-border px-3 py-3">
-                <Skeleton className="size-6 shrink-0 rounded-full" />
-                <div className="flex flex-1 flex-col gap-2">
-                  <Skeleton className="h-3 w-2/5" />
-                  <Skeleton className="h-3.5 w-4/5" />
-                  <Skeleton className="h-3 w-3/5" />
-                </div>
+              <div key={index} className="flex flex-col gap-2 border-b border-border px-3 py-3">
+                <Skeleton className="h-3.5 w-4/5" />
+                <Skeleton className="h-3 w-3/5" />
               </div>
             ))}
           </div>
@@ -283,7 +404,6 @@ export function QueuePane({
             <EmptyState
               icon={<SearchX />}
               title={t('queue.emptyFilteredTitle')}
-              description={t('queue.emptyFilteredBody')}
               action={
                 <Button
                   onClick={() => {
@@ -295,38 +415,29 @@ export function QueuePane({
               }
             />
           ) : (
-            <EmptyState
-              icon={<Inbox />}
-              title={t('panes.queue.emptyTitle')}
-              description={t('panes.queue.emptyBody')}
-              hint={t('queue.emptyHint')}
-            />
+            <EmptyState icon={<Inbox />} title={t('panes.queue.emptyTitle')} />
           )
         ) : (
           <>
-            <ul
-              ref={listboxRef}
-              id={QUEUE_LISTBOX_ID}
-              role="listbox"
-              tabIndex={0}
-              aria-label={t('queue.listLabel')}
-              aria-activedescendant={activeDescendant}
-              onKeyDown={onListKeyDown}
-              className="flex flex-col outline-hidden focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
-            >
-              {rows.map((row) => (
-                <QueueRow
-                  key={row.id}
-                  row={row}
-                  selected={row.key === selectedKey}
-                  now={now}
-                  onSelect={(key) => {
-                    onSelect(key);
-                    onActivate?.();
-                  }}
-                />
-              ))}
-            </ul>
+            {groups.map((group) => (
+              <Section
+                key={group.id}
+                group={group}
+                open={!folded.has(group.id)}
+                active={group.id === activeGroup}
+                activeDescendant={activeDescendant}
+                selectedKey={selectedKey}
+                compact={compact}
+                onToggle={() => {
+                  toggleGroup(group.id);
+                }}
+                onKeyDown={onListKeyDown}
+                onSelect={(key) => {
+                  onSelect(key);
+                  onActivate?.();
+                }}
+              />
+            ))}
             {list.hasNextPage ? (
               <div className="p-3">
                 <Button
