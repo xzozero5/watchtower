@@ -29,6 +29,7 @@ export const keymapEn = {
   goHome: 'Go to Home',
   goAdmin: 'Go to Admin',
   goOtherMail: 'Go to other mail',
+  goShift: 'Go to my shift',
   goBrief: 'Go to the daily brief',
   goHandoff: 'Go to the shift handoff',
   goNotifications: 'Go to notifications',

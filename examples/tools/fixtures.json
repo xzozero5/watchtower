@@ -1,0 +1,105 @@
+{
+  "gcpLogs": [
+    {
+      "keywords": ["webhook", "callback"],
+      "entries": [
+        {
+          "timestamp": "2026-01-01T09:00:12Z",
+          "severity": "ERROR",
+          "service": "example-delivery",
+          "message": "webhook delivery failed: endpoint answered 503 after 3 retries"
+        },
+        {
+          "timestamp": "2026-01-01T09:05:40Z",
+          "severity": "WARNING",
+          "service": "example-delivery",
+          "message": "webhook endpoint slow: 9800 ms, close to the 10000 ms limit"
+        }
+      ]
+    },
+    {
+      "keywords": ["timeout", "timed out", "upstream"],
+      "entries": [
+        {
+          "timestamp": "2026-01-01T10:12:03Z",
+          "severity": "ERROR",
+          "service": "example-api",
+          "message": "upstream request timed out after 30000 ms"
+        },
+        {
+          "timestamp": "2026-01-01T10:12:09Z",
+          "severity": "ERROR",
+          "service": "example-api",
+          "message": "upstream request timed out after 30000 ms"
+        }
+      ]
+    },
+    {
+      "keywords": ["fail", "error"],
+      "entries": [
+        {
+          "timestamp": "2026-01-01T11:30:00Z",
+          "severity": "ERROR",
+          "service": "example-worker",
+          "message": "job failed: validation error in input batch"
+        }
+      ]
+    }
+  ],
+  "bigquery": [
+    {
+      "template": "webhook_not_received",
+      "columns": ["hour", "deliveries", "failed"],
+      "rows": [
+        ["09:00", 120, 37],
+        ["10:00", 118, 2]
+      ]
+    },
+    {
+      "template": "upstream_timeout",
+      "columns": ["hour", "requests", "p95_ms"],
+      "rows": [
+        ["10:00", 900, 31200],
+        ["11:00", 870, 640]
+      ]
+    },
+    {
+      "template": "processing_failure",
+      "columns": ["hour", "jobs", "failed"],
+      "rows": [
+        ["11:00", 400, 14],
+        ["12:00", 410, 0]
+      ]
+    }
+  ],
+  "repoChanges": [
+    {
+      "service": "webhook_not_received",
+      "changes": [
+        {
+          "kind": "deploy",
+          "ref": "v1.8.2",
+          "title": "Deploy v1.8.2 to production",
+          "at": "2026-01-01T08:45:00Z"
+        },
+        {
+          "kind": "pull_request",
+          "ref": "#1203",
+          "title": "Lower the delivery retry count",
+          "at": "2026-01-01T08:20:00Z"
+        }
+      ]
+    },
+    {
+      "service": "upstream_timeout",
+      "changes": [
+        {
+          "kind": "release",
+          "ref": "v2.4.0",
+          "title": "Release v2.4.0",
+          "at": "2026-01-01T07:30:00Z"
+        }
+      ]
+    }
+  ]
+}

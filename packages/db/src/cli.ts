@@ -1,15 +1,16 @@
 // Entry point for `pnpm db:migrate` and the compose `migrate` service. This is the one place in
 // packages/db that reads process.env, because it is an executable, not a library.
-import { provisionAppRole } from './app-role.js';
+import { provisionAiReadOnlyRole, provisionAppRole } from './app-role.js';
 import { createDatabase } from './client.js';
 import { migrateDown, migrateUp, migrationStatus } from './migrator.js';
 
 const USAGE =
-  'usage: cli.js up | down [steps] | status | provision-app-role\n' +
+  'usage: cli.js up | down [steps] | status | provision-app-role | provision-ai-role\n' +
   '  MIGRATION_DATABASE_URL (or DATABASE_URL) must be set, as the schema owner.\n' +
-  '  up and provision-app-role create the restricted login role when APP_DB_USER and APP_DB_PASSWORD are set.';
+  '  up and provision-app-role create the restricted login role when APP_DB_USER and APP_DB_PASSWORD are set.\n' +
+  '  up and provision-ai-role create the AI tools read-only login (watchtower_ai_ro) when AI_DB_USER and AI_DB_PASSWORD are set.';
 
-const COMMANDS = ['up', 'down', 'status', 'provision-app-role'];
+const COMMANDS = ['up', 'down', 'status', 'provision-app-role', 'provision-ai-role'];
 
 async function main(argv: readonly string[]): Promise<number> {
   const [command, stepsArg] = argv;
@@ -38,6 +39,16 @@ async function main(argv: readonly string[]): Promise<number> {
     const result = await provisionAppRole(database.pool, { user, password });
     log(`${result} login role ${user} (member of watchtower_app)`);
   };
+  const provisionAi = async (explicit: boolean): Promise<void> => {
+    const user = process.env.AI_DB_USER;
+    const password = process.env.AI_DB_PASSWORD;
+    if (!user || !password) {
+      if (explicit) throw new Error('AI_DB_USER and AI_DB_PASSWORD must both be set');
+      return;
+    }
+    const result = await provisionAiReadOnlyRole(database.pool, { user, password });
+    log(`${result} login role ${user} (member of watchtower_ai_ro, reads the ai_v_* views only)`);
+  };
   try {
     if (command === 'up') {
       const applied = await migrateUp(database.pool, { log });
@@ -47,6 +58,7 @@ async function main(argv: readonly string[]): Promise<number> {
           : `applied ${String(applied.length)} migration(s)`,
       );
       await provision(false);
+      await provisionAi(false);
     } else if (command === 'down') {
       const reverted = await migrateDown(database.pool, {
         log,
@@ -55,6 +67,8 @@ async function main(argv: readonly string[]): Promise<number> {
       log(`reverted ${String(reverted.length)} migration(s)`);
     } else if (command === 'provision-app-role') {
       await provision(true);
+    } else if (command === 'provision-ai-role') {
+      await provisionAi(true);
     } else {
       for (const row of await migrationStatus(database.pool)) {
         log(`${row.applied ? 'applied ' : 'pending '} ${row.id}`);

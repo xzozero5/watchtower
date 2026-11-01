@@ -7,7 +7,7 @@ import { useI18n } from '@/i18n/provider';
 import { confidenceBand, formatConfidence, safeHref } from '@/lib/ai/model';
 import { useTicketAi } from '@/lib/ai/queries';
 
-import { EVIDENCE_ICONS } from './ai-brief';
+import { EVIDENCE_ICONS } from './evidence-icons';
 
 /** The DOM id of an evidence card, so a chip or a citation can move focus to it. */
 export const evidenceDomId = (id: string) => `evidence-card-${id.replace(/[^A-Za-z0-9_-]/g, '_')}`;

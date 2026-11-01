@@ -1,4 +1,7 @@
-import type { TicketAiInsight } from '@watchtower/shared';
+import type { AiReport, TicketAiInsight } from '@watchtower/shared';
+
+/** The id of the draft in the fixtures: a UUID, as the api sends (a reply carries it as `aiDraftId`). */
+export const DRAFT_ID = 'd0000000-0000-4000-8000-000000000001';
 
 /**
  * Realistic, fictional AI briefs for tests and e2e (T-128). Nothing in the app produces these yet:
@@ -34,7 +37,7 @@ export function makeInsight(overrides: Partial<TicketAiInsight> = {}): TicketAiI
       },
     ],
     draft: {
-      id: 'draft-1',
+      id: DRAFT_ID,
       body: 'Hello Riley, your account was locked after several sign-in attempts [1]. It unlocks by itself after 15 minutes; please reset once more after that [2].',
       citations: ['ev-kb-1', 'ev-ticket-1'],
       uncitedClaims: 0,
@@ -68,7 +71,7 @@ export function makeInsightTh(): TicketAiInsight {
       },
     ],
     draft: {
-      id: 'draft-1',
+      id: DRAFT_ID,
       body: 'สวัสดีค่ะ คุณไรลีย์ บัญชีของคุณถูกล็อกหลังพยายามเข้าสู่ระบบหลายครั้ง [1] ระบบจะปลดล็อกให้เองใน 15 นาที จากนั้นกรุณารีเซ็ตอีกครั้ง',
       citations: ['ev-kb-1'],
       uncitedClaims: 1,
@@ -123,4 +126,30 @@ export function makeInvestigatingInsight(): TicketAiInsight {
     },
     evidence: [],
   };
+}
+
+/** An investigation report: one finding with evidence, one without, a tool that was refused. */
+export function makeReport(overrides: Partial<AiReport> = {}): AiReport {
+  return {
+    findings: [
+      { text: 'The account was locked after five failed sign-ins.', evidenceIds: ['ev-kb-1'] },
+      { text: 'The reset email was delivered twice.', evidenceIds: [] },
+    ],
+    likelyCause: 'A lockout policy, not a bug in the reset flow.',
+    confidence: 0.82,
+    openQuestions: ['Did the customer use the second reset link?'],
+    tools: [
+      { name: 'kb_search', status: 'ok', mock: false },
+      { name: 'gcp_logs', status: 'denied', mock: true },
+    ],
+    promptVersion: 'v3',
+    scope: { intent: 'login_issue', basis: 'confidence' },
+    ...overrides,
+  };
+}
+
+/** The same brief while the worker is still running: a step, not a spinner. */
+export function makeProgressInsight(step = 1, steps = 4): TicketAiInsight {
+  const insight = makeInvestigatingInsight();
+  return { ...insight, progress: { phase: 'investigating', step, steps } };
 }

@@ -1,5 +1,6 @@
 import { REOPEN_WINDOW_DAYS } from '@watchtower/shared';
 
+import { rejectAiDraft } from './ai/drafts.js';
 import {
   assertAssignableStaff,
   nextAssignee,
@@ -160,7 +161,37 @@ export {
   type AiGuardOptions,
   type AiGuardRequest,
 } from './ai/guard.js';
-export { upsertAiInsight, type AiInsightInput, type InsightWriter } from './ai/insight.js';
+export {
+  upsertAiInsight,
+  writeAiInvestigation,
+  type AiInsightInput,
+  type InsightWriter,
+  type InvestigationWrite,
+} from './ai/insight.js';
+export {
+  recordDraftEdited,
+  rejectAiDraft,
+  saveAiDraft,
+  type EditedDraftInput,
+  type NewAiDraft,
+  type RejectAiDraftInput,
+} from './ai/drafts.js';
+export {
+  createAiKbDraft,
+  ticketKbGap,
+  type AiKbDraftInput,
+  type KbGapVerdict,
+} from './ai/kb-draft.js';
+export {
+  createDbToolLedger,
+  type DbToolLedger,
+  type DbToolLedgerOptions,
+  type ToolDenialReason,
+  type ToolLedgerDecision,
+  type ToolLedgerEntry,
+  type ToolLedgerFinish,
+  type ToolLedgerLimits,
+} from './ai/tool-ledger.js';
 export {
   createAiRunRecorder,
   type AiRunDatabase,
@@ -493,6 +524,8 @@ export interface DomainOptions {
 
 export interface ContextOptions {
   readonly actor: Actor;
+  /** The person an AI actor works for (T-108e). */
+  readonly onBehalfOf?: string | null | undefined;
   readonly auditMeta?: { readonly ip: string | null; readonly requestId: string | null };
   /** Default: no customer notices. */
   readonly notifier?: TicketNotifier;
@@ -600,6 +633,8 @@ export interface Domain {
   };
   /** Received messages (ADR-009): used by the worker's `ingest` consumer. */
   readonly inbound: { readonly ingest: typeof ingestInbound };
+  /** AI drafts (T-108c): a person's verdict on a draft. */
+  readonly ai: { readonly rejectDraft: typeof rejectAiDraft };
   /** Who is behind a LINE user id: link codes and LINE Login (T-103d, R-2.11). */
   readonly identity: {
     readonly issueLineLinkCode: typeof issueLineLinkCode;
@@ -641,6 +676,7 @@ export function createDomain(options: DomainOptions): Domain {
     config,
     context: (contextOptions) => ({
       actor: contextOptions.actor,
+      onBehalfOf: contextOptions.onBehalfOf ?? null,
       auditMeta: contextOptions.auditMeta ?? { ip: null, requestId: null },
       now,
       config,
@@ -725,6 +761,7 @@ export function createDomain(options: DomainOptions): Domain {
       previewComm: previewIncidentComm,
       sendComm: sendIncidentComm,
     },
+    ai: { rejectDraft: rejectAiDraft },
     inbound: { ingest: ingestInbound },
     identity: { issueLineLinkCode, redeemLineLinkCode, linkLineUser },
     csat: {

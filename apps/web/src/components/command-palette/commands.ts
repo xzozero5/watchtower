@@ -3,6 +3,7 @@ import type { Density, ThemePreference } from '@watchtower/ui';
 
 import type { Locale, MessageKey, Translate } from '@/i18n';
 import { adminSectionsFor, canFlipSwitches, HOME_PERMISSION } from '@/lib/admin/sections';
+import { shiftSectionsFor } from '@/lib/shifts/sections';
 
 export type CommandGroup = 'general' | 'display' | 'language' | 'admin';
 
@@ -27,6 +28,8 @@ export interface CommandActions {
   /** Head console (T-127). Only used when `buildCommands` is given the person's permissions. */
   goHome?: () => void;
   goAdmin?: (href: string) => void;
+  /** Shift screens (T-111f): My shift, Daily brief, Handoff, Notes, Lead view. */
+  goTo?: (href: string) => void;
   /** Opens the confirm dialog for a switch; it never flips the switch itself. */
   openSwitchDialog?: (switchKey: AiSwitchKey, on: boolean) => void;
 }
@@ -172,6 +175,20 @@ function adminCommands(t: Translate, actions: CommandActions, access: CommandAcc
       keywords: ['home', 'dashboard', 'overview', 'หน้าหลัก', 'ภาพรวม'],
       run: goHome,
     });
+  }
+  const goTo = actions.goTo;
+  if (goTo) {
+    for (const section of shiftSectionsFor(access.can)) {
+      commands.push({
+        id: `go.shift.${section.id}`,
+        label: t('commands.goShift', { section: t(section.labelKey) }),
+        group: 'admin',
+        keywords: ['shift', 'clock', 'handoff', 'brief', 'roster', 'กะ', 'เวร', 'ส่งมอบ'],
+        run: () => {
+          goTo(section.href);
+        },
+      });
+    }
   }
   const goAdmin = actions.goAdmin;
   if (goAdmin) {

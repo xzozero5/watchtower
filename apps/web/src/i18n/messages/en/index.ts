@@ -25,6 +25,7 @@ import { liveEn } from './live';
 import { loadingEn } from './loading';
 import { loginEn } from './login';
 import { notificationsEn } from './notifications';
+import { outboundEn } from './outbound';
 import { paletteEn } from './palette';
 import { panelEn } from './panel';
 import { panesEn } from './panes';
@@ -34,6 +35,7 @@ import { queueEn } from './queue';
 import { railEn } from './rail';
 import { rolesEn } from './roles';
 import { severityEn } from './severity';
+import { shiftEn } from './shift';
 import { slaEn } from './sla';
 import { statesEn } from './states';
 import { statusEn } from './status';
@@ -78,6 +80,8 @@ export const en = {
   portal: portalEn,
   notifications: notificationsEn,
   csat: csatEn,
+  shift: shiftEn,
+  outbound: outboundEn,
 } as const;
 
 /** The shape every language must fill in, with plain `string` leaves. */

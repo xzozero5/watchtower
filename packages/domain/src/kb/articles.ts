@@ -69,6 +69,11 @@ function isMachine(ctx: DomainContext): boolean {
   return ctx.actor.type !== 'user' || ctx.actor.id === null;
 }
 
+/** The person an AI actor wrote this for (T-108e); a person writing for themselves has no requester. */
+function requesterOf(ctx: DomainContext): string | null {
+  return isMachine(ctx) ? (ctx.onBehalfOf ?? null) : null;
+}
+
 async function lockArticle(tx: DbTransaction, articleId: string) {
   const [article] = await tx
     .select()
@@ -103,6 +108,30 @@ async function wroteVersion(
         gt(schema.kbArticleVersion.version, after),
         upTo === undefined ? undefined : lte(schema.kbArticleVersion.version, upTo),
         eq(schema.kbArticleVersion.createdBy, userId),
+      ),
+    )
+    .limit(1);
+  return rows.length > 0;
+}
+
+/**
+ * True when `userId` asked an AI to write a version numbered above `after`. The person who triggered
+ * the AI is the author in all but name, so they are not the second pair of eyes (T-108e, po 27).
+ */
+async function requestedVersion(
+  tx: DbTransaction,
+  articleId: string,
+  userId: string,
+  after: number,
+): Promise<boolean> {
+  const rows = await tx
+    .select({ id: schema.kbArticleVersion.id })
+    .from(schema.kbArticleVersion)
+    .where(
+      and(
+        eq(schema.kbArticleVersion.articleId, articleId),
+        gt(schema.kbArticleVersion.version, after),
+        eq(schema.kbArticleVersion.requestedBy, userId),
       ),
     )
     .limit(1);
@@ -222,6 +251,7 @@ export async function createKbArticle(
     contentHash: kbContentHash(input.title, input.bodyMd),
     createdBy: ctx.actor.id,
     authoredByMachine: isMachine(ctx),
+    requestedBy: requesterOf(ctx),
   });
   if (input.visibility === 'orgs') await setOrgs(tx, articleId, input.orgIds);
   await recordAuditInTx(tx, ctx, fx, {
@@ -391,6 +421,7 @@ export async function updateKbArticle(
       contentHash: hash,
       createdBy: ctx.actor.id,
       authoredByMachine: isMachine(ctx),
+      requestedBy: requesterOf(ctx),
     });
   }
   if (audienceChanged) await setOrgs(tx, article.id, orgs);
@@ -542,8 +573,8 @@ type PublishMode =
  * Only a person publishes. An AI or a system identity never does, whatever permission it holds;
  * AI drafts (T-108e) go to `in_review` and wait for a human approver who is not the requester.
  * A version not written by a signed-in person is marked (`authored_by_machine`) and never goes live by break-glass.
- * TODO(T-108e): there is no "requested by" on an AI actor yet, so the person who triggered the AI
- * is not recorded; record the requester of an AI draft and refuse that person as its approver.
+ * The person who asked the AI (`ctx.onBehalfOf`, recorded as `requested_by` on the version) cannot be the
+ * approver of that text either (T-108e): `kb_publisher_requested_ai_text`.
  */
 function requireHuman(ctx: DomainContext): string {
   if (ctx.actor.type !== 'user' || ctx.actor.id === null) {
@@ -614,6 +645,13 @@ async function publishWith(
         'policy_denied',
         'You wrote part of this text, so another approver has to publish it',
         { reason: 'kb_publisher_is_author' },
+      );
+    }
+    if (await requestedVersion(tx, article.id, publisherId, liveVersion)) {
+      throw new DomainError(
+        'policy_denied',
+        'You asked the AI to write this text, so another approver has to publish it',
+        { reason: 'kb_publisher_requested_ai_text' },
       );
     }
   }
