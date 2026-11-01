@@ -91,6 +91,13 @@ x-app-env: &app-env
   # it only when a host path is set; otherwise the variable stays empty and Gmail stays mock.
   GMAIL_SERVICE_ACCOUNT_JSON_PATH: ${GMAIL_SERVICE_ACCOUNT_JSON_PATH:+/run/secrets/gmail-service-account.json}
   GMAIL_IMPERSONATE_USER: ${GMAIL_IMPERSONATE_USER:-}
+  # OAuth of the support mailbox (T-102e, the default way). All optional: the client ID and secret can be
+  # saved on the admin page instead, and the refresh token is written by the OAuth callback. An environment
+  # variable wins over a saved value and locks that field.
+  GMAIL_OAUTH_CLIENT_ID: ${GMAIL_OAUTH_CLIENT_ID:-}
+  GMAIL_OAUTH_CLIENT_SECRET: ${GMAIL_OAUTH_CLIENT_SECRET:-}
+  GMAIL_OAUTH_REFRESH_TOKEN: ${GMAIL_OAUTH_REFRESH_TOKEN:-}
+  GMAIL_OAUTH_MAILBOX: ${GMAIL_OAUTH_MAILBOX:-}
   PUBSUB_EMULATOR_HOST: ${PUBSUB_EMULATOR_HOST:-}
   PUBSUB_SUBSCRIPTION: ${PUBSUB_SUBSCRIPTION:-}
   # Gmail push (T-102b/c): topic for users.watch (worker), audience and signer of the push token (api).
@@ -126,6 +133,9 @@ x-app-env: &app-env
   AI_DAILY_COST_CAP_USD: ${AI_DAILY_COST_CAP_USD:-}
   AI_DAILY_TOKEN_CAP: ${AI_DAILY_TOKEN_CAP:-}
   AI_BUDGET_ALERT_PERCENT: ${AI_BUDGET_ALERT_PERCENT:-80}
+  AI_READONLY_DATABASE_URL: ${AI_READONLY_DATABASE_URL:-}
+  AI_TOOLS_WITHOUT_READONLY_LOGIN: ${AI_TOOLS_WITHOUT_READONLY_LOGIN:-false}
+  AI_TOOL_FIXTURES_DIR: ${AI_TOOL_FIXTURES_DIR:-}
   EMBEDDING_PROVIDER: ${EMBEDDING_PROVIDER:-mock}
   KB_CRAWL_ALLOWED_HOSTS: ${KB_CRAWL_ALLOWED_HOSTS:-}
   KB_CHUNK_TARGET_CHARS: ${KB_CHUNK_TARGET_CHARS:-}
@@ -136,6 +146,10 @@ x-app-env: &app-env
   ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
   VERTEX_PROJECT_ID: ${VERTEX_PROJECT_ID:-}
   VERTEX_LOCATION: ${VERTEX_LOCATION:-asia-southeast1}
+  AI_MODEL_DEEP: ${AI_MODEL_DEEP:-}
+  AI_MODEL_STANDARD: ${AI_MODEL_STANDARD:-}
+  AI_MODEL_LIGHT: ${AI_MODEL_LIGHT:-}
+  AI_MODEL_PRICES: ${AI_MODEL_PRICES:-}
   WEB_PUSH_VAPID_PUBLIC: ${WEB_PUSH_VAPID_PUBLIC:-}
   WEB_PUSH_VAPID_PRIVATE: ${WEB_PUSH_VAPID_PRIVATE:-}
   WEB_PUSH_SUBJECT: ${WEB_PUSH_SUBJECT:-}
@@ -260,6 +274,9 @@ services:
       DATABASE_URL: postgres://${POSTGRES_USER:-watchtower}:${POSTGRES_PASSWORD:-watchtower}@postgres:5432/${POSTGRES_DB:-watchtower}
       APP_DB_USER: ${APP_DB_USER:-watchtower_api}
       APP_DB_PASSWORD: ${APP_DB_PASSWORD:-watchtower_api}
+      # Optional: the AI tools' read-only login (watchtower_ai_ro). Both empty = not created.
+      AI_DB_USER: ${AI_DB_USER:-}
+      AI_DB_PASSWORD: ${AI_DB_PASSWORD:-}
     depends_on:
       postgres:
         condition: service_healthy

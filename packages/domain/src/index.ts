@@ -1,5 +1,6 @@
 import { REOPEN_WINDOW_DAYS } from '@watchtower/shared';
 
+import { rejectAiDraft } from './ai/drafts.js';
 import {
   assertAssignableStaff,
   nextAssignee,
@@ -10,6 +11,18 @@ import {
 } from './assignment.js';
 import { readAutonomyState, setAiSwitch, setIntentAutonomy } from './autonomy/state.js';
 import { findOrCreateContactByEmail } from './contacts.js';
+import { decideCsatReopen } from './csat/reopen.js';
+import {
+  answerSurvey,
+  findSurveyForLink,
+  readCsatDelayMinutes,
+  scheduleSurvey,
+  setCsatDelayMinutes,
+  setCsatOptOut,
+  sweepSurveys,
+  voidOpenSurveys,
+} from './csat/survey.js';
+import { mintCsatToken, verifyCsatToken } from './csat/token.js';
 import { ingestInbound } from './inbound/ingest.js';
 import { resolveIntent } from './intents.js';
 import {
@@ -35,6 +48,7 @@ import {
 import { scheduleCustomerSend, scheduleTemplateAck } from './outbound/schedule.js';
 import { readOutboundSettings, setUndoSendSeconds } from './outbound/settings.js';
 import { plainPortalUrl } from './outbound/templates.js';
+import { notifyShiftAlerts } from './notifications.js';
 import { enqueueJob } from './outbox.js';
 import type { PolicyGate } from './policy.js';
 import {
@@ -51,7 +65,7 @@ import { mergeTickets } from './tickets/merge.js';
 import { addTicketNote, replyToTicket } from './tickets/messages.js';
 import { changeTicketStatus } from './tickets/status.js';
 import { updateTicket } from './tickets/update.js';
-import type { Actor, DomainConfig, DomainContext } from './types.js';
+import type { Actor, CsatConfig, DomainConfig, DomainContext } from './types.js';
 import { workflowAllows } from './workflow.js';
 
 export { authorityNow } from './clock.js';
@@ -82,7 +96,37 @@ export {
   type AiGuardOptions,
   type AiGuardRequest,
 } from './ai/guard.js';
-export { upsertAiInsight, type AiInsightInput, type InsightWriter } from './ai/insight.js';
+export {
+  upsertAiInsight,
+  writeAiInvestigation,
+  type AiInsightInput,
+  type InsightWriter,
+  type InvestigationWrite,
+} from './ai/insight.js';
+export {
+  recordDraftEdited,
+  rejectAiDraft,
+  saveAiDraft,
+  type EditedDraftInput,
+  type NewAiDraft,
+  type RejectAiDraftInput,
+} from './ai/drafts.js';
+export {
+  createAiKbDraft,
+  ticketKbGap,
+  type AiKbDraftInput,
+  type KbGapVerdict,
+} from './ai/kb-draft.js';
+export {
+  createDbToolLedger,
+  type DbToolLedger,
+  type DbToolLedgerOptions,
+  type ToolDenialReason,
+  type ToolLedgerDecision,
+  type ToolLedgerEntry,
+  type ToolLedgerFinish,
+  type ToolLedgerLimits,
+} from './ai/tool-ledger.js';
 export {
   createAiRunRecorder,
   type AiRunDatabase,
@@ -213,6 +257,14 @@ export {
   type KbSearchOutcome,
 } from './kb/search.js';
 export { NO_NOTIFIER, type TicketNotifier } from './notifier.js';
+export {
+  notifyIn,
+  notifyShiftAlerts,
+  notifyTicketAssigned,
+  notifyTicketP1,
+  type NotifyInput,
+  type ShiftAlertInput,
+} from './notifications.js';
 export { enqueueJob, type OutboxRequest } from './outbox.js';
 export { cancelSend, type CancelSendInput } from './outbound/cancel.js';
 export { loadDeliveryContext, type DeliveryContext, type ParentMail } from './outbound/context.js';
@@ -367,6 +419,26 @@ export {
   type ReadExecutor,
 } from './types.js';
 export { workflowAllows } from './workflow.js';
+export {
+  decideCsatReopen,
+  isWithinReopenWindow,
+  type CsatReopenDecision,
+  type CsatReopenInput,
+} from './csat/reopen.js';
+export type {
+  AnswerSurveyInput,
+  AnswerSurveyOutcome,
+  SurveyLookup,
+  SweepSurveysOptions,
+  SweepSurveysResult,
+} from './csat/survey.js';
+export {
+  mintCsatToken,
+  verifyCsatToken,
+  wholeSeconds,
+  type CsatTokenClaims,
+} from './csat/token.js';
+export type { CsatConfig };
 
 export interface DomainOptions {
   /** Ticket key prefix, the same value in api and worker (`TICKET_KEY_PREFIX`). */
@@ -377,6 +449,8 @@ export interface DomainOptions {
   readonly portalUrl?: string | undefined;
   /** Seconds a delivery may be retried under one LINE retry key; default `DELIVERY_RETRY_KEY_MAX_AGE_SECONDS`. */
   readonly retryKeyMaxAgeSeconds?: number | undefined;
+  /** CSAT survey links and page (T-110); absent means the scheduler cannot send. */
+  readonly csat?: CsatConfig | undefined;
   /** Days a resolved ticket still reopens on a customer reply. Default: `REOPEN_WINDOW_DAYS`. */
   readonly reopenWindowDays?: number;
   /** Absent means every customer-bound AI action is refused (fail closed, N3). `createPolicyGate` builds the real one. */
@@ -386,6 +460,8 @@ export interface DomainOptions {
 
 export interface ContextOptions {
   readonly actor: Actor;
+  /** The person an AI actor works for (T-108e). */
+  readonly onBehalfOf?: string | null | undefined;
   readonly auditMeta?: { readonly ip: string | null; readonly requestId: string | null };
   /** Default: no customer notices. */
   readonly notifier?: TicketNotifier;
@@ -463,12 +539,33 @@ export interface Domain {
   };
   /** Received messages (ADR-009): used by the worker's `ingest` consumer. */
   readonly inbound: { readonly ingest: typeof ingestInbound };
+  /** AI drafts (T-108c): a person's verdict on a draft. */
+  readonly ai: { readonly rejectDraft: typeof rejectAiDraft };
   /** Who is behind a LINE user id: link codes and LINE Login (T-103d, R-2.11). */
   readonly identity: {
     readonly issueLineLinkCode: typeof issueLineLinkCode;
     readonly redeemLineLinkCode: typeof redeemLineLinkCode;
     readonly linkLineUser: typeof linkLineUser;
   };
+  /** CSAT surveys and the reopen rules they feed (T-110, R-10.x, R-1.10). */
+  readonly csat: {
+    readonly schedule: typeof scheduleSurvey;
+    readonly voidOpen: typeof voidOpenSurveys;
+    readonly sweep: typeof sweepSurveys;
+    readonly findForLink: typeof findSurveyForLink;
+    readonly answer: typeof answerSurvey;
+    readonly readDelayMinutes: typeof readCsatDelayMinutes;
+    readonly setDelayMinutes: typeof setCsatDelayMinutes;
+    readonly setOptOut: typeof setCsatOptOut;
+    readonly mintToken: typeof mintCsatToken;
+    readonly verifyToken: typeof verifyCsatToken;
+    readonly decideReopen: typeof decideCsatReopen;
+  };
+  /**
+   * In-app notifications (T-105). Ticket alerts (P1, assigned) are raised inside `tickets.*`; the
+   * shift alerts for leads are raised by whoever has the shift overview (T-111).
+   */
+  readonly notifications: { readonly shiftAlerts: typeof notifyShiftAlerts };
 }
 
 export function createDomain(options: DomainOptions): Domain {
@@ -478,12 +575,14 @@ export function createDomain(options: DomainOptions): Domain {
     sealKey: options.sealKey,
     portalUrl: plainPortalUrl(options.portalUrl),
     retryKeyMaxAgeSeconds: options.retryKeyMaxAgeSeconds,
+    csat: options.csat,
   };
   const now = options.now ?? ((): Date => new Date());
   return {
     config,
     context: (contextOptions) => ({
       actor: contextOptions.actor,
+      onBehalfOf: contextOptions.onBehalfOf ?? null,
       auditMeta: contextOptions.auditMeta ?? { ip: null, requestId: null },
       now,
       databaseClock: options.now === undefined,
@@ -547,7 +646,22 @@ export function createDomain(options: DomainOptions): Domain {
       readSettings: readOutboundSettings,
       setUndoSendSeconds,
     },
+    ai: { rejectDraft: rejectAiDraft },
     inbound: { ingest: ingestInbound },
     identity: { issueLineLinkCode, redeemLineLinkCode, linkLineUser },
+    csat: {
+      schedule: scheduleSurvey,
+      voidOpen: voidOpenSurveys,
+      sweep: sweepSurveys,
+      findForLink: findSurveyForLink,
+      answer: answerSurvey,
+      readDelayMinutes: readCsatDelayMinutes,
+      setDelayMinutes: setCsatDelayMinutes,
+      setOptOut: setCsatOptOut,
+      mintToken: mintCsatToken,
+      verifyToken: verifyCsatToken,
+      decideReopen: decideCsatReopen,
+    },
+    notifications: { shiftAlerts: notifyShiftAlerts },
   };
 }

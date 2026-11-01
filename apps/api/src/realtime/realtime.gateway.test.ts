@@ -23,7 +23,11 @@ function principal(scope: Principal['orgScope'], permissions: Permission[]): Pri
 
 describe('audienceFor', () => {
   it('lets staff with ticket.read hear everything', () => {
-    expect(audienceFor(principal({ kind: 'all' }, ['ticket.read']))).toEqual({ kind: 'staff' });
+    // The user id is what lets an addressed notification find its one recipient (T-105).
+    expect(audienceFor(principal({ kind: 'all' }, ['ticket.read']))).toEqual({
+      kind: 'staff',
+      userId: 'u',
+    });
   });
 
   it('limits a client to their organization', () => {

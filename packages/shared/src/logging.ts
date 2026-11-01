@@ -6,6 +6,9 @@ export const LOG_REDACT_PATHS: readonly string[] = [
   'req.headers.authorization',
   'req.headers.cookie',
   'req.headers["x-api-key"]',
+  // Bearer tokens of the public pages travel in these headers (portal tracking link, CSAT survey link).
+  'req.headers["x-portal-token"]',
+  'req.headers["x-csat-token"]',
   'res.headers["set-cookie"]',
   '*.password',
   '*.passwd',
@@ -26,6 +29,8 @@ export const LOG_REDACT_PATHS: readonly string[] = [
   '*.channelAccessToken',
   '*.botToken',
   '*.serviceAccountJson',
+  '*.oauthClientSecret',
+  '*.oauthRefreshToken',
   '*.anthropicApiKey',
   '*.vapidPrivate',
   '*.webhookUrl',

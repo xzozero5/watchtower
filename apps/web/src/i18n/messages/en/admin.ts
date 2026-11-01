@@ -12,6 +12,7 @@ export const adminEn = {
     ai: 'AI controls',
     audit: 'Audit log',
     integrations: 'Integrations',
+    shifts: 'Shifts and roster',
   },
   common: {
     now: 'now',

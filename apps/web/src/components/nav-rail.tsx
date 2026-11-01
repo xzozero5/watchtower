@@ -2,9 +2,9 @@
 
 import { cn, Kbd, TINT_CLASSES, type TintId, Tooltip } from '@watchtower/ui';
 import {
-  Bell,
   CalendarCheck,
   ClipboardList,
+  Clock3,
   Command as CommandIcon,
   Gauge,
   Inbox,
@@ -19,15 +19,16 @@ import type { ReactNode } from 'react';
 import { ApiStatus } from '@/components/api-status';
 import { AppLink } from '@/components/app-link';
 import { LiveStatus } from '@/components/live-status';
+import { NotificationCenter } from '@/components/notifications/notification-center';
+import { RAIL_ITEM_CLASSES } from '@/components/rail-styles';
+import { ShiftChip } from '@/components/shift/shift-chip';
 import { UserMenu } from '@/components/user-menu';
 import { useT } from '@/i18n/provider';
 import { adminSectionsFor, HOME_PERMISSION } from '@/lib/admin/sections';
 import { useSession } from '@/lib/auth/session';
+import { shiftSectionsFor } from '@/lib/shifts/sections';
 
 import { QUEUE_LISTBOX_ID } from '@/components/queue/queue-row';
-
-const ITEM =
-  'flex h-control w-full items-center gap-2.5 rounded-xl px-2 text-sm transition-colors duration-(--wt-motion-duration-fast) ease-out focus-visible:outline-2 focus-visible:outline-offset-0 focus-visible:outline-ring';
 
 /** One icon (plus its words when the rail is expanded) with a tooltip while it is narrow. */
 function RailButton({
@@ -66,7 +67,7 @@ function RailButton({
   hint?: ReactNode;
 }) {
   const classes = cn(
-    ITEM,
+    RAIL_ITEM_CLASSES,
     'max-md:w-control max-md:justify-center max-md:px-0',
     current
       ? 'bg-primary-subtle font-medium text-foreground'
@@ -127,7 +128,7 @@ function RailButton({
   );
 }
 
-export type RailDestination = 'queue' | 'home' | 'admin';
+export type RailDestination = 'queue' | 'home' | 'admin' | 'shift';
 
 export interface NavRailProps {
   /** The page being shown. */
@@ -157,8 +158,10 @@ export function NavRail({
   const t = useT();
   const { can } = useSession();
   const handler = can('ticket.handle');
+  const canReadTickets = can('ticket.read');
   const showHome = can(HOME_PERMISSION);
   const showAdmin = adminSectionsFor(can).length > 0;
+  const shiftIds = new Set(shiftSectionsFor(can).map((section) => section.id));
   const adminHref = adminSectionsFor(can)[0]?.href ?? '/admin';
   // Words are only shown from 768px up; on a phone the bar is icons.
   const expanded = railExpanded;
@@ -206,34 +209,42 @@ export function NavRail({
               }
             : { href: '/' })}
         />
-        {handler ? (
+        {handler || shiftIds.size > 0 ? (
           <>
-            <RailButton
-              icon={ClipboardList}
-              tone="amber"
-              label={t('rail.brief')}
-              expanded={expanded}
-              unavailable
-              hint={`${t('rail.brief')} — ${t('rail.comingSoon')}`}
-            />
-            <RailButton
-              icon={CalendarCheck}
-              tone="indigo"
-              label={t('rail.handoff')}
-              expanded={expanded}
-              unavailable
-              hint={`${t('rail.handoff')} — ${t('rail.comingSoon')}`}
-            />
-            <RailButton
-              icon={Bell}
-              tone="pink"
-              label={t('rail.notifications')}
-              expanded={expanded}
-              unavailable
-              hint={`${t('rail.notifications')} — ${t('rail.comingSoon')}`}
-            />
+            {shiftIds.has('shift') ? (
+              <RailButton
+                icon={Clock3}
+                tone="green"
+                label={t('rail.shift')}
+                expanded={expanded}
+                current={destination === 'shift'}
+                keyShortcuts="g s"
+                href="/shift"
+              />
+            ) : null}
+            {shiftIds.has('brief') ? (
+              <RailButton
+                icon={ClipboardList}
+                tone="amber"
+                label={t('rail.brief')}
+                expanded={expanded}
+                keyShortcuts="g b"
+                href="/shift/brief"
+              />
+            ) : null}
+            {shiftIds.has('handoff') ? (
+              <RailButton
+                icon={CalendarCheck}
+                tone="indigo"
+                label={t('rail.handoff')}
+                expanded={expanded}
+                keyShortcuts="g h"
+                href="/shift/handoff"
+              />
+            ) : null}
           </>
         ) : null}
+        {canReadTickets ? <NotificationCenter expanded={expanded} /> : null}
         {showHome || showAdmin ? (
           <div
             role="separator"
@@ -285,6 +296,7 @@ export function NavRail({
           onClick={onOpenKeymap}
           className="max-md:hidden"
         />
+        <ShiftChip expanded={expanded} />
         <div
           className={cn(
             'flex items-center gap-0.5 md:my-1 md:flex-col md:items-stretch',

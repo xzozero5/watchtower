@@ -45,6 +45,12 @@ export interface CredentialFieldDefinition {
 export interface IntegrationDefinition {
   readonly name: string;
   readonly fields: Readonly<Record<string, CredentialFieldDefinition>>;
+  /**
+   * An integration with more than one way to connect (Gmail: OAuth or service account): it is
+   * complete when ALL fields of ANY ONE of these sets are configured. Those fields are all
+   * `required: false`. Absent: every `required` field must be configured.
+   */
+  readonly alternatives?: Readonly<Record<string, readonly string[]>>;
 }
 
 const field = (
@@ -68,10 +74,36 @@ export const INTEGRATION_CATALOG = {
   gmail: {
     name: 'Gmail',
     fields: {
+      // An option (ADR-012, PRD R-2.4): service account with domain-wide delegation.
       serviceAccountJson: field('Service account key (JSON)', 'GMAIL_SERVICE_ACCOUNT_JSON_PATH', {
         envKind: 'file',
+        required: false,
       }),
-      impersonateUser: field('Mailbox to read', 'GMAIL_IMPERSONATE_USER', { secret: false }),
+      impersonateUser: field('Mailbox to read (delegation)', 'GMAIL_IMPERSONATE_USER', {
+        secret: false,
+        required: false,
+      }),
+      // The default (T-102e): OAuth of the one support mailbox. The client id and secret are typed
+      // on the admin page or set in the environment; the refresh token and the mailbox are written
+      // by the OAuth callback (`/v1/admin/integrations/gmail/oauth/*`) and are never shown.
+      oauthClientId: field('OAuth client ID', 'GMAIL_OAUTH_CLIENT_ID', {
+        secret: false,
+        required: false,
+      }),
+      oauthClientSecret: field('OAuth client secret', 'GMAIL_OAUTH_CLIENT_SECRET', {
+        required: false,
+      }),
+      oauthRefreshToken: field('OAuth refresh token', 'GMAIL_OAUTH_REFRESH_TOKEN', {
+        required: false,
+      }),
+      oauthMailbox: field('Mailbox the OAuth grant belongs to', 'GMAIL_OAUTH_MAILBOX', {
+        secret: false,
+        required: false,
+      }),
+    },
+    alternatives: {
+      oauth: ['oauthClientId', 'oauthClientSecret', 'oauthRefreshToken', 'oauthMailbox'],
+      service_account: ['serviceAccountJson', 'impersonateUser'],
     },
   },
   line: {
@@ -142,6 +174,23 @@ export const INTEGRATION_KEYS = Object.keys(INTEGRATION_CATALOG) as IntegrationK
 
 export function isIntegrationKey(value: string): value is IntegrationKey {
   return Object.hasOwn(INTEGRATION_CATALOG, value);
+}
+
+/**
+ * Is the integration complete, given which of its fields are configured? Every `required` field,
+ * or, for an integration with `alternatives`, all fields of at least one alternative.
+ */
+export function isIntegrationComplete(
+  integration: IntegrationKey,
+  isConfigured: (field: string) => boolean,
+): boolean {
+  const definition: IntegrationDefinition = INTEGRATION_CATALOG[integration];
+  if (definition.alternatives !== undefined) {
+    return Object.values(definition.alternatives).some((set) => set.every(isConfigured));
+  }
+  const names = Object.keys(definition.fields);
+  const required = names.filter((name) => definition.fields[name]?.required === true);
+  return required.length === 0 ? names.some(isConfigured) : required.every(isConfigured);
 }
 
 /** Field definitions of one integration, typed loosely (the catalog's literal types are narrower). */

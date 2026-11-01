@@ -99,6 +99,10 @@ export const baseEnvShape = {
   GOOGLE_ALLOWED_DOMAIN: optionalString,
   GMAIL_SERVICE_ACCOUNT_JSON_PATH: optionalString,
   GMAIL_IMPERSONATE_USER: optionalString,
+  GMAIL_OAUTH_CLIENT_ID: optionalString,
+  GMAIL_OAUTH_CLIENT_SECRET: optionalString,
+  GMAIL_OAUTH_REFRESH_TOKEN: optionalString,
+  GMAIL_OAUTH_MAILBOX: optionalString,
   LINE_CHANNEL_ID: optionalString,
   LINE_CHANNEL_SECRET: optionalString,
   LINE_CHANNEL_ACCESS_TOKEN: optionalString,
@@ -155,6 +159,14 @@ export const phase1EnvShape = {
   // Knowledge base (T-107): embeddings, and the only hosts the URL crawler may fetch (empty: none).
   EMBEDDING_PROVIDER: z.preprocess(emptyToUndefined, z.enum(EMBEDDING_PROVIDERS).default('mock')),
   KB_CRAWL_ALLOWED_HOSTS: hostList,
+  // AI models (T-132): the model id each tier uses on the selected provider. Model ids are
+  // settings, never code (ADR-008). Empty with a real provider selected: AI calls fail visibly.
+  AI_MODEL_DEEP: optionalString,
+  AI_MODEL_STANDARD: optionalString,
+  AI_MODEL_LIGHT: optionalString,
+  // JSON object keyed by model id: {"<model id>":{"inputUsdPerMTok":0,"outputUsdPerMTok":0}}. A real
+  // provider needs a price for every tier's model, otherwise the daily cost cap could not count.
+  AI_MODEL_PRICES: optionalString,
   // AI budget (T-106d). Empty falls back to the default in config/budgets.yaml; a value overrides it.
   AI_DAILY_COST_CAP_USD: optionalPositiveNumber,
   AI_DAILY_TOKEN_CAP: z.preprocess(emptyToUndefined, z.coerce.number().int().positive().optional()),
@@ -348,7 +360,14 @@ function applyGuards(env: Readonly<Record<string, unknown>>, ctx: z.RefinementCt
     if (!isLoopbackUrl(text(env, 'APP_URL') ?? '')) {
       fail('GMAIL_MOCK_ENABLED', 'must not be true unless APP_URL is a loopback address');
     }
-    if (text(env, 'GMAIL_SERVICE_ACCOUNT_JSON_PATH') || text(env, 'GMAIL_IMPERSONATE_USER')) {
+    if (
+      text(env, 'GMAIL_SERVICE_ACCOUNT_JSON_PATH') ||
+      text(env, 'GMAIL_IMPERSONATE_USER') ||
+      text(env, 'GMAIL_OAUTH_CLIENT_ID') ||
+      text(env, 'GMAIL_OAUTH_CLIENT_SECRET') ||
+      text(env, 'GMAIL_OAUTH_REFRESH_TOKEN') ||
+      text(env, 'GMAIL_OAUTH_MAILBOX')
+    ) {
       fail(
         'GMAIL_MOCK_ENABLED',
         'must not be true while Gmail credentials are set (the fake exists only in mock mode)',

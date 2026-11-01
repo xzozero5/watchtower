@@ -135,7 +135,10 @@ export async function mockBackend(page: Page, options: BackendOptions = {}) {
       : undefined;
 
     const reject = /^\/v1\/tickets\/([^/]+)\/ai\/drafts\/([^/]+)\/reject$/.exec(url.pathname);
-    if (method === 'POST' && reject) return fulfill(route, 204);
+    if (method === 'POST' && reject) return fulfill(route, 200, { draftId: reject[2] });
+    if (method === 'POST' && /^\/v1\/tickets\/[^/]+\/ai\/requests$/.test(url.pathname)) {
+      return fulfill(route, 202, { accepted: true });
+    }
 
     if (key === 'GET /v1/auth/config')
       return fulfill(route, 200, options.authConfig ?? LIVE_CONFIG);

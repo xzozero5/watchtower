@@ -23,6 +23,7 @@ import {
 import { recordAuditInTx } from '../audit.js';
 import { findOrCreateContactByEmailIn } from '../contacts.js';
 import { badRequest, conflict } from '../errors.js';
+import { notifyTicketAssigned, notifyTicketP1 } from '../notifications.js';
 import { enqueueJob } from '../outbox.js';
 import { resolveIntent } from '../intents.js';
 import type { MessageRow, TicketRow } from '../rows.js';
@@ -260,5 +261,9 @@ export async function createTicket(
 
   fx.emit(ticketEvent(ctx, 'ticket.created', ticket, []));
   fx.emit(messageEvent(ctx, ticket, message));
+  // In-app alerts (T-105), in the same transaction: a P1 tells the queue and the leads; a ticket
+  // handed to someone tells that person.
+  if (ticket.priority === 'P1') await notifyTicketP1(tx, ctx, fx, ticket);
+  await notifyTicketAssigned(tx, ctx, fx, ticket);
   return fx.result({ ticket, message, duplicate: false });
 }

@@ -8,6 +8,7 @@ import { channelTh } from './channel';
 import { commandsTh } from './commands';
 import { composerTh } from './composer';
 import { conversationTh } from './conversation';
+import { csatTh } from './csat';
 import { customerTh } from './customer';
 import { detailsTh } from './details';
 import { errorsTh } from './errors';
@@ -16,6 +17,8 @@ import { keymapTh } from './keymap';
 import { liveTh } from './live';
 import { loadingTh } from './loading';
 import { loginTh } from './login';
+import { notificationsTh } from './notifications';
+import { outboundTh } from './outbound';
 import { paletteTh } from './palette';
 import { panelTh } from './panel';
 import { panesTh } from './panes';
@@ -25,6 +28,7 @@ import { queueTh } from './queue';
 import { railTh } from './rail';
 import { rolesTh } from './roles';
 import { severityTh } from './severity';
+import { shiftTh } from './shift';
 import { slaTh } from './sla';
 import { statesTh } from './states';
 import { statusTh } from './status';
@@ -68,4 +72,8 @@ export const th: Messages = {
   home: homeTh,
   admin: adminTh,
   portal: portalTh,
+  notifications: notificationsTh,
+  csat: csatTh,
+  shift: shiftTh,
+  outbound: outboundTh,
 };

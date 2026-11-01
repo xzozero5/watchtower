@@ -1,0 +1,52 @@
+import type { notificationsEn } from '../en/notifications';
+import type { Widen } from '../types';
+
+/** Thai copy of the notification center and the P1 banner. Same keys as en/notifications.ts. */
+export const notificationsTh: Widen<typeof notificationsEn> = {
+  center: {
+    title: 'การแจ้งเตือน',
+    openLabel: 'การแจ้งเตือน',
+    openLabelUnread: 'การแจ้งเตือน ยังไม่ได้อ่าน {count} รายการ',
+    unreadBadge: 'ยังไม่ได้อ่าน {count}',
+    markAllRead: 'อ่านทั้งหมดแล้ว',
+    markRead: 'ทำเครื่องหมายว่าอ่านแล้ว',
+    unread: 'ยังไม่ได้อ่าน',
+    loading: 'กำลังโหลด…',
+    error: 'ยังดูการแจ้งเตือนไม่ได้',
+    retry: 'ลองอีกครั้ง',
+    empty: 'ไม่มีอะไรค้างอยู่แล้ว',
+    today: 'วันนี้',
+    earlier: 'ก่อนหน้านี้',
+    settings: 'ตั้งค่า',
+    settingsTitle: 'แจ้งฉันเมื่อ',
+    settingsHint: 'แจ้งในแอปเท่านั้น ตั๋ว P1 จะแสดงเสมอ',
+    alwaysOn: 'เปิดเสมอ',
+    saveError: 'บันทึกการตั้งค่าไม่สำเร็จ',
+  },
+  kind: {
+    ticketP1: 'ตั๋ว P1 {key}',
+    ticketAssigned: '{key} ถูกมอบหมายให้คุณ',
+    shiftHandoffOverdue: 'รายการส่งต่องาน {count} รายการยังไม่มีคนรับทราบตามเวลา',
+    shiftNoShow: 'มีคนยังไม่ลงเวลาเข้ากะ',
+  },
+  kindName: {
+    ticketP1: 'ตั๋ว P1',
+    ticketAssigned: 'ตั๋วที่มอบหมายให้ฉัน',
+    shiftHandoffOverdue: 'รายการส่งต่องานที่ยังไม่รับทราบ (หัวหน้ากะ)',
+    shiftNoShow: 'คนไม่มาเข้ากะ (หัวหน้ากะ)',
+  },
+  banner: {
+    label: 'แจ้งเตือนวิกฤต',
+    title: 'P1 วิกฤต',
+    notAcknowledged: 'ยังไม่รับทราบ',
+    open: 'เปิดตั๋ว',
+    acknowledge: 'รับทราบ',
+    moreCount: 'และ P1 อีก {count} รายการ',
+    showAll: 'ดูทั้งหมด',
+    hideAll: 'ย่อรายการ',
+    list: 'ตั๋ว P1 ที่ยังไม่รับทราบ',
+    openNamed: 'เปิด {key}',
+    acknowledgeNamed: 'รับทราบ {key}',
+    tabPrefix: '(P1)',
+  },
+};

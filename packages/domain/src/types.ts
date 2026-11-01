@@ -33,6 +33,18 @@ export interface DomainConfig {
    * `DELIVERY_RETRY_KEY_MAX_AGE_SECONDS`. Must stay below LINE's 24 hours.
    */
   readonly retryKeyMaxAgeSeconds?: number | undefined;
+  /**
+   * CSAT surveys (T-110). Unset: no survey link can be made, so the scheduler refuses to send (it
+   * never sends a link it cannot sign). The same signing key in api and worker.
+   */
+  readonly csat?: CsatConfig | undefined;
+}
+
+export interface CsatConfig {
+  /** HMAC key that signs survey links (a derived subkey, see `KEY_LABELS`). */
+  readonly signingKey: Buffer;
+  /** The public survey page, without the fragment (`<APP_URL>/csat`). */
+  readonly landingUrl: string;
 }
 
 /**
@@ -41,6 +53,11 @@ export interface DomainConfig {
  */
 export interface DomainContext {
   readonly actor: Actor;
+  /**
+   * The person who asked an AI actor to do this (T-108e): the user who resolved the ticket that an AI
+   * turned into a draft article. Recorded on what the AI writes, and that person may not approve it.
+   */
+  readonly onBehalfOf?: string | null | undefined;
   /** Where the audit rows say the action came from (api: the request; worker: nulls). */
   readonly auditMeta: { readonly ip: string | null; readonly requestId: string | null };
   readonly now: () => Date;

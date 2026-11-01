@@ -3,10 +3,12 @@ import { AUDIT_ACTIONS, type Note, type Reply } from '@watchtower/shared';
 
 import { recordAuditInTx } from '../audit.js';
 import { findOrCreateContactByEmailIn } from '../contacts.js';
+import { isWithinReopenWindow } from '../csat/reopen.js';
 import { badRequest, notFound, ticketNotOpen } from '../errors.js';
 import { approveAiDraftSent, scheduleCustomerSend, usesDispatcher } from '../outbound/schedule.js';
 import { requireCustomerSend } from '../policy.js';
 import type { MessageRow, OutboundDeliveryRow, TicketRow } from '../rows.js';
+import { draftHasText, recordDraftEdited } from '../ai/drafts.js';
 import { Effects, type DbTransaction, type DomainContext, type DomainResult } from '../types.js';
 import { applyStatus } from './status.js';
 import {
@@ -18,8 +20,6 @@ import {
   ticketKeysOf,
   type Sender,
 } from './support.js';
-
-const DAY_MS = 24 * 60 * 60 * 1000;
 
 export interface ReplyInput {
   /** A ticket id or key (`OPS-12`). */
@@ -57,8 +57,21 @@ export async function replyToTicket(
   input: ReplyInput,
 ): Promise<DomainResult<MessageResult>> {
   const fx = new Effects();
-  const { reply: body, sender } = input;
+  const { sender } = input;
   let ticket = await lockTicketRow(tx, ctx, input.ref);
+  // "Edited" with the draft's own words is not an edit, it is an approval, and an approval goes through
+  // the gate (stage, intent) like any other; a person cannot get around it by naming the draft the other
+  // way (and a distance of 0 would pollute the acceptance metrics).
+  let body = input.reply;
+  if (
+    sender.kind === 'staff' &&
+    body.editedFromDraftId !== undefined &&
+    body.aiDraftId === undefined &&
+    (await draftHasText(tx, ticket.id, body.editedFromDraftId, body.body))
+  ) {
+    body = { ...body, aiDraftId: body.editedFromDraftId };
+    delete body.editedFromDraftId;
+  }
   const fromCustomer = sender.kind !== 'staff';
   if (sender.kind !== 'staff' && ticket.orgId !== sender.orgId) throw notFound('No such ticket');
   if (sender.kind === 'contact' && ticket.requesterContactId !== sender.contactId) {
@@ -78,8 +91,7 @@ export async function replyToTicket(
   if (
     fromCustomer &&
     ticket.status === 'resolved' &&
-    (ticket.resolvedAt === null ||
-      now.getTime() - ticket.resolvedAt.getTime() > windowDays * DAY_MS)
+    !isWithinReopenWindow(ticket.resolvedAt, now, windowDays)
   ) {
     throw ticketNotOpen(
       `This ticket was resolved more than ${String(windowDays)} days ago; open a new one`,
@@ -87,6 +99,14 @@ export async function replyToTicket(
   }
   if (fromCustomer && body.aiDraftId !== undefined) {
     throw badRequest('A client cannot send an AI draft');
+  }
+  if (fromCustomer && body.editedFromDraftId !== undefined) {
+    throw badRequest('A client cannot edit an AI draft');
+  }
+  if (body.aiDraftId !== undefined && body.editedFromDraftId !== undefined) {
+    throw badRequest(
+      'Send a draft as it is (aiDraftId) or as an edit (editedFromDraftId), not both',
+    );
   }
   if (!fromCustomer && ctx.actor.type === 'ai') {
     await requireCustomerSend(ctx, {
@@ -148,6 +168,16 @@ export async function replyToTicket(
   });
   fx.emit(messageEvent(ctx, ticket, message));
   if (firstResponse) fx.emit(ticketEvent(ctx, 'ticket.updated', ticket, ['sla']));
+
+  // The person started from an AI draft and sent their own text: keep the draft and the distance.
+  if (sender.kind === 'staff' && body.editedFromDraftId !== undefined) {
+    await recordDraftEdited(tx, ctx, fx, {
+      ticketId: ticket.id,
+      messageId: message.id,
+      bodyText: message.bodyText,
+      draftId: body.editedFromDraftId,
+    });
+  }
 
   // Customer-bound text goes through the policy gate and, on Gmail and LINE, waits in a delivery
   // that a person can undo (ADR-010). A refusal fails the whole request: nothing is saved.

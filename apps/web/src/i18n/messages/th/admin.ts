@@ -15,6 +15,7 @@ export const adminTh: Widen<typeof adminEn> = {
     ai: 'การควบคุม AI',
     audit: 'บันทึกการตรวจสอบ',
     integrations: 'การเชื่อมต่อ',
+    shifts: 'กะและตารางเวร',
   },
   common: {
     now: 'ตอนนี้',

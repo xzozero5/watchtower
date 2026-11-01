@@ -13,6 +13,7 @@ import { buildCommands } from '@/components/command-palette/commands';
 import { usePaletteShortcut } from '@/components/command-palette/use-palette-shortcut';
 import { KeyboardMap } from '@/components/keyboard-map';
 import { NavRail, type RailDestination } from '@/components/nav-rail';
+import { CriticalBanner } from '@/components/notifications/critical-banner';
 import { useT } from '@/i18n/provider';
 import { useAutonomy } from '@/lib/admin/queries';
 import { adminSectionsFor, HOME_PERMISSION } from '@/lib/admin/sections';
@@ -20,6 +21,7 @@ import { useSession } from '@/lib/auth/session';
 import { useShortcut, useShortcutSequence } from '@/lib/keyboard';
 import { saveLocale } from '@/lib/locale-cookie';
 import { setDensity, setSingleKeyShortcuts, setTheme } from '@/lib/preferences';
+import { shiftSectionsFor } from '@/lib/shifts/sections';
 import { useModifierShortcut } from '@/lib/use-modifier-shortcut';
 
 const subscribeNever = () => () => undefined;
@@ -79,6 +81,13 @@ export function ConsoleShell({ destination, skipTo, children }: ConsoleShellProp
     },
     [router, can],
   );
+  const goTo = useCallback(
+    (href: string) => {
+      router.push(href);
+    },
+    [router],
+  );
+  const shiftIds = new Set(shiftSectionsFor(can).map((section) => section.id));
   const showHome = can(HOME_PERMISSION);
   const showAdmin = adminSectionsFor(can).length > 0;
   // `g d`, `g a` and, away from the queue, `g q`. The queue workspace handles its own `g q`.
@@ -88,6 +97,27 @@ export function ConsoleShell({ destination, skipTo, children }: ConsoleShellProp
       ? {
           a: () => {
             goAdmin();
+          },
+        }
+      : {}),
+    ...(shiftIds.has('shift')
+      ? {
+          s: () => {
+            goTo('/shift');
+          },
+        }
+      : {}),
+    ...(shiftIds.has('brief')
+      ? {
+          b: () => {
+            goTo('/shift/brief');
+          },
+        }
+      : {}),
+    ...(shiftIds.has('handoff')
+      ? {
+          h: () => {
+            goTo('/shift/handoff');
           },
         }
       : {}),
@@ -128,13 +158,14 @@ export function ConsoleShell({ destination, skipTo, children }: ConsoleShellProp
           },
           goHome,
           goAdmin,
+          goTo,
           openSwitchDialog: (switchKey, on) => {
             setSwitchTarget({ switchKey, on });
           },
         },
         { can, ai: { killOn, capOn } },
       ),
-    [t, router, signOut, can, killOn, capOn, goHome, goAdmin, destination],
+    [t, router, signOut, can, killOn, capOn, goHome, goAdmin, goTo, destination],
   );
 
   return (
@@ -156,6 +187,7 @@ export function ConsoleShell({ destination, skipTo, children }: ConsoleShellProp
         isMac={isMac}
       />
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+        <CriticalBanner />
         <AiPausedBanner />
         {children}
       </div>

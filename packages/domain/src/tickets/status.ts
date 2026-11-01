@@ -1,6 +1,10 @@
 import { schema } from '@watchtower/db';
 import {
+  AI_JOBS,
+  AI_OUTBOX_JOB_OPTIONS,
   AUDIT_ACTIONS,
+  KB_AUTHOR_DELAY_MS,
+  QUEUE_NAMES,
   SLA_PAUSED_STATUSES,
   TICKET_EVENT_TYPES,
   type TicketStatus,
@@ -8,7 +12,9 @@ import {
 import { eq } from 'drizzle-orm';
 
 import { recordAuditInTx } from '../audit.js';
+import { scheduleSurvey, voidOpenSurveys } from '../csat/survey.js';
 import { invalidTransition, notFound } from '../errors.js';
+import { enqueueJob } from '../outbox.js';
 import type { TicketRow } from '../rows.js';
 import { resumeSla } from '../sla.js';
 import { Effects, type DbTransaction, type DomainContext, type DomainResult } from '../types.js';
@@ -128,12 +134,31 @@ export async function applyStatus(
     after: ticketSnapshot(after),
     metadata: { from, to, ...(options.automatic === true ? { automatic: true } : {}) },
   });
+  // R-10.1: resolving owes the customer a survey after a delay; reopening voids one that is still owed.
+  if (to === 'resolved') await scheduleSurvey(tx, ctx, after);
+  if (reopened) await voidOpenSurveys(tx, ctx, fx, after.id);
   // Closing is final: the tracking links of the ticket stop working in the same transaction (C-13).
   if (to === 'closed') await ctx.notifier.closeLinks(tx, after.id);
   // Tell the customer of a portal ticket, in the same transaction (ADR-006). Not for a change the
   // customer caused, nor when the caller (a reply that sets the status) sends its own email.
   if (options.automatic !== true && options.silent !== true) {
     await ctx.notifier.statusChange(tx, after, ticketKeysOf(ctx).format(after.number), from, to);
+  }
+  if (to === 'resolved') {
+    // AC-4: a ticket resolved without a citation becomes a draft article for review (T-108e). The job
+    // is in the outbox with the ticket, waits a little (a quick reopen cancels it: the job checks the
+    // status), and names the person who resolved it, who may not approve what the AI writes.
+    await enqueueJob(tx, ctx.config, {
+      queue: QUEUE_NAMES.ai,
+      name: AI_JOBS.kbAuthor,
+      jobId: `ai-kb-author-${after.id}-${String(after.reopenCount)}`,
+      payload: {
+        ticketId: after.id,
+        requestedBy: ctx.actor.type === 'user' ? ctx.actor.id : null,
+      },
+      notBefore: new Date(now.getTime() + KB_AUTHOR_DELAY_MS),
+      options: AI_OUTBOX_JOB_OPTIONS,
+    });
   }
   fx.emit(ticketEvent(ctx, 'ticket.updated', after, changed));
   return after;

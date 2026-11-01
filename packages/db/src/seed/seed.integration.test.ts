@@ -284,9 +284,13 @@ describe('the first run', () => {
   });
 
   it('dates nothing in the future and nothing in a default partition', async () => {
-    expect(await count(owner(), 'ticket', 'created_at > now() OR updated_at > now()')).toBe(0);
-    expect(await count(owner(), 'ticket_event', 'created_at > now()')).toBe(0);
-    expect(await count(owner(), 'audit_log', 'created_at > now()')).toBe(0);
+    // Seeds stamp with this process' clock; a moment of skew from the database is not "the future".
+    const future = "now() + interval '5 seconds'";
+    expect(await count(owner(), 'ticket', `created_at > ${future} OR updated_at > ${future}`)).toBe(
+      0,
+    );
+    expect(await count(owner(), 'ticket_event', `created_at > ${future}`)).toBe(0);
+    expect(await count(owner(), 'audit_log', `created_at > ${future}`)).toBe(0);
     expect(await count(owner(), 'ticket_event_default')).toBe(0);
     expect(await count(owner(), 'audit_log_default')).toBe(0);
   });

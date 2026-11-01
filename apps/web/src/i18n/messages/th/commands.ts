@@ -5,6 +5,7 @@ export const commandsTh: Widen<typeof commandsEn> = {
   focusSearch: 'ค้นหาในคิวงาน',
   goHome: 'ไปที่หน้าหลัก',
   goAdmin: 'ไปที่ผู้ดูแลระบบ › {section}',
+  goShift: 'ไปที่กะงาน › {section}',
   aiStop: 'AI: หยุด AI ทั้งหมด…',
   aiResume: 'AI: ให้ AI ทำงานต่อ…',
   aiLimit: 'AI: จำกัดทุก intent ไม่เกินขั้น 2…',
