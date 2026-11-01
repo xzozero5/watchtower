@@ -3,7 +3,7 @@ import { index, integer, pgTable, text, timestamp, uniqueIndex, uuid } from 'dri
 import { users } from './auth.js';
 
 /**
- * Mirrors migrations/0010_integration_credential.sql (the SQL file is the source of truth; keep both
+ * Mirrors migrations/0011_integration_credential.sql (the SQL file is the source of truth; keep both
  * in step by hand and let the integration tests catch drift).
  */
 

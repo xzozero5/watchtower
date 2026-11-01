@@ -56,12 +56,12 @@ function store(
   return createCredentialStore({ database: app, kms, env, ...extra });
 }
 
-describe('0010_integration_credential', () => {
+describe('0011_integration_credential', () => {
   it('creates the table, drops the unused column, and goes back and forth', async () => {
-    const later = await migrationsAfter('0010_integration_credential');
+    const later = await migrationsAfter('0011_integration_credential');
     expect(await migrateDown(owner(), { steps: 1 + later.length })).toEqual([
       ...later.toReversed(),
-      '0010_integration_credential',
+      '0011_integration_credential',
     ]);
     const gone = await owner().query(`SELECT to_regclass('public.integration_credential') AS t`);
     expect(gone.rows[0]).toEqual({ t: null });
@@ -70,7 +70,7 @@ describe('0010_integration_credential', () => {
     );
     expect(column.rowCount).toBe(1);
 
-    expect(await migrateUp(owner())).toEqual(['0010_integration_credential', ...later]);
+    expect(await migrateUp(owner())).toEqual(['0011_integration_credential', ...later]);
     const back = await owner().query(
       `SELECT 1 FROM information_schema.columns WHERE table_name = 'channel_account' AND column_name = 'config_encrypted'`,
     );
@@ -78,7 +78,7 @@ describe('0010_integration_credential', () => {
   });
 
   it('refuses to drop channel_account.config_encrypted while a row holds data', async () => {
-    const later = await migrationsAfter('0010_integration_credential');
+    const later = await migrationsAfter('0011_integration_credential');
     await migrateDown(owner(), { steps: 1 + later.length });
     await owner().query(
       `INSERT INTO channel_account (type, name, config_encrypted) VALUES ('line', 'has data', '\\x01')`,

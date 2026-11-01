@@ -229,7 +229,7 @@ describe('purgeExpired', () => {
   });
 });
 
-describe('0011_expiry_indexes', () => {
+describe('0012_expiry_indexes', () => {
   const NAMES = [
     'sessions_expires_idx',
     'sessions_revoked_idx',
@@ -252,13 +252,13 @@ describe('0011_expiry_indexes', () => {
     // portal_access_token already had its expiry index since 0004.
     expect(await count('pg_indexes', `indexname = 'portal_access_token_expiry_idx'`)).toBe(1);
 
-    const later = await migrationsAfter('0011_expiry_indexes');
+    const later = await migrationsAfter('0012_expiry_indexes');
     expect(await migrateDown(owner(), { steps: 1 + later.length })).toEqual([
       ...later.toReversed(),
-      '0011_expiry_indexes',
+      '0012_expiry_indexes',
     ]);
     expect(await present()).toEqual([]);
-    expect(await migrateUp(owner())).toEqual(['0011_expiry_indexes', ...later]);
+    expect(await migrateUp(owner())).toEqual(['0012_expiry_indexes', ...later]);
     expect(await present()).toEqual([...NAMES].sort());
   });
 

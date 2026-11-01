@@ -8,7 +8,7 @@
 --   for ciphertext with no key version would invite someone to use it. The migration refuses to run
 --   if any row holds data there, rather than lose it silently.
 -- The application role gets SELECT, INSERT, UPDATE and DELETE from the default privileges of 0001.
--- Reversible: see 0010_integration_credential.down.sql.
+-- Reversible: see 0011_integration_credential.down.sql.
 
 CREATE TABLE integration_credential (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),

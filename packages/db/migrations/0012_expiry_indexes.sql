@@ -4,7 +4,7 @@
 --   The partial indexes on revoked_at / consumed_at cover the second half of each OR condition and
 --   only contain the rows that have the column set.
 -- No GRANT: the application role already holds DELETE on all of these tables (default privileges of
--- 0001), which the integration tests check. Reversible: see 0011_expiry_indexes.down.sql.
+-- 0001), which the integration tests check. Reversible: see 0012_expiry_indexes.down.sql.
 
 CREATE INDEX sessions_expires_idx ON sessions (expires_at);
 CREATE INDEX sessions_revoked_idx ON sessions (revoked_at) WHERE revoked_at IS NOT NULL;
