@@ -227,7 +227,7 @@ describe('LINE webhook (T-103b)', () => {
     expect((await postWebhook(tooMany)).status).toBe(400);
   });
 
-  it('throttles an address that keeps failing the signature, but never valid traffic', async () => {
+  it('refuses an address that keeps failing the signature before any work, but never valid traffic', async () => {
     const ip = freshIp();
     const raw = JSON.stringify({ events: [] });
     const statuses: number[] = [];
@@ -236,8 +236,14 @@ describe('LINE webhook (T-103b)', () => {
     }
     expect(statuses.slice(0, 30).every((status) => status === 401)).toBe(true);
     expect(statuses.at(-1)).toBe(429);
-    // The same address with a good signature still gets through: only failures count.
-    expect((await postWebhook(raw, { ip })).status).toBe(200);
+    // Once blocked, the address is refused before anything else happens: not even an unknown
+    // account gets the 401 (that would mean a database lookup), and nothing is written.
+    const before = await counts();
+    expect((await postWebhook(raw, { ip })).status).toBe(429);
+    expect((await postWebhook(raw, { ip, accountId: randomUUID() })).status).toBe(429);
+    expect(await counts()).toEqual(before);
+    // Only failures count, so another address, and LINE itself, is never throttled.
+    expect((await postWebhook(raw, { ip: freshIp() })).status).toBe(200);
   });
 
   it('never logs the secret, a signature or a message body', async () => {
@@ -368,15 +374,20 @@ describe('LINE Login with a fake IdP (T-103d)', () => {
     const contact = await pool().query<{
       line_user_id: string;
       verified_at: Date | null;
+      line_verified_at: Date | null;
+      line_linked_via: string;
       org_id: string;
       emails: string[];
-    }>(`SELECT line_user_id, verified_at, org_id, emails FROM contact WHERE line_user_id = $1`, [
-      userId,
-    ]);
+    }>(
+      `SELECT line_user_id, verified_at, line_verified_at, line_linked_via, org_id, emails FROM contact WHERE line_user_id = $1`,
+      [userId],
+    );
     expect(contact.rows).toHaveLength(1);
     expect(contact.rows[0]).toMatchObject({ org_id: orgId });
     expect(contact.rows[0]?.emails).toEqual([persona.email.toLowerCase()]);
-    expect(contact.rows[0]?.verified_at).not.toBeNull();
+    // LINE Login from the portal session verifies the LINE identity, not the contact's own verification.
+    expect(contact.rows[0]).toMatchObject({ line_linked_via: 'line_login', verified_at: null });
+    expect(contact.rows[0]?.line_verified_at).not.toBeNull();
     const audit = await pool().query<{ metadata: unknown }>(
       `SELECT metadata FROM audit_log WHERE action = $1 AND actor_id = $2`,
       [AUDIT_ACTIONS.lineLinked, persona.userId],

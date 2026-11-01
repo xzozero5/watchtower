@@ -5,7 +5,7 @@ import type { Domain } from '@watchtower/domain';
 import { INBOUND_QUEUES, INGEST_JOBS, INGEST_OUTBOX_JOB_OPTIONS } from '@watchtower/shared';
 import { and, eq } from 'drizzle-orm';
 
-import { badRequest, unauthenticated } from '../auth/http-errors.js';
+import { RateLimitedError, badRequest, unauthenticated } from '../auth/http-errors.js';
 import { RateLimiter } from '../auth/rate-limiter.js';
 import { CREDENTIAL_STORE } from '../credentials/credentials.service.js';
 import { DATABASE } from '../database/database.module.js';
@@ -66,6 +66,14 @@ export class LineWebhookService {
     readonly signature: string | undefined;
     readonly ip: string;
   }): Promise<WebhookResult> {
+    // First, before any lookup, credential read or HMAC: an address that keeps failing the signature
+    // costs a Redis read and nothing else. Only failures are counted (below), so LINE is never throttled.
+    const standing = await this.limiter.blocked(
+      'line-bad-signature',
+      input.ip,
+      BAD_SIGNATURE_LIMIT,
+    );
+    if (standing.blocked) throw new RateLimitedError(standing.retryAfterSeconds);
     const [account] = await this.database.db
       .select({ id: schema.channelAccount.id })
       .from(schema.channelAccount)
