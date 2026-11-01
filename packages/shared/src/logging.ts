@@ -29,6 +29,8 @@ export const LOG_REDACT_PATHS: readonly string[] = [
   '*.channelAccessToken',
   '*.botToken',
   '*.serviceAccountJson',
+  '*.oauthClientSecret',
+  '*.oauthRefreshToken',
   '*.anthropicApiKey',
   '*.vapidPrivate',
   '*.webhookUrl',
