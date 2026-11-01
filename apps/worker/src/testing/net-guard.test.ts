@@ -41,7 +41,6 @@ describe('worker tests without network access', () => {
       host: 'smtp.example.com',
       port: 587,
       from: 'Watchtower <no-reply@example.com>',
-      requireTls: false,
     });
     try {
       await expect(
