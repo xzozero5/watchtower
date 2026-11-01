@@ -1,6 +1,7 @@
 import { ChannelError, gmail, line } from '@watchtower/channels';
 import { schema, type Database } from '@watchtower/db';
 import {
+  authorityNow,
   decideFailure,
   countRecentFailures,
   findReplyToken,
@@ -75,6 +76,8 @@ const SYSTEM_ACTOR = { type: 'system', id: null } as const;
 const FAILURE_ALERT_WINDOW_MS = 15 * 60 * 1000;
 const FAILURE_ALERT_COUNT = 3;
 const RECORD_RETRIES = 3;
+/** A trigger this close ahead of its delivery is held until it is due; further ahead it is dropped. */
+const EARLY_TOLERANCE_MS = 10_000;
 
 /** The row is no longer ours; thrown inside a transaction to roll the transaction back. */
 class ClaimLost extends Error {
@@ -306,8 +309,13 @@ export function createOutboundDispatcher(deps: DispatcherDeps) {
     const recipient = parent?.fromAddress ?? requester?.emails[0] ?? null;
     if (recipient === null) return failNow(delivery, 'no_recipient');
     const threadId = context.gmailThreadId ?? undefined;
+    // The route is written once (T-122f F-3): a retry keeps the label of the attempt that set it.
     const route: DeliveryRoute =
-      parent !== null && threadId !== undefined ? 'gmail_thread' : 'gmail_new';
+      delivery.route === 'gmail_thread' || delivery.route === 'gmail_new'
+        ? delivery.route
+        : parent !== null && threadId !== undefined
+          ? 'gmail_thread'
+          : 'gmail_new';
     const messageId = gmail.makeMessageId(delivery.id, deps.appHost);
     const input: gmail.GmailSendInput = {
       from: sender.from,
@@ -433,7 +441,7 @@ export function createOutboundDispatcher(deps: DispatcherDeps) {
       delivery.route === 'line_push' &&
       retryKeyExpired(
         delivery.createdAt,
-        newContext().now(),
+        await authorityNow(database.db, newContext()),
         domain.config.retryKeyMaxAgeSeconds ?? DELIVERY_RETRY_KEY_MAX_AGE_SECONDS,
       )
     ) {
@@ -509,8 +517,15 @@ export function createOutboundDispatcher(deps: DispatcherDeps) {
         })
         .from(schema.outboundDelivery)
         .where(eq(schema.outboundDelivery.id, deliveryId));
-      if (row?.state === 'scheduled' && row.nextAttemptAt > newContext().now()) {
-        return { status: 'early', notBefore: row.nextAttemptAt };
+      if (row?.state === 'scheduled') {
+        // Only a trigger that is a moment ahead of the delivery's time is parked until then. A trigger
+        // that is far ahead (a stale one for a retry minutes away, a duplicate) is dropped: the
+        // delivery has its own trigger at its own time, and the sweeper covers a lost one (T-122f P3).
+        const remainingMs =
+          row.nextAttemptAt.getTime() - (await authorityNow(database.db, newContext())).getTime();
+        if (remainingMs > 0 && remainingMs <= EARLY_TOLERANCE_MS) {
+          return { status: 'early', notBefore: row.nextAttemptAt };
+        }
       }
       return { status: 'skipped' };
     }
@@ -521,12 +536,17 @@ export function createOutboundDispatcher(deps: DispatcherDeps) {
     } catch (error) {
       // The gate could not answer (fail closed): nothing is sent; try again later.
       logger.warn({ err: error, deliveryId }, 'policy gate unavailable; the delivery will retry');
+      const decision = decideFailure(
+        { kind: 'gate_unavailable', retryable: true, outcomeUnknown: false },
+        { route: claimed.route, attempts: claimed.attempts },
+      );
+      // T-122f F-2: nothing was called in this attempt, but a push from an earlier one may have reached
+      // the customer. Giving up now must say so (as `failNow` does), not "nothing was sent".
       return conclude(
         claimed,
-        decideFailure(
-          { kind: 'gate_unavailable', retryable: true, outcomeUnknown: false },
-          { route: null, attempts: claimed.attempts },
-        ),
+        decision.action === 'fail' && claimed.route === 'line_push'
+          ? { ...decision, outcomeUnknown: true }
+          : decision,
       );
     }
     if (!vetting.ok) {

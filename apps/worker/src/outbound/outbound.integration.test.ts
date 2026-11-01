@@ -9,7 +9,7 @@ import {
   type Domain,
   type NormalisedInboundMessage,
 } from '@watchtower/domain';
-import { AUDIT_ACTIONS, type RealtimeEvent } from '@watchtower/shared';
+import { AUDIT_ACTIONS, DELIVERY_MAX_ATTEMPTS, type RealtimeEvent } from '@watchtower/shared';
 import { disableNetConnect } from '@watchtower/shared/testing';
 import { and, eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -401,7 +401,9 @@ describe('Gmail', () => {
     expect(waiting.state).toBe('scheduled');
     expect(waiting.nextAttemptAt).toEqual(at(36));
     expect(waiting.outcomeUnknown).toBe(false);
-    expect(await dispatcher.dispatch(delivery.id)).toMatchObject({ status: 'early' });
+    // A trigger far ahead of a retry (30 s) is a stale or repeated one: dropped, not parked until then.
+    // The retry has its own trigger at its own time (T-122f).
+    expect(await dispatcher.dispatch(delivery.id)).toMatchObject({ status: 'skipped' });
     clock.now = at(37);
     expect(await dispatcher.dispatch(delivery.id)).toEqual({
       status: 'sent',
@@ -929,5 +931,168 @@ describe('a pinned push that cannot be repeated may already have reached the cus
       errorCode: 'channel_not_connected',
       outcomeUnknown: false,
     });
+  });
+});
+
+describe('T-122f: a pinned push that cannot be undone, and a gate that fails on the last try', () => {
+  /** A LINE push whose first attempt timed out: scheduled again, pinned to line_push. */
+  async function pinnedPush(text: string) {
+    const { ticketId } = await lineTicket({ token: null });
+    const { staff, delivery } = await staffReply(ticketId, text);
+    clock.now = at(6);
+    fakeLine.failNext('message.push', timeout('line', 'message.push'));
+    expect((await dispatcher.dispatch(delivery.id)).status).toBe('retry');
+    expect((await deliveryRow(delivery.id)).route).toBe('line_push');
+    return { ticketId, staff, delivery };
+  }
+
+  it('F-1: the undo is refused once a push has been attempted, and the push still goes out under its key', async () => {
+    const { ticketId, staff, delivery } = await pinnedPush('Cannot be undone in doubt');
+    clock.now = at(7);
+    await expect(
+      database.db.transaction((tx) =>
+        domain.outbound.cancel(tx, domain.context({ actor: staff.actor }), {
+          ref: ticketId,
+          deliveryId: delivery.id,
+          canCancelAny: false,
+        }),
+      ),
+    ).rejects.toMatchObject({ code: 'conflict' });
+    expect((await deliveryRow(delivery.id)).state).toBe('scheduled');
+
+    clock.now = at(20);
+    expect(await dispatcher.dispatch(delivery.id)).toEqual({ status: 'sent', route: 'line_push' });
+    expect(fakeLine.pushes).toHaveLength(1);
+    expect(fakeLine.pushes[0]?.retryKey).toBe(delivery.id);
+  });
+
+  it('F-1: a gate refusal on the retry of a push ends failed with the unknown outcome, not cancelled', async () => {
+    const intent = await addIntent(2);
+    const { ticketId } = await lineTicket({ token: null });
+    await owner()
+      .update(schema.ticket)
+      .set({ intentId: intent })
+      .where(eq(schema.ticket.id, ticketId));
+    // A person's reply passes the gate whatever the stage, so use an AI draft sent by a person.
+    const [draft] = await owner()
+      .insert(schema.aiDraft)
+      .values({ ticketId, bodyText: 'Draft for a push' })
+      .returning();
+    const { delivery } = await staffReply(ticketId, 'Draft for a push', draft?.id);
+    clock.now = at(6);
+    fakeLine.failNext('message.push', timeout('line', 'message.push'));
+    expect((await dispatcher.dispatch(delivery.id)).status).toBe('retry');
+    // During the wait the intent is dropped to stage 0: the AI may no longer draft for customers.
+    await owner()
+      .update(schema.intent)
+      .set({ autonomyStage: 0 })
+      .where(eq(schema.intent.id, intent));
+    clock.now = at(30);
+    expect(await dispatcher.dispatch(delivery.id)).toMatchObject({ status: 'denied' });
+    expect(await deliveryRow(delivery.id)).toMatchObject({
+      state: 'failed',
+      errorCode: 'policy_denied',
+      outcomeUnknown: true,
+    });
+    expect(fakeLine.pushes).toHaveLength(0);
+  });
+
+  it('F-2: a gate that cannot answer on the last attempt closes a pinned push as unknown', async () => {
+    const { delivery } = await pinnedPush('Gate down at the end');
+    const gateDown = createDomain({
+      ticketKeyPrefix: 'OPS',
+      sealKey: randomBytes(32),
+      policyGate: {
+        check: () => Promise.reject(new Error('gate down')),
+        checkAiAction: () => Promise.reject(new Error('gate down')),
+      },
+      now: () => clock.now,
+    });
+    const blind = buildDispatcher(channels, gateDown);
+    // Attempts 2 to 4 the gate is down: each is a retry, still pinned to the push.
+    for (let attempt = 2; attempt < DELIVERY_MAX_ATTEMPTS; attempt += 1) {
+      clock.now = at(1000 * attempt);
+      expect((await blind.dispatch(delivery.id)).status).toBe('retry');
+    }
+    expect(await deliveryRow(delivery.id)).toMatchObject({
+      state: 'scheduled',
+      route: 'line_push',
+    });
+    clock.now = at(1000 * DELIVERY_MAX_ATTEMPTS);
+    expect(await blind.dispatch(delivery.id)).toEqual({
+      status: 'failed',
+      errorCode: 'channel_gate_unavailable',
+      outcomeUnknown: true,
+    });
+    expect(await deliveryRow(delivery.id)).toMatchObject({
+      state: 'failed',
+      outcomeUnknown: true,
+    });
+    expect(fakeLine.pushes).toHaveLength(0);
+  });
+
+  it('F-2: a gate that cannot answer on a first attempt is a certain non-delivery when it gives up', async () => {
+    const { ticketId } = await gmailTicket();
+    const { delivery } = await staffReply(ticketId, 'Gate never up');
+    const gateDown = createDomain({
+      ticketKeyPrefix: 'OPS',
+      sealKey: randomBytes(32),
+      policyGate: {
+        check: () => Promise.reject(new Error('gate down')),
+        checkAiAction: () => Promise.reject(new Error('gate down')),
+      },
+      now: () => clock.now,
+    });
+    const blind = buildDispatcher(channels, gateDown);
+    for (let attempt = 1; attempt < DELIVERY_MAX_ATTEMPTS; attempt += 1) {
+      clock.now = at(1000 * attempt);
+      expect((await blind.dispatch(delivery.id)).status).toBe('retry');
+    }
+    clock.now = at(1000 * DELIVERY_MAX_ATTEMPTS);
+    expect(await blind.dispatch(delivery.id)).toEqual({
+      status: 'failed',
+      errorCode: 'channel_gate_unavailable',
+      outcomeUnknown: false,
+    });
+    expect(fakeGmail.sent).toHaveLength(0);
+  });
+});
+
+describe('T-122f: the hold is the database clock, and a far-ahead trigger is dropped', () => {
+  it('a reply scheduled under the real clock is held by the dispatcher too, and can be undone inside the window', async () => {
+    const realDomain = createDomain({
+      ticketKeyPrefix: 'OPS',
+      sealKey: randomBytes(32),
+      portalUrl: 'https://desk.example.test/portal',
+      policyGate: createPolicyGate({ db: database.db }),
+    });
+    const realDispatcher = buildDispatcher(channels, realDomain);
+    const { ticketId } = await gmailTicket();
+    const staff = await addStaff();
+    const replied = await database.db.transaction((tx) =>
+      realDomain.tickets.reply(tx, realDomain.context({ actor: staff.actor }), {
+        ref: ticketId,
+        reply: { body: 'Held by the database clock' },
+        sender: { kind: 'staff', userId: staff.id },
+      }),
+    );
+    const delivery = replied.value.delivery;
+    if (delivery === null || delivery === undefined) throw new Error('no delivery');
+
+    // Right away: inside the 5 s window. The trigger is parked until then and nothing is sent.
+    const early = await realDispatcher.dispatch(delivery.id);
+    expect(early.status).toBe('early');
+    expect(fakeGmail.sent).toHaveLength(0);
+    // The window is still open, so the undo works.
+    const cancelled = await database.db.transaction((tx) =>
+      realDomain.outbound.cancel(tx, realDomain.context({ actor: staff.actor }), {
+        ref: ticketId,
+        deliveryId: delivery.id,
+        canCancelAny: false,
+      }),
+    );
+    expect(cancelled.value.state).toBe('cancelled');
+    expect(await realDispatcher.dispatch(delivery.id)).toEqual({ status: 'skipped' });
+    expect(fakeGmail.sent).toHaveLength(0);
   });
 });

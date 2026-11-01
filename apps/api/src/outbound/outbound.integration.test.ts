@@ -405,8 +405,12 @@ describe('sending an AI draft (N3, A-2)', () => {
     const orphan = await draftOn(bare, 'No intent here');
     const denied = await reply(agent, bare, 'No intent here', { aiDraftId: orphan });
     expect(denied.status).toBe(403);
-    // The same words as the person's own reply are fine.
-    expect((await reply(agent, bare, 'No intent here')).status).toBe(201);
+    // The same words typed as a plain reply are still the AI's text and are refused (T-122f N-1);
+    // the person's own words are fine.
+    const typedAgain = await reply(agent, bare, 'No intent here');
+    expect(typedAgain.status).toBe(403);
+    expect(JSON.stringify(typedAgain.body)).toContain('text of an AI draft');
+    expect((await reply(agent, bare, 'No intent here, as I would put it')).status).toBe(201);
   });
 });
 

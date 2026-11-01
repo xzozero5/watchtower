@@ -40,7 +40,8 @@ import { billingPeriod, lockQuota, moveQuota } from './quota.js';
 import { findReplyToken, sealReplyToken, spendReplyToken } from './reply-token.js';
 import { readUndoSendSeconds, setUndoSendSeconds } from './settings.js';
 import { contentHash } from './state.js';
-import { renderSystemTemplate } from './templates.js';
+import { plainPortalUrl, renderSystemTemplate } from './templates.js';
+import { insertMessage, recordTicketEvent } from '../tickets/support.js';
 import { approveAiDraftSent, scheduleCustomerSend, scheduleTemplateAck } from './schedule.js';
 import { cancelSend } from './cancel.js';
 
@@ -545,8 +546,12 @@ describe('AI drafts: the approval is bound to the exact text (A-2)', () => {
     const draft = await addDraft(ticket.id, 'Draft at stage zero');
     const error = await refusal(reply(ticket, staff, 'Draft at stage zero', draft.id));
     expect(error.details?.reason).toBe('stage_0_no_customer_draft');
-    // The same text written by the person is theirs and goes through.
-    const own = await reply(ticket, staff, 'Draft at stage zero');
+    // The same text typed again is still the AI's text, and as a "human" reply it would skip the
+    // gate (T-122f N-1): refused. Text the person changed is theirs and goes through.
+    expect((await refusal(reply(ticket, staff, 'Draft at stage zero'))).details?.reason).toBe(
+      'ai_draft_text_as_human',
+    );
+    const own = await reply(ticket, staff, 'Draft at stage zero, as I would put it');
     expect(own.value.delivery?.origin).toBe('human');
   });
 
@@ -1594,5 +1599,411 @@ describe('least privilege on the new tables', () => {
       .values({ ticketId: ticket.id, bodyText: 'Real text', contentHash: 'f'.repeat(64) })
       .returning();
     expect(row?.contentHash).toBe(contentHash('Real text'));
+  });
+});
+
+describe('T-122f: a push that came back for a retry may already have reached the customer (F-1)', () => {
+  /** A LINE push that was attempted and timed out, so it is `scheduled` again, pinned to line_push. */
+  async function requeuedPush() {
+    const ticket = await ticketOn('line');
+    const staff = await addStaff(env);
+    const { value } = await reply(ticket, staff, `Push ${randomUUID()}`);
+    const id = value.delivery?.id ?? '';
+    const claimed = await env.tx((tx) => claimDelivery(tx, ctxAt(SYSTEM, later(6)), id));
+    if (claimed === null) throw new Error('not claimed');
+    await env.tx((tx) => markDispatched(tx, ctxAt(SYSTEM, later(6)), claimed, 'line_push'));
+    const dispatched = await deliveryOf(id);
+    await env.tx((tx) =>
+      recordFailure(tx, ctxAt(SYSTEM, later(7)), dispatched, {
+        action: 'retry',
+        delaySeconds: 60,
+        errorCode: 'channel_timeout',
+      }),
+    );
+    expect(await deliveryOf(id)).toMatchObject({ state: 'scheduled', route: 'line_push' });
+    return { ticket, staff, id, message: value.message };
+  }
+  const undo = (s: { ticket: TicketRow; id: string; staff: { actor: Actor } }, now: Date) =>
+    env.tx((tx) =>
+      cancelSend(tx, ctxAt(s.staff.actor, now), {
+        ref: s.ticket.id,
+        deliveryId: s.id,
+        canCancelAny: false,
+      }),
+    );
+
+  it('refuses the undo: "cancelled" would say it did not go out', async () => {
+    const s = await requeuedPush();
+    const error = await refusal(undo(s, later(10)));
+    expect(error.code).toBe('conflict');
+    expect(await deliveryOf(s.id)).toMatchObject({ state: 'scheduled', cancelledAt: null });
+    expect((await messageOf(s.message.id)).deliveryStatus).toBe('scheduled');
+  });
+
+  it('the database refuses it too, whoever asks: a pinned push is never cancelled', async () => {
+    const s = await requeuedPush();
+    await expect(
+      env.database.pool.query(
+        `UPDATE outbound_delivery SET state = 'cancelled', cancelled_at = now() WHERE id = '${s.id}'`,
+      ),
+    ).rejects.toThrow(/cannot be cancelled/);
+    // A first attempt that never dispatched is still undoable in its window.
+    const fresh = await ticketOn('line');
+    const staff = await addStaff(env);
+    const { value } = await reply(fresh, staff, `Fresh ${randomUUID()}`);
+    expect(
+      (await undo({ ticket: fresh, id: value.delivery?.id ?? '', staff }, later(2))).value.state,
+    ).toBe('cancelled');
+  });
+
+  it('a policy refusal at the next claim ends it failed with the unknown outcome, not cancelled', async () => {
+    const s = await requeuedPush();
+    const claimed = await env.tx((tx) => claimDelivery(tx, ctxAt(SYSTEM, later(100)), s.id));
+    if (claimed === null) throw new Error('not claimed');
+    expect(claimed.route).toBe('line_push');
+    const denied = await env.tx((tx) =>
+      denyDelivery(tx, ctxAt(SYSTEM, later(100)), claimed, 'stage_0_no_customer_draft'),
+    );
+    expect(denied.value).toBe(true);
+    expect(await deliveryOf(s.id)).toMatchObject({
+      state: 'failed',
+      errorCode: 'policy_denied',
+      outcomeUnknown: true,
+      cancelledAt: null,
+    });
+    expect((await messageOf(s.message.id)).deliveryStatus).toBe('failed');
+    const audit = (await auditRows(env, AUDIT_ACTIONS.outboundPolicyDenied)).filter(
+      (row) => row.targetId === s.id,
+    );
+    expect(audit).toHaveLength(1);
+    expect((audit[0]?.metadata as { outcomeUnknown?: boolean }).outcomeUnknown).toBe(true);
+  });
+
+  it('the database refuses sending -> cancelled for a pinned push', async () => {
+    const s = await requeuedPush();
+    const claimed = await env.tx((tx) => claimDelivery(tx, ctxAt(SYSTEM, later(100)), s.id));
+    if (claimed === null) throw new Error('not claimed');
+    await expect(
+      env.database.pool.query(
+        `UPDATE outbound_delivery SET state = 'cancelled', cancelled_at = now() WHERE id = '${s.id}'`,
+      ),
+    ).rejects.toMatchObject({ code: '23000' });
+  });
+});
+
+describe('T-122f: the route is written once and dispatched_at is not cleared while sending (F-3)', () => {
+  async function dispatchedAs(channel: 'gmail' | 'line', route: 'gmail_thread' | 'line_reply') {
+    const ticket = await ticketOn(channel);
+    const staff = await addStaff(env);
+    const { value } = await reply(ticket, staff, `Route ${randomUUID()}`);
+    const claimed = await env.tx((tx) =>
+      claimDelivery(tx, ctxAt(SYSTEM, later(6)), value.delivery?.id ?? ''),
+    );
+    if (claimed === null) throw new Error('not claimed');
+    await env.tx((tx) => markDispatched(tx, ctxAt(SYSTEM, later(6)), claimed, route));
+    return claimed.id;
+  }
+  const refused = (statement: string) =>
+    expect(env.database.pool.query(statement)).rejects.toMatchObject({ code: '23000' });
+
+  it('refuses a different route once one was chosen', async () => {
+    const id = await dispatchedAs('gmail', 'gmail_thread');
+    await refused(`UPDATE outbound_delivery SET route = 'gmail_new' WHERE id = '${id}'`);
+    await refused(`UPDATE outbound_delivery SET route = NULL WHERE id = '${id}'`);
+    expect((await deliveryOf(id)).route).toBe('gmail_thread');
+  });
+
+  it('allows the one change that is real: a refused reply token goes out as a push, and a push stays one', async () => {
+    const id = await dispatchedAs('line', 'line_reply');
+    await env.database.pool.query(
+      `UPDATE outbound_delivery SET route = 'line_push' WHERE id = '${id}'`,
+    );
+    expect((await deliveryOf(id)).route).toBe('line_push');
+    await refused(`UPDATE outbound_delivery SET route = 'line_reply' WHERE id = '${id}'`);
+  });
+
+  it('refuses to clear dispatched_at while the delivery is sending', async () => {
+    const id = await dispatchedAs('gmail', 'gmail_thread');
+    expect((await deliveryOf(id)).dispatchedAt).not.toBeNull();
+    await refused(`UPDATE outbound_delivery SET dispatched_at = NULL WHERE id = '${id}'`);
+    expect((await deliveryOf(id)).dispatchedAt).not.toBeNull();
+  });
+});
+
+describe('T-122f: the link in an automatic message is exactly the stored one (F-4)', () => {
+  const PORTAL = 'https://portal.example.test/portal';
+  // A no-break space, built so that no invisible character sits in the source.
+  const NBSP = String.fromCharCode(0xa0);
+
+  /** Inserts a message with `body` and a template delivery for it as the application role. */
+  async function insertAck(body: string, inputs: Record<string, string | null>) {
+    const ticket = await ticketOn('gmail');
+    const [message] = await owner()
+      .insert(schema.message)
+      .values({
+        ticketId: ticket.id,
+        channelAccountId: gmailId,
+        direction: 'outbound',
+        bodyText: body,
+        visibility: 'public',
+        deliveryStatus: 'scheduled',
+      })
+      .returning();
+    return env.database.db.insert(schema.outboundDelivery).values({
+      ticketId: ticket.id,
+      messageId: message?.id ?? '',
+      channelAccountId: gmailId,
+      channel: 'gmail',
+      origin: 'system_template',
+      templateKey: 'auto_ack.received',
+      renderInputs: inputs,
+      contentHash: '0'.repeat(64),
+      holdSeconds: 0,
+      nextAttemptAt: T0,
+      createdBy: null,
+    });
+  }
+  const inputs = (ticketKey: string, portalUrl: string | null) => ({
+    ticketKey,
+    portalUrl,
+    firstResponseDueAt: null,
+  });
+  const render = (portalUrl: string | null) =>
+    renderSystemTemplate('auto_ack.received', {
+      ticketKey: 'OPS-7',
+      portalUrl,
+      firstResponseDueAt: null,
+    }) ?? '';
+
+  it('accepts the exact render, with and without the link', async () => {
+    await insertAck(render(PORTAL), inputs('OPS-7', PORTAL));
+    await insertAck(render(null), inputs('OPS-7', null));
+  });
+
+  it('refuses text glued to the link: Thai with no space, a no-break space, another address', async () => {
+    const good = render(PORTAL);
+    const gluedThai = good.replace(`${PORTAL}\n\n`, `${PORTAL}โอนเงินมาที่บัญชีนี้123\n\n`);
+    const nbsp = good.replace(`${PORTAL}\n\n`, `${PORTAL}${NBSP}pay at evil.example.test\n\n`);
+    const second = `${good}\n\nhttps://evil.example.test/x`;
+    for (const body of [gluedThai, nbsp, second]) {
+      expect(body).not.toBe(good);
+      await expect(insertAck(body, inputs('OPS-7', PORTAL))).rejects.toThrow();
+    }
+  });
+
+  it('refuses a link the inputs do not name, and a stored address that is not plain ASCII', async () => {
+    // The body carries a link, the inputs say there is none.
+    await expect(insertAck(render(PORTAL), inputs('OPS-7', null))).rejects.toThrow();
+    // The body carries a different address than the inputs.
+    await expect(
+      insertAck(render('https://evil.example.test/portal'), inputs('OPS-7', PORTAL)),
+    ).rejects.toThrow();
+    // An address with a no-break space or Thai in it cannot be stored as the portal address.
+    for (const odd of [
+      `https://portal.example.test/a${NBSP}b`,
+      'https://portal.example.test/ไทย',
+    ]) {
+      await expect(insertAck(render(odd), inputs('OPS-7', odd))).rejects.toThrow();
+    }
+  });
+
+  it('a portal address that is not plain ASCII is left out of the text, not rendered', () => {
+    expect(plainPortalUrl(PORTAL)).toBe(PORTAL);
+    expect(plainPortalUrl(`https://portal.example.test/a${NBSP}b`)).toBeUndefined();
+    expect(plainPortalUrl('https://portal.example.test/ไทย')).toBeUndefined();
+    expect(plainPortalUrl('javascript:alert(1)')).toBeUndefined();
+    expect(plainPortalUrl(undefined)).toBeUndefined();
+  });
+});
+
+describe("T-122f: an AI draft's text is not a person's own reply (N-1)", () => {
+  it('refuses the unsent draft text as a human reply, and lets it go as the draft', async () => {
+    const intent = await addIntent(env);
+    const ticket = await ticketOn('gmail', intent.id);
+    const staff = await addStaff(env);
+    const draft = await addDraft(ticket.id, `Draft ${randomUUID()}`);
+    expect((await refusal(reply(ticket, staff, draft.bodyText))).details?.reason).toBe(
+      'ai_draft_text_as_human',
+    );
+    const sent = await reply(ticket, staff, draft.bodyText, draft.id);
+    expect(sent.value.delivery?.origin).toBe('ai_approved');
+  });
+
+  it('the database refuses it too when the delivery is inserted directly', async () => {
+    const ticket = await ticketOn('gmail');
+    const staff = await addStaff(env);
+    const draft = await addDraft(ticket.id, `Laundered ${randomUUID()}`);
+    const [message] = await owner()
+      .insert(schema.message)
+      .values({
+        ticketId: ticket.id,
+        channelAccountId: gmailId,
+        direction: 'outbound',
+        bodyText: draft.bodyText,
+        senderUserId: staff.id,
+        visibility: 'public',
+        deliveryStatus: 'scheduled',
+      })
+      .returning();
+    const insert = () =>
+      env.database.db.insert(schema.outboundDelivery).values({
+        ticketId: ticket.id,
+        messageId: message?.id ?? '',
+        channelAccountId: gmailId,
+        channel: 'gmail',
+        origin: 'human',
+        contentHash: '0'.repeat(64),
+        holdSeconds: 0,
+        nextAttemptAt: T0,
+        createdBy: staff.id,
+      });
+    await expect(insert()).rejects.toThrow();
+    // A rejected draft is still text the AI wrote and nobody sent.
+    await owner()
+      .update(schema.aiDraft)
+      .set({ status: 'rejected' })
+      .where(eq(schema.aiDraft.id, draft.id));
+    await expect(insert()).rejects.toThrow();
+  });
+});
+
+describe('T-122f O-7: shared time windows come from the database clock, not from each process', () => {
+  const skewed = (actor: Actor, seconds: number): DomainContext =>
+    env.ctx(actor, {
+      now: () => new Date(Date.now() + seconds * 1000),
+      databaseClock: true,
+      policyGate: createPolicyGate({ db: env.database.db }),
+    });
+  const dbNow = async (): Promise<Date> => {
+    const result = await owner().execute<{ t: Date }>(sql`SELECT clock_timestamp() AS t`);
+    return new Date(result.rows[0]?.t ?? 0);
+  };
+
+  async function replyAt(staff: { actor: Actor; id: string }, ticket: TicketRow, clock: number) {
+    const { value } = await env.tx((tx) =>
+      env.domain.tickets.reply(tx, skewed(staff.actor, clock), {
+        ref: ticket.id,
+        reply: { body: `Clock ${randomUUID()}` },
+        sender: { kind: 'staff', userId: staff.id },
+      }),
+    );
+    if (value.delivery === null || value.delivery === undefined) throw new Error('no delivery');
+    return value.delivery;
+  }
+
+  it('an api clock an hour off still gives the whole hold; a worker clock an hour fast cannot end it', async () => {
+    const staff = await addStaff(env);
+    for (const apiSkew of [-3600, 3600]) {
+      const ticket = await ticketOn('gmail');
+      const before = await dbNow();
+      const delivery = await replyAt(staff, ticket, apiSkew);
+      const after = await dbNow();
+      // Stamped by the database: the hold (5 s) counted from its time, whatever the api's clock says.
+      expect(delivery.nextAttemptAt.getTime()).toBeGreaterThanOrEqual(
+        before.getTime() + 5_000 - 50,
+      );
+      expect(delivery.nextAttemptAt.getTime()).toBeLessThanOrEqual(after.getTime() + 5_000 + 50);
+      // A worker whose clock runs an hour fast is told no: the hold has not ended.
+      expect(await env.tx((tx) => claimDelivery(tx, skewed(SYSTEM, 3600), delivery.id))).toBeNull();
+      // And a worker an hour slow is not made to wait for its own clock once the hold has ended.
+      await owner().execute(
+        sql`UPDATE outbound_delivery SET next_attempt_at = clock_timestamp() - interval '1 second' WHERE id = ${delivery.id}`,
+      );
+      expect(
+        (await env.tx((tx) => claimDelivery(tx, skewed(SYSTEM, -3600), delivery.id)))?.state,
+      ).toBe('sending');
+    }
+  });
+
+  it('the undo is judged by the same clock: a cancel from a process with a fast clock still gets its window', async () => {
+    const staff = await addStaff(env);
+    const ticket = await ticketOn('gmail');
+    const delivery = await replyAt(staff, ticket, 0);
+    // The cancelling process believes it is an hour later: by its own clock the window is long over.
+    const result = await env.tx((tx) =>
+      cancelSend(tx, skewed(staff.actor, 3600), {
+        ref: ticket.id,
+        deliveryId: delivery.id,
+        canCancelAny: false,
+      }),
+    );
+    expect(result.value.state).toBe('cancelled');
+  });
+
+  it('a lease stamped by a slow clock is not failed by the sweeper of an accurate one', async () => {
+    const staff = await addStaff(env);
+    const ticket = await ticketOn('gmail');
+    const delivery = await replyAt(staff, ticket, 0);
+    await owner().execute(
+      sql`UPDATE outbound_delivery SET next_attempt_at = clock_timestamp() - interval '1 second' WHERE id = ${delivery.id}`,
+    );
+    // The claiming worker runs 5 minutes slow: by its clock the 120 s lease is already over.
+    const claimed = await env.tx((tx) => claimDelivery(tx, skewed(SYSTEM, -300), delivery.id));
+    if (claimed === null) throw new Error('not claimed');
+    await env.tx((tx) => markDispatched(tx, skewed(SYSTEM, -300), claimed, 'gmail_thread'));
+    const now = await dbNow();
+    const row = await deliveryOf(delivery.id);
+    expect(row.leaseUntil?.getTime() ?? 0).toBeGreaterThan(now.getTime() + 100_000);
+
+    const swept = await env.tx((tx) => sweepDeliveries(tx, skewed(SYSTEM, 0)));
+    expect(swept.unknownOutcome).toBe(0);
+    expect(await deliveryOf(delivery.id)).toMatchObject({
+      state: 'sending',
+      outcomeUnknown: false,
+    });
+  });
+
+  it('the sweeper trigger is held until the delivery is due, however the sweeper clock runs', async () => {
+    const staff = await addStaff(env);
+    const ticket = await ticketOn('gmail');
+    const delivery = await replyAt(staff, ticket, 0);
+    // A sweeper whose own clock is an hour fast (and which does not ask the database) thinks this
+    // delivery is long overdue: it writes a trigger, but not one that may fire before the hold ends.
+    const fastSweep = await env.tx((tx) =>
+      sweepDeliveries(tx, { ...skewed(SYSTEM, 3600), databaseClock: false }),
+    );
+    expect(fastSweep.retriggered).toContain(delivery.id);
+    const triggers = await owner()
+      .select()
+      .from(schema.outbox)
+      .where(eq(schema.outbox.queue, QUEUE_NAMES.outbound));
+    const trigger = triggers.find((row) => row.jobId.startsWith(`delivery-${delivery.id}-sweep-`));
+    expect(trigger?.nextAttemptAt).toEqual(delivery.nextAttemptAt);
+  });
+});
+
+describe('T-122f: an event recorded after a message in one transaction sorts after it', () => {
+  it('stamps events with statement time, like messages', async () => {
+    const ticket = await ticketOn('gmail');
+    await env.tx(async (tx) => {
+      await insertMessage(
+        tx,
+        {
+          ticketId: ticket.id,
+          channelAccountId: gmailId,
+          direction: 'inbound',
+          bodyText: 'Customer words',
+          visibility: 'public',
+          deliveryStatus: 'not_applicable',
+        },
+        { updatedAt: T0 },
+      );
+      await recordTicketEvent(tx, ticket.id, 'test.after_message', SYSTEM, 'internal', {});
+    });
+    const [event] = await owner()
+      .select()
+      .from(schema.ticketEvent)
+      .where(
+        and(
+          eq(schema.ticketEvent.ticketId, ticket.id),
+          eq(schema.ticketEvent.type, 'test.after_message'),
+        ),
+      );
+    const messages = await owner()
+      .select()
+      .from(schema.message)
+      .where(eq(schema.message.ticketId, ticket.id));
+    const last = messages.reduce((a, b) => (a.createdAt > b.createdAt ? a : b));
+    expect(event?.createdAt.getTime() ?? 0).toBeGreaterThanOrEqual(last.createdAt.getTime());
   });
 });
