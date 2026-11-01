@@ -190,8 +190,12 @@ describe('closing (PRD section 5.3)', () => {
   it('closes the alert and does NOT close the incident or touch its tickets', async () => {
     await ingestOk(make({ fingerprintN: 13 }));
     const row = await only(13);
-    // An incident id the alert was linked to (the incident table arrives with T-202a) and a ticket on it.
-    const incidentId = '5f2f8a8e-7a38-4a41-9d3b-1f0a6f1e9c11';
+    // An incident the alert was linked to (T-202a gave it a foreign key) and a ticket on it.
+    const [created] = await env.db.owner.db
+      .insert(schema.incident)
+      .values({ title: 'Outage', severity: 'SEV1' })
+      .returning({ id: schema.incident.id });
+    const incidentId = created?.id ?? '';
     await env.db.owner.db
       .update(schema.alert)
       .set({ incidentId })
@@ -219,6 +223,12 @@ describe('closing (PRD section 5.3)', () => {
       closedAt: null,
     });
     expect(ticketAfter?.updatedAt.getTime()).toBe(ticket.updatedAt.getTime());
+    // ... and the incident itself is still open: only people close incidents.
+    const [incident] = await env.db.owner.db
+      .select()
+      .from(schema.incident)
+      .where(eq(schema.incident.id, incidentId));
+    expect(incident).toMatchObject({ status: 'investigating', resolvedAt: null });
   });
 });
 

@@ -28,6 +28,15 @@ import {
 } from './csat/survey.js';
 import { mintCsatToken, verifyCsatToken } from './csat/token.js';
 import { ingestInbound } from './inbound/ingest.js';
+import { recordDeploy } from './incidents/deploy.js';
+import {
+  addIncidentNote,
+  createIncident,
+  linkIncidentAlert,
+  linkIncidentTicket,
+  unlinkIncidentTicket,
+  updateIncident,
+} from './incidents/core.js';
 import { resolveIntent } from './intents.js';
 import {
   createKbArticle,
@@ -96,6 +105,18 @@ export {
   type SnoozeOutcome,
 } from './alerts/snooze.js';
 export { correlateOpenedAlert } from './alerts/correlate.js';
+export {
+  addIncidentNote,
+  createIncident,
+  linkIncidentAlert,
+  linkIncidentTicket,
+  unlinkIncidentTicket,
+  updateIncident,
+  type IncidentRef,
+  type UpdateIncidentInput,
+} from './incidents/core.js';
+export { recordDeploy } from './incidents/deploy.js';
+export { addTimelineEntry } from './incidents/timeline.js';
 export {
   matchService,
   ruleMatches,
@@ -554,6 +575,16 @@ export interface Domain {
     readonly recordHeartbeat: typeof recordHeartbeat;
     readonly sweepHeartbeats: typeof sweepHeartbeats;
   };
+  /** Incidents (R-3.12) and the deploy feed (R-5.4): written by people, never opened by the system. */
+  readonly incidents: {
+    readonly create: typeof createIncident;
+    readonly update: typeof updateIncident;
+    readonly linkTicket: typeof linkIncidentTicket;
+    readonly unlinkTicket: typeof unlinkIncidentTicket;
+    readonly linkAlert: typeof linkIncidentAlert;
+    readonly note: typeof addIncidentNote;
+    readonly recordDeploy: typeof recordDeploy;
+  };
   /** Received messages (ADR-009): used by the worker's `ingest` consumer. */
   readonly inbound: { readonly ingest: typeof ingestInbound };
   /** Who is behind a LINE user id: link codes and LINE Login (T-103d, R-2.11). */
@@ -668,6 +699,15 @@ export function createDomain(options: DomainOptions): Domain {
       endExpiredSnoozes,
       recordHeartbeat,
       sweepHeartbeats,
+    },
+    incidents: {
+      create: createIncident,
+      update: updateIncident,
+      linkTicket: linkIncidentTicket,
+      unlinkTicket: unlinkIncidentTicket,
+      linkAlert: linkIncidentAlert,
+      note: addIncidentNote,
+      recordDeploy,
     },
     inbound: { ingest: ingestInbound },
     identity: { issueLineLinkCode, redeemLineLinkCode, linkLineUser },
