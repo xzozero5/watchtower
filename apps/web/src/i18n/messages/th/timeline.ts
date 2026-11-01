@@ -31,6 +31,8 @@ export const timelineTh: Widen<typeof timelineEn> = {
     slaPaused: 'หยุดนาฬิกา SLA',
     slaResumed: 'เดินนาฬิกา SLA ต่อ',
     slaRecalculated: 'คำนวณเวลา SLA ใหม่',
+    sendCancelled: 'ยกเลิกคำตอบก่อนส่ง',
+    deliveryFailed: 'ส่งคำตอบไม่สำเร็จ',
   },
   copy: 'คัดลอกข้อความ',
   copied: 'คัดลอกข้อความแล้ว',

@@ -25,6 +25,7 @@ import { liveEn } from './live';
 import { loadingEn } from './loading';
 import { loginEn } from './login';
 import { notificationsEn } from './notifications';
+import { outboundEn } from './outbound';
 import { paletteEn } from './palette';
 import { panelEn } from './panel';
 import { panesEn } from './panes';
@@ -80,6 +81,7 @@ export const en = {
   notifications: notificationsEn,
   csat: csatEn,
   shift: shiftEn,
+  outbound: outboundEn,
 } as const;
 
 /** The shape every language must fill in, with plain `string` leaves. */

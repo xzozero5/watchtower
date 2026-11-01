@@ -18,6 +18,7 @@ import { liveTh } from './live';
 import { loadingTh } from './loading';
 import { loginTh } from './login';
 import { notificationsTh } from './notifications';
+import { outboundTh } from './outbound';
 import { paletteTh } from './palette';
 import { panelTh } from './panel';
 import { panesTh } from './panes';
@@ -74,4 +75,5 @@ export const th: Messages = {
   notifications: notificationsTh,
   csat: csatTh,
   shift: shiftTh,
+  outbound: outboundTh,
 };
