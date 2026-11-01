@@ -104,7 +104,9 @@ export async function replyToTicket(
     throw badRequest('A client cannot edit an AI draft');
   }
   if (body.aiDraftId !== undefined && body.editedFromDraftId !== undefined) {
-    throw badRequest('Send a draft as it is (aiDraftId) or as an edit (editedFromDraftId), not both');
+    throw badRequest(
+      'Send a draft as it is (aiDraftId) or as an edit (editedFromDraftId), not both',
+    );
   }
   if (!fromCustomer && ctx.actor.type === 'ai') {
     await requireCustomerSend(ctx, {

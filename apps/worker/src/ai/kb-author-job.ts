@@ -43,7 +43,12 @@ export async function runKbAuthor(
 ): Promise<KbAuthorResult> {
   const db = deps.database.db;
   const [ticket] = await db
-    .select({ id: schema.ticket.id, subject: schema.ticket.subject, orgId: schema.ticket.orgId, intentId: schema.ticket.intentId })
+    .select({
+      id: schema.ticket.id,
+      subject: schema.ticket.subject,
+      orgId: schema.ticket.orgId,
+      intentId: schema.ticket.intentId,
+    })
     .from(schema.ticket)
     .where(eq(schema.ticket.id, job.ticketId))
     .limit(1);

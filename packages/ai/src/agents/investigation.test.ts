@@ -65,7 +65,12 @@ const FIXTURES = stubFixturesSchema.parse({
     {
       keywords: ['webhook'],
       entries: [
-        { timestamp: '2026-01-01T00:00:00Z', severity: 'ERROR', service: 'api', message: 'delivery failed' },
+        {
+          timestamp: '2026-01-01T00:00:00Z',
+          severity: 'ERROR',
+          service: 'api',
+          message: 'delivery failed',
+        },
       ],
     },
   ],
@@ -83,7 +88,9 @@ interface Rig {
   guardCalls: string[];
 }
 
-function rig(options: { provider?: LlmProvider; allowed?: boolean; intent?: string | null } = {}): Rig {
+function rig(
+  options: { provider?: LlmProvider; allowed?: boolean; intent?: string | null } = {},
+): Rig {
   const runs: AiRunRecord[] = [];
   const requests: LlmRequest[] = [];
   const guardCalls: string[] = [];
@@ -300,9 +307,16 @@ describe('investigateTicket (T-108b)', () => {
     })) {
       registry.register(tool);
     }
-    const ledger = createMemoryToolLedger({ perRun: 1, perTicketPerHour: 10, perToolPerMinute: 10 });
+    const ledger = createMemoryToolLedger({
+      perRun: 1,
+      perTicketPerHour: 10,
+      perToolPerMinute: 10,
+    });
     const tools = withToolBudget({
-      scoped: registry.scope({ agent: 'investigator', intent: null, stage: 2 }, { ticketId: TICKET }),
+      scoped: registry.scope(
+        { agent: 'investigator', intent: null, stage: 2 },
+        { ticketId: TICKET },
+      ),
       ledger,
       runKey: 'run-2',
       ticketId: TICKET,
@@ -313,7 +327,11 @@ describe('investigateTicket (T-108b)', () => {
     });
     const outcome = await investigateTicket(r.deps, r.input({ tools, scopeBasis: 'none' }));
     if (outcome.status !== 'ok') throw new Error('expected ok');
-    expect(outcome.value.report.tools.map((tool) => tool.status)).toEqual(['ok', 'denied', 'denied']);
+    expect(outcome.value.report.tools.map((tool) => tool.status)).toEqual([
+      'ok',
+      'denied',
+      'denied',
+    ]);
     expect(outcome.value.report.scope?.basis).toBe('none');
     expect(outcome.value.evidence).toHaveLength(1);
   });
@@ -329,7 +347,10 @@ describe('investigateTicket (T-108b)', () => {
       registry.register(tool);
     }
     const tools = withToolBudget({
-      scoped: registry.scope({ agent: 'investigator', intent: null, stage: 2 }, { ticketId: TICKET }),
+      scoped: registry.scope(
+        { agent: 'investigator', intent: null, stage: 2 },
+        { ticketId: TICKET },
+      ),
       ledger: createMemoryToolLedger(AI_TOOL_BUDGETS),
       runKey: 'run-3',
       ticketId: TICKET,
@@ -386,10 +407,7 @@ describe('investigateTicket (T-108b)', () => {
   });
 });
 
-function card(
-  id: string,
-  overrides: Partial<InvestigationEvidence> = {},
-): InvestigationEvidence {
+function card(id: string, overrides: Partial<InvestigationEvidence> = {}): InvestigationEvidence {
   return {
     id,
     kind: 'kb',
@@ -407,9 +425,24 @@ describe('applyDisclosure (PRD section 6.6)', () => {
   const evidence = [card('ev-1'), card('ev-2', { kind: 'log', customerSafe: false })];
   const sentences: DraftSentence[] = [
     { text: 'Hello.', kind: 'courtesy', evidenceIds: [], newParagraph: false },
-    { text: 'Check the endpoint.', kind: 'instruction', evidenceIds: ['ev-1'], newParagraph: false },
-    { text: 'We saw failures in your logs.', kind: 'fact', evidenceIds: ['ev-2'], newParagraph: false },
-    { text: 'See https://internal.example/x.', kind: 'fact', evidenceIds: ['ev-1'], newParagraph: false },
+    {
+      text: 'Check the endpoint.',
+      kind: 'instruction',
+      evidenceIds: ['ev-1'],
+      newParagraph: false,
+    },
+    {
+      text: 'We saw failures in your logs.',
+      kind: 'fact',
+      evidenceIds: ['ev-2'],
+      newParagraph: false,
+    },
+    {
+      text: 'See https://internal.example/x.',
+      kind: 'fact',
+      evidenceIds: ['ev-1'],
+      newParagraph: false,
+    },
     { text: 'Mixed.', kind: 'fact', evidenceIds: ['ev-1', 'ev-2'], newParagraph: false },
   ];
 
@@ -467,7 +500,10 @@ function draftRig(answer: unknown, extra: Partial<Parameters<typeof draftReply>[
       intentKey: 'webhook_not_received',
       customerLanguage: 'en',
       disclosure: 'verified',
-      evidence: [card('ev-1'), card('ev-2', { kind: 'log', customerSafe: false, tool: TOOL_NAMES.gcpLogs })],
+      evidence: [
+        card('ev-1'),
+        card('ev-2', { kind: 'log', customerSafe: false, tool: TOOL_NAMES.gcpLogs }),
+      ],
       ...extra,
     });
   return { r, run };
@@ -514,17 +550,27 @@ describe('draftReply (T-108c)', () => {
 
   it('writes in the customer language and flags a draft in the other one for review', async () => {
     const thai = await draftRig(
-      { sentences: [{ text: 'สวัสดีครับ ขอบคุณที่แจ้งเรื่อง', kind: 'courtesy', evidenceIds: [] }] },
+      {
+        sentences: [{ text: 'สวัสดีครับ ขอบคุณที่แจ้งเรื่อง', kind: 'courtesy', evidenceIds: [] }],
+      },
       { customerLanguage: 'th' },
     ).run();
     if (thai.status !== 'ok') throw new Error('expected ok');
-    expect(thai.value).toMatchObject({ language: 'th', customerLanguage: 'th', needsReview: false });
+    expect(thai.value).toMatchObject({
+      language: 'th',
+      customerLanguage: 'th',
+      needsReview: false,
+    });
 
     const wrong = await draftRig({
       sentences: [{ text: 'สวัสดีครับ ขอบคุณที่แจ้งเรื่อง', kind: 'courtesy', evidenceIds: [] }],
     }).run();
     if (wrong.status !== 'ok') throw new Error('expected ok');
-    expect(wrong.value).toMatchObject({ language: 'th', customerLanguage: 'en', needsReview: true });
+    expect(wrong.value).toMatchObject({
+      language: 'th',
+      customerLanguage: 'en',
+      needsReview: true,
+    });
   });
 
   it('asks for the language and the disclosure level in the prompt, and redacts the evidence it sends (N4)', async () => {
@@ -594,7 +640,10 @@ describe('draftReply (T-108c)', () => {
       intentKey: null,
       customerLanguage: 'en',
       disclosure: 'restricted',
-      evidence: [card('ev-1'), card('ev-2', { kind: 'log', customerSafe: false, tool: TOOL_NAMES.gcpLogs })],
+      evidence: [
+        card('ev-1'),
+        card('ev-2', { kind: 'log', customerSafe: false, tool: TOOL_NAMES.gcpLogs }),
+      ],
     });
     if (ok.status !== 'ok') throw new Error('expected ok');
     expect(ok.value.citedEvidenceIds).toEqual(['ev-1']);
@@ -642,7 +691,10 @@ describe('authorKbDraft (T-108e)', () => {
         },
       });
     const input = { ticketId: TICKET, subject: 's', turns, intentKey: null, knownIntents: [] };
-    const leaked = await authorKbDraft(make({ title: 'T', bodyMd: 'Mail [EMAIL_1]', intentTags: [] }).deps, input);
+    const leaked = await authorKbDraft(
+      make({ title: 'T', bodyMd: 'Mail [EMAIL_1]', intentTags: [] }).deps,
+      input,
+    );
     expect(leaked).toEqual({ status: 'failed', reason: 'model_output_invalid' });
     const empty = await authorKbDraft(make({ title: '', bodyMd: '', intentTags: [] }).deps, input);
     expect(empty).toMatchObject({ status: 'ok', value: null });

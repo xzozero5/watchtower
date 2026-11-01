@@ -90,7 +90,9 @@ export function rawEvidenceFrom(tool: string, output: unknown): RawEvidence[] {
     case TOOL_NAMES.gcpLogs: {
       const parsed = gcpLogsOutput.parse(output);
       if (parsed.items.length === 0) return [];
-      const lines = parsed.items.slice(0, 6).map((entry) => `${entry.severity} ${entry.service}: ${entry.message}`);
+      const lines = parsed.items
+        .slice(0, 6)
+        .map((entry) => `${entry.severity} ${entry.service}: ${entry.message}`);
       return [
         {
           kind: 'log' as const,
@@ -124,7 +126,9 @@ export function rawEvidenceFrom(tool: string, output: unknown): RawEvidence[] {
     case TOOL_NAMES.repoChanges: {
       const parsed = repoChangesOutput.parse(output);
       if (parsed.items.length === 0) return [];
-      const lines = parsed.items.slice(0, 6).map((change) => `${change.kind} ${change.ref} ${change.at}: ${change.title}`);
+      const lines = parsed.items
+        .slice(0, 6)
+        .map((change) => `${change.kind} ${change.ref} ${change.at}: ${change.title}`);
       return [
         {
           kind: 'repo' as const,
@@ -180,7 +184,11 @@ export function protectEvidence(
         mock: item.mock,
       },
       forModel: joinRedacted(
-        [session.redact(`[${id}] ${item.kind}${flags === '' ? '' : ` (${flags})`}:`), title, snippet],
+        [
+          session.redact(`[${id}] ${item.kind}${flags === '' ? '' : ` (${flags})`}:`),
+          title,
+          snippet,
+        ],
         ' ',
       ),
     };

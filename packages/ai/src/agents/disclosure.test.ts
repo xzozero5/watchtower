@@ -89,7 +89,9 @@ describe('applyDisclosure does not trust what the model says it cited', () => {
       'Visit www.example.org',
     ]) {
       expect(hasLink(text)).toBe(true);
-      expect(applyDisclosure([sentence(text, 'courtesy', [])], 'restricted', [safe]).removed).toBe(1);
+      expect(applyDisclosure([sentence(text, 'courtesy', [])], 'restricted', [safe]).removed).toBe(
+        1,
+      );
     }
     expect(hasLink('Thanks, we will check this today.')).toBe(false);
   });
@@ -105,9 +107,14 @@ describe('applyDisclosure does not trust what the model says it cited', () => {
   });
 
   it('never repeats an internal note, to a verified contact either', () => {
-    const note = 'Root cause is the expired certificate on the load balancer, do not tell the customer';
+    const note =
+      'Root cause is the expired certificate on the load balancer, do not tell the customer';
     const { kept, removed } = applyDisclosure(
-      [sentence('The expired certificate on the load balancer was the root cause.', 'fact', ['ev-1'])],
+      [
+        sentence('The expired certificate on the load balancer was the root cause.', 'fact', [
+          'ev-1',
+        ]),
+      ],
       'verified',
       [safe],
       [note],
@@ -192,7 +199,9 @@ describe('a placeholder in the draft is restored only from the drafter’s own s
   }
 
   it('removes a placeholder that came from a tool, or that nobody issued, instead of restoring it', async () => {
-    const withEmail = card('ev-1', { snippet: 'Contact other.customer@elsewhere.example.test for help.' });
+    const withEmail = card('ev-1', {
+      snippet: 'Contact other.customer@elsewhere.example.test for help.',
+    });
     const { deps } = rig({
       sentences: [
         { text: 'Hello.', kind: 'courtesy', evidenceIds: [] },

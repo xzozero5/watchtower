@@ -84,7 +84,13 @@ async function ticketWith(
 }
 
 const EVIDENCE = [
-  { id: 'ev-1', kind: 'kb', title: 'Webhook not received', snippet: 'Check the endpoint', confidence: 0.9 },
+  {
+    id: 'ev-1',
+    kind: 'kb',
+    title: 'Webhook not received',
+    snippet: 'Check the endpoint',
+    confidence: 0.9,
+  },
 ];
 
 /** What the worker leaves after an investigation and a draft: a brief that points at a waiting draft. */
@@ -97,7 +103,12 @@ async function draftReady(
     `INSERT INTO ai_draft (ticket_id, body_text, language, customer_language, citations, uncited_claims,
                            prompt_id, prompt_version, disclosure_level, disclosure_removed, needs_review)
      VALUES ($1, $2, 'en', 'en', $3, 1, 'drafter', 2, 'restricted', 2, $4) RETURNING id`,
-    [ticketId, body, JSON.stringify([{ evidenceId: 'ev-1', sentence: 1, kind: 'kb' }]), extra.needsReview === true],
+    [
+      ticketId,
+      body,
+      JSON.stringify([{ evidenceId: 'ev-1', sentence: 1, kind: 'kb' }]),
+      extra.needsReview === true,
+    ],
   );
   const id = draft.rows[0]?.id ?? '';
   await pool().query(
@@ -134,7 +145,10 @@ const reply = (who: Persona, ticketId: string, body: string, extra: Record<strin
   who.client.post<{ message: Message }>(`/v1/tickets/${ticketId}/replies`, { body, ...extra });
 
 const draftRow = async (draftId: string) =>
-  (await pool().query(`SELECT * FROM ai_draft WHERE id = $1`, [draftId])).rows[0] as Record<string, unknown>;
+  (await pool().query(`SELECT * FROM ai_draft WHERE id = $1`, [draftId])).rows[0] as Record<
+    string,
+    unknown
+  >;
 
 describe('GET /v1/tickets/:id/ai with a draft, a report and progress', () => {
   it('returns the draft, the report and the evidence in the contract', async () => {
@@ -175,7 +189,9 @@ describe('GET /v1/tickets/:id/ai with a draft, a report and progress', () => {
       state: 'investigating',
       progress: { phase: 'investigating', step: 1, steps: 4 },
     });
-    await pool().query(`UPDATE ai_ticket_insight SET state = 'classified' WHERE ticket_id = $1`, [ticketId]);
+    await pool().query(`UPDATE ai_ticket_insight SET state = 'classified' WHERE ticket_id = $1`, [
+      ticketId,
+    ]);
     expect((await getInsight(agent, ticketId)).body.progress).toBeUndefined();
   });
 
@@ -214,7 +230,11 @@ describe('approve, edit and undo (N3)', () => {
       {},
     );
     expect(undone.status).toBe(200);
-    expect(await draftRow(draftId)).toMatchObject({ status: 'draft', disposition: null, approved_by: null });
+    expect(await draftRow(draftId)).toMatchObject({
+      status: 'draft',
+      disposition: null,
+      approved_by: null,
+    });
     const back = await getInsight(agent, ticketId);
     expect(back.body).toMatchObject({
       state: 'draft_ready',
@@ -247,14 +267,19 @@ describe('approve, edit and undo (N3)', () => {
     expect(audit.rows).toHaveLength(1);
     expect((await getInsight(agent, ticketId)).body.draft).toBeUndefined();
     // The draft is used up: it cannot be edited again, sent as it was, or rejected.
-    expect((await reply(agent, ticketId, 'again', { editedFromDraftId: draftId })).status).toBe(409);
+    expect((await reply(agent, ticketId, 'again', { editedFromDraftId: draftId })).status).toBe(
+      409,
+    );
     expect((await reject(agent, ticketId, draftId, { reason: 'tone_style' })).status).toBe(409);
   });
 
   it('refuses to name a draft twice, a draft of another ticket, and a customer naming one', async () => {
     const ticketId = await ticketWith(stageTwoIntent);
     const draftId = await draftReady(ticketId);
-    const both = await reply(agent, ticketId, 'x', { aiDraftId: draftId, editedFromDraftId: draftId });
+    const both = await reply(agent, ticketId, 'x', {
+      aiDraftId: draftId,
+      editedFromDraftId: draftId,
+    });
     expect(both.status).toBe(400);
     const other = await ticketWith(stageTwoIntent);
     const foreign = await draftReady(other, 'foreign');
@@ -295,21 +320,36 @@ describe('POST /v1/tickets/:id/ai/drafts/:draftId/reject', () => {
     expect((await reject(agent, ticketId, draftId, { reason: 'other' })).status).toBe(400);
     expect((await reject(agent, ticketId, draftId, { reason: 'because' })).status).toBe(400);
     expect((await reject(agent, ticketId, draftId, {})).status).toBe(400);
-    const ok = await reject(agent, ticketId, draftId, { reason: 'other', comment: 'wrong customer' });
+    const ok = await reject(agent, ticketId, draftId, {
+      reason: 'other',
+      comment: 'wrong customer',
+    });
     expect(ok.status).toBe(200);
     expect(await draftRow(draftId)).toMatchObject({ reject_comment: 'wrong customer' });
-    expect((await reject(agent, ticketId, draftId, { reason: 'other', comment: 'again' })).status).toBe(409);
+    expect(
+      (await reject(agent, ticketId, draftId, { reason: 'other', comment: 'again' })).status,
+    ).toBe(409);
   });
 
   it('is for staff with ai.draft.review, on a ticket they can see, with a draft of that ticket', async () => {
     const ticketId = await ticketWith(stageTwoIntent);
     const draftId = await draftReady(ticketId);
     expect((await reject(client, ticketId, draftId, { reason: 'tone_style' })).status).toBe(403);
-    expect((await h.client().post(`/v1/tickets/${ticketId}/ai/drafts/${draftId}/reject`, { reason: 'tone_style' })).status).toBe(401);
+    expect(
+      (
+        await h
+          .client()
+          .post(`/v1/tickets/${ticketId}/ai/drafts/${draftId}/reject`, { reason: 'tone_style' })
+      ).status,
+    ).toBe(401);
     const other = await ticketWith(stageTwoIntent);
     expect((await reject(agent, other, draftId, { reason: 'tone_style' })).status).toBe(404);
-    expect((await reject(agent, ticketId, randomUUID(), { reason: 'tone_style' })).status).toBe(404);
-    expect((await reject(agent, ticketId, 'not-a-uuid', { reason: 'tone_style' })).status).toBe(400);
+    expect((await reject(agent, ticketId, randomUUID(), { reason: 'tone_style' })).status).toBe(
+      404,
+    );
+    expect((await reject(agent, ticketId, 'not-a-uuid', { reason: 'tone_style' })).status).toBe(
+      400,
+    );
     expect((await draftRow(draftId)).status).toBe('draft');
     expect((await reject(lead, ticketId, draftId, { reason: 'tone_style' })).status).toBe(200);
     const audit = await pool().query(
@@ -351,8 +391,12 @@ describe('who may use a draft, and how (SR108 P1/P2)', () => {
     const draftId = await draftReady(ticketId, 'Hello there');
     await setAgent((current) => current.filter((key) => key !== 'ai.draft.review'));
     try {
-      expect((await reply(agent, ticketId, 'Hello there', { aiDraftId: draftId })).status).toBe(403);
-      expect((await reply(agent, ticketId, 'Hello!', { editedFromDraftId: draftId })).status).toBe(403);
+      expect((await reply(agent, ticketId, 'Hello there', { aiDraftId: draftId })).status).toBe(
+        403,
+      );
+      expect((await reply(agent, ticketId, 'Hello!', { editedFromDraftId: draftId })).status).toBe(
+        403,
+      );
       expect((await reject(agent, ticketId, draftId, { reason: 'tone_style' })).status).toBe(403);
       // Their own words are still a reply.
       expect((await reply(agent, ticketId, 'My own words')).status).toBe(201);
@@ -455,10 +499,16 @@ describe('POST /v1/tickets/:id/ai/requests', () => {
     const ticketId = await ticketWith(stageOneIntent);
     for (let index = 0; index < AI_REQUEST_LIMITS.perTicketPerHour; index += 1) {
       // The brief is out of the working state between requests, as when each job has finished.
-      await pool().query(`UPDATE ai_ticket_insight SET state = 'classified', progress = NULL WHERE ticket_id = $1`, [ticketId]);
+      await pool().query(
+        `UPDATE ai_ticket_insight SET state = 'classified', progress = NULL WHERE ticket_id = $1`,
+        [ticketId],
+      );
       expect((await request(agent, ticketId, { kind: 'investigate' })).status).toBe(202);
     }
-    await pool().query(`UPDATE ai_ticket_insight SET state = 'classified', progress = NULL WHERE ticket_id = $1`, [ticketId]);
+    await pool().query(
+      `UPDATE ai_ticket_insight SET state = 'classified', progress = NULL WHERE ticket_id = $1`,
+      [ticketId],
+    );
     // A counter, not the queue: the rows of the queue are cleared once relayed.
     await pool().query(`DELETE FROM outbox WHERE payload->>'ticketId' = $1`, [ticketId]);
     expect((await request(agent, ticketId, { kind: 'draft' })).status).toBe(429);
@@ -475,9 +525,13 @@ describe('POST /v1/tickets/:id/ai/requests', () => {
   it('is for staff who handle tickets, validates the body, and hides a ticket the person cannot see', async () => {
     const ticketId = await ticketWith(stageOneIntent);
     expect((await request(client, ticketId, { kind: 'draft' })).status).toBe(403);
-    expect((await h.client().post(`/v1/tickets/${ticketId}/ai/requests`, { kind: 'draft' })).status).toBe(401);
+    expect(
+      (await h.client().post(`/v1/tickets/${ticketId}/ai/requests`, { kind: 'draft' })).status,
+    ).toBe(401);
     expect((await request(agent, ticketId, { kind: 'delete' })).status).toBe(400);
-    expect((await request(agent, ticketId, { kind: 'draft', note: 'x'.repeat(501) })).status).toBe(400);
+    expect((await request(agent, ticketId, { kind: 'draft', note: 'x'.repeat(501) })).status).toBe(
+      400,
+    );
     expect((await request(agent, 'OPS-999999999', { kind: 'draft' })).status).toBe(404);
   });
 });

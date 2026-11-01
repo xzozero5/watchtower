@@ -209,7 +209,10 @@ export async function runInvestigation(
   };
   const stageNow = insightRow?.stage ?? 0;
   const write = async (
-    fields: Omit<Parameters<typeof writeAiInvestigation>[1], 'ticketId' | 'generatedAt' | 'stage'> & {
+    fields: Omit<
+      Parameters<typeof writeAiInvestigation>[1],
+      'ticketId' | 'generatedAt' | 'stage'
+    > & {
       stage?: number;
     },
   ): Promise<void> => {
@@ -221,7 +224,10 @@ export async function runInvestigation(
     });
     await announce();
   };
-  const needsHuman = async (reason: AiInsightReason, stage?: number): Promise<InvestigationResult> => {
+  const needsHuman = async (
+    reason: AiInsightReason,
+    stage?: number,
+  ): Promise<InvestigationResult> => {
     await write({
       state: 'needs_human',
       reasonCode: reason,

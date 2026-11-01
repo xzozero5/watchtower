@@ -197,35 +197,42 @@ export function createKbSearchPort(deps: KbPortDeps): KbSearchPort {
       // An article written for chosen organizations is evidence only for those (SR108-2).
       const orgId = await orgOfTicket(deps.db, input.ticketId);
       const allowed = new Set<string>();
-      const scoped = outcome.hits.filter((hit) => hit.visibility === 'orgs').map((hit) => hit.articleId);
+      const scoped = outcome.hits
+        .filter((hit) => hit.visibility === 'orgs')
+        .map((hit) => hit.articleId);
       if (scoped.length > 0 && orgId !== null) {
         const rows = await deps.db
           .select({ articleId: schema.kbArticleOrg.articleId })
           .from(schema.kbArticleOrg)
-          .where(and(eq(schema.kbArticleOrg.orgId, orgId), inArray(schema.kbArticleOrg.articleId, scoped)));
+          .where(
+            and(
+              eq(schema.kbArticleOrg.orgId, orgId),
+              inArray(schema.kbArticleOrg.articleId, scoped),
+            ),
+          );
         for (const row of rows) allowed.add(row.articleId);
       }
       const visible = outcome.hits.filter(
         (hit) => hit.visibility !== 'orgs' || allowed.has(hit.articleId),
       );
       const best = Math.max(0, ...visible.map((hit) => hit.score));
-      const hits = visible.map(
-        (hit): KbHit => ({
-          articleId: hit.articleId,
-          slug: hit.slug,
-          title: hit.title,
-          section: hit.section,
-          snippet: hit.snippet.slice(0, 1200),
-          score: best > 0 ? hit.score / best : 0,
-          kind: hit.kind,
-          lang: hit.lang,
-          // Only an article written for every customer may support a claim to an unverified contact.
-          customerVisible: hit.visibility === 'customer',
-          isRunbook:
-            hit.kind === 'runbook' && input.intentKey !== null && hit.intentTags.includes(input.intentKey),
-          href: `/kb/${hit.slug}`,
-        }),
-      );
+      const hits = visible.map((hit): KbHit => ({
+        articleId: hit.articleId,
+        slug: hit.slug,
+        title: hit.title,
+        section: hit.section,
+        snippet: hit.snippet.slice(0, 1200),
+        score: best > 0 ? hit.score / best : 0,
+        kind: hit.kind,
+        lang: hit.lang,
+        // Only an article written for every customer may support a claim to an unverified contact.
+        customerVisible: hit.visibility === 'customer',
+        isRunbook:
+          hit.kind === 'runbook' &&
+          input.intentKey !== null &&
+          hit.intentTags.includes(input.intentKey),
+        href: `/kb/${hit.slug}`,
+      }));
       // The runbook of the ticket's intent first, then the rest in rank order.
       return hits.toSorted((a, b) => Number(b.isRunbook) - Number(a.isRunbook));
     },

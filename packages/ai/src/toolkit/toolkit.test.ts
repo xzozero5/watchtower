@@ -75,7 +75,12 @@ const FIXTURES = stubFixturesSchema.parse({
     {
       keywords: ['timeout'],
       entries: [
-        { timestamp: '2026-01-01T00:00:00Z', severity: 'ERROR', service: 'api', message: 'upstream timed out' },
+        {
+          timestamp: '2026-01-01T00:00:00Z',
+          severity: 'ERROR',
+          service: 'api',
+          message: 'upstream timed out',
+        },
       ],
     },
   ],
@@ -154,9 +159,9 @@ describe('investigation tools: schemas and read-only (N2)', () => {
     await expect(
       handle.call(TOOL_NAMES.kbSearch, { query: 'x', extra: true }),
     ).rejects.toBeInstanceOf(ToolInputError);
-    await expect(handle.call(TOOL_NAMES.kbSearch, { query: 'x'.repeat(301) })).rejects.toBeInstanceOf(
-      ToolInputError,
-    );
+    await expect(
+      handle.call(TOOL_NAMES.kbSearch, { query: 'x'.repeat(301) }),
+    ).rejects.toBeInstanceOf(ToolInputError);
   });
 
   it('a port that returns the wrong shape is a ToolOutputError, not data for the model', async () => {
@@ -182,9 +187,9 @@ describe('investigation tools: schemas and read-only (N2)', () => {
     await expect(
       handle.call(TOOL_NAMES.similarTickets, { query: 'q', ticketId: OTHER_TICKET }),
     ).rejects.toBeInstanceOf(ToolInputError);
-    await expect(handle.call(TOOL_NAMES.orgContext, { orgId: OTHER_TICKET })).rejects.toBeInstanceOf(
-      ToolInputError,
-    );
+    await expect(
+      handle.call(TOOL_NAMES.orgContext, { orgId: OTHER_TICKET }),
+    ).rejects.toBeInstanceOf(ToolInputError);
     const org = (await handle.call(TOOL_NAMES.orgContext, {})) as { items: OrgContext[] };
     expect(org.items).toEqual([ORG]);
     expect((own.calls.org?.at(-1) as { ticketId: string }).ticketId).toBe(TICKET);
@@ -192,7 +197,9 @@ describe('investigation tools: schemas and read-only (N2)', () => {
 
   it('without a ticket in scope the tools return nothing instead of guessing', async () => {
     const own = ports();
-    const registry = createToolRegistry([{ agent: '*', intent: '*', tools: [TOOL_NAMES.orgContext] }]);
+    const registry = createToolRegistry([
+      { agent: '*', intent: '*', tools: [TOOL_NAMES.orgContext] },
+    ]);
     registry.register(createOrgContextTool(own.org));
     const out = await registry
       .scope({ agent: 'investigator', intent: null, stage: 0 })

@@ -233,15 +233,20 @@ function draft(request: LlmRequest, hash: string): string {
   const raw = request.messages[0]?.content ?? '';
   const thai = /write in thai/i.test(request.system);
   const restricted = /disclosure level: restricted/i.test(request.system);
-  const usable = evidenceOf(raw).filter((card) => !restricted || card.flags.includes('customer-safe'));
-  const sentences: { text: string; kind: string; evidenceIds: string[]; newParagraph: boolean }[] = [
-    {
-      text: thai ? 'สวัสดีครับ ขอบคุณที่แจ้งเรื่องให้เราทราบ' : 'Hello, thank you for contacting us.',
-      kind: 'courtesy',
-      evidenceIds: [],
-      newParagraph: false,
-    },
-  ];
+  const usable = evidenceOf(raw).filter(
+    (card) => !restricted || card.flags.includes('customer-safe'),
+  );
+  const sentences: { text: string; kind: string; evidenceIds: string[]; newParagraph: boolean }[] =
+    [
+      {
+        text: thai
+          ? 'สวัสดีครับ ขอบคุณที่แจ้งเรื่องให้เราทราบ'
+          : 'Hello, thank you for contacting us.',
+        kind: 'courtesy',
+        evidenceIds: [],
+        newParagraph: false,
+      },
+    ];
   for (const card of usable.slice(0, 2)) {
     sentences.push({
       text: firstSentence(card.text.replaceAll(PLACEHOLDER, thai ? 'ลูกค้า' : 'you'), 240),
@@ -274,7 +279,8 @@ function draft(request: LlmRequest, hash: string): string {
 function authorArticle(request: LlmRequest): string {
   const raw = request.messages[0]?.content ?? '';
   const thai = THAI.test(raw);
-  const clean = (text: string): string => text.replaceAll(PLACEHOLDER, thai ? 'ลูกค้า' : 'the customer');
+  const clean = (text: string): string =>
+    text.replaceAll(PLACEHOLDER, thai ? 'ลูกค้า' : 'the customer');
   const subject = clean(/^Subject: (.*)$/m.exec(raw)?.[1] ?? '').trim();
   const turns = [...raw.matchAll(/^\[(customer|staff|note)\] (.*)$/gm)];
   const answer = turns.filter((turn) => turn[1] === 'staff').at(-1)?.[2];

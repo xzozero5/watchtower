@@ -40,7 +40,8 @@ export interface LedgerFinish {
 }
 
 export type LedgerDecision =
-  { readonly allowed: true; readonly id: string } | { readonly allowed: false; readonly reason: DenialReason };
+  | { readonly allowed: true; readonly id: string }
+  | { readonly allowed: false; readonly reason: DenialReason };
 
 export interface ToolLedger {
   /** Counts the call against the budgets and records it as running, or records a denial. */

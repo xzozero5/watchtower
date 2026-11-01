@@ -141,7 +141,10 @@ export async function restoreAiDraft(tx: DbTransaction, draftId: string): Promis
     )
     .limit(1);
   if (newer.length > 0) {
-    await tx.update(schema.aiDraft).set({ status: 'superseded' }).where(eq(schema.aiDraft.id, draftId));
+    await tx
+      .update(schema.aiDraft)
+      .set({ status: 'superseded' })
+      .where(eq(schema.aiDraft.id, draftId));
     return;
   }
   await syncInsightForDraft(tx, draftId, 'draft_ready');

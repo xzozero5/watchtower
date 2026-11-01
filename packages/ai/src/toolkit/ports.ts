@@ -106,7 +106,9 @@ export const stubFixturesSchema = z.object({
         /** Name of a saved query template. */
         template: z.string().min(1).max(100),
         columns: z.array(z.string().max(60)).max(20),
-        rows: z.array(z.array(z.union([z.string().max(200), z.number(), z.null()])).max(20)).max(100),
+        rows: z
+          .array(z.array(z.union([z.string().max(200), z.number(), z.null()])).max(20))
+          .max(100),
       }),
     )
     .default([]),

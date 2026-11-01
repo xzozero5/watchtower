@@ -185,7 +185,8 @@ export class TicketAiService {
               .from(schema.intent)
               .where(eq(schema.intent.id, ticket.t.intentId))
               .limit(1);
-      if (intent === undefined) throw conflict('Set the intent of the ticket before asking for a draft');
+      if (intent === undefined)
+        throw conflict('Set the intent of the ticket before asking for a draft');
       if (intent.stage < 1) throw conflict('Drafts are off for this intent (stage 0)');
     }
     const [row] = await uow.tx

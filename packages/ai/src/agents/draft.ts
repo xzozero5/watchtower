@@ -83,8 +83,14 @@ export function applyDisclosure(
       const usesInternal = sentence.evidenceIds.some((id) => !safeIds.has(id));
       // A statement of fact with no safe evidence behind it is not known to be clean.
       const unsupported =
-        (CITED_KINDS as readonly string[]).includes(sentence.kind) && sentence.evidenceIds.length === 0;
-      drop = drop || usesInternal || unsupported || hasLink(sentence.text) || leaks(restricted, sentence.text);
+        (CITED_KINDS as readonly string[]).includes(sentence.kind) &&
+        sentence.evidenceIds.length === 0;
+      drop =
+        drop ||
+        usesInternal ||
+        unsupported ||
+        hasLink(sentence.text) ||
+        leaks(restricted, sentence.text);
     }
     if (drop) removed += 1;
     else kept.push(sentence);
@@ -94,7 +100,9 @@ export function applyDisclosure(
 
 /** A URL, a `www.` address or a bare `host.tld/path` (`evil.example/x`): not for an unverified contact. */
 export function hasLink(text: string): boolean {
-  return /https?:\/\/|www\.|\b[a-z0-9][a-z0-9-]*(?:\.[a-z0-9-]+)*\.[a-z]{2,}(?:[/:?#]|\b)/i.test(text);
+  return /https?:\/\/|www\.|\b[a-z0-9][a-z0-9-]*(?:\.[a-z0-9-]+)*\.[a-z]{2,}(?:[/:?#]|\b)/i.test(
+    text,
+  );
 }
 
 /** The sentences joined into the text a customer reads: a space between sentences, a blank line between paragraphs. */
@@ -268,14 +276,16 @@ export async function draftReply(
 
   const restored = session.restore(composeBody(kept), 'customer');
   const body = restored.text.trim();
-  if (body === '' || body.length > 20_000) return { status: 'failed', reason: 'model_output_invalid' };
+  if (body === '' || body.length > 20_000)
+    return { status: 'failed', reason: 'model_output_invalid' };
 
   const citations = kept.flatMap((sentence, index) =>
     sentence.evidenceIds.map((evidenceId) => ({ evidenceId, sentence: index })),
   );
   const uncited = kept.filter(
     (sentence) =>
-      (CITED_KINDS as readonly string[]).includes(sentence.kind) && sentence.evidenceIds.length === 0,
+      (CITED_KINDS as readonly string[]).includes(sentence.kind) &&
+      sentence.evidenceIds.length === 0,
   ).length;
   const language = detectLanguage(body);
   return {

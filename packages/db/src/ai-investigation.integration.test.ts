@@ -80,12 +80,23 @@ describe('0034 watchtower_ai_ro: reads views, nothing else (N2)', () => {
   });
 
   it('sees public messages only, cut to a prefix', async () => {
-    const rows = await aiRo.query<{ body_text: string }>(`SELECT body_text FROM ai_v_ticket_message`);
+    const rows = await aiRo.query<{ body_text: string }>(
+      `SELECT body_text FROM ai_v_ticket_message`,
+    );
     expect(rows.rows.map((row) => row.body_text)).toEqual(['public text']);
   });
 
   it('cannot read a base table, a column the views leave out, or anything of the application', async () => {
-    for (const table of ['ticket', 'message', 'organization', 'contact', 'users', 'kb_article', 'ai_draft', 'audit_log']) {
+    for (const table of [
+      'ticket',
+      'message',
+      'organization',
+      'contact',
+      'users',
+      'kb_article',
+      'ai_draft',
+      'audit_log',
+    ]) {
       expect(await code(aiRo.query(`SELECT * FROM ${table} LIMIT 1`))).toBe(INSUFFICIENT_PRIVILEGE);
     }
     // The views list their columns: the requester and the assignee are not among them.
@@ -93,7 +104,13 @@ describe('0034 watchtower_ai_ro: reads views, nothing else (N2)', () => {
   });
 
   it('cannot write: not a table, not a view', async () => {
-    expect(await code(aiRo.query(`INSERT INTO tool_execution (run_key, agent, tool, input_hash, status) VALUES ('r','a','t','${'a'.repeat(64)}','denied')`))).toBe(INSUFFICIENT_PRIVILEGE);
+    expect(
+      await code(
+        aiRo.query(
+          `INSERT INTO tool_execution (run_key, agent, tool, input_hash, status) VALUES ('r','a','t','${'a'.repeat(64)}','denied')`,
+        ),
+      ),
+    ).toBe(INSUFFICIENT_PRIVILEGE);
     expect(await code(aiRo.query(`UPDATE ai_v_org SET name = 'x'`))).toBe(INSUFFICIENT_PRIVILEGE);
     expect(await code(aiRo.query(`DELETE FROM ai_v_ticket_message`))).toBe(INSUFFICIENT_PRIVILEGE);
     expect(await code(aiRo.query(`CREATE TABLE t_x (id int)`))).toBe(INSUFFICIENT_PRIVILEGE);
@@ -109,10 +126,18 @@ describe('0034 watchtower_ai_ro: reads views, nothing else (N2)', () => {
   });
 
   it('provisioning is idempotent and refuses the application group and short passwords', async () => {
-    expect(await provisionAiReadOnlyRole(owner(), { user: aiUser, password: aiPassword })).toBe('updated');
-    await expect(provisionAiReadOnlyRole(owner(), { user: AI_READONLY_ROLE_GROUP, password: aiPassword })).rejects.toThrow();
-    await expect(provisionAiReadOnlyRole(owner(), { user: 'watchtower_app', password: aiPassword })).rejects.toThrow();
-    await expect(provisionAiReadOnlyRole(owner(), { user: aiUser, password: 'short' })).rejects.toThrow();
+    expect(await provisionAiReadOnlyRole(owner(), { user: aiUser, password: aiPassword })).toBe(
+      'updated',
+    );
+    await expect(
+      provisionAiReadOnlyRole(owner(), { user: AI_READONLY_ROLE_GROUP, password: aiPassword }),
+    ).rejects.toThrow();
+    await expect(
+      provisionAiReadOnlyRole(owner(), { user: 'watchtower_app', password: aiPassword }),
+    ).rejects.toThrow();
+    await expect(
+      provisionAiReadOnlyRole(owner(), { user: aiUser, password: 'short' }),
+    ).rejects.toThrow();
     const member = await owner().query(
       `SELECT pg_has_role($1, 'watchtower_app', 'member') AS app`,
       [aiUser],
@@ -136,16 +161,39 @@ describe('0034 tool_execution', () => {
       `UPDATE tool_execution SET status = 'ok', finished_at = now(), latency_ms = 3, result_count = 2 WHERE id = $1`,
       [running],
     );
-    expect(await code(app.query(`UPDATE tool_execution SET tool = 'other' WHERE id = $1`, [running]))).toBe(INSUFFICIENT_PRIVILEGE);
-    expect(await code(app.query(`UPDATE tool_execution SET input_hash = $2 WHERE id = $1`, [running, 'c'.repeat(64)]))).toBe(INSUFFICIENT_PRIVILEGE);
-    expect(await code(app.query(`DELETE FROM tool_execution WHERE id = $1`, [running]))).toBe(INSUFFICIENT_PRIVILEGE);
+    expect(
+      await code(app.query(`UPDATE tool_execution SET tool = 'other' WHERE id = $1`, [running])),
+    ).toBe(INSUFFICIENT_PRIVILEGE);
+    expect(
+      await code(
+        app.query(`UPDATE tool_execution SET input_hash = $2 WHERE id = $1`, [
+          running,
+          'c'.repeat(64),
+        ]),
+      ),
+    ).toBe(INSUFFICIENT_PRIVILEGE);
+    expect(await code(app.query(`DELETE FROM tool_execution WHERE id = $1`, [running]))).toBe(
+      INSUFFICIENT_PRIVILEGE,
+    );
     expect(await code(app.query(`TRUNCATE tool_execution`))).toBe(INSUFFICIENT_PRIVILEGE);
   });
 
   it('refuses an unknown status, a malformed hash or name, and a running row that is finished', async () => {
     expect(await code(insert('maybe', 'x'))).toBe(CHECK_VIOLATION);
-    expect(await code(app.query(`INSERT INTO tool_execution (run_key, agent, tool, input_hash, status) VALUES ('r','a','kb_search','not-a-hash','running')`))).toBe(CHECK_VIOLATION);
-    expect(await code(app.query(`INSERT INTO tool_execution (run_key, agent, tool, input_hash, status) VALUES ('r','a','Bad Name','${HASH}','running')`))).toBe(CHECK_VIOLATION);
+    expect(
+      await code(
+        app.query(
+          `INSERT INTO tool_execution (run_key, agent, tool, input_hash, status) VALUES ('r','a','kb_search','not-a-hash','running')`,
+        ),
+      ),
+    ).toBe(CHECK_VIOLATION);
+    expect(
+      await code(
+        app.query(
+          `INSERT INTO tool_execution (run_key, agent, tool, input_hash, status) VALUES ('r','a','Bad Name','${HASH}','running')`,
+        ),
+      ),
+    ).toBe(CHECK_VIOLATION);
     expect(await code(insert('running', 'finished'))).toBe(CHECK_VIOLATION);
     expect(await code(insert('ok'))).toBe(CHECK_VIOLATION);
   });
@@ -163,25 +211,53 @@ describe('0034 ai_draft: verdict and learning-loop columns', () => {
 
   it('records a rejection with its reason, and only a reason makes it a rejection', async () => {
     const id = await draft();
-    expect(await code(app.query(`UPDATE ai_draft SET status = 'rejected', disposition = 'rejected' WHERE id = $1`, [id]))).toBe(CHECK_VIOLATION);
-    expect(await code(app.query(`UPDATE ai_draft SET disposition = 'rejected', reject_reason = 'tone_style' WHERE id = $1`, [id]))).toBe(CHECK_VIOLATION);
+    expect(
+      await code(
+        app.query(
+          `UPDATE ai_draft SET status = 'rejected', disposition = 'rejected' WHERE id = $1`,
+          [id],
+        ),
+      ),
+    ).toBe(CHECK_VIOLATION);
+    expect(
+      await code(
+        app.query(
+          `UPDATE ai_draft SET disposition = 'rejected', reject_reason = 'tone_style' WHERE id = $1`,
+          [id],
+        ),
+      ),
+    ).toBe(CHECK_VIOLATION);
     await app.query(
       `UPDATE ai_draft SET status = 'rejected', disposition = 'rejected', reject_reason = 'tone_style', reject_comment = 'too formal', resolved_at = now() WHERE id = $1`,
       [id],
     );
-    expect(await code(app.query(`UPDATE ai_draft SET disposition = 'maybe' WHERE id = $1`, [id]))).toBe(CHECK_VIOLATION);
+    expect(
+      await code(app.query(`UPDATE ai_draft SET disposition = 'maybe' WHERE id = $1`, [id])),
+    ).toBe(CHECK_VIOLATION);
   });
 
   it('keeps the text, the hash and the citations the drafter wrote out of reach of the application', async () => {
     const id = await draft();
-    for (const column of ['body_text', 'content_hash', 'citations', 'uncited_claims', 'language', 'needs_review', 'requested_by']) {
-      expect(await code(app.query(`UPDATE ai_draft SET ${column} = ${column} WHERE id = $1`, [id]))).toBe(INSUFFICIENT_PRIVILEGE);
+    for (const column of [
+      'body_text',
+      'content_hash',
+      'citations',
+      'uncited_claims',
+      'language',
+      'needs_review',
+      'requested_by',
+    ]) {
+      expect(
+        await code(app.query(`UPDATE ai_draft SET ${column} = ${column} WHERE id = $1`, [id])),
+      ).toBe(INSUFFICIENT_PRIVILEGE);
     }
   });
 
   it('bounds the edit distance and accepts the superseded status', async () => {
     const id = await draft();
-    expect(await code(app.query(`UPDATE ai_draft SET edit_distance = 1.5 WHERE id = $1`, [id]))).toBe(CHECK_VIOLATION);
+    expect(
+      await code(app.query(`UPDATE ai_draft SET edit_distance = 1.5 WHERE id = $1`, [id])),
+    ).toBe(CHECK_VIOLATION);
     await app.query(`UPDATE ai_draft SET edit_distance = 0.25 WHERE id = $1`, [id]);
     await app.query(`UPDATE ai_draft SET status = 'superseded' WHERE id = $1`, [id]);
   });
@@ -221,10 +297,10 @@ describe('0034 down and up', () => {
         `INSERT INTO channel_account (type, name) VALUES ('gmail', 'Support') RETURNING id`,
       )
     ).rows[0]?.id;
-    await owner().query(`UPDATE ticket SET channel = 'gmail', channel_account_id = $2 WHERE id = $1`, [
-      ticketId,
-      account,
-    ]);
+    await owner().query(
+      `UPDATE ticket SET channel = 'gmail', channel_account_id = $2 WHERE id = $1`,
+      [ticketId, account],
+    );
     const message = (
       await owner().query<{ id: string }>(
         `INSERT INTO message (ticket_id, channel_account_id, direction, body_text, visibility, delivery_status, sender_user_id)

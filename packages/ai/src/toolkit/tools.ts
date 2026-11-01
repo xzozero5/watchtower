@@ -184,7 +184,9 @@ export function createGcpLogsStub(fixtures: StubFixtures) {
     input: gcpLogsInput,
     output: gcpLogsOutput,
     execute(input) {
-      const scenario = fixtures.gcpLogs.find((candidate) => matches(input.query, candidate.keywords));
+      const scenario = fixtures.gcpLogs.find((candidate) =>
+        matches(input.query, candidate.keywords),
+      );
       return Promise.resolve(
         scenario === undefined
           ? { mock: true as const, items: [], note: 'No fixture matches this query.' }
@@ -198,7 +200,8 @@ export function createGcpLogsStub(fixtures: StubFixtures) {
 export function createBigQueryStub(fixtures: StubFixtures) {
   return defineTool({
     name: TOOL_NAMES.bigquery,
-    description: 'Run a saved, read-only query template and read its rows (fixture data in mock mode).',
+    description:
+      'Run a saved, read-only query template and read its rows (fixture data in mock mode).',
     readOnly: true,
     mock: true,
     input: bigqueryInput,
@@ -222,7 +225,8 @@ export function createBigQueryStub(fixtures: StubFixtures) {
 export function createRepoChangesStub(fixtures: StubFixtures) {
   return defineTool({
     name: TOOL_NAMES.repoChanges,
-    description: 'List recent changes of a service: commits, pull requests, releases, deploys (fixture data in mock mode).',
+    description:
+      'List recent changes of a service: commits, pull requests, releases, deploys (fixture data in mock mode).',
     readOnly: true,
     mock: true,
     input: repoChangesInput,
@@ -289,7 +293,10 @@ export function buildAllowList(intents: readonly IntentToolGrant[]): ToolAllowRu
   return rules;
 }
 
-export function registerAll(registry: ToolRegistry, tools: readonly ToolDefinition[]): ToolRegistry {
+export function registerAll(
+  registry: ToolRegistry,
+  tools: readonly ToolDefinition[],
+): ToolRegistry {
   for (const tool of tools) registry.register(tool);
   return registry;
 }

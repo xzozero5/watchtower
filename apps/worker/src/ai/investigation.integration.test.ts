@@ -206,7 +206,10 @@ async function createTicket(
         orgId,
         subject,
         body,
-        requester: { email: `customer-${randomBytes(3).toString('hex')}@customer.example.test`, name: 'Pat Example' },
+        requester: {
+          email: `customer-${randomBytes(3).toString('hex')}@customer.example.test`,
+          name: 'Pat Example',
+        },
         ...(options.intentKey === undefined ? {} : { intentKey: options.intentKey }),
       },
     ),
@@ -267,9 +270,20 @@ describe('investigator and drafter, end to end on the mock provider (stage 2)', 
     expect(Date.now() - started).toBeLessThan(AI_INVESTIGATION_DEADLINE_MS);
 
     // Evidence: knowledge base, similar tickets, organization, and the three mock tools of the intent.
-    const evidence = ready.evidence as { id: string; kind: string; title: string; tool: string; mock: boolean }[];
-    expect(evidence.map((card) => card.kind)).toEqual(expect.arrayContaining(['kb', 'data', 'log']));
-    expect(evidence.find((card) => card.kind === 'log')).toMatchObject({ mock: true, tool: 'gcp_logs' });
+    const evidence = ready.evidence as {
+      id: string;
+      kind: string;
+      title: string;
+      tool: string;
+      mock: boolean;
+    }[];
+    expect(evidence.map((card) => card.kind)).toEqual(
+      expect.arrayContaining(['kb', 'data', 'log']),
+    );
+    expect(evidence.find((card) => card.kind === 'log')).toMatchObject({
+      mock: true,
+      tool: 'gcp_logs',
+    });
     const report = ready.report as AiReport;
     expect(report.scope).toEqual({ intent: 'webhook_not_received', basis: 'confidence' });
     expect(report.tools.map((tool) => tool.name)).toEqual(
@@ -296,24 +310,34 @@ describe('investigator and drafter, end to end on the mock provider (stage 2)', 
     expect(draft?.bodyText).not.toContain('pat.example@customer.example.test');
 
     // N3: no message to the customer, no delivery, no approval.
-    const outbound = (await owner().select().from(schema.message).where(eq(schema.message.ticketId, ticketId))).filter(
-      (message) => message.direction === 'outbound',
-    );
+    const outbound = (
+      await owner().select().from(schema.message).where(eq(schema.message.ticketId, ticketId))
+    ).filter((message) => message.direction === 'outbound');
     expect(outbound).toEqual([]);
     expect(await owner().select().from(schema.outboundDelivery)).toEqual([]);
     expect(draft?.approvedBy).toBeNull();
 
     // Every run is on record, and the tool calls are on the ledger with hashes, never inputs.
     const runs = await runsOf(ticketId);
-    expect(runs.map((run) => run.agent).toSorted()).toEqual(['classifier', 'drafter', 'investigator', 'summarizer']);
+    expect(runs.map((run) => run.agent).toSorted()).toEqual([
+      'classifier',
+      'drafter',
+      'investigator',
+      'summarizer',
+    ]);
     const investigatorRun = runs.find((run) => run.agent === 'investigator');
     expect(investigatorRun?.tools).toEqual(expect.arrayContaining(['kb_search', 'gcp_logs']));
     expect(investigatorRun?.model).toBe('mock-deep');
     expect(draft?.aiRunId).toBe(runs.find((run) => run.agent === 'drafter')?.id);
     const tools = await toolRowsOf(ticketId);
     expect(tools.length).toBeGreaterThanOrEqual(report.tools.length);
-    expect(tools.every((row) => row.status === 'ok' && /^[0-9a-f]{64}$/.test(row.inputHash))).toBe(true);
-    expect(tools.find((row) => row.tool === 'gcp_logs')).toMatchObject({ mock: true, intent: 'webhook_not_received' });
+    expect(tools.every((row) => row.status === 'ok' && /^[0-9a-f]{64}$/.test(row.inputHash))).toBe(
+      true,
+    );
+    expect(tools.find((row) => row.tool === 'gcp_logs')).toMatchObject({
+      mock: true,
+      intent: 'webhook_not_received',
+    });
     expect(tools.length).toBeLessThanOrEqual(AI_TOOL_BUDGETS.perRun);
     expect(JSON.stringify(tools)).not.toContain('webhook is not received');
 
@@ -339,7 +363,10 @@ describe('investigator and drafter, end to end on the mock provider (stage 2)', 
       actor: { type: 'user', id: staffId },
     });
     const confirmedReport = (await settled(confirmed)).report as AiReport;
-    expect(confirmedReport.scope).toEqual({ intent: 'webhook_not_received', basis: 'human_confirmed' });
+    expect(confirmedReport.scope).toEqual({
+      intent: 'webhook_not_received',
+      basis: 'human_confirmed',
+    });
     expect(confirmedReport.tools.map((tool) => tool.name)).toContain('gcp_logs');
   });
 
@@ -398,7 +425,10 @@ describe('stages decide whether a draft is made (N3)', () => {
       const rows = await draftsOf(one);
       return rows.length === 2 ? rows : undefined;
     });
-    expect((await draftsOf(one)).map((draft) => draft.status).toSorted()).toEqual(['draft', 'superseded']);
+    expect((await draftsOf(one)).map((draft) => draft.status).toSorted()).toEqual([
+      'draft',
+      'superseded',
+    ]);
   });
 
   it('kill switch: the investigation makes no model call and says why', async () => {
@@ -420,7 +450,9 @@ describe('stages decide whether a draft is made (N3)', () => {
       expect(row.reasonCode).toBe('kill_switch_on');
       expect((await runsOf(ticketId)).length).toBe(before);
     } finally {
-      await testDb.owner.pool.query(`UPDATE ai_switch SET is_on = false WHERE key = 'ai_kill_switch'`);
+      await testDb.owner.pool.query(
+        `UPDATE ai_switch SET is_on = false WHERE key = 'ai_kill_switch'`,
+      );
     }
   });
 });
@@ -431,7 +463,12 @@ describe('who may unlock the tools and the stage (SR108-1)', () => {
     classifierIntent = null;
     const [client] = await owner()
       .insert(schema.users)
-      .values({ email: 'client-user@customer.example.test', name: 'Client User', role: 'client', orgId })
+      .values({
+        email: 'client-user@customer.example.test',
+        name: 'Client User',
+        role: 'client',
+        orgId,
+      })
       .returning();
     const ticketId = await createTicket('Webhook not received', 'webhook is not received', {
       intentKey: 'webhook_not_received',
@@ -512,7 +549,10 @@ describe('another organization is not evidence (SR108-2)', () => {
   it('similar tickets and their names stay inside the organization', async () => {
     classifierConfidence = 0.9;
     classifierIntent = 'webhook_not_received';
-    const [other] = await owner().insert(schema.organization).values({ name: 'Other Org' }).returning();
+    const [other] = await owner()
+      .insert(schema.organization)
+      .values({ name: 'Other Org' })
+      .returning();
     const stranger = 'stranger.person@other-customer.example.test';
     await appDatabase.db.transaction((tx) =>
       domain.tickets.create(tx, domain.context({ actor: { type: 'system', id: null } }), {
@@ -522,12 +562,18 @@ describe('another organization is not evidence (SR108-2)', () => {
         requester: { email: stranger, name: 'Stranger Person' },
       }),
     );
-    const ticketId = await createTicket('Webhook not received', 'Our webhook is not received at all.', {
-      intentKey: 'webhook_not_received',
-    });
+    const ticketId = await createTicket(
+      'Webhook not received',
+      'Our webhook is not received at all.',
+      {
+        intentKey: 'webhook_not_received',
+      },
+    );
     const row = await settled(ticketId, 'draft_ready');
     const cards = row.evidence as { kind: string; title: string; snippet: string }[];
-    expect(cards.some((card) => card.kind === 'ticket' && card.title.includes('partner'))).toBe(false);
+    expect(cards.some((card) => card.kind === 'ticket' && card.title.includes('partner'))).toBe(
+      false,
+    );
     expect(JSON.stringify(cards)).not.toContain('stranger');
     expect(JSON.stringify(requests)).not.toContain(stranger);
     expect(JSON.stringify(requests)).not.toContain('Stranger');
@@ -536,7 +582,10 @@ describe('another organization is not evidence (SR108-2)', () => {
 
 describe('KB author (AC-4)', () => {
   async function resolvedTicket(): Promise<string> {
-    const ticketId = await createTicket('Export is empty', 'The export file is empty for last week.');
+    const ticketId = await createTicket(
+      'Export is empty',
+      'The export file is empty for last week.',
+    );
     await appDatabase.db.transaction(async (tx) => {
       const ctx = domain.context({ actor: { type: 'user', id: staffId } });
       await domain.tickets.reply(tx, ctx, {
@@ -552,7 +601,9 @@ describe('KB author (AC-4)', () => {
   it('resolving a ticket queues the job for after a short wait, and names the person who resolved it', async () => {
     const ticketId = await resolvedTicket();
     const [job] = (await owner().select().from(schema.outbox)).filter(
-      (row) => row.jobName === AI_JOBS.kbAuthor && (row.payload as { ticketId?: string }).ticketId === ticketId,
+      (row) =>
+        row.jobName === AI_JOBS.kbAuthor &&
+        (row.payload as { ticketId?: string }).ticketId === ticketId,
     );
     expect(job).toBeDefined();
     expect((job?.payload as { requestedBy: string }).requestedBy).toBe(staffId);
@@ -574,18 +625,27 @@ describe('KB author (AC-4)', () => {
       .select()
       .from(schema.kbArticleVersion)
       .where(eq(schema.kbArticleVersion.articleId, article.id));
-    expect(version).toMatchObject({ authoredByMachine: true, requestedBy: staffId, createdBy: null });
+    expect(version).toMatchObject({
+      authoredByMachine: true,
+      requestedBy: staffId,
+      createdBy: null,
+    });
     expect(version?.bodyMd).not.toMatch(/\[[A-Z_]+_\d+\]/);
     const [run] = (await runsOf(ticketId)).filter((row) => row.agent === 'kb_author');
     expect(run).toMatchObject({ status: 'ok', model: 'mock-standard' });
 
     // Once per ticket: a second job finds the article and makes no model call.
-    const authorRuns = async () => (await runsOf(ticketId)).filter((row) => row.agent === 'kb_author').length;
+    const authorRuns = async () =>
+      (await runsOf(ticketId)).filter((row) => row.agent === 'kb_author').length;
     const before = await authorRuns();
     await enqueueAi(AI_JOBS.kbAuthor, { ticketId, requestedBy: staffId });
     await new Promise((resolve) => setTimeout(resolve, 1500));
     expect(await authorRuns()).toBe(before);
-    expect((await owner().select().from(schema.kbArticle)).filter((row) => row.sources.some((s) => s.ref === ticketId))).toHaveLength(1);
+    expect(
+      (await owner().select().from(schema.kbArticle)).filter((row) =>
+        row.sources.some((s) => s.ref === ticketId),
+      ),
+    ).toHaveLength(1);
   });
 
   it('does nothing for a ticket that cited a knowledge base article', async () => {
@@ -603,11 +663,16 @@ describe('KB author (AC-4)', () => {
       })
       .returning();
     expect(draft).toBeDefined();
-    const authorCalls = () => requests.filter((request) => request.prompt.id === 'kb_author').length;
+    const authorCalls = () =>
+      requests.filter((request) => request.prompt.id === 'kb_author').length;
     const before = authorCalls();
     await enqueueAi(AI_JOBS.kbAuthor, { ticketId, requestedBy: staffId });
     await new Promise((resolve) => setTimeout(resolve, 1500));
     expect(authorCalls()).toBe(before);
-    expect((await owner().select().from(schema.kbArticle)).filter((row) => row.sources.some((s) => s.ref === ticketId))).toEqual([]);
+    expect(
+      (await owner().select().from(schema.kbArticle)).filter((row) =>
+        row.sources.some((s) => s.ref === ticketId),
+      ),
+    ).toEqual([]);
   });
 });

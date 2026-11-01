@@ -70,13 +70,18 @@ describe('the tool ledger in the database (T-108a, N2)', () => {
     const ticketId = await newTicket();
     const runKey = randomUUID();
     for (let index = 0; index < AI_TOOL_BUDGETS.perRun; index += 1) {
-      const decision = await ledger().begin(entry(ticketId, { runKey, tool: `tool_${String(index)}` }));
+      const decision = await ledger().begin(
+        entry(ticketId, { runKey, tool: `tool_${String(index)}` }),
+      );
       expect(decision.allowed).toBe(true);
     }
     // A new ledger object (a new "handle") for the same run gets no new budget.
     const refused = await ledger().begin(entry(ticketId, { runKey }));
     expect(refused).toEqual({ allowed: false, reason: 'run_budget' });
-    const rows = await owner().select().from(schema.toolExecution).where(eq(schema.toolExecution.runKey, runKey));
+    const rows = await owner()
+      .select()
+      .from(schema.toolExecution)
+      .where(eq(schema.toolExecution.runKey, runKey));
     expect(rows.filter((row) => row.status === 'denied')).toHaveLength(1);
     expect(rows.find((row) => row.status === 'denied')?.errorCode).toBe('run_budget');
   });
@@ -110,7 +115,9 @@ describe('the tool ledger in the database (T-108a, N2)', () => {
       limits: { perRun: 100, perTicketPerHour: 3, perToolPerMinute: 100 },
     });
     const results = await Promise.all(
-      Array.from({ length: 8 }, (_, index) => tight.begin(entry(ticketId, { tool: `p_${String(index)}` }))),
+      Array.from({ length: 8 }, (_, index) =>
+        tight.begin(entry(ticketId, { tool: `p_${String(index)}` })),
+      ),
     );
     expect(results.filter((result) => result.allowed)).toHaveLength(3);
   });
@@ -126,13 +133,26 @@ describe('the tool ledger in the database (T-108a, N2)', () => {
       resultCount: null,
     });
     // A second finish does not rewrite the row.
-    await ledger().finish(decision.id, { status: 'ok', errorCode: null, latencyMs: 1, resultCount: 9 });
-    const [row] = await owner().select().from(schema.toolExecution).where(eq(schema.toolExecution.id, decision.id));
+    await ledger().finish(decision.id, {
+      status: 'ok',
+      errorCode: null,
+      latencyMs: 1,
+      resultCount: 9,
+    });
+    const [row] = await owner()
+      .select()
+      .from(schema.toolExecution)
+      .where(eq(schema.toolExecution.id, decision.id));
     expect(row).toMatchObject({ status: 'error', latencyMs: 12, resultCount: null });
     expect(row?.errorCode).not.toMatch(/[ @.:]/);
     expect(row?.finishedAt).not.toBeNull();
     await ledger().deny(entry(ticketId, { tool: 'gcp_logs' }), 'not_allowed');
-    const denied = (await owner().select().from(schema.toolExecution).where(eq(schema.toolExecution.ticketId, ticketId))).find((r) => r.tool === 'gcp_logs');
+    const denied = (
+      await owner()
+        .select()
+        .from(schema.toolExecution)
+        .where(eq(schema.toolExecution.ticketId, ticketId))
+    ).find((r) => r.tool === 'gcp_logs');
     expect(denied).toMatchObject({ status: 'denied', errorCode: 'not_allowed' });
   });
 });
@@ -175,7 +195,10 @@ describe('rejecting a draft (T-108c)', () => {
     expect(result.value.draftId).toBe(draftId);
     expect(result.events.map((event) => event.type)).toEqual(['ticket.updated']);
     expect(result.audited).toBe(true);
-    const [draft] = await owner().select().from(schema.aiDraft).where(eq(schema.aiDraft.id, draftId));
+    const [draft] = await owner()
+      .select()
+      .from(schema.aiDraft)
+      .where(eq(schema.aiDraft.id, draftId));
     expect(draft).toMatchObject({
       status: 'rejected',
       disposition: 'rejected',
@@ -183,26 +206,44 @@ describe('rejecting a draft (T-108c)', () => {
       rejectComment: 'too formal',
       resolvedBy: agent.id,
     });
-    const [insight] = await owner().select().from(schema.aiTicketInsight).where(eq(schema.aiTicketInsight.ticketId, ticketId));
+    const [insight] = await owner()
+      .select()
+      .from(schema.aiTicketInsight)
+      .where(eq(schema.aiTicketInsight.ticketId, ticketId));
     expect(insight).toMatchObject({ draftId: null, state: 'needs_human', nextStepKind: 'reply' });
-    const audit = (await auditRows(env, AUDIT_ACTIONS.aiDraftReject)).filter((row) => row.targetId === ticketId);
+    const audit = (await auditRows(env, AUDIT_ACTIONS.aiDraftReject)).filter(
+      (row) => row.targetId === ticketId,
+    );
     expect(audit).toHaveLength(1);
-    expect(audit[0]?.metadata).toMatchObject({ aiDraftId: draftId, reason: 'tone_style', hasComment: true });
+    expect(audit[0]?.metadata).toMatchObject({
+      aiDraftId: draftId,
+      reason: 'tone_style',
+      hasComment: true,
+    });
   });
 
   it('refuses a second verdict, a draft of another ticket, a missing one and a non-person', async () => {
     const ticketId = await newTicket();
     const draftId = await draftFor(ticketId);
     await reject(ticketId, draftId, { reason: 'other', comment: 'because' });
-    await expect(reject(ticketId, draftId, { reason: 'wrong_intent' })).rejects.toMatchObject({ code: 'conflict' });
+    await expect(reject(ticketId, draftId, { reason: 'wrong_intent' })).rejects.toMatchObject({
+      code: 'conflict',
+    });
 
     const elsewhere = await newTicket();
     const foreign = await draftFor(elsewhere);
-    await expect(reject(ticketId, foreign, { reason: 'wrong_intent' })).rejects.toMatchObject({ code: 'not_found' });
-    await expect(reject(ticketId, randomUUID(), { reason: 'wrong_intent' })).rejects.toMatchObject({ code: 'not_found' });
+    await expect(reject(ticketId, foreign, { reason: 'wrong_intent' })).rejects.toMatchObject({
+      code: 'not_found',
+    });
+    await expect(reject(ticketId, randomUUID(), { reason: 'wrong_intent' })).rejects.toMatchObject({
+      code: 'not_found',
+    });
 
     const waiting = await draftFor(await newTicket());
-    const tickets = await owner().select({ id: schema.aiDraft.ticketId }).from(schema.aiDraft).where(eq(schema.aiDraft.id, waiting));
+    const tickets = await owner()
+      .select({ id: schema.aiDraft.ticketId })
+      .from(schema.aiDraft)
+      .where(eq(schema.aiDraft.id, waiting));
     await expect(
       env.tx((tx) =>
         rejectAiDraft(tx, env.ctx({ type: 'ai', id: null }), {
@@ -218,7 +259,10 @@ describe('rejecting a draft (T-108c)', () => {
     const ticketId = await newTicket();
     const first = await draftFor(ticketId);
     const second = await draftFor(ticketId);
-    const drafts = await owner().select().from(schema.aiDraft).where(eq(schema.aiDraft.ticketId, ticketId));
+    const drafts = await owner()
+      .select()
+      .from(schema.aiDraft)
+      .where(eq(schema.aiDraft.ticketId, ticketId));
     expect(Object.fromEntries(drafts.map((draft) => [draft.id, draft.status]))).toEqual({
       [first]: 'superseded',
       [second]: 'draft',
@@ -266,9 +310,9 @@ describe('limits that hold under parallel jobs and undo (SR108 P3)', () => {
     // The approved one is left alone when the new one is written.
     const status = async () =>
       Object.fromEntries(
-        (await owner().select().from(schema.aiDraft).where(eq(schema.aiDraft.ticketId, ticketId))).map(
-          (row) => [row.id, row.status],
-        ),
+        (
+          await owner().select().from(schema.aiDraft).where(eq(schema.aiDraft.ticketId, ticketId))
+        ).map((row) => [row.id, row.status]),
       );
     expect(await status()).toEqual({ [first.id]: 'approved', [second.id]: 'draft' });
     await env.tx((tx) => restoreAiDraft(tx, first.id));
@@ -277,7 +321,9 @@ describe('limits that hold under parallel jobs and undo (SR108 P3)', () => {
 });
 
 describe('the KB author and who may approve it (T-108e, po decision 27)', () => {
-  async function aiArticle(requestedBy: string | null): Promise<{ articleId: string; version: number }> {
+  async function aiArticle(
+    requestedBy: string | null,
+  ): Promise<{ articleId: string; version: number }> {
     const ticketId = await newTicket('Export empty');
     const ctx = env.ctx({ type: 'ai', id: null }, { onBehalfOf: requestedBy });
     const created = await env.tx((tx) =>
@@ -297,11 +343,28 @@ describe('the KB author and who may approve it (T-108e, po decision 27)', () => 
 
   it('puts the draft in review, internal, marked as machine text and naming who asked', async () => {
     const { articleId } = await aiArticle(agent.id);
-    const [article] = await owner().select().from(schema.kbArticle).where(eq(schema.kbArticle.id, articleId));
-    expect(article).toMatchObject({ status: 'in_review', visibility: 'internal', authorId: null, publishedVersionId: null });
-    const [version] = await owner().select().from(schema.kbArticleVersion).where(eq(schema.kbArticleVersion.articleId, articleId));
-    expect(version).toMatchObject({ authoredByMachine: true, requestedBy: agent.id, createdBy: null });
-    const audit = (await auditRows(env, AUDIT_ACTIONS.aiKbDraft)).filter((row) => row.targetId === articleId);
+    const [article] = await owner()
+      .select()
+      .from(schema.kbArticle)
+      .where(eq(schema.kbArticle.id, articleId));
+    expect(article).toMatchObject({
+      status: 'in_review',
+      visibility: 'internal',
+      authorId: null,
+      publishedVersionId: null,
+    });
+    const [version] = await owner()
+      .select()
+      .from(schema.kbArticleVersion)
+      .where(eq(schema.kbArticleVersion.articleId, articleId));
+    expect(version).toMatchObject({
+      authoredByMachine: true,
+      requestedBy: agent.id,
+      createdBy: null,
+    });
+    const audit = (await auditRows(env, AUDIT_ACTIONS.aiKbDraft)).filter(
+      (row) => row.targetId === articleId,
+    );
     expect(audit[0]).toMatchObject({ actorType: 'ai', actorId: null });
     expect(audit[0]?.metadata).toMatchObject({ requestedBy: agent.id });
   });
@@ -324,10 +387,19 @@ describe('the KB author and who may approve it (T-108e, po decision 27)', () => 
     ).rejects.toMatchObject({ details: { reason: 'kb_break_glass_machine_text' } });
     // The AI itself never publishes.
     await expect(
-      env.tx((tx) => env.domain.kb.publish(tx, env.ctx({ type: 'ai', id: null }), { articleId, version, audience })),
+      env.tx((tx) =>
+        env.domain.kb.publish(tx, env.ctx({ type: 'ai', id: null }), {
+          articleId,
+          version,
+          audience,
+        }),
+      ),
     ).rejects.toMatchObject({ details: { reason: 'kb_publisher_not_human' } });
     await publish(articleId, version, approver);
-    const [article] = await owner().select().from(schema.kbArticle).where(eq(schema.kbArticle.id, articleId));
+    const [article] = await owner()
+      .select()
+      .from(schema.kbArticle)
+      .where(eq(schema.kbArticle.id, articleId));
     expect(article).toMatchObject({ status: 'published', reviewerId: approver.id });
   });
 
@@ -336,7 +408,10 @@ describe('the KB author and who may approve it (T-108e, po decision 27)', () => 
     const edited = await env.tx((tx) =>
       env.domain.kb.update(tx, env.ctx(other.actor), {
         articleId,
-        patch: { bodyMd: '## Resolution\n\n1. Clear the date filter, then export.', expectedVersion: version },
+        patch: {
+          bodyMd: '## Resolution\n\n1. Clear the date filter, then export.',
+          expectedVersion: version,
+        },
         canApprove: false,
       }),
     );
@@ -357,12 +432,18 @@ describe('the KB author and who may approve it (T-108e, po decision 27)', () => 
 
   it('finds a gap only for a resolved ticket with an answer, no cited article and no earlier draft', async () => {
     const ticketId = await newTicket('Gap');
-    expect(await ticketKbGap(env.database.db, ticketId)).toEqual({ needed: false, reason: 'not_resolved' });
+    expect(await ticketKbGap(env.database.db, ticketId)).toEqual({
+      needed: false,
+      reason: 'not_resolved',
+    });
     await env.tx(async (tx) => {
       const ctx = env.ctx(agent.actor);
       await env.domain.tickets.changeStatus(tx, ctx, { ref: ticketId, status: 'resolved' });
     });
-    expect(await ticketKbGap(env.database.db, ticketId)).toEqual({ needed: false, reason: 'no_answer' });
+    expect(await ticketKbGap(env.database.db, ticketId)).toEqual({
+      needed: false,
+      reason: 'no_answer',
+    });
     await owner().insert(schema.message).values({
       ticketId,
       direction: 'outbound',
@@ -372,27 +453,34 @@ describe('the KB author and who may approve it (T-108e, po decision 27)', () => 
     });
     expect(await ticketKbGap(env.database.db, ticketId)).toEqual({ needed: true });
 
-    await owner().insert(schema.aiDraft).values({
-      ticketId,
-      bodyText: 'Hello',
-      status: 'sent',
-      approvedBy: agent.id,
-      approvedAt: new Date(),
-      disposition: 'approved',
-      citations: [{ evidenceId: 'ev-1', sentence: 0, kind: 'ticket' }],
-    });
+    await owner()
+      .insert(schema.aiDraft)
+      .values({
+        ticketId,
+        bodyText: 'Hello',
+        status: 'sent',
+        approvedBy: agent.id,
+        approvedAt: new Date(),
+        disposition: 'approved',
+        citations: [{ evidenceId: 'ev-1', sentence: 0, kind: 'ticket' }],
+      });
     // A citation to something that is not an article is still a gap.
     expect(await ticketKbGap(env.database.db, ticketId)).toEqual({ needed: true });
-    await owner().insert(schema.aiDraft).values({
-      ticketId,
-      bodyText: 'Hello again',
-      status: 'sent',
-      approvedBy: agent.id,
-      approvedAt: new Date(),
-      disposition: 'edited',
-      citations: [{ evidenceId: 'ev-2', sentence: 0, kind: 'kb' }],
+    await owner()
+      .insert(schema.aiDraft)
+      .values({
+        ticketId,
+        bodyText: 'Hello again',
+        status: 'sent',
+        approvedBy: agent.id,
+        approvedAt: new Date(),
+        disposition: 'edited',
+        citations: [{ evidenceId: 'ev-2', sentence: 0, kind: 'kb' }],
+      });
+    expect(await ticketKbGap(env.database.db, ticketId)).toEqual({
+      needed: false,
+      reason: 'cited_kb',
     });
-    expect(await ticketKbGap(env.database.db, ticketId)).toEqual({ needed: false, reason: 'cited_kb' });
   });
 });
 
@@ -421,7 +509,10 @@ describe('the brief survives a re-summary (T-106e writer)', () => {
       generatedAt: new Date(),
       summary: 'New summary',
     });
-    const [row] = await owner().select().from(schema.aiTicketInsight).where(eq(schema.aiTicketInsight.ticketId, ticketId));
+    const [row] = await owner()
+      .select()
+      .from(schema.aiTicketInsight)
+      .where(eq(schema.aiTicketInsight.ticketId, ticketId));
     expect(row?.summary).toBe('New summary');
     expect(row?.evidence).toHaveLength(1);
     expect(row?.report).not.toBeNull();

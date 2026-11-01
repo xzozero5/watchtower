@@ -43,7 +43,10 @@ function collect(texts: readonly string[]): { runs: Set<string>; ids: Set<string
 }
 
 /** What the restricted texts contain that the allowed texts do not. */
-export function fingerprintOf(restricted: readonly string[], allowed: readonly string[]): Fingerprint {
+export function fingerprintOf(
+  restricted: readonly string[],
+  allowed: readonly string[],
+): Fingerprint {
   const bad = collect(restricted);
   const good = collect(allowed);
   for (const run of good.runs) bad.runs.delete(run);

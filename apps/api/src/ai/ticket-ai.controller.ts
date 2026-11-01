@@ -122,13 +122,20 @@ export class TicketAiController {
       'draft. The AI never sends anything: a draft waits for a person (N3).',
   })
   @ApiAcceptedResponse({ standardSchema: acceptedResponse })
-  @ApiConflictResponse({ description: 'A job is already running, or the intent does not allow a draft' })
+  @ApiConflictResponse({
+    description: 'A job is already running, or the intent does not allow a draft',
+  })
   async request(
     @Param({ schema: ticketRefParamSchema }) params: RefParam,
     @Body({ schema: aiRequestSchema }) body: AiRequest,
     @CurrentPrincipal() principal: Principal,
   ) {
-    await this.limiter.enforce('ai-request', principal.userId, AI_REQUEST_LIMITS.perUserPerHour, 3600);
+    await this.limiter.enforce(
+      'ai-request',
+      principal.userId,
+      AI_REQUEST_LIMITS.perUserPerHour,
+      3600,
+    );
     const result = await this.uow.run((uow) => this.ai.request(uow, params.id, body, principal));
     AuditScope.set({ targetId: result.ticketId });
     return parseResponse(acceptedResponse, { accepted: true as const });

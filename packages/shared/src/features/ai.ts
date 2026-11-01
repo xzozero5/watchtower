@@ -221,7 +221,9 @@ export const aiStageSchema = z.number().int().min(0).max(4);
 export const aiReportSchema = z.object({
   /** One claim, and the evidence cards it rests on. A finding with no evidence is shown as `Uncited`. */
   findings: z
-    .array(z.object({ text: z.string().max(600), evidenceIds: z.array(z.string().max(100)).max(10) }))
+    .array(
+      z.object({ text: z.string().max(600), evidenceIds: z.array(z.string().max(100)).max(10) }),
+    )
     .max(12),
   likelyCause: z.string().max(600).nullable(),
   confidence: z.number().min(0).max(1),
