@@ -1,0 +1,58 @@
+/**
+ * Copy of the head console Home (T-127). Kept short on purpose
+ * (docs/design/ai-first-workspace.md section 4): no label that repeats its value, helper sentences
+ * only where an action is risky (the AI switches, stage changes, deleting, signing people out).
+ * Same keys as ../th/home.ts; i18n.test.ts checks both.
+ */
+export const homeEn = {
+  title: 'Home',
+  refresh: 'Refresh',
+  refreshHint: 'Refreshes every minute',
+  slaRisk: 'SLA at risk',
+  overdueCount: '{count} overdue',
+  unassigned: 'Unassigned',
+  new: 'New',
+  triage: 'Needs triage',
+  oldest: 'oldest {time}',
+  atLeast: '{count}+',
+  atRiskShort: '{count} at risk',
+  unavailable: 'Not available yet',
+  statsUnavailable: 'Counts are not available.',
+  changedPill: '{count} changed — press .',
+  showAll: 'Show all {count}',
+  byStatus: 'By status',
+  byQueue: 'By queue',
+  noQueue: 'No queue',
+  unknownQueue: 'Unknown queue',
+  load: 'Open per person',
+  loading: 'Loading…',
+  healthTitle: 'System',
+  health: {
+    ready: 'Database and Redis: ready',
+    notReady: 'Database or Redis: not responding',
+    outboxLabel: 'Outbound queue',
+    integrationsLabel: 'Integrations',
+    unavailable: 'Not available yet',
+  },
+  ai: {
+    title: 'AI',
+    error: 'AI status unavailable.',
+    runs: 'Runs',
+    on: 'On',
+    stopped: 'Stopped',
+    limit: 'Stage limit',
+    limitOn: 'On',
+    limitOff: 'Off',
+    draftReady: 'Draft ready',
+    needsYou: 'Needs you',
+    stages: 'Intents per stage',
+    pinned: '{count} pinned',
+    intents: 'Intents',
+    controls: 'AI controls',
+  },
+  empty: {
+    slaRisk: 'No tickets at risk.',
+    open: 'No open tickets.',
+    load: 'No active staff.',
+  },
+} as const;

@@ -1,0 +1,17 @@
+export const railEn = {
+  label: 'Main navigation',
+  queue: 'Queue',
+  home: 'Home',
+  admin: 'Admin',
+  brief: 'Daily brief',
+  handoff: 'Shift handoff',
+  notifications: 'Notifications',
+  comingSoon: 'coming soon',
+  expand: 'Expand the navigation',
+  collapse: 'Collapse the navigation',
+  paletteShort: 'Command palette',
+  keymapShort: 'Keyboard shortcuts',
+  collapseShort: 'Collapse',
+  account: 'Account menu',
+  signedInAs: 'Signed in as {name}',
+} as const;

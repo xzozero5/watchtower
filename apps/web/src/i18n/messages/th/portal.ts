@@ -1,7 +1,8 @@
-import type { PortalMessages } from './portal.en';
+import type { portalEn } from '../en/portal';
+import type { Widen } from '../types';
 
-/** Thai copy of the public client portal. Same keys as portal.en.ts. */
-export const portalTh: PortalMessages = {
+/** Thai copy of the public client portal. Same keys as en/portal.ts. */
+export const portalTh: Widen<typeof portalEn> = {
   frame: {
     brand: 'Watchtower Support',
     language: 'ภาษา',

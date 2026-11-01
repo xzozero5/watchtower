@@ -1,7 +1,7 @@
 /**
  * English copy of the public client portal (T-007, docs/06-UI-SPEC.md sections 10 and 16). It lives
- * in its own file and is merged into the main catalogue as `portal`, so the portal can change
- * without touching `en.ts`. Same rules as en.ts: add every key to portal.th.ts too.
+ * in its own namespace file, so the portal can change
+ * without touching other namespaces. Add every key to ../th/portal.ts too.
  */
 export const portalEn = {
   frame: {
@@ -155,8 +155,3 @@ export const portalEn = {
     newRequest: 'Submit a new request',
   },
 } as const;
-
-type Widen<T> = T extends string ? string : { readonly [K in keyof T]: Widen<T[K]> };
-
-/** The shape portal.th.ts must fill in. */
-export type PortalMessages = Widen<typeof portalEn>;
