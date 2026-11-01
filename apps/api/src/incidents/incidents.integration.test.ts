@@ -13,7 +13,13 @@ import { disableNetConnect } from '@watchtower/shared/testing';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { startHarness, type Harness } from '../testing/harness.js';
-import { apiOrg, fileTicket, signIn, type Persona } from '../testing/ticketing.js';
+import {
+  apiOrg,
+  fileTicket,
+  signIn,
+  type ApiErrorBody,
+  type Persona,
+} from '../testing/ticketing.js';
 
 // T-202a on the real application module: incidents (open, change, link, note, resolve), RBAC on every
 // route, and the signed deploy feed. disableNetConnect allows loopback only.
@@ -332,5 +338,121 @@ describe('the deploy feed (R-5.4)', () => {
       finishedAt: '2026-11-02T03:00:00Z',
     });
     expect((await post(backwards, sign(backwards))).status).toBe(400);
+  });
+});
+
+describe('mass communication (R-3.14, N3)', () => {
+  interface Comm {
+    id: string;
+    origin: string;
+    status: string;
+    sentBy: string | null;
+    confirmedRecipients: number | null;
+  }
+
+  async function incidentWithTickets(count: number) {
+    const created = (await open(agent)).body;
+    const ticketIds: string[] = [];
+    for (let i = 0; i < count; i += 1) {
+      const ticket = await fileTicket(agent, orgId);
+      await call(agent, 'POST', `/v1/incidents/${created.id}/tickets`, { ticketId: ticket.id });
+      ticketIds.push(ticket.id);
+    }
+    return { id: created.id, ticketIds };
+  }
+
+  it('access: staff read, agents draft, only incident.manage sends; a customer and a visitor get nothing', async () => {
+    const { id } = await incidentWithTickets(1);
+    const comm = (await call<Comm>(agent, 'POST', `/v1/incidents/${id}/comms`, { body: 'Hello' }))
+      .body;
+    const send = { confirmRecipients: 1 };
+    expect(
+      (await call(agent, 'POST', `/v1/incidents/${id}/comms/${comm.id}/send`, send)).status,
+    ).toBe(403);
+    for (const path of [`/v1/incidents/${id}/comms`, `/v1/incidents/${id}/comms/preview`]) {
+      expect((await call(agent, 'GET', path)).status).toBe(200);
+      expect((await call(client, 'GET', path)).status).toBe(403);
+      expect((await h.client().get(path)).status).toBe(401);
+    }
+    expect((await call(client, 'POST', `/v1/incidents/${id}/comms`, { body: 'x' })).status).toBe(
+      403,
+    );
+    expect(
+      (await call(client, 'POST', `/v1/incidents/${id}/comms/${comm.id}/send`, send)).status,
+    ).toBe(403);
+    expect((await call(head, 'POST', `/v1/incidents/${id}/comms`, { body: '  ' })).status).toBe(
+      400,
+    );
+  });
+
+  it('drafts, previews, refuses a wrong count, and a lead sends once to every linked ticket', async () => {
+    const { id, ticketIds } = await incidentWithTickets(2);
+    const drafted = await call<Comm>(agent, 'POST', `/v1/incidents/${id}/comms`, {
+      body: 'Checkout is back. Sorry for the trouble.',
+    });
+    expect(drafted.status).toBe(201);
+    expect(drafted.body).toMatchObject({ origin: 'human', status: 'draft', sentBy: null });
+
+    const preview = await call(agent, 'GET', `/v1/incidents/${id}/comms/preview`);
+    expect(preview.body).toEqual({ recipients: 2, skippedChannel: 0, skippedClosed: 0 });
+
+    const path = `/v1/incidents/${id}/comms/${drafted.body.id}/send`;
+    const mismatch = await call<ApiErrorBody>(lead, 'POST', path, { confirmRecipients: 7 });
+    expect(mismatch.status).toBe(409);
+    for (const ticketId of ticketIds) {
+      const sent = await owner().query(
+        `SELECT 1 FROM message WHERE ticket_id = $1 AND direction = 'outbound'`,
+        [ticketId],
+      );
+      expect(sent.rowCount).toBe(0);
+    }
+
+    const sent = await call(lead, 'POST', path, { confirmRecipients: 2 });
+    expect(sent).toMatchObject({ status: 200, body: { recipients: 2, sent: 2, failed: 0 } });
+    for (const ticketId of ticketIds) {
+      const rows = await owner().query<{ body_text: string; sender_user_id: string }>(
+        `SELECT body_text, sender_user_id FROM message WHERE ticket_id = $1 AND direction = 'outbound'`,
+        [ticketId],
+      );
+      expect(rows.rows).toEqual([
+        { body_text: 'Checkout is back. Sorry for the trouble.', sender_user_id: lead.userId },
+      ]);
+    }
+    expect((await call(lead, 'POST', path, { confirmRecipients: 2 })).status).toBe(409);
+
+    const list = await call<{ items: Comm[] }>(agent, 'GET', `/v1/incidents/${id}/comms`);
+    expect(list.body.items[0]).toMatchObject({
+      status: 'sent',
+      sentBy: lead.userId,
+      confirmedRecipients: 2,
+    });
+    const audited = await owner().query<{ action: string; actor_id: string }>(
+      `SELECT action, actor_id FROM audit_log WHERE target_id = $1 AND action LIKE 'incident.comm.%' ORDER BY created_at`,
+      [id],
+    );
+    expect(audited.rows).toEqual([
+      { action: INCIDENTS_AUDIT_ACTIONS.incidentCommDraft, actor_id: agent.userId },
+      { action: INCIDENTS_AUDIT_ACTIONS.incidentCommSend, actor_id: lead.userId },
+    ]);
+  });
+
+  it('an update drafted by the AI waits for a person: it is listed as origin ai and a lead sends it', async () => {
+    const { id } = await incidentWithTickets(1);
+    const inserted = await owner().query<{ id: string }>(
+      `INSERT INTO incident_comm (incident_id, body, origin) VALUES ($1, 'Drafted by the AI', 'ai') RETURNING id`,
+      [id],
+    );
+    const commId = inserted.rows[0]?.id ?? '';
+    const list = await call<{ items: Comm[] }>(agent, 'GET', `/v1/incidents/${id}/comms`);
+    expect(list.body.items[0]).toMatchObject({ origin: 'ai', status: 'draft' });
+    const sent = await call(lead, 'POST', `/v1/incidents/${id}/comms/${commId}/send`, {
+      confirmRecipients: 1,
+    });
+    expect(sent.status).toBe(200);
+    const row = await owner().query<{ sent_by: string }>(
+      `SELECT sent_by FROM incident_comm WHERE id = $1`,
+      [commId],
+    );
+    expect(row.rows[0]?.sent_by).toBe(lead.userId);
   });
 });

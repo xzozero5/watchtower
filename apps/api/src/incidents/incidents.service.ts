@@ -7,6 +7,11 @@ import {
   type Deploy,
   type DeployListQuery,
   type Incident,
+  type IncidentComm,
+  type IncidentCommPreview,
+  type SendComm,
+  type SendCommResult,
+  type DraftComm,
   type IncidentDetail,
   type IncidentListQuery,
   type IncidentNote,
@@ -23,6 +28,7 @@ import { DATABASE } from '../database/database.module.js';
 import { domainContext, settle } from '../domain/domain-context.js';
 import { translating } from '../domain/domain-errors.js';
 import { DOMAIN, type Domain } from '../domain/domain.module.js';
+import { RealtimePublisher } from '../realtime/realtime-publisher.js';
 import type { UnitOfWork } from '../realtime/unit-of-work.js';
 
 type IncidentRow = typeof schema.incident.$inferSelect;
@@ -76,6 +82,7 @@ export class IncidentsService {
   constructor(
     @Inject(DATABASE) private readonly database: Database,
     @Inject(DOMAIN) private readonly domain: Domain,
+    @Inject(RealtimePublisher) private readonly publisher: RealtimePublisher,
   ) {}
 
   async list(query: IncidentListQuery) {
@@ -250,5 +257,67 @@ export class IncidentsService {
       url: row.url,
       occurredAt: (row.occurredAt ?? row.receivedAt).toISOString(),
     }));
+  }
+
+  // --- mass customer communication (R-3.14, N3) -----------------------------------------------
+
+  async listComms(incidentId: string): Promise<IncidentComm[]> {
+    await this.getRow(incidentId);
+    const rows = await this.database.db
+      .select()
+      .from(schema.incidentComm)
+      .where(eq(schema.incidentComm.incidentId, incidentId))
+      .orderBy(desc(schema.incidentComm.createdAt), desc(schema.incidentComm.id));
+    return rows.map((row) => ({
+      id: row.id,
+      incidentId: row.incidentId,
+      body: row.body,
+      origin: row.origin as IncidentComm['origin'],
+      status: row.status as IncidentComm['status'],
+      draftedBy: row.draftedBy,
+      sentBy: row.sentBy,
+      confirmedRecipients: row.confirmedRecipients,
+      sentAt: row.sentAt?.toISOString() ?? null,
+      createdAt: row.createdAt.toISOString(),
+    }));
+  }
+
+  async previewComm(incidentId: string): Promise<IncidentCommPreview> {
+    await this.getRow(incidentId);
+    return this.domain.incidents.previewComm(this.database.db, incidentId);
+  }
+
+  draftComm(uow: UnitOfWork, actor: Actor, incidentId: string, input: DraftComm) {
+    return translating(async () =>
+      settle(
+        uow,
+        await this.domain.incidents.draftComm(uow.tx, domainContext(this.domain, actor), {
+          incidentId,
+          body: input.body,
+        }),
+      ),
+    );
+  }
+
+  /**
+   * Sends a drafted update. The domain refuses anyone but a person, and a count that is not the one the
+   * person confirmed; each ticket is answered in its own transaction, so events are published here,
+   * after the commits, not through a unit of work.
+   */
+  async sendComm(
+    actor: Actor,
+    incidentId: string,
+    commId: string,
+    input: SendComm,
+  ): Promise<SendCommResult> {
+    const result = await translating(() =>
+      this.domain.incidents.sendComm(this.database.db, domainContext(this.domain, actor), {
+        incidentId,
+        commId,
+        confirmRecipients: input.confirmRecipients,
+      }),
+    );
+    for (const event of result.events) await this.publisher.publish(event).catch(() => undefined);
+    return { recipients: result.recipients, sent: result.sent, failed: result.failed };
   }
 }
