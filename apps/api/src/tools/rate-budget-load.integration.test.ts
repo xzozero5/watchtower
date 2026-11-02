@@ -1,10 +1,6 @@
 import { randomBytes, randomUUID } from 'node:crypto';
 
-import {
-  ConnectorRateLimitedError,
-  FakeLogsClient,
-  type LogEntry,
-} from '@watchtower/connectors';
+import { ConnectorRateLimitedError, FakeLogsClient, type LogEntry } from '@watchtower/connectors';
 import { createDatabase, schema, type Database } from '@watchtower/db';
 import { createTestDatabase, type TestDatabase } from '@watchtower/db/testing';
 import { createDbToolLedger, createHumanToolLedger } from '@watchtower/domain';
@@ -57,7 +53,11 @@ type Outcome = 'served' | 'refused' | '429' | 'error';
 function callers(logs: FakeLogsClient) {
   const ai = createDbToolLedger({
     db: database.db,
-    limits: { perRun: 10_000, perTicketPerHour: 10_000, perToolPerMinute: AI_TOOL_BUDGETS.perToolPerMinute },
+    limits: {
+      perRun: 10_000,
+      perTicketPerHour: 10_000,
+      perToolPerMinute: AI_TOOL_BUDGETS.perToolPerMinute,
+    },
     project,
   });
   const human = createHumanToolLedger({ db: database.db, project });
@@ -115,7 +115,8 @@ function callers(logs: FakeLogsClient) {
   };
 }
 
-const count = (list: readonly string[], what: string): number => list.filter((x) => x === what).length;
+const count = (list: readonly string[], what: string): number =>
+  list.filter((x) => x === what).length;
 
 describe('the fake of the provider', () => {
   it('answers 429 past 60 requests a minute on its injected clock (nothing in front of it)', async () => {
@@ -156,7 +157,9 @@ describe('with the shared budget in front (AC-5 load test)', () => {
     expect(rows.filter((row) => row.status === 'ok')).toHaveLength(55);
     expect(rows.filter((row) => row.status === 'denied')).toHaveLength(400 - 55);
     expect(rows.filter((row) => row.status === 'running')).toHaveLength(0);
-    expect(rows.filter((row) => row.agent === 'investigator' && row.status === 'ok').length).toBeLessThanOrEqual(30);
+    expect(
+      rows.filter((row) => row.agent === 'investigator' && row.status === 'ok').length,
+    ).toBeLessThanOrEqual(30);
   });
 
   it('serves again a minute later, on both clocks', async () => {

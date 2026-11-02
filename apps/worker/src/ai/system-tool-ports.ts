@@ -80,7 +80,8 @@ export function createLogsToolPort(
       const template = await templateForAi(db, input.intentKey, 'logs');
       if (template === null) return { items: [], note: 'No log template for this intent.' };
       const params = await ticketParams(db, template.body, input.ticketId);
-      if (params === null) return { items: [], note: 'The log template cannot run without a person.' };
+      if (params === null)
+        return { items: [], note: 'The log template cannot run without a person.' };
       const run = await runLogsTemplate(logs, {
         body: template.body,
         params,

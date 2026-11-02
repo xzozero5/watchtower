@@ -209,8 +209,9 @@ export function bindSqlTemplate(
   }
   const names = placeholdersOf(template);
   checkParams(names, params);
-  const sql = template.replaceAll(/\{\{([a-z][a-z0-9_]{0,30})\}\}/g, (_all, name: string) =>
-    `$${String(names.indexOf(name) + 1)}`,
+  const sql = template.replaceAll(
+    /\{\{([a-z][a-z0-9_]{0,30})\}\}/g,
+    (_all, name: string) => `$${String(names.indexOf(name) + 1)}`,
   );
   return { sql, values: names.map((name) => params[name] ?? '') };
 }
@@ -271,7 +272,9 @@ function translateDatabaseError(error: unknown): Error {
     case '55P03': // lock_not_available
       return new ConnectorTimeoutError();
     case 'WT002': // the executor: more bytes than a result may carry
-      return new ConnectorQueryRejectedError('The result is larger than the limit; ask for fewer rows or columns');
+      return new ConnectorQueryRejectedError(
+        'The result is larger than the limit; ask for fewer rows or columns',
+      );
     case '53000':
     case '53100': // disk_full
     case '53200': // out_of_memory
@@ -281,7 +284,9 @@ function translateDatabaseError(error: unknown): Error {
     case '54001':
     case '54011':
     case '54023':
-      return new ConnectorQueryRejectedError('The statement needs more resources than a run may use');
+      return new ConnectorQueryRejectedError(
+        'The statement needs more resources than a run may use',
+      );
     case '42501': // insufficient_privilege: a column the login may not read
       return new ConnectorQueryRejectedError('The database login may not read that');
     case '42601': // syntax_error

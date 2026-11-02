@@ -109,7 +109,10 @@ export class StatusPanel {
               status: schema.incident.status,
             })
             .from(schema.incidentService)
-            .innerJoin(schema.incident, sql`${schema.incident.id} = ${schema.incidentService.incidentId}`)
+            .innerJoin(
+              schema.incident,
+              sql`${schema.incident.id} = ${schema.incidentService.incidentId}`,
+            )
             .where(
               and(
                 inArray(schema.incidentService.serviceId, ids),
@@ -184,7 +187,10 @@ export class StatusPanel {
       ticketId: null,
       agent: 'status_panel',
       tool: RATE_TOOL_NAMES.metrics,
-      inputHash: hmacJson(this.hashKey, { service: slug, windowHours: SERVICE_STATUS_SPARK.windowHours }),
+      inputHash: hmacJson(this.hashKey, {
+        service: slug,
+        windowHours: SERVICE_STATUS_SPARK.windowHours,
+      }),
       mock,
       actor: 'system',
     });

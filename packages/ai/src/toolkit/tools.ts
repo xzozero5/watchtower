@@ -172,7 +172,7 @@ export function createGcpLogsTool(port: LogsToolPort) {
   return defineTool({
     name: TOOL_NAMES.gcpLogs,
     description:
-      'Read recent log entries of the ticket\'s organization for a time window, from the log template of the intent.',
+      "Read recent log entries of the ticket's organization for a time window, from the log template of the intent.",
     readOnly: true,
     mock: port.mock,
     input: gcpLogsInput,
@@ -199,7 +199,7 @@ export function createBigQueryTool(port: DataToolPort) {
   return defineTool({
     name: TOOL_NAMES.bigquery,
     description:
-      'Run the saved, read-only query template of the intent for the ticket\'s organization and read its rows.',
+      "Run the saved, read-only query template of the intent for the ticket's organization and read its rows.",
     readOnly: true,
     mock: port.mock,
     input: bigqueryInput,
@@ -225,8 +225,7 @@ export function createBigQueryTool(port: DataToolPort) {
 export function createRepoChangesTool(port: RepoToolPort) {
   return defineTool({
     name: TOOL_NAMES.repoChanges,
-    description:
-      'List recent changes of a service: commits, pull requests, releases, deploys.',
+    description: 'List recent changes of a service: commits, pull requests, releases, deploys.',
     readOnly: true,
     mock: port.mock,
     input: repoChangesInput,

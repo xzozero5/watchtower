@@ -42,7 +42,8 @@ export function toToolTemplate(row: ToolTemplateRecord): ToolTemplate {
   };
 }
 
-const bodyDigest = (body: string): string => createHash('sha256').update(body, 'utf8').digest('hex');
+const bodyDigest = (body: string): string =>
+  createHash('sha256').update(body, 'utf8').digest('hex');
 
 /**
  * The saved queries behind the investigation buttons (T-203d). A template is a query against
@@ -102,7 +103,10 @@ export class ToolTemplates {
         });
         return created.id;
       } catch (error) {
-        if (pgCode(error) === PG.uniqueViolation && pgConstraint(error) === 'tool_template_name_key') {
+        if (
+          pgCode(error) === PG.uniqueViolation &&
+          pgConstraint(error) === 'tool_template_name_key'
+        ) {
           throw conflict('A template with this kind and name already exists');
         }
         throw error;
@@ -150,7 +154,10 @@ export class ToolTemplates {
           fields: Object.keys(input).toSorted(),
           ...(input.body === undefined
             ? {}
-            : { bodyDigestBefore: bodyDigest(current.body), bodyDigestAfter: bodyDigest(input.body) }),
+            : {
+                bodyDigestBefore: bodyDigest(current.body),
+                bodyDigestAfter: bodyDigest(input.body),
+              }),
         },
       });
     });
@@ -189,7 +196,9 @@ export class ToolTemplates {
     // The AI runs a template without a person choosing its parameters, so it must be about the ticket's
     // organization; one that is not can only be for a person to press (runByAi: false).
     if (runByAi && !templatePlaceholders(body).includes('org_id')) {
-      throw badRequest('A template the AI runs must use {{org_id}}; set runByAi to false for one that does not');
+      throw badRequest(
+        'A template the AI runs must use {{org_id}}; set runByAi to false for one that does not',
+      );
     }
     if (kind === 'logs' && allowedColumns.length > 0) {
       throw badRequest('allowedColumns is for data templates');

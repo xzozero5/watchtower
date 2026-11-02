@@ -58,7 +58,10 @@ export const mockFixturesSchema = z.object({
               ref: z.string().min(1).max(100),
               title: z.string().max(300),
               author: z.string().max(100).nullable().default(null),
-              agoHours: z.number().min(0).max(24 * 30),
+              agoHours: z
+                .number()
+                .min(0)
+                .max(24 * 30),
               url: z.string().max(500).nullable().default(null),
             }),
           )

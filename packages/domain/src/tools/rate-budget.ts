@@ -75,7 +75,8 @@ async function read(tx: RateTx, resource: string): Promise<WindowRow | undefined
 }
 
 const waitFor = (row: WindowRow | undefined): number => {
-  const oldest = row?.oldest_ms === null || row?.oldest_ms === undefined ? null : Number(row.oldest_ms);
+  const oldest =
+    row?.oldest_ms === null || row?.oldest_ms === undefined ? null : Number(row.oldest_ms);
   const now = Number(row?.now_ms ?? 0);
   return oldest === null ? 1000 : Math.max(1, oldest + 61_000 - now);
 };

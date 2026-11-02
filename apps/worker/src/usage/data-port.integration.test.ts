@@ -83,7 +83,11 @@ beforeAll(async () => {
   orgSteady = orgs.find((org) => org.name === 'Steady Customer')?.id ?? '';
   orgSpike = orgs.find((org) => org.name === 'Spiky Customer')?.id ?? '';
   // The product knows these two organizations: the first is steady, the second gets the anomaly.
-  const product = createDatabase({ url: mock.ownerUrl, max: 1, applicationName: 'wt-product-seed' });
+  const product = createDatabase({
+    url: mock.ownerUrl,
+    max: 1,
+    applicationName: 'wt-product-seed',
+  });
   await product.pool.query('SELECT product_mock.seed($1::uuid[])', [[orgSteady, orgSpike]]);
   await product.close();
   queue = new Queue(QUEUE_NAMES.usage, { connection: parseRedisUrl(config.REDIS_URL), prefix });
@@ -201,7 +205,9 @@ describe('the adapter', () => {
       expect(result.rows.length).toBeGreaterThan(0);
       expect(result.truncated).toBe(false);
       // No column was hidden: a hidden one would arrive as null.
-      expect(result.rows.every((row) => Object.values(row).every((cell) => cell !== null))).toBe(true);
+      expect(result.rows.every((row) => Object.values(row).every((cell) => cell !== null))).toBe(
+        true,
+      );
     }
     await tools.close?.();
   });
@@ -217,12 +223,14 @@ describe('the adapter', () => {
     });
     if (port === undefined) throw new Error('no port');
     const key = `adhoc_${randomBytes(3).toString('hex')}`;
-    await owner().insert(schema.usageMetricDef).values({
-      key,
-      name: key,
-      sqlTemplate: 'SELECT 1',
-      dims: ['org'],
-    });
+    await owner()
+      .insert(schema.usageMetricDef)
+      .values({
+        key,
+        name: key,
+        sqlTemplate: 'SELECT 1',
+        dims: ['org'],
+      });
     const sql = `SELECT date_trunc('hour', started_at) AS ts, count(*) AS value, org_id AS org, step AS sneaky
                  FROM product_mock.flow_run WHERE started_at >= $1 AND started_at < $2 GROUP BY 1, 3, 4`;
     const result = await port.query({ metricKey: key, sql, params: window(), maxRows: 10 });

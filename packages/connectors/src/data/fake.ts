@@ -30,7 +30,8 @@ export class FakeDataQueryClient implements DataQueryClient {
       return Promise.reject(new ConnectorQueryRejectedError('Aborted'));
     }
     const answer = this.#answers.get(query.label);
-    if (answer === undefined) return Promise.resolve({ columns: [], rows: [], truncated: false, masked: [] });
+    if (answer === undefined)
+      return Promise.resolve({ columns: [], rows: [], truncated: false, masked: [] });
     return Promise.resolve({
       columns: answer.columns,
       rows: answer.rows.slice(0, query.maxRows),

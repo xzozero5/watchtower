@@ -210,7 +210,8 @@ export class ToolRunner implements OnModuleDestroy {
       intentKey: subject.intentKey,
       buttons: templates.map((template) => {
         const kind = template.kind as 'logs' | 'data';
-        const connected = kind === 'logs' ? this.clients.logs !== undefined : this.clients.data !== undefined;
+        const connected =
+          kind === 'logs' ? this.clients.logs !== undefined : this.clients.data !== undefined;
         return {
           templateId: template.id,
           kind,
@@ -220,7 +221,12 @@ export class ToolRunner implements OnModuleDestroy {
             (name) => !(TOOL_AUTO_PARAMS as readonly string[]).includes(name),
           ),
           connected,
-          mock: kind === 'logs' ? (this.clients.logs ? clientIsMock(this.clients.logs) : true) : (this.clients.dataMock ?? true),
+          mock:
+            kind === 'logs'
+              ? this.clients.logs
+                ? clientIsMock(this.clients.logs)
+                : true
+              : (this.clients.dataMock ?? true),
         };
       }),
     };
@@ -379,8 +385,14 @@ export class ToolRunner implements OnModuleDestroy {
   async removeCard(subject: Subject, cardId: string, principal: Principal): Promise<void> {
     const where =
       subject.kind === 'ticket'
-        ? and(eq(schema.evidenceCard.id, cardId), eq(schema.evidenceCard.ticketId, subject.ticketId))
-        : and(eq(schema.evidenceCard.id, cardId), eq(schema.evidenceCard.incidentId, subject.incidentId));
+        ? and(
+            eq(schema.evidenceCard.id, cardId),
+            eq(schema.evidenceCard.ticketId, subject.ticketId),
+          )
+        : and(
+            eq(schema.evidenceCard.id, cardId),
+            eq(schema.evidenceCard.incidentId, subject.incidentId),
+          );
     await this.uow.run(async ({ tx }) => {
       const [removed] = await tx
         .delete(schema.evidenceCard)
@@ -416,10 +428,7 @@ export class ToolRunner implements OnModuleDestroy {
   private async hardeningProblems(): Promise<readonly string[]> {
     const check = this.clients.dataHardening;
     if (check === undefined) return [];
-    if (
-      this.#hardening?.check === check &&
-      Date.now() - this.#hardening.at < 60_000
-    ) {
+    if (this.#hardening?.check === check && Date.now() - this.#hardening.at < 60_000) {
       return this.#hardening.problems;
     }
     let problems: readonly string[];
@@ -434,7 +443,8 @@ export class ToolRunner implements OnModuleDestroy {
   }
 
   private isMock(kind: 'logs' | 'data'): boolean {
-    if (kind === 'logs') return this.clients.logs === undefined ? true : clientIsMock(this.clients.logs);
+    if (kind === 'logs')
+      return this.clients.logs === undefined ? true : clientIsMock(this.clients.logs);
     return this.clients.dataMock ?? true;
   }
 
@@ -461,7 +471,8 @@ export class ToolRunner implements OnModuleDestroy {
     for (const name of names) {
       const fromTicket = auto[name];
       if (fromTicket !== undefined) {
-        if (name in given) throw badRequest(`${name} is filled from the ticket and cannot be given`);
+        if (name in given)
+          throw badRequest(`${name} is filled from the ticket and cannot be given`);
         out[name] = fromTicket;
         continue;
       }

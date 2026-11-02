@@ -59,7 +59,12 @@ const template = (name: string, extra = '') =>
     extra === '' ? [name] : [name, extra],
   );
 
-const card = (fields: { ticket?: string | null; incident?: string | null; kind?: string; excerpt?: string }) =>
+const card = (fields: {
+  ticket?: string | null;
+  incident?: string | null;
+  kind?: string;
+  excerpt?: string;
+}) =>
   app.query(
     `INSERT INTO evidence_card (ticket_id, incident_id, kind, template_name, title, summary, excerpt, result_count,
                                params_hash, result_hash, run_key)
@@ -83,15 +88,21 @@ describe('0065 tool_template', () => {
     expect(await code(template('x'))).toBe(CHECK_VIOLATION);
     expect(
       await code(
-        app.query(`INSERT INTO tool_template (kind, name, title, body) VALUES ('shell', 'abc', 't', 'b')`),
+        app.query(
+          `INSERT INTO tool_template (kind, name, title, body) VALUES ('shell', 'abc', 't', 'b')`,
+        ),
       ),
     ).toBe(CHECK_VIOLATION);
     expect(
-      await code(app.query(`INSERT INTO tool_template (kind, name, title, body) VALUES ('logs', 'empty', 't', '')`)),
+      await code(
+        app.query(
+          `INSERT INTO tool_template (kind, name, title, body) VALUES ('logs', 'empty', 't', '')`,
+        ),
+      ),
     ).toBe(CHECK_VIOLATION);
   });
 
-  it('lets the AI run only a template about the ticket\'s organization (P3)', async () => {
+  it("lets the AI run only a template about the ticket's organization (P3)", async () => {
     const insert = (name: string, body: string, runByAi: boolean) =>
       app.query(
         `INSERT INTO tool_template (kind, name, title, body, run_by_ai) VALUES ('logs', $1, 't', $2, $3)`,
@@ -101,7 +112,9 @@ describe('0065 tool_template', () => {
     expect(await code(insert('ai-one-org', 'labels.org={{org_id}}', true))).toBeUndefined();
     expect(await code(insert('person-all-orgs', 'severity>=ERROR', false))).toBeUndefined();
     expect(
-      await code(app.query(`UPDATE tool_template SET run_by_ai = true WHERE name = 'person-all-orgs'`)),
+      await code(
+        app.query(`UPDATE tool_template SET run_by_ai = true WHERE name = 'person-all-orgs'`),
+      ),
     ).toBe(CHECK_VIOLATION);
   });
 

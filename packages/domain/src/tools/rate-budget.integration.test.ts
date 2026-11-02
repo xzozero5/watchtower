@@ -39,7 +39,7 @@ async function usage(project: string): Promise<{ total: number; ai: number }> {
 }
 
 describe('the numbers', () => {
-  it('uses 55 of the provider\'s 60 a minute, 30 of them for the AI at most, 10 held for the AI, 20 a person', () => {
+  it("uses 55 of the provider's 60 a minute, 30 of them for the AI at most, 10 held for the AI, 20 a person", () => {
     expect(LOGGING_RATE_BUDGET).toEqual({
       providerQuotaPerMinute: 60,
       totalPerMinute: 55,
@@ -70,7 +70,9 @@ describe('acquire', () => {
     const project = `race-${randomBytes(3).toString('hex')}`;
     const results = await Promise.all(Array.from({ length: 120 }, () => take(project, 'human')));
     const floor = LOGGING_RATE_BUDGET.aiFloorPerMinute;
-    expect(results.filter((r) => r.granted)).toHaveLength(LOGGING_RATE_BUDGET.totalPerMinute - floor);
+    expect(results.filter((r) => r.granted)).toHaveLength(
+      LOGGING_RATE_BUDGET.totalPerMinute - floor,
+    );
     expect(await usage(project)).toEqual({ total: 45, ai: 0 });
     const refused = results.find((r): r is Extract<RateDecision, { granted: false }> => !r.granted);
     expect(refused).toMatchObject({ granted: false, reason: 'people' });
@@ -84,7 +86,9 @@ describe('acquire', () => {
 
   it('keeps the AI to its share when AI and people arrive together, and people use what is left', async () => {
     const project = `mixed-${randomBytes(3).toString('hex')}`;
-    const actors: RateActor[] = Array.from({ length: 160 }, (_v, i) => (i % 2 === 0 ? 'ai' : 'human'));
+    const actors: RateActor[] = Array.from({ length: 160 }, (_v, i) =>
+      i % 2 === 0 ? 'ai' : 'human',
+    );
     const results = await Promise.all(actors.map((actor) => take(project, actor)));
     const now = await usage(project);
     expect(now.total).toBe(55);
@@ -168,7 +172,10 @@ describe('acquire', () => {
     for (let i = 0; i < 45; i += 1) await take(a, 'human');
     expect((await take(a, 'human')).granted).toBe(false);
     expect((await take(b, 'human')).granted).toBe(true);
-    const data = await takeRateBudget(env.database.db, { ...rateBudgetFor('bigquery_query', { project: a }), actor: 'human' });
+    const data = await takeRateBudget(env.database.db, {
+      ...rateBudgetFor('bigquery_query', { project: a }),
+      actor: 'human',
+    });
     expect(data.granted).toBe(true);
   });
 });
@@ -186,10 +193,14 @@ describe('the AI ledger and the people share one window (T-108 ledger moved onto
     mock: false,
   });
 
-  it('counts a person\'s calls against the AI\'s tool_rate, and writes both to tool_execution', async () => {
+  it("counts a person's calls against the AI's tool_rate, and writes both to tool_execution", async () => {
     const ai = createDbToolLedger({
       db: env.database.db,
-      limits: { perRun: 1000, perTicketPerHour: 1000, perToolPerMinute: AI_TOOL_BUDGETS.perToolPerMinute },
+      limits: {
+        perRun: 1000,
+        perTicketPerHour: 1000,
+        perToolPerMinute: AI_TOOL_BUDGETS.perToolPerMinute,
+      },
       project,
     });
     const human = createHumanToolLedger({ db: env.database.db, project });
@@ -217,8 +228,12 @@ describe('the AI ledger and the people share one window (T-108 ledger moved onto
 
     const rows = await env.db.owner.db.select().from(schema.toolExecution);
     const mine = rows.filter((row) => row.tool === 'gcp_logs');
-    expect(mine.filter((row) => row.agent === 'human' && row.status === 'running')).toHaveLength(40);
-    expect(mine.filter((row) => row.agent === 'investigator' && row.status === 'denied').length).toBeGreaterThan(0);
+    expect(mine.filter((row) => row.agent === 'human' && row.status === 'running')).toHaveLength(
+      40,
+    );
+    expect(
+      mine.filter((row) => row.agent === 'investigator' && row.status === 'denied').length,
+    ).toBeGreaterThan(0);
     // A refused person is recorded too, with no secret in it.
     const refused = await human.begin({
       runKey: randomUUID(),
@@ -238,7 +253,10 @@ describe('the AI ledger and the people share one window (T-108 ledger moved onto
   });
 
   it('closes a human row once and keeps only a class name', async () => {
-    const human = createHumanToolLedger({ db: env.database.db, project: `close-${randomBytes(3).toString('hex')}` });
+    const human = createHumanToolLedger({
+      db: env.database.db,
+      project: `close-${randomBytes(3).toString('hex')}`,
+    });
     const decision = await human.begin({
       runKey: randomUUID(),
       ticketId: null,

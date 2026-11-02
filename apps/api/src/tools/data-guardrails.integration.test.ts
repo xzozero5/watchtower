@@ -67,10 +67,9 @@ describe('the mock product database', () => {
       `SELECT (SELECT count(*) FROM api_daily)::int AS total, (SELECT count(*) FROM jobs)::int AS n`,
     );
     expect(counts.rows).toEqual([[450, 200]]);
-    const bound = bindSqlTemplate(
-      readFileSync(`${METRICS}webhook-failure-rate.sql`, 'utf8'),
-      { tenant_id: 't-003' },
-    );
+    const bound = bindSqlTemplate(readFileSync(`${METRICS}webhook-failure-rate.sql`, 'utf8'), {
+      tenant_id: 't-003',
+    });
     const result = await client.query({
       label: 'webhook-failure-rate',
       sql: bound.sql,
@@ -99,9 +98,19 @@ describe('read-only, timeout, row cap', () => {
   it('runs in a read-only transaction even for a login that could write', async () => {
     // The owner may write, but the executor opens READ ONLY: a function that writes is refused (25006).
     await expect(
-      ownerExecutor.execute({ sql: `SELECT nextval('jobs_id_seq')`, params: [], maxRows: 1, timeoutMs: 1000 }),
+      ownerExecutor.execute({
+        sql: `SELECT nextval('jobs_id_seq')`,
+        params: [],
+        maxRows: 1,
+        timeoutMs: 1000,
+      }),
     ).rejects.toMatchObject({ code: '25006' });
-    const seen = await ownerExecutor.execute({ sql: `SELECT count(*)::int AS n FROM jobs`, params: [], maxRows: 1, timeoutMs: 1000 });
+    const seen = await ownerExecutor.execute({
+      sql: `SELECT count(*)::int AS n FROM jobs`,
+      params: [],
+      maxRows: 1,
+      timeoutMs: 1000,
+    });
     expect(seen.rows).toEqual([[200]]);
   });
 
@@ -124,7 +133,12 @@ describe('read-only, timeout, row cap', () => {
     // Through the client the same limit is a typed error, and the heavy statement never runs past it.
     const started = Date.now();
     await expect(
-      ask(`SELECT count(*) AS n FROM api_daily a CROSS JOIN api_daily b CROSS JOIN api_daily c CROSS JOIN api_daily d`, [], 10, 300),
+      ask(
+        `SELECT count(*) AS n FROM api_daily a CROSS JOIN api_daily b CROSS JOIN api_daily c CROSS JOIN api_daily d`,
+        [],
+        10,
+        300,
+      ),
     ).rejects.toBeInstanceOf(ConnectorTimeoutError);
     expect(Date.now() - started).toBeLessThan(3000);
   });
@@ -133,7 +147,11 @@ describe('read-only, timeout, row cap', () => {
     const some = await ask(`SELECT day, requests FROM api_daily ORDER BY day, tenant_id`, [], 50);
     expect(some.rows).toHaveLength(50);
     expect(some.truncated).toBe(true);
-    const all = await ask(`SELECT a.day, b.requests FROM api_daily a CROSS JOIN api_daily b`, [], 100_000);
+    const all = await ask(
+      `SELECT a.day, b.requests FROM api_daily a CROSS JOIN api_daily b`,
+      [],
+      100_000,
+    );
     expect(all.rows).toHaveLength(DATA_HARD_MAX_ROWS);
     expect(all.truncated).toBe(true);
     const small = await ask(`SELECT id FROM tenants`, [], 100);
@@ -141,7 +159,9 @@ describe('read-only, timeout, row cap', () => {
   });
 
   it('uses bind parameters: a value that looks like SQL is only a value', async () => {
-    const result = await ask(`SELECT day FROM api_daily WHERE tenant_id = $1`, [`t-001' OR '1'='1`]);
+    const result = await ask(`SELECT day FROM api_daily WHERE tenant_id = $1`, [
+      `t-001' OR '1'='1`,
+    ]);
     expect(result.rows).toEqual([]);
     const mine = await ask(`SELECT day FROM api_daily WHERE tenant_id = $1`, ['t-001'], 500);
     expect(mine.rows).toHaveLength(90);
@@ -173,7 +193,13 @@ describe('the PII allow-list', () => {
     const wider = createGuardedSqlClient(executor, {
       allowColumns: new Set([...DATA_COLUMN_ALLOW_LIST, 'id']),
     });
-    const result = await wider.query({ label: 'x', sql: `SELECT id FROM tenants ORDER BY id`, params: [], maxRows: 10, timeoutMs: 1000 });
+    const result = await wider.query({
+      label: 'x',
+      sql: `SELECT id FROM tenants ORDER BY id`,
+      params: [],
+      maxRows: 10,
+      timeoutMs: 1000,
+    });
     expect(result.rows[0]).toEqual(['t-001']);
     expect(result.masked).toEqual([]);
     expect((await ask(`SELECT id FROM tenants`)).masked).toEqual(['id']);
@@ -182,7 +208,10 @@ describe('the PII allow-list', () => {
 
 describe('statements that are not reads, and EXTERNAL_QUERY', () => {
   it.each([
-    ['an insert', `INSERT INTO tenants (id, display_name, contact_email, plan, region) VALUES ('x','x','x','x','x')`],
+    [
+      'an insert',
+      `INSERT INTO tenants (id, display_name, contact_email, plan, region) VALUES ('x','x','x','x','x')`,
+    ],
     ['a delete', `DELETE FROM jobs`],
     ['a write inside a CTE', `WITH d AS (DELETE FROM jobs RETURNING id) SELECT id FROM d`],
     ['two statements', `SELECT 1; DELETE FROM jobs`],
@@ -194,7 +223,12 @@ describe('statements that are not reads, and EXTERNAL_QUERY', () => {
   });
 
   it('left the data untouched (before the hostile ones below)', async () => {
-    const counts = await ownerExecutor.execute({ sql: `SELECT (SELECT count(*) FROM jobs)::int AS j, (SELECT count(*) FROM tenants)::int AS t`, params: [], maxRows: 1, timeoutMs: 1000 });
+    const counts = await ownerExecutor.execute({
+      sql: `SELECT (SELECT count(*) FROM jobs)::int AS j, (SELECT count(*) FROM tenants)::int AS t`,
+      params: [],
+      maxRows: 1,
+      timeoutMs: 1000,
+    });
     expect(counts.rows).toEqual([[200, 5]]);
   });
 });
@@ -209,13 +243,19 @@ describe('hostile statements (P1)', () => {
 
   const PAYLOADS: readonly (readonly [string, string])[] = [
     ['ROLLBACK; BEGIN READ WRITE; INSERT', `SELECT 1; ROLLBACK; BEGIN READ WRITE; ${INSERT}`],
-    ['a line comment ended by a carriage return', `SELECT 1 --x\r; ROLLBACK; BEGIN READ WRITE; ${INSERT}`],
+    [
+      'a line comment ended by a carriage return',
+      `SELECT 1 --x\r; ROLLBACK; BEGIN READ WRITE; ${INSERT}`,
+    ],
     ['a line comment ended by a carriage return and no space', `SELECT 1 --\r;${INSERT}`],
-    ["an escaped quote in an E string", `SELECT E'\\'' ; ${INSERT}`],
+    ['an escaped quote in an E string', `SELECT E'\\'' ; ${INSERT}`],
     ['a quote as a quoted identifier', `SELECT 1 AS "'"; ${INSERT}`],
     ['a nested comment', `SELECT 1 /* a /* b */ c */ ; ${INSERT}`],
     ['a nested comment that closes early for a naive reader', `SELECT 1 /* /* */ */ ; ${INSERT}`],
-    ['ALTER ROLE on itself after a SELECT', `SELECT 1; ALTER ROLE LOGIN_ROLE SET default_transaction_read_only = off`],
+    [
+      'ALTER ROLE on itself after a SELECT',
+      `SELECT 1; ALTER ROLE LOGIN_ROLE SET default_transaction_read_only = off`,
+    ],
     ['ALTER ROLE on itself, alone', `ALTER ROLE LOGIN_ROLE SET statement_timeout = 0`],
     ['a temporary table', `CREATE TEMP TABLE pwn AS SELECT 1 AS x`],
     ['a temporary table after a SELECT', `SELECT 1; CREATE TEMP TABLE pwn (x int)`],
@@ -342,12 +382,18 @@ describe('hostile statements, second group (side effects and size)', () => {
   const login = (): string => decodeURIComponent(new URL(mock.readOnlyUrl).username);
 
   const SIDE_EFFECTS: readonly (readonly [string, string])[] = [
-    ['advisory locks, a hundred thousand of them', `SELECT pg_advisory_lock(g) FROM generate_series(1, 100000) AS g`],
+    [
+      'advisory locks, a hundred thousand of them',
+      `SELECT pg_advisory_lock(g) FROM generate_series(1, 100000) AS g`,
+    ],
     ['one advisory lock', `SELECT pg_advisory_lock(1)`],
     ['a try advisory lock', `SELECT pg_try_advisory_lock(1)`],
     ['a transaction advisory lock', `SELECT pg_advisory_xact_lock(1)`],
     ['a shared advisory lock', `SELECT pg_advisory_lock_shared(1)`],
-    ['a logical WAL message of 100 MB', `SELECT pg_logical_emit_message(true, 'x', repeat('y', 100000000))`],
+    [
+      'a logical WAL message of 100 MB',
+      `SELECT pg_logical_emit_message(true, 'x', repeat('y', 100000000))`,
+    ],
     ['a transactional logical WAL message', `SELECT pg_logical_emit_message(false, 'x', 'y')`],
     ['pg_notify', `SELECT pg_notify('c', 'x')`],
     ['lo_import', `SELECT lo_import('/etc/passwd')`],
@@ -408,23 +454,36 @@ describe('hostile statements, second group (side effects and size)', () => {
     const started = Date.now();
     // 100 MB in one value: the temporary file limit of the role answers before a byte is sent.
     const huge = await executor
-      .execute({ sql: `SELECT repeat('x', 100000000) AS v`, params: [], maxRows: 10, timeoutMs: 10_000 })
+      .execute({
+        sql: `SELECT repeat('x', 100000000) AS v`,
+        params: [],
+        maxRows: 10,
+        timeoutMs: 10_000,
+      })
       .catch((caught: unknown) => caught);
     expect((huge as { code?: string }).code).toMatch(/^(53400|WT002)$/);
     // 30 MB in one row: the server can build it, we must not hold it.
     const error = await executor
-      .execute({ sql: `SELECT repeat('x', 30000000) AS v`, params: [], maxRows: 10, timeoutMs: 10_000 })
+      .execute({
+        sql: `SELECT repeat('x', 30000000) AS v`,
+        params: [],
+        maxRows: 10,
+        timeoutMs: 10_000,
+      })
       .catch((caught: unknown) => caught);
     expect(error).toBeInstanceOf(ProductDbError);
     expect((error as ProductDbError).code).toBe('WT002');
     expect(Date.now() - started).toBeLessThan(8000);
     expect(process.memoryUsage().rss - before).toBeLessThan(100 * 1024 * 1024);
     // A message from the client layer too: the typed error of the connector, nothing about the statement.
-    await expect(
-      ask(`SELECT repeat('x', 30000000) AS v`, [], 10, 10_000),
-    ).rejects.toThrow(/larger than the limit/);
+    await expect(ask(`SELECT repeat('x', 30000000) AS v`, [], 10, 10_000)).rejects.toThrow(
+      /larger than the limit/,
+    );
     // The pool is whole.
-    expect((await executor.execute({ sql: 'SELECT 1 AS n', params: [], maxRows: 1, timeoutMs: 1000 })).rows).toEqual([[1]]);
+    expect(
+      (await executor.execute({ sql: 'SELECT 1 AS n', params: [], maxRows: 1, timeoutMs: 1000 }))
+        .rows,
+    ).toEqual([[1]]);
   });
 
   it('stops at the soft cap with what it has when many wide rows come', async () => {

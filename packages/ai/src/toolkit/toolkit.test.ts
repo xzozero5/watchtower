@@ -112,7 +112,16 @@ const SYSTEMS: SystemToolPorts = {
       SYSTEM_CALLS.repo.push(input);
       return Promise.resolve(
         input.service.toLowerCase() === 'api'
-          ? { items: [{ kind: 'deploy' as const, ref: 'v1', title: 'Deploy v1', at: '2026-01-01T00:00:00Z' }] }
+          ? {
+              items: [
+                {
+                  kind: 'deploy' as const,
+                  ref: 'v1',
+                  title: 'Deploy v1',
+                  at: '2026-01-01T00:00:00Z',
+                },
+              ],
+            }
           : { items: [], note: 'No such service in the catalog.' },
       );
     },
@@ -260,7 +269,10 @@ describe('investigation tools: schemas and read-only (N2)', () => {
       columns: string[];
     };
     expect(rows).toMatchObject({ mock: true, columns: ['org', 'failed'] });
-    expect(SYSTEM_CALLS.data.at(-1)).toMatchObject({ intentKey: 'upstream_timeout', ticketId: TICKET });
+    expect(SYSTEM_CALLS.data.at(-1)).toMatchObject({
+      intentKey: 'upstream_timeout',
+      ticketId: TICKET,
+    });
     const changes = (await handle.call(TOOL_NAMES.repoChanges, { service: 'API' })) as {
       mock: boolean;
       items: unknown[];
@@ -282,15 +294,22 @@ describe('investigation tools: schemas and read-only (N2)', () => {
       run: () => Promise.resolve({ items: [] }),
     });
     expect(live.mock).toBe(false);
-    expect(createBigQueryTool({ mock: true, run: () => Promise.resolve({ columns: [], items: [] }) }).mock).toBe(true);
-    expect(createRepoChangesTool({ mock: false, run: () => Promise.resolve({ items: [] }) }).mock).toBe(false);
+    expect(
+      createBigQueryTool({ mock: true, run: () => Promise.resolve({ columns: [], items: [] }) })
+        .mock,
+    ).toBe(true);
+    expect(
+      createRepoChangesTool({ mock: false, run: () => Promise.resolve({ items: [] }) }).mock,
+    ).toBe(false);
     const { scope } = registryWith(
       [
         createGcpLogsTool({
           mock: false,
           run: () =>
             Promise.resolve({
-              items: [{ timestamp: 'x', severity: 'ERROR', service: 's', message: 'm'.repeat(601) }],
+              items: [
+                { timestamp: 'x', severity: 'ERROR', service: 's', message: 'm'.repeat(601) },
+              ],
             }),
         }),
       ],
@@ -302,7 +321,9 @@ describe('investigation tools: schemas and read-only (N2)', () => {
   it('registers a system tool only for a port it was given', () => {
     const p2 = ports();
     expect(
-      investigationTools({ ...p2, systems: { logs: SYSTEMS.logs } }).map((tool) => tool.name).toSorted(),
+      investigationTools({ ...p2, systems: { logs: SYSTEMS.logs } })
+        .map((tool) => tool.name)
+        .toSorted(),
     ).toEqual([...GENERIC_INVESTIGATOR_TOOLS, TOOL_NAMES.gcpLogs].toSorted());
   });
 });

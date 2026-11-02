@@ -3,11 +3,7 @@
  * audit row; `message` never carries a query, a filter or a result (N4).
  */
 export type ConnectorErrorCode =
-  | 'rate_limited'
-  | 'invalid_query'
-  | 'not_connected'
-  | 'timeout'
-  | 'upstream';
+  'rate_limited' | 'invalid_query' | 'not_connected' | 'timeout' | 'upstream';
 
 export class ConnectorError extends Error {
   readonly code: ConnectorErrorCode;

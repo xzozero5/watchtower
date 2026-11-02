@@ -66,9 +66,9 @@ describe('0064 tool_execution is partitioned by month', () => {
       `UPDATE tool_execution SET status = 'ok', finished_at = now(), latency_ms = 3, result_count = 2 WHERE id = $1`,
       [id],
     );
-    expect(await code(app.query(`UPDATE tool_execution SET tool = 'other' WHERE id = $1`, [id]))).toBe(
-      INSUFFICIENT_PRIVILEGE,
-    );
+    expect(
+      await code(app.query(`UPDATE tool_execution SET tool = 'other' WHERE id = $1`, [id])),
+    ).toBe(INSUFFICIENT_PRIVILEGE);
     expect(await code(app.query(`DELETE FROM tool_execution WHERE id = $1`, [id]))).toBe(
       INSUFFICIENT_PRIVILEGE,
     );
@@ -81,7 +81,9 @@ describe('0064 tool_execution is partitioned by month', () => {
         ORDER BY c.relname LIMIT 1`,
     );
     const partition = month.rows[0]?.name ?? '';
-    expect(await code(app.query(`UPDATE ${partition} SET tool = 'other'`))).toBe(INSUFFICIENT_PRIVILEGE);
+    expect(await code(app.query(`UPDATE ${partition} SET tool = 'other'`))).toBe(
+      INSUFFICIENT_PRIVILEGE,
+    );
     expect(await code(app.query(`DELETE FROM ${partition}`))).toBe(INSUFFICIENT_PRIVILEGE);
     expect(await code(app.query(`TRUNCATE ${partition}`))).toBe(INSUFFICIENT_PRIVILEGE);
     const role = new URL(testDb.appUrl).username;
@@ -124,7 +126,9 @@ describe('0064 tool_execution is partitioned by month', () => {
     );
     expect(again.rows[0]?.n).toBe(0);
     // The three-argument call of the other tables still works (the fourth argument has a default).
-    const old = await app.query<{ n: number }>(`SELECT ensure_monthly_partitions('audit_log', 1, true) AS n`);
+    const old = await app.query<{ n: number }>(
+      `SELECT ensure_monthly_partitions('audit_log', 1, true) AS n`,
+    );
     expect(old.rows[0]?.n).toBe(0);
     await expect(
       app.query(`SELECT ensure_monthly_partitions('tool_execution', 15, true, ARRAY['nope'])`),
@@ -172,20 +176,26 @@ describe('0064 goes down and up again', () => {
       `SELECT relkind FROM pg_class WHERE oid = 'tool_execution'::regclass`,
     );
     expect(plain.rows[0]?.relkind).toBe('r');
-    expect((await owner().query(`SELECT 1 FROM tool_execution WHERE id = $1`, [id])).rowCount).toBe(1);
+    expect((await owner().query(`SELECT 1 FROM tool_execution WHERE id = $1`, [id])).rowCount).toBe(
+      1,
+    );
     expect(await code(owner().query(`SELECT 1 FROM rate_budget_window`))).toBe(UNDEFINED_TABLE);
     // The three-argument helper is back, the four-argument one gone.
     const functions = await owner().query<{ args: string }>(
       `SELECT pg_get_function_identity_arguments(oid) AS args FROM pg_proc WHERE proname = 'ensure_monthly_partitions'`,
     );
-    expect(functions.rows.map((row) => row.args)).toEqual(['parent regclass, months_ahead integer, append_only boolean']);
+    expect(functions.rows.map((row) => row.args)).toEqual([
+      'parent regclass, months_ahead integer, append_only boolean',
+    ]);
 
     expect(await migrateUp(owner())).toEqual(['0067_rate_budget', ...later]);
     const partitioned = await owner().query<{ relkind: string }>(
       `SELECT relkind FROM pg_class WHERE oid = 'tool_execution'::regclass`,
     );
     expect(partitioned.rows[0]?.relkind).toBe('p');
-    expect((await owner().query(`SELECT 1 FROM tool_execution WHERE id = $1`, [id])).rowCount).toBe(1);
+    expect((await owner().query(`SELECT 1 FROM tool_execution WHERE id = $1`, [id])).rowCount).toBe(
+      1,
+    );
     expect((await owner().query(`SELECT 1 FROM rate_budget_window`)).rowCount).toBe(0);
   });
 });

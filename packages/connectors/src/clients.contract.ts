@@ -16,10 +16,38 @@ const NOW = Date.parse('2026-03-10T12:00:00.000Z');
 const minutesAgo = (n: number): string => new Date(NOW - n * 60_000).toISOString();
 
 export const SEEDED_LOGS: readonly LogEntry[] = [
-  { insertId: 'a', timestamp: minutesAgo(5), severity: 'ERROR', service: 'svc-a', message: 'first failure', labels: { org_ref: 'org-1' } },
-  { insertId: 'b', timestamp: minutesAgo(4), severity: 'INFO', service: 'svc-a', message: 'all fine', labels: { org_ref: 'org-1' } },
-  { insertId: 'c', timestamp: minutesAgo(3), severity: 'ERROR', service: 'svc-b', message: 'second failure', labels: { org_ref: 'org-2' } },
-  { insertId: 'd', timestamp: minutesAgo(2), severity: 'ERROR', service: 'svc-a', message: 'third failure', labels: { org_ref: 'org-1' } },
+  {
+    insertId: 'a',
+    timestamp: minutesAgo(5),
+    severity: 'ERROR',
+    service: 'svc-a',
+    message: 'first failure',
+    labels: { org_ref: 'org-1' },
+  },
+  {
+    insertId: 'b',
+    timestamp: minutesAgo(4),
+    severity: 'INFO',
+    service: 'svc-a',
+    message: 'all fine',
+    labels: { org_ref: 'org-1' },
+  },
+  {
+    insertId: 'c',
+    timestamp: minutesAgo(3),
+    severity: 'ERROR',
+    service: 'svc-b',
+    message: 'second failure',
+    labels: { org_ref: 'org-2' },
+  },
+  {
+    insertId: 'd',
+    timestamp: minutesAgo(2),
+    severity: 'ERROR',
+    service: 'svc-a',
+    message: 'third failure',
+    labels: { org_ref: 'org-1' },
+  },
 ];
 
 export function logsContract(name: string, make: () => LogsClient): void {
@@ -27,7 +55,11 @@ export function logsContract(name: string, make: () => LogsClient): void {
     const range = { from: new Date(NOW - 3_600_000), to: new Date(NOW) };
 
     it('filters, orders newest first and stays inside the range', async () => {
-      const page = await make().listEntries({ filter: 'service="svc-a" severity>=ERROR', pageSize: 10, ...range });
+      const page = await make().listEntries({
+        filter: 'service="svc-a" severity>=ERROR',
+        pageSize: 10,
+        ...range,
+      });
       expect(page.entries.map((e) => e.insertId)).toEqual(['d', 'a']);
       expect(page.nextPageToken).toBeNull();
       const narrow = await make().listEntries({
@@ -56,14 +88,29 @@ export function logsContract(name: string, make: () => LogsClient): void {
 
     it('refuses a bad page size, range, filter, token and an aborted request', async () => {
       const client = make();
-      await expect(client.listEntries({ filter: '', pageSize: 0, ...range })).rejects.toBeInstanceOf(ConnectorQueryRejectedError);
-      await expect(client.listEntries({ filter: '', pageSize: 101, ...range })).rejects.toBeInstanceOf(ConnectorQueryRejectedError);
-      await expect(client.listEntries({ filter: '', pageSize: 5, from: range.to, to: range.from })).rejects.toBeInstanceOf(ConnectorQueryRejectedError);
       await expect(
-        client.listEntries({ filter: '', pageSize: 5, from: new Date(NOW - 8 * 24 * 3_600_000), to: new Date(NOW) }),
+        client.listEntries({ filter: '', pageSize: 0, ...range }),
       ).rejects.toBeInstanceOf(ConnectorQueryRejectedError);
-      await expect(client.listEntries({ filter: 'nope="x"', pageSize: 5, ...range })).rejects.toBeInstanceOf(ConnectorQueryRejectedError);
-      await expect(client.listEntries({ filter: '', pageSize: 5, pageToken: 'garbage', ...range })).rejects.toBeInstanceOf(ConnectorQueryRejectedError);
+      await expect(
+        client.listEntries({ filter: '', pageSize: 101, ...range }),
+      ).rejects.toBeInstanceOf(ConnectorQueryRejectedError);
+      await expect(
+        client.listEntries({ filter: '', pageSize: 5, from: range.to, to: range.from }),
+      ).rejects.toBeInstanceOf(ConnectorQueryRejectedError);
+      await expect(
+        client.listEntries({
+          filter: '',
+          pageSize: 5,
+          from: new Date(NOW - 8 * 24 * 3_600_000),
+          to: new Date(NOW),
+        }),
+      ).rejects.toBeInstanceOf(ConnectorQueryRejectedError);
+      await expect(
+        client.listEntries({ filter: 'nope="x"', pageSize: 5, ...range }),
+      ).rejects.toBeInstanceOf(ConnectorQueryRejectedError);
+      await expect(
+        client.listEntries({ filter: '', pageSize: 5, pageToken: 'garbage', ...range }),
+      ).rejects.toBeInstanceOf(ConnectorQueryRejectedError);
       await expect(
         client.listEntries({ filter: '', pageSize: 5, signal: AbortSignal.abort(), ...range }),
       ).rejects.toMatchObject({ code: 'timeout' });
@@ -96,12 +143,26 @@ export function metricsContract(name: string, make: () => MetricsClient): void {
 
     it('is repeatable and refuses an empty ask, a bad step and a huge range', async () => {
       const client = make();
-      const query = { service: 'svc-a', metrics: ['request_count'] as const, from, to, stepSeconds: 900 };
+      const query = {
+        service: 'svc-a',
+        metrics: ['request_count'] as const,
+        from,
+        to,
+        stepSeconds: 900,
+      };
       expect(await client.queryTimeSeries(query)).toEqual(await client.queryTimeSeries(query));
-      await expect(client.queryTimeSeries({ ...query, metrics: [] })).rejects.toBeInstanceOf(ConnectorQueryRejectedError);
-      await expect(client.queryTimeSeries({ ...query, stepSeconds: 10 })).rejects.toBeInstanceOf(ConnectorQueryRejectedError);
+      await expect(client.queryTimeSeries({ ...query, metrics: [] })).rejects.toBeInstanceOf(
+        ConnectorQueryRejectedError,
+      );
+      await expect(client.queryTimeSeries({ ...query, stepSeconds: 10 })).rejects.toBeInstanceOf(
+        ConnectorQueryRejectedError,
+      );
       await expect(
-        client.queryTimeSeries({ ...query, stepSeconds: 60, from: new Date(NOW - 30 * 24 * 3_600_000) }),
+        client.queryTimeSeries({
+          ...query,
+          stepSeconds: 60,
+          from: new Date(NOW - 30 * 24 * 3_600_000),
+        }),
       ).rejects.toBeInstanceOf(ConnectorQueryRejectedError);
     });
   });
@@ -139,14 +200,22 @@ export function repoContract(name: string, make: () => RepoClient): void {
       expect(all.every((c) => c.repo === 'example/app')).toBe(true);
       const one = await client.listChanges({ repo: 'example/app', since, until, limit: 1 });
       expect(one).toEqual(all.slice(0, 1));
-      expect(await client.listChanges({ repo: 'example/other', since, until, limit: 10 })).toEqual([]);
+      expect(await client.listChanges({ repo: 'example/other', since, until, limit: 10 })).toEqual(
+        [],
+      );
     });
 
     it('refuses a name that is not owner/name, a bad limit and a reversed window', async () => {
       const client = make();
-      await expect(client.listChanges({ repo: 'not a repo', since, until, limit: 5 })).rejects.toBeInstanceOf(ConnectorQueryRejectedError);
-      await expect(client.listChanges({ repo: 'example/app', since, until, limit: 0 })).rejects.toBeInstanceOf(ConnectorQueryRejectedError);
-      await expect(client.listChanges({ repo: 'example/app', since: until, until: since, limit: 5 })).rejects.toBeInstanceOf(ConnectorQueryRejectedError);
+      await expect(
+        client.listChanges({ repo: 'not a repo', since, until, limit: 5 }),
+      ).rejects.toBeInstanceOf(ConnectorQueryRejectedError);
+      await expect(
+        client.listChanges({ repo: 'example/app', since, until, limit: 0 }),
+      ).rejects.toBeInstanceOf(ConnectorQueryRejectedError);
+      await expect(
+        client.listChanges({ repo: 'example/app', since: until, until: since, limit: 5 }),
+      ).rejects.toBeInstanceOf(ConnectorQueryRejectedError);
     });
   });
 }

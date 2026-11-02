@@ -51,7 +51,12 @@ import {
 import { z } from 'zod';
 
 import { AuditScope } from '../audit/audit-scope.js';
-import { Audited, CurrentPrincipal, RequirePermission, type Principal } from '../auth/decorators.js';
+import {
+  Audited,
+  CurrentPrincipal,
+  RequirePermission,
+  type Principal,
+} from '../auth/decorators.js';
 import { parseResponse } from '../common/zod-openapi.js';
 import { StatusPanel } from './status-panel.service.js';
 import { ToolTemplates } from './templates.service.js';
@@ -84,7 +89,8 @@ export class ToolTemplatesController {
   @RequirePermission('investigate.run')
   @ApiOperation({
     summary: 'The saved investigation templates',
-    description: 'Filter by `intent` (key) or `kind` (`logs`, `data`). Includes the generic ones when no intent is given.',
+    description:
+      'Filter by `intent` (key) or `kind` (`logs`, `data`). Includes the generic ones when no intent is given.',
   })
   @ApiOkResponse({ standardSchema: toolTemplateListSchema })
   async list(@Query({ schema: toolTemplateListQuerySchema }) query: ToolTemplateListQuery) {
@@ -103,7 +109,9 @@ export class ToolTemplatesController {
       'A body that could never run (not a read, `EXTERNAL_QUERY`, a malformed filter) is refused.',
   })
   @ApiCreatedResponse({ standardSchema: toolTemplateSchema })
-  @ApiBadRequestResponse({ description: 'Invalid body, an unknown intent, or a body that could never run' })
+  @ApiBadRequestResponse({
+    description: 'Invalid body, an unknown intent, or a body that could never run',
+  })
   @ApiConflictResponse({ description: 'A template of this kind and name exists' })
   async create(
     @Body({ schema: createToolTemplateSchema }) body: CreateToolTemplate,
@@ -115,7 +123,10 @@ export class ToolTemplatesController {
   @Patch(':id')
   @RequirePermission('integration.manage')
   @Audited({ action: TOOLS_AUDIT_ACTIONS.toolTemplateUpdate, targetType: 'tool_template' })
-  @ApiOperation({ summary: 'Edit a template (head)', description: 'Send only the fields that change. `kind` and `name` never change.' })
+  @ApiOperation({
+    summary: 'Edit a template (head)',
+    description: 'Send only the fields that change. `kind` and `name` never change.',
+  })
   @ApiOkResponse({ standardSchema: toolTemplateSchema })
   @ApiBadRequestResponse({ description: 'Invalid body, or a body that could never run' })
   @ApiNotFoundResponse({ description: 'No such template' })
@@ -134,7 +145,10 @@ export class ToolTemplatesController {
   @HttpCode(204)
   @RequirePermission('integration.manage')
   @Audited({ action: TOOLS_AUDIT_ACTIONS.toolTemplateDelete, targetType: 'tool_template' })
-  @ApiOperation({ summary: 'Delete a template (head)', description: 'Cards it produced stay and keep its name.' })
+  @ApiOperation({
+    summary: 'Delete a template (head)',
+    description: 'Cards it produced stay and keep its name.',
+  })
   @ApiNoContentResponse({ description: 'Deleted' })
   @ApiNotFoundResponse({ description: 'No such template' })
   async remove(
@@ -159,7 +173,7 @@ export class TicketToolsController {
   @ApiOperation({
     summary: 'The investigation buttons of a ticket',
     description:
-      'The active templates of the ticket\'s intent, then the generic ones. `inputParams` are the ' +
+      "The active templates of the ticket's intent, then the generic ones. `inputParams` are the " +
       'placeholders the person must give; `connected: false` means the system is not connected here; ' +
       '`mock` means the answer will come from a fake or a sandbox.',
   })
@@ -181,14 +195,17 @@ export class TicketToolsController {
   @ApiOperation({
     summary: 'Run a template on a ticket and pin what it found',
     description:
-      'Runs the template with the ticket\'s organization (`org_id`, `ticket_id` are filled from the ' +
+      "Runs the template with the ticket's organization (`org_id`, `ticket_id` are filled from the " +
       'ticket and cannot be given), reads the system through its read-only client, and returns the ' +
       'evidence card: counts, the time range and a few lines with personal data replaced by ' +
       'placeholders. ' +
       BUDGET_NOTE,
   })
   @ApiCreatedResponse({ standardSchema: evidenceCardSchema })
-  @ApiBadRequestResponse({ description: 'A missing, unknown or automatic parameter, a value that is not plain text, or another intent\'s template' })
+  @ApiBadRequestResponse({
+    description:
+      "A missing, unknown or automatic parameter, a value that is not plain text, or another intent's template",
+  })
   @ApiNotFoundResponse({ description: 'No such ticket or template' })
   @ApiTooManyRequestsResponse({ description: 'The rate budget is used up for now' })
   @ApiServiceUnavailableResponse({ description: 'That system is not connected on this instance' })
@@ -257,7 +274,10 @@ export class IncidentToolsController {
     @CurrentPrincipal() principal: Principal,
   ) {
     const subject = await this.runner.incidentSubject(params.id);
-    return parseResponse(evidenceCardSchema, await this.runner.runTemplate(subject, body, principal));
+    return parseResponse(
+      evidenceCardSchema,
+      await this.runner.runTemplate(subject, body, principal),
+    );
   }
 
   @Get(':id/evidence')
@@ -308,7 +328,9 @@ export class AdhocController {
       BUDGET_NOTE,
   })
   @ApiCreatedResponse({ standardSchema: evidenceCardSchema })
-  @ApiBadRequestResponse({ description: 'A filter the client cannot read, or no ticket or incident to pin to' })
+  @ApiBadRequestResponse({
+    description: 'A filter the client cannot read, or no ticket or incident to pin to',
+  })
   @ApiTooManyRequestsResponse({ description: 'The rate budget is used up for now' })
   @ApiServiceUnavailableResponse({ description: 'Logs are not connected on this instance' })
   async logs(
@@ -329,9 +351,13 @@ export class AdhocController {
       BUDGET_NOTE,
   })
   @ApiCreatedResponse({ standardSchema: evidenceCardSchema })
-  @ApiBadRequestResponse({ description: 'Not a read, a column the login may not read, or no ticket or incident to pin to' })
+  @ApiBadRequestResponse({
+    description: 'Not a read, a column the login may not read, or no ticket or incident to pin to',
+  })
   @ApiTooManyRequestsResponse({ description: 'The rate budget is used up for now' })
-  @ApiServiceUnavailableResponse({ description: 'No product database is connected on this instance' })
+  @ApiServiceUnavailableResponse({
+    description: 'No product database is connected on this instance',
+  })
   async data(
     @Body({ schema: adhocDataSchema }) body: AdhocData,
     @CurrentPrincipal() principal: Principal,

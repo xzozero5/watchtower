@@ -54,7 +54,10 @@ export function createHumanToolLedger(options: {
     async begin(entry) {
       return db.transaction(async (tx): Promise<HumanToolDecision> => {
         const decision = await acquireRateBudget(tx, {
-          ...rateBudgetFor(entry.tool, options.project === undefined ? {} : { project: options.project }),
+          ...rateBudgetFor(
+            entry.tool,
+            options.project === undefined ? {} : { project: options.project },
+          ),
           actor: entry.actor,
           personId: entry.personId,
         });

@@ -64,29 +64,44 @@ describe('assertReadOnlySql', () => {
 
 describe('bindSqlTemplate', () => {
   it('turns placeholders into bind parameters and keeps the value out of the text', () => {
-    const bound = bindSqlTemplate('SELECT * FROM t WHERE a = {{org_id}} AND b = {{org_id}} AND c = {{day}}', {
-      org_id: 'org-1',
-      day: '2026-01-01',
-    });
+    const bound = bindSqlTemplate(
+      'SELECT * FROM t WHERE a = {{org_id}} AND b = {{org_id}} AND c = {{day}}',
+      {
+        org_id: 'org-1',
+        day: '2026-01-01',
+      },
+    );
     expect(bound.sql).toBe('SELECT * FROM t WHERE a = $1 AND b = $1 AND c = $2');
     expect(bound.values).toEqual(['org-1', '2026-01-01']);
   });
 
-  it("refuses a value that is not plain text, as SQL injection would need", () => {
-    expect(() => bindSqlTemplate('SELECT {{a}}', { a: "1'; DROP TABLE t; --" })).toThrow(ConnectorQueryRejectedError);
+  it('refuses a value that is not plain text, as SQL injection would need', () => {
+    expect(() => bindSqlTemplate('SELECT {{a}}', { a: "1'; DROP TABLE t; --" })).toThrow(
+      ConnectorQueryRejectedError,
+    );
   });
 });
 
 describe('withDataGuardrails', () => {
   const answer = {
     columns: ['day', 'email', 'N'],
-    rows: Array.from({ length: 5 }, (_v, i) => [`d${String(i)}`, `person${String(i)}@example.com`, i]),
+    rows: Array.from({ length: 5 }, (_v, i) => [
+      `d${String(i)}`,
+      `person${String(i)}@example.com`,
+      i,
+    ]),
   };
   const make = () => new FakeDataQueryClient({ q: answer });
 
   it('masks the columns that are not on the allow-list and says which', async () => {
     const client = withDataGuardrails(make(), { allowColumns: new Set(['day', 'n']) });
-    const result = await client.query({ label: 'q', sql: 'SELECT 1', params: [], maxRows: 10, timeoutMs: 1000 });
+    const result = await client.query({
+      label: 'q',
+      sql: 'SELECT 1',
+      params: [],
+      maxRows: 10,
+      timeoutMs: 1000,
+    });
     expect(result.masked).toEqual(['email']);
     expect(result.rows[0]).toEqual(['d0', null, 0]);
     expect(JSON.stringify(result.rows)).not.toContain('@example.com');
@@ -95,7 +110,13 @@ describe('withDataGuardrails', () => {
   it('clamps the row cap to the hard maximum and cuts what an inner client returned past the cap', async () => {
     const inner = make();
     const client = withDataGuardrails(inner, { allowColumns: new Set(['day']), maxRows: 3 });
-    const result = await client.query({ label: 'q', sql: 'SELECT 1', params: [], maxRows: 10_000, timeoutMs: 999_999 });
+    const result = await client.query({
+      label: 'q',
+      sql: 'SELECT 1',
+      params: [],
+      maxRows: 10_000,
+      timeoutMs: 999_999,
+    });
     expect(inner.queries[0]?.maxRows).toBe(3);
     expect(inner.queries[0]?.timeoutMs).toBeLessThanOrEqual(15_000);
     expect(result.rows).toHaveLength(3);
@@ -127,17 +148,39 @@ describe('database errors reach the caller as typed errors that quote nothing', 
       .catch((caught: unknown) => caught);
 
   it('maps a timeout, a refused read, a bad statement and anything else', async () => {
-    expect(await run(Object.assign(new Error('canceling statement for secret_table'), { code: '57014' }))).toBeInstanceOf(ConnectorTimeoutError);
-    expect(await run(Object.assign(new Error('permission denied for column contact_email'), { code: '42501' }))).toMatchObject({
+    expect(
+      await run(
+        Object.assign(new Error('canceling statement for secret_table'), { code: '57014' }),
+      ),
+    ).toBeInstanceOf(ConnectorTimeoutError);
+    expect(
+      await run(
+        Object.assign(new Error('permission denied for column contact_email'), { code: '42501' }),
+      ),
+    ).toMatchObject({
       code: 'invalid_query',
       message: 'The database login may not read that',
     });
-    expect(await run(Object.assign(new Error('syntax error at or near "jane@example.com"'), { code: '42601' }))).toMatchObject({
+    expect(
+      await run(
+        Object.assign(new Error('syntax error at or near "jane@example.com"'), { code: '42601' }),
+      ),
+    ).toMatchObject({
       code: 'invalid_query',
       message: 'The database refused the statement (42601)',
     });
-    expect(await run(Object.assign(new Error('x'), { code: 'WT002' }))).toMatchObject({ code: 'invalid_query', message: expect.stringContaining('larger than the limit') as string });
-    expect(await run(Object.assign(new Error('temporary file size exceeds temp_file_limit'), { code: '53400' }))).toMatchObject({ code: 'invalid_query', message: 'The statement needs more resources than a run may use' });
+    expect(await run(Object.assign(new Error('x'), { code: 'WT002' }))).toMatchObject({
+      code: 'invalid_query',
+      message: expect.stringContaining('larger than the limit') as string,
+    });
+    expect(
+      await run(
+        Object.assign(new Error('temporary file size exceeds temp_file_limit'), { code: '53400' }),
+      ),
+    ).toMatchObject({
+      code: 'invalid_query',
+      message: 'The statement needs more resources than a run may use',
+    });
     const other = await run(new Error('connect ECONNREFUSED 10.0.0.5:5432 password=hunter2'));
     expect(other).toMatchObject({ code: 'upstream', message: 'The database could not answer' });
   });
@@ -149,13 +192,24 @@ describe('createGuardedSqlClient', () => {
       createGuardedSqlClient(
         {
           sandbox,
-          execute: () => Promise.resolve({ columns: ['day', 'who'], rows: [['d', 'a@example.com']], truncated: false }),
+          execute: () =>
+            Promise.resolve({
+              columns: ['day', 'who'],
+              rows: [['d', 'a@example.com']],
+              truncated: false,
+            }),
         },
         { allowColumns: new Set(['day']) },
       );
     expect(make(true).source).toBe('sandbox');
     expect(make(false).source).toBe('live');
-    const result = await make(true).query({ label: 'x', sql: 'SELECT 1', params: [], maxRows: 5, timeoutMs: 100 });
+    const result = await make(true).query({
+      label: 'x',
+      sql: 'SELECT 1',
+      params: [],
+      maxRows: 5,
+      timeoutMs: 100,
+    });
     expect(result.rows).toEqual([['d', null]]);
     expect(result.masked).toEqual(['who']);
   });
@@ -171,9 +225,17 @@ describe('createSqlDataQueryClient', () => {
       },
     };
     const client = createSqlDataQueryClient(executor, 'sandbox');
-    const result = await client.query({ label: 'x', sql: 'SELECT $1', params: ['v'], maxRows: 7, timeoutMs: 900 });
+    const result = await client.query({
+      label: 'x',
+      sql: 'SELECT $1',
+      params: ['v'],
+      maxRows: 7,
+      timeoutMs: 900,
+    });
     expect(client.source).toBe('sandbox');
     expect(result).toEqual({ columns: ['a'], rows: [[1]], truncated: false, masked: [] });
-    expect(seen).toEqual([{ sql: 'SELECT $1', params: ['v'], maxRows: 7, timeoutMs: 900, signal: undefined }]);
+    expect(seen).toEqual([
+      { sql: 'SELECT $1', params: ['v'], maxRows: 7, timeoutMs: 900, signal: undefined },
+    ]);
   });
 });

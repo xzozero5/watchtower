@@ -1,4 +1,3 @@
-
 import type { ToolLedger } from '@watchtower/ai';
 import { createDbToolLedger, type DbToolLedger } from '@watchtower/domain';
 import { describe, expect, it } from 'vitest';
@@ -38,7 +37,6 @@ describe('the ledger of the domain fits the port of the AI package', () => {
     expect(typeof createDbToolLedger).toBe('function');
   });
 });
-
 
 describe('systemToolsAllowed (N2, SR108 P2)', () => {
   it('needs the read-only database login, or an explicit opt-in, whatever NODE_ENV is', () => {

@@ -26,11 +26,17 @@ export function placeholdersOf(text: string): string[] {
 
 /** True when `text` still holds a `{{` that is not a well-formed placeholder (a typo that would leak into the query). */
 export function hasStrayBraces(text: string): boolean {
-  return text.replaceAll(PLACEHOLDER, '').includes('{{') || text.replaceAll(PLACEHOLDER, '').includes('}}');
+  return (
+    text.replaceAll(PLACEHOLDER, '').includes('{{') ||
+    text.replaceAll(PLACEHOLDER, '').includes('}}')
+  );
 }
 
 /** Throws when `values` does not name exactly the placeholders of `names`, or a value is outside the alphabet. */
-export function checkParams(names: readonly string[], values: Readonly<Record<string, string>>): void {
+export function checkParams(
+  names: readonly string[],
+  values: Readonly<Record<string, string>>,
+): void {
   if (names.length > MAX_TEMPLATE_PLACEHOLDERS) {
     throw new ConnectorQueryRejectedError('The template has too many parameters');
   }
@@ -38,7 +44,9 @@ export function checkParams(names: readonly string[], values: Readonly<Record<st
     const value = values[name];
     if (value === undefined) throw new ConnectorQueryRejectedError(`Missing parameter: ${name}`);
     if (!PARAM_VALUE_PATTERN.test(value)) {
-      throw new ConnectorQueryRejectedError(`Parameter ${name} holds a character that is not allowed`);
+      throw new ConnectorQueryRejectedError(
+        `Parameter ${name} holds a character that is not allowed`,
+      );
     }
   }
   for (const key of Object.keys(values)) {

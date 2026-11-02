@@ -18,7 +18,8 @@ const NOW = new Date('2026-03-10T12:00:00.000Z');
 
 describe('placeholders', () => {
   it('splits what the ticket fills from what a person types', () => {
-    const body = 'service="svc" AND labels.org={{org_id}} AND labels.session={{session_id}} AND labels.t={{ticket_id}}';
+    const body =
+      'service="svc" AND labels.org={{org_id}} AND labels.session={{session_id}} AND labels.t={{ticket_id}}';
     expect(templatePlaceholders(body)).toEqual(['org_id', 'session_id', 'ticket_id']);
     expect(templateInputParams(body)).toEqual(['session_id']);
   });
@@ -71,7 +72,9 @@ describe('runLogsTemplate', () => {
     expect(client.queries[0]?.filter).toBe('labels.org="a"');
     expect(run.to).toEqual(NOW);
     expect(run.from).toEqual(new Date('2026-03-10T11:00:00.000Z'));
-    expect(formatLogLine(run.entries[0] ?? entry(0, 'x'))).toBe('2026-03-10T11:55:00.000Z ERROR svc: failed');
+    expect(formatLogLine(run.entries[0] ?? entry(0, 'x'))).toBe(
+      '2026-03-10T11:55:00.000Z ERROR svc: failed',
+    );
   });
 
   it('cannot be talked into another organization by a value', async () => {
@@ -91,7 +94,13 @@ describe('runLogsTemplate', () => {
 describe('runDataTemplate', () => {
   it('binds, runs through the guard and formats the rows', async () => {
     const inner = new FakeDataQueryClient({
-      weekly: { columns: ['day', 'who'], rows: [['2026-03-09', 'x@example.com'], ['2026-03-08', 'y@example.com']] },
+      weekly: {
+        columns: ['day', 'who'],
+        rows: [
+          ['2026-03-09', 'x@example.com'],
+          ['2026-03-08', 'y@example.com'],
+        ],
+      },
     });
     const client = withDataGuardrails(inner, { allowColumns: new Set(['day']) });
     const result = await runDataTemplate(client, {
@@ -101,7 +110,11 @@ describe('runDataTemplate', () => {
       maxRows: 10,
       timeoutMs: 1000,
     });
-    expect(inner.queries[0]).toMatchObject({ label: 'weekly', sql: 'SELECT day, who FROM t WHERE tenant = $1', params: ['o-1'] });
+    expect(inner.queries[0]).toMatchObject({
+      label: 'weekly',
+      sql: 'SELECT day, who FROM t WHERE tenant = $1',
+      params: ['o-1'],
+    });
     expect(formatRows(result, 10)).toBe('day | who\n2026-03-09 | -\n2026-03-08 | -');
   });
 });

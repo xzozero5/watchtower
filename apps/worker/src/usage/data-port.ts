@@ -4,11 +4,7 @@ import { hmacJson } from '@watchtower/ai';
 import { assembleToolClients, type ToolClients } from '@watchtower/connectors';
 import { createProductDbExecutor, schema, type Database } from '@watchtower/db';
 import { createHumanToolLedger, type UsageDataPort } from '@watchtower/domain';
-import {
-  DATA_COLUMN_ALLOW_LIST,
-  RATE_TOOL_NAMES,
-  budgetProjectFor,
-} from '@watchtower/shared';
+import { DATA_COLUMN_ALLOW_LIST, RATE_TOOL_NAMES, budgetProjectFor } from '@watchtower/shared';
 import { KEY_LABELS, deriveSubkey } from '@watchtower/shared/secret-box';
 import { eq } from 'drizzle-orm';
 
@@ -46,7 +42,9 @@ export function createUsageDataPort(options: {
         .from(schema.usageMetricDef)
         .where(eq(schema.usageMetricDef.key, request.metricKey))
         .limit(1);
-      const columns = ['ts', 'value', ...(definition?.dims ?? [])].map((name) => name.toLowerCase());
+      const columns = ['ts', 'value', ...(definition?.dims ?? [])].map((name) =>
+        name.toLowerCase(),
+      );
       const [from, to] = request.params;
       const decision = await ledger.begin({
         runKey: randomUUID(),
@@ -103,7 +101,11 @@ export function createUsageDataPort(options: {
 export function usageDataPortFromConfig(
   config: Pick<
     WorkerConfig,
-    'AI_TOOL_FIXTURES_DIR' | 'PRODUCT_DB_URL' | 'APP_ENCRYPTION_KEY' | 'GCP_PROJECT_ID' | 'OTEL_SERVICE_NAME'
+    | 'AI_TOOL_FIXTURES_DIR'
+    | 'PRODUCT_DB_URL'
+    | 'APP_ENCRYPTION_KEY'
+    | 'GCP_PROJECT_ID'
+    | 'OTEL_SERVICE_NAME'
   >,
   db: Database['db'],
 ): UsageDataPort | undefined {

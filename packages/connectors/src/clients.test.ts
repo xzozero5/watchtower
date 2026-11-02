@@ -38,7 +38,11 @@ dataContract(
 );
 repoContract('FakeRepoClient', () => {
   const client = new FakeRepoClient();
-  for (const [ref, hoursAgo] of [['v1.0.0', 3], ['v1.0.1', 1], ['v0.9.0', 30]] as const) {
+  for (const [ref, hoursAgo] of [
+    ['v1.0.0', 3],
+    ['v1.0.1', 1],
+    ['v0.9.0', 30],
+  ] as const) {
     client.add({
       repo: 'example/app',
       kind: 'release',
@@ -72,13 +76,18 @@ quotaContract('FakeMetricsClient 5 a minute', 5, (clock) => {
 quotaContract('FakeRepoClient 3 a minute', 3, (clock) => {
   const client = new FakeRepoClient({ quotaPerMinute: 3, clock });
   return {
-    call: () => client.listChanges({ repo: 'example/app', since: minute.from, until: minute.to, limit: 1 }),
+    call: () =>
+      client.listChanges({ repo: 'example/app', since: minute.from, until: minute.to, limit: 1 }),
   };
 });
 
 describe('FakeLogsClient', () => {
   it('counts what got past the quota and keeps every query it was sent', async () => {
-    const client = new FakeLogsClient({ entries: SEEDED_LOGS, quotaPerMinute: 2, clock: () => NOW });
+    const client = new FakeLogsClient({
+      entries: SEEDED_LOGS,
+      quotaPerMinute: 2,
+      clock: () => NOW,
+    });
     await client.listEntries({ filter: '', pageSize: 1, ...minute });
     await client.listEntries({ filter: '', pageSize: 1, ...minute });
     await expect(client.listEntries({ filter: '', pageSize: 1, ...minute })).rejects.toMatchObject({

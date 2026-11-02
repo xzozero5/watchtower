@@ -179,7 +179,6 @@ function sharedSpec(perTool: number): Omit<RateBudgetSpec, 'resource'> {
   };
 }
 
-
 // --- Templates, runs and evidence cards (T-203d): the HTTP schemas ---------------------------------
 
 export const TOOL_KINDS = ['logs', 'data'] as const;
@@ -296,9 +295,13 @@ const ticketRef = z
   .trim()
   .min(1)
   .max(64)
-  .refine((value) => z.uuid().safeParse(value).success || /^[A-Za-z][A-Za-z0-9]{1,9}-\d{1,15}$/.test(value), {
-    message: 'expected a ticket id or a ticket number such as OPS-1234',
-  });
+  .refine(
+    (value) =>
+      z.uuid().safeParse(value).success || /^[A-Za-z][A-Za-z0-9]{1,9}-\d{1,15}$/.test(value),
+    {
+      message: 'expected a ticket id or a ticket number such as OPS-1234',
+    },
+  );
 
 /** Where an ad-hoc result is pinned: a ticket or an incident, exactly one. */
 const pin = {
@@ -323,7 +326,10 @@ export const adhocDataSchema = z
   .strictObject({
     /** One SELECT with `$1..$n` bind parameters. */
     sql: z.string().min(1).max(8000),
-    params: z.array(z.union([z.string().max(200), z.number()])).max(10).default([]),
+    params: z
+      .array(z.union([z.string().max(200), z.number()]))
+      .max(10)
+      .default([]),
     maxRows: z.number().int().min(1).max(500).default(100),
     ...pin,
   })

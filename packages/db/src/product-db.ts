@@ -124,11 +124,20 @@ function socketOf(client: PoolClient): Socket | undefined {
 /** What the reader must not be able to do. Each probe is one thing the reviews found a statement doing. */
 const HARDENING_PROBES: readonly (readonly [string, string])[] = [
   ['advisory locks', `has_function_privilege(current_user, 'pg_advisory_lock(bigint)', 'EXECUTE')`],
-  ['logical messages (WAL)', `has_function_privilege(current_user, 'pg_logical_emit_message(boolean,text,text)', 'EXECUTE')`],
-  ['set_config', `has_function_privilege(current_user, 'set_config(text,text,boolean)', 'EXECUTE')`],
+  [
+    'logical messages (WAL)',
+    `has_function_privilege(current_user, 'pg_logical_emit_message(boolean,text,text)', 'EXECUTE')`,
+  ],
+  [
+    'set_config',
+    `has_function_privilege(current_user, 'set_config(text,text,boolean)', 'EXECUTE')`,
+  ],
   ['pg_sleep', `has_function_privilege(current_user, 'pg_sleep(double precision)', 'EXECUTE')`],
   ['sequences', `has_function_privilege(current_user, 'nextval(regclass)', 'EXECUTE')`],
-  ['backend control', `has_function_privilege(current_user, 'pg_terminate_backend(integer,bigint)', 'EXECUTE')`],
+  [
+    'backend control',
+    `has_function_privilege(current_user, 'pg_terminate_backend(integer,bigint)', 'EXECUTE')`,
+  ],
   ['temporary tables', `has_database_privilege(current_user, current_database(), 'TEMPORARY')`],
   ['creating objects in public', `has_schema_privilege(current_user, 'public', 'CREATE')`],
   ['being a superuser', `(SELECT rolsuper FROM pg_roles WHERE rolname = current_user)`],
@@ -138,7 +147,9 @@ export function createProductDbExecutor(options: ProductDbOptions): ProductDbExe
   const login = decodeURIComponent(new URL(options.url).username);
   const readerRole = options.readerRole ?? `${login}_reader`;
   if (!ROLE_NAME.test(readerRole)) {
-    throw new Error('The product database login has a name that cannot be turned into a reader role');
+    throw new Error(
+      'The product database login has a name that cannot be turned into a reader role',
+    );
   }
   const pool = new Pool({
     connectionString: options.url,
@@ -224,7 +235,10 @@ export function createProductDbExecutor(options: ProductDbOptions): ProductDbExe
           // Never more rows than are still wanted, plus one to learn whether there were more.
           const want = Math.min(FETCH_BATCH, maxRows + 1 - rows.length);
           const result = await client.query(
-            extended({ text: `FETCH FORWARD ${String(want)} FROM watchtower_cursor`, rowMode: 'array' }),
+            extended({
+              text: `FETCH FORWARD ${String(want)} FROM watchtower_cursor`,
+              rowMode: 'array',
+            }),
           );
           columns.splice(0, columns.length, ...result.fields.map((field) => field.name));
           for (const row of result.rows as unknown[][]) rows.push(row.map(plain));
@@ -243,7 +257,9 @@ export function createProductDbExecutor(options: ProductDbOptions): ProductDbExe
     },
 
     async hardeningProblems() {
-      const select = HARDENING_PROBES.map(([, probe], index) => `${probe} AS p${String(index)}`).join(', ');
+      const select = HARDENING_PROBES.map(
+        ([, probe], index) => `${probe} AS p${String(index)}`,
+      ).join(', ');
       return asReader(5000, async (client) => {
         const result = await client.query(extended({ text: `SELECT ${select}`, rowMode: 'array' }));
         const row = (result.rows[0] ?? []) as unknown[];

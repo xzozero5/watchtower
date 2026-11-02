@@ -139,6 +139,8 @@ test.describe.serial('AC-1: portal submission to resolution', () => {
 
     // Properties live in the right-hand "Details & AI" panel; fields are inline comboboxes.
     const details = panel();
+    // The AI evidence opens first once a brief exists; the properties are one tab away.
+    await details.getByRole('tab', { name: 'Details' }).click();
     await expect(details).toContainText(ORGS.acme.name);
     await expect(details).toContainText('Portal');
     const intentName = (await staffApi.get<StaffTicket>(`/v1/tickets/${ticketKey}`)).json.intent

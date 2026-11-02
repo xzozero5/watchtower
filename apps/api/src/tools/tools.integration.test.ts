@@ -97,7 +97,8 @@ beforeAll(async () => {
       timestamp: minutesAgo(5),
       severity: 'ERROR',
       service: 'example-delivery',
-      message: 'webhook delivery failed for jane.doe@example.com, call +66 81 234 5678 (acct 4111 1111 1111 1111)',
+      message:
+        'webhook delivery failed for jane.doe@example.com, call +66 81 234 5678 (acct 4111 1111 1111 1111)',
       labels: { org_ref: orgId },
     },
     {
@@ -148,33 +149,64 @@ describe('access (RBAC)', () => {
   const ROUTES: readonly [string, () => string, unknown, readonly ('agent' | 'lead' | 'head')[]][] =
     [
       ['GET', () => '/v1/tools/templates', undefined, ['agent', 'lead', 'head']],
-      ['POST', () => '/v1/tools/templates', { kind: 'logs', name: 'rbac-probe', title: 'x', body: 'severity>=ERROR' }, ['head']],
+      [
+        'POST',
+        () => '/v1/tools/templates',
+        { kind: 'logs', name: 'rbac-probe', title: 'x', body: 'severity>=ERROR' },
+        ['head'],
+      ],
       ['PATCH', () => `/v1/tools/templates/${someId}`, { title: 'x' }, ['head']],
       ['DELETE', () => `/v1/tools/templates/${someId}`, undefined, ['head']],
       ['GET', () => `/v1/tickets/${ticketRef}/tools`, undefined, ['agent', 'lead', 'head']],
       ['GET', () => `/v1/tickets/${ticketRef}/evidence`, undefined, ['agent', 'lead', 'head']],
-      ['POST', () => `/v1/tickets/${ticketRef}/tools/run`, { templateId: someId }, ['agent', 'lead', 'head']],
-      ['POST', () => `/v1/incidents/${someId}/tools/run`, { templateId: someId }, ['agent', 'lead', 'head']],
+      [
+        'POST',
+        () => `/v1/tickets/${ticketRef}/tools/run`,
+        { templateId: someId },
+        ['agent', 'lead', 'head'],
+      ],
+      [
+        'POST',
+        () => `/v1/incidents/${someId}/tools/run`,
+        { templateId: someId },
+        ['agent', 'lead', 'head'],
+      ],
       ['GET', () => `/v1/incidents/${someId}/evidence`, undefined, ['agent', 'lead', 'head']],
-      ['POST', () => '/v1/investigate/adhoc/logs', { filter: '', ticketId: ticketRef }, ['lead', 'head']],
-      ['POST', () => '/v1/investigate/adhoc/data', { sql: 'SELECT 1', ticketId: ticketRef }, ['lead', 'head']],
+      [
+        'POST',
+        () => '/v1/investigate/adhoc/logs',
+        { filter: '', ticketId: ticketRef },
+        ['lead', 'head'],
+      ],
+      [
+        'POST',
+        () => '/v1/investigate/adhoc/data',
+        { sql: 'SELECT 1', ticketId: ticketRef },
+        ['lead', 'head'],
+      ],
       ['GET', () => '/v1/ops/services', undefined, ['agent', 'lead', 'head']],
     ];
 
-  it.each(ROUTES)('%s %s: only the roles that hold the permission', async (method, path, body, allowed) => {
-    const people = { agent, lead, head } as const;
-    for (const role of ['agent', 'lead', 'head'] as const) {
-      const response = await call(people[role], method as 'GET', path(), body);
-      if (allowed.includes(role)) {
-        expect([401, 403], `${role} ${method} ${path()}`).not.toContain(response.status);
-      } else {
-        expect(response.status, `${role} ${method} ${path()}`).toBe(403);
+  it.each(ROUTES)(
+    '%s %s: only the roles that hold the permission',
+    async (method, path, body, allowed) => {
+      const people = { agent, lead, head } as const;
+      for (const role of ['agent', 'lead', 'head'] as const) {
+        const response = await call(people[role], method as 'GET', path(), body);
+        if (allowed.includes(role)) {
+          expect([401, 403], `${role} ${method} ${path()}`).not.toContain(response.status);
+        } else {
+          expect(response.status, `${role} ${method} ${path()}`).toBe(403);
+        }
       }
-    }
-    // A client has none of these permissions; no session gets 401.
-    expect((await call(client, method as 'GET', path(), body)).status).toBe(403);
-    expect((await h.client().request(method as 'GET', path(), body === undefined ? {} : { body })).status).toBe(401);
-  });
+      // A client has none of these permissions; no session gets 401.
+      expect((await call(client, method as 'GET', path(), body)).status).toBe(403);
+      expect(
+        (await h.client().request(method as 'GET', path(), body === undefined ? {} : { body }))
+          .status,
+      ).toBe(401);
+    },
+  );
 });
 
 describe('templates (head, audited)', () => {
@@ -200,7 +232,11 @@ describe('templates (head, audited)', () => {
     );
     expect(audit.rows).toHaveLength(1);
     expect(audit.rows[0]?.actor_id).toBe(head.userId);
-    expect(audit.rows[0]?.metadata).toMatchObject({ kind: 'logs', name: created.name, intent: intentKey });
+    expect(audit.rows[0]?.metadata).toMatchObject({
+      kind: 'logs',
+      name: created.name,
+      intent: intentKey,
+    });
     expect(JSON.stringify(audit.rows[0]?.metadata)).not.toContain('example-delivery');
 
     const patched = await call<ToolTemplate>(head, 'PATCH', `/v1/tools/templates/${created.id}`, {
@@ -210,12 +246,16 @@ describe('templates (head, audited)', () => {
     });
     expect(patched.status).toBe(200);
     expect(patched.body).toMatchObject({ placeholders: [], title: 'Delivery errors (all)' });
-    const updates = await owner().query<{ metadata: { bodyDigestBefore: string; bodyDigestAfter: string } }>(
-      `SELECT metadata FROM audit_log WHERE action = $1 AND target_id = $2`,
-      [TOOLS_AUDIT_ACTIONS.toolTemplateUpdate, created.id],
-    );
+    const updates = await owner().query<{
+      metadata: { bodyDigestBefore: string; bodyDigestAfter: string };
+    }>(`SELECT metadata FROM audit_log WHERE action = $1 AND target_id = $2`, [
+      TOOLS_AUDIT_ACTIONS.toolTemplateUpdate,
+      created.id,
+    ]);
     expect(updates.rows[0]?.metadata.bodyDigestBefore).toMatch(/^[0-9a-f]{64}$/);
-    expect(updates.rows[0]?.metadata.bodyDigestAfter).not.toBe(updates.rows[0]?.metadata.bodyDigestBefore);
+    expect(updates.rows[0]?.metadata.bodyDigestAfter).not.toBe(
+      updates.rows[0]?.metadata.bodyDigestBefore,
+    );
 
     expect((await call(head, 'DELETE', `/v1/tools/templates/${created.id}`)).status).toBe(204);
     expect((await call(head, 'DELETE', `/v1/tools/templates/${created.id}`)).status).toBe(404);
@@ -229,24 +269,85 @@ describe('templates (head, audited)', () => {
       'SELECT 1; SELECT 2',
       'SELECT {{Bad}}',
     ]) {
-      const response = await call<ApiErrorBody>(head, 'POST', '/v1/tools/templates', { ...base, body });
+      const response = await call<ApiErrorBody>(head, 'POST', '/v1/tools/templates', {
+        ...base,
+        body,
+      });
       expect(response.status, body).toBe(400);
     }
-    expect((await call(head, 'POST', '/v1/tools/templates', { kind: 'logs', name: 'bad-filter', title: 'x', body: 'nope="x"' })).status).toBe(400);
-    expect((await call(head, 'POST', '/v1/tools/templates', { kind: 'logs', name: 'bad-intent', title: 'x', body: 'severity>=ERROR', intentKey: 'no_such_intent' })).status).toBe(400);
-    expect((await call(head, 'POST', '/v1/tools/templates', { kind: 'logs', name: 'bad-cols', title: 'x', body: 'severity>=ERROR', allowedColumns: ['id'] })).status).toBe(400);
-    const first = await newTemplate({ kind: 'logs', name: 'dup-name', title: 'x', body: 'severity>=ERROR' });
-    expect((await call(head, 'POST', '/v1/tools/templates', { kind: 'logs', name: 'dup-name', title: 'y', body: 'severity>=ERROR', runByAi: false })).status).toBe(409);
+    expect(
+      (
+        await call(head, 'POST', '/v1/tools/templates', {
+          kind: 'logs',
+          name: 'bad-filter',
+          title: 'x',
+          body: 'nope="x"',
+        })
+      ).status,
+    ).toBe(400);
+    expect(
+      (
+        await call(head, 'POST', '/v1/tools/templates', {
+          kind: 'logs',
+          name: 'bad-intent',
+          title: 'x',
+          body: 'severity>=ERROR',
+          intentKey: 'no_such_intent',
+        })
+      ).status,
+    ).toBe(400);
+    expect(
+      (
+        await call(head, 'POST', '/v1/tools/templates', {
+          kind: 'logs',
+          name: 'bad-cols',
+          title: 'x',
+          body: 'severity>=ERROR',
+          allowedColumns: ['id'],
+        })
+      ).status,
+    ).toBe(400);
+    const first = await newTemplate({
+      kind: 'logs',
+      name: 'dup-name',
+      title: 'x',
+      body: 'severity>=ERROR',
+    });
+    expect(
+      (
+        await call(head, 'POST', '/v1/tools/templates', {
+          kind: 'logs',
+          name: 'dup-name',
+          title: 'y',
+          body: 'severity>=ERROR',
+          runByAi: false,
+        })
+      ).status,
+    ).toBe(409);
     await call(head, 'DELETE', `/v1/tools/templates/${first.id}`);
   });
 
-  it('refuses a template for the AI that is not about the ticket\'s organization (P3), at save and in the table', async () => {
-    const aiBody = { kind: 'logs', title: 'x', intentKey, body: 'service="example-delivery" severity>=ERROR', runByAi: true };
-    expect((await call(head, 'POST', '/v1/tools/templates', { ...aiBody, name: 'ai-all-orgs' })).status).toBe(400);
-    const personal = await newTemplate({ ...aiBody, name: `person-only-${randomBytes(2).toString('hex')}`, runByAi: false });
+  it("refuses a template for the AI that is not about the ticket's organization (P3), at save and in the table", async () => {
+    const aiBody = {
+      kind: 'logs',
+      title: 'x',
+      intentKey,
+      body: 'service="example-delivery" severity>=ERROR',
+      runByAi: true,
+    };
+    expect(
+      (await call(head, 'POST', '/v1/tools/templates', { ...aiBody, name: 'ai-all-orgs' })).status,
+    ).toBe(400);
+    const personal = await newTemplate({
+      ...aiBody,
+      name: `person-only-${randomBytes(2).toString('hex')}`,
+      runByAi: false,
+    });
     expect(personal.runByAi).toBe(false);
     // Turning the AI on for it, without {{org_id}}, is refused too; with it, accepted.
-    expect((await call(head, 'PATCH', `/v1/tools/templates/${personal.id}`, { runByAi: true })).status).toBe(400);
+    expect(
+      (await call(head, 'PATCH', `/v1/tools/templates/${personal.id}`, { runByAi: true })).status,
+    ).toBe(400);
     const both = await call<ToolTemplate>(head, 'PATCH', `/v1/tools/templates/${personal.id}`, {
       runByAi: true,
       body: 'service="example-delivery" labels.org_ref={{org_id}}',
@@ -254,16 +355,30 @@ describe('templates (head, audited)', () => {
     expect(both.status).toBe(200);
     // And the table itself says no, whatever the API does.
     await expect(
-      owner().query(`UPDATE tool_template SET body = 'severity>=ERROR' WHERE id = $1`, [personal.id]),
+      owner().query(`UPDATE tool_template SET body = 'severity>=ERROR' WHERE id = $1`, [
+        personal.id,
+      ]),
     ).rejects.toMatchObject({ code: '23514' });
   });
 
   it('lists by intent and kind', async () => {
-    const mine = await newTemplate({ kind: 'logs', name: `listed-${randomBytes(2).toString('hex')}`, title: 'Listed', intentKey, body: 'severity>=ERROR' });
-    const response = await call<{ items: ToolTemplate[] }>(agent, 'GET', `/v1/tools/templates?intent=${intentKey}&kind=logs`);
+    const mine = await newTemplate({
+      kind: 'logs',
+      name: `listed-${randomBytes(2).toString('hex')}`,
+      title: 'Listed',
+      intentKey,
+      body: 'severity>=ERROR',
+    });
+    const response = await call<{ items: ToolTemplate[] }>(
+      agent,
+      'GET',
+      `/v1/tools/templates?intent=${intentKey}&kind=logs`,
+    );
     expect(response.status).toBe(200);
     expect(response.body.items.map((item) => item.id)).toContain(mine.id);
-    expect(response.body.items.every((item) => item.intentKey === intentKey && item.kind === 'logs')).toBe(true);
+    expect(
+      response.body.items.every((item) => item.intentKey === intentKey && item.kind === 'logs'),
+    ).toBe(true);
   });
 });
 
@@ -279,19 +394,21 @@ describe('one click on a ticket (AC-5)', () => {
     });
   });
 
-  it('shows the intent\'s button, connected and labelled mock', async () => {
+  it("shows the intent's button, connected and labelled mock", async () => {
     const response = await call<TicketTools>(agent, 'GET', `/v1/tickets/${ticketRef}/tools`);
     expect(response.status).toBe(200);
     expect(response.body.intentKey).toBe(intentKey);
-    expect(response.body.buttons.find((button) => button.templateId === template.id)).toMatchObject({
-      kind: 'logs',
-      inputParams: [],
-      connected: true,
-      mock: true,
-    });
+    expect(response.body.buttons.find((button) => button.templateId === template.id)).toMatchObject(
+      {
+        kind: 'logs',
+        inputParams: [],
+        connected: true,
+        mock: true,
+      },
+    );
   });
 
-  it('runs the log template for the ticket\'s organization and pins an evidence card with no personal data', async () => {
+  it("runs the log template for the ticket's organization and pins an evidence card with no personal data", async () => {
     await clearBudget();
     const before = logs.queries.length;
     const response = await call<EvidenceCard>(agent, 'POST', `/v1/tickets/${ticketRef}/tools/run`, {
@@ -318,29 +435,53 @@ describe('one click on a ticket (AC-5)', () => {
     );
     // N4: what is stored and returned has no e-mail, phone or card number; the other organization's line is not there.
     expect(card.excerpt).toContain('webhook delivery failed for');
-    for (const secret of ['jane.doe@example.com', '234 5678', '4111 1111 1111 1111', 'sam@example.org', 'OTHER customer']) {
+    for (const secret of [
+      'jane.doe@example.com',
+      '234 5678',
+      '4111 1111 1111 1111',
+      'sam@example.org',
+      'OTHER customer',
+    ]) {
       expect(card.excerpt, secret).not.toContain(secret);
     }
     expect(card.excerpt).toMatch(/\[EMAIL_\d+\]/);
-    const stored = await owner().query<{ excerpt: string; params_hash: string; result_hash: string }>(
-      `SELECT excerpt, params_hash, result_hash FROM evidence_card WHERE id = $1`,
-      [card.id],
-    );
+    const stored = await owner().query<{
+      excerpt: string;
+      params_hash: string;
+      result_hash: string;
+    }>(`SELECT excerpt, params_hash, result_hash FROM evidence_card WHERE id = $1`, [card.id]);
     expect(stored.rows[0]?.excerpt).toBe(card.excerpt);
     expect(stored.rows[0]?.params_hash).toMatch(/^[0-9a-f]{64}$/);
     expect(stored.rows[0]?.result_hash).toMatch(/^[0-9a-f]{64}$/);
 
     // The run is a tool_execution row of a person, with the input only as a keyed hash (N2).
-    const runs = await owner().query<{ agent: string; tool: string; status: string; input_hash: string; result_count: number; mock: boolean }>(
+    const runs = await owner().query<{
+      agent: string;
+      tool: string;
+      status: string;
+      input_hash: string;
+      result_count: number;
+      mock: boolean;
+    }>(
       `SELECT agent, tool, status, input_hash, result_count, mock FROM tool_execution WHERE ticket_id = $1`,
       [ticketId],
     );
     expect(runs.rows).toHaveLength(1);
-    expect(runs.rows[0]).toMatchObject({ agent: 'human', tool: 'gcp_logs', status: 'ok', result_count: 2, mock: true });
+    expect(runs.rows[0]).toMatchObject({
+      agent: 'human',
+      tool: 'gcp_logs',
+      status: 'ok',
+      result_count: 2,
+      mock: true,
+    });
     expect(runs.rows[0]?.input_hash).toMatch(/^[0-9a-f]{64}$/);
 
     // It shows in the list, and the audit row has ids and counts only.
-    const list = await call<{ items: EvidenceCard[] }>(agent, 'GET', `/v1/tickets/${ticketRef}/evidence`);
+    const list = await call<{ items: EvidenceCard[] }>(
+      agent,
+      'GET',
+      `/v1/tickets/${ticketRef}/evidence`,
+    );
     expect(list.body.items.map((item) => item.id)).toContain(card.id);
     const audit = await owner().query<{ actor_id: string; metadata: Record<string, unknown> }>(
       `SELECT actor_id, metadata FROM audit_log WHERE action = $1 AND target_id = $2`,
@@ -348,13 +489,23 @@ describe('one click on a ticket (AC-5)', () => {
     );
     expect(audit.rows).toHaveLength(1);
     expect(audit.rows[0]?.actor_id).toBe(agent.userId);
-    expect(audit.rows[0]?.metadata).toMatchObject({ kind: 'logs', template: template.name, subject: 'ticket', resultCount: 2, mock: true });
+    expect(audit.rows[0]?.metadata).toMatchObject({
+      kind: 'logs',
+      template: template.name,
+      subject: 'ticket',
+      resultCount: 2,
+      mock: true,
+    });
     const text = JSON.stringify(audit.rows[0]?.metadata);
     expect(text).not.toContain(orgId);
     expect(text).not.toContain('example-delivery');
 
-    expect((await call(agent, 'DELETE', `/v1/tickets/${ticketRef}/evidence/${card.id}`)).status).toBe(204);
-    expect((await call(agent, 'DELETE', `/v1/tickets/${ticketRef}/evidence/${card.id}`)).status).toBe(404);
+    expect(
+      (await call(agent, 'DELETE', `/v1/tickets/${ticketRef}/evidence/${card.id}`)).status,
+    ).toBe(204);
+    expect(
+      (await call(agent, 'DELETE', `/v1/tickets/${ticketRef}/evidence/${card.id}`)).status,
+    ).toBe(404);
   });
 
   it('fills org_id and ticket_id from the ticket only, and asks for every other parameter', async () => {
@@ -383,16 +534,37 @@ describe('one click on a ticket (AC-5)', () => {
     expect(logs.queries).toHaveLength(before + 1);
   });
 
-  it('refuses another intent\'s template, an inactive or unknown one, and a ticket that does not exist', async () => {
+  it("refuses another intent's template, an inactive or unknown one, and a ticket that does not exist", async () => {
     const otherIntent = `other_${randomBytes(2).toString('hex')}`;
     await apiIntent(lead, { key: otherIntent, name: 'Other' });
-    const foreign = await newTemplate({ kind: 'logs', name: `foreign-${randomBytes(2).toString('hex')}`, title: 'Foreign', intentKey: otherIntent, body: 'severity>=ERROR' });
-    expect((await call(agent, 'POST', `/v1/tickets/${ticketRef}/tools/run`, { templateId: foreign.id })).status).toBe(400);
+    const foreign = await newTemplate({
+      kind: 'logs',
+      name: `foreign-${randomBytes(2).toString('hex')}`,
+      title: 'Foreign',
+      intentKey: otherIntent,
+      body: 'severity>=ERROR',
+    });
+    expect(
+      (await call(agent, 'POST', `/v1/tickets/${ticketRef}/tools/run`, { templateId: foreign.id }))
+        .status,
+    ).toBe(400);
     await call(head, 'PATCH', `/v1/tools/templates/${template.id}`, { active: false });
-    expect((await call(agent, 'POST', `/v1/tickets/${ticketRef}/tools/run`, { templateId: template.id })).status).toBe(404);
+    expect(
+      (await call(agent, 'POST', `/v1/tickets/${ticketRef}/tools/run`, { templateId: template.id }))
+        .status,
+    ).toBe(404);
     await call(head, 'PATCH', `/v1/tools/templates/${template.id}`, { active: true });
-    expect((await call(agent, 'POST', `/v1/tickets/${ticketRef}/tools/run`, { templateId: randomUUID() })).status).toBe(404);
-    expect((await call(agent, 'POST', `/v1/tickets/OPS-99999999/tools/run`, { templateId: template.id })).status).toBe(404);
+    expect(
+      (
+        await call(agent, 'POST', `/v1/tickets/${ticketRef}/tools/run`, {
+          templateId: randomUUID(),
+        })
+      ).status,
+    ).toBe(404);
+    expect(
+      (await call(agent, 'POST', `/v1/tickets/OPS-99999999/tools/run`, { templateId: template.id }))
+        .status,
+    ).toBe(404);
   });
 
   it('answers 503 and says "not connected" when logs are not connected', async () => {
@@ -401,8 +573,15 @@ describe('one click on a ticket (AC-5)', () => {
     toolClients.logs = undefined;
     try {
       const buttons = await call<TicketTools>(agent, 'GET', `/v1/tickets/${ticketRef}/tools`);
-      expect(buttons.body.buttons.find((button) => button.templateId === template.id)?.connected).toBe(false);
-      const response = await call<ApiErrorBody>(agent, 'POST', `/v1/tickets/${ticketRef}/tools/run`, { templateId: template.id });
+      expect(
+        buttons.body.buttons.find((button) => button.templateId === template.id)?.connected,
+      ).toBe(false);
+      const response = await call<ApiErrorBody>(
+        agent,
+        'POST',
+        `/v1/tickets/${ticketRef}/tools/run`,
+        { templateId: template.id },
+      );
       expect(response.status).toBe(503);
       expect(response.body.code).toBe('tool_not_connected');
     } finally {
@@ -423,12 +602,23 @@ describe('the data tool on the product_mock database', () => {
              ORDER BY day DESC`,
     });
     await clearBudget();
-    const response = await call<EvidenceCard & ApiErrorBody>(agent, 'POST', `/v1/tickets/${ticketRef}/tools/run`, {
-      templateId: template.id,
-      params: { tenant_ref: 't-003' },
-    });
+    const response = await call<EvidenceCard & ApiErrorBody>(
+      agent,
+      'POST',
+      `/v1/tickets/${ticketRef}/tools/run`,
+      {
+        templateId: template.id,
+        params: { tenant_ref: 't-003' },
+      },
+    );
     expect(response.status).toBe(201);
-    expect(response.body).toMatchObject({ kind: 'data', mock: true, resultCount: 30, truncated: false, maskedColumns: [] });
+    expect(response.body).toMatchObject({
+      kind: 'data',
+      mock: true,
+      resultCount: 30,
+      truncated: false,
+      maskedColumns: [],
+    });
     const [first] = response.body.excerpt.split('\n').slice(1);
     // Newest day first: about a third of the deliveries failed.
     expect(Number(first?.split(' | ')[4])).toBeGreaterThanOrEqual(0.3);
@@ -447,29 +637,50 @@ describe('the data tool on the product_mock database', () => {
       body: 'SELECT id, plan, region FROM tenants ORDER BY id',
     });
     await clearBudget();
-    const first = await call<EvidenceCard>(agent, 'POST', `/v1/tickets/${ticketRef}/tools/run`, { templateId: hidden.id });
+    const first = await call<EvidenceCard>(agent, 'POST', `/v1/tickets/${ticketRef}/tools/run`, {
+      templateId: hidden.id,
+    });
     expect(first.status).toBe(201);
     expect(first.body.maskedColumns).toEqual(['id']);
     expect(first.body.excerpt).not.toContain('t-00');
     expect(first.body.summary).toContain('1 hidden');
     await call(head, 'PATCH', `/v1/tools/templates/${hidden.id}`, { allowedColumns: ['id'] });
-    const second = await call<EvidenceCard>(agent, 'POST', `/v1/tickets/${ticketRef}/tools/run`, { templateId: hidden.id });
+    const second = await call<EvidenceCard>(agent, 'POST', `/v1/tickets/${ticketRef}/tools/run`, {
+      templateId: hidden.id,
+    });
     expect(second.body.maskedColumns).toEqual([]);
     expect(second.body.excerpt).toContain('t-001');
 
     // A template that selects a personal column is stopped by the database login, and says only that.
-    const personal = await newTemplate({ kind: 'data', name: `personal-${randomBytes(2).toString('hex')}`, title: 'Personal', body: 'SELECT contact_email AS status FROM tenants' });
-    const refused = await call<ApiErrorBody>(agent, 'POST', `/v1/tickets/${ticketRef}/tools/run`, { templateId: personal.id });
+    const personal = await newTemplate({
+      kind: 'data',
+      name: `personal-${randomBytes(2).toString('hex')}`,
+      title: 'Personal',
+      body: 'SELECT contact_email AS status FROM tenants',
+    });
+    const refused = await call<ApiErrorBody>(agent, 'POST', `/v1/tickets/${ticketRef}/tools/run`, {
+      templateId: personal.id,
+    });
     expect(refused.status).toBe(400);
     expect(JSON.stringify(refused.body)).not.toContain('contact_email');
   });
 
   it('answers 503 when there is no product database', async () => {
-    const template = await newTemplate({ kind: 'data', name: `nodb-${randomBytes(2).toString('hex')}`, title: 'No db', body: 'SELECT 1 AS n' });
+    const template = await newTemplate({
+      kind: 'data',
+      name: `nodb-${randomBytes(2).toString('hex')}`,
+      title: 'No db',
+      body: 'SELECT 1 AS n',
+    });
     const data = toolClients.data;
     toolClients.data = undefined;
     try {
-      const response = await call<ApiErrorBody>(agent, 'POST', `/v1/tickets/${ticketRef}/tools/run`, { templateId: template.id });
+      const response = await call<ApiErrorBody>(
+        agent,
+        'POST',
+        `/v1/tickets/${ticketRef}/tools/run`,
+        { templateId: template.id },
+      );
       expect(response.status).toBe(503);
       expect(response.body.code).toBe('tool_not_connected');
     } finally {
@@ -481,14 +692,26 @@ describe('the data tool on the product_mock database', () => {
 describe('ad-hoc runs (lead, head)', () => {
   it('runs a statement of your own, pins it, and audits the hash but not the statement', async () => {
     await clearBudget();
-    const sqlText = 'SELECT tenant_id, sum(requests)::int AS total FROM api_daily WHERE day >= current_date - $1::int GROUP BY tenant_id ORDER BY tenant_id';
-    const response = await call<EvidenceCard & ApiErrorBody>(lead, 'POST', '/v1/investigate/adhoc/data', {
-      sql: sqlText,
-      params: [7],
-      ticketId: ticketRef,
-    });
+    const sqlText =
+      'SELECT tenant_id, sum(requests)::int AS total FROM api_daily WHERE day >= current_date - $1::int GROUP BY tenant_id ORDER BY tenant_id';
+    const response = await call<EvidenceCard & ApiErrorBody>(
+      lead,
+      'POST',
+      '/v1/investigate/adhoc/data',
+      {
+        sql: sqlText,
+        params: [7],
+        ticketId: ticketRef,
+      },
+    );
     expect(response.status).toBe(201);
-    expect(response.body).toMatchObject({ kind: 'data', templateName: 'adhoc', templateId: null, resultCount: 5, mock: true });
+    expect(response.body).toMatchObject({
+      kind: 'data',
+      templateName: 'adhoc',
+      templateId: null,
+      resultCount: 5,
+      mock: true,
+    });
     const audit = await owner().query<{ actor_id: string; metadata: Record<string, unknown> }>(
       `SELECT actor_id, metadata FROM audit_log WHERE action = $1 AND target_id = $2`,
       [TOOLS_AUDIT_ACTIONS.toolAdhoc, response.body.id],
@@ -500,7 +723,8 @@ describe('ad-hoc runs (lead, head)', () => {
 
   it('refuses what is not a read, EXTERNAL_QUERY, a personal column, a bad filter and a missing pin', async () => {
     await clearBudget();
-    const data = (sql: string) => call<ApiErrorBody>(head, 'POST', '/v1/investigate/adhoc/data', { sql, ticketId: ticketRef });
+    const data = (sql: string) =>
+      call<ApiErrorBody>(head, 'POST', '/v1/investigate/adhoc/data', { sql, ticketId: ticketRef });
     for (const sql of [
       'DELETE FROM jobs',
       "SELECT * FROM EXTERNAL_QUERY('conn', 'SELECT 1')",
@@ -511,16 +735,38 @@ describe('ad-hoc runs (lead, head)', () => {
       expect((await data(sql)).status, sql).toBe(400);
     }
     const before = logs.queries.length;
-    expect((await call(head, 'POST', '/v1/investigate/adhoc/logs', { filter: 'unknown="x"', ticketId: ticketRef })).status).toBe(400);
+    expect(
+      (
+        await call(head, 'POST', '/v1/investigate/adhoc/logs', {
+          filter: 'unknown="x"',
+          ticketId: ticketRef,
+        })
+      ).status,
+    ).toBe(400);
     expect(logs.queries).toHaveLength(before);
-    expect((await call(head, 'POST', '/v1/investigate/adhoc/logs', { filter: '' })).status).toBe(400);
-    expect((await call(head, 'POST', '/v1/investigate/adhoc/logs', { filter: '', ticketId: ticketRef, incidentId: randomUUID() })).status).toBe(400);
+    expect((await call(head, 'POST', '/v1/investigate/adhoc/logs', { filter: '' })).status).toBe(
+      400,
+    );
+    expect(
+      (
+        await call(head, 'POST', '/v1/investigate/adhoc/logs', {
+          filter: '',
+          ticketId: ticketRef,
+          incidentId: randomUUID(),
+        })
+      ).status,
+    ).toBe(400);
     // Nothing was written: the invented product data is all still there.
     const check = createProductDbExecutor({
       url: mock.ownerUrl,
       readerRole: decodeURIComponent(new URL(mock.ownerUrl).username),
     });
-    const jobs = await check.execute({ sql: 'SELECT count(*)::int AS n FROM jobs', params: [], maxRows: 1, timeoutMs: 1000 });
+    const jobs = await check.execute({
+      sql: 'SELECT count(*)::int AS n FROM jobs',
+      params: [],
+      maxRows: 1,
+      timeoutMs: 1000,
+    });
     await check.close();
     expect(jobs.rows).toEqual([[200]]);
   });
@@ -530,16 +776,37 @@ describe('ad-hoc runs (lead, head)', () => {
     const hardened = toolClients.dataHardening;
     toolClients.dataHardening = () => Promise.resolve(['the reader can use advisory locks']);
     try {
-      const refused = await call<ApiErrorBody>(head, 'POST', '/v1/investigate/adhoc/data', { sql: 'SELECT 1 AS n', ticketId: ticketRef });
+      const refused = await call<ApiErrorBody>(head, 'POST', '/v1/investigate/adhoc/data', {
+        sql: 'SELECT 1 AS n',
+        ticketId: ticketRef,
+      });
       expect(refused.status).toBe(503);
       expect(refused.body.code).toBe('tool_not_connected');
       expect(refused.body.message).toContain('not hardened');
-      const template = await newTemplate({ kind: 'data', name: `still-runs-${randomBytes(2).toString('hex')}`, title: 'Still runs', body: 'SELECT 1 AS n' });
-      expect((await call(agent, 'POST', `/v1/tickets/${ticketRef}/tools/run`, { templateId: template.id })).status).toBe(201);
+      const template = await newTemplate({
+        kind: 'data',
+        name: `still-runs-${randomBytes(2).toString('hex')}`,
+        title: 'Still runs',
+        body: 'SELECT 1 AS n',
+      });
+      expect(
+        (
+          await call(agent, 'POST', `/v1/tickets/${ticketRef}/tools/run`, {
+            templateId: template.id,
+          })
+        ).status,
+      ).toBe(201);
     } finally {
       toolClients.dataHardening = hardened;
     }
-    expect((await call(head, 'POST', '/v1/investigate/adhoc/data', { sql: 'SELECT 1 AS n', ticketId: ticketRef })).status).toBe(201);
+    expect(
+      (
+        await call(head, 'POST', '/v1/investigate/adhoc/data', {
+          sql: 'SELECT 1 AS n',
+          ticketId: ticketRef,
+        })
+      ).status,
+    ).toBe(201);
   });
 
   it('runs a log filter of your own on an incident', async () => {
@@ -548,16 +815,37 @@ describe('ad-hoc runs (lead, head)', () => {
       `INSERT INTO incident (title, severity) VALUES ('Delivery failing', 'SEV2') RETURNING id`,
     );
     const incidentId = incident.rows[0]?.id ?? '';
-    const response = await call<EvidenceCard & ApiErrorBody>(lead, 'POST', '/v1/investigate/adhoc/logs', {
-      filter: `service="example-delivery" labels.org_ref="${orgId}"`,
-      incidentId,
-      windowMinutes: 30,
-    });
+    const response = await call<EvidenceCard & ApiErrorBody>(
+      lead,
+      'POST',
+      '/v1/investigate/adhoc/logs',
+      {
+        filter: `service="example-delivery" labels.org_ref="${orgId}"`,
+        incidentId,
+        windowMinutes: 30,
+      },
+    );
     expect(response.status).toBe(201);
-    expect(response.body).toMatchObject({ incidentId, ticketId: null, kind: 'logs', resultCount: 2 });
-    const list = await call<{ items: EvidenceCard[] }>(agent, 'GET', `/v1/incidents/${incidentId}/evidence`);
+    expect(response.body).toMatchObject({
+      incidentId,
+      ticketId: null,
+      kind: 'logs',
+      resultCount: 2,
+    });
+    const list = await call<{ items: EvidenceCard[] }>(
+      agent,
+      'GET',
+      `/v1/incidents/${incidentId}/evidence`,
+    );
     expect(list.body.items).toHaveLength(1);
-    expect((await call(lead, 'POST', '/v1/investigate/adhoc/logs', { filter: '', incidentId: randomUUID() })).status).toBe(404);
+    expect(
+      (
+        await call(lead, 'POST', '/v1/investigate/adhoc/logs', {
+          filter: '',
+          incidentId: randomUUID(),
+        })
+      ).status,
+    ).toBe(404);
   });
 
   it('runs a template on an incident, where org_id must be given', async () => {
@@ -566,26 +854,52 @@ describe('ad-hoc runs (lead, head)', () => {
       `INSERT INTO incident (title, severity) VALUES ('Second', 'SEV3') RETURNING id`,
     );
     const incidentId = incident.rows[0]?.id ?? '';
-    const template = await newTemplate({ kind: 'logs', name: `inc-${randomBytes(2).toString('hex')}`, title: 'Incident logs', body: LOG_FILTER });
-    expect((await call(agent, 'POST', `/v1/incidents/${incidentId}/tools/run`, { templateId: template.id })).status).toBe(400);
-    const ok = await call<EvidenceCard>(agent, 'POST', `/v1/incidents/${incidentId}/tools/run`, { templateId: template.id, params: { org_id: orgId } });
+    const template = await newTemplate({
+      kind: 'logs',
+      name: `inc-${randomBytes(2).toString('hex')}`,
+      title: 'Incident logs',
+      body: LOG_FILTER,
+    });
+    expect(
+      (
+        await call(agent, 'POST', `/v1/incidents/${incidentId}/tools/run`, {
+          templateId: template.id,
+        })
+      ).status,
+    ).toBe(400);
+    const ok = await call<EvidenceCard>(agent, 'POST', `/v1/incidents/${incidentId}/tools/run`, {
+      templateId: template.id,
+      params: { org_id: orgId },
+    });
     expect(ok.status).toBe(201);
     expect(ok.body.incidentId).toBe(incidentId);
-    expect((await call(agent, 'DELETE', `/v1/incidents/${incidentId}/evidence/${ok.body.id}`)).status).toBe(204);
+    expect(
+      (await call(agent, 'DELETE', `/v1/incidents/${incidentId}/evidence/${ok.body.id}`)).status,
+    ).toBe(204);
   });
 });
 
 describe('the shared rate budget (N2)', () => {
   it('answers 429 with Retry-After once the logging budget is used, without calling the system, and records the refusal', async () => {
     await clearBudget();
-    const template = await newTemplate({ kind: 'logs', name: `budget-${randomBytes(2).toString('hex')}`, title: 'Budget', intentKey, body: LOG_FILTER });
+    const template = await newTemplate({
+      kind: 'logs',
+      name: `budget-${randomBytes(2).toString('hex')}`,
+      title: 'Budget',
+      intentKey,
+      body: LOG_FILTER,
+    });
     await owner().query(
       `INSERT INTO rate_budget_window (resource, slot, total, ai) VALUES ('logging:default', date_trunc('second', clock_timestamp()), 55, 0)`,
     );
     const before = logs.queries.length;
-    const response = await agent.client.request<ApiErrorBody>('POST', `/v1/tickets/${ticketRef}/tools/run`, {
-      body: { templateId: template.id },
-    });
+    const response = await agent.client.request<ApiErrorBody>(
+      'POST',
+      `/v1/tickets/${ticketRef}/tools/run`,
+      {
+        body: { templateId: template.id },
+      },
+    );
     expect(response.status).toBe(429);
     expect(Number(response.headers.get('retry-after'))).toBeGreaterThan(0);
     expect(logs.queries).toHaveLength(before);
@@ -594,15 +908,32 @@ describe('the shared rate budget (N2)', () => {
     );
     expect(denied.rows[0]).toEqual({ error_code: 'tool_rate', agent: 'human' });
     // Logs are used up, the data tool has a budget of its own.
-    const data = await newTemplate({ kind: 'data', name: `budget-data-${randomBytes(2).toString('hex')}`, title: 'Data', body: 'SELECT 1 AS n' });
-    expect((await call(agent, 'POST', `/v1/tickets/${ticketRef}/tools/run`, { templateId: data.id })).status).toBe(201);
+    const data = await newTemplate({
+      kind: 'data',
+      name: `budget-data-${randomBytes(2).toString('hex')}`,
+      title: 'Data',
+      body: 'SELECT 1 AS n',
+    });
+    expect(
+      (await call(agent, 'POST', `/v1/tickets/${ticketRef}/tools/run`, { templateId: data.id }))
+        .status,
+    ).toBe(201);
     await clearBudget();
   });
 
   it('caps one person at 20 a minute so one agent cannot starve the others, and holds the last 10 units for the AI', async () => {
     await clearBudget();
-    const template = await newTemplate({ kind: 'logs', name: `person-cap-${randomBytes(2).toString('hex')}`, title: 'Cap', intentKey, body: LOG_FILTER });
-    const run = (who: Persona) => call<ApiErrorBody>(who, 'POST', `/v1/tickets/${ticketRef}/tools/run`, { templateId: template.id });
+    const template = await newTemplate({
+      kind: 'logs',
+      name: `person-cap-${randomBytes(2).toString('hex')}`,
+      title: 'Cap',
+      intentKey,
+      body: LOG_FILTER,
+    });
+    const run = (who: Persona) =>
+      call<ApiErrorBody>(who, 'POST', `/v1/tickets/${ticketRef}/tools/run`, {
+        templateId: template.id,
+      });
     for (let i = 0; i < 20; i += 1) expect((await run(agent)).status, `run ${String(i)}`).toBe(201);
     const before = logs.queries.length;
     expect((await run(agent)).status).toBe(429);
@@ -624,15 +955,30 @@ describe('the shared rate budget (N2)', () => {
 
   it('turns a 429 of the provider itself into a 429 for the caller', async () => {
     await clearBudget();
-    const template = await newTemplate({ kind: 'logs', name: `provider429-${randomBytes(2).toString('hex')}`, title: 'Provider', intentKey, body: LOG_FILTER });
+    const template = await newTemplate({
+      kind: 'logs',
+      name: `provider429-${randomBytes(2).toString('hex')}`,
+      title: 'Provider',
+      intentKey,
+      body: LOG_FILTER,
+    });
     const quota = new FakeLogsClient({ entries: [], quotaPerMinute: 1 });
-    await quota.listEntries({ filter: '', pageSize: 1, from: new Date(Date.now() - 60_000), to: new Date() });
+    await quota.listEntries({
+      filter: '',
+      pageSize: 1,
+      from: new Date(Date.now() - 60_000),
+      to: new Date(),
+    });
     const original = toolClients.logs;
     toolClients.logs = quota;
     try {
-      const response = await agent.client.request<ApiErrorBody>('POST', `/v1/tickets/${ticketRef}/tools/run`, {
-        body: { templateId: template.id },
-      });
+      const response = await agent.client.request<ApiErrorBody>(
+        'POST',
+        `/v1/tickets/${ticketRef}/tools/run`,
+        {
+          body: { templateId: template.id },
+        },
+      );
       expect(response.status).toBe(429);
       expect(Number(response.headers.get('retry-after'))).toBeGreaterThan(0);
       const row = await owner().query<{ status: string; error_code: string }>(
@@ -649,7 +995,10 @@ describe('the shared rate budget (N2)', () => {
 describe('the service status panel (R-5.7)', () => {
   it('shows alert state, 24 hours of numbers, the last deploy and the open incidents of each service', async () => {
     await clearBudget();
-    const created = await call<{ id: string }>(lead, 'POST', '/v1/services', { slug: 'example-delivery', name: 'Delivery' });
+    const created = await call<{ id: string }>(lead, 'POST', '/v1/services', {
+      slug: 'example-delivery',
+      name: 'Delivery',
+    });
     expect(created.status).toBe(201);
     const serviceId = created.body.id;
     await call(lead, 'POST', '/v1/services', { slug: 'quiet-service', name: 'Quiet' });
@@ -695,10 +1044,21 @@ describe('the service status panel (R-5.7)', () => {
     expect(delivery?.metrics.errorRate.length).toBeLessThanOrEqual(48);
     expect(delivery?.metrics.latencyP95Ms.length).toBe(delivery?.metrics.errorRate.length);
     expect(delivery?.openIncidents).toEqual([
-      { id: incident.rows[0]?.id, number: incident.rows[0]?.number, title: 'Delivery failing', severity: 'SEV2', status: 'investigating' },
+      {
+        id: incident.rows[0]?.id,
+        number: incident.rows[0]?.number,
+        title: 'Delivery failing',
+        severity: 'SEV2',
+        status: 'investigating',
+      },
     ]);
     const quiet = response.body.items.find((item) => item.slug === 'quiet-service');
-    expect(quiet).toMatchObject({ state: 'ok', alerts: { open: 0, acknowledged: 0, worstSeverity: null }, lastDeploy: null, openIncidents: [] });
+    expect(quiet).toMatchObject({
+      state: 'ok',
+      alerts: { open: 0, acknowledged: 0, worstSeverity: null },
+      lastDeploy: null,
+      openIncidents: [],
+    });
 
     // Refreshing the screen does not spend the quota again: the numbers are reused for a minute.
     await call(agent, 'GET', '/v1/ops/services');
@@ -716,7 +1076,12 @@ describe('the service status panel (R-5.7)', () => {
     );
     const limited = await call<ServiceStatusList>(agent, 'GET', '/v1/ops/services');
     const late = limited.body.items.find((item) => item.slug === 'late-service');
-    expect(late?.metrics).toEqual({ status: 'rate_limited', mock: true, errorRate: [], latencyP95Ms: [] });
+    expect(late?.metrics).toEqual({
+      status: 'rate_limited',
+      mock: true,
+      errorRate: [],
+      latencyP95Ms: [],
+    });
     await clearBudget();
 
     await call(lead, 'POST', '/v1/services', { slug: 'unplugged', name: 'Unplugged' });
