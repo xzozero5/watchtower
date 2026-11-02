@@ -153,6 +153,9 @@ x-app-env: &app-env
   KB_CHUNK_OVERLAP_CHARS: ${KB_CHUNK_OVERLAP_CHARS:-}
   KB_MIN_VECTOR_SIMILARITY: ${KB_MIN_VECTOR_SIMILARITY:-}
   ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+  # claude-cli (dev/POC only, ADR-017): the host-side bridge to the local Claude Code CLI.
+  CLAUDE_CLI_BRIDGE_URL: ${CLAUDE_CLI_BRIDGE_URL:-http://host.docker.internal:4317}
+  CLAUDE_CLI_BRIDGE_TOKEN: ${CLAUDE_CLI_BRIDGE_TOKEN:-}
   VERTEX_PROJECT_ID: ${VERTEX_PROJECT_ID:-}
   VERTEX_LOCATION: ${VERTEX_LOCATION:-asia-southeast1}
   AI_MODEL_DEEP: ${AI_MODEL_DEEP:-}
@@ -376,6 +379,9 @@ services:
       WORKER_PORT: '4100'
     volumes:
       - *gmail-key
+    # So AI_PROVIDER=claude-cli can reach the bridge on the host (ADR-017); harmless otherwise.
+    extra_hosts:
+      - 'host.docker.internal:host-gateway'
     ports:
       - '127.0.0.1:${WORKER_PORT:-4100}:4100'
     depends_on:

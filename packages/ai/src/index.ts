@@ -48,6 +48,7 @@ export {
 } from './redaction/detectors.js';
 
 export { createAnthropicProvider, type AnthropicProviderConfig } from './providers/anthropic.js';
+export { createCliBridgeProvider, type CliBridgeProviderConfig } from './providers/claude-cli.js';
 export { DevMockLlmProvider, type DevMockOptions } from './providers/dev-mock.js';
 export {
   MockEmbeddingProvider,

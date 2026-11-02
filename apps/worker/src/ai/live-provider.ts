@@ -2,6 +2,7 @@ import {
   ProviderConfigError,
   ProviderUnavailableError,
   createAnthropicProvider,
+  createCliBridgeProvider,
   createVertexProvider,
   type AiSettings,
   type FetchLike,
@@ -26,13 +27,15 @@ export interface AiCredentialReader {
 }
 
 export interface LiveProviderOptions {
-  readonly kind: 'anthropic' | 'vertex';
+  readonly kind: 'anthropic' | 'vertex' | 'claude-cli';
   readonly settings: AiSettings;
   readonly credentials: AiCredentialReader;
   /** The only network access. Production passes the process `fetch`; tests pass a fixture replayer. */
   readonly fetch: FetchLike;
   /** Vertex only: an OAuth access token for the project. Absent: Vertex calls are refused. */
   readonly vertexAccessToken?: () => Promise<string>;
+  /** claude-cli only (ADR-017): the host-side bridge. Dev/POC; the config refuses it in production. */
+  readonly claudeCli?: { readonly bridgeUrl?: string; readonly token?: string };
   readonly logger: WorkerLogger;
   readonly now?: () => number;
 }
@@ -40,7 +43,7 @@ export interface LiveProviderOptions {
 const LOG_EVERY_MS = 60_000;
 
 /**
- * The provider for `AI_PROVIDER=anthropic|vertex` (T-132): the existing adapter of `@watchtower/ai`,
+ * The provider for `AI_PROVIDER=anthropic|vertex|claude-cli` (T-132, ADR-017): the existing adapter of `@watchtower/ai`,
  * built from the credentials on each call. It sits behind `createAuditedLlm`, so redaction
  * (`RedactedText`), the `ai_run` row, the daily caps and the kill switch apply exactly as for mock.
  *
@@ -79,6 +82,19 @@ export function createLiveProvider(options: LiveProviderOptions): LlmProvider {
       if (apiKey === undefined || apiKey.trim() === '') return refuse('no API key is configured');
       id = `anthropic\n${apiKey}`;
       build = () => createAnthropicProvider({ apiKey, fetch: options.fetch });
+    } else if (options.kind === 'claude-cli') {
+      const bridgeUrl = options.claudeCli?.bridgeUrl;
+      const token = options.claudeCli?.token;
+      if (bridgeUrl === undefined || bridgeUrl.trim() === '') {
+        return refuse('CLAUDE_CLI_BRIDGE_URL is not set');
+      }
+      if (token === undefined || token.trim() === '') {
+        return refuse('CLAUDE_CLI_BRIDGE_TOKEN is not set');
+      }
+      id = `claude-cli
+${bridgeUrl}
+${token}`;
+      build = () => createCliBridgeProvider({ bridgeUrl, token, fetch: options.fetch });
     } else {
       const project = credentials.vertexProjectId;
       const location = credentials.vertexLocation;

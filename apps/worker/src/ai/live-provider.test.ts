@@ -27,7 +27,10 @@ const MODELS = {
 };
 const fixture = readFixture('anthropic-classifier.json');
 
-function settingsFor(provider: 'anthropic' | 'vertex', extra: Record<string, string> = {}) {
+function settingsFor(
+  provider: 'anthropic' | 'vertex' | 'claude-cli',
+  extra: Record<string, string> = {},
+) {
   return buildAiSettings(testConfig({ AI_PROVIDER: provider, ...MODELS, ...extra })).settings;
 }
 
@@ -51,7 +54,8 @@ function request(settings: AiSettings, tier: LlmRequest['tier'] = 'light'): LlmR
 
 function setup(options: {
   credentials?: AiCredentials | (() => Promise<AiCredentials>);
-  kind?: 'anthropic' | 'vertex';
+  kind?: 'anthropic' | 'vertex' | 'claude-cli';
+  claudeCli?: { bridgeUrl?: string; token?: string };
   settings?: AiSettings;
   fetch?: Parameters<typeof createLiveProvider>[0]['fetch'];
   vertexAccessToken?: () => Promise<string>;
@@ -72,6 +76,7 @@ function setup(options: {
     ...(options.vertexAccessToken === undefined
       ? {}
       : { vertexAccessToken: options.vertexAccessToken }),
+    ...(options.claudeCli === undefined ? {} : { claudeCli: options.claudeCli }),
     logger,
     ...(options.now === undefined ? {} : { now: options.now }),
   });
@@ -232,5 +237,65 @@ describe('createLiveProvider: vertex', () => {
     expect(sent?.rawBody).toContain('[EMAIL_1]');
     expect(sent?.rawBody).not.toContain('somchai@customer.example.test');
     expect(sent?.rawBody).not.toContain('Somchai');
+  });
+});
+
+describe('createLiveProvider: claude-cli (ADR-017)', () => {
+  // Made-up values, not credentials. Prices are 0: the owner pays by subscription.
+  const FREE = JSON.stringify({
+    'label-deep': { inputUsdPerMTok: 0, outputUsdPerMTok: 0 },
+    'label-standard': { inputUsdPerMTok: 0, outputUsdPerMTok: 0 },
+    'label-light': { inputUsdPerMTok: 0, outputUsdPerMTok: 0 },
+  });
+  const cliSettings = buildAiSettings(
+    testConfig({ AI_PROVIDER: 'claude-cli', ...MODELS, AI_MODEL_PRICES: FREE }),
+  ).settings;
+
+  it('accepts 0 prices and posts the redacted request to the bridge with the token', async () => {
+    const sent: { url: string; init: RequestInit }[] = [];
+    const { provider, settings } = setup({
+      kind: 'claude-cli',
+      settings: cliSettings,
+      credentials: {},
+      claudeCli: { bridgeUrl: 'http://host.docker.internal:4317', token: FAKE_KEY },
+      fetch: (input, init) => {
+        sent.push({ url: typeof input === 'string' ? input : 'non-string', init: init ?? {} });
+        return Promise.resolve(
+          new Response(JSON.stringify({ text: 'ok', usage: { inputTokens: 5, outputTokens: 2 } }), {
+            status: 200,
+            headers: { 'content-type': 'application/json' },
+          }),
+        );
+      },
+    });
+    const response = await provider.generate(request(settings));
+    expect(provider.kind).toBe('claude-cli');
+    expect(response.usage).toEqual({ inputTokens: 5, outputTokens: 2 });
+    expect(sent[0]?.url).toBe('http://host.docker.internal:4317/v1/generate');
+    expect((sent[0]?.init.headers as Record<string, string>).authorization).toBe(
+      `Bearer ${FAKE_KEY}`,
+    );
+    const body = sent[0]?.init.body as string;
+    expect(body).toContain('[EMAIL_1]');
+    expect(body).not.toContain('somchai@customer.example.test');
+  });
+
+  it('refuses without a token or a price: ProviderUnavailableError, nothing sent', async () => {
+    const noToken = setup({
+      kind: 'claude-cli',
+      settings: cliSettings,
+      claudeCli: { bridgeUrl: 'http://host.docker.internal:4317' },
+    });
+    await expect(noToken.provider.generate(request(cliSettings))).rejects.toBeInstanceOf(
+      ProviderUnavailableError,
+    );
+    const noPrice = setup({
+      kind: 'claude-cli',
+      settings: settingsFor('anthropic', { AI_MODEL_PRICES: '{}' }),
+      claudeCli: { bridgeUrl: 'http://host.docker.internal:4317', token: FAKE_KEY },
+    });
+    await expect(noPrice.provider.generate(request(noPrice.settings))).rejects.toBeInstanceOf(
+      ProviderUnavailableError,
+    );
   });
 });

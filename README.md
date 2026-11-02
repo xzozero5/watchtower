@@ -84,6 +84,20 @@ Before you connect anything real:
 - **The AI never answers customers on its own.** Every intent stays at autonomy stage 2 or lower (draft for approval), enforced in the database.
 - **Personal data is redacted before it reaches a model, as far as patterns and known names allow.** A name typed into free text that the system doesn't know can get through. Decide whether you accept that before turning on a real provider.
 
+## Local AI via Claude Code CLI (dev/POC only)
+
+For local testing you can run the AI layer on your own Claude Code login instead of an API key ([ADR-017](docs/decisions/ADR-017-claude-cli-dev-provider.md)). The worker in Docker cannot start `claude`, so a small bridge runs on your machine:
+
+```bash
+# .env: AI_PROVIDER=claude-cli, CLAUDE_CLI_BRIDGE_TOKEN=<16+ random characters>,
+#       AI_MODEL_DEEP=opus  AI_MODEL_STANDARD=sonnet  AI_MODEL_LIGHT=haiku
+#       AI_MODEL_PRICES={"opus":{"inputUsdPerMTok":0,"outputUsdPerMTok":0},"sonnet":{...0},"haiku":{...0}}
+pnpm claude-bridge          # listens on 127.0.0.1:4317, tools off, never logs prompts
+docker compose up -d --build worker
+```
+
+The app refuses to boot with `claude-cli` when `NODE_ENV=production` or `APP_URL` is not on this machine.
+
 ## What is real today
 
 | Area | State |

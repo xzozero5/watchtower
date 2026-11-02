@@ -91,7 +91,10 @@ describe('no hard-coded model names (AGENTS.md)', () => {
           const lines = readFileSync(path, 'utf8').split('\n');
           lines.forEach((line, index) => {
             // Doc comments may name vendors ("Gemini on Vertex AI"); string literals may not.
-            const code = line.replace(/^\s*(\/\*\*|\*|\/\/).*$/, '');
+            // `claude-cli` is a provider kind (ADR-017), not a model name.
+            const code = line
+              .replace(/^\s*(\/\*\*|\*|\/\/).*$/, '')
+              .replace(/claude-cli/g, 'provider-kind');
             if (/['"`]/.test(code) && pattern.test(code))
               hits.push(`${path.slice(root.length)}:${String(index + 1)}`);
           });
