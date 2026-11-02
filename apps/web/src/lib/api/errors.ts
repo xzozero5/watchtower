@@ -10,6 +10,8 @@ export class ApiRequestError extends Error {
     message: string,
     /** The whole JSON body of the answer, for a 409 that carries more than `message` (AC-7 `blockers`). */
     readonly details?: unknown,
+    /** Seconds from the `Retry-After` header, when the answer had a usable one. */
+    readonly retryAfterSeconds?: number,
   ) {
     super(message);
     this.name = 'ApiRequestError';
@@ -41,9 +43,17 @@ export async function errorFromResponse(response: Response): Promise<ApiRequestE
   } catch {
     body = undefined;
   }
+  const header = Number(response.headers.get('Retry-After'));
+  const retryAfter = Number.isFinite(header) && header > 0 ? Math.ceil(header) : undefined;
   const parsed = apiErrorSchema.safeParse(body);
   if (parsed.success) {
-    return new ApiRequestError(response.status, parsed.data.code, parsed.data.message, body);
+    return new ApiRequestError(
+      response.status,
+      parsed.data.code,
+      parsed.data.message,
+      body,
+      retryAfter,
+    );
   }
   return new ApiRequestError(
     response.status,

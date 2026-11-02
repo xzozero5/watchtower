@@ -153,6 +153,17 @@ export const gmailOauthDisconnectResultSchema = z.object({
 });
 export type GmailOauthDisconnectResult = z.infer<typeof gmailOauthDisconnectResultSchema>;
 
+/** `POST /v1/admin/integrations/gmail/sync`: what the manual sync queued (T-150). */
+export const gmailManualSyncResultSchema = z.object({
+  /** Enabled mailboxes whose `sync` job (reason `manual`) was queued by this call. */
+  queued: z.array(z.object({ channelAccountId: z.uuid(), jobId: z.string() })),
+  /** Enabled mailboxes skipped because one was already queued within the last minute. */
+  throttled: z.array(
+    z.object({ channelAccountId: z.uuid(), retryAfterSeconds: z.number().int().min(1) }),
+  ),
+});
+export type GmailManualSyncResult = z.infer<typeof gmailManualSyncResultSchema>;
+
 /** `GET /v1/admin/integrations/gmail/oauth/status`: what the admin page needs, never a value. */
 export const gmailConnectionStatusSchema = z.object({
   /** Client ID and secret are set (so a person can start the flow). */

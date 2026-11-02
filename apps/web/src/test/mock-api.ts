@@ -11,6 +11,7 @@ export interface MockRequest {
 export interface MockResult {
   status?: number;
   json?: unknown;
+  headers?: Record<string, string>;
 }
 
 export type MockHandler = ((request: MockRequest) => MockResult | Promise<MockResult>) | MockResult;
@@ -67,7 +68,7 @@ export function mockApi(routes: Record<string, MockHandler>) {
       if (status === 204 || result.json === undefined) return new Response(null, { status });
       return new Response(JSON.stringify(result.json), {
         status,
-        headers: { 'content-type': 'application/json' },
+        headers: { 'content-type': 'application/json', ...result.headers },
       });
     }
     return new Response(

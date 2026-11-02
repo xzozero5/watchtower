@@ -10,11 +10,13 @@ import { Alert, Avatar, Combobox, type ComboboxOption, Pill, SeverityBadge } fro
 import { type ReactNode, useEffect, useId, useMemo, useRef } from 'react';
 
 import { useI18n } from '@/i18n/provider';
-import type { MessageKey } from '@/i18n';
+import type { MessageKey, Translate } from '@/i18n';
 import { isApiError } from '@/lib/api/errors';
 import { formatDateTime } from '@/lib/format';
 import { useSession } from '@/lib/auth/session';
 import { isStaffTicket, isDetail, severityOf, type TicketItem } from '@/lib/tickets/model';
+import { useSlaPolicies } from '@/lib/admin/queries';
+import { dueNote, type DueNote } from '@/lib/tickets/sla';
 import { useIntents, useQueues, useTicketMutations, useWorkflow } from '@/lib/tickets/queries';
 import { statusKey } from '@/lib/tickets/status-key';
 import { allowedNextStatuses } from '@/lib/tickets/templates';
@@ -49,6 +51,14 @@ export function Row({ label, children }: { label: string; children: ReactNode })
   );
 }
 
+function noDueText(note: DueNote | null, t: Translate): string {
+  if (note?.kind === 'noPolicy') return t('details.noPolicy');
+  if (note?.kind === 'noTarget') {
+    return t('details.noTarget', { priority: note.priority, policy: note.policyName });
+  }
+  return t('details.none');
+}
+
 const Empty = ({ children }: { children: ReactNode }) => (
   <span className="text-muted-foreground">{children}</span>
 );
@@ -71,6 +81,7 @@ export function TicketDetails({ ticket }: { ticket: TicketItem }) {
   const queues = useQueues(canEdit);
   const workflow = useWorkflow(canEdit);
   const edit = useOptimisticEdit(ticket);
+  const policies = useSlaPolicies(staff);
 
   const failure = [mutations.changeStatus, mutations.assign, mutations.update].find(
     (mutation) => mutation.isError,
@@ -93,6 +104,18 @@ export function TicketDetails({ ticket }: { ticket: TicketItem }) {
   );
 
   const summary: TicketSummary | null = staff ? ticket : null;
+  const policy = summary
+    ? policies.data?.policies.find((entry) => entry.id === summary.slaPolicyId)
+    : undefined;
+  const note = summary ? dueNote(summary, policy) : null;
+  /** The clock the due time counts on; the policy's target says it, the running target's view backs it up. */
+  const businessHours = (target: 'first_response' | 'resolution') => {
+    if (!summary) return false;
+    const fromPolicy = policy?.targets[summary.priority]?.calendar;
+    const calendar =
+      fromPolicy ?? (summary.sla?.target === target ? summary.sla.calendar : undefined);
+    return calendar === 'business';
+  };
   const label = (value: TicketPriority) => `${value} ${t(`severity.${severityOf(value)}`)}`;
 
   // ---- status ----
@@ -417,8 +440,15 @@ export function TicketDetails({ ticket }: { ticket: TicketItem }) {
                 ? t('details.done')
                 : summary.firstResponseDueAt
                   ? formatDateTime(summary.firstResponseDueAt, locale)
-                  : t('details.none')}
+                  : noDueText(note, t)}
             </span>
+            {!summary.firstRespondedAt &&
+            summary.firstResponseDueAt &&
+            businessHours('first_response') ? (
+              <span className="block text-xs text-muted-foreground">
+                {t('details.businessHours')}
+              </span>
+            ) : null}
           </Row>
           <Row label={t('details.resolutionDue')}>
             <span className="tabular">
@@ -426,8 +456,13 @@ export function TicketDetails({ ticket }: { ticket: TicketItem }) {
                 ? t('details.slaPaused')
                 : summary.resolutionDueAt
                   ? formatDateTime(summary.resolutionDueAt, locale)
-                  : t('details.none')}
+                  : noDueText(note, t)}
             </span>
+            {!summary.slaPausedAt && summary.resolutionDueAt && businessHours('resolution') ? (
+              <span className="block text-xs text-muted-foreground">
+                {t('details.businessHours')}
+              </span>
+            ) : null}
           </Row>
           <Row label={t('details.created')}>
             <span className="tabular">{formatDateTime(ticket.createdAt, locale)}</span>

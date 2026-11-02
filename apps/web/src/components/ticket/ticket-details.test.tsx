@@ -275,6 +275,74 @@ describe('ticket details: what each person may do', () => {
     expect(within(section).getByText(/Nov 4, 2026.*10:00/)).toBeVisible();
   });
 
+  const POLICY_ID = uuid(950);
+  const policyList = (calendar: 'business' | '24x7') => ({
+    json: {
+      policies: [
+        {
+          id: POLICY_ID,
+          name: 'Standard',
+          tier: null,
+          targets: {
+            P1: { first_response_min: 15, resolution_min: 240, calendar },
+          },
+          businessCalendarId: null,
+          createdAt: '2026-11-01T00:00:00.000Z',
+          updatedAt: '2026-11-01T00:00:00.000Z',
+        },
+      ],
+    },
+  });
+
+  it('says "No SLA policy" when the ticket has none', async () => {
+    workspaceApi({ tickets: [makeTicket(1, { slaPolicyId: null })] });
+    const { section } = await openDetails();
+    expect(await within(section).findAllByText('No SLA policy')).toHaveLength(2);
+    expect(within(section).queryByText('Not set')).not.toBeInTheDocument();
+  });
+
+  it('names the policy when it has no target for the priority', async () => {
+    workspaceApi({
+      tickets: [makeTicket(1, { slaPolicyId: POLICY_ID, priority: 'P3' })],
+      overrides: { 'GET /v1/sla-policies': policyList('business') },
+    });
+    const { section } = await openDetails();
+    expect(await within(section).findAllByText('No target for P3 in Standard')).toHaveLength(2);
+  });
+
+  it('notes business hours next to a due time on a business-hours policy', async () => {
+    workspaceApi({
+      tickets: [
+        makeTicket(1, {
+          slaPolicyId: POLICY_ID,
+          priority: 'P1',
+          resolutionDueAt: '2026-11-04T03:00:00.000Z',
+        }),
+      ],
+      overrides: { 'GET /v1/sla-policies': policyList('business') },
+    });
+    const { section } = await openDetails();
+    expect(await within(section).findByText('Counted in business hours')).toBeVisible();
+    expect(within(section).getAllByText('Counted in business hours')).toHaveLength(1);
+    expect(within(section).getAllByText('Not set')).toHaveLength(1);
+  });
+
+  it('adds no business-hours note on a 24x7 policy', async () => {
+    workspaceApi({
+      tickets: [
+        makeTicket(1, {
+          slaPolicyId: POLICY_ID,
+          priority: 'P1',
+          resolutionDueAt: '2026-11-04T03:00:00.000Z',
+        }),
+      ],
+      overrides: { 'GET /v1/sla-policies': policyList('24x7') },
+    });
+    const { section } = await openDetails();
+    expect(await within(section).findByText(/Nov 4, 2026.*10:00/)).toBeVisible();
+    expect(within(section).queryByText('Counted in business hours')).not.toBeInTheDocument();
+  });
+
   it('is read-only for a customer: no fields to edit, no staff-only facts', async () => {
     const api = workspaceApi({
       role: 'client',
