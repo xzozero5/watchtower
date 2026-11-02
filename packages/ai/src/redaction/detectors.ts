@@ -292,26 +292,66 @@ const SAFE_SHAPES: readonly RegExp[] = [
   /(?<![0-9A-Za-z])[0-9a-f]{16,}(?![0-9A-Za-z])/giu,
   // An ISO 8601 timestamp, with fractions and a zone.
   /\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(?::\d{2}(?:[.,]\d+)?)?(?:Z|[+-]\d{2}:?\d{2})?/gu,
-  // A ticket key (upper-case prefix): the digits are the ticket's number.
-  /(?<![A-Za-z0-9])[A-Z][A-Z0-9]{1,9}(?:-[A-Z0-9]+)*-\d{1,15}(?!\d)/gu,
 ];
+// There is no exception for a ticket key. A key's number has fewer than 10 digits, so it can never
+// be a run this rule looks at; an exception that matched `TEL-66812345678` or `TEL-415-555-2671`
+// would only be a way to write a phone number past the redactor (T-137 re-review).
 
-/** The ranges of the text that are an id or a timestamp, not a phone number. */
+/** Length of the run of ASCII digits at the start of `value`, or at its end with `fromEnd`. */
+function digitRun(value: string, fromEnd: boolean): number {
+  let count = 0;
+  while (count < value.length) {
+    const code = value.charCodeAt(fromEnd ? value.length - 1 - count : count);
+    if (code < 48 || code > 57) break;
+    count += 1;
+  }
+  return count;
+}
+
+/**
+ * The ranges of the text that are an id or a timestamp, not a phone number: sorted and joined into
+ * disjoint intervals, so a lookup is a binary search and a text with many candidates and many ids
+ * stays linear (R-4).
+ */
 function safeSpans(text: string): [number, number][] {
   const found: [number, number][] = [];
   for (const shape of SAFE_SHAPES) {
     for (const match of text.matchAll(shape)) {
       // A long hex id that opens or ends with 10 or more digits is a number with letters glued on
-      // ("4155552671abcdef"), not an id.
-      if (/^\d{10,}|\d{10,}$/u.test(match[0]) && !match[0].includes('-')) continue;
+      // ("4155552671abcdef"), not an id. Counted with loops, not a pattern that restarts at every digit.
+      if (
+        !match[0].includes('-') &&
+        (digitRun(match[0], false) >= PHONE_MIN_DIGITS ||
+          digitRun(match[0], true) >= PHONE_MIN_DIGITS)
+      ) {
+        continue;
+      }
       found.push([match.index, match.index + match[0].length]);
     }
   }
-  return found;
+  found.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+  const merged: [number, number][] = [];
+  for (const [from, to] of found) {
+    const last = merged[merged.length - 1];
+    if (last !== undefined && from <= last[1]) last[1] = Math.max(last[1], to);
+    else merged.push([from, to]);
+  }
+  return merged;
 }
 
+/** Is `[start, end)` inside one of the sorted, disjoint `safe` intervals? Binary search. */
 function insideSafeSpan(safe: readonly [number, number][], start: number, end: number): boolean {
-  return safe.some(([from, to]) => start >= from && end <= to);
+  let low = 0;
+  let high = safe.length - 1;
+  while (low <= high) {
+    const middle = (low + high) >> 1;
+    const interval = safe[middle];
+    if (interval === undefined) return false;
+    if (interval[1] <= start) low = middle + 1;
+    else if (interval[0] > start) high = middle - 1;
+    else return end <= interval[1];
+  }
+  return false;
 }
 
 // Digit-group shapes a person might type a phone number in. Used only when the separators are

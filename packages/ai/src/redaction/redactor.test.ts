@@ -268,11 +268,23 @@ describe('phone numbers written without a plus sign, and encoded addresses (T-13
     }
   });
 
+  it('has no exception for a ticket key whose digits could be a phone number', () => {
+    // A ticket number has fewer than 10 digits, so a key never needs one; a "key" with a phone in it is a phone.
+    for (const [input, expected] of [
+      ['TEL-66812345678', 'TEL-[PHONE_1]'],
+      ['TEL-415-555-2671', 'TEL-[PHONE_1]'],
+      ['OPS-66812345678', 'OPS-[PHONE_1]'],
+      ['OPS-4155552671-1', 'OPS-[PHONE_1]-1'],
+      ['ORD-2026-000123', 'ORD-[PHONE_1]'],
+      ['WT-20261031-0042', 'WT-[PHONE_1]'],
+    ] as const) {
+      expect(redact(input), input).toBe(expected);
+    }
+  });
+
   it('leaves ticket keys, uuids, trace ids, timestamps and short numbers alone', () => {
     for (const text of [
-      'see OPS-1234 and OPS-1234567890',
-      'ref OPS-66812345678',
-      'ORD-2026-000123 and WT-20261031-0042',
+      'see OPS-1234 and OPS-98765',
       'id a0000000-4155-4000-8000-4155552671ab',
       'trace 4bf92f3577b34da6a3ce929d0e0e4736 span 00f067aa0ba902b7',
       'at 2026-11-02T10:15:30.123456789Z and 2026-11-02 10:15:30,123+07:00',
@@ -331,9 +343,7 @@ describe('false-positive guards', () => {
     '2026-10-31 21:01:00',
     '20261031',
     '2026-10-31T21:01:00+07:00',
-    'ORD-2026-000123',
     'TKT-0000123',
-    'WT-20261031-0042',
     '#10234567',
     'v1.2.3-rc.1',
     'port 4000 and 5432',
