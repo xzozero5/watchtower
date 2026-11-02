@@ -22,12 +22,13 @@ import { AdminBody, AdminHeader } from '@/components/admin/admin-layout';
 import { LoadError, RequirePermission, TableSkeleton } from '@/components/admin/admin-page';
 import { ConfirmDialog } from '@/components/admin/confirm-dialog';
 import { AppLink } from '@/components/app-link';
+import { OrgHealthCard } from '@/components/ops/org-health-card';
 import { useT } from '@/i18n/provider';
 import { describeError } from '@/lib/admin/errors';
 import { adminKeys, useContacts, useOrg, useSlaPolicies } from '@/lib/admin/queries';
 import { isApiError } from '@/lib/api/errors';
 import { useApi } from '@/lib/api/api-context';
-import { useUserId } from '@/lib/auth/session';
+import { useSession, useUserId } from '@/lib/auth/session';
 import { queueHref } from '@/lib/tickets/filters';
 
 import { ContactSheet } from './contact-sheet';
@@ -54,6 +55,9 @@ function OrgDetailBody({ orgId }: { orgId: string }) {
   const api = useApi();
   const router = useRouter();
   const userId = useUserId();
+  const { can } = useSession();
+  // The Client Health Score is for lead and up (org.health.read); everyone else never sees the tab.
+  const canSeeHealth = can('org.health.read');
   const queryClient = useQueryClient();
   const org = useOrg(orgId);
   const contacts = useContacts(orgId);
@@ -215,6 +219,9 @@ function OrgDetailBody({ orgId }: { orgId: string }) {
               <TabsTrigger value="details">{t('admin.orgs.tabs.details')}</TabsTrigger>
               <TabsTrigger value="contacts">{t('admin.orgs.tabs.contacts')}</TabsTrigger>
               <TabsTrigger value="tickets">{t('admin.orgs.tabs.tickets')}</TabsTrigger>
+              {canSeeHealth ? (
+                <TabsTrigger value="health">{t('ops.health.tab')}</TabsTrigger>
+              ) : null}
             </TabsList>
             <TabsContent value="details" className="p-4">
               <dl className="grid max-w-xl grid-cols-[9rem_1fr] gap-x-3 gap-y-2 text-sm">
@@ -277,6 +284,11 @@ function OrgDetailBody({ orgId }: { orgId: string }) {
                 {t('admin.orgs.openTickets')}
               </AppLink>
             </TabsContent>
+            {canSeeHealth ? (
+              <TabsContent value="health" className="p-4">
+                <OrgHealthCard orgId={orgId} />
+              </TabsContent>
+            ) : null}
           </Tabs>
         )}
       </AdminBody>
