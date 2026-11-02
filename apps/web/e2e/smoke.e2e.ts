@@ -61,13 +61,13 @@ test.describe('three-pane layout', () => {
     await expect(panel).toContainText('Select a ticket to see its details here.');
   });
 
-  test('puts the rail and the panes side by side on a wide screen, with no gaps or cards', async ({
+  test('puts the rail and the panes side by side on a wide screen, as cards with an even gutter', async ({
     page,
   }) => {
     await page.setViewportSize({ width: 1440, height: 900 });
     await openHome(page);
     const rail = await page.getByRole('banner').boundingBox();
-    expect(rail?.width).toBe(56);
+    expect(rail?.width).toBe(68);
     const boxes = await Promise.all(
       ['pane-queue', 'pane-conversation', 'pane-assistant'].map(async (id) => {
         const box = await page.locator(`#${id}`).boundingBox();
@@ -82,12 +82,12 @@ test.describe('three-pane layout', () => {
     expect(Math.abs(conversation.y - assistant.y)).toBeLessThan(2);
     expect(queue.x + queue.width).toBeLessThanOrEqual(conversation.x);
     expect(conversation.x + conversation.width).toBeLessThanOrEqual(assistant.x);
-    // Panes touch: one hairline between them, no gutter (docs/design/ui-refresh-2026-11.md).
-    expect(Math.abs(queue.x + queue.width - conversation.x)).toBeLessThanOrEqual(1);
-    expect(Math.abs(conversation.x + conversation.width - assistant.x)).toBeLessThanOrEqual(1);
+    // Soft Beacon (docs/design/redesign-2026-11): floating cards with a 16px gutter at 1440.
+    expect(Math.round(conversation.x - (queue.x + queue.width))).toBe(16);
+    expect(Math.round(assistant.x - (conversation.x + conversation.width))).toBe(16);
     expect(queue.width).toBeLessThanOrEqual(360);
     expect(assistant.width).toBeLessThanOrEqual(320);
-    expect(rail && Math.abs(rail.x + rail.width - queue.x)).toBeLessThanOrEqual(1);
+    expect(rail && Math.round(queue.x - (rail.x + rail.width))).toBe(16);
   });
 
   test('shows one pane at a time with tabs on a phone-sized screen, without sideways scrolling', async ({

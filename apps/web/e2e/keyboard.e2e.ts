@@ -291,13 +291,13 @@ test.describe('layout details', () => {
     await expect(conversation(page).getByRole('textbox', { name: 'Public reply' })).toBeVisible();
   });
 
-  test('768 to 1023 px: the rail stays 56 px wide and the account menu opens from it', async ({
+  test('768 to 1023 px: the rail stays 68 px wide and the account menu opens from it', async ({
     page,
   }) => {
     await page.setViewportSize({ width: 900, height: 800 });
     await openWorkspace(page);
     const rail = await page.getByRole('banner').boundingBox();
-    expect(rail?.width).toBe(56);
+    expect(rail?.width).toBe(68);
 
     await page.getByRole('button', { name: 'Account menu' }).click();
     await expect(page.getByRole('menuitemcheckbox', { name: 'Dark theme' })).toBeVisible();
@@ -318,18 +318,18 @@ test.describe('layout details', () => {
     await expect(page.getByRole('button', { name: 'Account menu' })).toBeVisible();
   });
 
-  test('1024 px and wider: Ctrl+B expands the rail to 220 px with words, and back', async ({
+  test('1024 px and wider: Ctrl+B expands the rail to 248 px with words, and back', async ({
     page,
   }) => {
     await page.setViewportSize({ width: 1280, height: 800 });
     await openWorkspace(page);
     const rail = page.getByRole('banner');
-    expect((await rail.boundingBox())?.width).toBe(56);
+    expect((await rail.boundingBox())?.width).toBe(68);
     await page.keyboard.press('ControlOrMeta+B');
-    await expect.poll(async () => (await rail.boundingBox())?.width).toBe(220);
+    await expect.poll(async () => (await rail.boundingBox())?.width).toBe(248);
     await expect(rail.getByText('Queue', { exact: true })).toBeVisible();
     await page.keyboard.press('ControlOrMeta+B');
-    await expect.poll(async () => (await rail.boundingBox())?.width).toBe(56);
+    await expect.poll(async () => (await rail.boundingBox())?.width).toBe(68);
   });
 
   test('tooltips on the rail icons carry the shortcut, and show on keyboard focus', async ({

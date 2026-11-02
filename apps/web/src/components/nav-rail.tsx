@@ -206,7 +206,7 @@ export function NavRail({
   return (
     <header
       className={cn(
-        'flex h-[52px] shrink-0 items-center gap-1 border-b border-border/60 bg-frame px-3',
+        'flex h-[48px] shrink-0 items-center gap-1 border-b border-border/60 bg-frame px-3',
         'md:h-auto md:flex-col md:items-stretch md:gap-1 md:border-r md:border-b-0 md:px-3 md:py-4',
         expanded ? 'md:w-[248px]' : 'md:w-[68px]',
       )}
