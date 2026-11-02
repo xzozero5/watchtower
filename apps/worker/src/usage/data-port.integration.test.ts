@@ -193,6 +193,9 @@ describe('the adapter', () => {
           name: metric.key,
           sqlTemplate: starter(metric.sqlFile),
           dims: metric.dims,
+          // The adapter only reads the declared dimensions: inactive, so the worker's own scheduler (a tick
+          // every minute, running in this process) never runs it and writes a tool_execution row of its own.
+          active: false,
         })
         .onConflictDoNothing();
       const result = await port.query({
@@ -230,6 +233,9 @@ describe('the adapter', () => {
         name: key,
         sqlTemplate: 'SELECT 1',
         dims: ['org'],
+        // Inactive: the worker's scheduler would otherwise run this definition too, and its audit row would
+        // land between the two counts below.
+        active: false,
       });
     const sql = `SELECT date_trunc('hour', started_at) AS ts, count(*) AS value, org_id AS org, step AS sneaky
                  FROM product_mock.flow_run WHERE started_at >= $1 AND started_at < $2 GROUP BY 1, 3, 4`;
