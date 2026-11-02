@@ -3,13 +3,13 @@
 import Image from 'next/image';
 import type { ReactNode } from 'react';
 
-import { PreferencesControls } from '@/components/preferences-controls';
+import { DisplayControls } from '@/components/display-controls';
 import { useT } from '@/i18n/provider';
 
 /**
  * Frame of the signed-out pages. This is the one place the brand ivory is a ground (a side panel
  * on a wide screen, a strip across the top on a phone); the form sits on the neutral canvas
- * beside it, with the display and language controls in its corner.
+ * beside it, with the theme switch and the language flags in its corner.
  */
 export function LoginLayout({ children }: { children: ReactNode }) {
   const t = useT();
@@ -32,7 +32,7 @@ export function LoginLayout({ children }: { children: ReactNode }) {
       </header>
       <div className="flex min-w-0 flex-col bg-background">
         <div className="flex justify-end px-6 pt-4 lg:px-10">
-          <PreferencesControls />
+          <DisplayControls />
         </div>
         <main className="mx-auto flex w-full max-w-md flex-1 flex-col justify-center gap-6 px-6 pt-6 pb-16">
           {children}

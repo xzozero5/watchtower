@@ -81,7 +81,10 @@ describe('Queues', () => {
     await screen.findByRole('table', { name: 'Queues' });
     await user.click(screen.getByRole('button', { name: 'New queue' }));
     const sheet = await screen.findByRole('dialog', { name: 'New queue' });
-    expect(within(sheet).getByText(/only pick people who are clocked in/)).toBeVisible();
+    // The explanation sits behind a hint beside the label, not under the control.
+    expect(within(sheet).queryByText(/only pick people who are clocked in/)).toBeNull();
+    await user.click(within(sheet).getByRole('button', { name: 'More about Assignment' }));
+    expect(await screen.findByText(/only pick people who are clocked in/)).toBeVisible();
     await user.type(within(sheet).getByLabelText('Name'), 'Support');
     await user.click(within(sheet).getByRole('radio', { name: 'Least loaded' }));
     await user.click(within(sheet).getByRole('button', { name: 'Save' }));

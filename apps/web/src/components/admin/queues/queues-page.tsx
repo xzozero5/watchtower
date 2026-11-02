@@ -9,6 +9,7 @@ import {
   DataTable,
   type DataTableColumn,
   EmptyState,
+  HelpHint,
   Input,
   SegmentedControl,
   toast,
@@ -308,14 +309,18 @@ function QueueSheet({ queue, onClose }: { queue: TeamQueue | null; onClose: () =
           />
         </FormField>
         <div className="flex flex-col gap-1">
-          <span className="text-sm font-medium">{t('admin.queues.assignment')}</span>
+          <span className="flex items-center gap-1 text-sm font-medium">
+            {t('admin.queues.assignment')}
+            <HelpHint label={t('admin.moreInfo', { topic: t('admin.queues.assignment') })}>
+              {t('admin.queues.onlyOnShift')}
+            </HelpHint>
+          </span>
           <SegmentedControl
             aria-label={t('admin.queues.assignment')}
             value={mode}
             onValueChange={setMode}
             options={ASSIGNMENT_MODES.map((value) => ({ value, label: t(MODE_LABELS[value]) }))}
           />
-          <p className="text-xs text-muted-foreground">{t('admin.queues.onlyOnShift')}</p>
         </div>
         <label className="flex items-center gap-2 text-sm">
           <input

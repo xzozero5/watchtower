@@ -32,7 +32,9 @@ import { usePreferences } from '@/lib/preferences';
 import { useStatusMove } from '@/components/ticket/use-status-move';
 import { useI18n } from '@/i18n/provider';
 import { useAutonomy } from '@/lib/admin/queries';
-import { confidenceBand, formatConfidence, hasBrief } from '@/lib/ai/model';
+import { confidenceBand, formatConfidence, hasBrief, isDemoInsight } from '@/lib/ai/model';
+import { humanizeKey } from '@/lib/ai/prose';
+import { useSession } from '@/lib/auth/session';
 import { useAiRequest } from '@/lib/ai/queries';
 import { isApiError } from '@/lib/api/errors';
 import { formatAge, formatDateTime } from '@/lib/format';
@@ -41,6 +43,7 @@ import type { TicketItem } from '@/lib/tickets/model';
 
 import { AiDraftCard } from './ai-draft';
 import { AiReportDetails } from './ai-report';
+import { AiProse } from './ai-prose';
 import { ConfidenceMeter } from './confidence-meter';
 import { EVIDENCE_ICONS } from './evidence-icons';
 
@@ -74,20 +77,24 @@ function Provenance({ insight }: { insight: TicketAiInsight }) {
   const { t, locale } = useI18n();
   const now = useNow();
   const version = insight.draft?.promptVersion;
-  const text = [
+  const age = formatAge(insight.generatedAt, now, locale) ?? t('timeline.now');
+  // The prompt version is for whoever tunes prompts: it is in the tooltip and the name, not on the card.
+  const detail = [
     'AI',
     version ? t('ai.brief.prompt', { version }) : null,
-    formatAge(insight.generatedAt, now, locale) ?? t('timeline.now'),
+    formatDateTime(insight.generatedAt, locale),
   ]
     .filter((part) => part !== null)
     .join(' · ');
   return (
     <time
       dateTime={insight.generatedAt}
-      title={formatDateTime(insight.generatedAt, locale)}
-      className="text-xs text-muted-foreground"
+      title={detail}
+      className="inline-flex items-center gap-1 text-xs text-muted-foreground"
     >
-      {text}
+      <Bot aria-hidden className="size-3.5" />
+      <span className="sr-only">{`${detail} · `}</span>
+      {age}
     </time>
   );
 }
@@ -167,6 +174,9 @@ export function AiBrief({
   const autonomy = useAutonomy(true);
   const aiRequest = useAiRequest(ticket.key);
   const [approveOpen, setApproveOpen] = useState(false);
+  const { session } = useSession();
+  // The raw intent key is for people who tune intents, in a tooltip (docs/design/less-text-ai-assistant.md 4).
+  const seesIntentKey = session?.user.role === 'lead' || session?.user.role === 'head';
 
   if (query.isPending) {
     return (
@@ -203,8 +213,15 @@ export function AiBrief({
       },
     );
   };
-  const lowConfidence = intent !== undefined && confidenceBand(intent.confidence) === 'low';
+  const demo = isDemoInsight(insight);
+  const lowConfidence =
+    !demo && intent !== undefined && confidenceBand(intent.confidence) === 'low';
   const uncited = draft?.uncitedClaims ?? 0;
+
+  // The words of the step come from its kind, in the language of the page; the api's own label is
+  // prose in whatever language the ticket was in. Only an `other` step has nothing but that label.
+  const stepLabel = (step: NonNullable<typeof nextStep>) =>
+    step.kind === 'other' ? <AiProse text={step.label} /> : t(`ai.brief.steps.${step.kind}`);
 
   // The one suggested step becomes a button only for the kinds the app can carry out.
   const stepTarget =
@@ -269,7 +286,9 @@ export function AiBrief({
         </header>
 
         {insight.summary ? (
-          <p className="max-w-[72ch] text-sm text-foreground">{insight.summary}</p>
+          <p className="flex max-w-[72ch] flex-wrap items-center gap-x-2 gap-y-1 text-sm text-foreground">
+            <AiProse text={insight.summary} />
+          </p>
         ) : null}
 
         {progress && insight.state === 'investigating' ? <Progress progress={progress} /> : null}
@@ -282,12 +301,20 @@ export function AiBrief({
 
         {intent ? (
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-            <span title={t('ai.brief.intent')} className="inline-flex">
+            <span
+              title={
+                seesIntentKey ? `${t('ai.brief.intent')}: ${intent.key}` : t('ai.brief.intent')
+              }
+              className="inline-flex"
+            >
               <span className="sr-only">{t('ai.brief.intent')}: </span>
-              <IntentChip plain intentKey={intent.key} name={intent.key} />
+              {/* The api sends only the key today; the name in the viewer's language comes with T-134. */}
+              <IntentChip plain intentKey={intent.key} name={humanizeKey(intent.key)} />
             </span>
-            <ConfidenceMeter value={intent.confidence} />
-            <span className="min-w-0 text-xs text-muted-foreground">{intent.reason}</span>
+            <ConfidenceMeter value={intent.confidence} demo={demo} />
+            <span className="flex min-w-0 flex-wrap items-center gap-x-1.5 text-xs text-muted-foreground">
+              <AiProse text={intent.reason} />
+            </span>
           </div>
         ) : null}
         {lowConfidence ? (
@@ -308,10 +335,12 @@ export function AiBrief({
                   const StepIcon = STEP_ICONS[nextStep.kind];
                   return StepIcon ? <StepIcon aria-hidden className="size-4" /> : null;
                 })()}
-                {nextStep.label}
+                {stepLabel(nextStep)}
               </Button>
             ) : nextStep ? (
-              <p className="self-center text-sm font-medium text-foreground">{nextStep.label}</p>
+              <p className="flex items-center gap-1.5 self-center text-sm font-medium text-foreground">
+                {stepLabel(nextStep)}
+              </p>
             ) : null}
             {canWrite ? (
               <IconButton
@@ -356,12 +385,20 @@ export function AiBrief({
             {evidence.map((entry) => {
               const Icon = EVIDENCE_ICONS[entry.kind];
               const kind = t(`ai.evidence.kinds.${entry.kind}`);
-              const value = formatConfidence(entry.confidence);
+              const band = t(`ai.evidence.match.${confidenceBand(entry.confidence)}`);
               return (
                 <li key={entry.id} className="min-w-0">
                   <button
                     type="button"
                     data-evidence={entry.id}
+                    title={
+                      demo
+                        ? t('ai.brief.demoTip')
+                        : t('ai.evidence.matchTip', {
+                            band,
+                            value: formatConfidence(entry.confidence),
+                          })
+                    }
                     onClick={() => {
                       onOpenEvidence(entry.id);
                     }}
@@ -370,7 +407,7 @@ export function AiBrief({
                     <Icon aria-hidden className="size-3.5 shrink-0 text-ai-accent" />
                     <span className="sr-only">{kind}:</span>{' '}
                     <span className="truncate">{entry.title}</span>{' '}
-                    <span className="tabular shrink-0 text-muted-foreground">{value}</span>
+                    <span className="sr-only">{demo ? t('ai.brief.demo') : band}</span>
                   </button>
                 </li>
               );

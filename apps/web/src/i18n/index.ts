@@ -13,6 +13,12 @@ export const LOCALE_COOKIE = 'wt-locale';
 /** Each language written in itself, so a user can find theirs whatever the UI language is. */
 export const LOCALE_NAMES: Readonly<Record<Locale, string>> = { th: 'ไทย', en: 'English' };
 
+/** The name of each language in itself, for the flag buttons (the flag is only a picture). */
+export const LOCALE_LABELS: Readonly<Record<Locale, string>> = { th: 'ภาษาไทย', en: 'English' };
+
+/** Which flag stands for each language. English uses the United Kingdom's `[ASSUMED]`. */
+export const LOCALE_FLAGS = { th: 'th', en: 'gb' } as const satisfies Record<Locale, 'th' | 'gb'>;
+
 const CATALOGS: Readonly<Record<Locale, Messages>> = { en, th };
 
 export function isLocale(value: unknown): value is Locale {

@@ -53,7 +53,9 @@ describe('the investigation report', () => {
     expect(
       within(report).getByText('A lockout policy, not a bug in the reset flow.'),
     ).toBeVisible();
-    expect(within(report).getByRole('meter', { name: 'Confidence High 0.82' })).toBeVisible();
+    // One of its tools ran on sample data, so the run is a demo: a chip, no confidence number.
+    expect(within(report).getByText('Demo')).toBeVisible();
+    expect(within(report).queryByRole('meter')).toBeNull();
     // A finding with evidence names it; a finding without says so (N5).
     expect(within(report).getByText(/The account was locked after five failed/)).toBeVisible();
     expect(
@@ -67,6 +69,25 @@ describe('the investigation report', () => {
     expect(
       within(report).getByText('Tools scoped to the intent because the AI was confident.'),
     ).toBeVisible();
+  });
+
+  it('shows the cause with its confidence when every tool ran for real', async () => {
+    const user = userEvent.setup();
+    workspaceApi({
+      tickets: [ticket1],
+      ai: {
+        'OPS-1': makeInsight({
+          report: makeReport({
+            tools: [{ name: 'kb_search', status: 'ok', mock: false }],
+          }),
+        }),
+      },
+    });
+    const { brief } = await openBrief();
+    const report = within(brief).getByTestId('ai-report');
+    await user.click(within(report).getByText('What the AI found'));
+    expect(within(report).getByRole('meter', { name: 'Confidence High 0.82' })).toBeVisible();
+    expect(within(report).queryByText('Demo')).toBeNull();
   });
 
   it('says "No cause found" instead of inventing one', async () => {

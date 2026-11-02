@@ -6,6 +6,7 @@ import { SINGLE_KEY_STORAGE_KEY, resetPreferencesCache } from '@/lib/preferences
 import { renderWorkspace } from '@/test-utils';
 import {
   makeInsight,
+  makeReport,
   makeInsightTh,
   makeInvestigatingInsight,
   makeLowConfidenceInsight,
@@ -42,13 +43,19 @@ describe('the AI brief', () => {
     const brief = await within(conversation).findByRole('region', { name: 'AI brief' });
 
     expect(within(brief).getByText(/Cannot sign in after a reset/)).toBeVisible();
-    expect(within(brief).getByText('login_issue')).toBeVisible();
+    // The key is turned into words; the api is to send the name itself (T-134).
+    expect(within(brief).getByText('Login issue')).toBeVisible();
+    expect(within(brief).queryByText('login_issue')).toBeNull();
     expect(within(brief).getByRole('meter', { name: 'Confidence High 0.86' })).toBeVisible();
     expect(within(brief).getByText('Same wording as 12 earlier lockout tickets.')).toBeVisible();
     expect(within(brief).getByRole('button', { name: 'Approve reply' })).toBeVisible();
     expect(within(brief).getByRole('button', { name: 'Write myself' })).toBeVisible();
     // Provenance: AI, prompt version, how long ago (exact time on hover); the stage in words.
-    expect(within(brief).getByText(/^AI · prompt v3 · /)).toBeVisible();
+    // Provenance is a bot icon and an age; the prompt version is in the tooltip and the name.
+    const provenance = within(brief).getByTitle(/^AI · prompt v3 · /);
+    expect(provenance.tagName).toBe('TIME');
+    expect(provenance).toHaveAttribute('datetime', '2026-11-02T02:58:00.000Z');
+    expect(provenance.textContent).toMatch(/^AI · prompt v3 · .+ · .+$/);
     expect(within(brief).getByText('Stage 2 · Draft for approval')).toBeVisible();
     expect(within(brief).getByText('Draft ready')).toBeVisible();
   });
@@ -145,7 +152,7 @@ describe('the AI brief', () => {
     const brief = await within(conversation).findByRole('region', { name: 'AI brief' });
     await user.click(
       within(brief).getByRole('button', {
-        name: 'Similar ticket: OPS-1180 Locked out after reset 0.64',
+        name: 'Similar ticket: OPS-1180 Locked out after reset Fair match',
       }),
     );
     const tab = screen.getByRole('tab', { name: 'Evidence' });
@@ -272,6 +279,132 @@ describe('the evidence panel', () => {
     await user.click(await screen.findByRole('tab', { name: 'Evidence' }));
     const panel = screen.getByRole('tabpanel', { name: 'Evidence' });
     expect(await within(panel).findByText('No evidence found.')).toBeVisible();
+  });
+});
+
+describe('what the AI wrote, in the language of the page', () => {
+  it('takes the next step button from its kind, not from the api prose, in Thai', async () => {
+    workspaceApi({
+      tickets: [ticket1],
+      ai: {
+        'OPS-1': {
+          ...makeInsightTh(),
+          nextStep: { kind: 'reply', label: 'Reply from the guide' },
+          intent: { key: 'billing_report', confidence: 0.86, reason: 'Matches the billing guide.' },
+        },
+      },
+    });
+    window.history.replaceState(null, '', '/?ticket=OPS-1');
+    renderWorkspace({ locale: 'th' });
+    const conversation = await screen.findByRole('region', { name: 'บทสนทนา' });
+    const brief = await within(conversation).findByRole('region', { name: 'สรุปจาก AI' });
+    expect(within(brief).getByRole('button', { name: 'ตอบลูกค้า' })).toBeVisible();
+    expect(within(brief).queryByText('Reply from the guide')).toBeNull();
+    // The reason is prose in English on a Thai page: tagged with its language, with a chip.
+    const reason = within(brief).getByText('Matches the billing guide.');
+    expect(reason).toHaveAttribute('lang', 'en');
+    expect(within(brief).getByTitle('ภาษา: EN')).toBeVisible();
+  });
+
+  it('shows the intent as words, and the raw key in the tooltip only for a lead or head', async () => {
+    const insight = makeInsight({
+      intent: { key: 'billing_report', confidence: 0.86, reason: 'x' },
+    });
+    workspaceApi({ tickets: [ticket1], ai: { 'OPS-1': insight }, role: 'lead' });
+    const { conversation } = await openTicket();
+    const brief = await within(conversation).findByRole('region', { name: 'AI brief' });
+    expect(within(brief).getByText('Billing report')).toBeVisible();
+    expect(within(brief).getByTitle('Intent: billing_report')).toBeVisible();
+  });
+
+  it('does not show the key in the tooltip to an agent', async () => {
+    const insight = makeInsight({
+      intent: { key: 'billing_report', confidence: 0.86, reason: 'x' },
+    });
+    workspaceApi({ tickets: [ticket1], ai: { 'OPS-1': insight } });
+    const { conversation } = await openTicket();
+    const brief = await within(conversation).findByRole('region', { name: 'AI brief' });
+    expect(within(brief).getByText('Billing report')).toBeVisible();
+    expect(within(brief).queryByTitle('Intent: billing_report')).toBeNull();
+  });
+
+  it('a stand-in AI run shows a Demo chip and no score, no dots and no match words', async () => {
+    const user = userEvent.setup();
+    workspaceApi({
+      tickets: [ticket1],
+      ai: {
+        'OPS-1': makeInsight({
+          report: makeReport({
+            tools: [{ name: 'kb.search', status: 'ok', mock: true }],
+          }),
+        }),
+      },
+    });
+    const { conversation } = await openTicket();
+    const brief = await within(conversation).findByRole('region', { name: 'AI brief' });
+    expect(within(brief).getAllByText('Demo').length).toBeGreaterThan(0);
+    expect(within(brief).queryByRole('meter', { name: /Confidence/ })).toBeNull();
+    expect(within(brief).queryByText(/0\.\d\d/)).toBeNull();
+    await user.click(within(brief).getByRole('button', { name: /Unlocking an account/ }));
+    const panel = screen.getByRole('tabpanel', { name: 'Evidence' });
+    expect(within(panel).getAllByText('Demo').length).toBe(2);
+    expect(within(panel).queryByText(/match/i)).toBeNull();
+  });
+
+  it('writes a certain score as "> 0.99", never 1.00', async () => {
+    const user = userEvent.setup();
+    const base = makeInsight();
+    workspaceApi({
+      tickets: [ticket1],
+      ai: {
+        'OPS-1': {
+          ...base,
+          evidence: base.evidence.map((entry, index) =>
+            index === 0 ? { ...entry, confidence: 1 } : entry,
+          ),
+        },
+      },
+    });
+    const { conversation } = await openTicket();
+    const brief = await within(conversation).findByRole('region', { name: 'AI brief' });
+    await user.click(within(brief).getByRole('button', { name: /Unlocking an account/ }));
+    const panel = screen.getByRole('tabpanel', { name: 'Evidence' });
+    expect(within(panel).getByText('Strong match')).toHaveAttribute(
+      'title',
+      'Strong match, score > 0.99',
+    );
+    expect(within(panel).queryByText('1.00')).toBeNull();
+  });
+
+  it('shows evidence markdown as plain text and never as HTML', async () => {
+    const user = userEvent.setup();
+    const base = makeInsight();
+    workspaceApi({
+      tickets: [ticket1],
+      ai: {
+        'OPS-1': {
+          ...base,
+          evidence: base.evidence.map((entry, index) =>
+            index === 0
+              ? {
+                  ...entry,
+                  snippet:
+                    '## Unlock\n**Wait** 15 minutes, see [the guide](https://example.com) <img src=x onerror=alert(1)> `reset`',
+                }
+              : entry,
+          ),
+        },
+      },
+    });
+    const { conversation } = await openTicket();
+    const brief = await within(conversation).findByRole('region', { name: 'AI brief' });
+    await user.click(within(brief).getByRole('button', { name: /Unlocking an account/ }));
+    const panel = screen.getByRole('tabpanel', { name: 'Evidence' });
+    expect(within(panel).getByText('Unlock Wait 15 minutes, see the guide reset')).toBeVisible();
+    expect(panel.querySelector('img')).toBeNull();
+    expect(panel.querySelector('strong')).toBeNull();
+    expect(panel.textContent).not.toContain('##');
+    expect(panel.textContent).not.toContain('**');
   });
 });
 

@@ -1,6 +1,7 @@
 'use client';
 
-import { Alert } from '@watchtower/ui';
+import { Alert, HelpHint, TintChip } from '@watchtower/ui';
+import { FlaskConical, Lock, Radio } from 'lucide-react';
 import { useRouter, useSearchParams } from 'next/navigation';
 
 import { AdminBody, AdminHeader } from '@/components/admin/admin-layout';
@@ -40,26 +41,53 @@ function IntegrationsBody() {
       />
       <AdminBody className="px-4 py-4">
         <div className="mx-auto flex max-w-3xl flex-col gap-6">
-          <p className="text-sm text-muted-foreground">{t('admin.integrations.intro')}</p>
+          {/* The two sentences that used to sit here are one chip each, with the words in a hint. */}
+          <div role="note" className="flex flex-wrap items-center gap-2">
+            <TintChip tone="slate" icon={Lock}>
+              {t('admin.integrations.encrypted')}
+            </TintChip>
+            <HelpHint label={t('admin.moreInfo', { topic: t('admin.integrations.encrypted') })}>
+              {t('admin.integrations.intro')}
+            </HelpHint>
+            {integrations.data ? (
+              <>
+                <TintChip
+                  tone={integrations.data.testMode === 'mock' ? 'amber' : 'teal'}
+                  icon={integrations.data.testMode === 'mock' ? FlaskConical : Radio}
+                >
+                  {integrations.data.testMode === 'mock'
+                    ? t('admin.integrations.demo')
+                    : t('admin.integrations.live')}
+                </TintChip>
+                <HelpHint
+                  label={t('admin.moreInfo', {
+                    topic:
+                      integrations.data.testMode === 'mock'
+                        ? t('admin.integrations.demo')
+                        : t('admin.integrations.live'),
+                  })}
+                >
+                  {integrations.data.testMode === 'mock'
+                    ? t('admin.integrations.testMock')
+                    : t('admin.integrations.testLive')}
+                </HelpHint>
+              </>
+            ) : null}
+          </div>
           <GmailOauthResultBanner />
-          {integrations.data ? (
-            <p role="note" className="text-sm text-muted-foreground">
-              {integrations.data.testMode === 'mock'
-                ? t('admin.integrations.testMock')
-                : t('admin.integrations.testLive')}
-            </p>
-          ) : null}
 
           <ChannelAccountsSection />
 
           <section aria-labelledby="credentials-heading" className="flex flex-col gap-3">
-            <div>
+            <div className="flex items-center gap-1">
               <h2 id="credentials-heading" className="text-base font-semibold">
                 {t('admin.integrations.credentialsHeading')}
               </h2>
-              <p className="text-sm text-muted-foreground">
+              <HelpHint
+                label={t('admin.moreInfo', { topic: t('admin.integrations.credentialsHeading') })}
+              >
                 {t('admin.integrations.credentialsHint')}
-              </p>
+              </HelpHint>
             </div>
             {integrations.isPending ? (
               <TableSkeleton rows={4} />

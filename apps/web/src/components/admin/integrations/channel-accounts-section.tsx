@@ -8,7 +8,7 @@ import {
   type ManagedChannelType,
   normaliseMailboxAddress,
 } from '@watchtower/shared';
-import { Button, EmptyState, Input, Pill, Select, toast } from '@watchtower/ui';
+import { Button, EmptyState, HelpHint, Input, Pill, Select, toast } from '@watchtower/ui';
 import { Copy, Inbox, Plus } from 'lucide-react';
 import { useId, useState } from 'react';
 import { z } from 'zod';
@@ -59,11 +59,13 @@ export function ChannelAccountsSection() {
   return (
     <section aria-labelledby="channel-accounts-heading" className="flex flex-col gap-2">
       <div className="flex flex-wrap items-end justify-between gap-2">
-        <div>
+        <div className="flex items-center gap-1">
           <h2 id="channel-accounts-heading" className="text-base font-semibold">
             {t('admin.integrations.accountsHeading')}
           </h2>
-          <p className="text-sm text-muted-foreground">{t('admin.integrations.accountsHint')}</p>
+          <HelpHint label={t('admin.moreInfo', { topic: t('admin.integrations.accountsHeading') })}>
+            {t('admin.integrations.accountsHint')}
+          </HelpHint>
         </div>
         <Button
           variant="primary"

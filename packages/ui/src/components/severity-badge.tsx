@@ -26,6 +26,8 @@ export interface SeverityBadgeProps extends Omit<HTMLAttributes<HTMLSpanElement>
   label: string;
   /** Hide the word and keep the icon and code. The label stays available to screen readers. */
   hideLabel?: boolean;
+  /** Shown instead of the level's own code, for a scale that reuses the four levels (incident SEV1 to SEV4). */
+  code?: string;
   /**
    * No pill: a coloured icon and the code as plain text, for a dense list where priority must not
    * read as a status. P1 keeps its pill, the one level that has to stand out.
@@ -42,10 +44,12 @@ export function SeverityBadge({
   label,
   hideLabel = false,
   plain = false,
+  code: codeOverride,
   className,
   ...props
 }: SeverityBadgeProps) {
-  const { code, icon } = SEVERITIES[severity];
+  const { code: ownCode, icon } = SEVERITIES[severity];
+  const code = codeOverride ?? ownCode;
   const Icon = ICONS[icon];
   return (
     <span

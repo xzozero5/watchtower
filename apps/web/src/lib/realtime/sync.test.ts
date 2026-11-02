@@ -3,6 +3,7 @@ import type { RealtimeEvent } from '@watchtower/shared';
 import { describe, expect, it, vi } from 'vitest';
 
 import { aiKey } from '@/lib/ai/queries';
+import { opsKeys } from '@/lib/ops/queries';
 import { DEFAULT_FILTERS } from '@/lib/tickets/filters';
 import { ticketKeys } from '@/lib/tickets/queries';
 import { makeTicket } from '@/test/fixtures';
@@ -142,6 +143,29 @@ describe('applyRealtimeEvent', () => {
     );
 
     expect(invalidate).toHaveBeenCalledWith({ queryKey: keys.timeline(ticket.key) });
+  });
+});
+
+describe('alert.updated (AC-3: an acknowledgment from Discord shows within 2 s)', () => {
+  it('reads the alert screens again and touches nothing else', () => {
+    const { queryClient, deps } = setup();
+    const invalidate = vi.spyOn(queryClient, 'invalidateQueries');
+    applyRealtimeEvent(
+      {
+        id: 'b0000000-0000-4000-8000-0000000000bb',
+        type: 'alert.updated',
+        occurredAt: '2026-11-02T03:02:00.000Z',
+        data: {
+          alertId: 'a0000000-0000-4000-8000-000000007001',
+          state: 'acknowledged',
+          changed: ['state'],
+          escalationLevel: 1,
+        },
+      },
+      deps,
+    );
+    expect(invalidate).toHaveBeenCalledTimes(1);
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: opsKeys(USER_ID).alerts });
   });
 });
 

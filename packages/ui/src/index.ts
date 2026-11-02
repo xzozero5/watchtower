@@ -106,6 +106,14 @@ export {
   type ConfidenceDotsProps,
 } from './components/confidence-dots.js';
 export { SectionHeading, type SectionHeadingProps } from './components/section-heading.js';
+export { HelpHint, type HelpHintProps } from './components/help-hint.js';
+export { FlagIcon, type FlagCode } from './components/flag-icon.js';
+export {
+  LanguageFlags,
+  type LanguageFlagOption,
+  type LanguageFlagsProps,
+} from './components/language-flags.js';
+export { ThemeSwitch, type ThemeSwitchProps } from './components/theme-switch.js';
 export { cn } from './lib/cn.js';
 export {
   DEFAULT_THEME_PREFERENCE,

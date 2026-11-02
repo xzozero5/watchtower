@@ -12,30 +12,28 @@ import {
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
   DropdownMenuSeparator,
-  DropdownMenuSub,
-  DropdownMenuSubContent,
-  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
+  FlagIcon,
   parseDensity,
   parseThemePreference,
-  THEME_PREFERENCES,
   TINT_CLASSES,
   Tooltip,
 } from '@watchtower/ui';
-import { Globe, Keyboard, LogOut, Rows3, SunMoon } from 'lucide-react';
+import { Keyboard, LogOut, Moon, Rows2, Rows4, SunMoon } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 
-import { isLocale, LOCALE_NAMES, LOCALES } from '@/i18n';
+import { isLocale, LOCALE_FLAGS, LOCALE_LABELS, LOCALES } from '@/i18n';
 import { useI18n } from '@/i18n/provider';
+import { useDarkInEffect } from '@/components/display-controls';
 import { useSession } from '@/lib/auth/session';
 import { saveLocale } from '@/lib/locale-cookie';
 import { SIDE_BY_SIDE_QUERY, useMediaQuery } from '@/lib/use-media-query';
-import { setDensity, setSingleKeyShortcuts, setTheme, usePreferences } from '@/lib/preferences';
+import { setDensity, setTheme, usePreferences } from '@/lib/preferences';
 
 /**
- * The avatar at the foot of the rail. It opens the account menu: Theme, Density and Language as
- * radio submenus, the single-key shortcut switch, the keyboard map and Sign out. These used to be
- * a row of native selects in a top bar.
+ * The avatar at the foot of the rail. It opens the account menu: one row of language flags and
+ * density icons, the dark theme switch (with "Follow system" once a theme is saved), the keyboard
+ * map and Sign out. The single-key shortcut switch lives in the keyboard map.
  */
 export function UserMenu({
   onShowShortcuts,
@@ -48,7 +46,8 @@ export function UserMenu({
   const { t, locale } = useI18n();
   const router = useRouter();
   const { session, signOut } = useSession();
-  const { theme, density, singleKeyShortcuts } = usePreferences();
+  const { theme, density } = usePreferences();
+  const dark = useDarkInEffect();
   const sideBySide = useMediaQuery(SIDE_BY_SIDE_QUERY);
   if (!session) return null;
   const { user } = session;
@@ -89,9 +88,9 @@ export function UserMenu({
           name={user.name}
           detail={`${user.email} · ${t(`roles.${user.role}`)}`}
           theme={theme}
+          dark={dark}
           density={density}
           locale={locale}
-          singleKeyShortcuts={singleKeyShortcuts}
           onShowShortcuts={onShowShortcuts}
           onLocale={(next) => {
             saveLocale(next);
@@ -106,13 +105,18 @@ export function UserMenu({
   );
 }
 
+/** A compact icon choice in the menu's row: the chosen one has a 2 px ring, not only a tint. */
+const CHOICE =
+  'size-9 min-h-0 flex-none justify-center rounded-full px-0 data-[state=checked]:bg-surface-muted data-[state=checked]:ring-2 data-[state=checked]:ring-primary';
+const DENSITY_ICONS = { comfortable: Rows2, compact: Rows4 } as const;
+
 function MenuBody({
   name,
   detail,
   theme,
+  dark,
   density,
   locale,
-  singleKeyShortcuts,
   onShowShortcuts,
   onLocale,
   onSignOut,
@@ -120,9 +124,9 @@ function MenuBody({
   name: string;
   detail: string;
   theme: ReturnType<typeof usePreferences>['theme'];
+  dark: boolean;
   density: ReturnType<typeof usePreferences>['density'];
   locale: string;
-  singleKeyShortcuts: boolean;
   onShowShortcuts: () => void;
   onLocale: (locale: (typeof LOCALES)[number]) => void;
   onSignOut: () => void;
@@ -136,78 +140,78 @@ function MenuBody({
       </DropdownMenuLabel>
       <DropdownMenuSeparator />
 
-      <DropdownMenuSub>
-        <DropdownMenuSubTrigger>
-          <SunMoon aria-hidden className={`size-4 ${TINT_CLASSES.amber.icon}`} />
-          {t('prefs.theme.label')}
-        </DropdownMenuSubTrigger>
-        <DropdownMenuSubContent>
-          <DropdownMenuRadioGroup
-            value={theme}
-            onValueChange={(value) => {
-              setTheme(parseThemePreference(value));
-            }}
-          >
-            {THEME_PREFERENCES.map((value) => (
-              <DropdownMenuRadioItem key={value} value={value}>
-                {t(`prefs.theme.${value}`)}
+      {/* One row of choices: the language as two flags, the density as two icons. Each is a menu
+          radio item (a plain button inside a menu is not valid ARIA), named by aria-label. */}
+      <div className="flex items-center justify-center gap-3 px-1 py-1">
+        <DropdownMenuRadioGroup
+          aria-label={t('prefs.language.label')}
+          value={locale}
+          className="flex items-center gap-1.5"
+          onValueChange={(value) => {
+            if (isLocale(value)) onLocale(value);
+          }}
+        >
+          {LOCALES.map((value) => (
+            <DropdownMenuRadioItem
+              key={value}
+              value={value}
+              lang={value}
+              hideIndicator
+              aria-label={LOCALE_LABELS[value]}
+              title={LOCALE_LABELS[value]}
+              className={CHOICE}
+            >
+              <FlagIcon code={LOCALE_FLAGS[value]} />
+            </DropdownMenuRadioItem>
+          ))}
+        </DropdownMenuRadioGroup>
+        <span aria-hidden className="h-5 w-px bg-border" />
+        <DropdownMenuRadioGroup
+          aria-label={t('prefs.density.label')}
+          value={density}
+          className="flex items-center gap-1.5"
+          onValueChange={(value) => {
+            setDensity(parseDensity(value));
+          }}
+        >
+          {DENSITIES.map((value) => {
+            const Icon = DENSITY_ICONS[value];
+            return (
+              <DropdownMenuRadioItem
+                key={value}
+                value={value}
+                hideIndicator
+                aria-label={t(`prefs.density.${value}`)}
+                title={t(`prefs.density.${value}`)}
+                className={CHOICE}
+              >
+                <Icon aria-hidden className={`size-4 ${TINT_CLASSES.sky.icon}`} />
               </DropdownMenuRadioItem>
-            ))}
-          </DropdownMenuRadioGroup>
-        </DropdownMenuSubContent>
-      </DropdownMenuSub>
-
-      <DropdownMenuSub>
-        <DropdownMenuSubTrigger>
-          <Rows3 aria-hidden className={`size-4 ${TINT_CLASSES.sky.icon}`} />
-          {t('prefs.density.label')}
-        </DropdownMenuSubTrigger>
-        <DropdownMenuSubContent>
-          <DropdownMenuRadioGroup
-            value={density}
-            onValueChange={(value) => {
-              setDensity(parseDensity(value));
-            }}
-          >
-            {DENSITIES.map((value) => (
-              <DropdownMenuRadioItem key={value} value={value}>
-                {t(`prefs.density.${value}`)}
-              </DropdownMenuRadioItem>
-            ))}
-          </DropdownMenuRadioGroup>
-        </DropdownMenuSubContent>
-      </DropdownMenuSub>
-
-      <DropdownMenuSub>
-        <DropdownMenuSubTrigger>
-          <Globe aria-hidden className={`size-4 ${TINT_CLASSES.green.icon}`} />
-          {t('prefs.language.label')}
-        </DropdownMenuSubTrigger>
-        <DropdownMenuSubContent>
-          <DropdownMenuRadioGroup
-            value={locale}
-            onValueChange={(value) => {
-              if (isLocale(value)) onLocale(value);
-            }}
-          >
-            {LOCALES.map((value) => (
-              <DropdownMenuRadioItem key={value} value={value} lang={value}>
-                {LOCALE_NAMES[value]}
-              </DropdownMenuRadioItem>
-            ))}
-          </DropdownMenuRadioGroup>
-        </DropdownMenuSubContent>
-      </DropdownMenuSub>
-
-      <DropdownMenuSeparator />
+            );
+          })}
+        </DropdownMenuRadioGroup>
+      </div>
       <DropdownMenuCheckboxItem
-        checked={singleKeyShortcuts}
+        checked={dark}
         onCheckedChange={(checked) => {
-          setSingleKeyShortcuts(checked);
+          setTheme(parseThemePreference(checked ? 'dark' : 'light'));
         }}
       >
-        {t('prefs.singleKey.label')}
+        <Moon aria-hidden className={`size-4 ${TINT_CLASSES.amber.icon}`} />
+        {t('prefs.theme.darkTheme')}
       </DropdownMenuCheckboxItem>
+      {theme !== 'system' ? (
+        <DropdownMenuItem
+          onSelect={() => {
+            setTheme('system');
+          }}
+        >
+          <SunMoon aria-hidden className={`size-4 ${TINT_CLASSES.slate.icon}`} />
+          {t('prefs.theme.followSystem')}
+        </DropdownMenuItem>
+      ) : null}
+
+      <DropdownMenuSeparator />
       <DropdownMenuItem onSelect={onShowShortcuts}>
         <Keyboard aria-hidden className={`size-4 ${TINT_CLASSES.violet.icon}`} />
         {t('topbar.openKeymap')}
