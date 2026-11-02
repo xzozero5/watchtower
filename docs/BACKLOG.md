@@ -71,7 +71,7 @@
 - [x] T-200 scaffolding + `packages/connectors` (ADR-015) — mock เท่านั้น 2026-11-02
 - [x] T-201 GCP Monitoring/Logging ingest via Pub/Sub, fingerprint dedup, correlation rules, service catalog, escalation chain, snooze/heartbeat, noise metrics (R-3.1–3.11)
 - [x] T-202 Incident mgmt + Discord thread + mass comms + "what changed" (R-3.12–3.15, R-5.3–5.4)
-- [ ] T-203 Investigation tools จริง: Logs rate budget, BigQuery/EXTERNAL_QUERY guardrails, metrics tool, service status panel (R-5.1–5.7)
+- [x] T-203 Investigation tools จริง: Logs rate budget, BigQuery/EXTERNAL_QUERY guardrails, metrics tool, service status panel (R-5.1–5.7) — merge 2026-11-02
 - [x] T-204 Status page + subscriptions (R-6.x)
 - [x] T-205 Usage metric definitions + scheduler + anomaly → proactive ticket + Client Health Score (R-8.x)
 - [ ] T-206 Ops dashboard (§9.1) — ใช้ skill `dataviz` ก่อนเขียน chart

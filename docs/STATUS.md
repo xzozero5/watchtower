@@ -40,6 +40,10 @@ snapshot สั้นสำหรับ cold start อยู่ที่ `HANDOF
 
 ## Log
 
+## 2026-11-02 08:40 (Asia/Bangkok) — main thread — T-203 investigation tools, shared rate budget, guarded data queries (mock) ปิด
+- test: main thread รันเองบน Windows: lint, typecheck, unit ผ่าน · integration db 381, domain 440, api 1021, worker 225 · e2e 143 · full-stack 23 · compose healthy `[TESTED]`
+- ค้าง/ไม่ยืนยัน: live adapter = T-208 [ASK-HUMAN] · array_agg OOM ลง T-125 · profile product-mock ยังไม่รัน compose จริง
+
 ## 2026-11-02 08:04 (Asia/Bangkok) — main thread — T-119, T-121 saved views, bulk, links, Other mail, outbox dead letter, org tiers ปิด
 - test: main thread รันเองบน Windows: lint, typecheck, unit ผ่าน · integration db 367, domain 431, api 956, worker 222 · e2e 143 · full-stack 23 · compose healthy `[TESTED]`
 - ค้าง/ไม่ยืนยัน: P2 bulk ไม่มี rate limit ลง T-125 · ยังไม่มี UI ของ link และ org tier
