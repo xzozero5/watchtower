@@ -1,7 +1,10 @@
 import {
+  SYSTEM_VIEWS,
+  SYSTEM_VIEW_KEYS,
   defaultTransitionList,
   type ClientTicket,
   type Role,
+  type SavedView,
   type TicketAiInsight,
   type TicketDetail,
   type TimelineEntry,
@@ -9,6 +12,32 @@ import {
 
 import { INTENT, makeClientTicket, makeMessage, makeSession, makeTicket, uuid } from './fixtures';
 import { type MockHandler, mockApi } from './mock-api';
+
+/** The built-in views the server lists, with a count each; a test adds the ones people saved. */
+export function viewList(
+  counts: Partial<Record<(typeof SYSTEM_VIEW_KEYS)[number], number>> = {},
+  saved: SavedView[] = [],
+): { items: SavedView[] } {
+  return {
+    items: [
+      ...SYSTEM_VIEW_KEYS.map((key) => ({
+        id: `system:${key}`,
+        kind: 'system' as const,
+        key,
+        name: SYSTEM_VIEWS[key].name,
+        filters: SYSTEM_VIEWS[key].filters,
+        sort: SYSTEM_VIEWS[key].sort,
+        ownerId: null,
+        ownerName: null,
+        count: counts[key] ?? 0,
+        editable: false,
+        createdAt: null,
+        updatedAt: null,
+      })),
+      ...saved,
+    ],
+  };
+}
 
 export interface Scenario {
   role?: Role;
@@ -111,6 +140,7 @@ export function workspaceApi({
       },
     },
     'GET /v1/ticket-workflow': { json: { transitions: defaultTransitionList() } },
+    ...(role === 'client' ? {} : { 'GET /v1/views': { json: viewList() } }),
     ...overrides,
   });
 }

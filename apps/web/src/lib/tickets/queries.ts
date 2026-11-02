@@ -8,7 +8,17 @@ import {
   useQuery,
   useQueryClient,
 } from '@tanstack/react-query';
-import type { AssignTicket, ChangeStatus, Note, Reply, UpdateTicket } from '@watchtower/shared';
+import type {
+  AssignTicket,
+  BulkRequest,
+  ChangeStatus,
+  ConvertOtherMail,
+  CreateSavedView,
+  Note,
+  OtherMailQuery,
+  Reply,
+  UpdateTicket,
+} from '@watchtower/shared';
 import { useEffect } from 'react';
 
 import { useApi } from '@/lib/api/api-context';
@@ -36,6 +46,16 @@ export const ticketKeys = (userId: string) => {
     detail: (key: string) => [...all, 'detail', key] as const,
     timelines: [...all, 'timeline'] as const,
     timeline: (key: string) => [...all, 'timeline', key] as const,
+  };
+};
+
+export const viewKeys = (userId: string) => [...userScope(userId), 'views'] as const;
+export const otherMailKeys = (userId: string) => {
+  const all = [...userScope(userId), 'other-mail'] as const;
+  return {
+    all,
+    list: (params: Partial<OtherMailQuery>) => [...all, 'list', params] as const,
+    detail: (id: string) => [...all, 'detail', id] as const,
   };
 };
 
@@ -204,4 +224,93 @@ export function useTicketMutations(ticketKey: string) {
       },
     }),
   };
+}
+
+/**
+ * The built-in views with their counts, then the team's and the person's own (T-119a). Staff only:
+ * a customer has no saved views. Counts go stale quickly, so they refresh when the window regains
+ * focus and after every bulk change.
+ */
+export function useViews(enabled: boolean) {
+  const api = useApi();
+  const userId = useUserId();
+  return useQuery({
+    queryKey: viewKeys(userId),
+    queryFn: ({ signal }) => api.views(signal),
+    enabled,
+    staleTime: 30_000,
+  });
+}
+
+export function useViewMutations() {
+  const api = useApi();
+  const userId = useUserId();
+  const queryClient = useQueryClient();
+  const refresh = () => queryClient.invalidateQueries({ queryKey: viewKeys(userId) });
+  return {
+    create: useMutation({
+      mutationFn: (body: CreateSavedView) => api.createView(body),
+      onSuccess: refresh,
+    }),
+    remove: useMutation({
+      mutationFn: (id: string) => api.deleteView(id),
+      onSuccess: refresh,
+    }),
+  };
+}
+
+/**
+ * Bulk actions on the selected tickets (T-119b). Afterwards every cached list, ticket and view count
+ * is out of date, so they are refetched; the queue itself is not reshuffled until the person looks.
+ */
+export function useBulkAction() {
+  const api = useApi();
+  const userId = useUserId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: BulkRequest) => api.bulk(body),
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey: ticketKeys(userId).all });
+      void queryClient.invalidateQueries({ queryKey: viewKeys(userId) });
+    },
+  });
+}
+
+export function useOtherMail(params: Partial<OtherMailQuery>, enabled: boolean) {
+  const api = useApi();
+  const userId = useUserId();
+  return useInfiniteQuery({
+    queryKey: otherMailKeys(userId).list(params),
+    queryFn: ({ pageParam, signal }) => api.otherMail({ ...params, cursor: pageParam }, signal),
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (last) => last.nextCursor ?? undefined,
+    enabled,
+    staleTime: 30_000,
+  });
+}
+
+export function useOtherMailItem(id: string | null) {
+  const api = useApi();
+  const userId = useUserId();
+  return useQuery({
+    queryKey: otherMailKeys(userId).detail(id ?? ''),
+    queryFn: ({ signal }) => api.otherMailItem(id ?? '', signal),
+    enabled: id !== null,
+  });
+}
+
+export function useConvertOtherMail() {
+  const api = useApi();
+  const userId = useUserId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, ...body }: ConvertOtherMail & { id: string }) =>
+      api.convertOtherMail(id, body),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: otherMailKeys(userId).all });
+      // The new ticket belongs in the queue and in the counts.
+      void queryClient.invalidateQueries({ queryKey: ticketKeys(userId).lists });
+      void queryClient.invalidateQueries({ queryKey: viewKeys(userId) });
+    },
+  });
 }

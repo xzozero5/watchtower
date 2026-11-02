@@ -4,7 +4,6 @@ import type { RealtimeEvent } from '@watchtower/shared';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { resetPreferencesCache } from '@/lib/preferences';
-import { SAVED_VIEWS_KEY_PREFIX } from '@/lib/tickets/saved-views';
 import { renderWorkspace } from '@/test-utils';
 import { makeTicket, uuid } from '@/test/fixtures';
 import { ticketCreatedEvent } from '@/test/fake-socket';
@@ -476,7 +475,7 @@ describe('the "N new" pill', () => {
 /** Opens the view switcher and picks a view with the keyboard (Radix menus ignore jsdom clicks). */
 async function chooseView(user: ReturnType<typeof userEvent.setup>, name: string) {
   await user.click(screen.getByRole('button', { name: /^View:/ }));
-  const item = await screen.findByRole('menuitemradio', { name });
+  const item = await screen.findByRole('menuitemradio', { name: new RegExp(`^${name}`) });
   item.focus();
   await user.keyboard('{Enter}');
 }
@@ -555,43 +554,5 @@ describe('filters and saved views', () => {
     expect(api.callsTo('/v1/tickets').length).toBeGreaterThanOrEqual(2);
   });
 
-  it('saves a view in this browser, finds it again after a reload, and deletes it', async () => {
-    const user = userEvent.setup();
-    workspaceApi();
-    const first = await openQueue();
-    await screen.findByText('Cannot log in');
-
-    await user.click(screen.getByRole('button', { name: /Filters/ }));
-    await user.click(screen.getByRole('checkbox', { name: 'P1 Critical' }));
-    await user.type(screen.getByRole('textbox', { name: 'Name for this view' }), 'Critical only');
-    await user.click(screen.getByRole('button', { name: 'Save view' }));
-
-    // The saved view is now the current one and sits in the switcher.
-    const view = screen.getByRole('button', { name: 'View: Critical only' });
-    await user.click(view);
-    expect(await screen.findByRole('menuitemradio', { name: 'Critical only' })).toHaveAttribute(
-      'aria-checked',
-      'true',
-    );
-    await user.keyboard('{Escape}');
-    const stored = Object.keys(localStorage).filter((key) =>
-      key.startsWith(SAVED_VIEWS_KEY_PREFIX),
-    );
-    expect(stored).toEqual([`${SAVED_VIEWS_KEY_PREFIX}${uuid(900)}`]);
-
-    // A fresh page load.
-    first.unmount();
-    workspaceApi();
-    await openQueue();
-    await screen.findByText('Cannot log in');
-    await user.click(screen.getByRole('button', { name: /^View:/ }));
-    expect(await screen.findByRole('menuitemradio', { name: 'Critical only' })).toBeInTheDocument();
-    await user.keyboard('{Escape}');
-
-    await chooseView(user, 'Critical only');
-    await user.click(screen.getByRole('button', { name: /Filters/ }));
-    await user.click(screen.getByRole('button', { name: 'Delete "Critical only"' }));
-    await user.click(screen.getByRole('button', { name: /^View:/ }));
-    expect(screen.queryByRole('menuitemradio', { name: 'Critical only' })).not.toBeInTheDocument();
-  });
+  // Saved views live on the server since T-119a: queue-views-bulk.test.tsx covers them.
 });

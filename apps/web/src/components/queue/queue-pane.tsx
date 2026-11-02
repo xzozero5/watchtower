@@ -1,6 +1,7 @@
 'use client';
 
 import { useQueryClient } from '@tanstack/react-query';
+import type { BulkAction, BulkResult } from '@watchtower/shared';
 import {
   Alert,
   Button,
@@ -56,17 +57,20 @@ import {
   filtersFromSearch,
   type QueueFilters,
 } from '@/lib/tickets/filters';
+import { ApiRequestError } from '@/lib/api/errors';
+import { filtersToView } from '@/lib/tickets/filters';
 import { toRowModel } from '@/lib/tickets/model';
-import { ticketKeys, useTicketList } from '@/lib/tickets/queries';
 import {
-  browserStorage,
-  loadSavedViews,
-  persistSavedViews,
-  removeView,
-  type SavedView,
-  upsertView,
-} from '@/lib/tickets/saved-views';
+  ticketKeys,
+  useBulkAction,
+  useQueues,
+  useTicketList,
+  useViewMutations,
+  useViews,
+} from '@/lib/tickets/queries';
+import { builtInCounts, viewOptions } from '@/lib/tickets/views';
 
+import { BulkBar } from './bulk-bar';
 import { FilterBar } from './filter-bar';
 import { QUEUE_LISTBOX_ID, QueueRow, rowDomId } from './queue-row';
 
@@ -86,8 +90,29 @@ export const PILL_ANNOUNCE_INTERVAL_MS = 30_000;
 
 const isZero = (count: number) => count === 0;
 
-let viewCounter = 0;
-const makeViewId = () => `v${String(Date.now())}-${String((viewCounter += 1))}`;
+/** The error codes of a bulk item that have words of their own; anything else says "could not be made". */
+const BULK_REASONS = [
+  'ticket_not_open',
+  'invalid_transition',
+  'merge_not_allowed',
+  'not_found',
+  'forbidden',
+  'conflict',
+  'validation_failed',
+] as const;
+
+/** What a bulk request did: the headline, then one line per ticket that could not be changed. */
+function Outcome({ lines }: { lines: readonly string[] }) {
+  return (
+    <ul className="m-0 flex list-none flex-col gap-0.5 p-0">
+      {lines.map((line, index) => (
+        <li key={line} className={index === 0 ? 'font-medium' : 'text-muted-foreground'}>
+          {line}
+        </li>
+      ))}
+    </ul>
+  );
+}
 
 const GROUP_ICON = { open: ChevronDown, closed: ChevronRight } as const;
 
@@ -115,6 +140,9 @@ function Section({
   onToggle,
   onKeyDown,
   onSelect,
+  selectable,
+  checkedKeys,
+  onToggleChecked,
 }: {
   group: RowGroup;
   open: boolean;
@@ -125,6 +153,9 @@ function Section({
   onToggle: () => void;
   onKeyDown: (event: KeyboardEvent<HTMLUListElement>) => void;
   onSelect: (key: string) => void;
+  selectable: boolean;
+  checkedKeys: ReadonlySet<string>;
+  onToggleChecked: (key: string) => void;
 }) {
   const t = useT();
   const listId = active ? QUEUE_LISTBOX_ID : `queue-section-${group.id}`;
@@ -172,6 +203,10 @@ function Section({
               compact={compact}
               group={group.id}
               onSelect={onSelect}
+              selectable={selectable}
+              checked={checkedKeys.has(row.key)}
+              selecting={checkedKeys.size > 0}
+              onToggleChecked={onToggleChecked}
             />
           ))}
         </ul>
@@ -194,8 +229,9 @@ export function QueuePane({
 }: QueuePaneProps) {
   const t = useT();
   const queryClient = useQueryClient();
-  const { session, isClient } = useSession();
+  const { session, isClient, can } = useSession();
   const userId = session?.user.id ?? 'anonymous';
+  const canHandle = !isClient && can('ticket.handle');
   const realtime = useRealtime();
   const { singleKeyShortcuts, density } = usePreferences();
   const compact = density === 'compact';
@@ -208,10 +244,19 @@ export function QueuePane({
   const [filters, setFilters] = useState<QueueFilters>(
     () => filtersFromSearch(window.location.search) ?? DEFAULT_FILTERS,
   );
-  const [savedViews, setSavedViews] = useState<SavedView[]>(() =>
-    loadSavedViews(browserStorage(), userId),
-  );
   const list = useTicketList(filters);
+  // Views live on the server (T-119a): the built-in ones come with counts, then the team's, then mine.
+  const views = useViews(!isClient);
+  const viewMutations = useViewMutations();
+  const savedViews = useMemo(() => viewOptions(views.data?.items ?? []), [views.data]);
+  const counts = useMemo(() => builtInCounts(views.data?.items ?? []), [views.data]);
+  const [saveError, setSaveError] = useState<string | null>(null);
+
+  // Bulk selection (T-119d): tickets ticked in the list, by key. Not the open ticket.
+  const [checked, setChecked] = useState<ReadonlySet<string>>(() => new Set());
+  const [outcome, setOutcome] = useState<string[] | null>(null);
+  const bulk = useBulkAction();
+  const queues = useQueues(canHandle);
 
   const now = useNow();
   const rows = useMemo(
@@ -219,6 +264,30 @@ export function QueuePane({
       (list.data?.pages ?? []).flatMap((page) => page.items.map((item) => toRowModel(item, now))),
     [list.data, now],
   );
+
+  // Only tickets still in the list count: a filter that hides a ticket drops it from the selection.
+  const checkedRows = useMemo(() => rows.filter((row) => checked.has(row.key)), [rows, checked]);
+  const checkedKeys = useMemo<ReadonlySet<string>>(
+    () => new Set(checkedRows.map((row) => row.key)),
+    [checkedRows],
+  );
+  const toggleChecked = useCallback((key: string) => {
+    setOutcome(null);
+    setChecked((current) => {
+      const next = new Set(current);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }, []);
+  const assignees = useMemo(() => {
+    const byId = new Map<string, string>();
+    for (const queue of queues.data?.queues ?? []) {
+      for (const member of queue.members) byId.set(member.userId, member.name);
+    }
+    if (session) byId.set(session.user.id, session.user.name);
+    return [...byId].map(([id, name]) => ({ id, name }));
+  }, [queues.data, session]);
 
   // The board: sections in order, and the rows J and K walk through, top to bottom as drawn.
   const [pinned, setPinned] = useState<PinnedRow | null>(null);
@@ -311,6 +380,14 @@ export function QueuePane({
         event.preventDefault();
         moveTo(walkable.length - 1);
         return;
+      case 'Escape':
+        // Leaves the selection first; with nothing selected Esc keeps its other meanings.
+        if (checkedKeys.size > 0) {
+          event.preventDefault();
+          event.stopPropagation();
+          setChecked(new Set());
+        }
+        return;
       case 'Enter':
         // Only acts while the list has focus, so it is not a character-key shortcut (WCAG 2.1.4).
         if (selectedIndex >= 0) {
@@ -362,9 +439,81 @@ export function QueuePane({
     newCount > 0,
   );
 
-  const updateViews = (next: SavedView[]) => {
-    setSavedViews(next);
-    persistSavedViews(browserStorage(), userId, next);
+  // X ticks or unticks the open ticket for a bulk action (docs/06-UI-SPEC.md section 4.2).
+  useShortcut(
+    'x',
+    () => {
+      if (selectedKey !== null) toggleChecked(selectedKey);
+    },
+    canHandle && selectedKey !== null,
+  );
+
+  const saveView = (name: string, shared: boolean) => {
+    setSaveError(null);
+    const { filters: kept, sort } = filtersToView(filters);
+    viewMutations.create.mutate(
+      { name, filters: kept, sort, shared },
+      {
+        onError: (error) => {
+          const status = error instanceof ApiRequestError ? error.status : 0;
+          setSaveError(
+            status === 409
+              ? t('queue.views.nameTaken')
+              : status === 403
+                ? t('queue.views.shareDenied')
+                : t('queue.views.saveFailed'),
+          );
+        },
+      },
+    );
+  };
+
+  const describe = (result: BulkResult): string[] => {
+    const lines: string[] = [];
+    if (result.failed === 0) {
+      lines.push(
+        result.succeeded === 1 ? t('bulk.oneDone') : t('bulk.allDone', { count: result.succeeded }),
+      );
+    } else if (result.succeeded === 0) {
+      lines.push(t('bulk.nothingChanged'));
+    } else {
+      lines.push(t('bulk.partial', { ok: result.succeeded, failed: result.failed }));
+    }
+    for (const item of result.items) {
+      if (item.ok || !item.error) continue;
+      const code = BULK_REASONS.find((value) => value === item.error?.code);
+      const reason = t(`bulk.reasons.${code ?? 'other'}`);
+      lines.push(
+        item.key === null
+          ? t('bulk.failedUnknownKey', { reason })
+          : t('bulk.failedItem', { key: item.key, reason }),
+      );
+    }
+    return lines;
+  };
+
+  const applyBulk = (action: BulkAction) => {
+    const ticketIds = checkedRows.map((row) => row.id);
+    if (ticketIds.length === 0) return;
+    setOutcome(null);
+    bulk.mutate(
+      { ticketIds, action },
+      {
+        onSuccess: (result) => {
+          setOutcome(describe(result));
+          // What worked leaves the selection; what did not stays, so it can be tried again.
+          const failedIds = new Set(
+            result.items.filter((item) => !item.ok).map((item) => item.ticketId),
+          );
+          setChecked(
+            new Set(checkedRows.filter((row) => failedIds.has(row.id)).map((row) => row.key)),
+          );
+        },
+        onError: () => {
+          setOutcome([t('bulk.requestFailed')]);
+        },
+      },
+    );
   };
 
   const filtered = activeFilterCount(filters) > 0;
@@ -372,25 +521,46 @@ export function QueuePane({
 
   return (
     <>
-      <FilterBar
-        filters={filters}
-        onChange={setFilters}
-        savedViews={savedViews}
-        onSaveView={(name) => {
-          updateViews(upsertView(savedViews, name, filters, makeViewId));
-        }}
-        onDeleteView={(id) => {
-          updateViews(removeView(savedViews, id));
-        }}
-        isClient={isClient}
-        searchRef={searchRef}
-        headerEnd={headerEnd}
-        count={
-          rows.length > 0
-            ? t(list.hasNextPage ? 'queue.countMore' : 'queue.count', { count: rows.length })
-            : null
-        }
-      />
+      {canHandle && checkedRows.length > 0 ? (
+        <BulkBar
+          count={checkedRows.length}
+          busy={bulk.isPending}
+          assignees={assignees}
+          me={session ? { id: session.user.id, name: session.user.name } : null}
+          onApply={applyBulk}
+          onClear={() => {
+            setChecked(new Set());
+          }}
+          outcome={outcome ? <Outcome lines={outcome} /> : null}
+        />
+      ) : (
+        <FilterBar
+          filters={filters}
+          onChange={setFilters}
+          savedViews={savedViews}
+          builtInCounts={counts}
+          onSaveView={saveView}
+          onDeleteView={(id) => {
+            viewMutations.remove.mutate(id);
+          }}
+          canShare={can('view.share')}
+          saveError={saveError}
+          isClient={isClient}
+          searchRef={searchRef}
+          headerEnd={headerEnd}
+          count={
+            rows.length > 0
+              ? t(list.hasNextPage ? 'queue.countMore' : 'queue.count', { count: rows.length })
+              : null
+          }
+        />
+      )}
+      {/* What a bulk change did stays visible after the selection is gone. */}
+      {outcome && checkedRows.length === 0 ? (
+        <div role="status" className="border-b border-border/60 px-3 py-2 text-sm">
+          <Outcome lines={outcome} />
+        </div>
+      ) : null}
 
       {/* The announcement is throttled (see above); the button is the action and is not live. */}
       <p role="status" aria-live="polite" className="sr-only">
@@ -477,6 +647,9 @@ export function QueuePane({
                   onSelect(key);
                   onActivate?.();
                 }}
+                selectable={canHandle}
+                checkedKeys={checkedKeys}
+                onToggleChecked={toggleChecked}
               />
             ))}
             {list.hasNextPage ? (

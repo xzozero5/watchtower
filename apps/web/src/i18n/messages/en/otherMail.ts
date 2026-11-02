@@ -1,0 +1,62 @@
+/** "Other mail" (UI spec section 7): received messages that did not become a ticket (T-119). */
+export const otherMailEn = {
+  title: 'Other mail',
+  intro:
+    'Messages that did not become a ticket: newsletters, automatic replies and internal or machine mail. If one is a real request, turn it into a ticket.',
+  listLabel: 'Messages',
+  loading: 'Loading messages',
+  loadMore: 'Load more messages',
+  loadingMore: 'Loading more messages',
+  search: { label: 'Search other mail', placeholder: 'Search by sender, subject or text' },
+  filter: {
+    label: 'Show',
+    all: 'All',
+    noise: 'Noise',
+    auto_reply: 'Automatic replies',
+    internal: 'Internal and machine',
+  },
+  kind: {
+    noise: 'Noise',
+    auto_reply: 'Automatic reply',
+    internal: 'Internal or machine',
+  },
+  empty: { title: 'Nothing here', body: 'No received message is waiting in this list.' },
+  emptyFiltered: { title: 'No message matches', body: 'Try another filter or other words.' },
+  error: {
+    title: 'Other mail could not be loaded',
+    body: 'Check your connection and try again.',
+  },
+  noSubject: '(no subject)',
+  unknownSender: 'Unknown sender',
+  fromLine: 'From {sender}',
+  receivedAt: 'Received',
+  attachments: '{count} attachments',
+  why: 'Why it is here',
+  reasonRules: 'The mail headers say it is automatic ({subtype}).',
+  classified: 'Classified as {type}, {confidence}% sure ({source}).',
+  classifiedNoConfidence: 'Classified as {type} ({source}).',
+  sourceAi: 'AI',
+  sourceRules: 'rules',
+  noReason: 'No reason was recorded.',
+  select: 'Select a message to read it.',
+  detailLabel: 'Message',
+  body: 'Text of the message',
+  bodyEmpty: '(no text)',
+  convert: 'This is a ticket',
+  converting: 'Opening a ticket…',
+  convertHint:
+    'Opens a ticket from this message. Nothing is sent to the sender, not even an acknowledgment.',
+  converted: 'Ticket {key} was opened from this message.',
+  openTicket: 'Open {key}',
+  convertFailed: 'The ticket could not be opened. Check your connection and try again.',
+  convertErrors: {
+    conflict:
+      'This message cannot become a ticket (it already is one, or its organization is switched off).',
+    not_found: 'This message is gone.',
+    forbidden: 'You do not have permission to open tickets.',
+  },
+  denied: {
+    title: 'Other mail is not available to you',
+    body: 'Ask a lead if you need to read messages that did not become tickets.',
+  },
+} as const;

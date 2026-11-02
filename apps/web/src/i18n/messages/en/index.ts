@@ -11,6 +11,7 @@ import { aiEn } from './ai';
 import { apiStatusEn } from './apiStatus';
 import { appEn } from './app';
 import { authEn } from './auth';
+import { bulkEn } from './bulk';
 import { channelEn } from './channel';
 import { commandsEn } from './commands';
 import { composerEn } from './composer';
@@ -25,6 +26,7 @@ import { liveEn } from './live';
 import { loadingEn } from './loading';
 import { loginEn } from './login';
 import { notificationsEn } from './notifications';
+import { otherMailEn } from './otherMail';
 import { outboundEn } from './outbound';
 import { paletteEn } from './palette';
 import { panelEn } from './panel';
@@ -80,6 +82,8 @@ export const en = {
   portal: portalEn,
   notifications: notificationsEn,
   csat: csatEn,
+  bulk: bulkEn,
+  otherMail: otherMailEn,
   shift: shiftEn,
   outbound: outboundEn,
 } as const;

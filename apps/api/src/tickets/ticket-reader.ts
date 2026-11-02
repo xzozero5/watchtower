@@ -24,6 +24,7 @@ import {
   and,
   arrayContains,
   asc,
+  count,
   desc,
   eq,
   exists,
@@ -426,6 +427,24 @@ export class TicketReader {
       conditions.push(await this.slaStates.condition(query.slaState, conditions, now));
     }
     return this.slaStates.stats(conditions, now);
+  }
+
+  /**
+   * How many tickets the filters match, for the number beside a saved view. Staff only. One query,
+   * unlike `stats` which also groups by status, queue, assignee and priority.
+   */
+  async count(query: TicketStatsQuery, principal: Principal): Promise<number> {
+    assertCanRead(principal);
+    if (isClient(principal)) throw forbidden('Ticket counts are for staff');
+    const conditions = this.filterConditions(query, principal);
+    if (query.slaState !== undefined) {
+      conditions.push(await this.slaStates.condition(query.slaState, conditions, new Date()));
+    }
+    const [row] = await this.database.db
+      .select({ n: count() })
+      .from(schema.ticket)
+      .where(and(...conditions));
+    return row?.n ?? 0;
   }
 
   async list(

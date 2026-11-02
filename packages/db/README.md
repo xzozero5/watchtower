@@ -52,7 +52,10 @@ Rules:
   so edits made since survive. One transaction: a failure leaves the database as it was. Every
   example file is read and validated before the first write.
 - **Refuses `NODE_ENV=production`** unless you pass `--allow-production` (for example a staging
-  copy). A production instance starts empty; its admin enters the real holidays and policies.
+  copy). With the flag, a production run loads **reference data only**: business calendars (the
+  example holidays are still `[VERIFY]`), SLA policies, intents and shift definitions. It creates no
+  organization, user, contact, ticket, message, audit row or example article. The admin replaces the
+  holidays and policies with the real ones.
 - **Writes only to the database.** No email, LINE, Discord, Gmail or GCP call is made.
 - **Which role:** `MIGRATION_DATABASE_URL`, else `DATABASE_URL` (the restricted application role
   works too).
