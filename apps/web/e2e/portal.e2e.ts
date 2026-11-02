@@ -36,7 +36,13 @@ async function fillForm(page: Page) {
   await page.getByLabel('What happened?').fill('The export fails with a 500.');
 }
 
-const axe = (page: Page) => new AxeBuilder({ page }).withTags(WCAG_TAGS).analyze();
+// A colour-scheme switch starts colour transitions: axe measures contrast on still pixels only.
+async function axe(page: Page) {
+  await page.waitForFunction(() =>
+    document.getAnimations().every((animation) => animation.playState !== 'running'),
+  );
+  return new AxeBuilder({ page }).withTags(WCAG_TAGS).analyze();
+}
 
 test.describe('submit a request', () => {
   test('solves the check in a Web Worker, submits a valid proof and shows the confirmation', async ({

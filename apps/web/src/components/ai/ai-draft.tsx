@@ -217,6 +217,30 @@ export function AiDraftCard({
         ) : null}
       </header>
 
+      {/* Before the text, not after it: on a phone the sticky action bar below covers whatever is
+          at the foot of a long draft, and a control must never sit half under it. */}
+      {cited.length > 0 ? (
+        <ul aria-label={t('ai.draft.sources')} className="flex flex-wrap gap-1.5">
+          {cited.map((entry) => {
+            const Icon = EVIDENCE_ICONS[entry.kind];
+            return (
+              <li key={entry.id} className="min-w-0">
+                <button
+                  type="button"
+                  onClick={() => {
+                    onOpenEvidence(entry.id);
+                  }}
+                  className="inline-flex h-7 max-w-[16rem] items-center gap-1.5 rounded-full bg-ai-subtle px-2.5 text-xs focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring"
+                >
+                  <Icon aria-hidden className="size-3.5 shrink-0 text-ai-accent" />
+                  <span className="sr-only">{t(`ai.evidence.kinds.${entry.kind}`)}:</span>
+                  <span className="truncate">{entry.title}</span>
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      ) : null}
       {editing ? (
         <textarea
           ref={editRef}
@@ -241,28 +265,6 @@ export function AiDraftCard({
       ) : (
         <DraftText text={text} citations={draft.citations} onOpenEvidence={onOpenEvidence} />
       )}
-      {cited.length > 0 ? (
-        <ul aria-label={t('ai.draft.sources')} className="flex flex-wrap gap-1.5">
-          {cited.map((entry) => {
-            const Icon = EVIDENCE_ICONS[entry.kind];
-            return (
-              <li key={entry.id} className="min-w-0">
-                <button
-                  type="button"
-                  onClick={() => {
-                    onOpenEvidence(entry.id);
-                  }}
-                  className="inline-flex h-7 max-w-[16rem] items-center gap-1.5 rounded-full bg-ai-subtle px-2.5 text-xs focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring"
-                >
-                  <Icon aria-hidden className="size-3.5 shrink-0 text-ai-accent" />
-                  <span className="sr-only">{t(`ai.evidence.kinds.${entry.kind}`)}:</span>
-                  <span className="truncate">{entry.title}</span>
-                </button>
-              </li>
-            );
-          })}
-        </ul>
-      ) : null}
 
       <div
         role="group"
