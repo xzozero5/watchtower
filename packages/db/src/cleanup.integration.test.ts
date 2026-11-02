@@ -61,6 +61,8 @@ beforeEach(async () => {
     'portal_access_token',
     'break_glass_attempt',
     'status_subscription',
+    'assistant_conversation',
+    'ai_summary',
   ]) {
     await owner().query(`DELETE FROM ${table}`);
   }
@@ -101,6 +103,49 @@ describe('purgeExpired', () => {
     );
     expect(left.rows.map((row) => row.id)).not.toContain(expiredLong);
     expect(left.rows.map((row) => row.id)).not.toContain(revokedLong);
+  });
+
+  it('deletes assistant conversations (with messages and proposals) and AI summaries unused for longer than the retention', async () => {
+    const conversation = async (updated: string): Promise<string> => {
+      const made = await owner().query<{ id: string }>(
+        `INSERT INTO assistant_conversation (user_id, updated_at) VALUES ($1, now() + $2::interval) RETURNING id`,
+        [userId, updated],
+      );
+      const id = made.rows[0]?.id ?? '';
+      await owner().query(
+        `INSERT INTO assistant_message (conversation_id, user_id, role, body) VALUES ($1, $2, 'user', 'hello [EMAIL_1]')`,
+        [id, userId],
+      );
+      await owner().query(
+        `INSERT INTO assistant_proposal (conversation_id, user_id, kind, params, card, expires_at)
+         VALUES ($1, $2, 'note', '{}', '{}', now() + interval '10 minutes')`,
+        [id, userId],
+      );
+      return id;
+    };
+    const old = await conversation('-40 days');
+    const fresh = await conversation('-2 days');
+    await owner().query(
+      `INSERT INTO ai_summary (kind, user_id, fingerprint, claims, data_as_of, generated_at)
+       VALUES ('brief', $1, 'x', '[]', now(), now() - interval '40 days'),
+              ('handoff', $1, 'y', '[]', now(), now() - interval '1 day')`,
+      [userId],
+    );
+
+    const result = await purgeExpired({ pool: app }, {});
+    expect(result.assistant_conversation).toBe(1);
+    expect(result.ai_summary).toBe(1);
+    expect(await count('assistant_conversation', `id = '${old}'`)).toBe(0);
+    expect(await count('assistant_message', `conversation_id = '${old}'`)).toBe(0);
+    expect(await count('assistant_proposal', `conversation_id = '${old}'`)).toBe(0);
+    expect(await count('assistant_conversation', `id = '${fresh}'`)).toBe(1);
+    expect(await count('assistant_message', `conversation_id = '${fresh}'`)).toBe(1);
+    expect(await count('ai_summary')).toBe(1);
+
+    // The retention is an option: 1 day keeps nothing older than a day.
+    const tight = await purgeExpired({ pool: app }, { assistantRetentionDays: 1 });
+    expect(tight.assistant_conversation).toBe(1);
+    expect(await count('assistant_conversation')).toBe(0);
   });
 
   it('deletes refresh tokens past their expiry even when the session lives on, and with a deleted session', async () => {
@@ -222,6 +267,8 @@ describe('purgeExpired', () => {
       portal_access_token: 0,
       break_glass_attempt: 0,
       status_subscription: 0,
+      assistant_conversation: 0,
+      ai_summary: 0,
       more: false,
     });
     expect(await count('sessions')).toBe(1);
@@ -301,6 +348,8 @@ describe('0012_expiry_indexes', () => {
       'portal_access_token',
       'break_glass_attempt',
       'status_subscription',
+      'assistant_conversation',
+      'ai_summary',
     ]) {
       const privileges = await owner().query<{ del: boolean; trunc: boolean }>(
         `SELECT has_table_privilege($1, $2::regclass, 'DELETE') AS del,

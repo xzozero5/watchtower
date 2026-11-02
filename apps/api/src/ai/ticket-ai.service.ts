@@ -10,6 +10,7 @@ import {
   aiProgressSchema,
   aiReportSchema,
   type AiDraft,
+  type Claim,
   type AiRequest,
   type AiState,
   type RejectAiDraft,
@@ -27,6 +28,7 @@ import { domainContext, settle } from '../domain/domain-context.js';
 import { translating } from '../domain/domain-errors.js';
 import type { UnitOfWork } from '../realtime/unit-of-work.js';
 import { TicketReader } from '../tickets/ticket-reader.js';
+import { claimsOfReport, ticketKeyOfHref } from './insight-claims.js';
 
 type InsightRow = typeof schema.aiTicketInsight.$inferSelect;
 type DraftRow = typeof schema.aiDraft.$inferSelect;
@@ -56,12 +58,22 @@ export function toAiDraft(row: DraftRow): AiDraft {
   };
 }
 
+/** What the row alone does not hold: the name of the intent and the report's findings as claims (T-135). */
+export interface InsightExtras {
+  readonly intentName?: string | null;
+  readonly claims?: Claim[];
+}
+
 /**
  * Row to contract. Absent pieces stay absent: the web shows what exists and nothing else (N5). A
  * `draft_ready` brief whose draft is no longer waiting (approved, sent, replaced) reads as
  * `classified`, so the web never offers to approve what a person already used.
  */
-export function toTicketAiInsight(row: InsightRow, draft?: DraftRow): TicketAiInsight {
+export function toTicketAiInsight(
+  row: InsightRow,
+  draft?: DraftRow,
+  extras: InsightExtras = {},
+): TicketAiInsight {
   const evidence = z.array(aiEvidenceSchema).safeParse(row.evidence);
   const report = aiReportSchema.safeParse(row.report);
   const progress = aiProgressSchema.safeParse(row.progress);
@@ -76,6 +88,9 @@ export function toTicketAiInsight(row: InsightRow, draft?: DraftRow): TicketAiIn
       : {
           intent: {
             key: row.intentKey,
+            ...(extras.intentName === undefined || extras.intentName === null
+              ? {}
+              : { name: extras.intentName }),
             confidence: row.intentConfidence,
             reason: row.intentReason ?? '',
           },
@@ -90,7 +105,14 @@ export function toTicketAiInsight(row: InsightRow, draft?: DraftRow): TicketAiIn
         }),
     evidence: evidence.success ? evidence.data : [],
     ...(waiting === undefined ? {} : { draft: toAiDraft(waiting) }),
-    ...(report.success ? { report: report.data } : {}),
+    ...(report.success
+      ? {
+          report: {
+            ...report.data,
+            ...(extras.claims === undefined ? {} : { claims: extras.claims }),
+          },
+        }
+      : {}),
     ...(progress.success && state === 'investigating' ? { progress: progress.data } : {}),
     stage: row.stage,
     generatedAt: row.generatedAt.toISOString(),
@@ -131,7 +153,39 @@ export class TicketAiService {
               .where(eq(schema.aiDraft.id, row.draftId))
               .limit(1)
           )[0];
-    return { ticketId: ticket.t.id, insight: toTicketAiInsight(row, draft) };
+    // The name of the intent, and the report as claims whose links this viewer may open (T-135).
+    const [intent] =
+      row.intentKey === null
+        ? []
+        : await this.database.db
+            .select({ name: schema.intent.name })
+            .from(schema.intent)
+            .where(eq(schema.intent.key, row.intentKey))
+            .limit(1);
+    const report = aiReportSchema.safeParse(row.report);
+    const cards = z.array(aiEvidenceSchema).safeParse(row.evidence);
+    let claims: Claim[] | undefined;
+    if (report.success) {
+      const evidence = cards.success ? cards.data : [];
+      const open = new Set<string>();
+      for (const key of new Set(evidence.map((card) => ticketKeyOfHref(card.href)))) {
+        if (key === null) continue;
+        try {
+          await this.tickets.viewRow(key, principal);
+          open.add(key);
+        } catch {
+          // A ticket this viewer cannot read gets no link.
+        }
+      }
+      claims = claimsOfReport(report.data, evidence, open);
+    }
+    return {
+      ticketId: ticket.t.id,
+      insight: toTicketAiInsight(row, draft, {
+        intentName: intent?.name ?? null,
+        ...(claims === undefined ? {} : { claims }),
+      }),
+    };
   }
 
   /**

@@ -8,6 +8,8 @@ export const CLEANUP_TARGETS = [
   'portal_access_token',
   'break_glass_attempt',
   'status_subscription',
+  'assistant_conversation',
+  'ai_summary',
 ] as const;
 export type CleanupTarget = (typeof CLEANUP_TARGETS)[number];
 
@@ -25,6 +27,12 @@ export interface CleanupOptions {
    * incident review. `[ASSUMED]` 30 days.
    */
   readonly breakGlassRetentionDays?: number;
+  /**
+   * How long a conversation with the assistant (with its messages and proposals, which go with it) and a
+   * cached AI summary are kept after they were last used (T-134, ADR-017 section 8). They hold redacted
+   * text and the summaries of a person's own screens. `[ASSUMED]` 30 days.
+   */
+  readonly assistantRetentionDays?: number;
   /** Rows deleted per statement, so a large backlog never holds a long lock. */
   readonly batchSize?: number;
   /** Statements per table per run; a backlog bigger than `batchSize * maxBatches` finishes on the next run. */
@@ -38,6 +46,7 @@ export type CleanupResult = Record<CleanupTarget, number> & {
 
 export const DEFAULT_AUTH_RETENTION_DAYS = 7;
 export const DEFAULT_BREAK_GLASS_RETENTION_DAYS = 30;
+export const DEFAULT_ASSISTANT_RETENTION_DAYS = 30;
 const DEFAULT_BATCH_SIZE = 1000;
 const DEFAULT_MAX_BATCHES = 100;
 
@@ -45,7 +54,7 @@ interface Statement {
   readonly table: CleanupTarget;
   /** `$1` = retention days, `$2` = batch size. The row locator is `id`, or `ctid` where there is none. */
   readonly sql: string;
-  readonly retention: 'auth' | 'breakGlass';
+  readonly retention: 'auth' | 'breakGlass' | 'assistant';
 }
 
 const batch = (table: string, locator: string, condition: string): string =>
@@ -115,6 +124,21 @@ const STATEMENTS: readonly Statement[] = [
       `state = 'pending' AND confirm_expires_at < now() - make_interval(days => $1::int)`,
     ),
   },
+  {
+    table: 'assistant_conversation',
+    retention: 'assistant',
+    // Messages and proposals go with it (ON DELETE CASCADE). The audit log of what was pressed stays.
+    sql: batch(
+      'assistant_conversation',
+      'id',
+      `updated_at < now() - make_interval(days => $1::int)`,
+    ),
+  },
+  {
+    table: 'ai_summary',
+    retention: 'assistant',
+    sql: batch('ai_summary', 'ctid', `generated_at < now() - make_interval(days => $1::int)`),
+  },
 ];
 
 function assertCount(name: string, value: number, min: number, max: number): number {
@@ -152,6 +176,12 @@ export async function purgeExpired(
     0,
     3650,
   );
+  const assistantDays = assertCount(
+    'assistantRetentionDays',
+    options.assistantRetentionDays ?? DEFAULT_ASSISTANT_RETENTION_DAYS,
+    0,
+    3650,
+  );
   const batchSize = assertCount('batchSize', options.batchSize ?? DEFAULT_BATCH_SIZE, 1, 100_000);
   const maxBatches = assertCount(
     'maxBatches',
@@ -167,10 +197,17 @@ export async function purgeExpired(
     portal_access_token: 0,
     break_glass_attempt: 0,
     status_subscription: 0,
+    assistant_conversation: 0,
+    ai_summary: 0,
   };
   let more = false;
   for (const statement of STATEMENTS) {
-    const days = statement.retention === 'auth' ? authDays : breakGlassDays;
+    const days =
+      statement.retention === 'auth'
+        ? authDays
+        : statement.retention === 'assistant'
+          ? assistantDays
+          : breakGlassDays;
     for (let run = 0; run < maxBatches; run += 1) {
       const result = await database.pool.query(statement.sql, [days, batchSize]);
       const count = result.rowCount ?? 0;
