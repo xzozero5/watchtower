@@ -364,7 +364,7 @@ describe('hostile statements, second group (side effects and size)', () => {
 
   async function locksAndWal(): Promise<{ locks: number; lsn: bigint }> {
     const state = await ownerExecutor.execute({
-      sql: `SELECT (SELECT count(*) FROM pg_locks WHERE locktype = 'advisory')::int,
+      sql: `SELECT (SELECT count(*) FROM pg_locks WHERE locktype = 'advisory' AND database = (SELECT oid FROM pg_database WHERE datname = current_database()))::int,
                    (pg_current_wal_lsn() - '0/0'::pg_lsn)::text`,
       params: [],
       maxRows: 1,

@@ -108,6 +108,12 @@ export interface ProductMockDatabase {
   cleanup(): Promise<void>;
 }
 
+/** The organizations the stand-in flow runs are seeded for (the ids in `examples/tools/fixtures.json` too). */
+export const DEMO_ORG_IDS = [
+  '11111111-1111-4111-8111-111111111111',
+  '22222222-2222-4222-8222-222222222222',
+];
+
 const METRICS_DIR = new URL('../../../examples/metrics/', import.meta.url);
 
 /**
@@ -132,6 +138,9 @@ export async function createProductMockDatabase(adminUrl: string): Promise<Produ
     const read = (file: string): Promise<string> => readFile(new URL(file, METRICS_DIR), 'utf8');
     await pool.query(await read('product-mock.schema.sql'));
     await pool.query(await read('product-mock.seed.sql'));
+    // The stand-in flow runs of the starter usage metrics (T-205a), for the two demo organizations.
+    await pool.query(await read('product_mock.sql'));
+    await pool.query('SELECT product_mock.seed($1::uuid[])', [DEMO_ORG_IDS]);
     await pool.query(
       (await read('product-mock.grants.sql'))
         .replaceAll('__RO_ROLE__', role)

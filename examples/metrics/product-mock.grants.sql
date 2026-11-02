@@ -66,6 +66,10 @@ GRANT SELECT (id, plan, region, created_at) ON tenants TO __READER_ROLE__;
 GRANT SELECT ON api_daily TO __READER_ROLE__;
 GRANT SELECT (id, tenant_id, submitted_at, kind, status, duration_ms) ON jobs TO __READER_ROLE__;
 
+-- The stand-in flow runs the starter usage metrics read (product_mock.sql, T-205a): ids, categories, times.
+GRANT USAGE ON SCHEMA product_mock TO __READER_ROLE__;
+GRANT SELECT (org_id, flow, step, status, started_at, latency_ms) ON product_mock.flow_run TO __READER_ROLE__;
+
 -- Read-only by default and short timeouts as a floor under the per-call limits (the executor also
 -- passes them at connection start).
 ALTER ROLE __RO_ROLE__ NOINHERIT;

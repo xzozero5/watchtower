@@ -8,6 +8,7 @@ import {
   DATA_DEFAULT_MAX_ROWS,
   DATA_DEFAULT_TIMEOUT_MS,
   DATA_HARD_MAX_ROWS,
+  DATA_SYSTEM_MAX_ROWS,
   DATA_HARD_TIMEOUT_MS,
   DATA_MAX_SQL_CHARS,
   type DataQuery,
@@ -230,7 +231,8 @@ export interface DataGuardrails {
  * the row cap and timeout are clamped, and columns that are not on the allow-list are masked.
  */
 export function withDataGuardrails(inner: DataQueryClient, guard: DataGuardrails): DataQueryClient {
-  const ceiling = Math.min(guard.maxRows ?? DATA_HARD_MAX_ROWS, DATA_HARD_MAX_ROWS);
+  // A person gets at most DATA_HARD_MAX_ROWS; a caller that is the system (the usage scheduler) may ask the guard for more.
+  const ceiling = Math.min(guard.maxRows ?? DATA_HARD_MAX_ROWS, DATA_SYSTEM_MAX_ROWS);
   const timeout = Math.min(guard.timeoutMs ?? DATA_HARD_TIMEOUT_MS, DATA_HARD_TIMEOUT_MS);
   return {
     source: inner.source,

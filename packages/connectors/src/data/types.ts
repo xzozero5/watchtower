@@ -58,6 +58,8 @@ export interface SqlExecutor {
 }
 
 export const DATA_HARD_MAX_ROWS = 500;
+/** The most a guard may be told to allow (the scheduler of the usage metrics reads thousands of points); a person never gets this. */
+export const DATA_SYSTEM_MAX_ROWS = 10_000;
 export const DATA_DEFAULT_MAX_ROWS = 100;
 export const DATA_HARD_TIMEOUT_MS = 15_000;
 export const DATA_DEFAULT_TIMEOUT_MS = 5_000;

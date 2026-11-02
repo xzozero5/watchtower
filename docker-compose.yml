@@ -240,7 +240,8 @@ services:
           || psql -d postgres -v ON_ERROR_STOP=1 -c 'CREATE ROLE product_mock_ro_reader NOLOGIN'
         psql -d postgres -tAc "SELECT 1 FROM pg_roles WHERE rolname = 'product_mock_ro'" | grep -q 1 \
           || psql -d postgres -v ON_ERROR_STOP=1 -c "CREATE ROLE product_mock_ro LOGIN NOINHERIT PASSWORD '$$PRODUCT_MOCK_RO_PASSWORD'"
-        psql -d product_mock -v ON_ERROR_STOP=1 -q -f /metrics/product-mock.schema.sql -f /metrics/product-mock.seed.sql
+        psql -d product_mock -v ON_ERROR_STOP=1 -q -f /metrics/product-mock.schema.sql -f /metrics/product-mock.seed.sql -f /metrics/product_mock.sql
+        psql -d product_mock -v ON_ERROR_STOP=1 -q -c "SELECT product_mock.seed(ARRAY['11111111-1111-4111-8111-111111111111', '22222222-2222-4222-8222-222222222222']::uuid[])" >/dev/null
         sed -e 's/__RO_ROLE__/product_mock_ro/g' -e 's/__READER_ROLE__/product_mock_ro_reader/g' /metrics/product-mock.grants.sql | psql -d product_mock -v ON_ERROR_STOP=1 -q
 
   redis:

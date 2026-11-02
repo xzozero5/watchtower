@@ -20,7 +20,9 @@ export interface ToolClients {
    * The data client with the global column allow-list plus the columns a template allows for itself,
    * behind the guardrails (reads only, row cap, timeout, column masking).
    */
-  readonly data?: ((extraColumns: readonly string[]) => DataQueryClient) | undefined;
+  readonly data?:
+    | ((extraColumns: readonly string[], limits?: { readonly maxRows?: number }) => DataQueryClient)
+    | undefined;
   /** The data is invented (a sandbox or a fake): results are labelled mock. */
   readonly dataMock?: boolean | undefined;
   /**
@@ -60,7 +62,11 @@ export function assembleToolClients(options: ToolClientOptions): ToolClients {
       logs: mock?.logs,
       metrics: mock?.metrics,
       repo: mock?.repo,
-      data: (extra) => createGuardedSqlClient(executor, { allowColumns: allowed(extra) }),
+      data: (extra, limits) =>
+        createGuardedSqlClient(executor, {
+          allowColumns: allowed(extra),
+          ...(limits?.maxRows === undefined ? {} : { maxRows: limits.maxRows }),
+        }),
       dataMock: executor.sandbox,
       dataHardening: () => executor.hardeningProblems(),
       close: () => executor.close(),
@@ -73,7 +79,11 @@ export function assembleToolClients(options: ToolClientOptions): ToolClients {
     data:
       mock === undefined
         ? undefined
-        : (extra) => withDataGuardrails(mock.data, { allowColumns: allowed(extra) }),
+        : (extra, limits) =>
+            withDataGuardrails(mock.data, {
+              allowColumns: allowed(extra),
+              ...(limits?.maxRows === undefined ? {} : { maxRows: limits.maxRows }),
+            }),
     dataMock: true,
   };
 }
