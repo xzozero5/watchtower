@@ -233,7 +233,8 @@ export class TicketSlaStates {
                ${runningDueSql()} AS due, ${runningKindSql()} AS kind, ${klass} AS sla_class
           FROM ${ticket}
          WHERE ${sql.join(
-           filters.filter((filter): filter is SQL => filter !== undefined),
+           // `true` first: a staff member with no filter at all has no condition, and `WHERE` alone is a syntax error.
+           [sql`true`, ...filters.filter((filter): filter is SQL => filter !== undefined)],
            sql` AND `,
          )}
       )

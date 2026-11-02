@@ -77,7 +77,10 @@ export function assistantPlan(request: LlmRequest): string {
       add('search_tickets', { assignee: 'me', limit: 5 });
     } else {
       const query = text
-        .replace(/\b(find|search|show|list|similar|tickets?|for|me|the|a)\b/gi, ' ')
+        .replace(
+          /\b(find|search|show|list|similar|tickets?|for|me|the|a|about|on|with|regarding)\b/gi,
+          ' ',
+        )
         .trim();
       add(
         'search_tickets',
@@ -179,7 +182,7 @@ export function assistantAnswer(request: LlmRequest): string {
   const thai = field(raw, 'language') === 'th' || /Write in Thai/i.test(request.system);
   const limit = Number(/At most (\d+) claims/.exec(request.system)?.[1] ?? 5);
   const allowed = new Set(
-    (/Allowed kinds in this conversation: ([a-z_, ]+)\./.exec(request.system)?.[1] ?? '')
+    (/Allowed kinds in this\s+conversation: ([a-z_, ]+)\./.exec(request.system)?.[1] ?? '')
       .split(',')
       .map((word) => word.trim())
       .filter((word) => word !== '' && word !== 'none'),

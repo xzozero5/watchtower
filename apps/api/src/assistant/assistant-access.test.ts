@@ -1,0 +1,159 @@
+import { PERMISSIONS, type Permission } from '@watchtower/shared';
+import { describe, expect, it } from 'vitest';
+
+import {
+  PROPOSAL_PERMISSION,
+  ROLE_PROPOSALS,
+  ROLE_TOOLS,
+  TOOL_PERMISSION,
+  isMasked,
+  proposalKindsFor,
+  startersFor,
+  toolsFor,
+} from './assistant-access.js';
+
+const who = (role: string, permissions: readonly Permission[]) =>
+  ({ role, permissions: new Set(permissions) }) as never;
+
+const AGENT: Permission[] = [
+  'ticket.read',
+  'ticket.handle',
+  'ticket.reply',
+  'ticket.create',
+  'ai.draft.review',
+  'investigate.run',
+  'kb.read',
+  'kb.write',
+];
+
+describe('who the assistant works for', () => {
+  it('gives a lead the load tool and an agent not', () => {
+    expect(toolsFor(who('agent', AGENT))).not.toContain('team_load');
+    expect(toolsFor(who('lead', AGENT))).toContain('team_load');
+    expect(toolsFor(who('head', AGENT))).toContain('team_load');
+  });
+
+  it('needs the permission of the ordinary route behind each tool, not only the role', () => {
+    const tools = toolsFor(who('agent', ['ticket.read']));
+    expect(tools).toEqual(['search_tickets', 'summarize_ticket', 'explain_sla']);
+    expect(toolsFor(who('agent', [...AGENT]))).toContain('investigate_run');
+    expect(
+      toolsFor(
+        who(
+          'agent',
+          AGENT.filter((p) => p !== 'investigate.run'),
+        ),
+      ),
+    ).not.toContain('investigate_run');
+  });
+
+  it('gives a client and the system identity nothing at all (po #34, N3)', () => {
+    const everything = Object.keys(PERMISSIONS) as Permission[];
+    for (const role of ['client', 'system', 'nobody']) {
+      expect(toolsFor(who(role, everything)), role).toEqual([]);
+      expect(proposalKindsFor(who(role, everything)), role).toEqual([]);
+      expect(startersFor(who(role, everything), 'en', true), role).toEqual([]);
+    }
+  });
+
+  it('gives dev read tools only, no roster, and proposals for status and notes (po #33)', () => {
+    const dev = who('dev', AGENT);
+    expect(toolsFor(dev)).toEqual([
+      'search_tickets',
+      'summarize_ticket',
+      'explain_sla',
+      'kb_search',
+      'investigate_run',
+    ]);
+    expect(proposalKindsFor(dev)).toEqual(['status', 'note']);
+    expect(isMasked(dev)).toBe(true);
+    expect(isMasked(who('agent', AGENT))).toBe(false);
+  });
+
+  it('never lets a role hold a tool or a proposal that has no permission mapped', () => {
+    for (const tools of Object.values(ROLE_TOOLS)) {
+      for (const tool of tools) expect(TOOL_PERMISSION[tool], tool).toBeDefined();
+    }
+    for (const kinds of Object.values(ROLE_PROPOSALS)) {
+      for (const kind of kinds) expect(PROPOSAL_PERMISSION[kind], kind).toBeDefined();
+    }
+  });
+
+  it('has no tool that writes: the list is searches, reads, and the template run of investigate.run', () => {
+    const all = new Set(Object.values(ROLE_TOOLS).flat());
+    expect([...all].sort()).toEqual([
+      'explain_sla',
+      'investigate_run',
+      'kb_search',
+      'search_tickets',
+      'summarize_ticket',
+      'team_load',
+      'team_status',
+    ]);
+    // No admin surface: nothing about switches, autonomy, roles, integrations or users.
+    for (const name of all)
+      expect(name).not.toMatch(/switch|autonomy|role|integration|user|credential/);
+  });
+
+  it('never offers a reply to a customer as a proposal kind', () => {
+    for (const kinds of Object.values(ROLE_PROPOSALS)) {
+      for (const kind of kinds) expect(kind).not.toMatch(/^(send|reply)$/);
+    }
+  });
+
+  it('proposes only what the permissions allow', () => {
+    expect(proposalKindsFor(who('agent', ['ticket.read']))).toEqual([]);
+    expect(proposalKindsFor(who('agent', ['ticket.read', 'ticket.handle']))).toEqual([
+      'assign',
+      'status',
+      'tag',
+      'note',
+      'reply_draft',
+    ]);
+  });
+});
+
+describe('starter prompts', () => {
+  it('shows at most three, in the language asked for', () => {
+    const agent = who('agent', AGENT);
+    const th = startersFor(agent, 'th', true);
+    expect(th).toHaveLength(3);
+    expect(th.map((starter) => starter.text)).toEqual([
+      'สรุปเรื่องนี้',
+      'หาเคสคล้ายกัน',
+      'ร่างคำตอบ',
+    ]);
+    expect(startersFor(agent, 'en', true).map((starter) => starter.text)).toEqual([
+      'Summarize this',
+      'Find similar tickets',
+      'Draft a reply',
+    ]);
+  });
+
+  it('offers nothing about "this" ticket without a ticket chip', () => {
+    const starters = startersFor(who('agent', AGENT), 'en', false);
+    expect(starters.map((starter) => starter.id)).toEqual(['my_tickets', 'sla_risk', 'find_guide']);
+  });
+
+  it('follows the role: a lead is asked about SLA and load, dev about their next ticket', () => {
+    expect(startersFor(who('lead', AGENT), 'en', false).map((s) => s.id)).toEqual([
+      'sla_risk',
+      'overloaded',
+      'team_status',
+    ]);
+    expect(startersFor(who('dev', AGENT), 'en', false).map((s) => s.id)).toEqual([
+      'my_tickets',
+      'find_guide',
+    ]);
+  });
+
+  it('drops a prompt the person could not follow up on', () => {
+    // Without ticket.handle there is no team status and no draft.
+    const reader = who('lead', ['ticket.read', 'kb.read']);
+    expect(startersFor(reader, 'en', true).map((s) => s.id)).toEqual([
+      'sla_risk',
+      'overloaded',
+      'summarize_this',
+    ]);
+  });
+});

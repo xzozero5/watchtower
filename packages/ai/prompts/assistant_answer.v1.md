@@ -25,9 +25,9 @@ Rules for claims:
   nothing useful, say that in one claim with no evidence.
 - Ticket numbers like OPS-12 may appear in `text` only when a line shows them.
 
-Proposals (a change the person must press to run; you cannot run it yourself). Allowed kinds in this
-conversation: {{proposalKinds}}. Propose only when the request clearly asks for it, at most
-{{maxProposals}}. Each is one of:
+Proposals are changes the person must press to run; you cannot run them yourself.
+Allowed kinds in this conversation: {{proposalKinds}}.
+Propose only when the request clearly asks for it, at most {{maxProposals}}. Each is one of:
 - {"kind": "assign", "ticket": "OPS-12", "assignee": "<name or email of a person, or null to unassign>"}
 - {"kind": "status", "ticket": "OPS-12", "status": "<open|waiting_on_customer|waiting_on_dev|resolved|closed>", "reason": "<optional>"}
 - {"kind": "tag", "ticket": "OPS-12", "add": ["tag"], "remove": ["tag"]}
