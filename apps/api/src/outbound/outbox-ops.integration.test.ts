@@ -169,6 +169,7 @@ describe('GET /v1/ops/outbox/dead', () => {
         replayable: false,
       });
       expect(item.notReplayableReason).toContain('no source record');
+      expect(item.effect).toBeNull();
     }
 
     const filtered = await head.client.get<Page<DeadOutboxItem>>(
@@ -221,6 +222,14 @@ describe('POST /v1/ops/outbox/:id/resend', () => {
 
     const listed = await head.client.get<Page<DeadOutboxItem>>('/v1/ops/outbox/dead');
     expect(listed.body.items[0]).toMatchObject({ id: row?.id, replayable: true });
+    // The head is told a resend sends nothing to anyone: it processes a received event again.
+    expect(listed.body.items[0]?.effect).toEqual({
+      kind: 'reprocess_inbound',
+      channel: 'gmail',
+      channelAccountName: expect.any(String) as string,
+      origin: null,
+      ticketNumber: null,
+    });
 
     const response = await head.client.post<ResendOutboxResult>(
       `/v1/ops/outbox/${row?.id ?? ''}/resend`,
@@ -301,6 +310,16 @@ describe('POST /v1/ops/outbox/:id/resend', () => {
 
     const listed = await head.client.get<Page<DeadOutboxItem>>('/v1/ops/outbox/dead');
     expect(listed.body.items[0]).toMatchObject({ id: trigger?.id, replayable: true });
+    // A resend of a delivery says it may reach a customer, and where: channel, account and ticket,
+    // never the message itself or an address.
+    expect(listed.body.items[0]?.effect).toEqual({
+      kind: 'customer_message',
+      channel: 'gmail',
+      channelAccountName: 'Ops mailbox',
+      origin: expect.any(String) as string,
+      ticketNumber: Number(ticket.key.split('-').at(-1)),
+    });
+    expect(JSON.stringify(listed.body.items[0])).not.toContain('We are on it.');
 
     // Undo the send: the delivery is cancelled, so there is nothing left to trigger.
     const cancelled = await agent.client.post<CancelSendResult>(

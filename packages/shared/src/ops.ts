@@ -55,6 +55,28 @@ export const deadOutboxQuerySchema = z.object({
 });
 export type DeadOutboxQuery = z.infer<typeof deadOutboxQuerySchema>;
 
+/**
+ * What a resend would set going, said without the content: a message to a customer, or a received
+ * event processed again (which sends nothing). Never a body, an address or a name: the head sees
+ * where it goes (channel, account, ticket), not what it says.
+ */
+export const OUTBOX_EFFECT_KINDS = ['customer_message', 'reprocess_inbound'] as const;
+export const outboxEffectKindSchema = z.enum(OUTBOX_EFFECT_KINDS);
+export type OutboxEffectKind = (typeof OUTBOX_EFFECT_KINDS)[number];
+
+export const deadOutboxEffectSchema = z.object({
+  kind: outboxEffectKindSchema,
+  /** `gmail`, `line`, `portal`...: the channel the message leaves by, or arrived on. */
+  channel: z.string(),
+  /** The channel account's display name (an instance label such as the mailbox name). */
+  channelAccountName: z.string(),
+  /** Why the message exists (`reply`, `auto_ack`...); null for a received event. */
+  origin: z.string().nullable(),
+  /** The ticket the message belongs to (display it with the instance's key prefix); null for a received event. */
+  ticketNumber: z.number().int().positive().nullable(),
+});
+export type DeadOutboxEffect = z.infer<typeof deadOutboxEffectSchema>;
+
 export const deadOutboxItemSchema = z.object({
   id: z.uuid(),
   queue: z.string(),
@@ -68,6 +90,8 @@ export const deadOutboxItemSchema = z.object({
   /** Whether "resend" can rebuild this job from its source record. */
   replayable: z.boolean(),
   notReplayableReason: z.string().nullable(),
+  /** What a resend would do; null when the row cannot be replayed. */
+  effect: deadOutboxEffectSchema.nullable(),
 });
 export type DeadOutboxItem = z.infer<typeof deadOutboxItemSchema>;
 export const deadOutboxPageSchema = pageOf(deadOutboxItemSchema);
