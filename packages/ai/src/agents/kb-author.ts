@@ -1,7 +1,6 @@
 import { z } from 'zod';
 
-import { renderPrompt } from '../prompts.js';
-import type { RedactedText } from '../redaction/redacted-text.js';
+import { renderTrustedPrompt, type RedactedText } from '../redaction/redacted-text.js';
 import type { RedactionSession } from '../redaction/redactor.js';
 import {
   askGuard,
@@ -73,7 +72,7 @@ export async function authorKbDraft(
   let system: RedactedText;
   let message: RedactedText;
   try {
-    system = session.redact(renderPrompt(prompt.body, {}));
+    system = renderTrustedPrompt(prompt, {}, session);
     const turns =
       input.turns.length <= MAX_TURNS
         ? input.turns

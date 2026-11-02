@@ -1,8 +1,11 @@
 import { detectLanguage } from '@watchtower/shared';
 import { z } from 'zod';
 
-import { renderPrompt } from '../prompts.js';
-import { joinRedacted, type RedactedText } from '../redaction/redacted-text.js';
+import {
+  joinRedacted,
+  renderTrustedPrompt,
+  type RedactedText,
+} from '../redaction/redacted-text.js';
 import {
   askGuard,
   clip,
@@ -189,8 +192,9 @@ export async function draftReply(
   let system: RedactedText;
   let message: RedactedText;
   try {
-    system = session.redact(
-      renderPrompt(prompt.body, {
+    system = renderTrustedPrompt(
+      prompt,
+      {
         language: input.customerLanguage === 'th' ? 'Thai' : 'English',
         disclosure: input.disclosure,
         // The note is typed by a person on this ticket, so it is ticket text: redact it like any.
@@ -198,7 +202,8 @@ export async function draftReply(
           input.note === undefined || input.note === ''
             ? ''
             : `Note from the agent for this draft: ${clip(input.note, 500)}`,
-      }),
+      },
+      session,
     );
     // The ticket first, so a detail that is in the ticket and in a tool result keeps the ticket's origin.
     const ticketText = session.redact(renderTicket(input));

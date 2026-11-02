@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-import { renderPrompt } from '../prompts.js';
+import { renderTrustedPrompt } from '../redaction/redacted-text.js';
 import type { RedactionSession } from '../redaction/redactor.js';
 import {
   askGuard,
@@ -101,7 +101,7 @@ export async function summarizeTicket(
   let system;
   let ticket;
   try {
-    system = session.redact(renderPrompt(prompt.body, {}));
+    system = renderTrustedPrompt(prompt, {}, session);
     ticket = session.redact(renderTicket(input));
   } catch (error) {
     const reason = skippedFor(error);

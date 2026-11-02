@@ -7,8 +7,11 @@ import {
 import { z } from 'zod';
 
 import type { AutonomyStage } from '../contract.js';
-import { renderPrompt } from '../prompts.js';
-import { joinRedacted, type RedactedText } from '../redaction/redacted-text.js';
+import {
+  joinRedacted,
+  renderTrustedPrompt,
+  type RedactedText,
+} from '../redaction/redacted-text.js';
 import type { RedactionSession } from '../redaction/redactor.js';
 import type { BudgetedTools } from '../toolkit/budget.js';
 import { TOOL_NAMES, SYSTEM_TOOLS } from '../toolkit/tools.js';
@@ -249,7 +252,7 @@ export async function investigateTicket(
   let system: RedactedText;
   let message: RedactedText;
   try {
-    system = session.redact(renderPrompt(prompt.body, {}));
+    system = renderTrustedPrompt(prompt, {}, session);
     message = joinRedacted(
       [
         ticketText,
@@ -288,8 +291,8 @@ export async function investigateTicket(
   const parsed = investigatorAnswerSchema.safeParse(extractJsonObject(result.response.text));
   if (!parsed.success) return { status: 'failed', reason: 'model_output_invalid' };
   const known = new Set(evidence.map((card) => card.id));
-  // The `customer` audience: the ticket's own details come back, another customer's stay placeholders.
-  const show = (text: string): string => session.restore(text, 'customer').text;
+  // The `staff` audience: ticket details and dictionary names come back; other tool tokens stay placeholders.
+  const show = (text: string): string => session.restore(text, 'staff').text;
   const answer = parsed.data;
   return {
     status: 'ok',

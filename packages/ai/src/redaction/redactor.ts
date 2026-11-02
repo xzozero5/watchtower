@@ -45,7 +45,15 @@ export type RestoreAudience =
   /** Text a customer will see: restores `ticket` tokens only. The default. */
   | 'customer'
   /** Text only staff see (evidence panels, internal notes): restores every known token. */
-  | 'internal';
+  | 'internal'
+  /**
+   * Staff-only evidence and findings: restores `ticket` tokens plus `NAME` tokens from tool output
+   * (a name from the dictionary, so staff see "Acme Org" instead of "[NAME_3] Org"). Other `tool`
+   * tokens (emails, phones, ids from somebody else's ticket) and `model` tokens stay placeholders.
+   * Never use it for text a customer can see: the dictionary covers the whole organisation, so a
+   * tool NAME can be a colleague of the customer.
+   */
+  | 'staff';
 
 export interface RestoreResult {
   text: string;
@@ -218,7 +226,11 @@ export function createRedactor(options: RedactorOptions = {}): Redactor {
           const unresolved: string[] = [];
           const restored = text.replace(TOKEN_PATTERN, (token) => {
             const entry = entries.get(token);
-            if (entry === undefined || (audience === 'customer' && entry.origin !== 'ticket')) {
+            const allowed =
+              audience === 'internal' ||
+              entry?.origin === 'ticket' ||
+              (audience === 'staff' && entry?.origin === 'tool' && token.startsWith('[NAME_'));
+            if (entry === undefined || !allowed) {
               unresolved.push(token);
               return token;
             }

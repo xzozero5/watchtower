@@ -2,7 +2,12 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { parsePromptFile, PromptFileError, type PromptFile } from './prompts.js';
+import {
+  parsePromptFile,
+  PromptFileError,
+  registerCatalogPrompt,
+  type PromptFile,
+} from './prompts.js';
 
 /**
  * `packages/ai/prompts/`, found from this file: `src/` and `dist/` are both one level below the
@@ -27,7 +32,9 @@ export function loadPromptCatalog(dir: string = DEFAULT_PROMPTS_DIR): PromptCata
   const files = new Map<string, PromptFile>();
   for (const name of readdirSync(dir).toSorted()) {
     if (!/\.v[0-9]+\.md$/.test(name)) continue;
-    const parsed = parsePromptFile(name, readFileSync(join(dir, name), 'utf8'));
+    const parsed = registerCatalogPrompt(
+      parsePromptFile(name, readFileSync(join(dir, name), 'utf8')),
+    );
     files.set(`${parsed.ref.id}@${String(parsed.ref.version)}`, parsed);
   }
   const all = [...files.values()];

@@ -9,6 +9,25 @@ const redactor = createRedactor();
 const start = () => redactor.session({ scope: 'ticket:100' });
 
 describe('token provenance', () => {
+  it('staff audience restores a dictionary NAME from a tool result, customer audience does not', () => {
+    const session = createRedactor({ names: () => ['Smoke Customer', 'Smoke Org'] }).session({
+      scope: 'ticket:100',
+    });
+    const shown = session.redactToolOutput(
+      'data_query',
+      'Smoke Org (gold, active): 2 open tickets, owner other@elsewhere.example, id x_Smoke',
+    );
+    expect(shown).not.toContain('Smoke Org');
+    const staff = session.restore(shown, 'staff');
+    expect(staff.text).toContain('Smoke Org (gold, active)');
+    // Other tool tokens stay placeholders for staff; the underscore does not hide a name part.
+    expect(staff.unresolved).toEqual(['[EMAIL_1]']);
+    expect(shown).not.toContain('x_Smoke');
+    const customer = session.restore(shown, 'customer');
+    expect(customer.text).toContain('[NAME_1]');
+    expect(customer.needsReview).toBe(true);
+  });
+
   it('does not restore a tool-origin token into customer-facing text, and flags it', () => {
     const session = start();
     session.redact('Hi, my address is mine@customer.example, please reset my access.');
