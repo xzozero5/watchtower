@@ -36,7 +36,7 @@ export function opsApi({ role = 'lead', overrides = {} }: OpsApiOptions = {}) {
     'GET /v1/alerts/correlations': { json: { items: [] } },
     'GET /v1/alerts/noise': { json: { windowDays: 7, items: [] } },
     'GET /v1/alerts/:id': ({ params }) => ({
-      json: alertDetail(Number(params.id.slice(-4)) - 7000),
+      json: alertDetail(Number((params.id ?? '').slice(-4)) - 7000),
     }),
     'GET /v1/alerts/:id/escalations': { json: { items: [escalation()] } },
     'GET /v1/services': { json: { items: [service()] } },
