@@ -116,10 +116,17 @@ test.describe('pane keys (docs/06-UI-SPEC.md section 14)', () => {
         'true',
       );
       await expect(page.getByRole('group', { name: 'Draft actions' })).toBeVisible();
+      // Target size and contrast are measured on still pixels, not halfway through a transition.
+      const settled = () =>
+        page.waitForFunction(() =>
+          document.getAnimations().every((animation) => animation.playState !== 'running'),
+        );
+      await settled();
       let results = await new AxeBuilder({ page }).withTags(WCAG_TAGS).analyze();
       expect(results.violations).toEqual([]);
 
       await page.getByRole('tab', { name: 'Queue' }).click();
+      await settled();
       results = await new AxeBuilder({ page }).withTags(WCAG_TAGS).analyze();
       expect(results.violations).toEqual([]);
     });

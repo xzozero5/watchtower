@@ -40,6 +40,10 @@ snapshot สั้นสำหรับ cold start อยู่ที่ `HANDOF
 
 ## Log
 
+## 2026-11-02 09:54 (Asia/Bangkok) — main thread — T-206b ops dashboard read model ปิด
+- test: main thread รันเองบน Windows: lint, typecheck ผ่าน · integration db 384, domain 440, api 1032, worker 225 · full-stack 23 · compose healthy · e2e + unit ของ web/db ผ่านรอบหลังแก้ test `[TESTED]`
+- ค้าง/ไม่ยืนยัน: ยังไม่มีหน้า T-206c · ค่าอย่าง at-risk 60 นาที [ASSUMED]
+
 ## 2026-11-02 08:40 (Asia/Bangkok) — main thread — T-203 investigation tools, shared rate budget, guarded data queries (mock) ปิด
 - test: main thread รันเองบน Windows: lint, typecheck, unit ผ่าน · integration db 381, domain 440, api 1021, worker 225 · e2e 143 · full-stack 23 · compose healthy `[TESTED]`
 - ค้าง/ไม่ยืนยัน: live adapter = T-208 [ASK-HUMAN] · array_agg OOM ลง T-125 · profile product-mock ยังไม่รัน compose จริง

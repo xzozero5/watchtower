@@ -523,7 +523,9 @@ export function createOutboundDispatcher(deps: DispatcherDeps) {
         // delivery has its own trigger at its own time, and the sweeper covers a lost one (T-122f P3).
         const remainingMs =
           row.nextAttemptAt.getTime() - (await authorityNow(database.db, newContext())).getTime();
-        if (remainingMs > 0 && remainingMs <= EARLY_TOLERANCE_MS) {
+        // Due by now: it came due between the failed claim and this read, so it goes round again at once.
+        if (remainingMs <= 0) return { status: 'early', notBefore: new Date(Date.now() + 50) };
+        if (remainingMs <= EARLY_TOLERANCE_MS) {
           return { status: 'early', notBefore: row.nextAttemptAt };
         }
       }
