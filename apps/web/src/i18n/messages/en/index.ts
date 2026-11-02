@@ -22,6 +22,7 @@ import { detailsEn } from './details';
 import { devHomeEn } from './devHome';
 import { errorsEn } from './errors';
 import { homeEn } from './home';
+import { investigateEn } from './investigate';
 import { keymapEn } from './keymap';
 import { liveEn } from './live';
 import { loadingEn } from './loading';
@@ -29,6 +30,7 @@ import { loginEn } from './login';
 import { newTicketEn } from './newTicket';
 import { notificationsEn } from './notifications';
 import { otherMailEn } from './otherMail';
+import { outboxAdminEn } from './outboxAdmin';
 import { opsEn } from './ops';
 import { outboundEn } from './outbound';
 import { paletteEn } from './palette';
@@ -92,6 +94,8 @@ export const en = {
   shift: shiftEn,
   outbound: outboundEn,
   ops: opsEn,
+  outboxAdmin: outboxAdminEn,
+  investigate: investigateEn,
 } as const;
 
 /** The shape every language must fill in, with plain `string` leaves. */

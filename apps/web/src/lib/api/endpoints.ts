@@ -42,6 +42,7 @@ import { createAdminEndpoints } from './admin-endpoints';
 import { createNotificationEndpoints } from './notification-endpoints';
 import { createOpsEndpoints } from './ops-endpoints';
 import { createShiftEndpoints } from './shift-endpoints';
+import { createToolEndpoints } from './tool-endpoints';
 import type { ApiClient } from './client';
 
 /** Query for the ticket list as the UI builds it: the schema defaults are applied by the api. */
@@ -73,6 +74,7 @@ export function createEndpoints(client: ApiClient) {
     ...createNotificationEndpoints(client),
     ...createShiftEndpoints(client),
     ...createOpsEndpoints(client),
+    ...createToolEndpoints(client),
 
     // --- auth (public) ---
     authConfig: (signal?: AbortSignal) =>
