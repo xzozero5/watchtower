@@ -80,6 +80,9 @@ x-app-env: &app-env
   PORTAL_POW_DIFFICULTY_BITS: ${PORTAL_POW_DIFFICULTY_BITS:-18}
   PORTAL_POW_TTL_SECONDS: ${PORTAL_POW_TTL_SECONDS:-1800}
   PORTAL_MIN_FILL_SECONDS: ${PORTAL_MIN_FILL_SECONDS:-3}
+  PORTAL_UPLOAD_MAX_CONCURRENT: ${PORTAL_UPLOAD_MAX_CONCURRENT:-3}
+  PORTAL_UPLOAD_MAX_PER_ADDRESS: ${PORTAL_UPLOAD_MAX_PER_ADDRESS:-1}
+  PORTAL_UPLOAD_IDLE_SECONDS: ${PORTAL_UPLOAD_IDLE_SECONDS:-30}
   PORTAL_RATE_IP_PER_HOUR: ${PORTAL_RATE_IP_PER_HOUR:-20}
   PORTAL_RATE_EMAIL_PER_HOUR: ${PORTAL_RATE_EMAIL_PER_HOUR:-5}
   PORTAL_RATE_ORG_PER_HOUR: ${PORTAL_RATE_ORG_PER_HOUR:-60}
@@ -339,6 +342,10 @@ services:
     <<: *node-service
     build: *api-build
     image: watchtower/api:local
+    # A portal upload is buffered in memory before it is checked: at most 3 at once, 25 MB of files
+    # each (PORTAL_UPLOAD_MAX_CONCURRENT), on top of the api's normal use. `[ASSUMED]` size; a
+    # runaway process is restarted instead of taking the host down.
+    mem_limit: 1g
     environment:
       <<: *app-env
       HOST: 0.0.0.0

@@ -43,11 +43,20 @@ const SAFE_TYPES: ReadonlySet<string> = new Set([
   'text/csv',
 ]);
 
+/** `encodeURIComponent` throws on a lone surrogate; names are cleaned first, but a download must never 500 over a name. */
+function safeEncode(name: string): string {
+  try {
+    return encodeURIComponent(name);
+  } catch {
+    return encodeURIComponent('file');
+  }
+}
+
 /** `Content-Disposition: attachment` with an ASCII fallback and the real name as RFC 5987 `filename*`. */
 export function attachmentDisposition(rawName: string): string {
   const name = sanitizeFileName(rawName);
   const ascii = name.replace(/[^\x20-\x7e]/g, '_').replace(/["\\%;]/g, '_');
-  const encoded = encodeURIComponent(name).replace(
+  const encoded = safeEncode(name).replace(
     /['()*]/g,
     (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`,
   );

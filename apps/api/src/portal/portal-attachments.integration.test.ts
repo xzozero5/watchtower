@@ -1,4 +1,5 @@
 import { createHash, randomBytes } from 'node:crypto';
+import http from 'node:http';
 
 import { createS3ObjectStore, type ObjectStore } from '@watchtower/channels';
 import { seedIntents } from '@watchtower/db';
@@ -33,9 +34,24 @@ const PNG = Buffer.concat([
 const PDF = Buffer.from('%PDF-1.7\n1 0 obj<<>>endobj\n%%EOF\n');
 const pool = () => h.db.owner.pool;
 
+/** True when the text has no lone surrogate (`encodeURIComponent` throws on one, Postgres jsonb refuses it). */
+function wellFormed(value: string): boolean {
+  try {
+    encodeURIComponent(value);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 beforeAll(async () => {
   h = await startHarness({
-    env: { PORTAL_POW_DIFFICULTY_BITS: '8', PORTAL_MIN_FILL_SECONDS: '0' },
+    env: {
+      PORTAL_POW_DIFFICULTY_BITS: '8',
+      PORTAL_MIN_FILL_SECONDS: '0',
+      // Short, so the test of a sender that goes quiet does not wait 30 seconds.
+      PORTAL_UPLOAD_IDLE_SECONDS: '2',
+    },
   });
   store = createS3ObjectStore({
     endpoint: h.config.S3_ENDPOINT,
@@ -462,6 +478,178 @@ describe('POST /v1/portal/tickets/:key/replies with files', () => {
   });
 });
 
+// --- memory protection (security review P1-1) ---
+
+/**
+ * A multipart request that declares a large body and sends only the start of it: what a slow or
+ * hostile sender looks like to the api. Resolves once the request is on the wire; `answer` resolves
+ * with the status if the api answers before the body is complete.
+ */
+function stalledUpload(
+  ip: string,
+  path = '/v1/portal/tickets',
+  headers: Record<string, string> = {},
+) {
+  const url = new URL(path, h.base);
+  const request = http.request(url, {
+    method: 'POST',
+    headers: {
+      'x-forwarded-for': ip,
+      origin: new URL(h.config.APP_URL).origin,
+      'content-type': 'multipart/form-data; boundary=wtboundary',
+      'content-length': String(5 * 1024 * 1024),
+      ...headers,
+    },
+  });
+  const closed = new Promise<void>((resolve) => {
+    request.on('close', () => {
+      resolve();
+    });
+  });
+  const answer = new Promise<number>((resolve) => {
+    request.on('response', (response) => {
+      response.resume();
+      resolve(response.statusCode ?? 0);
+    });
+  });
+  request.on('error', () => undefined);
+  request.write('--wtboundary\r\nContent-Disposition: form-data; name="payload"\r\n\r\n{');
+  return { request, closed, answer };
+}
+
+const settle = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+/** A request from `ip` that the api turns away at the token, so it never needs the body. */
+async function probe(ip: string): Promise<number> {
+  const response = await fetch(`${h.base}/v1/portal/tickets/OPS-1/replies`, {
+    method: 'POST',
+    headers: {
+      'x-forwarded-for': ip,
+      origin: new URL(h.config.APP_URL).origin,
+      'x-portal-token': 'wtp1.x.y',
+    },
+    body: multipart({ body: 'hi' }, [{ name: 'a.png', bytes: PNG }]),
+  });
+  await response.arrayBuffer();
+  return response.status;
+}
+
+describe('uploads are bounded before their body is read', () => {
+  it('lets one client address have one upload in flight and answers 503 with Retry-After for the next', async () => {
+    const first = stalledUpload('10.20.0.1');
+    await settle(300);
+    const second = await fetch(`${h.base}/v1/portal/tickets`, {
+      method: 'POST',
+      headers: { 'x-forwarded-for': '10.20.0.1', origin: new URL(h.config.APP_URL).origin },
+      body: multipart({ nothing: true }, [{ name: 'a.png', bytes: PNG }]),
+    });
+    expect(second.status).toBe(503);
+    expect(second.headers.get('retry-after')).toBe('5');
+    expect(((await second.json()) as ApiErrorBody).code).toBe('upload_busy');
+    // Another address is not held up by it.
+    expect(await probe('10.20.0.2')).toBe(401);
+
+    // When the first goes away its slot comes back.
+    first.request.destroy();
+    await first.closed;
+    await settle(300);
+    expect(await probe('10.20.0.1')).toBe(401);
+  });
+
+  it('limits uploads in flight in total, whatever the addresses', async () => {
+    const held = ['10.21.0.1', '10.21.0.2', '10.21.0.3'].map((ip) => stalledUpload(ip));
+    await settle(300);
+    expect(await probe('10.21.0.4')).toBe(503);
+    for (const upload of held) upload.request.destroy();
+    await Promise.all(held.map((upload) => upload.closed));
+    await settle(300);
+    expect(await probe('10.21.0.4')).toBe(401);
+  });
+
+  it('cuts off a sender that goes quiet and frees its slot', async () => {
+    const quiet = stalledUpload('10.22.0.1');
+    await settle(300);
+    expect(await probe('10.22.0.1')).toBe(503);
+    // PORTAL_UPLOAD_IDLE_SECONDS is 2 in this test run.
+    await Promise.race([quiet.closed, settle(8000)]);
+    await settle(300);
+    expect(await probe('10.22.0.1')).toBe(401);
+  });
+
+  it('checks the tracking token before it reads any of the body', async () => {
+    // The body is announced but never sent. An api that read it first would wait; this answers 401.
+    const noToken = stalledUpload('10.23.0.1', '/v1/portal/tickets/OPS-1/replies');
+    expect(await Promise.race([noToken.answer, settle(3000).then(() => 0)])).toBe(401);
+    noToken.request.destroy();
+    const badToken = stalledUpload('10.23.0.2', '/v1/portal/tickets/OPS-1/replies', {
+      'x-portal-token': 'wtp1.not.valid',
+    });
+    expect(await Promise.race([badToken.answer, settle(3000).then(() => 0)])).toBe(401);
+    badToken.request.destroy();
+  });
+
+  it('reads the body of a reply only for a valid token', async () => {
+    const mine = await (async () => {
+      const email = uniqueEmail('customer', DOMAIN);
+      const { response } = await submitWith([], { email });
+      return { key: response.body.ticketKey, token: await tokenFor(email) };
+    })();
+    // A file in a field that is not accepted is a 413 once the body is read (see the field test),
+    // and a 401 before that when the token is wrong.
+    const wrongField = (token: string) =>
+      h
+        .client()
+        .post<ApiErrorBody>(
+          `/v1/portal/tickets/${mine.key}/replies`,
+          multipart({ body: 'hi' }, [{ name: 'a.png', bytes: PNG }], 'attachments'),
+          asToken(token),
+        );
+    expect((await wrongField('wtp1.nope.nope')).status).toBe(401);
+    expect((await wrongField(mine.token)).status).toBe(413);
+  });
+});
+
+describe('a refused file does not use up the customer reply allowance', () => {
+  it('lets a good reply through after more bad files than the hourly reply limit', async () => {
+    const email = uniqueEmail('customer', DOMAIN);
+    const { response } = await submitWith([], { email });
+    const key = response.body.ticketKey;
+    const token = await tokenFor(email);
+    // The client has its own address, so these only count against it.
+    const client = h.client();
+    for (let i = 0; i < 12; i += 1) {
+      const bad = await client.post<ApiErrorBody>(
+        `/v1/portal/tickets/${key}/replies`,
+        multipart({ body: 'hi' }, [{ name: 'x.svg', bytes: Buffer.from('<svg/>') }]),
+        asToken(token),
+      );
+      expect(bad.status).toBe(400);
+    }
+    const good = await client.post<PortalReplyResult>(
+      `/v1/portal/tickets/${key}/replies`,
+      multipart({ body: 'finally' }, [{ name: 'ok.png', bytes: PNG }]),
+      asToken(token),
+    );
+    expect(good.status, JSON.stringify(good.body)).toBe(201);
+  });
+});
+
+describe('file names that are long or full of emoji', () => {
+  it('are cut on whole characters, so the ticket is filed and the download works', async () => {
+    const name = `${'a'.repeat(118)}😀😀😀😀.png`;
+    const { response } = await submitWith([{ name, bytes: PNG }]);
+    expect(response.status, JSON.stringify(response.body)).toBe(201);
+    const [message] = await messageRows(response.body.ticketKey);
+    const stored = message?.attachments[0]?.filename ?? '';
+    expect(wellFormed(stored)).toBe(true);
+    expect(Array.from(stored).length).toBeLessThanOrEqual(120);
+    expect(stored.endsWith('.png')).toBe(true);
+    const file = await download(agent, response.body.ticketKey, message?.id ?? '', 0);
+    expect(file.status).toBe(200);
+    expect(file.headers.get('content-disposition')).toMatch(/^attachment;/);
+  });
+});
+
 // --- rate limit ---
 
 describe('upload rate limit', () => {
@@ -543,6 +731,23 @@ describe('GET /v1/tickets/:id/messages/:messageId/attachments/:index', () => {
       ],
     );
     expect((await download(own, key, note.rows[0]?.id ?? '', 0)).status).toBe(404);
+  });
+
+  it('shows the signed-in client name, type and size of a file, but not where it is stored', async () => {
+    const { rows } = await pool().query<{ org_id: string }>(
+      `SELECT org_id FROM ticket WHERE id = $1`,
+      [ticketId],
+    );
+    const own = await signIn(h, 'client', rows[0]?.org_id);
+    const timeline = await own.client.get<{ entries: { attachments?: unknown[] }[] }>(
+      `/v1/tickets/${key}/timeline`,
+    );
+    expect(timeline.status).toBe(200);
+    const text = JSON.stringify(timeline.body);
+    expect(text).toContain('shot.png');
+    expect(text).not.toMatch(/objectKey|sha256|attachments\/portal/);
+    const staff = JSON.stringify((await timelineOf(agent, key)).entries);
+    expect(staff).toContain('objectKey');
   });
 
   it('is 404 for an unknown message, a wrong index, a message of another ticket, and a file never stored', async () => {

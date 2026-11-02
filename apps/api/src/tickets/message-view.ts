@@ -58,12 +58,24 @@ export function toMessage(row: MessageRow, context: MessageContext): Message {
     ...(context.audience === 'staff' && context.delivery !== undefined
       ? { delivery: context.delivery }
       : {}),
-    attachments: (Array.isArray(row.attachments) ? row.attachments : []) as Record<
-      string,
-      unknown
-    >[],
+    attachments: viewAttachments(row.attachments, context.audience),
     createdAt: row.createdAt.toISOString(),
   };
+}
+
+/**
+ * The attachments of a message as the caller may see them. Staff get the stored records. A client
+ * gets name, type and size only: the storage key and the content hash stay on the server, and the
+ * file itself is fetched through the authorised download route by its position.
+ */
+export function viewAttachments(value: unknown, audience: Audience): Record<string, unknown>[] {
+  const list = (Array.isArray(value) ? value : []) as Record<string, unknown>[];
+  if (audience === 'staff') return list;
+  return list.map((attachment) => ({
+    ...(typeof attachment.filename === 'string' ? { filename: attachment.filename } : {}),
+    ...(typeof attachment.contentType === 'string' ? { contentType: attachment.contentType } : {}),
+    ...(typeof attachment.size === 'number' ? { size: attachment.size } : {}),
+  }));
 }
 
 /** Event payload keys a client may see, per event type. Everything else is staff-only. */

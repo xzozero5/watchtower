@@ -159,6 +159,15 @@ export class PortalTrackingService implements OnApplicationShutdown {
     };
   }
 
+  /**
+   * Checks the token for this ticket without doing anything else. The upload interceptor calls it
+   * before it reads a multipart body, so a caller without a valid token never gets files buffered.
+   * Same single 401 for every failure, and the same audit entry, as every other portal read.
+   */
+  async authorize(token: string | undefined, ticketKey: string, ip: string | null): Promise<void> {
+    await this.access(token, ticketKey, ip);
+  }
+
   async reply(
     token: string | undefined,
     ticketKey: string,
@@ -166,11 +175,13 @@ export class PortalTrackingService implements OnApplicationShutdown {
     ip: string | null,
     files: readonly UploadedFile[] = [],
   ): Promise<PortalReplyResult> {
-    await this.limits.enforce('reply-ip', ip ?? 'unknown');
     const access = await this.access(token, ticketKey, ip);
-    await this.limits.enforce('reply-ticket', access.ticket.id);
     // Only a caller who holds a valid token for this ticket gets its files looked at and stored.
+    // The reply limits count after the files pass, so a bad file does not use up the customer's
+    // allowance (the token check above has its own per-address limit).
     const prepared = this.attachments.prepare(files);
+    await this.limits.enforce('reply-ip', ip ?? 'unknown');
+    await this.limits.enforce('reply-ticket', access.ticket.id);
     const stored = await this.attachments.put(prepared);
 
     let result;

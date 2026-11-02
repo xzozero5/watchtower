@@ -32,8 +32,26 @@
 		respond 404
 	}
 
+	# Request bodies are capped before they reach the api, which buffers a portal upload in memory
+	# (T-140, ADR-007): 26 MB on the two portal routes that take files (the api allows 25 MB of
+	# files plus form fields), 1 MB everywhere else. A larger body is cut off with 413.
 	handle_path /api/* {
-		reverse_proxy api:4000
+		@portalUpload {
+			method POST
+			path_regexp ^/v1/portal/tickets(/[^/]+/replies)?$
+		}
+		handle @portalUpload {
+			request_body {
+				max_size 26MB
+			}
+			reverse_proxy api:4000
+		}
+		handle {
+			request_body {
+				max_size 1MB
+			}
+			reverse_proxy api:4000
+		}
 	}
 
 	@api path /docs /docs/* /docs-json /docs-yaml /ws /ws/*

@@ -131,15 +131,21 @@ function isHiddenCharacter(code: number): boolean {
 export function sanitizeFileName(raw: string): string {
   let name = raw.normalize('NFC');
   name = name.slice(Math.max(name.lastIndexOf('/'), name.lastIndexOf('\\')) + 1);
-  name = Array.from(name)
-    .filter((char) => !isHiddenCharacter(char.codePointAt(0) ?? 0))
-    .join('');
-  name = name.trim().replace(/^\.+/, '');
-  if (name === '') return 'file';
-  if (name.length <= PORTAL_ATTACHMENT_MAX_NAME) return name;
-  const dot = name.lastIndexOf('.');
-  const ext = dot > 0 && name.length - dot <= 12 ? name.slice(dot) : '';
-  return `${name.slice(0, PORTAL_ATTACHMENT_MAX_NAME - ext.length)}${ext}`;
+  // Work in code points, never UTF-16 units: cutting between the halves of a surrogate pair leaves a
+  // lone surrogate, which is not valid text (Postgres refuses it in jsonb, encodeURIComponent throws).
+  // A lone surrogate that arrives in the name is dropped for the same reason.
+  const chars = Array.from(name).filter((char) => {
+    const code = char.codePointAt(0) ?? 0;
+    return !isHiddenCharacter(code) && !(code >= 0xd800 && code <= 0xdfff);
+  });
+  while (chars[0] === ' ' || chars[0] === '.') chars.shift();
+  while (chars.at(-1) === ' ') chars.pop();
+  if (chars.length === 0) return 'file';
+  if (chars.length <= PORTAL_ATTACHMENT_MAX_NAME) return chars.join('');
+  const dot = chars.lastIndexOf('.');
+  const extLength = dot > 0 && chars.length - dot <= 12 ? chars.length - dot : 0;
+  const head = chars.slice(0, PORTAL_ATTACHMENT_MAX_NAME - extLength);
+  return head.join('') + chars.slice(chars.length - extLength).join('');
 }
 
 /**

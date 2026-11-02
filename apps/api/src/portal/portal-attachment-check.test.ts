@@ -14,6 +14,15 @@ const JPEG = Uint8Array.from([0xff, 0xd8, 0xff, 0xe0, 0, 0x10]);
 const GIF = new TextEncoder().encode('GIF89a\u0001\u0000');
 const WEBP = new TextEncoder().encode('RIFF\u0000\u0000\u0000\u0000WEBPVP8 ');
 const PDF = new TextEncoder().encode('%PDF-1.7\n%%EOF');
+/** True when the text has no lone surrogate (`encodeURIComponent` throws on one, Postgres jsonb refuses it). */
+function wellFormed(value: string): boolean {
+  try {
+    encodeURIComponent(value);
+    return true;
+  } catch {
+    return false;
+  }
+}
 const text = (value: string) => new TextEncoder().encode(value);
 
 function refusal(files: Parameters<typeof checkAttachments>[0]) {
@@ -159,6 +168,24 @@ describe('sanitizeFileName', () => {
   it('drops control and bidirectional override characters, which can disguise an extension', () => {
     expect(sanitizeFileName('invoice\u202egpj.exe')).toBe('invoicegpj.exe');
     expect(sanitizeFileName('a\u0000b\nc.txt')).toBe('abc.txt');
+  });
+
+  it('cuts by code points, so an emoji at the limit is kept whole or dropped, never split', () => {
+    for (const filler of [117, 118, 119, 120, 121]) {
+      const name = sanitizeFileName(`${'a'.repeat(filler)}😀😀😀😀.png`);
+      expect(wellFormed(name), String(filler)).toBe(true);
+      expect(Array.from(name).length).toBeLessThanOrEqual(120);
+      expect(name.endsWith('.png')).toBe(true);
+      // Valid text for Postgres jsonb and for encodeURIComponent.
+      expect(() => encodeURIComponent(name)).not.toThrow();
+      expect(JSON.stringify(name)).not.toMatch(/\\ud[89a-f][0-9a-f]{2}/i);
+    }
+  });
+
+  it('drops a lone surrogate that arrives in the name', () => {
+    const name = sanitizeFileName('a\ud800b\udc00c.txt');
+    expect(name).toBe('abc.txt');
+    expect(wellFormed(name)).toBe(true);
   });
 
   it('gives an empty name a default and shortens a long one but keeps its extension', () => {
