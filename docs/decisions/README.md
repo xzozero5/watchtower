@@ -15,5 +15,6 @@
 - [ADR-012](ADR-012-integration-credential-store.md) — Integration credential store: ตาราง `integration_credential` แยกจาก `channel_account`, envelope encryption (DEK ต่อแถว + KEK จาก HKDF + `KmsPort`), `key_version` + `credentials rotate`, env ชนะ DB, write-only ผ่าน HTTP (แก้ ADR-004, T-116a) · Accepted 2026-11-01
 - [ADR-014](ADR-014-gcp-deployment.md) — Deploy บน GCP: Cloud Run, Cloud SQL, Memorystore, GCS, Secret Manager (Terraform ยังไม่ apply)
 - [ADR-015](ADR-015-connectors-package.md) — workspace `packages/connectors` (client read-only + normalizer ของ alert, fake ก่อน live) แก้ matrix ของ ADR-002 และข้อตกลง alert ingest (idempotency, fingerprint, `closed` ไม่ปิด incident, นาฬิกา DB) (T-200/T-201) · Proposed 2026-11-02
+- [ADR-016](ADR-016-investigation-tools-human-run.md) — Investigation tools ที่คนกดและที่ AI ใช้: template ต่อ intent (ค่าเป็น literal/bind ไม่ใช่ข้อความ), data query ที่ไม่พึ่งการอ่าน SQL (extended protocol + cursor + READ ONLY tx + role สองชั้น + เพิกถอน function แบบ allow-list + cap ไบต์), `product_mock` แยก DB, evidence card ที่ redact แล้ว, status panel, ad-hoc เฉพาะ lead/head, สิ่งที่ DB จริงต้องมี (T-203c/d, T-208) · Proposed 2026-11-02
 - ADR ใหม่: `ADR-00x-<slug>.md` ตาม `docs/templates/adr.template.md` แล้วเพิ่มบรรทัดที่นี่
 - Review records (security/po) เก็บเป็น `T-xxx-review.md` ในโฟลเดอร์นี้

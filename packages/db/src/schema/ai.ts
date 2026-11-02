@@ -109,7 +109,7 @@ export const aiTicketInsight = pgTable(
 export const toolExecution = pgTable(
   'tool_execution',
   {
-    id: uuid('id').primaryKey().defaultRandom(),
+    id: uuid('id').notNull().defaultRandom(),
     createdAt: timestamptz('created_at').notNull().defaultNow(),
     finishedAt: timestamptz('finished_at'),
     ticketId: uuid('ticket_id').references(() => ticket.id, { onDelete: 'restrict' }),
@@ -127,6 +127,8 @@ export const toolExecution = pgTable(
     mock: boolean('mock').notNull().default(false),
   },
   (table) => [
+    // Partitioned by month (migration 0064): the primary key holds the partition key.
+    primaryKey({ columns: [table.id, table.createdAt] }),
     index('tool_execution_ticket_idx').on(table.ticketId, table.createdAt.desc()),
     index('tool_execution_tool_idx').on(table.tool, table.createdAt.desc()),
     index('tool_execution_run_idx').on(table.runKey),

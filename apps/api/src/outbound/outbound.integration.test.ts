@@ -112,7 +112,8 @@ describe('replying on Gmail', () => {
     });
     const hold = Date.parse(delivery.sendAt) - Date.now();
     expect(hold).toBeGreaterThan(3_000);
-    expect(hold).toBeLessThanOrEqual(5_500);
+    // The hold is stamped by the database clock and read here by this process' clock.
+    expect(hold).toBeLessThanOrEqual(6_000);
 
     // Staff see the delivery in the timeline; the first response is not counted yet.
     const [outbound] = (await messagesOf(agent, ticketId)).filter(

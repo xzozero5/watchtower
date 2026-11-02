@@ -455,3 +455,35 @@ describe('.env.example', () => {
     expect(issues.get('APP_ENCRYPTION_KEY')).toContain('placeholder');
   });
 });
+
+describe('PRODUCT_DB_URL (T-203c)', () => {
+  const mock = 'postgres://product_mock_ro:product_mock_ro@localhost:5432/product_mock';
+  const real = `postgres://reader:${'k'.repeat(24)}@db.internal:5432/product`;
+  const hosted = {
+    ...productionEnv,
+    NODE_ENV: 'development',
+    APP_URL: 'https://ops.example.com',
+  };
+
+  it('lets the local mock login through on a local run and nowhere else', () => {
+    expect(issuesFor({ ...validEnv, PRODUCT_DB_URL: mock }).has('PRODUCT_DB_URL')).toBe(false);
+    expect(issuesFor({ ...hosted, PRODUCT_DB_URL: mock }).get('PRODUCT_DB_URL')).toContain(
+      'real password',
+    );
+    expect(issuesFor({ ...productionEnv, PRODUCT_DB_URL: mock }).get('PRODUCT_DB_URL')).toContain(
+      'real password',
+    );
+    const noPassword = 'postgres://reader@db.internal/product';
+    expect(issuesFor({ ...productionEnv, PRODUCT_DB_URL: noPassword }).has('PRODUCT_DB_URL')).toBe(
+      true,
+    );
+    expect(issuesFor({ ...productionEnv, PRODUCT_DB_URL: real }).has('PRODUCT_DB_URL')).toBe(false);
+    expect(issuesFor({ ...hosted, PRODUCT_DB_URL: real }).has('PRODUCT_DB_URL')).toBe(false);
+  });
+
+  it('never echoes the password', () => {
+    const message =
+      issuesFor({ ...productionEnv, PRODUCT_DB_URL: mock }).get('PRODUCT_DB_URL') ?? '';
+    expect(message).not.toContain('product_mock_ro');
+  });
+});

@@ -80,7 +80,6 @@ const workerEnvSchema = createEnvSchema({
    * development).
    */
   AI_TOOLS_WITHOUT_READONLY_LOGIN: z.preprocess(emptyToUndefined, z.stringbool().default(false)),
-  AI_TOOL_FIXTURES_DIR: z.preprocess(emptyToUndefined, z.string().min(1).optional()),
   /**
    * Cleanup job (T-117): days to keep an expired or revoked session, refresh token, magic link or
    * tracking link before it is deleted. `[ASSUMED]` 7.

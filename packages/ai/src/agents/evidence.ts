@@ -38,8 +38,9 @@ const clamp01 = (value: number): number => Math.min(1, Math.max(0, value));
 const cut = (text: string, max: number): string =>
   text.length <= max ? text : `${text.slice(0, max - 1)}…`;
 
-/** Mock logs and rows carry no confidence of their own: a fixture is an example, not a measurement. */
+/** Mock logs and rows carry no confidence of their own: a fixture is an example, not a measurement. A real system's rows are facts read, but still not a diagnosis. */
 const MOCK_CONFIDENCE = 0.3;
+const LIVE_CONFIDENCE = 0.6;
 
 /**
  * Turns the (already validated) output of a tool into evidence cards, one per hit or one summary
@@ -97,11 +98,11 @@ export function rawEvidenceFrom(tool: string, output: unknown): RawEvidence[] {
         {
           kind: 'log' as const,
           tool,
-          title: `Logs: ${String(parsed.items.length)} entries (mock data)`,
+          title: `Logs: ${String(parsed.items.length)} entries${parsed.mock ? ' (mock data)' : ''}`,
           snippet: cut(lines.join('\n'), 1000),
-          confidence: MOCK_CONFIDENCE,
+          confidence: parsed.mock ? MOCK_CONFIDENCE : LIVE_CONFIDENCE,
           customerSafe: false,
-          mock: true,
+          mock: parsed.mock,
         },
       ];
     }
@@ -115,11 +116,11 @@ export function rawEvidenceFrom(tool: string, output: unknown): RawEvidence[] {
         {
           kind: 'data' as const,
           tool,
-          title: `Query: ${String(parsed.items.length)} rows (mock data)`,
+          title: `Query: ${String(parsed.items.length)} rows${parsed.mock ? ' (mock data)' : ''}`,
           snippet: cut([parsed.columns.join(' | '), ...rows].join('\n'), 1000),
-          confidence: MOCK_CONFIDENCE,
+          confidence: parsed.mock ? MOCK_CONFIDENCE : LIVE_CONFIDENCE,
           customerSafe: false,
-          mock: true,
+          mock: parsed.mock,
         },
       ];
     }
@@ -133,11 +134,11 @@ export function rawEvidenceFrom(tool: string, output: unknown): RawEvidence[] {
         {
           kind: 'repo' as const,
           tool,
-          title: `Changes: ${String(parsed.items.length)} (mock data)`,
+          title: `Changes: ${String(parsed.items.length)}${parsed.mock ? ' (mock data)' : ''}`,
           snippet: cut(lines.join('\n'), 1000),
-          confidence: MOCK_CONFIDENCE,
+          confidence: parsed.mock ? MOCK_CONFIDENCE : LIVE_CONFIDENCE,
           customerSafe: false,
-          mock: true,
+          mock: parsed.mock,
         },
       ];
     }

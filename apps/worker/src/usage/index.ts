@@ -5,12 +5,14 @@ import { UnrecoverableError, type Job } from 'bullmq';
 
 import type { WorkerLogger } from '../logger.js';
 import type { ProcessorContext } from '../processors/index.js';
+import { usageDataPortFromConfig } from './data-port.js';
 
 /** What a test replaces; production passes none. */
 export interface UsageOverrides {
   /**
-   * The product data. Absent: the scheduler runs nothing (this build has no connection to a product
-   * database; the data client of T-203 is wired here when it lands, behind `[ASK-HUMAN]` for the real one).
+   * The product data. Absent: the one built from the environment (the data client of T-203, mock data in
+   * development); with that missing too the scheduler runs nothing (this build has no connection to a product
+   * database; the real one is behind `[ASK-HUMAN]`, T-208).
    */
   readonly port?: UsageDataPort;
 }
@@ -28,8 +30,10 @@ const TICK_LIMIT = 20;
  *  - `health` (daily): computes today's Client Health Score of every active organization.
  */
 export function createUsageRegistration(context: ProcessorContext) {
-  const { database, domain, logger, overrides, realtime } = context;
-  const port = overrides.usage?.port;
+  const { database, domain, logger, overrides, realtime, config } = context;
+  // A test hands its own port; otherwise the product data comes through the guarded client of T-203
+  // (the product database behind PRODUCT_DB_URL, or a fake over the fixtures). Neither: nothing runs.
+  const port = overrides.usage?.port ?? usageDataPortFromConfig(config, database.db);
   const redactor = createRedactor();
   let announced = false;
 

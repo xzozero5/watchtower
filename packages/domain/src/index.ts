@@ -110,7 +110,6 @@ import { updateTicket } from './tickets/update.js';
 import type { Actor, CsatConfig, DomainConfig, DomainContext } from './types.js';
 import { workflowAllows } from './workflow.js';
 
-export { authorityNow } from './clock.js';
 export { ackAlert, type AckAlertInput, type AckAlertOutcome } from './alerts/ack.js';
 export {
   escalationStepsFor,
@@ -216,6 +215,7 @@ export {
   type AlertFacts,
   type CatalogEntry,
 } from './alerts/match.js';
+export { authorityNow } from './clock.js';
 export { recordAuditInTx, type AuditEntry, type AuditWriter } from './audit.js';
 export {
   DEFAULT_AI_BUDGET_ALERT_PERCENT,
@@ -274,6 +274,27 @@ export {
   type ToolLedgerFinish,
   type ToolLedgerLimits,
 } from './ai/tool-ledger.js';
+export {
+  acquireRateBudget,
+  takeRateBudget,
+  type AcquireInput,
+  type RateDecision,
+  type RateRefusal,
+  type RateTx,
+} from './tools/rate-budget.js';
+export {
+  getToolTemplate,
+  listToolTemplates,
+  templateForAi,
+  templatesForTicket,
+  type ToolTemplateRecord,
+} from './tools/templates.js';
+export {
+  createHumanToolLedger,
+  type HumanToolDecision,
+  type HumanToolEntry,
+  type HumanToolLedger,
+} from './tools/human-ledger.js';
 export {
   createAiRunRecorder,
   type AiRunDatabase,

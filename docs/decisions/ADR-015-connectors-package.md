@@ -29,7 +29,14 @@
 - **Service catalog (R-3.7):** `service` + `escalation_policy` (T-201b); alert ผูกกับ service จาก `service.match_rules` (labels/ชื่อ policy ที่ตรงกัน) ไม่เจอ = `service_id IS NULL` = "unmapped" (`GET /v1/alerts/unmapped`)
 
 ### 3. งบ rate/cost ร่วม (ตัดสินที่ T-203b)
-ทุก client ใน `connectors` ที่เรียก API ที่มีโควตา (Logging 60 req/min/project) ใช้ budget เดียวต่อ project ผ่าน `rate_budget_window` และลง `tool_execution` ทุกครั้ง; ย้าย ledger ของ T-108 และ partition `tool_execution` ทำที่ T-203b ไม่ใช่ที่นี่ — ADR นี้บันทึกเพียงว่า budget เป็นของ `apps/*` ที่ฉีดเข้า client ไม่ใช่ของ `connectors` (ไม่มี DB)
+ทุก client ใน `connectors` ที่เรียก API ที่มีโควตา (Logging 60 req/min/project) ใช้ budget เดียวต่อ project ผ่าน `rate_budget_window` และลง `tool_execution` ทุกครั้ง — budget เป็นของ `apps/*` ที่ฉีดเข้า client ไม่ใช่ของ `connectors` (ไม่มี DB)
+
+**ทำแล้วที่ T-203b (migration 0064, `[TESTED]` บน Postgres จริง):**
+- `rate_budget_window(resource, slot, total, ai)` = หน้าต่างเลื่อน 60 วินาที แบ่งเป็น slot วินาที · `acquireRateBudget` (packages/domain) อ่านผลรวมหน้าต่างและตัดสินใต้ advisory lock ต่อ resource ใน transaction ของผู้เรียก ด้วยนาฬิกา DB เท่านั้น (บทเรียน T-122) · รวม 55/นาที (`LOGGING_RATE_BUDGET.totalPerMinute`, `[ASSUMED]`) ส่วนของ AI ≤ 30 (`aiPerMinute`) · โควตาจริงของ provider 60 `[CONFIRMED]` PRD R-5.1 · AI ≤ 30 (`reason: ai`) · คนรวมกันไม่เกิน 45 (พื้น 10 ของ AI, `reason: people`) · หนึ่งคนไม่เกิน 20 (`reason: person`) — ดู ADR-016 ข้อ 5a
+- resource = `logging:<project>` ร่วมคน+AI · `data:`/`repo:`/`monitoring:<project>` ร่วมคน+AI (60 รวม, AI 30 `[ASSUMED]`) · tool อื่น (kb/similar/org) ใช้ `tool:<ชื่อ>` เฉพาะ AI ขนาด `perToolPerMinute` เท่าเดิมก่อนย้าย
+- ledger ของ T-108 (`createDbToolLedger`) เลิกนับ "ต่อ tool ต่อนาที" จากแถว `tool_execution` แล้วเรียก `acquireRateBudget` ใน transaction เดียวกัน (per-run / per-ticket ยังนับจากแถวเหมือนเดิม) · คนใช้ `createHumanToolLedger` (ไม่มีเพดาน per-run/per-ticket ของ AI — เพดานคือหน้าต่างร่วม + role)
+- `tool_execution` partition รายเดือนตาม ARCH §7: PK `(id, created_at)`; `ensure_monthly_partitions` เพิ่มพารามิเตอร์ที่สี่ `updatable_columns` เพื่อให้ partition ใหม่ยังเขียน 5 คอลัมน์ปิดแถว (`status, error_code, finished_at, latency_ms, result_count`) ได้ ที่เหลือ append-only · job `maintenance:ensure-partitions` ส่งรายการคอลัมน์นี้ · down migration คืนตารางเดิมโดยไม่เสียแถว
+- หมายเหตุ: 1 การเรียก tool ของ AI = 1 หน่วยโควตา ดังนั้น tool ฝั่ง AI อ่านหน้าเดียว (`pageSize ≤ 50`) ไม่ไล่หน้า; ถ้า live adapter ต้องไล่หน้า ต้องใช้ 1 หน่วยต่อหน้า (T-208)
 
 ## Options considered
 - **A — ใส่ใน `packages/channels`** — ไม่ต้องมี workspace ใหม่ แต่ผสม adapter สองทาง (มี `send`) กับ client read-only; ตรวจ N2 แยกไม่ได้ และ `channels` forbid `persistence` อยู่แล้วจึงไม่ได้ประโยชน์อะไร
