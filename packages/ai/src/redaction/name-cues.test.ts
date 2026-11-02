@@ -97,6 +97,72 @@ describe('name cues, Thai', () => {
   });
 });
 
+describe('Thai deny list is whole-run only (security review P1-1)', () => {
+  it.each([
+    ['คุณสมบัติ ใจดี โทรมา', 'คุณ[NAME_1] [NAME_2] โทรมา'],
+    ['คุณวุฒิชัย แจ้งว่า', 'คุณ[NAME_1] แจ้งว่า'],
+    ['คุณธรรมศักดิ์ ติดต่อ', 'คุณ[NAME_1] ติดต่อ'],
+    ['นางเอกอนงค์', 'นาง[NAME_1]'],
+  ])('%s', (input, expected) => {
+    expect(redact(input)).toBe(expected);
+  });
+});
+
+describe('more cues (security review P2-3)', () => {
+  it.each([
+    ['my name is somchai jaidee and I need help', 'my name is [NAME_1] jaidee and I need help'],
+    ['Name: somchai', 'Name: [NAME_1]'],
+    ['ชื่อ somchai', 'ชื่อ [NAME_1]'],
+    ['Mr.Somchai Jaidee wrote', 'Mr.[NAME_1] [NAME_2] wrote'],
+    ['Dr Somchai wrote', 'Dr [NAME_1] wrote'],
+    ['Miss Somchai wrote', 'Miss [NAME_1] wrote'],
+    ['Khun Somchai wrote', 'Khun [NAME_1] wrote'],
+    ['K. Somchai wrote', 'K. [NAME_1] wrote'],
+    ['Regards\nSomchai Jaidee', 'Regards\n[NAME_1] [NAME_2]'],
+    ['Thanks\nSomchai', 'Thanks\n[NAME_1]'],
+    ['Cheers,\nSomchai', 'Cheers,\n[NAME_1]'],
+    ['Best,\nSomchai', 'Best,\n[NAME_1]'],
+    ['Thanks,Somchai', 'Thanks,[NAME_1]'],
+    ['Hi Somchai Jaidee, the export fails', 'Hi [NAME_1] [NAME_2], the export fails'],
+    ['Hello Somchai,', 'Hello [NAME_1],'],
+    ['I am Somchai Jaidee', 'I am [NAME_1] [NAME_2]'],
+    ["I'm Somchai", "I'm [NAME_1]"],
+    ['From: Somchai Jaidee <x@y.example>', 'From: [NAME_1] [NAME_2] <[EMAIL_1]>'],
+  ])('%s', (input, expected) => {
+    expect(redact(input)).toBe(expected);
+  });
+
+  it('does not take a lower-case word after this is / dear', () => {
+    expect(redact('this is somchai')).toBe('this is somchai');
+    expect(redact('dear somchai')).toBe('dear somchai');
+  });
+
+  it('keeps ordinary sentences intact', () => {
+    for (const text of [
+      'I am unable to log in',
+      'I am Not sure',
+      'Hi team, hello all',
+      'Thanks\nthe finance team',
+      'the best, most reliable option',
+    ]) {
+      expect(redact(text)).toBe(text);
+    }
+  });
+});
+
+describe('provenance of a tool-origin cue name (security review P3-2)', () => {
+  it('is not restored for the customer and flags the text for review', () => {
+    const session = redactor.session({ scope: 'ticket:tool-restore' });
+    const redacted = session.redactToolOutput('kb_search', 'This is Somchai from case 12');
+    expect(redacted).toContain('[NAME_1]');
+    const result = session.restore('Ask [NAME_1] about it.', 'customer');
+    expect(result.needsReview).toBe(true);
+    expect(result.unresolved).toEqual(['[NAME_1]']);
+    expect(result.text).not.toContain('Somchai');
+    expect(session.restore('Ask [NAME_1]', 'internal').text).toBe('Ask Somchai');
+  });
+});
+
 describe('false-positive guards', () => {
   it.each([
     'this is a bug in the export',
@@ -114,14 +180,19 @@ describe('false-positive guards', () => {
     'Thanks, I will check',
     'Regards,\nthe finance team',
     'คุณภาพของระบบแย่มาก',
-    'คุณสมบัติของลูกค้า',
+    'คุณภาพ',
+    'คุณสามารถรีเซ็ตได้ไหม',
+    'คุณช่วยตรวจสอบหน่อย',
+    'คุณจะได้รับอีเมลยืนยัน',
+    'Hi Team,',
+    'Hello Support',
     'ขอบคุณครับ',
     'ขอบคุณมากค่ะ',
     'นายจ้างของลูกค้า',
-    'นายหน้าขายประกัน',
+    'นายหน้า ขายประกัน',
     'ชื่อเสียงของบริษัท',
     'ชื่อผู้ใช้ไม่ถูกต้อง',
-    'ชื่อบริษัทผิด',
+    'ชื่อบริษัท ผิด',
     'สวัสดีครับ มีปัญหาเรื่องการเข้าสู่ระบบ',
   ])('leaves "%s" alone', (input) => {
     expect(redact(input)).toBe(input);
@@ -139,10 +210,9 @@ describe('false-positive guards', () => {
 
 describe('known gap (ADR-008, T-153): a name with no cue and not in the dictionary', () => {
   it('is still not found; closing this gap (NER) is a deliberate change', () => {
-    expect(redact('Hi Somchai Jaidee, the export fails')).toBe(
-      'Hi Somchai Jaidee, the export fails',
+    expect(redact('The ticket was raised by Somchai Jaidee')).toBe(
+      'The ticket was raised by Somchai Jaidee',
     );
-    expect(redact('I am Somchai')).toBe('I am Somchai');
   });
 });
 

@@ -36,7 +36,7 @@ import { z } from 'zod';
 import type { WorkerLogger } from '../logger.js';
 import type { RealtimeSink } from '../realtime.js';
 import { NEEDS_HUMAN_LABELS } from './brief.js';
-import { ticketPeopleNames } from './people-names.js';
+import { ticketPeopleNames, warnIfIncomplete } from './people-names.js';
 import type { AiRuntime } from './runtime.js';
 import {
   createKbSearchPort,
@@ -297,7 +297,8 @@ export async function runInvestigation(
   const stage = ticketIntent === undefined ? 0 : effectiveStage(ticketIntent.stage);
   const scopeStage = Math.min(4, Math.max(0, stage)) as AutonomyStage;
 
-  const agents = runtime.agentDeps(contacts);
+  warnIfIncomplete(deps.logger, ticket.id, contacts);
+  const agents = runtime.agentDeps(contacts.names, { dictionaryIncomplete: !contacts.complete });
   const session = agents.redactor.session({ scope: ticket.id });
   const signal = AbortSignal.timeout(deps.deadlineMs ?? AI_INVESTIGATION_DEADLINE_MS);
 
@@ -337,7 +338,7 @@ export async function runInvestigation(
       ),
     );
     for (const tool of investigationTools({
-      kb: createKbSearchPort({ db, ai: runtime, names: contacts }),
+      kb: createKbSearchPort({ db, ai: runtime, names: contacts.names }),
       tickets: createSimilarTicketsPort(deps.readDb, keys),
       org: createOrgContextPort(deps.readDb),
       systems: deps.systems,

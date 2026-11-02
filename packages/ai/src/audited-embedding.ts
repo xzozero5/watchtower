@@ -105,7 +105,14 @@ export function createAuditedEmbedder(deps: AuditedEmbedderDeps) {
         }),
         output: null,
         confidence: null,
-        redaction: { total: report.total, byKind: { ...report.byKind } },
+        // `dictionary_incomplete: 1` marks a run whose name dictionary was cut short (QA-30); no value is stored.
+        redaction: {
+          total: report.total,
+          byKind: {
+            ...report.byKind,
+            ...(report.dictionaryIncomplete === true ? { dictionary_incomplete: 1 } : {}),
+          },
+        },
         intent: null,
         ticketId: null,
         startedAt: new Date(startedAt).toISOString(),

@@ -18,7 +18,7 @@ import { asc, eq } from 'drizzle-orm';
 
 import type { WorkerLogger } from '../logger.js';
 import { loadActiveIntents } from './classifier-hook.js';
-import { ticketPeopleNames } from './people-names.js';
+import { ticketPeopleNames, warnIfIncomplete } from './people-names.js';
 import type { AiRuntime } from './runtime.js';
 
 const MAX_MESSAGES = 60;
@@ -142,7 +142,8 @@ export async function makeAiBrief(deps: BriefDeps, ticketId: string): Promise<Br
   }));
   const firstCustomer = turns.find((turn) => turn.from === 'customer')?.text ?? '';
 
-  const agents = runtime.agentDeps(contacts);
+  warnIfIncomplete(deps.logger, ticket.id, contacts);
+  const agents = runtime.agentDeps(contacts.names, { dictionaryIncomplete: !contacts.complete });
   const session = agents.redactor.session({ scope: ticketId });
 
   const classified = await classifyTicket(agents, {

@@ -68,7 +68,7 @@ export interface AiRuntime {
   readonly provider: ProviderKind;
   readonly caps: AiCaps;
   /** Agent dependencies whose redactor knows the names of the people in one ticket. */
-  agentDeps(names: readonly string[]): AgentDeps;
+  agentDeps(names: readonly string[], options?: { dictionaryIncomplete?: boolean }): AgentDeps;
   /** The ingest classifier hook factory (ADR-009 step 4). */
   readonly classifierFor: InboundClassifierFactory;
   readonly prompts: PromptCatalog;
@@ -207,9 +207,15 @@ export function createAiRuntime(
     return { ready: found.length === 0, problems: found };
   };
 
-  const agentDeps = (names: readonly string[]): AgentDeps => ({
+  const agentDeps = (
+    names: readonly string[],
+    options: { dictionaryIncomplete?: boolean } = {},
+  ): AgentDeps => ({
     llm,
-    redactor: createRedactor({ names: () => names }),
+    redactor: createRedactor({
+      names: () => names,
+      ...(options.dictionaryIncomplete === true ? { dictionaryIncomplete: true } : {}),
+    }),
     prompts,
     guard,
   });

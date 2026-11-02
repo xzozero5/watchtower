@@ -5,7 +5,7 @@ import type { AiInsightReason } from '@watchtower/shared';
 import { asc, eq } from 'drizzle-orm';
 
 import type { WorkerLogger } from '../logger.js';
-import { ticketPeopleNames } from './people-names.js';
+import { ticketPeopleNames, warnIfIncomplete } from './people-names.js';
 import type { AiRuntime } from './runtime.js';
 
 const MAX_MESSAGES = 60;
@@ -87,7 +87,8 @@ export async function runKbAuthor(
     text: message.text,
   }));
 
-  const agents = runtime.agentDeps(contacts);
+  warnIfIncomplete(deps.logger, ticket.id, contacts);
+  const agents = runtime.agentDeps(contacts.names, { dictionaryIncomplete: !contacts.complete });
   const outcome = await authorKbDraft(agents, {
     ticketId: ticket.id,
     subject: ticket.subject,
