@@ -1,6 +1,6 @@
 'use client';
 
-import type { TicketStatus } from '@watchtower/shared';
+import { hasOutboundChannel, type TicketStatus } from '@watchtower/shared';
 import {
   Alert,
   Button,
@@ -73,9 +73,37 @@ export interface ComposerHandle {
 const MIN_ROWS = 3;
 const MAX_ROWS = 12;
 
+const KNOWN_ERROR_CODES: readonly string[] = [
+  'invalid_transition',
+  'ticket_not_open',
+  'forbidden',
+  'network',
+  'channel_no_outbound',
+];
+
+/**
+ * What to tell the person when a send failed: our own (translated) words for the codes we know,
+ * the api's own message for any other code it explained, and the generic line only when the api
+ * said nothing useful.
+ */
+export function sendErrorText(error: unknown, t: (key: MessageKey) => string): string {
+  if (
+    isApiError(error) &&
+    error.code !== 'unknown' &&
+    error.code !== 'invalid_response' &&
+    !KNOWN_ERROR_CODES.includes(error.code) &&
+    error.message
+  ) {
+    return error.message;
+  }
+  return t(errorKey(error));
+}
+
 function errorKey(error: unknown): MessageKey {
   if (!isApiError(error)) return 'composer.errors.generic';
   switch (error.code) {
+    case 'channel_no_outbound':
+      return 'composer.errors.channelNoOutbound';
     case 'invalid_transition':
       return 'composer.errors.invalidTransition';
     case 'ticket_not_open':
@@ -131,7 +159,15 @@ export function Composer({
   const canNote = can('ticket.handle');
   const isStaff = can('ticket.reply');
 
-  const [mode, setMode] = useState<Mode>(initialMode === 'note' || !canReply ? 'note' : 'reply');
+  // A phone, walk-in, chat, other or internal ticket has nowhere to send a reply: the api would
+  // answer 409 channel_no_outbound, so the reply side is switched off up front.
+  const ticketChannel = 'channel' in ticket ? ticket.channel : null;
+  const noOutbound = ticketChannel !== null && !hasOutboundChannel(ticketChannel);
+  const replyAllowed = canReply && !noOutbound;
+
+  const [mode, setMode] = useState<Mode>(
+    initialMode === 'note' || !replyAllowed ? 'note' : 'reply',
+  );
   const [bodies, setBodies] = useState<Record<Mode, string>>(() => ({
     reply: draftStore.get(ticket.key, 'reply'),
     note: draftStore.get(ticket.key, 'note'),
@@ -173,7 +209,7 @@ export function Composer({
     () => {
       focusComposer('reply');
     },
-    canReply,
+    replyAllowed,
   );
   useShortcut(
     'n',
@@ -184,7 +220,7 @@ export function Composer({
   );
 
   const quote = (text: string) => {
-    if (!canReply) return;
+    if (!replyAllowed) return;
     setMode('reply');
     setBodies((current) => {
       const next = `${current.reply}${current.reply && !current.reply.endsWith('\n') ? '\n\n' : ''}${asQuote(text)}`;
@@ -197,7 +233,7 @@ export function Composer({
   useImperativeHandle(handleRef, () => ({
     quote,
     focus: (target) => {
-      if (target === 'reply' && canReply) setMode('reply');
+      if (target === 'reply' && replyAllowed) setMode('reply');
       if (target === 'note' && canNote) setMode('note');
       setFocusTick((tick) => tick + 1);
     },
@@ -347,7 +383,7 @@ export function Composer({
         )}
       >
         <div className="flex flex-wrap items-center gap-2 px-2 pt-2">
-          {canReply && canNote ? (
+          {replyAllowed && canNote ? (
             <SegmentedControl
               aria-label={t('composer.modeGroup')}
               value={mode}
@@ -375,6 +411,17 @@ export function Composer({
               {modeLabel}
             </span>
           )}
+          {noOutbound && canReply ? (
+            <span
+              data-testid="reply-off"
+              aria-disabled="true"
+              className="inline-flex h-7 items-center gap-1.5 rounded-full px-2 text-sm font-medium text-muted-foreground line-through opacity-60"
+            >
+              <MessageCircle aria-hidden className="size-3.5" />
+              {t('composer.modes.reply')}
+              <span className="sr-only">{t('composer.noOutbound.off')}</span>
+            </span>
+          ) : null}
           {isNote ? (
             <p className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
               <Lock aria-hidden className="size-3.5" />
@@ -524,6 +571,14 @@ export function Composer({
 
       {showVia && viaLine ? <LineQuotaNote quota={quota.data} /> : null}
 
+      {noOutbound && canReply ? (
+        <Alert tone="info" title={t('composer.noOutbound.title')} className="mt-2">
+          <span data-testid="no-outbound">
+            {t('composer.noOutbound.body', { channel: t(`channel.${ticketChannel}`) })}
+          </span>
+        </Alert>
+      ) : null}
+
       {unresolved.length > 0 ? (
         <Alert tone="error" title={t('composer.unresolved.title')} className="mt-2">
           {t('composer.unresolved.body', { names: unresolved.join(', ') })}
@@ -532,7 +587,7 @@ export function Composer({
 
       {mutation.isError ? (
         <Alert tone="error" title={t('composer.errors.title')} className="mt-2">
-          {t(errorKey(mutation.error))}
+          {sendErrorText(mutation.error, t)}
         </Alert>
       ) : null}
 

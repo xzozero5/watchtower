@@ -2,16 +2,7 @@
 
 import type { UseQueryResult } from '@tanstack/react-query';
 import type { AiProgress, TicketAiInsight } from '@watchtower/shared';
-import {
-  Button,
-  IconButton,
-  IntentChip,
-  Skeleton,
-  StageBadge,
-  TintChip,
-  toast,
-  Tooltip,
-} from '@watchtower/ui';
+import { Button, IntentChip, Skeleton, StageBadge, TintChip, toast, Tooltip } from '@watchtower/ui';
 import {
   ArrowUpRight,
   Bot,
@@ -268,7 +259,10 @@ export function AiBrief({
           >
             <Bot className="size-3.5" />
           </span>
-          <AiStateChip state={insight.state} />
+          <AiStateChip
+            state={insight.state}
+            intentMatched={intent !== undefined || ticket.intent != null}
+          />
           <AiStageBadge stage={insight.stage} />
           {paused ? (
             <TintChip tone="slate" icon={PauseCircle} title={t('ai.brief.pausedTip')}>
@@ -286,7 +280,16 @@ export function AiBrief({
         </header>
 
         {insight.summary ? (
-          <p className="flex max-w-[72ch] flex-wrap items-center gap-x-2 gap-y-1 text-sm text-foreground">
+          <p
+            data-testid="ai-summary"
+            className="flex max-w-[72ch] flex-wrap items-center gap-x-2 gap-y-1 text-sm text-foreground"
+          >
+            <span
+              title={t('ai.brief.aiTip')}
+              className="inline-flex h-4 items-center rounded-sm bg-ai-subtle px-1 text-[10px] leading-none font-semibold text-foreground ring-1 ring-ai-accent/40 ring-inset"
+            >
+              {t('ai.brief.ai')}
+            </span>
             <AiProse text={insight.summary} />
           </p>
         ) : null}
@@ -294,9 +297,28 @@ export function AiBrief({
         {progress && insight.state === 'investigating' ? <Progress progress={progress} /> : null}
 
         {insight.state === 'failed' ? (
-          <p role="status" className="text-sm text-muted-foreground">
-            {t('ai.brief.failed')}
-          </p>
+          <div
+            role="status"
+            data-testid="ai-failed"
+            className="flex flex-wrap items-center gap-x-3 gap-y-1"
+          >
+            <p className="text-sm text-muted-foreground">
+              {t('ai.brief.failed')}
+              {insight.reasonCode ? ` ${t(`ai.brief.failedWhy.${insight.reasonCode}`)}` : ''}
+            </p>
+            {canRequest ? (
+              <Button
+                className="rounded-full"
+                disabled={!canAsk}
+                onClick={() => {
+                  ask('investigate');
+                }}
+              >
+                <RefreshCw aria-hidden className="size-4" />
+                {t('ai.brief.retry')}
+              </Button>
+            ) : null}
+          </div>
         ) : null}
 
         {intent ? (
@@ -343,13 +365,15 @@ export function AiBrief({
               </p>
             ) : null}
             {canWrite ? (
-              <IconButton
-                variant="secondary"
-                label={t('ai.brief.writeMyself')}
+              <Tooltip
+                content={t('ai.brief.writeMyself')}
                 shortcut={singleKeyShortcuts ? ['C'] : []}
-                icon={<PenLine aria-hidden className="size-4" />}
-                onClick={onWriteMyself}
-              />
+              >
+                <Button variant="secondary" className="rounded-full" onClick={onWriteMyself}>
+                  <PenLine aria-hidden className="size-4" />
+                  {t('ai.brief.writeMyself')}
+                </Button>
+              </Tooltip>
             ) : null}
           </div>
         ) : null}
@@ -368,15 +392,17 @@ export function AiBrief({
                 {t('ai.request.draft')}
               </Button>
             ) : null}
-            <IconButton
+            <Button
               variant="secondary"
-              label={t('ai.request.investigate')}
-              icon={<RefreshCw aria-hidden className="size-4" />}
+              className="rounded-full"
               disabled={!canAsk}
               onClick={() => {
                 ask('investigate');
               }}
-            />
+            >
+              <RefreshCw aria-hidden className="size-4" />
+              {t('ai.request.investigate')}
+            </Button>
           </div>
         ) : null}
 
@@ -385,20 +411,16 @@ export function AiBrief({
             {evidence.map((entry) => {
               const Icon = EVIDENCE_ICONS[entry.kind];
               const kind = t(`ai.evidence.kinds.${entry.kind}`);
-              const band = t(`ai.evidence.match.${confidenceBand(entry.confidence)}`);
+              const relevance = t('ai.evidence.relevance', {
+                band: t(`ai.brief.band.${confidenceBand(entry.confidence)}`),
+                value: formatConfidence(entry.confidence),
+              });
               return (
                 <li key={entry.id} className="min-w-0">
                   <button
                     type="button"
                     data-evidence={entry.id}
-                    title={
-                      demo
-                        ? t('ai.brief.demoTip')
-                        : t('ai.evidence.matchTip', {
-                            band,
-                            value: formatConfidence(entry.confidence),
-                          })
-                    }
+                    title={demo ? t('ai.brief.demoTip') : relevance}
                     onClick={() => {
                       onOpenEvidence(entry.id);
                     }}
@@ -407,7 +429,7 @@ export function AiBrief({
                     <Icon aria-hidden className="size-3.5 shrink-0 text-ai-accent" />
                     <span className="sr-only">{kind}:</span>{' '}
                     <span className="truncate">{entry.title}</span>{' '}
-                    <span className="sr-only">{demo ? t('ai.brief.demo') : band}</span>
+                    <span className="sr-only">{demo ? t('ai.brief.demo') : relevance}</span>
                   </button>
                 </li>
               );

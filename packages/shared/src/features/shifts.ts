@@ -818,7 +818,20 @@ export const assigneeSchema = z.object({
 });
 export type Assignee = z.infer<typeof assigneeSchema>;
 
-export const assigneeListSchema = z.object({ assignees: z.array(assigneeSchema) });
+/**
+ * Why the list holds who it holds. `queue`: a queue with members was given, so `inQueue` is
+ * meaningful (the list still holds every assignable person, members are marked). `all_staff`: no
+ * queue was given, it does not exist or it has no members, so `inQueue` is false for all and the
+ * list is simply every active agent, lead and head.
+ */
+export const ASSIGNEE_SCOPES = ['queue', 'all_staff'] as const;
+export const assigneeScopeSchema = z.enum(ASSIGNEE_SCOPES);
+export type AssigneeScope = z.infer<typeof assigneeScopeSchema>;
+
+export const assigneeListSchema = z.object({
+  scope: assigneeScopeSchema,
+  assignees: z.array(assigneeSchema),
+});
 export type AssigneeList = z.infer<typeof assigneeListSchema>;
 
 // --- SLA remaining, as the ticket list serves it ---

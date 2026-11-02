@@ -113,7 +113,7 @@ export async function mockOps(page: Page, options: OpsBackendOptions = {}) {
       return { status: 201, json: created };
     },
     'GET /v1/heartbeats': () => ({ json: { items: [heartbeat()] } }),
-    'GET /v1/assignees': () => ({ json: { assignees: [] } }),
+    'GET /v1/assignees': () => ({ json: { scope: 'all_staff', assignees: [] } }),
     // Staff side of the status page.
     'GET /v1/status-page/components': () => ({
       json: { items: [statusComponent(1), statusComponent(2, { public: false })] },

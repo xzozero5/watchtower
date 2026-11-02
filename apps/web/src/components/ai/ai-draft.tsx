@@ -311,26 +311,30 @@ export function AiDraftCard({
                 {t('ai.draft.approve')}
               </Button>
             </Tooltip>
-            <IconButton
-              variant="secondary"
-              label={t('ai.draft.edit')}
-              shortcut={singleKeyShortcuts ? ['E'] : []}
-              aria-keyshortcuts="E"
-              className="max-md:min-h-[44px] max-md:min-w-[44px] max-md:flex-1"
-              icon={<Pencil aria-hidden className="size-4" />}
-              disabled={busy}
-              onClick={startEdit}
-            />
-            <IconButton
-              variant="secondary"
-              label={t('ai.draft.reject')}
-              shortcut={singleKeyShortcuts ? ['R'] : []}
-              aria-keyshortcuts="R"
-              className="max-md:min-h-[44px] max-md:min-w-[44px] max-md:flex-1"
-              icon={<X aria-hidden className="size-4" />}
-              disabled={busy}
-              onClick={startReject}
-            />
+            <Tooltip content={t('ai.draft.edit')} shortcut={singleKeyShortcuts ? ['E'] : []}>
+              <Button
+                variant="secondary"
+                aria-keyshortcuts="E"
+                className="rounded-full max-md:min-h-[44px] max-md:min-w-[44px] max-md:flex-1"
+                disabled={busy}
+                onClick={startEdit}
+              >
+                <Pencil aria-hidden className="size-4" />
+                {t('ai.draft.edit')}
+              </Button>
+            </Tooltip>
+            <Tooltip content={t('ai.draft.reject')} shortcut={singleKeyShortcuts ? ['R'] : []}>
+              <Button
+                variant="secondary"
+                aria-keyshortcuts="R"
+                className="rounded-full max-md:min-h-[44px] max-md:min-w-[44px] max-md:flex-1"
+                disabled={busy}
+                onClick={startReject}
+              >
+                <X aria-hidden className="size-4" />
+                {t('ai.draft.reject')}
+              </Button>
+            </Tooltip>
           </>
         )}
       </div>

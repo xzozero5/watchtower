@@ -206,6 +206,7 @@ export async function mockShift(page: Page, options: ShiftBackendOptions = {}) {
       }),
       'GET /v1/assignees': () => ({
         json: {
+          scope: 'all_staff',
           assignees: [assignee(WHO.me), assignee(WHO.pim), assignee(WHO.dao, { onShift: false })],
         },
       }),

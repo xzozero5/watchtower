@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { renderWorkspace } from '@/test-utils';
-import { makeClientTicket, makeTicket, uuid } from '@/test/fixtures';
+import { makeClientTicket, makeMessage, makeTicket, uuid } from '@/test/fixtures';
 import { apiError } from '@/test/mock-api';
 import { workspaceApi } from '@/test/scenarios';
 
@@ -160,6 +160,82 @@ describe('ticket details: editing', () => {
         assigneeId: null,
       });
     });
+  });
+
+  it('lists every assignable person with the queue members first, and no hint, when the queue has members', async () => {
+    const user = userEvent.setup();
+    workspaceApi({
+      tickets: [makeTicket(1, { queue: { id: uuid(800), name: 'Support' } })],
+      overrides: {
+        'GET /v1/assignees': () => ({
+          json: {
+            scope: 'queue',
+            assignees: [
+              {
+                id: uuid(900),
+                name: 'Alex Agent',
+                role: 'agent',
+                onShift: true,
+                openTickets: 1,
+                inQueue: false,
+              },
+              {
+                id: uuid(902),
+                name: 'Lee Lead',
+                role: 'lead',
+                onShift: true,
+                openTickets: 0,
+                inQueue: false,
+              },
+              {
+                id: uuid(901),
+                name: 'Sam Support',
+                role: 'agent',
+                onShift: true,
+                openTickets: 0,
+                inQueue: true,
+              },
+            ],
+          },
+        }),
+      },
+    });
+    const { section } = await openDetails();
+    const list = await openField(user, 'Assignee');
+    await within(list).findByRole('option', { name: /^Lee Lead/ });
+    const names = within(list)
+      .getAllByRole('option')
+      .map((option) => option.textContent);
+    expect(names[1]).toMatch(/^Sam Support/);
+    expect(names.some((name) => /^Lee Lead/.test(name))).toBe(true);
+    expect(within(section).queryByTestId('assignee-scope')).toBeNull();
+  });
+
+  it('says so when the ticket has no team queue and the list is all staff', async () => {
+    workspaceApi({
+      tickets: [makeTicket(1, { queue: null })],
+      overrides: {
+        'GET /v1/assignees': {
+          json: {
+            scope: 'all_staff',
+            assignees: [
+              {
+                id: uuid(902),
+                name: 'Lee Lead',
+                role: 'lead',
+                onShift: true,
+                openTickets: 0,
+                inQueue: false,
+              },
+            ],
+          },
+        },
+      },
+    });
+    const { section } = await openDetails();
+    expect(await within(section).findByTestId('assignee-scope')).toHaveTextContent(
+      'No team queue — showing all staff',
+    );
   });
 
   it('finds an option by typing', async () => {
@@ -330,5 +406,68 @@ describe('ticket details: what each person may do', () => {
     expect(within(section).getByText('vip')).toBeVisible();
     // No composer either: they can neither reply nor add a note.
     expect(screen.queryByRole('form', { name: 'Write a message' })).not.toBeInTheDocument();
+  });
+});
+
+describe('ticket details: Waiting on customer', () => {
+  const base = makeTicket(1);
+  const setup = (timeline: ReturnType<typeof makeMessage>[]) =>
+    workspaceApi({
+      tickets: [base],
+      timelines: { 'OPS-1': timeline },
+      overrides: {
+        'POST /v1/tickets/:id/status': ({ body }) => ({
+          json: { ...base, status: (body as { status: typeof base.status }).status },
+        }),
+      },
+    });
+  const loaded = async (api: ReturnType<typeof setup>) => {
+    await openDetails();
+    await waitFor(() => {
+      expect(api.callsTo('/v1/tickets/OPS-1/timeline', 'GET').length).toBeGreaterThan(0);
+    });
+  };
+
+  it('asks first when the customer has not been asked anything, and sets it on confirm', async () => {
+    const user = userEvent.setup();
+    const api = setup([makeMessage(1, base)]);
+    await loaded(api);
+    await pick(user, 'Status', /^Waiting on customer/);
+    const dialog = await screen.findByRole('dialog');
+    expect(
+      within(dialog).getByText(
+        "You haven't asked the customer anything since their last message. Set Waiting on customer anyway?",
+      ),
+    ).toBeVisible();
+    expect(api.callsTo('/v1/tickets/OPS-1/status', 'POST')).toHaveLength(0);
+    await user.click(within(dialog).getByRole('button', { name: 'Set anyway' }));
+    await waitFor(() => {
+      expect(api.callsTo('/v1/tickets/OPS-1/status', 'POST')[0]?.body).toEqual({
+        status: 'waiting_on_customer',
+      });
+    });
+  });
+
+  it('does not set it when the person cancels', async () => {
+    const user = userEvent.setup();
+    const api = setup([makeMessage(1, base)]);
+    await loaded(api);
+    await pick(user, 'Status', /^Waiting on customer/);
+    await user.click(await screen.findByRole('button', { name: 'Cancel' }));
+    expect(api.callsTo('/v1/tickets/OPS-1/status', 'POST')).toHaveLength(0);
+  });
+
+  it('sets it at once when a public reply follows the customer', async () => {
+    const user = userEvent.setup();
+    const api = setup([
+      makeMessage(1, base),
+      makeMessage(2, base, { direction: 'outbound', deliveryStatus: 'delivered' }),
+    ]);
+    await loaded(api);
+    await pick(user, 'Status', /^Waiting on customer/);
+    await waitFor(() => {
+      expect(api.callsTo('/v1/tickets/OPS-1/status', 'POST')).toHaveLength(1);
+    });
+    expect(screen.queryByRole('dialog')).toBeNull();
   });
 });
