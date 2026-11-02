@@ -1,7 +1,12 @@
 import {
   OPEN_STATUSES,
+  slaStateSchema,
   ticketPrioritySchema,
   ticketStatusSchema,
+  type SavedView,
+  type SavedViewFilters,
+  type SlaState,
+  type SystemViewKey,
   type TicketPriority,
   type TicketStatus,
 } from '@watchtower/shared';
@@ -12,7 +17,13 @@ import type { TicketListParams } from '@/lib/api/endpoints';
 export const ASSIGNEE_FILTERS = ['any', 'me', 'unassigned'] as const;
 export type AssigneeFilter = (typeof ASSIGNEE_FILTERS)[number];
 
-export const SORTS = ['created_desc', 'updated_desc', 'due_asc'] as const;
+export const SORTS = [
+  'created_desc',
+  'updated_desc',
+  'due_asc',
+  'created_asc',
+  'sla_due_asc',
+] as const;
 export type SortOrder = (typeof SORTS)[number];
 
 export const queueFiltersSchema = z.object({
@@ -21,6 +32,8 @@ export const queueFiltersSchema = z.object({
   assignee: z.enum(ASSIGNEE_FILTERS),
   q: z.string().max(200),
   overdue: z.boolean(),
+  /** Staff only: the running SLA target is in one of these states (decided by the server). */
+  slaState: z.array(slaStateSchema).max(4).default([]),
   sort: z.enum(SORTS),
   /** A team queue and a specific person: set by links from Home, not by the filter bar. */
   queueId: z.uuid().optional(),
@@ -35,14 +48,43 @@ export const DEFAULT_FILTERS: QueueFilters = {
   assignee: 'any',
   q: '',
   overdue: false,
+  slaState: [],
   sort: 'created_desc',
 };
 
-/** Built-in views, shown before the saved ones. Their names are translated by id. */
+/**
+ * Built-in views, shown before the saved ones. Their names are translated by id. `slaAtRisk`,
+ * `triage` and `waiting` are the server's views of the same name (T-119a): the numbers beside them
+ * come from `GET /v1/views` (`SYSTEM_VIEW_OF`), and their filters are the ones the server defines.
+ */
 export const BUILT_IN_VIEWS = [
   { id: 'open', filters: DEFAULT_FILTERS },
   { id: 'mine', filters: { ...DEFAULT_FILTERS, assignee: 'me' as const } },
   { id: 'unassigned', filters: { ...DEFAULT_FILTERS, assignee: 'unassigned' as const } },
+  {
+    id: 'slaAtRisk',
+    filters: {
+      ...DEFAULT_FILTERS,
+      slaState: ['at_risk', 'breached'] as SlaState[],
+      sort: 'sla_due_asc' as const,
+    },
+  },
+  {
+    id: 'triage',
+    filters: {
+      ...DEFAULT_FILTERS,
+      status: ['triage'] as TicketStatus[],
+      sort: 'created_asc' as const,
+    },
+  },
+  {
+    id: 'waiting',
+    filters: {
+      ...DEFAULT_FILTERS,
+      status: ['waiting_on_customer'] as TicketStatus[],
+      sort: 'created_asc' as const,
+    },
+  },
   {
     id: 'overdue',
     filters: { ...DEFAULT_FILTERS, overdue: true, sort: 'due_asc' as const },
@@ -51,6 +93,16 @@ export const BUILT_IN_VIEWS = [
 ] as const satisfies readonly { id: string; filters: QueueFilters }[];
 export type BuiltInViewId = (typeof BUILT_IN_VIEWS)[number]['id'];
 
+/** The server view that counts the same tickets as a built-in view here. */
+export const SYSTEM_VIEW_OF: Readonly<Partial<Record<BuiltInViewId, SystemViewKey>>> = {
+  open: 'all_open',
+  mine: 'my_queue',
+  unassigned: 'unassigned',
+  slaAtRisk: 'sla_at_risk',
+  triage: 'triage',
+  waiting: 'waiting_on_customer',
+};
+
 const sameSet = <T extends string>(a: readonly T[], b: readonly T[]) =>
   a.length === b.length && a.every((item) => b.includes(item));
 
@@ -58,6 +110,7 @@ export function filtersEqual(a: QueueFilters, b: QueueFilters): boolean {
   return (
     sameSet<TicketStatus>(a.status, b.status) &&
     sameSet<TicketPriority>(a.priority, b.priority) &&
+    sameSet<SlaState>(a.slaState, b.slaState) &&
     a.assignee === b.assignee &&
     a.q.trim() === b.q.trim() &&
     a.overdue === b.overdue &&
@@ -79,6 +132,7 @@ export function filtersToParams(filters: QueueFilters): TicketListParams {
         ? {}
         : { assignee: filters.assignee }),
     ...(filters.queueId ? { queueId: filters.queueId } : {}),
+    ...(filters.slaState.length > 0 ? { slaState: filters.slaState } : {}),
     ...(q === '' ? {} : { q }),
     ...(filters.overdue ? { overdue: true } : {}),
     sort: filters.sort,
@@ -97,6 +151,7 @@ export function activeFilterCount(filters: QueueFilters): number {
     !sameSet(filters.status, base.status),
     filters.priority.length > 0,
     filters.assignee !== 'any',
+    filters.slaState.length > 0,
     filters.q.trim() !== '',
     filters.overdue,
     filters.queueId !== undefined,
@@ -112,6 +167,7 @@ export const FILTER_PARAMS = [
   'overdue',
   'sort',
   'queueId',
+  'slaState',
 ] as const;
 
 /**
@@ -132,6 +188,7 @@ export function filtersFromSearch(search: string): QueueFilters | null {
   const assignee = params.get('assignee');
   const sort = z.enum(SORTS).safeParse(params.get('sort'));
   const queueId = z.uuid().safeParse(params.get('queueId'));
+  const slaStates = z.array(slaStateSchema).safeParse(list('slaState'));
   const assigneeUuid = z.uuid().safeParse(assignee);
   return {
     ...DEFAULT_FILTERS,
@@ -139,6 +196,7 @@ export function filtersFromSearch(search: string): QueueFilters | null {
     priority: priorities.success ? priorities.data : [],
     assignee: assignee === 'me' || assignee === 'unassigned' ? assignee : 'any',
     overdue: params.get('overdue') === 'true',
+    slaState: slaStates.success ? slaStates.data : [],
     sort: sort.success ? sort.data : DEFAULT_FILTERS.sort,
     ...(queueId.success ? { queueId: queueId.data } : {}),
     ...(assigneeUuid.success ? { assigneeId: assigneeUuid.data } : {}),
@@ -152,6 +210,7 @@ export function queueHref(
     /** `me`, `unassigned` or a user id. */
     assignee: string;
     overdue: boolean;
+    slaState: readonly SlaState[];
     sort: SortOrder;
     queueId: string;
   }>,
@@ -161,7 +220,53 @@ export function queueHref(
   if (filters.assignee) params.set('assignee', filters.assignee);
   if (filters.queueId) params.set('queueId', filters.queueId);
   if (filters.overdue) params.set('overdue', 'true');
+  if (filters.slaState && filters.slaState.length > 0) {
+    params.set('slaState', filters.slaState.join(','));
+  }
   if (filters.sort) params.set('sort', filters.sort);
   const query = params.toString();
   return query === '' ? '/' : `/?${query}`;
+}
+
+/**
+ * A server view (T-119a) as the queue's filters. `assignee: me | unassigned` stay as they are (the
+ * server resolves `me` for whoever asks); a person's id becomes `assigneeId`, the way a link from
+ * Home names one.
+ */
+export function filtersFromView(view: Pick<SavedView, 'filters' | 'sort'>): QueueFilters {
+  const { filters } = view;
+  const assignee = filters.assignee;
+  return {
+    status: filters.status ?? [],
+    priority: filters.priority ?? [],
+    assignee: assignee === 'me' || assignee === 'unassigned' ? assignee : 'any',
+    q: filters.q ?? '',
+    overdue: filters.overdue ?? false,
+    slaState: filters.slaState ?? [],
+    sort: view.sort,
+    ...(filters.queueId ? { queueId: filters.queueId } : {}),
+    ...(assignee && assignee !== 'me' && assignee !== 'unassigned' ? { assigneeId: assignee } : {}),
+  };
+}
+
+/** The filters of the queue as a saved view keeps them: only what is set. */
+export function filtersToView(filters: QueueFilters): {
+  filters: SavedViewFilters;
+  sort: SortOrder;
+} {
+  const q = filters.q.trim();
+  const assignee =
+    filters.assigneeId ?? (filters.assignee === 'any' ? undefined : filters.assignee);
+  return {
+    sort: filters.sort,
+    filters: {
+      ...(filters.status.length > 0 ? { status: filters.status } : {}),
+      ...(filters.priority.length > 0 ? { priority: filters.priority } : {}),
+      ...(assignee ? { assignee } : {}),
+      ...(filters.queueId ? { queueId: filters.queueId } : {}),
+      ...(q.length >= 2 ? { q } : {}),
+      ...(filters.overdue ? { overdue: true } : {}),
+      ...(filters.slaState.length > 0 ? { slaState: filters.slaState } : {}),
+    },
+  };
 }

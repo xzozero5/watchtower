@@ -6,6 +6,7 @@ describe('readRuntimeConfig', () => {
   it('reads API_URL from the environment it is given', () => {
     expect(readRuntimeConfig({ API_URL: 'https://api.example.test' })).toEqual({
       apiUrl: 'https://api.example.test',
+      ticketKeyPrefix: 'OPS',
     });
   });
 
@@ -16,6 +17,14 @@ describe('readRuntimeConfig', () => {
     expect(readRuntimeConfig({ API_URL: 'http://api-b.example.test' }).apiUrl).toBe(
       'http://api-b.example.test',
     );
+  });
+
+  it('reads the ticket number prefix the api uses, upper-cased, and falls back to OPS', () => {
+    expect(readRuntimeConfig({ TICKET_KEY_PREFIX: 'tkt' }).ticketKeyPrefix).toBe('TKT');
+    expect(readRuntimeConfig({}).ticketKeyPrefix).toBe('OPS');
+    expect(readRuntimeConfig({ TICKET_KEY_PREFIX: '  ' }).ticketKeyPrefix).toBe('OPS');
+    // A malformed prefix does not stop the interface: it shows the default example.
+    expect(readRuntimeConfig({ TICKET_KEY_PREFIX: '1 bad prefix!' }).ticketKeyPrefix).toBe('OPS');
   });
 
   it('removes trailing slashes so callers can append a path', () => {

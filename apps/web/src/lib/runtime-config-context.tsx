@@ -22,3 +22,12 @@ export function useRuntimeConfig(): RuntimeConfig {
   if (!config) throw new Error('useRuntimeConfig must be used inside <RuntimeConfigProvider>');
   return config;
 }
+
+/**
+ * A ticket number as this instance writes them, for an example in a placeholder or a hint
+ * (`OPS-12` with the default prefix). The prefix is the instance's own (`TICKET_KEY_PREFIX`), never
+ * a literal in the copy.
+ */
+export function useTicketKeyExample(): string {
+  return `${useRuntimeConfig().ticketKeyPrefix}-12`;
+}

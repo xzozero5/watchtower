@@ -28,6 +28,7 @@ import {
   voidOpenSurveys,
 } from './csat/survey.js';
 import { mintCsatToken, verifyCsatToken } from './csat/token.js';
+import { convertInboundMessage } from './inbound/convert.js';
 import { ingestInbound } from './inbound/ingest.js';
 import { draftIncidentComm, previewIncidentComm, sendIncidentComm } from './incidents/comms.js';
 import { recordDeploy } from './incidents/deploy.js';
@@ -325,6 +326,11 @@ export {
   type SenderLookup,
   type SenderVia,
 } from './inbound/identity.js';
+export {
+  convertInboundMessage,
+  type ConvertInboundInput,
+  type ConvertInboundOutcome,
+} from './inbound/convert.js';
 export { ingestInbound, ruleClassification, ticketSubject } from './inbound/ingest.js';
 export {
   HEURISTIC_WINDOW_DAYS,
@@ -741,7 +747,11 @@ export interface Domain {
     readonly computeAllHealth: typeof computeAllOrgHealth;
   };
   /** Received messages (ADR-009): used by the worker's `ingest` consumer. */
-  readonly inbound: { readonly ingest: typeof ingestInbound };
+  readonly inbound: {
+    readonly ingest: typeof ingestInbound;
+    /** A person turns a message from Other mail into a ticket (T-119). */
+    readonly convert: typeof convertInboundMessage;
+  };
   /** AI drafts (T-108c): a person's verdict on a draft. */
   readonly ai: { readonly rejectDraft: typeof rejectAiDraft };
   /** Who is behind a LINE user id: link codes and LINE Login (T-103d, R-2.11). */
@@ -897,7 +907,7 @@ export function createDomain(options: DomainOptions): Domain {
       computeHealth: computeOrgHealth,
       computeAllHealth: computeAllOrgHealth,
     },
-    inbound: { ingest: ingestInbound },
+    inbound: { ingest: ingestInbound, convert: convertInboundMessage },
     identity: { issueLineLinkCode, redeemLineLinkCode, linkLineUser },
     csat: {
       schedule: scheduleSurvey,

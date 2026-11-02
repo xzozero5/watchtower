@@ -26,16 +26,23 @@ import {
   contactSchema,
   createContactSchema,
   createOrganizationSchema,
+  createOrgTierSchema,
   idParamSchema,
   organizationListQuerySchema,
   organizationPageSchema,
   organizationSchema,
   orgTierListSchema,
+  orgTierParamSchema,
+  orgTierRecordSchema,
   updateContactSchema,
+  updateOrgTierSchema,
   updateOrganizationSchema,
   type ContactListQuery,
   type CreateContact,
   type CreateOrganization,
+  type CreateOrgTier,
+  type OrgTierParam,
+  type UpdateOrgTier,
   type OrganizationListQuery,
   type UpdateContact,
   type UpdateOrganization,
@@ -215,11 +222,61 @@ export class OrgTiersController {
   @ApiOperation({
     summary: 'List organization tiers (staff)',
     description:
-      'The tiers an organization or an SLA policy may name (`tier`), in display order. Read-only here; ' +
-      'creating and renaming tiers comes with T-121.',
+      'The tiers an organization or an SLA policy may name (`tier`), in display order. A head adds, ' +
+      'renames and removes them with the routes below.',
   })
   @ApiOkResponse({ standardSchema: orgTierListSchema })
   async list() {
     return parseResponse(orgTierListSchema, { tiers: await this.orgs.tiers() });
+  }
+
+  @Post()
+  @RequirePermission('sla.manage')
+  @Audited({ action: AUDIT_ACTIONS.orgTierCreate, targetType: 'org_tier' })
+  @ApiOperation({
+    summary: 'Add a tier (head)',
+    description:
+      'A tier is data: once added, organizations and SLA policies can name it without a deploy. ' +
+      '`slug` is lower case letters, digits, `_` or `-`, starting with a letter.',
+  })
+  @ApiCreatedResponse({ standardSchema: orgTierRecordSchema })
+  @ApiConflictResponse({ description: 'The tier already exists' })
+  async create(@Body({ schema: createOrgTierSchema }) body: CreateOrgTier) {
+    return parseResponse(orgTierRecordSchema, await this.orgs.createTier(body));
+  }
+
+  @Patch(':slug')
+  @RequirePermission('sla.manage')
+  @Audited({ action: AUDIT_ACTIONS.orgTierUpdate, targetType: 'org_tier' })
+  @ApiOperation({
+    summary: 'Rename or reorder a tier (head)',
+    description:
+      'A new `slug` is followed by every organization and SLA policy that names the tier. The default ' +
+      'tier (`standard`) keeps its slug.',
+  })
+  @ApiOkResponse({ standardSchema: orgTierRecordSchema })
+  @ApiNotFoundResponse({ description: 'No such tier' })
+  @ApiConflictResponse({ description: 'The new slug is taken, or this is the default tier' })
+  async update(
+    @Param({ schema: orgTierParamSchema }) params: OrgTierParam,
+    @Body({ schema: updateOrgTierSchema }) body: UpdateOrgTier,
+  ) {
+    return parseResponse(orgTierRecordSchema, await this.orgs.updateTier(params.slug, body));
+  }
+
+  @Delete(':slug')
+  @HttpCode(204)
+  @RequirePermission('sla.manage')
+  @Audited({ action: AUDIT_ACTIONS.orgTierDelete, targetType: 'org_tier' })
+  @ApiOperation({
+    summary: 'Delete a tier nobody uses (head)',
+    description:
+      'Refused with 409 while an organization or an SLA policy still names the tier, and for the default tier.',
+  })
+  @ApiNoContentResponse({ description: 'Deleted' })
+  @ApiNotFoundResponse({ description: 'No such tier' })
+  @ApiConflictResponse({ description: 'The tier is in use, or is the default tier' })
+  async remove(@Param({ schema: orgTierParamSchema }) params: OrgTierParam): Promise<void> {
+    await this.orgs.deleteTier(params.slug);
   }
 }

@@ -446,7 +446,26 @@ describe('guards and configuration', () => {
       expect(await count(empty.owner.pool, 'audit_log')).toBe(0);
       // With the explicit flag it runs.
       const result = await runSeed(empty.owner, { nodeEnv: 'production', allowProduction: true });
-      expect(result.demo.tickets).toBe(30);
+      // Production loads reference data only (T-121c): no demo people, tickets, audit rows or articles.
+      expect(result.demo.tickets).toBe(0);
+      expect(result.kb.created).toEqual([]);
+      expect(result.calendars.created.length).toBeGreaterThan(0);
+      expect(result.policies.created.length).toBeGreaterThan(0);
+      expect(result.intents.inserted.length).toBeGreaterThan(0);
+      expect(result.shifts.created.length).toBeGreaterThan(0);
+      for (const table of [
+        'ticket',
+        'message',
+        'organization',
+        'contact',
+        'users',
+        'audit_log',
+        'ticket_event',
+        'kb_article',
+      ]) {
+        expect(await count(empty.owner.pool, table), table).toBe(0);
+      }
+      expect(await count(empty.owner.pool, 'business_calendar')).toBeGreaterThan(0);
     } finally {
       await empty.cleanup();
     }
