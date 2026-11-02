@@ -185,6 +185,49 @@ describe('portal emails (T-007)', () => {
     expect(message.text).toContain(base.trackingUrl);
   });
 
+  it('recaps the form choices, lists the next steps and offers a button and a plain link (T-148)', () => {
+    const message = renderEmail({
+      ...confirmation,
+      category: 'webhook',
+      urgency: 'something_broken',
+    });
+    expect(message.text).toContain('Topic: Webhook not received');
+    expect(message.text).toContain('Urgency you chose: Something is broken');
+    expect(message.text).toMatch(/1\. .*\n2\. .*\n3\. /);
+    expect(message.text).toContain('business hours');
+    expect(message.html).toMatch(/<a href="[^"]*" style="[^"]*">Track your request<\/a>/);
+    expect(message.html).toContain('<ol>');
+    expect(message.html).toContain('copy this link');
+    const th = renderEmail({
+      ...confirmation,
+      locale: 'th',
+      category: 'billing',
+      urgency: 'question',
+    });
+    expect(th.text).toContain('หมวด: การเรียกเก็บเงิน');
+    expect(th.text).toContain('เวลาทำการ');
+    expect(th.html).toContain('<ol>');
+  });
+
+  it('states no time when no SLA due time is known, and has no recap without choices (T-148)', () => {
+    const message = renderEmail({ ...confirmation, expectedFirstResponseAt: null });
+    expect(message.text).toContain('as soon as possible');
+    expect(message.text).not.toContain('business hours');
+    expect(message.text).not.toContain('Urgency you chose');
+    expect(message.html).not.toContain('<ul>');
+  });
+
+  it('confirms a customer reply in both languages (T-148)', () => {
+    const received = { kind: 'portal_reply_received' as const, ...base };
+    const en = renderEmail({ ...received, locale: 'en' });
+    expect(en.subject).toBe('We received your reply on OPS-12');
+    expect(en.text).toContain(base.trackingUrl);
+    expect(en.html).not.toContain('<b>never');
+    const th = renderEmail({ ...received, locale: 'th' });
+    expect(th.subject).toBe('เราได้รับคำตอบของคุณใน OPS-12 แล้ว');
+    expect(th.text).toContain(base.trackingUrl);
+  });
+
   it('does not repeat what the submitter typed, in either language (C-11)', () => {
     const typed = { ...confirmation, subject: 'Click https://evil.example to claim a prize' };
     for (const locale of ['en', 'th'] as const) {

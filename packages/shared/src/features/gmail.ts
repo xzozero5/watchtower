@@ -28,6 +28,8 @@ export const GMAIL_AUDIT_ACTIONS = {
   gmailNotConnected: 'gmail.not_connected',
   /** A head disconnected the OAuth mailbox: the grant was deleted here and revoked at Google (best effort, result in metadata). */
   gmailOauthDisconnect: 'gmail.oauth.disconnect',
+  /** A head asked for a sync by hand (T-150). Metadata: the account ids queued and throttled. */
+  gmailManualSync: 'gmail.sync.manual',
 } as const satisfies Record<string, string>;
 
 /** `ticket_event.type` strings written by this feature. */
@@ -152,6 +154,17 @@ export const gmailOauthDisconnectResultSchema = z.object({
   revoke: z.enum(['revoked', 'failed', 'none']),
 });
 export type GmailOauthDisconnectResult = z.infer<typeof gmailOauthDisconnectResultSchema>;
+
+/** `POST /v1/admin/integrations/gmail/sync`: what the manual sync queued (T-150). */
+export const gmailManualSyncResultSchema = z.object({
+  /** Enabled mailboxes whose `sync` job (reason `manual`) was queued by this call. */
+  queued: z.array(z.object({ channelAccountId: z.uuid(), jobId: z.string() })),
+  /** Enabled mailboxes skipped because one was already queued within the last minute. */
+  throttled: z.array(
+    z.object({ channelAccountId: z.uuid(), retryAfterSeconds: z.number().int().min(1) }),
+  ),
+});
+export type GmailManualSyncResult = z.infer<typeof gmailManualSyncResultSchema>;
 
 /** `GET /v1/admin/integrations/gmail/oauth/status`: what the admin page needs, never a value. */
 export const gmailConnectionStatusSchema = z.object({
