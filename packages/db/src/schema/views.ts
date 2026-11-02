@@ -1,4 +1,4 @@
-// Saved views and linked tickets (T-119, migration 0036). Mirrors the SQL by hand; the SQL file is the
+// Saved views and linked tickets (T-119, migration 0066). Mirrors the SQL by hand; the SQL file is the
 // source of truth (CHECKs, partial unique indexes and the REVOKE live there).
 import { sql } from 'drizzle-orm';
 import {

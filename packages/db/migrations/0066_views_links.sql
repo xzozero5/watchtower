@@ -6,7 +6,7 @@
 --   ticket_link: `duplicate` (from_ticket_id is a duplicate of to_ticket_id) or `related` (symmetric:
 --     stored once, smaller id first, so the same pair cannot be linked twice in two directions). A link
 --     is created and deleted by staff, never edited; the history is in ticket_event and audit_log.
--- Reversible: see 0036_views_links.down.sql.
+-- Reversible: see 0066_views_links.down.sql.
 
 CREATE TABLE saved_view (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),

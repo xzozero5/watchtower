@@ -7,6 +7,7 @@ import {
   KB_JOBS,
   LINE_JOBS,
   MAINTENANCE_JOBS,
+  USAGE_JOBS,
   OUTBOUND_JOBS,
   QUEUE_NAMES,
   type QueueName,
@@ -178,5 +179,30 @@ export const SCHEDULES: readonly ScheduleRegistration[] = [
       name: ALERTS_JOBS.sweep,
       opts: { removeOnComplete: true, removeOnFail: { age: 24 * 3600 } },
     },
+  },
+
+  // --- usage (T-205b) ---
+  {
+    queue: QUEUE_NAMES.usage,
+    id: USAGE_JOBS.tick,
+    // The metrics that are due, every minute: each metric has its own interval (5 minutes to a day), and
+    // "due" is the database clock's decision. With no product data port connected the tick does nothing.
+    repeat: { every: 60_000 },
+    job: {
+      name: USAGE_JOBS.tick,
+      opts: { removeOnComplete: true, removeOnFail: { age: 24 * 3600 } },
+    },
+  },
+  {
+    queue: QUEUE_NAMES.usage,
+    id: USAGE_JOBS.health,
+    // The Client Health Score of every organization, daily at 02:30 UTC (T-205d). Also once at start, so a
+    // fresh install shows "not enough data" rather than nothing.
+    repeat: { pattern: '30 2 * * *', tz: 'UTC' },
+    job: {
+      name: USAGE_JOBS.health,
+      opts: { removeOnComplete: true, removeOnFail: { age: 7 * 24 * 3600 } },
+    },
+    runAtBoot: true,
   },
 ];

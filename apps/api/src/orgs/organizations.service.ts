@@ -14,7 +14,7 @@ import {
 import { and, asc, count, desc, eq, ilike, inArray, sql } from 'drizzle-orm';
 
 import { AuditScope } from '../audit/audit-scope.js';
-import { badRequest, conflict, notFound } from '../auth/http-errors.js';
+import { badRequest, conflict, forbidden, notFound } from '../auth/http-errors.js';
 import { assertOrgAccess, type Principal } from '../auth/principal.js';
 import { PG, isPgError, pgConstraint } from '../common/db-errors.js';
 import {
@@ -26,9 +26,20 @@ import {
 } from '../common/keyset.js';
 import { DATABASE } from '../database/database.module.js';
 
+const canSeeHealth = (principal: Principal): boolean =>
+  principal.permissions.has('org.health.read');
+
 export type OrganizationRow = typeof schema.organization.$inferSelect;
 
-export function toApiOrganization(row: OrganizationRow, contactCount: number | null): Organization {
+/**
+ * The Health Score is shown only to a caller who holds `org.health.read` (lead and up): an agent and a
+ * client get null, whatever the daily job stored (T-205d, PRD section 8.4).
+ */
+export function toApiOrganization(
+  row: OrganizationRow,
+  contactCount: number | null,
+  showHealth: boolean,
+): Organization {
   return {
     id: row.id,
     name: row.name,
@@ -36,7 +47,7 @@ export function toApiOrganization(row: OrganizationRow, contactCount: number | n
     slaPolicyId: row.slaPolicyId,
     domains: row.domains,
     lineGroupIds: row.lineGroupIds,
-    healthScore: row.healthScore,
+    healthScore: showHealth ? row.healthScore : null,
     primaryContactId: row.primaryContactId,
     contactCount,
     notes: row.notes,
@@ -94,7 +105,7 @@ export class OrganizationsService {
     );
     return {
       items: page.rows.map((entry) =>
-        toApiOrganization(entry.row, counts.get(entry.row.id) ?? null),
+        toApiOrganization(entry.row, counts.get(entry.row.id) ?? null, canSeeHealth(principal)),
       ),
       nextCursor: page.nextCursor,
     };
@@ -216,7 +227,7 @@ export class OrganizationsService {
     if (!row) throw notFound('No such organization');
     assertOrgAccess(principal, row.id);
     const counts = await this.contactCounts([row.id], principal.orgScope);
-    return toApiOrganization(row, counts.get(row.id) ?? null);
+    return toApiOrganization(row, counts.get(row.id) ?? null, canSeeHealth(principal));
   }
 
   async find(id: string): Promise<OrganizationRow | undefined> {
@@ -228,7 +239,7 @@ export class OrganizationsService {
     return row;
   }
 
-  async create(input: CreateOrganization): Promise<Organization> {
+  async create(input: CreateOrganization, principal: Principal): Promise<Organization> {
     try {
       const [row] = await this.database.db
         .insert(schema.organization)
@@ -243,13 +254,16 @@ export class OrganizationsService {
         .returning();
       if (!row) throw new Error('organization insert returned no row');
       AuditScope.set({ targetType: 'organization', targetId: row.id, after: snapshot(row) });
-      return toApiOrganization(row, 0);
+      return toApiOrganization(row, 0, canSeeHealth(principal));
     } catch (error) {
       throw this.translate(error);
     }
   }
 
-  async update(id: string, patch: UpdateOrganization): Promise<Organization> {
+  async update(id: string, patch: UpdateOrganization, principal: Principal): Promise<Organization> {
+    if (patch.healthScore !== undefined && !canSeeHealth(principal)) {
+      throw forbidden('Setting the health score needs permission to read it');
+    }
     const before = await this.find(id);
     if (!before) throw notFound('No such organization');
     AuditScope.set({ targetType: 'organization', targetId: id, before: snapshot(before) });
@@ -286,7 +300,7 @@ export class OrganizationsService {
       if (!row) throw notFound('No such organization');
       AuditScope.set({ after: snapshot(row) });
       const counts = await this.contactCounts([row.id], { kind: 'all' });
-      return toApiOrganization(row, counts.get(row.id) ?? 0);
+      return toApiOrganization(row, counts.get(row.id) ?? 0, canSeeHealth(principal));
     } catch (error) {
       throw this.translate(error);
     }

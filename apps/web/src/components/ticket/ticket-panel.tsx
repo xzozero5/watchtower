@@ -11,7 +11,7 @@ import {
   Tooltip,
 } from '@watchtower/ui';
 import { FileSearch, type LucideIcon, SlidersHorizontal, UserRound } from 'lucide-react';
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 
 import { EvidencePanel } from '@/components/ai/evidence-panel';
 import { useI18n } from '@/i18n/provider';
@@ -41,6 +41,7 @@ function PanelTabTrigger({
     <Tooltip content={label}>
       <TabsTrigger
         value={value}
+        data-panel-tab={value}
         aria-label={label}
         // The tooltip trigger takes over `data-state`, so the selected look follows `aria-selected`.
         className="group aria-selected:bg-primary-subtle aria-selected:text-foreground"
@@ -119,7 +120,13 @@ export function TicketPanel({
   const ticket = useTicket(ticketKey);
   const ai = useTicketAi(ticketKey, showAi);
   const hasEvidence = (ai.data?.evidence.length ?? 0) > 0;
-  const chosen = tab ?? (showAi && hasEvidence ? 'evidence' : 'details');
+  // The first answer for a ticket picks the opening tab, once. Evidence arriving later must not pull
+  // someone out of Details while they work there.
+  const [opening, setOpening] = useState<{ key: string | null; tab: PanelTab } | null>(null);
+  if (ai.isFetched && opening?.key !== ticketKey) {
+    setOpening({ key: ticketKey, tab: showAi && hasEvidence ? 'evidence' : 'details' });
+  }
+  const chosen = tab ?? (opening?.key === ticketKey ? opening.tab : 'details');
   const active: PanelTab = chosen === 'evidence' && !showAi ? 'details' : chosen;
 
   return (
@@ -141,6 +148,15 @@ export function TicketPanel({
         <TabsList
           aria-label={t('panel.label')}
           className={cn('min-w-0 flex-1', collapsed && 'lg:hidden')}
+          // A press on the tab already showing is a choice too; the Tabs change event skips it.
+          onClickCapture={(event) => {
+            const value = (event.target as HTMLElement)
+              .closest('[data-panel-tab]')
+              ?.getAttribute('data-panel-tab');
+            if (value === 'details' || value === 'customer' || (value === 'evidence' && showAi)) {
+              onTabChange(value);
+            }
+          }}
         >
           {showAi ? (
             <PanelTabTrigger value="evidence" icon={FileSearch} label={t('panel.evidence')} />

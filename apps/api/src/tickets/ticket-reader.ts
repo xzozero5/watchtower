@@ -200,6 +200,14 @@ export function refCondition(ref: string, keys: TicketKeys): SQL {
   return translatingSync(() => ticketRefCondition(ref, keys));
 }
 
+/**
+ * A client never sees a ticket the system opened for its own people: channel `internal` (a usage anomaly,
+ * T-205c). Staff see them like any other ticket.
+ */
+function hiddenFromClient(principal: Principal): SQL | undefined {
+  return principal.orgScope.kind === 'org' ? ne(schema.ticket.channel, 'internal') : undefined;
+}
+
 /** Staff need `ticket.read`; a client needs `ticket.read.org`. Having only the other one is not enough. */
 export function assertCanRead(principal: Principal): void {
   const needed = principal.orgScope.kind === 'org' ? 'ticket.read.org' : 'ticket.read';
@@ -232,6 +240,7 @@ export class TicketReader {
         and(
           refCondition(ref, this.keys),
           orgScopeCondition(schema.ticket.orgId, principal.orgScope),
+          hiddenFromClient(principal),
         ),
       )
       .limit(1);
@@ -311,6 +320,7 @@ export class TicketReader {
       .where(
         and(
           orgScopeCondition(ticket.orgId, principal.orgScope),
+          hiddenFromClient(principal),
           eq(ticket.orgId, source.t.orgId),
           eq(ticket.intentId, source.t.intentId),
           ne(ticket.id, source.t.id),
@@ -350,6 +360,7 @@ export class TicketReader {
     const conditions: (SQL | undefined)[] = [
       // Every query a client runs is limited to their organization, whatever else they ask for.
       orgScopeCondition(ticket.orgId, principal.orgScope),
+      hiddenFromClient(principal),
       client ? undefined : query.orgId === undefined ? undefined : eq(ticket.orgId, query.orgId),
       query.status === undefined ? undefined : inArray(ticket.status, query.status),
       query.priority === undefined ? undefined : inArray(ticket.priority, query.priority),

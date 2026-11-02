@@ -40,6 +40,10 @@ snapshot สั้นสำหรับ cold start อยู่ที่ `HANDOF
 
 ## Log
 
+## 2026-11-02 07:18 (Asia/Bangkok) — main thread — T-204, T-205 status page, subscriptions, usage metrics, anomalies, Health Score (mock only) ปิด
+- test: main thread รันเองบน Windows: lint, typecheck ผ่าน · unit ผ่าน · integration db 358, domain 431, api 886, worker 222 · e2e 143 · full-stack 23 · compose healthy `[TESTED]`
+- ค้าง/ไม่ยืนยัน: หน้า web T-204b ยังไม่ทำ · ยังไม่มี adapter จาก DataQueryClient เป็น UsageDataPort · น้ำหนักคะแนน [ASSUMED]
+
 ## 2026-11-02 06:23 (Asia/Bangkok) — main thread — T-200, T-201, T-202 connectors, alerts, escalation, incidents, bot port, mass comms (mock only) ปิด
 - test: main thread รันเองบน Windows: lint, typecheck, unit ผ่าน · integration db 344, domain 410, api 841, worker 213 · e2e 143 (ผ่าน 3 รอบหลังตก 1 ข้อไม่นิ่ง) · full-stack 23 · compose healthy `[TESTED]`
 - ค้าง/ไม่ยืนยัน: ไม่เคยคุย GCP/Discord จริง · payload GCP [VERIFY] · ไม่มี UI alert/incident จนกว่าจะ T-206d

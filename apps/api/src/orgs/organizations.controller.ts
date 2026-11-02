@@ -108,8 +108,11 @@ export class OrganizationsController {
   })
   @ApiCreatedResponse({ standardSchema: organizationSchema })
   @ApiConflictResponse({ description: 'A domain already belongs to another organization' })
-  async create(@Body({ schema: createOrganizationSchema }) body: CreateOrganization) {
-    return parseResponse(organizationSchema, await this.orgs.create(body));
+  async create(
+    @Body({ schema: createOrganizationSchema }) body: CreateOrganization,
+    @CurrentPrincipal() principal: Principal,
+  ) {
+    return parseResponse(organizationSchema, await this.orgs.create(body, principal));
   }
 
   @Patch(':id')
@@ -122,8 +125,9 @@ export class OrganizationsController {
   async update(
     @Param({ schema: idParamSchema }) params: IdParam,
     @Body({ schema: updateOrganizationSchema }) body: UpdateOrganization,
+    @CurrentPrincipal() principal: Principal,
   ) {
-    return parseResponse(organizationSchema, await this.orgs.update(params.id, body));
+    return parseResponse(organizationSchema, await this.orgs.update(params.id, body, principal));
   }
 
   @Delete(':id')

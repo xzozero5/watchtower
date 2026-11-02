@@ -4,7 +4,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { migrateDown, migrateUp } from './migrator.js';
 import { createTestDatabase, migrationsAfter, type TestDatabase } from './testing.js';
 
-// Migration 0036 (T-119a,c): saved views and ticket links. `app` is the restricted login role the
+// Migration 0066 (T-119a,c): saved views and ticket links. `app` is the restricted login role the
 // api runs as.
 const adminUrl =
   process.env.TEST_DATABASE_URL ?? 'postgres://watchtower:watchtower@localhost:5432/watchtower';
@@ -142,11 +142,11 @@ describe('ticket_link', () => {
 
 describe('reversibility', () => {
   it('goes down and up again, dropping both tables', async () => {
-    // Revert the migrations that come after 0036 first, then 0036 itself.
-    const later = await migrationsAfter('0036_views_links');
+    // Revert the migrations that come after 0066 first, then 0066 itself.
+    const later = await migrationsAfter('0066_views_links');
     expect(await migrateDown(owner(), { steps: later.length + 1 })).toEqual([
       ...later.toReversed(),
-      '0036_views_links',
+      '0066_views_links',
     ]);
     const down = await scalar<string | null>(
       owner(),
@@ -156,7 +156,7 @@ describe('reversibility', () => {
     expect(
       await scalar<string | null>(owner(), `SELECT to_regclass('ticket_link')::text AS value`),
     ).toBeNull();
-    expect(await migrateUp(owner())).toContain('0036_views_links');
+    expect(await migrateUp(owner())).toContain('0066_views_links');
     expect(
       await scalar<string | null>(owner(), `SELECT to_regclass('ticket_link')::text AS value`),
     ).toBe('ticket_link');
