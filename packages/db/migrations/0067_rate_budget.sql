@@ -10,7 +10,7 @@
 --                           on an append-only partition (tool_execution is closed after it is written:
 --                           status, error code, latency, result count).
 --   3. tool_execution:      becomes a table partitioned by month, primary key (id, created_at).
--- Reversible: see 0064_rate_budget.down.sql.
+-- Reversible: see 0067_rate_budget.down.sql.
 
 -- 1. The window.
 CREATE TABLE rate_budget_window (

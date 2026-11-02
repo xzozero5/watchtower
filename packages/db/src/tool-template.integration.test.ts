@@ -161,12 +161,12 @@ describe('0065 evidence_card', () => {
 
 describe('0065 goes down and up again', () => {
   it('drops both tables and brings them back empty', async () => {
-    const later = await migrationsAfter('0065_tool_template_evidence');
+    const later = await migrationsAfter('0068_tool_template_evidence');
     const reverted = await migrateDown(owner(), { steps: later.length + 1 });
-    expect(reverted[reverted.length - 1]).toBe('0065_tool_template_evidence');
+    expect(reverted[reverted.length - 1]).toBe('0068_tool_template_evidence');
     expect(await code(owner().query(`SELECT 1 FROM tool_template`))).toBe(UNDEFINED_TABLE);
     expect(await code(owner().query(`SELECT 1 FROM evidence_card`))).toBe(UNDEFINED_TABLE);
-    expect(await migrateUp(owner())).toEqual(['0065_tool_template_evidence', ...later]);
+    expect(await migrateUp(owner())).toEqual(['0068_tool_template_evidence', ...later]);
     expect((await owner().query(`SELECT 1 FROM tool_template`)).rowCount).toBe(0);
     expect((await owner().query(`SELECT 1 FROM evidence_card`)).rowCount).toBe(0);
   });

@@ -165,9 +165,9 @@ describe('0064 goes down and up again', () => {
   it('keeps the tool_execution rows both ways and drops the window', async () => {
     const before = await insertCall('ok', 'gcp_logs');
     const id = before.rows[0]?.id;
-    const later = await migrationsAfter('0064_rate_budget');
+    const later = await migrationsAfter('0067_rate_budget');
     const reverted = await migrateDown(owner(), { steps: later.length + 1 });
-    expect(reverted[reverted.length - 1]).toBe('0064_rate_budget');
+    expect(reverted[reverted.length - 1]).toBe('0067_rate_budget');
     const plain = await owner().query<{ relkind: string }>(
       `SELECT relkind FROM pg_class WHERE oid = 'tool_execution'::regclass`,
     );
@@ -180,7 +180,7 @@ describe('0064 goes down and up again', () => {
     );
     expect(functions.rows.map((row) => row.args)).toEqual(['parent regclass, months_ahead integer, append_only boolean']);
 
-    expect(await migrateUp(owner())).toEqual(['0064_rate_budget', ...later]);
+    expect(await migrateUp(owner())).toEqual(['0067_rate_budget', ...later]);
     const partitioned = await owner().query<{ relkind: string }>(
       `SELECT relkind FROM pg_class WHERE oid = 'tool_execution'::regclass`,
     );
