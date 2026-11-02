@@ -41,6 +41,7 @@ import { useSession, useUserId } from '@/lib/auth/session';
 import { describeOpsError, INCIDENT_SEVERITY_LABELS } from '@/lib/ops/model';
 import { opsKeys, useAlertList, useIncident } from '@/lib/ops/queries';
 import { actorKey, timelineLine } from '@/lib/ops/timeline';
+import { useTicketKeyExample } from '@/lib/runtime-config-context';
 import { useAssignees } from '@/lib/shifts/queries';
 
 /**
@@ -396,6 +397,7 @@ function Linked({ incident }: { incident: IncidentDetail }) {
   const base = useId();
   const canLink = can('incident.create') && incident.status !== 'resolved';
   const [ticketRef, setTicketRef] = useState('');
+  const example = useTicketKeyExample();
   const [alertId, setAlertId] = useState('');
   const [failure, setFailure] = useState<string | null>(null);
   const openAlerts = useAlertList(canLink && can('alert.read') ? { state: 'open' } : null);
@@ -506,7 +508,7 @@ function Linked({ incident }: { incident: IncidentDetail }) {
             <FormField
               id={`${base}-ref`}
               label={t('ops.incidents.linked.ticketKey')}
-              hint={t('ops.incidents.linked.ticketKeyHint')}
+              hint={t('ops.incidents.linked.ticketKeyHint', { example })}
             >
               <Input
                 id={`${base}-ref`}

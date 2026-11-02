@@ -12,6 +12,7 @@ export const ADMIN_SECTION_IDS = [
   'ai',
   'audit',
   'integrations',
+  'outbox',
 ] as const;
 export type AdminSectionId = (typeof ADMIN_SECTION_IDS)[number];
 
@@ -53,6 +54,12 @@ export const ADMIN_SECTIONS: readonly AdminSection[] = [
     href: '/admin/integrations',
     labelKey: 'admin.sections.integrations',
     permission: 'integration.manage',
+  },
+  {
+    id: 'outbox',
+    href: '/admin/outbox',
+    labelKey: 'admin.sections.outbox',
+    permission: 'outbox.manage',
   },
 ];
 

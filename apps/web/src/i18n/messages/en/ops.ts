@@ -342,7 +342,7 @@ export const opsEn = {
       noTickets: 'No tickets are linked.',
       unlink: 'Unlink',
       ticketKey: 'Ticket number',
-      ticketKeyHint: 'For example OPS-1042.',
+      ticketKeyHint: 'For example {example}.',
       linkTicket: 'Link ticket',
       alerts: 'Alerts ({count})',
       noAlerts: 'No alerts are linked.',

@@ -339,7 +339,7 @@ export const opsTh: Widen<typeof opsEn> = {
       noTickets: 'ยังไม่มีทิกเก็ตที่เชื่อมโยง',
       unlink: 'ยกเลิกการเชื่อมโยง',
       ticketKey: 'หมายเลขทิกเก็ต',
-      ticketKeyHint: 'เช่น OPS-1042',
+      ticketKeyHint: 'เช่น {example}',
       linkTicket: 'เชื่อมโยงทิกเก็ต',
       alerts: 'การแจ้งเตือน ({count})',
       noAlerts: 'ยังไม่มีการแจ้งเตือนที่เชื่อมโยง',
