@@ -264,6 +264,8 @@ export type AiProgress = z.infer<typeof aiProgressSchema>;
 
 export const ticketAiInsightSchema = z.object({
   state: aiStateSchema,
+  /** Why the AI did not finish (`failed`) or did not read the ticket (`needs_human`); absent until the api sends it. */
+  reasonCode: z.enum(AI_INSIGHT_REASONS).optional().catch(undefined),
   summary: z.string().max(1000).optional(),
   intent: z
     .object({

@@ -6,21 +6,33 @@ import {
   type TicketStatus,
   type TicketSummary,
 } from '@watchtower/shared';
-import { Alert, Avatar, Combobox, type ComboboxOption, Pill, SeverityBadge } from '@watchtower/ui';
-import { type ReactNode, useEffect, useId, useMemo, useRef } from 'react';
+import {
+  Alert,
+  Avatar,
+  Button,
+  Combobox,
+  type ComboboxOption,
+  Dialog,
+  DialogContent,
+  Pill,
+  SeverityBadge,
+} from '@watchtower/ui';
+import { type ReactNode, useEffect, useId, useMemo, useRef, useState } from 'react';
 
 import { useI18n } from '@/i18n/provider';
 import type { MessageKey } from '@/i18n';
 import { isApiError } from '@/lib/api/errors';
 import { formatDateTime } from '@/lib/format';
 import { useSession } from '@/lib/auth/session';
+import { useAssignees } from '@/lib/shifts/queries';
 import { isStaffTicket, isDetail, severityOf, type TicketItem } from '@/lib/tickets/model';
-import { useIntents, useQueues, useTicketMutations, useWorkflow } from '@/lib/tickets/queries';
+import { useIntents, useTicketMutations, useTimeline, useWorkflow } from '@/lib/tickets/queries';
 import { statusKey } from '@/lib/tickets/status-key';
 import { allowedNextStatuses } from '@/lib/tickets/templates';
 
 import { ChannelIcon } from './channel-icon';
 import { StatusLabel } from './status-label';
+import { awaitsFirstAnswer } from './waiting-on-customer';
 import { useOptimisticEdit } from './use-optimistic-edit';
 
 /** The id of the status field, so the S shortcut can move focus to it. */
@@ -68,9 +80,13 @@ export function TicketDetails({ ticket }: { ticket: TicketItem }) {
 
   const mutations = useTicketMutations(ticket.key);
   const intents = useIntents(canEdit);
-  const queues = useQueues(canEdit);
+  // Every active agent, lead and head, the ticket's queue members first (the api marks them `inQueue`).
+  const people = useAssignees(canEdit, staff ? ticket.queue?.id : undefined);
   const workflow = useWorkflow(canEdit);
   const edit = useOptimisticEdit(ticket);
+  // Only staff move a ticket to Waiting on customer; the thread tells whether the customer was asked.
+  const timeline = useTimeline(canEdit && staff ? ticket.key : null);
+  const [confirmWaiting, setConfirmWaiting] = useState(false);
 
   const failure = [mutations.changeStatus, mutations.assign, mutations.update].find(
     (mutation) => mutation.isError,
@@ -80,13 +96,21 @@ export function TicketDetails({ ticket }: { ticket: TicketItem }) {
 
   const assignees = useMemo(() => {
     const byId = new Map<string, string>();
-    if (session) byId.set(session.user.id, session.user.name);
-    for (const queue of queues.data?.queues ?? []) {
-      for (const member of queue.members) byId.set(member.userId, member.name);
+    const members = new Set<string>();
+    const listed = [...(people.data?.assignees ?? [])].sort(
+      (a, b) => Number(b.inQueue) - Number(a.inQueue) || a.name.localeCompare(b.name),
+    );
+    for (const person of listed) {
+      byId.set(person.id, person.name);
+      if (person.inQueue) members.add(person.id);
     }
-    if (staff && ticket.assignee) byId.set(ticket.assignee.id, ticket.assignee.name);
-    return [...byId].map(([id, name]) => ({ id, name }));
-  }, [queues.data, session, staff, ticket]);
+    if (staff && ticket.assignee && !byId.has(ticket.assignee.id)) {
+      byId.set(ticket.assignee.id, ticket.assignee.name);
+    }
+    // Me stays in the list even if the api left me out; the others keep the api's order.
+    if (session && !byId.has(session.user.id)) byId.set(session.user.id, session.user.name);
+    return [...byId].map(([id, name]) => ({ id, name, inQueue: members.has(id) }));
+  }, [people.data, session, staff, ticket]);
 
   const activeIntents = (intents.data?.intents ?? []).filter(
     (intent) => !('isActive' in intent) || intent.isActive,
@@ -96,11 +120,22 @@ export function TicketDetails({ ticket }: { ticket: TicketItem }) {
   const label = (value: TicketPriority) => `${value} ${t(`severity.${severityOf(value)}`)}`;
 
   // ---- status ----
-  const changeStatus = (status: string, silent = false) => {
+  const changeStatus = (status: string, silent = false, confirmed = false) => {
     const next = allowedNextStatuses(workflow.data, ticket.status).find(
       (value) => value === status,
     );
     if (!next) return;
+    // Warn, never block: the customer would see "waiting for your reply" with no question.
+    if (
+      next === 'waiting_on_customer' &&
+      !silent &&
+      !confirmed &&
+      timeline.data &&
+      awaitsFirstAnswer(timeline.data.pages.flatMap((page) => page.entries))
+    ) {
+      setConfirmWaiting(true);
+      return;
+    }
     const previous = ticket.status;
     // Going back is only offered when the workflow allows the move from the new status.
     const canGoBack = allowedNextStatuses(workflow.data, next).includes(previous);
@@ -334,6 +369,14 @@ export function TicketDetails({ ticket }: { ticket: TicketItem }) {
             ) : (
               <Empty>{t('details.unassigned')}</Empty>
             )}
+            {canEdit && people.data?.scope === 'all_staff' ? (
+              <span
+                data-testid="assignee-scope"
+                className="block px-2 text-xs text-muted-foreground"
+              >
+                {t('details.assigneeAllStaff')}
+              </span>
+            ) : null}
           </Row>
         ) : null}
 
@@ -446,6 +489,34 @@ export function TicketDetails({ ticket }: { ticket: TicketItem }) {
           {t('details.mergedInto', { key: summary.mergedIntoKey })}
         </p>
       ) : null}
+
+      <Dialog open={confirmWaiting} onOpenChange={setConfirmWaiting}>
+        <DialogContent
+          title={t('details.waitingConfirm.title')}
+          description={t('details.waitingConfirm.body')}
+          closeLabel={t('details.waitingConfirm.close')}
+          footer={
+            <>
+              <Button
+                onClick={() => {
+                  setConfirmWaiting(false);
+                }}
+              >
+                {t('details.waitingConfirm.cancel')}
+              </Button>
+              <Button
+                variant="primary"
+                onClick={() => {
+                  setConfirmWaiting(false);
+                  changeStatus('waiting_on_customer', false, true);
+                }}
+              >
+                {t('details.waitingConfirm.confirm')}
+              </Button>
+            </>
+          }
+        />
+      </Dialog>
 
       <div
         id={`${ids}-status`}

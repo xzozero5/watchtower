@@ -74,7 +74,7 @@ export function opsApi({ role = 'lead', overrides = {} }: OpsApiOptions = {}) {
     'GET /v1/status-page/posts': { json: { items: [], nextCursor: null } },
     'GET /v1/status-page/maintenance': { json: { items: [] } },
     'GET /v1/status-page/subscribers': { json: { pending: 1, confirmed: 12, unsubscribed: 3 } },
-    'GET /v1/assignees': { json: { assignees: [] } },
+    'GET /v1/assignees': { json: { scope: 'all_staff', assignees: [] } },
   };
   return mockApi({
     ...overrides,

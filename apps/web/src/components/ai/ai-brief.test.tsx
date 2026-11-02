@@ -60,16 +60,16 @@ describe('the AI brief', () => {
     expect(within(brief).getByText('Draft ready')).toBeVisible();
   });
 
-  it('makes the AI summary the title and shows the subject when the title is opened', async () => {
-    const user = userEvent.setup();
+  it('keeps the human subject as the title and puts the AI summary first in the brief, labelled AI', async () => {
     workspaceApi({ tickets: [ticket1], ai: { 'OPS-1': makeInsight() } });
     const { conversation } = await openTicket();
-    const title = await within(conversation).findByRole('button', {
-      name: /Cannot sign in after a reset/,
-    });
-    expect(within(conversation).queryByText('Re: Re: login')).toBeNull();
-    await user.click(title);
-    expect(within(conversation).getByText('Re: Re: login')).toBeVisible();
+    const brief = await within(conversation).findByRole('region', { name: 'AI brief' });
+    expect(within(conversation).getByRole('heading', { name: 'Re: Re: login' })).toBeVisible();
+    const summary = within(brief).getByTestId('ai-summary');
+    expect(summary).toHaveTextContent(/^AI\s*Cannot sign in after a reset/);
+    expect(
+      within(conversation).queryByRole('heading', { name: /Cannot sign in after a reset/ }),
+    ).toBeNull();
   });
 
   it('says only "AI brief unavailable" when the api has no brief, and keeps the composer open', async () => {
@@ -152,7 +152,7 @@ describe('the AI brief', () => {
     const brief = await within(conversation).findByRole('region', { name: 'AI brief' });
     await user.click(
       within(brief).getByRole('button', {
-        name: 'Similar ticket: OPS-1180 Locked out after reset Fair match',
+        name: 'Similar ticket: OPS-1180 Locked out after reset Relevance Medium 0.64',
       }),
     );
     const tab = screen.getByRole('tab', { name: 'Evidence' });
@@ -165,7 +165,7 @@ describe('the AI brief', () => {
     expect(within(card as HTMLElement).getByText('Cited in draft')).toBeVisible();
   });
 
-  it('opens the panel on Evidence by default when the AI brought some, with safe links only', async () => {
+  it('opens the panel on Details even when the AI brought evidence; Evidence has safe links only', async () => {
     workspaceApi({
       tickets: [ticket1],
       ai: {
@@ -192,8 +192,11 @@ describe('the AI brief', () => {
       },
     });
     await openTicket();
+    // Stable default: Details, whatever the AI has.
+    await screen.findByRole('tabpanel', { name: 'Details' });
+    expect(screen.getByRole('tab', { name: 'Details' })).toHaveAttribute('aria-selected', 'true');
+    await userEvent.setup().click(screen.getByRole('tab', { name: 'Evidence' }));
     const tabpanel = await screen.findByRole('tabpanel', { name: 'Evidence' });
-    expect(screen.getByRole('tab', { name: 'Evidence' })).toHaveAttribute('aria-selected', 'true');
     const panel = await within(tabpanel).findByRole('list', { name: 'Evidence' });
     expect(within(panel).getAllByRole('link')).toHaveLength(1);
     expect(within(panel).getByRole('link', { name: /Open source/ })).toHaveAttribute(
@@ -369,10 +372,7 @@ describe('what the AI wrote, in the language of the page', () => {
     const brief = await within(conversation).findByRole('region', { name: 'AI brief' });
     await user.click(within(brief).getByRole('button', { name: /Unlocking an account/ }));
     const panel = screen.getByRole('tabpanel', { name: 'Evidence' });
-    expect(within(panel).getByText('Strong match')).toHaveAttribute(
-      'title',
-      'Strong match, score > 0.99',
-    );
+    expect(within(panel).getByText('Relevance High > 0.99')).toBeVisible();
     expect(within(panel).queryByText('1.00')).toBeNull();
   });
 
