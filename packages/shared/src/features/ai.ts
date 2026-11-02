@@ -10,6 +10,8 @@
  */
 import { z } from 'zod';
 
+import { claimSchema } from './claims.js';
+
 /** Audit `action` strings written by this feature. */
 export const AI_AUDIT_ACTIONS = {
   /** A daily AI cap reached its alert level (once per UTC day and cap). */
@@ -24,6 +26,14 @@ export const AI_AUDIT_ACTIONS = {
   aiRequest: 'ai.request',
   /** The AI wrote a draft article for review after a ticket was resolved without a citation (T-108e). */
   aiKbDraft: 'ai.kb_draft',
+  /** A person sent a message to the assistant. Metadata: tool names, run ids, counts; never the text (T-134). */
+  assistantMessage: 'assistant.message',
+  /** A person pressed an assistant proposal: written in the same transaction as the change it ran (T-134). */
+  assistantProposalConfirm: 'assistant.proposal.confirm',
+  /** A person declined an assistant proposal without running it. */
+  assistantProposalReject: 'assistant.proposal.reject',
+  /** A person deleted a conversation with the assistant. */
+  assistantConversationDelete: 'assistant.conversation.delete',
 } as const satisfies Record<string, string>;
 
 /** `ticket_event.type` strings written by this feature. */
@@ -187,6 +197,11 @@ export const aiEvidenceSchema = z.object({
   confidence: z.number().min(0).max(1),
   /** A link to the source: a path inside Watchtower or an http(s) URL. */
   href: z.string().max(2000).optional(),
+  /**
+   * The score or the content comes from mock embeddings or a fixture, not from the real system (N5).
+   * The web shows a `Demo` chip and no number, so `1.00` is never read as certainty.
+   */
+  mock: z.boolean().optional(),
 });
 export type AiEvidence = z.infer<typeof aiEvidenceSchema>;
 
@@ -225,6 +240,12 @@ export const aiReportSchema = z.object({
       z.object({ text: z.string().max(600), evidenceIds: z.array(z.string().max(100)).max(10) }),
     )
     .max(12),
+  /**
+   * The same findings in the one claim shape (T-135): each with the pages that support it, links
+   * the viewer may open. Made when the brief is read, from the evidence cards of the ticket. A
+   * finding no card supports is `uncited`.
+   */
+  claims: z.array(claimSchema).max(12).optional(),
   likelyCause: z.string().max(600).nullable(),
   confidence: z.number().min(0).max(1),
   openQuestions: z.array(z.string().max(300)).max(8),
@@ -263,6 +284,8 @@ export const ticketAiInsightSchema = z.object({
   intent: z
     .object({
       key: z.string().max(100),
+      /** The name of the intent, so the web shows it next to (not instead of) the key. Absent when the intent is gone. */
+      name: z.string().max(200).optional(),
       /** 0 to 1. */
       confidence: z.number().min(0).max(1),
       reason: z.string().max(500),

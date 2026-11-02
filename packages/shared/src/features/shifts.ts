@@ -13,6 +13,7 @@
 import { z } from 'zod';
 
 import { cursorSchema, pageLimit } from '../common.js';
+import { aiClaimsBlockSchema } from './claims.js';
 import {
   addDaysToDateKey,
   minutesOfDay,
@@ -552,6 +553,24 @@ export const currentHandoffSchema = z.object({
 });
 export type CurrentHandoff = z.infer<typeof currentHandoffSchema>;
 
+/**
+ * `POST /v1/handoffs/ai-prefill` (T-135): the AI's draft of the free text of the handoff, from the
+ * data of the open shift. Nothing is saved: the person reads the claims, copies what is right into
+ * `notes` / `messageForNext` and saves and confirms as usual. Every sentence has its evidence.
+ */
+export const handoffAiPrefillSchema = aiClaimsBlockSchema.extend({
+  /** The claims joined as lines, to put in `notes` once the person has read them. */
+  notes: z.string(),
+  messageForNext: z.string(),
+});
+export type HandoffAiPrefill = z.infer<typeof handoffAiPrefillSchema>;
+
+/** `prefill` is null when the AI is off, over budget or has nothing to say: write it by hand. */
+export const handoffAiPrefillResponseSchema = z.object({
+  prefill: handoffAiPrefillSchema.nullable(),
+});
+export type HandoffAiPrefillResponse = z.infer<typeof handoffAiPrefillResponseSchema>;
+
 export const saveHandoffItemSchema = z
   .object({
     /** An existing item to change; omit to add one. */
@@ -764,7 +783,7 @@ const briefTicketSchema = z.object({
 
 /**
  * The brief at clock in. Every section is made from data by code; none of it is AI text
- * (`aiSummary` is reserved and null until the brief summarizer exists). Sections that need tables
+ * (`aiSummary` is the one exception: the AI's reading of them, T-135, every sentence with its evidence). Sections that need tables
  * that do not exist yet (KB changes, live incidents, deploys) show what the previous shift wrote
  * in its handoff and nothing else (N5).
  */
@@ -785,15 +804,13 @@ export const shiftBriefSchema = z.object({
   carriedOver: z.array(briefTicketSchema.extend({ crossedShifts: z.number().int().min(1) })),
   /** 9. Notes left for the caller that they have not marked read. */
   notes: z.array(shiftNoteSchema),
-  /** Reserved for the AI summary (optional add-on); always null today. */
-  aiSummary: z
-    .object({
-      text: z.string(),
-      generatedAt: z.iso.datetime(),
-      dataAsOf: z.iso.datetime(),
-      aiRunId: z.string(),
-    })
-    .nullable(),
+  /**
+   * The AI's summary of the sections above (T-135): at most five claims, each with links to the
+   * tickets and pages it rests on. Null when the AI is off, over budget, or has nothing to say. A
+   * claim with no evidence is `uncited` and must be shown as such. `text` is the claims joined, for
+   * a screen that shows one paragraph.
+   */
+  aiSummary: aiClaimsBlockSchema.extend({ text: z.string() }).nullable(),
 });
 export type ShiftBrief = z.infer<typeof shiftBriefSchema>;
 

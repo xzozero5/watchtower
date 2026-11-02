@@ -9,5 +9,9 @@ app_ai_daily:        # [ASSUMED] เพดานต่อวัน (UTC) ที�
   usd: 1             # ทับด้วย AI_DAILY_COST_CAP_USD · ค่าเดียวกับ DEFAULT_AI_DAILY_COST_CAP_USD ใน packages/domain
   tokens: 500000     # ทับด้วย AI_DAILY_TOKEN_CAP
   alert_percent: 80  # ทับด้วย AI_BUDGET_ALERT_PERCENT
+assistant:           # [ASSUMED] ต่อผู้ใช้ (ADR-017) · ทับด้วย ASSISTANT_MESSAGES_PER_HOUR / ASSISTANT_USER_DAILY_TOKENS / ASSISTANT_RETENTION_DAYS
+  messages_per_hour: 30
+  user_daily_tokens: 200000
+  retention_days: 30
 cloud_dev_usd_per_month: 20   # GCP ระหว่าง dev (Pub/Sub emulator/local ก่อนเป็นหลัก)
 line_oa_plan: free            # 300 push/เดือน [VERIFY] — เปลี่ยนเมื่อ pilot จริง

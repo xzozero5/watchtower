@@ -203,6 +203,19 @@ export const phase2EnvShape = {
   // `fixtures.json`, for example examples/tools. The worker (AI tools) and the api (the buttons a
   // person presses) both read it. Empty = those clients are not connected.
   AI_TOOL_FIXTURES_DIR: z.preprocess(emptyToUndefined, z.string().min(1).optional()),
+  // The AI assistant (T-134, ADR-017). Empty = the default in config/budgets.yaml (`assistant`).
+  ASSISTANT_MESSAGES_PER_HOUR: z.preprocess(
+    emptyToUndefined,
+    z.coerce.number().int().min(1).max(1000).default(30),
+  ),
+  ASSISTANT_USER_DAILY_TOKENS: z.preprocess(
+    emptyToUndefined,
+    z.coerce.number().int().min(1000).default(200_000),
+  ),
+  ASSISTANT_RETENTION_DAYS: z.preprocess(
+    emptyToUndefined,
+    z.coerce.number().int().min(1).max(365).default(30),
+  ),
 } satisfies z.ZodRawShape;
 
 const MIN_PRODUCTION_SECRET_LENGTH = 32;
