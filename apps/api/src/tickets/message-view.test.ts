@@ -40,6 +40,26 @@ const context = {
 };
 
 describe('toMessage', () => {
+  it('gives a client name, type and size of an attachment, not its storage key or hash', () => {
+    const stored = [
+      {
+        partId: 'portal-1',
+        filename: 'shot.png',
+        contentType: 'image/png',
+        size: 12,
+        sha256: 'abc123',
+        objectKey: 'attachments/portal/2026/11/key',
+      },
+    ];
+    const row = message({ attachments: stored });
+    const client = toMessage(row, { ...context, audience: 'client' });
+    expect(client.attachments).toEqual([
+      { filename: 'shot.png', contentType: 'image/png', size: 12 },
+    ]);
+    expect(JSON.stringify(client)).not.toMatch(/objectKey|sha256|attachments\/portal/);
+    expect(toMessage(row, { ...context, audience: 'staff' }).attachments).toEqual(stored);
+  });
+
   it('shows staff who wrote a reply', () => {
     const view = toMessage(message(), { ...context, audience: 'staff' });
     expect(view.sender).toEqual({ type: 'user', id: USER, name: 'Somchai Staff' });

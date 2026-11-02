@@ -1,8 +1,41 @@
 import type { LoggerService } from '@nestjs/common';
-import { LOG_REDACT_CENSOR, LOG_REDACT_PATHS, serializeErrorForLog } from '@watchtower/shared';
+import {
+  LOG_REDACT_CENSOR,
+  LOG_REDACT_PATHS,
+  serializeErrorForLog,
+  stripQueryParams,
+} from '@watchtower/shared';
 import { pino, type DestinationStream, type Logger } from 'pino';
 
 import type { ApiConfig } from '../config/config.js';
+
+const FAILED_QUERY = /Failed query:[\s\S]*?(?=\r?\n\s+at |$)/g;
+
+/**
+ * Text of an error with the database statement and its bound parameters removed. A failed Drizzle
+ * query puts both in its message (`Failed query: <sql>\nparams: <values>`), and the values are what a
+ * customer typed: messages, names, file names. Everything else in the text is kept.
+ */
+export function scrubErrorText(text: string): string {
+  return stripQueryParams(text.replace(FAILED_QUERY, 'Failed query: [redacted]'));
+}
+
+/** The `err` serializer: the shared one, with statements removed and the database's own error code kept. */
+export function serializeApiError(error: unknown): unknown {
+  const out = serializeErrorForLog(error);
+  if (typeof out !== 'object' || out === null) return out;
+  const serialized = { ...(out as Record<string, unknown>) };
+  for (const key of ['message', 'stack']) {
+    const value = serialized[key];
+    if (typeof value === 'string') serialized[key] = scrubErrorText(value);
+  }
+  // pg's error sits in `cause` of a DrizzleQueryError; its code (23505, 22P05) says what went wrong.
+  const cause = error instanceof Error ? (error as { cause?: unknown }).cause : undefined;
+  const code =
+    typeof cause === 'object' && cause !== null ? (cause as { code?: unknown }).code : undefined;
+  if (typeof code === 'string' && serialized.code === undefined) serialized.code = code;
+  return serialized;
+}
 
 /** DI token for the pino logger. Inject with `@Inject(LOGGER)`. */
 export const LOGGER = Symbol('LOGGER');
@@ -25,7 +58,7 @@ export function createLogger(
     redact: { paths: [...LOG_REDACT_PATHS], censor: LOG_REDACT_CENSOR },
     // An error's `cause` can hold the request or response body of a provider call (a prompt):
     // log the type names of the chain, never its contents (SR106-R10).
-    serializers: { err: serializeErrorForLog, error: serializeErrorForLog },
+    serializers: { err: serializeApiError, error: serializeApiError },
   };
   return destination ? pino(options, destination) : pino(options);
 }
@@ -66,15 +99,19 @@ export class NestPinoLogger implements LoggerService {
     // Nest passes the context name last, and a stack before it for errors.
     const strings = rest.filter((item): item is string => typeof item === 'string');
     const context = strings.at(-1);
-    const stack = level === 'error' && strings.length > 1 ? strings[0] : undefined;
+    const stack =
+      level === 'error' && strings.length > 1 && strings[0] !== undefined
+        ? scrubErrorText(strings[0])
+        : undefined;
     const bindings = {
       ...(context === undefined ? {} : { context }),
       ...(stack === undefined ? {} : { stack }),
     };
     if (message instanceof Error) {
-      this.logger[level]({ ...bindings, err: message }, message.message);
+      this.logger[level]({ ...bindings, err: message }, scrubErrorText(message.message));
     } else if (typeof message === 'string') {
-      this.logger[level](bindings, message);
+      // Nest logs an unhandled exception as its message string plus its stack string.
+      this.logger[level](bindings, scrubErrorText(message));
     } else {
       this.logger[level]({ ...bindings, detail: message }, 'log');
     }

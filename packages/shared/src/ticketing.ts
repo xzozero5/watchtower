@@ -86,6 +86,14 @@ export const ticketRefSchema = z
   });
 export const ticketRefParamSchema = z.object({ id: ticketRefSchema });
 
+/** Download of one attachment of a message (T-140): the ticket, the message, and the position in `attachments`. */
+export const ticketAttachmentParamSchema = z.object({
+  id: ticketRefSchema,
+  messageId: z.uuid(),
+  index: z.coerce.number().int().min(0).max(99),
+});
+export type TicketAttachmentParam = z.infer<typeof ticketAttachmentParamSchema>;
+
 /** The routes on one AI draft of a ticket (T-108): the ticket by id or number, and the draft. */
 export const aiDraftRefParamSchema = z.object({ id: ticketRefSchema, draftId: z.uuid() });
 export type AiDraftRefParam = z.infer<typeof aiDraftRefParamSchema>;

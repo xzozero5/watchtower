@@ -17,6 +17,8 @@ export interface ViewMessage {
   readonly id: string;
   readonly direction: string;
   readonly bodyText: string;
+  /** `message.attachments` as stored; only the display name and size leave this module. */
+  readonly attachments?: unknown;
   readonly createdAt: Date;
   /** Full name of the staff sender, if any. Only the first name leaves this module. */
   readonly staffName: string | null;
@@ -33,6 +35,24 @@ const statusChangePayload = z.object({ from: ticketStatusSchema, to: ticketStatu
 const mergedPayload = z.object({ intoKey: z.string().max(32) });
 
 const DAY_MS = 24 * 60 * 60 * 1000;
+
+const storedAttachment = z.object({ filename: z.string().nullable(), size: z.number() });
+
+/** Name and size of each stored attachment; object keys, hashes and the rest of the record stay inside. */
+export function customerFacingAttachments(value: unknown): { name: string; size: number }[] {
+  if (!Array.isArray(value)) return [];
+  const files: { name: string; size: number }[] = [];
+  for (const item of value as unknown[]) {
+    const parsed = storedAttachment.safeParse(item);
+    if (parsed.success) {
+      files.push({
+        name: parsed.data.filename ?? 'file',
+        size: Math.max(0, Math.trunc(parsed.data.size)),
+      });
+    }
+  }
+  return files;
+}
 
 /**
  * The timeline a customer sees: public messages, and the status words they went through. Internal
@@ -56,6 +76,7 @@ export function buildTimeline(
 
   for (const message of messages) {
     const fromSupport = message.direction === 'outbound';
+    const files = customerFacingAttachments(message.attachments);
     items.push({
       at: message.createdAt,
       rank: 1,
@@ -66,6 +87,7 @@ export function buildTimeline(
         from: fromSupport ? 'support' : 'customer',
         authorName: fromSupport ? firstName(message.staffName) : null,
         body: message.bodyText,
+        ...(files.length > 0 ? { attachments: files } : {}),
         createdAt: message.createdAt.toISOString(),
       }),
     });

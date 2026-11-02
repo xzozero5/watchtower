@@ -20,21 +20,24 @@ const defaultSleep = (ms: number) =>
  * so "too quick" should not happen; if the api still refuses the proof while our own timer says it
  * was early (clock changes), wait out the rest and send the same proof once more. Every other
  * failure is thrown for the page to show, and for a verification failure or a rate limit the page
- * asks the human check for a new challenge.
+ * asks the human check for a new challenge. Files, if any, travel with the request (multipart).
  */
 export async function submitRequest(
   deps: SubmitFlowDeps,
   payload: SubmitPayload,
+  files: readonly File[] = [],
 ): Promise<PortalSubmitted> {
   const proof = await deps.check.getProof();
   const body = { ...payload, verification: proof };
+  const send = () =>
+    files.length === 0 ? deps.api.submit(body) : deps.api.submit(body, undefined, files);
   try {
-    return await deps.api.submit(body);
+    return await send();
   } catch (error) {
     const early = deps.check.fillRemainingMs();
     if (classifyPortalError(error).kind === 'verification' && early > 0) {
       await (deps.sleep ?? defaultSleep)(early);
-      return deps.api.submit(body);
+      return send();
     }
     throw error;
   }

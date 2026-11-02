@@ -82,7 +82,27 @@ export const portalEn = {
         'You have sent several requests recently. Please wait about {time} and try again.',
       network: "We couldn't reach the server. Check your connection and try again.",
       validation: 'Some details were not accepted. Check the form and try again.',
+      attachment:
+        'We could not accept one of your files. Remove it or choose another, then send again.',
       server: 'Something went wrong on our side. Your text is still here. Try again in a moment.',
+    },
+  },
+  attachments: {
+    label: 'Attachments',
+    hint: 'Screenshots, PDF, text, CSV or log files. Up to {count} files, {size} MB each.',
+    add: 'Add files',
+    addMore: 'Add more files',
+    listLabel: 'Files to send',
+    remove: 'Remove {name}',
+    removed: 'Removed {name}',
+    errorsTitle: 'Some files were not added',
+    errors: {
+      tooMany: 'You can attach at most {count} files.',
+      empty: '{name} is empty.',
+      tooLarge: '{name} is larger than {size} MB.',
+      typeNotAllowed:
+        '{name} is not an accepted type. Use PNG, JPG, GIF, WebP, PDF, TXT, CSV or LOG.',
+      totalTooLarge: 'The files together can be at most {total} MB. {name} was not added.',
     },
   },
   verify: {
@@ -139,6 +159,8 @@ export const portalEn = {
       network: "We couldn't reach the server. Check your connection and try again.",
       rateLimited: 'Too many requests. Please wait about {time} and try again.',
       server: 'Something went wrong on our side. Try again in a moment.',
+      attachment:
+        'We could not accept one of your files. Remove it or choose another, then send again.',
       notOpen:
         'This request was closed or merged while you were writing. Your message was not sent.',
     },
