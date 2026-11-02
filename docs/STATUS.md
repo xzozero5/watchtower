@@ -40,6 +40,10 @@ snapshot สั้นสำหรับ cold start อยู่ที่ `HANDOF
 
 ## Log
 
+## 2026-11-02 08:04 (Asia/Bangkok) — main thread — T-119, T-121 saved views, bulk, links, Other mail, outbox dead letter, org tiers ปิด
+- test: main thread รันเองบน Windows: lint, typecheck, unit ผ่าน · integration db 367, domain 431, api 956, worker 222 · e2e 143 · full-stack 23 · compose healthy `[TESTED]`
+- ค้าง/ไม่ยืนยัน: P2 bulk ไม่มี rate limit ลง T-125 · ยังไม่มี UI ของ link และ org tier
+
 ## 2026-11-02 07:18 (Asia/Bangkok) — main thread — T-204, T-205 status page, subscriptions, usage metrics, anomalies, Health Score (mock only) ปิด
 - test: main thread รันเองบน Windows: lint, typecheck ผ่าน · unit ผ่าน · integration db 358, domain 431, api 886, worker 222 · e2e 143 · full-stack 23 · compose healthy `[TESTED]`
 - ค้าง/ไม่ยืนยัน: หน้า web T-204b ยังไม่ทำ · ยังไม่มี adapter จาก DataQueryClient เป็น UsageDataPort · น้ำหนักคะแนน [ASSUMED]
