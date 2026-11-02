@@ -19,9 +19,9 @@ export interface HiddenMatches {
 
 /**
  * Tickets that match the search but are hidden by the status filter: the same search with the
- * status filter dropped, minus what the list already shows. Asks only while a search and a status
- * filter are both active. Assumes the list api treats a missing `status` as "every status"
- * `[ASSUMED]`; the all-status flag the api is getting (parallel work) is not needed for this.
+ * status filter dropped (`allStatuses=true`; it also matches a requester email, which the stats and
+ * count routes deliberately do not), minus what the list already shows. Asks only while a search
+ * and a status filter are both active.
  */
 export function useHiddenMatches(
   filters: QueueFilters,
@@ -37,10 +37,21 @@ export function useHiddenMatches(
     enabled: active,
     staleTime: 30_000,
     queryFn: ({ signal }) =>
-      api.listTickets({ ...filtersToParams({ ...filters, status: [] }), limit: 20 }, signal),
+      api.listTickets(
+        { ...filtersToParams({ ...filters, status: [] }), allStatuses: true, limit: 20 },
+        signal,
+      ),
   });
   if (!active || !query.data) return null;
-  const hidden = query.data.items.filter((item: TicketItem) => !shownKeys.has(item.key));
+  return summarizeHidden(query.data.items, shownKeys);
+}
+
+/** What the search finds that the list does not show; null when nothing is hidden. */
+export function summarizeHidden(
+  items: readonly Pick<TicketItem, 'key' | 'status'>[],
+  shownKeys: ReadonlySet<string>,
+): HiddenMatches | null {
+  const hidden = items.filter((item) => !shownKeys.has(item.key));
   if (hidden.length === 0) return null;
   return { count: hidden.length, allClosed: hidden.every((item) => CLOSED.has(item.status)) };
 }

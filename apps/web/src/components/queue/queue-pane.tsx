@@ -44,6 +44,7 @@ import {
   triageGroup,
   type TriageScope,
 } from '@/lib/ai/model';
+import { useApi } from '@/lib/api/api-context';
 import { useSession } from '@/lib/auth/session';
 import { useShortcut, stepIndex } from '@/lib/keyboard';
 import { usePreferences } from '@/lib/preferences';
@@ -60,6 +61,7 @@ import {
 } from '@/lib/tickets/filters';
 import { ApiRequestError } from '@/lib/api/errors';
 import { filtersToView } from '@/lib/tickets/filters';
+import { useQueueAssignees } from '@/lib/tickets/assignees';
 import { useHiddenMatches } from '@/lib/tickets/hidden-matches';
 import { ticketNumber, toRowModel } from '@/lib/tickets/model';
 import { parseTicketRef } from '@/lib/tickets/ref';
@@ -285,14 +287,24 @@ export function QueuePane({
       return next;
     });
   }, []);
+  const myQueueIds = (queues.data?.queues ?? [])
+    .filter((queue) => queue.members.some((member) => member.userId === userId))
+    .map((queue) => queue.id);
+  const assigneeList = useQueueAssignees(filters.queueId ?? myQueueIds[0], canHandle);
   const assignees = useMemo(() => {
+    // The api's picker (agents may not list users): members of the queue first.
+    if (assigneeList.data) {
+      return [...assigneeList.data.assignees]
+        .sort((a, b) => Number(b.inQueue) - Number(a.inQueue))
+        .map(({ id, name }) => ({ id, name }));
+    }
     const byId = new Map<string, string>();
     for (const queue of queues.data?.queues ?? []) {
       for (const member of queue.members) byId.set(member.userId, member.name);
     }
     if (session) byId.set(session.user.id, session.user.name);
     return [...byId].map(([id, name]) => ({ id, name }));
-  }, [queues.data, session]);
+  }, [queues.data, session, assigneeList.data]);
 
   // "Needs you" is for me: the signed-in person and the queues they belong to (QA-01).
   const scope = useMemo<TriageScope | undefined>(() => {
@@ -536,14 +548,28 @@ export function QueuePane({
 
   // Enter in the search box on a ticket number opens that ticket once the list answers (QA-09).
   const openOnMatch = useRef<number | null>(null);
+  const api = useApi();
   const openMatch = useCallback(
     (number: number) => {
       const hit = rows.find((row) => ticketNumber(row.key) === number);
-      if (!hit) return;
-      onSelect(hit.key);
-      onActivate?.();
+      if (hit) {
+        onSelect(hit.key);
+        onActivate?.();
+        return;
+      }
+      // Hidden by the status filter: ask for the one ticket across every status and open it.
+      void api
+        .listTickets({ q: String(number), allStatuses: true, limit: 1 })
+        .then((page) => {
+          const found = page.items.find((item) => ticketNumber(item.key) === number);
+          if (found) {
+            onSelect(found.key);
+            onActivate?.();
+          }
+        })
+        .catch(() => undefined); // the hint still shows; nothing opens
     },
-    [rows, onSelect, onActivate],
+    [rows, onSelect, onActivate, api],
   );
   const searchSubmitted = (value: string) => {
     const number = parseTicketRef(value, ticketKeyPrefix)?.number ?? null;
@@ -575,6 +601,7 @@ export function QueuePane({
           busy={bulk.isPending}
           assignees={assignees}
           me={session ? { id: session.user.id, name: session.user.name } : null}
+          scope={assigneeList.data?.scope}
           onApply={applyBulk}
           onClear={() => {
             setChecked(new Set());
