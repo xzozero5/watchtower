@@ -90,6 +90,11 @@ export function toTicketAiInsight(row: InsightRow, draft?: DraftRow): TicketAiIn
           },
         }),
     evidence: evidence.success ? evidence.data : [],
+    // Why the brief failed, so the web can say so instead of a bare "could not finish" (QA-07).
+    // A code the contract does not know is dropped by the schema's catch, never shown raw.
+    ...(state === 'failed' && row.reasonCode !== null
+      ? { reasonCode: row.reasonCode as NonNullable<TicketAiInsight['reasonCode']> }
+      : {}),
     ...(waiting === undefined ? {} : { draft: toAiDraft(waiting) }),
     ...(report.success ? { report: report.data } : {}),
     ...(progress.success && state === 'investigating' ? { progress: progress.data } : {}),
