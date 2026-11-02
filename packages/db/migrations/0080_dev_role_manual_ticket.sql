@@ -2,7 +2,7 @@
 --   [ASSUMED] matrix, per the `po` decision (PRD section 2.2); packages/shared/src/rbac.ts holds the same
 --   data and an integration test keeps them equal:
 --     dev: ticket.read.masked, ticket.dev.work, investigate.run, auth.session.self
---     nobody else gets the two new strings by default.
+--     lead (and so head) also get ticket.dev.release.any, to free a ticket from a developer who is away.
 --   users.role and role_permissions.role accept 'dev'. A dev is not a member of STAFF_ROLES in code:
 --   tickets are never assigned to a dev; the person picks a ticket up in ticket.dev_owner_id, and
 --   ticket.assignee_id stays the agent (AC-7).
@@ -23,13 +23,16 @@ INSERT INTO permissions (key, description) VALUES
   ('ticket.read.masked',
    'Read any ticket with personal data masked (email, phone, names, message text through the redactor)'),
   ('ticket.dev.work',
-   'Developer work on a ticket: internal notes, open and waiting_on_dev, pick up as dev owner, link an incident or deploy');
+   'Developer work on a ticket: internal notes, open and waiting_on_dev, pick up as dev owner, link an incident or deploy'),
+  ('ticket.dev.release.any', 'Let go of the dev owner of any ticket (a developer who is away)');
 
 INSERT INTO role_permissions (role, permission) VALUES
   ('dev', 'ticket.read.masked'),
   ('dev', 'ticket.dev.work'),
   ('dev', 'investigate.run'),
-  ('dev', 'auth.session.self');
+  ('dev', 'auth.session.self'),
+  ('lead', 'ticket.dev.release.any'),
+  ('head', 'ticket.dev.release.any');
 
 ALTER TABLE ticket DROP CONSTRAINT ticket_channel_check;
 ALTER TABLE ticket ADD CONSTRAINT ticket_channel_check

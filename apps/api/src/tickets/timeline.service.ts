@@ -8,13 +8,13 @@ import {
   type TimelineEntry,
   type TimelineQuery,
 } from '@watchtower/shared';
+import { WORKSPACE_ROLES } from '@watchtower/shared';
 import { and, asc, eq, gte, inArray, notInArray, sql } from 'drizzle-orm';
 
 import type { Principal } from '../auth/principal.js';
 import { afterCursor, decodeCursor, encodeCursor, preciseTimestamp } from '../common/keyset.js';
 import { DATABASE } from '../database/database.module.js';
 import { maskEntry, toMessage, toTimelineEvent, type Audience } from './message-view.js';
-import { createMaskingSession } from '../masking/pii-masker.js';
 import { TicketReader, isClient, isMasked } from './ticket-reader.js';
 import { TICKET_KEYS, type TicketKeys } from './ticket-keys.js';
 
@@ -43,6 +43,16 @@ export class TimelineService {
   ): Promise<{ entries: TimelineEntry[]; nextCursor: string | null }> {
     const root = await this.reader.viewRow(ref, principal);
     const audience: Audience = isClient(principal) ? 'client' : 'staff';
+    // A developer reads the same conversation with personal data masked (T-137), one session for the page.
+    const session = isMasked(principal) ? await this.reader.maskingFor(root.t.id, [root]) : null;
+    // People of the customer's side are customers: a client user's name is personal data (the magic-link
+    // sign-in even sets it to the local part of the email address). Staff names stay.
+    const shownName = (name: string | null, role: string | null): string | null =>
+      session !== null &&
+      name !== null &&
+      !(WORKSPACE_ROLES as readonly string[]).includes(role ?? '')
+        ? session.name(name)
+        : name;
     const { message, ticketEvent, ticket, users, contact } = schema;
 
     // No event of a ticket is older than the ticket. The events table is partitioned by month, and
@@ -117,6 +127,7 @@ export class TimelineService {
         row: ticketEvent,
         sortKey: preciseTimestamp(ticketEvent.createdAt),
         actorName: users.name,
+        actorRole: users.role,
       })
       .from(ticketEvent)
       .leftJoin(users, sql`${users.id}::text = ${ticketEvent.actorId}`)
@@ -146,7 +157,7 @@ export class TimelineService {
             ...toMessage(entry.row, {
               ticketKey: this.keys.format(known?.number ?? root.t.number),
               channel: known?.channel ?? (root.t.channel as ChannelType),
-              senderUserName: entry.userName,
+              senderUserName: shownName(entry.userName, entry.userRole),
               senderUserRole: entry.userRole,
               senderContactName: entry.contactName,
               audience,
@@ -163,7 +174,7 @@ export class TimelineService {
         build: (): TimelineEntry =>
           toTimelineEvent(entry.row, {
             ticketKey: this.keys.format(numbers.get(entry.row.ticketId)?.number ?? root.t.number),
-            actorName: entry.actorName,
+            actorName: shownName(entry.actorName, entry.actorRole),
             audience,
           }),
       })),
@@ -175,10 +186,6 @@ export class TimelineService {
 
     const page = merged.slice(0, query.limit);
     const last = page.at(-1);
-    // A developer reads the same conversation with personal data masked (T-137), one session for the page.
-    const session = isMasked(principal)
-      ? createMaskingSession(root.t.id, await this.reader.namesAround(root))
-      : null;
     return {
       entries: page.map((entry) => {
         const built = entry.build();

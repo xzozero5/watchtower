@@ -1,5 +1,6 @@
 import {
   MANUAL_CHANNELS,
+  MANUAL_TICKET_LIMITS,
   type ManualTicketResult,
   type SimilarTickets,
   type TicketDetail,
@@ -350,5 +351,24 @@ describe('the audit trail', () => {
     expect(
       timeline.entries.some((entry) => entry.kind === 'event' && entry.type === 'ticket.created'),
     ).toBe(true);
+  });
+});
+
+describe('the pace of filing by hand', () => {
+  it('stops one person at the hourly limit with 429, and not another', async () => {
+    const busy = await signIn(h, 'agent');
+    const calm = await signIn(h, 'agent');
+    const known = (await busy.client.post<ManualTicketResult>(PATH, body())).body.contact.id;
+    for (let filed = 1; filed < MANUAL_TICKET_LIMITS.perUserPerHour; filed += 1) {
+      const response = await busy.client.post(
+        PATH,
+        body({ requester: undefined, requesterContactId: known }),
+      );
+      expect(response.status).toBe(201);
+    }
+    const over = await busy.client.post<ApiErrorBody>(PATH, body());
+    expect(over.status).toBe(429);
+    expect(over.headers.get('retry-after')).not.toBeNull();
+    expect((await calm.client.post(PATH, body())).status).toBe(201);
   });
 });

@@ -1519,7 +1519,7 @@ describe('PII reads and OpenAPI', () => {
       ['/v1/tickets/{id}', 'patch', ['ticket.handle']],
       ['/v1/tickets/{id}/status', 'post', ['ticket.handle', 'ticket.dev.work']],
       ['/v1/tickets/{id}/dev-owner', 'post', ['ticket.dev.work']],
-      ['/v1/tickets/{id}/dev-owner', 'delete', ['ticket.dev.work']],
+      ['/v1/tickets/{id}/dev-owner', 'delete', ['ticket.dev.work', 'ticket.dev.release.any']],
       ['/v1/tickets/{id}/references', 'post', ['ticket.handle', 'ticket.dev.work']],
       ['/v1/tickets/{id}/assign', 'post', ['ticket.handle']],
       ['/v1/tickets/{id}/merge', 'post', ['ticket.handle']],

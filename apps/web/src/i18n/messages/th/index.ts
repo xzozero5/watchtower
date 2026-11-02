@@ -12,6 +12,7 @@ import { conversationTh } from './conversation';
 import { csatTh } from './csat';
 import { customerTh } from './customer';
 import { detailsTh } from './details';
+import { devHomeTh } from './devHome';
 import { errorsTh } from './errors';
 import { homeTh } from './home';
 import { keymapTh } from './keymap';
@@ -76,6 +77,7 @@ export const th: Messages = {
   admin: adminTh,
   portal: portalTh,
   newTicket: newTicketTh,
+  devHome: devHomeTh,
   notifications: notificationsTh,
   csat: csatTh,
   bulk: bulkTh,

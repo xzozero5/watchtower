@@ -50,6 +50,7 @@ export type TicketListParams = Partial<
     | 'status'
     | 'priority'
     | 'assignee'
+    | 'devOwner'
     | 'intentId'
     | 'tag'
     | 'q'
@@ -202,6 +203,21 @@ export function createEndpoints(client: ApiClient) {
         method: 'POST',
         path: `${refPath(ref)}/status`,
         body,
+        schema: ticketDetailResponseSchema,
+      }),
+
+    /** The caller picks the ticket up as its developer, or lets it go (T-137). */
+    devPickUp: (ref: string) =>
+      client.request({
+        method: 'POST',
+        path: `${refPath(ref)}/dev-owner`,
+        schema: ticketDetailResponseSchema,
+      }),
+
+    devRelease: (ref: string) =>
+      client.request({
+        method: 'DELETE',
+        path: `${refPath(ref)}/dev-owner`,
         schema: ticketDetailResponseSchema,
       }),
 

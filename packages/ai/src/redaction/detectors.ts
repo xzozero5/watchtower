@@ -102,11 +102,25 @@ function domainEnd(text: string, labels: readonly Label[]): { end: number; count
   return { end: 0, count: 0 };
 }
 
+/** Where an `@` is written: the character itself, or its URL-encoded form `%40` (a query string, a mailto link). */
+function atMarkers(text: string): { at: number; length: number }[] {
+  const markers: { at: number; length: number }[] = [];
+  for (let index = 0; index < text.length; index += 1) {
+    const char = text.charAt(index);
+    if (char === '@') markers.push({ at: index, length: 1 });
+    else if (char === '%' && text.startsWith('40', index + 1)) {
+      markers.push({ at: index, length: 3 });
+      index += 2;
+    }
+  }
+  return markers;
+}
+
 export function detectEmails(text: string): Span[] {
   const spans: Span[] = [];
-  let at = text.indexOf('@');
   let lastEnd = 0;
-  while (at !== -1) {
+  for (const marker of atMarkers(text)) {
+    const at = marker.at;
     // Local part: a run of ASCII local characters, or (when the character next to '@' is not
     // ASCII) a run of Unicode ones. Thai is written without spaces, so mixing would swallow
     // the Thai words in front of an ASCII address.
@@ -122,9 +136,10 @@ export function detectEmails(text: string): Span[] {
     }
 
     // Domain: labels of letters/digits/hyphens separated by single dots, at least two labels.
+    const domainStart = at + marker.length;
     const labels: Label[] = [];
-    let cursor = at + 1;
-    while (cursor - at <= MAX_DOMAIN) {
+    let cursor = domainStart;
+    while (cursor - domainStart < MAX_DOMAIN) {
       const labelStart = cursor;
       while (cursor < text.length && DOMAIN_LABEL_CHAR.test(text.charAt(cursor))) cursor += 1;
       if (cursor === labelStart) break;
@@ -137,7 +152,6 @@ export function detectEmails(text: string): Span[] {
       spans.push(span(start, end, 'EMAIL', PRIORITY.EMAIL));
       lastEnd = end;
     }
-    at = text.indexOf('@', at + 1);
   }
   return spans;
 }
@@ -263,6 +277,25 @@ const MOBILE = /^0[689][0-9]{8}$/;
 const BANGKOK = /^02[0-9]{7}$/;
 const PROVINCIAL = /^0[3-57][0-9]{7}$/;
 const INTERNATIONAL_00 = /^0066[2-9][0-9]{8,9}$/;
+// The same number without the "+" or the "00": country code 66 and then the number without its 0
+// (66 81 234 5678, 66 2 123 4567).
+const INTERNATIONAL_66 = /^66[2-9][0-9]{7,8}$/;
+// A ten-digit North American number (area code and exchange start with 2 to 9), in one piece or as 3-3-4.
+const NANP = /^[2-9][0-9]{2}[2-9][0-9]{6}$/;
+const NANP_SHAPES = new Set(['10', '3-3-4']);
+// A ticket key such as OPS-1234567890: the digits belong to the key, not to a phone.
+const KEY_PREFIX = /[A-Za-z]{2,10}[-_]$/;
+
+/**
+ * A bare run of digits is a phone number only on its own: next to letters it is part of an
+ * identifier (a hex id, a trace id, "ab4155552671") and after a ticket-key prefix it is the key's number.
+ */
+function standsAlone(text: string, start: number, end: number): boolean {
+  const before = text.charAt(start - 1);
+  const after = text.charAt(end);
+  if (/[A-Za-z]/.test(before) || /[A-Za-z]/.test(after)) return false;
+  return !KEY_PREFIX.test(text.slice(Math.max(0, start - 11), start));
+}
 // Digit-group shapes a person might type a phone number in. Used only when the separators are
 // mixed ("081-234 5678"): a date followed by a count ("08/10/2026 12") has the same digits as a
 // mobile number but not the same grouping.
@@ -341,6 +374,15 @@ function detectInCluster(text: string, cluster: Cluster, spans: Span[]): void {
           BANGKOK.test(digits) ||
           PROVINCIAL.test(digits) ||
           INTERNATIONAL_00.test(digits))
+      ) {
+        spans.push(span(phoneStart, end, 'PHONE', PRIORITY.PHONE));
+      } else if (
+        lengths.length <= 4 &&
+        lengths.every((length) => length >= 2) &&
+        consistentSeparators(cluster, from, to) &&
+        (INTERNATIONAL_66.test(digits) ||
+          (NANP.test(digits) && NANP_SHAPES.has(lengths.join('-')))) &&
+        standsAlone(text, start, end)
       ) {
         spans.push(span(phoneStart, end, 'PHONE', PRIORITY.PHONE));
       }

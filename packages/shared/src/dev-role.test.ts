@@ -63,6 +63,13 @@ describe('the dev role (T-137)', () => {
     expect(Object.keys(PERMISSIONS)).toContain('ticket.read.masked');
   });
 
+  it('lets only a lead and a head free a ticket from a developer', () => {
+    for (const role of ROLES) {
+      const has = DEFAULT_ROLE_PERMISSIONS[role].includes('ticket.dev.release.any');
+      expect([role, has]).toEqual([role, role === 'lead' || role === 'head']);
+    }
+  });
+
   it('files tickets by hand only for agent, lead and head', () => {
     for (const role of STAFF_ROLES) {
       expect(DEFAULT_ROLE_PERMISSIONS[role]).toContain('ticket.create');

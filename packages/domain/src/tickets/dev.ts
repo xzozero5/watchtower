@@ -24,6 +24,14 @@ export interface DevOwnerInput {
   readonly ref: string;
 }
 
+export interface ReleaseDevOwnerInput extends DevOwnerInput {
+  /**
+   * The caller may let go of anyone's pick-up (a lead or a head freeing a ticket from a developer who is
+   * away). The caller decides from the permission; without it only the owner can.
+   */
+  readonly anyOwner?: boolean | undefined;
+}
+
 function actorUserId(ctx: DomainContext): string {
   if (ctx.actor.type !== 'user' || ctx.actor.id === null) {
     throw forbidden('Only a person can pick up a ticket');
@@ -79,17 +87,17 @@ export async function pickUpTicketAsDev(
   return fx.result(after);
 }
 
-/** The dev owner lets the ticket go. Only the owner can: nobody releases someone else's pick-up. */
+/** The dev owner lets the ticket go. Only the owner can, unless the caller may free any ticket (`anyOwner`). */
 export async function releaseTicketAsDev(
   tx: DbTransaction,
   ctx: DomainContext,
-  input: DevOwnerInput,
+  input: ReleaseDevOwnerInput,
 ): Promise<DomainResult<TicketRow>> {
   const fx = new Effects();
   const userId = actorUserId(ctx);
   const before = await lockOpenTicket(tx, ctx, input.ref);
   if (before.devOwnerId === null) return fx.result(before);
-  if (before.devOwnerId !== userId) {
+  if (before.devOwnerId !== userId && input.anyOwner !== true) {
     throw forbidden('Only the developer who picked this ticket up can let it go');
   }
   const [after] = await tx
@@ -100,12 +108,13 @@ export async function releaseTicketAsDev(
   if (!after) throw notFound('No such ticket');
   await recordTicketEvent(tx, after.id, TICKET_EVENT_TYPES.devReleased, ctx.actor, 'internal', {
     devOwnerId: null,
+    previousDevOwnerId: before.devOwnerId,
   });
   await recordAuditInTx(tx, ctx, fx, {
     action: AUDIT_ACTIONS.ticketDevRelease,
     targetType: 'ticket',
     targetId: after.id,
-    metadata: { devOwnerId: userId },
+    metadata: { devOwnerId: before.devOwnerId, releasedBy: userId },
   });
   fx.emit(ticketEvent(ctx, 'ticket.updated', after, ['devOwner']));
   return fx.result(after);

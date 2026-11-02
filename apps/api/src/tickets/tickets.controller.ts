@@ -20,6 +20,7 @@ import {
 } from '@nestjs/swagger';
 import {
   AUDIT_ACTIONS,
+  MANUAL_TICKET_LIMITS,
   assignTicketSchema,
   changeStatusSchema,
   createManualTicketSchema,
@@ -73,11 +74,11 @@ import {
   type Principal,
 } from '../auth/decorators.js';
 import { badRequest, forbidden } from '../auth/http-errors.js';
+import { RateLimiter } from '../auth/rate-limiter.js';
 import { parseResponse } from '../common/zod-openapi.js';
 import { UnitOfWorkService } from '../realtime/unit-of-work.js';
 import { maskMessage, toMessage } from './message-view.js';
 import { TICKET_KEYS, type TicketKeys } from './ticket-keys.js';
-import { createMaskingSession } from '../masking/pii-masker.js';
 import { TicketReader, assertCanRead, isClient, isMasked } from './ticket-reader.js';
 import {
   TicketsService,
@@ -116,6 +117,7 @@ export class TicketsController {
     @Inject(TimelineService) private readonly timelines: TimelineService,
     @Inject(UnitOfWorkService) private readonly uow: UnitOfWorkService,
     @Inject(TICKET_KEYS) private readonly keys: TicketKeys,
+    @Inject(RateLimiter) private readonly limiter: RateLimiter,
   ) {}
 
   @Get()
@@ -200,6 +202,7 @@ export class TicketsController {
       '`chat`, `other`). The SLA clock starts now. The customer gets an automatic "we received your ' +
       'request" email by default when the contact already existed; for a new address set ' +
       '`sendConfirmation: true` (the person ticks the box). `confirmation.status` says what happened. ' +
+      `At most ${String(MANUAL_TICKET_LIMITS.perUserPerHour)} an hour per person (429 after that). ` +
       'Nothing can be replied on these channels: a public reply answers 409 `channel_no_outbound`; ' +
       'record the call as an internal note. A client or a developer gets 403.',
   })
@@ -209,6 +212,12 @@ export class TicketsController {
     @CurrentPrincipal() principal: Principal,
   ) {
     if (principal.orgScope.kind === 'org') throw forbidden();
+    await this.limiter.enforce(
+      'ticket-manual',
+      principal.userId,
+      MANUAL_TICKET_LIMITS.perUserPerHour,
+      3600,
+    );
     const created = await this.uow.run((uow) =>
       this.tickets.createManual(uow, body, actorOf(principal)),
     );
@@ -553,19 +562,22 @@ export class TicketsController {
 
   @Delete(':id/dev-owner')
   @HttpCode(200)
-  @RequirePermission('ticket.dev.work')
+  @RequireAnyPermission('ticket.dev.work', 'ticket.dev.release.any')
   @Audited({ action: AUDIT_ACTIONS.ticketDevRelease, targetType: 'ticket' })
   @ApiOperation({
     summary: 'Let the ticket go as its developer',
-    description: 'Only the developer who picked it up (403 for anyone else).',
+    description:
+      'The developer who picked it up. A lead or a head (`ticket.dev.release.any`) can free a ticket ' +
+      'from a developer who is away. 403 for anyone else.',
   })
   @ApiOkResponse({ standardSchema: ticketDetailResponseSchema })
   async devRelease(
     @Param({ schema: ticketRefParamSchema }) params: RefParam,
     @CurrentPrincipal() principal: Principal,
   ) {
+    const anyOwner = principal.permissions.has('ticket.dev.release.any');
     const row = await this.uow.run((uow) =>
-      this.tickets.devRelease(uow, params.id, actorOf(principal)),
+      this.tickets.devRelease(uow, params.id, actorOf(principal), anyOwner),
     );
     return parseResponse(ticketDetailResponseSchema, await this.reader.detail(row.id, principal));
   }
@@ -641,7 +653,7 @@ export class TicketsController {
   /** The message a developer just wrote, read back masked like every message they see. */
   private async maskedMessage(message: Message, principal: Principal): Promise<Message> {
     const row = await this.reader.viewById(message.ticketId, principal);
-    const session = createMaskingSession(message.ticketId, await this.reader.namesAround(row));
+    const session = await this.reader.maskingFor(message.ticketId, [row]);
     return maskMessage(message, session);
   }
 }

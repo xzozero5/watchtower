@@ -50,11 +50,21 @@ export interface MaskingSession {
   readonly phone: typeof maskPhone;
 }
 
-export function createMaskingSession(scope: string, names: readonly string[]): MaskingSession {
+/**
+ * @param complete false when the list of names the redactor needs was cut short (an organization with
+ *   more people than the limit): the redactor cannot be trusted to find every name, so every text is
+ *   replaced by a fixed notice instead of being shown with a name left in it (fail closed).
+ */
+export function createMaskingSession(
+  scope: string,
+  names: readonly string[],
+  complete = true,
+): MaskingSession {
   const known = names.filter((name) => name.trim() !== '');
   const redactor = createRedactor({ names: () => known });
   let session: RedactionSession | undefined;
   const text = (value: string): string => {
+    if (!complete) return MASKED_TEXT_UNAVAILABLE;
     try {
       session ??= redactor.session({ scope });
       return session.redact(value);

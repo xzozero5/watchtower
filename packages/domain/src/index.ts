@@ -580,6 +580,7 @@ export {
   removeTicketReference,
   type AddTicketReferenceInput,
   type DevOwnerInput,
+  type ReleaseDevOwnerInput,
   type RemoveTicketReferenceInput,
 } from './tickets/dev.js';
 export {

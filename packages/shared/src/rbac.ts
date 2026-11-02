@@ -100,6 +100,7 @@ export const PERMISSIONS = {
     'Read any ticket with personal data masked (email, phone, names, message text through the redactor)',
   'ticket.dev.work':
     'Developer work on a ticket: internal notes, open and waiting_on_dev, pick up as dev owner, link an incident or deploy',
+  'ticket.dev.release.any': 'Let go of the dev owner of any ticket (a developer who is away)',
 } as const satisfies Record<string, string>;
 
 export type Permission = keyof typeof PERMISSIONS;
@@ -164,6 +165,7 @@ const LEAD: readonly Permission[] = [
   'csat.read',
   'ai.run.read',
   'ticket.cancel.any',
+  'ticket.dev.release.any',
   'alert.manage',
   'service.manage',
   'investigate.adhoc',

@@ -40,6 +40,7 @@ const ADDED_LATER = [
   // 0080 (T-137)
   'ticket.read.masked',
   'ticket.dev.work',
+  'ticket.dev.release.any',
 ] as const;
 
 let testDb: TestDatabase;

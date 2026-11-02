@@ -187,7 +187,7 @@ describe('0080 dev role and manual ticket', () => {
 
     expect(await migrateDown(owner())).toEqual([MIGRATION]);
     const gone = await owner().query(
-      `SELECT 1 FROM permissions WHERE key IN ('ticket.read.masked', 'ticket.dev.work')`,
+      `SELECT 1 FROM permissions WHERE key IN ('ticket.read.masked', 'ticket.dev.work', 'ticket.dev.release.any')`,
     );
     expect(gone.rowCount).toBe(0);
     const columns = await owner().query<{ column_name: string }>(

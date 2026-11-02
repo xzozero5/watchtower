@@ -94,6 +94,12 @@ export const similarTicketsSchema = z.object({
 });
 export type SimilarTickets = z.infer<typeof similarTicketsSchema>;
 
+/**
+ * Tickets one person may file by hand in an hour `[ASSUMED]`. Each one can write an email to a stranger
+ * (when ticked), so a runaway client or a stolen session is held to a human pace.
+ */
+export const MANUAL_TICKET_LIMITS = { perUserPerHour: 60 } as const;
+
 // --- the developer's part of a ticket (T-137) ---
 
 /** The only two statuses the `dev` role moves a ticket between. */

@@ -35,7 +35,7 @@ ALTER TABLE ticket DROP CONSTRAINT ticket_channel_check;
 ALTER TABLE ticket ADD CONSTRAINT ticket_channel_check
   CHECK (channel IN ('gmail', 'line', 'portal', 'discord', 'webhook', 'internal'));
 
-DELETE FROM permissions WHERE key IN ('ticket.read.masked', 'ticket.dev.work');
+DELETE FROM permissions WHERE key IN ('ticket.read.masked', 'ticket.dev.work', 'ticket.dev.release.any');
 DELETE FROM role_permissions WHERE role = 'dev';
 
 ALTER TABLE role_permissions DROP CONSTRAINT role_permissions_role_check;

@@ -26,7 +26,6 @@ import { DOMAIN, type Domain } from '../domain/domain.module.js';
 import { domainContext, settle } from '../domain/domain-context.js';
 import { translating } from '../domain/domain-errors.js';
 import type { UnitOfWork } from '../realtime/unit-of-work.js';
-import { createMaskingSession } from '../masking/pii-masker.js';
 import { TicketReader, isMasked } from '../tickets/ticket-reader.js';
 import { maskInsight } from './mask-insight.js';
 
@@ -138,10 +137,7 @@ export class TicketAiService {
     return {
       ticketId: ticket.t.id,
       insight: isMasked(principal)
-        ? maskInsight(
-            insight,
-            createMaskingSession(ticket.t.id, await this.tickets.namesAround(ticket)),
-          )
+        ? maskInsight(insight, await this.tickets.maskingFor(ticket.t.id, [ticket]))
         : insight,
     };
   }
@@ -255,6 +251,8 @@ export class TicketAiService {
         ticketId,
         requestedBy: principal.userId,
         ...(body.kind === 'draft' && body.note !== undefined ? { note: body.note } : {}),
+        // A developer's investigation writes no draft reply (T-137).
+        ...(body.kind === 'investigate' && isMasked(principal) ? { noDraft: true } : {}),
       },
       options: AI_OUTBOX_JOB_OPTIONS,
     });

@@ -59,6 +59,7 @@ import {
 } from '../common/keyset.js';
 import { DATABASE } from '../database/database.module.js';
 import { translatingSync } from '../domain/domain-errors.js';
+import { orgPeopleNames } from '../masking/org-names.js';
 import { createMaskingSession, type MaskingSession } from '../masking/pii-masker.js';
 import { SlaRemaining } from './sla-remaining.js';
 import { TicketSlaStates, runningDueSortKey } from './sla-states.js';
@@ -66,8 +67,6 @@ import { TICKET_KEYS, type TicketKeys } from './ticket-keys.js';
 
 export type TicketRow = typeof schema.ticket.$inferSelect;
 
-/** At most this many contact names are given to the redactor for one ticket. */
-const MASKING_NAME_LIMIT = 300;
 type Executor = Pick<Database['db'], 'select'>;
 
 /** A ticket with the names its views show, loaded in one query. */
@@ -256,7 +255,11 @@ export function assertCanRead(principal: Principal): void {
  * reduced to initials, custom fields left out (free-form JSON that can hold anything), the AI one-liner
  * redacted. Nothing is copied from the original except structure, ids, numbers and dates.
  */
-export function maskSummary(summary: TicketSummary, session: MaskingSession): TicketSummary {
+export function maskSummary(
+  summary: TicketSummary,
+  session: MaskingSession,
+  fullAiSummary: string | null = null,
+): TicketSummary {
   return {
     ...summary,
     subject: session.text(summary.subject),
@@ -266,9 +269,16 @@ export function maskSummary(summary: TicketSummary, session: MaskingSession): Ti
         : { id: summary.requester.id, name: session.name(summary.requester.name) ?? '***' },
     tags: summary.tags.map((tag) => session.text(tag)),
     customFields: {},
+    // The one-liner is cut to 200 characters for the list, which can cut an address in half and leave
+    // the redactor a piece it cannot recognize: mask the whole text, then cut.
     ...(summary.ai?.summary === undefined
       ? {}
-      : { ai: { ...summary.ai, summary: session.text(summary.ai.summary) } }),
+      : {
+          ai: {
+            ...summary.ai,
+            summary: session.text(fullAiSummary ?? summary.ai.summary).slice(0, 200),
+          },
+        }),
   };
 }
 
@@ -342,8 +352,8 @@ export class TicketReader {
     executor: Executor = this.database.db,
   ): Promise<TicketDetail> {
     const detail = await this.staffDetail(row, executor);
-    const session = createMaskingSession(row.t.id, await this.namesAround(row, executor));
-    const summary = maskSummary(detail, session);
+    const session = await this.maskingFor(row.t.id, [row], executor);
+    const summary = maskSummary(detail, session, row.aiSummary);
     return {
       ...detail,
       ...summary,
@@ -368,21 +378,23 @@ export class TicketReader {
   }
 
   /**
-   * The names the redactor must know for this ticket: the requester and the other contacts of the
-   * organization (a message often names a colleague). A scoped list, as the redactor asks.
+   * A masking session for these tickets: the redactor knows the requesters and every other person of the
+   * organizations in view (contacts and client users), however many tickets are on the page. If an
+   * organization has more people than the limit the session is not "complete" and shows a notice instead
+   * of text (fail closed).
    */
-  async namesAround(row: TicketViewRow, executor: Executor = this.database.db): Promise<string[]> {
-    const contacts = await executor
-      .select({ name: schema.contact.name })
-      .from(schema.contact)
-      .where(eq(schema.contact.orgId, row.t.orgId))
-      .limit(MASKING_NAME_LIMIT);
-    return [
-      ...new Set([
-        ...(row.requesterName === null ? [] : [row.requesterName]),
-        ...contacts.map((c) => c.name),
-      ]),
-    ];
+  async maskingFor(
+    scope: string,
+    rows: readonly TicketViewRow[],
+    executor: Executor = this.database.db,
+  ): Promise<MaskingSession> {
+    const { names, complete } = await orgPeopleNames(executor, [
+      ...new Set(rows.map((row) => row.t.orgId)),
+    ]);
+    const requesters = rows.flatMap((row) =>
+      row.requesterName === null ? [] : [row.requesterName],
+    );
+    return createMaskingSession(scope, [...new Set([...requesters, ...names])], complete);
   }
 
   /** Incidents and deploys a ticket is linked to, oldest first. */
@@ -502,13 +514,13 @@ export class TicketReader {
           rows.map((row) => row.t),
           new Date(),
         );
-    const session = isMasked(principal) ? this.pageSession(rows) : null;
+    const session = isMasked(principal) ? await this.maskingFor('page', rows) : null;
     return {
       ticketId: source.t.id,
       items: rows.map((row, index) => {
         if (client) return toClientTicket(row, this.keys);
         const summary = toSummary(row, this.keys, slas[index] ?? null);
-        return session === null ? summary : maskSummary(summary, session);
+        return session === null ? summary : maskSummary(summary, session, row.aiSummary);
       }),
     };
   }
@@ -561,12 +573,6 @@ export class TicketReader {
         similarity: Math.min(1, Math.max(0, row.similarity)),
       })),
     };
-  }
-
-  /** One masking session for a page of tickets; it knows the requesters' names on the page. */
-  private pageSession(rows: readonly TicketViewRow[]): MaskingSession {
-    const names = rows.flatMap((row) => (row.requesterName === null ? [] : [row.requesterName]));
-    return createMaskingSession('page', [...new Set(names)]);
   }
 
   /**
@@ -738,12 +744,17 @@ export class TicketReader {
           page.rows.map((entry) => entry.row.t),
           new Date(),
         );
-    const session = isMasked(principal) ? this.pageSession(page.rows.map((e) => e.row)) : null;
+    const session = isMasked(principal)
+      ? await this.maskingFor(
+          'page',
+          page.rows.map((entry) => entry.row),
+        )
+      : null;
     return {
       items: page.rows.map((entry, index) => {
         if (client) return toClientTicket(entry.row, this.keys);
         const summary = toSummary(entry.row, this.keys, slas[index] ?? null);
-        return session === null ? summary : maskSummary(summary, session);
+        return session === null ? summary : maskSummary(summary, session, entry.row.aiSummary);
       }),
       nextCursor: page.nextCursor,
     };

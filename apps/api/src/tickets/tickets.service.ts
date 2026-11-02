@@ -119,9 +119,17 @@ export class TicketsService {
     );
   }
 
-  async devRelease(uow: UnitOfWork, ref: string, actor: Actor): Promise<TicketRow> {
+  async devRelease(
+    uow: UnitOfWork,
+    ref: string,
+    actor: Actor,
+    anyOwner = false,
+  ): Promise<TicketRow> {
     return translating(async () =>
-      settle(uow, await this.domain.tickets.devRelease(uow.tx, this.context(actor), { ref })),
+      settle(
+        uow,
+        await this.domain.tickets.devRelease(uow.tx, this.context(actor), { ref, anyOwner }),
+      ),
     );
   }
 

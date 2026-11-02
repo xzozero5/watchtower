@@ -197,6 +197,43 @@ describe('bank accounts [ASSUMED formats]', () => {
   });
 });
 
+describe('phone numbers written without a plus sign, and encoded addresses (T-137 review)', () => {
+  it.each([
+    ['call 66812345678 now', 'call [PHONE_1] now'],
+    ['call 6621234567', 'call [PHONE_1]'],
+    ['call 66 81 234 5678', 'call [PHONE_1]'],
+    ['call 4155552671 now', 'call [PHONE_1] now'],
+    ['call 415-555-2671 now', 'call [PHONE_1] now'],
+    ['mail a%40corp.example', 'mail [EMAIL_1]'],
+    ['mailto:a%40corp.example?subject=x', 'mailto:[EMAIL_1]?subject=x'],
+    ['q=somchai.j%40example.co.th&x=1', 'q=[EMAIL_1]&x=1'],
+    ['q=A%40Corp.Example', 'q=[EMAIL_1]'],
+  ])('redacts %j', (input, expected) => {
+    expect(redact(input)).toBe(expected);
+  });
+
+  it('numbers an encoded address and a plain one of the same mailbox as one', () => {
+    expect(redact('a@corp.example and a%40corp.example')).toBe('[EMAIL_1] and [EMAIL_2]');
+  });
+
+  it('leaves ticket keys, uuids, ids and ordinary numbers alone', () => {
+    for (const text of [
+      'see OPS-1234 and OPS-1234567890',
+      'ref OPS-66812345678',
+      'id a0000000-4155-4000-8000-4155552671ab',
+      'trace 4bf92f3577b34da6a3ce929d0e0e4736',
+      'order 1234567890 total 6600',
+      'port 66 and 4155 and 2671',
+      'at 2026-11-02 10:15',
+      'version 4.155.552',
+      'no mail here: 50% off 40 items',
+      'a%4 b%40 c',
+    ]) {
+      expect(redact(text), text).toBe(text);
+    }
+  });
+});
+
 describe('names from the dictionary', () => {
   it('redacts Thai and Latin names, whole and by part', () => {
     expect(redact('สวัสดีคุณสมชาย ใจดี ครับ')).toBe('สวัสดีคุณ[NAME_1] ครับ');

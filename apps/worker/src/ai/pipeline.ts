@@ -111,6 +111,7 @@ export function createAiPipelineProcessor(context: ProcessorContext): Processor 
           ticketId: parsed.data.ticketId,
           requestedBy: parsed.data.requestedBy,
           mode: 'investigate',
+          noDraft: parsed.data.noDraft,
         });
         logger.info({ ticketId: parsed.data.ticketId, ...result }, 'ai investigation');
         return result;

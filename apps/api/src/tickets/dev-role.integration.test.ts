@@ -11,6 +11,8 @@ import {
 import { WebSocket, type RawData } from 'ws';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
+import { orgPeopleNames } from '../masking/org-names.js';
+import { MASKED_TEXT_UNAVAILABLE, createMaskingSession } from '../masking/pii-masker.js';
 import { startHarness, uniqueEmail, type Harness } from '../testing/harness.js';
 import {
   apiOrg,
@@ -466,6 +468,168 @@ describe('the audit log', () => {
     ]) {
       expect(actions).toContain(action);
     }
+  });
+});
+
+// --- the security review of T-137 ------------------------------------------------------------------
+
+describe('what the first version let through (review)', () => {
+  // Written the way a customer, or a redactor that is a little too clever, would put them.
+  const BARE_PHONE = '66812345678';
+  const US_PHONE = '4155552671';
+  const ENCODED_EMAIL = 'a%40corp.example';
+  // A client user: the magic-link sign-in names them after the local part of their address.
+  const CLIENT_NAME = 'tanawat.secretlocal';
+  const CLARA = 'Clara Clientperson';
+
+  async function clientTicket(who: Persona, body: string): Promise<TicketDetail> {
+    const response = await who.client.post<TicketDetail>('/v1/tickets', {
+      subject: 'Question from a client user',
+      body,
+    });
+    expect(response.status).toBe(201);
+    return response.body;
+  }
+
+  it('hides the name of a client user as sender and as the actor of an event', async () => {
+    for (const name of [CLIENT_NAME, CLARA]) {
+      const person = await signIn(h, 'client', orgId, name);
+      const made = await clientTicket(person, `This is ${name} writing about the dashboard.`);
+      await person.client.post(`/v1/tickets/${made.id}/replies`, { body: `${name} again.` });
+      const page = await dev.client.get<{ entries: TimelineEntry[] }>(
+        `/v1/tickets/${made.id}/timeline`,
+      );
+      expect(page.status).toBe(200);
+      const text = JSON.stringify(page.body);
+      for (const piece of name.split(/[ .]/u)) expect(text, piece).not.toContain(piece);
+      const senders = page.body.entries.flatMap((entry) =>
+        entry.kind === 'message' && entry.sender.type === 'user' ? [entry.sender.name] : [],
+      );
+      expect(senders.length).toBeGreaterThan(0);
+      // Staff see the name as it is.
+      expect(JSON.stringify(await timelineOf(agent, made.id))).toContain(name);
+    }
+  });
+
+  it('hides a phone number without a plus sign and an encoded address, in a message and a subject', async () => {
+    const made = await fileTicket(agent, orgId, {
+      subject: `Call ${BARE_PHONE} about ${ENCODED_EMAIL}`,
+      body: `Reach me at ${US_PHONE} or at ${BARE_PHONE}; the form sent ${ENCODED_EMAIL}.`,
+    });
+    const list = await dev.client.get<Page<TicketSummary>>(`/v1/tickets?q=${made.key}`);
+    const page = await dev.client.get<{ entries: TimelineEntry[] }>(
+      `/v1/tickets/${made.id}/timeline`,
+    );
+    const detail = await dev.client.get<TicketDetail>(`/v1/tickets/${made.id}`);
+    for (const body of [list.body, page.body, detail.body]) {
+      const text = JSON.stringify(body);
+      for (const secret of [BARE_PHONE, US_PHONE, ENCODED_EMAIL, 'corp.example']) {
+        expect(text, secret).not.toContain(secret);
+      }
+    }
+  });
+
+  it('knows every person of the organization however many there are, on a list and on a detail', async () => {
+    const bigOrg = (await apiOrg(lead, { name: 'Big Org' })).id;
+    // More people than any small fixed cut-off, and the one named is the last to be added.
+    await sql(
+      `INSERT INTO contact (org_id, name, emails)
+       SELECT $1, 'Filler' || n || ' Person' || n, ARRAY['filler' || n || '@big.example']
+         FROM generate_series(1, 450) AS n`,
+      [bigOrg],
+    );
+    await sql(
+      `INSERT INTO contact (org_id, name, emails) VALUES ($1, 'Zeta Lastcontactname', $2)`,
+      [bigOrg, ['zeta@big.example']],
+    );
+    const made = await fileTicket(agent, bigOrg, {
+      subject: 'Please call Zeta Lastcontactname',
+      body: 'Zeta Lastcontactname asked for a call.',
+      requester: { email: uniqueEmail('someone', 'big.example'), name: 'Someone Else' },
+    });
+    const list = await dev.client.get<Page<TicketSummary>>('/v1/tickets?limit=200');
+    const detail = await dev.client.get<TicketDetail>(`/v1/tickets/${made.id}`);
+    const page = await dev.client.get<{ entries: TimelineEntry[] }>(
+      `/v1/tickets/${made.id}/timeline`,
+    );
+    for (const body of [list.body, detail.body, page.body]) {
+      expect(JSON.stringify(body)).not.toContain('Lastcontactname');
+    }
+    expect(list.body.items.some((item) => item.id === made.id)).toBe(true);
+
+    // Past the limit the list of names is not complete, and a masked reader gets a notice, not text.
+    const cut = await orgPeopleNames(h.db.owner.db, [bigOrg], 10);
+    expect(cut.complete).toBe(false);
+    expect(cut.names).toHaveLength(10);
+    const closed = createMaskingSession('t', cut.names, cut.complete);
+    expect(closed.text('Zeta Lastcontactname asked')).toBe(MASKED_TEXT_UNAVAILABLE);
+    expect((await orgPeopleNames(h.db.owner.db, [bigOrg])).complete).toBe(true);
+  });
+
+  it('masks the AI one-liner of a list row before it is cut, so an address is never left in pieces', async () => {
+    const made = await fileTicket(agent, orgId, { subject: 'Long summary' });
+    // The address starts just before the 200 characters of the list row end.
+    const filler = 'x'.repeat(190);
+    await sql(
+      `INSERT INTO ai_ticket_insight (ticket_id, state, stage, generated_at, summary)
+       VALUES ($1, 'classified', 2, now(), $2)`,
+      [made.id, `${filler} ${EMAIL} wrote.`],
+    );
+    const list = await dev.client.get<Page<TicketSummary>>(`/v1/tickets?q=${made.key}`);
+    const row = list.body.items[0];
+    expect(row?.ai?.summary).toBeDefined();
+    expect(row?.ai?.summary?.length).toBeLessThanOrEqual(200);
+    expect(JSON.stringify(list.body)).not.toContain('somchai');
+    // Staff get the cut text, as before: the start of the address is in it.
+    const staff = await agent.client.get<Page<TicketSummary>>(`/v1/tickets?q=${made.key}`);
+    expect(staff.body.items[0]?.ai?.summary).toContain('somchai');
+  });
+
+  it('writes the investigation a developer asked for with no draft', async () => {
+    const made = await fileTicket(agent, orgId, { subject: 'No draft for a developer' });
+    expect(
+      (await dev.client.post(`/v1/tickets/${made.id}/ai/requests`, { kind: 'investigate' })).status,
+    ).toBe(202);
+    // A second request for the same ticket waits a little: staff ask for another ticket.
+    const other = await fileTicket(agent, orgId, { subject: 'No draft for staff, the control' });
+    expect(
+      (await agent.client.post(`/v1/tickets/${other.id}/ai/requests`, { kind: 'investigate' }))
+        .status,
+    ).toBe(202);
+    const jobs = await sql<{ payload: { requestedBy: string; noDraft?: boolean } }>(
+      `SELECT payload FROM outbox
+        WHERE job_name = 'investigate' AND payload->>'ticketId' = ANY($1) AND payload->>'requestedBy' IS NOT NULL`,
+      [[made.id, other.id]],
+    );
+    const by = (who: Persona) => jobs.find((job) => job.payload.requestedBy === who.userId);
+    expect(by(dev)?.payload.noDraft).toBe(true);
+    expect(by(agent)?.payload.noDraft).toBeUndefined();
+  });
+});
+
+describe('who can let go of a developer', () => {
+  it('lets the owner, a lead and a head, and nobody else', async () => {
+    const made = await fileTicket(agent, orgId, { subject: 'Developer is away' });
+    const head = await signIn(h, 'head');
+    const pick = async () =>
+      (await dev.client.post<TicketDetail>(`/v1/tickets/${made.id}/dev-owner`)).body.devOwner?.id;
+    expect(await pick()).toBe(dev.userId);
+    expect((await agent.client.delete(`/v1/tickets/${made.id}/dev-owner`)).status).toBe(403);
+    expect((await otherDev.client.delete(`/v1/tickets/${made.id}/dev-owner`)).status).toBe(403);
+    const byLead = await lead.client.delete<TicketDetail>(`/v1/tickets/${made.id}/dev-owner`);
+    expect(byLead.status).toBe(200);
+    expect(byLead.body.devOwner).toBeNull();
+    expect(await pick()).toBe(dev.userId);
+    expect((await head.client.delete(`/v1/tickets/${made.id}/dev-owner`)).status).toBe(200);
+    // The history says who freed it, from whom.
+    const rows = await sql<{ metadata: { releasedBy: string; devOwnerId: string } }>(
+      `SELECT metadata FROM audit_log WHERE action = 'ticket.dev_release' AND outcome = 'success' AND target_id = $1`,
+      [made.id],
+    );
+    expect(rows.map((row) => row.metadata.releasedBy).toSorted()).toEqual(
+      [lead.userId, head.userId].toSorted(),
+    );
+    expect(rows.every((row) => row.metadata.devOwnerId === dev.userId)).toBe(true);
   });
 });
 
