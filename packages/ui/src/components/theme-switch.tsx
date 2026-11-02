@@ -4,11 +4,10 @@ import type { ButtonHTMLAttributes } from 'react';
 import { cn } from '../lib/cn.js';
 import { Tooltip } from './tooltip.js';
 
-export interface ThemeSwitchProps
-  extends Omit<
-    ButtonHTMLAttributes<HTMLButtonElement>,
-    'role' | 'aria-checked' | 'aria-label' | 'onChange' | 'children'
-  > {
+export interface ThemeSwitchProps extends Omit<
+  ButtonHTMLAttributes<HTMLButtonElement>,
+  'role' | 'aria-checked' | 'aria-label' | 'onChange' | 'children'
+> {
   /** True while the dark theme is the one in effect (the saved choice, or the system's). */
   dark: boolean;
   onDarkChange: (dark: boolean) => void;
