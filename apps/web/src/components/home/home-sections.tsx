@@ -33,8 +33,8 @@ import { statusKey } from '@/lib/tickets/status-key';
 export const LIST_CAP = 200;
 
 /**
- * A rounded card with an `h2`: a coloured dot, an icon in the same hue and 14px/600 text
- * (docs/design/friendly-polish.md section 3).
+ * A Soft Beacon card with an `h2`: a quiet icon and an 18px/500 title (docs/design/redesign-2026-11).
+ * The icon stays neutral: colour on this page means state only (QA-20).
  */
 export function HomeSection({
   id,
@@ -56,14 +56,11 @@ export function HomeSection({
   return (
     <section
       aria-labelledby={id}
-      className={cn(
-        'min-w-0 rounded-2xl bg-surface px-5 py-4 ring-1 ring-border/60 ring-inset',
-        className,
-      )}
+      className={cn('min-w-0 rounded-card bg-surface px-5 py-4 shadow-card', className)}
     >
       <div className="mb-3 flex items-center justify-between gap-3">
-        <h2 id={id} className="text-sm font-semibold">
-          <SectionHeading tone={tone} icon={icon}>
+        <h2 id={id} className="text-title font-medium text-foreground-strong">
+          <SectionHeading tone={tone} icon={icon} plain>
             {title}
           </SectionHeading>
         </h2>
@@ -99,36 +96,38 @@ export interface Tile {
 }
 
 /**
- * The numbers the head decides on, as soft tinted tiles: an icon, a big number, a short label, a
- * link to the queue with the matching filter. No sentences.
+ * The numbers the head decides on: an icon, a big light number, a short label, a link to the queue
+ * with the matching filter. No sentences. A tile takes its tint only when there is something to do
+ * (a count above zero); zero or no figure is a plain card with a neutral icon (QA-20).
  */
 export function TileStrip({ tiles }: { tiles: readonly Tile[] }) {
   const t = useT();
   return (
-    <ul className="grid grid-cols-2 gap-3 p-4 md:grid-cols-4">
+    <ul className="grid grid-cols-2 gap-3 p-4 md:grid-cols-4 lg:gap-4 lg:p-6">
       {tiles.map((tile) => {
         const Icon = tile.icon;
+        const tone: TintId = needsAction(tile.value) ? tile.tone : 'slate';
         return (
           <li key={tile.id}>
             <AppLink
               href={tile.href}
-              data-tone={tile.tone}
+              data-tone={tone}
               className={cn(
-                'relative flex h-full flex-col gap-0.5 rounded-2xl px-4 py-3.5 transition-transform duration-(--wt-motion-duration-fast) ease-out motion-safe:hover:-translate-y-0.5 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring',
-                TINT_CLASSES[tile.tone].chip,
+                'relative flex h-full flex-col gap-0.5 rounded-card px-5 py-4 shadow-card transition-[transform,box-shadow] duration-(--wt-motion-duration-fast) ease-out hover:shadow-lift motion-safe:hover:-translate-y-0.5 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring',
+                tone === 'slate' ? 'bg-surface text-foreground' : TINT_CLASSES[tone].chip,
               )}
             >
               {/* Read in this order (label, number, note); drawn with the number on top. */}
               <span className="order-2 text-xs font-medium">{tile.label}</span>
-              <span className="tabular order-1 text-3xl leading-tight font-semibold">
+              <span className="tabular order-1 text-display font-light">
                 {tile.value ?? <span title={t('home.unavailable')}>—</span>}
               </span>
               {tile.sub ? <span className="tabular order-3 text-xs">{tile.sub}</span> : null}
               <span
                 aria-hidden
-                className="absolute top-3 right-3 inline-flex size-9 items-center justify-center rounded-full bg-surface/70"
+                className="absolute top-4 right-4 inline-flex size-9 items-center justify-center rounded-full bg-surface-muted/80"
               >
-                <Icon className={cn('size-5', TINT_CLASSES[tile.tone].icon)} />
+                <Icon className={cn('size-5', TINT_CLASSES[tone].icon)} />
               </span>
             </AppLink>
           </li>
@@ -136,6 +135,13 @@ export function TileStrip({ tiles }: { tiles: readonly Tile[] }) {
       })}
     </ul>
   );
+}
+
+/** A count above zero is something to act on; zero, or a figure that is not there, is not. */
+function needsAction(value: Tile['value']): boolean {
+  if (typeof value === 'number') return value > 0;
+  if (typeof value === 'string') return /[1-9]/.test(value);
+  return false;
 }
 
 export interface RiskRow {
@@ -280,7 +286,7 @@ export function CountLink({ href, label, count }: { href: string; label: string;
   return (
     <AppLink
       href={href}
-      className="inline-flex items-baseline gap-1.5 rounded-full bg-surface-muted px-3 py-1 text-sm transition-colors duration-(--wt-motion-duration-fast) ease-out hover:bg-primary-subtle focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+      className="inline-flex items-baseline gap-1.5 rounded-full bg-surface-muted px-3.5 py-1.5 text-sm transition-colors duration-(--wt-motion-duration-fast) ease-out hover:bg-primary-subtle focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
     >
       <span className="text-muted-foreground">{label}</span>
       <span className="tabular font-semibold">{count}</span>

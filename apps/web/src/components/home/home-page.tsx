@@ -206,7 +206,7 @@ function HomeBody() {
       >
         <TileStrip tiles={tiles} />
 
-        <div className="grid gap-3 px-4 pb-3 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
+        <div className="grid gap-4 px-4 pb-4 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)] lg:px-6">
           <HomeSection id="home-sla" title={t('home.slaRisk')} tone="amber" icon={Hourglass}>
             {slaList.isPending ? (
               <ListSkeleton />
@@ -232,7 +232,7 @@ function HomeBody() {
           </HomeSection>
         </div>
 
-        <div className="grid gap-3 px-4 pb-3 md:grid-cols-2">
+        <div className="grid gap-4 px-4 pb-4 md:grid-cols-2 lg:px-6">
           <HomeSection id="home-status" title={t('home.byStatus')} tone="sky" icon={Layers}>
             {stats.isPending ? (
               <Skeleton className="h-5" />
@@ -253,7 +253,7 @@ function HomeBody() {
           </HomeSection>
         </div>
 
-        <div className="grid gap-3 px-4 pb-4 md:grid-cols-2">
+        <div className="grid gap-4 px-4 pb-6 md:grid-cols-2 lg:px-6">
           <HomeSection id="home-load" title={t('home.load')} tone="green" icon={Users}>
             {stats.isPending || users.isPending ? (
               <ListSkeleton />
