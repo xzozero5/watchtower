@@ -89,6 +89,15 @@ export function failedFor(error: unknown): AgentOutcome<never> {
   return { status: 'failed', reason: 'provider_error' };
 }
 
+/** `failedFor`, narrowed to the failure it always is (it only returns `ok` in its type). */
+export function failureFor(error: unknown): {
+  readonly status: 'failed';
+  readonly reason: AiInsightReason;
+} {
+  const outcome = failedFor(error);
+  return outcome.status === 'failed' ? outcome : { status: 'failed', reason: 'provider_error' };
+}
+
 /**
  * The first JSON object in a model answer (models sometimes wrap it in a code fence or add a
  * sentence). `undefined` when there is none; never throws.
