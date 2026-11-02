@@ -312,9 +312,18 @@ describe('every route states who may call it', () => {
         'POST /v1/tickets/:id/status',
         'POST /v1/tickets/:id/dev-owner',
         'DELETE /v1/tickets/:id/dev-owner',
-        'POST /v1/tickets/:id/links',
-        'DELETE /v1/tickets/:id/links/:linkId',
+        'POST /v1/tickets/:id/references',
+        'DELETE /v1/tickets/:id/references/:linkId',
         'POST /v1/tickets/:id/ai/requests',
+        // The saved investigation templates (T-203, `investigate.run`): a card is redacted before it is
+        // stored (N4), so a developer gets what an agent gets. Reading the pinned cards (`ticket.read`)
+        // and the unbounded queries (`investigate.adhoc`) are not theirs.
+        'GET /v1/tools/templates',
+        'GET /v1/tickets/:id/tools',
+        'POST /v1/tickets/:id/tools/run',
+        'POST /v1/incidents/:id/tools/run',
+        'DELETE /v1/tickets/:id/evidence/:cardId',
+        'DELETE /v1/incidents/:id/evidence/:cardId',
       ].sort(),
     );
   });

@@ -13,7 +13,7 @@ import {
 import type {
   AssignTicket,
   CreateManualTicket,
-  CreateTicketLink,
+  CreateTicketReference,
   MergeTicket,
   Note,
   Reply,
@@ -125,22 +125,30 @@ export class TicketsService {
     );
   }
 
-  async linkAdd(
+  async referenceAdd(
     uow: UnitOfWork,
     ref: string,
-    link: CreateTicketLink,
+    reference: CreateTicketReference,
     actor: Actor,
   ): Promise<{ ticket: TicketRow; linkId: string; created: boolean }> {
     return translating(async () =>
-      settle(uow, await this.domain.tickets.linkAdd(uow.tx, this.context(actor), { ref, link })),
+      settle(
+        uow,
+        await this.domain.tickets.referenceAdd(uow.tx, this.context(actor), { ref, reference }),
+      ),
     );
   }
 
-  async linkRemove(uow: UnitOfWork, ref: string, linkId: string, actor: Actor): Promise<TicketRow> {
+  async referenceRemove(
+    uow: UnitOfWork,
+    ref: string,
+    linkId: string,
+    actor: Actor,
+  ): Promise<TicketRow> {
     return translating(async () =>
       settle(
         uow,
-        await this.domain.tickets.linkRemove(uow.tx, this.context(actor), { ref, linkId }),
+        await this.domain.tickets.referenceRemove(uow.tx, this.context(actor), { ref, linkId }),
       ),
     );
   }

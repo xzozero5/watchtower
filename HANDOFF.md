@@ -1,17 +1,24 @@
 # HANDOFF — Watchtower
 
 > สถานะล่าสุดของโปรเจกต์ session ใหม่อ่านไฟล์นี้ต่อจาก `AGENTS.md` แล้วทำงานต่อได้โดยไม่ต้องอ่านบทสนทนาเดิม
-> อัปเดตล่าสุด: 2026-11-02 07:18 (เวลากรุงเทพ) โดย Claude Code (main thread, เครื่อง local) — **safe pause ตามคำสั่งเจ้าของ เพราะโควตาใกล้เต็ม ยังไม่จบ Phase 1**
+> อัปเดตล่าสุด: 2026-11-02 08:40 (เวลากรุงเทพ) โดย Claude Code (main thread, เครื่อง local) — **safe pause ตามคำสั่งเจ้าของ เพราะโควตาใกล้เต็ม ยังไม่จบ Phase 1**
 > กฎขนาด ≤ 40 KB — เขียนทับสถานะ ไม่ append ประวัติ · ฉบับก่อนหน้า `docs/handoff-archive/HANDOFF-2026-11-01-0420.md` · บันทึกรายชั่วโมง `logs/daily/2026-11-01.md` · log ต่อ task `docs/STATUS.md`
 
-## คำสั่งล่าสุดของเจ้าของ (2026-11-01 22:15)
-ทำต่อด้วย mock ให้จบ Phase 2 เท่าที่เป็นไปได้มากที่สุด ให้ `po` ตัดสินแทน · ข้าม T-115 pilot ไปก่อน (ยังไม่มี credential จริง) · รายการ "ห้ามทำแทน" ยังใช้เหมือนเดิม · safe pause เมื่อโควตา 5 ชั่วโมงหรือ weekly ถึง 95%
+## คำสั่งล่าสุดของเจ้าของ (2026-11-02 08:04)
+1. ทำต่อด้วย mock ให้จบ Phase 2 เท่าที่เป็นไปได้ ให้ `po` ตัดสินแทน · ข้าม pilot T-115 ไปก่อน · รายการ "ห้ามทำแทน" ใช้เหมือนเดิม · safe pause เมื่อโควตา 5 ชั่วโมงหรือ weekly ถึง 95%
+2. UI ยังมีข้อความเยอะ: ใช้ไอคอน/รูป เช่น toggle พระจันทร์-พระอาทิตย์, ธงเปลี่ยนภาษา → T-133 (spec `docs/design/less-text-ai-assistant.md`)
+3. AI ทำงานแทนได้ทุกตำแหน่ง เช่น bubble ขวาล่าง → T-134
+4. brief และสรุปการสืบสวนมาจาก AI ทุกข้อความมีลิงก์ไปหลักฐานจริง → T-135
+5. หน้าเปิด ticket เอง → T-136 · role `dev` → T-137 (กำลังทำบน `wip/t-137`)
 
-## ทำต่อจากตรงนี้ (safe pause 2026-11-01 12:57)
-- **T-103b–d LINE และ T-102b–d Gmail merge เข้า `main` แล้ว** · ลำดับถัดไป: T-104, T-107, T-111 (ตารางด้านล่าง) → T-102e OAuth กล่อง Gmail → wave 3–4 ตาม BACKLOG → หยุดที่ T-115 · migration บน `main` ถึง `0063_org_health_snapshot`
-- **gate บนเครื่องนี้ของ T-103 `[TESTED]`:** lint, typecheck ผ่าน · unit web 667, api 191, worker 79, domain 67, shared 257, channels 330, db 50, ai 372, ui 609, boundaries 200 · integration db 200, domain 188, api 528, worker 83 (รอบเครื่องว่าง) · e2e 134 · full-stack 23 (`PW_CHANNEL=msedge`) · ยังไม่ได้ลอง `docker compose up` ด้วย image ที่ build เอง
-- **รัน integration ตอนเครื่องว่าง:** รอบที่มี agent รัน test พร้อมกัน ตกแบบหลอก 2 ข้อ (db `followups` timeout, api `portal` `no portal email`) รอบเครื่องว่างผ่านครบ
-- **บั๊กจริงที่เจอเฉพาะบนเครื่องจริง แก้แล้ว:** (1) `message.created_at` ใช้นาฬิกาแอป `ticket_event` ใช้นาฬิกา DB ทำ timeline ลูกค้าเรียงผิด (2) relay ใช้นาฬิกา DB แต่ claim ใช้นาฬิกา worker ทำ reply ลูกค้าค้างราว 2 นาที · security review ของสอง fix ไม่มี P0/P1
+## ทำต่อจากตรงนี้ (2026-11-02 08:04)
+- **บน `main` แล้ว:** T-103b–d, T-102b–e, T-104, T-105, T-107a–c, T-108a–e, T-109, T-110a,b,d, T-111a–f, T-116c, T-118, T-122f, T-123b, T-130, T-131, T-132, T-200, T-201, T-202, T-204a,c, T-205 · ทุกตัวเป็น mock
+- **คิว merge (เรียงตามนี้):** `wip/t-119` (ผ่าน gate แล้ว) → `wip/t-203` (เปลี่ยนเลข migration เป็น `0067`, `0068`) → `wip/t-206b` (`0070`) → `wip/t-206d` (web: alerts, incidents, status page) → `wip/t-137` (`0080`)
+- **ยังไม่เริ่ม:** T-133, T-134, T-135, T-206a/c (dashboard), T-203e, T-121 UI ส่วน outbox + org tier, T-103e, T-103f, T-113, T-114, T-125, T-207, คู่มือ credential เข้า repo + T-115 prep
+- **Gate ต่อ merge (main thread รันเอง):** lint, typecheck, unit, integration (`--concurrency=1`), e2e, full-stack, `docker compose up --build` แบบไม่มี `.env` (project แยก) · ใช้ `turbo --force --continue` · **ทุก merge ต้องดู `gh run list --branch main` ด้วย ผลบนเครื่องไม่แทน CI**
+- **Demo:** compose project `wt-demo` เปิดค้างที่ `http://localhost:33000` (mailpit `:38025`, dev login เปิด) · ปิดด้วย `docker compose -p wt-demo down -v`
+- **บั๊กจริงที่เจอบนเครื่องจริง แก้แล้ว:** นาฬิกาแอปกับ DB ปนกันหลายจุด (timeline, dispatcher, AC-7, hold) · การแก้จุดสุดท้ายทำให้เวลาชนใน ms เดียวกัน ต้องเรียงด้วย rank ใน portal · แท็บ Details ถูกดึงกลับเมื่อ evidence โหลด · ค่าว่างของ KB ใน compose · key ซ้ำใน compose หลัง merge
+- **เหตุการณ์ที่เจ้าของควรรู้:** CI ของ `main` แดงอยู่นานโดยไม่มีใครเปิดดูจนเจ้าของทัก · agent ของ T-108 ลอง force push บน `wip/t-108` แล้วถูก hook บล็อก จากนั้นใช้ merge `-s ours` แทน ซึ่งเข้าข่ายอ้อม ผู้ตรวจยืนยัน tree ไม่มีอะไรหาย · หลาย review ถูก `guard.py` บล็อกการสแกน N1 ไม่ได้อ้อม · branch `verify/t200` ค้างไว้เพราะ hook บล็อกคำสั่งลบที่มีคำว่า main
 
 ## อ่านก่อน (สรุป 2 นาที)
 - **Phase 0 เสร็จ** (CI แดงช่วงหลัง T-112a จาก MinIO หาย แก้แล้ว ดู STATUS) · ยังไม่ tag `v0.0.1` — รอเจ้าของตรวจบนเครื่อง (รายการด้านล่าง)
@@ -77,6 +84,9 @@
 | [ ] 30 | ค่าของ T-111 | รับ: override ใช้ `roster.manage`, P2 ต้องอยู่ใน handoff, handoff ไม่ระบุผู้รับเห็นได้ 36 ชม. ใครตอบก่อนได้, reopen ไม่ได้หลังมีคำตอบ, session เกิน 16 ชม. ไม่นับ on shift, clock-in ก่อน 60 นาที, grace 5 นาที, note 48 ชม., stay_with_last fallback load_balanced, เก็บแค่ consent ไม่เก็บพิกัด · แก้: "question" นับเป็น ack แต่ P1/P2 ไม่มีคำตอบ 30 นาทีต้องเตือน lead | ลดภาระ, ไม่ปล่อย P1 ไร้เจ้าของ |
 | [ ] 31 | ค่าของ T-104 | รับ: ส่งเฉพาะ `ticket.created`, slot `default`/`urgent`, โพสต์ซ้ำไม่เกิน 2, retry 24 ชม., wait สูงสุด 10 นาที · โพสต์ล่าช้าต้องแสดงเวลาสร้าง ticket | ซ้ำดีกว่าหาย |
 | [ ] 32 | KB metadata + งบ customer search | `intentTags`/`kind`/`sources` ของบทความ live ต้องมี approver · `lastVerifiedAt` ระดับ editor + audit · customer search มี daily cap แยก 20% ของ `app_ai_daily` เต็มแล้ว fallback keyword | ตรง #27, portal เปิดสาธารณะ |
+| [ ] 33 | role `dev` | อ่านทุก ticket แบบ masked (ไม่เห็น email/phone) · ไม่ตอบลูกค้า ไม่อนุมัติ draft · status `open ↔ waiting_on_dev` ขากลับต้องมี note · รับงานเองผ่าน `dev_owner_id` · `investigate.run` ได้ `adhoc` ไม่ได้ · ไม่อยู่ใน `STAFF_ROLES` ไม่มี gate กะ | เจ้าของบอกให้ดู ticket หยิบไปแก้ ปรับสถานะ · PII น้อยสุด |
+| [ ] 34 | AI assistant | ไม่ต้องกด: ค้น สรุป อธิบาย `investigate.run` ในงบ · กดครั้งเดียว: assign, status, tag, note, create ticket, KB draft, adhoc · ตอบลูกค้าเปิดหน้า review เดิมเสมอ · ใช้สิทธิ์ของผู้ใช้ · **ลูกค้ายังไม่ได้ bubble** เพราะเท่ากับ AI ตอบลูกค้า (N3) · auto-run ภายหลังเฉพาะ tag/note ต้องมี ADR | N2, N3 |
+| [ ] 35 | เปิด ticket เอง | agent/lead/head · บังคับ org, contact, subject, body, channel · เพิ่ม `phone`, `walk_in`, `chat`, `other` · contact ใหม่ไม่ถือว่า verified · SLA เริ่มตอนเปิด ห้ามย้อนเวลา · email ยืนยันผ่าน template, address ใหม่ต้องติ๊ก | กันแต่งตัวเลข, กันส่งผิดคน |
 | [x] 25 | T-011 Phase 1 scope | T-122 ingest + `packages/domain`, T-123 scaffolding, AC-4 → T-108e KB-author ขั้นต่ำ, เลื่อน Discord bot / Web Push / digest / crawler / bulk ไปหลัง T-113, worktree ≤ 3, Phase 1 ปิดที่ "done pending pilot" | credit จำกัด ทำของมีค่าก่อน |
 
 ## การตัดสินใจของเจ้าของที่มีผลอยู่

@@ -31,6 +31,11 @@ describe('maintenance processor', () => {
     expect(calls[3]?.[0]).toContain("ensure_monthly_partitions('incident_timeline'");
     // The cached usage points (T-205a) are upserted, so their partitions are not append-only.
     expect(calls[4]?.[0]).toContain("ensure_monthly_partitions('usage_metric_point'");
+    // The tool ledger (T-203b) stays updatable in the columns it closes a row with, and no others.
+    expect(calls[5]?.[0]).toContain("ensure_monthly_partitions('tool_execution'");
+    expect(calls[5]?.[0]).toContain(
+      "ARRAY['status', 'error_code', 'finished_at', 'latency_ms', 'result_count']",
+    );
     for (const [sql, params] of calls) {
       expect(sql).toContain(sql.includes('usage_metric_point') ? 'false' : 'true');
       expect(params).toEqual([PARTITION_MONTHS_AHEAD]);

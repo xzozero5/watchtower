@@ -80,55 +80,76 @@ export interface OrgContextPort {
   }): Promise<OrgContext | null>;
 }
 
-// --- Fixtures for the stubs (GCP Logs, BigQuery, repo) in mock mode -------------------------------
+// --- The systems outside Watchtower: GCP Logs, product data, repository (T-203d) ---------------------
+//
+// These ports replace the fixture stubs of T-108. `apps/worker` implements them over the read-only
+// clients of `@watchtower/connectors` (a fake in mock mode, a real adapter after T-208) and over the
+// saved templates of the intent; `packages/ai` knows neither. What reaches a port is only what the
+// run owns (the ticket, its scope intent), never text a model or a customer wrote: the model chooses
+// no filter and no statement (ADR-013). Every port is read-only by construction.
 
-export const stubLogEntrySchema = z.object({
+export const toolLogEntrySchema = z.object({
   timestamp: z.string().max(40),
   severity: z.string().max(20),
   service: z.string().max(100),
   message: z.string().max(600),
 });
-export type StubLogEntry = z.infer<typeof stubLogEntrySchema>;
+export type ToolLogEntry = z.infer<typeof toolLogEntrySchema>;
 
-export const stubFixturesSchema = z.object({
-  gcpLogs: z
-    .array(
-      z.object({
-        /** The scenario answers when the query contains any of these words (case-insensitive). */
-        keywords: z.array(z.string().min(1).max(60)).min(1),
-        entries: z.array(stubLogEntrySchema).max(50),
-      }),
-    )
-    .default([]),
-  bigquery: z
-    .array(
-      z.object({
-        /** Name of a saved query template. */
-        template: z.string().min(1).max(100),
-        columns: z.array(z.string().max(60)).max(20),
-        rows: z
-          .array(z.array(z.union([z.string().max(200), z.number(), z.null()])).max(20))
-          .max(100),
-      }),
-    )
-    .default([]),
-  repoChanges: z
-    .array(
-      z.object({
-        service: z.string().min(1).max(100),
-        changes: z
-          .array(
-            z.object({
-              kind: z.enum(['commit', 'pull_request', 'release', 'deploy']),
-              ref: z.string().max(100),
-              title: z.string().max(300),
-              at: z.string().max(40),
-              url: z.string().max(500).optional(),
-            }),
-          )
-          .max(50),
-      }),
-    )
-    .default([]),
+export const toolRepoChangeSchema = z.object({
+  kind: z.enum(['commit', 'pull_request', 'release', 'deploy']),
+  ref: z.string().max(100),
+  title: z.string().max(300),
+  at: z.string().max(40),
+  url: z.string().max(500).optional(),
 });
-export type StubFixtures = z.infer<typeof stubFixturesSchema>;
+export type ToolRepoChange = z.infer<typeof toolRepoChangeSchema>;
+
+export const toolDataCellSchema = z.union([z.string().max(200), z.number(), z.null()]);
+export type ToolDataCell = z.infer<typeof toolDataCellSchema>;
+
+/** Log lines of the ticket's organization, from the log template of the scope intent. */
+export interface LogsToolPort {
+  /** True when the answer comes from a fake or a sandbox: the card says "(mock data)". */
+  readonly mock: boolean;
+  run(input: {
+    readonly windowMinutes: number;
+    readonly limit: number;
+    /** The scope intent: the port finds its template. Null: there is none and the port answers with a note. */
+    readonly intentKey: string | null;
+    readonly ticketId: string | null;
+    readonly signal?: AbortSignal | undefined;
+  }): Promise<{ readonly items: readonly ToolLogEntry[]; readonly note?: string | undefined }>;
+}
+
+/** Rows of the data template of the scope intent, behind the read-only guardrails. */
+export interface DataToolPort {
+  readonly mock: boolean;
+  run(input: {
+    readonly limit: number;
+    readonly intentKey: string | null;
+    readonly ticketId: string | null;
+    readonly signal?: AbortSignal | undefined;
+  }): Promise<{
+    readonly columns: readonly string[];
+    readonly items: readonly (readonly ToolDataCell[])[];
+    readonly note?: string | undefined;
+  }>;
+}
+
+/** Commits, merged pull requests, releases and deploys of a service of the catalog. */
+export interface RepoToolPort {
+  readonly mock: boolean;
+  run(input: {
+    readonly service: string;
+    readonly windowHours: number;
+    readonly signal?: AbortSignal | undefined;
+  }): Promise<{ readonly items: readonly ToolRepoChange[]; readonly note?: string | undefined }>;
+}
+
+/** The three systems. A missing one means that tool is not registered: no run can call it. */
+export interface SystemToolPorts {
+  readonly logs?: LogsToolPort | undefined;
+  readonly data?: DataToolPort | undefined;
+  readonly repo?: RepoToolPort | undefined;
+}

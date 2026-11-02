@@ -406,7 +406,7 @@ describe('picking up and linking', () => {
     );
     const made = await fileTicket(agent, orgId, { subject: 'Link me' });
     const link = (who: Persona, kind: string, targetId: string | undefined) =>
-      who.client.post<TicketDetail & ApiErrorBody>(`/v1/tickets/${made.id}/links`, {
+      who.client.post<TicketDetail & ApiErrorBody>(`/v1/tickets/${made.id}/references`, {
         kind,
         targetId,
       });
@@ -417,22 +417,22 @@ describe('picking up and linking', () => {
     expect((await link(dev, 'deploy', incident[0]?.id)).status).toBe(400);
 
     const seenByDev = await dev.client.get<TicketDetail>(`/v1/tickets/${made.id}`);
-    expect(seenByDev.body.links?.map((item) => item.kind).toSorted()).toEqual([
+    expect(seenByDev.body.references?.map((item) => item.kind).toSorted()).toEqual([
       'deploy',
       'incident',
     ]);
     expect(leaks(seenByDev.body)).toEqual([]);
     const seenByAgent = await agent.client.get<TicketDetail>(`/v1/tickets/${made.id}`);
-    expect(JSON.stringify(seenByAgent.body.links)).toContain(EMAIL);
+    expect(JSON.stringify(seenByAgent.body.references)).toContain(EMAIL);
 
-    const incidentLink = seenByDev.body.links?.find((item) => item.kind === 'incident');
+    const incidentLink = seenByDev.body.references?.find((item) => item.kind === 'incident');
     const removed = await dev.client.delete<TicketDetail>(
-      `/v1/tickets/${made.id}/links/${incidentLink?.id ?? ''}`,
+      `/v1/tickets/${made.id}/references/${incidentLink?.id ?? ''}`,
     );
     expect(removed.status).toBe(200);
-    expect(removed.body.links?.map((item) => item.kind)).toEqual(['deploy']);
+    expect(removed.body.references?.map((item) => item.kind)).toEqual(['deploy']);
     // A client never sees it.
-    expect((await client.client.get(`/v1/tickets/${made.id}/links`)).status).not.toBe(200);
+    expect((await client.client.get(`/v1/tickets/${made.id}/references`)).status).toBe(404);
   });
 });
 
@@ -460,8 +460,8 @@ describe('the audit log', () => {
       'ticket.status_change',
       'ticket.dev_pickup',
       'ticket.dev_release',
-      'ticket.link_add',
-      'ticket.link_remove',
+      'ticket.reference_add',
+      'ticket.reference_remove',
       'pii.read',
     ]) {
       expect(actions).toContain(action);

@@ -45,6 +45,9 @@ export const AUTH_ERROR_CODES = [
   'handoff_incomplete',
   // Shifts (T-111): the handoff or the item is in a state that does not allow this (already confirmed, already acknowledged).
   'handoff_locked',
+  // Investigation tools (T-203d): the system a button reaches is not connected here (503), or it did not answer (502/504).
+  'tool_not_connected',
+  'tool_failed',
 ] as const;
 export type AuthErrorCode = (typeof AUTH_ERROR_CODES)[number];
 
@@ -337,8 +340,8 @@ export const CORE_AUDIT_ACTIONS = {
   ticketDevPickup: 'ticket.dev_pickup',
   ticketDevRelease: 'ticket.dev_release',
   /** A ticket was linked to an incident or a deploy, or unlinked (T-137). */
-  ticketLinkAdd: 'ticket.link_add',
-  ticketLinkRemove: 'ticket.link_remove',
+  ticketReferenceAdd: 'ticket.reference_add',
+  ticketReferenceRemove: 'ticket.reference_remove',
   portalTicketSubmit: 'portal.ticket.submit',
   portalLinkResend: 'portal.tracking_link.resend',
   portalLinkIssued: 'portal.tracking_link.issued',

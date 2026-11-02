@@ -15,8 +15,9 @@ import {
   type SimilarTicketsQuery,
   SIMILAR_TICKET_LIMIT,
   SIMILAR_TICKET_THRESHOLD,
+  TICKET_REFERENCE_LINK_KINDS,
   type TicketDetail,
-  type TicketLink,
+  type TicketReference,
   type TicketListQuery,
   type TicketPriority,
   type TicketSlaView,
@@ -29,6 +30,7 @@ import {
   and,
   arrayContains,
   asc,
+  count,
   desc,
   eq,
   exists,
@@ -357,7 +359,10 @@ export class TicketReader {
         ...child,
         subject: session.text(child.subject),
       })),
-      links: (detail.links ?? []).map((link) => ({ ...link, label: session.text(link.label) })),
+      references: (detail.references ?? []).map((link) => ({
+        ...link,
+        label: session.text(link.label),
+      })),
       masked: true,
     };
   }
@@ -381,7 +386,10 @@ export class TicketReader {
   }
 
   /** Incidents and deploys a ticket is linked to, oldest first. */
-  async links(ticketId: string, executor: Executor = this.database.db): Promise<TicketLink[]> {
+  async references(
+    ticketId: string,
+    executor: Executor = this.database.db,
+  ): Promise<TicketReference[]> {
     const rows = await executor
       .select({
         id: schema.ticketLink.id,
@@ -398,9 +406,14 @@ export class TicketReader {
       .from(schema.ticketLink)
       .leftJoin(schema.incident, eq(schema.incident.id, schema.ticketLink.incidentId))
       .leftJoin(schema.deploy, eq(schema.deploy.id, schema.ticketLink.deployId))
-      .where(eq(schema.ticketLink.ticketId, ticketId))
+      .where(
+        and(
+          eq(schema.ticketLink.fromTicketId, ticketId),
+          inArray(schema.ticketLink.kind, [...TICKET_REFERENCE_LINK_KINDS]),
+        ),
+      )
       .orderBy(asc(schema.ticketLink.createdAt), asc(schema.ticketLink.id));
-    return rows.flatMap((row): TicketLink[] => {
+    return rows.flatMap((row): TicketReference[] => {
       if (row.kind === 'incident' && row.incidentId !== null) {
         return [
           {
@@ -431,7 +444,7 @@ export class TicketReader {
     row: TicketViewRow,
     executor: Executor = this.database.db,
   ): Promise<TicketDetail> {
-    const links = await this.links(row.t.id, executor);
+    const references = await this.references(row.t.id, executor);
     const children = await executor
       .select({
         id: schema.ticket.id,
@@ -452,7 +465,7 @@ export class TicketReader {
         key: this.keys.format(child.number),
         subject: child.subject,
       })),
-      links,
+      references,
     };
   }
 
@@ -656,6 +669,24 @@ export class TicketReader {
       conditions.push(await this.slaStates.condition(query.slaState, conditions, now));
     }
     return this.slaStates.stats(conditions, now);
+  }
+
+  /**
+   * How many tickets the filters match, for the number beside a saved view. Staff only. One query,
+   * unlike `stats` which also groups by status, queue, assignee and priority.
+   */
+  async count(query: TicketStatsQuery, principal: Principal): Promise<number> {
+    assertCanRead(principal);
+    if (isClient(principal)) throw forbidden('Ticket counts are for staff');
+    const conditions = this.filterConditions(query, principal);
+    if (query.slaState !== undefined) {
+      conditions.push(await this.slaStates.condition(query.slaState, conditions, new Date()));
+    }
+    const [row] = await this.database.db
+      .select({ n: count() })
+      .from(schema.ticket)
+      .where(and(...conditions));
+    return row?.n ?? 0;
   }
 
   async list(

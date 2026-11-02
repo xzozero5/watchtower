@@ -14,6 +14,8 @@ import { z } from 'zod';
 export const INBOUND_AUDIT_ACTIONS = {
   /** A received message got its disposition (ticket, appended, noise, auto_reply, internal). */
   inboundIngest: 'inbound.ingest',
+  /** A person turned a message from "Other mail" into a ticket (T-119). */
+  inboundConvert: 'inbound.convert',
 } as const satisfies Record<string, string>;
 
 /** `ticket_event.type` strings written by this feature. */

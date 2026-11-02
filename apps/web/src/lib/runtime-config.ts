@@ -1,6 +1,10 @@
+import { DEFAULT_TICKET_KEY_PREFIX, ticketKeyPrefixSchema } from '@watchtower/shared';
+
 export interface RuntimeConfig {
   /** Base URL of apps/api as the browser reaches it, with no trailing slash. */
   apiUrl: string;
+  /** Prefix of ticket numbers on this instance (`OPS` gives `OPS-1234`), the same value the api uses. */
+  ticketKeyPrefix: string;
 }
 
 /** Matches `API_URL` in .env.example. `[ASSUMED]` for a bare local run. */
@@ -30,5 +34,12 @@ export function readRuntimeConfig(env: Env = process.env): RuntimeConfig {
   if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
     throw new Error('API_URL must use http or https');
   }
-  return { apiUrl: apiUrl.replace(/\/+$/, '') };
+
+  // The same variable and rules as the api (`TICKET_KEY_PREFIX`); a bad value falls back to the
+  // default rather than stopping the whole interface over an example in a placeholder.
+  const prefix = ticketKeyPrefixSchema.safeParse(env.TICKET_KEY_PREFIX?.trim() || undefined);
+  return {
+    apiUrl: apiUrl.replace(/\/+$/, ''),
+    ticketKeyPrefix: prefix.success ? prefix.data : DEFAULT_TICKET_KEY_PREFIX,
+  };
 }

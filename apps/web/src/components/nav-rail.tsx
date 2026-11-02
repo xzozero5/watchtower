@@ -10,6 +10,7 @@ import {
   Inbox,
   Keyboard,
   type LucideIcon,
+  Mail,
   PanelLeft,
   Settings2,
   SquarePen,
@@ -129,7 +130,7 @@ function RailButton({
   );
 }
 
-export type RailDestination = 'queue' | 'home' | 'admin' | 'shift' | 'newTicket';
+export type RailDestination = 'queue' | 'home' | 'admin' | 'shift' | 'otherMail' | 'newTicket';
 
 export interface NavRailProps {
   /** The page being shown. */
@@ -159,6 +160,7 @@ export function NavRail({
   const t = useT();
   const { can } = useSession();
   const handler = can('ticket.handle');
+  const showOtherMail = can('inbound.read');
   const canReadTickets = can('ticket.read');
   // Filing a ticket by hand is for the people who handle them (T-136); a developer or a client does not.
   const canFileTicket = can('ticket.create') && handler;
@@ -220,6 +222,17 @@ export function NavRail({
             expanded={expanded}
             current={destination === 'newTicket'}
             href="/tickets/new"
+          />
+        ) : null}
+        {showOtherMail ? (
+          <RailButton
+            icon={Mail}
+            tone="sky"
+            label={t('rail.otherMail')}
+            expanded={expanded}
+            current={destination === 'otherMail'}
+            keyShortcuts="g o"
+            href="/other-mail"
           />
         ) : null}
         {handler || shiftIds.size > 0 ? (

@@ -8,8 +8,8 @@
 --   ticket.assignee_id stays the agent (AC-7).
 --   ticket.channel gains 'phone', 'walk_in', 'chat', 'other' (T-136): where a person says a request came
 --   from. channel_account.type does NOT gain them: nothing is delivered on them.
---   ticket_link: a ticket linked to an incident or a deploy (T-137). Both are references to rows that
---   already exist; a dev cannot create either.
+--   ticket_link (made by 0066 for duplicate and related links) gains the kinds incident and deploy
+--   (T-137): a reference to a row that already exists; a dev cannot create either.
 -- Reversible: see 0080_dev_role_manual_ticket.down.sql.
 
 ALTER TABLE users DROP CONSTRAINT users_role_check;
@@ -38,20 +38,22 @@ ALTER TABLE ticket ADD CONSTRAINT ticket_channel_check
 ALTER TABLE ticket ADD COLUMN dev_owner_id uuid REFERENCES users (id) ON DELETE SET NULL;
 CREATE INDEX ticket_dev_owner_idx ON ticket (dev_owner_id, status) WHERE dev_owner_id IS NOT NULL;
 
-CREATE TABLE ticket_link (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  ticket_id uuid NOT NULL REFERENCES ticket (id) ON DELETE CASCADE,
-  kind text NOT NULL,
-  incident_id uuid REFERENCES incident (id) ON DELETE CASCADE,
-  deploy_id uuid REFERENCES deploy (id) ON DELETE CASCADE,
-  created_by uuid REFERENCES users (id) ON DELETE SET NULL,
-  created_at timestamptz NOT NULL DEFAULT now(),
-  CONSTRAINT ticket_link_kind_check CHECK (kind IN ('incident', 'deploy')),
-  CONSTRAINT ticket_link_target_check CHECK (
-    (kind = 'incident' AND incident_id IS NOT NULL AND deploy_id IS NULL)
-    OR (kind = 'deploy' AND deploy_id IS NOT NULL AND incident_id IS NULL)
-  )
+-- ticket_link (0066, between two tickets) also holds a ticket's link to an incident or a deploy (T-137): one
+-- row per link, `to_ticket_id` is empty for those and exactly one of `incident_id` / `deploy_id` is set.
+-- `UPDATE` stays revoked: a link is made and removed, never edited.
+ALTER TABLE ticket_link ADD COLUMN incident_id uuid REFERENCES incident (id) ON DELETE CASCADE;
+ALTER TABLE ticket_link ADD COLUMN deploy_id uuid REFERENCES deploy (id) ON DELETE CASCADE;
+ALTER TABLE ticket_link ALTER COLUMN to_ticket_id DROP NOT NULL;
+ALTER TABLE ticket_link DROP CONSTRAINT ticket_link_kind_check;
+ALTER TABLE ticket_link ADD CONSTRAINT ticket_link_kind_check
+  CHECK (kind IN ('duplicate', 'related', 'incident', 'deploy'));
+ALTER TABLE ticket_link DROP CONSTRAINT ticket_link_distinct_check;
+ALTER TABLE ticket_link ADD CONSTRAINT ticket_link_distinct_check
+  CHECK (to_ticket_id IS NULL OR from_ticket_id <> to_ticket_id);
+ALTER TABLE ticket_link ADD CONSTRAINT ticket_link_target_check CHECK (
+  (kind IN ('duplicate', 'related') AND to_ticket_id IS NOT NULL AND incident_id IS NULL AND deploy_id IS NULL)
+  OR (kind = 'incident' AND incident_id IS NOT NULL AND to_ticket_id IS NULL AND deploy_id IS NULL)
+  OR (kind = 'deploy' AND deploy_id IS NOT NULL AND to_ticket_id IS NULL AND incident_id IS NULL)
 );
-CREATE UNIQUE INDEX ticket_link_incident_key ON ticket_link (ticket_id, incident_id) WHERE incident_id IS NOT NULL;
-CREATE UNIQUE INDEX ticket_link_deploy_key ON ticket_link (ticket_id, deploy_id) WHERE deploy_id IS NOT NULL;
-CREATE INDEX ticket_link_ticket_idx ON ticket_link (ticket_id, created_at);
+CREATE UNIQUE INDEX ticket_link_incident_key ON ticket_link (from_ticket_id, incident_id) WHERE incident_id IS NOT NULL;
+CREATE UNIQUE INDEX ticket_link_deploy_key ON ticket_link (from_ticket_id, deploy_id) WHERE deploy_id IS NOT NULL;

@@ -90,9 +90,17 @@ export function ConsoleShell({ destination, skipTo, children }: ConsoleShellProp
   const shiftIds = new Set(shiftSectionsFor(can).map((section) => section.id));
   const showHome = can(HOME_PERMISSION);
   const showAdmin = adminSectionsFor(can).length > 0;
-  // `g d`, `g a` and, away from the queue, `g q`. The queue workspace handles its own `g q`.
+  const showOtherMail = can('inbound.read');
+  // `g d`, `g a`, `g o` and, away from the queue, `g q`. The queue workspace handles its own `g q`.
   useShortcutSequence('g', {
     ...(showHome ? { d: goHome } : {}),
+    ...(showOtherMail
+      ? {
+          o: () => {
+            router.push('/other-mail');
+          },
+        }
+      : {}),
     ...(showAdmin
       ? {
           a: () => {

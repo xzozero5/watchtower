@@ -6,11 +6,16 @@ import {
   kbHitSchema,
   orgContextSchema,
   similarTicketSchema,
-  stubLogEntrySchema,
+  toolDataCellSchema,
+  toolLogEntrySchema,
+  toolRepoChangeSchema,
+  type DataToolPort,
   type KbSearchPort,
+  type LogsToolPort,
   type OrgContextPort,
+  type RepoToolPort,
   type SimilarTicketsPort,
-  type StubFixtures,
+  type SystemToolPorts,
 } from './ports.js';
 
 /** The tools of the investigator and the drafter (T-108a). All are read-only (N2). */
@@ -65,26 +70,30 @@ export const orgContextOutput = z.object({
   note: z.string().max(200).optional(),
 });
 
+/**
+ * No filter, no text: the logs of the ticket's organization come from the log template of the scope
+ * intent, and the model (or the ticket) names only a window and a size. Customer text never becomes
+ * part of a query (T-203d).
+ */
 export const gcpLogsInput = z.strictObject({
-  query: queryText,
   windowMinutes: z.number().int().min(1).max(1440).default(60),
   limit: z.number().int().min(1).max(50).default(20),
 });
 export const gcpLogsOutput = z.object({
-  mock: z.literal(true),
-  items: z.array(stubLogEntrySchema).max(50),
+  /** True when the lines come from a fake or a sandbox. */
+  mock: z.boolean(),
+  items: z.array(toolLogEntrySchema).max(50),
   note: z.string().max(200).optional(),
 });
 
+/** The data template of the scope intent is the query (ad-hoc SQL is for a person, R-5.2). */
 export const bigqueryInput = z.strictObject({
-  /** The name of a saved query template (ad-hoc SQL is for a person, R-5.2). */
-  template: z.string().trim().min(1).max(100),
   limit: z.number().int().min(1).max(100).default(20),
 });
 export const bigqueryOutput = z.object({
-  mock: z.literal(true),
+  mock: z.boolean(),
   columns: z.array(z.string().max(60)).max(20),
-  items: z.array(z.array(z.union([z.string().max(200), z.number(), z.null()])).max(20)).max(100),
+  items: z.array(z.array(toolDataCellSchema).max(20)).max(100),
   note: z.string().max(200).optional(),
 });
 
@@ -93,18 +102,8 @@ export const repoChangesInput = z.strictObject({
   windowHours: z.number().int().min(1).max(168).default(24),
 });
 export const repoChangesOutput = z.object({
-  mock: z.literal(true),
-  items: z
-    .array(
-      z.object({
-        kind: z.enum(['commit', 'pull_request', 'release', 'deploy']),
-        ref: z.string().max(100),
-        title: z.string().max(300),
-        at: z.string().max(40),
-        url: z.string().max(500).optional(),
-      }),
-    )
-    .max(50),
+  mock: z.boolean(),
+  items: z.array(toolRepoChangeSchema).max(50),
   note: z.string().max(200).optional(),
 });
 
@@ -168,78 +167,80 @@ export function createOrgContextTool(port: OrgContextPort) {
   });
 }
 
-function matches(query: string, words: readonly string[]): boolean {
-  const lower = query.toLowerCase();
-  return words.some((word) => lower.includes(word.toLowerCase()));
-}
-
-/** GCP Logs in mock mode (R-5.1): answers from a fixture. The real tool replaces it with the same schemas. */
-export function createGcpLogsStub(fixtures: StubFixtures) {
+/** Logs of the ticket's organization (R-5.1), through a port over the read-only logs client. */
+export function createGcpLogsTool(port: LogsToolPort) {
   return defineTool({
     name: TOOL_NAMES.gcpLogs,
     description:
-      'Read recent log entries of a service for a time window (fixture data in mock mode).',
+      "Read recent log entries of the ticket's organization for a time window, from the log template of the intent.",
     readOnly: true,
-    mock: true,
+    mock: port.mock,
     input: gcpLogsInput,
     output: gcpLogsOutput,
-    execute(input) {
-      const scenario = fixtures.gcpLogs.find((candidate) =>
-        matches(input.query, candidate.keywords),
-      );
-      return Promise.resolve(
-        scenario === undefined
-          ? { mock: true as const, items: [], note: 'No fixture matches this query.' }
-          : { mock: true as const, items: scenario.entries.slice(0, input.limit) },
-      );
+    async execute(input, context) {
+      const result = await port.run({
+        windowMinutes: input.windowMinutes,
+        limit: input.limit,
+        intentKey: context.intent,
+        ticketId: context.ticketId ?? null,
+        signal: context.abortSignal,
+      });
+      return {
+        mock: port.mock,
+        items: result.items.slice(0, input.limit),
+        ...(result.note === undefined ? {} : { note: result.note }),
+      };
     },
   });
 }
 
-/** BigQuery / product DB in mock mode (R-5.2): a saved template by name, rows from a fixture. */
-export function createBigQueryStub(fixtures: StubFixtures) {
+/** The data template of the intent (R-5.2), through a port over the guarded, read-only data client. */
+export function createBigQueryTool(port: DataToolPort) {
   return defineTool({
     name: TOOL_NAMES.bigquery,
     description:
-      'Run a saved, read-only query template and read its rows (fixture data in mock mode).',
+      "Run the saved, read-only query template of the intent for the ticket's organization and read its rows.",
     readOnly: true,
-    mock: true,
+    mock: port.mock,
     input: bigqueryInput,
     output: bigqueryOutput,
-    execute(input) {
-      const found = fixtures.bigquery.find((candidate) => candidate.template === input.template);
-      return Promise.resolve(
-        found === undefined
-          ? { mock: true as const, columns: [], items: [], note: 'No such query template.' }
-          : {
-              mock: true as const,
-              columns: found.columns,
-              items: found.rows.slice(0, input.limit),
-            },
-      );
+    async execute(input, context) {
+      const result = await port.run({
+        limit: input.limit,
+        intentKey: context.intent,
+        ticketId: context.ticketId ?? null,
+        signal: context.abortSignal,
+      });
+      return {
+        mock: port.mock,
+        columns: [...result.columns],
+        items: result.items.slice(0, input.limit).map((row) => [...row]),
+        ...(result.note === undefined ? {} : { note: result.note }),
+      };
     },
   });
 }
 
-/** Commits, pull requests, releases and deploys of a service in mock mode (R-5.3). */
-export function createRepoChangesStub(fixtures: StubFixtures) {
+/** Commits, pull requests, releases and deploys of a service (R-5.3), through a port over the repository client. */
+export function createRepoChangesTool(port: RepoToolPort) {
   return defineTool({
     name: TOOL_NAMES.repoChanges,
-    description:
-      'List recent changes of a service: commits, pull requests, releases, deploys (fixture data in mock mode).',
+    description: 'List recent changes of a service: commits, pull requests, releases, deploys.',
     readOnly: true,
-    mock: true,
+    mock: port.mock,
     input: repoChangesInput,
     output: repoChangesOutput,
-    execute(input) {
-      const found = fixtures.repoChanges.find(
-        (candidate) => candidate.service.toLowerCase() === input.service.toLowerCase(),
-      );
-      return Promise.resolve(
-        found === undefined
-          ? { mock: true as const, items: [], note: 'No such service in the fixture.' }
-          : { mock: true as const, items: found.changes },
-      );
+    async execute(input, context) {
+      const result = await port.run({
+        service: input.service,
+        windowHours: input.windowHours,
+        signal: context.abortSignal,
+      });
+      return {
+        mock: port.mock,
+        items: result.items.slice(0, 50),
+        ...(result.note === undefined ? {} : { note: result.note }),
+      };
     },
   });
 }
@@ -248,8 +249,8 @@ export interface InvestigationToolDeps {
   readonly kb: KbSearchPort;
   readonly tickets: SimilarTicketsPort;
   readonly org: OrgContextPort;
-  /** Fixtures for the three stubs. Absent: the stubs are not registered, so no run can call them. */
-  readonly fixtures?: StubFixtures | undefined;
+  /** The systems outside Watchtower. A missing port means that tool is not registered, so no run can call it. */
+  readonly systems?: SystemToolPorts | undefined;
 }
 
 export function investigationTools(deps: InvestigationToolDeps): ToolDefinition[] {
@@ -258,13 +259,10 @@ export function investigationTools(deps: InvestigationToolDeps): ToolDefinition[
     createSimilarTicketsTool(deps.tickets),
     createOrgContextTool(deps.org),
   ];
-  if (deps.fixtures !== undefined) {
-    tools.push(
-      createGcpLogsStub(deps.fixtures),
-      createBigQueryStub(deps.fixtures),
-      createRepoChangesStub(deps.fixtures),
-    );
-  }
+  const systems = deps.systems;
+  if (systems?.logs !== undefined) tools.push(createGcpLogsTool(systems.logs));
+  if (systems?.data !== undefined) tools.push(createBigQueryTool(systems.data));
+  if (systems?.repo !== undefined) tools.push(createRepoChangesTool(systems.repo));
   return tools;
 }
 

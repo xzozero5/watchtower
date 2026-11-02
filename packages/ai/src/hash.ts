@@ -50,6 +50,15 @@ export function hmacInputHash(
 }
 
 /**
+ * Keyed hash of any JSON value (parameters of a tool run, a tool's result) for an audit row or an
+ * evidence card (N4): it proves "this is what was asked / found" to whoever holds the key and shows
+ * nothing to anyone else. Key order does not matter.
+ */
+export function hmacJson(hmacKey: string, value: unknown): string {
+  return createHmac('sha256', hmacKey).update(canonicalJson(value), 'utf8').digest('hex');
+}
+
+/**
  * Unkeyed hash of what the model would see, for the mock provider's rules. It leaves out the model
  * id and the tier, so changing the settings does not change which canned answer a test gets. Do
  * not store it: audit rows use `hmacInputHash`.

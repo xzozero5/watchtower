@@ -221,8 +221,8 @@ export const CORE_TICKET_EVENT_TYPES = {
   devPickedUp: 'ticket.dev_picked_up',
   devReleased: 'ticket.dev_released',
   /** A ticket was linked to an incident or a deploy, or the link was removed (T-137). Internal. */
-  linkAdded: 'ticket.link_added',
-  linkRemoved: 'ticket.link_removed',
+  referenceAdded: 'ticket.reference_added',
+  referenceRemoved: 'ticket.reference_removed',
 } as const;
 
 /** Types written to `ticket_event.type`: core plus every feature. */
@@ -284,35 +284,31 @@ export const ticketSummarySchema = z.object({
 });
 export type TicketSummary = z.infer<typeof ticketSummarySchema>;
 
-/** Kinds of thing a ticket can be linked to (T-137). Both already exist; the link creates neither. */
-export const TICKET_LINK_KINDS = ['incident', 'deploy'] as const;
-export type TicketLinkKind = (typeof TICKET_LINK_KINDS)[number];
-export const ticketLinkKindSchema = z.enum(TICKET_LINK_KINDS);
-
-export const ticketLinkSchema = z.object({
+/** A link from a ticket to an incident or a deploy (T-137), in the detail of a ticket. */
+export const ticketReferenceSchema = z.object({
   id: z.uuid(),
-  kind: ticketLinkKindSchema,
+  kind: z.enum(['incident', 'deploy']),
   /** The incident or the deploy. */
   targetId: z.uuid(),
   /** `INC-12 title` or `service version (env)`, for display. */
   label: z.string(),
   createdAt: z.iso.datetime(),
 });
-export type TicketLink = z.infer<typeof ticketLinkSchema>;
+export type TicketReference = z.infer<typeof ticketReferenceSchema>;
 
-export const createTicketLinkSchema = z.object({
-  kind: ticketLinkKindSchema,
+export const createTicketReferenceSchema = z.object({
+  kind: z.enum(['incident', 'deploy']),
   targetId: z.uuid(),
 });
-export type CreateTicketLink = z.infer<typeof createTicketLinkSchema>;
-export const ticketLinkParamSchema = z.object({ id: ticketRefSchema, linkId: z.uuid() });
+export type CreateTicketReference = z.infer<typeof createTicketReferenceSchema>;
+export const ticketReferenceParamSchema = z.object({ id: ticketRefSchema, linkId: z.uuid() });
 
 export const ticketDetailSchema = ticketSummarySchema.extend({
   requester: z.object({ id: z.uuid(), name: z.string(), email: z.string().nullable() }).nullable(),
   /** Tickets merged into this one. */
   mergedTickets: z.array(z.object({ id: z.uuid(), key: z.string(), subject: z.string() })),
   /** Incidents and deploys this ticket is linked to (T-137). */
-  links: z.array(ticketLinkSchema).optional(),
+  references: z.array(ticketReferenceSchema).optional(),
   /**
    * True when the caller reads with `ticket.read.masked` (the `dev` role, T-137): email and phone are
    * masked, names and text went through the redactor, custom fields are left out.

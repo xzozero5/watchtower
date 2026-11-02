@@ -10,6 +10,11 @@ export const ADMIN_AUDIT_ACTIONS = {
   auditLogExport: 'audit.log.export',
   /** A person marked a holiday as checked (or unchecked) against the official announcement. */
   calendarHolidayChecked: 'business_calendar.holiday_checked',
+  /** A head put a dead outbox row back in the queue (T-121a). */
+  outboxResend: 'outbox.resend',
+  orgTierCreate: 'org_tier.create',
+  orgTierUpdate: 'org_tier.update',
+  orgTierDelete: 'org_tier.delete',
 } as const satisfies Record<string, string>;
 
 /** `ticket_event.type` strings written by this feature. */

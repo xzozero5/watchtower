@@ -4,6 +4,7 @@ import { aiTh } from './ai';
 import { apiStatusTh } from './apiStatus';
 import { appTh } from './app';
 import { authTh } from './auth';
+import { bulkTh } from './bulk';
 import { channelTh } from './channel';
 import { commandsTh } from './commands';
 import { composerTh } from './composer';
@@ -19,6 +20,7 @@ import { loadingTh } from './loading';
 import { loginTh } from './login';
 import { newTicketTh } from './newTicket';
 import { notificationsTh } from './notifications';
+import { otherMailTh } from './otherMail';
 import { outboundTh } from './outbound';
 import { paletteTh } from './palette';
 import { panelTh } from './panel';
@@ -76,6 +78,8 @@ export const th: Messages = {
   newTicket: newTicketTh,
   notifications: notificationsTh,
   csat: csatTh,
+  bulk: bulkTh,
+  otherMail: otherMailTh,
   shift: shiftTh,
   outbound: outboundTh,
 };

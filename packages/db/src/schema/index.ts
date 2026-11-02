@@ -21,5 +21,6 @@ export * from './views.js';
 // Phase 2 tables (T-200/T-201). One file per feature.
 export * from './alerting.js';
 export * from './incident.js';
+export * from './tools.js';
 export * from './statuspage.js';
 export * from './usage.js';

@@ -37,6 +37,9 @@ export const orgTierSchema = z
   .trim()
   .regex(/^[a-z][a-z0-9_-]{0,31}$/, 'expected a tier slug such as "gold"');
 
+/** The tier a new organization starts in (the column default). It cannot be deleted or renamed. */
+export const DEFAULT_ORG_TIER = 'standard';
+
 export const ORG_STATUSES = ['active', 'inactive'] as const;
 export const orgStatusSchema = z.enum(ORG_STATUSES);
 
@@ -162,6 +165,33 @@ export const orgTierRecordSchema = z.object({
 export type OrgTierRecord = z.infer<typeof orgTierRecordSchema>;
 export const orgTierListSchema = z.object({ tiers: z.array(orgTierRecordSchema) });
 export type OrgTierList = z.infer<typeof orgTierListSchema>;
+
+const tierNameSchema = z.string().trim().min(1).max(60);
+const tierSortOrderSchema = z.number().int().min(0).max(10_000);
+
+/** Creating a tier (T-121b): the slug is what organizations and SLA policies name, so it is chosen once. */
+export const createOrgTierSchema = z.object({
+  slug: orgTierSchema,
+  name: tierNameSchema,
+  sortOrder: tierSortOrderSchema.default(100),
+});
+export type CreateOrgTier = z.infer<typeof createOrgTierSchema>;
+
+/**
+ * Editing a tier. A new `slug` renames it everywhere (organizations and SLA policies follow, the
+ * database cascades it); old ticket keys and events keep no copy of it.
+ */
+export const updateOrgTierSchema = z
+  .object({
+    slug: orgTierSchema.optional(),
+    name: tierNameSchema.optional(),
+    sortOrder: tierSortOrderSchema.optional(),
+  })
+  .refine((value) => Object.keys(value).length > 0, { message: 'nothing to update' });
+export type UpdateOrgTier = z.infer<typeof updateOrgTierSchema>;
+
+export const orgTierParamSchema = z.object({ slug: orgTierSchema });
+export type OrgTierParam = z.infer<typeof orgTierParamSchema>;
 
 // --- contacts ---
 

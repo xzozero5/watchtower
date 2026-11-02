@@ -515,9 +515,9 @@ describe('the developer part of a ticket (T-137)', () => {
     if (!incident || !deploy) throw new Error('fixtures');
     const link = (kind: 'incident' | 'deploy', targetId: string) =>
       env.tx((tx) =>
-        env.domain.tickets.linkAdd(tx, env.ctx(dev.actor), {
+        env.domain.tickets.referenceAdd(tx, env.ctx(dev.actor), {
           ref: ticket.id,
-          link: { kind, targetId },
+          reference: { kind, targetId },
         }),
       );
 
@@ -540,7 +540,7 @@ describe('the developer part of a ticket (T-137)', () => {
     expect(unchanged?.incidentId).toBeNull();
 
     await env.tx((tx) =>
-      env.domain.tickets.linkRemove(tx, env.ctx(dev.actor), {
+      env.domain.tickets.referenceRemove(tx, env.ctx(dev.actor), {
         ref: ticket.id,
         linkId: first.value.linkId,
       }),
@@ -549,7 +549,7 @@ describe('the developer part of a ticket (T-137)', () => {
       (
         await refusal(
           env.tx((tx) =>
-            env.domain.tickets.linkRemove(tx, env.ctx(dev.actor), {
+            env.domain.tickets.referenceRemove(tx, env.ctx(dev.actor), {
               ref: ticket.id,
               linkId: first.value.linkId,
             }),
@@ -560,7 +560,7 @@ describe('the developer part of a ticket (T-137)', () => {
     const left = await env.db.owner.db
       .select()
       .from(schema.ticketLink)
-      .where(eq(schema.ticketLink.ticketId, ticket.id));
+      .where(eq(schema.ticketLink.fromTicketId, ticket.id));
     expect(left.map((row) => row.kind)).toEqual(['deploy']);
   });
 });

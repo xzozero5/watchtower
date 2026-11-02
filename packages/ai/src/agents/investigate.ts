@@ -68,8 +68,8 @@ const MAX_QUERY_CHARS = 300;
  * (knowledge base, similar tickets, organization); the steps that reach a system outside Watchtower
  * follow, in the order the intent's `allowed_tools` names them. The inputs are built here from the
  * ticket, never chosen by a model: a prompt injection in a ticket cannot steer a tool (N2, SR106-R8).
- * `[ASSUMED]` until the service catalog exists (Phase 2), the "service" of the repo step and the
- * "template" of the data step are the intent key.
+ * The logs and data steps carry no text at all (the intent's saved templates are the query). `[ASSUMED]`
+ * the "service" of the repo step is the intent key, until a ticket knows its service.
  */
 export function planRunbook(context: RunbookContext, granted: readonly string[]): RunbookStep[] {
   const query = clip(context.queryText.replaceAll(/\s+/g, ' ').trim(), MAX_QUERY_CHARS) || 'ticket';
@@ -77,15 +77,17 @@ export function planRunbook(context: RunbookContext, granted: readonly string[])
     [TOOL_NAMES.kbSearch]: { tool: TOOL_NAMES.kbSearch, input: { query, limit: 3 } },
     [TOOL_NAMES.similarTickets]: { tool: TOOL_NAMES.similarTickets, input: { query, limit: 3 } },
     [TOOL_NAMES.orgContext]: { tool: TOOL_NAMES.orgContext, input: {} },
+    // The logs and the data come from the templates of the scope intent for the ticket's organization:
+    // nothing the ticket says becomes part of a filter or a statement (T-203d).
     [TOOL_NAMES.gcpLogs]: {
       tool: TOOL_NAMES.gcpLogs,
-      input: { query, windowMinutes: 60, limit: 10 },
+      input: { windowMinutes: 60, limit: 10 },
     },
   };
   if (context.intentKey !== null) {
     catalog[TOOL_NAMES.bigquery] = {
       tool: TOOL_NAMES.bigquery,
-      input: { template: context.intentKey, limit: 20 },
+      input: { limit: 20 },
     };
     catalog[TOOL_NAMES.repoChanges] = {
       tool: TOOL_NAMES.repoChanges,

@@ -34,6 +34,7 @@ export const keymapEn = {
   goHandoff: 'Go to the shift handoff',
   goNotifications: 'Go to notifications',
   reply: 'Write a public reply',
+  select: 'Select or deselect the open ticket for a bulk action',
   note: 'Write an internal note',
   details: 'Change the status of the open ticket',
   send: 'Send the message',

@@ -28,6 +28,7 @@ import {
   voidOpenSurveys,
 } from './csat/survey.js';
 import { mintCsatToken, verifyCsatToken } from './csat/token.js';
+import { convertInboundMessage } from './inbound/convert.js';
 import { ingestInbound } from './inbound/ingest.js';
 import { draftIncidentComm, previewIncidentComm, sendIncidentComm } from './incidents/comms.js';
 import { recordDeploy } from './incidents/deploy.js';
@@ -103,10 +104,10 @@ import { dueUsageMetrics, runUsageMetric } from './usage/run.js';
 import { assignTicket } from './tickets/assign.js';
 import { createTicket } from './tickets/create.js';
 import {
-  addTicketLink,
+  addTicketReference,
   pickUpTicketAsDev,
   releaseTicketAsDev,
-  removeTicketLink,
+  removeTicketReference,
 } from './tickets/dev.js';
 import { createManualTicket } from './tickets/manual.js';
 import { mergeTickets } from './tickets/merge.js';
@@ -116,7 +117,6 @@ import { updateTicket } from './tickets/update.js';
 import type { Actor, CsatConfig, DomainConfig, DomainContext } from './types.js';
 import { workflowAllows } from './workflow.js';
 
-export { authorityNow } from './clock.js';
 export { ackAlert, type AckAlertInput, type AckAlertOutcome } from './alerts/ack.js';
 export {
   escalationStepsFor,
@@ -222,6 +222,7 @@ export {
   type AlertFacts,
   type CatalogEntry,
 } from './alerts/match.js';
+export { authorityNow } from './clock.js';
 export { recordAuditInTx, type AuditEntry, type AuditWriter } from './audit.js';
 export {
   DEFAULT_AI_BUDGET_ALERT_PERCENT,
@@ -281,6 +282,27 @@ export {
   type ToolLedgerLimits,
 } from './ai/tool-ledger.js';
 export {
+  acquireRateBudget,
+  takeRateBudget,
+  type AcquireInput,
+  type RateDecision,
+  type RateRefusal,
+  type RateTx,
+} from './tools/rate-budget.js';
+export {
+  getToolTemplate,
+  listToolTemplates,
+  templateForAi,
+  templatesForTicket,
+  type ToolTemplateRecord,
+} from './tools/templates.js';
+export {
+  createHumanToolLedger,
+  type HumanToolDecision,
+  type HumanToolEntry,
+  type HumanToolLedger,
+} from './tools/human-ledger.js';
+export {
   createAiRunRecorder,
   type AiRunDatabase,
   type AiRunInput,
@@ -332,6 +354,11 @@ export {
   type SenderLookup,
   type SenderVia,
 } from './inbound/identity.js';
+export {
+  convertInboundMessage,
+  type ConvertInboundInput,
+  type ConvertInboundOutcome,
+} from './inbound/convert.js';
 export { ingestInbound, ruleClassification, ticketSubject } from './inbound/ingest.js';
 export {
   HEURISTIC_WINDOW_DAYS,
@@ -547,13 +574,13 @@ export { TicketKeys } from './ticket-keys.js';
 export { assignTicket, type AssignTicketInput } from './tickets/assign.js';
 export { createTicket, type CreateTicketInput, type CreateTicketResult } from './tickets/create.js';
 export {
-  addTicketLink,
+  addTicketReference,
   pickUpTicketAsDev,
   releaseTicketAsDev,
-  removeTicketLink,
-  type AddTicketLinkInput,
+  removeTicketReference,
+  type AddTicketReferenceInput,
   type DevOwnerInput,
-  type RemoveTicketLinkInput,
+  type RemoveTicketReferenceInput,
 } from './tickets/dev.js';
 export {
   MANUAL_CONFIRMATION_TEMPLATE,
@@ -655,8 +682,8 @@ export interface Domain {
     /** The developer's part (T-137). */
     readonly devPickUp: typeof pickUpTicketAsDev;
     readonly devRelease: typeof releaseTicketAsDev;
-    readonly linkAdd: typeof addTicketLink;
-    readonly linkRemove: typeof removeTicketLink;
+    readonly referenceAdd: typeof addTicketReference;
+    readonly referenceRemove: typeof removeTicketReference;
   };
   readonly contacts: { readonly findOrCreateByEmail: typeof findOrCreateContactByEmail };
   readonly intents: { readonly resolve: typeof resolveIntent };
@@ -769,7 +796,11 @@ export interface Domain {
     readonly computeAllHealth: typeof computeAllOrgHealth;
   };
   /** Received messages (ADR-009): used by the worker's `ingest` consumer. */
-  readonly inbound: { readonly ingest: typeof ingestInbound };
+  readonly inbound: {
+    readonly ingest: typeof ingestInbound;
+    /** A person turns a message from Other mail into a ticket (T-119). */
+    readonly convert: typeof convertInboundMessage;
+  };
   /** AI drafts (T-108c): a person's verdict on a draft. */
   readonly ai: { readonly rejectDraft: typeof rejectAiDraft };
   /** Who is behind a LINE user id: link codes and LINE Login (T-103d, R-2.11). */
@@ -832,8 +863,8 @@ export function createDomain(options: DomainOptions): Domain {
       createManual: createManualTicket,
       devPickUp: pickUpTicketAsDev,
       devRelease: releaseTicketAsDev,
-      linkAdd: addTicketLink,
-      linkRemove: removeTicketLink,
+      referenceAdd: addTicketReference,
+      referenceRemove: removeTicketReference,
     },
     contacts: { findOrCreateByEmail: findOrCreateContactByEmail },
     intents: { resolve: resolveIntent },
@@ -930,7 +961,7 @@ export function createDomain(options: DomainOptions): Domain {
       computeHealth: computeOrgHealth,
       computeAllHealth: computeAllOrgHealth,
     },
-    inbound: { ingest: ingestInbound },
+    inbound: { ingest: ingestInbound, convert: convertInboundMessage },
     identity: { issueLineLinkCode, redeemLineLinkCode, linkLineUser },
     csat: {
       schedule: scheduleSurvey,

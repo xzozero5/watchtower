@@ -11,16 +11,21 @@ import { socketFactory } from '@/test/fake-socket';
 interface RenderOptions {
   locale?: Locale;
   apiUrl?: string;
+  ticketKeyPrefix?: string;
 }
 
 /** Renders with the same providers as the real layout: language, runtime config, query, API, session. */
 export function renderApp(
   ui: ReactElement,
-  { locale = 'en', apiUrl = 'http://api.test' }: RenderOptions = {},
+  { locale = 'en', apiUrl = 'http://api.test', ticketKeyPrefix = 'OPS' }: RenderOptions = {},
 ) {
   return render(ui, {
     wrapper: ({ children }) => (
-      <Providers locale={locale} messages={getMessages(locale)} config={{ apiUrl }}>
+      <Providers
+        locale={locale}
+        messages={getMessages(locale)}
+        config={{ apiUrl, ticketKeyPrefix }}
+      >
         {children}
       </Providers>
     ),

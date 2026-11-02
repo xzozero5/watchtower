@@ -23,7 +23,7 @@ import {
   assignTicketSchema,
   changeStatusSchema,
   createManualTicketSchema,
-  createTicketLinkSchema,
+  createTicketReferenceSchema,
   createTicketSchema,
   duplicateSuggestionsSchema,
   mergeResultSchema,
@@ -35,7 +35,7 @@ import {
   similarTicketsQuerySchema,
   similarTicketsSchema,
   ticketDetailResponseSchema,
-  ticketLinkParamSchema,
+  ticketReferenceParamSchema,
   ticketListQuerySchema,
   ticketListSchema,
   ticketRefParamSchema,
@@ -49,7 +49,7 @@ import {
   type ChangeStatus,
   type CreateManualTicket,
   type CreateTicket,
-  type CreateTicketLink,
+  type CreateTicketReference,
   type MergeTicket,
   type Message,
   type Note,
@@ -88,7 +88,7 @@ import {
 import { TimelineService } from './timeline.service.js';
 
 type RefParam = z.infer<typeof ticketRefParamSchema>;
-type LinkParam = z.infer<typeof ticketLinkParamSchema>;
+type ReferenceParam = z.infer<typeof ticketReferenceParamSchema>;
 
 const actorOf = (principal: Principal): Actor => ({ type: 'user', id: principal.userId });
 
@@ -570,24 +570,26 @@ export class TicketsController {
     return parseResponse(ticketDetailResponseSchema, await this.reader.detail(row.id, principal));
   }
 
-  @Post(':id/links')
+  @Post(':id/references')
   @HttpCode(200)
   @RequireAnyPermission('ticket.handle', 'ticket.dev.work')
-  @Audited({ action: AUDIT_ACTIONS.ticketLinkAdd, targetType: 'ticket' })
+  @Audited({ action: AUDIT_ACTIONS.ticketReferenceAdd, targetType: 'ticket' })
   @ApiOperation({
     summary: 'Link the ticket to an incident or a deploy that already exists',
     description:
       'A reference only: nothing changes on the incident or the deploy, and neither can be ' +
-      'created here. Linking the same target twice is not an error.',
+      'created here. Linking the same target twice is not an error. It is a row of ticket_link of ' +
+      'kind `incident` or `deploy`; links between two tickets (`duplicate`, `related`) have their ' +
+      'own routes under `/links`.',
   })
   @ApiOkResponse({ standardSchema: ticketDetailResponseSchema })
-  async linkAdd(
+  async referenceAdd(
     @Param({ schema: ticketRefParamSchema }) params: RefParam,
-    @Body({ schema: createTicketLinkSchema }) body: CreateTicketLink,
+    @Body({ schema: createTicketReferenceSchema }) body: CreateTicketReference,
     @CurrentPrincipal() principal: Principal,
   ) {
     const result = await this.uow.run((uow) =>
-      this.tickets.linkAdd(uow, params.id, body, actorOf(principal)),
+      this.tickets.referenceAdd(uow, params.id, body, actorOf(principal)),
     );
     return parseResponse(
       ticketDetailResponseSchema,
@@ -595,19 +597,19 @@ export class TicketsController {
     );
   }
 
-  @Delete(':id/links/:linkId')
+  @Delete(':id/references/:linkId')
   @HttpCode(200)
   @RequireAnyPermission('ticket.handle', 'ticket.dev.work')
-  @Audited({ action: AUDIT_ACTIONS.ticketLinkRemove, targetType: 'ticket' })
+  @Audited({ action: AUDIT_ACTIONS.ticketReferenceRemove, targetType: 'ticket' })
   @ApiOperation({ summary: 'Remove a link to an incident or a deploy' })
   @ApiOkResponse({ standardSchema: ticketDetailResponseSchema })
   @ApiNotFoundResponse({ description: 'No such link on this ticket' })
-  async linkRemove(
-    @Param({ schema: ticketLinkParamSchema }) params: LinkParam,
+  async referenceRemove(
+    @Param({ schema: ticketReferenceParamSchema }) params: ReferenceParam,
     @CurrentPrincipal() principal: Principal,
   ) {
     const row = await this.uow.run((uow) =>
-      this.tickets.linkRemove(uow, params.id, params.linkId, actorOf(principal)),
+      this.tickets.referenceRemove(uow, params.id, params.linkId, actorOf(principal)),
     );
     return parseResponse(ticketDetailResponseSchema, await this.reader.detail(row.id, principal));
   }

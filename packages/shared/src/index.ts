@@ -30,3 +30,6 @@ export * from './sla.js';
 export * from './text-metrics.js';
 export * from './ticket-manual.js';
 export * from './ticketing.js';
+export * from './views.js';
+export * from './ops.js';
+export * from './inbox.js';

@@ -1,15 +1,19 @@
 import { schema, type Database } from '@watchtower/db';
+import { rateBudgetFor } from '@watchtower/shared';
 import { and, count, eq, gt, ne, sql } from 'drizzle-orm';
+
+import { acquireRateBudget } from '../tools/rate-budget.js';
 
 /**
  * The tool budget and audit in the database (T-108a, N2, SR106-R8). It has the same shape as
  * `ToolLedger` of `@watchtower/ai` (this package may not import it, see `recorder.ts`); a test in
  * `apps/worker` pins that the two fit.
  *
- * Every call, allowed or not, is a row in `tool_execution`. The budget is counted from the rows, so
- * it holds across handles, runs and processes: a caller that builds a new scope gets no new budget.
- * The count and the insert happen under one advisory lock per ticket, so two jobs for the same
- * ticket cannot both pass the last free slot.
+ * Every call, allowed or not, is a row in `tool_execution`. The per-run and per-ticket budgets are
+ * counted from the rows, so they hold across handles, runs and processes: a caller that builds a
+ * new scope gets no new budget. The count and the insert happen under one advisory lock per ticket,
+ * so two jobs for the same ticket cannot both pass the last free slot. The per-minute budget of a
+ * tool is not counted here: it is a window shared with people (`rate_budget_window`, T-203b).
  */
 
 export interface ToolLedgerLimits {
@@ -51,10 +55,11 @@ export interface DbToolLedger {
 export interface DbToolLedgerOptions {
   readonly db: Pick<Database['db'], 'insert' | 'update' | 'select' | 'transaction'>;
   readonly limits: ToolLedgerLimits;
+  /** The project whose quota the logs, data and repository tools share. Default `default`. */
+  readonly project?: string;
 }
 
 const HOUR_SECONDS = 3600;
-const MINUTE_SECONDS = 60;
 
 /** Error codes are class names; keep the column to that and nothing a message could carry. */
 const safeCode = (code: string | null): string | null =>
@@ -80,9 +85,6 @@ export function createDbToolLedger(options: DbToolLedgerOptions): DbToolLedger {
         await tx.execute(
           sql`SELECT pg_advisory_xact_lock(hashtextextended(${entry.ticketId ?? entry.runKey}, 0))`,
         );
-        // And one per tool, taken second (always in this order, so two callers cannot deadlock): the
-        // per-minute bucket of a tool is shared by every ticket, which the ticket lock does not cover.
-        await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${entry.tool}, 2))`);
         const counted = ne(schema.toolExecution.status, 'denied');
         const [inRun] = await tx
           .select({ n: count() })
@@ -104,23 +106,21 @@ export function createDbToolLedger(options: DbToolLedgerOptions): DbToolLedger {
                     ),
                   ),
                 );
-        const [forTool] = await tx
-          .select({ n: count() })
-          .from(schema.toolExecution)
-          .where(
-            and(
-              eq(schema.toolExecution.tool, entry.tool),
-              counted,
-              gt(
-                schema.toolExecution.createdAt,
-                sql`now() - make_interval(secs => ${MINUTE_SECONDS})`,
-              ),
-            ),
-          );
         let reason: ToolDenialReason | undefined;
         if ((inRun?.n ?? 0) >= limits.perRun) reason = 'run_budget';
         else if ((forTicket?.n ?? 0) >= limits.perTicketPerHour) reason = 'ticket_budget';
-        else if ((forTool?.n ?? 0) >= limits.perToolPerMinute) reason = 'tool_rate';
+        else {
+          // The minute budget of the tool lives in `rate_budget_window` and is shared with people (T-203b):
+          // a unit is taken only when the call is otherwise allowed, and it is kept if this transaction commits.
+          const rate = await acquireRateBudget(tx, {
+            ...rateBudgetFor(entry.tool, {
+              ...(options.project === undefined ? {} : { project: options.project }),
+              perToolPerMinute: limits.perToolPerMinute,
+            }),
+            actor: 'ai',
+          });
+          if (!rate.granted) reason = 'tool_rate';
+        }
 
         if (reason !== undefined) {
           await tx.insert(schema.toolExecution).values({

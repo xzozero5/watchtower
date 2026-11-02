@@ -37,6 +37,7 @@ export const keymapTh: Widen<typeof keymapEn> = {
   goHandoff: 'ไปที่การส่งต่องานระหว่างกะ',
   goNotifications: 'ไปที่การแจ้งเตือน',
   reply: 'เขียนคำตอบถึงลูกค้า',
+  select: 'เลือกหรือเลิกเลือก ticket ที่เปิดอยู่เพื่อทำพร้อมกันหลายรายการ',
   note: 'เขียนบันทึกภายใน',
   details: 'เปลี่ยนสถานะของ ticket ที่เปิดอยู่',
   send: 'ส่งข้อความ',

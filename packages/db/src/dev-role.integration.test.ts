@@ -91,6 +91,7 @@ describe('0080 dev role and manual ticket', () => {
   it('links a ticket to an incident or a deploy, exactly one of the two, once each', async () => {
     const orgId = await insertOrg('Link Org');
     const ticketId = await insertTicket(orgId, 'phone');
+    const otherId = await insertTicket(orgId, 'portal');
     const incident = await owner().query<{ id: string }>(
       `INSERT INTO incident (title, severity) VALUES ('Outage', 'SEV2') RETURNING id`,
     );
@@ -104,28 +105,54 @@ describe('0080 dev role and manual ticket', () => {
     expect(deployId).toBeDefined();
 
     await owner().query(
-      `INSERT INTO ticket_link (ticket_id, kind, incident_id) VALUES ($1, 'incident', $2)`,
+      `INSERT INTO ticket_link (from_ticket_id, kind, incident_id) VALUES ($1, 'incident', $2)`,
       [ticketId, incidentId],
     );
     await owner().query(
-      `INSERT INTO ticket_link (ticket_id, kind, deploy_id) VALUES ($1, 'deploy', $2)`,
+      `INSERT INTO ticket_link (from_ticket_id, kind, deploy_id) VALUES ($1, 'deploy', $2)`,
       [ticketId, deployId],
+    );
+    // The links between two tickets of 0066 still work beside them.
+    await owner().query(
+      `INSERT INTO ticket_link (from_ticket_id, to_ticket_id, kind) VALUES ($1, $2, 'duplicate')`,
+      [ticketId, otherId],
     );
     await expect(
       owner().query(
-        `INSERT INTO ticket_link (ticket_id, kind, incident_id) VALUES ($1, 'incident', $2)`,
+        `INSERT INTO ticket_link (from_ticket_id, kind, incident_id) VALUES ($1, 'incident', $2)`,
         [ticketId, incidentId],
       ),
     ).rejects.toThrow(/ticket_link_incident_key/);
     await expect(
       owner().query(
-        `INSERT INTO ticket_link (ticket_id, kind, incident_id, deploy_id) VALUES ($1, 'incident', $2, $3)`,
+        `INSERT INTO ticket_link (from_ticket_id, kind, incident_id, deploy_id)
+         VALUES ($1, 'incident', $2, $3)`,
         [ticketId, incidentId, deployId],
       ),
     ).rejects.toThrow(/ticket_link_target_check/);
     await expect(
-      owner().query(`INSERT INTO ticket_link (ticket_id, kind) VALUES ($1, 'deploy')`, [ticketId]),
+      owner().query(`INSERT INTO ticket_link (from_ticket_id, kind) VALUES ($1, 'deploy')`, [
+        ticketId,
+      ]),
     ).rejects.toThrow(/ticket_link_target_check/);
+    // A link between two tickets needs the other ticket, and an incident link must not have one.
+    await expect(
+      owner().query(`INSERT INTO ticket_link (from_ticket_id, kind) VALUES ($1, 'related')`, [
+        ticketId,
+      ]),
+    ).rejects.toThrow(/ticket_link_target_check/);
+    await expect(
+      owner().query(
+        `INSERT INTO ticket_link (from_ticket_id, to_ticket_id, kind, incident_id)
+         VALUES ($1, $2, 'incident', $3)`,
+        [ticketId, otherId, incidentId],
+      ),
+    ).rejects.toThrow(/ticket_link_target_check/);
+    await expect(
+      owner().query(`INSERT INTO ticket_link (from_ticket_id, kind) VALUES ($1, 'story')`, [
+        ticketId,
+      ]),
+    ).rejects.toThrow(/ticket_link_kind_check/);
   });
 
   it('goes down only when nothing would be orphaned, and comes up again', async () => {
@@ -135,8 +162,8 @@ describe('0080 dev role and manual ticket', () => {
     const devId = await insertUser('dev', 'dev-owner@example.com');
     await owner().query('UPDATE ticket SET dev_owner_id = $1 WHERE id = $2', [devId, ticketId]);
 
-    // Newer migrations first, then 0080 itself refuses while a dev user, a manual-channel ticket or a
-    // dev owner exists.
+    // Newer migrations first, then 0080 itself refuses while a dev user, a manual-channel ticket, a dev
+    // owner or a link to an incident or a deploy exists.
     if (later.length > 0) await migrateDown(owner(), { steps: later.length });
     await expect(migrateDown(owner())).rejects.toThrow(/cannot revert 0080/);
 
@@ -144,19 +171,31 @@ describe('0080 dev role and manual ticket', () => {
     await expect(migrateDown(owner())).rejects.toThrow(/users with role dev exist/);
     await owner().query(`DELETE FROM users WHERE role = 'dev'`);
     await expect(migrateDown(owner())).rejects.toThrow(/manual channel/);
+    // Remove the manual-channel tickets with the links the earlier test made on them; keep one reference
+    // on a portal ticket to see the last guard.
+    await owner().query(`DELETE FROM ticket_link`);
     await owner().query(
       `DELETE FROM ticket WHERE channel IN ('phone', 'walk_in', 'chat', 'other')`,
     );
+    const incident = await owner().query<{ id: string }>(`SELECT id FROM incident LIMIT 1`);
+    await owner().query(
+      `INSERT INTO ticket_link (from_ticket_id, kind, incident_id) VALUES ($1, 'incident', $2)`,
+      [ticketId, incident.rows[0]?.id],
+    );
+    await expect(migrateDown(owner())).rejects.toThrow(/links to an incident or a deploy/);
+    await owner().query(`DELETE FROM ticket_link`);
 
     expect(await migrateDown(owner())).toEqual([MIGRATION]);
     const gone = await owner().query(
       `SELECT 1 FROM permissions WHERE key IN ('ticket.read.masked', 'ticket.dev.work')`,
     );
     expect(gone.rowCount).toBe(0);
-    const column = await owner().query(
-      `SELECT 1 FROM information_schema.columns WHERE table_name = 'ticket' AND column_name = 'dev_owner_id'`,
+    const columns = await owner().query<{ column_name: string }>(
+      `SELECT column_name FROM information_schema.columns
+        WHERE (table_name = 'ticket' AND column_name = 'dev_owner_id')
+           OR (table_name = 'ticket_link' AND column_name IN ('incident_id', 'deploy_id'))`,
     );
-    expect(column.rowCount).toBe(0);
+    expect(columns.rowCount).toBe(0);
 
     expect(await migrateUp(owner())).toEqual([MIGRATION, ...later]);
     const back = await owner().query<{ n: number }>(

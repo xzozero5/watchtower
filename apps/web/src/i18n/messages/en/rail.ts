@@ -1,6 +1,7 @@
 export const railEn = {
   label: 'Main navigation',
   queue: 'Queue',
+  otherMail: 'Other mail',
   home: 'Home',
   admin: 'Admin',
   newTicket: 'New ticket',
