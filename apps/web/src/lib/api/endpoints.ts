@@ -62,6 +62,7 @@ export type TicketListParams = Partial<
     | 'cursor'
     | 'queueId'
     | 'slaState'
+    | 'allStatuses'
   >
 >;
 

@@ -147,6 +147,62 @@ describe('queue rows', () => {
     });
   });
 
+  it('hints at matches the status filter hides, and shows them on click (QA-09)', async () => {
+    const user = userEvent.setup();
+    const api = workspaceApi({
+      overrides: {
+        'GET /v1/tickets': ({ url }) => ({
+          json: {
+            items:
+              url.searchParams.get('allStatuses') || !url.searchParams.get('status')
+                ? [makeTicket(1), makeTicket(9, { subject: 'Old one', status: 'closed' })]
+                : [makeTicket(1)],
+            nextCursor: null,
+          },
+        }),
+      },
+    });
+    const { queue } = await openQueue();
+    await within(queue).findByText('Subject of ticket 1');
+    await user.type(screen.getByRole('searchbox', { name: 'Search tickets' }), 'login{Enter}');
+    const hint = await screen.findByRole('button', { name: '1 match in closed tickets — show' });
+    expect(
+      api.callsTo('/v1/tickets').some((call) => call.search.includes('allStatuses=true')),
+    ).toBe(true);
+    await user.click(hint);
+    // The closed ticket lands in the folded Done section: the count shows it is in the list.
+    expect(await within(queue).findByText('2 tickets')).toBeVisible();
+  });
+
+  it('opens an exact number that the status filter hides, straight from the api (QA-09)', async () => {
+    const user = userEvent.setup();
+    const api = workspaceApi({
+      overrides: {
+        'GET /v1/tickets': ({ url }) => ({
+          json: {
+            items: url.searchParams.get('allStatuses')
+              ? [makeTicket(9, { subject: 'Old one', status: 'closed' })]
+              : [makeTicket(1)],
+            nextCursor: null,
+          },
+        }),
+      },
+    });
+    const { queue } = await openQueue();
+    await within(queue).findByText('Subject of ticket 1');
+    await user.type(screen.getByRole('searchbox', { name: 'Search tickets' }), '9{Enter}');
+    await waitFor(() => {
+      expect(window.location.search).toContain('ticket=OPS-9');
+    });
+    expect(
+      api
+        .callsTo('/v1/tickets')
+        .some(
+          (call) => call.search.includes('allStatuses=true') && call.search.includes('limit=1'),
+        ),
+    ).toBe(true);
+  });
+
   it('marks an overdue ticket with words and an icon, not only colour', async () => {
     workspaceApi({
       tickets: [makeTicket(1, { firstResponseDueAt: '2026-01-01T00:00:00.000Z' })],

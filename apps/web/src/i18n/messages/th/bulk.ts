@@ -9,6 +9,7 @@ export const bulkTh: Widen<typeof bulkEn> = {
   rowSelected: 'เลือกแล้ว',
   selectRow: 'เลือก {key}',
   assign: 'มอบหมาย',
+  allStaffHint: 'แสดงเจ้าหน้าที่ที่ใช้งานอยู่ทั้งหมด เพราะมุมมองนี้ไม่ได้ระบุคิว',
   assignTo: 'มอบหมายให้…',
   assignToMe: 'ฉัน ({name})',
   unassign: 'ยังไม่มีผู้รับผิดชอบ',
