@@ -1,10 +1,22 @@
 import { describe, expect, it } from 'vitest';
 
 import type { LlmRequest } from '../contract.js';
-import type { RedactedText } from '../redaction/redacted-text.js';
+import { createRedactor } from '../redaction/redactor.js';
 import { assistantAnswer, assistantPlan } from './dev-mock-assistant.js';
 
-const as = (text: string): RedactedText => text as RedactedText;
+// Only the redactor makes `RedactedText` (N4), in a test as anywhere.
+const as = (text: string) => createRedactor().session({ scope: 'mock-test' }).redact(text);
+
+/** The mock reads only the system text and the first message; the rest is filler of the right type. */
+function requestOf(system: string, content: string): LlmRequest {
+  return {
+    model: 'mock-standard',
+    tier: 'standard',
+    prompt: { id: 'assistant', version: 1, hash: '0'.repeat(64) },
+    system: as(system),
+    messages: [{ role: 'user', content: as(content) }],
+  };
+}
 
 const TOOLS = [
   'search_tickets',
@@ -17,35 +29,22 @@ const TOOLS = [
 ];
 
 function plan(text: string, tools: readonly string[] = TOOLS, ticket?: string) {
-  const request = {
-    system: as(`Tools:\n${tools.map((tool) => `- ${tool}: does a thing. Input: {}`).join('\n')}`),
-    messages: [
-      {
-        role: 'user',
-        content: as(
-          `<context>\nlanguage: en\n${ticket === undefined ? '' : `ticket_in_view: ${ticket}\n`}</context>\n<request>\n${text}\n</request>`,
-        ),
-      },
-    ],
-  } as unknown as LlmRequest;
+  const toolLines = tools.map((tool) => `- ${tool}: does a thing. Input: {}`).join('\n');
+  const inView = ticket === undefined ? '' : `ticket_in_view: ${ticket}\n`;
+  const request = requestOf(
+    `Tools:\n${toolLines}`,
+    `<context>\nlanguage: en\n${inView}</context>\n<request>\n${text}\n</request>`,
+  );
   return (JSON.parse(assistantPlan(request)) as { calls: { tool: string; input: unknown }[] })
     .calls;
 }
 
 function answer(text: string, kinds: readonly string[], facts: readonly string[] = []) {
-  const request = {
-    system: as(
-      `At most 5 claims. Allowed kinds in this conversation: ${kinds.length === 0 ? 'none' : kinds.join(', ')}. Write in English.`,
-    ),
-    messages: [
-      {
-        role: 'user',
-        content: as(
-          `<context>\nlanguage: en\nticket_in_view: OPS-12\n</context>\n<tool_results>\n${facts.join('\n')}\n</tool_results>\n<request>\n${text}\n</request>`,
-        ),
-      },
-    ],
-  } as unknown as LlmRequest;
+  const allowed = kinds.length === 0 ? 'none' : kinds.join(', ');
+  const request = requestOf(
+    `At most 5 claims. Allowed kinds in this conversation: ${allowed}. Write in English.`,
+    `<context>\nlanguage: en\nticket_in_view: OPS-12\n</context>\n<tool_results>\n${facts.join('\n')}\n</tool_results>\n<request>\n${text}\n</request>`,
+  );
   return JSON.parse(assistantAnswer(request)) as {
     claims: { text: string; evidenceIds: string[] }[];
     proposals: Record<string, unknown>[];

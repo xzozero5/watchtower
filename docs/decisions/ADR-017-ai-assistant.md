@@ -23,8 +23,8 @@
 
 ### 4. Confirm: ครั้งเดียว, เฉพาะเจ้าของ, หมดอายุ, ตรวจซ้ำ
 - `assistant_proposal` เก็บ `user_id` ผู้ขอ, `params` (หลัง validate), `card`, `base` (fingerprint ของ target ตอนสร้าง: `updated_at` ของ ticket), `expires_at` (10 นาที `[ASSUMED]`), `status` (`pending → confirmed | rejected | expired | failed`)
-- `POST /v1/assistant/proposals/:id/confirm`: (1) ผู้เรียก ≠ เจ้าของ → 404 (ไม่บอกว่ามี) (2) `UPDATE … WHERE status='pending' AND expires_at > now() RETURNING` ใน transaction เดียวกับการทำงานจริง → ใช้ซ้ำไม่ได้ (409) (3) ตรวจสิทธิ์ซ้ำจาก principal ปัจจุบัน (permission ของ route เดิม + `TicketReader.viewRow`) (4) ตรวจ `base`: ticket เปลี่ยนไปแล้ว → 409 `proposal_stale` พร้อม **สถานะปัจจุบัน** ให้การ์ดแสดงใหม่ ไม่รันทับ (5) เรียก service เดียวกับ controller เดิม (`TicketsService.assign` …) ด้วย `actorOf(principal)` ใน `UnitOfWork` เดียว จึงผ่าน RBAC, workflow, SLA, outbox, realtime เหมือนกด
-- **audit**: confirm ลงแถวเดียวด้วย action ของงานจริง (`ticket.assign`, `ticket.status_change`, …) + `metadata.via = "assistant"`, `proposalId`, `conversationId` · reject ลง `assistant.proposal.reject` · การกดไม่ใช่ "AI ทำเอง" จึงไม่ใช่ actor `ai`
+- `POST /v1/assistant/proposals/:id/confirm` ใน transaction เดียว: (1) อ่านแถวด้วย `FOR UPDATE` (กดซ้อนกันสองครั้งไม่ได้) · ผู้เรียก ≠ เจ้าของ → 404 (ไม่บอกว่ามี) · ไม่ใช่ `pending` → 409 (2) หมดอายุเทียบด้วย **นาฬิกา DB** (`clock_timestamp()` ทั้งตอนสร้างและตอนกด) → ปิดเป็น `expired` แล้ว 409 (3) ตรวจสิทธิ์ซ้ำจาก principal ปัจจุบัน (permission ของ route เดิม) และ `TicketReader.viewRow` (เสียสิทธิ์ → 403/404 และการ์ดถูกปิดเป็น `failed`) (4) ล็อก ticket แล้วเทียบ `updated_at` กับตอนสร้างการ์ด: เปลี่ยนไปแล้ว → **ไม่รัน** ปิดเป็น `expired` (`fail_code=stale`) และตอบ 200 `outcome: "stale"` พร้อมการ์ดที่ `from` เป็นค่าปัจจุบัน (5) เรียก service เดียวกับ controller เดิม (`TicketsService.assign` …) ด้วย `actorOf(principal)` ใน `UnitOfWork` เดียว จึงผ่าน RBAC, workflow, SLA, outbox, realtime เหมือนกด · error ใดระหว่างรัน = rollback ทั้งหมด แล้วปิดการ์ดเป็น `failed` (`fail_code=http_<status>`) กดซ้ำไม่ได้ · เมื่อตัดสินแล้ว (confirmed/rejected/expired/failed) `params` ถูกล้างเป็น `{}` และ `card.text` ถูกลบ (ไม่เก็บข้อความ note/KB ค้างในตาราง)
+- **audit**: confirm ลง 2 แถวใน transaction เดียวกับการเปลี่ยนแปลง (actor = ผู้กด ทั้งคู่): แถวของ domain เอง (`ticket.assign`, `ticket.status_change`, … ซึ่ง domain เขียนในตัว) และแถว `assistant.proposal.confirm` ที่มี `metadata.via = "assistant"`, `proposalId`, `conversationId`, `kind` · ทั้งสองแถวใช้ `requestId` เดียวกัน · กดแล้วพัง/ถูกปฏิเสธ route เขียนแถว failure ของ `assistant.proposal.confirm` · reject ลง `assistant.proposal.reject` · ทุกข้อความของ assistant ลง `assistant.message` (ชื่อ tool, จำนวน run, ชนิด proposal; ไม่มีข้อความ) · การกดไม่ใช่ "AI ทำเอง" จึงไม่ใช่ actor `ai`
 - ไม่มี auto-run ของ write ใดเลย (po #34: auto-run ภายหลังเฉพาะ tag/note ต้องมี ADR ใหม่)
 
 ### 5. ข้อมูลที่ model เห็น และ masking
@@ -43,7 +43,7 @@
 
 ### 8. การเก็บสนทนา, PII, retention
 - เก็บ `assistant_conversation` + `assistant_message` ต่อผู้ใช้ **เฉพาะข้อความที่ผ่าน redactor แล้ว** (placeholder) ไม่เก็บ PII ดิบ และไม่เก็บ snapshot ของ token map · ข้อความที่แสดงให้ผู้ใช้ (restore แล้ว) ไม่ถูกเก็บ
-- retention `ASSISTANT_RETENTION_DAYS` (30, `[ASSUMED]`) นับจาก `updated_at` · `purgeExpiredAssistant()` ลบ conversation (cascade message + proposal) ที่หมดอายุ — เรียกจาก worker sweep รายวัน (ทำเป็น follow-up ถ้ายังไม่ต่อใน task นี้; ดู Consequences) · ผู้ใช้ลบสนทนาของตัวเองได้ (`DELETE /v1/assistant/conversations/:id`) · audit log ของ confirm/reject คงอยู่ตาม retention ของ audit (ไม่มีข้อความสนทนา)
+- retention `ASSISTANT_RETENTION_DAYS` (30, `[ASSUMED]`) นับจาก `updated_at` · งาน `cleanup` รายวันที่มีอยู่ (`purgeExpired`, T-117) ลบ `assistant_conversation` (cascade message + proposal) และ `ai_summary` ที่เก่ากว่านั้น · ผู้ใช้ลบสนทนาของตัวเองได้ (`DELETE /v1/assistant/conversations/:id`) · audit log ของ confirm/reject คงอยู่ตาม retention ของ audit (ไม่มีข้อความสนทนา)
 - ผู้ใช้อื่น (รวม head) อ่านสนทนาของคนอื่นไม่ได้ผ่าน API นี้ (ไม่มี endpoint list/read ข้ามผู้ใช้)
 
 ### 9. รูปแบบ claim เดียวกันทั้งระบบ (T-135, N5)
@@ -58,6 +58,8 @@
 ## Consequences / ยังไม่ยืนยัน
 - live provider ใน api ยังไม่ wire (credentials reader อยู่ใน worker) `[ASK-HUMAN]` · คุณภาพ plan/answer จาก model จริงยังไม่เคยวัด (ไม่มี eval ของ assistant: `evals/golden/` แก้ไม่ได้โดย agent ผู้ผลิต → เสนอเคสให้ main thread) `[UNVERIFIED]`
 - `dev` role ตามตาราง allow-list เป็นสมมติฐานจนกว่า T-137 merge · เมื่อ `Role` มี `dev` ต้องอัปเดต `ASSISTANT_ROLE_TOOLS` และ test
-- sweep รายวันของ retention ยังไม่ผูกกับ scheduler ของ worker ถ้าไม่ทำใน task นี้ → follow-up (ตัวฟังก์ชันและ test มีแล้ว)
+- `ai_summary` (cache ของ brief/handoff) เก็บ claim ที่ restore แล้ว (มีชื่อ/หัวข้อ ticket ได้) ต่อผู้ใช้ 1 แถวต่อหน้าจอ · ถูกแทนเมื่อ facts เปลี่ยน, ลบตาม retention และเมื่อผู้ใช้ถูกลบ · ถ้าต้องการไม่เก็บ PII ที่ rest เลยต้องเก็บแบบ redacted + token map (ยังไม่ทำ) `[ASSUMED]`
+- `GET /v1/tickets/stats` ที่ไม่มี filter เลยเคย 500 (SQL `WHERE` ว่าง) — พบตอนทำ `team_load` แก้ใน `sla-states.ts` พร้อม test
+- ลิงก์: เว็บมีหน้า ticket เพียงทาง `/?ticket=KEY` · ยังไม่มีหน้า KB/incident/alert จึงไม่ออก `href` ให้ evidence ชนิดนั้น (ชิปบอกว่าไม่มีลิงก์) · worker เคยออก `/tickets/KEY` และ `/kb/slug` ซึ่งไม่มีหน้า — แก้ ticket เป็น `/?ticket=KEY` แล้ว, `/kb/slug` ยังอยู่ใน card เดิมแต่ claim ตัดทิ้ง
 - ชื่อบุคคลที่ไม่อยู่ใน dictionary ของ redactor อาจหลุดไป model ได้ (ช่องว่างเดิมของ ADR-013) `[UNVERIFIED 70%]`
 - ทบทวนเมื่อ: เปิด live provider, เพิ่ม auto-run ของ write ใด ๆ, เปิด bubble ให้ `client`, เพิ่ม tool ที่เขียนได้

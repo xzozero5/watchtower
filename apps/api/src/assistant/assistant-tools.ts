@@ -204,10 +204,8 @@ export function buildAssistantTools(
     toFacts: (output: z.output<O>) => readonly AssistantFact[],
   ): void {
     if (!allowed.has(name)) return;
-    registry.register(
-      defineTool<I, O>({ ...tool, name, readOnly: true }) as unknown as ToolDefinition,
-    );
-    facts.set(name, toFacts as (output: never) => readonly AssistantFact[]);
+    registry.register(defineTool<I, O>({ ...tool, name, readOnly: true }));
+    facts.set(name, toFacts);
     info.push({ name, description: tool.description, input: hint });
   }
 

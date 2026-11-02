@@ -72,6 +72,8 @@ const spy: LlmProvider = (() => {
 })();
 
 const owner = () => h.db.owner.pool;
+const countOf = async (query: string, params: unknown[] = []): Promise<number> =>
+  (await owner().query<{ n: number }>(query, params)).rows[0]?.n ?? 0;
 
 const ask = (who: Persona, text: string, extra: Record<string, unknown> = {}) =>
   who.client.post<AssistantReply>('/v1/assistant/messages', { text, ...extra });
@@ -155,10 +157,10 @@ describe('starters', () => {
 
   it('makes no model call and writes nothing', async () => {
     const before = calls.length;
-    const rows = (await owner().query(`SELECT count(*)::int AS n FROM ai_run`)).rows[0].n as number;
+    const rows = await countOf(`SELECT count(*)::int AS n FROM ai_run`);
     await agent.client.get('/v1/assistant/starters');
     expect(calls.length).toBe(before);
-    expect((await owner().query(`SELECT count(*)::int AS n FROM ai_run`)).rows[0].n).toBe(rows);
+    expect(await countOf(`SELECT count(*)::int AS n FROM ai_run`)).toBe(rows);
   });
 });
 
@@ -434,16 +436,13 @@ describe('proposals: nothing happens until the owner presses', () => {
     const [card] = reply.proposals;
     expect(card).toMatchObject({ kind: 'create_ticket', target: null });
     expect(card?.changes.map((change) => change.field)).toEqual(['org', 'subject']);
-    const before = (await owner().query(`SELECT count(*)::int AS n FROM ticket`)).rows[0]
-      .n as number;
+    const before = await countOf(`SELECT count(*)::int AS n FROM ticket`);
     const done = await confirm(agent, card as ProposalCard);
     expect(done.body).toMatchObject({
       outcome: 'done',
       result: { key: expect.stringMatching(/^[A-Z]+-\d+$/) as string },
     });
-    expect((await owner().query(`SELECT count(*)::int AS n FROM ticket`)).rows[0].n).toBe(
-      before + 1,
-    );
+    expect(await countOf(`SELECT count(*)::int AS n FROM ticket`)).toBe(before + 1);
 
     const kb = await okReply(agent, 'draft a KB article about password resets');
     const [kbCard] = kb.proposals;
@@ -464,12 +463,8 @@ describe('proposals: nothing happens until the owner presses', () => {
     expect(without.proposals).toEqual([]);
     const card = await proposal(agent, 'draft a reply', withIntent);
     expect(card).toMatchObject({ kind: 'reply_draft', status: 'pending' });
-    const messages = async () =>
-      (
-        await owner().query(`SELECT count(*)::int AS n FROM message WHERE ticket_id = $1`, [
-          withIntent.id,
-        ])
-      ).rows[0].n as number;
+    const messages = () =>
+      countOf(`SELECT count(*)::int AS n FROM message WHERE ticket_id = $1`, [withIntent.id]);
     const before = await messages();
     const done = await confirm(agent, card);
     expect(done.body).toMatchObject({ outcome: 'done', result: { key: withIntent.key } });
@@ -562,9 +557,7 @@ describe('a model that has been talked into things', () => {
       // Only the assign survives as a card; it is still just a card.
       expect(reply.proposals.map((card) => card.kind)).toEqual(['assign']);
       expect((await ticketOf(agent, evil.key)).assignee).toBeNull();
-      expect(
-        (await owner().query(`SELECT count(*)::int AS n FROM outbound_delivery`)).rows[0].n,
-      ).toBe(0);
+      expect(await countOf(`SELECT count(*)::int AS n FROM outbound_delivery`)).toBe(0);
     } finally {
       delete script.answer;
     }
