@@ -56,6 +56,21 @@ describe('design token contrast (WCAG 2.x AA)', () => {
         },
       );
 
+      it('covers the chart series and every ordinal step on the Canvas and the surface', () => {
+        for (const surface of ['background', 'surface']) {
+          expect(requirements.some((r) => r.name.includes(`chart series on ${surface}`))).toBe(
+            true,
+          );
+          for (const step of [1, 2, 3, 4]) {
+            expect(
+              requirements.some((r) =>
+                r.name.includes(`chart ordinal ${String(step)} on ${surface}`),
+              ),
+            ).toBe(true);
+          }
+        }
+      });
+
       it('covers every tint family, text and icon, on its chip and on every surface', () => {
         for (const id of TINT_IDS) {
           expect(requirements.some((r) => r.name.includes(`tint ${id} fg on bg`))).toBe(true);

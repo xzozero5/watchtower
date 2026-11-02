@@ -44,6 +44,11 @@ export interface ContrastRequirement {
   readonly kind: 'text' | 'ui';
 }
 
+/** The ordinal ramp's lightest step must reach this against the surface (data-viz ordinal floor). */
+export const CHART_ORDINAL_RATIO = 2;
+
+const CHART_SURFACES = ['background', 'surface'] as const;
+
 const SURFACES = ['background', 'surface', 'surfaceMuted', 'primarySubtle', 'aiSubtle'] as const;
 
 /**
@@ -128,6 +133,22 @@ export function contrastRequirements(
       requirements.push(text(`severity ${id} fg on ${surface}`, colors.fg, tokens[surface]));
       requirements.push(ui(`severity ${id} border on ${surface}`, colors.border, tokens[surface]));
     }
+  }
+
+  // Chart marks sit on the Canvas (sections) and the overlay surface (cards, tooltips). The series
+  // mark needs 3:1; an ordinal step may sit lower, to 2:1 (data-viz ordinal floor), because every
+  // bucket is labelled and has a table view.
+  for (const surface of CHART_SURFACES) {
+    requirements.push(ui(`chart series on ${surface}`, tokens.chart.series, tokens[surface]));
+    tokens.chart.ordinal.forEach((value, index) => {
+      requirements.push({
+        name: `${theme}: chart ordinal ${String(index + 1)} on ${surface}`,
+        foreground: value,
+        background: tokens[surface],
+        minimum: CHART_ORDINAL_RATIO,
+        kind: 'ui',
+      });
+    });
   }
   return requirements;
 }

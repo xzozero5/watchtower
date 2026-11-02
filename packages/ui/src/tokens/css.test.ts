@@ -105,6 +105,16 @@ describe('buildTokensCss', () => {
     expect(parseFloat(DENSITY_TOKENS.compact.rowHeight) * 14).toBeCloseTo(32, 0);
   });
 
+  it('writes the chart series colour and every ordinal step in both themes', () => {
+    for (const theme of ['light', 'dark'] as const) {
+      const scope = theme === 'dark' ? block(css, ":root[data-theme='dark']") : block(css, ':root');
+      expect(scope).toContain(`--wt-color-chart-series: ${COLOR_TOKENS[theme].chart.series};`);
+      COLOR_TOKENS[theme].chart.ordinal.forEach((value, index) => {
+        expect(scope).toContain(`--wt-color-chart-ordinal-${String(index + 1)}: ${value};`);
+      });
+    }
+  });
+
   it('contains no hard-coded colour outside the declared tokens', () => {
     const known = new Set<string>();
     for (const theme of Object.values(COLOR_TOKENS)) {
@@ -116,6 +126,8 @@ describe('buildTokensCss', () => {
       }
       for (const { fg, bg } of theme.avatar) known.add(fg).add(bg);
       for (const { fg, bg, icon } of Object.values(theme.tint)) known.add(fg).add(bg).add(icon);
+      known.add(theme.chart.series);
+      for (const step of theme.chart.ordinal) known.add(step);
     }
     for (const [hex] of css.matchAll(/#[0-9a-f]{6}\b/gi)) {
       expect(known.has(hex)).toBe(true);
