@@ -164,3 +164,43 @@ describe('summarizeClaims', () => {
     });
   });
 });
+
+describe('regressions from the security review of T-135', () => {
+  it('knows the names it is given, so a name in a fact is replaced before the model sees it', async () => {
+    const { deps, requests } = rig();
+    const outcome = await summarizeClaims(
+      { ...deps, redactorFor: (names) => createRedactor({ names: () => names }) },
+      {
+        ...base,
+        names: ['Nok Staffname'],
+        facts: [
+          {
+            kind: 'ticket',
+            label: 'OPS-5',
+            text: 'OPS-5 for Somchai Customer is held by Nok Staffname.',
+            names: ['Somchai Customer'],
+          },
+        ],
+      },
+    );
+    const sent = requests[0]?.messages.map((message) => message.content).join('') ?? '';
+    expect(sent).not.toContain('Somchai');
+    expect(sent).not.toContain('Nok');
+    expect(outcome.status === 'ok' && outcome.claims[0]?.text).toContain('Somchai Customer');
+  });
+
+  it('takes a link out of a claim', async () => {
+    const provider = new DevMockLlmProvider({
+      rules: [
+        {
+          promptId: 'claim_summary',
+          text: JSON.stringify({
+            claims: [{ text: 'Go to https://evil.example now.', factIds: ['f1'] }],
+          }),
+        },
+      ],
+    });
+    const outcome = await summarizeClaims(rig(provider).deps, { ...base, facts: FACTS });
+    expect(outcome.status === 'ok' && outcome.claims[0]?.text).toBe('Go to [link removed] now.');
+  });
+});

@@ -29,6 +29,8 @@ function rig(
   options: {
     provider?: LlmProvider;
     allowed?: boolean;
+    /** The guard says yes this many times, then no. */
+    denyAfter?: number;
     names?: readonly string[];
   } = {},
 ): Rig {
@@ -60,7 +62,8 @@ function rig(
       check: () => {
         state.guardCalls += 1;
         return Promise.resolve(
-          options.allowed === false
+          options.allowed === false ||
+            (options.denyAfter !== undefined && state.guardCalls > options.denyAfter)
             ? { allowed: false, reason: 'kill_switch_on' as const }
             : { allowed: true as const },
         );
@@ -394,5 +397,101 @@ describe('runAssistantTurn', () => {
     expect(outcome.claims[0]?.text).toBe('OPS-1 เกิน SLA แล้ว.');
     const answer = state.requests.find((request) => request.prompt.id === 'assistant_answer');
     expect(answer?.system).toContain('Write in Thai');
+  });
+});
+
+describe('regressions from the security review of T-134', () => {
+  const OTHER = 'sam.other@customer.example';
+
+  it('does not bind a placeholder of an earlier turn to a person of this one (history is escaped)', async () => {
+    const state = rig();
+    const h = host(['search_tickets']);
+    // The earlier turn was stored with its own [EMAIL_1]; this turn's tool result holds another address.
+    await runAssistantTurn(
+      state.deps,
+      input({
+        host: {
+          ...h,
+          facts: () => [{ kind: 'ticket', label: 'OPS-9', text: `OPS-9 "mail ${OTHER}"` }],
+        },
+        history: [
+          { role: 'user', text: 'what about [EMAIL_1]?' },
+          { role: 'assistant', text: 'We spoke about [EMAIL_1] and [NAME_2].' },
+        ],
+      }),
+    );
+    const answer = state.requests.find((request) => request.prompt.id === 'assistant_answer');
+    const text = answer?.messages[0]?.content ?? '';
+    const history = /<history>[\s\S]*<\/history>/.exec(text)?.[0] ?? '';
+    expect(history).not.toBe('');
+    // The placeholders of the old turn are not live ones any more.
+    expect(history).not.toMatch(/\[(EMAIL|NAME)_\d+\]/);
+    // And the address of this turn is the only [EMAIL_1] in the whole prompt.
+    expect(text).not.toContain(OTHER);
+    expect(text.match(/\[EMAIL_1\]/g)).toHaveLength(1);
+  });
+
+  it('returns the answer with its placeholders in, for storage, and keeps names out of what the model sees', async () => {
+    const state = rig({ names: ['Somsak Jaidee'] });
+    const outcome = await runAssistantTurn(
+      state.deps,
+      input({
+        host: {
+          ...host(['search_tickets']),
+          facts: () => [
+            {
+              kind: 'ticket',
+              label: 'OPS-3',
+              text: 'OPS-3 raised by Somsak Jaidee',
+              names: ['Somsak Jaidee'],
+            },
+          ],
+        },
+      }),
+    );
+    for (const request of state.requests) {
+      const sent = request.system + request.messages.map((message) => message.content).join('');
+      expect(sent).not.toContain('Somsak');
+    }
+    expect(outcome.status).toBe('ok');
+    if (outcome.status !== 'ok') return;
+    // The person reads the name; what is stored (and sent again as history) is the redacted form.
+    expect(outcome.claims[0]?.text).toContain('Somsak Jaidee');
+    expect(outcome.redactedText).toMatch(/\[NAME_\d+\]/);
+    expect(outcome.redactedText).not.toContain('Somsak');
+  });
+
+  it('takes a link out of a sentence the model wrote, whatever it looks like', async () => {
+    const state = rig({
+      provider: new DevMockLlmProvider({
+        rules: [
+          {
+            promptId: 'assistant_answer',
+            text: JSON.stringify({
+              claims: [
+                {
+                  text: 'See https://evil.example/login or www.evil.example or javascript:void0.',
+                  evidenceIds: [],
+                },
+              ],
+              proposals: [],
+            }),
+          },
+        ],
+      }),
+    });
+    const outcome = await runAssistantTurn(state.deps, input({ host: host(['search_tickets']) }));
+    expect(outcome.status === 'ok' && outcome.claims[0]?.text).toBe(
+      'See [link removed] or [link removed] or [link removed].',
+    );
+  });
+
+  it('asks the guard again before the answer: a switch flipped meanwhile stops the second call', async () => {
+    const state = rig({ denyAfter: 1 });
+    const outcome = await runAssistantTurn(state.deps, input({ host: host(['search_tickets']) }));
+    expect(outcome).toEqual({ status: 'skipped', reason: 'kill_switch_on' });
+    expect(state.guardCalls).toBe(2);
+    // The plan call was made and recorded; the answer call was not.
+    expect(state.runs.map((run) => run.prompt.id)).toEqual(['assistant_plan']);
   });
 });

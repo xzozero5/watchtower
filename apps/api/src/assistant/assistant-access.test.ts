@@ -6,7 +6,9 @@ import {
   ROLE_PROPOSALS,
   ROLE_TOOLS,
   TOOL_PERMISSION,
+  canUseAssistant,
   isMasked,
+  proposalPermission,
   proposalKindsFor,
   startersFor,
   toolsFor,
@@ -56,18 +58,38 @@ describe('who the assistant works for', () => {
     }
   });
 
-  it('gives dev read tools only, no roster, and proposals for status and notes (po #33)', () => {
-    const dev = who('dev', AGENT);
+  // What `origin/wip/t-137` gives the dev role: the masked read, dev work on a ticket, investigate.
+  const DEV: Permission[] = [
+    'ticket.read.masked' as Permission,
+    'ticket.dev.work' as Permission,
+    'investigate.run',
+  ];
+
+  it('works for a developer, who holds the masked read and not ticket.read (po #33)', () => {
+    const dev = who('dev', DEV);
+    expect(canUseAssistant(dev)).toBe(true);
     expect(toolsFor(dev)).toEqual([
       'search_tickets',
       'summarize_ticket',
       'explain_sla',
-      'kb_search',
       'investigate_run',
     ]);
+    // A developer changes a status and writes a note, as a developer does, and nothing else.
     expect(proposalKindsFor(dev)).toEqual(['status', 'note']);
+    expect(proposalPermission('status', dev)).toBe('ticket.dev.work');
+    expect(proposalPermission('note', dev)).toBe('ticket.dev.work');
     expect(isMasked(dev)).toBe(true);
+    // With the knowledge base permission as well, the guide search comes too.
+    expect(toolsFor(who('dev', [...DEV, 'kb.read']))).toContain('kb_search');
+  });
+
+  it('masks by permission as well as by role, and never for a person who may read it all', () => {
+    expect(isMasked(who('agent', ['ticket.read.masked' as Permission]))).toBe(true);
+    expect(isMasked(who('agent', ['ticket.read.masked' as Permission, 'ticket.read']))).toBe(false);
     expect(isMasked(who('agent', AGENT))).toBe(false);
+    // Whoever holds neither read has no assistant.
+    expect(canUseAssistant(who('agent', ['ticket.handle']))).toBe(false);
+    expect(toolsFor(who('agent', ['ticket.handle']))).toEqual(['team_status']);
   });
 
   it('never lets a role hold a tool or a proposal that has no permission mapped', () => {

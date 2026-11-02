@@ -55,6 +55,27 @@
 ### 10. ภาษา
 - ผู้ใช้ส่ง `locale` (`th|en`) ทุกข้อความ (fallback: ภาษาของข้อความผู้ใช้) · prompt บอก model ให้ตอบภาษานั้น · mock provider ตามภาษานั้นด้วย (แก้ English ปนใน brief) · draft ถึงลูกค้ายังคงภาษาลูกค้า (ไม่เกี่ยวกับ assistant)
 
+## แก้ไขหลัง security review (2026-11-02)
+
+- **N4 / ประวัติสนทนา:** เก็บและส่งกลับให้ model เฉพาะข้อความที่ model เขียน **ขณะที่ placeholder ยังอยู่** (`redactedText`) ข้อความที่ restore แล้ว (ชื่อ, subject) ใช้แสดงผลเท่านั้น · ประวัติที่ส่งกลับเข้า prompt ผ่าน `redactToolOutput` ซึ่ง escape ทุก token-shaped text (เดิมใช้ `fromModel` ที่คง token ที่ session นี้ออกให้ ทำให้ `[EMAIL_1]` ของเทิร์นเก่าไปผูกกับคนใหม่) · redactor ทุกตัวของข้อความรู้ชื่อพนักงานทั้ง instance (`StaffNames`, แคช 1 นาที) + ชื่อใน fact (assignee, requester, ผู้ติดต่อของ org) · สรุป brief/handoff รู้ชื่อลูกค้าของ org ของ ticket ที่เกี่ยวข้อง + ชื่อพนักงาน
+- **N2 / `investigate_run`:** เป็น **การรันของ AI** ไม่ใช่ของคน: ใช้ budget และส่วนแบ่ง rate ของ AI (`createDbToolLedger`, agent `personal_assistant`), audit actor `ai` (`assistant.tool_run`, `onBehalfOf` = ผู้ใช้) และ **ไม่เขียน `evidence_card`** — คนที่อยากปักผลกดปุ่มเดิม · รันได้เฉพาะ template ของ intent ที่ staff ตั้ง/แก้ (ไม่ใช่ intent ที่ classifier เดาเอง), `run_by_ai`, ใช้ `{{org_id}}`, ไม่ต้องให้คนกรอกค่า และระบบเชื่อมต่อแล้ว (กติกาเดียวกับ worker, SR106-R8)
+- **Audit การอ่าน:** ticket ที่ tool อ่านเพื่อผู้ใช้ลง `pii.read` ต่อ ticket (`metadata.via=assistant`) และ `assistant.message` มี `ticketIds`
+- **งบต่อคน:** อยู่ในตาราง `assistant_usage` (user, วัน UTC) แยกจากสนทนา — ลบสนทนาไม่คืนงบ · สรุป brief/handoff: cache แยกตามภาษา (`ai_summary` PK `kind, user, locale`) และการเรียก model ใหม่ (facts เปลี่ยน หรือภาษาที่ยังไม่มี) จำกัด 12 ครั้ง/คน/ชม.
+- **อายุสนทนา:** นับจาก `created_at` (สูงสุด 30 วัน) สนทนาที่ใช้ต่อเนื่องก็หมดอายุ และ API ปฏิเสธการต่อสนทนาที่เกินอายุ (404) · proposal ที่หมดอายุ/ตัดสินแล้วถูกลบหลัง 1 วัน (มี params/card ที่เป็นค่าจริงเพราะการกดต้องใช้) · `ai_summary` หลัง 2 วัน
+- **`dev` (T-137):** เข้าได้ด้วย `ticket.read.masked` (ไม่ต้องมี `ticket.read`), การเปลี่ยนสถานะ/note ตรวจ `ticket.dev.work` · masked = role `dev` หรือถือ masked-read โดยไม่มี `ticket.read` · ชื่อ permission ทั้งสองมาจาก `origin/wip/t-137` ยัง `[ASSUMED]` จนกว่าจะ merge (โค้ดใช้ cast ชั่วคราว) และการเรียก `TicketsService` สำหรับ dev ยังไม่ได้ทดสอบกับกฎ dev ของ T-137
+- **P3:** URL ในประโยคที่ model เขียนถูกตัดเป็น `[link removed]` · ก่อน call ที่ 2 ถาม guard ซ้ำ (kill switch/งบเปลี่ยนระหว่างรัน tool)
+
+## PII stores ของ assistant (ให้ ADR เรื่อง erasure/PDPA นับ)
+
+| ที่เก็บ | ข้อมูล | อายุ | ลบเมื่อผู้ใช้ถูกลบ |
+|---|---|---|---|
+| `assistant_conversation`, `assistant_message` | ข้อความที่ผ่าน redactor แล้ว (ชื่อนอก dictionary หลุดได้ `[UNVERIFIED 70%]`) | 30 วันจากวันเริ่ม; ผู้ใช้ลบเองได้ | ใช่ (FK CASCADE) |
+| `assistant_proposal` | `params`/`card` ค่าจริง (note, อีเมลผู้แจ้ง, subject) จนกว่าจะถูกตัดสิน แล้วล้างทันที | ลบหลังหมดอายุ 1 วัน | ใช่ |
+| `assistant_usage` | ตัวเลขเท่านั้น | 30 วัน | ใช่ |
+| `ai_summary` | claim ที่ restore แล้ว (ชื่อ/subject ที่ผู้ใช้เห็น) | 2 วัน | ใช่ |
+| `ai_run` | `output` ที่ redact แล้ว + HMAC ของ input | ตาม retention ของ `ai_run` (append-only) | ไม่ (ไม่มีข้อมูลดิบ) |
+| `audit_log` | id, ชื่อ tool, จำนวน; ไม่มีข้อความ | ตาม audit | ไม่ (บันทึกการกระทำ) |
+
 ## Consequences / ยังไม่ยืนยัน
 - live provider ใน api ยังไม่ wire (credentials reader อยู่ใน worker) `[ASK-HUMAN]` · คุณภาพ plan/answer จาก model จริงยังไม่เคยวัด (ไม่มี eval ของ assistant: `evals/golden/` แก้ไม่ได้โดย agent ผู้ผลิต → เสนอเคสให้ main thread) `[UNVERIFIED]`
 - `dev` role ตามตาราง allow-list เป็นสมมติฐานจนกว่า T-137 merge · เมื่อ `Role` มี `dev` ต้องอัปเดต `ASSISTANT_ROLE_TOOLS` และ test

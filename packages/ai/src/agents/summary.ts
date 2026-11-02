@@ -11,7 +11,8 @@ import type { AuditedResult } from '../audited.js';
 import { joinRedacted } from '../redaction/redacted-text.js';
 import { renderPrompt } from '../prompts.js';
 import { neutralizeTags } from './leak-check.js';
-import type { AssistantFact } from './assistant.js';
+import type { Redactor } from '../redaction/redactor.js';
+import { stripLinks, type AssistantFact } from './assistant.js';
 import {
   askGuard,
   clip,
@@ -38,6 +39,8 @@ const answerSchema = z.object({
 });
 
 export interface ClaimSummaryInput {
+  /** Names the redactor must know besides those of the facts (for example the staff of the instance). */
+  readonly names?: readonly string[] | undefined;
   /** Redaction scope, for example `brief:<user id>`. */
   readonly scope: string;
   /** What is being summarized, in a few English words for the prompt: `the daily brief of a shift`. */
@@ -70,7 +73,7 @@ const MAX_FACT_CHARS = 400;
  * caller asks for it, kept and marked `uncited`. No facts: no model call.
  */
 export async function summarizeClaims(
-  deps: AgentDeps,
+  deps: AgentDeps & { redactorFor?(names: readonly string[]): Redactor },
   input: ClaimSummaryInput,
 ): Promise<ClaimSummaryOutcome> {
   const facts = input.facts.slice(0, MAX_FACTS);
@@ -84,7 +87,12 @@ export async function summarizeClaims(
   if (!decision.allowed) return { status: 'skipped', reason: decision.reason };
 
   const prompt = deps.prompts.latest(CLAIM_SUMMARY_PROMPT_ID);
-  const session = deps.redactor.session({ scope: input.scope });
+  // The people named in the facts, and the staff of the instance, are in the dictionary: a name in a
+  // subject is replaced before the model sees it (N4).
+  const names = [
+    ...new Set([...(input.names ?? []), ...facts.flatMap((fact) => fact.names ?? [])]),
+  ];
+  const session = (deps.redactorFor?.(names) ?? deps.redactor).session({ scope: input.scope });
   let result: AuditedResult;
   try {
     const system = session.redact(
@@ -141,7 +149,10 @@ export async function summarizeClaims(
       });
     }
     if (evidence.length === 0 && input.keepUncited !== true) continue;
-    const claim = makeClaim(session.restore(item.text, 'internal').text.slice(0, 600), evidence);
+    const claim = makeClaim(
+      stripLinks(session.restore(item.text, 'internal').text).slice(0, 600),
+      evidence,
+    );
     if (claimSchema.safeParse(claim).success) claims.push(claim);
     if (claims.length >= input.maxClaims) break;
   }

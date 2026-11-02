@@ -11,7 +11,6 @@ import {
   MIN_SEARCH_LENGTH,
   OPEN_STATUSES,
   kbSearchQuerySchema,
-  runToolSchema,
   slaStateSchema,
   ticketListQuerySchema,
   ticketPrioritySchema,
@@ -58,6 +57,8 @@ export interface AssistantToolEnv {
   /** `dev`: nothing that identifies the customer goes into a fact. */
   readonly masked: boolean;
   readonly now: Date;
+  /** Told of each ticket whose content a tool read, for the audit of personal data read (PRD 8.2). */
+  readonly onRead?: ((ticket: { readonly id: string; readonly key: string }) => void) | undefined;
 }
 
 const cut = (text: string, max: number): string =>
@@ -163,7 +164,7 @@ const kbOutput = z.object({
 
 const investigateOutput = z.object({
   key: z.string().max(40),
-  note: z.enum(['no_template', 'needs_input']).nullable(),
+  note: z.enum(['no_template']).nullable(),
   card: z
     .object({
       kind: z.enum(['logs', 'data', 'repo', 'metrics']),
@@ -213,6 +214,7 @@ export function buildAssistantTools(
     view: Awaited<ReturnType<TicketReader['viewRow']>>,
   ): Promise<TicketRowShape> => {
     const sla = await deps.sla.view(view.t, env.now);
+    env.onRead?.({ id: view.t.id, key: deps.keys.format(view.t.number) });
     return {
       key: deps.keys.format(view.t.number),
       subject: cut(view.t.subject, 300),
@@ -233,6 +235,8 @@ export function buildAssistantTools(
     label: row.key,
     href: ticketHref(row.key),
     text,
+    // The staff member named in the sentence is in the dictionary too (N4).
+    ...(row.assignee === null ? {} : { names: [row.assignee] }),
     ...extra,
   });
 
@@ -258,6 +262,7 @@ export function buildAssistantTools(
         const items: TicketRowShape[] = [];
         for (const item of page.items) {
           if (!('org' in item)) continue;
+          env.onRead?.({ id: item.id, key: item.key });
           items.push({
             key: item.key,
             subject: cut(item.subject, 300),
@@ -339,7 +344,12 @@ export function buildAssistantTools(
                 ? ` หัวข้อ ${output.intent.name}.`
                 : ` Intent ${output.intent.name}.`
           }`,
-          { names: output.people },
+          {
+            names: [
+              ...output.people,
+              ...(output.ticket.assignee === null ? [] : [output.ticket.assignee]),
+            ],
+          },
         ),
       ];
       if (output.aiSummary !== null) {
@@ -441,6 +451,7 @@ export function buildAssistantTools(
         label: row.name,
         href: assigneeHref(row.userId),
         text: loadLine(locale, row),
+        names: [row.name],
       })),
       ...(output.unassignedOpen === 0
         ? []
@@ -485,6 +496,7 @@ export function buildAssistantTools(
         kind: 'person',
         label: member.name,
         text: memberLine(locale, member),
+        names: [member.name],
       })),
   );
 
@@ -527,7 +539,7 @@ export function buildAssistantTools(
     'investigate_run',
     {
       description:
-        'Run the first ready investigation template of the ticket (logs, product data) within the shared rate budget, and pin what it found. At most once per message.',
+        'Run the first ready investigation template of the ticket (logs, product data) within the shared rate budget and show what it found. Nothing is pinned to the ticket. At most once per message.',
       input: refInput,
       output: investigateOutput,
       async execute(input) {
@@ -536,21 +548,12 @@ export function buildAssistantTools(
         const subject = await deps.runner.ticketSubject(input.ticket, principal);
         if (subject.kind !== 'ticket') throw new Error('not a ticket');
         const key = deps.keys.format((await deps.reader.viewRow(input.ticket, principal)).t.number);
-        const buttons = await deps.runner.buttons(subject);
-        const ready = buttons.buttons.filter((button) => button.connected);
-        const usable = ready.find((button) => button.inputParams.length === 0);
-        if (usable === undefined) {
-          return {
-            key,
-            note: ready.length === 0 ? ('no_template' as const) : ('needs_input' as const),
-            card: null,
-          };
-        }
-        const card = await deps.runner.runTemplate(
-          subject,
-          runToolSchema.parse({ templateId: usable.templateId }),
-          principal,
-        );
+        env.onRead?.({ id: subject.ticketId, key });
+        // Only a template the AI may run for this ticket (ADR-016); never one made for a person's button.
+        const templateId = await deps.runner.aiTemplateOf(subject);
+        if (templateId === null) return { key, note: 'no_template' as const, card: null };
+        // The AI's own run (N2): the AI's budget, actor `ai`, and no evidence card is written.
+        const card = await deps.runner.runForAssistant(subject, templateId, principal);
         return {
           key,
           note: null,
@@ -575,13 +578,9 @@ export function buildAssistantTools(
             label: output.key,
             href,
             text:
-              output.note === 'needs_input'
-                ? locale === 'th'
-                  ? `${output.key} มี template ที่ต้องให้คนกรอกค่าเอง จึงไม่ได้รันให้.`
-                  : `${output.key} only has templates that need a person to fill in values, so none was run.`
-                : locale === 'th'
-                  ? `${output.key} ยังไม่มี template สืบค้นที่พร้อมใช้ (หรือระบบยังไม่ได้เชื่อมต่อ).`
-                  : `${output.key} has no investigation template ready (or the system is not connected).`,
+              locale === 'th'
+                ? `${output.key} ยังไม่มี template สืบค้นที่ AI รันได้ (ต้องมี intent ที่ทีมยืนยัน และระบบต้องเชื่อมต่อแล้ว).`
+                : `${output.key} has no investigation template the AI may run (it needs an intent staff set and a connected system).`,
           },
         ];
       }

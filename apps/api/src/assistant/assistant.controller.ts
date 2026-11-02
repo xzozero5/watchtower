@@ -38,10 +38,11 @@ import {
 import {
   Audited,
   CurrentPrincipal,
-  RequirePermission,
+  RequireAnyPermission,
   type Principal,
 } from '../auth/decorators.js';
 import { parseResponse } from '../common/zod-openapi.js';
+import { MASKED_READ } from './assistant-access.js';
 import { AssistantProposals } from './assistant-proposals.js';
 import { AssistantService } from './assistant.service.js';
 
@@ -61,7 +62,7 @@ export class AssistantController {
   ) {}
 
   @Get('starters')
-  @RequirePermission('ticket.read')
+  @RequireAnyPermission('ticket.read', MASKED_READ)
   @ApiOperation({
     summary: 'State of the assistant and up to three starter prompts for this person',
     description:
@@ -81,7 +82,7 @@ export class AssistantController {
 
   @Post('messages')
   @HttpCode(200)
-  @RequirePermission('ticket.read')
+  @RequireAnyPermission('ticket.read', MASKED_READ)
   @Audited({ action: AUDIT_ACTIONS.assistantMessage, targetType: 'assistant_conversation' })
   @ApiOperation({
     summary: 'Ask the assistant',
@@ -106,7 +107,7 @@ export class AssistantController {
 
   @Post('proposals/:id/confirm')
   @HttpCode(200)
-  @RequirePermission('ticket.read')
+  @RequireAnyPermission('ticket.read', MASKED_READ)
   @Audited({ action: AUDIT_ACTIONS.assistantProposalConfirm, targetType: 'assistant_proposal' })
   @ApiOperation({
     summary: 'Press a proposal',
@@ -134,7 +135,7 @@ export class AssistantController {
 
   @Post('proposals/:id/reject')
   @HttpCode(200)
-  @RequirePermission('ticket.read')
+  @RequireAnyPermission('ticket.read', MASKED_READ)
   @Audited({ action: AUDIT_ACTIONS.assistantProposalReject, targetType: 'assistant_proposal' })
   @ApiOperation({ summary: 'Decline a proposal', description: 'Closes it; nothing runs.' })
   @ApiOkResponse({ standardSchema: rejectProposalResponseSchema })
@@ -152,7 +153,7 @@ export class AssistantController {
 
   @Delete('conversations/:id')
   @HttpCode(200)
-  @RequirePermission('ticket.read')
+  @RequireAnyPermission('ticket.read', MASKED_READ)
   @Audited({
     action: AUDIT_ACTIONS.assistantConversationDelete,
     targetType: 'assistant_conversation',

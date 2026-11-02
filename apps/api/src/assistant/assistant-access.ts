@@ -74,24 +74,54 @@ export const PROPOSAL_PERMISSION: Readonly<Record<ProposalKind, Permission>> = {
   reply_draft: 'ticket.handle',
 };
 
+/**
+ * T-137 (`origin/wip/t-137`, `[ASSUMED]` until it merges): the developer reads every ticket with personal
+ * data masked through `ticket.read.masked` instead of `ticket.read`, and works on a ticket with
+ * `ticket.dev.work` instead of `ticket.handle`. The names are written as plain permissions here so this
+ * branch stands on its own; once T-137 is merged they are in `Permission` and the casts can go.
+ */
+export const MASKED_READ = 'ticket.read.masked' as Permission;
+export const DEV_WORK = 'ticket.dev.work' as Permission;
+
+type Holder = Pick<Principal, 'role' | 'permissions'>;
+
+/** `dev` sees tickets without the customer's identity (po #33): by role, or by holding only the masked read. */
+export const isMasked = (principal: Holder): boolean =>
+  (principal.role as string) === 'dev' ||
+  (principal.permissions.has(MASKED_READ) && !principal.permissions.has('ticket.read'));
+
+/** May the person read tickets at all, whole or masked? The one question the routes ask. */
+export const canUseAssistant = (principal: Holder): boolean =>
+  principal.permissions.has('ticket.read') || principal.permissions.has(MASKED_READ);
+
+/** A permission held, where reading a ticket is satisfied by the masked read too (the data is masked then). */
+function holds(principal: Holder, permission: Permission): boolean {
+  if (permission === 'ticket.read') return canUseAssistant(principal);
+  return principal.permissions.has(permission);
+}
+
+/**
+ * The permission the ordinary route asks for this change from this person. A masked reader changes a
+ * ticket as a developer does (a status and a note), not as support does.
+ */
+export function proposalPermission(kind: ProposalKind, principal: Holder): Permission {
+  return isMasked(principal) && (kind === 'status' || kind === 'note')
+    ? DEV_WORK
+    : PROPOSAL_PERMISSION[kind];
+}
+
 /** Tools this person may use right now: on the role list and backed by a permission they hold. */
-export function toolsFor(principal: Pick<Principal, 'role' | 'permissions'>): AssistantToolName[] {
+export function toolsFor(principal: Holder): AssistantToolName[] {
   return (ROLE_TOOLS[principal.role] ?? []).filter((name) =>
-    principal.permissions.has(TOOL_PERMISSION[name]),
+    holds(principal, TOOL_PERMISSION[name]),
   );
 }
 
-export function proposalKindsFor(
-  principal: Pick<Principal, 'role' | 'permissions'>,
-): ProposalKind[] {
+export function proposalKindsFor(principal: Holder): ProposalKind[] {
   return (ROLE_PROPOSALS[principal.role] ?? []).filter((kind) =>
-    principal.permissions.has(PROPOSAL_PERMISSION[kind]),
+    holds(principal, proposalPermission(kind, principal)),
   );
 }
-
-/** `dev` sees tickets without the customer's identity (po #33). */
-export const isMasked = (principal: Pick<Principal, 'role'>): boolean =>
-  (principal.role as string) === 'dev';
 
 // --- starter prompts -----------------------------------------------------------------------------
 
@@ -159,7 +189,7 @@ const ROLE_STARTERS: Readonly<Record<string, readonly string[]>> = {
 
 /** At most three prompts, none the person could not follow up on, none about "this" without a ticket chip. */
 export function startersFor(
-  principal: Pick<Principal, 'role' | 'permissions'>,
+  principal: Holder,
   locale: AssistantLocale,
   hasTicket: boolean,
 ): AssistantStarter[] {

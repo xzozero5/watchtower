@@ -18,10 +18,12 @@ import {
   type Claim,
   type ProposalCard,
 } from '@watchtower/shared';
-import { and, desc, eq, gte, sql } from 'drizzle-orm';
+import { and, desc, eq, gt, gte, sql } from 'drizzle-orm';
 
 import { AI_RUNTIME, type AiRuntime } from '../ai/ai-runtime.js';
+import { StaffNames } from '../ai/staff-names.service.js';
 import { AuditScope } from '../audit/audit-scope.js';
+import { AuditService } from '../audit/audit.service.js';
 import { notFound } from '../auth/http-errors.js';
 import type { Principal } from '../auth/principal.js';
 import { RateLimiter } from '../auth/rate-limiter.js';
@@ -47,11 +49,13 @@ type Config = Pick<
   | 'AI_BUDGET_ALERT_PERCENT'
   | 'ASSISTANT_MESSAGES_PER_HOUR'
   | 'ASSISTANT_USER_DAILY_TOKENS'
+  | 'ASSISTANT_RETENTION_DAYS'
   | 'EMBEDDING_PROVIDER'
 >;
 
 const THAI = /[฀-๿]/;
-const DAY_MS = 24 * 60 * 60 * 1000;
+/** Tickets named on the audit row of one message; more is a list nobody reads. */
+const MAX_AUDITED_READS = 20;
 
 /** Thai in the text means a Thai screen when the web did not say. */
 export function localeOf(requested: AssistantLocale | undefined, text: string): AssistantLocale {
@@ -84,6 +88,8 @@ export class AssistantService {
     @Inject(BriefService) private readonly brief: BriefService,
     @Inject(ToolRunner) private readonly runner: ToolRunner,
     @Inject(AssistantProposals) private readonly proposals: AssistantProposals,
+    @Inject(StaffNames) private readonly staff: StaffNames,
+    @Inject(AuditService) private readonly audit: AuditService,
   ) {}
 
   // --- state ------------------------------------------------------------------------------------
@@ -111,17 +117,20 @@ export class AssistantService {
     return { state: 'ok', reason: null };
   }
 
+  /**
+   * Tokens this person has used today (UTC), from `assistant_usage`: a table of its own, so deleting a
+   * conversation (messages and all) gives none of the budget back.
+   */
   private async tokensToday(userId: string, now: Date): Promise<number> {
-    const start = new Date(Math.floor(now.getTime() / DAY_MS) * DAY_MS);
     const [row] = await this.database.db
       .select({
-        tokens: sql<string>`coalesce(sum(${schema.assistantMessage.inputTokens} + ${schema.assistantMessage.outputTokens}), 0)`,
+        tokens: sql<string>`(${schema.assistantUsage.inputTokens} + ${schema.assistantUsage.outputTokens})::text`,
       })
-      .from(schema.assistantMessage)
+      .from(schema.assistantUsage)
       .where(
         and(
-          eq(schema.assistantMessage.userId, userId),
-          gte(schema.assistantMessage.createdAt, start),
+          eq(schema.assistantUsage.userId, userId),
+          eq(schema.assistantUsage.day, now.toISOString().slice(0, 10)),
         ),
       );
     return Number(row?.tokens ?? 0);
@@ -185,13 +194,25 @@ export class AssistantService {
     }
 
     const conversationId = await this.conversationFor(principal, body.conversationId, locale);
-    const deps = this.runtime.deps;
+    // Every redactor of this message knows the staff of the instance, so a colleague's name in what the
+    // person typed, or in a ticket, is replaced before a model sees it, and before it is stored (N4).
+    const staffNames = await this.staff.list();
+    const base = this.runtime.deps;
+    const deps = {
+      ...base,
+      redactor: base.redactorFor?.(staffNames) ?? base.redactor,
+      redactorFor: (names: readonly string[]) =>
+        base.redactorFor?.([...names, ...staffNames]) ?? base.redactor,
+    };
     const storage = deps.redactor.session({ scope: conversationId });
+    const read = new Map<string, string>();
     const userBody = storage.redact(body.text);
     const history = await this.history(conversationId);
 
     const standing = await this.standing(principal.userId);
     let claims: Claim[] = [];
+    // What is stored and sent back to a model as history: the model's words, placeholders in.
+    let redactedAnswer = '';
     let tools: AssistantToolRun[] = [];
     let cards: ProposalCard[] = [];
     let state = standing.state;
@@ -214,7 +235,15 @@ export class AssistantService {
           embeddingMock: this.config.EMBEDDING_PROVIDER === 'mock',
           aiMock: this.config.AI_PROVIDER === 'mock',
         },
-        { principal, locale, masked: isMasked(principal), now: new Date() },
+        {
+          principal,
+          locale,
+          masked: isMasked(principal),
+          now: new Date(),
+          onRead: (ticket) => {
+            read.set(ticket.id, ticket.key);
+          },
+        },
       );
       try {
         const outcome = await runAssistantTurn(deps, {
@@ -237,6 +266,7 @@ export class AssistantService {
         });
         if (outcome.status === 'ok') {
           claims = outcome.claims;
+          redactedAnswer = outcome.redactedText;
           tools = outcome.tools;
           runIds = outcome.runIds;
           usage = outcome.usage;
@@ -253,12 +283,11 @@ export class AssistantService {
       }
     }
 
-    // Store both turns, redacted. The answer text is kept as the claims, with personal data replaced.
+    // Store both turns redacted. The answer is kept as the model wrote it, placeholders in: the restored
+    // text (names, subjects) is for the screen and is neither stored nor sent to a model again (N4).
     const messageId = randomUUID();
     const answerBody =
-      claims.length === 0
-        ? `[${reason ?? 'no_answer'}]`
-        : storage.redact(claims.map((claim) => claim.text).join('\n'));
+      redactedAnswer === '' ? `[${reason ?? 'no_answer'}]` : redactedAnswer.slice(0, 20_000);
     await this.database.db.transaction(async (tx) => {
       await tx.insert(schema.assistantMessage).values({
         conversationId,
@@ -286,7 +315,41 @@ export class AssistantService {
         .update(schema.assistantConversation)
         .set({ updatedAt: sql`clock_timestamp()`, locale })
         .where(eq(schema.assistantConversation.id, conversationId));
+      // The day's numbers of this person, apart from the conversation (it can be deleted; this cannot).
+      await tx
+        .insert(schema.assistantUsage)
+        .values({
+          userId: principal.userId,
+          day: new Date().toISOString().slice(0, 10),
+          messages: 1,
+          inputTokens: usage.inputTokens,
+          outputTokens: usage.outputTokens,
+          costUsd: usage.costUsd === null ? null : String(usage.costUsd),
+        })
+        .onConflictDoUpdate({
+          target: [schema.assistantUsage.userId, schema.assistantUsage.day],
+          set: {
+            messages: sql`${schema.assistantUsage.messages} + 1`,
+            inputTokens: sql`${schema.assistantUsage.inputTokens} + ${usage.inputTokens}`,
+            outputTokens: sql`${schema.assistantUsage.outputTokens} + ${usage.outputTokens}`,
+            costUsd:
+              usage.costUsd === null
+                ? schema.assistantUsage.costUsd
+                : sql`coalesce(${schema.assistantUsage.costUsd}, 0) + ${usage.costUsd}`,
+          },
+        });
     });
+
+    // Tickets whose content the assistant read for this person are personal data read (PRD 8.2): one
+    // `pii.read` row each, like the ticket page, so the log says who looked at which ticket.
+    for (const [ticketId] of [...read].slice(0, MAX_AUDITED_READS)) {
+      await this.audit.recordPiiRead({
+        actor: { type: 'user', id: principal.userId },
+        targetType: 'ticket',
+        targetId: ticketId,
+        metadata: { via: 'assistant', conversationId },
+      });
+    }
 
     // The cards, made from the server's own reading of each ticket and person. What cannot be made is
     // said in one line, so the person is not left thinking it was done.
@@ -319,6 +382,7 @@ export class AssistantService {
         runs: runIds.length,
         proposals: cards.map((card) => card.kind),
         masked: isMasked(principal),
+        ticketIds: [...read.keys()].slice(0, MAX_AUDITED_READS),
       },
     });
     return {
@@ -344,7 +408,17 @@ export class AssistantService {
       const [found] = await this.database.db
         .select({ id: table.id })
         .from(table)
-        .where(and(eq(table.id, requested), eq(table.userId, principal.userId)))
+        .where(
+          and(
+            eq(table.id, requested),
+            eq(table.userId, principal.userId),
+            // Also gone once it is older than the retention, however recently it was used.
+            gt(
+              table.createdAt,
+              sql`now() - make_interval(days => ${this.config.ASSISTANT_RETENTION_DAYS})`,
+            ),
+          ),
+        )
         .limit(1);
       if (found === undefined) throw notFound('No such conversation');
       return found.id;

@@ -23,6 +23,7 @@ import {
 import { and, asc, eq, inArray, notInArray, sql } from 'drizzle-orm';
 
 import { AiSummaries, joinClaims } from '../ai/ai-summaries.service.js';
+import { customerNamesOfTickets } from '../ai/customer-names.js';
 import { AuditService } from '../audit/audit.service.js';
 import { badRequest, conflict, notFound } from '../auth/http-errors.js';
 import { assertOrgAccess, type Principal } from '../auth/principal.js';
@@ -152,7 +153,14 @@ export class HandoffService {
       userId: principal.userId,
       locale,
       subject: 'the notes of a shift handoff, written by the person who leaves',
-      facts: briefHandoffFacts(current.handoff, locale),
+      facts: briefHandoffFacts(
+        current.handoff,
+        locale,
+        await customerNamesOfTickets(
+          this.database.db,
+          current.handoff.items.flatMap((item) => (item.ticket === null ? [] : [item.ticket.id])),
+        ),
+      ),
       dataAsOf: this.now(),
       maxClaims: 6,
     });

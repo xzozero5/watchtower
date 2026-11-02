@@ -41,7 +41,7 @@ import { TICKET_KEYS, type TicketKeys } from '../tickets/ticket-keys.js';
 import { TicketReader, type TicketViewRow } from '../tickets/ticket-reader.js';
 import { TicketsService } from '../tickets/tickets.service.js';
 import { WorkflowService } from '../tickets/workflow.service.js';
-import { PROPOSAL_PERMISSION } from './assistant-access.js';
+import { proposalPermission } from './assistant-access.js';
 import { ticketHref } from './assistant-hrefs.js';
 import { statusWord, type ProposalWhy } from './assistant-text.js';
 
@@ -127,7 +127,7 @@ export class AssistantProposals {
     },
   ): Promise<PrepareResult> {
     const { principal } = context;
-    if (!principal.permissions.has(PROPOSAL_PERMISSION[intent.kind])) {
+    if (!principal.permissions.has(proposalPermission(intent.kind, principal))) {
       return fail(intent.kind, 'not_allowed');
     }
     const built = await this.build(intent, principal, context.locale);
@@ -441,7 +441,7 @@ export class AssistantProposals {
       return { kind: 'expired' };
     }
     const kind = row.kind as ProposalKind;
-    if (!principal.permissions.has(PROPOSAL_PERMISSION[kind])) throw forbidden();
+    if (!principal.permissions.has(proposalPermission(kind, principal))) throw forbidden();
 
     let view: TicketViewRow | null = null;
     if (row.ticketId !== null) {

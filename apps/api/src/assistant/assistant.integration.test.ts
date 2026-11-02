@@ -44,6 +44,8 @@ const MALI = `Mali${suffix} Srisuk`;
 
 /** What the model is asked, so a test can see how many calls a message made. */
 const calls: string[] = [];
+/** Everything each model call was sent (system and messages), to see what a model could have read. */
+const sent: string[] = [];
 /** A test can make the model say something else for one prompt. */
 const script: { plan?: string; answer?: string } = {};
 const spy: LlmProvider = (() => {
@@ -52,6 +54,7 @@ const spy: LlmProvider = (() => {
     kind: 'mock' as const,
     generate(request) {
       calls.push(request.prompt.id);
+      sent.push(request.system + request.messages.map((message) => message.content).join('\n'));
       const forced =
         request.prompt.id === 'assistant_plan'
           ? script.plan
@@ -569,9 +572,13 @@ describe('limits and switches', () => {
     const budgeted = await signIn(h, 'agent');
     const first = await okReply(budgeted, 'my tickets');
     await owner().query(
-      `UPDATE assistant_message SET input_tokens = 150000, output_tokens = 60000 WHERE conversation_id = $1 AND role = 'assistant'`,
-      [first.conversationId],
+      `UPDATE assistant_usage SET input_tokens = 150000, output_tokens = 60000 WHERE user_id = $1`,
+      [budgeted.userId],
     );
+    // Deleting the conversation, with its messages, gives none of the day's budget back.
+    expect(
+      (await budgeted.client.delete(`/v1/assistant/conversations/${first.conversationId}`)).status,
+    ).toBe(200);
     const before = calls.length;
     const reply = await okReply(budgeted, 'my tickets again');
     expect(reply).toMatchObject({
@@ -767,6 +774,230 @@ describe('the AI summary of the daily brief (T-135)', () => {
     const nobody = await signIn(h, 'agent');
     const response = await nobody.client.post<ApiErrorBody>('/v1/handoffs/ai-prefill');
     expect(response.status).toBe(409);
+  });
+});
+
+describe('regressions from the security review of T-134 / T-135', () => {
+  it('N4: a name is never stored and never sent back to a model, not the customer’s, not a colleague’s', async () => {
+    const requesterName = `Somsak${suffix} Jaidee`;
+    const named = await fileTicket(agent, orgId, {
+      subject: `Printer broken, asked by ${requesterName}`,
+      requester: { email: `somsak-${suffix}@customer.example`, name: requesterName },
+      assigneeId: mali.userId,
+    });
+    const before = sent.length;
+    const asker = await signIn(h, 'agent');
+    const first = await okReply(asker, 'summarize this', { context: { ticket: named.key } });
+    // The person reads the names; nobody else does.
+    const shown = first.claims.map((claim) => claim.text).join(' ');
+    expect(shown).toContain(`Somsak${suffix}`);
+    const second = await okReply(asker, 'and my tickets, thanks', {
+      conversationId: first.conversationId,
+    });
+    expect(second.conversationId).toBe(first.conversationId);
+    const everything = sent.slice(before).join('\n');
+    for (const secret of [
+      `Somsak${suffix}`,
+      'Jaidee',
+      `Mali${suffix}`,
+      'Srisuk',
+      `somsak-${suffix}`,
+    ]) {
+      expect(everything, secret).not.toContain(secret);
+    }
+    const stored = await owner().query<{ body: string }>(
+      `SELECT body FROM assistant_message WHERE conversation_id = $1`,
+      [first.conversationId],
+    );
+    const text = stored.rows.map((row) => row.body).join('\n');
+    for (const secret of [`Somsak${suffix}`, 'Jaidee', `Mali${suffix}`, 'Srisuk']) {
+      expect(text, secret).not.toContain(secret);
+    }
+    expect(text).toMatch(/\[NAME_\d+\]/);
+  });
+
+  it('N4: a colleague’s name that the person types is replaced before the model and before the store', async () => {
+    const before = sent.length;
+    const typist = await signIn(h, 'agent');
+    const unassigned = await fileTicket(agent, orgId, { subject: 'Typed a colleague' });
+    const reply = await okReply(typist, `assign this to ${MALI}`, {
+      context: { ticket: unassigned.key },
+    });
+    expect(reply.proposals[0]?.changes[0]?.to).toBe(MALI);
+    expect(sent.slice(before).join('\n')).not.toContain('Srisuk');
+    const stored = await owner().query<{ body: string }>(
+      `SELECT body FROM assistant_message WHERE conversation_id = $1 AND role = 'user'`,
+      [reply.conversationId],
+    );
+    expect(stored.rows[0]?.body).not.toContain('Srisuk');
+  });
+
+  it('PRD 8.2: reading a ticket for a person is personal data read, with the ticket on the log', async () => {
+    const read = await fileTicket(agent2, orgId, { subject: 'Audit the read' });
+    const reader = await signIn(h, 'agent');
+    const reply = await okReply(reader, 'summarize this', { context: { ticket: read.key } });
+    const rows = await owner().query<{ actor_id: string; metadata: Record<string, unknown> }>(
+      `SELECT actor_id, metadata FROM audit_log WHERE action = 'pii.read' AND target_id = $1`,
+      [read.id],
+    );
+    expect(rows.rows).toHaveLength(1);
+    expect(rows.rows[0]?.actor_id).toBe(reader.userId);
+    expect(rows.rows[0]?.metadata).toMatchObject({
+      via: 'assistant',
+      conversationId: reply.conversationId,
+    });
+    const message = await owner().query<{ metadata: { ticketIds?: string[] } }>(
+      `SELECT metadata FROM audit_log WHERE action = 'assistant.message' AND target_id = $1`,
+      [reply.conversationId],
+    );
+    expect(message.rows[0]?.metadata.ticketIds).toEqual([read.id]);
+  });
+
+  it('a conversation older than the retention ends even when it was used a moment ago', async () => {
+    const old = await signIn(h, 'agent');
+    const reply = await okReply(old, 'my tickets');
+    await owner().query(
+      `UPDATE assistant_conversation SET created_at = now() - interval '40 days', updated_at = now() WHERE id = $1`,
+      [reply.conversationId],
+    );
+    expect((await ask(old, 'again', { conversationId: reply.conversationId })).status).toBe(404);
+  });
+
+  it('T-135: changing the language does not fire the model without limit; each language is cached', async () => {
+    const reader = await signIn(h, 'agent');
+    await lead.client.post('/v1/shift-notes', {
+      audience: 'person',
+      toUserId: reader.userId,
+      body: 'Watch the queue.',
+    });
+    const brief = (locale: string) =>
+      reader.client.get<{ aiSummary: { text: string } | null }>(
+        `/v1/shifts/brief?locale=${locale}`,
+      );
+    const before = calls.length;
+    for (const locale of ['th', 'en', 'th', 'en', 'th', 'en']) {
+      expect((await brief(locale)).body.aiSummary).not.toBeNull();
+    }
+    // One call for each language, then the cache.
+    expect(calls.slice(before)).toEqual(['claim_summary', 'claim_summary']);
+    // New facts every time are new calls, and those are limited per person and hour.
+    for (let index = 0; index < 16; index += 1) {
+      await lead.client.post('/v1/shift-notes', {
+        audience: 'person',
+        toUserId: reader.userId,
+        body: `Another note ${String(index)}`,
+      });
+      await brief('en');
+    }
+    const made = calls.slice(before).filter((id) => id === 'claim_summary').length;
+    expect(made).toBeLessThanOrEqual(12);
+    // Over the limit the brief is still whole, only without the summary.
+    const over = await brief('en');
+    expect(over.status).toBe(200);
+  });
+
+  it('N2: an investigation the assistant chose pins no card and is not recorded as a person’s', async () => {
+    const own = await startHarness({
+      env: {
+        AI_TOOL_FIXTURES_DIR: new URL(
+          '../../../../examples/tools',
+          import.meta.url,
+        ).pathname.replace(/^\/([A-Za-z]:)/, '$1'),
+      },
+      overrides: [{ token: API_LLM, value: spy }],
+    });
+    try {
+      const boss2 = await signIn(own, 'head');
+      const lead2 = await signIn(own, 'lead');
+      const agent3 = await signIn(own, 'agent');
+      const org = (await apiOrg(lead2, { name: `Investigate Org ${suffix}` })).id;
+      const key = `inv_${suffix}`;
+      await apiIntent(lead2, { key, name: 'Investigate me' });
+      const created = await boss2.client.post('/v1/tools/templates', {
+        kind: 'logs',
+        name: `errors-${suffix}`,
+        title: 'Errors',
+        intentKey: key,
+        runByAi: true,
+        body: 'service="example-delivery" AND labels.org_ref={{org_id}} severity>=WARNING',
+      });
+      expect(created.status, JSON.stringify(created.body)).toBe(201);
+      const target = await fileTicket(agent3, org, { subject: 'Needs a look', intentKey: key });
+
+      const reply = await agent3.client.post<AssistantReply>('/v1/assistant/messages', {
+        text: 'investigate the logs for this',
+        context: { ticket: target.key },
+      });
+      expect(reply.body.tools).toEqual([{ name: 'investigate_run', status: 'ok', mock: false }]);
+      const pool = own.db.owner.pool;
+      expect(
+        (await pool.query(`SELECT 1 FROM evidence_card WHERE ticket_id = $1`, [target.id]))
+          .rowCount,
+      ).toBe(0);
+      const ran = await pool.query<{ agent: string }>(
+        `SELECT agent FROM tool_execution WHERE ticket_id = $1`,
+        [target.id],
+      );
+      expect(ran.rows.map((row) => row.agent)).toEqual(['personal_assistant']);
+      const audit = await pool.query<{
+        actor_type: string;
+        actor_id: string | null;
+        metadata: Record<string, unknown>;
+      }>(
+        `SELECT actor_type, actor_id, metadata FROM audit_log WHERE action = 'assistant.tool_run' AND target_id = $1`,
+        [target.id],
+      );
+      expect(audit.rows).toHaveLength(1);
+      expect(audit.rows[0]).toMatchObject({
+        actor_type: 'ai',
+        actor_id: null,
+        metadata: { via: 'assistant', onBehalfOf: agent3.userId },
+      });
+      // A template made for a person's button (not marked for the AI) is not run by the assistant at all.
+      const personalKey = `pers_${suffix}`;
+      await apiIntent(lead2, { key: personalKey, name: 'Person only' });
+      expect(
+        (
+          await boss2.client.post('/v1/tools/templates', {
+            kind: 'logs',
+            name: `personal-${suffix}`,
+            title: 'Personal',
+            intentKey: personalKey,
+            runByAi: false,
+            body: 'severity>=ERROR',
+          })
+        ).status,
+      ).toBe(201);
+      const personal = await fileTicket(agent3, org, {
+        subject: 'Button only',
+        intentKey: personalKey,
+      });
+      const refused = await agent3.client.post<AssistantReply>('/v1/assistant/messages', {
+        text: 'investigate the logs for this',
+        context: { ticket: personal.key },
+      });
+      expect(
+        refused.body.claims.some((claim) => /no investigation template/.test(claim.text)),
+      ).toBe(true);
+      expect(
+        (await pool.query(`SELECT 1 FROM tool_execution WHERE ticket_id = $1`, [personal.id]))
+          .rowCount,
+      ).toBe(0);
+      // The button a person presses does pin a card, as before.
+      const buttons = await agent3.client.get<{ buttons: { templateId: string }[] }>(
+        `/v1/tickets/${target.id}/tools`,
+      );
+      const pressed = await agent3.client.post(`/v1/tickets/${target.id}/tools/run`, {
+        templateId: buttons.body.buttons[0]?.templateId,
+      });
+      expect(pressed.status).toBe(201);
+      expect(
+        (await pool.query(`SELECT 1 FROM evidence_card WHERE ticket_id = $1`, [target.id]))
+          .rowCount,
+      ).toBe(1);
+    } finally {
+      await own.close();
+    }
   });
 });
 

@@ -30,6 +30,8 @@ export const AI_AUDIT_ACTIONS = {
   assistantMessage: 'assistant.message',
   /** A person pressed an assistant proposal: written in the same transaction as the change it ran (T-134). */
   assistantProposalConfirm: 'assistant.proposal.confirm',
+  /** The assistant ran an investigation template by itself: actor `ai`, on behalf of a person, nothing pinned (N2). */
+  assistantToolRun: 'assistant.tool_run',
   /** A person declined an assistant proposal without running it. */
   assistantProposalReject: 'assistant.proposal.reject',
   /** A person deleted a conversation with the assistant. */

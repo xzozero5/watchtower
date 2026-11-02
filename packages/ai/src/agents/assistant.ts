@@ -164,6 +164,11 @@ export type AssistantOutcome =
   | {
       readonly status: 'ok';
       readonly claims: Claim[];
+      /**
+       * The claims as the model wrote them, placeholders still in. This is what may be stored and sent
+       * back to a model as history (N4); the restored text in `claims` is for the screen only.
+       */
+      readonly redactedText: string;
       /** Free text restored for the person; structural fields restored only from what they typed. */
       readonly proposals: ProposalIntent[];
       readonly tools: AssistantToolRun[];
@@ -226,7 +231,10 @@ function renderHistory(input: AssistantTurnInput, session: RedactionSession) {
   const lines = input.history.map(
     (turn) => `[${turn.role}] ${neutralize(clip(turn.text, MAX_HISTORY_CHARS))}`,
   );
-  return [session.fromModel(`<history>\n${lines.join('\n')}\n</history>`)];
+  // Whatever placeholders the history holds were issued by an earlier session and mean something else
+  // here. `fromModel` keeps a token that this session also issued, which would bind an old [EMAIL_1] to
+  // a different person; `redactToolOutput` escapes every token-shaped piece of text instead.
+  return [session.redactToolOutput('history', `<history>\n${lines.join('\n')}\n</history>`)];
 }
 
 function renderToolList(info: readonly AssistantToolInfo[]): string {
@@ -318,6 +326,13 @@ export async function runAssistantTurn(
   const tools = toolRunsOf(input.host);
 
   // --- step two: the answer --------------------------------------------------------------------
+  // A switch or a budget can change while the tools run: ask again before the second call.
+  const again = await askGuard(deps.guard, {
+    agent: 'personal_assistant',
+    ticketId: null,
+    action: 'assistant.answer',
+  });
+  if (!again.allowed) return { status: 'skipped', reason: again.reason };
   const names = [...new Set(facts.flatMap((fact) => fact.names ?? []))];
   const answerRedactor = deps.redactorFor?.(names) ?? deps.redactor;
   const session = answerRedactor.session({ scope: input.scope });
@@ -382,6 +397,7 @@ export async function runAssistantTurn(
   const audience = input.masked ? 'customer' : 'internal';
   const restore = (text: string): string => session.restore(text, audience).text;
   const claims: Claim[] = [];
+  const redactedParts: string[] = [];
   for (const item of answer.claims) {
     const evidence: ClaimEvidence[] = [];
     for (const id of new Set(item.evidenceIds)) {
@@ -395,8 +411,11 @@ export async function runAssistantTurn(
         ...(fact.mock === true ? { mock: true } : {}),
       });
     }
-    const candidate = makeClaim(restore(item.text).slice(0, 600), evidence);
-    if (claimSchema.safeParse(candidate).success) claims.push(candidate);
+    const candidate = makeClaim(stripLinks(restore(item.text)).slice(0, 600), evidence);
+    if (claimSchema.safeParse(candidate).success) {
+      claims.push(candidate);
+      redactedParts.push(item.text);
+    }
     if (claims.length >= input.limits.maxClaims) break;
   }
 
@@ -412,11 +431,24 @@ export async function runAssistantTurn(
   return {
     status: 'ok',
     claims,
+    redactedText: redactedParts.join('\n'),
     proposals,
     tools,
     runIds: results.flatMap((result) => (result.runId === null ? [] : [result.runId])),
     usage: sumUsage(results),
   };
+}
+
+/**
+ * A link in a sentence a model wrote is not a link the person gets (only the chips the host built are).
+ * Taken out so a screen that makes URLs clickable cannot be used to send someone off the app.
+ */
+export function stripLinks(text: string): string {
+  // Up to the end of the word, leaving the full stop or comma that closed the sentence.
+  return text.replaceAll(
+    /\b(?:https?:\/\/|ftp:\/\/|www\.|javascript:|data:)\S*?(?=[.,;:!?)\]]*(?:\s|$))/gi,
+    '[link removed]',
+  );
 }
 
 /**

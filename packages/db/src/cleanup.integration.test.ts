@@ -62,6 +62,8 @@ beforeEach(async () => {
     'break_glass_attempt',
     'status_subscription',
     'assistant_conversation',
+    'assistant_proposal',
+    'assistant_usage',
     'ai_summary',
   ]) {
     await owner().query(`DELETE FROM ${table}`);
@@ -105,47 +107,73 @@ describe('purgeExpired', () => {
     expect(left.rows.map((row) => row.id)).not.toContain(revokedLong);
   });
 
-  it('deletes assistant conversations (with messages and proposals) and AI summaries unused for longer than the retention', async () => {
-    const conversation = async (updated: string): Promise<string> => {
+  it('deletes assistant conversations by the day they began, even when they are still in use', async () => {
+    const conversation = async (began: string, lastUsed: string): Promise<string> => {
       const made = await owner().query<{ id: string }>(
-        `INSERT INTO assistant_conversation (user_id, updated_at) VALUES ($1, now() + $2::interval) RETURNING id`,
-        [userId, updated],
+        `INSERT INTO assistant_conversation (user_id, created_at, updated_at)
+         VALUES ($1, now() + $2::interval, now() + $3::interval) RETURNING id`,
+        [userId, began, lastUsed],
       );
       const id = made.rows[0]?.id ?? '';
       await owner().query(
         `INSERT INTO assistant_message (conversation_id, user_id, role, body) VALUES ($1, $2, 'user', 'hello [EMAIL_1]')`,
         [id, userId],
       );
-      await owner().query(
-        `INSERT INTO assistant_proposal (conversation_id, user_id, kind, params, card, expires_at)
-         VALUES ($1, $2, 'note', '{}', '{}', now() + interval '10 minutes')`,
-        [id, userId],
-      );
       return id;
     };
-    const old = await conversation('-40 days');
-    const fresh = await conversation('-2 days');
-    await owner().query(
-      `INSERT INTO ai_summary (kind, user_id, fingerprint, claims, data_as_of, generated_at)
-       VALUES ('brief', $1, 'x', '[]', now(), now() - interval '40 days'),
-              ('handoff', $1, 'y', '[]', now(), now() - interval '1 day')`,
-      [userId],
-    );
+    // Began 40 days ago and used a minute ago: it still ends. Began 2 days ago: it stays.
+    const old = await conversation('-40 days', '-1 minute');
+    const fresh = await conversation('-2 days', '-1 minute');
 
     const result = await purgeExpired({ pool: app }, {});
     expect(result.assistant_conversation).toBe(1);
-    expect(result.ai_summary).toBe(1);
     expect(await count('assistant_conversation', `id = '${old}'`)).toBe(0);
     expect(await count('assistant_message', `conversation_id = '${old}'`)).toBe(0);
-    expect(await count('assistant_proposal', `conversation_id = '${old}'`)).toBe(0);
     expect(await count('assistant_conversation', `id = '${fresh}'`)).toBe(1);
     expect(await count('assistant_message', `conversation_id = '${fresh}'`)).toBe(1);
-    expect(await count('ai_summary')).toBe(1);
 
     // The retention is an option: 1 day keeps nothing older than a day.
     const tight = await purgeExpired({ pool: app }, { assistantRetentionDays: 1 });
     expect(tight.assistant_conversation).toBe(1);
     expect(await count('assistant_conversation')).toBe(0);
+  });
+
+  it('deletes proposals a day after they expired or were decided, and keeps the usage numbers for the retention', async () => {
+    const made = await owner().query<{ id: string }>(
+      `INSERT INTO assistant_conversation (user_id) VALUES ($1) RETURNING id`,
+      [userId],
+    );
+    const conversationId = made.rows[0]?.id ?? '';
+    const proposal = (expires: string, decided: string | null) =>
+      owner().query(
+        `INSERT INTO assistant_proposal (conversation_id, user_id, kind, params, card, expires_at, status, decided_at)
+         VALUES ($1, $2, 'note', '{"body":"real text"}', '{}', now() + $3::interval,
+                 CASE WHEN $4::text IS NULL THEN 'pending' ELSE 'confirmed' END,
+                 CASE WHEN $4::text IS NULL THEN NULL ELSE now() + $4::interval END)`,
+        [conversationId, userId, expires, decided],
+      );
+    await proposal('-3 days', null); // nobody pressed it and it expired: dead
+    await proposal('-3 days', '-2 days'); // decided long ago
+    await proposal('-1 minute', null); // expired a minute ago: kept for a day
+    await proposal('10 minutes', null); // still live
+    await owner().query(
+      `INSERT INTO assistant_usage (user_id, day, messages, input_tokens, output_tokens)
+       VALUES ($1, current_date - 45, 3, 10, 10), ($1, current_date - 1, 3, 10, 10)`,
+      [userId],
+    );
+    await owner().query(
+      `INSERT INTO ai_summary (kind, user_id, locale, fingerprint, claims, data_as_of, generated_at)
+       VALUES ('brief', $1, 'en', 'x', '[]', now(), now() - interval '3 days'),
+              ('brief', $1, 'th', 'y', '[]', now(), now() - interval '1 day')`,
+      [userId],
+    );
+
+    const result = await purgeExpired({ pool: app }, {});
+    expect(result.assistant_proposal).toBe(2);
+    expect(await count('assistant_proposal')).toBe(2);
+    expect(result.assistant_usage).toBe(1);
+    expect(result.ai_summary).toBe(1);
+    expect(await count('ai_summary', `locale = 'th'`)).toBe(1);
   });
 
   it('deletes refresh tokens past their expiry even when the session lives on, and with a deleted session', async () => {
@@ -268,6 +296,8 @@ describe('purgeExpired', () => {
       break_glass_attempt: 0,
       status_subscription: 0,
       assistant_conversation: 0,
+      assistant_proposal: 0,
+      assistant_usage: 0,
       ai_summary: 0,
       more: false,
     });
@@ -349,6 +379,8 @@ describe('0012_expiry_indexes', () => {
       'break_glass_attempt',
       'status_subscription',
       'assistant_conversation',
+      'assistant_proposal',
+      'assistant_usage',
       'ai_summary',
     ]) {
       const privileges = await owner().query<{ del: boolean; trunc: boolean }>(

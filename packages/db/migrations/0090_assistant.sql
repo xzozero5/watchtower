@@ -6,6 +6,9 @@
 --                           model calls behind an assistant turn (the daily token budget per person).
 --   assistant_proposal      a write the assistant proposed. The card is made of server values; the
 --                           person presses once; it can be used once, by its owner, before it expires.
+--   assistant_usage         what each person has used today: messages and tokens. Kept apart from the
+--                           conversations on purpose: deleting a conversation must not give the day's
+--                           budget back. Holds numbers only.
 --   ai_summary              the latest AI summary of a screen for one person (daily brief, handoff
 --                           prefill) with the fingerprint of the facts it was made from, so an
 --                           unchanged screen does not cost another model call.
@@ -20,8 +23,9 @@ CREATE TABLE assistant_conversation (
   CONSTRAINT assistant_conversation_locale_check CHECK (locale IN ('th', 'en'))
 );
 CREATE INDEX assistant_conversation_user_idx ON assistant_conversation (user_id, updated_at DESC);
--- The retention sweep walks the oldest first.
-CREATE INDEX assistant_conversation_updated_idx ON assistant_conversation (updated_at);
+-- The retention sweep walks the oldest first, by the day a conversation began: a conversation that is
+-- kept in use does not live for ever.
+CREATE INDEX assistant_conversation_created_idx ON assistant_conversation (created_at);
 
 CREATE TABLE assistant_message (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -80,9 +84,23 @@ CREATE TABLE assistant_proposal (
 CREATE INDEX assistant_proposal_user_idx ON assistant_proposal (user_id, created_at DESC);
 CREATE INDEX assistant_proposal_conversation_idx ON assistant_proposal (conversation_id);
 
+CREATE TABLE assistant_usage (
+  user_id uuid NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+  -- The UTC day, the same day the AI budget of the system uses.
+  day date NOT NULL,
+  messages integer NOT NULL DEFAULT 0,
+  input_tokens bigint NOT NULL DEFAULT 0,
+  output_tokens bigint NOT NULL DEFAULT 0,
+  cost_usd numeric(14, 8),
+  PRIMARY KEY (user_id, day),
+  CONSTRAINT assistant_usage_counts_check CHECK (messages >= 0 AND input_tokens >= 0 AND output_tokens >= 0)
+);
+
 CREATE TABLE ai_summary (
   kind text NOT NULL,
   user_id uuid NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+  -- One row per language: switching the language of the screen back and forth costs nothing.
+  locale text NOT NULL DEFAULT 'en',
   -- Keyed hash of the facts and the language the summary was made from.
   fingerprint text NOT NULL,
   claims jsonb NOT NULL,
@@ -90,6 +108,7 @@ CREATE TABLE ai_summary (
   mock boolean NOT NULL DEFAULT false,
   data_as_of timestamptz NOT NULL,
   generated_at timestamptz NOT NULL DEFAULT clock_timestamp(),
-  PRIMARY KEY (kind, user_id),
-  CONSTRAINT ai_summary_kind_check CHECK (kind IN ('brief', 'handoff'))
+  PRIMARY KEY (kind, user_id, locale),
+  CONSTRAINT ai_summary_kind_check CHECK (kind IN ('brief', 'handoff')),
+  CONSTRAINT ai_summary_locale_check CHECK (locale IN ('th', 'en'))
 );

@@ -7,6 +7,7 @@ import { DATABASE } from '../database/database.module.js';
 import { LOGGER, type AppLogger } from '../logging/logger.js';
 import { AI_RUNTIME, API_LLM, createApiAiRuntime } from './ai-runtime.js';
 import { AiSummaries } from './ai-summaries.service.js';
+import { StaffNames } from './staff-names.service.js';
 
 /**
  * The AI layer of the api (ADR-017): one audited, guarded, redacting runtime shared by the assistant
@@ -31,8 +32,9 @@ import { AiSummaries } from './ai-summaries.service.js';
         llm: LlmProvider | null,
       ) => createApiAiRuntime({ config, database, logger, llm }),
     },
+    StaffNames,
     AiSummaries,
   ],
-  exports: [AI_RUNTIME, API_LLM, AiSummaries],
+  exports: [AI_RUNTIME, API_LLM, AiSummaries, StaffNames],
 })
 export class AiRuntimeModule {}

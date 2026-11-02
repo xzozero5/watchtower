@@ -17,6 +17,7 @@ import {
 import { and, asc, eq, inArray } from 'drizzle-orm';
 
 import { AiSummaries, joinClaims } from '../ai/ai-summaries.service.js';
+import { customerNamesOfTickets } from '../ai/customer-names.js';
 import type { Principal } from '../auth/principal.js';
 import { DATABASE } from '../database/database.module.js';
 import { SlaRemaining } from '../tickets/sla-remaining.js';
@@ -119,7 +120,15 @@ export class BriefService {
       userId: principal.userId,
       locale,
       subject: 'the daily brief of a shift that is starting',
-      facts: briefFacts(brief, locale),
+      // The customers' people named in these tickets: their names stay out of what a model reads (N4).
+      facts: briefFacts(
+        brief,
+        locale,
+        await customerNamesOfTickets(
+          db,
+          tickets.map((ticket) => ticket.id),
+        ),
+      ),
       dataAsOf: now,
       maxClaims: 5,
     });

@@ -2,7 +2,9 @@
 // the SQL by hand; the SQL file is the source of truth (CHECKs, foreign keys).
 import { sql } from 'drizzle-orm';
 import {
+  bigint,
   boolean,
+  date,
   index,
   integer,
   jsonb,
@@ -33,7 +35,7 @@ export const assistantConversation = pgTable(
   },
   (table) => [
     index('assistant_conversation_user_idx').on(table.userId, table.updatedAt.desc()),
-    index('assistant_conversation_updated_idx').on(table.updatedAt),
+    index('assistant_conversation_created_idx').on(table.createdAt),
   ],
 );
 
@@ -99,6 +101,22 @@ export const assistantProposal = pgTable(
   ],
 );
 
+/** What a person has used of the assistant today. Apart from the conversations: deleting one gives nothing back. */
+export const assistantUsage = pgTable(
+  'assistant_usage',
+  {
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    day: date('day', { mode: 'string' }).notNull(),
+    messages: integer('messages').notNull().default(0),
+    inputTokens: bigint('input_tokens', { mode: 'number' }).notNull().default(0),
+    outputTokens: bigint('output_tokens', { mode: 'number' }).notNull().default(0),
+    costUsd: numeric('cost_usd', { precision: 14, scale: 8 }),
+  },
+  (table) => [primaryKey({ columns: [table.userId, table.day] })],
+);
+
 /** The latest AI summary of a screen for one person, and the fingerprint of the facts behind it. */
 export const aiSummary = pgTable(
   'ai_summary',
@@ -107,6 +125,7 @@ export const aiSummary = pgTable(
     userId: uuid('user_id')
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
+    locale: text('locale').notNull().default('en').$type<'th' | 'en'>(),
     fingerprint: text('fingerprint').notNull(),
     claims: jsonb('claims').notNull().$type<unknown[]>(),
     aiRunId: uuid('ai_run_id'),
@@ -114,5 +133,5 @@ export const aiSummary = pgTable(
     dataAsOf: timestamptz('data_as_of').notNull(),
     generatedAt: timestamptz('generated_at').notNull().defaultNow(),
   },
-  (table) => [primaryKey({ columns: [table.kind, table.userId] })],
+  (table) => [primaryKey({ columns: [table.kind, table.userId, table.locale] })],
 );

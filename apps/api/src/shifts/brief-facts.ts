@@ -69,7 +69,20 @@ function itemFact(locale: AssistantLocale, item: HandoffItem): ClaimFact {
 }
 
 /** The daily brief of a person who is on shift. */
-export function briefFacts(brief: ShiftBrief, locale: AssistantLocale): ClaimFact[] {
+export function briefFacts(
+  brief: ShiftBrief,
+  locale: AssistantLocale,
+  names: readonly string[] = [],
+): ClaimFact[] {
+  return withNames(buildBriefFacts(brief, locale), names);
+}
+
+/** Every fact carries the dictionary, so the redactor knows these people whichever fact it reads (N4). */
+function withNames(facts: ClaimFact[], names: readonly string[]): ClaimFact[] {
+  return names.length === 0 ? facts : facts.map((fact) => ({ ...fact, names }));
+}
+
+function buildBriefFacts(brief: ShiftBrief, locale: AssistantLocale): ClaimFact[] {
   const facts: ClaimFact[] = [];
 
   // 1. The urgent tickets of the person: breached first, then at risk (the brief is already in that order).
@@ -145,7 +158,15 @@ export function briefFacts(brief: ShiftBrief, locale: AssistantLocale): ClaimFac
 }
 
 /** The open handoff of the outgoing person: what to write in its free text. */
-export function briefHandoffFacts(handoff: Handoff, locale: AssistantLocale): ClaimFact[] {
+export function briefHandoffFacts(
+  handoff: Handoff,
+  locale: AssistantLocale,
+  names: readonly string[] = [],
+): ClaimFact[] {
+  return withNames(buildHandoffFacts(handoff, locale), names);
+}
+
+function buildHandoffFacts(handoff: Handoff, locale: AssistantLocale): ClaimFact[] {
   return handoff.items.slice(0, 20).map((item) => {
     const base = itemFact(locale, item);
     const carried =

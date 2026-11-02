@@ -42,6 +42,7 @@ const view = (number: number) => ({
 interface Spy {
   writes: string[];
   runs: number;
+  reads: string[];
 }
 
 function deps(spy: Spy): AssistantToolDeps {
@@ -142,18 +143,13 @@ function deps(spy: Spy): AssistantToolDeps {
     } as never,
     runner: {
       ticketSubject: () => Promise.resolve({ kind: 'ticket', ticketId: 't1' }),
-      buttons: () =>
-        Promise.resolve({
-          intentKey: 'access_issue',
-          buttons: [
-            {
-              templateId: '3f9c5a1e-6c2b-4b7a-9e0d-0f2f6f5f1a22',
-              connected: true,
-              inputParams: [],
-            },
-          ],
-        }),
+      aiTemplateOf: () => Promise.resolve('3f9c5a1e-6c2b-4b7a-9e0d-0f2f6f5f1a22'),
+      // The person's own button: pins an evidence card. The assistant must never reach it (N2).
       runTemplate: () => {
+        spy.writes.push('runTemplate');
+        throw new Error('runTemplate pins an evidence card: the assistant must not call it');
+      },
+      runForAssistant: () => {
         spy.runs += 1;
         return Promise.resolve({
           kind: 'logs',
@@ -174,12 +170,15 @@ function build(
   role: string,
   options: { masked?: boolean; permissions?: readonly Permission[] } = {},
 ) {
-  const spy: Spy = { writes: [], runs: 0 };
+  const spy: Spy = { writes: [], runs: 0, reads: [] };
   const host = buildAssistantTools(deps(spy), {
     principal: principal(role, options.permissions),
     locale: 'en',
     masked: options.masked ?? false,
     now: new Date('2026-11-02T01:00:00.000Z'),
+    onRead: (ticket) => {
+      spy.reads.push(ticket.key);
+    },
   });
   return { host, spy };
 }
@@ -322,5 +321,35 @@ describe('what the tools say', () => {
   it('does not find a ticket the person cannot open', async () => {
     const { host } = build('agent');
     await expect(host.tools.call('summarize_ticket', { ticket: 'OPS-404' })).rejects.toThrow('404');
+  });
+
+  it('runs the investigation as the AI, and never through the button that pins a card (N2)', async () => {
+    const { host, spy } = build('agent');
+    await host.tools.call('investigate_run', { ticket: 'OPS-12' });
+    expect(spy.runs).toBe(1);
+    expect(spy.writes).not.toContain('runTemplate');
+  });
+
+  it('says which tickets it read, for the audit of personal data read', async () => {
+    const { host, spy } = build('agent');
+    await host.tools.call('summarize_ticket', { ticket: 'OPS-12' });
+    await host.tools.call('search_tickets', {});
+    await host.tools.call('explain_sla', { ticket: 'OPS-12' });
+    expect(spy.reads).toEqual(['OPS-12', 'OPS-12', 'OPS-12']);
+  });
+
+  it('puts the people named in a fact in its dictionary: staff as well as the customer', async () => {
+    const lead = build('lead').host;
+    const load = lead.facts('team_load', await lead.tools.call('team_load', {}));
+    expect(load[0]?.names).toEqual(['Mali']);
+    const status = lead.facts('team_status', await lead.tools.call('team_status', {}));
+    expect(status.map((fact) => fact.names)).toEqual([['Mali'], ['Nok']]);
+    const search = lead.facts('search_tickets', await lead.tools.call('search_tickets', {}));
+    expect(search[0]?.names).toEqual(['Mali']);
+    const read = lead.facts(
+      'summarize_ticket',
+      await lead.tools.call('summarize_ticket', { ticket: 'OPS-12' }),
+    );
+    expect(read[0]?.names).toEqual(expect.arrayContaining(['Jane Doe', 'Mali']));
   });
 });

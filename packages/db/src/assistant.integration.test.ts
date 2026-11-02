@@ -153,12 +153,12 @@ describe('the assistant tables', () => {
   it('keeps one summary per person and screen', async () => {
     await app.query(
       `INSERT INTO ai_summary (kind, user_id, fingerprint, claims, data_as_of) VALUES ('brief', $1, 'a', '[]', now())
-       ON CONFLICT (kind, user_id) DO UPDATE SET fingerprint = excluded.fingerprint`,
+       ON CONFLICT (kind, user_id, locale) DO UPDATE SET fingerprint = excluded.fingerprint`,
       [userId],
     );
     await app.query(
       `INSERT INTO ai_summary (kind, user_id, fingerprint, claims, data_as_of) VALUES ('brief', $1, 'b', '[]', now())
-       ON CONFLICT (kind, user_id) DO UPDATE SET fingerprint = excluded.fingerprint`,
+       ON CONFLICT (kind, user_id, locale) DO UPDATE SET fingerprint = excluded.fingerprint`,
       [userId],
     );
     const rows = await owner().query<{ fingerprint: string }>(
