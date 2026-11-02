@@ -20,6 +20,7 @@ import { EntitySheet } from '@/components/admin/entity-sheet';
 import { LoadError } from '@/components/admin/admin-page';
 import { Moment, OpsSkeleton } from '@/components/ops/ops-bits';
 import { FormField } from '@/components/portal/form-field';
+import { IntroHint } from '@/components/intro-hint';
 import { useI18n } from '@/i18n/provider';
 import { useApi } from '@/lib/api/api-context';
 import { useSession, useUserId } from '@/lib/auth/session';
@@ -112,7 +113,7 @@ export function ServicesSection() {
             : null
         }
       />
-      <p className="text-sm text-muted-foreground">{t('ops.services.intro')}</p>
+      <IntroHint topic={t('ops.services.title')}>{t('ops.services.intro')}</IntroHint>
       {list.isPending ? (
         <OpsSkeleton rows={3} />
       ) : list.isError ? (
@@ -561,7 +562,7 @@ export function PoliciesSection() {
             : null
         }
       />
-      <p className="text-sm text-muted-foreground">{t('ops.policies.intro')}</p>
+      <IntroHint topic={t('ops.policies.title')}>{t('ops.policies.intro')}</IntroHint>
       {list.isPending ? (
         <OpsSkeleton rows={3} />
       ) : list.isError ? (
@@ -877,7 +878,7 @@ export function HeartbeatsSection() {
             : null
         }
       />
-      <p className="text-sm text-muted-foreground">{t('ops.heartbeats.intro')}</p>
+      <IntroHint topic={t('ops.heartbeats.title')}>{t('ops.heartbeats.intro')}</IntroHint>
       {list.isPending ? (
         <OpsSkeleton rows={3} />
       ) : list.isError ? (

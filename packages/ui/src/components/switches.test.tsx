@@ -1,7 +1,8 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
 import { FlagIcon } from './flag-icon.js';
+import { HelpHint } from './help-hint.js';
 import { LanguageFlags } from './language-flags.js';
 import { ThemeSwitch } from './theme-switch.js';
 import { TooltipProvider } from './tooltip.js';
@@ -73,6 +74,22 @@ describe('LanguageFlags', () => {
     // Pressing the chosen one does not leave the group empty.
     fireEvent.click(english);
     expect(onValueChange).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('HelpHint', () => {
+  it('is a button named by its label that opens the explanation and closes on Escape', async () => {
+    render(
+      <HelpHint label="More about assignment">Only people who are clocked in are picked.</HelpHint>,
+    );
+    const button = screen.getByRole('button', { name: 'More about assignment' });
+    expect(screen.queryByText(/clocked in/)).toBeNull();
+    fireEvent.click(button);
+    expect(await screen.findByText('Only people who are clocked in are picked.')).toBeVisible();
+    fireEvent.keyDown(document.activeElement ?? document.body, { key: 'Escape' });
+    await waitFor(() => {
+      expect(screen.queryByText(/clocked in/)).toBeNull();
+    });
   });
 });
 

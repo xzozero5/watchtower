@@ -13,6 +13,7 @@ import { Moment, OpsSkeleton } from '@/components/ops/ops-bits';
 import { PublishDialog } from '@/components/ops/status/publish-dialog';
 import { ComponentPicker } from '@/components/ops/status/status-posts';
 import { FormField } from '@/components/portal/form-field';
+import { IntroHint } from '@/components/intro-hint';
 import { useI18n } from '@/i18n/provider';
 import { useApi } from '@/lib/api/api-context';
 import { useSession, useUserId } from '@/lib/auth/session';
@@ -51,7 +52,9 @@ export function StatusMaintenanceSection() {
           </Button>
         ) : null}
       </div>
-      <p className="text-sm text-muted-foreground">{t('ops.statusAdmin.maintenance.intro')}</p>
+      <IntroHint topic={t('ops.statusAdmin.maintenance.title')}>
+        {t('ops.statusAdmin.maintenance.intro')}
+      </IntroHint>
       {list.isPending ? (
         <OpsSkeleton rows={3} />
       ) : list.isError ? (

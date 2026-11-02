@@ -8,6 +8,7 @@ import { OpsSkeleton } from '@/components/ops/ops-bits';
 import { StatusComponentsSection } from '@/components/ops/status/status-components';
 import { StatusMaintenanceSection } from '@/components/ops/status/status-maintenance';
 import { StatusPostsSection } from '@/components/ops/status/status-posts';
+import { IntroHint } from '@/components/intro-hint';
 import { useI18n } from '@/i18n/provider';
 import { useSession } from '@/lib/auth/session';
 import { useStatusSubscribers } from '@/lib/ops/queries';
@@ -77,7 +78,9 @@ function SubscribersSection() {
   return (
     <section aria-label={t('ops.statusAdmin.subscribers.title')} className="flex flex-col gap-2">
       <h2 className="text-sm font-semibold">{t('ops.statusAdmin.subscribers.title')}</h2>
-      <p className="text-sm text-muted-foreground">{t('ops.statusAdmin.subscribers.intro')}</p>
+      <IntroHint topic={t('ops.statusAdmin.subscribers.title')}>
+        {t('ops.statusAdmin.subscribers.intro')}
+      </IntroHint>
       {summary.isPending ? (
         <OpsSkeleton rows={1} />
       ) : summary.isError ? (

@@ -9,6 +9,7 @@ import { useId, useState } from 'react';
 import { LoadError } from '@/components/admin/admin-page';
 import { Moment, OpsSkeleton } from '@/components/ops/ops-bits';
 import { FormField } from '@/components/portal/form-field';
+import { IntroHint } from '@/components/intro-hint';
 import { useI18n } from '@/i18n/provider';
 import { isApiError } from '@/lib/api/errors';
 import { useApi } from '@/lib/api/api-context';
@@ -38,7 +39,9 @@ export function CommsPanel({ incidentId }: { incidentId: string }) {
         <h3 id="comms-heading" className="text-sm font-semibold">
           {t('ops.incidents.comms.heading')}
         </h3>
-        <p className="text-sm text-muted-foreground">{t('ops.incidents.comms.intro')}</p>
+        <IntroHint topic={t('ops.incidents.comms.heading')}>
+          {t('ops.incidents.comms.intro')}
+        </IntroHint>
       </div>
       {can('incident.create') ? <DraftForm incidentId={incidentId} /> : null}
       {comms.isPending ? (

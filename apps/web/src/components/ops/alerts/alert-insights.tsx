@@ -7,6 +7,7 @@ import { useState } from 'react';
 import { LoadError } from '@/components/admin/admin-page';
 import { AppLink } from '@/components/app-link';
 import { AlertSeverityBadge, Moment, OpsSkeleton } from '@/components/ops/ops-bits';
+import { IntroHint } from '@/components/intro-hint';
 import { useI18n } from '@/i18n/provider';
 import { useCorrelations, useNoise, useServices } from '@/lib/ops/queries';
 
@@ -23,7 +24,7 @@ export function CorrelationGroups() {
       <h2 id="alert-groups" className="text-sm font-semibold">
         {t('ops.alerts.groups.heading')}
       </h2>
-      <p className="text-sm text-muted-foreground">{t('ops.alerts.groups.intro')}</p>
+      <IntroHint topic={t('ops.alerts.groups.heading')}>{t('ops.alerts.groups.intro')}</IntroHint>
       {groups.isPending ? (
         <OpsSkeleton rows={3} />
       ) : groups.isError ? (
@@ -96,7 +97,7 @@ export function NoiseReport() {
           </Select>
         </label>
       </div>
-      <p className="text-sm text-muted-foreground">{t('ops.alerts.noise.intro')}</p>
+      <IntroHint topic={t('ops.alerts.noise.heading')}>{t('ops.alerts.noise.intro')}</IntroHint>
       {noise.isPending ? (
         <OpsSkeleton rows={4} />
       ) : noise.isError ? (

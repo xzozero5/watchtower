@@ -106,6 +106,7 @@ export {
   type ConfidenceDotsProps,
 } from './components/confidence-dots.js';
 export { SectionHeading, type SectionHeadingProps } from './components/section-heading.js';
+export { HelpHint, type HelpHintProps } from './components/help-hint.js';
 export { FlagIcon, type FlagCode } from './components/flag-icon.js';
 export {
   LanguageFlags,

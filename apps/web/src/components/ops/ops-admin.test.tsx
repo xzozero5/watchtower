@@ -77,7 +77,9 @@ describe('Status page admin: publishing is a person pressing a button (N3)', () 
     await user.click(await screen.findByRole('tab', { name: 'Subscribers' }));
     const confirmed = await screen.findByText('Confirmed');
     expect(confirmed.parentElement).toHaveTextContent('12');
-    expect(screen.getByText(/Addresses are never listed/)).toBeVisible();
+    // The note sits behind a hint on the section.
+    await user.click(screen.getByRole('button', { name: 'More about Subscribers' }));
+    expect(await screen.findByText(/Addresses are never listed/)).toBeVisible();
   });
 
   it('keeps a component hidden unless it is shown on purpose', async () => {
