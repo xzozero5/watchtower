@@ -11,7 +11,12 @@ import {
   type ChannelType,
   type ClientTicket,
   type DuplicateSuggestions,
+  type SimilarTickets,
+  type SimilarTicketsQuery,
+  SIMILAR_TICKET_LIMIT,
+  SIMILAR_TICKET_THRESHOLD,
   type TicketDetail,
+  type TicketLink,
   type TicketListQuery,
   type TicketPriority,
   type TicketSlaView,
@@ -40,7 +45,7 @@ import {
 } from 'drizzle-orm';
 import { alias, type PgColumn } from 'drizzle-orm/pg-core';
 
-import { forbidden, notFound } from '../auth/http-errors.js';
+import { badRequest, forbidden, notFound } from '../auth/http-errors.js';
 import { assertOrgAccess, type Principal } from '../auth/principal.js';
 import {
   afterCursor,
@@ -52,11 +57,15 @@ import {
 } from '../common/keyset.js';
 import { DATABASE } from '../database/database.module.js';
 import { translatingSync } from '../domain/domain-errors.js';
+import { createMaskingSession, type MaskingSession } from '../masking/pii-masker.js';
 import { SlaRemaining } from './sla-remaining.js';
 import { TicketSlaStates, runningDueSortKey } from './sla-states.js';
 import { TICKET_KEYS, type TicketKeys } from './ticket-keys.js';
 
 export type TicketRow = typeof schema.ticket.$inferSelect;
+
+/** At most this many contact names are given to the redactor for one ticket. */
+const MASKING_NAME_LIMIT = 300;
 type Executor = Pick<Database['db'], 'select'>;
 
 /** A ticket with the names its views show, loaded in one query. */
@@ -68,6 +77,7 @@ export interface TicketViewRow {
   readonly intentKey: string | null;
   readonly intentName: string | null;
   readonly assigneeName: string | null;
+  readonly devOwnerName: string | null;
   readonly queueName: string | null;
   readonly parentNumber: number | null;
   /** The latest AI result for the ticket (T-106d), null when there is none. */
@@ -76,6 +86,7 @@ export interface TicketViewRow {
 }
 
 const parent = alias(schema.ticket, 'parent_ticket');
+const devOwner = alias(schema.users, 'dev_owner');
 
 function selection() {
   return {
@@ -86,6 +97,7 @@ function selection() {
     intentKey: schema.intent.key,
     intentName: schema.intent.name,
     assigneeName: schema.users.name,
+    devOwnerName: devOwner.name,
     queueName: schema.teamQueue.name,
     parentNumber: parent.number,
     aiState: schema.aiTicketInsight.state,
@@ -102,6 +114,7 @@ function viewQuery<Extra extends Record<string, SQL>>(executor: Executor, extra:
       .leftJoin(schema.contact, eq(schema.contact.id, schema.ticket.requesterContactId))
       .leftJoin(schema.intent, eq(schema.intent.id, schema.ticket.intentId))
       .leftJoin(schema.users, eq(schema.users.id, schema.ticket.assigneeId))
+      .leftJoin(devOwner, eq(devOwner.id, schema.ticket.devOwnerId))
       .leftJoin(schema.teamQueue, eq(schema.teamQueue.id, schema.ticket.queueId))
       .leftJoin(parent, eq(parent.id, schema.ticket.parentTicketId))
       // One row per ticket (the primary key), so this join never multiplies rows.
@@ -137,6 +150,10 @@ export function toSummary(
     assignee:
       t.assigneeId && row.assigneeName !== null
         ? { id: t.assigneeId, name: row.assigneeName }
+        : null,
+    devOwner:
+      t.devOwnerId && row.devOwnerName !== null
+        ? { id: t.devOwnerId, name: row.devOwnerName }
         : null,
     queue: t.queueId && row.queueName !== null ? { id: t.queueId, name: row.queueName } : null,
     slaPolicyId: t.slaPolicyId,
@@ -207,10 +224,50 @@ function hiddenFromClient(principal: Principal): SQL | undefined {
   return principal.orgScope.kind === 'org' ? ne(schema.ticket.channel, 'internal') : undefined;
 }
 
-/** Staff need `ticket.read`; a client needs `ticket.read.org`. Having only the other one is not enough. */
+/**
+ * A caller who reads tickets with personal data masked: `ticket.read.masked` without `ticket.read` (the
+ * `dev` role, T-137). Holding both means the full read, so a head who widens the role on purpose widens
+ * it; having neither is not a reader at all.
+ */
+export function isMasked(principal: Principal): boolean {
+  return (
+    principal.orgScope.kind === 'all' &&
+    principal.permissions.has('ticket.read.masked') &&
+    !principal.permissions.has('ticket.read')
+  );
+}
+
+/**
+ * Staff need `ticket.read`; a client needs `ticket.read.org`; a developer needs `ticket.read.masked`.
+ * Having only another one is not enough.
+ */
 export function assertCanRead(principal: Principal): void {
-  const needed = principal.orgScope.kind === 'org' ? 'ticket.read.org' : 'ticket.read';
-  if (!principal.permissions.has(needed)) throw forbidden();
+  if (principal.orgScope.kind === 'org') {
+    if (!principal.permissions.has('ticket.read.org')) throw forbidden();
+    return;
+  }
+  if (!principal.permissions.has('ticket.read') && !isMasked(principal)) throw forbidden();
+}
+
+/**
+ * A summary as a masked reader gets it: the subject and tags through the redactor, the requester's name
+ * reduced to initials, custom fields left out (free-form JSON that can hold anything), the AI one-liner
+ * redacted. Nothing is copied from the original except structure, ids, numbers and dates.
+ */
+export function maskSummary(summary: TicketSummary, session: MaskingSession): TicketSummary {
+  return {
+    ...summary,
+    subject: session.text(summary.subject),
+    requester:
+      summary.requester === null
+        ? null
+        : { id: summary.requester.id, name: session.name(summary.requester.name) ?? '***' },
+    tags: summary.tags.map((tag) => session.text(tag)),
+    customFields: {},
+    ...(summary.ai?.summary === undefined
+      ? {}
+      : { ai: { ...summary.ai, summary: session.text(summary.ai.summary) } }),
+  };
 }
 
 export function isClient(principal: Principal): boolean {
@@ -273,13 +330,108 @@ export class TicketReader {
     executor: Executor = this.database.db,
   ): Promise<TicketDetail | ClientTicket> {
     if (isClient(principal)) return toClientTicket(row, this.keys);
+    if (isMasked(principal)) return this.maskedDetail(row, executor);
     return this.staffDetail(row, executor);
+  }
+
+  /** The detail a developer gets: the same shape, personal data masked (T-137). */
+  async maskedDetail(
+    row: TicketViewRow,
+    executor: Executor = this.database.db,
+  ): Promise<TicketDetail> {
+    const detail = await this.staffDetail(row, executor);
+    const session = createMaskingSession(row.t.id, await this.namesAround(row, executor));
+    const summary = maskSummary(detail, session);
+    return {
+      ...detail,
+      ...summary,
+      requester:
+        detail.requester === null
+          ? null
+          : {
+              id: detail.requester.id,
+              name: session.name(detail.requester.name) ?? '***',
+              email: session.email(detail.requester.email),
+            },
+      mergedTickets: detail.mergedTickets.map((child) => ({
+        ...child,
+        subject: session.text(child.subject),
+      })),
+      links: (detail.links ?? []).map((link) => ({ ...link, label: session.text(link.label) })),
+      masked: true,
+    };
+  }
+
+  /**
+   * The names the redactor must know for this ticket: the requester and the other contacts of the
+   * organization (a message often names a colleague). A scoped list, as the redactor asks.
+   */
+  async namesAround(row: TicketViewRow, executor: Executor = this.database.db): Promise<string[]> {
+    const contacts = await executor
+      .select({ name: schema.contact.name })
+      .from(schema.contact)
+      .where(eq(schema.contact.orgId, row.t.orgId))
+      .limit(MASKING_NAME_LIMIT);
+    return [
+      ...new Set([
+        ...(row.requesterName === null ? [] : [row.requesterName]),
+        ...contacts.map((c) => c.name),
+      ]),
+    ];
+  }
+
+  /** Incidents and deploys a ticket is linked to, oldest first. */
+  async links(ticketId: string, executor: Executor = this.database.db): Promise<TicketLink[]> {
+    const rows = await executor
+      .select({
+        id: schema.ticketLink.id,
+        kind: schema.ticketLink.kind,
+        createdAt: schema.ticketLink.createdAt,
+        incidentId: schema.ticketLink.incidentId,
+        incidentNumber: schema.incident.number,
+        incidentTitle: schema.incident.title,
+        deployId: schema.ticketLink.deployId,
+        serviceSlug: schema.deploy.serviceSlug,
+        version: schema.deploy.version,
+        env: schema.deploy.env,
+      })
+      .from(schema.ticketLink)
+      .leftJoin(schema.incident, eq(schema.incident.id, schema.ticketLink.incidentId))
+      .leftJoin(schema.deploy, eq(schema.deploy.id, schema.ticketLink.deployId))
+      .where(eq(schema.ticketLink.ticketId, ticketId))
+      .orderBy(asc(schema.ticketLink.createdAt), asc(schema.ticketLink.id));
+    return rows.flatMap((row): TicketLink[] => {
+      if (row.kind === 'incident' && row.incidentId !== null) {
+        return [
+          {
+            id: row.id,
+            kind: 'incident',
+            targetId: row.incidentId,
+            label: `INC-${String(row.incidentNumber ?? '')} ${row.incidentTitle ?? ''}`.trim(),
+            createdAt: row.createdAt.toISOString(),
+          },
+        ];
+      }
+      if (row.kind === 'deploy' && row.deployId !== null) {
+        return [
+          {
+            id: row.id,
+            kind: 'deploy',
+            targetId: row.deployId,
+            label: `${row.serviceSlug ?? ''} ${row.version ?? ''} (${row.env ?? ''})`.trim(),
+            createdAt: row.createdAt.toISOString(),
+          },
+        ];
+      }
+      return [];
+    });
   }
 
   async staffDetail(
     row: TicketViewRow,
     executor: Executor = this.database.db,
   ): Promise<TicketDetail> {
+    const links = await this.links(row.t.id, executor);
     const children = await executor
       .select({
         id: schema.ticket.id,
@@ -300,6 +452,7 @@ export class TicketReader {
         key: this.keys.format(child.number),
         subject: child.subject,
       })),
+      links,
     };
   }
 
@@ -336,12 +489,71 @@ export class TicketReader {
           rows.map((row) => row.t),
           new Date(),
         );
+    const session = isMasked(principal) ? this.pageSession(rows) : null;
     return {
       ticketId: source.t.id,
-      items: rows.map((row, index) =>
-        client ? toClientTicket(row, this.keys) : toSummary(row, this.keys, slas[index] ?? null),
-      ),
+      items: rows.map((row, index) => {
+        if (client) return toClientTicket(row, this.keys);
+        const summary = toSummary(row, this.keys, slas[index] ?? null);
+        return session === null ? summary : maskSummary(summary, session);
+      }),
     };
+  }
+
+  /**
+   * Open tickets of the organization that may be the same request as the one being typed (T-136): same
+   * requester and a similar subject, or a very similar subject. Staff only (the subjects are shown in
+   * full); a masked reader and a client do not file tickets by hand.
+   */
+  async similar(query: SimilarTicketsQuery, principal: Principal): Promise<SimilarTickets> {
+    assertCanRead(principal);
+    if (isClient(principal) || isMasked(principal)) throw forbidden();
+    const { ticket } = schema;
+    const similarity = sql<number>`similarity(lower(${ticket.subject}), lower(${query.subject}))`;
+    const sameRequester =
+      query.requesterContactId === undefined
+        ? sql<boolean>`false`
+        : sql<boolean>`${ticket.requesterContactId} = ${query.requesterContactId}`;
+    const rows = await this.database.db
+      .select({
+        id: ticket.id,
+        number: ticket.number,
+        subject: ticket.subject,
+        status: ticket.status,
+        priority: ticket.priority,
+        createdAt: ticket.createdAt,
+        similarity: similarity.as('similarity'),
+        sameRequester: sameRequester.as('same_requester'),
+      })
+      .from(ticket)
+      .where(
+        and(
+          eq(ticket.orgId, query.orgId),
+          inArray(ticket.status, [...OPEN_STATUSES]),
+          sql`${similarity} >= ${SIMILAR_TICKET_THRESHOLD}`,
+        ),
+      )
+      // By the output names: a parameter inside ORDER BY would be read as a column number.
+      .orderBy(sql`same_requester desc`, sql`similarity desc`, desc(ticket.createdAt))
+      .limit(SIMILAR_TICKET_LIMIT);
+    return {
+      items: rows.map((row) => ({
+        id: row.id,
+        key: this.keys.format(row.number),
+        subject: row.subject,
+        status: row.status as TicketStatus,
+        priority: row.priority as TicketPriority,
+        createdAt: row.createdAt.toISOString(),
+        sameRequester: row.sameRequester,
+        similarity: Math.min(1, Math.max(0, row.similarity)),
+      })),
+    };
+  }
+
+  /** One masking session for a page of tickets; it knows the requesters' names on the page. */
+  private pageSession(rows: readonly TicketViewRow[]): MaskingSession {
+    const names = rows.flatMap((row) => (row.requesterName === null ? [] : [row.requesterName]));
+    return createMaskingSession('page', [...new Set(names)]);
   }
 
   /**
@@ -355,6 +567,7 @@ export class TicketReader {
   ): (SQL | undefined)[] {
     const client = isClient(principal);
     const { ticket, message } = schema;
+    const masked = isMasked(principal);
 
     const conditions: (SQL | undefined)[] = [
       // Every query a client runs is limited to their organization, whatever else they ask for.
@@ -366,12 +579,20 @@ export class TicketReader {
       query.intentId === undefined ? undefined : eq(ticket.intentId, query.intentId),
     ];
     if (!client) {
+      if (query.devOwner === 'unassigned') conditions.push(isNull(ticket.devOwnerId));
+      else if (query.devOwner === 'me') conditions.push(eq(ticket.devOwnerId, principal.userId));
+      else if (query.devOwner !== undefined) conditions.push(eq(ticket.devOwnerId, query.devOwner));
       if (query.assignee === 'unassigned') conditions.push(isNull(ticket.assigneeId));
       else if (query.assignee === 'me') conditions.push(eq(ticket.assigneeId, principal.userId));
       else if (query.assignee !== undefined) conditions.push(eq(ticket.assigneeId, query.assignee));
       if (query.queueId !== undefined) conditions.push(eq(ticket.queueId, query.queueId));
       if (query.channel !== undefined) conditions.push(eq(ticket.channel, query.channel));
-      if (query.tag !== undefined) conditions.push(arrayContains(ticket.tags, [query.tag]));
+      if (query.tag !== undefined) {
+        // A tag is free text a person typed, so it is masked on the way out and cannot be searched on
+        // the way in either (same oracle as the text search).
+        if (masked) throw badRequest('Filtering by tag needs full access');
+        conditions.push(arrayContains(ticket.tags, [query.tag]));
+      }
       if (query.overdue === true) {
         conditions.push(
           inArray(ticket.status, [...OPEN_STATUSES]),
@@ -386,28 +607,37 @@ export class TicketReader {
 
     if (query.q !== undefined) {
       const ticketNumber = this.keys.parse(query.q);
+      // Searching the text would let a masked reader find out who wrote what by trying addresses and
+      // numbers (an oracle on the very data that is hidden). They find a ticket by its number.
+      if (masked && ticketNumber === null) {
+        throw badRequest(
+          'Search by ticket number (for example OPS-1234); text search needs full access',
+        );
+      }
       const pattern = likeContains(query.q);
       conditions.push(
-        or(
-          ticketNumber === null ? undefined : eq(ticket.number, ticketNumber),
-          ilike(ticket.subject, pattern),
-          // The text of messages is searched too, but a client's search never reaches an internal note.
-          exists(
-            this.database.db
-              .select({ one: sql`1` })
-              .from(message)
-              .where(
-                and(
-                  eq(message.ticketId, ticket.id),
-                  ilike(message.bodyText, pattern),
-                  client ? eq(message.visibility, 'public') : undefined,
-                  client
-                    ? notInArray(message.deliveryStatus, [...CLIENT_HIDDEN_DELIVERY_STATUSES])
-                    : undefined,
-                ),
+        masked
+          ? eq(ticket.number, ticketNumber ?? -1)
+          : or(
+              ticketNumber === null ? undefined : eq(ticket.number, ticketNumber),
+              ilike(ticket.subject, pattern),
+              // The text of messages is searched too, but a client's search never reaches an internal note.
+              exists(
+                this.database.db
+                  .select({ one: sql`1` })
+                  .from(message)
+                  .where(
+                    and(
+                      eq(message.ticketId, ticket.id),
+                      ilike(message.bodyText, pattern),
+                      client ? eq(message.visibility, 'public') : undefined,
+                      client
+                        ? notInArray(message.deliveryStatus, [...CLIENT_HIDDEN_DELIVERY_STATUSES])
+                        : undefined,
+                    ),
+                  ),
               ),
-          ),
-        ),
+            ),
       );
     }
     return conditions;
@@ -477,12 +707,13 @@ export class TicketReader {
           page.rows.map((entry) => entry.row.t),
           new Date(),
         );
+    const session = isMasked(principal) ? this.pageSession(page.rows.map((e) => e.row)) : null;
     return {
-      items: page.rows.map((entry, index) =>
-        client
-          ? toClientTicket(entry.row, this.keys)
-          : toSummary(entry.row, this.keys, slas[index] ?? null),
-      ),
+      items: page.rows.map((entry, index) => {
+        if (client) return toClientTicket(entry.row, this.keys);
+        const summary = toSummary(entry.row, this.keys, slas[index] ?? null);
+        return session === null ? summary : maskSummary(summary, session);
+      }),
       nextCursor: page.nextCursor,
     };
   }

@@ -28,7 +28,7 @@ describe('the dev role (T-137)', () => {
     expect(ROLES).toContain('dev');
     expect(WORKSPACE_ROLES).toEqual([...STAFF_ROLES, 'dev']);
     // Assignment, round robin and on-shift alerts read STAFF_ROLES: a dev must never be in it.
-    expect(isStaffRole('dev' as never)).toBe(false);
+    expect(isStaffRole('dev')).toBe(false);
     expect(STAFF_ROLES as readonly string[]).not.toContain('dev');
   });
 
@@ -132,8 +132,8 @@ describe('what a developer hears in realtime (T-137)', () => {
       recipientId: ID,
       data: {
         notificationId: ID,
-        kind: 'ticket_assigned',
-        severity: 'info',
+        kind: 'ticket.assigned',
+        severity: 'normal',
         orgId: null,
         queueId: null,
         channel: null,
@@ -175,7 +175,7 @@ describe('a ticket filed by hand (T-136)', () => {
       }).success,
     ).toBe(false);
     for (const missing of ['orgId', 'channel', 'subject', 'body'] as const) {
-      const { [missing]: _removed, ...rest } = base;
+      const rest = Object.fromEntries(Object.entries(base).filter(([key]) => key !== missing));
       expect(createManualTicketSchema.safeParse({ ...rest, requesterContactId: ID }).success).toBe(
         false,
       );

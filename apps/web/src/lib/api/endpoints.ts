@@ -4,9 +4,11 @@ import {
   intentListSchema,
   lineQuotaSchema,
   magicLinkAcceptedSchema,
+  manualTicketResultSchema,
   outboundSettingsSchema,
   replyResultSchema,
   sessionInfoSchema,
+  similarTicketsSchema,
   teamQueueListSchema,
   ticketAiInsightSchema,
   ticketDetailResponseSchema,
@@ -17,10 +19,12 @@ import {
   type AssignTicket,
   type BreakGlassLogin,
   type ChangeStatus,
+  type CreateManualTicket,
   type DevLoginRequest,
   type Note,
   type RejectAiDraft,
   type Reply,
+  type SimilarTicketsQuery,
   type TicketListQuery,
   type UpdateTicket,
 } from '@watchtower/shared';
@@ -189,6 +193,24 @@ export function createEndpoints(client: ApiClient) {
         path: `${refPath(ref)}/status`,
         body,
         schema: ticketDetailResponseSchema,
+      }),
+
+    /** A ticket filed by hand: a call, a visit, a chat that is not connected (T-136). */
+    createManualTicket: (body: CreateManualTicket) =>
+      client.request({
+        method: 'POST',
+        path: '/v1/tickets/manual',
+        body,
+        schema: manualTicketResultSchema,
+      }),
+
+    /** Open tickets that may be the same request as the one being typed. */
+    similarTickets: (query: SimilarTicketsQuery, signal?: AbortSignal) =>
+      client.request({
+        path: '/v1/tickets/similar',
+        query,
+        schema: similarTicketsSchema,
+        ...(signal ? { signal } : {}),
       }),
 
     assign: (ref: string, body: AssignTicket) =>

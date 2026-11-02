@@ -1,4 +1,9 @@
-import { DEFAULT_ROLE_PERMISSIONS, MANUAL_CHANNELS, ROLES, TICKET_CHANNELS } from '@watchtower/shared';
+import {
+  DEFAULT_ROLE_PERMISSIONS,
+  MANUAL_CHANNELS,
+  ROLES,
+  TICKET_CHANNELS,
+} from '@watchtower/shared';
 import type { Pool } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
@@ -139,7 +144,9 @@ describe('0080 dev role and manual ticket', () => {
     await expect(migrateDown(owner())).rejects.toThrow(/users with role dev exist/);
     await owner().query(`DELETE FROM users WHERE role = 'dev'`);
     await expect(migrateDown(owner())).rejects.toThrow(/manual channel/);
-    await owner().query(`DELETE FROM ticket WHERE channel IN ('phone', 'walk_in', 'chat', 'other')`);
+    await owner().query(
+      `DELETE FROM ticket WHERE channel IN ('phone', 'walk_in', 'chat', 'other')`,
+    );
 
     expect(await migrateDown(owner())).toEqual([MIGRATION]);
     const gone = await owner().query(
@@ -152,7 +159,7 @@ describe('0080 dev role and manual ticket', () => {
     expect(column.rowCount).toBe(0);
 
     expect(await migrateUp(owner())).toEqual([MIGRATION, ...later]);
-    const back = await owner().query(
+    const back = await owner().query<{ n: number }>(
       `SELECT count(*)::int AS n FROM role_permissions WHERE role = 'dev'`,
     );
     expect(back.rows[0]?.n).toBe(DEFAULT_ROLE_PERMISSIONS.dev.length);

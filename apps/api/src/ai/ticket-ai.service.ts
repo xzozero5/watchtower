@@ -26,7 +26,9 @@ import { DOMAIN, type Domain } from '../domain/domain.module.js';
 import { domainContext, settle } from '../domain/domain-context.js';
 import { translating } from '../domain/domain-errors.js';
 import type { UnitOfWork } from '../realtime/unit-of-work.js';
-import { TicketReader } from '../tickets/ticket-reader.js';
+import { createMaskingSession } from '../masking/pii-masker.js';
+import { TicketReader, isMasked } from '../tickets/ticket-reader.js';
+import { maskInsight } from './mask-insight.js';
 
 type InsightRow = typeof schema.aiTicketInsight.$inferSelect;
 type DraftRow = typeof schema.aiDraft.$inferSelect;
@@ -131,7 +133,17 @@ export class TicketAiService {
               .where(eq(schema.aiDraft.id, row.draftId))
               .limit(1)
           )[0];
-    return { ticketId: ticket.t.id, insight: toTicketAiInsight(row, draft) };
+    const insight = toTicketAiInsight(row, draft);
+    // A developer reads the brief masked (T-137): the redactor again, and no draft reply.
+    return {
+      ticketId: ticket.t.id,
+      insight: isMasked(principal)
+        ? maskInsight(
+            insight,
+            createMaskingSession(ticket.t.id, await this.tickets.namesAround(ticket)),
+          )
+        : insight,
+    };
   }
 
   /**

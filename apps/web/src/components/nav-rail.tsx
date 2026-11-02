@@ -12,6 +12,7 @@ import {
   type LucideIcon,
   PanelLeft,
   Settings2,
+  SquarePen,
 } from 'lucide-react';
 import Image from 'next/image';
 import type { ReactNode } from 'react';
@@ -128,7 +129,7 @@ function RailButton({
   );
 }
 
-export type RailDestination = 'queue' | 'home' | 'admin' | 'shift';
+export type RailDestination = 'queue' | 'home' | 'admin' | 'shift' | 'newTicket';
 
 export interface NavRailProps {
   /** The page being shown. */
@@ -159,6 +160,8 @@ export function NavRail({
   const { can } = useSession();
   const handler = can('ticket.handle');
   const canReadTickets = can('ticket.read');
+  // Filing a ticket by hand is for the people who handle them (T-136); a developer or a client does not.
+  const canFileTicket = can('ticket.create') && handler;
   const showHome = can(HOME_PERMISSION);
   const showAdmin = adminSectionsFor(can).length > 0;
   const shiftIds = new Set(shiftSectionsFor(can).map((section) => section.id));
@@ -209,6 +212,16 @@ export function NavRail({
               }
             : { href: '/' })}
         />
+        {canFileTicket ? (
+          <RailButton
+            icon={SquarePen}
+            tone="blue"
+            label={t('rail.newTicket')}
+            expanded={expanded}
+            current={destination === 'newTicket'}
+            href="/tickets/new"
+          />
+        ) : null}
         {handler || shiftIds.size > 0 ? (
           <>
             {shiftIds.has('shift') ? (

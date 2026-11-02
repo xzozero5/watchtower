@@ -1,6 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import {
   lockTicketRow,
+  type CreateManualTicketResult,
   replyDeliveryStatus,
   type CreateTicketInput,
   type CreateTicketResult,
@@ -11,6 +12,8 @@ import {
 } from '@watchtower/domain';
 import type {
   AssignTicket,
+  CreateManualTicket,
+  CreateTicketLink,
   MergeTicket,
   Note,
   Reply,
@@ -83,6 +86,7 @@ export class TicketsService {
     status: TicketStatus,
     actor: Actor,
     reason?: string,
+    asDev = false,
   ): Promise<TicketRow> {
     return translating(async () =>
       settle(
@@ -91,7 +95,52 @@ export class TicketsService {
           ref,
           status,
           reason,
+          asDev,
         }),
+      ),
+    );
+  }
+
+  /** A ticket filed by hand: contact, ticket, first message and the confirmation email (T-136). */
+  async createManual(
+    uow: UnitOfWork,
+    input: CreateManualTicket,
+    actor: Actor,
+  ): Promise<CreateManualTicketResult> {
+    return translating(async () =>
+      settle(uow, await this.domain.tickets.createManual(uow.tx, this.context(actor), input)),
+    );
+  }
+
+  /** The caller becomes the dev owner (T-137). */
+  async devPickUp(uow: UnitOfWork, ref: string, actor: Actor): Promise<TicketRow> {
+    return translating(async () =>
+      settle(uow, await this.domain.tickets.devPickUp(uow.tx, this.context(actor), { ref })),
+    );
+  }
+
+  async devRelease(uow: UnitOfWork, ref: string, actor: Actor): Promise<TicketRow> {
+    return translating(async () =>
+      settle(uow, await this.domain.tickets.devRelease(uow.tx, this.context(actor), { ref })),
+    );
+  }
+
+  async linkAdd(
+    uow: UnitOfWork,
+    ref: string,
+    link: CreateTicketLink,
+    actor: Actor,
+  ): Promise<{ ticket: TicketRow; linkId: string; created: boolean }> {
+    return translating(async () =>
+      settle(uow, await this.domain.tickets.linkAdd(uow.tx, this.context(actor), { ref, link })),
+    );
+  }
+
+  async linkRemove(uow: UnitOfWork, ref: string, linkId: string, actor: Actor): Promise<TicketRow> {
+    return translating(async () =>
+      settle(
+        uow,
+        await this.domain.tickets.linkRemove(uow.tx, this.context(actor), { ref, linkId }),
       ),
     );
   }

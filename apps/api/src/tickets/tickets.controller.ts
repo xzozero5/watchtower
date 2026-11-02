@@ -1,4 +1,15 @@
-import { Body, Controller, Get, HttpCode, Inject, Param, Patch, Post, Query } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  HttpCode,
+  Inject,
+  Param,
+  Patch,
+  Post,
+  Query,
+} from '@nestjs/common';
 import {
   ApiConflictResponse,
   ApiCreatedResponse,
@@ -11,14 +22,20 @@ import {
   AUDIT_ACTIONS,
   assignTicketSchema,
   changeStatusSchema,
+  createManualTicketSchema,
+  createTicketLinkSchema,
   createTicketSchema,
   duplicateSuggestionsSchema,
   mergeResultSchema,
+  manualTicketResultSchema,
   mergeTicketSchema,
   noteSchema,
   replyResultSchema,
   replySchema,
+  similarTicketsQuerySchema,
+  similarTicketsSchema,
   ticketDetailResponseSchema,
+  ticketLinkParamSchema,
   ticketListQuerySchema,
   ticketListSchema,
   ticketRefParamSchema,
@@ -30,10 +47,14 @@ import {
   type AssignTicket,
   type ChannelType,
   type ChangeStatus,
+  type CreateManualTicket,
   type CreateTicket,
+  type CreateTicketLink,
   type MergeTicket,
+  type Message,
   type Note,
   type Reply,
+  type SimilarTicketsQuery,
   type TicketListQuery,
   type TicketStatsQuery,
   type TimelineQuery,
@@ -54,9 +75,10 @@ import {
 import { badRequest, forbidden } from '../auth/http-errors.js';
 import { parseResponse } from '../common/zod-openapi.js';
 import { UnitOfWorkService } from '../realtime/unit-of-work.js';
-import { toMessage } from './message-view.js';
+import { maskMessage, toMessage } from './message-view.js';
 import { TICKET_KEYS, type TicketKeys } from './ticket-keys.js';
-import { TicketReader, assertCanRead, isClient } from './ticket-reader.js';
+import { createMaskingSession } from '../masking/pii-masker.js';
+import { TicketReader, assertCanRead, isClient, isMasked } from './ticket-reader.js';
 import {
   TicketsService,
   type Actor,
@@ -66,6 +88,7 @@ import {
 import { TimelineService } from './timeline.service.js';
 
 type RefParam = z.infer<typeof ticketRefParamSchema>;
+type LinkParam = z.infer<typeof ticketLinkParamSchema>;
 
 const actorOf = (principal: Principal): Actor => ({ type: 'user', id: principal.userId });
 
@@ -96,7 +119,7 @@ export class TicketsController {
   ) {}
 
   @Get()
-  @RequireAnyPermission('ticket.read', 'ticket.read.org')
+  @RequireAnyPermission('ticket.read', 'ticket.read.org', 'ticket.read.masked')
   // A list carries the requester's name and a search can reveal who wrote about what: it is on the
   // audit log (`pii.read`, no target id) just like reading one ticket.
   @AuditPiiRead('ticket')
@@ -108,7 +131,10 @@ export class TicketsController {
       'text of messages (Thai included) and matches an exact ticket number such as OPS-1234; a ' +
       "client's search never matches an internal note. `q` needs at least 2 characters; below 3 " +
       'the trigram index cannot be used, so combine it with another filter. Pass `nextCursor` ' +
-      'back as `cursor`. Every list is on the audit log (`pii.read`).',
+      'back as `cursor`. Every list is on the audit log (`pii.read`). A developer (`ticket.read.masked`) ' +
+      'gets the same list with personal data masked: no text search (a ticket number only), ' +
+      'subjects through the redactor, custom fields left out. `devOwner` filters by the developer ' +
+      'who picked a ticket up.',
   })
   @ApiOkResponse({ standardSchema: ticketListSchema })
   async list(
@@ -141,6 +167,59 @@ export class TicketsController {
     @CurrentPrincipal() principal: Principal,
   ) {
     return parseResponse(ticketStatsSchema, await this.reader.stats(query, principal));
+  }
+
+  // Declared before `:id` so that "similar" is not read as a ticket reference.
+  @Get('similar')
+  @RequirePermission('ticket.read')
+  @AuditPiiRead('ticket')
+  @ApiOperation({
+    summary: 'Open tickets that may be the same request as the one being filed (staff)',
+    description:
+      'For the form that files a ticket by hand: open tickets of the organization whose subject is ' +
+      'similar (trigram similarity, same requester first). Up to 5. A developer or a client gets 403.',
+  })
+  @ApiOkResponse({ standardSchema: similarTicketsSchema })
+  async similar(
+    @Query({ schema: similarTicketsQuerySchema }) query: SimilarTicketsQuery,
+    @CurrentPrincipal() principal: Principal,
+  ) {
+    const result = await this.reader.similar(query, principal);
+    AuditScope.set({ metadata: { resultCount: result.items.length } });
+    return parseResponse(similarTicketsSchema, result);
+  }
+
+  @Post('manual')
+  @RequirePermission('ticket.create', 'ticket.handle')
+  @Audited({ action: AUDIT_ACTIONS.ticketCreate, targetType: 'ticket' })
+  @ApiOperation({
+    summary: 'File a ticket by hand: a phone call, a visit, a chat that is not connected (staff)',
+    description:
+      'Needs an organization, a contact (an existing one, or a new one by address; a new contact is ' +
+      'created unverified), a subject, what the customer said and the channel (`phone`, `walk_in`, ' +
+      '`chat`, `other`). The SLA clock starts now. The customer gets an automatic "we received your ' +
+      'request" email by default when the contact already existed; for a new address set ' +
+      '`sendConfirmation: true` (the person ticks the box). `confirmation.status` says what happened. ' +
+      'Nothing can be replied on these channels: a public reply answers 409 `channel_no_outbound`; ' +
+      'record the call as an internal note. A client or a developer gets 403.',
+  })
+  @ApiCreatedResponse({ standardSchema: manualTicketResultSchema })
+  async createManual(
+    @Body({ schema: createManualTicketSchema }) body: CreateManualTicket,
+    @CurrentPrincipal() principal: Principal,
+  ) {
+    if (principal.orgScope.kind === 'org') throw forbidden();
+    const created = await this.uow.run((uow) =>
+      this.tickets.createManual(uow, body, actorOf(principal)),
+    );
+    AuditScope.set({ metadata: { channel: body.channel, confirmation: created.confirmation } });
+    return parseResponse(manualTicketResultSchema, {
+      ticket: await this.reader.staffDetail(
+        await this.reader.viewById(created.ticket.id, principal),
+      ),
+      contact: { id: created.contact.id, created: created.contactCreated },
+      confirmation: { status: created.confirmation },
+    });
   }
 
   @Post()
@@ -207,7 +286,7 @@ export class TicketsController {
   }
 
   @Get(':id')
-  @RequireAnyPermission('ticket.read', 'ticket.read.org')
+  @RequireAnyPermission('ticket.read', 'ticket.read.org', 'ticket.read.masked')
   // The requester's address is personal data: every read of a ticket is on the audit log.
   @AuditPiiRead('ticket')
   @ApiOperation({
@@ -226,7 +305,7 @@ export class TicketsController {
   }
 
   @Get(':id/duplicates')
-  @RequireAnyPermission('ticket.read', 'ticket.read.org')
+  @RequireAnyPermission('ticket.read', 'ticket.read.org', 'ticket.read.masked')
   @AuditPiiRead('ticket')
   @ApiOperation({
     summary: 'Tickets this one may duplicate',
@@ -269,14 +348,17 @@ export class TicketsController {
 
   @Post(':id/status')
   @HttpCode(200)
-  @RequirePermission('ticket.handle')
+  @RequireAnyPermission('ticket.handle', 'ticket.dev.work')
   @Audited({ action: AUDIT_ACTIONS.ticketStatusChange, targetType: 'ticket' })
   @ApiOperation({
     summary: 'Change the status',
     description:
       'Only transitions the workflow allows (GET /v1/ticket-workflow). The SLA clock stops in ' +
       'waiting_on_customer and restarts with the time that was left. A ticket becomes merged only ' +
-      'through the merge endpoint.',
+      'through the merge endpoint. Moving a ticket to `waiting_on_dev` needs a `reason`, which is ' +
+      'saved as an internal note; the queue and the assignee stay. A developer (`ticket.dev.work` ' +
+      'without `ticket.handle`) moves a ticket only between `open` and `waiting_on_dev`, and ' +
+      'handing it back needs a `reason` too (403 otherwise). The customer sees "In progress" for both.',
   })
   @ApiOkResponse({ standardSchema: ticketDetailResponseSchema })
   @ApiConflictResponse({ description: 'Transition not allowed (invalid_transition)' })
@@ -285,8 +367,17 @@ export class TicketsController {
     @Body({ schema: changeStatusSchema }) body: ChangeStatus,
     @CurrentPrincipal() principal: Principal,
   ) {
+    // Someone who may only do the developer's work is held to the developer's two statuses.
+    const asDev = !principal.permissions.has('ticket.handle');
     const row = await this.uow.run((uow) =>
-      this.tickets.changeStatus(uow, params.id, body.status, actorOf(principal), body.reason),
+      this.tickets.changeStatus(
+        uow,
+        params.id,
+        body.status,
+        actorOf(principal),
+        body.reason,
+        asDev,
+      ),
     );
     return parseResponse(ticketDetailResponseSchema, await this.reader.detail(row.id, principal));
   }
@@ -405,11 +496,13 @@ export class TicketsController {
   }
 
   @Post(':id/notes')
-  @RequirePermission('ticket.handle')
+  @RequireAnyPermission('ticket.handle', 'ticket.dev.work')
   @Audited({ action: AUDIT_ACTIONS.ticketNote, targetType: 'ticket' })
   @ApiOperation({
     summary: 'Internal note',
-    description: 'Staff only. Never sent to the customer and never visible to a client.',
+    description:
+      'Staff and developers. Never sent to the customer and never visible to a client. A ' +
+      'developer reads the note back masked, like every message.',
   })
   @ApiCreatedResponse({ standardSchema: replyResultSchema })
   async note(
@@ -420,21 +513,107 @@ export class TicketsController {
     const result = await this.uow.run((uow) =>
       this.tickets.note(uow, params.id, body, { userId: principal.userId }, actorOf(principal)),
     );
+    const message = toMessage(result.message, {
+      ticketKey: this.keys.format(result.ticket.number),
+      channel: result.ticket.channel as ChannelType,
+      senderUserName: principal.name,
+      senderUserRole: principal.role,
+      senderContactName: null,
+      audience: 'staff',
+    });
+    const ticket = await this.reader.detail(result.ticket.id, principal);
     return parseResponse(replyResultSchema, {
-      message: toMessage(result.message, {
-        ticketKey: this.keys.format(result.ticket.number),
-        channel: result.ticket.channel as ChannelType,
-        senderUserName: principal.name,
-        senderUserRole: principal.role,
-        senderContactName: null,
-        audience: 'staff',
-      }),
-      ticket: await this.reader.detail(result.ticket.id, principal),
+      message: isMasked(principal) ? await this.maskedMessage(message, principal) : message,
+      ticket,
     });
   }
 
+  @Post(':id/dev-owner')
+  @HttpCode(200)
+  @RequirePermission('ticket.dev.work')
+  @Audited({ action: AUDIT_ACTIONS.ticketDevPickup, targetType: 'ticket' })
+  @ApiOperation({
+    summary: 'Pick the ticket up as its developer (self only)',
+    description:
+      'The caller becomes `devOwner`. There is no way to name someone else. The assignee, the queue ' +
+      'and the status do not change: the agent stays accountable. 409 when another developer ' +
+      'already holds it.',
+  })
+  @ApiOkResponse({ standardSchema: ticketDetailResponseSchema })
+  @ApiConflictResponse({ description: 'Another developer picked it up' })
+  async devPickUp(
+    @Param({ schema: ticketRefParamSchema }) params: RefParam,
+    @CurrentPrincipal() principal: Principal,
+  ) {
+    const row = await this.uow.run((uow) =>
+      this.tickets.devPickUp(uow, params.id, actorOf(principal)),
+    );
+    return parseResponse(ticketDetailResponseSchema, await this.reader.detail(row.id, principal));
+  }
+
+  @Delete(':id/dev-owner')
+  @HttpCode(200)
+  @RequirePermission('ticket.dev.work')
+  @Audited({ action: AUDIT_ACTIONS.ticketDevRelease, targetType: 'ticket' })
+  @ApiOperation({
+    summary: 'Let the ticket go as its developer',
+    description: 'Only the developer who picked it up (403 for anyone else).',
+  })
+  @ApiOkResponse({ standardSchema: ticketDetailResponseSchema })
+  async devRelease(
+    @Param({ schema: ticketRefParamSchema }) params: RefParam,
+    @CurrentPrincipal() principal: Principal,
+  ) {
+    const row = await this.uow.run((uow) =>
+      this.tickets.devRelease(uow, params.id, actorOf(principal)),
+    );
+    return parseResponse(ticketDetailResponseSchema, await this.reader.detail(row.id, principal));
+  }
+
+  @Post(':id/links')
+  @HttpCode(200)
+  @RequireAnyPermission('ticket.handle', 'ticket.dev.work')
+  @Audited({ action: AUDIT_ACTIONS.ticketLinkAdd, targetType: 'ticket' })
+  @ApiOperation({
+    summary: 'Link the ticket to an incident or a deploy that already exists',
+    description:
+      'A reference only: nothing changes on the incident or the deploy, and neither can be ' +
+      'created here. Linking the same target twice is not an error.',
+  })
+  @ApiOkResponse({ standardSchema: ticketDetailResponseSchema })
+  async linkAdd(
+    @Param({ schema: ticketRefParamSchema }) params: RefParam,
+    @Body({ schema: createTicketLinkSchema }) body: CreateTicketLink,
+    @CurrentPrincipal() principal: Principal,
+  ) {
+    const result = await this.uow.run((uow) =>
+      this.tickets.linkAdd(uow, params.id, body, actorOf(principal)),
+    );
+    return parseResponse(
+      ticketDetailResponseSchema,
+      await this.reader.detail(result.ticket.id, principal),
+    );
+  }
+
+  @Delete(':id/links/:linkId')
+  @HttpCode(200)
+  @RequireAnyPermission('ticket.handle', 'ticket.dev.work')
+  @Audited({ action: AUDIT_ACTIONS.ticketLinkRemove, targetType: 'ticket' })
+  @ApiOperation({ summary: 'Remove a link to an incident or a deploy' })
+  @ApiOkResponse({ standardSchema: ticketDetailResponseSchema })
+  @ApiNotFoundResponse({ description: 'No such link on this ticket' })
+  async linkRemove(
+    @Param({ schema: ticketLinkParamSchema }) params: LinkParam,
+    @CurrentPrincipal() principal: Principal,
+  ) {
+    const row = await this.uow.run((uow) =>
+      this.tickets.linkRemove(uow, params.id, params.linkId, actorOf(principal)),
+    );
+    return parseResponse(ticketDetailResponseSchema, await this.reader.detail(row.id, principal));
+  }
+
   @Get(':id/timeline')
-  @RequireAnyPermission('ticket.read', 'ticket.read.org')
+  @RequireAnyPermission('ticket.read', 'ticket.read.org', 'ticket.read.masked')
   @AuditPiiRead('ticket')
   @ApiOperation({
     summary: 'The conversation: messages, internal notes (staff only) and ticket events',
@@ -455,6 +634,13 @@ export class TicketsController {
     const first = page.entries[0];
     if (first) AuditScope.set({ targetId: first.ticketId });
     return parseResponse(timelinePageSchema, page);
+  }
+
+  /** The message a developer just wrote, read back masked like every message they see. */
+  private async maskedMessage(message: Message, principal: Principal): Promise<Message> {
+    const row = await this.reader.viewById(message.ticketId, principal);
+    const session = createMaskingSession(message.ticketId, await this.reader.namesAround(row));
+    return maskMessage(message, session);
   }
 }
 

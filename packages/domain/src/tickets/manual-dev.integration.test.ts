@@ -6,6 +6,7 @@ import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { createPolicyGate } from '../autonomy/gate.js';
+import type { Actor } from '../types.js';
 import { DomainError } from '../errors.js';
 import {
   addOrg,
@@ -271,24 +272,26 @@ describe('a ticket filed by hand (T-136)', () => {
       }),
     );
     for (const channel of NO_OUTBOUND_CHANNELS) {
-      const ticket = await env.tx((tx) =>
-        channel === 'internal'
-          ? env.domain.tickets.create(tx, env.ctx(agent.actor), {
-              orgId: org.id,
-              subject: 's',
-              body: 'b',
-              channel: 'internal',
-            })
-          : env.domain.tickets.createManual(tx, env.ctx(agent.actor), {
-              orgId: org.id,
-              subject: 's',
-              body: 'b',
-              channel: channel as (typeof MANUAL_CHANNELS)[number],
-              requesterContactId: contact.id,
-              sendConfirmation: false,
-            }),
-      );
-      const id = 'ticket' in ticket.value ? ticket.value.ticket.id : '';
+      const id = await env.tx(async (tx) => {
+        if (channel === 'internal') {
+          const made = await env.domain.tickets.create(tx, env.ctx(agent.actor), {
+            orgId: org.id,
+            subject: 's',
+            body: 'b',
+            channel: 'internal',
+          });
+          return made.value.ticket.id;
+        }
+        const made = await env.domain.tickets.createManual(tx, env.ctx(agent.actor), {
+          orgId: org.id,
+          subject: 's',
+          body: 'b',
+          channel: channel as (typeof MANUAL_CHANNELS)[number],
+          requesterContactId: contact.id,
+          sendConfirmation: false,
+        });
+        return made.value.ticket.id;
+      });
       const error = await refusal(
         env.tx((tx) =>
           env.domain.tickets.reply(tx, env.ctx(agent.actor), {
@@ -366,7 +369,7 @@ describe('the developer part of a ticket (T-137)', () => {
   const move = (
     ref: string,
     status: 'open' | 'waiting_on_dev' | 'resolved',
-    actor: { type: 'user'; id: string },
+    actor: Actor,
     options: { reason?: string; asDev?: boolean } = {},
   ) =>
     env.tx((tx) =>

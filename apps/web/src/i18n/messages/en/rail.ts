@@ -3,6 +3,7 @@ export const railEn = {
   queue: 'Queue',
   home: 'Home',
   admin: 'Admin',
+  newTicket: 'New ticket',
   shift: 'My shift',
   brief: 'Daily brief',
   handoff: 'Shift handoff',

@@ -217,6 +217,10 @@ export async function changeTicketStatus(
   const note = input.reason?.trim() ?? '';
   const needsNote = statusChangeNeedsNote(from, input.status, byDev);
   if (needsNote && note === '') {
+    // A move the workflow does not allow is refused as that, whatever it is missing.
+    if (!(await workflowAllows(tx, from, input.status))) {
+      throw invalidTransition(`A ticket cannot go from ${from} to ${input.status}`);
+    }
     throw badRequest('Moving a ticket to or from waiting on dev needs a note (reason)');
   }
   const after = await applyStatus(tx, ctx, fx, row, input.status, {

@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import {
   DEFAULT_ROLE_PERMISSIONS,
   LOCKED_HEAD_PERMISSIONS,
+  ROLES,
   type Role,
   type SessionInfo,
 } from '@watchtower/shared';
@@ -311,13 +312,7 @@ describe('role editor (permissions change without a deploy)', () => {
       catalog: { key: string; description: string }[];
     }>('/v1/rbac/roles');
     expect(response.status).toBe(200);
-    expect(response.body.roles.map((entry) => entry.role)).toEqual([
-      'agent',
-      'lead',
-      'head',
-      'client',
-      'system',
-    ]);
+    expect(response.body.roles.map((entry) => entry.role)).toEqual([...ROLES]);
     expect(response.body.catalog.length).toBeGreaterThan(30);
     expect(response.body.roles.find((entry) => entry.role === 'client')?.permissions).toEqual(
       expect.arrayContaining(['ticket.read.org', 'ticket.reply.own']),

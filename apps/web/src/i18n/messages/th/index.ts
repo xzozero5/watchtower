@@ -17,6 +17,7 @@ import { keymapTh } from './keymap';
 import { liveTh } from './live';
 import { loadingTh } from './loading';
 import { loginTh } from './login';
+import { newTicketTh } from './newTicket';
 import { notificationsTh } from './notifications';
 import { outboundTh } from './outbound';
 import { paletteTh } from './palette';
@@ -72,6 +73,7 @@ export const th: Messages = {
   home: homeTh,
   admin: adminTh,
   portal: portalTh,
+  newTicket: newTicketTh,
   notifications: notificationsTh,
   csat: csatTh,
   shift: shiftTh,

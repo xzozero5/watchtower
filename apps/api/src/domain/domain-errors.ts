@@ -3,6 +3,7 @@ import { isDomainError, type DomainErrorCode } from '@watchtower/domain';
 import {
   badRequest,
   conflict,
+  channelNoOutbound,
   forbidden,
   invalidTransition,
   mergeNotAllowed,
@@ -21,6 +22,7 @@ const HTTP_ERRORS: Readonly<Record<DomainErrorCode, (message: string) => ApiHttp
   invalid_transition: invalidTransition,
   merge_not_allowed: mergeNotAllowed,
   ticket_not_open: ticketNotOpen,
+  channel_no_outbound: channelNoOutbound,
   bad_request: badRequest,
   policy_denied: forbidden,
   forbidden,

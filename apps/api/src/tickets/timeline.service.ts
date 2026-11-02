@@ -13,8 +13,9 @@ import { and, asc, eq, gte, inArray, notInArray, sql } from 'drizzle-orm';
 import type { Principal } from '../auth/principal.js';
 import { afterCursor, decodeCursor, encodeCursor, preciseTimestamp } from '../common/keyset.js';
 import { DATABASE } from '../database/database.module.js';
-import { toMessage, toTimelineEvent, type Audience } from './message-view.js';
-import { TicketReader, isClient } from './ticket-reader.js';
+import { maskEntry, toMessage, toTimelineEvent, type Audience } from './message-view.js';
+import { createMaskingSession } from '../masking/pii-masker.js';
+import { TicketReader, isClient, isMasked } from './ticket-reader.js';
 import { TICKET_KEYS, type TicketKeys } from './ticket-keys.js';
 
 /**
@@ -174,8 +175,15 @@ export class TimelineService {
 
     const page = merged.slice(0, query.limit);
     const last = page.at(-1);
+    // A developer reads the same conversation with personal data masked (T-137), one session for the page.
+    const session = isMasked(principal)
+      ? createMaskingSession(root.t.id, await this.reader.namesAround(root))
+      : null;
     return {
-      entries: page.map((entry) => entry.build()),
+      entries: page.map((entry) => {
+        const built = entry.build();
+        return session === null ? built : maskEntry(built, session);
+      }),
       nextCursor:
         merged.length > query.limit && last ? encodeCursor({ v: last.sortKey, id: last.id }) : null,
     };
