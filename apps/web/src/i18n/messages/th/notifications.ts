@@ -4,9 +4,9 @@ import type { Widen } from '../types';
 /** Thai copy of the notification center and the P1 banner. Same keys as en/notifications.ts. */
 export const notificationsTh: Widen<typeof notificationsEn> = {
   center: {
-    title: 'การแจ้งเตือน',
-    openLabel: 'การแจ้งเตือน',
-    openLabelUnread: 'การแจ้งเตือน ยังไม่ได้อ่าน {count} รายการ',
+    title: 'กล่องแจ้งเตือน',
+    openLabel: 'กล่องแจ้งเตือน',
+    openLabelUnread: 'กล่องแจ้งเตือน ยังไม่ได้อ่าน {count} รายการ',
     unreadBadge: 'ยังไม่ได้อ่าน {count}',
     markAllRead: 'อ่านทั้งหมดแล้ว',
     markRead: 'ทำเครื่องหมายว่าอ่านแล้ว',

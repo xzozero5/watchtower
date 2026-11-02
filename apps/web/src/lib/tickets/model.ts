@@ -44,6 +44,10 @@ export interface RowModel {
   requesterId: string;
   channel: TicketChannel | null;
   assigneeName: string | null;
+  /** Who holds the ticket; absent in fixtures that predate it, null when nobody does. */
+  assigneeId?: string | null;
+  /** The team queue the ticket sits in. */
+  queueId?: string | null;
   unassigned: boolean;
   intentName: string | null;
   /** Stable key of the intent: picks its colour and icon. */
@@ -70,6 +74,12 @@ export function isOverdue(ticket: TicketItem, now: number): boolean {
   );
 }
 
+/** The digits at the end of a ticket key (`OPS-1003` gives 1003); 0 when there are none. */
+export function ticketNumber(key: string): number {
+  const match = /(\d+)$/.exec(key);
+  return match ? Number(match[1]) : 0;
+}
+
 export function toRowModel(ticket: TicketItem, now: number): RowModel {
   const staff = isStaffTicket(ticket);
   return {
@@ -83,6 +93,8 @@ export function toRowModel(ticket: TicketItem, now: number): RowModel {
     requesterId: staff ? (ticket.requester?.id ?? ticket.id) : ticket.id,
     channel: staff ? ticket.channel : null,
     assigneeName: staff ? (ticket.assignee?.name ?? null) : null,
+    assigneeId: staff ? (ticket.assignee?.id ?? null) : null,
+    queueId: staff ? (ticket.queue?.id ?? null) : null,
     unassigned: staff && ticket.assignee === null,
     intentName: ticket.intent?.name ?? null,
     intentKey: ticket.intent && 'key' in ticket.intent ? ticket.intent.key : null,

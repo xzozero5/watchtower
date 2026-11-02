@@ -220,7 +220,7 @@ export function NotificationCenter({ expanded }: { expanded: boolean }) {
             )}
           >
             <span className="relative shrink-0">
-              <Bell aria-hidden className={cn('size-4', TINT_CLASSES.pink.icon)} />
+              <Bell aria-hidden className={cn('size-4', unread > 0 && TINT_CLASSES.pink.icon)} />
               {unread > 0 ? (
                 <span
                   aria-hidden

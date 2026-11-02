@@ -18,6 +18,34 @@ function flatten(node: unknown, prefix = ''): [string, string][] {
 
 const placeholders = (text: string) => [...text.matchAll(/\{(\w+)\}/g)].map((m) => m[1]).sort();
 
+describe('rail labels (QA-19a)', () => {
+  it('are unique within each language', () => {
+    for (const messages of [en, th]) {
+      const labels = [
+        messages.rail.queue,
+        messages.rail.otherMail,
+        messages.rail.home,
+        messages.rail.dashboard,
+        messages.rail.admin,
+        messages.rail.newTicket,
+        messages.rail.shift,
+        messages.rail.brief,
+        messages.rail.handoff,
+        messages.rail.notifications,
+        messages.ops.rail.alerts,
+        messages.ops.rail.incidents,
+        messages.ops.rail.statusPage,
+      ];
+      expect(new Set(labels).size).toBe(labels.length);
+    }
+  });
+
+  it('names Alerts and Notifications differently in Thai', () => {
+    expect(th.ops.rail.alerts).toBe('แจ้งเตือนระบบ');
+    expect(th.rail.notifications).toBe('กล่องแจ้งเตือน');
+  });
+});
+
 describe('message catalogues', () => {
   const enEntries = flatten(en);
   const thEntries = flatten(th);

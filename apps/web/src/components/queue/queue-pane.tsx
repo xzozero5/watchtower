@@ -42,6 +42,7 @@ import {
   type PinnedRow,
   type RowGroup,
   triageGroup,
+  type TriageScope,
 } from '@/lib/ai/model';
 import { useSession } from '@/lib/auth/session';
 import { useShortcut, stepIndex } from '@/lib/keyboard';
@@ -59,7 +60,10 @@ import {
 } from '@/lib/tickets/filters';
 import { ApiRequestError } from '@/lib/api/errors';
 import { filtersToView } from '@/lib/tickets/filters';
-import { toRowModel } from '@/lib/tickets/model';
+import { useHiddenMatches } from '@/lib/tickets/hidden-matches';
+import { ticketNumber, toRowModel } from '@/lib/tickets/model';
+import { parseTicketRef } from '@/lib/tickets/ref';
+import { useRuntimeConfig } from '@/lib/runtime-config-context';
 import {
   ticketKeys,
   useBulkAction,
@@ -259,6 +263,7 @@ export function QueuePane({
   const queues = useQueues(canHandle);
 
   const now = useNow();
+  const { ticketKeyPrefix } = useRuntimeConfig();
   const rows = useMemo(
     () =>
       (list.data?.pages ?? []).flatMap((page) => page.items.map((item) => toRowModel(item, now))),
@@ -289,16 +294,29 @@ export function QueuePane({
     return [...byId].map(([id, name]) => ({ id, name }));
   }, [queues.data, session]);
 
+  // "Needs you" is for me: the signed-in person and the queues they belong to (QA-01).
+  const scope = useMemo<TriageScope | undefined>(() => {
+    if (!session) return undefined;
+    const mine = queues.data?.queues.filter((queue) =>
+      queue.members.some((member) => member.userId === session.user.id),
+    );
+    return {
+      userId: session.user.id,
+      queueIds: mine ? new Set(mine.map((queue) => queue.id)) : null,
+    };
+  }, [session, queues.data]);
+
   // The board: sections in order, and the rows J and K walk through, top to bottom as drawn.
   const [pinned, setPinned] = useState<PinnedRow | null>(null);
   const openRow = rows.find((row) => row.key === selectedKey);
   if ((openRow?.key ?? null) !== (pinned?.key ?? null)) {
     // A new ticket was opened: remember its section, so it stays there while it is open.
-    setPinned(openRow ? { key: openRow.key, group: triageGroup(openRow) } : null);
+    setPinned(openRow ? { key: openRow.key, group: triageGroup(openRow, scope) } : null);
   }
   const groups = useMemo<RowGroup[]>(
-    () => (isClient ? (rows.length > 0 ? [{ id: 'all', rows }] : []) : groupRows(rows, pinned)),
-    [isClient, rows, pinned],
+    () =>
+      isClient ? (rows.length > 0 ? [{ id: 'all', rows }] : []) : groupRows(rows, pinned, scope),
+    [isClient, rows, pinned, scope],
   );
   const walkable = useMemo(
     () => navigableRows(groups, folded, selectedKey),
@@ -516,6 +534,36 @@ export function QueuePane({
     );
   };
 
+  // Enter in the search box on a ticket number opens that ticket once the list answers (QA-09).
+  const openOnMatch = useRef<number | null>(null);
+  const openMatch = useCallback(
+    (number: number) => {
+      const hit = rows.find((row) => ticketNumber(row.key) === number);
+      if (!hit) return;
+      onSelect(hit.key);
+      onActivate?.();
+    },
+    [rows, onSelect, onActivate],
+  );
+  const searchSubmitted = (value: string) => {
+    const number = parseTicketRef(value, ticketKeyPrefix)?.number ?? null;
+    if (number !== null && value.trim() === filters.q.trim() && !list.isFetching) {
+      openMatch(number); // the list already answers this search
+    } else {
+      openOnMatch.current = number; // opened below once the list for this search arrives
+    }
+  };
+  useEffect(() => {
+    const number = openOnMatch.current;
+    if (number === null || list.isFetching || list.isPlaceholderData) return;
+    openOnMatch.current = null;
+    openMatch(number);
+  }, [list.isFetching, list.isPlaceholderData, openMatch]);
+
+  // Matches the status filter hides ("1 match in closed tickets - show").
+  const shownKeys = useMemo(() => new Set(rows.map((row) => row.key)), [rows]);
+  const hidden = useHiddenMatches(filters, shownKeys, !list.isPending && !list.isError);
+
   const filtered = activeFilterCount(filters) > 0;
   const initialLoading = list.isPending;
 
@@ -547,10 +595,18 @@ export function QueuePane({
           saveError={saveError}
           isClient={isClient}
           searchRef={searchRef}
+          onSubmitSearch={searchSubmitted}
           headerEnd={headerEnd}
           count={
             rows.length > 0
-              ? t(list.hasNextPage ? 'queue.countMore' : 'queue.count', { count: rows.length })
+              ? t(
+                  list.hasNextPage
+                    ? 'queue.countMore'
+                    : rows.length === 1
+                      ? 'queue.countOne'
+                      : 'queue.count',
+                  { count: rows.length },
+                )
               : null
           }
         />
@@ -576,6 +632,24 @@ export function QueuePane({
           >
             <ArrowUp aria-hidden className="size-3.5" />
             {t(singleKeyShortcuts ? 'queue.newPill' : 'queue.newPillClick', { count: newCount })}
+          </button>
+        </div>
+      ) : null}
+
+      {hidden ? (
+        <div className="border-b border-border/60 px-3 py-1.5">
+          <button
+            type="button"
+            data-hidden-matches
+            onClick={() => {
+              setFilters({ ...filters, status: [] });
+            }}
+            className="text-sm text-primary underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-ring"
+          >
+            {t(
+              `queue.hidden.${hidden.allClosed ? 'closed' : 'other'}${hidden.count === 1 ? 'One' : ''}`,
+              { count: hidden.count },
+            )}
           </button>
         </div>
       ) : null}

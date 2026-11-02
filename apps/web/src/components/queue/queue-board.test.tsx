@@ -40,11 +40,11 @@ const board = [
   makeTicket(5, { subject: 'Old news', status: 'resolved' }),
 ];
 
-async function openBoard() {
+async function openBoard(ready = 'Locked out after a reset') {
   workspaceApi({ tickets: board });
   const view = renderWorkspace();
   const queue = await screen.findByRole('region', { name: 'Queue' });
-  await within(queue).findByText('Locked out after a reset');
+  await within(queue).findByText(ready);
   return { ...view, queue };
 }
 
@@ -103,10 +103,13 @@ describe('triage board', () => {
   it('shows the AI summary, the state in words and the priority on a row', async () => {
     await openBoard();
     const row = screen.getByRole('option', { name: /OPS-1/ });
-    expect(within(row).getByText('Locked out after a reset')).toBeVisible();
+    // QA-03: the subject is line 1, the AI summary line 2 with an "AI" label.
+    expect(within(row).getByText('Re: login')).toBeVisible();
+    const summary = row.querySelector('[data-ai-summary]');
+    expect(summary).toHaveTextContent('AI');
+    expect(summary).toHaveTextContent('Locked out after a reset');
     expect(within(row).getByText('Draft ready')).toBeVisible();
     expect(within(row).getByText('P3')).toBeVisible();
-    expect(within(row).queryByText('Re: login')).toBeNull();
   });
 
   it('folds a section with its header button, which the keyboard reaches with Tab and Enter', async () => {
@@ -129,10 +132,11 @@ describe('triage board', () => {
         .querySelector('[role="option"][aria-selected="true"]')
         ?.getAttribute('data-ticket-key');
 
-    await user.keyboard('j');
-    expect(selected()).toBe('OPS-1');
+    // OPS-4 has a breached SLA, so it leads "Needs you".
     await user.keyboard('j');
     expect(selected()).toBe('OPS-4');
+    await user.keyboard('j');
+    expect(selected()).toBe('OPS-1');
     await user.keyboard('j');
     expect(selected()).toBe('OPS-2'); // first row of the next section
     // The keyboard follows into that section's listbox.
@@ -173,12 +177,14 @@ describe('triage board', () => {
   it('shows one line per ticket in compact density', async () => {
     localStorage.setItem(DENSITY_STORAGE_KEY, 'compact');
     resetPreferencesCache();
-    await openBoard();
+    await openBoard('Re: login');
     const row = screen.getByRole('option', { name: /OPS-1/ });
     expect(row.className).toContain('min-h-10');
     // Compact: the AI state is an icon (words for screen readers only), no intent chip.
     expect(within(row).getByText('Draft ready')).toHaveClass('sr-only');
     expect(within(row).queryByText('Login issue')).toBeNull();
+    expect(row.querySelector('[data-ai-summary]')).toBeNull();
+    expect(within(row).getByText('Re: login')).toBeVisible();
   });
 
   it('shows the intent chip in comfortable density', async () => {

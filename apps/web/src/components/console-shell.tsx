@@ -21,7 +21,9 @@ import { useSession } from '@/lib/auth/session';
 import { useShortcut, useShortcutSequence } from '@/lib/keyboard';
 import { saveLocale } from '@/lib/locale-cookie';
 import { setDensity, setSingleKeyShortcuts, setTheme } from '@/lib/preferences';
+import { useRuntimeConfig } from '@/lib/runtime-config-context';
 import { shiftSectionsFor } from '@/lib/shifts/sections';
+import { requestOpenTicket, withSelectedTicket } from '@/lib/tickets/selection';
 import { useModifierShortcut } from '@/lib/use-modifier-shortcut';
 
 const subscribeNever = () => () => undefined;
@@ -47,6 +49,7 @@ export interface ConsoleShellProps {
 export function ConsoleShell({ destination, skipTo, children }: ConsoleShellProps) {
   const t = useT();
   const router = useRouter();
+  const { ticketKeyPrefix } = useRuntimeConfig();
   const { signOut, can } = useSession();
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
@@ -138,6 +141,15 @@ export function ConsoleShell({ destination, skipTo, children }: ConsoleShellProp
       : {}),
   });
 
+  // "Go to ticket 1003": on the queue the open ticket changes in place, elsewhere the queue opens it.
+  const goToTicket = useCallback(
+    (key: string) => {
+      if (destination === 'queue') requestOpenTicket(key);
+      else router.push(withSelectedTicket('', key));
+    },
+    [destination, router],
+  );
+
   const commands = useMemo(
     () =>
       buildCommands(
@@ -199,7 +211,13 @@ export function ConsoleShell({ destination, skipTo, children }: ConsoleShellProp
         <AiPausedBanner />
         {children}
       </div>
-      <CommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} commands={commands} />
+      <CommandPalette
+        open={paletteOpen}
+        onOpenChange={setPaletteOpen}
+        commands={commands}
+        onGoToTicket={goToTicket}
+        ticketKeyPrefix={ticketKeyPrefix}
+      />
       <KeyboardMap open={helpOpen} onOpenChange={setHelpOpen} isMac={isMac} />
       <SwitchConfirmDialog
         target={switchTarget}

@@ -45,7 +45,7 @@ describe('queue rows', () => {
     expect(first.querySelector('[data-severity="p1"] svg')).not.toBeNull();
     // "Open" and "Unassigned" are the normal case: no words for them on the row.
     expect(within(first).queryByText('Open')).toBeNull();
-    expect(within(first).queryByText('Unassigned')).toBeNull();
+    expect(first.querySelector('[data-assignee="none"]')).not.toBeNull();
     // Who wrote in is for screen readers; the sighted row shows an initials avatar for the organisation.
     expect(first).toHaveTextContent('OPS-1, Riley Requester, Example Org');
     expect(first.querySelector('[data-hue]')).toHaveTextContent('EO');
@@ -97,7 +97,7 @@ describe('queue rows', () => {
     expect(old.className).not.toContain('before:bg-primary');
   });
 
-  it('shows the AI summary as the title and the subject only when the AI said nothing', async () => {
+  it('shows the subject on line 1 and the labelled AI summary on line 2', async () => {
     workspaceApi({
       tickets: [
         makeTicket(1, {
@@ -112,11 +112,13 @@ describe('queue rows', () => {
       await within(queue).findByText('Locked out after a reset')
     ).closest<HTMLElement>('[role="option"]');
     if (!withAi) throw new Error('row missing');
-    expect(within(withAi).queryByText('Re: Re: login')).toBeNull();
+    expect(within(withAi).getByText('Re: Re: login')).toBeVisible();
+    expect(withAi.querySelector('[data-ai-summary]')).toHaveTextContent('AI');
     expect(within(withAi).getByText('Draft ready')).toBeVisible();
     expect(withAi).toHaveAttribute('data-ai-state', 'draft_ready');
-    // Without an AI summary the subject stands in, muted.
-    expect(within(queue).getByText('Plain subject')).toHaveClass('text-muted-foreground');
+    // Without an AI summary there is no second line.
+    const plain = within(queue).getByText('Plain subject').closest<HTMLElement>('[role="option"]');
+    expect(plain?.querySelector('[data-ai-summary]')).toBeNull();
   });
 
   it('counts the tickets next to the view name', async () => {
@@ -125,6 +127,24 @@ describe('queue rows', () => {
     await within(queue).findByText('Cannot log in');
     expect(within(queue).getByText('3 tickets')).toBeVisible();
     expect(within(queue).getByRole('button', { name: 'View: All open' })).toBeVisible();
+  });
+
+  it('says "1 ticket", not "1 tickets"', async () => {
+    workspaceApi({ tickets: [makeTicket(1)] });
+    const { queue } = await openQueue();
+    await within(queue).findByText('Subject of ticket 1');
+    expect(within(queue).getByText('1 ticket')).toBeVisible();
+  });
+
+  it('opens the exact ticket number on Enter in the search box (QA-09)', async () => {
+    const user = userEvent.setup();
+    workspaceApi({ tickets: [makeTicket(1), makeTicket(2, { subject: 'Second one' })] });
+    const { queue } = await openQueue();
+    await within(queue).findByText('Second one');
+    await user.type(screen.getByRole('searchbox', { name: 'Search tickets' }), '2{Enter}');
+    await waitFor(() => {
+      expect(window.location.search).toContain('ticket=OPS-2');
+    });
   });
 
   it('marks an overdue ticket with words and an icon, not only colour', async () => {

@@ -22,6 +22,13 @@ export function withSelectedTicket(search: string, key: string | null): string {
   return query === '' ? '/' : `/?${query}`;
 }
 
+const OPEN_EVENT = 'wt:open-ticket';
+
+/** Asks the workspace on screen to open a ticket (the command palette's "Go to ticket"). */
+export function requestOpenTicket(key: string): void {
+  window.dispatchEvent(new CustomEvent<string>(OPEN_EVENT, { detail: key }));
+}
+
 /**
  * Which ticket is open, kept in the address so a reload or a shared link lands on the same ticket.
  * Uses replaceState: moving through the queue with J/K must not fill the back button's history.
@@ -37,9 +44,22 @@ export function useSelectedTicket(): readonly [string | null, (key: string | nul
     const onPop = () => {
       setSelected(readSelectedTicket(window.location.search));
     };
+    const onOpen = (event: Event) => {
+      if (!(event instanceof CustomEvent) || typeof event.detail !== 'string') return;
+      const parsed = ticketRefSchema.safeParse(event.detail);
+      if (!parsed.success) return;
+      setSelected(parsed.data);
+      window.history.replaceState(
+        null,
+        '',
+        withSelectedTicket(window.location.search, parsed.data),
+      );
+    };
     window.addEventListener('popstate', onPop);
+    window.addEventListener(OPEN_EVENT, onOpen);
     return () => {
       window.removeEventListener('popstate', onPop);
+      window.removeEventListener(OPEN_EVENT, onOpen);
     };
   }, []);
 
