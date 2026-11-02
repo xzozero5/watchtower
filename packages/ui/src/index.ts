@@ -114,6 +114,27 @@ export {
   type LanguageFlagsProps,
 } from './components/language-flags.js';
 export { ThemeSwitch, type ThemeSwitchProps } from './components/theme-switch.js';
+export { BarChart, type BarChartDatum, type BarChartProps } from './components/bar-chart.js';
+export { BarList, type BarListDatum, type BarListProps } from './components/bar-list.js';
+export {
+  ChartFrame,
+  type ChartFrameProps,
+  type ChartTableLabels,
+  type ChartTableView,
+} from './components/chart-frame.js';
+export {
+  BAR_GAP,
+  BAR_MAX_THICKNESS,
+  BAR_RADIUS,
+  columnLayout,
+  columnPath,
+  countTicks,
+  labelIndexes,
+  niceCeil,
+  rowPath,
+  slotAt,
+} from './components/chart-geometry.js';
+export { StatTile, type StatTileProps, type StatTileState } from './components/stat-tile.js';
 export { cn } from './lib/cn.js';
 export {
   DEFAULT_THEME_PREFERENCE,
@@ -127,11 +148,13 @@ export {
 } from './theme/preferences.js';
 export {
   AVATAR_HUE_COUNT,
+  CHART_ORDINAL_STEPS,
   COLOR_TOKENS,
   RADIUS_TOKENS,
   THEME_NAMES,
   TINT_IDS,
   type AvatarColors,
+  type ChartColors,
   type ColorTokens,
   type SeverityColors,
   type ThemeName,

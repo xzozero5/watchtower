@@ -6,6 +6,7 @@ export const railTh: Widen<typeof railEn> = {
   queue: 'คิวงาน',
   otherMail: 'อีเมลอื่น ๆ',
   home: 'หน้าหลัก',
+  dashboard: 'แดชบอร์ดปฏิบัติการ',
   admin: 'ผู้ดูแลระบบ',
   newTicket: 'สร้าง ticket ใหม่',
   shift: 'กะของฉัน',

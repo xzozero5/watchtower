@@ -52,6 +52,26 @@ export interface TintColors {
   readonly icon: string;
 }
 
+/** Number of steps of the ordinal (ordered buckets) ramp. */
+export const CHART_ORDINAL_STEPS = 4;
+
+/**
+ * Colours of chart marks. Marks only: text in a chart uses the text tokens, never these. Both were
+ * run through the data-viz validator (`validate_palette.js`) against the Canvas and the overlay
+ * surface in their own mode.
+ */
+export interface ChartColors {
+  /** The one categorical series colour (slot 1, blue). Meets 3:1 on the surfaces a chart sits on. */
+  readonly series: string;
+  /**
+   * One-hue ramp for ordered buckets such as age bands, first step to last. Light mode goes light to
+   * dark, dark mode dark to light: the last step is always the one nearest the reader's attention.
+   * The step nearest the surface keeps 2:1 (the validator's ordinal floor); every bucket is also
+   * labelled and in the table view.
+   */
+  readonly ordinal: readonly [string, string, string, string];
+}
+
 export interface ColorTokens {
   /**
    * Canvas: the neutral ground behind the panes. Panes have no card of their own, they sit on it
@@ -94,6 +114,8 @@ export interface ColorTokens {
   readonly avatar: readonly AvatarColors[];
   /** Soft tints for priority, SLA, AI state, channel and intent chips. */
   readonly tint: Readonly<Record<TintId, TintColors>>;
+  /** Data-viz marks (docs/design/less-text-ai-assistant.md, the dashboard charts). */
+  readonly chart: ChartColors;
 }
 
 /**
@@ -176,6 +198,7 @@ export const COLOR_TOKENS: Readonly<Record<ThemeName, ColorTokens>> = {
       pink: { bg: '#fde7f2', fg: '#9d174d', icon: '#db2777' },
       orange: { bg: '#feede1', fg: '#9a3412', icon: '#c2410c' },
     },
+    chart: { series: '#2a78d6', ordinal: ['#86b6ef', '#3987e5', '#1c5cab', '#104281'] },
   },
   dark: {
     background: '#0e1219',
@@ -227,5 +250,6 @@ export const COLOR_TOKENS: Readonly<Record<ThemeName, ColorTokens>> = {
       pink: { bg: '#41243c', fg: '#fbcfe8', icon: '#f472b6' },
       orange: { bg: '#432d22', fg: '#fed7aa', icon: '#fb923c' },
     },
+    chart: { series: '#3987e5', ordinal: ['#184f95', '#256abf', '#3987e5', '#6da7ec'] },
   },
 };

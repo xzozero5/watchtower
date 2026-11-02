@@ -34,6 +34,10 @@ function colorEntries(tokens: ColorTokens): [name: string, value: string][] {
       [`color-tint-${id}-icon`, icon],
     );
   }
+  entries.push(['color-chart-series', tokens.chart.series]);
+  tokens.chart.ordinal.forEach((value, index) => {
+    entries.push([`color-chart-ordinal-${String(index + 1)}`, value]);
+  });
   tokens.avatar.forEach(({ fg, bg }, index) => {
     entries.push(
       [`color-avatar-${String(index + 1)}-fg`, fg],
