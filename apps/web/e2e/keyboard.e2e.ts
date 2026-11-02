@@ -121,13 +121,6 @@ test.describe('pane keys (docs/06-UI-SPEC.md section 14)', () => {
         page.waitForFunction(() =>
           document.getAnimations().every((animation) => animation.playState !== 'running'),
         );
-      // From the top of the pane. Part-way down, a chip slides under the sticky bar and axe counts it
-      // as an obscured target; T-133 looks at that bar on phones.
-      await page.evaluate(() => {
-        for (const element of document.querySelectorAll('*')) {
-          if (element.scrollTop > 0) element.scrollTop = 0;
-        }
-      });
       await settled();
       let results = await new AxeBuilder({ page }).withTags(WCAG_TAGS).analyze();
       expect(results.violations).toEqual([]);
