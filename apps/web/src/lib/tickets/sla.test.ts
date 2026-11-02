@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { formatDuration } from '@/lib/format';
 import { makeClientTicket, makeTicket } from '@/test/fixtures';
 
-import { slaView } from './sla';
+import { dueNote, slaView } from './sla';
 
 const NOW = Date.parse('2026-11-02T03:00:00.000Z');
 const at = (minutes: number) => new Date(NOW + minutes * 60_000).toISOString();
@@ -120,5 +120,26 @@ describe('slaView with the server SLA (T-111e)', () => {
   it('maps the first response target', () => {
     const view = slaView(makeTicket(1, { sla: server({ target: 'first_response' }) }), NOW);
     expect(view.target).toBe('firstResponse');
+  });
+});
+
+describe('dueNote (T-138)', () => {
+  const policy = { name: 'Standard', targets: { P1: { first_response_min: 15 } } };
+
+  it('no policy on the ticket', () => {
+    expect(dueNote({ slaPolicyId: null, priority: 'P3' }, undefined)).toEqual({ kind: 'noPolicy' });
+  });
+
+  it('a policy without a target for the priority names both', () => {
+    expect(dueNote({ slaPolicyId: 'p', priority: 'P3' }, policy)).toEqual({
+      kind: 'noTarget',
+      priority: 'P3',
+      policyName: 'Standard',
+    });
+  });
+
+  it('stays unknown when the policy is not loaded or has a target', () => {
+    expect(dueNote({ slaPolicyId: 'p', priority: 'P3' }, undefined)).toEqual({ kind: 'unknown' });
+    expect(dueNote({ slaPolicyId: 'p', priority: 'P1' }, policy)).toEqual({ kind: 'unknown' });
   });
 });

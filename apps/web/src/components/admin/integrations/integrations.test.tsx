@@ -15,12 +15,16 @@ import { renderConsole } from '@/test/render-console';
 
 import { IntegrationsPage } from './integrations-page';
 
-const nav = vi.hoisted(() => ({ search: '', replace: vi.fn(), navigate: vi.fn() }));
+const nav = vi.hoisted(() => ({ search: '', replace: vi.fn(), navigate: vi.fn(), toast: vi.fn() }));
 
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: vi.fn(), replace: nav.replace, refresh: vi.fn() }),
   usePathname: () => '/admin/integrations',
   useSearchParams: () => new URLSearchParams(nav.search),
+}));
+vi.mock('@watchtower/ui', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  toast: nav.toast,
 }));
 vi.mock('@/lib/navigate', () => ({ navigateTo: nav.navigate }));
 
@@ -28,6 +32,7 @@ beforeEach(() => {
   nav.search = '';
   nav.replace.mockClear();
   nav.navigate.mockClear();
+  nav.toast.mockClear();
 });
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -402,6 +407,75 @@ describe('Integrations: Gmail connection', () => {
     await user.click(panel.getByRole('button', { name: 'Connect Gmail' }));
     expect(await panel.findByRole('alert')).toHaveTextContent('not secure');
     expect(nav.navigate).not.toHaveBeenCalled();
+  });
+
+  it('syncs now with an empty body, disables the button while it runs, and says how many were queued', async () => {
+    const user = userEvent.setup();
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const api = setup({
+      'POST /v1/admin/integrations/gmail/sync': async () => {
+        await gate;
+        return {
+          json: {
+            queued: [{ channelAccountId: 'b3b3b3b3-0000-4000-8000-000000000001', jobId: 'j1' }],
+            throttled: [],
+          },
+        };
+      },
+    });
+    const panel = await gmailPanel();
+    await user.click(panel.getByRole('button', { name: 'Sync now' }));
+    expect(await panel.findByRole('button', { name: 'Syncing…' })).toBeDisabled();
+    release();
+    await waitFor(() => {
+      expect(nav.toast).toHaveBeenCalledWith('Sync queued for 1 mailbox(es).');
+    });
+    expect(api.callsTo('/v1/admin/integrations/gmail/sync', 'POST')[0]?.body).toEqual({});
+    expect(panel.getByRole('button', { name: 'Sync now' })).toBeEnabled();
+  });
+
+  it('says when the mailbox was synced a moment ago', async () => {
+    const user = userEvent.setup();
+    setup({
+      'POST /v1/admin/integrations/gmail/sync': {
+        json: {
+          queued: [],
+          throttled: [
+            { channelAccountId: 'b3b3b3b3-0000-4000-8000-000000000001', retryAfterSeconds: 42 },
+          ],
+        },
+      },
+    });
+    await user.click((await gmailPanel()).getByRole('button', { name: 'Sync now' }));
+    await waitFor(() => {
+      expect(nav.toast).toHaveBeenCalledWith(
+        'Synced less than a minute ago, try again in 42 seconds.',
+      );
+    });
+  });
+
+  it('explains a 409 and a 429 (with Retry-After) from Sync now', async () => {
+    const user = userEvent.setup();
+    let status = 409;
+    setup({
+      'POST /v1/admin/integrations/gmail/sync': () =>
+        status === 409
+          ? apiError(409, 'conflict')
+          : { ...apiError(429, 'rate_limited'), headers: { 'Retry-After': '30' } },
+    });
+    const panel = await gmailPanel();
+    await user.click(panel.getByRole('button', { name: 'Sync now' }));
+    await waitFor(() => {
+      expect(nav.toast).toHaveBeenCalledWith('No Gmail mailbox is switched on.');
+    });
+    status = 429;
+    await user.click(panel.getByRole('button', { name: 'Sync now' }));
+    await waitFor(() => {
+      expect(nav.toast).toHaveBeenCalledWith('Too many sync requests. Try again in 30 seconds.');
+    });
   });
 
   it('needs the OAuth client saved first', async () => {

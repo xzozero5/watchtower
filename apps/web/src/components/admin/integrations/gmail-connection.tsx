@@ -10,7 +10,12 @@ import { ConfirmDialog } from '@/components/admin/confirm-dialog';
 import { FormField } from '@/components/portal/form-field';
 import { useI18n } from '@/i18n/provider';
 import { adminKeys, useGmailStatus } from '@/lib/admin/queries';
-import { describeIntegrationError, isSafeRedirect } from '@/lib/admin/integrations';
+import {
+  describeGmailSync,
+  describeGmailSyncError,
+  describeIntegrationError,
+  isSafeRedirect,
+} from '@/lib/admin/integrations';
 import { useApi } from '@/lib/api/api-context';
 import { useUserId } from '@/lib/auth/session';
 import { navigateTo } from '@/lib/navigate';
@@ -21,7 +26,7 @@ import { navigateTo } from '@/lib/navigate';
  * `integration` is the Gmail card's status; it tells whether the environment holds the grant.
  */
 export function GmailConnection({ integration }: { integration: IntegrationStatus }) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const api = useApi();
   const userId = useUserId();
   const queryClient = useQueryClient();
@@ -74,6 +79,16 @@ export function GmailConnection({ integration }: { integration: IntegrationStatu
     },
     onError: (failure) => {
       setError(describeIntegrationError(failure, t).message);
+    },
+  });
+
+  const sync = useMutation({
+    mutationFn: () => api.gmailSyncNow(),
+    onSuccess: (result) => {
+      toast(describeGmailSync(result, t, locale));
+    },
+    onError: (failure) => {
+      toast(describeGmailSyncError(failure, t, locale));
     },
   });
 
@@ -183,6 +198,16 @@ export function GmailConnection({ integration }: { integration: IntegrationStatu
             {t('admin.integrations.gmail.disconnect')}
           </Button>
         ) : null}
+        <Button
+          onClick={() => {
+            sync.mutate();
+          }}
+          disabled={sync.isPending}
+        >
+          {sync.isPending
+            ? t('admin.integrations.gmail.sync.running')
+            : t('admin.integrations.gmail.sync.button')}
+        </Button>
       </div>
       {error && !confirming ? (
         <p role="alert" className="text-sm font-medium text-danger">

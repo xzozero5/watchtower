@@ -3,6 +3,7 @@ import {
   channelAccountListSchema,
   channelAccountSchema,
   gmailConnectionStatusSchema,
+  gmailManualSyncResultSchema,
   gmailOauthDisconnectResultSchema,
   gmailOauthStartResultSchema,
   integrationListSchema,
@@ -340,6 +341,14 @@ export function createAdminEndpoints(client: ApiClient) {
         method: 'POST',
         path: '/v1/admin/integrations/gmail/oauth/disconnect',
         schema: gmailOauthDisconnectResultSchema,
+      }),
+
+    gmailSyncNow: () =>
+      client.request({
+        method: 'POST',
+        path: '/v1/admin/integrations/gmail/sync',
+        body: {},
+        schema: gmailManualSyncResultSchema,
       }),
 
     // --- channel accounts (head, T-131) ---

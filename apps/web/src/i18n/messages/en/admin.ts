@@ -503,6 +503,14 @@ export const adminEn = {
       disconnectedNotRevoked:
         'Disconnected here, but the mail provider did not confirm the revoke. Remove the app from the third-party access list of that mail account.',
       disconnectedNothing: 'Nothing was connected.',
+      sync: {
+        button: 'Sync now',
+        running: 'Syncing…',
+        queued: 'Sync queued for {count} mailbox(es).',
+        throttled: 'Synced less than a minute ago, try again in {time}.',
+        noMailbox: 'No Gmail mailbox is switched on.',
+        rateLimited: 'Too many sync requests. Try again in {time}.',
+      },
       statusLoadError: 'Could not load the Gmail connection.',
       unsafeUrl: 'The server sent an address that is not secure, so Watchtower did not open it.',
       resultLabel: 'Result of connecting Gmail',

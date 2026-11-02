@@ -498,6 +498,14 @@ export const adminTh: Widen<typeof adminEn> = {
       disconnectedNotRevoked:
         'ยกเลิกในระบบนี้แล้ว แต่ผู้ให้บริการเมลไม่ยืนยันการเพิกถอน ให้ลบแอปออกจากรายการแอปบุคคลที่สามของบัญชีเมลนั้น',
       disconnectedNothing: 'ไม่มีอะไรที่เชื่อมอยู่',
+      sync: {
+        button: 'ซิงก์ตอนนี้',
+        running: 'กำลังซิงก์…',
+        queued: 'ส่งคำสั่งซิงก์แล้ว {count} กล่องเมล',
+        throttled: 'เพิ่งซิงก์ไปไม่ถึงหนึ่งนาที ลองใหม่ในอีก {time}',
+        noMailbox: 'ไม่มีกล่องเมล Gmail ที่เปิดใช้งานอยู่',
+        rateLimited: 'ส่งคำสั่งซิงก์ถี่เกินไป ลองใหม่ในอีก {time}',
+      },
       statusLoadError: 'โหลดสถานะการเชื่อมต่อ Gmail ไม่ได้',
       unsafeUrl: 'เซิร์ฟเวอร์ส่งที่อยู่ที่ไม่ปลอดภัยมา Watchtower จึงไม่เปิดให้',
       resultLabel: 'ผลการเชื่อม Gmail',
