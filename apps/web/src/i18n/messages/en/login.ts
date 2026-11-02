@@ -35,6 +35,7 @@ export const loginEn = {
   },
   dev: {
     title: 'Development sign-in',
+    badge: 'Dev',
     description: 'Only available on a development instance without single sign-on.',
     role: 'Role',
     button: 'Sign in for development',

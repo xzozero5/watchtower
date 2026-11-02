@@ -38,6 +38,7 @@ export const loginTh: Widen<typeof loginEn> = {
   },
   dev: {
     title: 'เข้าสู่ระบบสำหรับการพัฒนา',
+    badge: 'Dev',
     description: 'ใช้ได้เฉพาะอินสแตนซ์สำหรับพัฒนาที่ไม่มี single sign-on',
     role: 'บทบาท',
     button: 'เข้าสู่ระบบสำหรับการพัฒนา',

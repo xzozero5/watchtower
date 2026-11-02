@@ -35,7 +35,10 @@ export function AiReportDetails({
       <div className="mt-2 flex max-w-[72ch] flex-col gap-3 text-sm">
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
           <span className="text-xs font-medium text-muted-foreground">{t('ai.report.cause')}</span>
-          <ConfidenceMeter value={report.confidence} />
+          <ConfidenceMeter
+            value={report.confidence}
+            demo={report.tools.some((tool) => tool.mock)}
+          />
         </div>
         <p className="-mt-2 text-foreground">{report.likelyCause ?? t('ai.report.noCause')}</p>
 

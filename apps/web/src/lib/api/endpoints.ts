@@ -40,6 +40,7 @@ import {
 } from '@watchtower/shared';
 import { createAdminEndpoints } from './admin-endpoints';
 import { createNotificationEndpoints } from './notification-endpoints';
+import { createOpsEndpoints } from './ops-endpoints';
 import { createShiftEndpoints } from './shift-endpoints';
 import type { ApiClient } from './client';
 
@@ -71,6 +72,7 @@ export function createEndpoints(client: ApiClient) {
     ...createAdminEndpoints(client),
     ...createNotificationEndpoints(client),
     ...createShiftEndpoints(client),
+    ...createOpsEndpoints(client),
 
     // --- auth (public) ---
     authConfig: (signal?: AbortSignal) =>

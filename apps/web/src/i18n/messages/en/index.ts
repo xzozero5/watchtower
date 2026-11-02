@@ -29,6 +29,7 @@ import { loginEn } from './login';
 import { newTicketEn } from './newTicket';
 import { notificationsEn } from './notifications';
 import { otherMailEn } from './otherMail';
+import { opsEn } from './ops';
 import { outboundEn } from './outbound';
 import { paletteEn } from './palette';
 import { panelEn } from './panel';
@@ -90,6 +91,7 @@ export const en = {
   otherMail: otherMailEn,
   shift: shiftEn,
   outbound: outboundEn,
+  ops: opsEn,
 } as const;
 
 /** The shape every language must fill in, with plain `string` leaves. */

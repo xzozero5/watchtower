@@ -11,6 +11,7 @@ import {
   Select,
   Skeleton,
   TINT_CLASSES,
+  TintChip,
   type TintId,
 } from '@watchtower/ui';
 import { BadgeCheck, KeyRound, LogIn, type LucideIcon, Mail, Wrench } from 'lucide-react';
@@ -41,37 +42,45 @@ const SSO_ERROR_KEYS: Record<SsoFailure, MessageKey> = {
 /** One way in, as a soft rounded card with an icon bubble beside its title. */
 function Section({
   title,
-  description,
+  badge,
   icon: Icon,
   tone,
   children,
 }: {
   title: string;
-  description?: string;
+  /** A short chip after the title (`Dev`): what the sentence under it used to say. */
+  badge?: string;
   icon: LucideIcon;
   tone: TintId;
   children: ReactNode;
 }) {
   const id = useId();
+  const { t } = useI18n();
   return (
     <section
       aria-labelledby={id}
       className="rounded-2xl bg-surface p-5 ring-1 ring-border/60 ring-inset"
     >
-      <h2 id={id} className="flex items-center gap-2.5 text-base font-semibold">
-        <span
-          aria-hidden
-          className={cn(
-            'inline-flex size-8 shrink-0 items-center justify-center rounded-full',
-            TINT_CLASSES[tone].chip,
-            TINT_CLASSES[tone].icon,
-          )}
-        >
-          <Icon className="size-4" />
-        </span>
-        {title}
-      </h2>
-      {description ? <p className="mt-2 text-sm text-muted-foreground">{description}</p> : null}
+      <div className="flex items-center gap-2.5">
+        <h2 id={id} className="flex items-center gap-2.5 text-base font-semibold">
+          <span
+            aria-hidden
+            className={cn(
+              'inline-flex size-8 shrink-0 items-center justify-center rounded-full',
+              TINT_CLASSES[tone].chip,
+              TINT_CLASSES[tone].icon,
+            )}
+          >
+            <Icon className="size-4" />
+          </span>
+          {title}
+        </h2>
+        {badge ? (
+          <TintChip tone="amber" title={t('login.dev.description')}>
+            {badge}
+          </TintChip>
+        ) : null}
+      </div>
       <div className="mt-3 flex flex-col gap-3">{children}</div>
     </section>
   );
@@ -140,12 +149,7 @@ function DevLogin({ onSignedIn }: { onSignedIn: () => void }) {
     mutation.mutate();
   };
   return (
-    <Section
-      title={t('login.dev.title')}
-      description={t('login.dev.description')}
-      icon={Wrench}
-      tone="amber"
-    >
+    <Section title={t('login.dev.title')} badge={t('login.dev.badge')} icon={Wrench} tone="amber">
       <form onSubmit={submit} className="flex flex-col gap-3">
         <Field label={t('login.email')} htmlFor={`${ids}-email`}>
           <Input

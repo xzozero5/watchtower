@@ -40,6 +40,10 @@ snapshot สั้นสำหรับ cold start อยู่ที่ `HANDOF
 
 ## Log
 
+## 2026-11-02 11:59 (Asia/Bangkok) — main thread — T-133, T-206d, T-204b declutter, theme switch, language flags, alert and incident screens, status page ปิด
+- test: main thread รันเองบน Windows: lint, typecheck, unit ผ่าน · integration db 384, domain 440, api 1032, worker 225 · e2e 154 · full-stack 23 · compose healthy `[TESTED]`
+- ค้าง/ไม่ยืนยัน: ส่วนที่เหลือของ T-133 ลงรายการใน HANDOFF แล้ว
+
 ## 2026-11-02 09:54 (Asia/Bangkok) — main thread — T-206b ops dashboard read model ปิด
 - test: main thread รันเองบน Windows: lint, typecheck ผ่าน · integration db 384, domain 440, api 1032, worker 225 · full-stack 23 · compose healthy · e2e + unit ของ web/db ผ่านรอบหลังแก้ test `[TESTED]`
 - ค้าง/ไม่ยืนยัน: ยังไม่มีหน้า T-206c · ค่าอย่าง at-risk 60 นาที [ASSUMED]

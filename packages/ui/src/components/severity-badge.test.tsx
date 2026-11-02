@@ -16,6 +16,12 @@ describe('SeverityBadge', () => {
     expect(icon).toHaveAttribute('aria-hidden', 'true');
   });
 
+  it('shows a given code instead of the level code (incident SEV scale)', () => {
+    render(<SeverityBadge severity="p2" code="SEV2" label="High" />);
+    expect(screen.getByText('SEV2')).toBeVisible();
+    expect(screen.queryByText('P2')).not.toBeInTheDocument();
+  });
+
   it('does not rely on colour: every level has a different icon and a different code', () => {
     const shapes = new Set<string>();
     const codes = new Set<string>();

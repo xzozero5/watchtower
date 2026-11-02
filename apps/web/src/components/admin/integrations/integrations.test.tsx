@@ -47,6 +47,7 @@ function setup(overrides: Record<string, MockHandler> = {}, role: 'head' | 'lead
 
 describe('Integrations: credentials', () => {
   it('shows where each value comes from and never a value', async () => {
+    const user = userEvent.setup();
     setup();
     const line = await screen.findByRole('region', { name: 'LINE Official Account' });
     // Environment wins: no way to edit it, and the variable is named.
@@ -62,8 +63,13 @@ describe('Integrations: credentials', () => {
     expect(within(line).getByRole('button', { name: /Remove\s+Channel ID/ })).toBeVisible();
     expect(within(line).getByText('Not set')).toBeVisible();
     expect(line.textContent).not.toMatch(/•|\*{3}/);
-    // The mock-test note is on the page.
-    expect(screen.getByRole('note')).toHaveTextContent('built-in fake');
+    // The sentences are chips with a hint behind each: Encrypted, and Demo (the mock test mode).
+    const note = screen.getByRole('note');
+    expect(note).toHaveTextContent('Encrypted');
+    expect(note).toHaveTextContent('Demo');
+    expect(note).not.toHaveTextContent('built-in fake');
+    await user.click(within(note).getByRole('button', { name: 'More about Demo' }));
+    expect(await screen.findByText(/built-in fake/)).toBeVisible();
   });
 
   it('marks a card whose values all come from the environment, in words with an icon', async () => {
@@ -217,8 +223,12 @@ describe('Integrations: test connection', () => {
   });
 
   it('says so when live tests are on', async () => {
+    const user = userEvent.setup();
     setup({ 'GET /v1/admin/integrations': { json: makeIntegrationList({}, 'live') } });
-    expect(await screen.findByRole('note')).toHaveTextContent('contacts the real service');
+    const note = await screen.findByRole('note');
+    await within(note).findByText('Live');
+    await user.click(within(note).getByRole('button', { name: 'More about Live' }));
+    expect(await screen.findByText(/contacts the real service/)).toBeVisible();
   });
 });
 
