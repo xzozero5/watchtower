@@ -277,25 +277,43 @@ const MOBILE = /^0[689][0-9]{8}$/;
 const BANGKOK = /^02[0-9]{7}$/;
 const PROVINCIAL = /^0[3-57][0-9]{7}$/;
 const INTERNATIONAL_00 = /^0066[2-9][0-9]{8,9}$/;
-// The same number without the "+" or the "00": country code 66 and then the number without its 0
-// (66 81 234 5678, 66 2 123 4567).
-const INTERNATIONAL_66 = /^66[2-9][0-9]{7,8}$/;
-// A ten-digit North American number (area code and exchange start with 2 to 9), in one piece or as 3-3-4.
-const NANP = /^[2-9][0-9]{2}[2-9][0-9]{6}$/;
-const NANP_SHAPES = new Set(['10', '3-3-4']);
-// A ticket key such as OPS-1234567890: the digits belong to the key, not to a phone.
-const KEY_PREFIX = /[A-Za-z]{2,10}[-_]$/;
+// Any run of 10 to 15 digits is treated as a phone number (T-137 review): a number can be written
+// with a country code and no "+" (66812345678, 14155552671, 447911123456), glued to a word or a field
+// name (msisdn_66812345678, phone=0812345678), or percent-encoded (%2B66812345678, read by the view).
+// Guessing the shapes one at a time lets the next one through. A long numeric id that is not a phone
+// is redacted too: N4 prefers a false positive. Only shapes known to be something else are left alone.
+const PHONE_MIN_DIGITS = 10;
+const PHONE_MAX_DIGITS = 15;
 
-/**
- * A bare run of digits is a phone number only on its own: next to letters it is part of an
- * identifier (a hex id, a trace id, "ab4155552671") and after a ticket-key prefix it is the key's number.
- */
-function standsAlone(text: string, start: number, end: number): boolean {
-  const before = text.charAt(start - 1);
-  const after = text.charAt(end);
-  if (/[A-Za-z]/.test(before) || /[A-Za-z]/.test(after)) return false;
-  return !KEY_PREFIX.test(text.slice(Math.max(0, start - 11), start));
+const SAFE_SHAPES: readonly RegExp[] = [
+  // A uuid.
+  /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/giu,
+  // A trace, span, request or commit id: 16 or more hex characters in one token.
+  /(?<![0-9A-Za-z])[0-9a-f]{16,}(?![0-9A-Za-z])/giu,
+  // An ISO 8601 timestamp, with fractions and a zone.
+  /\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(?::\d{2}(?:[.,]\d+)?)?(?:Z|[+-]\d{2}:?\d{2})?/gu,
+  // A ticket key (upper-case prefix): the digits are the ticket's number.
+  /(?<![A-Za-z0-9])[A-Z][A-Z0-9]{1,9}(?:-[A-Z0-9]+)*-\d{1,15}(?!\d)/gu,
+];
+
+/** The ranges of the text that are an id or a timestamp, not a phone number. */
+function safeSpans(text: string): [number, number][] {
+  const found: [number, number][] = [];
+  for (const shape of SAFE_SHAPES) {
+    for (const match of text.matchAll(shape)) {
+      // A long hex id that opens or ends with 10 or more digits is a number with letters glued on
+      // ("4155552671abcdef"), not an id.
+      if (/^\d{10,}|\d{10,}$/u.test(match[0]) && !match[0].includes('-')) continue;
+      found.push([match.index, match.index + match[0].length]);
+    }
+  }
+  return found;
 }
+
+function insideSafeSpan(safe: readonly [number, number][], start: number, end: number): boolean {
+  return safe.some(([from, to]) => start >= from && end <= to);
+}
+
 // Digit-group shapes a person might type a phone number in. Used only when the separators are
 // mixed ("081-234 5678"): a date followed by a count ("08/10/2026 12") has the same digits as a
 // mobile number but not the same grouping.
@@ -335,7 +353,12 @@ function isBankFormattedShape(lengths: readonly number[]): boolean {
   return shape === '3-1-5-1' || shape === '3-6-1';
 }
 
-function detectInCluster(text: string, cluster: Cluster, spans: Span[]): void {
+function detectInCluster(
+  text: string,
+  cluster: Cluster,
+  spans: Span[],
+  safe: readonly [number, number][],
+): void {
   const { groups } = cluster;
   for (let from = 0; from < groups.length; from += 1) {
     const firstGroup = groups[from];
@@ -377,12 +400,16 @@ function detectInCluster(text: string, cluster: Cluster, spans: Span[]): void {
       ) {
         spans.push(span(phoneStart, end, 'PHONE', PRIORITY.PHONE));
       } else if (
-        lengths.length <= 4 &&
-        lengths.every((length) => length >= 2) &&
+        total >= PHONE_MIN_DIGITS &&
+        total <= PHONE_MAX_DIGITS &&
+        lengths.length <= 5 &&
+        // Spaced or dashed: groups of two digits or more with one of three or more, so "12 34 56 78 90"
+        // (a list of small numbers) is not a phone but "415 555 2671" and "66 81 234 5678" are.
+        (lengths.length === 1 ||
+          (lengths.slice(lengths[0] === 1 ? 1 : 0).every((length) => length >= 2) &&
+            Math.max(...lengths) >= 3)) &&
         consistentSeparators(cluster, from, to) &&
-        (INTERNATIONAL_66.test(digits) ||
-          (NANP.test(digits) && NANP_SHAPES.has(lengths.join('-')))) &&
-        standsAlone(text, start, end)
+        !insideSafeSpan(safe, start, end)
       ) {
         spans.push(span(phoneStart, end, 'PHONE', PRIORITY.PHONE));
       }
@@ -454,7 +481,8 @@ function detectBankAfterKeyword(text: string, clusters: readonly Cluster[], span
 export function detectNumbers(text: string): Span[] {
   const spans: Span[] = [];
   const clusters = findClusters(text);
-  for (const cluster of clusters) detectInCluster(text, cluster, spans);
+  const safe = safeSpans(text);
+  for (const cluster of clusters) detectInCluster(text, cluster, spans, safe);
   detectBankAfterKeyword(text, clusters, spans);
   return spans;
 }

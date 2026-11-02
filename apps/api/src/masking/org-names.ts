@@ -36,8 +36,10 @@ export async function orgPeopleNames(
     .where(and(eq(schema.users.role, 'client'), inArray(schema.users.orgId, [...orgIds])))
     .limit(limit + 1);
   const names = [...new Set([...contacts, ...clients].map((row) => row.name))];
+  // Complete only if nothing was cut: not by either query, and not by the combined list (6,000 contacts
+  // and 6,000 client users are each under the limit and together over it).
   return {
     names: names.slice(0, limit),
-    complete: contacts.length <= limit && clients.length <= limit,
+    complete: contacts.length <= limit && clients.length <= limit && names.length <= limit,
   };
 }

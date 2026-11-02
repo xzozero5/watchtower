@@ -175,6 +175,28 @@ describe('a developer and the tools of an incident (review)', () => {
     }
   });
 
+  it('cannot run a template that is not limited to an organization, on a ticket or an incident', async () => {
+    const open = await call<ToolTemplate>(head, 'POST', '/v1/tools/templates', {
+      kind: 'logs',
+      name: `all-orgs-${randomBytes(2).toString('hex')}`,
+      title: 'Every organization',
+      body: 'service="example-delivery" severity>=ERROR',
+      runByAi: false,
+    });
+    expect(open.status).toBe(201);
+    const templateId = open.body.id;
+    for (const path of [
+      `/v1/tickets/${ticketRef}/tools/run`,
+      `/v1/incidents/${incidentId}/tools/run`,
+    ]) {
+      const refused = await call(dev, 'POST', path, { templateId });
+      expect([path, refused.status]).toEqual([path, 403]);
+      // An agent keeps running it, as before.
+      const allowed = await call(agent, 'POST', path, { templateId });
+      expect([path, allowed.status]).toEqual([path, 201]);
+    }
+  });
+
   it('keeps an agent as free as before: they name the organization themselves', async () => {
     const response = await run(agent, incidentId, { org_id: otherOrgId });
     expect(response.status).toBe(201);

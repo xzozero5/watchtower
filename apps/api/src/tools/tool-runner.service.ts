@@ -39,6 +39,7 @@ import { and, desc, eq, sql } from 'drizzle-orm';
 import { AuditService } from '../audit/audit.service.js';
 import {
   badRequest,
+  forbidden,
   notFound,
   RateLimitedError,
   toolFailed,
@@ -489,7 +490,15 @@ export class ToolRunner implements OnModuleDestroy {
     const names = templatePlaceholders(body);
     const auto: Record<string, string> =
       subject.kind === 'ticket' ? { org_id: subject.orgId, ticket_id: subject.ticketId } : {};
-    if (masked && subject.kind === 'incident' && names.includes('org_id')) {
+    if (masked && !names.includes('org_id')) {
+      // A template with no `{{org_id}}` reads across every organization. A developer sees personal data
+      // only masked and only within the organization of the ticket or incident: such a template is not
+      // theirs to run (T-137).
+      throw forbidden(
+        'This template is not limited to one organization; a developer cannot run it',
+      );
+    }
+    if (masked && subject.kind === 'incident') {
       const wanted = given.org_id;
       if (wanted !== undefined && !subject.orgIds.includes(wanted)) {
         throw badRequest('org_id must be an organization this incident affects');

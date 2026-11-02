@@ -564,6 +564,25 @@ describe('what the first version let through (review)', () => {
     const closed = createMaskingSession('t', cut.names, cut.complete);
     expect(closed.text('Zeta Lastcontactname asked')).toBe(MASKED_TEXT_UNAVAILABLE);
     expect((await orgPeopleNames(h.db.owner.db, [bigOrg])).complete).toBe(true);
+
+    // Each list under the limit and the two together over it is still cut short.
+    const mixedOrg = (await apiOrg(lead, { name: 'Mixed Org' })).id;
+    await sql(
+      `INSERT INTO contact (org_id, name, emails)
+       SELECT $1, 'Contact' || n || ' Name' || n, ARRAY['c' || n || '@mixed.example']
+         FROM generate_series(1, 3) AS n`,
+      [mixedOrg],
+    );
+    await sql(
+      `INSERT INTO users (email, name, role, org_id)
+       SELECT 'u' || n || '@mixed.example', 'Client' || n || ' User' || n, 'client', $1
+         FROM generate_series(1, 3) AS n`,
+      [mixedOrg],
+    );
+    const mixed = await orgPeopleNames(h.db.owner.db, [mixedOrg], 4);
+    expect(mixed.complete).toBe(false);
+    expect(mixed.names).toHaveLength(4);
+    expect((await orgPeopleNames(h.db.owner.db, [mixedOrg], 6)).complete).toBe(true);
   });
 
   it('masks the AI one-liner of a list row before it is cut, so an address is never left in pieces', async () => {
