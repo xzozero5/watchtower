@@ -63,16 +63,22 @@ export function DropdownMenuCheckboxItem({
 export function DropdownMenuRadioItem({
   className,
   children,
+  hideIndicator = false,
   ...props
-}: ComponentProps<typeof Menu.RadioItem>) {
+}: ComponentProps<typeof Menu.RadioItem> & {
+  /** For a compact icon-only choice that shows the chosen one another way (a ring). */
+  hideIndicator?: boolean;
+}) {
   return (
-    <Menu.RadioItem className={cn(ITEM, 'pr-8', className)} {...props}>
+    <Menu.RadioItem className={cn(ITEM, hideIndicator ? 'pr-2' : 'pr-8', className)} {...props}>
       {children}
-      <span className="absolute right-2 flex size-4 items-center justify-center">
-        <Menu.ItemIndicator>
-          <Circle aria-hidden className="size-2 fill-current" />
-        </Menu.ItemIndicator>
-      </span>
+      {hideIndicator ? null : (
+        <span className="absolute right-2 flex size-4 items-center justify-center">
+          <Menu.ItemIndicator>
+            <Circle aria-hidden className="size-2 fill-current" />
+          </Menu.ItemIndicator>
+        </span>
+      )}
     </Menu.RadioItem>
   );
 }

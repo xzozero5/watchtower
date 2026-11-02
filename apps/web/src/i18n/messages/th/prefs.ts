@@ -2,7 +2,14 @@ import type { prefsEn } from '../en/prefs';
 import type { Widen } from '../types';
 
 export const prefsTh: Widen<typeof prefsEn> = {
-  theme: { label: 'ธีม', system: 'ตามระบบ', light: 'สว่าง', dark: 'มืด' },
+  theme: {
+    label: 'ธีม',
+    system: 'ตามระบบ',
+    light: 'สว่าง',
+    dark: 'มืด',
+    darkTheme: 'ธีมมืด',
+    followSystem: 'ตามระบบ',
+  },
   density: { label: 'ความหนาแน่น', comfortable: 'สบายตา', compact: 'กะทัดรัด' },
   language: { label: 'ภาษา' },
   singleKey: {
