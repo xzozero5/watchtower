@@ -15,6 +15,7 @@
  *    Braille blank U+2800;
  *  - drop combining marks that follow a digit (a digit with a mark is not a digit anyone writes);
  *  - read the ideographic full stop U+3002 and U+FF61 as '.', the way IDNA does for domains;
+ *  - read a percent escape of a printable ASCII character (`%2B`, `%40`, `%20`) as that character;
  *  - map every `\p{Nd}` (Thai, Arabic-Indic, Devanagari, mathematical, ...) to ASCII 0-9.
  *
  * Not handled, by design (documented in ADR-008): homoglyphs from other scripts (Cyrillic 'а' for
@@ -154,6 +155,17 @@ export function buildView(original: string): NormalizedView {
       const nextWidth = next > 0xffff ? 2 : 1;
       if (!MARK.test(original.slice(end, end + nextWidth))) break;
       end += nextWidth;
+    }
+    if (code === 0x25 && end === index + 1) {
+      // A percent escape of a printable ASCII character ("%2B", "%40", "%20") is read as that
+      // character, so a number or an address written in a query string is seen as it will be read.
+      const hex = original.slice(index + 1, index + 3);
+      const decoded = /^[0-9A-Fa-f]{2}$/.test(hex) ? Number.parseInt(hex, 16) : -1;
+      if (decoded >= 0x20 && decoded < 0x7f) {
+        builder.push(decoded, index, index + 3);
+        index += 3;
+        continue;
+      }
     }
     if (end === index + 1 && code < 0x80) builder.push(code, index, end);
     else if (end === index + 1 && code >= 0x0e50 && code <= 0x0e59) {

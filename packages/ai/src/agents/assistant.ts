@@ -414,7 +414,9 @@ export async function runAssistantTurn(
     const candidate = makeClaim(stripLinks(restore(item.text)).slice(0, 600), evidence);
     if (claimSchema.safeParse(candidate).success) {
       claims.push(candidate);
-      redactedParts.push(item.text);
+      // Model words coming back in: placeholders it was given stay, anything else that looks like personal
+      // data becomes a placeholder too, so what is stored holds nothing the redactor would have caught (N4).
+      redactedParts.push(session.fromModel(item.text));
     }
     if (claims.length >= input.limits.maxClaims) break;
   }

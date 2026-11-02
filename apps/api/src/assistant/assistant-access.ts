@@ -74,25 +74,19 @@ export const PROPOSAL_PERMISSION: Readonly<Record<ProposalKind, Permission>> = {
   reply_draft: 'ticket.handle',
 };
 
-/**
- * T-137 (`origin/wip/t-137`, `[ASSUMED]` until it merges): the developer reads every ticket with personal
- * data masked through `ticket.read.masked` instead of `ticket.read`, and works on a ticket with
- * `ticket.dev.work` instead of `ticket.handle`. The names are written as plain permissions here so this
- * branch stands on its own; once T-137 is merged they are in `Permission` and the casts can go.
- */
-export const MASKED_READ = 'ticket.read.masked' as Permission;
-export const DEV_WORK = 'ticket.dev.work' as Permission;
-
 type Holder = Pick<Principal, 'role' | 'permissions'>;
 
-/** `dev` sees tickets without the customer's identity (po #33): by role, or by holding only the masked read. */
+/**
+ * Masked (T-137, po #33): the person reads tickets with personal data masked, holding `ticket.read.masked`
+ * and not `ticket.read`. The same rule as the ticket reader's, so what it serves and what the assistant
+ * says about the same ticket agree. Holding both is the full read.
+ */
 export const isMasked = (principal: Holder): boolean =>
-  (principal.role as string) === 'dev' ||
-  (principal.permissions.has(MASKED_READ) && !principal.permissions.has('ticket.read'));
+  principal.permissions.has('ticket.read.masked') && !principal.permissions.has('ticket.read');
 
-/** May the person read tickets at all, whole or masked? The one question the routes ask. */
+/** May the person read tickets at all, whole or masked? */
 export const canUseAssistant = (principal: Holder): boolean =>
-  principal.permissions.has('ticket.read') || principal.permissions.has(MASKED_READ);
+  principal.permissions.has('ticket.read') || principal.permissions.has('ticket.read.masked');
 
 /** A permission held, where reading a ticket is satisfied by the masked read too (the data is masked then). */
 function holds(principal: Holder, permission: Permission): boolean {
@@ -106,7 +100,7 @@ function holds(principal: Holder, permission: Permission): boolean {
  */
 export function proposalPermission(kind: ProposalKind, principal: Holder): Permission {
   return isMasked(principal) && (kind === 'status' || kind === 'note')
-    ? DEV_WORK
+    ? 'ticket.dev.work'
     : PROPOSAL_PERMISSION[kind];
 }
 

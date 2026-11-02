@@ -17,7 +17,8 @@ export default defineConfig({
     ? [['github'], ['html', { open: 'never', outputFolder: 'playwright-report' }]]
     : 'list',
   outputDir: 'test-results',
-  use: { baseURL, trace: 'on-first-retry' },
+  // No transitions: axe measures contrast and target size on still pixels, not halfway through one.
+  use: { baseURL, trace: 'on-first-retry', contextOptions: { reducedMotion: 'reduce' } },
   projects: [
     {
       name: 'chromium',

@@ -6,6 +6,7 @@ import {
   intentListSchema,
   lineQuotaSchema,
   magicLinkAcceptedSchema,
+  manualTicketResultSchema,
   otherMailDetailSchema,
   otherMailPageSchema,
   outboundSettingsSchema,
@@ -13,6 +14,7 @@ import {
   savedViewListSchema,
   savedViewSchema,
   sessionInfoSchema,
+  similarTicketsSchema,
   teamQueueListSchema,
   ticketAiInsightSchema,
   ticketDetailResponseSchema,
@@ -25,17 +27,20 @@ import {
   type BulkRequest,
   type ChangeStatus,
   type ConvertOtherMail,
+  type CreateManualTicket,
   type CreateSavedView,
   type DevLoginRequest,
   type Note,
   type OtherMailQuery,
   type RejectAiDraft,
   type Reply,
+  type SimilarTicketsQuery,
   type TicketListQuery,
   type UpdateTicket,
 } from '@watchtower/shared';
 import { createAdminEndpoints } from './admin-endpoints';
 import { createNotificationEndpoints } from './notification-endpoints';
+import { createOpsEndpoints } from './ops-endpoints';
 import { createShiftEndpoints } from './shift-endpoints';
 import type { ApiClient } from './client';
 
@@ -46,6 +51,7 @@ export type TicketListParams = Partial<
     | 'status'
     | 'priority'
     | 'assignee'
+    | 'devOwner'
     | 'intentId'
     | 'tag'
     | 'q'
@@ -66,6 +72,7 @@ export function createEndpoints(client: ApiClient) {
     ...createAdminEndpoints(client),
     ...createNotificationEndpoints(client),
     ...createShiftEndpoints(client),
+    ...createOpsEndpoints(client),
 
     // --- auth (public) ---
     authConfig: (signal?: AbortSignal) =>
@@ -199,6 +206,39 @@ export function createEndpoints(client: ApiClient) {
         path: `${refPath(ref)}/status`,
         body,
         schema: ticketDetailResponseSchema,
+      }),
+
+    /** The caller picks the ticket up as its developer, or lets it go (T-137). */
+    devPickUp: (ref: string) =>
+      client.request({
+        method: 'POST',
+        path: `${refPath(ref)}/dev-owner`,
+        schema: ticketDetailResponseSchema,
+      }),
+
+    devRelease: (ref: string) =>
+      client.request({
+        method: 'DELETE',
+        path: `${refPath(ref)}/dev-owner`,
+        schema: ticketDetailResponseSchema,
+      }),
+
+    /** A ticket filed by hand: a call, a visit, a chat that is not connected (T-136). */
+    createManualTicket: (body: CreateManualTicket) =>
+      client.request({
+        method: 'POST',
+        path: '/v1/tickets/manual',
+        body,
+        schema: manualTicketResultSchema,
+      }),
+
+    /** Open tickets that may be the same request as the one being typed. */
+    similarTickets: (query: SimilarTicketsQuery, signal?: AbortSignal) =>
+      client.request({
+        path: '/v1/tickets/similar',
+        query,
+        schema: similarTicketsSchema,
+        ...(signal ? { signal } : {}),
       }),
 
     assign: (ref: string, body: AssignTicket) =>

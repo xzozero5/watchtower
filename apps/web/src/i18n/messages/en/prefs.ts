@@ -1,5 +1,12 @@
 export const prefsEn = {
-  theme: { label: 'Theme', system: 'System', light: 'Light', dark: 'Dark' },
+  theme: {
+    label: 'Theme',
+    system: 'System',
+    light: 'Light',
+    dark: 'Dark',
+    darkTheme: 'Dark theme',
+    followSystem: 'Follow system',
+  },
   density: { label: 'Density', comfortable: 'Comfortable', compact: 'Compact' },
   language: { label: 'Language' },
   singleKey: {

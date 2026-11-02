@@ -8,4 +8,8 @@ export const channelTh: Widen<typeof channelEn> = {
   discord: 'Discord',
   webhook: 'Webhook',
   internal: 'ภายใน',
+  phone: 'โทรศัพท์',
+  walk_in: 'มาด้วยตนเอง',
+  chat: 'แชต',
+  other: 'อื่น ๆ',
 };

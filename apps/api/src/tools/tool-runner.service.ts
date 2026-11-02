@@ -45,6 +45,7 @@ import { and, desc, eq, sql } from 'drizzle-orm';
 import { AuditService } from '../audit/audit.service.js';
 import {
   badRequest,
+  forbidden,
   notFound,
   RateLimitedError,
   toolFailed,
@@ -55,7 +56,9 @@ import type { Principal } from '../auth/principal.js';
 import { APP_CONFIG, type ApiConfig } from '../config/config.js';
 import { DATABASE } from '../database/database.module.js';
 import { UnitOfWorkService } from '../realtime/unit-of-work.js';
-import { TicketReader } from '../tickets/ticket-reader.js';
+import { orgPeopleNames, type OrgNames } from '../masking/org-names.js';
+import { MASKED_TEXT_UNAVAILABLE } from '../masking/pii-masker.js';
+import { TicketReader, isMasked } from '../tickets/ticket-reader.js';
 import { clientIsMock, TOOL_CLIENTS, type ToolClients } from './tool-clients.js';
 
 type CardRow = typeof schema.evidenceCard.$inferSelect;
@@ -90,14 +93,20 @@ export type Subject =
       readonly orgId: string;
       readonly intentKey: string | null;
       /** Names of people of the organization, so the redactor knows them (N4). */
-      readonly orgNames: () => Promise<string[]>;
+      readonly orgNames: (extraOrgIds?: readonly string[]) => Promise<OrgNames>;
     }
-  | { readonly kind: 'incident'; readonly incidentId: string };
+  | {
+      readonly kind: 'incident';
+      readonly incidentId: string;
+      /** The organizations the incident affects (`incident_org`). */
+      readonly orgIds: readonly string[];
+      /** Names of the people of those organizations, and of `extraOrgIds` (the one a run was given). */
+      readonly orgNames: (extraOrgIds?: readonly string[]) => Promise<OrgNames>;
+    };
 
 const EXCERPT_LOG_LINES = 20;
 const EXCERPT_ROWS = 25;
 const EXCERPT_CHARS = 4000;
-const MAX_NAMES = 200;
 
 /** A result as the card keeps it, before redaction. */
 interface Finding {
@@ -133,6 +142,8 @@ interface Attempt {
   readonly paramsForHash: unknown;
   readonly tool: string;
   readonly mock: boolean;
+  /** Organizations this run was given besides the subject's own: their people are known to the redactor. */
+  readonly orgIds?: readonly string[];
   readonly run: (signal: AbortSignal) => Promise<Finding>;
 }
 
@@ -204,14 +215,7 @@ export class ToolRunner implements OnModuleDestroy {
       ticketId: view.t.id,
       orgId,
       intentKey: view.intentKey,
-      orgNames: async () => {
-        const rows = await this.database.db
-          .select({ name: schema.contact.name })
-          .from(schema.contact)
-          .where(eq(schema.contact.orgId, orgId))
-          .limit(MAX_NAMES);
-        return rows.map((row) => row.name);
-      },
+      orgNames: () => orgPeopleNames(this.database.db, [orgId]),
     };
   }
 
@@ -222,7 +226,19 @@ export class ToolRunner implements OnModuleDestroy {
       .where(eq(schema.incident.id, id))
       .limit(1);
     if (row === undefined) throw notFound('No such incident');
-    return { kind: 'incident', incidentId: row.id };
+    const affected = await this.database.db
+      .select({ orgId: schema.incidentOrg.orgId })
+      .from(schema.incidentOrg)
+      .where(eq(schema.incidentOrg.incidentId, row.id));
+    const orgIds = affected.map((entry) => entry.orgId);
+    return {
+      kind: 'incident',
+      incidentId: row.id,
+      orgIds,
+      // The redactor must know the people of the organizations the run is about (N4), not an empty list.
+      orgNames: (extra = []) =>
+        orgPeopleNames(this.database.db, [...new Set([...orgIds, ...extra])]),
+    };
   }
 
   // --- the buttons ------------------------------------------------------------------------
@@ -259,7 +275,7 @@ export class ToolRunner implements OnModuleDestroy {
 
   /** Runs a saved template for a ticket or an incident and pins what it found. */
   async runTemplate(subject: Subject, body: RunTool, principal: Principal): Promise<EvidenceCard> {
-    const attempt = await this.templateAttempt(subject, body);
+    const attempt = await this.templateAttempt(subject, body, principal);
     return this.execute(subject, attempt, principal, TOOLS_AUDIT_ACTIONS.toolRun);
   }
 
@@ -274,7 +290,11 @@ export class ToolRunner implements OnModuleDestroy {
     templateId: string,
     principal: Principal,
   ): Promise<AssistantFinding> {
-    const attempt = await this.templateAttempt(subject, runToolSchema.parse({ templateId }));
+    const attempt = await this.templateAttempt(
+      subject,
+      runToolSchema.parse({ templateId }),
+      principal,
+    );
     const runKey = randomUUID();
     const decision = await this.aiLedger.begin({
       runKey,
@@ -306,11 +326,15 @@ export class ToolRunner implements OnModuleDestroy {
       latencyMs: Date.now() - started,
       resultCount: finding.count,
     });
-    const names = await subject.orgNames();
+    // N4: this text goes to a model. If the organization has more people than the redactor can be given,
+    // the redactor cannot be trusted to find every name: the excerpt is replaced by a notice (fail closed).
+    const { names, complete } = await subject.orgNames();
     const session = createRedactor({ names: () => names }).session({ scope: subject.ticketId });
-    const excerpt = session
-      .redactToolOutput(attempt.tool, finding.text.slice(0, EXCERPT_CHARS * 2))
-      .slice(0, EXCERPT_CHARS);
+    const excerpt = complete
+      ? session
+          .redactToolOutput(attempt.tool, finding.text.slice(0, EXCERPT_CHARS * 2))
+          .slice(0, EXCERPT_CHARS)
+      : MASKED_TEXT_UNAVAILABLE;
     await this.audit.record({
       actor: { type: 'ai', id: null },
       action: AUDIT_ACTIONS.assistantToolRun,
@@ -372,7 +396,11 @@ export class ToolRunner implements OnModuleDestroy {
     return null;
   }
 
-  private async templateAttempt(subject: Subject, body: RunTool): Promise<Attempt> {
+  private async templateAttempt(
+    subject: Subject,
+    body: RunTool,
+    principal: Principal,
+  ): Promise<Attempt> {
     const template = await getToolTemplate(this.database.db, body.templateId);
     if (template === null || !template.active) throw notFound('No such template');
     if (
@@ -383,7 +411,7 @@ export class ToolRunner implements OnModuleDestroy {
       throw badRequest('That template belongs to another intent');
     }
     const kind = template.kind as 'logs' | 'data';
-    const params = this.resolveParams(subject, template.body, body.params);
+    const params = this.resolveParams(subject, template.body, body.params, isMasked(principal));
     const windowMinutes = body.windowMinutes;
     const attempt: Attempt = {
       templateId: template.id,
@@ -391,6 +419,7 @@ export class ToolRunner implements OnModuleDestroy {
       paramsForHash: { template: template.id, params, windowMinutes },
       tool: kind === 'logs' ? RATE_TOOL_NAMES.logs : RATE_TOOL_NAMES.data,
       mock: this.isMock(kind),
+      orgIds: params.org_id === undefined ? [] : [params.org_id],
       run: async (signal) => {
         if (kind === 'logs') {
           const logs = this.requireLogs();
@@ -595,15 +624,59 @@ export class ToolRunner implements OnModuleDestroy {
     return this.clients.data(extraColumns);
   }
 
-  /** The ticket fills `org_id` and `ticket_id`; the caller gives the rest, and nothing else. */
+  /**
+   * The ticket fills `org_id` and `ticket_id`; the caller gives the rest, and nothing else. An incident
+   * has no organization of its own, so a person gives `org_id`; a masked caller (a developer) cannot
+   * name any organization they like: it is one the incident affects, and when it affects exactly one it
+   * is filled in for them.
+   */
   private resolveParams(
     subject: Subject,
     body: string,
     given: Readonly<Record<string, string>>,
+    masked: boolean,
   ): Record<string, string> {
     const names = templatePlaceholders(body);
     const auto: Record<string, string> =
       subject.kind === 'ticket' ? { org_id: subject.orgId, ticket_id: subject.ticketId } : {};
+    if (masked && !names.includes('org_id')) {
+      // A template with no `{{org_id}}` reads across every organization. A developer sees personal data
+      // only masked and only within the organization of the ticket or incident: such a template is not
+      // theirs to run (T-137).
+      throw forbidden(
+        'This template is not limited to one organization; a developer cannot run it',
+      );
+    }
+    if (masked && subject.kind === 'incident') {
+      const wanted = given.org_id;
+      if (wanted !== undefined && !subject.orgIds.includes(wanted)) {
+        throw badRequest('org_id must be an organization this incident affects');
+      }
+      const only = subject.orgIds.length === 1 ? subject.orgIds[0] : undefined;
+      const chosen = wanted ?? only;
+      if (chosen === undefined) {
+        throw badRequest(
+          subject.orgIds.length === 0
+            ? 'This incident affects no organization yet, so org_id has nothing to be'
+            : 'Give org_id: one of the organizations this incident affects',
+        );
+      }
+      auto.org_id = chosen;
+      // Filled here, not typed: the same rule as on a ticket.
+      return this.fill(
+        names,
+        auto,
+        Object.fromEntries(Object.entries(given).filter(([name]) => name !== 'org_id')),
+      );
+    }
+    return this.fill(names, auto, given);
+  }
+
+  private fill(
+    names: readonly string[],
+    auto: Readonly<Record<string, string>>,
+    given: Readonly<Record<string, string>>,
+  ): Record<string, string> {
     const out: Record<string, string> = {};
     for (const name of names) {
       const fromTicket = auto[name];
@@ -686,7 +759,7 @@ export class ToolRunner implements OnModuleDestroy {
     });
 
     // N4: the excerpt is stored with personal data replaced by placeholders.
-    const names = subject.kind === 'ticket' ? await subject.orgNames() : [];
+    const { names, complete } = await subject.orgNames(attempt.orgIds);
     const session = createRedactor({ names: () => names }).session({
       scope: subject.kind === 'ticket' ? subject.ticketId : subject.incidentId,
     });
@@ -738,6 +811,9 @@ export class ToolRunner implements OnModuleDestroy {
       });
       return created;
     });
-    return toEvidenceCard(row);
+    const card = toEvidenceCard(row);
+    // A developer reads no card the redactor could not check against every name: the stored card is the
+    // same, the answer to a masked caller is a notice (T-137).
+    return !complete && isMasked(principal) ? { ...card, excerpt: MASKED_TEXT_UNAVAILABLE } : card;
   }
 }

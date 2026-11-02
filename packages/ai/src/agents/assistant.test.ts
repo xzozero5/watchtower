@@ -461,6 +461,27 @@ describe('regressions from the security review of T-134', () => {
     expect(outcome.redactedText).not.toContain('Somsak');
   });
 
+  it('redacts what comes back from the model before it can be stored: an address it invented is a placeholder', async () => {
+    const state = rig({
+      provider: new DevMockLlmProvider({
+        rules: [
+          {
+            promptId: 'assistant_answer',
+            text: JSON.stringify({
+              claims: [{ text: 'Write to ghost@invented.example about it.', evidenceIds: [] }],
+              proposals: [],
+            }),
+          },
+        ],
+      }),
+    });
+    const outcome = await runAssistantTurn(state.deps, input({ host: host(['search_tickets']) }));
+    expect(outcome.status).toBe('ok');
+    if (outcome.status !== 'ok') return;
+    expect(outcome.redactedText).not.toContain('ghost@invented.example');
+    expect(outcome.redactedText).toMatch(/\[EMAIL_\d+\]/);
+  });
+
   it('takes a link out of a sentence the model wrote, whatever it looks like', async () => {
     const state = rig({
       provider: new DevMockLlmProvider({

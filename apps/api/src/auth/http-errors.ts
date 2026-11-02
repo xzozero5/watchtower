@@ -88,6 +88,10 @@ export const mergeNotAllowed = (message: string): ApiHttpError =>
 export const ticketNotOpen = (message: string): ApiHttpError =>
   new ApiHttpError(HttpStatus.CONFLICT, 'ticket_not_open', message);
 
+/** 409: a public reply on a phone, walk-in, chat, other or internal ticket; nothing could be delivered. */
+export const channelNoOutbound = (message: string): ApiHttpError =>
+  new ApiHttpError(HttpStatus.CONFLICT, 'channel_no_outbound', message);
+
 export const invalidCredentials = (): ApiHttpError =>
   new ApiHttpError(HttpStatus.UNAUTHORIZED, 'invalid_credentials', 'Invalid email or password');
 

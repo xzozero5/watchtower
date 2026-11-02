@@ -214,9 +214,19 @@ export type BulkResult = z.infer<typeof bulkResultSchema>;
 
 // --- linked tickets (R-1.1) ---
 
-export const TICKET_LINK_KINDS = ['duplicate', 'related'] as const;
-export const ticketLinkKindSchema = z.enum(TICKET_LINK_KINDS);
+/** Links between two tickets (T-119). */
+export const TICKET_PAIR_LINK_KINDS = ['duplicate', 'related'] as const;
+/** Links from a ticket to something that already exists outside the queue (T-137). */
+export const TICKET_REFERENCE_LINK_KINDS = ['incident', 'deploy'] as const;
+/** Every kind a row of `ticket_link` can have. */
+export const TICKET_LINK_KINDS = [
+  ...TICKET_PAIR_LINK_KINDS,
+  ...TICKET_REFERENCE_LINK_KINDS,
+] as const;
 export type TicketLinkKind = (typeof TICKET_LINK_KINDS)[number];
+/** The kinds of the ticket-to-ticket routes; the other two have their own (`/references`). */
+export const ticketPairLinkKindSchema = z.enum(TICKET_PAIR_LINK_KINDS);
+export type TicketPairLinkKind = (typeof TICKET_PAIR_LINK_KINDS)[number];
 
 /**
  * How the other ticket relates to the one asked about. `duplicate_of`: this ticket is a duplicate of
@@ -228,7 +238,7 @@ export type TicketLinkRelation = (typeof TICKET_LINK_RELATIONS)[number];
 
 export const ticketLinkSchema = z.object({
   id: z.uuid(),
-  kind: ticketLinkKindSchema,
+  kind: ticketPairLinkKindSchema,
   relation: ticketLinkRelationSchema,
   ticket: z.object({
     id: z.uuid(),
@@ -245,7 +255,7 @@ export const ticketLinkListSchema = z.object({ items: z.array(ticketLinkSchema) 
 export type TicketLinkList = z.infer<typeof ticketLinkListSchema>;
 
 export const createTicketLinkSchema = z.object({
-  kind: ticketLinkKindSchema,
+  kind: ticketPairLinkKindSchema,
   /**
    * The other ticket, by id or number. `duplicate`: the ticket in the URL is a duplicate of this one.
    * Both tickets must belong to the same organization.

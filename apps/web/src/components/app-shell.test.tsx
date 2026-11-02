@@ -151,38 +151,57 @@ describe('AppShell for staff', () => {
     expect(document.documentElement).toHaveAttribute('data-theme', 'dark');
 
     await user.click(screen.getByRole('button', { name: 'Account menu' }));
-    await user.click(await screen.findByRole('menuitem', { name: 'Theme' }));
-    expect(await screen.findByRole('menuitemradio', { name: 'Dark' })).toHaveAttribute(
-      'aria-checked',
-      'true',
-    );
-    await choose(user, screen.getByRole('menuitemradio', { name: 'Light' }));
+    // Dark is in effect now (saved), so the switch is on and "Follow system" is offered.
+    const darkItem = await screen.findByRole('menuitemcheckbox', { name: 'Dark theme' });
+    expect(darkItem).toHaveAttribute('aria-checked', 'true');
+    await choose(user, darkItem);
     expect(document.documentElement).toHaveAttribute('data-theme', 'light');
 
     await user.click(screen.getByRole('button', { name: 'Account menu' }));
-    await user.click(await screen.findByRole('menuitem', { name: 'Density' }));
-    await choose(user, await screen.findByRole('menuitemradio', { name: 'Compact' }));
+    expect(await screen.findByRole('menuitemcheckbox', { name: 'Dark theme' })).toHaveAttribute(
+      'aria-checked',
+      'false',
+    );
+    await choose(user, screen.getByRole('menuitem', { name: 'Follow system' }));
+    expect(document.documentElement).not.toHaveAttribute('data-theme');
+
+    await user.click(screen.getByRole('button', { name: 'Account menu' }));
+    expect(screen.queryByRole('menuitem', { name: 'Follow system' })).not.toBeInTheDocument();
+    const compact = await screen.findByRole('menuitemradio', { name: 'Compact' });
+    expect(screen.getByRole('menuitemradio', { name: 'Comfortable' })).toHaveAttribute(
+      'aria-checked',
+      'true',
+    );
+    await choose(user, compact);
     expect(document.documentElement).toHaveAttribute('data-density', 'compact');
   });
 
-  it('turns single-key shortcuts off and on from the account menu', async () => {
+  it('the account menu no longer holds the single-key switch: the keyboard map does', async () => {
     const user = userEvent.setup();
     workspaceApi();
     await openWorkspace();
     await user.click(screen.getByRole('button', { name: 'Account menu' }));
-    const item = await screen.findByRole('menuitemcheckbox', { name: 'Single-key shortcuts' });
-    expect(item).toHaveAttribute('aria-checked', 'true');
-    await choose(user, item);
+    await screen.findByRole('menuitemcheckbox', { name: 'Dark theme' });
+    expect(
+      screen.queryByRole('menuitemcheckbox', { name: 'Single-key shortcuts' }),
+    ).not.toBeInTheDocument();
+    await choose(user, screen.getByRole('menuitem', { name: /Show keyboard shortcuts/ }));
+    const dialog = await screen.findByRole('dialog', { name: 'Keyboard shortcuts' });
+    const toggle = within(dialog).getByRole('checkbox', { name: 'Single-key shortcuts' });
+    expect(toggle).toBeChecked();
+    await user.click(toggle);
     expect(localStorage.getItem('wt-single-key-shortcuts')).toBe('off');
   });
 
-  it('switches language by saving a cookie and refreshing the server render', async () => {
+  it('switches language with a flag: a cookie and a refresh of the server render', async () => {
     const user = userEvent.setup();
     workspaceApi();
     await openWorkspace();
     await user.click(screen.getByRole('button', { name: 'Account menu' }));
-    await user.click(await screen.findByRole('menuitem', { name: 'Language' }));
-    await choose(user, await screen.findByRole('menuitemradio', { name: 'ไทย' }));
+    const english = await screen.findByRole('menuitemradio', { name: 'English' });
+    expect(english).toHaveAttribute('aria-checked', 'true');
+    expect(within(english).queryByText('English')).not.toBeInTheDocument();
+    await choose(user, screen.getByRole('menuitemradio', { name: 'ภาษาไทย' }));
     expect(document.cookie).toContain('wt-locale=th');
     expect(refresh).toHaveBeenCalledTimes(1);
   });

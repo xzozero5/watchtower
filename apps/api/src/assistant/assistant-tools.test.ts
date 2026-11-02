@@ -345,11 +345,58 @@ describe('what the tools say', () => {
     const status = lead.facts('team_status', await lead.tools.call('team_status', {}));
     expect(status.map((fact) => fact.names)).toEqual([['Mali'], ['Nok']]);
     const search = lead.facts('search_tickets', await lead.tools.call('search_tickets', {}));
-    expect(search[0]?.names).toEqual(['Mali']);
+    // The organization's people ride on the first fact (the contacts and the client users of the org).
+    expect(search[0]?.names).toEqual(expect.arrayContaining(['Mali', 'Jane Doe']));
     const read = lead.facts(
       'summarize_ticket',
       await lead.tools.call('summarize_ticket', { ticket: 'OPS-12' }),
     );
     expect(read[0]?.names).toEqual(expect.arrayContaining(['Jane Doe', 'Mali']));
+  });
+
+  it('shows no text of a ticket when the people of its organization could not all be listed (fail closed)', async () => {
+    const spy: Spy = { writes: [], runs: 0, reads: [] };
+    const base = deps(spy);
+    // An organization with more people than the redactor can take: the query comes back over the limit.
+    const many = Array.from({ length: 10_001 }, (_, index) => ({
+      name: `Person ${String(index)}`,
+    }));
+    const host = buildAssistantTools(
+      {
+        ...base,
+        database: {
+          db: {
+            select: () => ({
+              from: () => ({
+                where: () =>
+                  Object.assign(many, {
+                    orderBy: () => ({ limit: () => Promise.resolve([]) }),
+                    limit: () => Promise.resolve(many),
+                  }),
+              }),
+            }),
+          },
+        } as never,
+      },
+      {
+        principal: principal('agent'),
+        locale: 'en',
+        masked: false,
+        now: new Date('2026-11-02T01:00:00.000Z'),
+      },
+    );
+    for (const [name, input] of [
+      ['summarize_ticket', { ticket: 'OPS-12' }],
+      ['explain_sla', { ticket: 'OPS-12' }],
+      ['search_tickets', {}],
+    ] as const) {
+      const facts = host.facts(name, await host.tools.call(name, input));
+      expect(facts.length, name).toBeGreaterThan(0);
+      for (const fact of facts) {
+        expect(fact.text, name).toContain('text hidden');
+        expect(fact.text, name).not.toContain('Cannot sign in');
+        expect(fact.names, name).toBeUndefined();
+      }
+    }
   });
 });

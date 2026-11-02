@@ -7,6 +7,7 @@ export const railTh: Widen<typeof railEn> = {
   otherMail: 'อีเมลอื่น ๆ',
   home: 'หน้าหลัก',
   admin: 'ผู้ดูแลระบบ',
+  newTicket: 'สร้าง ticket ใหม่',
   shift: 'กะของฉัน',
   brief: 'สรุปประจำวัน',
   handoff: 'ส่งเวร',

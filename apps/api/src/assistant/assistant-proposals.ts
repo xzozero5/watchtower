@@ -17,6 +17,8 @@ import {
   proposalCardSchema,
   updateTicketSchema,
   SETTABLE_STATUSES,
+  isDevStatusMove,
+  statusChangeNeedsNote,
   type AssistantLocale,
   type ConfirmProposalResponse,
   type ProposalCard,
@@ -41,7 +43,7 @@ import { TICKET_KEYS, type TicketKeys } from '../tickets/ticket-keys.js';
 import { TicketReader, type TicketViewRow } from '../tickets/ticket-reader.js';
 import { TicketsService } from '../tickets/tickets.service.js';
 import { WorkflowService } from '../tickets/workflow.service.js';
-import { proposalPermission } from './assistant-access.js';
+import { isMasked, proposalPermission } from './assistant-access.js';
 import { ticketHref } from './assistant-hrefs.js';
 import { statusWord, type ProposalWhy } from './assistant-text.js';
 
@@ -171,7 +173,14 @@ export class AssistantProposals {
       return { why: 'ticket_not_found' };
     }
     const key = this.keys.format(view.t.number);
-    const target = { key, label: cut(view.t.subject, 120), href: ticketHref(key) };
+    // The card is stored and shown as the person sees the ticket: a masked reader gets the subject through
+    // the same masking as the ticket page (and a notice if the names could not all be listed), never raw.
+    const subject = isMasked(principal)
+      ? (await this.reader.maskingFor(view.t.id, [view])).text(view.t.subject)
+      : view.t.subject;
+    const target = { key, label: cut(subject, 120), href: ticketHref(key) };
+    // Someone who may only do the developer's work is held to the developer's two statuses (T-137).
+    const asDev = !principal.permissions.has('ticket.handle');
     const base = { ticketId: view.t.id, baseUpdatedAt: view.t.updatedAt };
 
     switch (intent.kind) {
@@ -202,6 +211,15 @@ export class AssistantProposals {
         if (view.t.status === intent.status) return { why: 'no_change' };
         if (!(await this.workflow.allows(view.t.status as TicketStatus, intent.status))) {
           return { why: 'transition' };
+        }
+        const from = view.t.status as TicketStatus;
+        if (asDev && !isDevStatusMove(from, intent.status)) return { why: 'transition' };
+        // Handing a ticket to a developer, or back, carries a note (it is saved as an internal note).
+        if (
+          statusChangeNeedsNote(from, intent.status, asDev) &&
+          (intent.reason ?? '').trim() === ''
+        ) {
+          return { why: 'needs_note' };
         }
         const body = changeStatusSchema.safeParse({ status: intent.status, reason: intent.reason });
         if (!body.success) return { why: 'invalid' };
@@ -495,7 +513,16 @@ export class AssistantProposals {
       }
       case 'status': {
         const body = changeStatusSchema.parse(params);
-        await this.tickets.changeStatus(uow, need(ticketId), body.status, actor, body.reason);
+        // The same rule as the route: no `ticket.handle` means the developer's two statuses only.
+        const asDev = !principal.permissions.has('ticket.handle');
+        await this.tickets.changeStatus(
+          uow,
+          need(ticketId),
+          body.status,
+          actor,
+          body.reason,
+          asDev,
+        );
         return { key, href: hrefOf(key) };
       }
       case 'tag': {

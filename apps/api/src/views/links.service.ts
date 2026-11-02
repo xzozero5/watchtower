@@ -3,9 +3,10 @@ import { schema, type Database } from '@watchtower/db';
 import {
   AUDIT_ACTIONS,
   VIEWS_TICKET_EVENTS,
+  TICKET_PAIR_LINK_KINDS,
   type CreateTicketLink,
   type TicketLink,
-  type TicketLinkKind,
+  type TicketPairLinkKind,
   type TicketLinkList,
   type TicketLinkRelation,
   type TicketPriority,
@@ -51,15 +52,18 @@ export class LinksService {
       .leftJoin(users, eq(users.id, ticketLink.createdBy))
       .where(
         and(
+          // Links to an incident or a deploy (T-137) are a different list: they have no other ticket.
+          inArray(ticketLink.kind, [...TICKET_PAIR_LINK_KINDS]),
           or(eq(ticketLink.fromTicketId, ticketId), eq(ticketLink.toTicketId, ticketId)),
           onlyLinkId === undefined ? undefined : eq(ticketLink.id, onlyLinkId),
         ),
       )
       .orderBy(asc(ticketLink.createdAt), asc(ticketLink.id));
     if (rows.length === 0) return [];
-    const otherIds = rows.map(({ link }) =>
-      link.fromTicketId === ticketId ? link.toTicketId : link.fromTicketId,
-    );
+    const otherIds = rows.flatMap(({ link }) => {
+      const otherId = link.fromTicketId === ticketId ? link.toTicketId : link.fromTicketId;
+      return otherId === null ? [] : [otherId];
+    });
     const others = await executor
       .select({
         id: ticket.id,
@@ -74,9 +78,10 @@ export class LinksService {
     const items: TicketLink[] = [];
     for (const { link, creatorName } of rows) {
       const outgoing = link.fromTicketId === ticketId;
-      const other = byId.get(outgoing ? link.toTicketId : link.fromTicketId);
+      const otherId = outgoing ? link.toTicketId : link.fromTicketId;
+      const other = otherId === null ? undefined : byId.get(otherId);
       if (other === undefined) continue;
-      const kind = link.kind as TicketLinkKind;
+      const kind = link.kind as TicketPairLinkKind;
       const relation: TicketLinkRelation =
         kind === 'related' ? 'related' : outgoing ? 'duplicate_of' : 'has_duplicate';
       items.push({
@@ -181,18 +186,20 @@ export class LinksService {
         .where(
           and(
             eq(ticketLink.id, linkId),
+            inArray(ticketLink.kind, [...TICKET_PAIR_LINK_KINDS]),
             or(eq(ticketLink.fromTicketId, source.t.id), eq(ticketLink.toTicketId, source.t.id)),
           ),
         )
         .returning();
       if (!link) throw notFound('No such link on this ticket');
       const otherId = link.fromTicketId === source.t.id ? link.toTicketId : link.fromTicketId;
+      if (otherId === null) throw notFound('No such link on this ticket');
       const other = await this.reader.viewById(otherId, principal, tx);
       await this.recordEvents(
         tx,
         VIEWS_TICKET_EVENTS.unlinked,
         link.id,
-        link.kind as TicketLinkKind,
+        link.kind as TicketPairLinkKind,
         source,
         other,
         principal,
@@ -212,7 +219,7 @@ export class LinksService {
     tx: DbTransaction,
     type: string,
     linkId: string,
-    kind: TicketLinkKind,
+    kind: TicketPairLinkKind,
     source: { readonly t: { readonly id: string; readonly number: number } },
     other: { readonly t: { readonly id: string; readonly number: number } },
     principal: Principal,

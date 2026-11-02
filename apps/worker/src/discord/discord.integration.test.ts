@@ -721,7 +721,13 @@ describe('processor', () => {
   it('works from what the domain queued when a ticket is created', async () => {
     const ctx = domain.context({ actor: { type: 'system', id: null } });
     const { value } = await database.db.transaction((tx) =>
-      domain.tickets.create(tx, ctx, { orgId, subject: 'Hello', body: 'Body text' }),
+      domain.tickets.create(tx, ctx, {
+        orgId,
+        subject: 'Hello',
+        body: 'Body text',
+        // A ticket with no customer is internal and not announced; this one came from a person.
+        requester: { email: 'hello@customer.example', name: 'Hello Person' },
+      }),
     );
     const [queued] = await owner()
       .select()

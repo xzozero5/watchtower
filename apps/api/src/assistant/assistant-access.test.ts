@@ -59,11 +59,7 @@ describe('who the assistant works for', () => {
   });
 
   // What `origin/wip/t-137` gives the dev role: the masked read, dev work on a ticket, investigate.
-  const DEV: Permission[] = [
-    'ticket.read.masked' as Permission,
-    'ticket.dev.work' as Permission,
-    'investigate.run',
-  ];
+  const DEV: Permission[] = ['ticket.read.masked', 'ticket.dev.work', 'investigate.run'];
 
   it('works for a developer, who holds the masked read and not ticket.read (po #33)', () => {
     const dev = who('dev', DEV);
@@ -84,8 +80,8 @@ describe('who the assistant works for', () => {
   });
 
   it('masks by permission as well as by role, and never for a person who may read it all', () => {
-    expect(isMasked(who('agent', ['ticket.read.masked' as Permission]))).toBe(true);
-    expect(isMasked(who('agent', ['ticket.read.masked' as Permission, 'ticket.read']))).toBe(false);
+    expect(isMasked(who('agent', ['ticket.read.masked']))).toBe(true);
+    expect(isMasked(who('agent', ['ticket.read.masked', 'ticket.read']))).toBe(false);
     expect(isMasked(who('agent', AGENT))).toBe(false);
     // Whoever holds neither read has no assistant.
     expect(canUseAssistant(who('agent', ['ticket.handle']))).toBe(false);

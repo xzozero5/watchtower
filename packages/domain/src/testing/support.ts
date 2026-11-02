@@ -91,7 +91,7 @@ export function recordingNotifier(): TicketNotifier & { readonly calls: string[]
 
 export async function addStaff(
   env: DomainTestEnv,
-  role: 'agent' | 'lead' | 'head' = 'agent',
+  role: 'agent' | 'lead' | 'head' | 'dev' = 'agent',
 ): Promise<{ id: string; actor: Actor }> {
   const [row] = await env.db.owner.db
     .insert(schema.users)

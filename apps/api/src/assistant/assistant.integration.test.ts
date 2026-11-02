@@ -1001,6 +1001,229 @@ describe('regressions from the security review of T-134 / T-135', () => {
   });
 });
 
+describe('regressions from the second security review of T-134', () => {
+  const asker = () => signIn(h, 'agent');
+
+  it('N4: a name of the organization in the subject of another ticket never reaches the model', async () => {
+    const napat = `Napat${suffix} Wongsa`;
+    const org = (await apiOrg(lead, { name: `Names Org ${suffix}` })).id;
+    // The contact exists because a ticket was filed for them; another ticket mentions them in its subject.
+    await fileTicket(agent, org, {
+      subject: 'Their own question',
+      requester: { email: `napat-${suffix}@customer.example`, name: napat },
+    });
+    await fileTicket(agent, org, { subject: `Please call ${napat} about the invoice` });
+    const who = await asker();
+    const before = sent.length;
+    const reply = await okReply(who, 'find tickets about invoice');
+    expect(reply.claims.map((claim) => claim.text).join(' ')).toContain(`Napat${suffix}`);
+    const seen = sent.slice(before).join('\n');
+    expect(seen).not.toContain(`Napat${suffix}`);
+    expect(seen).not.toContain('Wongsa');
+    // And nothing of it is stored.
+    const stored = await owner().query<{ body: string }>(
+      `SELECT body FROM assistant_message WHERE conversation_id = $1`,
+      [reply.conversationId],
+    );
+    expect(stored.rows.map((row) => row.body).join('\n')).not.toContain('Napat');
+  });
+
+  it('N4: a name the person types is replaced when the ticket in view (or one named in the text) is of that organization', async () => {
+    const somchai = `Somchai${suffix} Prasert`;
+    const org = (await apiOrg(lead, { name: `Typed Org ${suffix}` })).id;
+    const inView = await fileTicket(agent, org, {
+      subject: 'Typed names',
+      requester: { email: `somchai-${suffix}@customer.example`, name: somchai },
+    });
+    for (const extra of [{ context: { ticket: inView.key } }, {}]) {
+      const who = await asker();
+      const before = sent.length;
+      const text = `what did ${somchai} write? see ${inView.key}`;
+      const reply = await okReply(who, text, extra);
+      expect(sent.slice(before).join('\n')).not.toContain('Prasert');
+      const stored = await owner().query<{ body: string }>(
+        `SELECT body FROM assistant_message WHERE conversation_id = $1`,
+        [reply.conversationId],
+      );
+      expect(stored.rows.map((row) => row.body).join('\n')).not.toContain('Prasert');
+    }
+  });
+
+  it('PRD 8.2: every ticket read has its pii.read row, however many were read', async () => {
+    const org = (await apiOrg(lead, { name: `Many Org ${suffix}` })).id;
+    const ids: string[] = [];
+    for (const word of ['alpha', 'bravo', 'charlie']) {
+      for (let index = 0; index < 8; index += 1) {
+        ids.push(
+          (await fileTicket(agent2, org, { subject: `${word}${suffix} ticket ${String(index)}` }))
+            .id,
+        );
+      }
+    }
+    const who = await asker();
+    script.plan = JSON.stringify({
+      calls: ['alpha', 'bravo', 'charlie'].map((word) => ({
+        tool: 'search_tickets',
+        input: { query: `${word}${suffix}`, limit: 8 },
+      })),
+    });
+    try {
+      const reply = await okReply(who, 'look at all of them');
+      const rows = await owner().query<{ target_id: string }>(
+        `SELECT target_id FROM audit_log WHERE action = 'pii.read' AND actor_id = $1 AND metadata->>'conversationId' = $2`,
+        [who.userId, reply.conversationId],
+      );
+      expect(new Set(rows.rows.map((row) => row.target_id))).toEqual(new Set(ids));
+      const message = await owner().query<{ metadata: { ticketIds: string[] } }>(
+        `SELECT metadata FROM audit_log WHERE action = 'assistant.message' AND target_id = $1`,
+        [reply.conversationId],
+      );
+      expect(new Set(message.rows[0]?.metadata.ticketIds)).toEqual(new Set(ids));
+    } finally {
+      delete script.plan;
+    }
+  });
+
+  describe('a developer (T-137, masked)', () => {
+    const customer = `Napat${suffix} Dev`;
+    let target: TicketDetail;
+    let dev: Persona;
+
+    beforeAll(async () => {
+      dev = await signIn(h, 'dev');
+      target = await fileTicket(agent, orgId, {
+        subject: `Cannot export for ${customer} (dev-${suffix}@customer.example)`,
+        requester: { email: `dev-${suffix}@customer.example`, name: customer },
+      });
+    });
+
+    it('is let in (the decorator names the masked read), a customer is not', async () => {
+      const starters = await dev.client.get<AssistantStarters>('/v1/assistant/starters');
+      expect(starters.status).toBe(200);
+      expect(starters.body.state).toBe('ok');
+      expect((await client.client.get('/v1/assistant/starters')).status).toBe(403);
+    });
+
+    it('reads a ticket without the customer’s name or address, and has no roster tool', async () => {
+      const reply = await okReply(dev, 'summarize this', { context: { ticket: target.key } });
+      const shown = JSON.stringify(reply);
+      for (const secret of [
+        `Napat${suffix}`,
+        'Dev"',
+        `dev-${suffix}@customer.example`,
+        'customer.example',
+      ]) {
+        expect(shown, secret).not.toContain(secret);
+      }
+      expect(reply.tools.map((tool) => tool.name)).toEqual(['summarize_ticket']);
+      const team = await okReply(dev, 'who is overloaded');
+      expect(team.tools).toEqual([]);
+    });
+
+    it('gets a card with the subject masked, and may move only between open and waiting on dev, with a note', async () => {
+      const ticketForDev = await fileTicket(agent, orgId, {
+        subject: `Export fails for ${customer}`,
+        requester: { email: `dev2-${suffix}@customer.example`, name: customer },
+      });
+      // A developer moves a ticket that support has opened.
+      expect(
+        (await agent.client.post(`/v1/tickets/${ticketForDev.id}/status`, { status: 'open' }))
+          .status,
+      ).toBe(200);
+      script.answer = JSON.stringify({
+        claims: [],
+        proposals: [
+          {
+            kind: 'status',
+            ticket: ticketForDev.key,
+            status: 'waiting_on_dev',
+            reason: 'Look at the export job',
+          },
+        ],
+      });
+      let card: ProposalCard | undefined;
+      try {
+        const reply = await okReply(dev, 'send it to dev', {
+          context: { ticket: ticketForDev.key },
+        });
+        card = reply.proposals[0];
+        expect(card?.kind).toBe('status');
+        // The label is the subject as a masked reader sees it, never the raw one.
+        expect(card?.target?.label).not.toContain(`Napat${suffix}`);
+        expect(JSON.stringify(card)).not.toContain(`dev2-${suffix}`);
+
+        // Without a note it gets no card; a move a developer may not make gets none either.
+        script.answer = JSON.stringify({
+          claims: [],
+          proposals: [
+            { kind: 'status', ticket: ticketForDev.key, status: 'waiting_on_dev' },
+            { kind: 'status', ticket: ticketForDev.key, status: 'resolved', reason: 'done' },
+            { kind: 'assign', ticket: ticketForDev.key, assignee: 'anyone' },
+          ],
+        });
+        const refused = await okReply(dev, 'resolve it', { context: { ticket: ticketForDev.key } });
+        expect(refused.proposals).toEqual([]);
+      } finally {
+        delete script.answer;
+      }
+      // The press runs as a developer: the note is saved, the status moves, and a stranger cannot press it.
+      const pressed = await dev.client.post<ConfirmProposalResponse>(
+        `/v1/assistant/proposals/${card?.id ?? ''}/confirm`,
+      );
+      expect(pressed.body).toMatchObject({ outcome: 'done' });
+      expect((await ticketOf(agent, ticketForDev.key)).status).toBe('waiting_on_dev');
+      const notes = await owner().query<{ body_text: string }>(
+        `SELECT body_text FROM message WHERE ticket_id = $1 AND visibility = 'internal'`,
+        [ticketForDev.id],
+      );
+      expect(notes.rows.map((row) => row.body_text)).toContain('Look at the export job');
+    });
+
+    it('sees the claims of the AI report masked too', async () => {
+      const withReport = await fileTicket(agent, orgId, {
+        subject: 'Report masked',
+        requester: { email: `dev3-${suffix}@customer.example`, name: customer },
+      });
+      await owner().query(
+        `INSERT INTO ai_ticket_insight (ticket_id, state, stage, generated_at, evidence, report)
+         VALUES ($1, 'classified', 2, now(), $2::jsonb, $3::jsonb)`,
+        [
+          withReport.id,
+          JSON.stringify([
+            {
+              id: 'ev-1',
+              kind: 'ticket',
+              title: `${customer} wrote before`,
+              snippet: 's',
+              confidence: 1,
+              mock: false,
+            },
+          ]),
+          JSON.stringify({
+            findings: [
+              {
+                text: `${customer} asked twice (dev3-${suffix}@customer.example)`,
+                evidenceIds: ['ev-1'],
+              },
+            ],
+            likelyCause: null,
+            confidence: 0.4,
+            openQuestions: [],
+            tools: [],
+            promptVersion: 'v1',
+          }),
+        ],
+      );
+      const insight = await dev.client.get(`/v1/tickets/${withReport.id}/ai`);
+      expect(insight.status).toBe(200);
+      const shown = JSON.stringify(insight.body);
+      expect(shown).not.toContain(`Napat${suffix}`);
+      expect(shown).not.toContain(`dev3-${suffix}`);
+      expect(shown).toContain('claims');
+    });
+  });
+});
+
 describe('the daily budget of the system', () => {
   it('stops the assistant without a model call (its own database: an ai_run row cannot be removed)', async () => {
     const counted: string[] = [];

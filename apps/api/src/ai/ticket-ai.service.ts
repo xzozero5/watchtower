@@ -27,8 +27,9 @@ import { DOMAIN, type Domain } from '../domain/domain.module.js';
 import { domainContext, settle } from '../domain/domain-context.js';
 import { translating } from '../domain/domain-errors.js';
 import type { UnitOfWork } from '../realtime/unit-of-work.js';
-import { TicketReader } from '../tickets/ticket-reader.js';
+import { TicketReader, isMasked } from '../tickets/ticket-reader.js';
 import { claimsOfReport, ticketKeyOfHref } from './insight-claims.js';
+import { maskInsight } from './mask-insight.js';
 
 type InsightRow = typeof schema.aiTicketInsight.$inferSelect;
 type DraftRow = typeof schema.aiDraft.$inferSelect;
@@ -179,12 +180,16 @@ export class TicketAiService {
       }
       claims = claimsOfReport(report.data, evidence, open);
     }
+    const insight = toTicketAiInsight(row, draft, {
+      intentName: intent?.name ?? null,
+      ...(claims === undefined ? {} : { claims }),
+    });
+    // A developer reads the brief masked (T-137): the redactor again, and no draft reply.
     return {
       ticketId: ticket.t.id,
-      insight: toTicketAiInsight(row, draft, {
-        intentName: intent?.name ?? null,
-        ...(claims === undefined ? {} : { claims }),
-      }),
+      insight: isMasked(principal)
+        ? maskInsight(insight, await this.tickets.maskingFor(ticket.t.id, [ticket]))
+        : insight,
     };
   }
 
@@ -297,6 +302,8 @@ export class TicketAiService {
         ticketId,
         requestedBy: principal.userId,
         ...(body.kind === 'draft' && body.note !== undefined ? { note: body.note } : {}),
+        // A developer's investigation writes no draft reply (T-137).
+        ...(body.kind === 'investigate' && isMasked(principal) ? { noDraft: true } : {}),
       },
       options: AI_OUTBOX_JOB_OPTIONS,
     });

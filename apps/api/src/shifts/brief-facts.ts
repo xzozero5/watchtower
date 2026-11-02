@@ -7,6 +7,7 @@ import type {
   SlaState,
 } from '@watchtower/shared';
 
+import type { CustomerPeople } from '../ai/customer-names.js';
 import { BRIEF_HREF, HANDOFF_HREF, NOTES_HREF, ticketHref } from '../assistant/assistant-hrefs.js';
 import { slaWord } from '../assistant/assistant-text.js';
 
@@ -72,9 +73,10 @@ function itemFact(locale: AssistantLocale, item: HandoffItem): ClaimFact {
 export function briefFacts(
   brief: ShiftBrief,
   locale: AssistantLocale,
-  names: readonly string[] = [],
+  people: CustomerPeople = { names: [], complete: true },
 ): ClaimFact[] {
-  return withNames(buildBriefFacts(brief, locale), names);
+  // No complete list of the customers' people, no summary: the redactor could not be trusted (N4).
+  return people.complete ? withNames(buildBriefFacts(brief, locale), people.names) : [];
 }
 
 /** Every fact carries the dictionary, so the redactor knows these people whichever fact it reads (N4). */
@@ -161,9 +163,9 @@ function buildBriefFacts(brief: ShiftBrief, locale: AssistantLocale): ClaimFact[
 export function briefHandoffFacts(
   handoff: Handoff,
   locale: AssistantLocale,
-  names: readonly string[] = [],
+  people: CustomerPeople = { names: [], complete: true },
 ): ClaimFact[] {
-  return withNames(buildHandoffFacts(handoff, locale), names);
+  return people.complete ? withNames(buildHandoffFacts(handoff, locale), people.names) : [];
 }
 
 function buildHandoffFacts(handoff: Handoff, locale: AssistantLocale): ClaimFact[] {

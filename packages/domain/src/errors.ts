@@ -8,6 +8,7 @@ export const DOMAIN_ERROR_CODES = [
   'invalid_transition',
   'merge_not_allowed',
   'ticket_not_open',
+  'channel_no_outbound',
   'bad_request',
   'policy_denied',
   'forbidden',
@@ -40,4 +41,7 @@ export const mergeNotAllowed = (message: string): DomainError =>
   new DomainError('merge_not_allowed', message);
 export const ticketNotOpen = (message: string): DomainError =>
   new DomainError('ticket_not_open', message);
+/** A public reply on a ticket whose channel has nothing to send it with (phone, walk-in, internal...). */
+export const channelNoOutbound = (message: string): DomainError =>
+  new DomainError('channel_no_outbound', message);
 export const forbidden = (message: string): DomainError => new DomainError('forbidden', message);

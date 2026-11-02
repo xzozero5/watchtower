@@ -42,20 +42,8 @@ import {
   type Principal,
 } from '../auth/decorators.js';
 import { parseResponse } from '../common/zod-openapi.js';
-import { forbidden } from '../auth/http-errors.js';
-import { canUseAssistant } from './assistant-access.js';
 import { AssistantProposals } from './assistant-proposals.js';
 import { AssistantService } from './assistant.service.js';
-
-/**
- * The door of every route. The permission decorator is `ticket.read` or `auth.session.self` (everyone who
- * signs in), and this is the real question: may the person read tickets, whole (`ticket.read`) or masked
- * (`ticket.read.masked`, the developer of T-137)? A customer holds neither and gets 403. The masked
- * permission is not named in the decorator because it does not exist on every branch yet.
- */
-function assertCanUse(principal: Principal): void {
-  if (!canUseAssistant(principal)) throw forbidden();
-}
 
 /**
  * The AI assistant (T-134, ADR-017). Staff only: `ticket.read` is not held by a client, so a client
@@ -73,7 +61,7 @@ export class AssistantController {
   ) {}
 
   @Get('starters')
-  @RequireAnyPermission('ticket.read', 'auth.session.self')
+  @RequireAnyPermission('ticket.read', 'ticket.read.masked')
   @ApiOperation({
     summary: 'State of the assistant and up to three starter prompts for this person',
     description:
@@ -88,13 +76,12 @@ export class AssistantController {
     @Query({ schema: assistantStartersQuerySchema }) query: AssistantStartersQuery,
     @CurrentPrincipal() principal: Principal,
   ) {
-    assertCanUse(principal);
     return parseResponse(assistantStartersSchema, await this.assistant.starters(principal, query));
   }
 
   @Post('messages')
   @HttpCode(200)
-  @RequireAnyPermission('ticket.read', 'auth.session.self')
+  @RequireAnyPermission('ticket.read', 'ticket.read.masked')
   @Audited({ action: AUDIT_ACTIONS.assistantMessage, targetType: 'assistant_conversation' })
   @ApiOperation({
     summary: 'Ask the assistant',
@@ -114,13 +101,12 @@ export class AssistantController {
     @Body({ schema: assistantMessageRequestSchema }) body: AssistantMessageRequest,
     @CurrentPrincipal() principal: Principal,
   ) {
-    assertCanUse(principal);
     return parseResponse(assistantReplySchema, await this.assistant.message(principal, body));
   }
 
   @Post('proposals/:id/confirm')
   @HttpCode(200)
-  @RequireAnyPermission('ticket.read', 'auth.session.self')
+  @RequireAnyPermission('ticket.read', 'ticket.read.masked')
   @Audited({ action: AUDIT_ACTIONS.assistantProposalConfirm, targetType: 'assistant_proposal' })
   @ApiOperation({
     summary: 'Press a proposal',
@@ -140,7 +126,6 @@ export class AssistantController {
     @Param({ schema: proposalParamSchema }) params: ProposalParam,
     @CurrentPrincipal() principal: Principal,
   ) {
-    assertCanUse(principal);
     return parseResponse(
       confirmProposalResponseSchema,
       await this.proposals.confirm(principal, params.id),
@@ -149,7 +134,7 @@ export class AssistantController {
 
   @Post('proposals/:id/reject')
   @HttpCode(200)
-  @RequireAnyPermission('ticket.read', 'auth.session.self')
+  @RequireAnyPermission('ticket.read', 'ticket.read.masked')
   @Audited({ action: AUDIT_ACTIONS.assistantProposalReject, targetType: 'assistant_proposal' })
   @ApiOperation({ summary: 'Decline a proposal', description: 'Closes it; nothing runs.' })
   @ApiOkResponse({ standardSchema: rejectProposalResponseSchema })
@@ -159,7 +144,6 @@ export class AssistantController {
     @Param({ schema: proposalParamSchema }) params: ProposalParam,
     @CurrentPrincipal() principal: Principal,
   ) {
-    assertCanUse(principal);
     return parseResponse(
       rejectProposalResponseSchema,
       await this.proposals.reject(principal, params.id),
@@ -168,7 +152,7 @@ export class AssistantController {
 
   @Delete('conversations/:id')
   @HttpCode(200)
-  @RequireAnyPermission('ticket.read', 'auth.session.self')
+  @RequireAnyPermission('ticket.read', 'ticket.read.masked')
   @Audited({
     action: AUDIT_ACTIONS.assistantConversationDelete,
     targetType: 'assistant_conversation',
@@ -183,7 +167,6 @@ export class AssistantController {
     @Param({ schema: conversationParamSchema }) params: ConversationParam,
     @CurrentPrincipal() principal: Principal,
   ) {
-    assertCanUse(principal);
     await this.assistant.deleteConversation(principal, params.id);
     return parseResponse(deleteConversationResponseSchema, { deleted: true });
   }

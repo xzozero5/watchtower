@@ -61,7 +61,7 @@ export function PageHeader({
 }
 
 /** "You don't have access to this page. It needs the {role} role." with a way back (UI spec section 13). */
-export function AccessDenied({ role }: { role: 'lead' | 'head' }) {
+export function AccessDenied({ role }: { role: 'agent' | 'lead' | 'head' }) {
   const t = useT();
   return (
     <main id="main-content" className="flex flex-1 items-center justify-center">

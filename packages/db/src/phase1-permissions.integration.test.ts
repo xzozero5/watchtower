@@ -37,6 +37,10 @@ const ADDED_LATER = [
   'metric.manage',
   'org.health.read',
   'dashboard.ops.read',
+  // 0080 (T-137)
+  'ticket.read.masked',
+  'ticket.dev.work',
+  'ticket.dev.release.any',
 ] as const;
 
 let testDb: TestDatabase;

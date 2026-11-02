@@ -144,3 +144,32 @@ describe('briefHandoffFacts', () => {
     expect(fact?.text).toContain('Carried over 2 shift(s)');
   });
 });
+
+describe('the people of the customers (N4)', () => {
+  it('rides on every fact as the dictionary of the redactor', () => {
+    const facts = briefFacts(brief({ myTickets: [ticket('OPS-1', 'breached', 0)] }), 'en', {
+      names: ['Somchai Customer'],
+      complete: true,
+    });
+    expect(facts.length).toBeGreaterThan(0);
+    for (const fact of facts) expect(fact.names).toEqual(['Somchai Customer']);
+  });
+
+  it('makes no facts, so no summary and no model call, when the list of people was cut short', () => {
+    const people = { names: ['A'], complete: false };
+    expect(
+      briefFacts(brief({ myTickets: [ticket('OPS-1', 'breached', 0)] }), 'en', people),
+    ).toEqual([]);
+    expect(
+      briefHandoffFacts(
+        {
+          items: [
+            { id: 'x', kind: 'note', ticket: null, title: 'T', nextAction: null, carriedShifts: 0 },
+          ],
+        } as never,
+        'en',
+        people,
+      ),
+    ).toEqual([]);
+  });
+});

@@ -276,7 +276,8 @@ export function ConversationPane({
         </div>
         <TicketActions ticket={data} trailing={trailing} />
       </header>
-      <div ref={scrollRef} className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+      {/* scroll-pb: a control focused with Tab scrolls clear of the draft's sticky action bar. */}
+      <div ref={scrollRef} className="flex min-h-0 flex-1 scroll-pb-24 flex-col overflow-y-auto">
         {isClient ? (
           <div className="border-b border-border">
             <TicketDetails ticket={data} />

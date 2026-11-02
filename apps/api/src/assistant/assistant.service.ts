@@ -25,6 +25,7 @@ import { StaffNames } from '../ai/staff-names.service.js';
 import { AuditScope } from '../audit/audit-scope.js';
 import { AuditService } from '../audit/audit.service.js';
 import { notFound } from '../auth/http-errors.js';
+import { orgPeopleNames } from '../masking/org-names.js';
 import type { Principal } from '../auth/principal.js';
 import { RateLimiter } from '../auth/rate-limiter.js';
 import { APP_CONFIG, type ApiConfig } from '../config/config.js';
@@ -54,8 +55,9 @@ type Config = Pick<
 >;
 
 const THAI = /[฀-๿]/;
-/** Tickets named on the audit row of one message; more is a list nobody reads. */
-const MAX_AUDITED_READS = 20;
+/** Tickets named in what the person typed whose organizations' people are given to the redactor. */
+const MAX_TYPED_TICKETS = 5;
+const TICKET_REF_IN_TEXT = /\b[A-Za-z][A-Za-z0-9]{1,9}-\d{1,15}\b/g;
 
 /** Thai in the text means a Thai screen when the web did not say. */
 export function localeOf(requested: AssistantLocale | undefined, text: string): AssistantLocale {
@@ -166,12 +168,43 @@ export class AssistantService {
 
   /** The key of a ticket the person may see, or null (a chip for a ticket they cannot open is ignored). */
   private async ticketKeyOf(ref: string, principal: Principal): Promise<string | null> {
+    return (await this.ticketOf(ref, principal))?.key ?? null;
+  }
+
+  private async ticketOf(
+    ref: string,
+    principal: Principal,
+  ): Promise<{ key: string; orgId: string } | null> {
     try {
       const view = await this.reader.viewRow(ref, principal);
-      return this.keys.format(view.t.number);
+      return { key: this.keys.format(view.t.number), orgId: view.t.orgId };
     } catch {
       return null;
     }
+  }
+
+  /**
+   * The people of the organizations of the tickets this message is about (the chip, and any ticket number
+   * the person typed): what they type, and what they said before, can name any of them, and the redactor
+   * only replaces names it is given (N4). `complete` is false when an organization had more people than the
+   * redactor can take: then nothing of the message goes to a model.
+   */
+  private async aboutOrgNames(
+    principal: Principal,
+    chip: string | undefined,
+    text: string,
+  ): Promise<{ names: string[]; complete: boolean; orgIds: string[] }> {
+    const refs = [
+      ...(chip === undefined ? [] : [chip]),
+      ...(text.match(TICKET_REF_IN_TEXT) ?? []).slice(0, MAX_TYPED_TICKETS),
+    ];
+    const orgIds = new Set<string>();
+    for (const ref of new Set(refs)) {
+      const found = await this.ticketOf(ref, principal);
+      if (found !== null) orgIds.add(found.orgId);
+    }
+    const people = await orgPeopleNames(this.database.db, [...orgIds]);
+    return { names: people.names, complete: people.complete, orgIds: [...orgIds] };
   }
 
   // --- one message ------------------------------------------------------------------------------
@@ -196,7 +229,8 @@ export class AssistantService {
     const conversationId = await this.conversationFor(principal, body.conversationId, locale);
     // Every redactor of this message knows the staff of the instance, so a colleague's name in what the
     // person typed, or in a ticket, is replaced before a model sees it, and before it is stored (N4).
-    const staffNames = await this.staff.list();
+    const about = await this.aboutOrgNames(principal, body.context?.ticket, body.text);
+    const staffNames = [...(await this.staff.list()), ...about.names];
     const base = this.runtime.deps;
     const deps = {
       ...base,
@@ -222,7 +256,14 @@ export class AssistantService {
     const intents: { kind: string; why: string }[] = [];
     const prepared: { intent: Parameters<AssistantProposals['prepare']>[0] }[] = [];
 
-    if (standing.state === 'ok') {
+    if (standing.state === 'ok' && !about.complete) {
+      // The people of that organization could not all be listed, so the redactor cannot be trusted with the
+      // text: nothing is sent to a model (N4), and the person is told why.
+      state = 'unavailable';
+      reason = 'names_incomplete';
+    }
+
+    if (standing.state === 'ok' && about.complete) {
       const host = buildAssistantTools(
         {
           database: this.database,
@@ -342,7 +383,7 @@ export class AssistantService {
 
     // Tickets whose content the assistant read for this person are personal data read (PRD 8.2): one
     // `pii.read` row each, like the ticket page, so the log says who looked at which ticket.
-    for (const [ticketId] of [...read].slice(0, MAX_AUDITED_READS)) {
+    for (const [ticketId] of read) {
       await this.audit.recordPiiRead({
         actor: { type: 'user', id: principal.userId },
         targetType: 'ticket',
@@ -382,7 +423,7 @@ export class AssistantService {
         runs: runIds.length,
         proposals: cards.map((card) => card.kind),
         masked: isMasked(principal),
-        ticketIds: [...read.keys()].slice(0, MAX_AUDITED_READS),
+        ticketIds: [...read.keys()],
       },
     });
     return {

@@ -1,7 +1,7 @@
 # HANDOFF — Watchtower
 
 > สถานะล่าสุดของโปรเจกต์ session ใหม่อ่านไฟล์นี้ต่อจาก `AGENTS.md` แล้วทำงานต่อได้โดยไม่ต้องอ่านบทสนทนาเดิม
-> อัปเดตล่าสุด: 2026-11-02 09:54 (เวลากรุงเทพ) โดย Claude Code (main thread, เครื่อง local) — **safe pause ตามคำสั่งเจ้าของ เพราะโควตาใกล้เต็ม ยังไม่จบ Phase 1**
+> อัปเดตล่าสุด: 2026-11-02 12:38 (เวลากรุงเทพ) โดย Claude Code (main thread, เครื่อง local) — **safe pause ตามคำสั่งเจ้าของ เพราะโควตาใกล้เต็ม ยังไม่จบ Phase 1**
 > กฎขนาด ≤ 40 KB — เขียนทับสถานะ ไม่ append ประวัติ · ฉบับก่อนหน้า `docs/handoff-archive/HANDOFF-2026-11-01-0420.md` · บันทึกรายชั่วโมง `logs/daily/2026-11-01.md` · log ต่อ task `docs/STATUS.md`
 
 ## คำสั่งล่าสุดของเจ้าของ (2026-11-02 08:04)
@@ -13,12 +13,12 @@
 
 ## ทำต่อจากตรงนี้ (2026-11-02 08:04)
 - **บน `main` แล้ว:** T-103b–d, T-102b–e, T-104, T-105, T-107a–c, T-108a–e, T-109, T-110a,b,d, T-111a–f, T-116c, T-118, T-122f, T-123b, T-130, T-131, T-132, T-200, T-201, T-202, T-204a,c, T-205 · ทุกตัวเป็น mock
-- **คิว merge (เรียงตามนี้):** `wip/t-119` (ผ่าน gate แล้ว) → `wip/t-203` (เปลี่ยนเลข migration เป็น `0067`, `0068`) → `wip/t-206b` (`0070`) → `wip/t-206d` (web: alerts, incidents, status page) → `wip/t-137` (`0080`)
-- **ยังไม่เริ่ม:** T-133, T-134, T-135, T-206a/c (dashboard), T-203e, T-121 UI ส่วน outbox + org tier, T-103e, T-103f, T-113, T-114, T-125, T-207, คู่มือ credential เข้า repo + T-115 prep
+- **คิว merge:** `wip/t-137` (dev + เปิด ticket, `0080`, security แก้ครบ ตรวจอีกรอบใน T-114) → `wip/t-134` (assistant + สรุป AI, `0090`, ADR-017 Proposed, ต้อง re-review หลังแก้ P1 + ลบ cast permission) ทั้งสองต้องผ่าน gate ของ main thread
+- **ยังไม่เริ่ม:** หน้าเว็บ AI bubble + หน้าสรุป (T-134/T-135 web), ส่วนที่เหลือของ T-133 (ปุ่ม + rail, รวมไอคอนสถานะ, ย้าย Brief/Handoff ใต้ Shift, การ์ด login, หมวด portal), T-206a/c dashboard, T-203e, T-121 UI, T-103e, T-103f, T-113, T-114, T-125, T-207, คู่มือ credential เข้า repo (`docs/runbooks/credentials.md` อัปเดตชื่อ T-102e) + T-115 prep
 - **Gate ต่อ merge (main thread รันเอง):** lint, typecheck, unit, integration (`--concurrency=1`), e2e, full-stack, `docker compose up --build` แบบไม่มี `.env` (project แยก) · ใช้ `turbo --force --continue` · **ทุก merge ต้องดู `gh run list --branch main` ด้วย ผลบนเครื่องไม่แทน CI**
 - **Demo:** compose project `wt-demo` เปิดค้างที่ `http://localhost:33000` (mailpit `:38025`, dev login เปิด) · ปิดด้วย `docker compose -p wt-demo down -v`
 - **บั๊กจริงที่เจอบนเครื่องจริง แก้แล้ว:** นาฬิกาแอปกับ DB ปนกันหลายจุด (timeline, dispatcher, AC-7, hold) · การแก้จุดสุดท้ายทำให้เวลาชนใน ms เดียวกัน ต้องเรียงด้วย rank ใน portal · แท็บ Details ถูกดึงกลับเมื่อ evidence โหลด · ค่าว่างของ KB ใน compose · key ซ้ำใน compose หลัง merge
-- **เหตุการณ์ที่เจ้าของควรรู้:** CI ของ `main` แดงอยู่นานโดยไม่มีใครเปิดดูจนเจ้าของทัก · agent ของ T-108 ลอง force push บน `wip/t-108` แล้วถูก hook บล็อก จากนั้นใช้ merge `-s ours` แทน ซึ่งเข้าข่ายอ้อม ผู้ตรวจยืนยัน tree ไม่มีอะไรหาย · หลาย review ถูก `guard.py` บล็อกการสแกน N1 ไม่ได้อ้อม · branch `verify/t200` ค้างไว้เพราะ hook บล็อกคำสั่งลบที่มีคำว่า main
+- **เหตุการณ์ที่เจ้าของควรรู้:** main thread merge T-206b ทั้งที่ e2e ตก 3 ข้อ (axe ระหว่าง transition, แก้ต้นเหตุแล้ว) · agent T-137 เคยสั่ง `ls D:/Works/secret` ถูกปฏิเสธ ไม่ได้อ่านค่า · CI ของ `main` แดงอยู่นานโดยไม่มีใครเปิดดูจนเจ้าของทัก · agent ของ T-108 ลอง force push บน `wip/t-108` แล้วถูก hook บล็อก จากนั้นใช้ merge `-s ours` แทน ซึ่งเข้าข่ายอ้อม ผู้ตรวจยืนยัน tree ไม่มีอะไรหาย · หลาย review ถูก `guard.py` บล็อกการสแกน N1 ไม่ได้อ้อม · branch `verify/t200` ค้างไว้เพราะ hook บล็อกคำสั่งลบที่มีคำว่า main
 
 ## อ่านก่อน (สรุป 2 นาที)
 - **Phase 0 เสร็จ** (CI แดงช่วงหลัง T-112a จาก MinIO หาย แก้แล้ว ดู STATUS) · ยังไม่ tag `v0.0.1` — รอเจ้าของตรวจบนเครื่อง (รายการด้านล่าง)

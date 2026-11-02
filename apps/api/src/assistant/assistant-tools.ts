@@ -29,6 +29,7 @@ import type { SlaRemaining } from '../tickets/sla-remaining.js';
 import type { TicketKeys } from '../tickets/ticket-keys.js';
 import type { TicketReader } from '../tickets/ticket-reader.js';
 import type { ToolRunner } from '../tools/tool-runner.service.js';
+import { orgPeopleNames } from '../masking/org-names.js';
 import { toolsFor, type AssistantToolName } from './assistant-access.js';
 import { assigneeHref, ticketHref } from './assistant-hrefs.js';
 import { loadLine, memberLine, slaLine, ticketLine } from './assistant-text.js';
@@ -98,8 +99,6 @@ const summarizeOutput = z.object({
   recent: z
     .array(z.object({ from: z.enum(['customer', 'staff', 'note']), text: z.string().max(400) }))
     .max(4),
-  /** Contact names of the ticket's organization, for the redactor dictionary. Never shown. */
-  people: z.array(person).max(50),
 });
 
 const slaOutput = z.object({
@@ -198,6 +197,18 @@ export function buildAssistantTools(
   const info: AssistantToolInfo[] = [];
   let investigations = 0;
 
+  // The people of the organizations whose tickets were read, for the redactor (N4): a subject, a message
+  // or a log line can name anyone of the organization. Kept here, not in the outputs, so it can be as
+  // long as the organization is. If an organization had more people than the redactor can take, the
+  // list is not complete and no text of a ticket is shown to a model or to a masked reader (fail closed).
+  const dictionary = new Set<string>();
+  let incomplete = false;
+  const remember = async (orgIds: readonly string[]): Promise<void> => {
+    const found = await orgPeopleNames(deps.database.db, [...new Set(orgIds)]);
+    for (const name of found.names) dictionary.add(name);
+    if (!found.complete) incomplete = true;
+  };
+
   function add<I extends z.ZodType, O extends z.ZodType>(
     name: AssistantToolName,
     tool: Omit<ToolDefinition<I, O>, 'name' | 'readOnly'>,
@@ -260,6 +271,7 @@ export function buildAssistantTools(
         });
         const page = await deps.reader.list(query, principal);
         const items: TicketRowShape[] = [];
+        await remember(page.items.flatMap((item) => ('org' in item ? [item.org.id] : [])));
         for (const item of page.items) {
           if (!('org' in item)) continue;
           env.onRead?.({ id: item.id, key: item.key });
@@ -300,11 +312,7 @@ export function buildAssistantTools(
           .where(eq(schema.message.ticketId, view.t.id))
           .orderBy(desc(schema.message.createdAt))
           .limit(4);
-        const contacts = await deps.database.db
-          .select({ name: schema.contact.name })
-          .from(schema.contact)
-          .where(eq(schema.contact.orgId, view.t.orgId))
-          .limit(50);
+        await remember([view.t.orgId]);
         return {
           ticket: await rowOf(view),
           intent:
@@ -322,7 +330,6 @@ export function buildAssistantTools(
                   : ('staff' as const),
             text: cut(message.text.replaceAll(/\s+/g, ' ').trim(), 400),
           })),
-          people: contacts.map((contact) => contact.name),
         };
       },
     },
@@ -344,12 +351,6 @@ export function buildAssistantTools(
                 ? ` หัวข้อ ${output.intent.name}.`
                 : ` Intent ${output.intent.name}.`
           }`,
-          {
-            names: [
-              ...output.people,
-              ...(output.ticket.assignee === null ? [] : [output.ticket.assignee]),
-            ],
-          },
         ),
       ];
       if (output.aiSummary !== null) {
@@ -384,6 +385,7 @@ export function buildAssistantTools(
       async execute(input) {
         const view = await deps.reader.viewRow(input.ticket, principal);
         const sla = await deps.sla.view(view.t, env.now);
+        await remember([view.t.orgId]);
         return { ticket: await rowOf(view), sla };
       },
     },
@@ -549,6 +551,7 @@ export function buildAssistantTools(
         if (subject.kind !== 'ticket') throw new Error('not a ticket');
         const key = deps.keys.format((await deps.reader.viewRow(input.ticket, principal)).t.number);
         env.onRead?.({ id: subject.ticketId, key });
+        await remember([subject.orgId]);
         // Only a template the AI may run for this ticket (ADR-016); never one made for a person's button.
         const templateId = await deps.runner.aiTemplateOf(subject);
         if (templateId === null) return { key, note: 'no_template' as const, card: null };
@@ -605,6 +608,24 @@ export function buildAssistantTools(
   return {
     tools: scoped,
     info,
-    facts: (tool, output) => facts.get(tool)?.(output as never) ?? [],
+    facts: (tool, output) => {
+      const made = facts.get(tool)?.(output as never) ?? [];
+      if (incomplete) {
+        // The names of an organization could not all be listed: say that, show no text of a ticket.
+        return made.map((fact) => ({
+          kind: fact.kind,
+          label: fact.label,
+          ...(fact.href === undefined ? {} : { href: fact.href }),
+          ...(fact.mock === true ? { mock: true } : {}),
+          text: `${fact.label}: ${locale === 'th' ? 'ข้อความถูกซ่อน เพราะรายชื่อคนของลูกค้าไม่ครบ' : 'text hidden: the list of the customer people was incomplete'}`,
+        }));
+      }
+      // The dictionary rides on the first fact; the agent gathers the names of all facts.
+      return dictionary.size === 0 || made.length === 0
+        ? made
+        : made.map((fact, index) =>
+            index === 0 ? { ...fact, names: [...(fact.names ?? []), ...dictionary] } : fact,
+          );
+    },
   };
 }

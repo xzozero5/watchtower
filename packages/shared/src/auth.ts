@@ -32,6 +32,7 @@ export const AUTH_ERROR_CODES = [
   'invalid_transition',
   'merge_not_allowed',
   'ticket_not_open',
+  'channel_no_outbound',
   'verification_failed',
   // Autonomy (T-112a): asking for stage 3 or above, which only the owner may decide (N3).
   'autonomy_stage_requires_owner',
@@ -333,6 +334,14 @@ export const CORE_AUDIT_ACTIONS = {
   ticketReparent: 'ticket.reparent',
   ticketReply: 'ticket.reply',
   ticketNote: 'ticket.note',
+  /** A developer picked a ticket up or let it go (T-137). */
+  /** The automatic "we received your request" email of a ticket filed by hand was scheduled (T-136). */
+  ticketConfirmationQueued: 'ticket.confirmation_queued',
+  ticketDevPickup: 'ticket.dev_pickup',
+  ticketDevRelease: 'ticket.dev_release',
+  /** A ticket was linked to an incident or a deploy, or unlinked (T-137). */
+  ticketReferenceAdd: 'ticket.reference_add',
+  ticketReferenceRemove: 'ticket.reference_remove',
   portalTicketSubmit: 'portal.ticket.submit',
   portalLinkResend: 'portal.tracking_link.resend',
   portalLinkIssued: 'portal.tracking_link.issued',

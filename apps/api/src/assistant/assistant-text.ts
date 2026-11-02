@@ -166,6 +166,10 @@ export const NOTES = {
       th: 'ตั้ง intent ของ ticket ก่อนจึงจะร่างคำตอบได้',
       en: 'set the intent of the ticket before asking for a draft',
     },
+    needs_note: {
+      th: 'การส่งให้ทีมพัฒนาหรือรับกลับต้องมีโน้ต (เหตุผล) ระบุมาด้วย',
+      en: 'handing a ticket to a developer, or back, needs a note: give the reason',
+    },
     no_change: { th: 'ไม่มีอะไรเปลี่ยน', en: 'nothing would change' },
     transition: {
       th: 'เปลี่ยนเป็นสถานะนั้นไม่ได้จากสถานะปัจจุบัน',

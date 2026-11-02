@@ -5,6 +5,7 @@ import type { Widen } from '../types';
 export const adminTh: Widen<typeof adminEn> = {
   breadcrumb: 'เส้นทางหน้า',
   sectionsLabel: 'หมวดผู้ดูแลระบบ',
+  moreInfo: 'ข้อมูลเพิ่มเติมเรื่อง{topic}',
   section: 'หมวด',
   sections: {
     users: 'ผู้ใช้',
@@ -308,6 +309,9 @@ export const adminTh: Widen<typeof adminEn> = {
     copyId: 'คัดลอก id',
   },
   integrations: {
+    encrypted: 'เข้ารหัส',
+    demo: 'เดโม',
+    live: 'ของจริง',
     intro:
       'เชื่อมช่องทางที่ Watchtower ใช้รับและส่งข้อความ ค่าที่บันทึกจะถูกเข้ารหัสและเปิดดูซ้ำไม่ได้ ถ้าจะเปลี่ยนให้ใส่ค่าใหม่แทน',
     testMock:

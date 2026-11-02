@@ -65,6 +65,12 @@
 - **`dev` (T-137):** decorator ของ route คือ `ticket.read` หรือ `auth.session.self` (ทุกคนที่ล็อกอิน) แล้ว handler ตรวจจริงว่าถือ `ticket.read` หรือ `ticket.read.masked` (client ไม่มีทั้งสอง = 403) เพราะ `routes-policy.test` ไม่ยอมให้ decorator อ้าง permission ที่ยังไม่มีบน branch นี้ · เข้าได้ด้วย `ticket.read.masked` (ไม่ต้องมี `ticket.read`), การเปลี่ยนสถานะ/note ตรวจ `ticket.dev.work` · masked = role `dev` หรือถือ masked-read โดยไม่มี `ticket.read` · ชื่อ permission ทั้งสองมาจาก `origin/wip/t-137` ยัง `[ASSUMED]` จนกว่าจะ merge (โค้ดใช้ cast ชั่วคราว) และการเรียก `TicketsService` สำหรับ dev ยังไม่ได้ทดสอบกับกฎ dev ของ T-137
 - **P3:** URL ในประโยคที่ model เขียนถูกตัดเป็น `[link removed]` · ก่อน call ที่ 2 ถาม guard ซ้ำ (kill switch/งบเปลี่ยนระหว่างรัน tool)
 
+## แก้ไขรอบที่ 2 หลัง re-review (T-137 อยู่บน main แล้ว)
+
+- **N4:** dictionary ของ redactor ในข้อความหนึ่งมี (ก) พนักงานทั้ง instance (ข) **ทุกคนของ organization** ของ ticket ที่ผู้ใช้เปิดอยู่ หรือที่พิมพ์เลขในข้อความ (ใช้ `orgPeopleNames` ตัวเดียวกับหน้า ticket ของ dev) ทั้งขั้น plan, answer และตอนเก็บ (ค) ทุกคนของ org ของ ticket ที่ tool อ่าน (ชื่อใน subject ของ ticket อื่นใน org เดียวกันก็ถูกแทน) · ถ้ารายชื่อของ org เกินเพดาน (`complete: false`) จะ **ไม่ส่งอะไรไปหา model**: ข้อความผู้ใช้ → `state: unavailable, reason: names_incomplete`, ผล tool → ข้อความถูกแทนด้วยประกาศ, รันของ AI → excerpt เป็น `[text hidden…]`, สรุป brief/handoff → ไม่ทำ · ข้อความที่ model เขียนผ่าน `fromModel` ก่อนเก็บ
+- **dev:** ใช้ permission จริง `ticket.read.masked` ที่ decorator (ตัด cast และ `auth.session.self`) · masked = ถือ `ticket.read.masked` โดยไม่มี `ticket.read` (กฎเดียวกับ `TicketReader`) · การ์ดของ dev ใช้ subject ที่ผ่าน masking ของหน้า ticket, สถานะเปลี่ยนได้เฉพาะ `open`↔`waiting_on_dev` และต้องมี note (`isDevStatusMove`, `statusChangeNeedsNote`), ตอนกดส่ง `asDev` เหมือน route · `report.claims` ผ่าน `maskInsight` ด้วย
+- **Audit:** `pii.read` ครบทุก ticket ที่อ่าน (ไม่ตัดที่ 20) และ `assistant.message.metadata.ticketIds` ครบ
+
 ## PII stores ของ assistant (ให้ ADR เรื่อง erasure/PDPA นับ)
 
 | ที่เก็บ | ข้อมูล | อายุ | ลบเมื่อผู้ใช้ถูกลบ |
