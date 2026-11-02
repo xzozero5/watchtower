@@ -166,15 +166,28 @@ export class PortalTrackingService implements OnApplicationShutdown {
     const access = await this.access(token, ticketKey, ip);
     await this.limits.enforce('reply-ticket', access.ticket.id);
 
-    const result = await this.uow.run((uow) =>
-      this.tickets.reply(
+    // Decided before the transaction (Redis, not Postgres): at most one confirmation per ticket
+    // per window. A Redis failure rejects like the other limits do (fail closed).
+    const confirm = await this.limits.hit('reply-confirm', access.ticket.id);
+
+    const result = await this.uow.run(async (uow) => {
+      const replied = await this.tickets.reply(
         uow,
         access.ticket.id,
         { body: input.body },
         { kind: 'contact', contactId: access.contactId, orgId: access.ticket.orgId },
         { type: 'anonymous', id: access.contactId },
-      ),
-    );
+      );
+      if (confirm.allowed) {
+        await this.notifier.replyReceived(
+          uow.tx,
+          replied.ticket,
+          this.keys.format(replied.ticket.number),
+          replied.message,
+        );
+      }
+      return replied;
+    });
     const status = customerStatus(result.ticket.status as TicketStatus);
     return {
       message: {

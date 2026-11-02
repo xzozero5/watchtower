@@ -27,6 +27,7 @@ export type PortalLimitScope =
   | 'read-ip'
   | 'reply-ip'
   | 'reply-ticket'
+  | 'reply-confirm'
   | 'resend-ip'
   | 'resend-email';
 
@@ -45,6 +46,8 @@ export function portalLimitPolicy(
     'read-ip': { limit: 240, windowSeconds: TEN_MINUTES },
     'reply-ip': { limit: 30, windowSeconds: HOUR },
     'reply-ticket': { limit: 10, windowSeconds: HOUR },
+    // One "we got your reply" email per ticket per 10 minutes, so replies cannot become a mail stream.
+    'reply-confirm': { limit: 1, windowSeconds: TEN_MINUTES },
     'resend-ip': { limit: 10, windowSeconds: HOUR },
     'resend-email': { limit: 3, windowSeconds: HOUR },
   };

@@ -871,16 +871,61 @@ describe('customer emails', () => {
     expect(rows[0]?.status).toBe('sent');
   });
 
-  it('does not email an internal note, a change between triage and open, or the customer own reply', async () => {
-    const { key, email, token, client } = await portalTicket();
+  it('does not email an internal note or a change between triage and open', async () => {
+    const { key, email } = await portalTicket();
     // Leaving "Received" is visible to the customer and is emailed; what follows reads the same.
     await agent.client.post(`/v1/tickets/${key}/status`, { status: 'triage' });
     const before = (await jobsFor(email)).length;
     await agent.client.post(`/v1/tickets/${key}/notes`, { body: 'internal only' });
     await agent.client.post(`/v1/tickets/${key}/status`, { status: 'open' });
     await agent.client.post(`/v1/tickets/${key}/status`, { status: 'waiting_on_dev' });
-    await client.post(`/v1/portal/tickets/${key}/replies`, { body: 'More detail' }, asToken(token));
     expect(await jobsFor(email)).toHaveLength(before);
+  });
+
+  it('confirms the customer own portal reply once, without echoing the reply (T-148)', async () => {
+    const { key, email, token, client } = await portalTicket();
+    const before = (await jobsFor(email)).length;
+    const first = await client.post(
+      `/v1/portal/tickets/${key}/replies`,
+      { body: 'Private detail https://evil.example' },
+      asToken(token),
+    );
+    expect(first.status).toBe(201);
+    const jobs = await jobsFor(email);
+    expect(jobs).toHaveLength(before + 1);
+    const confirmation = jobs.at(-1) as JobOf<'portal_reply_received'>;
+    expect(confirmation).toMatchObject({
+      kind: 'portal_reply_received',
+      ticketKey: key,
+      to: email,
+      locale: 'en',
+    });
+    expect(JSON.stringify(confirmation)).not.toContain('evil.example');
+    expect((await view(client, key, tokenOf(confirmation.trackingUrl))).status).toBe(200);
+
+    // A second reply inside the window sends no second email (no mail stream from replies).
+    const second = await client.post(
+      `/v1/portal/tickets/${key}/replies`,
+      { body: 'One more thing' },
+      asToken(token),
+    );
+    expect(second.status).toBe(201);
+    expect(await jobsFor(email)).toHaveLength(before + 1);
+  });
+
+  it('does not send the reply confirmation for a staff reply', async () => {
+    const { key, email } = await portalTicket();
+    await agent.client.post(`/v1/tickets/${key}/replies`, { body: 'Staff answer' });
+    const kinds = (await jobsFor(email)).map((job) => job.kind);
+    expect(kinds).not.toContain('portal_reply_received');
+  });
+
+  it('carries the topic and urgency the customer picked, never the subject, in the confirmation (T-148)', async () => {
+    const { email } = await portalTicket();
+    const confirmation = (await jobsFor(email))[0] as JobOf<'portal_confirmation'>;
+    expect(confirmation.kind).toBe('portal_confirmation');
+    expect(Object.keys(confirmation)).not.toContain('subject');
+    expect(Object.keys(confirmation)).toEqual(expect.arrayContaining(['category', 'urgency']));
   });
 
   it('emails a status change the customer can see, once, and a reply that also sets the status once', async () => {
