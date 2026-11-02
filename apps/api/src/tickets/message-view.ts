@@ -1,4 +1,5 @@
 import type { schema } from '@watchtower/db';
+import { MASKED_ATTACHMENT_NAME } from '../masking/pii-masker.js';
 import {
   type ChannelType,
   type DeliverySummary,
@@ -106,5 +107,62 @@ export function toTimelineEvent(
     visibility: row.visibility as 'public' | 'internal',
     payload: visiblePayload,
     createdAt: row.createdAt.toISOString(),
+  };
+}
+
+export interface MessageMasker {
+  text(value: string): string;
+  name(value: string | null): string | null;
+}
+
+/** A message as a masked reader gets it (see `maskEntry`). */
+export function maskMessage<T extends Message>(message: T, session: MessageMasker): T {
+  return {
+    ...message,
+    bodyText: session.text(message.bodyText),
+    sender:
+      message.sender.type === 'contact'
+        ? { ...message.sender, name: session.name(message.sender.name) }
+        : message.sender,
+    attachments: message.attachments.map((attachment) => ({
+      name: MASKED_ATTACHMENT_NAME,
+      ...(typeof attachment.contentType === 'string'
+        ? { contentType: attachment.contentType }
+        : {}),
+      ...(typeof attachment.size === 'number' ? { size: attachment.size } : {}),
+    })),
+  };
+}
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Every string of an event payload through the masking session, except ids (a uuid is not text and the
+ * redactor would only garble it). Numbers, booleans and structure pass unchanged.
+ */
+export function maskPayload(value: unknown, mask: (text: string) => string): unknown {
+  if (typeof value === 'string') return UUID.test(value) ? value : mask(value);
+  if (Array.isArray(value)) return value.map((item) => maskPayload(item, mask));
+  if (value !== null && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>).map(([key, item]) => [
+        key,
+        maskPayload(item, mask),
+      ]),
+    );
+  }
+  return value;
+}
+
+/**
+ * A timeline entry as a masked reader (`dev`, T-137) gets it: message text through the redactor, a
+ * customer's name reduced to initials, attachment names and links dropped (a file name is personal data
+ * too), event payload strings masked. Staff names stay: they are the colleagues, not the customers.
+ */
+export function maskEntry(entry: TimelineEntry, session: MessageMasker): TimelineEntry {
+  if (entry.kind === 'message') return { ...maskMessage(entry, session), kind: 'message' };
+  return {
+    ...entry,
+    payload: maskPayload(entry.payload, (text) => session.text(text)) as Record<string, unknown>,
   };
 }

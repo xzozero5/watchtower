@@ -462,6 +462,7 @@ describe('the SLA clock', () => {
     await agent.client.post(`/v1/tickets/${ticket.id}/status`, { status: 'open' });
     const response = await agent.client.post<TicketDetail>(`/v1/tickets/${ticket.id}/status`, {
       status: 'waiting_on_dev',
+      reason: 'Needs a developer to read the logs',
     });
     expect(response.body.slaPausedAt).toBeNull();
     expect(response.body.resolutionDueAt).toBe(ticket.resolutionDueAt);
@@ -1510,17 +1511,30 @@ describe('PII reads and OpenAPI', () => {
       ['/v1/sla-policies', 'post', ['sla.manage']],
       ['/v1/business-calendars', 'post', ['sla.manage']],
       ['/v1/ticket-workflow', 'put', ['workflow.manage']],
-      ['/v1/tickets', 'get', ['ticket.read', 'ticket.read.org']],
+      ['/v1/tickets', 'get', ['ticket.read', 'ticket.read.org', 'ticket.read.masked']],
       ['/v1/tickets', 'post', ['ticket.create']],
-      ['/v1/tickets/{id}', 'get', ['ticket.read', 'ticket.read.org']],
+      ['/v1/tickets/manual', 'post', ['ticket.create', 'ticket.handle']],
+      ['/v1/tickets/similar', 'get', ['ticket.read']],
+      ['/v1/tickets/{id}', 'get', ['ticket.read', 'ticket.read.org', 'ticket.read.masked']],
       ['/v1/tickets/{id}', 'patch', ['ticket.handle']],
-      ['/v1/tickets/{id}/status', 'post', ['ticket.handle']],
+      ['/v1/tickets/{id}/status', 'post', ['ticket.handle', 'ticket.dev.work']],
+      ['/v1/tickets/{id}/dev-owner', 'post', ['ticket.dev.work']],
+      ['/v1/tickets/{id}/dev-owner', 'delete', ['ticket.dev.work', 'ticket.dev.release.any']],
+      ['/v1/tickets/{id}/references', 'post', ['ticket.handle', 'ticket.dev.work']],
       ['/v1/tickets/{id}/assign', 'post', ['ticket.handle']],
       ['/v1/tickets/{id}/merge', 'post', ['ticket.handle']],
       ['/v1/tickets/{id}/replies', 'post', ['ticket.reply', 'ticket.reply.own']],
-      ['/v1/tickets/{id}/notes', 'post', ['ticket.handle']],
-      ['/v1/tickets/{id}/timeline', 'get', ['ticket.read', 'ticket.read.org']],
-      ['/v1/tickets/{id}/duplicates', 'get', ['ticket.read', 'ticket.read.org']],
+      ['/v1/tickets/{id}/notes', 'post', ['ticket.handle', 'ticket.dev.work']],
+      [
+        '/v1/tickets/{id}/timeline',
+        'get',
+        ['ticket.read', 'ticket.read.org', 'ticket.read.masked'],
+      ],
+      [
+        '/v1/tickets/{id}/duplicates',
+        'get',
+        ['ticket.read', 'ticket.read.org', 'ticket.read.masked'],
+      ],
     ] as const) {
       const operation = op(path, method);
       expect(operation, `${method.toUpperCase()} ${path}`).toBeDefined();

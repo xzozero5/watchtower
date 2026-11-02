@@ -715,3 +715,32 @@ describe('KB author (AC-4)', () => {
     ).toEqual([]);
   });
 });
+
+describe('an investigation a developer asked for (T-137)', () => {
+  it('investigates again and writes no draft reply, where the same request from staff would', async () => {
+    classifierConfidence = 0.9;
+    classifierIntent = 'webhook_not_received';
+    const ticketId = await createTicket('Webhook not received', 'Our webhook is not received.', {
+      intentKey: 'webhook_not_received',
+    });
+    await settled(ticketId, 'draft_ready');
+    const countOf = async (agent: string): Promise<number> =>
+      (await runsOf(ticketId)).filter((run) => run.agent === agent).length;
+    const investigatorsBefore = await countOf('investigator');
+    const draftersBefore = await countOf('drafter');
+
+    await enqueueAi(AI_JOBS.investigate, { ticketId, requestedBy: staffId, noDraft: true });
+    await waitFor('the second investigation', async () =>
+      (await countOf('investigator')) > investigatorsBefore ? true : undefined,
+    );
+    // Long enough for a draft to have been made if one was going to be.
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+    expect(await countOf('drafter')).toBe(draftersBefore);
+
+    // The control: without the flag the same request drafts again, so the check above can fail.
+    await enqueueAi(AI_JOBS.investigate, { ticketId, requestedBy: staffId });
+    await waitFor('a draft on a staff request', async () =>
+      (await countOf('drafter')) > draftersBefore ? true : undefined,
+    );
+  });
+});

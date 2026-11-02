@@ -1,10 +1,10 @@
 import type { schema } from '@watchtower/db';
-import { AUDIT_ACTIONS, type Note, type Reply } from '@watchtower/shared';
+import { AUDIT_ACTIONS, hasOutboundChannel, type Note, type Reply } from '@watchtower/shared';
 
 import { recordAuditInTx } from '../audit.js';
 import { findOrCreateContactByEmailIn } from '../contacts.js';
 import { isWithinReopenWindow } from '../csat/reopen.js';
-import { badRequest, notFound, ticketNotOpen } from '../errors.js';
+import { badRequest, channelNoOutbound, notFound, ticketNotOpen } from '../errors.js';
 import { approveAiDraftSent, scheduleCustomerSend, usesDispatcher } from '../outbound/schedule.js';
 import { requireCustomerSend } from '../policy.js';
 import type { MessageRow, OutboundDeliveryRow, TicketRow } from '../rows.js';
@@ -80,11 +80,25 @@ export async function replyToTicket(
   if (fromCustomer && body.setStatus !== undefined) {
     throw badRequest('A client cannot set the status');
   }
+  if (body.setStatus === 'waiting_on_dev') {
+    // The handover to a developer carries an internal note; a public reply is the wrong place for it.
+    throw badRequest(
+      'Move a ticket to waiting on dev with the status change and a note, not a reply',
+    );
+  }
   if (ticket.status === 'merged') {
     throw ticketNotOpen('This ticket was merged into another; reply there');
   }
   if (ticket.status === 'closed') {
     throw ticketNotOpen('This ticket is closed; open a new one');
+  }
+  // A phone, walk-in, chat, other or internal ticket has no channel to send on. Storing the reply as "sent"
+  // would lie to the person and to the first-response SLA, so it is refused where they see it (T-136
+  // `[ASSUMED]`); what was said by phone is recorded as an internal note instead.
+  if (!fromCustomer && !hasOutboundChannel(ticket.channel)) {
+    throw channelNoOutbound(
+      `This ticket came in by ${ticket.channel.replace('_', ' ')}; Watchtower cannot send a reply on it. Record what you told the customer as an internal note, or write to them on an email or LINE ticket`,
+    );
   }
   const now = ctx.now();
   const windowDays = ctx.config.reopenWindowDays;

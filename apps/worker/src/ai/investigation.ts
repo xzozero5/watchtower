@@ -75,6 +75,8 @@ export interface InvestigationJob {
    */
   readonly mode: 'investigate' | 'draft';
   readonly note?: string | undefined;
+  /** A developer asked for the investigation: no draft reply is written (T-137). */
+  readonly noDraft?: boolean | undefined;
 }
 
 export interface InvestigationResult {
@@ -400,7 +402,8 @@ export async function runInvestigation(
   }
 
   // --- draft: stage 2 drafts on its own, stage 1 only when a person asked, stage 0 never (N3) ---
-  const draftsOnItsOwn = job.mode === 'investigate' && stage >= 2 && intentTrusted;
+  const draftsOnItsOwn =
+    job.mode === 'investigate' && stage >= 2 && intentTrusted && job.noDraft !== true;
   const draftsOnRequest = job.mode === 'draft' && stage >= 1;
   // Not drafting: close the "working" state a request opened (an investigation already did).
   const finish = async (reason: 'stage' | 'no_intent'): Promise<InvestigationResult> => {

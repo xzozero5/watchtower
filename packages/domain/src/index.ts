@@ -103,6 +103,13 @@ import { createUsageMetric, updateUsageMetric } from './usage/metrics.js';
 import { dueUsageMetrics, runUsageMetric } from './usage/run.js';
 import { assignTicket } from './tickets/assign.js';
 import { createTicket } from './tickets/create.js';
+import {
+  addTicketReference,
+  pickUpTicketAsDev,
+  releaseTicketAsDev,
+  removeTicketReference,
+} from './tickets/dev.js';
+import { createManualTicket } from './tickets/manual.js';
 import { mergeTickets } from './tickets/merge.js';
 import { addTicketNote, replyToTicket } from './tickets/messages.js';
 import { changeTicketStatus } from './tickets/status.js';
@@ -566,6 +573,21 @@ export {
 export { TicketKeys } from './ticket-keys.js';
 export { assignTicket, type AssignTicketInput } from './tickets/assign.js';
 export { createTicket, type CreateTicketInput, type CreateTicketResult } from './tickets/create.js';
+export {
+  addTicketReference,
+  pickUpTicketAsDev,
+  releaseTicketAsDev,
+  removeTicketReference,
+  type AddTicketReferenceInput,
+  type DevOwnerInput,
+  type ReleaseDevOwnerInput,
+  type RemoveTicketReferenceInput,
+} from './tickets/dev.js';
+export {
+  MANUAL_CONFIRMATION_TEMPLATE,
+  createManualTicket,
+  type CreateManualTicketResult,
+} from './tickets/manual.js';
 export { mergeTickets, type MergeTicketInput } from './tickets/merge.js';
 export {
   addTicketNote,
@@ -656,6 +678,13 @@ export interface Domain {
     readonly merge: typeof mergeTickets;
     readonly reply: typeof replyToTicket;
     readonly note: typeof addTicketNote;
+    /** A ticket filed by hand (T-136). */
+    readonly createManual: typeof createManualTicket;
+    /** The developer's part (T-137). */
+    readonly devPickUp: typeof pickUpTicketAsDev;
+    readonly devRelease: typeof releaseTicketAsDev;
+    readonly referenceAdd: typeof addTicketReference;
+    readonly referenceRemove: typeof removeTicketReference;
   };
   readonly contacts: { readonly findOrCreateByEmail: typeof findOrCreateContactByEmail };
   readonly intents: { readonly resolve: typeof resolveIntent };
@@ -832,6 +861,11 @@ export function createDomain(options: DomainOptions): Domain {
       merge: mergeTickets,
       reply: replyToTicket,
       note: addTicketNote,
+      createManual: createManualTicket,
+      devPickUp: pickUpTicketAsDev,
+      devRelease: releaseTicketAsDev,
+      referenceAdd: addTicketReference,
+      referenceRemove: removeTicketReference,
     },
     contacts: { findOrCreateByEmail: findOrCreateContactByEmail },
     intents: { resolve: resolveIntent },

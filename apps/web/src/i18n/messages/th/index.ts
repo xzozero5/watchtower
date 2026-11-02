@@ -12,12 +12,14 @@ import { conversationTh } from './conversation';
 import { csatTh } from './csat';
 import { customerTh } from './customer';
 import { detailsTh } from './details';
+import { devHomeTh } from './devHome';
 import { errorsTh } from './errors';
 import { homeTh } from './home';
 import { keymapTh } from './keymap';
 import { liveTh } from './live';
 import { loadingTh } from './loading';
 import { loginTh } from './login';
+import { newTicketTh } from './newTicket';
 import { notificationsTh } from './notifications';
 import { otherMailTh } from './otherMail';
 import { opsTh } from './ops';
@@ -75,6 +77,8 @@ export const th: Messages = {
   home: homeTh,
   admin: adminTh,
   portal: portalTh,
+  newTicket: newTicketTh,
+  devHome: devHomeTh,
   notifications: notificationsTh,
   csat: csatTh,
   bulk: bulkTh,

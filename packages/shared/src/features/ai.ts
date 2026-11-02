@@ -50,6 +50,11 @@ export const AI_JOBS = {
 export const aiInvestigateJobSchema = z.object({
   ticketId: z.uuid(),
   requestedBy: z.uuid().nullable().default(null),
+  /**
+   * True when a developer asked (T-137): the run investigates and writes no draft reply, whatever the
+   * stage of the intent. A developer neither sees nor approves a draft (N3), so none is made on their request.
+   */
+  noDraft: z.boolean().default(false),
 });
 export type AiInvestigateJob = z.infer<typeof aiInvestigateJobSchema>;
 

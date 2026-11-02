@@ -1,6 +1,18 @@
 import type { TicketChannel } from '@watchtower/shared';
 import { cn, TINT_CLASSES, type TintId } from '@watchtower/ui';
-import { Cog, Globe, Hash, type LucideIcon, Mail, MessageCircle, Webhook } from 'lucide-react';
+import {
+  Cog,
+  Footprints,
+  Globe,
+  Hash,
+  type LucideIcon,
+  Mail,
+  MessageCircle,
+  MessagesSquare,
+  Phone,
+  Webhook,
+  Ellipsis,
+} from 'lucide-react';
 
 import { useT } from '@/i18n/provider';
 
@@ -11,6 +23,10 @@ const LOOK: Record<TicketChannel, { icon: LucideIcon; tone: TintId }> = {
   discord: { icon: Hash, tone: 'purple' },
   webhook: { icon: Webhook, tone: 'slate' },
   internal: { icon: Cog, tone: 'slate' },
+  phone: { icon: Phone, tone: 'teal' },
+  walk_in: { icon: Footprints, tone: 'amber' },
+  chat: { icon: MessagesSquare, tone: 'sky' },
+  other: { icon: Ellipsis, tone: 'slate' },
 };
 
 /**

@@ -238,7 +238,7 @@ export class TestClient {
   /** Signs in through the mock-mode dev login and remembers the CSRF token. */
   async devLogin(
     email: string,
-    role: 'agent' | 'lead' | 'head' | 'client' = 'agent',
+    role: 'agent' | 'lead' | 'head' | 'dev' | 'client' = 'agent',
     extra: { orgId?: string; name?: string } = {},
   ): Promise<SessionInfo> {
     const response = await this.post<SessionInfo>('/v1/auth/dev-login', {

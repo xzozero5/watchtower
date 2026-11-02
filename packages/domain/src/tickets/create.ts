@@ -9,7 +9,9 @@ import {
   TICKET_EVENT_TYPES,
   discordNotifyJobId,
   discordNotifyPriority,
+  MANUAL_CHANNELS,
   type ChannelType,
+  type TicketChannel,
   type TicketPriority,
 } from '@watchtower/shared';
 import { eq, sql } from 'drizzle-orm';
@@ -45,9 +47,14 @@ export interface CreateTicketInput {
   readonly subject: string;
   /** The first message of the ticket, as the customer wrote it. */
   readonly body: string;
-  /** Default `portal`, the only channel of Phase 0. */
-  readonly channel?: ChannelType;
-  /** Default: the account of the channel (the portal has exactly one). */
+  /**
+   * Where the request came from. Default: `portal` when there is a customer (`requesterContactId` or
+   * `requester`), `internal` when there is none. `internal` is only for a ticket without a customer
+   * (T-136); `phone`, `walk_in`, `chat` and `other` are filed by hand and need a customer. Neither has a
+   * channel account.
+   */
+  readonly channel?: TicketChannel;
+  /** Default: the account of the channel (the portal has exactly one). Not for `internal` or a manual channel. */
   readonly channelAccountId?: string;
   /**
    * The provider's id of the first message (a portal submission id). Submitting the same id again
@@ -74,6 +81,10 @@ export interface CreateTicketInput {
   readonly customFields?: Record<string, unknown>;
 }
 
+function accountChannel(channel: TicketChannel): channel is ChannelType {
+  return channel !== 'internal' && !(MANUAL_CHANNELS as readonly string[]).includes(channel);
+}
+
 export interface CreateTicketResult {
   readonly ticket: TicketRow;
   readonly message: MessageRow;
@@ -94,10 +105,21 @@ export async function createTicket(
   input: CreateTicketInput,
 ): Promise<DomainResult<CreateTicketResult>> {
   const fx = new Effects();
-  const channel = input.channel ?? 'portal';
-  const accountId = input.channelAccountId ?? (await channelAccountIdOf(tx, channel));
+  const hasCustomer = input.requesterContactId !== undefined || input.requester !== undefined;
+  // Without a customer a ticket is internal; it used to fall through to the portal channel (T-136).
+  const channel: TicketChannel = input.channel ?? (hasCustomer ? 'portal' : 'internal');
+  if (channel === 'internal' && hasCustomer) {
+    throw badRequest('An internal ticket has no customer; give a channel the customer used');
+  }
+  if ((MANUAL_CHANNELS as readonly string[]).includes(channel) && !hasCustomer) {
+    throw badRequest('A ticket filed by hand needs a contact');
+  }
+  // `internal` and the manual channels have no account: nothing is delivered on them.
+  const accountId = accountChannel(channel)
+    ? (input.channelAccountId ?? (await channelAccountIdOf(tx, channel)))
+    : null;
 
-  if (input.externalId !== undefined) {
+  if (input.externalId !== undefined && accountId !== null) {
     // Two identical submissions at once wait for each other here, so the second sees the first.
     await tx.execute(
       sql`select pg_advisory_xact_lock(hashtextextended(${`${accountId}:${input.externalId}`}, 0))`,

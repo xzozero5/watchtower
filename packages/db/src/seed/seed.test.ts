@@ -217,11 +217,18 @@ describe('the demo content', () => {
     expect(DEMO_ORGS.map((org) => org.tier)).toEqual(['gold', 'silver', 'standard']);
   });
 
-  it('has two staff per staff role, queues of existing staff and a default queue', () => {
-    for (const role of ['head', 'lead', 'agent'] as const) {
+  it('has two people per human role, queues of existing staff and a default queue', () => {
+    for (const role of ['head', 'lead', 'agent', 'dev'] as const) {
       expect(DEMO_STAFF.filter((person) => person.role === role).length).toBeGreaterThanOrEqual(2);
     }
     expect(DEMO_STAFF.filter((person) => person.role === 'agent')).toHaveLength(4);
+    // A ticket is never assigned to a developer: they are in no queue (T-137).
+    const devKeys = DEMO_STAFF.filter((person) => person.role === 'dev').map(
+      (person) => person.key,
+    );
+    for (const queue of DEMO_QUEUES) {
+      for (const key of devKeys) expect(queue.members).not.toContain(key);
+    }
     expect(DEMO_QUEUES.filter((queue) => queue.isDefault)).toHaveLength(1);
     for (const queue of DEMO_QUEUES) {
       for (const member of queue.members) expect(STAFF_KEYS).toContain(member);

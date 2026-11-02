@@ -23,7 +23,7 @@ export interface Persona {
 
 export async function signIn(
   h: Harness,
-  role: 'agent' | 'lead' | 'head' | 'client',
+  role: 'agent' | 'lead' | 'head' | 'dev' | 'client',
   orgId?: string,
   name?: string,
 ): Promise<Persona> {

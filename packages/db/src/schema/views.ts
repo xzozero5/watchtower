@@ -13,6 +13,7 @@ import {
 } from 'drizzle-orm/pg-core';
 
 import { users } from './auth.js';
+import { deploy, incident } from './incident.js';
 import { ticket } from './ticketing.js';
 
 const timestamptz = (name: string) => timestamp(name, { withTimezone: true, mode: 'date' });
@@ -57,9 +58,11 @@ export const ticketLink = pgTable(
     fromTicketId: uuid('from_ticket_id')
       .notNull()
       .references(() => ticket.id, { onDelete: 'restrict' }),
-    toTicketId: uuid('to_ticket_id')
-      .notNull()
-      .references(() => ticket.id, { onDelete: 'restrict' }),
+    /** Empty for a link to an incident or a deploy (T-137, migration 0080). */
+    toTicketId: uuid('to_ticket_id').references(() => ticket.id, { onDelete: 'restrict' }),
+    /** `incident` links: the incident (exactly one of `incidentId`, `deployId` or `toTicketId` is set). */
+    incidentId: uuid('incident_id').references(() => incident.id, { onDelete: 'cascade' }),
+    deployId: uuid('deploy_id').references(() => deploy.id, { onDelete: 'cascade' }),
     createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
     createdAt: timestamptz('created_at').notNull().defaultNow(),
   },
@@ -67,6 +70,12 @@ export const ticketLink = pgTable(
     uniqueIndex('ticket_link_pair_key').on(table.kind, table.fromTicketId, table.toTicketId),
     index('ticket_link_from_idx').on(table.fromTicketId),
     index('ticket_link_to_idx').on(table.toTicketId),
+    uniqueIndex('ticket_link_incident_key')
+      .on(table.fromTicketId, table.incidentId)
+      .where(sql`${table.incidentId} IS NOT NULL`),
+    uniqueIndex('ticket_link_deploy_key')
+      .on(table.fromTicketId, table.deployId)
+      .where(sql`${table.deployId} IS NOT NULL`),
   ],
 );
 

@@ -2,7 +2,7 @@ import { RequestMethod, type Type } from '@nestjs/common';
 import { METHOD_METADATA, PATH_METADATA } from '@nestjs/common/constants.js';
 import { MetadataScanner, ModulesContainer, Reflector } from '@nestjs/core';
 import { Test } from '@nestjs/testing';
-import { PERMISSIONS } from '@watchtower/shared';
+import { DEFAULT_ROLE_PERMISSIONS, PERMISSIONS } from '@watchtower/shared';
 import { describe, expect, it } from 'vitest';
 
 import { AppModule } from '../app.module.js';
@@ -225,20 +225,27 @@ describe('every route states who may call it', () => {
     expect(byKey.get('POST /v1/orgs')?.permissions).toEqual(['org.manage']);
     // A client must never be able to write an internal note, merge, assign or change a status.
     for (const key of [
-      'POST /v1/tickets/:id/notes',
       'POST /v1/tickets/:id/merge',
       'POST /v1/tickets/:id/assign',
-      'POST /v1/tickets/:id/status',
       'PATCH /v1/tickets/:id',
     ]) {
       expect(byKey.get(key)?.permissions, key).toEqual(['ticket.handle']);
+    }
+    // A note and a status change are also the developer's (T-137); the service holds a developer to
+    // open and waiting_on_dev. A client has neither permission.
+    for (const key of ['POST /v1/tickets/:id/notes', 'POST /v1/tickets/:id/status']) {
+      expect(byKey.get(key)?.anyOf, key).toEqual(['ticket.handle', 'ticket.dev.work']);
     }
     // Revoking a customer's tracking links is staff work.
     expect(byKey.get('POST /v1/tickets/:id/portal-links/revoke')?.permissions).toEqual([
       'ticket.handle',
     ]);
     // Reading is open to both audiences; the service narrows to the caller's organization.
-    expect(byKey.get('GET /v1/tickets')?.anyOf).toEqual(['ticket.read', 'ticket.read.org']);
+    expect(byKey.get('GET /v1/tickets')?.anyOf).toEqual([
+      'ticket.read',
+      'ticket.read.org',
+      'ticket.read.masked',
+    ]);
     expect(byKey.get('POST /v1/tickets/:id/replies')?.anyOf).toEqual([
       'ticket.reply',
       'ticket.reply.own',
@@ -275,5 +282,56 @@ describe('every route states who may call it', () => {
       'audit.read',
       'pii.export',
     ]);
+  });
+
+  // T-137: the developer reads with personal data masked. A route is open to them only by a permission
+  // they hold, so this walks every route and lists the ones their permissions satisfy. Any other route
+  // that appears here is a route nobody checked for masking: it fails until someone has.
+  it('lets a developer reach only the routes that mask personal data (T-137)', async () => {
+    const granted = new Set<string>(DEFAULT_ROLE_PERMISSIONS.dev);
+    const reachable = (await collectRoutes())
+      .filter((route) => !route.isPublic)
+      .filter(
+        (route) =>
+          route.permissions.every((permission) => granted.has(permission)) &&
+          (route.anyOf.length === 0 || route.anyOf.some((permission) => granted.has(permission))),
+      )
+      .map((route) => route.key);
+    // The caller's own sessions: no ticket data.
+    const own = reachable.filter((key) => key.includes(' /v1/auth/'));
+    const rest = reachable.filter((key) => !key.includes(' /v1/auth/')).sort();
+    expect(own.length).toBeGreaterThan(0);
+    expect(rest).toEqual(
+      [
+        'GET /v1/tickets',
+        'GET /v1/tickets/:id',
+        'GET /v1/tickets/:id/duplicates',
+        'GET /v1/tickets/:id/timeline',
+        'GET /v1/tickets/:id/ai',
+        'POST /v1/tickets/:id/notes',
+        'POST /v1/tickets/:id/status',
+        'POST /v1/tickets/:id/dev-owner',
+        'DELETE /v1/tickets/:id/dev-owner',
+        'POST /v1/tickets/:id/references',
+        'DELETE /v1/tickets/:id/references/:linkId',
+        'POST /v1/tickets/:id/ai/requests',
+        // The saved investigation templates (T-203, `investigate.run`): a card is redacted before it is
+        // stored (N4), so a developer gets what an agent gets. Reading the pinned cards (`ticket.read`)
+        // and the unbounded queries (`investigate.adhoc`) are not theirs.
+        'GET /v1/tools/templates',
+        'GET /v1/tickets/:id/tools',
+        'POST /v1/tickets/:id/tools/run',
+        'POST /v1/incidents/:id/tools/run',
+        'DELETE /v1/tickets/:id/evidence/:cardId',
+        'DELETE /v1/incidents/:id/evidence/:cardId',
+      ].sort(),
+    );
+  });
+
+  it('gives a developer nothing that reaches the customer', () => {
+    const granted = new Set<string>(DEFAULT_ROLE_PERMISSIONS.dev);
+    for (const permission of ['ticket.reply', 'ticket.handle', 'ai.draft.review', 'ticket.read']) {
+      expect(granted.has(permission), permission).toBe(false);
+    }
   });
 });

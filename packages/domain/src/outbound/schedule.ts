@@ -49,6 +49,12 @@ export interface ScheduleSendInput {
   readonly aiDraftId?: string | undefined;
   /** `system_template`: the key the body was rendered from. */
   readonly templateKey?: string | undefined;
+  /**
+   * Send through this account instead of the ticket's own channel. For a ticket filed by hand (phone,
+   * walk-in...) that has no channel account: the confirmation email goes out through the Gmail account
+   * (T-136). The message must already belong to that account.
+   */
+  readonly via?: { readonly accountId: string; readonly channel: DeliveryChannel } | undefined;
 }
 
 export interface ScheduledSend {
@@ -129,7 +135,7 @@ async function refuseUnsentAiDraftText(
 function gateRequest(ctx: DomainContext, input: ScheduleSendInput) {
   return {
     ticketId: input.ticket.id,
-    channel: input.ticket.channel,
+    channel: input.via?.channel ?? input.ticket.channel,
     intentId: input.ticket.intentId,
     actor: ctx.actor,
     origin: input.origin,
@@ -154,11 +160,12 @@ export async function scheduleCustomerSend(
   ) {
     throw badRequest('Only a public outbound message waiting for delivery can be scheduled');
   }
-  if (!isDeliveryChannel(ticket.channel)) {
+  const viaChannel = input.via?.channel ?? ticket.channel;
+  if (!isDeliveryChannel(viaChannel)) {
     throw badRequest(`The ${ticket.channel} channel has no outbound dispatcher`);
   }
-  const channel = ticket.channel;
-  const accountId = ticket.channelAccountId;
+  const channel = viaChannel;
+  const accountId = input.via?.accountId ?? ticket.channelAccountId;
   const [account] =
     accountId === null
       ? []
@@ -340,6 +347,8 @@ export async function approveAiDraftSent(
 export interface TemplateAckInput {
   /** A ticket id or key. */
   readonly ref: string;
+  /** Send through this account rather than the ticket's channel (see `ScheduleSendInput.via`). */
+  readonly via?: { readonly accountId: string; readonly channel: DeliveryChannel } | undefined;
   /** A key on the safe list with a renderer (`SAFE_AUTO_ACK_TEMPLATES`). */
   readonly templateKey: string;
 }
@@ -366,7 +375,7 @@ export async function scheduleTemplateAck(
     tx,
     {
       ticketId: ticket.id,
-      channelAccountId: ticket.channelAccountId,
+      channelAccountId: input.via?.accountId ?? ticket.channelAccountId,
       direction: 'outbound',
       bodyText: body,
       visibility: 'public',
@@ -379,6 +388,7 @@ export async function scheduleTemplateAck(
     message,
     origin: 'system_template',
     templateKey: input.templateKey,
+    via: input.via,
   });
   return {
     value: { delivery: scheduled.value.delivery, message },

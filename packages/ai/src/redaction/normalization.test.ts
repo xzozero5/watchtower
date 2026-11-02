@@ -117,8 +117,8 @@ describe('cards, ids and bank accounts with unusual forms', () => {
     expect(redact(input)).toBe(expected);
   });
 
-  it('does not treat "access" or "accent" as an account keyword', () => {
-    expect(redact('access 1234567890')).toBe('access 1234567890');
+  it('does not treat "access" or "accent" as an account keyword (the number is still a run of 10 digits)', () => {
+    expect(redact('access 1234567890')).toBe('access [PHONE_1]');
   });
 
   it('redacts a Thai ID with en dashes, full-width digits or zero-width characters', () => {
@@ -232,10 +232,10 @@ describe('SR106-N5: mixed and extra separators inside numbers', () => {
     }
   });
 
-  it('does not read a 13-digit number with a bad check digit as an ID', () => {
+  it('does not read a 13-digit number with a bad check digit as an ID (it is a run of digits, redacted anyway)', () => {
     const bad = `${ID.slice(0, 12)}${String((Number(ID.slice(12)) + 1) % 10)}`;
     const grouped = `${bad.slice(0, 4)} ${bad.slice(4, 8)} ${bad.slice(8)}`;
-    expect(redact(grouped)).toBe(grouped);
+    expect(redact(grouped)).toBe('[PHONE_1]');
   });
 });
 
@@ -340,11 +340,11 @@ describe('SR106-N5: ideographic full stops and Thai domains', () => {
 describe('SR106-N5: known gaps (pinned so that closing one is a deliberate change)', () => {
   it('does not fold homoglyphs from other scripts (Cyrillic а for Latin a)', () => {
     // NFKC does not map U+0430 to 'a', so the keyword "account" is not recognised.
-    expect(redact('аccount 1234567890')).toBe('аccount 1234567890');
+    expect(redact('аccount 1234567890')).toBe('аccount [PHONE_1]');
   });
 
-  it('does not redact a bare 10-digit account number without a keyword or bank formatting', () => {
-    expect(redact('transfer to 1234567890 please')).toBe('transfer to 1234567890 please');
+  it('redacts a bare 10-digit account number as a phone-sized run, without a keyword or bank formatting', () => {
+    expect(redact('transfer to 1234567890 please')).toBe('transfer to [PHONE_1] please');
   });
 });
 

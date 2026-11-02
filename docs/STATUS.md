@@ -40,6 +40,10 @@ snapshot สั้นสำหรับ cold start อยู่ที่ `HANDOF
 
 ## Log
 
+## 2026-11-02 12:38 (Asia/Bangkok) — main thread — T-136, T-137 manual tickets, dev role with masked data ปิด
+- test: main thread รันเองบน Windows: lint, typecheck, unit ผ่าน · integration db 389, domain 454, api 1077, worker 226 · e2e 154 · full-stack 23 · compose healthy `[TESTED]`
+- ค้าง/ไม่ยืนยัน: Gmail ยังไม่มีเพดานขนาดข้อความขาเข้า ลง T-125 · เลขยาว 10–15 หลักถูก redact เป็นเบอร์ทั้งหมดตามที่ยอม · ยังไม่มี e2e ของ /tickets/new และ dev home
+
 ## 2026-11-02 11:59 (Asia/Bangkok) — main thread — T-133, T-206d, T-204b declutter, theme switch, language flags, alert and incident screens, status page ปิด
 - test: main thread รันเองบน Windows: lint, typecheck, unit ผ่าน · integration db 384, domain 440, api 1032, worker 225 · e2e 154 · full-stack 23 · compose healthy `[TESTED]`
 - ค้าง/ไม่ยืนยัน: ส่วนที่เหลือของ T-133 ลงรายการใน HANDOFF แล้ว
