@@ -7,7 +7,7 @@
 --   evidence_card   what a run found, pinned to a ticket or an incident: the query's name, when, a
 --                   summary and a redacted excerpt (N4) with a keyed hash of the full result and of the
 --                   parameters. The full result is not kept (phase-2 breakdown, scope cut).
--- Reversible: see 0051_tool_template_evidence.down.sql.
+-- Reversible: see 0065_tool_template_evidence.down.sql.
 
 CREATE TABLE tool_template (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),

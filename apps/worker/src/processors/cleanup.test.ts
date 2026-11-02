@@ -1,4 +1,4 @@
-import type { Database } from '@watchtower/db';
+import { CLEANUP_TARGETS, type Database } from '@watchtower/db';
 import { CLEANUP_JOBS } from '@watchtower/shared';
 import { UnrecoverableError, type Job } from 'bullmq';
 import { describe, expect, it, vi } from 'vitest';
@@ -20,9 +20,9 @@ describe('cleanup processor', () => {
     })({ name: CLEANUP_JOBS.purgeExpired } as Job);
     expect(result).toMatchObject({ sessions: 0, more: false });
     const calls = query.mock.calls as [string, number[]][];
-    expect(calls).toHaveLength(5);
-    // Four auth tables use the auth retention, the break-glass table its own.
-    expect(calls.map(([, params]) => params[0])).toEqual([3, 3, 3, 3, 10]);
+    expect(calls).toHaveLength(CLEANUP_TARGETS.length);
+    // The auth tables and the unconfirmed status subscriptions use the auth retention, the break-glass table its own.
+    expect(calls.map(([, params]) => params[0])).toEqual([3, 3, 3, 3, 10, 3]);
     expect(logger.info).not.toHaveBeenCalled();
     expect(logger.warn).not.toHaveBeenCalled();
   });

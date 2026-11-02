@@ -60,6 +60,7 @@ beforeEach(async () => {
     'magic_link_tokens',
     'portal_access_token',
     'break_glass_attempt',
+    'status_subscription',
   ]) {
     await owner().query(`DELETE FROM ${table}`);
   }
@@ -220,12 +221,41 @@ describe('purgeExpired', () => {
       magic_link_tokens: 0,
       portal_access_token: 0,
       break_glass_attempt: 0,
+      status_subscription: 0,
       more: false,
     });
     expect(await count('sessions')).toBe(1);
     expect(await count('outbox', `job_id = 'cleanup-keep'`)).toBe(1);
     expect(await count('audit_log')).toBe(auditBefore);
     expect(await purgeExpired({ pool: app }, {})).toMatchObject({ sessions: 0, more: false });
+  });
+});
+
+describe('subscriptions nobody confirmed (T-204c)', () => {
+  const add = (email: string, state: string, expiry: string) =>
+    owner().query(
+      `INSERT INTO status_subscription (email, state, confirm_nonce, unsubscribe_nonce, confirm_expires_at, confirmed_at, unsubscribed_at)
+       VALUES ($1, $2, '0123456789abcdef', '0123456789abcdef', now() - $3::interval,
+               CASE WHEN $2 = 'confirmed' THEN now() END, CASE WHEN $2 = 'unsubscribed' THEN now() END)`,
+      [email, state, expiry],
+    );
+
+  it('deletes a pending one once its window ended and the grace passed, and keeps the others', async () => {
+    await add('old-pending@example.test', 'pending', '30 days');
+    await add('fresh-pending@example.test', 'pending', '1 day');
+    await add('old-confirmed@example.test', 'confirmed', '30 days');
+    await add('old-unsubscribed@example.test', 'unsubscribed', '30 days');
+    const result = await purgeExpired({ pool: app }, {});
+    expect(result.status_subscription).toBe(1);
+    const left = await owner().query<{ email: string }>(
+      'SELECT email FROM status_subscription ORDER BY email',
+    );
+    expect(left.rows.map((row) => row.email)).toEqual([
+      'fresh-pending@example.test',
+      'old-confirmed@example.test',
+      'old-unsubscribed@example.test',
+    ]);
+    await owner().query('DELETE FROM status_subscription');
   });
 });
 
@@ -270,6 +300,7 @@ describe('0012_expiry_indexes', () => {
       'magic_link_tokens',
       'portal_access_token',
       'break_glass_attempt',
+      'status_subscription',
     ]) {
       const privileges = await owner().query<{ del: boolean; trunc: boolean }>(
         `SELECT has_table_privilege($1, $2::regclass, 'DELETE') AS del,

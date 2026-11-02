@@ -1,5 +1,5 @@
-// Investigation tools (T-203): the shared rate budget (migration 0050), saved templates and evidence cards
-// (migration 0051). Mirrors the SQL by hand; the SQL file is the source of truth (CHECKs, partitioning).
+// Investigation tools (T-203): the shared rate budget (migration 0064), saved templates and evidence cards
+// (migration 0065). Mirrors the SQL by hand; the SQL file is the source of truth (CHECKs, partitioning).
 import {
   boolean,
   index,

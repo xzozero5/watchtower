@@ -3,7 +3,11 @@ import { MAINTENANCE_JOBS } from '@watchtower/shared';
 import { UnrecoverableError, type Job } from 'bullmq';
 import { describe, expect, it, vi } from 'vitest';
 
-import { createMaintenanceProcessor, PARTITION_MONTHS_AHEAD } from './maintenance.js';
+import {
+  createMaintenanceProcessor,
+  PARTITION_MONTHS_AHEAD,
+  PARTITIONED_TABLES,
+} from './maintenance.js';
 
 function fakeDatabase(created: number) {
   const query = vi.fn().mockResolvedValue({ rows: [{ created }] });
@@ -11,13 +15,13 @@ function fakeDatabase(created: number) {
 }
 
 describe('maintenance processor', () => {
-  it('asks for the next months of partitions of every append-only table, append-only', async () => {
+  it('asks for the next months of partitions of every partitioned table, append-only except the updatable ones', async () => {
     const { database, query } = fakeDatabase(2);
     const result = await createMaintenanceProcessor(database)({
       name: MAINTENANCE_JOBS.ensurePartitions,
     } as Job);
-    expect(result).toEqual({ created: 10 });
-    expect(query).toHaveBeenCalledTimes(5);
+    expect(result).toEqual({ created: 2 * PARTITIONED_TABLES.length });
+    expect(query).toHaveBeenCalledTimes(PARTITIONED_TABLES.length);
     const calls = query.mock.calls as [string, unknown[]][];
     expect(calls[0]?.[0]).toContain("ensure_monthly_partitions('audit_log'");
     expect(calls[1]?.[0]).toContain("ensure_monthly_partitions('ticket_event'");
@@ -25,13 +29,15 @@ describe('maintenance processor', () => {
     expect(calls[2]?.[0]).toContain("ensure_monthly_partitions('ai_run'");
     // The incident timeline (T-202a) is append-only and partitioned too.
     expect(calls[3]?.[0]).toContain("ensure_monthly_partitions('incident_timeline'");
-    // The tool ledger (T-203b) stays updatable in the four columns it closes a row with, and no others.
-    expect(calls[4]?.[0]).toContain("ensure_monthly_partitions('tool_execution'");
-    expect(calls[4]?.[0]).toContain(
+    // The cached usage points (T-205a) are upserted, so their partitions are not append-only.
+    expect(calls[4]?.[0]).toContain("ensure_monthly_partitions('usage_metric_point'");
+    // The tool ledger (T-203b) stays updatable in the columns it closes a row with, and no others.
+    expect(calls[5]?.[0]).toContain("ensure_monthly_partitions('tool_execution'");
+    expect(calls[5]?.[0]).toContain(
       "ARRAY['status', 'error_code', 'finished_at', 'latency_ms', 'result_count']",
     );
     for (const [sql, params] of calls) {
-      expect(sql).toContain('true');
+      expect(sql).toContain(sql.includes('usage_metric_point') ? 'false' : 'true');
       expect(params).toEqual([PARTITION_MONTHS_AHEAD]);
     }
   });

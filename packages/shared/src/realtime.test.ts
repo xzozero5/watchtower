@@ -52,6 +52,16 @@ function message(visibility: 'public' | 'internal', orgId = ORG_A): RealtimeEven
 }
 
 describe('realtimeEventFor', () => {
+  it('tells a client nothing of a ticket on the internal channel, created or changed', () => {
+    for (const type of ['ticket.created', 'ticket.updated'] as const) {
+      const event = ticketEvent(type, ['status', 'subject']);
+      if (event.type === 'notification.created' || event.type === 'alert.updated') continue;
+      const internal = { ...event, data: { ...event.data, channel: 'internal' } } as RealtimeEvent;
+      expect(realtimeEventFor({ kind: 'client', orgId: ORG_A }, internal)).toBeNull();
+      expect(realtimeEventFor({ kind: 'staff' }, internal)).toEqual(internal);
+    }
+  });
+
   it('gives staff every event unchanged', () => {
     for (const event of [updated(['assignee']), message('internal'), message('public', ORG_B)]) {
       expect(realtimeEventFor({ kind: 'staff' }, event)).toEqual(event);

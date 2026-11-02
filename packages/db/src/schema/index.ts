@@ -22,3 +22,5 @@ export * from './views.js';
 export * from './alerting.js';
 export * from './incident.js';
 export * from './tools.js';
+export * from './statuspage.js';
+export * from './usage.js';

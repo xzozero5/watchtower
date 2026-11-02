@@ -127,7 +127,7 @@ export const toolExecution = pgTable(
     mock: boolean('mock').notNull().default(false),
   },
   (table) => [
-    // Partitioned by month (migration 0050): the primary key holds the partition key.
+    // Partitioned by month (migration 0064): the primary key holds the partition key.
     primaryKey({ columns: [table.id, table.createdAt] }),
     index('tool_execution_ticket_idx').on(table.ticketId, table.createdAt.desc()),
     index('tool_execution_tool_idx').on(table.tool, table.createdAt.desc()),

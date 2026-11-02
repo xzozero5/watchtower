@@ -31,7 +31,7 @@
 ### 3. งบ rate/cost ร่วม (ตัดสินที่ T-203b)
 ทุก client ใน `connectors` ที่เรียก API ที่มีโควตา (Logging 60 req/min/project) ใช้ budget เดียวต่อ project ผ่าน `rate_budget_window` และลง `tool_execution` ทุกครั้ง — budget เป็นของ `apps/*` ที่ฉีดเข้า client ไม่ใช่ของ `connectors` (ไม่มี DB)
 
-**ทำแล้วที่ T-203b (migration 0050, `[TESTED]` บน Postgres จริง):**
+**ทำแล้วที่ T-203b (migration 0064, `[TESTED]` บน Postgres จริง):**
 - `rate_budget_window(resource, slot, total, ai)` = หน้าต่างเลื่อน 60 วินาที แบ่งเป็น slot วินาที · `acquireRateBudget` (packages/domain) อ่านผลรวมหน้าต่างและตัดสินใต้ advisory lock ต่อ resource ใน transaction ของผู้เรียก ด้วยนาฬิกา DB เท่านั้น (บทเรียน T-122) · รวม 55/นาที (`LOGGING_RATE_BUDGET.totalPerMinute`, `[ASSUMED]`) ส่วนของ AI ≤ 30 (`aiPerMinute`) · โควตาจริงของ provider 60 `[CONFIRMED]` PRD R-5.1 · AI ≤ 30 (`reason: ai`) · คนรวมกันไม่เกิน 45 (พื้น 10 ของ AI, `reason: people`) · หนึ่งคนไม่เกิน 20 (`reason: person`) — ดู ADR-016 ข้อ 5a
 - resource = `logging:<project>` ร่วมคน+AI · `data:`/`repo:`/`monitoring:<project>` ร่วมคน+AI (60 รวม, AI 30 `[ASSUMED]`) · tool อื่น (kb/similar/org) ใช้ `tool:<ชื่อ>` เฉพาะ AI ขนาด `perToolPerMinute` เท่าเดิมก่อนย้าย
 - ledger ของ T-108 (`createDbToolLedger`) เลิกนับ "ต่อ tool ต่อนาที" จากแถว `tool_execution` แล้วเรียก `acquireRateBudget` ใน transaction เดียวกัน (per-run / per-ticket ยังนับจากแถวเหมือนเดิม) · คนใช้ `createHumanToolLedger` (ไม่มีเพดาน per-run/per-ticket ของ AI — เพดานคือหน้าต่างร่วม + role)

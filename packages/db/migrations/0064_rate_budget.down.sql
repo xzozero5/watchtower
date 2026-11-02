@@ -1,4 +1,4 @@
--- Reverts 0050. No tool_execution row is lost: they are copied back into a plain table. The rate
+-- Reverts 0064. No tool_execution row is lost: they are copied back into a plain table. The rate
 -- window is a counter of the last minute, so dropping it loses nothing that matters.
 ALTER TABLE tool_execution RENAME TO tool_execution_part;
 ALTER TABLE tool_execution_part RENAME CONSTRAINT tool_execution_pkey TO tool_execution_part_pkey;

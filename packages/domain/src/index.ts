@@ -74,6 +74,32 @@ import {
   slaCalendarFor,
   slaForNewTicket,
 } from './sla.js';
+import {
+  createStatusComponent,
+  deleteStatusComponent,
+  updateStatusComponent,
+} from './statuspage/components.js';
+import {
+  cancelStatusMaintenance,
+  draftStatusMaintenance,
+  publishStatusMaintenance,
+  updateStatusMaintenance,
+} from './statuspage/maintenance.js';
+import {
+  deleteStatusPostDraft,
+  draftStatusPost,
+  draftStatusPostFromIncident,
+  publishStatusPost,
+  updateStatusPost,
+} from './statuspage/posts.js';
+import {
+  confirmStatusSubscription,
+  requestStatusSubscription,
+  unsubscribeStatusSubscription,
+} from './statuspage/subscriptions.js';
+import { computeAllOrgHealth, computeOrgHealth } from './usage/health.js';
+import { createUsageMetric, updateUsageMetric } from './usage/metrics.js';
+import { dueUsageMetrics, runUsageMetric } from './usage/run.js';
 import { assignTicket } from './tickets/assign.js';
 import { createTicket } from './tickets/create.js';
 import { mergeTickets } from './tickets/merge.js';
@@ -127,6 +153,59 @@ export {
   type SendIncidentCommResult,
 } from './incidents/comms.js';
 export { recordDeploy } from './incidents/deploy.js';
+export {
+  createStatusComponent,
+  deleteStatusComponent,
+  updateStatusComponent,
+  requirePerson as requireStatusPerson,
+} from './statuspage/components.js';
+export {
+  cancelStatusMaintenance,
+  draftStatusMaintenance,
+  publishStatusMaintenance,
+  updateStatusMaintenance,
+} from './statuspage/maintenance.js';
+export {
+  deleteStatusPostDraft,
+  draftStatusPost,
+  draftStatusPostFromIncident,
+  publishStatusPost,
+  updateStatusPost,
+} from './statuspage/posts.js';
+export {
+  STATUS_CONFIRM_WINDOW_HOURS,
+  STATUS_RESEND_AFTER_SECONDS,
+  confirmStatusSubscription,
+  requestStatusSubscription,
+  unsubscribeStatusSubscription,
+  type SubscriptionRequestOutcome,
+} from './statuspage/subscriptions.js';
+export {
+  mintStatusLink,
+  newStatusNonce,
+  verifyStatusLink,
+  type StatusLinkClaims,
+  type StatusLinkPurpose,
+} from './statuspage/links.js';
+export { canonicalDims, dimsHash, templateHash, type DimSet } from './usage/dims.js';
+export { anomalyDedupeKey, detectUsageAnomalies, isAnomalous } from './usage/anomaly.js';
+export {
+  computeAllOrgHealth,
+  computeOrgHealth,
+  scoreHealth,
+  type HealthFacts,
+} from './usage/health.js';
+export { createUsageMetric, updateUsageMetric } from './usage/metrics.js';
+export { cleanDimValue, parseUsageRows, type ParsedPoint } from './usage/rows.js';
+export {
+  dueUsageMetrics,
+  runUsageMetric,
+  type RunOutcome,
+  type RunUsageOptions,
+  type UsageDataPort,
+  type UsageDataResult,
+} from './usage/run.js';
+
 export { addTimelineEntry } from './incidents/timeline.js';
 export {
   matchService,
@@ -655,6 +734,33 @@ export interface Domain {
     readonly previewComm: typeof previewIncidentComm;
     readonly sendComm: typeof sendIncidentComm;
   };
+  /** The public status page (T-204): drafts by people or the AI, publishing only by a person (N3). */
+  readonly statusPage: {
+    readonly createComponent: typeof createStatusComponent;
+    readonly updateComponent: typeof updateStatusComponent;
+    readonly deleteComponent: typeof deleteStatusComponent;
+    readonly draftPost: typeof draftStatusPost;
+    readonly draftPostFromIncident: typeof draftStatusPostFromIncident;
+    readonly updatePost: typeof updateStatusPost;
+    readonly publishPost: typeof publishStatusPost;
+    readonly deletePostDraft: typeof deleteStatusPostDraft;
+    readonly draftMaintenance: typeof draftStatusMaintenance;
+    readonly updateMaintenance: typeof updateStatusMaintenance;
+    readonly publishMaintenance: typeof publishStatusMaintenance;
+    readonly cancelMaintenance: typeof cancelStatusMaintenance;
+    readonly requestSubscription: typeof requestStatusSubscription;
+    readonly confirmSubscription: typeof confirmStatusSubscription;
+    readonly unsubscribe: typeof unsubscribeStatusSubscription;
+  };
+  /** Product usage metrics, anomalies and the Client Health Score (T-205). */
+  readonly usage: {
+    readonly createMetric: typeof createUsageMetric;
+    readonly updateMetric: typeof updateUsageMetric;
+    readonly run: typeof runUsageMetric;
+    readonly due: typeof dueUsageMetrics;
+    readonly computeHealth: typeof computeOrgHealth;
+    readonly computeAllHealth: typeof computeAllOrgHealth;
+  };
   /** Received messages (ADR-009): used by the worker's `ingest` consumer. */
   readonly inbound: { readonly ingest: typeof ingestInbound };
   /** AI drafts (T-108c): a person's verdict on a draft. */
@@ -787,6 +893,31 @@ export function createDomain(options: DomainOptions): Domain {
       sendComm: sendIncidentComm,
     },
     ai: { rejectDraft: rejectAiDraft },
+    statusPage: {
+      createComponent: createStatusComponent,
+      updateComponent: updateStatusComponent,
+      deleteComponent: deleteStatusComponent,
+      draftPost: draftStatusPost,
+      draftPostFromIncident: draftStatusPostFromIncident,
+      updatePost: updateStatusPost,
+      publishPost: publishStatusPost,
+      deletePostDraft: deleteStatusPostDraft,
+      draftMaintenance: draftStatusMaintenance,
+      updateMaintenance: updateStatusMaintenance,
+      publishMaintenance: publishStatusMaintenance,
+      cancelMaintenance: cancelStatusMaintenance,
+      requestSubscription: requestStatusSubscription,
+      confirmSubscription: confirmStatusSubscription,
+      unsubscribe: unsubscribeStatusSubscription,
+    },
+    usage: {
+      createMetric: createUsageMetric,
+      updateMetric: updateUsageMetric,
+      run: runUsageMetric,
+      due: dueUsageMetrics,
+      computeHealth: computeOrgHealth,
+      computeAllHealth: computeAllOrgHealth,
+    },
     inbound: { ingest: ingestInbound },
     identity: { issueLineLinkCode, redeemLineLinkCode, linkLineUser },
     csat: {

@@ -1,0 +1,38 @@
+[
+  {
+    "key": "failed_steps_per_org_hour",
+    "name": "Failed steps per organization",
+    "description": "Failed processing steps per organization, flow and step, per hour.",
+    "sqlFile": "failed_steps_per_org_hour.sql",
+    "dims": ["org", "flow", "step"],
+    "unit": "failures",
+    "refreshIntervalSeconds": 3600,
+    "direction": "up",
+    "anomalyRatio": 3,
+    "anomalyMinAbs": 10
+  },
+  {
+    "key": "transactions_per_org_hour",
+    "name": "Transactions per organization",
+    "description": "Finished flow runs per organization, per hour. A drop is the problem.",
+    "sqlFile": "transactions_per_org_hour.sql",
+    "dims": ["org"],
+    "unit": "transactions",
+    "refreshIntervalSeconds": 3600,
+    "direction": "down",
+    "anomalyRatio": 3,
+    "anomalyMinAbs": 50
+  },
+  {
+    "key": "p95_latency_per_flow_hour",
+    "name": "p95 latency per flow",
+    "description": "95th percentile latency of a flow, per hour. Not per organization.",
+    "sqlFile": "p95_latency_per_flow_hour.sql",
+    "dims": ["flow"],
+    "unit": "ms",
+    "refreshIntervalSeconds": 3600,
+    "direction": "up",
+    "anomalyRatio": 3,
+    "anomalyMinAbs": 500
+  }
+]

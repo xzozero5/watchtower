@@ -6,7 +6,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { migrateDown, migrateUp } from './migrator.js';
 import { createTestDatabase, migrationsAfter, type TestDatabase } from './testing.js';
 
-// Migration 0050 (T-203b): the shared rate window, ensure_monthly_partitions with updatable columns,
+// Migration 0064 (T-203b): the shared rate window, ensure_monthly_partitions with updatable columns,
 // and tool_execution partitioned by month.
 const adminUrl =
   process.env.TEST_DATABASE_URL ?? 'postgres://watchtower:watchtower@localhost:5432/watchtower';
@@ -45,7 +45,7 @@ const insertCall = (status = 'running', tool = 'kb_search') =>
     [tool, hash()],
   );
 
-describe('0050 tool_execution is partitioned by month', () => {
+describe('0064 tool_execution is partitioned by month', () => {
   it('is a partitioned table with a default partition and the next months ready', async () => {
     const kind = await owner().query<{ relkind: string }>(
       `SELECT relkind FROM pg_class WHERE oid = 'tool_execution'::regclass`,
@@ -132,7 +132,7 @@ describe('0050 tool_execution is partitioned by month', () => {
   });
 });
 
-describe('0050 rate_budget_window', () => {
+describe('0064 rate_budget_window', () => {
   it('holds counts per resource and second, and refuses nonsense', async () => {
     await app.query(
       `INSERT INTO rate_budget_window (resource, slot, total, ai) VALUES ('logging:default', date_trunc('second', now()), 3, 2)`,
@@ -161,13 +161,13 @@ describe('0050 rate_budget_window', () => {
   });
 });
 
-describe('0050 goes down and up again', () => {
+describe('0064 goes down and up again', () => {
   it('keeps the tool_execution rows both ways and drops the window', async () => {
     const before = await insertCall('ok', 'gcp_logs');
     const id = before.rows[0]?.id;
-    const later = await migrationsAfter('0050_rate_budget');
+    const later = await migrationsAfter('0064_rate_budget');
     const reverted = await migrateDown(owner(), { steps: later.length + 1 });
-    expect(reverted[reverted.length - 1]).toBe('0050_rate_budget');
+    expect(reverted[reverted.length - 1]).toBe('0064_rate_budget');
     const plain = await owner().query<{ relkind: string }>(
       `SELECT relkind FROM pg_class WHERE oid = 'tool_execution'::regclass`,
     );
@@ -180,7 +180,7 @@ describe('0050 goes down and up again', () => {
     );
     expect(functions.rows.map((row) => row.args)).toEqual(['parent regclass, months_ahead integer, append_only boolean']);
 
-    expect(await migrateUp(owner())).toEqual(['0050_rate_budget', ...later]);
+    expect(await migrateUp(owner())).toEqual(['0064_rate_budget', ...later]);
     const partitioned = await owner().query<{ relkind: string }>(
       `SELECT relkind FROM pg_class WHERE oid = 'tool_execution'::regclass`,
     );

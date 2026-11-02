@@ -6,7 +6,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { migrateDown, migrateUp } from './migrator.js';
 import { createTestDatabase, migrationsAfter, type TestDatabase } from './testing.js';
 
-// Migration 0051 (T-203d): saved investigation templates and the evidence cards a run leaves.
+// Migration 0065 (T-203d): saved investigation templates and the evidence cards a run leaves.
 const adminUrl =
   process.env.TEST_DATABASE_URL ?? 'postgres://watchtower:watchtower@localhost:5432/watchtower';
 
@@ -74,7 +74,7 @@ const card = (fields: { ticket?: string | null; incident?: string | null; kind?:
     ],
   );
 
-describe('0051 tool_template', () => {
+describe('0065 tool_template', () => {
   it('stores a template per kind and name, optionally for an intent', async () => {
     await template('errors');
     await template('errors-for-intent', intentId);
@@ -112,7 +112,7 @@ describe('0051 tool_template', () => {
   });
 });
 
-describe('0051 evidence_card', () => {
+describe('0065 evidence_card', () => {
   it('pins to a ticket or to an incident, exactly one', async () => {
     const incident = await owner().query<{ id: string }>(
       `INSERT INTO incident (title, severity) VALUES ('Delivery failing', 'SEV2') RETURNING id`,
@@ -159,14 +159,14 @@ describe('0051 evidence_card', () => {
   });
 });
 
-describe('0051 goes down and up again', () => {
+describe('0065 goes down and up again', () => {
   it('drops both tables and brings them back empty', async () => {
-    const later = await migrationsAfter('0051_tool_template_evidence');
+    const later = await migrationsAfter('0065_tool_template_evidence');
     const reverted = await migrateDown(owner(), { steps: later.length + 1 });
-    expect(reverted[reverted.length - 1]).toBe('0051_tool_template_evidence');
+    expect(reverted[reverted.length - 1]).toBe('0065_tool_template_evidence');
     expect(await code(owner().query(`SELECT 1 FROM tool_template`))).toBe(UNDEFINED_TABLE);
     expect(await code(owner().query(`SELECT 1 FROM evidence_card`))).toBe(UNDEFINED_TABLE);
-    expect(await migrateUp(owner())).toEqual(['0051_tool_template_evidence', ...later]);
+    expect(await migrateUp(owner())).toEqual(['0065_tool_template_evidence', ...later]);
     expect((await owner().query(`SELECT 1 FROM tool_template`)).rowCount).toBe(0);
     expect((await owner().query(`SELECT 1 FROM evidence_card`)).rowCount).toBe(0);
   });
