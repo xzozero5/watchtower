@@ -88,7 +88,7 @@ function SubscribersSection() {
       ) : (
         <dl className="grid grid-cols-3 gap-3">
           {(['confirmed', 'pending', 'unsubscribed'] as const).map((key) => (
-            <div key={key} className="rounded-lg border border-border px-3 py-2">
+            <div key={key} className="rounded-inner bg-surface px-3.5 py-2.5 shadow-card">
               <dt className="text-xs text-muted-foreground">
                 {t(`ops.statusAdmin.subscribers.${key}`)}
               </dt>

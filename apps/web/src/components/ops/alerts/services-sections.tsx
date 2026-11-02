@@ -37,7 +37,7 @@ import { opsKeys, useEscalationPolicies, useHeartbeats, useServices } from '@/li
 /** The row of a catalog list: the facts on the left, Edit and Delete on the right. */
 function Row({ children, actions }: { children: ReactNode; actions: ReactNode }) {
   return (
-    <li className="flex flex-wrap items-start justify-between gap-2 rounded-lg border border-border px-3 py-2 text-sm">
+    <li className="flex flex-wrap items-start justify-between gap-2 rounded-inner bg-surface px-3.5 py-2.5 shadow-card text-sm">
       <div className="flex min-w-0 flex-1 flex-col gap-1">{children}</div>
       <div className="flex items-center gap-1.5">{actions}</div>
     </li>
@@ -444,7 +444,10 @@ function ServiceSheet({ service, onClose }: { service: Service | null; onClose: 
               touch();
             };
             return (
-              <div key={index} className="flex flex-col gap-2 rounded-lg border border-border p-2">
+              <div
+                key={index}
+                className="flex flex-col gap-2 rounded-inner bg-surface shadow-card p-2"
+              >
                 <div className="grid grid-cols-2 gap-2">
                   <FormField id={`${id}-source`} label={t('ops.services.ruleSource')}>
                     <Select

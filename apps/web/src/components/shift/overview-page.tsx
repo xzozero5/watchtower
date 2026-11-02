@@ -127,7 +127,7 @@ function OverviewView({ data, onRefresh }: { data: ShiftOverview; onRefresh: () 
               <li
                 key={item.itemId}
                 data-overdue={item.overdue ? 'true' : undefined}
-                className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-border px-3 py-2 text-sm"
+                className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-inner bg-surface px-3.5 py-2.5 shadow-card text-sm"
               >
                 {item.ticketKey ? <TicketLink ticketKey={item.ticketKey} /> : null}
                 <span className="min-w-0 flex-1">
@@ -172,7 +172,7 @@ function OverviewView({ data, onRefresh }: { data: ShiftOverview; onRefresh: () 
               <li
                 key={item.itemId}
                 data-overdue={item.overdue ? 'true' : undefined}
-                className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-border px-3 py-2 text-sm"
+                className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-inner bg-surface px-3.5 py-2.5 shadow-card text-sm"
               >
                 <TicketLink ticketKey={item.ticketKey} />
                 <PriorityBadge priority={item.priority} />
@@ -214,7 +214,7 @@ function OverviewView({ data, onRefresh }: { data: ShiftOverview; onRefresh: () 
             {data.onShift.map((session) => (
               <li
                 key={session.id}
-                className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-border px-3 py-2 text-sm"
+                className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-inner bg-surface px-3.5 py-2.5 shadow-card text-sm"
               >
                 <span className="font-medium">{session.userName}</span>
                 <span className="text-muted-foreground">
@@ -257,7 +257,10 @@ function OverviewView({ data, onRefresh }: { data: ShiftOverview; onRefresh: () 
         ) : (
           <ul className="flex flex-col gap-2">
             {data.noShows.map((entry) => (
-              <li key={entry.id} className="rounded-lg border border-border px-3 py-2 text-sm">
+              <li
+                key={entry.id}
+                className="rounded-inner bg-surface px-3.5 py-2.5 shadow-card text-sm"
+              >
                 {t('shift.overview.noShowLine', {
                   name: entry.userName,
                   shift: entry.shiftName,

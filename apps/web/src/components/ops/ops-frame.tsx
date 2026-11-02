@@ -40,7 +40,7 @@ export function OpsFrame({ titleKey, children }: { titleKey: MessageKey; childre
                       className={cn(
                         'inline-flex h-control items-center rounded-full px-3 text-sm focus-visible:outline-2 focus-visible:outline-offset-0 focus-visible:outline-ring',
                         current
-                          ? 'bg-primary-subtle font-medium text-foreground'
+                          ? 'bg-nav-active font-medium shadow-card'
                           : 'text-muted-foreground hover:bg-surface-muted hover:text-foreground',
                       )}
                     >

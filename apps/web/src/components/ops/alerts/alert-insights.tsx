@@ -36,7 +36,7 @@ export function CorrelationGroups() {
           {groups.data.items.map((group) => (
             <li
               key={group.correlationId}
-              className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-border px-3 py-2 text-sm"
+              className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-inner bg-surface px-3.5 py-2.5 shadow-card text-sm"
             >
               <AlertSeverityBadge severity={group.severity} />
               <span className="font-medium">

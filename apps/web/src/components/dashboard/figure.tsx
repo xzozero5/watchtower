@@ -130,10 +130,10 @@ export function DashboardSection({
     <section
       aria-labelledby={headingId}
       data-section={id}
-      className="flex flex-col gap-3 border-t border-border/60 py-4 first:border-t-0 first:pt-0"
+      className="flex flex-col gap-3 py-3 first:pt-0"
     >
-      <h2 id={headingId} className="text-sm font-semibold text-foreground">
-        <SectionHeading tone={tone} icon={icon}>
+      <h2 id={headingId} className="text-title font-medium text-foreground-strong">
+        <SectionHeading tone={tone} icon={icon} plain>
           {title}
         </SectionHeading>
       </h2>
@@ -145,6 +145,6 @@ export function DashboardSection({
 /** The grid the tiles of a section sit in: two across on a phone, as many as fit on a desktop. */
 export function TileGrid({ children }: { children: ReactNode }) {
   return (
-    <div className="grid grid-cols-[repeat(auto-fill,minmax(10rem,1fr))] gap-2">{children}</div>
+    <div className="grid grid-cols-[repeat(auto-fill,minmax(10rem,1fr))] gap-3">{children}</div>
   );
 }

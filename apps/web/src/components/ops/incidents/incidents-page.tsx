@@ -120,10 +120,10 @@ function IncidentsBody() {
                       go({ incident: incident.id });
                     }}
                     className={cn(
-                      'flex w-full flex-col gap-1.5 rounded-lg border px-3 py-2 text-left text-sm focus-visible:outline-2 focus-visible:outline-offset-0 focus-visible:outline-ring',
+                      'flex w-full flex-col gap-1.5 rounded-inner px-3.5 py-2.5 text-left text-sm transition-shadow duration-(--wt-motion-duration-fast) ease-out focus-visible:outline-2 focus-visible:outline-offset-0 focus-visible:outline-ring',
                       incident.id === selectedId
-                        ? 'border-border-strong bg-primary-subtle'
-                        : 'border-border hover:bg-surface-muted',
+                        ? 'bg-primary-subtle shadow-lift ring-1 ring-border-strong'
+                        : 'hover:bg-surface-muted',
                     )}
                   >
                     <span className="flex flex-wrap items-center gap-1.5">
@@ -162,7 +162,7 @@ function IncidentsBody() {
         </section>
         <section
           aria-label={t('ops.incidents.detail.label')}
-          className="min-h-0 rounded-lg border border-border lg:overflow-y-auto"
+          className="min-h-0 rounded-card bg-surface p-1.5 shadow-card lg:overflow-y-auto"
         >
           {selectedId === null ? (
             <EmptyState title={t('ops.incidents.detail.select')} />

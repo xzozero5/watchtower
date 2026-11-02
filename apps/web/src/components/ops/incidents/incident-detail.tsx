@@ -199,7 +199,7 @@ function EditForm({ incident }: { incident: IncidentDetail }) {
     <form
       noValidate
       aria-label={t('ops.incidents.detail.editLabel')}
-      className="flex flex-col gap-3 rounded-lg border border-border p-3"
+      className="flex flex-col gap-3 rounded-inner bg-surface shadow-card p-3"
       onSubmit={(event) => {
         event.preventDefault();
         if (dirty) save.mutate(changes);
@@ -374,7 +374,10 @@ function Timeline({ incident }: { incident: IncidentDetail }) {
       ) : (
         <ol className="flex flex-col gap-2">
           {entries.map((entry) => (
-            <li key={entry.id} className="rounded-lg border border-border px-3 py-2 text-sm">
+            <li
+              key={entry.id}
+              className="rounded-inner bg-surface px-3.5 py-2.5 shadow-card text-sm"
+            >
               <p className="text-xs text-muted-foreground">
                 {t(`ops.incidents.timeline.type.${entry.type}`)} · {t(actorKey(entry.actorType))} ·{' '}
                 <Moment iso={entry.createdAt} />
@@ -468,7 +471,7 @@ function Linked({ incident }: { incident: IncidentDetail }) {
               return (
                 <li
                   key={id}
-                  className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border px-3 py-2 text-sm"
+                  className="flex flex-wrap items-center justify-between gap-2 rounded-inner bg-surface px-3.5 py-2.5 shadow-card text-sm"
                 >
                   {ticket ? (
                     <AppLink
@@ -535,7 +538,7 @@ function Linked({ incident }: { incident: IncidentDetail }) {
         ) : (
           <ul className="flex flex-col gap-1.5">
             {incident.alertIds.map((id) => (
-              <li key={id} className="rounded-lg border border-border px-3 py-2 text-sm">
+              <li key={id} className="rounded-inner bg-surface px-3.5 py-2.5 shadow-card text-sm">
                 <AppLink
                   href={`/alerts?view=open&alert=${encodeURIComponent(id)}`}
                   className="underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"

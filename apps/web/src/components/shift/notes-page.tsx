@@ -134,7 +134,7 @@ function NoteCard({ note, box }: { note: ShiftNote; box: 'inbox' | 'sent' }) {
   return (
     <li
       data-unread={box === 'inbox' && note.readAt === null ? 'true' : undefined}
-      className="flex flex-wrap items-start justify-between gap-2 rounded-lg border border-border px-3 py-2 text-sm"
+      className="flex flex-wrap items-start justify-between gap-2 rounded-inner bg-surface px-3.5 py-2.5 shadow-card text-sm"
     >
       <div className="min-w-0 flex-1">
         <p className="text-xs text-muted-foreground">

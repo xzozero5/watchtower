@@ -149,7 +149,7 @@ export function AckList({ data, timezone }: { data: IncomingHandoffs; timezone: 
                 ? t('shift.ack.from', { name: handoff.from.name, shift: handoff.shiftName })
                 : t('shift.ack.fromNoShift', { name: handoff.from.name })
             }
-            className="flex flex-col gap-2 rounded-xl border border-border bg-surface p-3"
+            className="flex flex-col gap-2 rounded-card bg-surface shadow-card p-3"
           >
             <header className="flex flex-col gap-0.5">
               <p className="text-sm font-medium">
@@ -273,7 +273,7 @@ function AckItem({
       data-ack-status={item.ackStatus}
       tabIndex={tabbable ? 0 : -1}
       onFocus={onFocus}
-      className="flex flex-col gap-1.5 rounded-lg border border-border px-3 py-2 focus-visible:outline-2 focus-visible:outline-offset-0 focus-visible:outline-ring"
+      className="flex flex-col gap-1.5 rounded-inner bg-surface px-3.5 py-2.5 shadow-card focus-visible:outline-2 focus-visible:outline-offset-0 focus-visible:outline-ring"
     >
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
         <span className="text-xs font-medium text-muted-foreground">

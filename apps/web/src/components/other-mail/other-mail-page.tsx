@@ -344,7 +344,7 @@ function MailDetail({
             : t('otherMail.convertFailed');
 
   return (
-    <article className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto rounded-xl border border-border/60 p-4">
+    <article className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto rounded-card bg-surface shadow-card p-4">
       <header className="flex flex-col gap-1">
         <h2 className="text-base font-semibold">
           {mail.subject === '' ? t('otherMail.noSubject') : mail.subject}

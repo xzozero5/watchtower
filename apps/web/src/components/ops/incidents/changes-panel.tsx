@@ -42,7 +42,10 @@ export function ChangesPanel({ incidentId }: { incidentId: string }) {
         ) : (
           <ul className="flex flex-col gap-1.5">
             {data.deploys.map((deploy) => (
-              <li key={deploy.id} className="rounded-lg border border-border px-3 py-2 text-sm">
+              <li
+                key={deploy.id}
+                className="rounded-inner bg-surface px-3.5 py-2.5 shadow-card text-sm"
+              >
                 <p className="font-medium break-words">
                   {deploy.serviceSlug} · {deploy.version} · {deploy.env}
                 </p>
@@ -76,7 +79,7 @@ export function ChangesPanel({ incidentId }: { incidentId: string }) {
                 {data.repoChanges.map((change) => (
                   <li
                     key={`${change.repo}-${change.kind}-${change.ref}`}
-                    className="rounded-lg border border-border px-3 py-2 text-sm"
+                    className="rounded-inner bg-surface px-3.5 py-2.5 shadow-card text-sm"
                   >
                     <p className="font-medium break-words">
                       {t(`ops.incidents.changes.kind.${change.kind}`)} {change.ref}
