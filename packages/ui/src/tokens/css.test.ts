@@ -77,9 +77,18 @@ describe('buildTokensCss', () => {
     }
     expect(dark).toContain('--wt-color-ai-subtle:');
     const root = block(css, ':root');
-    expect(root).toContain('--wt-radius-control: 10px;');
-    expect(root).toContain('--wt-radius-card: 16px;');
+    expect(root).toContain('--wt-radius-control: 12px;');
+    expect(root).toContain('--wt-radius-inner: 14px;');
+    expect(root).toContain('--wt-radius-card: 20px;');
     expect(root).toContain('--wt-radius-dialog: 20px;');
+    expect(root).toContain('--wt-radius-app: 28px;');
+  });
+
+  it('writes the card, lift and app shadows per theme', () => {
+    for (const name of ['shadow-card', 'shadow-lift', 'shadow-app']) {
+      expect(block(css, ':root')).toContain(`--wt-${name}:`);
+      expect(block(css, ":root[data-theme='dark']")).toContain(`--wt-${name}:`);
+    }
   });
 
   it('sets a 14-15px base and a compact density', () => {
@@ -112,6 +121,9 @@ describe('buildTokensCss', () => {
       COLOR_TOKENS[theme].chart.ordinal.forEach((value, index) => {
         expect(scope).toContain(`--wt-color-chart-ordinal-${String(index + 1)}: ${value};`);
       });
+      for (const [channel, value] of Object.entries(COLOR_TOKENS[theme].chart.channel)) {
+        expect(scope).toContain(`--wt-color-chart-${channel}: ${value};`);
+      }
     }
   });
 
@@ -128,6 +140,7 @@ describe('buildTokensCss', () => {
       for (const { fg, bg, icon } of Object.values(theme.tint)) known.add(fg).add(bg).add(icon);
       known.add(theme.chart.series);
       for (const step of theme.chart.ordinal) known.add(step);
+      for (const value of Object.values(theme.chart.channel)) known.add(value);
     }
     for (const [hex] of css.matchAll(/#[0-9a-f]{6}\b/gi)) {
       expect(known.has(hex)).toBe(true);
@@ -181,6 +194,15 @@ describe('buildTailwindThemeCss', () => {
   });
 
   it('lists Thai-capable fonts after the Latin one', () => {
-    expect(css).toMatch(/--font-sans: 'Inter Variable', 'Noto Sans Thai Variable'/);
+    expect(css).toMatch(/--font-sans: 'Plus Jakarta Sans Variable', 'IBM Plex Sans Thai'/);
+    expect(css).toMatch(/--font-mono: 'IBM Plex Mono'/);
+  });
+
+  it('adds the page title and hero number steps and the gradient grounds', () => {
+    expect(css).toContain('--text-display: 2.2667rem;');
+    expect(css).toContain('--text-hero: 3.4667rem;');
+    for (const utility of ['bg-nav-active', 'bg-highlight', 'bg-backdrop']) {
+      expect(css).toContain(`@utility ${utility} {`);
+    }
   });
 });

@@ -18,8 +18,12 @@
     font-family: var(--font-sans);
     /* Thai needs at least 1.5 so the tone marks above and below the line never collide. */
     line-height: 1.5;
-    font-feature-settings: 'cv11', 'ss01';
     -webkit-font-smoothing: antialiased;
+  }
+
+  /* IBM Plex Sans Thai sits taller than the Latin face: Thai pages get a little more air. */
+  html:lang(th) body {
+    line-height: 1.6;
   }
 
   *,

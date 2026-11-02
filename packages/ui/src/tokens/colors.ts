@@ -70,19 +70,31 @@ export interface ChartColors {
    * labelled and in the table view.
    */
   readonly ordinal: readonly [string, string, string, string];
+  /**
+   * One hue per inbound channel for stacked volume bars (docs/design/redesign-2026-11 section 2).
+   * Marks only, each meets 3:1 on the Canvas and the card surface, and every segment is labelled
+   * in the legend and the table view, so colour is never the only cue.
+   */
+  readonly channel: Readonly<Record<ChartChannel, string>>;
 }
 
+/** Channels that get their own chart hue. */
+export const CHART_CHANNELS = ['email', 'line', 'portal'] as const;
+
+export type ChartChannel = (typeof CHART_CHANNELS)[number];
+
 export interface ColorTokens {
-  /**
-   * Canvas: the neutral ground behind the panes. Panes have no card of their own, they sit on it
-   * and are separated by 1px hairlines (docs/design/ui-refresh-2026-11.md section 3).
-   */
+  /** Canvas: the cool grey work area that cards float on (Soft Beacon, docs/design/redesign-2026-11). */
   readonly background: string;
-  /** Overlay surface: popovers, menus, dialogs, toasts and form fields. Only overlays get a shadow. */
+  /** Card and overlay surface: cards, popovers, menus, dialogs, toasts and form fields. */
   readonly surface: string;
+  /** The app sheet and the navigation sidebar: white in light mode, one step above the Canvas in dark. */
+  readonly frame: string;
   /** Raised surface: hovered rows, customer bubbles, code blocks, the note composer. */
   readonly surfaceMuted: string;
   readonly foreground: string;
+  /** Page titles and hero numbers: one step stronger than `foreground`. */
+  readonly foregroundStrong: string;
   readonly mutedForeground: string;
   /** Hairlines between panes and rows. Not for controls: use `borderStrong` for anything interactive. */
   readonly border: string;
@@ -109,6 +121,32 @@ export interface ColorTokens {
   readonly brandForeground: string;
   /** Backdrop behind modal dialogs such as the command palette. */
   readonly scrim: string;
+  /**
+   * The current navigation item: a navy to deep teal gradient (from, via, to). Text on every stop
+   * is `navActiveForeground`.
+   */
+  readonly navActiveFrom: string;
+  readonly navActiveVia: string;
+  readonly navActiveTo: string;
+  readonly navActiveForeground: string;
+  /**
+   * The highlight card (one fact worth a glance, such as AI drafts today): a navy gradient with a
+   * seafoam glow, not gold, so it never reads as a warning (owner, 2026-11-02).
+   */
+  readonly highlightFrom: string;
+  readonly highlightTo: string;
+  readonly highlightForeground: string;
+  readonly highlightMuted: string;
+  /** The seafoam glow in the highlight card's corners. Decorative. */
+  readonly highlightGlow: string;
+  /**
+   * The soft gradient behind the floating app sheet on Overview and Login only. Decorative: no
+   * text sits on it directly.
+   */
+  readonly backdropFrom: string;
+  readonly backdropTo: string;
+  readonly backdropGlowA: string;
+  readonly backdropGlowB: string;
   readonly severity: Readonly<Record<SeverityId, SeverityColors>>;
   /** Muted hues for initials avatars, drawn from a stable id. Initials text passes AA on every one. */
   readonly avatar: readonly AvatarColors[];
@@ -119,15 +157,40 @@ export interface ColorTokens {
 }
 
 /**
- * Corner radii (docs/design/friendly-polish.md section 2): controls 10 px, cards, the AI brief and
- * popovers 16 px, dialogs 20 px, pills, avatars and icon buttons fully round. They do not change
- * with the theme, so they live outside `ColorTokens`.
+ * Corner radii (Soft Beacon, docs/design/redesign-2026-11 section 2): controls 12 px, wells inside
+ * a card 14 px, cards and dialogs 20 px, the floating app sheet 28 px, pills, avatars and icon
+ * buttons fully round. They do not change with the theme, so they live outside `ColorTokens`.
  */
 export const RADIUS_TOKENS = {
-  control: '10px',
-  card: '16px',
+  control: '12px',
+  inner: '14px',
+  card: '20px',
   dialog: '20px',
+  app: '28px',
 } as const;
+
+export interface ShadowTokens {
+  /** Cards: no border, a very soft drop. */
+  readonly card: string;
+  /** A lifted card or the selected row of a table. */
+  readonly lift: string;
+  /** The floating app sheet on Overview and Login. */
+  readonly app: string;
+}
+
+/** Shadows deepen to near-black in dark mode, where a navy shadow would not show. */
+export const SHADOW_TOKENS: Readonly<Record<ThemeName, ShadowTokens>> = {
+  light: {
+    card: '0 1px 2px rgb(15 23 42 / 0.04), 0 12px 30px -18px rgb(15 23 42 / 0.16)',
+    lift: '0 16px 36px -14px rgb(15 23 42 / 0.26)',
+    app: '0 40px 90px -30px rgb(15 23 42 / 0.3), 0 0 0 1px rgb(15 23 42 / 0.04)',
+  },
+  dark: {
+    card: 'inset 0 1px 0 rgb(255 255 255 / 0.03), 0 12px 30px -18px rgb(0 0 0 / 0.6)',
+    lift: '0 16px 36px -14px rgb(0 0 0 / 0.7)',
+    app: '0 40px 90px -30px rgb(0 0 0 / 0.7), 0 0 0 1px rgb(255 255 255 / 0.04)',
+  },
+};
 
 /**
  * Brand palette, measured from the master PNG (docs/brand/README.md, confirmed 2026-10-31):
@@ -149,12 +212,14 @@ export const RADIUS_TOKENS = {
  */
 export const COLOR_TOKENS: Readonly<Record<ThemeName, ColorTokens>> = {
   light: {
-    background: '#fafafa',
+    background: '#f4f6f8',
     surface: '#ffffff',
-    surfaceMuted: '#f2f2f3',
+    frame: '#ffffff',
+    surfaceMuted: '#f1f3f6',
     foreground: '#363839',
+    foregroundStrong: '#0f172a',
     mutedForeground: '#5b6064',
-    border: '#e4e4e7',
+    border: '#e6e9ee',
     borderStrong: '#7c7c86',
     primary: '#0f172a',
     primaryForeground: '#f7f7ed',
@@ -164,10 +229,23 @@ export const COLOR_TOKENS: Readonly<Record<ThemeName, ColorTokens>> = {
     danger: '#b91c1c',
     success: '#166534',
     aiAccent: '#0f766e',
-    aiSubtle: '#f0f9f7',
+    aiSubtle: '#eef8f6',
     brandSurface: '#f7f0d4',
     brandForeground: '#363839',
     scrim: 'rgb(15 23 42 / 0.55)',
+    navActiveFrom: '#0f172a',
+    navActiveVia: '#1d3a4f',
+    navActiveTo: '#2b6b66',
+    navActiveForeground: '#f7f7ed',
+    highlightFrom: '#0f172a',
+    highlightTo: '#1c3c45',
+    highlightForeground: '#f7f7ed',
+    highlightMuted: '#c9d2dc',
+    highlightGlow: '#80cfc0',
+    backdropFrom: '#edf1f6',
+    backdropTo: '#f5f3e9',
+    backdropGlowA: '#d9e3f0',
+    backdropGlowB: '#cfebe3',
     severity: {
       p1: { fg: '#991b1b', bg: '#fee2e2', border: '#b91c1c' },
       p2: { fg: '#9a3412', bg: '#ffedd5', border: '#c2410c' },
@@ -198,13 +276,19 @@ export const COLOR_TOKENS: Readonly<Record<ThemeName, ColorTokens>> = {
       pink: { bg: '#fde7f2', fg: '#9d174d', icon: '#db2777' },
       orange: { bg: '#feede1', fg: '#9a3412', icon: '#c2410c' },
     },
-    chart: { series: '#2a78d6', ordinal: ['#86b6ef', '#3987e5', '#1c5cab', '#104281'] },
+    chart: {
+      series: '#2a78d6',
+      ordinal: ['#7aaeed', '#3987e5', '#1c5cab', '#104281'],
+      channel: { email: '#4f86ec', line: '#2e9e6b', portal: '#7c7ff0' },
+    },
   },
   dark: {
     background: '#0e1219',
     surface: '#161b25',
+    frame: '#121722',
     surfaceMuted: '#1c2230',
     foreground: '#f7f7ed',
+    foregroundStrong: '#f7f7ed',
     mutedForeground: '#9ca6b6',
     border: '#262d3a',
     borderStrong: '#7a8599',
@@ -220,6 +304,19 @@ export const COLOR_TOKENS: Readonly<Record<ThemeName, ColorTokens>> = {
     brandSurface: '#161b25',
     brandForeground: '#f7f7ed',
     scrim: 'rgb(2 6 23 / 0.72)',
+    navActiveFrom: '#22304d',
+    navActiveVia: '#1f3f4a',
+    navActiveTo: '#245a55',
+    navActiveForeground: '#f7f7ed',
+    highlightFrom: '#1a2335',
+    highlightTo: '#173a3f',
+    highlightForeground: '#f7f7ed',
+    highlightMuted: '#c9d2dc',
+    highlightGlow: '#80cfc0',
+    backdropFrom: '#070b14',
+    backdropTo: '#0d1117',
+    backdropGlowA: '#18233a',
+    backdropGlowB: '#0f2e2c',
     severity: {
       p1: { fg: '#fecaca', bg: '#450a0a', border: '#f87171' },
       p2: { fg: '#fed7aa', bg: '#431407', border: '#fb923c' },
@@ -250,6 +347,10 @@ export const COLOR_TOKENS: Readonly<Record<ThemeName, ColorTokens>> = {
       pink: { bg: '#41243c', fg: '#fbcfe8', icon: '#f472b6' },
       orange: { bg: '#432d22', fg: '#fed7aa', icon: '#fb923c' },
     },
-    chart: { series: '#3987e5', ordinal: ['#184f95', '#256abf', '#3987e5', '#6da7ec'] },
+    chart: {
+      series: '#3987e5',
+      ordinal: ['#184f95', '#256abf', '#3987e5', '#6da7ec'],
+      channel: { email: '#6da0f2', line: '#3fbf85', portal: '#9497f5' },
+    },
   },
 };

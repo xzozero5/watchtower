@@ -1,5 +1,12 @@
-import '@fontsource-variable/inter';
-import '@fontsource-variable/noto-sans-thai';
+// Self-hosted fonts (owner, 2026-11-02): nothing is fetched from a font CDN at runtime. Thai and
+// Mono load only the weights the UI uses.
+import '@fontsource-variable/plus-jakarta-sans';
+import '@fontsource/ibm-plex-sans-thai/thai-300.css';
+import '@fontsource/ibm-plex-sans-thai/thai-400.css';
+import '@fontsource/ibm-plex-sans-thai/thai-500.css';
+import '@fontsource/ibm-plex-sans-thai/thai-600.css';
+import '@fontsource/ibm-plex-mono/latin-400.css';
+import '@fontsource/ibm-plex-mono/latin-500.css';
 import './globals.css';
 
 import { COLOR_TOKENS, themeInitScript } from '@watchtower/ui';

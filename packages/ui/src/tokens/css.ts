@@ -1,7 +1,10 @@
 import {
+  CHART_CHANNELS,
   COLOR_TOKENS,
   type ColorTokens,
   RADIUS_TOKENS,
+  SHADOW_TOKENS,
+  type ShadowTokens,
   type ThemeName,
   TINT_IDS,
 } from './colors.js';
@@ -38,6 +41,9 @@ function colorEntries(tokens: ColorTokens): [name: string, value: string][] {
   tokens.chart.ordinal.forEach((value, index) => {
     entries.push([`color-chart-ordinal-${String(index + 1)}`, value]);
   });
+  for (const channel of CHART_CHANNELS) {
+    entries.push([`color-chart-${channel}`, tokens.chart.channel[channel]]);
+  }
   tokens.avatar.forEach(({ fg, bg }, index) => {
     entries.push(
       [`color-avatar-${String(index + 1)}-fg`, fg],
@@ -55,6 +61,13 @@ function densityEntries(tokens: DensityTokens): [name: string, value: string][] 
     ['pane-padding', tokens.panePadding],
     ['stack-gap', tokens.gap],
   ];
+}
+
+function shadowEntries(tokens: ShadowTokens): [name: string, value: string][] {
+  return (Object.entries(tokens) as [string, string][]).map(([key, value]) => [
+    `shadow-${key}`,
+    value,
+  ]);
 }
 
 function radiusEntries(): [name: string, value: string][] {
@@ -94,6 +107,7 @@ export function buildTokensCss(): string {
     declarations(
       [
         ...colorEntries(light),
+        ...shadowEntries(SHADOW_TOKENS.light),
         ...densityEntries(DENSITY_TOKENS.comfortable),
         ...radiusEntries(),
         ...motionEntries(false),
@@ -105,13 +119,13 @@ export function buildTokensCss(): string {
     '@media (prefers-color-scheme: dark) {',
     "  :root:not([data-theme='light']) {",
     '    color-scheme: dark;',
-    declarations(colorEntries(dark), '    '),
+    declarations([...colorEntries(dark), ...shadowEntries(SHADOW_TOKENS.dark)], '    '),
     '  }',
     '}',
     '',
     ":root[data-theme='dark'] {",
     '  color-scheme: dark;',
-    declarations(colorEntries(dark), '  '),
+    declarations([...colorEntries(dark), ...shadowEntries(SHADOW_TOKENS.dark)], '  '),
     '}',
     '',
     `:root[data-density='${compact}'] {`,
@@ -127,14 +141,27 @@ export function buildTokensCss(): string {
   ].join('\n');
 }
 
-/** Font sizes in rem of the 15px base: 12, 13, 14, 16 and 20 px. */
+/**
+ * Font sizes in rem of the 15px base: 12, 13, 14, 16 and 20 px, plus the Soft Beacon card title
+ * (18 px), page title (34 px) and hero number (52 px). The two large steps are set in weight 300.
+ */
 const TYPE_SCALE = {
   xs: '0.8rem',
   sm: '0.8667rem',
   base: '0.9333rem',
   lg: '1.0667rem',
+  title: '1.2rem',
   xl: '1.3333rem',
+  display: '2.2667rem',
+  hero: '3.4667rem',
 } as const;
+
+const LINE_HEIGHTS: Partial<Record<keyof typeof TYPE_SCALE, string>> = {
+  title: '1.4',
+  xl: '1.4',
+  display: '1.2',
+  hero: '1.1',
+};
 
 /** The only shadow in the UI: popovers, menus, dialogs and toasts float, nothing else does. */
 const OVERLAY_SHADOW = '0 1px 2px rgb(15 23 42 / 0.08), 0 8px 24px -4px rgb(15 23 42 / 0.18)';
@@ -143,8 +170,8 @@ const OVERLAY_SHADOW = '0 1px 2px rgb(15 23 42 / 0.08), 0 8px 24px -4px rgb(15 2
 const SOFT_SHADOW = '0 1px 2px rgb(15 23 42 / 0.05), 0 4px 14px -6px rgb(15 23 42 / 0.12)';
 
 const SANS_STACK =
-  "'Inter Variable', 'Noto Sans Thai Variable', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif";
-const MONO_STACK = "ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace";
+  "'Plus Jakarta Sans Variable', 'IBM Plex Sans Thai', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif";
+const MONO_STACK = "'IBM Plex Mono', ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace";
 
 /**
  * Builds tailwind-theme.css: maps the variables onto Tailwind v4 theme names so utilities such as
@@ -160,7 +187,7 @@ export function buildTailwindThemeCss(): string {
   // section 3.5). Line heights stay at 1.5 or more so Thai marks never collide.
   const typeScale: [string, string][] = Object.entries(TYPE_SCALE).flatMap(([name, rem]) => [
     [`--text-${name}`, rem],
-    [`--text-${name}--line-height`, name === 'xl' ? '1.4' : '1.5'],
+    [`--text-${name}--line-height`, LINE_HEIGHTS[name as keyof typeof TYPE_SCALE] ?? '1.5'],
   ]);
   const spacing: [string, string][] = [
     ['--spacing-row', `var(${CSS_VAR_PREFIX}row-height)`],
@@ -178,13 +205,19 @@ export function buildTailwindThemeCss(): string {
     ['--radius-md', `var(${CSS_VAR_PREFIX}radius-control)`],
     ['--radius-lg', `var(${CSS_VAR_PREFIX}radius-card)`],
     ['--radius-xl', `var(${CSS_VAR_PREFIX}radius-dialog)`],
+    ['--radius-2xl', `var(${CSS_VAR_PREFIX}radius-app)`],
     ['--radius-control', `var(${CSS_VAR_PREFIX}radius-control)`],
+    ['--radius-inner', `var(${CSS_VAR_PREFIX}radius-inner)`],
     ['--radius-card', `var(${CSS_VAR_PREFIX}radius-card)`],
     ['--radius-dialog', `var(${CSS_VAR_PREFIX}radius-dialog)`],
+    ['--radius-app', `var(${CSS_VAR_PREFIX}radius-app)`],
   ];
   const effects: [string, string][] = [
     ['--shadow-overlay', OVERLAY_SHADOW],
     ['--shadow-soft', SOFT_SHADOW],
+    ['--shadow-card', `var(${CSS_VAR_PREFIX}shadow-card)`],
+    ['--shadow-lift', `var(${CSS_VAR_PREFIX}shadow-lift)`],
+    ['--shadow-app', `var(${CSS_VAR_PREFIX}shadow-app)`],
     [
       '--animate-check-pop',
       `wt-check-pop var(${CSS_VAR_PREFIX}motion-duration-base) ease-out both`,
@@ -202,9 +235,25 @@ export function buildTailwindThemeCss(): string {
   );
   return [
     '/* Generated by scripts/build-css.mjs from src/tokens. Do not edit. */',
-    '/* The app imports the font files itself: Inter Variable and Noto Sans Thai Variable. */',
+    '/* The app imports the font files itself (self-hosted @fontsource, never fetched at runtime):',
+    '   Plus Jakarta Sans Variable, IBM Plex Sans Thai and IBM Plex Mono. */',
     '@theme inline {',
     ...lines,
+    '}',
+    '',
+    '/* Soft Beacon grounds that are gradients, built from the colour tokens. */',
+    '@utility bg-nav-active {',
+    `  background-image: linear-gradient(135deg, var(${CSS_VAR_PREFIX}color-nav-active-from) 0%, var(${CSS_VAR_PREFIX}color-nav-active-via) 58%, var(${CSS_VAR_PREFIX}color-nav-active-to) 100%);`,
+    `  color: var(${CSS_VAR_PREFIX}color-nav-active-foreground);`,
+    '}',
+    '/* The highlight card: navy with a seafoam glow in the corners (no gold, owner 2026-11-02). */',
+    '@utility bg-highlight {',
+    `  background-image: radial-gradient(260px 200px at 92% 0%, color-mix(in srgb, var(${CSS_VAR_PREFIX}color-highlight-glow) 38%, transparent) 0%, transparent 70%), radial-gradient(320px 180px at 0% 120%, color-mix(in srgb, var(${CSS_VAR_PREFIX}color-highlight-glow) 30%, transparent) 0%, transparent 70%), linear-gradient(135deg, var(${CSS_VAR_PREFIX}color-highlight-from) 0%, var(${CSS_VAR_PREFIX}color-highlight-to) 100%);`,
+    `  color: var(${CSS_VAR_PREFIX}color-highlight-foreground);`,
+    '}',
+    '/* Behind the floating app sheet (Overview and Login only). */',
+    '@utility bg-backdrop {',
+    `  background-image: radial-gradient(1100px 620px at 8% -10%, var(${CSS_VAR_PREFIX}color-backdrop-glow-a) 0%, transparent 62%), radial-gradient(900px 640px at 105% 110%, var(${CSS_VAR_PREFIX}color-backdrop-glow-b) 0%, transparent 60%), linear-gradient(135deg, var(${CSS_VAR_PREFIX}color-backdrop-from) 0%, var(${CSS_VAR_PREFIX}color-backdrop-to) 100%);`,
     '}',
     '',
     '/* Popovers and menus rise 4px, panels slide 8px, both fade in. */',
