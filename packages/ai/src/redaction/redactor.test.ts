@@ -86,10 +86,12 @@ describe('Thai national ID', () => {
     for (const form of forms) {
       expect(redact(`ID: ${form}`), form).toBe('ID: [THAI_ID_1]');
     }
-    // The checksum still decides: the same shapes with a wrong last digit are left alone.
+    // The checksum still decides what is an ID: the same shapes with a wrong last digit are not one
+    // (a run of 12 or more digits is redacted as a phone-sized number, digit by digit it is left alone).
     const wrong = `${ID.slice(0, 12)}${String((Number(ID[12]) + 1) % 10)}`;
-    const wrongForms = [wrong.split('').join('-'), `${wrong.slice(0, 1)}-${wrong.slice(1)}`];
-    for (const form of wrongForms) expect(redact(form), form).toBe(form);
+    const digitByDigit = wrong.split('').join('-');
+    expect(redact(digitByDigit)).toBe(digitByDigit);
+    expect(redact(`${wrong.slice(0, 1)}-${wrong.slice(1)}`)).not.toContain('THAI_ID');
   });
 
   it('redacts Thai-digit IDs', () => {
@@ -97,13 +99,13 @@ describe('Thai national ID', () => {
     expect(redact(`บัตร ${thaiDigits}`)).toBe('บัตร [THAI_ID_1]');
   });
 
-  it('does not redact 13 digits that fail the checksum', () => {
+  it('does not read 13 digits that fail the checksum as an ID (they are redacted as a number)', () => {
     const wrong = `${ID.slice(0, 12)}${String((Number(ID[12]) + 1) % 10)}`;
-    expect(redact(`order ${wrong}`)).toBe(`order ${wrong}`);
+    expect(redact(`order ${wrong}`)).toBe('order [PHONE_1]');
   });
 
-  it('does not match inside a longer digit run', () => {
-    expect(redact(`ref ${ID}9`)).toBe(`ref ${ID}9`);
+  it('does not read an ID inside a longer digit run (the whole run is redacted as a number)', () => {
+    expect(redact(`ref ${ID}9`)).toBe('ref [PHONE_1]');
   });
 });
 
@@ -192,8 +194,109 @@ describe('bank accounts [ASSUMED formats]', () => {
     expect(redact(input)).toBe(expected);
   });
 
-  it('leaves bare 10-digit numbers without context alone when they are not phone-shaped', () => {
-    expect(redact('invoice 1234567890')).toBe('invoice 1234567890');
+  it('redacts a bare 10-digit number: any run of 10 to 15 digits is treated as a phone (N4)', () => {
+    expect(redact('invoice 1234567890')).toBe('invoice [PHONE_1]');
+  });
+});
+
+describe('phone numbers written without a plus sign, and encoded addresses (T-137 review)', () => {
+  it.each([
+    ['call 66812345678 now', 'call [PHONE_1] now'],
+    ['call 6621234567', 'call [PHONE_1]'],
+    ['call 66 81 234 5678', 'call [PHONE_1]'],
+    ['call 4155552671 now', 'call [PHONE_1] now'],
+    ['call 415-555-2671 now', 'call [PHONE_1] now'],
+    ['mail a%40corp.example', 'mail [EMAIL_1]'],
+    ['mailto:a%40corp.example?subject=x', 'mailto:[EMAIL_1]?subject=x'],
+    ['q=somchai.j%40example.co.th&x=1', 'q=[EMAIL_1]&x=1'],
+    ['q=A%40Corp.Example', 'q=[EMAIL_1]'],
+  ])('redacts %j', (input, expected) => {
+    expect(redact(input)).toBe(expected);
+  });
+
+  it('numbers an encoded address and a plain one of the same mailbox as one', () => {
+    expect(redact('a@corp.example and a%40corp.example')).toBe('[EMAIL_1] and [EMAIL_2]');
+  });
+
+  // Any run of 10 to 15 digits is a phone number, whatever is written around it (T-137 review).
+  const NUMBERS = [
+    '66812345678',
+    '14155552671',
+    '447911123456',
+    '4155552671',
+    '0812345678',
+    '12025550123',
+    '6621234567',
+    '819012345678',
+    '123456789012345',
+  ];
+  const PREFIXES = [
+    '',
+    '+',
+    '%2B',
+    '%2b',
+    'msisdn_',
+    'phone=',
+    'tel:',
+    'x',
+    'a1-',
+    '(',
+    '#',
+    'id:',
+    '%20',
+    'โทร',
+  ];
+  const SUFFIXES = ['', ' ', '.', ',', '_x', 'abc', ')', ';', '%20', '\n', '&x=1', 'ครับ'];
+
+  it('redacts a run of 10 to 15 digits with any prefix and any suffix', () => {
+    for (const number of NUMBERS) {
+      for (const prefix of PREFIXES) {
+        for (const suffix of SUFFIXES) {
+          const input = `call ${prefix}${number}${suffix} now`;
+          const out = redact(input);
+          expect(out, input).not.toContain(number);
+          // A run that happens to pass the national ID checksum is an ID; either way it is gone.
+          expect(out, input).toMatch(/\[(?:PHONE|THAI_ID)_\d+\]/);
+        }
+      }
+    }
+  });
+
+  it('redacts a run written with spaces or dashes', () => {
+    for (const input of ['66 81 234 5678', '1-415-555-2671', '44 7911 123456', '415 555 2671']) {
+      expect(redact(`call ${input} now`), input).toBe('call [PHONE_1] now');
+    }
+  });
+
+  it('has no exception for a ticket key whose digits could be a phone number', () => {
+    // A ticket number has fewer than 10 digits, so a key never needs one; a "key" with a phone in it is a phone.
+    for (const [input, expected] of [
+      ['TEL-66812345678', 'TEL-[PHONE_1]'],
+      ['TEL-415-555-2671', 'TEL-[PHONE_1]'],
+      ['OPS-66812345678', 'OPS-[PHONE_1]'],
+      ['OPS-4155552671-1', 'OPS-[PHONE_1]-1'],
+      ['ORD-2026-000123', 'ORD-[PHONE_1]'],
+      ['WT-20261031-0042', 'WT-[PHONE_1]'],
+    ] as const) {
+      expect(redact(input), input).toBe(expected);
+    }
+  });
+
+  it('leaves ticket keys, uuids, trace ids, timestamps and short numbers alone', () => {
+    for (const text of [
+      'see OPS-1234 and OPS-98765',
+      'id a0000000-4155-4000-8000-4155552671ab',
+      'trace 4bf92f3577b34da6a3ce929d0e0e4736 span 00f067aa0ba902b7',
+      'at 2026-11-02T10:15:30.123456789Z and 2026-11-02 10:15:30,123+07:00',
+      'order 1234 total 6600 qty 12 34 56 78 90',
+      'port 66 and 4155 and 2671 and 123456789',
+      'at 2026-11-02 10:15',
+      'version 4.155.552',
+      'no mail here: 50% off 40 items',
+      'a%4 b%40 c',
+    ]) {
+      expect(redact(text), text).toBe(text);
+    }
   });
 });
 
@@ -240,9 +343,7 @@ describe('false-positive guards', () => {
     '2026-10-31 21:01:00',
     '20261031',
     '2026-10-31T21:01:00+07:00',
-    'ORD-2026-000123',
     'TKT-0000123',
-    'WT-20261031-0042',
     '#10234567',
     'v1.2.3-rc.1',
     'port 4000 and 5432',

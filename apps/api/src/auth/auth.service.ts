@@ -5,7 +5,13 @@ import {
   type OnApplicationBootstrap,
 } from '@nestjs/common';
 import { schema, type Database } from '@watchtower/db';
-import type { AuthMethod, DevLoginRequest, Role, SessionInfo } from '@watchtower/shared';
+import {
+  WORKSPACE_ROLES,
+  type AuthMethod,
+  type DevLoginRequest,
+  type Role,
+  type SessionInfo,
+} from '@watchtower/shared';
 import { eq, sql } from 'drizzle-orm';
 import type { Request } from 'express';
 
@@ -34,7 +40,8 @@ export class GoogleLoginRejected extends Error {
   }
 }
 
-const STAFF: readonly Role[] = ['agent', 'lead', 'head'];
+/** Who signs in with the company account: staff and developers (T-137). */
+const STAFF: readonly Role[] = WORKSPACE_ROLES;
 
 export function requestMeta(request: Request): RequestMeta {
   return { ip: request.ip ?? null, userAgent: clipUserAgent(request.header('user-agent')) };

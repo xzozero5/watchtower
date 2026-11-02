@@ -217,6 +217,12 @@ export const CORE_TICKET_EVENT_TYPES = {
   slaPaused: 'sla.paused',
   slaResumed: 'sla.resumed',
   slaRecalculated: 'sla.recalculated',
+  /** A developer picked the ticket up, or let it go (T-137). Internal. */
+  devPickedUp: 'ticket.dev_picked_up',
+  devReleased: 'ticket.dev_released',
+  /** A ticket was linked to an incident or a deploy, or the link was removed (T-137). Internal. */
+  referenceAdded: 'ticket.reference_added',
+  referenceRemoved: 'ticket.reference_removed',
 } as const;
 
 /** Types written to `ticket_event.type`: core plus every feature. */
@@ -246,6 +252,8 @@ export const ticketSummarySchema = z.object({
   requester: z.object({ id: z.uuid(), name: z.string() }).nullable(),
   intent: ticketIntentRefSchema.nullable(),
   assignee: ticketUserRefSchema.nullable(),
+  /** The developer who picked the ticket up (T-137); the assignee stays the agent. */
+  devOwner: ticketUserRefSchema.nullable().optional(),
   queue: ticketQueueRefSchema.nullable(),
   slaPolicyId: z.uuid().nullable(),
   firstResponseDueAt: z.iso.datetime().nullable(),
@@ -276,10 +284,36 @@ export const ticketSummarySchema = z.object({
 });
 export type TicketSummary = z.infer<typeof ticketSummarySchema>;
 
+/** A link from a ticket to an incident or a deploy (T-137), in the detail of a ticket. */
+export const ticketReferenceSchema = z.object({
+  id: z.uuid(),
+  kind: z.enum(['incident', 'deploy']),
+  /** The incident or the deploy. */
+  targetId: z.uuid(),
+  /** `INC-12 title` or `service version (env)`, for display. */
+  label: z.string(),
+  createdAt: z.iso.datetime(),
+});
+export type TicketReference = z.infer<typeof ticketReferenceSchema>;
+
+export const createTicketReferenceSchema = z.object({
+  kind: z.enum(['incident', 'deploy']),
+  targetId: z.uuid(),
+});
+export type CreateTicketReference = z.infer<typeof createTicketReferenceSchema>;
+export const ticketReferenceParamSchema = z.object({ id: ticketRefSchema, linkId: z.uuid() });
+
 export const ticketDetailSchema = ticketSummarySchema.extend({
   requester: z.object({ id: z.uuid(), name: z.string(), email: z.string().nullable() }).nullable(),
   /** Tickets merged into this one. */
   mergedTickets: z.array(z.object({ id: z.uuid(), key: z.string(), subject: z.string() })),
+  /** Incidents and deploys this ticket is linked to (T-137). */
+  references: z.array(ticketReferenceSchema).optional(),
+  /**
+   * True when the caller reads with `ticket.read.masked` (the `dev` role, T-137): email and phone are
+   * masked, names and text went through the redactor, custom fields are left out.
+   */
+  masked: z.boolean().optional(),
 });
 export type TicketDetail = z.infer<typeof ticketDetailSchema>;
 
@@ -339,6 +373,8 @@ export const ticketListQuerySchema = z.object({
   priority: csvList(ticketPrioritySchema),
   /** A user id, `me`, or `unassigned`. Ignored for clients (they have no assignee). */
   assignee: z.union([z.uuid(), z.literal('me'), z.literal('unassigned')]).optional(),
+  /** The developer who picked a ticket up: a user id, `me`, or `unassigned` (T-137). Staff and dev only. */
+  devOwner: z.union([z.uuid(), z.literal('me'), z.literal('unassigned')]).optional(),
   queueId: z.uuid().optional(),
   /** Staff only; a client is always limited to their own organization. */
   orgId: z.uuid().optional(),

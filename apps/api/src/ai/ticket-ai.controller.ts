@@ -26,9 +26,11 @@ import {
   Audited,
   AuditPiiRead,
   CurrentPrincipal,
+  RequireAnyPermission,
   RequirePermission,
   type Principal,
 } from '../auth/decorators.js';
+import { forbidden } from '../auth/http-errors.js';
 import { RateLimiter } from '../auth/rate-limiter.js';
 import { parseResponse } from '../common/zod-openapi.js';
 import { UnitOfWorkService } from '../realtime/unit-of-work.js';
@@ -51,9 +53,10 @@ export class TicketAiController {
   ) {}
 
   @Get(':id/ai')
-  // Staff only: `ticket.read` is not held by a client (they have `ticket.read.org`), so a customer
-  // gets 403 here and AI internals are never shown to them.
-  @RequirePermission('ticket.read')
+  // Staff and developers: `ticket.read` is not held by a client (they have `ticket.read.org`), so a
+  // customer gets 403 here and AI internals are never shown to them. A developer
+  // (`ticket.read.masked`) gets the brief masked, without the draft reply (T-137).
+  @RequireAnyPermission('ticket.read', 'ticket.read.masked')
   // The brief can quote the customer (placeholders restored for staff): reading it is on the audit log.
   @AuditPiiRead('ticket')
   @ApiOperation({
@@ -110,7 +113,9 @@ export class TicketAiController {
 
   @Post(':id/ai/requests')
   @HttpCode(202)
-  @RequirePermission('ticket.handle')
+  // A developer may ask for a new investigation (`investigate.run`), never for a draft reply: that is
+  // text for the customer, and a developer neither sends nor approves one (N3).
+  @RequireAnyPermission('ticket.handle', 'investigate.run')
   @Audited({ action: AUDIT_ACTIONS.aiRequest, targetType: 'ticket' })
   @ApiOperation({
     summary: 'Ask the AI for a draft or a new investigation (staff)',
@@ -130,6 +135,9 @@ export class TicketAiController {
     @Body({ schema: aiRequestSchema }) body: AiRequest,
     @CurrentPrincipal() principal: Principal,
   ) {
+    if (body.kind === 'draft' && !principal.permissions.has('ticket.handle')) {
+      throw forbidden('A draft reply is for the people who answer customers');
+    }
     await this.limiter.enforce(
       'ai-request',
       principal.userId,

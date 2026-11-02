@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-import type { ChannelType, TicketPriority } from '@watchtower/shared';
+import type { CustomerTicketChannel, TicketPriority } from '@watchtower/shared';
 
 /**
  * What Watchtower posts to a Discord webhook. Limits are from the Execute Webhook and Message
@@ -79,7 +79,7 @@ export interface TicketCreatedNotice {
   readonly ticketKey: string;
   readonly priority: TicketPriority;
   /** The channel the ticket arrived through. */
-  readonly channel: ChannelType;
+  readonly channel: CustomerTicketChannel;
   /** Link to the ticket in Watchtower, when the instance knows its public address. */
   readonly link?: string | undefined;
   readonly at: Date;

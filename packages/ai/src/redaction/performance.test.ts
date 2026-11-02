@@ -67,6 +67,20 @@ const ADVERSARIAL: [string, string][] = [
   ['thai domain labels', repeat('a@ตัวอย่าง.')],
   ['thai domain without dots', `a@${repeat('ตัวอย่าง', SIZE)}`],
   ['mixed', repeat('x1 2-3.4/5 (6) +7 a@b. [A_1] ')],
+  // T-137 re-review: the ids and keys the phone rule makes exceptions for.
+  ['key openers', repeat('AB-')],
+  ['key with digits', repeat('TEL-1')],
+  ['key chain', repeat('AB-12-')],
+  ['percent escapes', repeat('%2B')],
+  ['percent and digits', repeat('%2B66812345678 ')],
+  ['uuid-like', repeat('a0000000-4155-4000-8000-4155552671ab ')],
+  ['uuid-like, no spaces', repeat('a0000000-4155-4000-8000-')],
+  ['hex run', repeat('a1b2c3d4e5f60718')],
+  ['hex run, digits at both ends', `a${repeat('1', SIZE - 2)}a`],
+  ['hex runs, ten digits then a letter', repeat('4155552671a')],
+  ['timestamps', repeat('2026-11-02T10:15:30.123Z ')],
+  ['timestamp openers', repeat('2026-11-02T10:15:30')],
+  ['many ids and many numbers', repeat('4155552671 a0000000-4155-4000-8000-4155552671ab ')],
 ];
 
 describe('redactor time on adversarial 200 KB inputs', () => {

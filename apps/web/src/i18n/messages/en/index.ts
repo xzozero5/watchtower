@@ -19,12 +19,14 @@ import { conversationEn } from './conversation';
 import { csatEn } from './csat';
 import { customerEn } from './customer';
 import { detailsEn } from './details';
+import { devHomeEn } from './devHome';
 import { errorsEn } from './errors';
 import { homeEn } from './home';
 import { keymapEn } from './keymap';
 import { liveEn } from './live';
 import { loadingEn } from './loading';
 import { loginEn } from './login';
+import { newTicketEn } from './newTicket';
 import { notificationsEn } from './notifications';
 import { otherMailEn } from './otherMail';
 import { opsEn } from './ops';
@@ -81,6 +83,8 @@ export const en = {
   home: homeEn,
   admin: adminEn,
   portal: portalEn,
+  newTicket: newTicketEn,
+  devHome: devHomeEn,
   notifications: notificationsEn,
   csat: csatEn,
   bulk: bulkEn,

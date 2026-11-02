@@ -1,7 +1,9 @@
 'use client';
 
 import { ConsoleShell } from '@/components/console-shell';
+import { DevHome } from '@/components/dev/dev-home';
 import { Workspace } from '@/components/workspace';
+import { useSession } from '@/lib/auth/session';
 
 /**
  * The queue workspace (queue, conversation, details panel) inside the shared console shell: the
@@ -9,12 +11,15 @@ import { Workspace } from '@/components/workspace';
  * inside the auth gate and the realtime provider.
  */
 export function AppShell() {
+  const { can } = useSession();
+  // A developer reads every ticket with personal data masked and has no queue of their own (T-137).
+  const developer = can('ticket.read.masked') && !can('ticket.read');
   return (
     <ConsoleShell
       destination="queue"
       skipTo={{ href: '#pane-conversation', label: 'app.skipToContent' }}
     >
-      <Workspace />
+      {developer ? <DevHome /> : <Workspace />}
     </ConsoleShell>
   );
 }

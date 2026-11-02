@@ -9,7 +9,7 @@ import { z } from 'zod';
  * (an integration test compares the two so they cannot drift).
  */
 
-export const ROLES = ['agent', 'lead', 'head', 'client', 'system'] as const;
+export const ROLES = ['agent', 'lead', 'head', 'dev', 'client', 'system'] as const;
 export type Role = (typeof ROLES)[number];
 export const roleSchema = z.enum(ROLES);
 
@@ -19,6 +19,15 @@ export type StaffRole = (typeof STAFF_ROLES)[number];
 export function isStaffRole(role: Role): role is StaffRole {
   return (STAFF_ROLES as readonly string[]).includes(role);
 }
+
+/**
+ * Everyone who works inside the workspace and may sign in with the company account: the staff roles
+ * and `dev` (T-137). `dev` is deliberately NOT in `STAFF_ROLES`: that list decides who tickets are
+ * routed to (assignment, round robin, on-shift alerts), and a ticket must never be assigned to a dev;
+ * a dev picks work up through `ticket.dev_owner_id` instead.
+ */
+export const WORKSPACE_ROLES = [...STAFF_ROLES, 'dev'] as const satisfies readonly Role[];
+export type WorkspaceRole = (typeof WORKSPACE_ROLES)[number];
 
 /** Every permission string a route may require, with what it allows. */
 export const PERMISSIONS = {
@@ -86,6 +95,12 @@ export const PERMISSIONS = {
   'metric.manage': 'Create and edit product usage metric definitions',
   'org.health.read': 'View the Client Health Score of an organization',
   'dashboard.ops.read': 'View the ops dashboard and the service status panel',
+  // T-137 (migration 0080_dev_role_manual_ticket). `[ASSUMED]`, grants are explained above `DEV`.
+  'ticket.read.masked':
+    'Read any ticket with personal data masked (email, phone, names, message text through the redactor)',
+  'ticket.dev.work':
+    'Developer work on a ticket: internal notes, open and waiting_on_dev, pick up as dev owner, link an incident or deploy',
+  'ticket.dev.release.any': 'Let go of the dev owner of any ticket (a developer who is away)',
 } as const satisfies Record<string, string>;
 
 export type Permission = keyof typeof PERMISSIONS;
@@ -150,6 +165,7 @@ const LEAD: readonly Permission[] = [
   'csat.read',
   'ai.run.read',
   'ticket.cancel.any',
+  'ticket.dev.release.any',
   'alert.manage',
   'service.manage',
   'investigate.adhoc',
@@ -175,6 +191,20 @@ const HEAD: readonly Permission[] = [
   'metric.manage',
 ];
 
+/**
+ * The `dev` role (T-137, `po` decision `[ASSUMED]`): reads every ticket with personal data masked
+ * (`ticket.read.masked`, not `ticket.read`), writes internal notes, moves a ticket between `open` and
+ * `waiting_on_dev`, picks work up for themselves and links an incident or a deploy (`ticket.dev.work`),
+ * and runs the read-only investigation of a ticket (`investigate.run`). No reply to a customer, no AI draft
+ * approval (N3), no ad-hoc investigation, no shift or handoff duty, no incident creation.
+ */
+const DEV: readonly Permission[] = [
+  'ticket.read.masked',
+  'ticket.dev.work',
+  'investigate.run',
+  'auth.session.self',
+];
+
 const CLIENT: readonly Permission[] = [
   'ticket.read.org',
   'ticket.create',
@@ -189,6 +219,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Readonly<Record<Role, readonly Permission
   agent: AGENT,
   lead: LEAD,
   head: HEAD,
+  dev: DEV,
   client: CLIENT,
   system: [],
 };

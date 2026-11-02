@@ -44,15 +44,19 @@ interface Connection {
   alive: boolean;
 }
 
-/** Who may listen, and what they hear: staff hear everything, a client only their organization. */
+/**
+ * Who may listen, and what they hear: staff hear everything, a developer the same without ticket
+ * subjects (T-137), a client only their organization.
+ */
 export function audienceFor(principal: Principal): RealtimeAudience | null {
   if (principal.orgScope.kind === 'org') {
     return principal.permissions.has('ticket.read.org')
       ? { kind: 'client', orgId: principal.orgScope.orgId }
       : null;
   }
-  return principal.permissions.has('ticket.read')
-    ? { kind: 'staff', userId: principal.userId }
+  if (principal.permissions.has('ticket.read')) return { kind: 'staff', userId: principal.userId };
+  return principal.permissions.has('ticket.read.masked')
+    ? { kind: 'dev', userId: principal.userId }
     : null;
 }
 
@@ -71,8 +75,8 @@ function reject(socket: Duplex, status: string): void {
  *     with the visitor's cookie (cross-site WebSocket hijacking).
  *  2. The `wt_at` cookie must hold a valid access JWT, and its session must be live and its user
  *     active in the database (the same checks as AuthGuard).
- *  3. The caller must be allowed to read tickets (`ticket.read` for staff, `ticket.read.org` for a
- *     client).
+ *  3. The caller must be allowed to read tickets (`ticket.read` for staff, `ticket.read.masked` for a
+ *     developer, `ticket.read.org` for a client).
  *
  * After the handshake the session is checked against the database again every
  * REALTIME_REVALIDATE_SECONDS, and the socket is closed with 4401 when the session ended, the user

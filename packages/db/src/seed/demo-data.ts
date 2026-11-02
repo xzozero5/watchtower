@@ -22,6 +22,8 @@ export const STAFF_KEYS = [
   'agent2',
   'agent3',
   'agent4',
+  'dev1',
+  'dev2',
 ] as const;
 export type StaffKey = (typeof STAFF_KEYS)[number];
 
@@ -92,12 +94,15 @@ export const DEMO_ORGS: readonly DemoOrg[] = [
   },
 ];
 
-/** Two people per staff role (PRD section 2.2), four agents; staff addresses use the SSO example domain. */
+/**
+ * Two people per human role (PRD section 2.2), four agents; staff addresses use the SSO example domain.
+ * The two developers (T-137) are in no queue: a ticket is never assigned to a developer.
+ */
 export const DEMO_STAFF: readonly {
   readonly key: StaffKey;
   readonly email: string;
   readonly name: string;
-  readonly role: 'head' | 'lead' | 'agent';
+  readonly role: 'head' | 'lead' | 'agent' | 'dev';
 }[] = [
   { key: 'head1', email: 'head1@example.com', name: 'Demo Head 1', role: 'head' },
   { key: 'head2', email: 'head2@example.com', name: 'Demo Head 2', role: 'head' },
@@ -107,6 +112,8 @@ export const DEMO_STAFF: readonly {
   { key: 'agent2', email: 'agent2@example.com', name: 'Demo Agent 2', role: 'agent' },
   { key: 'agent3', email: 'agent3@example.com', name: 'Demo Agent 3', role: 'agent' },
   { key: 'agent4', email: 'agent4@example.com', name: 'Demo Agent 4', role: 'agent' },
+  { key: 'dev1', email: 'dev1@example.com', name: 'Demo Dev 1', role: 'dev' },
+  { key: 'dev2', email: 'dev2@example.com', name: 'Demo Dev 2', role: 'dev' },
 ];
 
 export const DEMO_QUEUES: readonly {

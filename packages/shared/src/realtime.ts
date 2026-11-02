@@ -130,13 +130,15 @@ export type RealtimeEvent = z.infer<typeof realtimeEventSchema>;
 /** First frame the server sends, once the socket is subscribed. */
 export const realtimeReadySchema = z.object({
   type: z.literal('ready'),
-  audience: z.enum(['staff', 'client']),
+  audience: z.enum(['staff', 'dev', 'client']),
   /** When the access token behind this socket stops being accepted; the server closes with 4401 then. */
   accessExpiresAt: z.iso.datetime(),
 });
 
 export type RealtimeAudience =
   | { readonly kind: 'staff'; readonly userId?: string }
+  /** A developer (T-137): hears ticket events with the subject left out; the REST read applies the masking. */
+  | { readonly kind: 'dev'; readonly userId: string }
   | { readonly kind: 'client'; readonly orgId: string };
 
 function clientTicketData(data: TicketEventData, changed: string[]): TicketEventData {
@@ -147,6 +149,8 @@ function clientTicketData(data: TicketEventData, changed: string[]): TicketEvent
  * What one listener may receive of an event, or null for nothing. This is the single place that
  * decides it, so the rules are tested once:
  *  - staff receive every event;
+ *  - a developer receives the ticket and message events but never a ticket subject (it is text the customer
+ *    wrote, and an event is not redacted; the ticket key stands in), and no alert;
  *  - a client receives only events of their own organization;
  *  - a client never receives anything about an internal note, and never staff-only fields;
  *  - a notification goes to its recipient alone, never to another staff member, never to a client.
@@ -156,10 +160,15 @@ export function realtimeEventFor(
   event: RealtimeEvent,
 ): RealtimeEvent | null {
   if (event.type === 'notification.created') {
-    return audience.kind === 'staff' && audience.userId === event.recipientId ? event : null;
+    return audience.kind !== 'client' && audience.userId === event.recipientId ? event : null;
   }
   if (event.type === 'alert.updated') return audience.kind === 'staff' ? event : null;
   if (audience.kind === 'staff') return event;
+  if (audience.kind === 'dev') {
+    return event.type === 'ticket.created' || event.type === 'ticket.updated'
+      ? { ...event, data: { ...event.data, subject: event.ticketKey } }
+      : event;
+  }
   if (event.orgId !== audience.orgId) return null;
   // A ticket the system opened for its own people (channel `internal`, T-205c) is not the client's to hear
   // about: its subject names the metric and the numbers.

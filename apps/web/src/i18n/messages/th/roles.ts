@@ -5,6 +5,7 @@ export const rolesTh: Widen<typeof rolesEn> = {
   agent: 'เจ้าหน้าที่',
   lead: 'หัวหน้าทีม',
   head: 'ผู้จัดการ',
+  dev: 'นักพัฒนา',
   client: 'ลูกค้า',
   system: 'ระบบ',
 };

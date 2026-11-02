@@ -71,29 +71,38 @@ Phase 1 is a **web application** (PWA-capable). A **mobile app** follows once th
 | **Head of Tech Ops** (`head`) | Owner of this product; reports to CTO | Whole-picture view, stats, user & integration management, everything other roles can do and more, a personal AI assistant, a weekly CEO report |
 | **Support Lead** (`lead`) | Runs the agent team | Everything an agent can do + roster management, per-agent performance, approving KB articles, raising/lowering AI autonomy within limits |
 | **Support Agent** (`agent`) | Works shifts | Clock in/out, daily brief, handle queue, review AI drafts, read LINE/email/alerts/system status, leave notes for the next shift |
+| **Developer** (`dev`) | Engineers who fix what support escalates (T-137) | See every ticket with personal data masked, take a ticket handed to dev (`waiting_on_dev`), write internal notes, link an incident or deploy, run the read-only investigation; never talk to the customer |
 | **Client user** (`client`) | Employee of a customer organization | Submit tickets via public link, get email updates, track status, see their org's tickets, subscribe to the status page |
 | **System / AI** (`system`) | Automations and AI agents | Act with scoped, auditable service identities |
 
 ### 2.2 Permission matrix (summary)
-| Capability | agent | lead | head | client |
-|---|---|---|---|---|
-| View/handle tickets in own queue | ✔ | ✔ | ✔ | own org only |
-| View all tickets | ✔ | ✔ | ✔ | ✘ |
-| Reply to customer (email/LINE/portal) | ✔ | ✔ | ✔ | reply on own ticket |
-| Approve/edit/reject AI drafts | ✔ | ✔ | ✔ | ✘ |
-| Run investigation tools (read-only) | ✔ | ✔ | ✔ | ✘ |
-| Create/close incidents, status page posts | ✔ (create) | ✔ | ✔ | ✘ |
-| Clock in/out, write handoff | ✔ | ✔ | ✔ | ✘ |
-| Manage roster, shift swaps | ✘ | ✔ | ✔ | ✘ |
-| View per-agent performance | own | ✔ | ✔ | ✘ |
-| Approve KB articles | ✘ | ✔ | ✔ | ✘ |
-| Change AI autonomy stage per intent | ✘ | up to stage 3 | all | ✘ |
-| Manage integrations, AI provider, API keys | ✘ | ✘ | ✔ | ✘ |
-| Manage users/orgs/SLA policies | ✘ | orgs/contacts | ✔ | ✘ |
-| View audit log | ✘ | ✘ | ✔ | ✘ |
-| CEO view / exports | ✘ | ✔ | ✔ | ✘ |
+| Capability | agent | lead | head | dev | client |
+|---|---|---|---|---|---|
+| View/handle tickets in own queue | ✔ | ✔ | ✔ | ✘ | own org only |
+| View all tickets | ✔ | ✔ | ✔ | ✔ masked | ✘ |
+| Reply to customer (email/LINE/portal) | ✔ | ✔ | ✔ | ✘ | reply on own ticket |
+| Write internal notes | ✔ | ✔ | ✔ | ✔ (read and write masked) | ✘ |
+| Approve/edit/reject AI drafts | ✔ | ✔ | ✔ | ✘ | ✘ |
+| Run investigation tools (read-only) | ✔ | ✔ | ✔ | ✔ (templates only, no ad-hoc query) | ✘ |
+| Create/close incidents, status page posts | ✔ (create) | ✔ | ✔ | ✘ (may link a ticket to an incident or deploy) | ✘ |
+| File a ticket by hand (phone, walk-in, chat) | ✔ | ✔ | ✔ | ✘ | ✘ |
+| Move a ticket between `open` and `waiting_on_dev` | ✔ (to `waiting_on_dev` needs a note) | ✔ | ✔ | ✔ (only these two; back to `open` needs a note) | ✘ |
+| Pick a ticket up as dev owner | ✘ | ✘ | ✘ | ✔ (self only) | ✘ |
+| Clock in/out, write handoff | ✔ | ✔ | ✔ | ✘ | ✘ |
+| Manage roster, shift swaps | ✘ | ✔ | ✔ | ✘ | ✘ |
+| View per-agent performance | own | ✔ | ✔ | ✘ | ✘ |
+| Approve KB articles | ✘ | ✔ | ✔ | ✘ | ✘ |
+| Change AI autonomy stage per intent | ✘ | up to stage 3 | all | ✘ | ✘ |
+| Manage integrations, AI provider, API keys | ✘ | ✘ | ✔ | ✘ | ✘ |
+| Manage users/orgs/SLA policies | ✘ | orgs/contacts | ✔ | ✘ | ✘ |
+| View audit log | ✘ | ✘ | ✔ | ✘ | ✘ |
+| CEO view / exports | ✘ | ✔ | ✔ | ✘ | ✘ |
 
-Implementation: RBAC with roles above plus fine-grained permission strings (`ticket.read`, `ticket.reply`, `ai.autonomy.set`, …) so roles can be adjusted without code changes. **[CONFIRMED]** Four human roles; **[ASSUMED]** exact matrix above.
+Implementation: RBAC with roles above plus fine-grained permission strings (`ticket.read`, `ticket.reply`, `ai.autonomy.set`, …) so roles can be adjusted without code changes. **[CONFIRMED]** Five human roles (agent, lead, head, developer, client; `system` is the sixth identity, not a person); **[ASSUMED]** exact matrix above.
+
+**The `dev` role (T-137, `po` decision [ASSUMED]).** A developer holds `ticket.read.masked`, not `ticket.read`: every route that returns a ticket answers a developer with email and phone masked, names reduced to initials, and message text, subjects, AI brief and evidence passed through the same redactor that runs before the LLM (N4); custom fields and attachment names are left out and text search is refused (a ticket number works), so the hidden data cannot be found by guessing. The realtime feed gives a developer the ticket key instead of the subject. A route a developer can reach but that has no masked output answers 403 (a test walks every route and fails when a new one becomes reachable). A developer never replies to a customer and never approves an AI draft (N3). An agent hands a ticket to dev with `waiting_on_dev` and a mandatory note; the queue and the assignee stay with the agent (AC-7); a developer picks it up for themselves in `dev_owner_id` and hands it back with a note. The customer sees "In progress" for `open` and `waiting_on_dev` alike and is told nothing of the move. `dev` is not a staff role for routing: tickets are never assigned to a developer and a developer has no shift, handoff or on-call duty.
+
+**Tickets filed by hand (T-136).** An agent, lead or head can file a ticket for a request that arrived by phone, in person or in a chat that is not connected (`phone`, `walk_in`, `chat`, `other`). It needs an organization, a contact (an existing one, or a new one that is created unverified), a subject, what was said and the channel; the SLA clock starts when it is filed, never earlier. `internal` is only for a ticket with no customer. The customer gets the automatic "we received your request" email by default when the contact already existed; for an address that is new here the person must tick the box. These channels have no outbound adapter, so a public reply on them is refused with `channel_no_outbound` [ASSUMED]: what was said on the phone is recorded as an internal note. No satisfaction survey is owed for them [ASSUMED].
 
 ### 2.3 Authentication
 - Staff: **Google Workspace SSO (OIDC)** restricted to the company domain, plus break-glass local admin. [ASSUMED — company uses Google Workspace since Gmail is the mail system]
