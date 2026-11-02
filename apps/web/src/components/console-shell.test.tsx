@@ -70,6 +70,34 @@ describe('rail entries', () => {
     expect(within(nav).queryByRole('link', { name: 'Admin' }) !== null).toBe(admin);
   });
 
+  it.each<[Role, boolean]>([
+    ['head', true],
+    ['lead', true],
+    ['agent', true],
+    ['dev', false],
+    ['client', false],
+  ])('%s: Ops dashboard %s (it follows dashboard.ops.read)', async (role, shown) => {
+    consoleApi({ role });
+    renderShell();
+    await ready();
+    const nav = screen.getByRole('navigation', { name: 'Main navigation' });
+    const link = within(nav).queryByRole('link', { name: 'Ops dashboard' });
+    expect(link !== null).toBe(shown);
+    if (link) expect(link).toHaveAttribute('href', '/dashboard');
+  });
+
+  it('marks the Ops dashboard as the current page on /dashboard', async () => {
+    consoleApi({ role: 'head' });
+    renderShell('dashboard');
+    await ready();
+    const nav = screen.getByRole('navigation', { name: 'Main navigation' });
+    expect(within(nav).getByRole('link', { name: 'Ops dashboard' })).toHaveAttribute(
+      'aria-current',
+      'page',
+    );
+    expect(within(nav).getByRole('link', { name: 'Home' })).not.toHaveAttribute('aria-current');
+  });
+
   it('marks the current page, and Admin opens the first section the person may use', async () => {
     consoleApi({ role: 'lead' });
     renderShell('home');

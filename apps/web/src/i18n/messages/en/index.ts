@@ -18,6 +18,7 @@ import { composerEn } from './composer';
 import { conversationEn } from './conversation';
 import { csatEn } from './csat';
 import { customerEn } from './customer';
+import { dashboardEn } from './dashboard';
 import { detailsEn } from './details';
 import { devHomeEn } from './devHome';
 import { errorsEn } from './errors';
@@ -92,6 +93,7 @@ export const en = {
   shift: shiftEn,
   outbound: outboundEn,
   ops: opsEn,
+  dashboard: dashboardEn,
 } as const;
 
 /** The shape every language must fill in, with plain `string` leaves. */

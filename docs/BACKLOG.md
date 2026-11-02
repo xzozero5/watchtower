@@ -74,7 +74,7 @@
 - [x] T-203 Investigation tools จริง: Logs rate budget, BigQuery/EXTERNAL_QUERY guardrails, metrics tool, service status panel (R-5.1–5.7) — merge 2026-11-02
 - [x] T-204 Status page + subscriptions (R-6.x)
 - [x] T-205 Usage metric definitions + scheduler + anomaly → proactive ticket + Client Health Score (R-8.x)
-- [ ] T-206 Ops dashboard (§9.1) — ใช้ skill `dataviz` ก่อนเขียน chart
+- [x] T-206 Ops dashboard (§9.1) — ใช้ skill `dataviz` ก่อนเขียน chart — merge 2026-11-02
 - [ ] T-207 QA/security/po review + `/handoff`
 
 ## Phase 3 — Autonomy + Learning — แตก task ตอนจบ Phase 2

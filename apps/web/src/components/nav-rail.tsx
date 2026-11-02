@@ -3,6 +3,7 @@
 import { cn, Kbd, TINT_CLASSES, type TintId, Tooltip } from '@watchtower/ui';
 import {
   CalendarCheck,
+  ChartColumn,
   ClipboardList,
   Clock3,
   Command as CommandIcon,
@@ -136,6 +137,7 @@ function RailButton({
 export type RailDestination =
   | 'queue'
   | 'home'
+  | 'dashboard'
   | 'admin'
   | 'shift'
   | 'otherMail'
@@ -177,6 +179,8 @@ export function NavRail({
   // Filing a ticket by hand is for the people who handle them (T-136); a developer or a client does not.
   const canFileTicket = can('ticket.create') && handler;
   const showHome = can(HOME_PERMISSION);
+  // Everyone who may read the ops figures; the api trims what each role sees inside the page.
+  const showDashboard = can('dashboard.ops.read');
   const showAdmin = adminSectionsFor(can).length > 0;
   const shiftIds = new Set(shiftSectionsFor(can).map((section) => section.id));
   const opsIds = new Set(opsSectionsFor(can).map((section) => section.id));
@@ -316,6 +320,16 @@ export function NavRail({
               />
             ) : null}
           </>
+        ) : null}
+        {showDashboard ? (
+          <RailButton
+            icon={ChartColumn}
+            tone="purple"
+            label={t('rail.dashboard')}
+            expanded={expanded}
+            current={destination === 'dashboard'}
+            href="/dashboard"
+          />
         ) : null}
         {canReadTickets ? <NotificationCenter expanded={expanded} /> : null}
         {showHome || showAdmin ? (
