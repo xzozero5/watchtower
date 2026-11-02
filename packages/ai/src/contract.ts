@@ -14,8 +14,12 @@ import type { RedactedText } from './redaction/redacted-text.js';
 // Vocabulary
 // ---------------------------------------------------------------------------------------------
 
-/** PRD §6.7. `mock` is the default and never touches the network. */
-export const PROVIDER_KINDS = ['mock', 'anthropic', 'vertex'] as const;
+/**
+ * PRD §6.7. `mock` is the default and never touches the network. `claude-cli` is a dev/POC-only
+ * kind (ADR-017): it reaches a local Claude Code CLI through a host-side bridge and is refused
+ * when `NODE_ENV=production`.
+ */
+export const PROVIDER_KINDS = ['mock', 'anthropic', 'vertex', 'claude-cli'] as const;
 export const providerKindSchema = z.enum(PROVIDER_KINDS);
 export type ProviderKind = z.infer<typeof providerKindSchema>;
 

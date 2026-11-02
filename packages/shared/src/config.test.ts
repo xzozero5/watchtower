@@ -418,6 +418,33 @@ describe('the in-memory Gmail needs an explicit opt-in (T-102 N-1)', () => {
   });
 });
 
+describe('AI_PROVIDER=claude-cli (ADR-017, dev/POC only)', () => {
+  it('is accepted on a loopback APP_URL outside production', () => {
+    expect(issuesFor({ ...validEnv, AI_PROVIDER: 'claude-cli' }).has('AI_PROVIDER')).toBe(false);
+  });
+
+  it('refuses to boot in production', () => {
+    expect(issuesFor({ ...productionEnv, AI_PROVIDER: 'claude-cli' }).get('AI_PROVIDER')).toContain(
+      'production',
+    );
+  });
+
+  it('refuses to boot when APP_URL is not loopback, even under NODE_ENV=development', () => {
+    const issues = issuesFor({
+      ...validEnv,
+      AI_PROVIDER: 'claude-cli',
+      APP_URL: 'https://support.example.com',
+    });
+    expect(issues.get('AI_PROVIDER')).toContain('loopback');
+  });
+
+  it('leaves the other providers alone in production', () => {
+    expect(issuesFor({ ...productionEnv, AI_PROVIDER: 'anthropic' }).has('AI_PROVIDER')).toBe(
+      false,
+    );
+  });
+});
+
 describe('Google OIDC domain restriction', () => {
   it('requires GOOGLE_ALLOWED_DOMAIN once OIDC credentials are set', () => {
     const withClient = {

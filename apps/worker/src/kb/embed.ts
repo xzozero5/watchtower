@@ -9,6 +9,7 @@ import {
   type Chunk,
   type ChunkOptions,
   type ChunkToStore,
+  type EmbeddingIndexSpec,
 } from '@watchtower/domain';
 import { and, eq } from 'drizzle-orm';
 
@@ -107,7 +108,7 @@ export async function embedArticle(
 
   const vectors: number[][] = [];
   let spec:
-    { provider: 'mock' | 'anthropic' | 'vertex'; model: string; dimensions: number } | undefined;
+    { provider: EmbeddingIndexSpec['provider']; model: string; dimensions: number } | undefined;
   for (let at = 0; at < chunks.length; at += EMBED_BATCH) {
     const batch = chunks.slice(at, at + EMBED_BATCH);
     const outcome = await deps.ai.embedder.embed({

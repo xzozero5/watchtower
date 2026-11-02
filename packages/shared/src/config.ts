@@ -47,7 +47,8 @@ const redisUrl = z
 
 export const LOG_LEVELS = ['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent'] as const;
 export const NODE_ENVS = ['development', 'test', 'production'] as const;
-export const AI_PROVIDERS = ['mock', 'anthropic', 'vertex'] as const;
+/** `claude-cli` is dev/POC only (ADR-017): refused in production and off a loopback APP_URL. */
+export const AI_PROVIDERS = ['mock', 'anthropic', 'vertex', 'claude-cli'] as const;
 /**
  * Where knowledge base embeddings come from. `[ASSUMED]` mock (deterministic, offline) or Vertex;
  * any other provider or a downloaded model sends data to a new destination and needs an ADR first.
@@ -114,6 +115,9 @@ export const baseEnvShape = {
   GOOGLE_APPLICATION_CREDENTIALS: optionalString,
   AI_PROVIDER: z.enum(AI_PROVIDERS).default('mock'),
   ANTHROPIC_API_KEY: optionalString,
+  // claude-cli only (ADR-017): the host-side bridge to the local Claude Code CLI.
+  CLAUDE_CLI_BRIDGE_URL: optionalString,
+  CLAUDE_CLI_BRIDGE_TOKEN: optionalString,
   VERTEX_PROJECT_ID: optionalString,
   VERTEX_LOCATION: optionalString,
   WEB_PUSH_VAPID_PUBLIC: optionalString,
@@ -421,6 +425,16 @@ function applyGuards(env: Readonly<Record<string, unknown>>, ctx: z.RefinementCt
         'GMAIL_MOCK_ENABLED',
         'must not be true while Gmail credentials are set (the fake exists only in mock mode)',
       );
+    }
+  }
+  // The CLI provider routes redacted prompts through one person's Claude subscription (ADR-017).
+  // It exists for a laptop: never in production, never on a deployment others can reach.
+  if (env.AI_PROVIDER === 'claude-cli') {
+    if (env.NODE_ENV === 'production') {
+      fail('AI_PROVIDER', 'claude-cli is a dev/POC provider and must not be used in production');
+    }
+    if (!isLoopbackUrl(text(env, 'APP_URL') ?? '')) {
+      fail('AI_PROVIDER', 'claude-cli is allowed only when APP_URL is a loopback address');
     }
   }
   const breakGlassEmail = text(env, 'BREAK_GLASS_EMAIL');

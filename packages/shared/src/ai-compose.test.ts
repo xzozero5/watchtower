@@ -11,6 +11,8 @@ const envExample = readFileSync(new URL('../../../.env.example', import.meta.url
 const AI_VARIABLES = [
   'AI_PROVIDER',
   'ANTHROPIC_API_KEY',
+  'CLAUDE_CLI_BRIDGE_URL',
+  'CLAUDE_CLI_BRIDGE_TOKEN',
   'VERTEX_PROJECT_ID',
   'VERTEX_LOCATION',
   'AI_MODEL_DEEP',
