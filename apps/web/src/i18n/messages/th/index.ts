@@ -11,6 +11,7 @@ import { composerTh } from './composer';
 import { conversationTh } from './conversation';
 import { csatTh } from './csat';
 import { customerTh } from './customer';
+import { dashboardTh } from './dashboard';
 import { detailsTh } from './details';
 import { devHomeTh } from './devHome';
 import { errorsTh } from './errors';
@@ -86,4 +87,5 @@ export const th: Messages = {
   shift: shiftTh,
   outbound: outboundTh,
   ops: opsTh,
+  dashboard: dashboardTh,
 };

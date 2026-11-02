@@ -3,6 +3,7 @@ export const railEn = {
   queue: 'Queue',
   otherMail: 'Other mail',
   home: 'Home',
+  dashboard: 'Ops dashboard',
   admin: 'Admin',
   newTicket: 'New ticket',
   shift: 'My shift',

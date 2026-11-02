@@ -1,5 +1,6 @@
 import {
   alertAckResultSchema,
+  dashboardOpsSchema,
   alertDetailSchema,
   alertEscalationListSchema,
   alertListSchema,
@@ -71,6 +72,15 @@ export function createOpsEndpoints(client: ApiClient) {
   const id = (value: string) => encodeURIComponent(value);
 
   return {
+    // --- ops dashboard (T-206b) ---
+    dashboardOps: (days: number, signal?: AbortSignal) =>
+      client.request({
+        path: '/v1/dashboard/ops',
+        query: { days },
+        schema: dashboardOpsSchema,
+        ...withSignal(signal),
+      }),
+
     // --- alerts ---
     alerts: (query: Partial<AlertListQuery> = {}, signal?: AbortSignal) =>
       client.request({
