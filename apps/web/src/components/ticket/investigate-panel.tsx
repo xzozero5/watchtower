@@ -96,7 +96,8 @@ function InvestigateBody({
           if (!canList) setRanHere((current) => [card, ...current]);
         },
         onError: (error) => {
-          if (isApiError(error) && error.status === 503) {
+          // Only the api's own code means "that system is not connected"; any other 503 is a failure.
+          if (isApiError(error) && error.status === 503 && error.code === 'tool_not_connected') {
             setOutcome({ kind: 'not_connected', title: button.title });
           } else if (isApiError(error) && error.status === 429) {
             setOutcome({ kind: 'error', message: t('investigate.budget') });
@@ -251,7 +252,8 @@ function ToolButton({
             <KindIcon aria-hidden className="size-4" />
           )}
           <span>{running ? t('investigate.running', { title: button.title }) : button.title}</span>
-          {button.mock ? <MockChip /> : null}
+          {/* An unconnected system answers nothing, so it is not "mock" either: one label at a time. */}
+          {button.mock && button.connected ? <MockChip /> : null}
           {button.connected ? null : (
             <TintChip tone="slate" icon={Unplug} title={t('investigate.notConnectedTip')}>
               {t('investigate.notConnected')}
@@ -383,6 +385,9 @@ function CardView({
               onSuccess: () => {
                 onUnpinned(card.id);
                 toast(t('investigate.evidence.unpinned'));
+              },
+              onError: () => {
+                toast.error(t('investigate.evidence.unpinFailed'));
               },
             });
           }}

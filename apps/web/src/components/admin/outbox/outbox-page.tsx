@@ -289,11 +289,18 @@ function effectText(t: Translate, effect: DeadOutboxEffect, prefix: string) {
       confirm: t('outboxAdmin.confirm.customer', { ticket, channel, account }),
     };
   }
-  return {
-    title: t('outboxAdmin.effect.reprocess'),
-    detail: t('outboxAdmin.effect.reprocessDetail', { channel, account }),
-    confirm: t('outboxAdmin.confirm.reprocess', { channel, account }),
-  };
+  // A received message that was never processed. On LINE the same job acknowledges the customer.
+  return effect.mayAcknowledge
+    ? {
+        title: t('outboxAdmin.effect.reprocessAck'),
+        detail: t('outboxAdmin.effect.reprocessAckDetail', { channel, account }),
+        confirm: t('outboxAdmin.confirm.reprocessAck', { channel, account }),
+      }
+    : {
+        title: t('outboxAdmin.effect.reprocess'),
+        detail: t('outboxAdmin.effect.reprocessDetail', { channel, account }),
+        confirm: t('outboxAdmin.confirm.reprocess', { channel, account }),
+      };
 }
 
 function DeadTable({
@@ -370,7 +377,8 @@ function DeadTable({
       hideHeader: true,
       className: 'w-28 text-right',
       cell: (row) =>
-        row.replayable ? (
+        // Without an `effect` the head cannot be told what a resend does, so there is no button.
+        row.replayable && row.effect !== null ? (
           <Button
             aria-label={t('outboxAdmin.dead.resendRow', { job: `${row.queue} · ${row.jobName}` })}
             onClick={() => {
@@ -414,7 +422,8 @@ function ResendDialog({
   const text = row?.effect ? effectText(t, row.effect, ticketKeyPrefix).confirm : '';
   return (
     <ConfirmDialog
-      open={row !== null}
+      // Never confirm a resend whose effect is unknown.
+      open={row !== null && row.effect !== null}
       onOpenChange={(open) => {
         if (!open) onClose();
       }}

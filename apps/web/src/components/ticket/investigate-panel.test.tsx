@@ -48,7 +48,8 @@ const TOOLS: TicketTools = {
       title: 'Recent deploys',
       inputParams: [],
       connected: false,
-      mock: false,
+      // Not connected wins over mock: one label at a time.
+      mock: true,
     },
   ],
 };
@@ -114,6 +115,7 @@ describe('Investigation buttons', () => {
     expect(within(usage).getByText('Mock')).toBeVisible();
     const deploys = within(list).getByRole('button', { name: /Recent deploys/ });
     expect(within(deploys).getByText('Not connected')).toBeVisible();
+    expect(within(deploys).queryByText('Mock')).toBeNull();
     expect(deploys).toBeDisabled();
     expect(within(list).getByRole('button', { name: 'Recent errors' })).toBeEnabled();
   });
@@ -170,13 +172,39 @@ describe('Investigation buttons', () => {
 
   it('answers "not connected" as an answer, not as a failure, and pins nothing', async () => {
     const user = userEvent.setup();
-    panelApi({ run: apiError(503, 'service_unavailable', 'not connected') });
+    panelApi({
+      run: apiError(503, 'tool_not_connected', 'That system is not connected on this instance'),
+    });
     renderConsole(<InvestigatePanel ticketKey="OPS-1" />);
     await user.click(await screen.findByRole('button', { name: 'Recent errors' }));
     const status = await screen.findByText(/Recent errors: the system is not connected here/);
     expect(status).toBeVisible();
     expect(status.className).not.toContain('text-danger');
     expect(screen.getByText('Nothing pinned yet.')).toBeVisible();
+  });
+
+  it('treats any other 503 as a failure, not as "not connected"', async () => {
+    const user = userEvent.setup();
+    panelApi({ run: apiError(503, 'service_unavailable', 'try later') });
+    renderConsole(<InvestigatePanel ticketKey="OPS-1" />);
+    await user.click(await screen.findByRole('button', { name: 'Recent errors' }));
+    expect(await screen.findByText('The check failed. Nothing was pinned.')).toBeVisible();
+    expect(screen.queryByText(/not connected here/)).toBeNull();
+  });
+
+  it('keeps the result when unpinning fails', async () => {
+    const user = userEvent.setup();
+    const api = panelApi({
+      cards: [card()],
+      unpin: apiError(500, 'internal', 'boom'),
+    });
+    renderConsole(<InvestigatePanel ticketKey="OPS-1" />);
+    await user.click(await screen.findByRole('button', { name: 'Unpin Recent errors' }));
+    await waitFor(() => {
+      expect(api.callsTo(`/v1/tickets/OPS-1/evidence/${uuid(21)}`, 'DELETE')).toHaveLength(1);
+    });
+    expect(screen.getByRole('list', { name: 'Pinned results' })).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Unpin Recent errors' })).toBeEnabled();
   });
 
   it('says when the rate budget is used up', async () => {

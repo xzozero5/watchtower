@@ -49,6 +49,7 @@ const CUSTOMER_ROW: DeadOutboxItem = {
     channelAccountName: 'Ops mailbox',
     origin: 'reply',
     ticketNumber: 14,
+    mayAcknowledge: false,
   },
 };
 

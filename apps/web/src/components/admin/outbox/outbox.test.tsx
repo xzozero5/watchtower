@@ -52,6 +52,7 @@ const CUSTOMER_ROW: DeadOutboxItem = {
     channelAccountName: 'Ops mailbox',
     origin: 'reply',
     ticketNumber: 14,
+    mayAcknowledge: false,
   },
 };
 
@@ -66,6 +67,7 @@ const INGEST_ROW: DeadOutboxItem = {
     channelAccountName: 'LINE OA',
     origin: null,
     ticketNumber: null,
+    mayAcknowledge: true,
   },
 };
 
@@ -131,11 +133,46 @@ describe('Outbox (head)', () => {
     expect(within(customer).getByText('Send a message to a customer')).toBeVisible();
     expect(within(customer).getByText('Ticket OPS-14 by Email (Ops mailbox)')).toBeVisible();
     const ingest = within(table).getByRole('row', { name: /ingest · process/ });
-    expect(within(ingest).getByText('Process a received message again')).toBeVisible();
-    expect(within(ingest).getByText(/Nothing is sent to anyone/)).toBeVisible();
+    expect(within(ingest).getByText('Process a received message and acknowledge it')).toBeVisible();
+    expect(
+      within(ingest).getByText(/send the customer the automatic acknowledgement/),
+    ).toBeVisible();
     const gone = within(table).getByRole('row', { name: /email · send/ });
     expect(within(gone).getByText('Cannot be resent: The payload was cleared')).toBeVisible();
     expect(within(gone).queryByRole('button')).toBeNull();
+  });
+
+  it('says a Gmail message may open a ticket but sends nothing to the customer', async () => {
+    const user = userEvent.setup();
+    const mail: DeadOutboxItem = {
+      ...INGEST_ROW,
+      id: uuid(4),
+      effect: {
+        kind: 'reprocess_inbound',
+        channel: 'gmail',
+        channelAccountName: 'Ops mailbox',
+        origin: null,
+        ticketNumber: null,
+        mayAcknowledge: false,
+      },
+    };
+    outboxApi([mail]);
+    renderConsole(<OutboxPage />);
+    const table = await screen.findByRole('table', { name: 'Dead outbox rows' });
+    expect(within(table).getByText('Process a received message for the first time')).toBeVisible();
+    expect(within(table).getByText(/May open a ticket/)).toBeVisible();
+    expect(within(table).queryByText(/acknowledg/)).toBeNull();
+    await user.click(screen.getByRole('button', { name: 'Resend ingest · process' }));
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).getByText(/never processed/)).toBeVisible();
+    expect(within(dialog).getByText(/Nothing is sent to the customer/)).toBeVisible();
+  });
+
+  it('offers no resend when the api could not say what it would do', async () => {
+    outboxApi([{ ...INGEST_ROW, effect: null }]);
+    renderConsole(<OutboxPage />);
+    const table = await screen.findByRole('table', { name: 'Dead outbox rows' });
+    expect(within(table).queryByRole('button', { name: /Resend/ })).toBeNull();
   });
 
   it('asks first, names the ticket and channel, shows no message text, then resends', async () => {
@@ -187,7 +224,9 @@ describe('Outbox (head)', () => {
     renderConsole(<OutboxPage />);
     await user.click(await screen.findByRole('button', { name: 'Resend ingest · process' }));
     const dialog = await screen.findByRole('dialog');
-    expect(within(dialog).getByText(/Nothing is sent to anyone/)).toBeVisible();
+    expect(
+      within(dialog).getByText(/send the customer the automatic acknowledgement/),
+    ).toBeVisible();
     await user.click(within(dialog).getByRole('button', { name: 'Resend' }));
     expect(await within(dialog).findByRole('alert')).toHaveTextContent(
       'The received event was processed already',

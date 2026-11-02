@@ -47,5 +47,6 @@ export const investigateTh: Widen<typeof investigateEn> = {
     unpin: 'เลิกปัก',
     unpinCard: 'เลิกปัก {title}',
     unpinned: 'เลิกปักแล้ว',
+    unpinFailed: 'เลิกปักผลนี้ไม่ได้',
   },
 };

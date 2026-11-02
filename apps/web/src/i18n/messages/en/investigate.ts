@@ -44,5 +44,6 @@ export const investigateEn = {
     unpin: 'Unpin',
     unpinCard: 'Unpin {title}',
     unpinned: 'Unpinned.',
+    unpinFailed: 'Could not unpin this result.',
   },
 } as const;

@@ -39,15 +39,20 @@ export const outboxAdminEn = {
   effect: {
     customer: 'Send a message to a customer',
     customerDetail: 'Ticket {ticket} by {channel} ({account})',
-    reprocess: 'Process a received message again',
-    reprocessDetail: 'Received on {channel} ({account}). Nothing is sent to anyone',
+    reprocess: 'Process a received message for the first time',
+    reprocessDetail: 'Received on {channel} ({account}). May open a ticket',
+    reprocessAck: 'Process a received message and acknowledge it',
+    reprocessAckDetail:
+      'Received on {channel} ({account}). May open a ticket and send the customer the automatic acknowledgement',
   },
   confirm: {
     title: 'Resend {job}?',
     customer:
       'This can send a message to a customer: ticket {ticket}, by {channel} ({account}). The usual checks still apply (undo window, policy gate), and the message text is not shown here. Open the ticket to read it.',
     reprocess:
-      'A received message on {channel} ({account}) will be processed again. Nothing is sent to anyone.',
+      'A message received on {channel} ({account}) was never processed. Resending it may open a ticket. Nothing is sent to the customer.',
+    reprocessAck:
+      'A message received on {channel} ({account}) was never processed. Resending it may open a ticket and may send the customer the automatic acknowledgement, through the usual checks (policy gate).',
     action: 'Resend',
     audited: 'This is recorded in the audit log.',
   },

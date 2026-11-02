@@ -249,6 +249,7 @@ export class OutboxOpsService {
                   channelAccountName: delivery.accountName,
                   origin: delivery.origin,
                   ticketNumber: delivery.ticketNumber,
+                  mayAcknowledge: false,
                 },
               }
             : {
@@ -281,7 +282,9 @@ export class OutboxOpsService {
         const status = event?.status;
         plans.set(
           rowId,
-          event !== undefined && (status === 'pending' || status === 'failed')
+          // Only a `pending` event is processed: the consumer skips every other status, so a resend
+          // of a `failed` one would do nothing and the row would vanish from this list.
+          event !== undefined && status === 'pending'
             ? {
                 replayable: true,
                 payload: { inboundEventId: eventId },
@@ -291,6 +294,8 @@ export class OutboxOpsService {
                   channelAccountName: event.accountName,
                   origin: null,
                   ticketNumber: null,
+                  // The LINE ingest job acknowledges the customer in the same run (T-103c).
+                  mayAcknowledge: event.channel === 'line',
                 },
               }
             : {
@@ -298,7 +303,9 @@ export class OutboxOpsService {
                 reason:
                   status === undefined
                     ? 'The received event no longer exists'
-                    : 'The received event was processed already',
+                    : status === 'failed'
+                      ? 'The received event failed and is not retried automatically, so sending the job again would do nothing'
+                      : 'The received event was processed already',
               },
         );
       }

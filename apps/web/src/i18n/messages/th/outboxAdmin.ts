@@ -42,14 +42,20 @@ export const outboxAdminTh: Widen<typeof outboxAdminEn> = {
   effect: {
     customer: 'ส่งข้อความถึงลูกค้า',
     customerDetail: 'ticket {ticket} ทาง {channel} ({account})',
-    reprocess: 'ประมวลผลข้อความที่รับมาอีกครั้ง',
-    reprocessDetail: 'รับทาง {channel} ({account}) ไม่มีการส่งอะไรถึงใคร',
+    reprocess: 'ประมวลผลข้อความที่รับมาเป็นครั้งแรก',
+    reprocessDetail: 'รับทาง {channel} ({account}) อาจเปิด ticket ใหม่',
+    reprocessAck: 'ประมวลผลข้อความที่รับมาและตอบรับอัตโนมัติ',
+    reprocessAckDetail:
+      'รับทาง {channel} ({account}) อาจเปิด ticket ใหม่และส่งข้อความตอบรับอัตโนมัติถึงลูกค้า',
   },
   confirm: {
     title: 'ส่งซ้ำ {job}?',
     customer:
       'อาจมีข้อความส่งถึงลูกค้า: ticket {ticket} ทาง {channel} ({account}) ระบบยังตรวจตามปกติ (ช่วงเวลายกเลิกการส่ง, policy gate) และหน้านี้ไม่แสดงเนื้อความ ต้องเปิด ticket เพื่ออ่าน',
-    reprocess: 'ข้อความที่รับทาง {channel} ({account}) จะถูกประมวลผลอีกครั้ง ไม่มีการส่งอะไรถึงใคร',
+    reprocess:
+      'ข้อความที่รับทาง {channel} ({account}) ยังไม่เคยถูกประมวลผล การส่งซ้ำอาจเปิด ticket ใหม่ และไม่มีการส่งอะไรถึงลูกค้า',
+    reprocessAck:
+      'ข้อความที่รับทาง {channel} ({account}) ยังไม่เคยถูกประมวลผล การส่งซ้ำอาจเปิด ticket ใหม่ และอาจส่งข้อความตอบรับอัตโนมัติถึงลูกค้า โดยยังผ่านการตรวจตามปกติ (policy gate)',
     action: 'ส่งซ้ำ',
     audited: 'การกระทำนี้ถูกบันทึกใน audit log',
   },
