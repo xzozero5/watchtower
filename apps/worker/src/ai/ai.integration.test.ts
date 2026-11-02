@@ -39,6 +39,7 @@ let config: ReturnType<typeof testConfig>;
 let gmailId = '';
 let orgId = '';
 let providerCalls = 0;
+const seenRequests: string[] = [];
 let sequence = 0;
 
 const owner = () => testDb.owner.db;
@@ -59,6 +60,7 @@ beforeAll(async () => {
     kind: 'mock',
     generate(request) {
       providerCalls += 1;
+      seenRequests.push(JSON.stringify(request));
       return inner.generate(request);
     },
   };
@@ -256,6 +258,27 @@ describe('AI brief, end to end on the mock provider', () => {
     expect(JSON.stringify(runs.find((run) => run.agent === 'summarizer')?.output)).toContain(
       '[EMAIL_1]',
     );
+  });
+
+  it('redacts a name that no dictionary knows when a cue introduces it (QA-30)', async () => {
+    const eventId = await receiveMail(
+      'Export fails',
+      'Hello, my name is Somchai Jaidee and the portal export keeps failing.\n\nBest regards,\nSomchai Jaidee',
+    );
+    const inbound = await ticketOf(eventId);
+    const ticketId = inbound.ticketId ?? '';
+    await insightOf(ticketId);
+    await quiet();
+    expect(seenRequests.length).toBeGreaterThan(0);
+    const mine = seenRequests.filter((request) => request.includes('Export fails'));
+    expect(mine.length).toBeGreaterThan(0);
+    for (const request of mine) {
+      expect(request).not.toContain('Somchai');
+      expect(request).not.toContain('Jaidee');
+    }
+    for (const run of await runsOf(ticketId)) {
+      expect(JSON.stringify(run)).not.toContain('Somchai');
+    }
   });
 
   it('summarizes a ticket made through the domain (portal path) in Thai', async () => {

@@ -1,5 +1,6 @@
 import {
   createNameDetector,
+  detectNameCues,
   detectEmails,
   detectNumbers,
   detectTokenShapes,
@@ -190,6 +191,7 @@ export function createRedactor(options: RedactorOptions = {}): Redactor {
           ...detectNumbers(view.text),
           ...detectEmails(view.text),
           ...detectNames(view),
+          ...detectNameCues(view),
         ];
 
         let output = '';

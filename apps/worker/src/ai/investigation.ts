@@ -36,6 +36,7 @@ import { z } from 'zod';
 import type { WorkerLogger } from '../logger.js';
 import type { RealtimeSink } from '../realtime.js';
 import { NEEDS_HUMAN_LABELS } from './brief.js';
+import { ticketPeopleNames } from './people-names.js';
 import type { AiRuntime } from './runtime.js';
 import {
   createKbSearchPort,
@@ -44,7 +45,6 @@ import {
   type ReadDb,
 } from './tool-ports.js';
 
-const MAX_NAMES = 200;
 const MAX_MESSAGES = 60;
 
 export interface InvestigationDeps {
@@ -257,11 +257,7 @@ export async function runInvestigation(
       .where(eq(schema.message.ticketId, ticket.id))
       .orderBy(asc(schema.message.createdAt))
       .limit(MAX_MESSAGES),
-    db
-      .select({ name: schema.contact.name })
-      .from(schema.contact)
-      .where(eq(schema.contact.orgId, ticket.orgId))
-      .limit(MAX_NAMES),
+    ticketPeopleNames(db, ticket),
     db
       .select({
         id: schema.intent.id,
@@ -301,7 +297,7 @@ export async function runInvestigation(
   const stage = ticketIntent === undefined ? 0 : effectiveStage(ticketIntent.stage);
   const scopeStage = Math.min(4, Math.max(0, stage)) as AutonomyStage;
 
-  const agents = runtime.agentDeps(contacts.map((contact) => contact.name));
+  const agents = runtime.agentDeps(contacts);
   const session = agents.redactor.session({ scope: ticket.id });
   const signal = AbortSignal.timeout(deps.deadlineMs ?? AI_INVESTIGATION_DEADLINE_MS);
 
@@ -341,7 +337,7 @@ export async function runInvestigation(
       ),
     );
     for (const tool of investigationTools({
-      kb: createKbSearchPort({ db, ai: runtime, names: contacts.map((contact) => contact.name) }),
+      kb: createKbSearchPort({ db, ai: runtime, names: contacts }),
       tickets: createSimilarTicketsPort(deps.readDb, keys),
       org: createOrgContextPort(deps.readDb),
       systems: deps.systems,
