@@ -94,8 +94,8 @@ function TicketActions({ ticket, trailing }: { ticket: TicketItem; trailing?: Re
 }
 
 /**
- * The open ticket (docs/design/ai-first-workspace.md section 3). One-line header: key, the AI's
- * summary as the title (the subject appears when it is opened), status, priority and SLA pills,
+ * The open ticket (docs/design/ai-first-workspace.md section 3). One-line header: key, the
+ * subject as the title (the AI summary is the first line of the brief, labelled AI), status, priority and SLA pills,
  * actions. Under it, for staff who may review AI work, the AI brief and its draft; then the
  * conversation, folded to the last customer message with "Show N earlier" while the AI leads; and
  * the reply dock, which opens the composer when the person takes over. Without a brief (the api
@@ -124,8 +124,6 @@ export function ConversationPane({
   const scrollRef = useRef<HTMLDivElement>(null);
   const composerRef = useRef<Pick<ComposerHandle, 'quote'>>(null);
   const dockRef = useRef<ReplyDockHandle>(null);
-  const [subjectFor, setSubjectFor] = useState<string | null>(null);
-  const subjectOpen = ticketKey !== null && subjectFor === ticketKey;
   const [earlierFor, setEarlierFor] = useState<string | null>(null);
 
   // The AI leads while its brief is loading or has something to say. With no brief, or a failed
@@ -231,9 +229,6 @@ export function ConversationPane({
   const canQuote = can('ticket.reply') || can('ticket.reply.own');
   const canWrite = canQuote || can('ticket.handle');
   const canReplyHere = can('ticket.reply') && !isClient;
-  const summary = canReviewAi
-    ? ai.data?.summary?.trim() || ('ai' in data ? data.ai?.summary?.trim() : undefined) || null
-    : null;
 
   return (
     <div className="flex min-h-0 flex-1 flex-col" data-ticket-key={data.key}>
@@ -244,27 +239,8 @@ export function ConversationPane({
             <span className="shrink-0 font-mono text-xs whitespace-nowrap text-muted-foreground">
               {data.key}
             </span>
-            <h3 className="min-w-0 truncate text-base font-semibold">
-              {summary ? (
-                <button
-                  type="button"
-                  aria-expanded={subjectOpen}
-                  title={data.subject}
-                  onClick={() => {
-                    setSubjectFor(subjectOpen ? null : data.key);
-                  }}
-                  className="max-w-full cursor-pointer truncate text-left font-semibold hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
-                >
-                  {summary}
-                </button>
-              ) : (
-                data.subject
-              )}
-            </h3>
+            <h3 className="min-w-0 truncate text-base font-semibold">{data.subject}</h3>
           </div>
-          {summary && subjectOpen ? (
-            <p className="truncate text-xs text-muted-foreground">{data.subject}</p>
-          ) : null}
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <StatusLabel status={data.status} pill />

@@ -126,7 +126,14 @@ export function createAuditedLlm(deps: AuditedLlmDeps) {
         tier: resolved.tier,
         prompt: call.prompt,
         inputHash: hmacInputHash(settings.inputHashKey, call),
-        redaction: { total: report.total, byKind: { ...report.byKind } },
+        // `dictionary_incomplete: 1` marks a run whose name dictionary was cut short (QA-30); no value is stored.
+        redaction: {
+          total: report.total,
+          byKind: {
+            ...report.byKind,
+            ...(report.dictionaryIncomplete === true ? { dictionary_incomplete: 1 } : {}),
+          },
+        },
         intent: call.intent ?? null,
         ticketId: call.ticketId ?? null,
         startedAt: new Date(startedAt).toISOString(),

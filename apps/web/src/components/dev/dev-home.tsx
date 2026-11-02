@@ -204,6 +204,7 @@ function DevTicket({ reference }: { reference: string }) {
           <span className="font-mono">{detail.key}</span> · {detail.priority}
         </p>
         <h2 className="text-lg font-semibold">{detail.subject}</h2>
+        <p className="text-xs text-muted-foreground">{t('devHome.freeTextNotice')}</p>
       </header>
 
       <dl className="grid grid-cols-[8rem_minmax(0,1fr)] gap-x-3 gap-y-1 text-sm">

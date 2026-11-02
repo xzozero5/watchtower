@@ -27,6 +27,8 @@ export interface BulkBarProps {
   /** A request is in flight: the controls wait. */
   busy: boolean;
   assignees: readonly BulkAssignee[];
+  /** `all_staff`: the api had no queue to narrow by, so the list is every active staff member. */
+  scope?: 'queue' | 'all_staff' | undefined;
   /** The person using the queue, offered first as "Me". */
   me: BulkAssignee | null;
   onApply: (action: BulkAction) => void;
@@ -46,7 +48,16 @@ type Pending = { action: BulkAction; summary: string };
  * at once: it says what would happen to how many tickets and waits for Apply, so a slip of the hand
  * does not close thirty tickets. There is no reply here; nothing a bulk action does reaches a customer.
  */
-export function BulkBar({ count, busy, assignees, me, onApply, onClear, outcome }: BulkBarProps) {
+export function BulkBar({
+  count,
+  busy,
+  assignees,
+  scope,
+  me,
+  onApply,
+  onClear,
+  outcome,
+}: BulkBarProps) {
   const t = useT();
   const example = useTicketKeyExample();
   const ids = useId();
@@ -239,6 +250,11 @@ export function BulkBar({ count, busy, assignees, me, onApply, onClear, outcome 
         ) : null}
       </form>
 
+      {scope === 'all_staff' ? (
+        <p data-assignee-scope="all_staff" className="px-3 pb-1.5 text-xs text-muted-foreground">
+          {t('bulk.allStaffHint')}
+        </p>
+      ) : null}
       {outcome ? <div className="px-3 pb-2 text-sm">{outcome}</div> : null}
     </div>
   );

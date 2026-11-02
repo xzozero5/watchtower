@@ -33,6 +33,38 @@ function Harness({
   return <CommandPalette open={open} onOpenChange={setOpen} commands={commands} />;
 }
 
+describe('CommandPalette: go to ticket (QA-09)', () => {
+  const renderWith = (open: () => void) => {
+    const { commands } = makeCommands();
+    renderApp(
+      <CommandPalette
+        open
+        onOpenChange={vi.fn()}
+        commands={commands}
+        onGoToTicket={open}
+        ticketKeyPrefix="OPS"
+      />,
+    );
+  };
+
+  it.each(['1003', 'OPS-1003', 'ops-1003'])('offers and opens ticket %s', async (typed) => {
+    const user = userEvent.setup();
+    const open = vi.fn();
+    renderWith(open);
+    await user.type(screen.getByRole('combobox'), typed);
+    expect(screen.getAllByRole('option')[0]).toHaveTextContent('Go to ticket OPS-1003');
+    await user.keyboard('{Enter}');
+    expect(open).toHaveBeenCalledWith('OPS-1003');
+  });
+
+  it('offers nothing for words', async () => {
+    const user = userEvent.setup();
+    renderWith(vi.fn());
+    await user.type(screen.getByRole('combobox'), 'theme');
+    expect(screen.queryByText(/Go to ticket/)).toBeNull();
+  });
+});
+
 describe('CommandPalette', () => {
   it('is a labelled dialog with a search field focused and every command listed', () => {
     const { commands } = makeCommands();

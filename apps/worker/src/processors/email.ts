@@ -46,6 +46,7 @@ export function renderEmail(job: EmailJob): OutboundMessage {
     case 'magic_link':
       return renderMagicLink(job);
     case 'portal_confirmation':
+    case 'portal_reply_received':
     case 'portal_update':
     case 'portal_merged':
     case 'portal_link':

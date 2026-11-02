@@ -35,6 +35,13 @@ export const composerEn = {
     forbidden: 'You are not allowed to do that on this ticket.',
     invalidTransition: 'The ticket cannot move to that status from where it is now.',
     ticketNotOpen: 'The ticket is closed or merged, so it cannot take new messages.',
+    channelNoOutbound:
+      "This ticket's channel cannot send replies from here. Record what you told the customer as an internal note.",
+  },
+  noOutbound: {
+    title: 'Reply not available',
+    off: ' (turned off for this ticket)',
+    body: "This ticket came in as {channel}; replies can't be sent from here. Record what you told the customer as an internal note.",
   },
   fields: { reply: 'Public reply', note: 'Internal note' },
   placeholders: {

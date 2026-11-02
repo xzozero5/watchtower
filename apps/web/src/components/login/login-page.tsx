@@ -211,6 +211,7 @@ function MagicLinkRequest() {
   const rateLimited = isApiError(mutation.error) && mutation.error.code === 'rate_limited';
   return (
     <Section title={t('login.client.title')} icon={Mail} tone="teal">
+      <p className="mb-3 text-sm text-muted-foreground">{t('login.client.trackingHint')}</p>
       <form
         onSubmit={(event) => {
           event.preventDefault();

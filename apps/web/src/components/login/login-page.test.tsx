@@ -118,6 +118,13 @@ describe('customer magic link', () => {
     return within(section);
   }
 
+  it('points customers to the tracking link in their confirmation email', async () => {
+    openLogin(LIVE);
+    expect(
+      await screen.findByText(/Use the tracking link in your confirmation email/),
+    ).toBeVisible();
+  });
+
   it('asks for a link and gives the same answer for any address', async () => {
     const user = userEvent.setup();
     const api = openLogin(LIVE, {

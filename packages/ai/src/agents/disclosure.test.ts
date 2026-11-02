@@ -264,6 +264,30 @@ describe('a placeholder in the draft is restored only from the drafter’s own s
   });
 });
 
+describe('a name found by a cue in a tool result is never restored for the customer (QA-30)', () => {
+  it('removes the sentence that carries the placeholder', async () => {
+    const withName = card('ev-1', {
+      snippet: 'This is Somchai Jaidee from the previous case, call back later.',
+    });
+    const { deps } = rig({
+      sentences: [
+        { text: 'Hello.', kind: 'courtesy', evidenceIds: [] },
+        { text: 'Please ask [NAME_1] about it.', kind: 'instruction', evidenceIds: ['ev-1'] },
+      ],
+    });
+    const outcome = await draftReply(deps, {
+      ...base,
+      disclosure: 'verified',
+      evidence: [withName],
+      turns: [{ from: 'customer', text: 'Help me with the webhook.' }],
+    });
+    if (outcome.status !== 'ok') throw new Error('expected ok');
+    expect(outcome.value.body).toBe('Hello.');
+    expect(outcome.value.body).not.toContain('Somchai');
+    expect(outcome.value.disclosure.removedSentences).toBe(1);
+  });
+});
+
 describe('draftReply at a restricted level', () => {
   it('shows the model no internal evidence and no internal note, and keeps a closing tag in the ticket as data', async () => {
     const { deps, requests } = rig({

@@ -54,10 +54,22 @@ describe('AI controls', () => {
     expect(within(kill).getByText(/Mana K\./)).toBeVisible();
     expect(within(kill).getByText(/provider outage/)).toBeVisible();
     expect(within(kill).getByRole('button', { name: /Turn off/ })).toBeVisible();
-    const cap = row('Limit all intents to Stage 2 or lower');
+    const cap = row('Never let AI send on its own (cap at Stage 2)');
     expect(cap).toHaveAttribute('data-on', 'false');
     expect(within(cap).getByText('Off')).toBeVisible();
     expect(within(cap).getByRole('button', { name: /Turn on/ })).toBeVisible();
+  });
+
+  it('explains the stages in plain words', async () => {
+    consoleApi();
+    renderConsole(<AiControlsPage />);
+    const legend = await screen.findByRole('region', { name: 'What the stages mean' });
+    expect(within(legend).getByText(/Stage 0 · Observe/)).toBeVisible();
+    expect(within(legend).getByText(/Stage 1 · Suggest/)).toBeVisible();
+    expect(
+      within(legend).getByText(/Stage 2 · Draft for approval: the AI drafts, a person sends/),
+    ).toBeVisible();
+    expect(within(legend).getByText(/Stage 3 · Sends on its own/)).toBeVisible();
   });
 
   it('flips the kill switch only after a reason is given, and records it', async () => {
@@ -153,7 +165,9 @@ describe('AI controls', () => {
     renderConsole(<AiControlsPage />);
     await screen.findByRole('heading', { name: 'Stop all AI runs' });
     await user.click(
-      within(row('Limit all intents to Stage 2 or lower')).getByRole('button', { name: /Turn on/ }),
+      within(row('Never let AI send on its own (cap at Stage 2)')).getByRole('button', {
+        name: /Turn on/,
+      }),
     );
     const dialog = await screen.findByRole('dialog', {
       name: 'Limit all intents to Stage 2 or lower?',
@@ -230,7 +244,8 @@ describe('AI controls', () => {
     renderConsole(<AiControlsPage />);
     const stages = await screen.findByRole('list', { name: 'Intents per stage' });
     expect(within(stages).getAllByRole('listitem').length).toBeGreaterThanOrEqual(3);
-    expect(screen.queryByText(/Stage 3/)).not.toBeInTheDocument();
+    // The plain legend names stage 3 as unavailable; the per-stage list never draws it.
+    expect(within(stages).queryByText(/Stage 3/)).not.toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Intents' })).toHaveAttribute('href', '/admin/intents');
     fireEvent.focus(stages);
   });

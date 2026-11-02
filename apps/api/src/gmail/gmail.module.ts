@@ -4,6 +4,8 @@ import { APP_CONFIG, type ApiConfig } from '../config/config.js';
 import { CredentialsModule } from '../credentials/credentials.module.js';
 import { GmailOauthController } from './gmail-oauth.controller.js';
 import { GMAIL_OAUTH_FETCH, GmailOauthService } from './gmail-oauth.service.js';
+import { GmailSyncController } from './gmail-sync.controller.js';
+import { GmailSyncService } from './gmail-sync.service.js';
 import { GmailPushController } from './gmail-push.controller.js';
 import { GMAIL_PUSH_VERIFIER, GmailPushService } from './gmail-push.service.js';
 import { createGoogleKeySet, createOidcPushVerifier } from './push-verifier.js';
@@ -25,7 +27,7 @@ import { createGoogleKeySet, createOidcPushVerifier } from './push-verifier.js';
  */
 @Module({
   imports: [CredentialsModule],
-  controllers: [GmailPushController, GmailOauthController],
+  controllers: [GmailPushController, GmailOauthController, GmailSyncController],
   providers: [
     {
       provide: GMAIL_PUSH_VERIFIER,
@@ -42,6 +44,7 @@ import { createGoogleKeySet, createOidcPushVerifier } from './push-verifier.js';
     { provide: GMAIL_OAUTH_FETCH, useValue: null },
     GmailPushService,
     GmailOauthService,
+    GmailSyncService,
   ],
 })
 export class GmailModule {}

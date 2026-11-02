@@ -1,5 +1,6 @@
 'use client';
 
+import { hasOutboundChannel } from '@watchtower/shared';
 import { Button, Tooltip } from '@watchtower/ui';
 import { Lock, Send } from 'lucide-react';
 import { type Ref, useImperativeHandle, useRef, useState } from 'react';
@@ -41,7 +42,10 @@ export function ReplyDock({
   const { t } = useI18n();
   const { can } = useSession();
   const { singleKeyShortcuts } = usePreferences();
-  const canReply = can('ticket.reply') || can('ticket.reply.own');
+  // No reply on a phone, walk-in, chat, other or internal ticket: nothing could be delivered.
+  const canReply =
+    (can('ticket.reply') || can('ticket.reply.own')) &&
+    !('channel' in ticket && !hasOutboundChannel(ticket.channel));
   const canNote = can('ticket.handle');
   const [request, setRequest] = useState<{ mode: ComposerMode; quote?: string } | null>(null);
   const [pinned, setPinned] = useState(false);

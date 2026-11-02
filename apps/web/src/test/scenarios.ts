@@ -139,6 +139,29 @@ export function workspaceApi({
         ],
       },
     },
+    'GET /v1/assignees': {
+      json: {
+        scope: 'all_staff',
+        assignees: [
+          {
+            id: uuid(900),
+            name: 'Alex Agent',
+            role: 'agent',
+            onShift: true,
+            openTickets: 1,
+            inQueue: false,
+          },
+          {
+            id: uuid(901),
+            name: 'Sam Support',
+            role: 'agent',
+            onShift: true,
+            openTickets: 0,
+            inQueue: false,
+          },
+        ],
+      },
+    },
     'GET /v1/ticket-workflow': { json: { transitions: defaultTransitionList() } },
     ...(role === 'client' ? {} : { 'GET /v1/views': { json: viewList() } }),
     ...overrides,

@@ -62,6 +62,8 @@ export interface FilterBarProps {
   /** A client sees fewer filters: no assignee, no SLA, no sorting by due time, no saved views. */
   isClient: boolean;
   searchRef?: Ref<HTMLInputElement>;
+  /** Enter in the search box, with what is typed (the list may not have caught up yet). */
+  onSubmitSearch?: (value: string) => void;
   /** How many tickets the list shows, set next to the view name. */
   count?: ReactNode;
   /** Extra control at the end of the header row (the button that folds the queue away). */
@@ -81,7 +83,9 @@ function ViewCount({ count }: { count: number | null }) {
   if (count === null) return null;
   return (
     <span className="tabular shrink-0 text-xs text-muted-foreground">
-      <span className="sr-only">{t('queue.views.count', { count })}</span>
+      <span className="sr-only">
+        {t(count === 1 ? 'queue.views.countOne' : 'queue.views.count', { count })}
+      </span>
       <span aria-hidden>{count}</span>
     </span>
   );
@@ -112,6 +116,7 @@ export function FilterBar({
   saveError = null,
   isClient,
   searchRef,
+  onSubmitSearch,
   count: ticketCount,
   headerEnd,
 }: FilterBarProps) {
@@ -256,6 +261,7 @@ export function FilterBar({
         onSubmit={(event) => {
           event.preventDefault();
           if (draft !== filters.q) onChange({ ...filters, q: draft });
+          onSubmitSearch?.(draft);
         }}
         className="relative px-3 pb-2"
       >

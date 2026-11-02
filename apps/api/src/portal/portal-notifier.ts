@@ -7,7 +7,9 @@ import {
   PORTAL_EMAIL_TTL_SECONDS,
   PORTAL_TOKEN_FRAGMENT_KEY,
   customerStatus,
+  portalCategorySchema,
   portalLocaleSchema,
+  portalUrgencySchema,
   portalTrackingPath,
   type CustomerStatus,
   type PortalLocale,
@@ -73,8 +75,36 @@ export class PortalNotifier {
         ticketKey,
         trackingUrl: await this.link(tx, ticket, ticketKey, to),
         expectedFirstResponseAt: ticket.firstResponseDueAt?.toISOString() ?? null,
+        ...formChoices(ticket),
       },
       `portal-confirm-${ticket.id}`,
+      tx,
+      PORTAL_EMAIL_TTL_SECONDS,
+    );
+  }
+
+  /**
+   * "We got your reply", sent after the customer answers from the portal. The reply came through
+   * a tracking link, so the address is the one that holds the link; staff replies never come
+   * here. The caller throttles per ticket so a burst of replies is one email, not a stream.
+   */
+  async replyReceived(
+    tx: DbTransaction,
+    ticket: TicketRow,
+    ticketKey: string,
+    message: MessageRow,
+  ): Promise<void> {
+    const to = await this.recipient(tx, ticket);
+    if (!to) return;
+    await this.outbox.send(
+      {
+        kind: 'portal_reply_received',
+        to: to.email,
+        locale: to.locale,
+        ticketKey,
+        trackingUrl: await this.link(tx, ticket, ticketKey, to),
+      },
+      `portal-reply-received-${message.id}`,
       tx,
       PORTAL_EMAIL_TTL_SECONDS,
     );
@@ -243,6 +273,23 @@ export class PortalNotifier {
     url.hash = `${PORTAL_TOKEN_FRAGMENT_KEY}=${token}`;
     return url.toString();
   }
+}
+
+/** The topic and urgency the customer picked on the form: fixed choices only, never their text. */
+function formChoices(ticket: TicketRow) {
+  const custom: unknown = ticket.customFields;
+  const portal =
+    typeof custom === 'object' && custom !== null && 'portal' in custom ? custom.portal : undefined;
+  const field = (name: string): unknown =>
+    typeof portal === 'object' && portal !== null && name in portal
+      ? (portal as Record<string, unknown>)[name]
+      : undefined;
+  const category = portalCategorySchema.safeParse(field('category'));
+  const urgency = portalUrgencySchema.safeParse(field('urgency'));
+  return {
+    category: category.success ? category.data : null,
+    urgency: urgency.success ? urgency.data : null,
+  };
 }
 
 /** Contact preference first, then the language of the form it was submitted in, then English `[ASSUMED]`. */

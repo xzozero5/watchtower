@@ -11,11 +11,10 @@ import {
   Tooltip,
 } from '@watchtower/ui';
 import { FileSearch, type LucideIcon, SlidersHorizontal, UserRound } from 'lucide-react';
-import { useState, type ReactNode } from 'react';
+import type { ReactNode } from 'react';
 
 import { EvidencePanel } from '@/components/ai/evidence-panel';
 import { useI18n } from '@/i18n/provider';
-import { useTicketAi } from '@/lib/ai/queries';
 import { isDetail, isStaffTicket, type TicketItem } from '@/lib/tickets/model';
 import { useTicket } from '@/lib/tickets/queries';
 
@@ -24,6 +23,9 @@ import { InvestigatePanel } from './investigate-panel';
 import { Row, TicketDetails } from './ticket-details';
 
 export type PanelTab = 'evidence' | 'details' | 'customer';
+
+/** The tab the panel opens on, always `[ASSUMED]` Details: it is the one that always has content. */
+export const DEFAULT_PANEL_TAB: PanelTab = 'details';
 
 /**
  * A tab of the panel: an icon that names itself in a tooltip and in `aria-label`; the selected tab
@@ -48,7 +50,7 @@ function PanelTabTrigger({
         className="group aria-selected:bg-primary-subtle aria-selected:text-foreground"
       >
         <Icon aria-hidden className="size-4 shrink-0" />
-        <span aria-hidden className="hidden group-aria-selected:inline">
+        <span aria-hidden className="truncate">
           {label}
         </span>
       </TabsTrigger>
@@ -93,8 +95,8 @@ function CustomerTab({ ticket }: { ticket: TicketItem }) {
 
 /**
  * The right-hand panel: tabs Evidence / Details / Customer for the open ticket. The Evidence tab
- * is only there for someone who may review AI drafts, and it is the one that opens first when the
- * AI brought evidence (`tab` null means "pick for me"). `collapsed` folds the panel to a rail with
+ * is only there for someone who may review AI drafts; the panel always opens on Details (stable, whatever the
+ * AI does; `tab` null means "the default"). `collapsed` folds the panel to a rail with
  * the toggle button (1024px and wider).
  */
 export function TicketPanel({
@@ -119,15 +121,9 @@ export function TicketPanel({
 }) {
   const { t } = useI18n();
   const ticket = useTicket(ticketKey);
-  const ai = useTicketAi(ticketKey, showAi);
-  const hasEvidence = (ai.data?.evidence.length ?? 0) > 0;
-  // The first answer for a ticket picks the opening tab, once. Evidence arriving later must not pull
-  // someone out of Details while they work there.
-  const [opening, setOpening] = useState<{ key: string | null; tab: PanelTab } | null>(null);
-  if (ai.isFetched && opening?.key !== ticketKey) {
-    setOpening({ key: ticketKey, tab: showAi && hasEvidence ? 'evidence' : 'details' });
-  }
-  const chosen = tab ?? (opening?.key === ticketKey ? opening.tab : 'details');
+  // The panel opens on Details whatever the AI is doing, so it never changes under the person.
+  // Evidence is one click away, and a chip or a citation opens it on purpose.
+  const chosen = tab ?? DEFAULT_PANEL_TAB;
   const active: PanelTab = chosen === 'evidence' && !showAi ? 'details' : chosen;
 
   return (

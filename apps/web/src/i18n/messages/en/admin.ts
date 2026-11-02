@@ -211,6 +211,16 @@ export const adminEn = {
   },
   intents: {
     empty: 'No intents yet.',
+    emptyHint:
+      'An intent is a kind of request (for example "login issue"). Use "New intent" to add the first one. It starts at Stage 2: a person approves every reply.',
+    new: 'New intent',
+    newDescription: 'A new intent starts at Stage 2 · Draft for approval. You can lower it later.',
+    keyLabel: 'Key',
+    keyHint:
+      'Lowercase letters, digits and underscores, 2 to 63 characters, starting with a letter. Cannot be changed later.',
+    keyInvalid:
+      'Use lowercase letters, digits and underscores, 2 to 63 characters, starting with a letter.',
+    startsAt: 'Starts at Stage 2 · Draft for approval',
     notFound: 'Intent not found.',
     col: { name: 'Intent', priority: 'Priority', sla: 'SLA', stage: 'Stage' },
     tabs: { details: 'Details', autonomy: 'Autonomy', history: 'History' },
@@ -254,9 +264,14 @@ export const adminEn = {
     deleteConfirm: 'Tickets in this queue keep working; they just have no queue.',
   },
   ai: {
+    legendTitle: 'What the stages mean',
+    legend0: 'Stage 0 · Observe: the AI only watches.',
+    legend1: 'Stage 1 · Suggest: the AI suggests when asked.',
+    legend2: 'Stage 2 · Draft for approval: the AI drafts, a person sends.',
+    legend3: 'Stage 3 · Sends on its own: not available.',
     headOnly: 'Only the head can change these.',
     loadError: 'Couldn’t load AI status. The switches keep their last state.',
-    capTitle: 'Limit all intents to Stage 2 or lower',
+    capTitle: 'Never let AI send on its own (cap at Stage 2)',
     capBody:
       'Keeps every intent at its stage or lower and blocks raising. Never raises Stage 0 or 1.',
     killTitle: 'Stop all AI runs',

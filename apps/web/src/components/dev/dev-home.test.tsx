@@ -84,6 +84,7 @@ describe('the developer home', () => {
     await user.click(await screen.findByRole('button', { name: /Login fails for/ }));
     expect(await screen.findByText('Call [PHONE_1] about [EMAIL_1]')).toBeVisible();
     expect(screen.getByText(/r\*\*\*@customer\.example/)).toBeVisible();
+    expect(screen.getByText('Names in free text may not be fully masked.')).toBeVisible();
     expect(screen.queryByRole('textbox', { name: /reply/i })).not.toBeInTheDocument();
     expect(screen.getByText('No AI brief yet.')).toBeVisible();
 

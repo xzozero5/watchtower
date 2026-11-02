@@ -3,6 +3,7 @@ import type { Widen } from '../types';
 
 export const commandsTh: Widen<typeof commandsEn> = {
   focusSearch: 'ค้นหาในคิวงาน',
+  goTicket: 'ไปที่ ticket {key}',
   goHome: 'ไปที่หน้าหลัก',
   goAdmin: 'ไปที่ผู้ดูแลระบบ › {section}',
   goShift: 'ไปที่กะงาน › {section}',

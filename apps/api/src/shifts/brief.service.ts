@@ -142,6 +142,7 @@ export class BriefService {
             ).map((row) => row.userId),
           );
     return {
+      scope: members.size > 0 ? 'queue' : 'all_staff',
       assignees: people.map((person) => ({
         id: person.id,
         name: person.name,

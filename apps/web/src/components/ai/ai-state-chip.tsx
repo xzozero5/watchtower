@@ -29,15 +29,19 @@ const LOOK: Record<Shown, { icon: ChipIcon; tone: TintId }> = {
 export function AiStateChip({
   state,
   iconOnly = false,
+  intentMatched = true,
   className,
 }: {
   state: AiState;
+  /** False when neither the AI nor a person set an intent: "Classified" would be untrue then. */
+  intentMatched?: boolean;
   iconOnly?: boolean;
   className?: string;
 }) {
   const t = useT();
   if (state === 'none') return null;
-  const { icon, tone } = LOOK[state];
+  const noIntent = state === 'classified' && !intentMatched;
+  const { icon, tone } = noIntent ? { icon: CircleOff, tone: 'slate' as TintId } : LOOK[state];
   return (
     <TintChip
       tone={tone}
@@ -46,7 +50,7 @@ export function AiStateChip({
       data-ai-state={state}
       className={className}
     >
-      {t(`ai.state.${state}`)}
+      {noIntent ? t('ai.state.classifiedNoIntent') : t(`ai.state.${state}`)}
     </TintChip>
   );
 }

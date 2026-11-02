@@ -64,12 +64,12 @@ export function useShiftOverview(enabled = true) {
 }
 
 /** Who can be assigned, with who is on shift (agents may not list users, so this is the picker's source). */
-export function useAssignees(enabled = true) {
+export function useAssignees(enabled = true, queueId?: string) {
   const api = useApi();
   const userId = useUserId();
   return useQuery({
-    queryKey: shiftKeys(userId).assignees,
-    queryFn: ({ signal }) => api.assignees({}, signal),
+    queryKey: [...shiftKeys(userId).assignees, queueId ?? null],
+    queryFn: ({ signal }) => api.assignees(queueId ? { queueId } : {}, signal),
     enabled,
     staleTime: 15_000,
   });

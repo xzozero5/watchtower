@@ -38,6 +38,13 @@ export const composerTh: Widen<typeof composerEn> = {
     forbidden: 'คุณไม่มีสิทธิ์ทำสิ่งนี้กับ ticket นี้',
     invalidTransition: 'ticket เปลี่ยนไปสถานะนั้นจากสถานะปัจจุบันไม่ได้',
     ticketNotOpen: 'ticket ปิดหรือรวมแล้ว จึงรับข้อความใหม่ไม่ได้',
+    channelNoOutbound:
+      'ช่องทางของ ticket นี้ส่งคำตอบจากที่นี่ไม่ได้ ให้บันทึกสิ่งที่แจ้งลูกค้าเป็นบันทึกภายใน',
+  },
+  noOutbound: {
+    title: 'ตอบลูกค้าจากที่นี่ไม่ได้',
+    off: ' (ปิดไว้สำหรับ ticket นี้)',
+    body: 'ticket นี้มาทาง {channel} ส่งคำตอบจากที่นี่ไม่ได้ ให้บันทึกสิ่งที่แจ้งลูกค้าเป็นบันทึกภายใน',
   },
   fields: { reply: 'คำตอบถึงลูกค้า', note: 'บันทึกภายใน' },
   placeholders: {

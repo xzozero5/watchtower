@@ -35,6 +35,7 @@ export function shiftApi({ role = 'agent', overrides = {} }: ShiftApiOptions = {
     'GET /v1/handoffs/incoming': { json: emptyIncoming() },
     'GET /v1/assignees': {
       json: {
+        scope: 'all_staff',
         assignees: [
           assignee(WHO.me),
           assignee(WHO.mana),

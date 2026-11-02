@@ -95,6 +95,11 @@ export const portalEn = {
   },
   confirmation: {
     number: 'Your request number',
+    nextTitle: 'What happens next',
+    nextReceived: 'We received your request.',
+    nextReview: 'A person reviews it.',
+    nextReply: 'We reply by email. You can add details on your tracking page.',
+    usuallyReply: 'We usually reply within business hours.',
     expected: 'We aim to reply by {time}.',
     next: 'Open the link in the email to follow progress and to reply. Keep the request number if you contact us.',
     noEmail:

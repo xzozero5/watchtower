@@ -54,6 +54,24 @@ export function parseTicketKey(
   return Number.isSafeInteger(number) && number > 0 ? number : null;
 }
 
+/**
+ * A ticket number as a person types it into a search box: `OPS-1003`, `ops-1003`, `OPS1003`,
+ * `ops 1003`, `#1003` or just `1003` (the prefix is this instance's, in any case, and optional; the
+ * separator is optional). Null when the text is not that. Searching only: a URL or a link still
+ * needs the strict `parseTicketKey`.
+ */
+export function parseTicketSearchNumber(
+  value: string,
+  prefix: string = DEFAULT_TICKET_KEY_PREFIX,
+): number | null {
+  let text = value.trim();
+  if (text.toUpperCase().startsWith(prefix.toUpperCase())) text = text.slice(prefix.length);
+  const match = /^[\s#-]*(\d{1,15})$/.exec(text);
+  if (match?.[1] === undefined) return null;
+  const number = Number(match[1]);
+  return Number.isSafeInteger(number) && number > 0 ? number : null;
+}
+
 /** What any instance's ticket key looks like, whatever its prefix: the prefix is checked by the api. */
 const TICKET_KEY_SHAPE = /^[A-Za-z][A-Za-z0-9]{1,9}-\d{1,15}$/;
 
@@ -381,8 +399,17 @@ export const ticketListQuerySchema = z.object({
   intentId: z.uuid().optional(),
   channel: ticketChannelSchema.optional(),
   tag: z.string().trim().min(1).max(64).optional(),
-  /** Free text over the subject and the visible messages, and an exact ticket number. */
+  /**
+   * Free text over the subject and the visible messages; a ticket number (`OPS-1003`, `ops1003`,
+   * `1003`; prefix and hyphen optional); and the requester's email (exact or prefix, any case;
+   * not for a masked reader or a client).
+   */
   q: z.string().trim().min(MIN_SEARCH_LENGTH).max(200).optional(),
+  /**
+   * With `q`: ignore `status` so the search covers every status (the UI asks again for the count
+   * of closed matches with `GET /v1/tickets/stats`/`count` and `status=resolved,closed`).
+   */
+  allStatuses: z.stringbool().optional(),
   /** Only open tickets that are past a first-response or resolution due time. */
   overdue: z.stringbool().optional(),
   /**

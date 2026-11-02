@@ -24,6 +24,15 @@ describe('the masks', () => {
     expect(out).toMatch(/\[NAME_\d+\].*\[EMAIL_\d+\].*\[PHONE_\d+\]/);
   });
 
+  it('masks a name nobody told it about when a cue introduces it (QA-30)', () => {
+    const session = createMaskingSession('t', []);
+    const out = session.text(
+      'My name is Somchai Jaidee, the export fails.\nBest regards,\nSomchai Jaidee\nผมชื่อสมชาย ใจดี',
+    );
+    expect(out).not.toMatch(/Somchai|Jaidee|สมชาย|ใจดี/);
+    expect(out).toContain('[NAME_');
+  });
+
   it('shows a notice instead of text when the list of names is not complete', () => {
     const session = createMaskingSession('t', ['Somchai Demo'], false);
     expect(session.text('anything at all')).toBe(MASKED_TEXT_UNAVAILABLE);

@@ -8,7 +8,12 @@ import { z } from 'zod';
 
 import { assertDisjoint } from './features/compose.js';
 import { FEATURES, FEATURE_QUEUES } from './features/index.js';
-import { customerStatusSchema, portalLocaleSchema } from './portal.js';
+import {
+  customerStatusSchema,
+  portalCategorySchema,
+  portalLocaleSchema,
+  portalUrgencySchema,
+} from './portal.js';
 
 /** Queues of the core (Phase 0) features; Phase 1 features add theirs in `features/<feature>.ts`. */
 export const CORE_QUEUE_NAMES = {
@@ -65,6 +70,17 @@ function portalEmailVariants() {
       kind: z.literal('portal_confirmation'),
       ...portalEmailBase,
       expectedFirstResponseAt: z.iso.datetime().nullable(),
+      /**
+       * What the customer picked on the form: fixed choices, never free text (C-11), so the
+       * recap cannot carry a phishing message. Optional so jobs queued before T-148 still parse.
+       */
+      category: portalCategorySchema.nullish(),
+      urgency: portalUrgencySchema.nullish(),
+    }),
+    z.object({
+      /** "We got your reply", sent to the customer after they answer from the portal (T-148). */
+      kind: z.literal('portal_reply_received'),
+      ...portalEmailBase,
     }),
     z.object({
       kind: z.literal('portal_update'),

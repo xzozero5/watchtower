@@ -1,5 +1,6 @@
 export const commandsEn = {
   focusSearch: 'Search the queue',
+  goTicket: 'Go to ticket {key}',
   goHome: 'Go to Home',
   goAdmin: 'Go to Admin › {section}',
   goShift: 'Go to Shift › {section}',

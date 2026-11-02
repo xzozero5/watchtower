@@ -14,8 +14,9 @@ import Link from 'next/link';
 import { useMemo, useSyncExternalStore } from 'react';
 
 import { useI18n } from '@/i18n/provider';
-import { formatPortalTime } from '@/lib/portal/portal-format';
 import { parseSubmitted, readSubmittedRaw } from '@/lib/portal/submitted-handoff';
+
+import { NextSteps } from './next-steps';
 
 const subscribe = () => () => undefined;
 
@@ -25,7 +26,7 @@ const subscribe = () => () => undefined;
  * only in the email; it is never shown here.
  */
 export function Confirmation() {
-  const { t, locale } = useI18n();
+  const { t } = useI18n();
   // undefined on the server and during hydration, then the stored answer (or null).
   const raw = useSyncExternalStore(subscribe, readSubmittedRaw, () => undefined);
   const result = useMemo(() => (raw === undefined ? undefined : parseSubmitted(raw)), [raw]);
@@ -86,13 +87,6 @@ export function Confirmation() {
 
       <div className="flex flex-col gap-2">
         <p>{t('portal.trackingSent', { email: result.maskedEmail })}</p>
-        {result.expectedFirstResponseAt ? (
-          <p>
-            {t('portal.confirmation.expected', {
-              time: formatPortalTime(result.expectedFirstResponseAt, locale),
-            })}
-          </p>
-        ) : null}
         {/* What to do next and what to do without the email: one hint, not two paragraphs. */}
         <div className="flex">
           <HelpHint label={t('portal.confirmation.help')}>
@@ -101,6 +95,8 @@ export function Confirmation() {
           </HelpHint>
         </div>
       </div>
+
+      <NextSteps expectedFirstResponseAt={result.expectedFirstResponseAt} />
 
       <Link
         href="/portal"

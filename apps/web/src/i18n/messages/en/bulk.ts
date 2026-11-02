@@ -6,6 +6,7 @@ export const bulkEn = {
   rowSelected: 'Selected',
   selectRow: 'Select {key}',
   assign: 'Assign',
+  allStaffHint: 'Showing all active staff: this view has no queue to narrow by.',
   assignTo: 'Assign to…',
   assignToMe: 'Me ({name})',
   unassign: 'Unassigned',

@@ -45,6 +45,7 @@ export const loginTh: Widen<typeof loginEn> = {
   },
   client: {
     title: 'ลูกค้า',
+    trackingHint: 'ต้องการติดตามคำขอ? ใช้ลิงก์ติดตามในอีเมลยืนยันของคุณ ไม่จำเป็นต้องมีบัญชี',
     button: 'ส่งลิงก์เข้าสู่ระบบทางอีเมล',
     sending: 'กำลังส่ง',
     sentTitle: 'ตรวจสอบอีเมลของคุณ',

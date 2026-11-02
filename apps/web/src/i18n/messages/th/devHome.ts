@@ -4,6 +4,7 @@ import type { Widen } from '../types';
 export const devHomeTh: Widen<typeof devHomeEn> = {
   title: 'หน้าหลักของ dev',
   masked: 'ข้อมูลส่วนบุคคลในหน้านี้ถูกปกปิด',
+  freeTextNotice: 'ชื่อบุคคลในข้อความอิสระอาจไม่ถูกปกปิดทั้งหมด',
   tabsLabel: 'ticket ที่จะดู',
   waiting: 'รอ dev',
   mine: 'ของฉัน',

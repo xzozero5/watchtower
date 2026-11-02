@@ -230,6 +230,22 @@ describe('portal tracking page', () => {
     expect(screen.getByText(/We aim to reply by .*3:00\s?PM/)).toBeInTheDocument();
   });
 
+  it('shows what happens next on the ticket page, with a plain sentence when no time is known', async () => {
+    openTracking({
+      'GET /v1/portal/tickets/:key': () => ({
+        json: makeView({
+          status: 'received',
+          statusLabel: 'Received',
+          expectedFirstResponseAt: null,
+        }),
+      }),
+    });
+    await screen.findByRole('heading', { name: 'OPS-12' });
+    expect(screen.getByRole('heading', { name: 'What happens next' })).toBeInTheDocument();
+    expect(screen.getByText('A person reviews it.')).toBeInTheDocument();
+    expect(screen.getByText('We usually reply within business hours.')).toBeInTheDocument();
+  });
+
   it('keeps working after a reload: no fragment, the tab still has the value', async () => {
     openTracking();
     await screen.findByRole('heading', { name: 'OPS-12' });

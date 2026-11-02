@@ -2,10 +2,10 @@ import type { opsEn } from '../en/ops';
 import type { Widen } from '../types';
 
 export const opsTh: Widen<typeof opsEn> = {
-  rail: { alerts: 'การแจ้งเตือน', incidents: 'เหตุการณ์', statusPage: 'หน้าสถานะ' },
+  rail: { alerts: 'แจ้งเตือนระบบ', incidents: 'เหตุการณ์', statusPage: 'หน้าสถานะ' },
   nav: {
     label: 'ส่วนงานปฏิบัติการ',
-    alerts: 'การแจ้งเตือน',
+    alerts: 'แจ้งเตือนระบบ',
     services: 'บริการและการยกระดับ',
     incidents: 'เหตุการณ์',
     statusPage: 'หน้าสถานะ',
