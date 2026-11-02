@@ -200,7 +200,19 @@ export function createRedactor(options: RedactorOptions = {}): Redactor {
           if (from < cursor || to <= from) continue;
           const original = text.slice(from, to);
           if (keepIssuedTokens && found.kind === 'LITERAL' && entries.has(original)) continue;
-          output += text.slice(cursor, from) + tokenFor(found.kind, original, origin, source);
+          // The name detector only matches the scoped dictionary (this ticket's own contacts and
+          // organisation), so a NAME found in a tool result is still the ticket's own person: giving
+          // it `tool` provenance left "[NAME_3] Org" on the evidence panel. Nobody else's name can
+          // be unmasked by this, because only dictionary names are ever NAME tokens.
+          const tokenOrigin = found.kind === 'NAME' && origin === 'tool' ? 'ticket' : origin;
+          output +=
+            text.slice(cursor, from) +
+            tokenFor(
+              found.kind,
+              original,
+              tokenOrigin,
+              tokenOrigin === 'ticket' ? undefined : source,
+            );
           cursor = to;
           total += 1;
           byKind[found.kind] = (byKind[found.kind] ?? 0) + 1;

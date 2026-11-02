@@ -47,10 +47,26 @@ export function parsePromptFile(fileName: string, content: string): PromptFile {
   if (fields.get('id') !== id || Number(fields.get('version')) !== version) {
     throw new PromptFileError(`Prompt ${fileName}: front matter id/version do not match the name`);
   }
-  return {
+  const file: PromptFile = {
     ref: { id, version, hash: sha256Hex(content) },
     body: (front[2] ?? '').trim(),
   };
+  PARSED.add(file);
+  return file;
+}
+
+// Every PromptFile that came out of `parsePromptFile`. A literal `{ ref, body }` is not in here, so
+// the trusted render path (redaction/redacted-text.ts) cannot be fed arbitrary text.
+const PARSED = new WeakSet<PromptFile>();
+
+/** True only for an object made by `parsePromptFile` (that is, read from the prompt catalog). */
+export function isParsedPromptFile(file: PromptFile): boolean {
+  return PARSED.has(file);
+}
+
+/** Splits a body into literal text (even indexes) and slot names (odd indexes). */
+export function splitPromptSlots(body: string): string[] {
+  return body.split(/\{\{\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}/);
 }
 
 /** Fills `{{name}}` slots. Unknown slots throw, so a typo cannot reach the provider. */

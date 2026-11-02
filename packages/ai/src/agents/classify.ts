@@ -2,8 +2,11 @@ import { INBOUND_CLASSIFICATION_TYPES } from '@watchtower/shared';
 import { z } from 'zod';
 
 import type { PromptFile } from '../prompts.js';
-import { renderPrompt } from '../prompts.js';
-import { joinRedacted, type RedactedText } from '../redaction/redacted-text.js';
+import {
+  joinRedacted,
+  renderTrustedPrompt,
+  type RedactedText,
+} from '../redaction/redacted-text.js';
 import type { RedactionSession } from '../redaction/redactor.js';
 import {
   askGuard,
@@ -174,8 +177,8 @@ async function runClassifier(
   const prompt: PromptFile = deps.prompts.latest(CLASSIFIER_PROMPT_ID);
   let system: RedactedText;
   try {
-    system = session.redact(
-      renderPrompt(prompt.body, { intents: renderIntentList(input.intents) }),
+    system = renderTrustedPrompt(prompt, { intents: renderIntentList(input.intents) }, (text) =>
+      session.redact(text),
     );
   } catch (error) {
     const reason = skippedFor(error);

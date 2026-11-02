@@ -9,7 +9,8 @@ import { createAuditedLlm } from '../audited.js';
 import { mockSettings } from '../models.js';
 import { MockEmbeddingProvider, MockLlmProvider } from '../providers/mock.js';
 import { createRedactor } from './redactor.js';
-import { joinRedacted, type RedactedText } from './redacted-text.js';
+import { parsePromptFile, PromptFileError } from '../prompts.js';
+import { joinRedacted, renderTrustedPrompt, type RedactedText } from './redacted-text.js';
 
 const prompt: PromptRef = { id: 'classifier', version: 1, hash: 'b'.repeat(64) };
 const redactor = createRedactor();
@@ -100,5 +101,33 @@ describe('RedactedText (N4 enforced by the compiler)', () => {
   it('is not exported from the package entry point', async () => {
     const entry = await import('../index.js');
     expect('mintRedacted' in entry).toBe(false);
+  });
+});
+
+describe('renderTrustedPrompt', () => {
+  const file = parsePromptFile(
+    't.v1.md',
+    '---\nid: t\nversion: 1\n---\nnew_customer_issue {{ who }} / {{who}}',
+  );
+  const names = createRedactor({ names: () => ['Smoke Customer'] });
+
+  it('leaves template text alone and redacts every slot value', () => {
+    const session = names.session({ scope: 'x' });
+    const out = renderTrustedPrompt(file, { who: 'Smoke Customer' }, (t) => session.redact(t));
+    expect(out).toBe('new_customer_issue [NAME_1] / [NAME_1]');
+    expectTypeOf(out).toEqualTypeOf<RedactedText>();
+  });
+
+  it('throws on a missing slot value', () => {
+    const session = names.session({ scope: 'x' });
+    expect(() => renderTrustedPrompt(file, {}, (t) => session.redact(t))).toThrow(PromptFileError);
+  });
+
+  it('refuses a PromptFile that was not parsed from the catalog (a literal cannot smuggle text)', () => {
+    const session = names.session({ scope: 'x' });
+    const forged = { ref: file.ref, body: 'a@b.com' };
+    expect(() => renderTrustedPrompt(forged, {}, (t) => session.redact(t))).toThrow(
+      PromptFileError,
+    );
   });
 });

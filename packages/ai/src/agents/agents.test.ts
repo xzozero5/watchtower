@@ -112,6 +112,44 @@ describe('prompt files', () => {
   });
 });
 
+describe('static prompt text is not redacted (live QA 2026-11-02)', () => {
+  const smoke = (): Rig =>
+    rig({ redactor: createRedactor({ names: () => ['Smoke Customer', 'Smoke Org'] }) });
+
+  it('keeps new_customer_issue verbatim although "Customer" is a dictionary name part', async () => {
+    const r = smoke();
+    await classifyTicket(r.deps, {
+      ticketId: TICKET,
+      scope: TICKET,
+      channel: 'email',
+      subject: 'Cannot login',
+      body: 'Smoke Customer here, I forgot my password.',
+      intents: INTENTS,
+    });
+    const system = r.requests[0]?.system ?? '';
+    expect(system).toContain('new_customer_issue');
+    expect(system).not.toMatch(/new_\[NAME_\d+\]_issue/);
+    // The ticket text itself is still redacted.
+    expect(JSON.stringify(r.requests[0]?.messages)).not.toContain('Smoke');
+  });
+
+  it('still redacts an interpolated value that holds a dictionary name', async () => {
+    const r = smoke();
+    await classifyTicket(r.deps, {
+      ticketId: TICKET,
+      scope: TICKET,
+      channel: 'email',
+      subject: 's',
+      body: 'b',
+      intents: [{ key: 'org_question', name: 'Questions from Smoke Org' }],
+    });
+    const system = r.requests[0]?.system ?? '';
+    expect(system).toContain('org_question');
+    expect(system).not.toContain('Smoke Org');
+    expect(system).toMatch(/Questions from \[NAME_\d+\]/);
+  });
+});
+
 describe('classifyTicket with the mock provider', () => {
   it('classifies an English sign-in problem and records an ai_run row', async () => {
     const r = rig();

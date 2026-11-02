@@ -7,8 +7,11 @@ import {
 import { z } from 'zod';
 
 import type { AutonomyStage } from '../contract.js';
-import { renderPrompt } from '../prompts.js';
-import { joinRedacted, type RedactedText } from '../redaction/redacted-text.js';
+import {
+  joinRedacted,
+  renderTrustedPrompt,
+  type RedactedText,
+} from '../redaction/redacted-text.js';
 import type { RedactionSession } from '../redaction/redactor.js';
 import type { BudgetedTools } from '../toolkit/budget.js';
 import { TOOL_NAMES, SYSTEM_TOOLS } from '../toolkit/tools.js';
@@ -249,7 +252,7 @@ export async function investigateTicket(
   let system: RedactedText;
   let message: RedactedText;
   try {
-    system = session.redact(renderPrompt(prompt.body, {}));
+    system = renderTrustedPrompt(prompt, {}, (text) => session.redact(text));
     message = joinRedacted(
       [
         ticketText,
