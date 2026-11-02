@@ -5,7 +5,7 @@
  * Performance rule (R-3): nothing here may backtrack over unbounded input. Numbers are found by a
  * single left-to-right scan that groups digit runs into clusters and tests bounded windows of
  * groups; emails are found by walking out from each `@` with hard length caps; names use
- * Aho-Corasick; the few regular expressions left are anchored literals or have bounded repeats.
+ * Aho-Corasick (plus the cue detector near the end: literal cues, bounded reads); the few regular expressions left are anchored literals or have bounded repeats.
  */
 import { buildMatcher, MatchLimitError } from './aho-corasick.js';
 import { foldForMatching, type NormalizedView } from './normalize.js';
@@ -633,6 +633,339 @@ export function createNameDetector(options: NameMatcherOptions): (view: Normaliz
       throw error;
     }
   };
+}
+
+// ---------------------------------------------------------------------------------------------
+// Names introduced by a cue (QA-30): "my name is Somchai Jaidee", "Regards,\nSomchai", "คุณสมชาย"
+// ---------------------------------------------------------------------------------------------
+
+/**
+ * The dictionary only knows people the system already has. A name written in free text by someone
+ * it does not know ("my name is Somchai Jaidee") would reach the model raw, so a name that follows
+ * a cue is redacted too. There is no NER (ADR-008): a name with no cue and not in the dictionary
+ * is still not found. This detector over-redacts on purpose (N4 prefers a false positive).
+ *
+ * Work is bounded (SR106-N2): the cues are found by one regular expression made of literals with
+ * bounded repeats (linear, no nested quantifier); each cue reads at most `MAX_CUE_TOKENS` tokens of
+ * at most `MAX_LATIN_TOKEN` / `MAX_THAI_TOKEN` characters across short separator runs, by index
+ * arithmetic; and a text with more than `MAX_CUE_MATCHES` cues is refused (`NameMatchLimitError`,
+ * fail closed) like a text with too many dictionary hits.
+ */
+export const MAX_CUE_TOKENS = 3;
+export const MAX_LATIN_TOKEN = 30;
+/** The first Thai token is a run with no spaces (given name and family name can be glued together). */
+export const MAX_THAI_TOKEN = 24;
+/** Later, space-separated Thai tokens are held to the length of a single name. */
+const MAX_THAI_LATER_TOKEN = 15;
+const MAX_CUE_GAP = 3;
+/** A sign-off may be followed by a blank line (CR LF CR LF). */
+const MAX_SIGNOFF_GAP = 6;
+export const MAX_CUE_MATCHES = 50_000;
+
+// Cues are matched on `view.folded` (lower case). One named group per kind of cue:
+//  honor   Mr / Mrs / Ms / Dr / Miss / Khun / K. (also glued: "Mr.Somchai")
+//  strong  "my name is", "name:" - the writer introduces themselves; a lower-case name is accepted
+//  medium  "I am", "I'm", "this is", "Dear", "Hi", "Hello", "Hey", "From:"
+//  sign    a sign-off with a comma ("Thanks,Somchai") or alone on its line ("Regards" + newline)
+//  thlabel Thai "ชื่อ" (also ผมชื่อ, ดิฉันชื่อ)   thhon  Thai honorifics
+const CUE_PATTERN = new RegExp(
+  [
+    String.raw`(?<![\p{L}\p{N}])(?<honor>(?:mrs|mr|ms|dr|miss|khun)(?:\.(?=[\p{L}]|[ \t])|(?=[ \t]))|k\.(?=[ \t]))`,
+    String.raw`(?<![\p{L}\p{N}])(?<strong>my[ \t]{1,2}name(?:[ \t]{1,2}is|['’]s)(?=[ \t])|name[ \t]{0,2}[:：])`,
+    String.raw`(?<![\p{L}\p{N}])(?<medium>(?:i[ \t]{1,2}am|i['’]m|this[ \t]{1,2}is|dear|hi|hello|hey)(?=[ \t])|from[ \t]{0,2}[:：])`,
+    String.raw`(?<![\p{L}\p{N}])(?<sign>(?:(?:(?:best|kind|warm)[ \t]{1,2})?regards|thanks|thank[ \t]{1,2}you|(?:yours[ \t]{1,2})?(?:sincerely|faithfully)|cheers|best)(?:[ \t]{0,2},|(?=[ \t]{0,2}\r?\n)))`,
+    String.raw`(?<thlabel>ชื่อ)`,
+    String.raw`(?<thhon>นางสาว|นาง|นาย|คุณ)`,
+  ].join('|'),
+  'gu',
+);
+
+const THAI_LETTER = /[ก-ฺเ-๎]/u;
+const UPPER = /\p{Lu}/u;
+const LOWER = /\p{Ll}/u;
+const NAME_LETTER = /[\p{L}\p{M}]/u;
+
+/** Capitalised words that follow a cue without being a name ("Dear Team", "This is Important"). */
+const NOT_A_NAME = new Set(
+  (
+    'the a an team support all sir sirs madam everyone everybody customer customers service services ' +
+    'desk helpdesk admin admins sales ops tech technical billing urgent important not my our your we ' +
+    'you it i in on at to for from of and or but if so just still also now please hello hi thanks ' +
+    'thank regards best kind sincerely mr mrs ms dr miss there here what how why when who ticket ' +
+    'issue problem error bug email mail account system application app api server colleagues ' +
+    'client clients user users is was are am be that this with as by can could would have has had do ' +
+    'does did no yes sorry unable writing having getting facing trying looking contacting reaching ' +
+    'using currently happy glad new available'
+  ).split(' '),
+);
+
+/**
+ * Thai words that follow a Thai cue and are not a person ("คุณภาพ" = quality). Thai has no
+ * spaces, so "คุณ" glued to more Thai letters is ambiguous: it is a name ("คุณสมชาย") unless the
+ * letters form one of these words. A word counts only when it is the WHOLE run after the cue (the
+ * run being cut at the first stop word), never as a prefix: "คุณวุฒิชัย" is a name, "คุณภาพของระบบ"
+ * is not. Words that are also common first syllables of names (สมบัติ, ธรรม, วุฒิ, เอก) are left out
+ * on purpose, so "คุณสมบัติ ใจดี" is redacted. The list cannot be complete: a word that is not on it
+ * is redacted as if it were a name (over-redaction, the safe direction).
+ */
+const THAI_NOT_A_NAME_AFTER_CUE: Readonly<Record<string, readonly string[]>> = {
+  คุณ: ['ภาพ', 'ลักษณะ', 'ลักษณ์', 'ค่า', 'ประโยชน์'],
+  นาย: ['หน้า', 'จ้าง', 'ทะเบียน', 'กรัฐมนตรี', 'กเทศมนตรี', 'ช่าง', 'แบบ', 'อำเภอ', 'ทุน'],
+  นาง: ['แบบ', 'ฟ้า', 'พยาบาล', 'รำ', 'งาม'],
+  นางสาว: [],
+  ชื่อ: [
+    'เสียง',
+    'เรื่อง',
+    'ผู้ใช้',
+    'บัญชี',
+    'บริษัท',
+    'ไฟล์',
+    'โดเมน',
+    'องค์กร',
+    'ระบบ',
+    'ลูกค้า',
+    'สินค้า',
+    'โปรเจกต์',
+    'เซิร์ฟเวอร์',
+    'แอป',
+    'หัวข้อ',
+    'ตาราง',
+    'คอลัมน์',
+  ],
+};
+/** Thai words that end in a cue and are not it ("ขอบคุณ" = thank you). */
+const THAI_NOT_A_CUE_BEFORE: Readonly<Record<string, readonly string[]>> = {
+  คุณ: ['ขอบ'],
+};
+
+/**
+ * Common function words that end a Thai name run ("คุณสมชายแจ้งว่า" = "Khun Somchai said that").
+ * Thai has no spaces, so without this the run would swallow the rest of the sentence. Trade-off:
+ * a name that itself contains one of these is cut there and the rest of it is left in the text.
+ * The list is short on purpose and leaves out strings common inside names ("นะ" in ธนะ, "ว่า" in สว่าง).
+ */
+const THAI_RUN_STOPS: readonly string[] = [
+  'ครับ',
+  'ค่ะ',
+  'คะ',
+  'แจ้ง',
+  'ช่วย',
+  'โทร',
+  'อีเมล',
+  'เบอร์',
+  'ติดต่อ',
+  'และ',
+  'กับ',
+  'จาก',
+  'ได้',
+  'ที่',
+  'ของ',
+  'เป็น',
+  'ไม่',
+  'แล้ว',
+  'ต้องการ',
+  'อยาก',
+  // "คุณ" also means "you": "คุณสามารถรีเซ็ตได้ไหม" must not lose its sentence to the name.
+  'สามารถ',
+  'จะ',
+  'คือ',
+  'ต้อง',
+  'ควร',
+  'กรุณา',
+  'โปรด',
+  'ไหม',
+  'หรือ',
+];
+
+/** The part of a Thai run before the first stop word; empty when the run starts with one. */
+function cutThaiRun(run: string): string {
+  let cut = run.length;
+  for (const stop of THAI_RUN_STOPS) {
+    const at = run.indexOf(stop);
+    if (at !== -1 && at < cut) cut = at;
+  }
+  return run.slice(0, cut);
+}
+
+function isHorizontalSpace(char: string): boolean {
+  return char === ' ' || char === '\t';
+}
+
+/** One name-like token at `from`: a Thai run, or a Latin word (capitalised, or any case when `allowLower`). */
+function readNameToken(
+  text: string,
+  from: number,
+  mode: { allowAllCaps: boolean; allowLower: boolean; maxThai: number },
+): { end: number; word: string } | undefined {
+  const first = text.charAt(from);
+  if (first === '') return undefined;
+  if (THAI_LETTER.test(first)) {
+    const word = thaiRunAt(text, from, mode.maxThai);
+    return word === '' ? undefined : { end: from + word.length, word };
+  }
+  const startsLower = LOWER.test(first);
+  if (!UPPER.test(first) && !(mode.allowLower && startsLower)) return undefined;
+  let end = from + 1;
+  let lower = 0;
+  while (end < text.length && end - from < MAX_LATIN_TOKEN) {
+    const char = text.charAt(end);
+    if (NAME_LETTER.test(char)) {
+      if (LOWER.test(char)) lower += 1;
+    } else if (
+      (char === "'" || char === '’' || char === '-') &&
+      NAME_LETTER.test(text.charAt(end + 1))
+    ) {
+      // O'Brien, Anne-Marie: the joiner stays inside the token.
+    } else break;
+    end += 1;
+  }
+  if (end - from < 2) return undefined;
+  if (lower === 0 && !mode.allowAllCaps) return undefined;
+  return { end, word: text.slice(from, end) };
+}
+
+/** The Thai run at `from` (at most `max` letters), cut at the first stop word. */
+function thaiRunAt(text: string, from: number, max: number): string {
+  let end = from;
+  while (end < text.length && end - from < max && THAI_LETTER.test(text.charAt(end))) end += 1;
+  return cutThaiRun(text.slice(from, end));
+}
+
+interface CueReadOptions {
+  newlineOk: boolean;
+  allowAllCaps: boolean;
+  /** The name may follow the cue with no separator ("Thanks,Somchai", "Mr.Somchai", Thai). */
+  attachedOk: boolean;
+  /** The first token may be lower case ("my name is somchai"). Later tokens must be capitalised. */
+  allowLower: boolean;
+}
+
+/**
+ * Reads up to `MAX_CUE_TOKENS` name tokens after a cue, one span per token (so a token shares its
+ * placeholder with the same word found by the dictionary).
+ */
+function readNameAfterCue(
+  text: string,
+  from: number,
+  options: CueReadOptions,
+  spans: Span[],
+): void {
+  let position = from;
+  // Separator between the cue and the name: spaces, a colon, and for a sign-off a line break.
+  let gap = 0;
+  const maxGap = options.newlineOk ? MAX_SIGNOFF_GAP : MAX_CUE_GAP;
+  while (position < text.length && gap < maxGap) {
+    const char = text.charAt(position);
+    const skippable =
+      isHorizontalSpace(char) ||
+      char === ':' ||
+      char === '：' ||
+      (options.newlineOk && (char === '\n' || char === '\r'));
+    if (!skippable) break;
+    position += 1;
+    gap += 1;
+  }
+  if (gap === 0 && !options.attachedOk) return;
+  for (let taken = 0; taken < MAX_CUE_TOKENS; taken += 1) {
+    const token = readNameToken(text, position, {
+      allowAllCaps: options.allowAllCaps,
+      allowLower: options.allowLower && taken === 0,
+      maxThai: taken === 0 ? MAX_THAI_TOKEN : MAX_THAI_LATER_TOKEN,
+    });
+    if (token === undefined || NOT_A_NAME.has(token.word.toLowerCase())) break;
+    spans.push(span(position, token.end, 'NAME', PRIORITY.NAME));
+    // The next token must follow after one or two spaces on the same line.
+    let next = token.end;
+    while (next < text.length && next - token.end < 2 && isHorizontalSpace(text.charAt(next))) {
+      next += 1;
+    }
+    if (next === token.end) break;
+    position = next;
+  }
+}
+
+/**
+ * Names after a cue: English ("my name is", "name:", "I am", "this is", "Hi", Mr/Mrs/Ms/Dr/Miss/Khun,
+ * "Dear", "From:", a name after "Regards," and the like) and Thai (ชื่อ, คุณ, นาย, นาง, นางสาว,
+ * ผมชื่อ, ดิฉันชื่อ).
+ *
+ * Accepted false positives (over-redaction): "This is Important" (a capitalised word after "this is"
+ * that is not on the short stop list), "Hi Bangkok", a Thai word that opens with a Thai honorific and
+ * is not on the deny list, and a lower-case word after "my name is". Accepted false negatives: a name
+ * no cue introduces and a name after the third token.
+ */
+export function detectNameCues(view: NormalizedView): Span[] {
+  const spans: Span[] = [];
+  const { text, folded } = view;
+  let matches = 0;
+  for (const match of folded.matchAll(CUE_PATTERN)) {
+    matches += 1;
+    if (matches > MAX_CUE_MATCHES) {
+      throw new NameMatchLimitError(`More than ${String(MAX_CUE_MATCHES)} name cues in one text`);
+    }
+    const groups = match.groups ?? {};
+    const start = match.index;
+    const end = start + match[0].length;
+    if (groups.honor !== undefined) {
+      // Mr / Mrs / Ms / Dr / Miss / Khun / K. written with a capital, and not the unit in "200 ms Latency".
+      if (!UPPER.test(text.charAt(start))) continue;
+      let back = start - 1;
+      while (back >= 0 && isHorizontalSpace(text.charAt(back))) back -= 1;
+      if (back >= 0 && /[0-9]/.test(text.charAt(back))) continue;
+      readNameAfterCue(
+        text,
+        end,
+        { newlineOk: false, allowAllCaps: true, attachedOk: true, allowLower: false },
+        spans,
+      );
+    } else if (groups.strong !== undefined) {
+      readNameAfterCue(
+        text,
+        end,
+        { newlineOk: false, allowAllCaps: true, attachedOk: true, allowLower: true },
+        spans,
+      );
+    } else if (groups.medium !== undefined) {
+      // "This is IMPORTANT" and "I AM LATE" are not names; "DEAR SOMCHAI" is.
+      const shout = /^(?:dear|from)/.test(folded.slice(start, start + 4));
+      readNameAfterCue(
+        text,
+        end,
+        { newlineOk: false, allowAllCaps: shout, attachedOk: false, allowLower: false },
+        spans,
+      );
+    } else if (groups.sign !== undefined) {
+      readNameAfterCue(
+        text,
+        end,
+        { newlineOk: true, allowAllCaps: true, attachedOk: true, allowLower: false },
+        spans,
+      );
+    } else {
+      const cue = groups.thlabel ?? groups.thhon ?? '';
+      const label = cue === 'ชื่อ';
+      // A deny-listed word counts only as the whole run ("คุณภาพ ..."); "คุณวุฒิชัย" is a name.
+      const run = thaiRunAt(text, end, MAX_THAI_TOKEN);
+      if (run !== '' && (THAI_NOT_A_NAME_AFTER_CUE[cue] ?? []).includes(run)) continue;
+      if ((THAI_NOT_A_CUE_BEFORE[cue] ?? []).some((word) => text.endsWith(word, start))) continue;
+      let from = end;
+      // "ชื่อ คือ สมชาย" (the name is ...)
+      if (label) {
+        let probe = from;
+        while (probe < text.length && probe - from < 2 && isHorizontalSpace(text.charAt(probe))) {
+          probe += 1;
+        }
+        if (text.startsWith('คือ', probe)) from = probe + 'คือ'.length;
+      }
+      readNameAfterCue(
+        text,
+        from,
+        { newlineOk: false, allowAllCaps: true, attachedOk: true, allowLower: label },
+        spans,
+      );
+    }
+  }
+  return spans;
 }
 
 /**

@@ -1,5 +1,6 @@
 import {
   createNameDetector,
+  detectNameCues,
   detectEmails,
   detectNumbers,
   detectTokenShapes,
@@ -15,6 +16,12 @@ import { mintRedacted, type RedactedText } from './redacted-text.js';
 export interface RedactionReport {
   total: number;
   byKind: Partial<Record<RedactionKind, number>>;
+  /**
+   * True when the name dictionary the session was given is known to be cut short (an organization
+   * with more people than the caller could load). The name cues still run; this only records that
+   * the dictionary was not complete, so the audit row says so.
+   */
+  dictionaryIncomplete?: true;
 }
 
 /**
@@ -111,6 +118,8 @@ export interface RedactorOptions {
    * throw `NameMatchLimitError`. Treat it as "do not send this text to a model".
    */
   names?: () => Iterable<string>;
+  /** Set when `names` is known to be incomplete; it is copied into every report (and `ai_run`). */
+  dictionaryIncomplete?: boolean;
   /** Ignore names shorter than this many characters. Default 3. */
   minNameLength?: number;
   /** Also redact each part of a multi-word name. Default true. */
@@ -198,6 +207,7 @@ export function createRedactor(options: RedactorOptions = {}): Redactor {
           ...detectNumbers(view.text),
           ...detectEmails(view.text),
           ...detectNames(view),
+          ...detectNameCues(view),
         ];
 
         let output = '';
@@ -244,7 +254,9 @@ export function createRedactor(options: RedactorOptions = {}): Redactor {
         },
 
         report() {
-          return { total, byKind: { ...byKind } };
+          return options.dictionaryIncomplete === true
+            ? { total, byKind: { ...byKind }, dictionaryIncomplete: true }
+            : { total, byKind: { ...byKind } };
         },
       };
     },

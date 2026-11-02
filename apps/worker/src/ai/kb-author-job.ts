@@ -5,9 +5,9 @@ import type { AiInsightReason } from '@watchtower/shared';
 import { asc, eq } from 'drizzle-orm';
 
 import type { WorkerLogger } from '../logger.js';
+import { ticketPeopleNames, warnIfIncomplete } from './people-names.js';
 import type { AiRuntime } from './runtime.js';
 
-const MAX_NAMES = 200;
 const MAX_MESSAGES = 60;
 
 export interface KbAuthorDeps {
@@ -48,6 +48,7 @@ export async function runKbAuthor(
       subject: schema.ticket.subject,
       orgId: schema.ticket.orgId,
       intentId: schema.ticket.intentId,
+      requesterContactId: schema.ticket.requesterContactId,
     })
     .from(schema.ticket)
     .where(eq(schema.ticket.id, job.ticketId))
@@ -70,11 +71,7 @@ export async function runKbAuthor(
       .where(eq(schema.message.ticketId, ticket.id))
       .orderBy(asc(schema.message.createdAt))
       .limit(MAX_MESSAGES),
-    db
-      .select({ name: schema.contact.name })
-      .from(schema.contact)
-      .where(eq(schema.contact.orgId, ticket.orgId))
-      .limit(MAX_NAMES),
+    ticketPeopleNames(db, ticket),
     db
       .select({ id: schema.intent.id, key: schema.intent.key })
       .from(schema.intent)
@@ -90,7 +87,8 @@ export async function runKbAuthor(
     text: message.text,
   }));
 
-  const agents = runtime.agentDeps(contacts.map((contact) => contact.name));
+  warnIfIncomplete(deps.logger, ticket.id, contacts);
+  const agents = runtime.agentDeps(contacts.names, { dictionaryIncomplete: !contacts.complete });
   const outcome = await authorKbDraft(agents, {
     ticketId: ticket.id,
     subject: ticket.subject,

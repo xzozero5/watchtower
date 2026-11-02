@@ -18,10 +18,9 @@ import { asc, eq } from 'drizzle-orm';
 
 import type { WorkerLogger } from '../logger.js';
 import { loadActiveIntents } from './classifier-hook.js';
+import { ticketPeopleNames, warnIfIncomplete } from './people-names.js';
 import type { AiRuntime } from './runtime.js';
 
-/** Contacts of the organization whose names the redactor should know (the ticket's participants). */
-const MAX_NAMES = 200;
 const MAX_MESSAGES = 60;
 
 /** What a person sees when the AI did not read the ticket. Stable copy, keyed by the reason code. */
@@ -78,6 +77,7 @@ export async function makeAiBrief(deps: BriefDeps, ticketId: string): Promise<Br
       channel: schema.ticket.channel,
       orgId: schema.ticket.orgId,
       intentId: schema.ticket.intentId,
+      requesterContactId: schema.ticket.requesterContactId,
     })
     .from(schema.ticket)
     .where(eq(schema.ticket.id, ticketId))
@@ -119,11 +119,7 @@ export async function makeAiBrief(deps: BriefDeps, ticketId: string): Promise<Br
       .where(eq(schema.message.ticketId, ticketId))
       .orderBy(asc(schema.message.createdAt))
       .limit(MAX_MESSAGES),
-    db
-      .select({ name: schema.contact.name })
-      .from(schema.contact)
-      .where(eq(schema.contact.orgId, ticket.orgId))
-      .limit(MAX_NAMES),
+    ticketPeopleNames(db, ticket),
     loadActiveIntents(db),
     ticket.intentId === null
       ? Promise.resolve(undefined)
@@ -146,7 +142,8 @@ export async function makeAiBrief(deps: BriefDeps, ticketId: string): Promise<Br
   }));
   const firstCustomer = turns.find((turn) => turn.from === 'customer')?.text ?? '';
 
-  const agents = runtime.agentDeps(contacts.map((contact) => contact.name));
+  warnIfIncomplete(deps.logger, ticket.id, contacts);
+  const agents = runtime.agentDeps(contacts.names, { dictionaryIncomplete: !contacts.complete });
   const session = agents.redactor.session({ scope: ticketId });
 
   const classified = await classifyTicket(agents, {

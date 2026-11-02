@@ -485,6 +485,20 @@ describe('what the record takes from the caller (SR106-R9)', () => {
     expect(run.redaction).toEqual({ total: 2, byKind: { EMAIL: 2 } });
   });
 
+  it('records dictionary_incomplete when the session was told its name list is cut short (QA-30)', async () => {
+    const { llm, call } = setup();
+    const session = createRedactor({ dictionaryIncomplete: true }).session({ scope: 'ticket:inc' });
+    const system = session.redact('You classify.');
+    const content = session.redact('a@b.com');
+    const { run } = await llm.generate({
+      ...call,
+      system,
+      messages: [{ role: 'user', content }],
+      redaction: session,
+    });
+    expect(run.redaction).toEqual({ total: 1, byKind: { EMAIL: 1, dictionary_incomplete: 1 } });
+  });
+
   it('refuses a source that throws, before the provider is called', async () => {
     const { llm, call } = setup();
     await expect(
