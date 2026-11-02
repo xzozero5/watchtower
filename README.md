@@ -6,6 +6,52 @@ Open-source, self-hosted **AI command center for technical support and tech oper
 
 > **Status: MVP (`v0.1.0`), not production-proven.** Every test ran against mocks and fixtures. No integration has been connected to a real Gmail, LINE, Discord, GCP or AI account yet, so expect the first real connection to find problems. See [What is real today](#what-is-real-today).
 
+![A ticket opened with the AI brief: intent and confidence, evidence from the knowledge base and the organization's data, a draft reply to approve](docs/screenshots/ticket-ai-brief.jpg)
+
+## Features
+
+**Inbox and tickets**
+- One queue for Gmail, LINE, the customer portal and requests a person files by hand (phone, walk-in, chat), sorted into a triage board: needs you, AI working, waiting.
+- SLA per organization tier with business calendars and holidays, first response and resolution clocks, pause while waiting on the customer, at-risk and overdue badges.
+- Status workflow, assignment (manual or round robin), merge, duplicate suggestions, tags, internal notes, Thai and English search, realtime updates.
+- Customer portal with self-hosted bot protection, tracking links, replies and CSAT surveys.
+
+**AI that prepares, people who decide**
+- Every new ticket is classified (intent with a confidence), investigated with read-only tools and given a draft reply grounded on the knowledge base, with sources you can open.
+- Autonomy per intent from stage 0 (observe) to stage 2 (draft for approval), enforced in the database. The AI never answers a customer on its own.
+- An emergency switch to hold every intent at stage 2 or lower, and a kill switch that stops all AI runs.
+- Personal data is redacted before any model call. Every run is audited with model, prompt version, tools and cost, under daily caps.
+- `mock` or `anthropic` provider, model tiers set in configuration and no model names in the code.
+
+**Operations**
+- Alerts from GCP Monitoring (Pub/Sub push) and signed webhooks: dedup, correlation, a service catalog, escalation, snooze and heartbeats.
+- Incidents with severity, a timeline, linked tickets, mass communication and "what changed".
+- A public status page with email subscriptions, off until you turn it on.
+- Investigation tools for logs, metrics, repositories and data, all read-only, with a shared rate budget and guarded SQL.
+- Usage metrics with anomaly detection that opens proactive tickets, and a Client Health Score.
+- An Ops dashboard: queue now, volume, SLA, quality, reliability, AI, team, product usage, service status. A missing figure says why instead of showing zero.
+
+**Team**
+- Shifts, roster, clock-in, handoff with acknowledgement, a daily brief and shift notes.
+- Roles: client, agent, lead, head, and a `dev` role that reads tickets with personal data masked.
+- A head console for users, organizations, SLA, intents, queues, the audit log, AI controls, integrations and the outbox.
+- Discord webhook and in-app notifications. Keyboard-first, TH/EN, light and dark, works on a phone (PWA).
+
+## Screenshots
+
+| | |
+|---|---|
+| ![Ops dashboard](docs/screenshots/dashboard.jpg) | ![The ticket in dark mode](docs/screenshots/ticket-dark.jpg) |
+| Ops dashboard | Dark mode |
+| ![Filing a ticket that came by phone](docs/screenshots/new-ticket.jpg) | ![Developer home with personal data masked](docs/screenshots/dev-home.jpg) |
+| A ticket that came by phone | Developer view, personal data masked |
+| ![AI controls: emergency switch and kill switch](docs/screenshots/admin-ai.jpg) | ![Customer portal](docs/screenshots/portal.jpg) |
+| AI controls | Customer portal |
+
+<p align="center"><img src="docs/screenshots/phone-queue.jpg" alt="The queue on a phone" width="300"></p>
+
+Screenshots come from the demo stack: fictional data, mock AI, and mock embeddings, which is why the evidence above includes a password article.
+
 ## Try it in five minutes (no accounts needed)
 
 You need Docker with Compose, plus Node and pnpm for the demo data. Nothing leaves your machine: mail goes to Mailpit and the AI is a deterministic mock.
