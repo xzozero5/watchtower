@@ -7,7 +7,7 @@ snapshot สั้นสำหรับ cold start อยู่ที่ `HANDOF
 | Phase | สถานะ (2026-11-02) | ค้าง |
 |---|---|---|
 | 0 Foundation | ✅ | — |
-| 1 Inbox + AI 0–2 + Shifts | ✅ ด้วย mock · **ไม่เคยต่อของจริง** | T-113 ส่วนที่เหลือ, T-114, T-115 pilot (เจ้าของ), T-125, T-103e/f, T-110c |
+| 1 Inbox + AI 0–2 + Shifts | ✅ · **POC ต่อ Gmail จริง + AI จริง (`claude -p`) แล้ว 2026-11-03** · LINE/Discord/SMTP ยัง mock | T-113 ส่วนที่เหลือ, T-114, T-115 pilot (เจ้าของ), T-125, T-103e/f, T-110c |
 | 2 Reliability + Usage | ✅ ด้วย mock/fixture | T-207 |
 | คำขอเจ้าของ 2026-11-02 | T-136, T-137 ✅ · T-133 บางส่วน | T-134/T-135 บน `wip/t-134` (ยังไม่ re-review, ไม่มีเว็บ), T-133 ที่เหลือ |
 | 3 Autonomy + Learning | ⬜ | — |
@@ -40,6 +40,13 @@ snapshot สั้นสำหรับ cold start อยู่ที่ `HANDOF
 - (2026-11-01) cloud session: `dockerd` ต้องสั่งเอง · Docker Hub 429 → pull ซ้ำทีละ image · build image ไม่ได้ (corepack ไม่เชื่อ CA ของ proxy) · Playwright ใช้ `PW_EXECUTABLE_PATH=/opt/pw-browsers/chromium` · หลาย worktree รัน e2e พร้อมกันต้องตั้ง `E2E_PORT` ต่างกัน · Redis counter ข้ามรอบ test → `RATE_LIMIT_NAMESPACE`
 
 ## Log
+
+## 2026-11-03 02:40 (Asia/Bangkok) — main thread — POC ต่อของจริง + role-play QA + แก้ตาม feedback (เจ้าของมอบ po ตัดสิน)
+- **ทำอะไร:** ต่อ Gmail จริง (OAuth + Pub/Sub push ผ่าน tunnel ที่มีตัวกรอง push-only) และ AI จริงผ่าน `claude -p` (ADR-017) · agent 5 บทบาทใช้ stack จริง → 34 รายการ (`docs/qa/2026-11-02-roleplay-triage.md`) · po ตัดสิน bucket C 5 ข้อแทนเจ้าของ · merge: bucket A ทั้งหมด (คิว, ticket pane, ค้นเลข/อีเมล, assignees, intents UI, portal next steps, 404, rail, dev notice, reasonCode), QA-30 name-cue + dictionary (ADR-008 แก้ไข), T-140 แนบไฟล์ portal (ADR-007), T-148 อีเมลตอบรับ, T-150 Sync Gmail now, T-138 ข้อความ SLA, บั๊ก: redaction ใน prompt, stats 500, audit gap ค้นอีเมล, 404 โลโก้, axe target-size
+- **Review (N7):** security-reviewer ทุกงานที่แตะ redaction/ค้นหา/upload — รอบแรกไม่ผ่าน 2 ครั้ง (P1 ชื่อเพื่อนร่วมงานจาก `similar_tickets` หลุดเข้า draft ลูกค้า; P1 memory DoS ของ upload สาธารณะ) แก้แล้ว review ซ้ำผ่าน
+- **Test (`313c9ed`, รันเองบน service ทิ้งได้):** lint, typecheck, unit ผ่าน · integration api 1127, db 389, domain 454, worker 232 · full-stack 38/38 · web e2e 172/173 (`shift.e2e.ts` AC-7 ล้ม 1 ครั้ง รันซ้ำ 3 รอบผ่าน 12/12 → flaky ใต้โหลด) · live: OPS-1011 (ชื่อ/เบอร์/อีเมลปลอม) classifier ผ่านรอบแรก, ไม่มี PII ดิบใน output ของ AI · Gmail push จริง 204
+- **ค้าง:** UI rework branch `claude/ui-rework-bbf2dc` รอเจ้าของสั่ง merge · T-154…T-158 (BACKLOG) · ข้อความไทยรอเจ้าของภาษา
+- **ไม่ยืนยัน:** business hours ในข้อความ SLA/อีเมล `[ASSUMED]` · recall ของ name-cue `[UNVERIFIED]` · memory ของ upload วัดใน harness ไม่ใช่ container
 
 ## 2026-11-02 15:05 (Asia/Bangkok) — main thread — release `v0.1.0` (MVP)
 - เจ้าของสั่งหยุดที่ checkpoint · หยุด T-134 (push WIP ที่ `7c0b432`) และ T-113 (push ส่วนที่ผ่าน) · README เขียนใหม่ + ลองตามขั้นตอนจริง · CHANGELOG `0.1.0` · HANDOFF ฉบับ release · คู่มือ credential `docs/runbooks/credentials.md`
