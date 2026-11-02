@@ -11,7 +11,7 @@
 // its stdin closes (the Playwright process died). Stopping drops the database. Needs a build first:
 //   pnpm turbo run build   (api, worker, db, shared and the web standalone output)
 import { spawn } from 'node:child_process';
-import { randomBytes } from 'node:crypto';
+import { generateKeyPairSync, randomBytes } from 'node:crypto';
 import {
   createWriteStream,
   existsSync,
@@ -194,9 +194,29 @@ async function main() {
 
   const breakGlassEmail = `e2e-admin-${runId}@example.com`;
   const breakGlassPassword = randomBytes(18).toString('base64url');
+  // Secrets of the mock integrations, made here so the test process and the api share them (never printed):
+  // the LINE channel secret that signs webhooks, the machine-alert HMAC secret and the Discord application's
+  // Ed25519 key pair (the api gets the public half; the tests sign interactions with the private half).
+  const lineChannelSecret = randomBytes(24).toString('base64');
+  const alertWebhookSecret = randomBytes(24).toString('base64url');
+  const discordKeys = generateKeyPairSync('ed25519');
+  const discordPublicKeyHex = discordKeys.publicKey
+    .export({ type: 'spki', format: 'der' })
+    .subarray(-32)
+    .toString('hex');
+  const discordPrivateKeyPem = discordKeys.privateKey.export({ type: 'pkcs8', format: 'pem' });
+  const netLog = join(logDir, 'network-attempts.jsonl');
+  const lineLog = join(logDir, 'line-calls.jsonl');
+  const gmailLog = join(logDir, 'gmail-sends.jsonl');
+  writeFileSync(netLog, '');
+  writeFileSync(lineLog, '');
+  writeFileSync(gmailLog, '');
+  // Every stack process loads the guard that refuses any connection that is not loopback (T-113).
+  const guard = join(import.meta.dirname, 'no-network.cjs');
+  const guarded = { NODE_OPTIONS: `--require=${guard}`, E2E_NET_LOG: netLog };
   const shared = {
     ...base,
-    LOG_LEVEL: 'warn',
+    LOG_LEVEL: env.E2E_LOG_LEVEL ?? 'warn',
     HOST: '127.0.0.1',
     APP_URL: webUrl,
     API_URL: apiUrl,
@@ -214,16 +234,35 @@ async function main() {
     OUTBOX_POLL_INTERVAL_MS: '250',
     // The stack has no Gmail credential: the in-memory mailbox is an explicit opt-in (T-102).
     GMAIL_MOCK_ENABLED: 'true',
+    // Mock integrations the T-113 scenarios drive: the LINE channel secret (the transport is the stack's
+    // in-memory one, see line-transport.mjs), the machine-alert secret, Discord's public key, the tools'
+    // fixtures instead of GCP and a product database, and the AI/embedding mocks (the defaults, said out loud).
+    LINE_CHANNEL_SECRET: lineChannelSecret,
+    ALERT_WEBHOOK_SECRET: alertWebhookSecret,
+    DISCORD_PUBLIC_KEY: discordPublicKeyHex,
+    DISCORD_APPLICATION_ID: '100000000000000001',
+    AI_PROVIDER: 'mock',
+    EMBEDDING_PROVIDER: 'mock',
+    AI_TOOL_FIXTURES_DIR: join(root, 'examples', 'tools'),
+    AI_TOOLS_WITHOUT_READONLY_LOGIN: 'true',
+    ...guarded,
   };
   start('worker', [join(import.meta.dirname, 'worker-runner.mjs')], {
     ...shared,
     WORKER_PORT: String(WORKER_PORT),
+    E2E_LINE_LOG: lineLog,
+    E2E_GMAIL_LOG: gmailLog,
   });
   start('api', [join(import.meta.dirname, 'api-runner.mjs')], {
     ...shared,
     API_PORT: String(API_PORT),
     BREAK_GLASS_EMAIL: breakGlassEmail,
     BREAK_GLASS_PASSWORD: breakGlassPassword,
+    // Sign-in as an agent, a lead or a developer: the mock identity provider of this stack (the Google
+    // credentials are empty, so this is the only way to staff accounts other than the break-glass one).
+    DEV_LOGIN_ENABLED: 'true',
+    STATUS_PAGE_PUBLIC: 'true',
+    LINE_LOGIN_FAKE_ENABLED: 'true',
     // Cheap proof of work and no wait, but the checks themselves stay on (ADR-007).
     PORTAL_POW_DIFFICULTY_BITS: '10',
     PORTAL_MIN_FILL_SECONDS: '1',
@@ -233,6 +272,7 @@ async function main() {
   });
   start('web', [join(root, 'apps', 'web', 'scripts', 'start-standalone.mjs')], {
     ...base,
+    ...guarded,
     API_URL: apiUrl,
     HOSTNAME: '127.0.0.1',
     PORT: String(WEB_PORT),
@@ -255,6 +295,16 @@ async function main() {
       breakGlassPassword,
       database: database.name,
       logDir,
+      env: {
+        E2E_DATABASE_URL: database.appUrl,
+        E2E_LINE_CHANNEL_SECRET: lineChannelSecret,
+        E2E_ALERT_WEBHOOK_SECRET: alertWebhookSecret,
+        E2E_DISCORD_PRIVATE_KEY: discordPrivateKeyPem,
+        E2E_NET_LOG: netLog,
+        E2E_LINE_LOG: lineLog,
+        E2E_GMAIL_LOG: gmailLog,
+        E2E_API_DIST: join(root, 'apps', 'api', 'dist'),
+      },
     }),
     { mode: 0o600 },
   );
