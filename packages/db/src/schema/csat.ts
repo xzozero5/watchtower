@@ -68,6 +68,9 @@ export const csatSurvey = pgTable(
     index('csat_survey_contact_idx')
       .on(table.contactId, table.sentAt)
       .where(sql`${table.sentAt} IS NOT NULL`),
+    index('csat_survey_sent_idx')
+      .on(table.sentAt)
+      .where(sql`${table.sentAt} IS NOT NULL`),
     index('csat_survey_answered_idx')
       .on(table.answeredAt, table.id)
       .where(sql`${table.status} = 'answered'`),

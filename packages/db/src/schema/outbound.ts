@@ -64,7 +64,12 @@ export const aiDraft = pgTable(
     resolvedAt: timestamptz('resolved_at'),
     finalMessageId: uuid('final_message_id'),
   },
-  (table) => [index('ai_draft_ticket_idx').on(table.ticketId, table.createdAt)],
+  (table) => [
+    index('ai_draft_ticket_idx').on(table.ticketId, table.createdAt),
+    index('ai_draft_resolved_idx')
+      .on(table.resolvedAt)
+      .where(sql`${table.disposition} IS NOT NULL`),
+  ],
 );
 
 /** The source of truth of a message on its way to a customer; the outbox only triggers it. */
