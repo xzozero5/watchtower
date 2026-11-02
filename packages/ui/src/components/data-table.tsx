@@ -157,7 +157,7 @@ export function DataTable<Row>({
                   scope="col"
                   aria-sort={ariaSort}
                   className={cn(
-                    'sticky top-0 z-10 border-b border-border bg-background px-3 py-2 text-left text-xs font-medium text-muted-foreground',
+                    'sticky top-0 z-10 border-b border-border bg-surface-muted px-3 py-2 text-left text-xs font-medium text-muted-foreground first:rounded-l-inner last:rounded-r-inner',
                     column.className,
                   )}
                 >

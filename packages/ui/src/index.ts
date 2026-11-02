@@ -148,15 +148,19 @@ export {
 } from './theme/preferences.js';
 export {
   AVATAR_HUE_COUNT,
+  CHART_CHANNELS,
   CHART_ORDINAL_STEPS,
   COLOR_TOKENS,
   RADIUS_TOKENS,
+  SHADOW_TOKENS,
   THEME_NAMES,
   TINT_IDS,
   type AvatarColors,
+  type ChartChannel,
   type ChartColors,
   type ColorTokens,
   type SeverityColors,
+  type ShadowTokens,
   type ThemeName,
   type TintColors,
   type TintId,
@@ -192,3 +196,17 @@ export {
   type SeverityIconName,
   type SeverityId,
 } from './tokens/severity.js';
+export { AppFrame } from './components/app-frame.js';
+export {
+  Card,
+  CardHeader,
+  HighlightCard,
+  type CardHeaderProps,
+  type CardProps,
+} from './components/card.js';
+export {
+  TrendChip,
+  type TrendChipProps,
+  type TrendDirection,
+  type TrendMeaning,
+} from './components/trend-chip.js';
