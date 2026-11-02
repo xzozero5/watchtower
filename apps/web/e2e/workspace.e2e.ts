@@ -527,6 +527,30 @@ test.describe('installable app', () => {
   });
 });
 
+test.describe('theme switch and language flags on the sign-in page', () => {
+  test('the switch shows the OS theme and saves the opposite; the flags are named radios', async ({
+    page,
+  }) => {
+    await page.emulateMedia({ colorScheme: 'dark' });
+    await mockBackend(page, { session: null, authConfig: LIVE_CONFIG });
+    await page.goto('/login');
+    await expect(page.getByRole('link', { name: 'Continue with Google' })).toBeVisible();
+    const dark = page.getByRole('switch', { name: 'Dark theme' });
+    await expect(dark).toBeChecked();
+    await dark.click();
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
+    await expect(dark).not.toBeChecked();
+
+    // The flags are inline SVG, drawn by the app: no emoji font is needed (Windows has none).
+    const thai = page.getByRole('radio', { name: 'ภาษาไทย' });
+    await expect(page.getByRole('radio', { name: 'English' })).toBeChecked();
+    await expect(thai.locator('svg')).toBeVisible();
+    await thai.click();
+    await expect(page.locator('html')).toHaveAttribute('lang', 'th');
+    await expect(page.getByRole('radio', { name: 'ภาษาไทย' })).toBeChecked();
+  });
+});
+
 test.describe('accessibility (axe, WCAG 2.x A/AA)', () => {
   for (const scheme of ['light', 'dark'] as const) {
     test(`login page has no violations in ${scheme} mode`, async ({ page }) => {

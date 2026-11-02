@@ -140,7 +140,12 @@ test.describe('single-key shortcuts preference (WCAG 2.1.4)', () => {
     await openWorkspace(page, {}, '/?ticket=OPS-1');
     await expect(row(page, 'OPS-1')).toBeVisible();
     await page.getByRole('button', { name: 'Account menu' }).click();
-    await page.getByRole('menuitemcheckbox', { name: 'Single-key shortcuts' }).click();
+    await page.getByRole('menuitem', { name: /Show keyboard shortcuts/ }).click();
+    await page
+      .getByRole('dialog', { name: 'Keyboard shortcuts' })
+      .getByRole('checkbox', { name: 'Single-key shortcuts' })
+      .uncheck();
+    await page.keyboard.press('Escape');
 
     for (const key of ['j', 'k', 'c', 'n', 's', '/', '[', ']', 'Shift+?']) {
       await page.keyboard.press(key);
@@ -159,16 +164,20 @@ test.describe('single-key shortcuts preference (WCAG 2.1.4)', () => {
     await page.reload();
     await expect(page.locator('[data-hydrated="true"]')).toBeAttached();
     await page.getByRole('button', { name: 'Account menu' }).click();
+    await page.getByRole('menuitem', { name: /Show keyboard shortcuts/ }).click();
     await expect(
-      page.getByRole('menuitemcheckbox', { name: 'Single-key shortcuts' }),
-    ).toHaveAttribute('aria-checked', 'false');
+      page
+        .getByRole('dialog', { name: 'Keyboard shortcuts' })
+        .getByRole('checkbox', { name: 'Single-key shortcuts' }),
+    ).not.toBeChecked();
     await page.keyboard.press('Escape');
     await expect(row(page, 'OPS-1')).toBeVisible();
     await page.keyboard.press('j');
     await expect(row(page, 'OPS-2')).toHaveAttribute('aria-selected', 'false');
 
     // The keyboard map says so, and its switch turns them back on.
-    await page.getByRole('button', { name: /Show keyboard shortcuts/ }).click();
+    await page.getByRole('button', { name: 'Account menu' }).click();
+    await page.getByRole('menuitem', { name: /Show keyboard shortcuts/ }).click();
     const dialog = page.getByRole('dialog', { name: 'Keyboard shortcuts' });
     await expect(dialog.getByText('Single-key shortcuts are off')).toBeVisible();
     const results = await new AxeBuilder({ page }).withTags(WCAG_TAGS).analyze();
@@ -291,10 +300,10 @@ test.describe('layout details', () => {
     expect(rail?.width).toBe(56);
 
     await page.getByRole('button', { name: 'Account menu' }).click();
-    await page.getByRole('menuitem', { name: 'Theme' }).click();
+    await expect(page.getByRole('menuitemcheckbox', { name: 'Dark theme' })).toBeVisible();
     const results = await new AxeBuilder({ page }).withTags(WCAG_TAGS).analyze();
     expect(results.violations).toEqual([]);
-    await page.getByRole('menuitemradio', { name: 'Dark' }).click();
+    await page.getByRole('menuitemcheckbox', { name: 'Dark theme' }).click();
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
     await page.keyboard.press('Escape');
     await expect(page.getByRole('menu')).toHaveCount(0);

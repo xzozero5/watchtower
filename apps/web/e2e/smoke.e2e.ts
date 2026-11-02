@@ -24,11 +24,16 @@ async function openHome(page: Page, options: BackendOptions = {}) {
   return backend;
 }
 
-/** Account menu (avatar in the rail) -> a radio submenu -> one of its items. */
-async function chooseFromAccountMenu(page: Page, submenu: string, item: string) {
+/** Account menu (avatar in the rail) -> one of its radio items (a density icon or a language flag). */
+async function chooseFromAccountMenu(page: Page, item: string) {
   await page.getByRole('button', { name: 'Account menu' }).click();
-  await page.getByRole('menuitem', { name: submenu }).click();
   await page.getByRole('menuitemradio', { name: item }).click();
+}
+
+/** Account menu -> the dark theme switch: it saves the opposite of the theme in effect. */
+async function toggleDarkFromAccountMenu(page: Page) {
+  await page.getByRole('button', { name: 'Account menu' }).click();
+  await page.getByRole('menuitemcheckbox', { name: 'Dark theme' }).click();
 }
 
 const WCAG_TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'];
@@ -145,14 +150,15 @@ test.describe('theme, density and motion', () => {
     expect(await bodyBackground(page)).toBe(rgb(COLOR_TOKENS.light.background));
 
     await page.emulateMedia({ colorScheme: 'dark' });
-    expect(await bodyBackground(page)).toBe(rgb(COLOR_TOKENS.dark.background));
+    await expect.poll(() => bodyBackground(page)).toBe(rgb(COLOR_TOKENS.dark.background));
   });
 
   test('lets the user override the OS and remembers it across reloads', async ({ page }) => {
     await page.emulateMedia({ colorScheme: 'dark' });
     await openHome(page);
-    await chooseFromAccountMenu(page, 'Theme', 'Light');
-    expect(await bodyBackground(page)).toBe(rgb(COLOR_TOKENS.light.background));
+    // The OS is dark, so the switch is on; pressing it saves light.
+    await toggleDarkFromAccountMenu(page);
+    await expect.poll(() => bodyBackground(page)).toBe(rgb(COLOR_TOKENS.light.background));
 
     await page.reload();
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
@@ -163,7 +169,7 @@ test.describe('theme, density and motion', () => {
     await openHome(page);
     const fontSize = () => page.evaluate(() => getComputedStyle(document.documentElement).fontSize);
     expect(await fontSize()).toBe('15px');
-    await chooseFromAccountMenu(page, 'Density', 'Compact');
+    await chooseFromAccountMenu(page, 'Compact');
     expect(await fontSize()).toBe('14px');
   });
 
@@ -203,7 +209,7 @@ test.describe('language', () => {
   test('switches to Thai, sets <html lang> and remembers the choice', async ({ page }) => {
     await openHome(page);
     await expect(page.locator('html')).toHaveAttribute('lang', 'en');
-    await chooseFromAccountMenu(page, 'Language', 'ไทย');
+    await chooseFromAccountMenu(page, 'ภาษาไทย');
 
     await expect(page.getByRole('region', { name: 'คิวงาน' })).toBeVisible();
     await expect(page.locator('html')).toHaveAttribute('lang', 'th');
@@ -303,8 +309,7 @@ test.describe('accessibility (axe, WCAG 2.x A/AA)', () => {
       await check();
       await page.keyboard.press('Escape');
       await page.getByRole('button', { name: 'Account menu' }).click();
-      await page.getByRole('menuitem', { name: 'Theme' }).click();
-      await expect(page.getByRole('menuitemradio', { name: 'Dark' })).toBeVisible();
+      await expect(page.getByRole('menuitemcheckbox', { name: 'Dark theme' })).toBeVisible();
       await check();
     });
   }

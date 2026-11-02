@@ -1,4 +1,5 @@
 import { screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { saveSubmitted } from '@/lib/portal/submitted-handoff';
@@ -39,6 +40,24 @@ describe('portal confirmation', () => {
       '/portal',
     );
     expect(document.body.innerHTML).not.toContain('#token=');
+  });
+
+  it('copies the request number with a button, and keeps the long advice behind a hint', async () => {
+    const user = userEvent.setup();
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
+    saveSubmitted({
+      ticketKey: 'OPS-12',
+      maskedEmail: 'a***@example.com',
+      status: 'received',
+      expectedFirstResponseAt: null,
+    });
+    renderApp(<Confirmation />);
+    await user.click(screen.getByRole('button', { name: 'Copy the request number' }));
+    expect(writeText).toHaveBeenCalledWith('OPS-12');
+    expect(screen.queryByText(/Check your spam folder/)).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'More about your request' }));
+    expect(await screen.findByText(/Check your spam folder/)).toBeVisible();
   });
 
   it('leaves out the target when no SLA applies', () => {

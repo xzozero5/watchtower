@@ -39,6 +39,15 @@ export const aiTh: Widen<typeof aiEn> = {
     phases: { queued: 'รอคิว', investigating: 'กำลังตรวจสอบ', drafting: 'กำลังเขียนร่าง' },
     paused: 'AI ถูกหยุด',
     pausedTip: 'สวิตช์ฉุกเฉินเปิดอยู่ ไม่มีการร่างใหม่และต้องตอบด้วยตนเอง',
+    demo: 'เดโม',
+    demoTip: 'ข้อมูลตัวอย่างจาก AI จำลอง คะแนนที่เห็นไม่มีความหมาย',
+    steps: {
+      approve_draft: 'อนุมัติคำตอบ',
+      reply: 'ตอบลูกค้า',
+      escalate_dev: 'ส่งให้ dev',
+      wait_customer: 'รอลูกค้า',
+      resolve: 'ปิดเรื่อง',
+    },
   },
   report: {
     title: 'สิ่งที่ AI พบ',
@@ -122,6 +131,8 @@ export const aiTh: Widen<typeof aiEn> = {
     empty: 'ไม่พบหลักฐาน',
     cited: 'อ้างอิงในร่าง',
     open: 'เปิดแหล่งที่มา',
+    match: { high: 'ตรงมาก', medium: 'พอใช้', low: 'ตรงน้อย' },
+    matchTip: '{band} คะแนน {value}',
     kinds: {
       kb: 'บทความ KB',
       ticket: 'ตั๋วที่คล้ายกัน',

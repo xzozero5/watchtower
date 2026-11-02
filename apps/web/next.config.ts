@@ -129,6 +129,15 @@ const config: NextConfig = {
           { key: 'Referrer-Policy', value: 'no-referrer' },
         ],
       },
+      {
+        // The public status page and its confirm and unsubscribe links (T-204b): the links carry a
+        // signed token in the fragment, so never cache and never send a Referer.
+        source: '/status/:path*',
+        headers: [
+          { key: 'Cache-Control', value: 'no-store' },
+          { key: 'Referrer-Policy', value: 'no-referrer' },
+        ],
+      },
     ]);
   },
 };

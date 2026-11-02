@@ -99,6 +99,9 @@ export const portalEn = {
     next: 'Open the link in the email to follow progress and to reply. Keep the request number if you contact us.',
     noEmail:
       'No email after a few minutes? Check your spam folder, or use the number above when you write to us.',
+    copy: 'Copy the request number',
+    copied: 'Copied {number}',
+    help: 'More about your request',
     another: 'Submit another request',
     missing: 'There is no request to show here.',
   },

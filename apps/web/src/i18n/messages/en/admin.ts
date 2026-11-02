@@ -2,6 +2,7 @@
 export const adminEn = {
   breadcrumb: 'Breadcrumb',
   sectionsLabel: 'Admin sections',
+  moreInfo: 'More about {topic}',
   section: 'Section',
   sections: {
     users: 'Users',
@@ -308,6 +309,9 @@ export const adminEn = {
     copyId: 'Copy id',
   },
   integrations: {
+    encrypted: 'Encrypted',
+    demo: 'Demo',
+    live: 'Live',
     intro:
       'Connect the channels Watchtower reads and writes. A value you save is stored encrypted and can never be shown again; to change it, replace it.',
     testMock:
