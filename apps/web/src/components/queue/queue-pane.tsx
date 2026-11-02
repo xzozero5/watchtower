@@ -171,7 +171,7 @@ function Section({
   return (
     <section data-group={group.id} className="flex flex-col">
       {flat ? null : (
-        <h3 className="m-0 bg-background text-xs font-medium">
+        <h3 className="m-0 bg-surface text-xs font-medium">
           <button
             type="button"
             aria-expanded={open}

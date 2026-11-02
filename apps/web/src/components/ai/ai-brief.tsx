@@ -245,7 +245,7 @@ export function AiBrief({
         aria-label={t('ai.brief.label')}
         data-testid="ai-brief"
         data-ai-state={insight.state}
-        className="relative mx-4 mt-3 flex shrink-0 flex-col gap-3 overflow-hidden rounded-lg bg-ai-subtle py-4 pr-5 pl-6 shadow-soft ring-1 ring-ai-accent/20 ring-inset"
+        className="relative mx-4 mt-3 flex shrink-0 flex-col gap-3 overflow-hidden rounded-card bg-ai-subtle py-4 pr-5 pl-6 shadow-card ring-1 ring-ai-accent/20 ring-inset"
       >
         {/* The subtle teal edge: 4px, fading toward the bottom. */}
         <span

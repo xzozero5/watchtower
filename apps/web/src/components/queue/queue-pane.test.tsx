@@ -62,7 +62,7 @@ describe('queue rows', () => {
     expect(within(row as HTMLElement).getByText('Waiting on developers')).toBeVisible();
   });
 
-  it('is a soft rounded pill with a tinted selection, a new-ticket dot and the channel', async () => {
+  it('is a soft rounded card with a lifted selection, a new-ticket dot and the channel', async () => {
     const user = userEvent.setup();
     workspaceApi({
       tickets: [
@@ -76,8 +76,8 @@ describe('queue rows', () => {
     );
     const old = within(queue).getByText('Old one').closest<HTMLElement>('[role="option"]');
     if (!fresh || !old) throw new Error('rows missing');
-    // A row is a soft rounded pill with no border; the selected one is tinted (no hard bar).
-    expect(fresh.className).toContain('rounded-xl');
+    // A row is a soft rounded card with no border; the selected one is lifted (no hard bar).
+    expect(fresh.className).toContain('rounded-inner');
     expect(fresh.className).not.toContain('border-b');
     // New: bold subject and a dot; an older ticket has neither.
     expect(within(fresh).getByText('Fresh one')).toHaveClass('font-semibold');
@@ -93,7 +93,7 @@ describe('queue rows', () => {
     expect(old.className).not.toContain('bg-primary-subtle');
     await user.click(old);
     expect(old).toHaveAttribute('aria-selected', 'true');
-    expect(old.className).toContain('bg-primary-subtle');
+    expect(old.className).toContain('shadow-lift');
     expect(old.className).not.toContain('before:bg-primary');
   });
 

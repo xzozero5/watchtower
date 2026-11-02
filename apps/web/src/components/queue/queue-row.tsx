@@ -168,10 +168,11 @@ export function QueueRow({
         onSelect(row.key);
       }}
       className={cn(
-        'group relative mx-2 my-px flex cursor-pointer flex-col justify-center gap-1 rounded-xl px-2.5 text-left transition-colors duration-(--wt-motion-duration-fast) ease-out hover:bg-surface-muted',
+        'group relative mx-2 my-px flex cursor-pointer flex-col justify-center gap-1 rounded-inner px-2.5 text-left transition-[background-color,box-shadow] duration-(--wt-motion-duration-fast) ease-out hover:bg-surface-muted',
         compact ? 'min-h-10 py-1.5' : 'min-h-14 py-2',
         selectable && 'pl-8',
-        selected && 'bg-primary-subtle hover:bg-primary-subtle',
+        // Soft Beacon: the open ticket is a lifted grey card in the list.
+        selected && 'bg-surface-muted shadow-lift ring-1 ring-border hover:bg-surface-muted',
         checked && !selected && 'bg-surface-muted',
       )}
     >
@@ -192,7 +193,7 @@ export function QueueRow({
             'absolute top-1/2 left-2.5 flex size-4 -translate-y-1/2 items-center justify-center rounded-sm border',
             checked
               ? 'border-primary bg-primary text-primary-foreground'
-              : 'border-border bg-background',
+              : 'border-border-strong bg-surface',
             !(checked || selecting) && 'opacity-0 group-hover:opacity-100',
           )}
         >

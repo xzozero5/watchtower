@@ -89,7 +89,8 @@ function Pane({
       // Focusable by script only (F6, Alt+1..3, g q); the focused pane shows the focus ring.
       tabIndex={-1}
       className={cn(
-        'flex min-h-0 min-w-0 flex-col bg-background outline-hidden focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring',
+        // Soft Beacon: from 768px each pane is a floating card on the Canvas; on a phone it fills.
+        'flex min-h-0 min-w-0 flex-col bg-surface outline-hidden focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring md:overflow-hidden md:rounded-card md:shadow-card',
         className,
       )}
     >
@@ -380,7 +381,7 @@ export function Workspace() {
         role="tablist"
         aria-label={t('workspace.tabsLabel')}
         onKeyDown={onTabKeyDown}
-        className="flex shrink-0 gap-1 border-b border-border/60 bg-background p-1.5 md:hidden"
+        className="flex shrink-0 gap-1 border-b border-border/60 bg-frame p-1.5 md:hidden"
       >
         {panes.map((pane) => (
           <button
@@ -407,7 +408,7 @@ export function Workspace() {
       </div>
       <main
         className={cn(
-          'relative grid min-h-0 flex-1 grid-cols-1 grid-rows-[minmax(0,1fr)] md:grid-cols-[clamp(260px,34vw,340px)_minmax(0,1fr)]',
+          'relative grid min-h-0 flex-1 grid-cols-1 grid-rows-[minmax(0,1fr)] bg-background md:grid-cols-[clamp(260px,34vw,340px)_minmax(0,1fr)] md:gap-3 md:p-3 lg:gap-4 lg:p-4',
           columns,
         )}
       >
@@ -418,7 +419,7 @@ export function Workspace() {
           scrolls={false}
           collapsed={queueCollapsed}
           rail={queueToggle}
-          className={cn('md:border-r md:border-border/60', onlyOnTab('queue'))}
+          className={onlyOnTab('queue')}
         >
           <div id="queue-pane-body" className="flex min-h-0 flex-1 flex-col">
             <QueuePane
@@ -468,7 +469,7 @@ export function Workspace() {
             aria-labelledby="pane-assistant-heading"
             tabIndex={-1}
             className={cn(
-              'flex min-h-0 min-w-0 flex-col bg-background outline-hidden focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring lg:border-l lg:border-border/60',
+              'flex min-h-0 min-w-0 flex-col bg-surface outline-hidden focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring lg:overflow-hidden lg:rounded-card lg:shadow-card',
               drawerOpen
                 ? 'animate-slide-in-right md:max-lg:fixed md:max-lg:inset-y-0 md:max-lg:right-0 md:max-lg:z-30 md:max-lg:w-[min(24rem,90vw)] md:max-lg:border-l md:max-lg:border-border md:max-lg:bg-surface md:max-lg:shadow-overlay'
                 : 'md:max-lg:hidden',

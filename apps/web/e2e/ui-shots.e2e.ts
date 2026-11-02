@@ -2,6 +2,7 @@ import { join } from 'node:path';
 
 import { expect, type Page, test } from '@playwright/test';
 
+import { boardTickets } from './ai-board';
 import { mockBackend } from './backend';
 import { mockConsole } from './console-backend';
 import { mockDashboard } from './dashboard-backend';
@@ -26,7 +27,12 @@ const PAGES: { name: string; path: string; mock: (page: Page) => Promise<unknown
   { name: 'shift', path: '/shift', mock: (page) => mockShift(page) },
   { name: 'alerts', path: '/alerts', mock: (page) => mockOps(page) },
   { name: 'incidents', path: '/incidents', mock: (page) => mockOps(page) },
-  { name: 'queue', path: '/', mock: (page) => mockBackend(page) },
+  { name: 'queue', path: '/', mock: (page) => mockBackend(page, { tickets: boardTickets() }) },
+  {
+    name: 'ticket',
+    path: '/?ticket=OPS-1',
+    mock: (page) => mockBackend(page, { tickets: boardTickets() }),
+  },
 ];
 
 const VIEWPORTS = [
