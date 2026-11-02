@@ -257,6 +257,11 @@ export const ticket = pgTable(
     priority: text('priority').notNull().default('P3'),
     status: text('status').notNull().default('new'),
     assigneeId: uuid('assignee_id').references(() => users.id, { onDelete: 'set null' }),
+    /**
+     * The developer who picked the ticket up (T-137). `assignee_id` stays the agent: a ticket is never
+     * assigned to a dev, so the agent's accountability (AC-7) does not move.
+     */
+    devOwnerId: uuid('dev_owner_id').references(() => users.id, { onDelete: 'set null' }),
     queueId: uuid('queue_id').references(() => teamQueue.id, { onDelete: 'restrict' }),
     slaPolicyId: uuid('sla_policy_id').references(() => slaPolicy.id, { onDelete: 'restrict' }),
     firstResponseDueAt: timestamptz('first_response_due_at'),
@@ -293,6 +298,9 @@ export const ticket = pgTable(
     ),
     index('ticket_org_status_idx').on(table.orgId, table.status),
     index('ticket_assignee_status_idx').on(table.assigneeId, table.status),
+    index('ticket_dev_owner_idx')
+      .on(table.devOwnerId, table.status)
+      .where(sql`${table.devOwnerId} IS NOT NULL`),
     index('ticket_created_idx').on(table.createdAt.desc(), table.id.desc()),
     index('ticket_updated_idx').on(table.updatedAt.desc(), table.id.desc()),
     index('ticket_org_created_idx').on(table.orgId, table.createdAt.desc(), table.id.desc()),

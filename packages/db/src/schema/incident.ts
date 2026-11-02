@@ -144,6 +144,36 @@ export const deploy = pgTable(
 );
 
 /**
+ * A ticket linked to an incident or to a deploy (T-137, migration 0080): a reference a developer or an agent
+ * adds to say "this ticket is about that". It changes nothing on the incident (unlike `ticket.incident_id`,
+ * which also makes the ticket's organization an affected one). Exactly one of the two ids is set.
+ */
+export const ticketLink = pgTable(
+  'ticket_link',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    ticketId: uuid('ticket_id')
+      .notNull()
+      .references(() => ticket.id, { onDelete: 'cascade' }),
+    /** `incident` or `deploy`. */
+    kind: text('kind').notNull(),
+    incidentId: uuid('incident_id').references(() => incident.id, { onDelete: 'cascade' }),
+    deployId: uuid('deploy_id').references(() => deploy.id, { onDelete: 'cascade' }),
+    createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
+    createdAt: timestamptz('created_at').notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('ticket_link_incident_key')
+      .on(table.ticketId, table.incidentId)
+      .where(sql`${table.incidentId} IS NOT NULL`),
+    uniqueIndex('ticket_link_deploy_key')
+      .on(table.ticketId, table.deployId)
+      .where(sql`${table.deployId} IS NOT NULL`),
+    index('ticket_link_ticket_idx').on(table.ticketId, table.createdAt),
+  ],
+);
+
+/**
  * One update drafted for the customers of an incident's tickets (T-202c, migration 0046). A person or the
  * AI drafts it; only a person sends it (`sentBy` and `confirmedRecipients` are required once it leaves
  * `draft`, by a CHECK).

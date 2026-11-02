@@ -28,4 +28,5 @@ export * from './realtime.js';
 export * from './redis-url.js';
 export * from './sla.js';
 export * from './text-metrics.js';
+export * from './ticket-manual.js';
 export * from './ticketing.js';

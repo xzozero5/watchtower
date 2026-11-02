@@ -7,20 +7,25 @@ import {
   QUEUE_NAMES,
   SLA_PAUSED_STATUSES,
   TICKET_EVENT_TYPES,
+  customerStatus,
+  isDevStatusMove,
+  statusChangeNeedsNote,
   type TicketStatus,
 } from '@watchtower/shared';
 import { eq } from 'drizzle-orm';
 
 import { recordAuditInTx } from '../audit.js';
 import { scheduleSurvey, voidOpenSurveys } from '../csat/survey.js';
-import { invalidTransition, notFound } from '../errors.js';
+import { badRequest, forbidden, invalidTransition, notFound } from '../errors.js';
 import { enqueueJob } from '../outbox.js';
 import type { TicketRow } from '../rows.js';
 import { resumeSla } from '../sla.js';
 import { Effects, type DbTransaction, type DomainContext, type DomainResult } from '../types.js';
 import { workflowAllows } from '../workflow.js';
 import {
+  insertMessage,
   lockTicketRow,
+  messageEvent,
   recordTicketEvent,
   ticketEvent,
   ticketKeysOf,
@@ -109,12 +114,24 @@ export async function applyStatus(
     .returning();
   if (!after) throw notFound('No such ticket');
 
-  await recordTicketEvent(tx, after.id, TICKET_EVENT_TYPES.statusChanged, ctx.actor, 'public', {
-    from,
-    to,
-    ...(options.reason === undefined ? {} : { reason: options.reason }),
-    ...(reopened ? { reopened: true } : {}),
-  });
+  // Between statuses the customer reads the same ("In progress" for open and waiting_on_dev), the move is
+  // not theirs to see: public events would show the raw status name in their timeline.
+  const sameForCustomer =
+    (from === 'waiting_on_dev' || to === 'waiting_on_dev') &&
+    customerStatus(from) === customerStatus(to);
+  await recordTicketEvent(
+    tx,
+    after.id,
+    TICKET_EVENT_TYPES.statusChanged,
+    ctx.actor,
+    sameForCustomer ? 'internal' : 'public',
+    {
+      from,
+      to,
+      ...(options.reason === undefined ? {} : { reason: options.reason }),
+      ...(reopened ? { reopened: true } : {}),
+    },
+  );
   if (reopened) {
     await recordTicketEvent(tx, after.id, TICKET_EVENT_TYPES.reopened, ctx.actor, 'internal', {
       from,
@@ -168,10 +185,23 @@ export interface ChangeStatusInput {
   /** A ticket id or key (`OPS-12`). */
   readonly ref: string;
   readonly status: TicketStatus;
+  /**
+   * Why. Moving a ticket to `waiting_on_dev` needs one, and so does a developer handing it back
+   * (T-137): it is saved as an internal note by the person who made the move.
+   */
   readonly reason?: string | undefined;
+  /**
+   * The caller acts as a developer (`ticket.dev.work` without `ticket.handle`): only `open` to
+   * `waiting_on_dev` and back are allowed.
+   */
+  readonly asDev?: boolean | undefined;
 }
 
-/** Moves a ticket to another status. Refuses what the workflow does not allow (R-1.2). */
+/**
+ * Moves a ticket to another status. Refuses what the workflow does not allow (R-1.2), what a developer may
+ * not do, and a handover to or from a developer without a note (T-137). The ticket's queue and assignee
+ * do not change: `waiting_on_dev` is a status, not a hand-off of ownership (AC-7).
+ */
 export async function changeTicketStatus(
   tx: DbTransaction,
   ctx: DomainContext,
@@ -179,6 +209,34 @@ export async function changeTicketStatus(
 ): Promise<DomainResult<TicketRow>> {
   const fx = new Effects();
   const row = await lockTicketRow(tx, ctx, input.ref);
-  const after = await applyStatus(tx, ctx, fx, row, input.status, { reason: input.reason });
+  const from = row.status as TicketStatus;
+  const byDev = input.asDev === true;
+  if (byDev && !isDevStatusMove(from, input.status)) {
+    throw forbidden('A developer moves a ticket only between open and waiting on dev');
+  }
+  const note = input.reason?.trim() ?? '';
+  const needsNote = statusChangeNeedsNote(from, input.status, byDev);
+  if (needsNote && note === '') {
+    throw badRequest('Moving a ticket to or from waiting on dev needs a note (reason)');
+  }
+  const after = await applyStatus(tx, ctx, fx, row, input.status, {
+    reason: note === '' ? undefined : note,
+  });
+  if (needsNote && ctx.actor.type === 'user' && ctx.actor.id !== null) {
+    const { message } = await insertMessage(
+      tx,
+      {
+        ticketId: after.id,
+        channelAccountId: after.channelAccountId,
+        direction: 'internal',
+        senderUserId: ctx.actor.id,
+        bodyText: note,
+        visibility: 'internal',
+        deliveryStatus: 'not_applicable',
+      },
+      { updatedAt: ctx.now() },
+    );
+    fx.emit(messageEvent(ctx, after, message));
+  }
   return fx.result(after);
 }

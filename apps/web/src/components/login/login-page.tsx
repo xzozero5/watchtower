@@ -1,7 +1,7 @@
 'use client';
 
 import { useMutation, useQuery } from '@tanstack/react-query';
-import { STAFF_ROLES, type AuthConfig, type StaffRole } from '@watchtower/shared';
+import { WORKSPACE_ROLES, type AuthConfig, type WorkspaceRole } from '@watchtower/shared';
 import {
   Alert,
   Button,
@@ -130,7 +130,7 @@ function DevLogin({ onSignedIn }: { onSignedIn: () => void }) {
   const api = useApi();
   const ids = useId();
   const [email, setEmail] = useState('');
-  const [role, setRole] = useState<StaffRole>('agent');
+  const [role, setRole] = useState<WorkspaceRole>('agent');
   const mutation = useMutation({
     mutationFn: () => api.devLogin({ email, role }),
     onSuccess: onSignedIn,
@@ -164,11 +164,11 @@ function DevLogin({ onSignedIn }: { onSignedIn: () => void }) {
             id={`${ids}-role`}
             value={role}
             onChange={(event) => {
-              const next = STAFF_ROLES.find((value) => value === event.target.value);
+              const next = WORKSPACE_ROLES.find((value) => value === event.target.value);
               if (next) setRole(next);
             }}
           >
-            {STAFF_ROLES.map((value) => (
+            {WORKSPACE_ROLES.map((value) => (
               <option key={value} value={value}>
                 {t(`roles.${value}`)}
               </option>

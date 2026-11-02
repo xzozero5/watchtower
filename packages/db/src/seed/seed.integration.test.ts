@@ -160,7 +160,7 @@ describe('the first run', () => {
     expect(perOrg.rows.map((row) => row.n).toSorted()).toEqual(
       DEMO_ORGS.map((org) => org.contacts.length).toSorted(),
     );
-    for (const role of ['head', 'lead', 'agent']) {
+    for (const role of ['head', 'lead', 'agent', 'dev']) {
       expect(await count(owner(), 'users', `role = '${role}'`)).toBe(
         DEMO_STAFF.filter((person) => person.role === role).length,
       );

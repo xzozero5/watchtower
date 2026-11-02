@@ -40,7 +40,7 @@ import { SSO_PROVIDER } from '@/lib/auth/providers';
 import { useSession, useUserId } from '@/lib/auth/session';
 import { usePreferences } from '@/lib/preferences';
 
-const EDITABLE_ROLES = ['agent', 'lead', 'head'] as const satisfies readonly Role[];
+const EDITABLE_ROLES = ['agent', 'lead', 'head', 'dev'] as const satisfies readonly Role[];
 type EditableRole = (typeof EDITABLE_ROLES)[number];
 
 type Pending =

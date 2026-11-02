@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
-import { CHANNEL_TYPES, TICKET_CHANNELS, ticketChannelSchema } from './channels.js';
+import {
+  CHANNEL_TYPES,
+  MANUAL_CHANNELS,
+  TICKET_CHANNELS,
+  ticketChannelSchema,
+} from './channels.js';
 import { DEFAULT_ROLE_PERMISSIONS, PERMISSIONS, isPermission } from './rbac.js';
 
 // The Phase 2 permission set (T-200) is [ASSUMED]; migration 0040 seeds the same rows and the db
@@ -65,7 +70,7 @@ describe('Phase 2 permissions', () => {
 
 describe('ticket channels (T-200)', () => {
   it('add internal to the channels of a channel account, and only for tickets', () => {
-    expect(TICKET_CHANNELS).toEqual([...CHANNEL_TYPES, 'internal']);
+    expect(TICKET_CHANNELS).toEqual([...CHANNEL_TYPES, ...MANUAL_CHANNELS, 'internal']);
     expect(ticketChannelSchema.safeParse('internal').success).toBe(true);
     expect(ticketChannelSchema.safeParse('gmail').success).toBe(true);
     expect(ticketChannelSchema.safeParse('sms').success).toBe(false);

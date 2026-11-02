@@ -13,7 +13,7 @@
  */
 import { z } from 'zod';
 
-import { channelTypeSchema } from '../channels.js';
+import { channelTypeSchema, type CustomerTicketChannel } from '../channels.js';
 import { ticketPrioritySchema, TICKET_PRIORITIES, type TicketPriority } from '../sla.js';
 
 /** Audit `action` strings written by this feature. */
@@ -126,7 +126,12 @@ export const DEFAULT_DISCORD_CHANNEL_MAP: DiscordChannelMap = {
 export interface DiscordEventFacts {
   readonly event: DiscordNotifyEvent;
   readonly priority: TicketPriority;
-  readonly channel: z.infer<typeof channelTypeSchema>;
+  /**
+   * The channel of the ticket. A ticket filed by hand (`phone`, `walk_in`, `chat`, `other`, T-136) is
+   * announced like any other; a route with a `channels` list never lists them (the map takes account
+   * channels), so only a route with no filter selects them `[ASSUMED]`.
+   */
+  readonly channel: CustomerTicketChannel;
 }
 
 export interface DiscordRouteMatch {
@@ -148,7 +153,12 @@ export function matchDiscordRoutes(
   for (const route of map.routes) {
     if (route.events !== undefined && !route.events.includes(facts.event)) continue;
     if (route.minPriority !== undefined && rank(facts.priority) > rank(route.minPriority)) continue;
-    if (route.channels !== undefined && !route.channels.includes(facts.channel)) continue;
+    if (
+      route.channels !== undefined &&
+      !(route.channels as readonly string[]).includes(facts.channel)
+    ) {
+      continue;
+    }
     const names = bySlot.get(route.slot);
     if (names === undefined) bySlot.set(route.slot, [route.name]);
     else names.push(route.name);
