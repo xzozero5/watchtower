@@ -70,7 +70,6 @@ const MAX_DOMAIN = 255;
 const ASCII_LOCAL = /[A-Za-z0-9._%+-]/;
 const UNICODE_LOCAL = /[\p{L}\p{M}\p{N}._%+-]/u;
 const ASCII_ALNUM = /[A-Za-z0-9]/;
-const NAME_WORD = /[A-Za-z0-9_]/;
 const DOMAIN_LABEL_CHAR = /[\p{L}\p{M}\p{N}-]/u;
 const THAI = /\p{Script=Thai}/u;
 // The only top-level domain written in Thai script (.ไทย).
@@ -622,12 +621,9 @@ export function createNameDetector(options: NameMatcherOptions): (view: Normaliz
     const text = view.folded;
     // A Latin name must not start or end inside a word ("Ann" in "Joanne"); this is the same
     // test as before, on the text instead of the pattern, because they agree at a match.
-    // `_` counts as a word character on the outside, so a name never matches inside a snake_case
-    // identifier (an intent key such as `new_customer_issue` the model must echo back). Cost: a
-    // handle such as `somchai_k` is not caught by this detector; an address with it still is.
     const accept = (start: number, end: number): boolean =>
-      !(ASCII_ALNUM.test(text.charAt(start)) && NAME_WORD.test(text.charAt(start - 1))) &&
-      !(ASCII_ALNUM.test(text.charAt(end - 1)) && NAME_WORD.test(text.charAt(end)));
+      !(ASCII_ALNUM.test(text.charAt(start)) && ASCII_ALNUM.test(text.charAt(start - 1))) &&
+      !(ASCII_ALNUM.test(text.charAt(end - 1)) && ASCII_ALNUM.test(text.charAt(end)));
     try {
       return matcher
         .scan(text, { accept, maxMatches: MAX_NAME_MATCHES })

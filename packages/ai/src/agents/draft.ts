@@ -203,7 +203,7 @@ export async function draftReply(
             ? ''
             : `Note from the agent for this draft: ${clip(input.note, 500)}`,
       },
-      (text) => session.redact(text),
+      session,
     );
     // The ticket first, so a detail that is in the ticket and in a tool result keeps the ticket's origin.
     const ticketText = session.redact(renderTicket(input));

@@ -72,7 +72,7 @@ export async function authorKbDraft(
   let system: RedactedText;
   let message: RedactedText;
   try {
-    system = renderTrustedPrompt(prompt, {}, (text) => session.redact(text));
+    system = renderTrustedPrompt(prompt, {}, session);
     const turns =
       input.turns.length <= MAX_TURNS
         ? input.turns

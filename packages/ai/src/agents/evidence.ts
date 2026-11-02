@@ -156,7 +156,7 @@ export interface ProtectedEvidence {
 
 /**
  * Passes tool text through the session's `redactToolOutput` (N4). The card a person sees is the
- * redacted text restored for the `customer` audience: the ticket's own details come back, anything
+ * redacted text restored for the `staff` audience: the ticket's own details and dictionary names come back, anything
  * that belongs to somebody else (another customer's ticket, a log line) stays a placeholder.
  */
 export function protectEvidence(
@@ -168,7 +168,7 @@ export function protectEvidence(
     const id = `ev-${String(firstId + index)}`;
     const title = session.redactToolOutput(item.tool, neutralizeTags(item.title));
     const snippet = session.redactToolOutput(item.tool, neutralizeTags(item.snippet));
-    const show = (text: RedactedText): string => session.restore(text, 'customer').text;
+    const show = (text: RedactedText): string => session.restore(text, 'staff').text;
     const flags = [item.mock ? 'mock data' : null, item.customerSafe ? 'customer-safe' : null]
       .filter((flag) => flag !== null)
       .join(', ');

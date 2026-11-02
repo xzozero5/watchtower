@@ -8,29 +8,24 @@ import { createRedactor } from './redactor.js';
 const redactor = createRedactor();
 const start = () => redactor.session({ scope: 'ticket:100' });
 
-describe('name boundary and underscores', () => {
-  it('does not match a name inside a snake_case identifier, but still matches around punctuation', () => {
-    const session = createRedactor({ names: () => ['Smoke Customer'] }).session({ scope: 't' });
-    expect(session.redact('new_customer_issue, customer_id, x_Smoke')).toBe(
-      'new_customer_issue, customer_id, x_Smoke',
-    );
-    expect(session.redact('Hi customer, (Smoke) and customer-x')).not.toMatch(/Smoke|customer,/);
-  });
-});
-
 describe('token provenance', () => {
-  it('restores a dictionary name found in a tool result (the ticket own contact/org), but not an email there', () => {
+  it('staff audience restores a dictionary NAME from a tool result, customer audience does not', () => {
     const session = createRedactor({ names: () => ['Smoke Customer', 'Smoke Org'] }).session({
       scope: 'ticket:100',
     });
     const shown = session.redactToolOutput(
       'data_query',
-      'Smoke Org (gold, active): 2 open tickets, owner other@elsewhere.example',
+      'Smoke Org (gold, active): 2 open tickets, owner other@elsewhere.example, id x_Smoke',
     );
-    expect(shown).not.toContain('Smoke');
-    const restored = session.restore(shown, 'customer');
-    expect(restored.text).toBe('Smoke Org (gold, active): 2 open tickets, owner [EMAIL_1]');
-    expect(restored.unresolved).toEqual(['[EMAIL_1]']);
+    expect(shown).not.toContain('Smoke Org');
+    const staff = session.restore(shown, 'staff');
+    expect(staff.text).toContain('Smoke Org (gold, active)');
+    // Other tool tokens stay placeholders for staff; the underscore does not hide a name part.
+    expect(staff.unresolved).toEqual(['[EMAIL_1]']);
+    expect(shown).not.toContain('x_Smoke');
+    const customer = session.restore(shown, 'customer');
+    expect(customer.text).toContain('[NAME_1]');
+    expect(customer.needsReview).toBe(true);
   });
 
   it('does not restore a tool-origin token into customer-facing text, and flags it', () => {

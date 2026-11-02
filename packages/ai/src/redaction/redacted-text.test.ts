@@ -9,7 +9,8 @@ import { createAuditedLlm } from '../audited.js';
 import { mockSettings } from '../models.js';
 import { MockEmbeddingProvider, MockLlmProvider } from '../providers/mock.js';
 import { createRedactor } from './redactor.js';
-import { parsePromptFile, PromptFileError } from '../prompts.js';
+import { loadPromptCatalog } from '../prompt-files.js';
+import { parsePromptFile, PromptFileError, registerCatalogPrompt } from '../prompts.js';
 import { joinRedacted, renderTrustedPrompt, type RedactedText } from './redacted-text.js';
 
 const prompt: PromptRef = { id: 'classifier', version: 1, hash: 'b'.repeat(64) };
@@ -105,29 +106,74 @@ describe('RedactedText (N4 enforced by the compiler)', () => {
 });
 
 describe('renderTrustedPrompt', () => {
-  const file = parsePromptFile(
-    't.v1.md',
-    '---\nid: t\nversion: 1\n---\nnew_customer_issue {{ who }} / {{who}}',
+  const file = registerCatalogPrompt(
+    parsePromptFile(
+      't.v1.md',
+      '---\nid: t\nversion: 1\n---\nnew_customer_issue {{ who }} / {{who}}\n{{list}}',
+    ),
   );
   const names = createRedactor({ names: () => ['Smoke Customer'] });
+  const start = () => names.session({ scope: 'x' });
 
   it('leaves template text alone and redacts every slot value', () => {
-    const session = names.session({ scope: 'x' });
-    const out = renderTrustedPrompt(file, { who: 'Smoke Customer' }, (t) => session.redact(t));
-    expect(out).toBe('new_customer_issue [NAME_1] / [NAME_1]');
+    const out = renderTrustedPrompt(file, { who: 'Smoke Customer', list: '-' }, start());
+    expect(out).toBe('new_customer_issue [NAME_1] / [NAME_1]\n-');
     expectTypeOf(out).toEqualTypeOf<RedactedText>();
   });
 
-  it('throws on a missing slot value', () => {
-    const session = names.session({ scope: 'x' });
-    expect(() => renderTrustedPrompt(file, {}, (t) => session.redact(t))).toThrow(PromptFileError);
+  it('keeps a valid { key } part verbatim and redacts text and invalid keys', () => {
+    const out = renderTrustedPrompt(
+      file,
+      {
+        who: 'x',
+        list: ['* ', { key: 'new_customer_issue' }, ': Smoke Customer ', { key: 'Smoke Customer' }],
+      },
+      start(),
+    );
+    expect(out).toBe('new_customer_issue x / x\n* new_customer_issue: [NAME_1] [NAME_1]');
   });
 
-  it('refuses a PromptFile that was not parsed from the catalog (a literal cannot smuggle text)', () => {
-    const session = names.session({ scope: 'x' });
-    const forged = { ref: file.ref, body: 'a@b.com' };
-    expect(() => renderTrustedPrompt(forged, {}, (t) => session.redact(t))).toThrow(
-      PromptFileError,
-    );
+  it('throws on a missing slot value', () => {
+    expect(() => renderTrustedPrompt(file, { who: 'x' }, start())).toThrow(PromptFileError);
+  });
+
+  it('refuses a literal, a copy or an unregistered parse (nothing else can become trusted text)', () => {
+    const text = '---\nid: t\nversion: 1\n---\na@b.com';
+    for (const forged of [
+      { ref: file.ref, body: 'a@b.com' },
+      { ...file },
+      parsePromptFile('t.v1.md', text),
+    ]) {
+      expect(() => renderTrustedPrompt(forged, { who: 'x', list: 'y' }, start())).toThrow(
+        PromptFileError,
+      );
+    }
+  });
+
+  it('cannot be edited after loading: changing the body of a catalog prompt throws', () => {
+    const prompt = loadPromptCatalog().latest('summarizer');
+    expect(() => {
+      (prompt as { body: string }).body = 'a@b.com';
+    }).toThrow(TypeError);
+    expect(() => {
+      (prompt.ref as { hash: string }).hash = 'x';
+    }).toThrow(TypeError);
+    expect(Object.isFrozen(prompt)).toBe(true);
+  });
+
+  it('keeps parsePromptFile and the registry off the package entry point', async () => {
+    const entry = await import('../index.js');
+    for (const name of ['parsePromptFile', 'registerCatalogPrompt', 'isCatalogPrompt']) {
+      expect(name in entry).toBe(false);
+    }
+  });
+
+  it('has no placeholder-shaped text in any prompt file (a file cannot pose as redactor output)', () => {
+    const dir = fileURLToPath(new URL('../../prompts', import.meta.url));
+    const files = readdirSync(dir).filter((name) => name.endsWith('.md'));
+    expect(files.length).toBeGreaterThan(0);
+    for (const name of files) {
+      expect(readFileSync(join(dir, name), 'utf8'), name).not.toMatch(/\[[A-Z_]+_\d+\]/);
+    }
   });
 });

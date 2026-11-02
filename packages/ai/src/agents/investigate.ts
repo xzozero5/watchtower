@@ -252,7 +252,7 @@ export async function investigateTicket(
   let system: RedactedText;
   let message: RedactedText;
   try {
-    system = renderTrustedPrompt(prompt, {}, (text) => session.redact(text));
+    system = renderTrustedPrompt(prompt, {}, session);
     message = joinRedacted(
       [
         ticketText,
@@ -291,8 +291,8 @@ export async function investigateTicket(
   const parsed = investigatorAnswerSchema.safeParse(extractJsonObject(result.response.text));
   if (!parsed.success) return { status: 'failed', reason: 'model_output_invalid' };
   const known = new Set(evidence.map((card) => card.id));
-  // The `customer` audience: the ticket's own details come back, another customer's stay placeholders.
-  const show = (text: string): string => session.restore(text, 'customer').text;
+  // The `staff` audience: ticket details and dictionary names come back; other tool tokens stay placeholders.
+  const show = (text: string): string => session.restore(text, 'staff').text;
   const answer = parsed.data;
   return {
     status: 'ok',

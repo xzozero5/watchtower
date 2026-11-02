@@ -16,8 +16,8 @@ import type { PromptRef } from './contract.js';
  * run can tell which text produced a result. A new behaviour is a new version, not an edit.
  */
 export interface PromptFile {
-  ref: PromptRef;
-  body: string;
+  readonly ref: Readonly<PromptRef>;
+  readonly body: string;
 }
 
 const FILE_NAME = /^([a-z][a-z0-9_.-]*)\.v([1-9]\d*)\.md$/;
@@ -47,21 +47,26 @@ export function parsePromptFile(fileName: string, content: string): PromptFile {
   if (fields.get('id') !== id || Number(fields.get('version')) !== version) {
     throw new PromptFileError(`Prompt ${fileName}: front matter id/version do not match the name`);
   }
-  const file: PromptFile = {
-    ref: { id, version, hash: sha256Hex(content) },
+  return Object.freeze({
+    ref: Object.freeze({ id, version, hash: sha256Hex(content) }),
     body: (front[2] ?? '').trim(),
-  };
-  PARSED.add(file);
+  });
+}
+
+// Prompts the catalog loaded from `packages/ai/prompts/`. A literal `{ ref, body }`, a copy and a
+// parse made elsewhere are not in here, so the trusted render path (redaction/redacted-text.ts)
+// cannot be fed arbitrary text. Frozen objects cannot be edited after they are registered.
+const CATALOG = new WeakSet<PromptFile>();
+
+/** For `loadPromptCatalog` only. Not exported from the package entry point. */
+export function registerCatalogPrompt(file: PromptFile): PromptFile {
+  CATALOG.add(file);
   return file;
 }
 
-// Every PromptFile that came out of `parsePromptFile`. A literal `{ ref, body }` is not in here, so
-// the trusted render path (redaction/redacted-text.ts) cannot be fed arbitrary text.
-const PARSED = new WeakSet<PromptFile>();
-
-/** True only for an object made by `parsePromptFile` (that is, read from the prompt catalog). */
-export function isParsedPromptFile(file: PromptFile): boolean {
-  return PARSED.has(file);
+/** True only for a prompt that `loadPromptCatalog` registered. */
+export function isCatalogPrompt(file: PromptFile): boolean {
+  return CATALOG.has(file);
 }
 
 /** Splits a body into literal text (even indexes) and slot names (odd indexes). */

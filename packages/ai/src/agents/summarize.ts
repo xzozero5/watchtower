@@ -101,7 +101,7 @@ export async function summarizeTicket(
   let system;
   let ticket;
   try {
-    system = renderTrustedPrompt(prompt, {}, (text) => session.redact(text));
+    system = renderTrustedPrompt(prompt, {}, session);
     ticket = session.redact(renderTicket(input));
   } catch (error) {
     const reason = skippedFor(error);

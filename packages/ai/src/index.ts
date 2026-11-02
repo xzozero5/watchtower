@@ -5,7 +5,8 @@ export * from './audited.js';
 export * from './audited-embedding.js';
 export { hashJson, hmacInputHash, hmacJson, sha256Hex } from './hash.js';
 export * from './models.js';
-export * from './prompts.js';
+// parsePromptFile and the catalog registry stay internal: only the catalog can make trusted prompts.
+export { PromptFileError, renderPrompt, type PromptFile } from './prompts.js';
 export * from './prompt-files.js';
 export * from './agents/common.js';
 export * from './agents/classify.js';

@@ -160,6 +160,49 @@ const base = {
   disclosure: 'restricted' as const,
 };
 
+describe('a colleague’s name from a tool never reaches the customer draft (C-1)', () => {
+  const names = () => ['Somchai Jaidee'];
+
+  it('drops the sentence that carries a tool NAME token and leaves no name in the body', async () => {
+    const other = card('ev-1', { snippet: 'Somchai Jaidee reported the same webhook problem.' });
+    const { deps, requests } = rig({
+      sentences: [
+        { text: 'Hello.', kind: 'courtesy', evidenceIds: [] },
+        { text: 'Your colleague [NAME_1] reported this too.', kind: 'fact', evidenceIds: ['ev-1'] },
+      ],
+    });
+    const outcome = await draftReply(
+      { ...deps, redactor: createRedactor({ names }) },
+      { ...base, evidence: [other], turns: [{ from: 'customer', text: 'Webhook is silent.' }] },
+    );
+    if (outcome.status !== 'ok') throw new Error('expected ok');
+    expect(JSON.stringify(requests)).not.toContain('Somchai');
+    expect(JSON.stringify(requests)).toContain('[NAME_1]');
+    expect(outcome.value.body).toBe('Hello.');
+    expect(outcome.value.disclosure.removedSentences).toBe(1);
+  });
+
+  it('still redacts a slot value (the agent note) and keeps the template text as it is', async () => {
+    const { deps, requests } = rig({
+      sentences: [{ text: 'Hello.', kind: 'courtesy', evidenceIds: [] }],
+    });
+    await draftReply(
+      { ...deps, redactor: createRedactor({ names: () => ['Somchai Jaidee', 'Customer Care'] }) },
+      {
+        ...base,
+        evidence: [safe],
+        turns: [{ from: 'customer', text: 'Hi' }],
+        note: 'Please apologise to Somchai Jaidee.',
+      },
+    );
+    const system = requests[0]?.system ?? '';
+    expect(system).not.toContain('Somchai');
+    expect(system).toMatch(/Please apologise to \[NAME_\d+\]/);
+    // Only the note's name became a token: the word "customer" in the template is untouched.
+    expect(system.match(/\[NAME_\d+\]/g) ?? []).toHaveLength(1);
+  });
+});
+
 describe('a placeholder in the draft is restored only from the drafter’s own session (SR108-4)', () => {
   const NOTE_EMAIL = 'internal.person@staff-only.example.test';
   const NOTE_PHONE = '0899998888';

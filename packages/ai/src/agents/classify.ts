@@ -5,6 +5,7 @@ import type { PromptFile } from '../prompts.js';
 import {
   joinRedacted,
   renderTrustedPrompt,
+  type SlotPart,
   type RedactedText,
 } from '../redaction/redacted-text.js';
 import type { RedactionSession } from '../redaction/redactor.js';
@@ -80,6 +81,21 @@ export function renderIntentList(intents: readonly KnownIntent[]): string {
     .slice(0, MAX_INTENTS)
     .map((intent) => `* ${intent.key}: ${intent.name.replaceAll(/\s+/g, ' ').slice(0, 80)}`)
     .join('\n');
+}
+
+/**
+ * The same list as `renderIntentList`, as slot parts: the key is an identifier the model must echo
+ * back, so it is kept verbatim (when it is `^[a-z][a-z0-9_]*$`); the name is text and is redacted.
+ */
+export function intentListParts(intents: readonly KnownIntent[]): SlotPart[] {
+  if (intents.length === 0) return [renderIntentList(intents)];
+  return intents
+    .slice(0, MAX_INTENTS)
+    .flatMap((intent, index): SlotPart[] => [
+      index === 0 ? '* ' : '\n* ',
+      { key: intent.key },
+      `: ${intent.name.replaceAll(/\s+/g, ' ').slice(0, 80)}`,
+    ]);
 }
 
 function confidenceOf(text: string): number | null {
@@ -177,9 +193,7 @@ async function runClassifier(
   const prompt: PromptFile = deps.prompts.latest(CLASSIFIER_PROMPT_ID);
   let system: RedactedText;
   try {
-    system = renderTrustedPrompt(prompt, { intents: renderIntentList(input.intents) }, (text) =>
-      session.redact(text),
-    );
+    system = renderTrustedPrompt(prompt, { intents: intentListParts(input.intents) }, session);
   } catch (error) {
     const reason = skippedFor(error);
     if (reason !== null) return { status: 'skipped', reason };

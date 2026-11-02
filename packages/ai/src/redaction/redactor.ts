@@ -45,7 +45,15 @@ export type RestoreAudience =
   /** Text a customer will see: restores `ticket` tokens only. The default. */
   | 'customer'
   /** Text only staff see (evidence panels, internal notes): restores every known token. */
-  | 'internal';
+  | 'internal'
+  /**
+   * Staff-only evidence and findings: restores `ticket` tokens plus `NAME` tokens from tool output
+   * (a name from the dictionary, so staff see "Acme Org" instead of "[NAME_3] Org"). Other `tool`
+   * tokens (emails, phones, ids from somebody else's ticket) and `model` tokens stay placeholders.
+   * Never use it for text a customer can see: the dictionary covers the whole organisation, so a
+   * tool NAME can be a colleague of the customer.
+   */
+  | 'staff';
 
 export interface RestoreResult {
   text: string;
@@ -200,19 +208,7 @@ export function createRedactor(options: RedactorOptions = {}): Redactor {
           if (from < cursor || to <= from) continue;
           const original = text.slice(from, to);
           if (keepIssuedTokens && found.kind === 'LITERAL' && entries.has(original)) continue;
-          // The name detector only matches the scoped dictionary (this ticket's own contacts and
-          // organisation), so a NAME found in a tool result is still the ticket's own person: giving
-          // it `tool` provenance left "[NAME_3] Org" on the evidence panel. Nobody else's name can
-          // be unmasked by this, because only dictionary names are ever NAME tokens.
-          const tokenOrigin = found.kind === 'NAME' && origin === 'tool' ? 'ticket' : origin;
-          output +=
-            text.slice(cursor, from) +
-            tokenFor(
-              found.kind,
-              original,
-              tokenOrigin,
-              tokenOrigin === 'ticket' ? undefined : source,
-            );
+          output += text.slice(cursor, from) + tokenFor(found.kind, original, origin, source);
           cursor = to;
           total += 1;
           byKind[found.kind] = (byKind[found.kind] ?? 0) + 1;
@@ -230,7 +226,11 @@ export function createRedactor(options: RedactorOptions = {}): Redactor {
           const unresolved: string[] = [];
           const restored = text.replace(TOKEN_PATTERN, (token) => {
             const entry = entries.get(token);
-            if (entry === undefined || (audience === 'customer' && entry.origin !== 'ticket')) {
+            const allowed =
+              audience === 'internal' ||
+              entry?.origin === 'ticket' ||
+              (audience === 'staff' && entry?.origin === 'tool' && token.startsWith('[NAME_'));
+            if (entry === undefined || !allowed) {
               unresolved.push(token);
               return token;
             }
