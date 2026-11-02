@@ -36,6 +36,9 @@ import { shiftSectionsFor } from '@/lib/shifts/sections';
 
 import { QUEUE_LISTBOX_ID } from '@/components/queue/queue-row';
 
+/** Colour on the rail means state: the current page, or something waiting. Otherwise icons are neutral. */
+export const railLit = (current: boolean, count: number): boolean => current || count > 0;
+
 /** One icon (plus its words when the rail is expanded) with a tooltip while it is narrow. */
 function RailButton({
   icon: Icon,
@@ -52,9 +55,12 @@ function RailButton({
   shortLabel,
   href,
   tone,
+  count = 0,
 }: {
-  /** The hue of the icon: each destination has its own, so the rail reads at a glance. */
+  /** The hue of the icon, used only while it means something: on the current page, or with a count above zero. */
   tone?: TintId;
+  /** How many things wait behind this item; above zero it lights the icon. */
+  count?: number;
   /** A destination on another route: rendered as a link. */
   href?: string;
   icon: LucideIcon;
@@ -83,7 +89,13 @@ function RailButton({
   );
   const content = (
     <>
-      <Icon aria-hidden className={cn('size-4 shrink-0', tone && TINT_CLASSES[tone].icon)} />
+      <Icon
+        aria-hidden
+        className={cn(
+          'size-4 shrink-0',
+          tone && railLit(current, count) && TINT_CLASSES[tone].icon,
+        )}
+      />
       <span
         aria-hidden={shortLabel ? true : undefined}
         className={cn('truncate', !expanded && 'sr-only', 'max-md:sr-only')}

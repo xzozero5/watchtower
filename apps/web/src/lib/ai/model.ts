@@ -25,14 +25,52 @@ export const COLLAPSED_BY_DEFAULT: ReadonlySet<TriageGroup> = new Set<TriageGrou
  *    is working on it: classification is the AI's whole job until the investigator, T-108);
  *  - only a ticket the AI is still investigating is the AI's: `aiWorking`.
  */
-export function triageGroup(row: Pick<RowModel, 'status' | 'ai' | 'sla'>): TriageGroup {
+export function triageGroup(
+  row: Pick<RowModel, 'status' | 'ai' | 'sla'> &
+    Partial<Pick<RowModel, 'priority'>> &
+    Partial<Pick<RowModel, 'assigneeId' | 'queueId' | 'unassigned'>>,
+  scope?: TriageScope,
+): TriageGroup {
+  const group = rawTriageGroup(row);
+  // "Needs you" is for me: a ticket someone else holds is theirs to act on, so for me it waits.
+  if (group === 'needsYou' && scope && !needsMe(row, scope)) return 'waiting';
+  return group;
+}
+
+/** Who "you" are for the board: the signed-in person and the team queues they belong to. */
+export interface TriageScope {
+  userId: string;
+  /** Ids of the queues the person is a member of; null while unknown (then any queue counts). */
+  queueIds: ReadonlySet<string> | null;
+}
+
+/**
+ * Whether a ticket that needs a person needs me: it is assigned to me, or it is unassigned and sits
+ * in one of my queues (or in no queue, or my queues are not known yet).
+ */
+export function needsMe(
+  row: Partial<Pick<RowModel, 'assigneeId' | 'queueId' | 'unassigned'>>,
+  scope: TriageScope,
+): boolean {
+  const assigneeId = row.assigneeId ?? null;
+  if (assigneeId !== null) return assigneeId === scope.userId;
+  if (row.unassigned === false) return false; // assigned, but the id is not known: not provably mine
+  if (scope.queueIds === null || !row.queueId) return true;
+  return scope.queueIds.has(row.queueId);
+}
+
+function rawTriageGroup(
+  row: Pick<RowModel, 'status' | 'ai' | 'sla'> & Partial<Pick<RowModel, 'priority'>>,
+): TriageGroup {
   if (row.status === 'resolved' || row.status === 'closed' || row.status === 'merged') {
     return 'done';
   }
   if (row.status === 'waiting_on_customer' || row.status === 'waiting_on_dev') return 'waiting';
+  // A P1 and a clock that is breached or at risk need a person whatever the AI is doing (QA-02).
+  if (row.priority === 'P1') return 'needsYou';
+  if (row.sla.state === 'atRisk' || row.sla.state === 'breached') return 'needsYou';
   const state: AiState = row.ai?.state ?? 'none';
   if (state === 'draft_ready' || state === 'needs_human' || state === 'failed') return 'needsYou';
-  if (row.sla.state === 'atRisk' || row.sla.state === 'breached') return 'needsYou';
   if (state === 'investigating') return 'aiWorking';
   return 'needsYou';
 }
@@ -55,18 +93,62 @@ export interface PinnedRow {
  * does not make it jump to another section under the cursor (PRD section 10). It moves when
  * another ticket is opened.
  */
-export function groupRows(rows: readonly RowModel[], pinned: PinnedRow | null = null): RowGroup[] {
+export function groupRows(
+  rows: readonly RowModel[],
+  pinned: PinnedRow | null = null,
+  scope?: TriageScope,
+): RowGroup[] {
   const buckets = new Map<TriageGroup, RowModel[]>();
   for (const row of rows) {
-    const id = pinned?.key === row.key ? pinned.group : triageGroup(row);
+    // A pin never keeps a ticket in "Needs you" once it is no longer mine (re-assigned away).
+    const pin = pinned?.key === row.key ? pinned : null;
+    const id =
+      pin && !(pin.group === 'needsYou' && scope && !needsMe(row, scope))
+        ? pin.group
+        : triageGroup(row, scope);
     const bucket = buckets.get(id);
     if (bucket) bucket.push(row);
     else buckets.set(id, [row]);
   }
   return TRIAGE_GROUPS.flatMap((id) => {
     const bucket = buckets.get(id);
-    return bucket ? [{ id, rows: bucket }] : [];
+    return bucket ? [{ id, rows: sortBySlaThenPriority(bucket) }] : [];
   });
+}
+
+const SLA_RANK: Record<RowModel['sla']['state'], number> = {
+  breached: 0,
+  atRisk: 1,
+  onTrack: 2,
+  paused: 2,
+  met: 2,
+  none: 2,
+};
+
+const PRIORITY_RANK: Record<RowModel['priority'], number> = { P1: 1, P2: 2, P3: 3, P4: 4 };
+
+/**
+ * Inside a section: breached, then at risk, then the rest; then priority (P1 first); then the SLA due
+ * time (soonest first, no running SLA last). Equal rows keep the order the api sent.
+ */
+export function sortBySlaThenPriority(rows: readonly RowModel[]): RowModel[] {
+  const due = (row: RowModel): number => {
+    if (row.sla.dueAt === null) return Number.POSITIVE_INFINITY;
+    const at = Date.parse(row.sla.dueAt);
+    return Number.isNaN(at) ? Number.POSITIVE_INFINITY : at;
+  };
+  return rows
+    .map((row, index) => ({ row, index }))
+    .sort((a, b) => {
+      const byState = SLA_RANK[a.row.sla.state] - SLA_RANK[b.row.sla.state];
+      if (byState !== 0) return byState;
+      const byPriority = PRIORITY_RANK[a.row.priority] - PRIORITY_RANK[b.row.priority];
+      if (byPriority !== 0) return byPriority;
+      const byDue = due(a.row) - due(b.row);
+      if (byDue !== 0 && !Number.isNaN(byDue)) return byDue;
+      return a.index - b.index;
+    })
+    .map(({ row }) => row);
 }
 
 /**

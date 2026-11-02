@@ -1,5 +1,5 @@
 import { Avatar, cn, IntentChip, SeverityBadge } from '@watchtower/ui';
-import { Check } from 'lucide-react';
+import { Bot, Check, UserRound } from 'lucide-react';
 
 import { AiStateChip } from '@/components/ai/ai-state-chip';
 import { ChannelIcon } from '@/components/ticket/channel-icon';
@@ -63,8 +63,45 @@ function RowStatus({ row, group }: { row: RowModel; group: RowGroup['id'] | unde
 }
 
 /**
+ * The SLA slot of a row: always there, so the column does not jump. The running SLA as the badge
+ * shows it, or a muted "No SLA" when none applies (docs/06-UI-SPEC.md section 4.4). A customer's
+ * row has no SLA to speak of and keeps the slot empty.
+ */
+function SlaSlot({ row }: { row: RowModel }) {
+  const t = useT();
+  if (row.sla.state !== 'none') return <SlaBadge sla={row.sla} />;
+  if (row.channel === null) return null;
+  return (
+    <span data-sla="none" className="shrink-0 text-xs text-muted-foreground">
+      {t('sla.none')}
+    </span>
+  );
+}
+
+/** Who holds the ticket: their avatar, or a muted person icon when nobody does. */
+function AssigneeMark({ row }: { row: RowModel }) {
+  const t = useT();
+  if (row.channel === null) return null;
+  if (row.assigneeName) {
+    const label = t('queue.row.assignedTo', { name: row.assigneeName });
+    return (
+      <span title={label} data-assignee>
+        <Avatar name={row.assigneeName} size={20} aria-hidden />
+        <span className="sr-only">{label}</span>
+      </span>
+    );
+  }
+  return (
+    <span title={t('queue.unassigned')} data-assignee="none" className="text-muted-foreground">
+      <UserRound aria-hidden className="size-4" />
+      <span className="sr-only">{t('queue.unassigned')}</span>
+    </span>
+  );
+}
+
+/**
  * One ticket on the triage board, an `option` of a section's listbox
- * (docs/design/ai-first-workspace.md section 2). Keyboard focus stays on the listbox and
+ * (docs/design/ai-first-workspace.md section 2; QA-01: key first, SLA slot always present). Keyboard focus stays on the listbox and
  * `aria-activedescendant` names the current row, so arrow keys, J/K and clicks move one pointer.
  *  - line 1: what the AI says is going on, in one line (the subject, muted, when it has said
  *    nothing), and the SLA;
@@ -96,16 +133,18 @@ export function QueueRow({
   const severity = severityOf(row.priority);
   const title = (
     <span className="flex min-w-0 items-center gap-1.5">
+      <span aria-hidden className="tabular shrink-0 text-xs text-muted-foreground">
+        {row.key}
+      </span>
       {isNew ? <span aria-hidden className="size-1.5 shrink-0 rounded-full bg-primary" /> : null}
       <span
         className={cn(
           'truncate text-sm',
-          summary ? 'text-foreground' : 'text-muted-foreground',
+          'text-foreground',
           isNew ? 'font-semibold' : 'font-normal',
         )}
-        title={summary ? row.subject : undefined}
       >
-        {summary ?? row.subject}
+        {row.subject}
       </span>
     </span>
   );
@@ -166,14 +205,26 @@ export function QueueRow({
           <SeverityBadge severity={severity} label={t(`severity.${severity}`)} hideLabel plain />
           <span className="min-w-0 flex-1">{title}</span>
           <AiStateChip state={aiState} iconOnly />
-          <SlaBadge sla={row.sla} />
+          <SlaSlot row={row} />
         </span>
       ) : (
         <>
           <span className="flex min-w-0 items-center gap-2">
             <span className="min-w-0 flex-1">{title}</span>
-            <SlaBadge sla={row.sla} />
+            <SlaSlot row={row} />
           </span>
+          {summary ? (
+            <span
+              data-ai-summary
+              className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground"
+            >
+              <span className="inline-flex shrink-0 items-center gap-0.5 font-medium">
+                <Bot aria-hidden className="size-3" />
+                {t('queue.row.aiLabel')}
+              </span>
+              <span className="truncate">{summary}</span>
+            </span>
+          ) : null}
           <span className="flex min-w-0 items-center gap-2">
             <SeverityBadge severity={severity} label={t(`severity.${severity}`)} hideLabel plain />
             {row.intentName ? (
@@ -188,6 +239,7 @@ export function QueueRow({
               <RowStatus row={row} group={group} />
             </span>
             <span className="flex shrink-0 items-center gap-1.5 text-muted-foreground">
+              <AssigneeMark row={row} />
               {row.orgName ? (
                 <span title={row.orgName}>
                   <Avatar name={row.orgName} size={20} aria-hidden />

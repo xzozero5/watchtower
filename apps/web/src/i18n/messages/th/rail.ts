@@ -12,7 +12,7 @@ export const railTh: Widen<typeof railEn> = {
   shift: 'กะของฉัน',
   brief: 'สรุปประจำวัน',
   handoff: 'ส่งเวร',
-  notifications: 'การแจ้งเตือน',
+  notifications: 'กล่องแจ้งเตือน',
   comingSoon: 'เร็ว ๆ นี้',
   expand: 'ขยายเมนู',
   collapse: 'ย่อเมนู',

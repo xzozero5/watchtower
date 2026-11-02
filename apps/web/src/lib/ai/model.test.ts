@@ -12,6 +12,7 @@ import {
   hasBrief,
   navigableRows,
   safeHref,
+  sortBySlaThenPriority,
   triageGroup,
 } from './model';
 import { makeInsight } from '@/test/ai-fixtures';
@@ -197,5 +198,81 @@ describe('the brief', () => {
     const insight = makeInsight();
     expect(citedEvidence(insight).map((entry) => entry.id)).toEqual(['ev-kb-1', 'ev-ticket-1']);
     expect(citedEvidence({ ...insight, draft: undefined })).toEqual([]);
+  });
+});
+
+describe('Needs you scoping (QA-01) and inclusion (QA-02)', () => {
+  const me = { userId: 'me', queueIds: new Set(['q-mine']) };
+
+  it('keeps a ticket assigned to me, or unassigned in my queue, in "Needs you"', () => {
+    expect(triageGroup(row('A', { assigneeId: 'me', unassigned: false }), me)).toBe('needsYou');
+    expect(triageGroup(row('A', { assigneeId: null, queueId: 'q-mine' }), me)).toBe('needsYou');
+    expect(triageGroup(row('A', { assigneeId: null, queueId: null }), me)).toBe('needsYou');
+  });
+
+  it('moves a ticket assigned to someone else, or unassigned in another queue, out of "Needs you"', () => {
+    expect(triageGroup(row('A', { assigneeId: 'other', unassigned: false }), me)).toBe('waiting');
+    expect(triageGroup(row('A', { assigneeId: null, queueId: 'q-other' }), me)).toBe('waiting');
+    // Without a scope nothing is filtered (customer lists, the plain rules).
+    expect(triageGroup(row('A', { assigneeId: 'other', unassigned: false }))).toBe('needsYou');
+  });
+
+  it('lets a re-assigned open ticket leave "Needs you" even if it is pinned there', () => {
+    const moved = row('A', { assigneeId: 'other', unassigned: false });
+    const groups = groupRows([moved], { key: 'A', group: 'needsYou' }, me);
+    expect(groups.map((g) => g.id)).toEqual(['waiting']);
+  });
+
+  it('puts every P1 and every breached or at-risk ticket in "Needs you", whatever the AI does', () => {
+    const investigating = { ai: { state: 'investigating' as const } };
+    expect(triageGroup(row('A', investigating))).toBe('aiWorking');
+    expect(triageGroup(row('A', { ...investigating, priority: 'P1' }))).toBe('needsYou');
+    expect(triageGroup(row('A', { ...investigating, sla: AT_RISK }))).toBe('needsYou');
+    expect(
+      triageGroup(row('A', { ...investigating, sla: { ...AT_RISK, state: 'breached' } })),
+    ).toBe('needsYou');
+    // Finished and waiting tickets stay where they are.
+    expect(triageGroup(row('A', { priority: 'P1', status: 'resolved' }))).toBe('done');
+    expect(triageGroup(row('A', { priority: 'P1', status: 'waiting_on_customer' }))).toBe(
+      'waiting',
+    );
+  });
+});
+
+describe('sorting inside a section (QA-01, QA-02)', () => {
+  const at = (iso: string, state: SlaView['state'] = 'onTrack'): SlaView => ({
+    state,
+    target: 'resolution',
+    ms: 0,
+    dueAt: iso,
+  });
+
+  it('orders breached, then at risk, then priority, then due time, with no SLA last', () => {
+    const rows = [
+      row('NOSLA', { sla: { ...ON_TRACK, state: 'none', dueAt: null }, priority: 'P2' }),
+      row('LATE-P3', { sla: at('2026-11-05T00:00:00Z'), priority: 'P3' }),
+      row('SOON-P3', { sla: at('2026-11-03T00:00:00Z'), priority: 'P3' }),
+      row('SOON-P2', { sla: at('2026-11-04T00:00:00Z'), priority: 'P2' }),
+      row('RISK', { sla: at('2026-11-06T00:00:00Z', 'atRisk'), priority: 'P4' }),
+      row('BREACH-P4', { sla: at('2026-11-01T00:00:00Z', 'breached'), priority: 'P4' }),
+      row('BREACH-P1', { sla: at('2026-11-02T00:00:00Z', 'breached'), priority: 'P1' }),
+    ];
+    expect(sortBySlaThenPriority(rows).map((r) => r.key)).toEqual([
+      'BREACH-P1',
+      'BREACH-P4',
+      'RISK',
+      'SOON-P2',
+      'NOSLA',
+      'SOON-P3',
+      'LATE-P3',
+    ]);
+  });
+
+  it('is applied inside every section by groupRows and is stable for equal rows', () => {
+    const a = row('A');
+    const b = row('B');
+    expect(groupRows([a, b])[0]?.rows.map((r) => r.key)).toEqual(['A', 'B']);
+    const p1 = row('P1', { priority: 'P1' });
+    expect(groupRows([a, p1])[0]?.rows.map((r) => r.key)).toEqual(['P1', 'A']);
   });
 });
