@@ -20,6 +20,7 @@ import { loadingTh } from './loading';
 import { loginTh } from './login';
 import { notificationsTh } from './notifications';
 import { otherMailTh } from './otherMail';
+import { opsTh } from './ops';
 import { outboundTh } from './outbound';
 import { paletteTh } from './palette';
 import { panelTh } from './panel';
@@ -80,4 +81,5 @@ export const th: Messages = {
   otherMail: otherMailTh,
   shift: shiftTh,
   outbound: outboundTh,
+  ops: opsTh,
 };

@@ -4,6 +4,7 @@ import type { RealtimeEvent } from '@watchtower/shared';
 import type { Endpoints } from '@/lib/api/endpoints';
 import { aiKey } from '@/lib/ai/queries';
 import { notificationKeys } from '@/lib/notifications/keys';
+import { opsKeys } from '@/lib/ops/queries';
 import { storeTicket, ticketKeys } from '@/lib/tickets/queries';
 
 import { type NewTicket, toNewTicket } from './new-tickets';
@@ -46,6 +47,7 @@ export interface SyncDeps {
  *  - `ticket.updated`: the ticket is re-read and its row is replaced in place; when `changed` has
  *    `ai`, the AI brief of the ticket is re-read too;
  *  - `message.created`: the timeline of that ticket is refetched if this tab has it;
+ *  - `alert.updated`: the alert lists and details are read again (acknowledged, escalated, resolved);
  *  - `notification.created`: the notification center and the P1 banner are refetched (the event is
  *    addressed to this user only; the api never sends another person's).
  */
@@ -58,6 +60,11 @@ export function applyRealtimeEvent(event: RealtimeEvent, deps: SyncDeps): void {
     case 'notification.created':
       // The event says that there is something new, not what: the center and the banner re-read.
       void queryClient.invalidateQueries({ queryKey: notificationKeys(deps.userId).all });
+      return;
+    case 'alert.updated':
+      // An alert was acknowledged (from Discord too), escalated or resolved: the alert screens read
+      // again, so the change shows within the AC-3 budget. Nothing is touched if none is mounted.
+      void queryClient.invalidateQueries({ queryKey: opsKeys(deps.userId).alerts });
       return;
     case 'ticket.updated': {
       // The AI made progress or finished (T-108d): read the brief again. Nothing happens when this

@@ -6,13 +6,16 @@ import {
   ClipboardList,
   Clock3,
   Command as CommandIcon,
+  Flame,
   Gauge,
   Inbox,
   Keyboard,
   type LucideIcon,
   Mail,
   PanelLeft,
+  Radio,
   Settings2,
+  Siren,
 } from 'lucide-react';
 import Image from 'next/image';
 import type { ReactNode } from 'react';
@@ -27,6 +30,7 @@ import { UserMenu } from '@/components/user-menu';
 import { useT } from '@/i18n/provider';
 import { adminSectionsFor, HOME_PERMISSION } from '@/lib/admin/sections';
 import { useSession } from '@/lib/auth/session';
+import { opsSectionsFor } from '@/lib/ops/sections';
 import { shiftSectionsFor } from '@/lib/shifts/sections';
 
 import { QUEUE_LISTBOX_ID } from '@/components/queue/queue-row';
@@ -129,7 +133,8 @@ function RailButton({
   );
 }
 
-export type RailDestination = 'queue' | 'home' | 'admin' | 'shift' | 'otherMail';
+export type RailDestination =
+  'queue' | 'home' | 'admin' | 'shift' | 'otherMail' | 'alerts' | 'incidents' | 'status-page';
 
 export interface NavRailProps {
   /** The page being shown. */
@@ -164,6 +169,7 @@ export function NavRail({
   const showHome = can(HOME_PERMISSION);
   const showAdmin = adminSectionsFor(can).length > 0;
   const shiftIds = new Set(shiftSectionsFor(can).map((section) => section.id));
+  const opsIds = new Set(opsSectionsFor(can).map((section) => section.id));
   const adminHref = adminSectionsFor(can)[0]?.href ?? '/admin';
   // Words are only shown from 768px up; on a phone the bar is icons.
   const expanded = railExpanded;
@@ -253,6 +259,40 @@ export function NavRail({
                 expanded={expanded}
                 keyShortcuts="g h"
                 href="/shift/handoff"
+              />
+            ) : null}
+          </>
+        ) : null}
+        {opsIds.size > 0 ? (
+          <>
+            {opsIds.has('alerts') ? (
+              <RailButton
+                icon={Siren}
+                tone="red"
+                label={t('ops.rail.alerts')}
+                expanded={expanded}
+                current={destination === 'alerts'}
+                href="/alerts"
+              />
+            ) : null}
+            {opsIds.has('incidents') ? (
+              <RailButton
+                icon={Flame}
+                tone="amber"
+                label={t('ops.rail.incidents')}
+                expanded={expanded}
+                current={destination === 'incidents'}
+                href="/incidents"
+              />
+            ) : null}
+            {opsIds.has('status-page') ? (
+              <RailButton
+                icon={Radio}
+                tone="sky"
+                label={t('ops.rail.statusPage')}
+                expanded={expanded}
+                current={destination === 'status-page'}
+                href="/status-page"
               />
             ) : null}
           </>

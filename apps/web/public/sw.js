@@ -16,7 +16,7 @@
 const CACHE = 'wt-static-v1';
 const OFFLINE_URL = '/offline.html';
 // Paths this worker must never handle, cache or answer. A path matches itself and everything below.
-const NEVER_HANDLE = ['/portal', '/csat', '/v1'];
+const NEVER_HANDLE = ['/portal', '/csat', '/status', '/v1'];
 
 function neverHandle(pathname) {
   return NEVER_HANDLE.some((base) => pathname === base || pathname.startsWith(base + '/'));
