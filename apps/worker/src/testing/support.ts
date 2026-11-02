@@ -15,14 +15,15 @@ export function testEnv(
     DATABASE_URL:
       process.env.TEST_DATABASE_URL ?? 'postgres://watchtower:watchtower@localhost:5432/watchtower',
     REDIS_URL: process.env.TEST_REDIS_URL ?? 'redis://localhost:6379',
-    S3_ENDPOINT: 'http://localhost:9000',
+    // TEST_* overrides let the suite run beside a dev stack whose services use other credentials.
+    S3_ENDPOINT: process.env.TEST_S3_ENDPOINT ?? 'http://localhost:9000',
     S3_BUCKET: 'watchtower',
-    S3_ACCESS_KEY: 'minio',
-    S3_SECRET_KEY: 'minio12345',
+    S3_ACCESS_KEY: process.env.TEST_S3_ACCESS_KEY ?? 'minio',
+    S3_SECRET_KEY: process.env.TEST_S3_SECRET_KEY ?? 'minio12345',
     JWT_SECRET: 'change-me',
     APP_ENCRYPTION_KEY: 'change-me-32-bytes-base64',
     SMTP_HOST: 'localhost',
-    SMTP_PORT: '1025',
+    SMTP_PORT: process.env.TEST_SMTP_PORT ?? '1025',
     WORKER_PORT: '4100',
     // The tests run on the in-memory Gmail (T-102); it is an explicit opt-in.
     GMAIL_MOCK_ENABLED: 'true',
