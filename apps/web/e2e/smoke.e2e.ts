@@ -145,7 +145,7 @@ test.describe('theme, density and motion', () => {
     expect(await bodyBackground(page)).toBe(rgb(COLOR_TOKENS.light.background));
 
     await page.emulateMedia({ colorScheme: 'dark' });
-    expect(await bodyBackground(page)).toBe(rgb(COLOR_TOKENS.dark.background));
+    await expect.poll(() => bodyBackground(page)).toBe(rgb(COLOR_TOKENS.dark.background));
   });
 
   test('lets the user override the OS and remembers it across reloads', async ({ page }) => {

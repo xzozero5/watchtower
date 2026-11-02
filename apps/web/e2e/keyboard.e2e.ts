@@ -121,6 +121,7 @@ test.describe('pane keys (docs/06-UI-SPEC.md section 14)', () => {
         page.waitForFunction(() =>
           document.getAnimations().every((animation) => animation.playState !== 'running'),
         );
+      await page.getByRole('group', { name: 'Draft actions' }).scrollIntoViewIfNeeded();
       await settled();
       let results = await new AxeBuilder({ page }).withTags(WCAG_TAGS).analyze();
       expect(results.violations).toEqual([]);
