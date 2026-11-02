@@ -1,13 +1,6 @@
 'use client';
 
-import {
-  type BreadcrumbItem,
-  cn,
-  Combobox,
-  Input,
-  TINT_CLASSES,
-  type TintId,
-} from '@watchtower/ui';
+import { type BreadcrumbItem, cn, Combobox, Input } from '@watchtower/ui';
 import {
   Bot,
   Building2,
@@ -33,18 +26,18 @@ import { type AdminSection, adminSectionsFor } from '@/lib/admin/sections';
 import { useSession } from '@/lib/auth/session';
 import { useShortcut } from '@/lib/keyboard';
 
-/** Each admin section has its own icon and hue, so the list reads at a glance. */
-const SECTION_LOOK: Record<string, { icon: LucideIcon; tone: TintId }> = {
-  users: { icon: Users, tone: 'blue' },
-  orgs: { icon: Building2, tone: 'indigo' },
-  sla: { icon: Timer, tone: 'amber' },
-  intents: { icon: Tag, tone: 'pink' },
-  queues: { icon: ListOrdered, tone: 'sky' },
-  shifts: { icon: CalendarClock, tone: 'green' },
-  ai: { icon: Bot, tone: 'teal' },
-  audit: { icon: ScrollText, tone: 'slate' },
-  integrations: { icon: Plug, tone: 'violet' },
-  outbox: { icon: Send, tone: 'orange' },
+/** Each admin section has its own icon, so the list reads at a glance. Icons stay neutral. */
+const SECTION_LOOK: Record<string, { icon: LucideIcon }> = {
+  users: { icon: Users },
+  orgs: { icon: Building2 },
+  sla: { icon: Timer },
+  intents: { icon: Tag },
+  queues: { icon: ListOrdered },
+  shifts: { icon: CalendarClock },
+  ai: { icon: Bot },
+  audit: { icon: ScrollText },
+  integrations: { icon: Plug },
+  outbox: { icon: Send },
 };
 
 function isCurrent(section: AdminSection, pathname: string): boolean {
@@ -52,7 +45,8 @@ function isCurrent(section: AdminSection, pathname: string): boolean {
 }
 
 /**
- * Admin: the section list (plain text links, hairline on its right) next to the page. Only the
+ * Admin: the section list (a white column of links on the frame ground, neutral icons: colour
+ * means state only) next to the page. Only the
  * sections this person may open are listed; someone with none gets the denied page.
  */
 export function AdminLayout({ children }: { children: ReactNode }) {
@@ -65,9 +59,9 @@ export function AdminLayout({ children }: { children: ReactNode }) {
     <div className="flex min-h-0 flex-1">
       <nav
         aria-label={t('admin.sectionsLabel')}
-        className="hidden w-[220px] shrink-0 border-r border-border/60 px-2 py-3 md:block"
+        className="hidden w-[232px] shrink-0 border-r border-border/60 bg-frame px-3 py-4 md:block"
       >
-        <ul className="flex flex-col gap-0.5">
+        <ul className="flex flex-col gap-1">
           {sections.map((section) => {
             const current = isCurrent(section, pathname);
             return (
@@ -76,7 +70,7 @@ export function AdminLayout({ children }: { children: ReactNode }) {
                   href={section.href}
                   aria-current={current ? 'page' : undefined}
                   className={cn(
-                    'flex h-control items-center gap-2 rounded-xl px-2.5 text-sm focus-visible:outline-2 focus-visible:outline-offset-0 focus-visible:outline-ring',
+                    'flex h-10 items-center gap-2.5 rounded-inner px-3 text-sm focus-visible:outline-2 focus-visible:outline-offset-0 focus-visible:outline-ring',
                     current
                       ? 'bg-primary-subtle font-medium text-foreground'
                       : 'text-muted-foreground hover:bg-surface-muted hover:text-foreground',
@@ -86,12 +80,7 @@ export function AdminLayout({ children }: { children: ReactNode }) {
                     const look = SECTION_LOOK[section.id];
                     if (!look) return null;
                     const Icon = look.icon;
-                    return (
-                      <Icon
-                        aria-hidden
-                        className={cn('size-4 shrink-0', TINT_CLASSES[look.tone].icon)}
-                      />
-                    );
+                    return <Icon aria-hidden className="size-4 shrink-0" />;
                   })()}
                   {t(section.labelKey)}
                 </AppLink>

@@ -26,8 +26,9 @@ export function PageBreadcrumb({ items }: { items: readonly BreadcrumbItem[] }) 
 }
 
 /**
- * The 48px header every console page has: where you are on the left (a breadcrumb or a plain
- * title), the page's actions on the right. Normal case, no UPPERCASE, one hairline under it.
+ * The header every console page has: where you are on the left (a breadcrumb or a plain title), the
+ * page's actions on the right. Soft Beacon: a light 26px title on the Canvas, no hairline (Overview
+ * has its own 34px head). Normal case, no UPPERCASE.
  */
 export function PageHeader({
   title,
@@ -43,7 +44,7 @@ export function PageHeader({
   sectionPicker?: ReactNode;
 }) {
   return (
-    <div className="flex min-h-[48px] shrink-0 flex-wrap items-center justify-between gap-x-4 gap-y-1 border-b border-border/60 px-4 py-1.5">
+    <div className="flex min-h-[56px] shrink-0 flex-wrap items-center justify-between gap-x-4 gap-y-2 px-4 pt-4 pb-2 lg:px-6">
       <div className="flex min-w-0 items-center gap-3">
         {breadcrumb ? (
           <>
@@ -51,7 +52,9 @@ export function PageHeader({
             <PageBreadcrumb items={breadcrumb} />
           </>
         ) : (
-          <h1 className="text-base font-semibold">{title}</h1>
+          <h1 className="text-[1.7333rem] leading-tight font-light text-foreground-strong">
+            {title}
+          </h1>
         )}
         {sectionPicker ? <div className="md:hidden">{sectionPicker}</div> : null}
       </div>
