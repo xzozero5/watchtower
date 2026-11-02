@@ -13,7 +13,15 @@ import { mockShift } from './shift-backend';
 const target = process.env.UI_SHOTS;
 
 const PAGES: { name: string; path: string; mock: (page: Page) => Promise<unknown> }[] = [
-  { name: 'home', path: '/home', mock: (page) => mockConsole(page, 'head') },
+  {
+    name: 'home',
+    path: '/home',
+    mock: async (page) => {
+      // Registered last wins: the console routes go on top of the dashboard ones.
+      await mockDashboard(page);
+      await mockConsole(page, 'head');
+    },
+  },
   { name: 'dashboard', path: '/dashboard', mock: (page) => mockDashboard(page) },
   { name: 'shift', path: '/shift', mock: (page) => mockShift(page) },
   { name: 'alerts', path: '/alerts', mock: (page) => mockOps(page) },

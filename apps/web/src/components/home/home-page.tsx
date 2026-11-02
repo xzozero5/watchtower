@@ -2,7 +2,7 @@
 
 import { useIsFetching, useQueryClient } from '@tanstack/react-query';
 import { OPEN_STATUSES, type TicketSummary } from '@watchtower/shared';
-import { cn, IconButton, Skeleton } from '@watchtower/ui';
+import { Button, cn, Skeleton } from '@watchtower/ui';
 import {
   Activity,
   Bot,
@@ -17,7 +17,7 @@ import {
 } from 'lucide-react';
 import { useMemo } from 'react';
 
-import { AccessDenied, LoadError, PageHeader } from '@/components/admin/admin-page';
+import { AccessDenied, LoadError } from '@/components/admin/admin-page';
 import { RelativeTime } from '@/components/relative-time';
 import { useI18n } from '@/i18n/provider';
 import {
@@ -38,6 +38,7 @@ import { useQueues } from '@/lib/tickets/queries';
 import { useNow } from '@/lib/use-now';
 
 import { AiStatus, BotMark, SystemHealth } from './home-status';
+import { VolumeCard } from './home-volume';
 import {
   CountsUnavailable,
   type LoadRowData,
@@ -49,7 +50,7 @@ import {
   SlaRiskList,
   StatusBreakdown,
   type Tile,
-  TileStrip,
+  OpenTicketsCard,
   HomeSection,
 } from './home-sections';
 
@@ -70,6 +71,8 @@ export function HomePage() {
 
 function HomeBody() {
   const { t, locale } = useI18n();
+  const { can } = useSession();
+  const showVolume = can('dashboard.ops.read');
   const queryClient = useQueryClient();
   const userId = useUserId();
   const now = useNow();
@@ -172,55 +175,71 @@ function HomeBody() {
     void queryClient.invalidateQueries({ queryKey: adminKeys(userId).autonomy });
   };
 
-  return (
-    <div className="flex min-h-0 flex-1 flex-col">
-      <PageHeader
-        title={t('home.title')}
-        actions={
-          <>
-            {updatedAt > 0 ? (
-              <span className="text-xs text-muted-foreground" title={t('home.refreshHint')}>
-                <RelativeTime iso={new Date(updatedAt).toISOString()} />
-              </span>
-            ) : null}
-            <IconButton
-              variant="secondary"
-              label={t('home.refresh')}
-              tooltip={t('home.refreshHint')}
-              aria-busy={fetching || undefined}
-              icon={
-                <RefreshCw
-                  aria-hidden
-                  className={cn('size-4', fetching && 'motion-safe:animate-spin')}
-                />
-              }
-              onClick={refresh}
-            />
-          </>
-        }
-      />
-      <main
-        id="main-content"
-        aria-busy={slaList.isPending || undefined}
-        className="min-h-0 flex-1 overflow-y-auto"
-      >
-        <TileStrip tiles={tiles} />
+  const openTotal = stats.data
+    ? stats.data.byStatus
+        .filter((entry) => OPEN_STATUSES.includes(entry.status))
+        .reduce((sum, entry) => sum + entry.count, 0)
+    : null;
 
-        <div className="grid gap-4 px-4 pb-4 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)] lg:px-6">
-          <HomeSection id="home-sla" title={t('home.slaRisk')} tone="amber" icon={Hourglass}>
-            {slaList.isPending ? (
-              <ListSkeleton />
-            ) : slaList.isError ? (
-              <LoadError onRetry={() => void slaList.refetch()} className="px-0" />
-            ) : rows.length === 0 ? (
-              <p className="text-sm text-muted-foreground">{t('home.empty.slaRisk')}</p>
-            ) : (
+  return (
+    <main
+      id="main-content"
+      aria-busy={slaList.isPending || undefined}
+      className="min-h-0 flex-1 overflow-y-auto"
+    >
+      {/* Soft Beacon page head: a large light title, one quiet line, the refresh button. */}
+      <header className="flex flex-wrap items-end justify-between gap-3 px-4 pt-5 pb-4 lg:px-7 lg:pt-7">
+        <div className="min-w-0">
+          <h1 className="text-display font-light text-foreground-strong">{t('home.title')}</h1>
+          <p className="text-sm text-muted-foreground">
+            {t('home.refreshHint')}
+            {updatedAt > 0 ? (
               <>
-                <SlaRiskList rows={rows} />
-                {rows.length > 10 ? <ShowAllLink count={rows.length} /> : null}
+                {' · '}
+                <RelativeTime iso={new Date(updatedAt).toISOString()} />
               </>
-            )}
-          </HomeSection>
+            ) : null}
+          </p>
+        </div>
+        <Button
+          variant="secondary"
+          aria-busy={fetching || undefined}
+          title={t('home.refreshHint')}
+          className="rounded-full bg-surface shadow-card"
+          onClick={refresh}
+        >
+          <RefreshCw aria-hidden className={cn('size-4', fetching && 'motion-safe:animate-spin')} />
+          {t('home.refresh')}
+        </Button>
+      </header>
+
+      <div className="flex flex-col gap-4 px-4 pb-6 lg:gap-5 lg:px-7">
+        <div
+          className={cn(
+            'grid gap-4 lg:gap-5',
+            showVolume && 'lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]',
+          )}
+        >
+          <OpenTicketsCard total={openTotal} tiles={tiles} />
+          {showVolume ? <VolumeCard /> : null}
+        </div>
+
+        <HomeSection id="home-sla" title={t('home.slaRisk')} tone="amber" icon={Hourglass}>
+          {slaList.isPending ? (
+            <ListSkeleton />
+          ) : slaList.isError ? (
+            <LoadError onRetry={() => void slaList.refetch()} className="px-0" />
+          ) : rows.length === 0 ? (
+            <p className="text-sm text-muted-foreground">{t('home.empty.slaRisk')}</p>
+          ) : (
+            <>
+              <SlaRiskList rows={rows} />
+              {rows.length > 10 ? <ShowAllLink count={rows.length} /> : null}
+            </>
+          )}
+        </HomeSection>
+
+        <div className="grid gap-4 lg:grid-cols-2 lg:gap-5">
           <HomeSection
             id="home-ai"
             title={t('home.ai.title')}
@@ -230,9 +249,20 @@ function HomeBody() {
           >
             <AiStatus query={autonomy} />
           </HomeSection>
+          <HomeSection id="home-load" title={t('home.load')} tone="green" icon={Users}>
+            {stats.isPending || users.isPending ? (
+              <ListSkeleton />
+            ) : stats.isError ? (
+              <CountsUnavailable onRetry={() => void stats.refetch()} />
+            ) : users.isError ? (
+              <LoadError onRetry={() => void users.refetch()} className="px-0" />
+            ) : (
+              <LoadList rows={load} />
+            )}
+          </HomeSection>
         </div>
 
-        <div className="grid gap-4 px-4 pb-4 md:grid-cols-2 lg:px-6">
+        <div className="grid gap-4 md:grid-cols-3 lg:gap-5">
           <HomeSection id="home-status" title={t('home.byStatus')} tone="sky" icon={Layers}>
             {stats.isPending ? (
               <Skeleton className="h-5" />
@@ -251,26 +281,12 @@ function HomeBody() {
               <QueueBreakdown stats={stats.data} names={queueNames} />
             )}
           </HomeSection>
-        </div>
-
-        <div className="grid gap-4 px-4 pb-6 md:grid-cols-2 lg:px-6">
-          <HomeSection id="home-load" title={t('home.load')} tone="green" icon={Users}>
-            {stats.isPending || users.isPending ? (
-              <ListSkeleton />
-            ) : stats.isError ? (
-              <CountsUnavailable onRetry={() => void stats.refetch()} />
-            ) : users.isError ? (
-              <LoadError onRetry={() => void users.refetch()} className="px-0" />
-            ) : (
-              <LoadList rows={load} />
-            )}
-          </HomeSection>
           <HomeSection id="home-health" title={t('home.healthTitle')} tone="slate" icon={Activity}>
             <SystemHealth query={ready} />
           </HomeSection>
         </div>
-      </main>
-    </div>
+      </div>
+    </main>
   );
 }
 
