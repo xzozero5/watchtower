@@ -1494,6 +1494,13 @@ describe('search', () => {
       `/v1/tickets?q=${encodeURIComponent(email)}`,
     );
     expect(asClient.body.items).toEqual([]);
+    // Counts are not on the PII-read audit log, so they never match an address (no unlogged
+    // prefix oracle); the audited list above is the only way to search by email.
+    const counted = await agent.client.get<{ total: { count: number } }>(
+      `/v1/tickets/stats?orgId=${searchOrg}&q=${encodeURIComponent(email)}`,
+    );
+    expect(counted.status).toBe(200);
+    expect(counted.body.total.count).toBe(0);
   });
 
   it('searches every status when asked, whatever the status filter says', async () => {

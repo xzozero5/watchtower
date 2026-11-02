@@ -584,6 +584,9 @@ export class TicketReader {
   private filterConditions(
     query: Omit<TicketStatsQuery, 'slaState'>,
     principal: Principal,
+    // Only the list is on the PII-read audit log; counts (stats, view counts) are not, so they must
+    // not match requester addresses, or a prefix could be probed one character at a time unlogged.
+    { matchRequesterEmail = false }: { matchRequesterEmail?: boolean } = {},
   ): (SQL | undefined)[] {
     const client = isClient(principal);
     const { ticket, message } = schema;
@@ -642,7 +645,7 @@ export class TicketReader {
       // knows their own people, and a masked reader must not be able to probe for an address.
       const emailPrefix = pattern.slice(1, -1) + '%';
       const requesterEmail =
-        client || masked
+        client || masked || !matchRequesterEmail
           ? undefined
           : exists(
               this.database.db
@@ -724,7 +727,7 @@ export class TicketReader {
     assertCanRead(principal);
     const client = isClient(principal);
     const { ticket } = schema;
-    const conditions = this.filterConditions(query, principal);
+    const conditions = this.filterConditions(query, principal, { matchRequesterEmail: true });
     if (!client && query.slaState !== undefined) {
       conditions.push(await this.slaStates.condition(query.slaState, conditions, new Date()));
     }
