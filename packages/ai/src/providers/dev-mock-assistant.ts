@@ -126,11 +126,11 @@ function proposalsFor(raw: string, allowed: ReadonlySet<string>): unknown[] {
     const remove =
       /remove tag\s+["']?([\w.-]+)/i.exec(text)?.[1] ?? /ลบแท็ก\s*([\w.-]+)/.exec(text)?.[1];
     const add =
-      /\btag\b\s+(?:ticket\s+)?(?:[A-Za-z][A-Za-z0-9]{1,9}-\d+\s+)?(?:with|as)?\s*["']?([\w.-]+)/i.exec(
+      /\btag\b\s+(?:(?:this|it|ticket|with|as|[A-Za-z][A-Za-z0-9]{1,9}-\d+)\s+)*["']?([\w.-]+)/i.exec(
         text,
       )?.[1] ?? /แท็ก\s*([\w.-]+)/.exec(text)?.[1];
     if (remove !== undefined) out.push({ kind: 'tag', ticket, remove: [remove] });
-    else if (add !== undefined && !/^(ticket|with|as)$/i.test(add)) {
+    else if (add !== undefined && !/^(this|it|ticket|with|as)$/i.test(add)) {
       out.push({ kind: 'tag', ticket, add: [add] });
     }
   }

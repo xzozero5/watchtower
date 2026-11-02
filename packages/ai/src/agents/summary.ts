@@ -31,7 +31,7 @@ const answerSchema = z.object({
     .array(
       z.object({
         text: z.string().trim().min(1).max(600),
-        factIds: z.array(z.string().max(12)).max(8).default([]),
+        factIds: z.array(z.string().max(200)).max(20).default([]),
       }),
     )
     .max(12),

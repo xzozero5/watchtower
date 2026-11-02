@@ -118,7 +118,7 @@ const answerShape = z.object({
     .array(
       z.object({
         text: shortText(600),
-        evidenceIds: z.array(z.string().max(12)).max(8).default([]),
+        evidenceIds: z.array(z.string().max(200)).max(20).default([]),
       }),
     )
     .max(10),
