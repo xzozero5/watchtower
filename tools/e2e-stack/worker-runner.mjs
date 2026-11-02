@@ -13,7 +13,23 @@ const { startWorker } = await load('worker.js');
 const config = loadConfig(process.env);
 const logger = createLogger(config);
 const prefix = process.env.E2E_QUEUE_PREFIX;
-const worker = await startWorker(config, logger, prefix ? { queuePrefix: prefix } : {});
+// LINE has no live credential in the stack: every account is answered by the in-memory transport of
+// line-transport.mjs, which records each call in E2E_LINE_LOG for the test process to read (T-113).
+const { createStackLineTransport } = await import('./line-transport.mjs');
+const lineLog = process.env.E2E_LINE_LOG;
+const lineTransport = lineLog
+  ? await createStackLineTransport({ root, logFile: lineLog })
+  : undefined;
+// Raw inbound payloads go to object storage. The stack has no object storage (no MinIO, and no credential
+// for one): an in-memory store keeps them for the life of the run.
+const { createMemoryObjectStore } = await load('ingest/object-store.js');
+const worker = await startWorker(config, logger, {
+  ...(prefix ? { queuePrefix: prefix } : {}),
+  overrides: {
+    ingest: { store: createMemoryObjectStore() },
+    ...(lineTransport ? { line: { transportFor: () => lineTransport } } : {}),
+  },
+});
 
 const stop = () => {
   worker.close().then(

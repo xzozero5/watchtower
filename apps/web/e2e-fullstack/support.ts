@@ -1,4 +1,7 @@
-import { randomBytes } from 'node:crypto';
+import { spawnSync } from 'node:child_process';
+import { createHmac, randomBytes } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 
 import { CSRF_HEADER } from '@watchtower/shared';
 import {
@@ -37,12 +40,37 @@ export function stack(): Stack {
   };
 }
 
+/**
+ * http(s) requests a browser of this run sent to anything but this machine (T-113). A mock stack
+ * must not make the browser reach out either: fonts, analytics and CDNs would show up here. Every
+ * test fails when the list is not empty at its end.
+ */
+const foreignRequests: string[] = [];
+
+export function watchBrowserRequests(context: BrowserContext): void {
+  context.on('request', (request) => {
+    const url = new URL(request.url());
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') return;
+    if (['127.0.0.1', 'localhost', '[::1]'].includes(url.hostname)) return;
+    foreignRequests.push(`${request.method()} ${url.origin}${url.pathname}`);
+  });
+}
+
 /** Every page opens relative to the web app of this run. */
-export const test = base.extend({
+export const test = base.extend<{ noForeignRequests: undefined }>({
   // eslint-disable-next-line no-empty-pattern -- Playwright fixtures take a destructured first argument
   baseURL: async ({}, provide) => {
     await provide(stack().webUrl);
   },
+  noForeignRequests: [
+    async ({ context }, provide) => {
+      watchBrowserRequests(context);
+      await provide(undefined);
+      const seen = foreignRequests.splice(0);
+      expect(seen, 'the browser reached outside this machine').toEqual([]);
+    },
+    { auto: true },
+  ],
 });
 export { expect };
 
@@ -171,7 +199,27 @@ export class Api {
   }
 
   async post<T = unknown>(path: string, body?: unknown): Promise<ApiResult<T>> {
-    const response = await this.request.post(this.url(path), {
+    return this.send('post', path, body);
+  }
+
+  async put<T = unknown>(path: string, body?: unknown): Promise<ApiResult<T>> {
+    return this.send('put', path, body);
+  }
+
+  async patch<T = unknown>(path: string, body?: unknown): Promise<ApiResult<T>> {
+    return this.send('patch', path, body);
+  }
+
+  async delete<T = unknown>(path: string): Promise<ApiResult<T>> {
+    return this.send('delete', path);
+  }
+
+  private async send<T>(
+    method: 'post' | 'put' | 'patch' | 'delete',
+    path: string,
+    body?: unknown,
+  ): Promise<ApiResult<T>> {
+    const response = await this.request[method](this.url(path), {
       headers: { origin: stack().webUrl, [CSRF_HEADER]: await this.csrfToken() },
       ...(body === undefined ? {} : { data: body }),
     });
@@ -259,7 +307,112 @@ export async function signInClient(page: Page, mailbox: Mailbox): Promise<string
 /** A new browser context (own cookies) and page. */
 export async function newActor(browser: Browser): Promise<{ context: BrowserContext; page: Page }> {
   const context = await browser.newContext({ baseURL: stack().webUrl, locale: 'en-US' });
+  watchBrowserRequests(context);
   return { context, page: await context.newPage() };
+}
+
+export type DevRole = 'agent' | 'lead' | 'head' | 'dev';
+
+/**
+ * Signs a staff member of the given role in through the mock identity provider of the stack (the
+ * "Development sign-in" form of the login page; the Google credentials are empty in this stack, so
+ * it is the only way to an agent, a lead or a developer). The address is made up per call.
+ */
+export async function signInDev(
+  page: Page,
+  role: DevRole,
+  name = unique(role),
+): Promise<{ email: string }> {
+  const email = `${name}@example.com`;
+  await page.goto('/login');
+  await expect(page.getByRole('heading', { name: 'Sign in', level: 1 })).toBeVisible();
+  const form = page.locator('section', {
+    has: page.getByRole('heading', { name: /Development sign-in/ }),
+  });
+  await form.getByLabel('Email address').fill(email);
+  await form.getByLabel('Role').selectOption(role);
+  await form.getByRole('button', { name: 'Sign in for development' }).click();
+  await page.waitForURL((url) => url.pathname === '/');
+  return { email };
+}
+
+// ---------------------------------------------------------------- mock integrations
+
+function need(name: string): string {
+  const value = process.env[name];
+  if (!value) throw new Error(`${name} is not set: the stack was not started by global-setup.ts`);
+  return value;
+}
+
+/** `X-Line-Signature`: base64 HMAC-SHA256 of the exact body with the channel secret of the stack. */
+export function lineSignature(rawBody: string): string {
+  return createHmac('sha256', need('E2E_LINE_CHANNEL_SECRET')).update(rawBody).digest('base64');
+}
+
+export interface LineCall {
+  at: number;
+  call: 'reply' | 'push';
+  ok: boolean;
+  texts?: string[];
+  to?: string;
+  code?: string;
+}
+
+function jsonLines<T>(file: string): T[] {
+  return readFileSync(file, 'utf8')
+    .split('\n')
+    .filter((line) => line.trim() !== '')
+    .map((line) => JSON.parse(line) as T);
+}
+
+/** What the stack's worker sent to the (in-memory) LINE Messaging API, oldest first. */
+export function lineCalls(): LineCall[] {
+  return jsonLines<LineCall>(need('E2E_LINE_LOG'));
+}
+
+/** Outbound connections the guard of the stack refused (host and port only). Must stay empty. */
+export function refusedConnections(): { pid: number; host: string; port: number }[] {
+  return jsonLines<{ pid: number; host: string; port: number }>(need('E2E_NET_LOG'));
+}
+
+/**
+ * Puts a fake inbound message into the stack the way the Gmail receiver would (an `inbound_event`
+ * and an `ingest` outbox job), with the CLI of the api (`inbound:fake`) against the throwaway
+ * database. Gmail's push receiver only accepts Google-signed tokens, so this is the mock path
+ * (T-122c). Returns the CLI's JSON answer.
+ */
+export function fakeGmail(input: {
+  from: string;
+  subject: string;
+  body: string;
+  threadId?: string;
+  messageId?: string;
+  inReplyTo?: string;
+  kind?: 'auto_reply' | 'newsletter';
+}): { inboundEventId: string; providerEventId: string; duplicate: boolean } {
+  const args = ['gmail', '--from', input.from, '--subject', input.subject, '--body', input.body];
+  if (input.threadId) args.push('--thread', input.threadId);
+  if (input.messageId) args.push('--message-id', input.messageId);
+  if (input.inReplyTo) args.push('--in-reply-to', input.inReplyTo);
+  if (input.kind) args.push('--kind', input.kind);
+  const result = spawnSync(
+    process.execPath,
+    [join(need('E2E_API_DIST'), 'cli', 'inbound-fake.js'), ...args],
+    {
+      env: {
+        NODE_ENV: 'test',
+        PATH: process.env.PATH ?? '',
+        DATABASE_URL: need('E2E_DATABASE_URL'),
+      },
+      encoding: 'utf8',
+    },
+  );
+  if (result.status !== 0) throw new Error(`inbound-fake failed: ${result.stderr}`);
+  return JSON.parse(result.stdout.trim()) as {
+    inboundEventId: string;
+    providerEventId: string;
+    duplicate: boolean;
+  };
 }
 
 /**
