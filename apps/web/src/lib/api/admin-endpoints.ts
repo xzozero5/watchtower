@@ -38,6 +38,7 @@ import {
   type CreateOrganization,
   type CreateOrgTier,
   type UpdateOrgTier,
+  type CreateIntent,
   type CreateSlaPolicy,
   type CreateTeamQueue,
   type CreateUser,
@@ -278,6 +279,8 @@ export function createAdminEndpoints(client: ApiClient) {
         body,
         schema: intentSchema,
       }),
+    createIntent: (body: Partial<CreateIntent> & Pick<CreateIntent, 'key' | 'name'>) =>
+      client.request({ method: 'POST', path: '/v1/intents', body, schema: intentSchema }),
     createQueue: (body: Partial<CreateTeamQueue> & { name: string }) =>
       client.request({ method: 'POST', path: '/v1/queues', body, schema: teamQueueSchema }),
     updateQueue: (queueId: string, body: UpdateTeamQueue) =>

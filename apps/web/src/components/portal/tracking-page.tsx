@@ -19,6 +19,7 @@ import { usePortalApi } from '@/lib/portal/use-portal';
 
 import { CustomerStatusLabel } from './customer-status-label';
 import { ExpiredLink } from './expired-link';
+import { NextSteps } from './next-steps';
 import { ReplyForm, withReply } from './reply-form';
 import { PortalTimeline } from './timeline';
 
@@ -102,6 +103,10 @@ function TicketView({
           </p>
         ) : null}
       </div>
+
+      {view.status === 'received' ? (
+        <NextSteps expectedFirstResponseAt={null} showTime={!waitingForTeam} />
+      ) : null}
 
       {merged && view.mergedIntoKey ? (
         <Alert tone="info" title={t('portal.status.mergedInto', { key: view.mergedIntoKey })}>

@@ -85,6 +85,65 @@ describe('Intents list', () => {
     expect(await screen.findByText('Nothing matches.')).toBeVisible();
   });
 
+  it('shows an empty-state hint and a New intent button when there are none', async () => {
+    consoleApi({ overrides: { 'GET /v1/intents': { json: { intents: [] } } } });
+    renderConsole(<IntentsPage />);
+    expect(await screen.findByText('No intents yet.')).toBeVisible();
+    expect(screen.getByText(/Use "New intent" to add the first one/)).toBeVisible();
+    expect(screen.getByRole('button', { name: 'New intent' })).toBeVisible();
+  });
+
+  it('creates an intent with a key, validates the key, and opens it', async () => {
+    const user = userEvent.setup();
+    const api = consoleApi({
+      overrides: {
+        'POST /v1/intents': { status: 201, json: { ...FULL_INTENTS[0], id: uuid(799) } },
+      },
+    });
+    renderConsole(<IntentsPage />);
+    await screen.findByRole('table', { name: 'Intents' });
+    await user.click(screen.getByRole('button', { name: 'New intent' }));
+    const sheet = await screen.findByRole('dialog', { name: 'New intent' });
+    expect(within(sheet).getByText(/Starts at Stage 2/)).toBeVisible();
+    await user.click(within(sheet).getByRole('button', { name: 'Save' }));
+    expect(within(sheet).getByText('Required.')).toBeVisible();
+    await user.type(within(sheet).getByLabelText('Name'), 'Payment failed');
+    await user.type(within(sheet).getByLabelText('Key'), 'Bad Key');
+    await user.click(within(sheet).getByRole('button', { name: 'Save' }));
+    expect(within(sheet).getByText(/Use lowercase letters, digits and underscores/)).toBeVisible();
+    expect(api.callsTo('/v1/intents', 'POST')).toHaveLength(0);
+    await user.clear(within(sheet).getByLabelText('Key'));
+    await user.type(within(sheet).getByLabelText('Key'), 'payment_failed');
+    await user.click(within(sheet).getByRole('button', { name: 'Save' }));
+    await waitFor(() => {
+      expect(api.callsTo('/v1/intents', 'POST')).toHaveLength(1);
+    });
+    expect(api.callsTo('/v1/intents', 'POST')[0]?.body).toEqual({
+      key: 'payment_failed',
+      name: 'Payment failed',
+      description: '',
+    });
+    await waitFor(() => {
+      expect(push).toHaveBeenCalledWith(`/admin/intents/${uuid(799)}`);
+    });
+  });
+
+  it('shows the api error when the key is taken', async () => {
+    const user = userEvent.setup();
+    consoleApi({
+      overrides: { 'POST /v1/intents': apiError(409, 'conflict', 'The key login_issue is taken') },
+    });
+    renderConsole(<IntentsPage />);
+    await screen.findByRole('table', { name: 'Intents' });
+    await user.click(screen.getByRole('button', { name: 'New intent' }));
+    const sheet = await screen.findByRole('dialog', { name: 'New intent' });
+    await user.type(within(sheet).getByLabelText('Name'), 'Login issue');
+    await user.type(within(sheet).getByLabelText('Key'), 'login_issue');
+    await user.click(within(sheet).getByRole('button', { name: 'Save' }));
+    expect(await within(sheet).findByText(/The key login_issue is taken/)).toBeVisible();
+    expect(push).not.toHaveBeenCalled();
+  });
+
   it('is closed to an agent', async () => {
     consoleApi({ role: 'agent' });
     renderConsole(<IntentsPage />);

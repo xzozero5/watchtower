@@ -42,6 +42,8 @@ export const loginEn = {
   },
   client: {
     title: 'Customers',
+    trackingHint:
+      'Following a request? Use the tracking link in your confirmation email. You do not need an account.',
     button: 'Email me a sign-in link',
     sending: 'Sending',
     sentTitle: 'Check your email',

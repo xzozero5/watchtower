@@ -8,4 +8,5 @@ export const errorsTh: Widen<typeof errorsEn> = {
   notFoundTitle: 'ไม่พบหน้านี้',
   notFoundBody: 'หน้านี้ไม่มีอยู่หรือถูกย้ายแล้ว',
   backHome: 'กลับไปที่คิวงาน',
+  backToPortal: 'ไปที่ศูนย์ช่วยเหลือ',
 };
