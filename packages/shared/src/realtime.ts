@@ -161,6 +161,14 @@ export function realtimeEventFor(
   if (event.type === 'alert.updated') return audience.kind === 'staff' ? event : null;
   if (audience.kind === 'staff') return event;
   if (event.orgId !== audience.orgId) return null;
+  // A ticket the system opened for its own people (channel `internal`, T-205c) is not the client's to hear
+  // about: its subject names the metric and the numbers.
+  if (
+    (event.type === 'ticket.created' || event.type === 'ticket.updated') &&
+    event.data.channel === 'internal'
+  ) {
+    return null;
+  }
 
   switch (event.type) {
     case 'message.created':

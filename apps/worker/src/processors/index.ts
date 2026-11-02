@@ -13,6 +13,8 @@ import { createDiscordRegistration, type DiscordOverrides } from '../discord/ind
 import { createAlertsRegistration, type AlertsOverrides } from '../alerts/index.js';
 import { createIncidentsRegistration, type IncidentsOverrides } from '../incidents/index.js';
 import { createCsatRegistration } from '../csat/index.js';
+import { createStatusPageRegistration } from '../statuspage/index.js';
+import { createUsageRegistration, type UsageOverrides } from '../usage/index.js';
 import { createIngestRegistration, type IngestOverrides } from '../ingest/index.js';
 import type { WorkerLogger } from '../logger.js';
 import { createLineRegistration } from '../line/index.js';
@@ -53,6 +55,7 @@ export interface ProcessorOverrides {
   readonly line?: LineOverrides;
   readonly alerts?: AlertsOverrides;
   readonly incidents?: IncidentsOverrides;
+  readonly usage?: UsageOverrides;
 }
 
 export interface ProcessorRegistration {
@@ -144,4 +147,12 @@ export const PROCESSORS: readonly ProcessorRegistration[] = [
   // --- incidents (T-202b) ---
   // The Discord thread of an incident, then the lines mirrored into it.
   { queue: QUEUE_NAMES.incidents, create: createIncidentsRegistration },
+
+  // --- statuspage (T-204c) ---
+  // The double opt-in email and the notices of a published post or window.
+  { queue: QUEUE_NAMES.statuspage, create: createStatusPageRegistration },
+
+  // --- usage (T-205b) ---
+  // One at a time: two ticks would only contend for the same metrics (each is claimed under a row lock).
+  { queue: QUEUE_NAMES.usage, create: createUsageRegistration, concurrency: 1 },
 ];
