@@ -24,6 +24,8 @@ interface StackState {
   breakGlassEmail: string;
   breakGlassPassword: string;
   logDir: string;
+  /** Extra E2E_* variables the stack made for the tests (mock integration secrets, log files). */
+  env?: Record<string, string>;
 }
 
 function publish(state: StackState): void {
@@ -33,6 +35,9 @@ function publish(state: StackState): void {
   process.env.E2E_BREAK_GLASS_EMAIL = state.breakGlassEmail;
   process.env.E2E_BREAK_GLASS_PASSWORD = state.breakGlassPassword;
   process.env.E2E_STACK_LOG_DIR = state.logDir;
+  for (const [name, value] of Object.entries(state.env ?? {})) {
+    if (name.startsWith('E2E_')) process.env[name] = value;
+  }
 }
 
 function external(): StackState {

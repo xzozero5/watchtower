@@ -40,6 +40,10 @@ snapshot สั้นสำหรับ cold start อยู่ที่ `HANDOF
 
 ## Log
 
+## 2026-11-02 14:23 (Asia/Bangkok) — main thread — T-113 (part) E2E for AC-1 Gmail and AC-2 LINE with no-network guard, two CI flake fixes ปิด
+- test: main thread รันเองบน Windows: lint, typecheck, unit, integration 389/454/1077/226, e2e 165, full-stack 38, compose `[TESTED]`
+- ค้าง/ไม่ยืนยัน: ยังไม่ทำ: AC-3, AC-4, AC-5, AC-7 (B-004 a11y), dev role, manual ticket, สิทธิ์ผ่าน browser · บั๊ก B-002, B-003 (Gmail ไม่มี auto-ack, test.fail), B-004 ใน docs/qa/bugs.md
+
 ## 2026-11-02 13:51 (Asia/Bangkok) — main thread — T-206c Ops dashboard screen ปิด
 - test: main thread รันเองบน Windows: lint, typecheck, unit, integration 389/454/1077/226, e2e 165, full-stack 23, compose `[TESTED]`
 - ค้าง/ไม่ยืนยัน: ยังไม่เคยดึงจาก API จริงใน e2e (full-stack ไม่ครอบ) · สี severity ไม่ผ่าน validator แบบ categorical ชดเชยด้วย icon + label + ตาราง · คำไทยยังไม่มีคนรีวิว

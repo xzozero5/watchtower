@@ -411,7 +411,12 @@ describe('Toaster', () => {
     act(() => {
       toast('Status set to Resolved', { action: { label: 'Undo', onClick: undo } });
     });
-    expect(await screen.findByText('Status set to Resolved')).toBeVisible();
+    // Sonner draws a toast at opacity 0 until its own effect marks it mounted and it fades in, so the
+    // text can be in the document a render before it is visible: wait for visible, not for present.
+    const message = await screen.findByText('Status set to Resolved');
+    await waitFor(() => {
+      expect(message).toBeVisible();
+    });
     expect(screen.getByRole('region', { name: /^Notifications/ })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
     expect(undo).toHaveBeenCalledTimes(1);
