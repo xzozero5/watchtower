@@ -40,6 +40,10 @@ snapshot สั้นสำหรับ cold start อยู่ที่ `HANDOF
 
 ## Log
 
+## 2026-11-02 14:57 (Asia/Bangkok) — main thread — T-121 UI, T-203e Outbox dead letters, org tiers, investigation buttons ปิด
+- test: main thread รันเองบน Windows: lint, typecheck, unit, integration 389/454/1079/226, e2e 172, full-stack 38, compose `[TESTED]`
+- ค้าง/ไม่ยืนยัน: security-reviewer: P1 copy reprocess แก้แล้ว PASS ที่ 2881736 · P2 ถ้อยคำ 2 จุด + redactor (LINE id/JWT/IP) → T-125 · ภาพ UI และคำไทยยังไม่มีคนดู
+
 ## 2026-11-02 14:23 (Asia/Bangkok) — main thread — T-113 (part) E2E for AC-1 Gmail and AC-2 LINE with no-network guard, two CI flake fixes ปิด
 - test: main thread รันเองบน Windows: lint, typecheck, unit, integration 389/454/1077/226, e2e 165, full-stack 38, compose `[TESTED]`
 - ค้าง/ไม่ยืนยัน: ยังไม่ทำ: AC-3, AC-4, AC-5, AC-7 (B-004 a11y), dev role, manual ticket, สิทธิ์ผ่าน browser · บั๊ก B-002, B-003 (Gmail ไม่มี auto-ack, test.fail), B-004 ใน docs/qa/bugs.md
