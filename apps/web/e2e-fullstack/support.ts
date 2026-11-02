@@ -430,3 +430,24 @@ export async function openComposer(page: Page, mode: 'reply' | 'note'): Promise<
   if (await dock.isVisible()) await dock.click();
   if (mode === 'note' && (await radio.isVisible())) await radio.click();
 }
+
+export interface GmailSend {
+  at: number;
+  requestedThreadId: string | null;
+  gmailThreadId: string;
+  messageId: string;
+  headers: Record<string, unknown>;
+}
+
+/** What the stack's worker sent through the (in-memory) Gmail API: thread id and headers, never a body. */
+export function gmailSends(): GmailSend[] {
+  return jsonLines<GmailSend>(need('E2E_GMAIL_LOG'));
+}
+
+/** The id of a demo organization by name (staff REST). */
+export async function findOrgId(api: Api, name: string): Promise<string> {
+  const orgs = await api.all<{ id: string; name: string }>('/v1/orgs');
+  const found = orgs.find((org) => org.name === name);
+  if (!found) throw new Error(`no organization named ${name}`);
+  return found.id;
+}

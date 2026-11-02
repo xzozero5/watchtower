@@ -207,8 +207,10 @@ async function main() {
   const discordPrivateKeyPem = discordKeys.privateKey.export({ type: 'pkcs8', format: 'pem' });
   const netLog = join(logDir, 'network-attempts.jsonl');
   const lineLog = join(logDir, 'line-calls.jsonl');
+  const gmailLog = join(logDir, 'gmail-sends.jsonl');
   writeFileSync(netLog, '');
   writeFileSync(lineLog, '');
+  writeFileSync(gmailLog, '');
   // Every stack process loads the guard that refuses any connection that is not loopback (T-113).
   const guard = join(import.meta.dirname, 'no-network.cjs');
   const guarded = { NODE_OPTIONS: `--require=${guard}`, E2E_NET_LOG: netLog };
@@ -249,6 +251,7 @@ async function main() {
     ...shared,
     WORKER_PORT: String(WORKER_PORT),
     E2E_LINE_LOG: lineLog,
+    E2E_GMAIL_LOG: gmailLog,
   });
   start('api', [join(import.meta.dirname, 'api-runner.mjs')], {
     ...shared,
@@ -299,6 +302,7 @@ async function main() {
         E2E_DISCORD_PRIVATE_KEY: discordPrivateKeyPem,
         E2E_NET_LOG: netLog,
         E2E_LINE_LOG: lineLog,
+        E2E_GMAIL_LOG: gmailLog,
         E2E_API_DIST: join(root, 'apps', 'api', 'dist'),
       },
     }),
