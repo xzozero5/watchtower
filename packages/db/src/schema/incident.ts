@@ -55,6 +55,7 @@ export const incident = pgTable(
       .on(table.startedAt.desc())
       .where(sql`${table.status} <> 'resolved'`),
     index('incident_list_idx').on(table.createdAt.desc(), table.id.desc()),
+    index('incident_started_idx').on(table.startedAt.desc()),
   ],
 );
 
