@@ -15,6 +15,7 @@ import {
   type SimilarTicketsQuery,
   SIMILAR_TICKET_LIMIT,
   SIMILAR_TICKET_THRESHOLD,
+  parseTicketSearchNumber,
   TICKET_REFERENCE_LINK_KINDS,
   type TicketDetail,
   type TicketReference,
@@ -593,7 +594,10 @@ export class TicketReader {
       orgScopeCondition(ticket.orgId, principal.orgScope),
       hiddenFromClient(principal),
       client ? undefined : query.orgId === undefined ? undefined : eq(ticket.orgId, query.orgId),
-      query.status === undefined ? undefined : inArray(ticket.status, query.status),
+      // `allStatuses` widens a search to every status, whatever the status filter says.
+      query.status === undefined || (query.allStatuses === true && query.q !== undefined)
+        ? undefined
+        : inArray(ticket.status, query.status),
       query.priority === undefined ? undefined : inArray(ticket.priority, query.priority),
       query.intentId === undefined ? undefined : eq(ticket.intentId, query.intentId),
     ];
@@ -625,7 +629,7 @@ export class TicketReader {
     }
 
     if (query.q !== undefined) {
-      const ticketNumber = this.keys.parse(query.q);
+      const ticketNumber = parseTicketSearchNumber(query.q, this.keys.prefix);
       // Searching the text would let a masked reader find out who wrote what by trying addresses and
       // numbers (an oracle on the very data that is hidden). They find a ticket by its number.
       if (masked && ticketNumber === null) {
@@ -634,11 +638,29 @@ export class TicketReader {
         );
       }
       const pattern = likeContains(query.q);
+      // The requester's address, whole or its start. Staff with full access only: a client already
+      // knows their own people, and a masked reader must not be able to probe for an address.
+      const emailPrefix = pattern.slice(1, -1) + '%';
+      const requesterEmail =
+        client || masked
+          ? undefined
+          : exists(
+              this.database.db
+                .select({ one: sql`1` })
+                .from(schema.contact)
+                .where(
+                  and(
+                    eq(schema.contact.id, ticket.requesterContactId),
+                    sql`exists (select 1 from unnest(${schema.contact.emails}) as address where lower(address) like lower(${emailPrefix}))`,
+                  ),
+                ),
+            );
       conditions.push(
         masked
           ? eq(ticket.number, ticketNumber ?? -1)
           : or(
               ticketNumber === null ? undefined : eq(ticket.number, ticketNumber),
+              requesterEmail,
               ilike(ticket.subject, pattern),
               // The text of messages is searched too, but a client's search never reaches an internal note.
               exists(

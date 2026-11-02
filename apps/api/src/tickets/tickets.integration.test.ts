@@ -1458,6 +1458,69 @@ describe('search', () => {
     expect(await search(english.key.toLowerCase())).toEqual([english.id]);
   });
 
+  it('finds a ticket by its number however it is typed: bare, no hyphen, any case', async () => {
+    const digits = english.key.slice(english.key.indexOf('-') + 1);
+    const prefix = english.key.slice(0, english.key.indexOf('-'));
+    for (const typed of [
+      digits,
+      `${prefix}${digits}`,
+      `${prefix.toLowerCase()}-${digits}`,
+      `${prefix.toLowerCase()} ${digits}`,
+      `#${digits}`,
+    ]) {
+      expect(await search(typed), typed).toContain(english.id);
+    }
+    // A number that belongs to another prefix is not this ticket's number.
+    expect(await search(`ZZZ-${digits}`)).not.toContain(english.id);
+  });
+
+  it('finds tickets by the requester email: whole or its start, any case; never a client', async () => {
+    const email = uniqueEmail('Searchable').toLowerCase();
+    const mine = await fileTicket(agent, searchOrg, {
+      subject: 'Nothing about addresses here',
+      requester: { email, name: 'Mail Finder' },
+    });
+    expect(await search(email)).toEqual([mine.id]);
+    expect(await search(email.toUpperCase())).toEqual([mine.id]);
+    expect(await search(email.slice(0, email.indexOf('@')))).toEqual([mine.id]);
+    expect(await search(email.slice(0, 12))).toContain(mine.id);
+    // The start only, not the middle: the address is matched like an address.
+    expect(await search(email.slice(4, 14))).not.toContain(mine.id);
+    // A LIKE wildcard in the search is text, not a wildcard.
+    expect(await search('%@%')).not.toContain(mine.id);
+    // A client searches their own organization's text, not addresses.
+    const client = await signIn(h, 'client', searchOrg);
+    const asClient = await client.client.get<Page<TicketSummary>>(
+      `/v1/tickets?q=${encodeURIComponent(email)}`,
+    );
+    expect(asClient.body.items).toEqual([]);
+  });
+
+  it('searches every status when asked, whatever the status filter says', async () => {
+    const closed = await fileTicket(agent, searchOrg, { subject: 'Zebra export finished late' });
+    for (const status of ['triage', 'open', 'resolved', 'closed']) {
+      expect((await agent.client.post(`/v1/tickets/${closed.id}/status`, { status })).status).toBe(
+        200,
+      );
+    }
+    const url = (extra: string) =>
+      `/v1/tickets?orgId=${searchOrg}&q=zebra&status=new,triage,open${extra}`;
+    const open = await agent.client.get<Page<TicketSummary>>(url(''));
+    expect(open.body.items.map((ticket) => ticket.id)).not.toContain(closed.id);
+    const all = await agent.client.get<Page<TicketSummary>>(url('&allStatuses=true'));
+    expect(all.body.items.map((ticket) => ticket.id)).toContain(closed.id);
+    // The number beside "N matches in closed tickets" comes from the count with the same text.
+    const count = await agent.client.get<{ total: { count: number } }>(
+      `/v1/tickets/stats?orgId=${searchOrg}&q=zebra&status=resolved,closed`,
+    );
+    expect(count.body.total.count).toBe(1);
+    // Without a search the flag does nothing.
+    const noQuery = await agent.client.get<Page<TicketSummary>>(
+      `/v1/tickets?orgId=${searchOrg}&status=new&allStatuses=true`,
+    );
+    expect(noQuery.body.items.map((ticket) => ticket.id)).not.toContain(closed.id);
+  });
+
   it('treats % and _ as plain characters', async () => {
     expect(await search('100%')).toEqual([]);
     expect(await search('__')).toEqual([]);
