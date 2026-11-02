@@ -4,9 +4,11 @@ import { cn, Skeleton, TintChip } from '@watchtower/ui';
 import { Bot, ExternalLink, Quote } from 'lucide-react';
 
 import { useI18n } from '@/i18n/provider';
-import { confidenceBand, formatConfidence, safeHref } from '@/lib/ai/model';
+import { confidenceBand, formatConfidence, isDemoInsight, safeHref } from '@/lib/ai/model';
+import { stripMarkdown } from '@/lib/ai/prose';
 import { useTicketAi } from '@/lib/ai/queries';
 
+import { DemoChip } from './confidence-meter';
 import { EVIDENCE_ICONS } from './evidence-icons';
 
 /** The DOM id of an evidence card, so a chip or a citation can move focus to it. */
@@ -50,6 +52,7 @@ export function EvidencePanel({
   }
 
   const { evidence, draft } = query.data;
+  const demo = isDemoInsight(query.data);
   if (evidence.length === 0) {
     return <p className="p-4 text-sm text-muted-foreground">{t('ai.evidence.empty')}</p>;
   }
@@ -75,13 +78,26 @@ export function EvidencePanel({
             <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
               <Icon aria-hidden className="size-3.5 shrink-0 text-ai-accent" />
               <span>{t(`ai.evidence.kinds.${entry.kind}`)}</span>
-              <span className="tabular ml-auto font-medium text-foreground">
-                {t(`ai.brief.band.${confidenceBand(entry.confidence)}`)}{' '}
-                {formatConfidence(entry.confidence)}
+              {/* A retrieval score is how well it matches, not a probability: a word, the number in the tooltip. */}
+              <span className="ml-auto">
+                {demo ? (
+                  <DemoChip />
+                ) : (
+                  <span
+                    title={t('ai.evidence.matchTip', {
+                      band: t(`ai.evidence.match.${confidenceBand(entry.confidence)}`),
+                      value: formatConfidence(entry.confidence),
+                    })}
+                    className="font-medium text-foreground"
+                  >
+                    {t(`ai.evidence.match.${confidenceBand(entry.confidence)}`)}
+                  </span>
+                )}
               </span>
             </div>
             <p className="font-medium text-foreground">{entry.title}</p>
-            <p className="text-muted-foreground">{entry.snippet}</p>
+            {/* Markdown is shown as plain text: the marks are removed, nothing is rendered as HTML. */}
+            <p className="line-clamp-3 text-muted-foreground">{stripMarkdown(entry.snippet)}</p>
             <div className="flex flex-wrap items-center gap-2 text-xs">
               {cited ? (
                 <TintChip tone="teal" icon={Quote}>

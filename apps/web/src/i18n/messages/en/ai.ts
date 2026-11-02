@@ -40,6 +40,15 @@ export const aiEn = {
     phases: { queued: 'Queued', investigating: 'Investigating', drafting: 'Writing the draft' },
     paused: 'AI paused',
     pausedTip: 'The emergency switch is on: nothing new is drafted and replies are manual.',
+    demo: 'Demo',
+    demoTip: 'Sample data from a stand-in AI. Its scores mean nothing.',
+    steps: {
+      approve_draft: 'Approve reply',
+      reply: 'Reply',
+      escalate_dev: 'Send to dev',
+      wait_customer: 'Wait for the customer',
+      resolve: 'Resolve',
+    },
   },
   report: {
     title: 'What the AI found',
@@ -124,6 +133,8 @@ export const aiEn = {
     empty: 'No evidence found.',
     cited: 'Cited in draft',
     open: 'Open source',
+    match: { high: 'Strong match', medium: 'Fair match', low: 'Weak match' },
+    matchTip: '{band}, score {value}',
     kinds: {
       kb: 'KB article',
       ticket: 'Similar ticket',

@@ -94,7 +94,23 @@ export function confidenceBand(confidence: number): ConfidenceBand {
   return 'low';
 }
 
-export const formatConfidence = (confidence: number): string => confidence.toFixed(2);
+/**
+ * A score as a number for a tooltip. A score that rounds up to 1.00 is shown as `> 0.99`: no
+ * retrieval or model is certain, and a "1.00" reads as a guarantee (docs/design/less-text-ai-assistant.md
+ * section 4).
+ */
+export const formatConfidence = (confidence: number): string =>
+  confidence >= 0.995 ? '> 0.99' : confidence.toFixed(2);
+
+/**
+ * The run used a stand-in provider (`AI_PROVIDER=mock`, sample data): the report says so per tool.
+ * Its numbers and its confidence mean nothing, so the screen shows a `Demo` chip and no number or
+ * dots (N5). The evidence rows carry no flag of their own yet, so one mock tool marks the whole
+ * brief `[ASSUMED]`.
+ */
+export function isDemoInsight(insight: Pick<TicketAiInsight, 'report'>): boolean {
+  return insight.report?.tools.some((tool) => tool.mock) ?? false;
+}
 
 // --- the brief ---
 

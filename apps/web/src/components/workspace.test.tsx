@@ -56,15 +56,21 @@ const alt = (digit: 1 | 2 | 3) => {
 };
 const pane = (name: string) => screen.getByRole('region', { name });
 
-/** Opens the account menu and returns its single-key item (Radix menus ignore jsdom clicks on items). */
+/**
+ * Opens the keyboard map from the account menu (Radix menus ignore jsdom clicks on items) and
+ * returns its single-key switch. The switch lives there, not in the menu. The dialog stays open.
+ */
 async function singleKeyItem(user: ReturnType<typeof userEvent.setup>) {
   await user.click(screen.getByRole('button', { name: /^(Account menu|เมนูบัญชี)$/ }));
-  return screen.findByRole('menuitemcheckbox', { name: /Single-key shortcuts|คีย์ลัดปุ่มเดี่ยว/ });
+  const open = await screen.findByRole('menuitem', { name: /Show keyboard shortcuts|แสดงคีย์ลัด/ });
+  open.focus();
+  await user.keyboard('{Enter}');
+  const dialog = await screen.findByRole('dialog', { name: /Keyboard shortcuts|คีย์ลัด/ });
+  return within(dialog).getByRole('checkbox', { name: /Single-key shortcuts|คีย์ลัดปุ่มเดี่ยว/ });
 }
 async function toggleSingleKey(user: ReturnType<typeof userEvent.setup>) {
-  const item = await singleKeyItem(user);
-  item.focus();
-  await user.keyboard('{Enter}');
+  await user.click(await singleKeyItem(user));
+  await user.keyboard('{Escape}');
 }
 /** The listbox that holds the keyboard: the board's section with the open ticket (id queue-listbox). */
 const listbox = () => {
@@ -129,7 +135,7 @@ describe('single-key shortcuts preference (WCAG 2.1.4)', () => {
     workspaceApi();
     await openWorkspace();
     const again = userEvent.setup();
-    expect(await singleKeyItem(again)).toHaveAttribute('aria-checked', 'false');
+    expect(await singleKeyItem(again)).not.toBeChecked();
     await again.keyboard('{Escape}');
     await again.keyboard('j');
     expect(within(listbox()).queryByRole('option', { selected: true })).not.toBeInTheDocument();
@@ -736,6 +742,6 @@ describe('Thai copy for the new controls', () => {
     await screen.findByRole('region', { name: 'คิวงาน' });
     expect(screen.getByRole('tablist', { name: 'พาเนล' })).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: 'รายละเอียดและ AI' })).toBeInTheDocument();
-    expect(await singleKeyItem(userEvent.setup())).toHaveAttribute('aria-checked', 'true');
+    expect(await singleKeyItem(userEvent.setup())).toBeChecked();
   });
 });
