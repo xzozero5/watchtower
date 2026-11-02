@@ -1,7 +1,15 @@
 'use client';
 
-import { buttonVariants, cn, EmptyState, Skeleton } from '@watchtower/ui';
-import { CircleCheck } from 'lucide-react';
+import {
+  buttonVariants,
+  cn,
+  EmptyState,
+  HelpHint,
+  IconButton,
+  Skeleton,
+  toast,
+} from '@watchtower/ui';
+import { CircleCheck, Copy } from 'lucide-react';
 import Link from 'next/link';
 import { useMemo, useSyncExternalStore } from 'react';
 
@@ -54,9 +62,26 @@ export function Confirmation() {
         </h1>
       </div>
 
-      <dl className="rounded-2xl bg-surface p-pane ring-1 ring-border/60 ring-inset">
-        <dt className="text-sm text-muted-foreground">{t('portal.confirmation.number')}</dt>
-        <dd className="mt-0.5 font-mono text-xl font-semibold tabular-nums">{result.ticketKey}</dd>
+      <dl className="flex items-center justify-between gap-3 rounded-2xl bg-surface p-pane ring-1 ring-border/60 ring-inset">
+        <div>
+          <dt className="text-sm text-muted-foreground">{t('portal.confirmation.number')}</dt>
+          <dd className="mt-0.5 font-mono text-3xl font-semibold tabular-nums">
+            {result.ticketKey}
+          </dd>
+        </div>
+        <IconButton
+          variant="secondary"
+          label={t('portal.confirmation.copy')}
+          icon={<Copy aria-hidden className="size-4" />}
+          onClick={() => {
+            void navigator.clipboard
+              .writeText(result.ticketKey)
+              .then(() => {
+                toast(t('portal.confirmation.copied', { number: result.ticketKey }));
+              })
+              .catch(() => undefined);
+          }}
+        />
       </dl>
 
       <div className="flex flex-col gap-2">
@@ -68,8 +93,13 @@ export function Confirmation() {
             })}
           </p>
         ) : null}
-        <p className="text-muted-foreground">{t('portal.confirmation.next')}</p>
-        <p className="text-muted-foreground">{t('portal.confirmation.noEmail')}</p>
+        {/* What to do next and what to do without the email: one hint, not two paragraphs. */}
+        <div className="flex">
+          <HelpHint label={t('portal.confirmation.help')}>
+            <p>{t('portal.confirmation.next')}</p>
+            <p className="mt-2">{t('portal.confirmation.noEmail')}</p>
+          </HelpHint>
+        </div>
       </div>
 
       <Link

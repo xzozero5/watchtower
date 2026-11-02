@@ -9,7 +9,6 @@ import {
   Flame,
   Gauge,
   Inbox,
-  Keyboard,
   type LucideIcon,
   Mail,
   PanelLeft,
@@ -338,16 +337,6 @@ export function NavRail({
           shortcut={[mod, 'K']}
           keyShortcuts="Control+K Meta+K"
           onClick={onOpenPalette}
-        />
-        <RailButton
-          icon={Keyboard}
-          label={t('topbar.openKeymap')}
-          shortLabel={t('rail.keymapShort')}
-          expanded={expanded}
-          shortcut={['?']}
-          keyShortcuts="?"
-          onClick={onOpenKeymap}
-          className="max-md:hidden"
         />
         <ShiftChip expanded={expanded} />
         <div

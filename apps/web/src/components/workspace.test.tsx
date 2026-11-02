@@ -120,7 +120,11 @@ describe('single-key shortcuts preference (WCAG 2.1.4)', () => {
     await waitFor(() => {
       expect(listbox()).toHaveFocus();
     });
-    await user.click(screen.getByRole('button', { name: /Show keyboard shortcuts/ }));
+    // The keyboard map is in the account menu (the rail no longer has its own button).
+    await user.click(screen.getByRole('button', { name: 'Account menu' }));
+    const open = await screen.findByRole('menuitem', { name: /Show keyboard shortcuts/ });
+    open.focus();
+    await user.keyboard('{Enter}');
     expect(await screen.findByRole('dialog', { name: 'Keyboard shortcuts' })).toBeInTheDocument();
   });
 

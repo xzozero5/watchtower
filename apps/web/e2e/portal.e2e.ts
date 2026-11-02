@@ -230,7 +230,8 @@ test.describe('Thai', () => {
     await page.waitForURL('**/portal/submitted');
     await expect(page.getByRole('heading', { name: 'เราได้รับคำขอ OPS-12 แล้ว' })).toBeVisible();
 
-    await page.getByLabel('ภาษา').selectOption('en');
+    // The language is two flags; the one for English is named in English.
+    await page.getByRole('radio', { name: 'English' }).click();
     await expect(page.locator('html')).toHaveAttribute('lang', 'en');
     await expect(
       page.getByRole('heading', { name: 'We received your request OPS-12' }),

@@ -77,20 +77,24 @@ function Provenance({ insight }: { insight: TicketAiInsight }) {
   const { t, locale } = useI18n();
   const now = useNow();
   const version = insight.draft?.promptVersion;
-  const text = [
+  const age = formatAge(insight.generatedAt, now, locale) ?? t('timeline.now');
+  // The prompt version is for whoever tunes prompts: it is in the tooltip and the name, not on the card.
+  const detail = [
     'AI',
     version ? t('ai.brief.prompt', { version }) : null,
-    formatAge(insight.generatedAt, now, locale) ?? t('timeline.now'),
+    formatDateTime(insight.generatedAt, locale),
   ]
     .filter((part) => part !== null)
     .join(' · ');
   return (
     <time
       dateTime={insight.generatedAt}
-      title={formatDateTime(insight.generatedAt, locale)}
-      className="text-xs text-muted-foreground"
+      title={detail}
+      className="inline-flex items-center gap-1 text-xs text-muted-foreground"
     >
-      {text}
+      <Bot aria-hidden className="size-3.5" />
+      <span className="sr-only">{`${detail} · `}</span>
+      {age}
     </time>
   );
 }

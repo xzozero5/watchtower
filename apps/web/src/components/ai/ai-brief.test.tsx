@@ -51,7 +51,11 @@ describe('the AI brief', () => {
     expect(within(brief).getByRole('button', { name: 'Approve reply' })).toBeVisible();
     expect(within(brief).getByRole('button', { name: 'Write myself' })).toBeVisible();
     // Provenance: AI, prompt version, how long ago (exact time on hover); the stage in words.
-    expect(within(brief).getByText(/^AI · prompt v3 · /)).toBeVisible();
+    // Provenance is a bot icon and an age; the prompt version is in the tooltip and the name.
+    const provenance = within(brief).getByTitle(/^AI · prompt v3 · /);
+    expect(provenance.tagName).toBe('TIME');
+    expect(provenance).toHaveAttribute('datetime', '2026-11-02T02:58:00.000Z');
+    expect(provenance.textContent).toMatch(/^AI · prompt v3 · .+ · .+$/);
     expect(within(brief).getByText('Stage 2 · Draft for approval')).toBeVisible();
     expect(within(brief).getByText('Draft ready')).toBeVisible();
   });
