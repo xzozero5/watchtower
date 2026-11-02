@@ -246,11 +246,27 @@ test.describe('runtime API URL', () => {
 });
 
 test.describe('error pages', () => {
-  test('an unknown path shows a 404 page with a way back', async ({ page }) => {
+  test('an unknown path shows a 404 page; signed out it leads to the help portal', async ({
+    page,
+  }) => {
+    await mockBackend(page, { session: null });
     const response = await page.goto('/no-such-page');
     expect(response?.status()).toBe(404);
     await expect(page.getByText('Page not found')).toBeVisible();
-    await expect(page.getByRole('link', { name: 'Back to the queue' })).toBeVisible();
+    const link = page.getByRole('link', { name: 'Go to the help portal' });
+    await expect(link).toHaveAttribute('href', '/portal');
+    await expect(page.getByRole('link', { name: 'Back to the queue' })).toHaveCount(0);
+  });
+
+  test('signed-in staff get a way back to the queue on a 404', async ({ page }) => {
+    await mockBackend(page);
+    const response = await page.goto('/no-such-page');
+    expect(response?.status()).toBe(404);
+    await expect(page.getByRole('link', { name: 'Back to the queue' })).toHaveAttribute(
+      'href',
+      '/',
+    );
+    await expect(page.getByRole('link', { name: 'Go to the help portal' })).toHaveCount(0);
   });
 });
 

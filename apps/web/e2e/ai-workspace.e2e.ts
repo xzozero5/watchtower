@@ -48,14 +48,19 @@ test.describe('triage board', () => {
     await expect(page.getByRole('option', { name: /OPS-5/ })).toContainText('Plain old subject');
     await expect(page.getByRole('option', { name: /OPS-2/ })).toContainText('Investigating');
 
+    // "Needs you" sorts breached first (OPS-4: P1, first response overdue), then priority (OPS-1 P2, OPS-5 default).
+    await page.keyboard.press('j');
+    await expect(page.getByRole('option', { name: /OPS-4/ })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
     await page.keyboard.press('j');
     await expect(page.getByRole('option', { name: /OPS-1/ })).toHaveAttribute(
       'aria-selected',
       'true',
     );
     await page.keyboard.press('j');
-    await page.keyboard.press('j');
-    // OPS-1, OPS-4, OPS-5 are "Needs you"; the next row is the first of "AI working".
+    // OPS-4, OPS-1, OPS-5 are "Needs you"; the next row is the first of "AI working".
     await page.keyboard.press('j');
     await expect(page.getByRole('option', { name: /OPS-2/ })).toHaveAttribute(
       'aria-selected',
@@ -130,8 +135,13 @@ test.describe('ticket with an AI brief', () => {
     await expect(brief.getByRole('meter', { name: 'Confidence High 0.86' })).toBeVisible();
     await expect(brief).toContainText('Stage 2 · Draft for approval');
     await expect(brief).toContainText('AI · prompt v3');
-    // The composer is out of the way; the right-hand panel opens on the Evidence tab.
+    // The composer is out of the way; the right-hand panel opens on Details, Evidence is one click away.
     await expect(conversation(page).getByRole('textbox')).toHaveCount(0);
+    await expect(page.getByRole('tab', { name: 'Details' })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
+    await page.getByRole('tab', { name: 'Evidence' }).click();
     await expect(page.getByRole('tab', { name: 'Evidence' })).toHaveAttribute(
       'aria-selected',
       'true',
@@ -290,6 +300,7 @@ test.describe('ticket with an AI brief', () => {
         '/?ticket=OPS-1',
       );
       await expect(conversation(page).getByTestId('ai-draft')).toBeVisible();
+      await page.getByRole('tab', { name: 'Evidence' }).click();
       await expect(page.getByRole('tab', { name: 'Evidence' })).toHaveAttribute(
         'aria-selected',
         'true',

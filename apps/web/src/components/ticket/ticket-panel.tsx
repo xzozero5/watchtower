@@ -47,7 +47,7 @@ function PanelTabTrigger({
         data-panel-tab={value}
         aria-label={label}
         // The tooltip trigger takes over `data-state`, so the selected look follows `aria-selected`.
-        className="group aria-selected:bg-primary-subtle aria-selected:text-foreground"
+        className="group min-w-0 shrink aria-selected:bg-primary-subtle aria-selected:text-foreground"
       >
         <Icon aria-hidden className="size-4 shrink-0" />
         <span aria-hidden className="truncate">
