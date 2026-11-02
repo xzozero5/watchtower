@@ -298,6 +298,12 @@ describe('GET /v1/tickets/stats', () => {
     expect(response.body.byStatus).toEqual([]);
   });
 
+  it('answers with no filter at all (the queue and dashboard call it bare; was a 500)', async () => {
+    const response = await lead.client.get<TicketStats & ApiErrorBody>('/v1/tickets/stats');
+    expect(response.status).toBe(200);
+    expect(response.body.total.count).toBeGreaterThanOrEqual(1);
+  });
+
   it('is for staff: a client is refused, and nobody signed in gets 401', async () => {
     expect((await stats(client)).status).toBe(403);
     expect((await h.client().get('/v1/tickets/stats')).status).toBe(401);

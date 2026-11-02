@@ -233,7 +233,8 @@ export class TicketSlaStates {
                ${runningDueSql()} AS due, ${runningKindSql()} AS kind, ${klass} AS sla_class
           FROM ${ticket}
          WHERE ${sql.join(
-           filters.filter((filter): filter is SQL => filter !== undefined),
+           // TRUE keeps the clause valid when no filter applies (a head with no query: was a 500).
+           [sql`TRUE`, ...filters.filter((filter): filter is SQL => filter !== undefined)],
            sql` AND `,
          )}
       )
