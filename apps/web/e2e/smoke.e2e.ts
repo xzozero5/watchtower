@@ -158,7 +158,7 @@ test.describe('theme, density and motion', () => {
     await openHome(page);
     // The OS is dark, so the switch is on; pressing it saves light.
     await toggleDarkFromAccountMenu(page);
-    expect(await bodyBackground(page)).toBe(rgb(COLOR_TOKENS.light.background));
+    await expect.poll(() => bodyBackground(page)).toBe(rgb(COLOR_TOKENS.light.background));
 
     await page.reload();
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');

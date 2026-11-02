@@ -62,13 +62,13 @@ export function Confirmation() {
         </h1>
       </div>
 
-      <dl className="flex items-center justify-between gap-3 rounded-2xl bg-surface p-pane ring-1 ring-border/60 ring-inset">
-        <div>
+      <div className="flex items-center justify-between gap-3 rounded-2xl bg-surface p-pane ring-1 ring-border/60 ring-inset">
+        <dl>
           <dt className="text-sm text-muted-foreground">{t('portal.confirmation.number')}</dt>
           <dd className="mt-0.5 font-mono text-3xl font-semibold tabular-nums">
             {result.ticketKey}
           </dd>
-        </div>
+        </dl>
         <IconButton
           variant="secondary"
           label={t('portal.confirmation.copy')}
@@ -82,7 +82,7 @@ export function Confirmation() {
               .catch(() => undefined);
           }}
         />
-      </dl>
+      </div>
 
       <div className="flex flex-col gap-2">
         <p>{t('portal.trackingSent', { email: result.maskedEmail })}</p>
