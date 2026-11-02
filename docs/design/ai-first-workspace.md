@@ -16,15 +16,17 @@ Principle: **the agent's first job is to decide, not to read.** Every screen ans
 ## 2. Queue = triage board, not inbox
 - Row (2 lines max, no snippet of the raw mail):
   - line 1: AI one-line summary (≤ 80 chars, e.g. "Can't sign in after reset — account locked") · right: SLA countdown pill.
+  - **Changed 2026-11-02 (po for the owner, QA-03):** line 1 = the human subject; the AI summary moves to line 2 with an "AI" label (N5: AI text is never shown as fact without a label; role-play found the summary stating an auto-ack as fact). The SLA badge slot is always present ("No SLA" when none).
   - line 2: priority pill · intent chip · **AI state chip** (`Draft ready` / `Investigating` / `Needs you` / `Classified`) · org avatar · channel icon. No status words unless not `open`.
   - Fallback when no AI summary: the subject, in muted text.
 - Grouping instead of one long list: **Needs you** (draft ready, AI unsure, SLA at risk) · **AI working** · **Waiting** (customer/dev) — collapsible section headers with counts. Saved views stay in the view switcher.
+  - **Clarified 2026-11-02 (po, QA-02):** "Needs you" always includes every P1 and every SLA breached/at-risk ticket whatever its AI state, and only tickets that need *me* (mine, or unassigned in my queues). Every group sorts breached → at-risk → priority → due.
 - Density: comfortable 56 px per row (2 lines), compact 40 px (1 line: summary + pills).
 - Keyboard: `j/k`, `a` approve draft from the list when the row is "Draft ready" (opens a confirm preview, never sends blind).
 
 ## 3. Ticket = AI brief first
 Top to bottom in the centre pane:
-1. **Header (one line):** key · AI summary as title (subject available on hover/expand) · priority, SLA, status pills · actions (Resolve, ⋯).
+1. **Header (one line):** key · ~~AI summary as title (subject available on hover/expand)~~ **the human subject as title; the AI summary is the first line of the AI brief, labelled AI (po 2026-11-02, QA-03)** · priority, SLA, status pills · actions (Resolve, ⋯).
 2. **AI brief card** (the focal point, `aiSurface`):
    - "What's happening" — 1–2 sentences.
    - "Likely cause / intent" — intent chip + confidence meter (`High 0.86`) + one reason.

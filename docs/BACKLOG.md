@@ -67,6 +67,25 @@
 - [ ] T-135 `ai-engineer` สรุปจาก AI ทุกจุด: daily brief, handoff prefill, รายงานสืบสวน ทุก claim มีลิงก์ไปหลักฐานจริง ไม่มีหลักฐานต้องบอก
 - [x] T-136 + T-137: หน้าเปิด ticket เอง + role `dev` (po #33, #35)
 
+### จาก role-play QA 2026-11-02 (`docs/qa/2026-11-02-roleplay-triage.md`, po triage)
+- [ ] T-138 `backend-dev` SLA ตอนสร้าง ticket (QA-17a ตรวจก่อนว่า bug หรือไม่มี policy) + คำอธิบาย business hours / เตือน Business clock ไม่มี calendar / รับ 4h, 2d (QA-17b)
+- [ ] T-139 `backend-dev` + `frontend-dev` สถานะการส่งของอีเมลยืนยันบน timeline + ไอคอนอีเมล (QA-05)
+- [ ] T-140 `frontend-dev` + `backend-dev` แนบไฟล์ใน portal (R-9.1/R-9.3 เป็น P0) จำกัดชนิด/ขนาด + security review (QA-21) — **ต้องเสร็จก่อน T-115**
+- [ ] T-141 `frontend-dev` + `backend-dev` หน้าเช้าของ lead: ใครอยู่กะ/ไม่มา, งานไม่มีคนรับในคิวทีม, นิยามตัวเลขให้ตรงกันทุกหน้า (QA-13)
+- [ ] T-142 `backend-dev` + `frontend-dev` การ์ดงบ AI: ใช้ไป/วงเงิน/ถึงวงเงินแล้วเกิดอะไร (PRD §6.6) (QA-14)
+- [ ] T-143 `frontend-dev` keyboard map ตาม UI-SPEC §14 (I/P/S, คำสั่ง ticket ใน palette) (QA-10)
+- [ ] T-144 `backend-dev` + `frontend-dev` timeline แสดง from→to, ลำดับเวลา, ไอคอน note, link incident (QA-18)
+- [ ] T-145 `frontend-dev` status page draft ไม่มี component / post ผูก incident (QA-15) · Invite state "Invited" + copy ตามวิธีล็อกอินจริง (QA-16) · ฟอร์มเปิด ticket เอง: priority, org ใหม่ (QA-25)
+- [ ] T-146 `ux-designer` + `frontend-dev` glossary ภาษาไทยใน UI-SPEC §16 + lint th/*.ts (QA-19b) · shift/handoff polish (QA-26) · audit log "ซ่อน read" + target อ่านได้ (QA-27) · polish รวม (QA-28) · อัปเดต UI-SPEC §3.1 ให้ตรงกับ T-124
+- [ ] T-147 `ai-engineer` ไม่เสนอ Reply บน channel ที่ส่งออกไม่ได้ + เสนอ priority (QA-29)
+- [ ] T-148 `backend-dev` template อีเมล ack (สรุป + ETA + ปุ่ม) + อีเมลยืนยันเมื่อลูกค้า reply (QA-24)
+- [ ] T-149 `architect` + `backend-dev` ADR-005 grace window ของ refresh rotation ก่อนแก้โค้ด (QA-31) · เพิ่มเข้า T-125: audit OAuth callback ไม่มี session, ปิด /docs ใน production, CSP (QA-32, QA-33)
+- [ ] T-150 `backend-dev` ปุ่ม/endpoint "Sync Gmail now" สำหรับ head เมื่อ push เสีย (พบระหว่าง live test: sync ด้วยมือมีเฉพาะตอน Connect)
+- [ ] T-151 `frontend-dev` ชิปสถานะกะเป็นข้อความ ("On shift 08–17") + toast มุมขวาบนตาม UI-SPEC §8.1 (QA-20 ส่วน app-shell)
+- [ ] T-152 `backend-dev` + `frontend-dev` → `security-reviewer` "ส่งลิงก์คำขอของฉันทางอีเมล" (202 เหมือนกันทุกกรณี + Turnstile + rate limit, ไม่สร้างบัญชีอัตโนมัติ) + client ที่ sign in อ่าน ticket ใน org ตัวเองผ่าน session (QA-23)
+- [ ] T-153 `ai-engineer` ประเมิน NER แบบ local (ไม่มี network) สำหรับชื่อที่ไม่มี cue — dependency ใหม่ต้องถามคนก่อน (QA-30 residual)
+- [x] 5 เรื่องที่ต้องตัดสิน (QA-30, 02/03, 08, 20, 23): **po ตัดสินแทนเจ้าของ 2026-11-02** ตามที่เจ้าของมอบ — ดูไฟล์ triage §คำตัดสิน · QA-30 แก้ ADR-008 แล้ว
+
 > **`v0.1.0` (MVP) release 2026-11-02** ที่ `ae380db` · งานที่ยังเปิดด้านล่างไม่อยู่ใน release
 
 ## Phase 2 — Reliability + Usage — แตก task ตอนจบ Phase 1

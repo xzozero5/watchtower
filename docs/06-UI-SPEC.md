@@ -109,6 +109,7 @@ Current code: three columns from Tailwind `lg` (1024 px) with `minmax(15rem,22re
 Webhook not received for 2 hours                             <- line 2: subject, 1 line, ellipsis
 Acme Logistics - [mail] Email - Unverified - AI: Draft ready - (MK)   <- line 3: org, channel, flags, AI state, assignee
 ```
+- **2026-11-02 (po for the owner, QA-02/03):** this anatomy wins over `docs/design/ai-first-workspace.md` §2 where they differ: the subject is the human subject; the AI summary, when present, is shown as its own line labelled "AI" (never as the title). The SLA slot is always rendered ("No SLA" muted when none applies). "Needs you" includes every P1 and SLA breached/at-risk ticket.
 - Compact density: lines 1+2 merged, line 3 hidden except severity, channel icon, SLA and AI state; `SeverityBadge hideLabel` (label stays for screen readers).
 - Unread: bold subject + "Unread" visually hidden text + 8 px dot. Never colour only.
 - Selected row: `primary` left bar 3 px + `surfaceMuted` background + `aria-selected="true"`.

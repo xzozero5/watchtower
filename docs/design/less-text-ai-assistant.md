@@ -165,5 +165,8 @@ Panel เป็น `role="dialog"` มีชื่อ · thread เป็น `lo
 - [ ] axe ผ่านในสถานะ bubble ปิด/เปิด + บน `/tickets/new`, `/dev`
 - [ ] ทุก icon-only มี tooltip + ชื่อ TH/EN, ทุก shortcut ใหม่อยู่ใน keymap/palette, single-letter ปิดได้ (WCAG 2.1.4)
 
+## 7.1 แก้ไข 2026-11-02 (po ตัดสินแทนเจ้าของ, QA-08 จาก role-play)
+ปุ่มที่เป็นจุดตัดสินใจต้องมี **label สั้นคู่ไอคอน**: ใน AI card (Approve/Send, Edit, Regenerate, Send to dev), composer (Reply / Note) และแท็บของ right pane · ปุ่ม chrome รอง (theme, ภาษา, rail, close, copy) ยังเป็นไอคอน + tooltip + ชื่อที่ screen reader อ่านได้ · แท็บ default ของ right pane ต้องคงที่ ไม่เปลี่ยนตามสถานะของ AI · สีใช้บอกสถานะเท่านั้น: rail เป็นสีกลาง ๆ เว้นหน้าปัจจุบันหรือมี count > 0, ค่า 0 ไม่แดง (QA-20) · เหตุผล: ผู้ใช้ 2 บทบาทสับสน "Send to dev + ดินสอ" อ่านเป็น "แก้ข้อความ" และการกดผิดที่จุดตัดสินใจมีต้นทุนจริง
+
 ## 8. ค้างให้คนตัดสิน `[ASK-HUMAN]`
 1. Client ให้ AI ตอบเป็นประโยคได้หรือไม่ (§2.4; N3, PRD §1.2) 2. เปิด role `dev` + ระดับ PII (§5)
