@@ -1692,6 +1692,7 @@ describe('assignment by shift', () => {
 
     const list = await agent.client.get<AssigneeList>(`/v1/assignees?queueId=${queue.id}`);
     expect(list.status).toBe(200);
+    expect(list.body.scope).toBe('queue');
     const byId = new Map(list.body.assignees.map((person) => [person.id, person]));
     expect(byId.get(busy.userId)).toMatchObject({
       onShift: true,
@@ -1715,6 +1716,39 @@ describe('assignment by shift', () => {
     expect(
       (await agent.client.get<AssigneeList>('/v1/assignees')).body.assignees.map((p) => p.id),
     ).not.toContain(gone.userId);
+  });
+
+  it('offers every active staff member when there is no queue to narrow it, and says so (QA-12)', async () => {
+    const asker = await agentNamed('Scope Asker');
+    const other = await agentNamed('Scope Other');
+    await clockIn(other);
+    const expectAllStaff = (body: AssigneeList) => {
+      expect(body.scope).toBe('all_staff');
+      const ids = body.assignees.map((person) => person.id);
+      expect(ids).toEqual(expect.arrayContaining([asker.userId, other.userId, lead.userId]));
+      expect(body.assignees.every((person) => !person.inQueue)).toBe(true);
+      expect(body.assignees.find((person) => person.id === other.userId)?.onShift).toBe(true);
+    };
+    // No queue asked for, an unknown queue, and a queue nobody belongs to.
+    expectAllStaff((await asker.client.get<AssigneeList>('/v1/assignees')).body);
+    expectAllStaff(
+      (
+        await asker.client.get<AssigneeList>(
+          '/v1/assignees?queueId=00000000-0000-4000-8000-000000000000',
+        )
+      ).body,
+    );
+    const empty = await apiQueue(lead, { name: `Empty ${uniqueEmail('q')}`, memberIds: [] });
+    expectAllStaff(
+      (await asker.client.get<AssigneeList>(`/v1/assignees?queueId=${empty.id}`)).body,
+    );
+    // An agent may still assign a ticket to a non-member (a manual assignment needs no queue).
+    const ticket = await fileTicket(lead, orgId, { priority: 'P3' });
+    const handed = await asker.client.post<TicketDetail>(`/v1/tickets/${ticket.id}/assign`, {
+      assigneeId: other.userId,
+    });
+    expect(handed.status).toBe(200);
+    expect(handed.body.assignee?.id).toBe(other.userId);
   });
 
   it('round robin takes turns among the people who are clocked in, and nobody off shift', async () => {

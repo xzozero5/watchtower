@@ -169,6 +169,19 @@ describe('every read a developer can make is masked', () => {
     // Searching the text would be an oracle on the hidden data: only a ticket number works.
     const guess = await dev.client.get<ApiErrorBody>(`/v1/tickets?q=${GIVEN.toLowerCase()}`);
     expect(guess.status).toBe(400);
+    // Nor can a developer probe for an address, whole or by its start, in any case.
+    for (const probe of [EMAIL, EMAIL.toUpperCase(), EMAIL.slice(0, EMAIL.indexOf('@'))]) {
+      const email = await dev.client.get<ApiErrorBody>(
+        `/v1/tickets?q=${encodeURIComponent(probe)}`,
+      );
+      expect(email.status).toBe(400);
+    }
+    // A number typed without its prefix is only a number.
+    const bare = await dev.client.get<Page<TicketSummary>>(
+      `/v1/tickets?q=${String(ticket.number)}`,
+    );
+    expect(bare.status).toBe(200);
+    expect(bare.body.items.map((item) => item.id)).toEqual([ticket.id]);
     const byTag = await dev.client.get<ApiErrorBody>(`/v1/tickets?tag=owner-${EMAIL}`);
     expect(byTag.status).toBe(400);
     const byNumber = await dev.client.get<Page<TicketSummary>>(`/v1/tickets?q=${ticket.key}`);

@@ -17,6 +17,7 @@ import {
   formatTicketKey,
   MIN_SEARCH_LENGTH,
   parseTicketKey,
+  parseTicketSearchNumber,
   setWorkflowSchema,
   ticketListQuerySchema,
   ticketKeyPrefixSchema,
@@ -193,5 +194,43 @@ describe('intent definitions', () => {
       autonomyStage: 4,
     });
     expect('autonomyStage' in parsed).toBe(false);
+  });
+});
+
+describe('parseTicketSearchNumber', () => {
+  it('reads a number however it is typed', () => {
+    for (const typed of [
+      '1003',
+      'OPS-1003',
+      'ops-1003',
+      'OPS1003',
+      'ops 1003',
+      '#1003',
+      ' Ops-1003 ',
+    ]) {
+      expect(parseTicketSearchNumber(typed, 'OPS'), typed).toBe(1003);
+    }
+  });
+
+  it('uses the prefix of the instance, not a fixed one', () => {
+    expect(parseTicketSearchNumber('sup7', 'SUP')).toBe(7);
+    expect(parseTicketSearchNumber('OPS-7', 'SUP')).toBeNull();
+  });
+
+  it('rejects text that is not a number', () => {
+    for (const typed of [
+      'OPS',
+      'OPS-',
+      'abc',
+      'a@b.co',
+      '0',
+      'OPS-0',
+      '12ab',
+      '1003 login',
+      '-5x',
+    ]) {
+      expect(parseTicketSearchNumber(typed, 'OPS'), typed).toBeNull();
+    }
+    expect(parseTicketSearchNumber('9'.repeat(16), 'OPS')).toBeNull();
   });
 });
