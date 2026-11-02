@@ -37,10 +37,10 @@ export function viewOptions(items: readonly SavedView[]): ViewOption[] {
 }
 
 /** The number beside each built-in view, from the server's view of the same name. */
-export function builtInCounts(
-  items: readonly SavedView[],
-): Partial<Record<BuiltInViewId, number>> {
-  const byKey = new Map(items.flatMap((view) => (view.key ? [[view.key, view.count] as const] : [])));
+export function builtInCounts(items: readonly SavedView[]): Partial<Record<BuiltInViewId, number>> {
+  const byKey = new Map(
+    items.flatMap((view) => (view.key ? [[view.key, view.count] as const] : [])),
+  );
   const counts: Partial<Record<BuiltInViewId, number>> = {};
   for (const view of BUILT_IN_VIEWS) {
     const key = SYSTEM_VIEW_OF[view.id];

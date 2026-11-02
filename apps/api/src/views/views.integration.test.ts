@@ -77,7 +77,9 @@ describe('who may list and save views', () => {
     const body = { name: 'x', filters: {} };
     expect((await client.client.post('/v1/views', body)).status).toBe(403);
     expect((await h.client().post('/v1/views', body)).status).toBe(401);
-    expect((await client.client.patch(`/v1/views/${randomUUID()}`, { name: 'y' })).status).toBe(403);
+    expect((await client.client.patch(`/v1/views/${randomUUID()}`, { name: 'y' })).status).toBe(
+      403,
+    );
     expect((await client.client.delete(`/v1/views/${randomUUID()}`)).status).toBe(403);
     expect((await h.client().delete(`/v1/views/${randomUUID()}`)).status).toBe(401);
   });
@@ -95,7 +97,8 @@ describe('the built-in views', () => {
     const e = await make({ assigneeId: lead.userId });
     const f = await make();
     ids = { a: a.id, b: b.id, c: c.id, d: d.id, e: e.id, f: f.id };
-    const set = (id: string, sql: string) => pool().query(`UPDATE ticket SET ${sql} WHERE id = $1`, [id]);
+    const set = (id: string, sql: string) =>
+      pool().query(`UPDATE ticket SET ${sql} WHERE id = $1`, [id]);
     await set(a.id, `status = 'new', assignee_id = NULL`);
     await set(b.id, `status = 'open'`);
     await set(c.id, `status = 'triage', assignee_id = NULL`);
@@ -155,10 +158,14 @@ describe('the built-in views', () => {
     expect(list.body.items[0]?.sla?.state).toBe('breached');
 
     const triage = await viewNamed(agent, 'triage');
-    const triageList = await agent.client.get<Page<TicketSummary>>(`/v1/tickets?${ticketQuery(triage)}`);
+    const triageList = await agent.client.get<Page<TicketSummary>>(
+      `/v1/tickets?${ticketQuery(triage)}`,
+    );
     expect(triageList.body.items.map((ticket) => ticket.id)).toEqual([ids.c]);
     const waiting = await viewNamed(agent, 'waiting_on_customer');
-    const waitingList = await agent.client.get<Page<TicketSummary>>(`/v1/tickets?${ticketQuery(waiting)}`);
+    const waitingList = await agent.client.get<Page<TicketSummary>>(
+      `/v1/tickets?${ticketQuery(waiting)}`,
+    );
     expect(waitingList.body.items.map((ticket) => ticket.id)).toEqual([ids.d]);
   });
 
@@ -211,7 +218,9 @@ describe('personal views', () => {
     // Nobody else sees it, and nobody else can change it: it is not theirs to know about (404).
     for (const who of [otherAgent, lead, head]) {
       expect((await views(who)).map((view) => view.id)).not.toContain(created.body.id);
-      expect((await who.client.patch(`/v1/views/${created.body.id}`, { name: 'Stolen' })).status).toBe(404);
+      expect(
+        (await who.client.patch(`/v1/views/${created.body.id}`, { name: 'Stolen' })).status,
+      ).toBe(404);
       expect((await who.client.delete(`/v1/views/${created.body.id}`)).status).toBe(404);
     }
     const audit = await pool().query<{ actor_id: string; after: { name: string } }>(
@@ -259,14 +268,19 @@ describe('personal views', () => {
   });
 
   it('refuses a name already used by that person, ignoring case, but not by somebody else', async () => {
-    const first = await lead.client.post('/v1/views', { name: 'Billing', filters: { tag: 'billing' } });
+    const first = await lead.client.post('/v1/views', {
+      name: 'Billing',
+      filters: { tag: 'billing' },
+    });
     expect(first.status).toBe(201);
     const same = await lead.client.post<ApiErrorBody>('/v1/views', {
       name: 'BILLING',
       filters: {},
     });
     expect(same.status).toBe(409);
-    expect((await head.client.post('/v1/views', { name: 'Billing', filters: {} })).status).toBe(201);
+    expect((await head.client.post('/v1/views', { name: 'Billing', filters: {} })).status).toBe(
+      201,
+    );
     // Renaming into a taken name is the same refusal.
     const other = await lead.client.post<SavedView>('/v1/views', { name: 'Other', filters: {} });
     expect(
@@ -280,7 +294,10 @@ describe('personal views', () => {
       `INSERT INTO saved_view (owner_id, name) SELECT $1, 'view ' || n FROM generate_series(1, $2) AS n`,
       [user.userId, MAX_PERSONAL_VIEWS],
     );
-    const over = await user.client.post<ApiErrorBody>('/v1/views', { name: 'One too many', filters: {} });
+    const over = await user.client.post<ApiErrorBody>('/v1/views', {
+      name: 'One too many',
+      filters: {},
+    });
     expect(over.status).toBe(409);
     expect(over.body.message).toContain(String(MAX_PERSONAL_VIEWS));
   });
@@ -332,7 +349,9 @@ describe('shared views', () => {
   });
 
   it('are changed and deleted only by somebody with view.share, even for their owner', async () => {
-    expect((await agent.client.patch(`/v1/views/${shared.id}`, { name: 'Mine now' })).status).toBe(403);
+    expect((await agent.client.patch(`/v1/views/${shared.id}`, { name: 'Mine now' })).status).toBe(
+      403,
+    );
     expect((await agent.client.delete(`/v1/views/${shared.id}`)).status).toBe(403);
     // The head holds view.share and may change the lead's shared view.
     const renamed = await head.client.patch<SavedView>(`/v1/views/${shared.id}`, {
@@ -342,12 +361,21 @@ describe('shared views', () => {
     expect(renamed.body.name).toBe('For the whole team');
     // A person may not make their own view the team's without view.share, nor take it back.
     const mine = await agent.client.post<SavedView>('/v1/views', { name: 'Private', filters: {} });
-    expect((await agent.client.patch(`/v1/views/${mine.body.id}`, { shared: true })).status).toBe(403);
+    expect((await agent.client.patch(`/v1/views/${mine.body.id}`, { shared: true })).status).toBe(
+      403,
+    );
     const shareIt = await lead.client.post<SavedView>('/v1/views', { name: 'Draft', filters: {} });
-    const promoted = await lead.client.patch<SavedView>(`/v1/views/${shareIt.body.id}`, { shared: true });
+    const promoted = await lead.client.patch<SavedView>(`/v1/views/${shareIt.body.id}`, {
+      shared: true,
+    });
     expect(promoted.body.kind).toBe('shared');
-    expect((await agent.client.patch(`/v1/views/${shareIt.body.id}`, { shared: false })).status).toBe(403);
-    expect((await lead.client.patch<SavedView>(`/v1/views/${shareIt.body.id}`, { shared: false })).body.kind).toBe('personal');
+    expect(
+      (await agent.client.patch(`/v1/views/${shareIt.body.id}`, { shared: false })).status,
+    ).toBe(403);
+    expect(
+      (await lead.client.patch<SavedView>(`/v1/views/${shareIt.body.id}`, { shared: false })).body
+        .kind,
+    ).toBe('personal');
   });
 
   it('keep their names unique among shared views', async () => {

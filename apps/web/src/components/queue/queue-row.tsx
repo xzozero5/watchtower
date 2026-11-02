@@ -1,4 +1,5 @@
 import { Avatar, cn, IntentChip, SeverityBadge } from '@watchtower/ui';
+import { Check } from 'lucide-react';
 
 import { AiStateChip } from '@/components/ai/ai-state-chip';
 import { ChannelIcon } from '@/components/ticket/channel-icon';
@@ -112,6 +113,7 @@ export function QueueRow({
     <span className="sr-only">
       {row.key}, {who}
       {row.orgName ? `, ${row.orgName}` : ''}
+      {checked ? `, ${t('bulk.rowSelected')}` : ''}
     </span>
   );
 
@@ -135,24 +137,28 @@ export function QueueRow({
       )}
     >
       {selectable ? (
-        // The mouse way to tick a row; the keyboard way is X on the open ticket. Not a tab stop:
-        // the listbox is one stop, and a checkbox inside an option would be a second one per row.
-        <input
-          type="checkbox"
-          tabIndex={-1}
-          checked={checked}
-          onChange={() => {
-            onToggleChecked?.(row.key);
-          }}
+        // The mouse way to tick a row; the keyboard way is X on the open ticket. A box drawn on the
+        // row, not a form control: a control inside an option cannot be reached as one (axe
+        // `nested-interactive`), and the listbox is the one tab stop. Whether the row is ticked is
+        // said in the option's own words (`identity`) and by `data-checked`.
+        <span
+          aria-hidden
+          title={t('bulk.selectRow', { key: row.key })}
+          data-select-toggle={row.key}
           onClick={(event) => {
             event.stopPropagation();
+            onToggleChecked?.(row.key);
           }}
-          aria-label={t('bulk.selectRow', { key: row.key })}
           className={cn(
-            'absolute top-1/2 left-2.5 size-4 -translate-y-1/2 accent-primary',
-            !(checked || selecting) && 'opacity-0 group-hover:opacity-100 focus-visible:opacity-100',
+            'absolute top-1/2 left-2.5 flex size-4 -translate-y-1/2 items-center justify-center rounded-sm border',
+            checked
+              ? 'border-primary bg-primary text-primary-foreground'
+              : 'border-border bg-background',
+            !(checked || selecting) && 'opacity-0 group-hover:opacity-100',
           )}
-        />
+        >
+          {checked ? <Check aria-hidden className="size-3" /> : null}
+        </span>
       ) : null}
       {identity}
       {compact ? (

@@ -25,7 +25,12 @@ import {
 } from '@watchtower/shared';
 import type { z } from 'zod';
 
-import { Audited, CurrentPrincipal, RequirePermission, type Principal } from '../auth/decorators.js';
+import {
+  Audited,
+  CurrentPrincipal,
+  RequirePermission,
+  type Principal,
+} from '../auth/decorators.js';
 import { parseResponse } from '../common/zod-openapi.js';
 import { BulkService } from './bulk.service.js';
 import { LinksService } from './links.service.js';
@@ -49,7 +54,7 @@ export class BulkController {
       'Each ticket is a separate change made as the caller, through the same rules as the single ' +
       'routes: the caller must be able to see it (404 for that ticket otherwise), the workflow must ' +
       'allow the status, a merge stays inside one organization. One ticket failing does not undo ' +
-      'the others; the answer is 200 with every ticket\'s outcome (`ok`, or `error` with the same ' +
+      "the others; the answer is 200 with every ticket's outcome (`ok`, or `error` with the same " +
       '`code` the single route would have answered). Every change writes its own ticket event and ' +
       'audit row with the caller as actor, so the shift handoff reads a bulk reassignment or ' +
       'downgrade exactly like a single one (AC-7). There is no reply action: nothing here reaches a ' +
@@ -102,7 +107,9 @@ export class LinksController {
       '(409 otherwise), and the same pair cannot be linked twice. Writes an internal event on both tickets.',
   })
   @ApiCreatedResponse({ standardSchema: ticketLinkSchema })
-  @ApiConflictResponse({ description: 'Different organizations, already linked, or a reverse duplicate' })
+  @ApiConflictResponse({
+    description: 'Different organizations, already linked, or a reverse duplicate',
+  })
   @ApiNotFoundResponse({ description: 'No such ticket' })
   async create(
     @Param({ schema: ticketRefParamSchema }) params: RefParam,
@@ -116,7 +123,10 @@ export class LinksController {
   @HttpCode(204)
   @RequirePermission('ticket.handle')
   @Audited({ action: AUDIT_ACTIONS.ticketUnlink, targetType: 'ticket' })
-  @ApiOperation({ summary: 'Remove a link', description: 'Writes an internal event on both tickets.' })
+  @ApiOperation({
+    summary: 'Remove a link',
+    description: 'Writes an internal event on both tickets.',
+  })
   @ApiNoContentResponse({ description: 'Removed' })
   @ApiNotFoundResponse({ description: 'No such ticket, or no such link on it' })
   @ApiForbiddenResponse({ description: 'Missing ticket.handle' })

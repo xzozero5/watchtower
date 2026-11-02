@@ -1,9 +1,12 @@
 import {
+  SYSTEM_VIEWS,
+  SYSTEM_VIEW_KEYS,
   defaultTransitionList,
   type AuthConfig,
   type ClientTicket,
   type RealtimeEvent,
   type Role,
+  type SavedView,
   type SessionInfo,
   type TicketAiInsight,
   type TicketDetail,
@@ -86,6 +89,7 @@ export async function mockBackend(page: Page, options: BackendOptions = {}) {
   const tickets = options.tickets ?? (role === 'client' ? [makeClientTicket(1)] : defaultTickets());
   const session = options.session === undefined ? makeSession(role) : options.session;
   const requests: RecordedRequest[] = [];
+  const savedViews: SavedView[] = [];
   let sockets: WebSocketRoute[] = [];
 
   const fulfill = (route: Route, status: number, json?: unknown) =>
@@ -181,6 +185,44 @@ export async function mockBackend(page: Page, options: BackendOptions = {}) {
       const status = (recorded.body as { status: TicketDetail['status'] }).status;
       Object.assign(found, { status });
       return fulfill(route, 200, found);
+    }
+    // Saved views (T-119): the built-in ones, plus whatever the page saved during the test.
+    if (key === 'GET /v1/views') {
+      if (role === 'client') return fulfill(route, 403, errorBody(403, 'forbidden'));
+      const builtIn: SavedView[] = SYSTEM_VIEW_KEYS.map((viewKey) => ({
+        id: `system:${viewKey}`,
+        kind: 'system' as const,
+        key: viewKey,
+        name: SYSTEM_VIEWS[viewKey].name,
+        filters: SYSTEM_VIEWS[viewKey].filters,
+        sort: SYSTEM_VIEWS[viewKey].sort,
+        ownerId: null,
+        ownerName: null,
+        count: 0,
+        editable: false,
+        createdAt: null,
+        updatedAt: null,
+      }));
+      return fulfill(route, 200, { items: [...builtIn, ...savedViews] });
+    }
+    if (key === 'POST /v1/views') {
+      const input = recorded.body as Pick<SavedView, 'name' | 'filters' | 'sort'>;
+      const created: SavedView = {
+        id: `b0000000-0000-4000-8000-0000000000${String(10 + savedViews.length)}`,
+        kind: 'personal',
+        key: null,
+        name: input.name,
+        filters: input.filters,
+        sort: input.sort,
+        ownerId: session?.user.id ?? null,
+        ownerName: session?.user.name ?? null,
+        count: 0,
+        editable: true,
+        createdAt: '2026-11-02T03:00:00.000Z',
+        updatedAt: '2026-11-02T03:00:00.000Z',
+      };
+      savedViews.push(created);
+      return fulfill(route, 201, created);
     }
     if (key === 'GET /v1/intents') {
       return fulfill(route, 200, { intents: role === 'client' ? [] : [INTENT] });

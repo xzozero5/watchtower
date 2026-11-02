@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
-import { OUTBOX_AGE_CRITICAL_SECONDS, OUTBOX_AGE_WARNING_SECONDS, outboxHealthStatus } from './ops.js';
+import {
+  OUTBOX_AGE_CRITICAL_SECONDS,
+  OUTBOX_AGE_WARNING_SECONDS,
+  outboxHealthStatus,
+} from './ops.js';
 import { TICKET_SORTS } from './ticketing.js';
 import {
   BULK_MAX_TICKETS,
@@ -57,8 +61,9 @@ describe('bulk requests', () => {
     expect(bulkRequestSchema.safeParse({ ticketIds: [ID], action: ok }).success).toBe(true);
     expect(bulkRequestSchema.safeParse({ ticketIds: [], action: ok }).success).toBe(false);
     expect(bulkRequestSchema.safeParse({ ticketIds: [ID, ID], action: ok }).success).toBe(false);
-    const many = Array.from({ length: BULK_MAX_TICKETS + 1 }, (_, index) =>
-      `3f0c1f4e-8f86-4c0e-9d52-${String(index).padStart(12, '0')}`,
+    const many = Array.from(
+      { length: BULK_MAX_TICKETS + 1 },
+      (_, index) => `3f0c1f4e-8f86-4c0e-9d52-${String(index).padStart(12, '0')}`,
     );
     expect(bulkRequestSchema.safeParse({ ticketIds: many, action: ok }).success).toBe(false);
   });
@@ -71,7 +76,9 @@ describe('bulk requests', () => {
       { type: 'priority', priority: 'P1' },
       { type: 'merge', intoTicketId: 'OPS-12' },
     ]) {
-      expect(bulkRequestSchema.safeParse({ ticketIds: [ID], action }).success, action.type).toBe(true);
+      expect(bulkRequestSchema.safeParse({ ticketIds: [ID], action }).success, action.type).toBe(
+        true,
+      );
     }
     for (const action of [
       { type: 'reply', body: 'Hello' },
@@ -79,17 +86,25 @@ describe('bulk requests', () => {
       { type: 'status', status: 'merged' },
       { type: 'assign' },
     ]) {
-      expect(bulkRequestSchema.safeParse({ ticketIds: [ID], action }).success, action.type).toBe(false);
+      expect(bulkRequestSchema.safeParse({ ticketIds: [ID], action }).success, action.type).toBe(
+        false,
+      );
     }
   });
 });
 
 describe('ticket links', () => {
   it('take a kind and the other ticket by id or number', () => {
-    expect(createTicketLinkSchema.safeParse({ kind: 'duplicate', ticketId: ID }).success).toBe(true);
-    expect(createTicketLinkSchema.safeParse({ kind: 'related', ticketId: 'OPS-7' }).success).toBe(true);
+    expect(createTicketLinkSchema.safeParse({ kind: 'duplicate', ticketId: ID }).success).toBe(
+      true,
+    );
+    expect(createTicketLinkSchema.safeParse({ kind: 'related', ticketId: 'OPS-7' }).success).toBe(
+      true,
+    );
     expect(createTicketLinkSchema.safeParse({ kind: 'blocks', ticketId: ID }).success).toBe(false);
-    expect(createTicketLinkSchema.safeParse({ kind: 'related', ticketId: 'x' }).success).toBe(false);
+    expect(createTicketLinkSchema.safeParse({ kind: 'related', ticketId: 'x' }).success).toBe(
+      false,
+    );
   });
 });
 

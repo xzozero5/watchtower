@@ -171,7 +171,11 @@ function OtherMailBody({ canConvert }: { canConvert: boolean }) {
                   <li className="flex justify-center p-3">
                     <IconButton
                       variant="secondary"
-                      label={list.isFetchingNextPage ? t('otherMail.loadingMore') : t('otherMail.loadMore')}
+                      label={
+                        list.isFetchingNextPage
+                          ? t('otherMail.loadingMore')
+                          : t('otherMail.loadMore')
+                      }
                       icon={<ChevronsDown aria-hidden className="size-4" />}
                       disabled={list.isFetchingNextPage}
                       onClick={() => {

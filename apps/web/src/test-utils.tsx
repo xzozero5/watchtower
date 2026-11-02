@@ -21,7 +21,11 @@ export function renderApp(
 ) {
   return render(ui, {
     wrapper: ({ children }) => (
-      <Providers locale={locale} messages={getMessages(locale)} config={{ apiUrl, ticketKeyPrefix }}>
+      <Providers
+        locale={locale}
+        messages={getMessages(locale)}
+        config={{ apiUrl, ticketKeyPrefix }}
+      >
         {children}
       </Providers>
     ),

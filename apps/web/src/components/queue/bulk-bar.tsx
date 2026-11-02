@@ -93,9 +93,15 @@ export function BulkBar({ count, busy, assignees, me, onApply, onClear, outcome 
             if (value === '') return;
             const person = assignees.find((entry) => entry.id === value);
             if (value === NOBODY) {
-              choose({ type: 'assign', assigneeId: null }, `${t('bulk.assign')}: ${t('bulk.unassign')}`);
+              choose(
+                { type: 'assign', assigneeId: null },
+                `${t('bulk.assign')}: ${t('bulk.unassign')}`,
+              );
             } else if (person) {
-              choose({ type: 'assign', assigneeId: person.id }, `${t('bulk.assign')}: ${person.name}`);
+              choose(
+                { type: 'assign', assigneeId: person.id },
+                `${t('bulk.assign')}: ${person.name}`,
+              );
             }
           }}
         >

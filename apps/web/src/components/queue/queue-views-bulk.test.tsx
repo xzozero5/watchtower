@@ -37,6 +37,8 @@ async function chooseView(user: ReturnType<typeof userEvent.setup>, name: string
   await user.keyboard('{Enter}');
 }
 
+const rowOf = (key: string) => document.getElementById(`queue-row-${key}`);
+
 function savedView(
   id: string,
   name: string,
@@ -76,7 +78,9 @@ describe('server views in the view switcher', () => {
     await screen.findByText('Cannot log in');
 
     await user.click(screen.getByRole('button', { name: /^View:/ }));
-    expect(await screen.findByRole('menuitemradio', { name: /SLA at risk/ })).toHaveTextContent('4');
+    expect(await screen.findByRole('menuitemradio', { name: /SLA at risk/ })).toHaveTextContent(
+      '4',
+    );
     expect(screen.getByRole('menuitemradio', { name: /Needs triage/ })).toHaveTextContent('2');
     expect(screen.getByRole('menuitemradio', { name: /Waiting on customer/ })).toHaveTextContent(
       '7',
@@ -260,8 +264,8 @@ describe('bulk actions', () => {
 
   async function selectTwo(user: ReturnType<typeof userEvent.setup>) {
     await screen.findByText('Cannot log in');
-    await user.click(screen.getByRole('checkbox', { name: 'Select OPS-1' }));
-    await user.click(screen.getByRole('checkbox', { name: 'Select OPS-2' }));
+    await user.click(screen.getByTitle('Select OPS-1'));
+    await user.click(screen.getByTitle('Select OPS-2'));
     return screen.getByRole('region', BAR);
   }
 
@@ -279,7 +283,7 @@ describe('bulk actions', () => {
     expect(within(bar).getByText('1 selected')).toBeVisible();
     expect(screen.queryByRole('searchbox', { name: 'Search tickets' })).toBeNull();
 
-    await user.click(screen.getByRole('checkbox', { name: 'Select OPS-2' }));
+    await user.click(screen.getByTitle('Select OPS-2'));
     expect(within(bar).getByText('2 selected')).toBeVisible();
     await user.keyboard('x');
     expect(within(bar).getByText('1 selected')).toBeVisible();
@@ -299,7 +303,7 @@ describe('bulk actions', () => {
     await user.click(screen.getByText('Cannot log in'));
     await user.keyboard('x');
     expect(screen.queryByRole('region', BAR)).toBeNull();
-    await user.click(screen.getByRole('checkbox', { name: 'Select OPS-1' }));
+    await user.click(screen.getByTitle('Select OPS-1'));
     expect(await screen.findByRole('region', BAR)).toBeVisible();
   });
 
@@ -350,7 +354,9 @@ describe('bulk actions', () => {
       },
     });
     await openQueue();
-    const action = () => (api.callsTo('/v1/tickets/bulk', 'POST').at(-1)?.body as { action: unknown } | undefined)?.action;
+    const action = () =>
+      (api.callsTo('/v1/tickets/bulk', 'POST').at(-1)?.body as { action: unknown } | undefined)
+        ?.action;
 
     let bar = await selectTwo(user);
     await user.selectOptions(within(bar).getByRole('combobox', { name: 'Assign' }), uuid(901));
@@ -418,8 +424,8 @@ describe('bulk actions', () => {
     ).toBeVisible();
     // Only OPS-2 is still ticked.
     expect(within(screen.getByRole('region', BAR)).getByText('1 selected')).toBeVisible();
-    expect(screen.getByRole('checkbox', { name: 'Select OPS-2' })).toBeChecked();
-    expect(screen.getByRole('checkbox', { name: 'Select OPS-1' })).not.toBeChecked();
+    expect(rowOf('OPS-2')).toHaveAttribute('data-checked', 'true');
+    expect(rowOf('OPS-1')).toHaveAttribute('data-checked', 'false');
   });
 
   it('says so when the request itself fails, and keeps the selection', async () => {
@@ -450,7 +456,7 @@ describe('bulk actions', () => {
     workspaceApi({ role: 'client' });
     await openQueue();
     await screen.findByText(/Customer subject 1/);
-    expect(screen.queryByRole('checkbox', { name: /^Select / })).toBeNull();
+    expect(screen.queryByTitle(/^Select OPS/)).toBeNull();
     await user.click(screen.getByText(/Customer subject 1/));
     await user.keyboard('x');
     expect(screen.queryByRole('region', BAR)).toBeNull();

@@ -15,7 +15,13 @@ import { and, desc, eq, ilike, inArray, or, sql, type SQL } from 'drizzle-orm';
 
 import type { AuditActor } from '../audit/audit-scope.js';
 import { notFound } from '../auth/http-errors.js';
-import { beforeCursor, decodeCursor, likeContains, preciseTimestamp, toPage } from '../common/keyset.js';
+import {
+  beforeCursor,
+  decodeCursor,
+  likeContains,
+  preciseTimestamp,
+  toPage,
+} from '../common/keyset.js';
 import { DATABASE } from '../database/database.module.js';
 import { domainContext, settle } from '../domain/domain-context.js';
 import { translating } from '../domain/domain-errors.js';
@@ -82,7 +88,9 @@ export class OtherMailService {
     @Inject(UnitOfWorkService) private readonly uow: UnitOfWorkService,
   ) {}
 
-  async list(query: OtherMailQuery): Promise<{ items: OtherMailItem[]; nextCursor: string | null }> {
+  async list(
+    query: OtherMailQuery,
+  ): Promise<{ items: OtherMailItem[]; nextCursor: string | null }> {
     const { inboundMessage, channelAccount } = schema;
     const dispositions = query.disposition ?? [...OTHER_MAIL_DISPOSITIONS];
     const pattern = query.q === undefined ? undefined : likeContains(query.q);

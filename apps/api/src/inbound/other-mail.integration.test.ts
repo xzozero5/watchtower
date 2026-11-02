@@ -122,12 +122,20 @@ describe('GET /v1/inbound/other-mail', () => {
   it('lists noise, automatic replies and internal mail, newest first, and nothing that has a ticket or waits', async () => {
     await pool().query('DELETE FROM inbound_message');
     const ticket = await fileTicket(agent, customerOrgId);
-    const oldest = await mail({ disposition: 'noise', subject: 'Newsletter', receivedMinutesAgo: 30 });
+    const oldest = await mail({
+      disposition: 'noise',
+      subject: 'Newsletter',
+      receivedMinutesAgo: 30,
+    });
     const middle = await mail({
       disposition: 'auto_reply',
       subject: 'Out of office',
       receivedMinutesAgo: 20,
-      automated: { disposition: 'auto_reply', subtype: 'out_of_office', signals: ['auto-submitted'] },
+      automated: {
+        disposition: 'auto_reply',
+        subtype: 'out_of_office',
+        signals: ['auto-submitted'],
+      },
     });
     const newest = await mail({
       disposition: 'internal',
@@ -168,7 +176,11 @@ describe('GET /v1/inbound/other-mail', () => {
 
   it('filters by disposition, account and text, and pages with a cursor', async () => {
     await pool().query('DELETE FROM inbound_message');
-    const a = await mail({ disposition: 'noise', subject: 'Invoice reminder', receivedMinutesAgo: 5 });
+    const a = await mail({
+      disposition: 'noise',
+      subject: 'Invoice reminder',
+      receivedMinutesAgo: 5,
+    });
     const b = await mail({
       disposition: 'noise',
       subject: 'Weekly digest',
@@ -215,11 +227,17 @@ describe('GET /v1/inbound/other-mail', () => {
   });
 
   it('writes a pii.read audit row for every list and read', async () => {
-    await pool().query('DELETE FROM audit_log WHERE action = $1', ['pii.read']).catch(() => undefined);
+    await pool()
+      .query('DELETE FROM audit_log WHERE action = $1', ['pii.read'])
+      .catch(() => undefined);
     const id = await mail({ disposition: 'noise' });
     await list(lead);
     await lead.client.get(`/v1/inbound/other-mail/${id}`);
-    const rows = await pool().query<{ target_type: string; target_id: string | null; actor_id: string }>(
+    const rows = await pool().query<{
+      target_type: string;
+      target_id: string | null;
+      actor_id: string;
+    }>(
       `SELECT target_type, target_id, actor_id FROM audit_log
         WHERE action = 'pii.read' AND target_type = 'inbound_message' AND actor_id = $1
         ORDER BY created_at`,
@@ -233,7 +251,9 @@ describe('GET /v1/inbound/other-mail', () => {
 describe('GET /v1/inbound/other-mail/:id', () => {
   it('returns the whole text and no HTML, and 404 for a message that is not in Other mail', async () => {
     const id = await mail({ disposition: 'noise', body: 'Line one\nLine two' });
-    await pool().query(`UPDATE inbound_message SET body_html = '<b>hidden</b>' WHERE id = $1`, [id]);
+    await pool().query(`UPDATE inbound_message SET body_html = '<b>hidden</b>' WHERE id = $1`, [
+      id,
+    ]);
     const response = await agent.client.get<OtherMailDetail>(`/v1/inbound/other-mail/${id}`);
     expect(response.status).toBe(200);
     expect(response.body.bodyText).toBe('Line one\nLine two');

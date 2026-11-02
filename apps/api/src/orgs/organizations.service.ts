@@ -159,7 +159,9 @@ export class OrganizationsService {
     const beforeRecord = { slug: before.slug, name: before.name, sortOrder: before.sortOrder };
     AuditScope.set({ targetType: 'org_tier', targetId: slug, before: beforeRecord });
     if (patch.slug !== undefined && patch.slug !== slug && slug === DEFAULT_ORG_TIER) {
-      throw conflict(`The default tier "${DEFAULT_ORG_TIER}" keeps its slug; rename its display name instead`);
+      throw conflict(
+        `The default tier "${DEFAULT_ORG_TIER}" keeps its slug; rename its display name instead`,
+      );
     }
     try {
       const [row] = await this.database.db
@@ -195,7 +197,9 @@ export class OrganizationsService {
       before: { slug: before.slug, name: before.name, sortOrder: before.sortOrder },
     });
     if (slug === DEFAULT_ORG_TIER) {
-      throw conflict(`The default tier "${DEFAULT_ORG_TIER}" cannot be deleted: new organizations start in it`);
+      throw conflict(
+        `The default tier "${DEFAULT_ORG_TIER}" cannot be deleted: new organizations start in it`,
+      );
     }
     try {
       await this.database.db.delete(schema.orgTier).where(eq(schema.orgTier.slug, slug));

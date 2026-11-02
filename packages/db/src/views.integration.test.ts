@@ -2,7 +2,7 @@ import { Pool } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { migrateDown, migrateUp } from './migrator.js';
-import { createTestDatabase, type TestDatabase } from './testing.js';
+import { createTestDatabase, migrationsAfter, type TestDatabase } from './testing.js';
 
 // Migration 0036 (T-119a,c): saved views and ticket links. `app` is the restricted login role the
 // api runs as.
@@ -78,7 +78,7 @@ describe('saved_view', () => {
     await insert(userB, 'Mine', false);
   });
 
-  it('keeps a name unique among shared views, and a personal view may share a shared view\'s name', async () => {
+  it("keeps a name unique among shared views, and a personal view may share a shared view's name", async () => {
     await insert(userA, 'Team view', true);
     await expectSqlState(insert(userB, 'TEAM VIEW', true), UNIQUE_VIOLATION);
     await insert(userB, 'Team view', false);
@@ -91,7 +91,9 @@ describe('saved_view', () => {
       CHECK_VIOLATION,
     );
     await expectSqlState(
-      app.query(`INSERT INTO saved_view (owner_id, name, sort) VALUES ($1, 'y', 'random')`, [userA]),
+      app.query(`INSERT INTO saved_view (owner_id, name, sort) VALUES ($1, 'y', 'random')`, [
+        userA,
+      ]),
       CHECK_VIOLATION,
     );
   });
@@ -140,8 +142,12 @@ describe('ticket_link', () => {
 
 describe('reversibility', () => {
   it('goes down and up again, dropping both tables', async () => {
-    expect(await migrateDown(owner(), { steps: 1 })).toHaveLength(1);
-    // The latest migration is 0036 only while nothing newer exists; check what it removed.
+    // Revert the migrations that come after 0036 first, then 0036 itself.
+    const later = await migrationsAfter('0036_views_links');
+    expect(await migrateDown(owner(), { steps: later.length + 1 })).toEqual([
+      ...later.toReversed(),
+      '0036_views_links',
+    ]);
     const down = await scalar<string | null>(
       owner(),
       `SELECT to_regclass('saved_view')::text AS value`,

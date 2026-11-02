@@ -49,7 +49,11 @@ const ticketOf = async (who: Persona, id: string) =>
 
 const events = async (ticketId: string, type: string) =>
   (
-    await pool().query<{ actor_type: string; actor_id: string | null; payload: Record<string, unknown> }>(
+    await pool().query<{
+      actor_type: string;
+      actor_id: string | null;
+      payload: Record<string, unknown>;
+    }>(
       `SELECT actor_type, actor_id, payload FROM ticket_event WHERE ticket_id = $1 AND type = $2 ORDER BY created_at`,
       [ticketId, type],
     )
@@ -88,10 +92,16 @@ describe('who may use bulk', () => {
     const [ticket] = await tickets(1);
     const action = { type: 'priority', priority: 'P2' };
     expect((await bulk(client, [ticket?.id ?? ''], action)).status).toBe(403);
-    expect((await h.client().post('/v1/tickets/bulk', { ticketIds: [ticket?.id], action })).status).toBe(401);
+    expect(
+      (await h.client().post('/v1/tickets/bulk', { ticketIds: [ticket?.id], action })).status,
+    ).toBe(401);
 
-    const without = DEFAULT_ROLE_PERMISSIONS.agent.filter((permission) => permission !== 'ticket.handle');
-    expect((await head.client.put('/v1/rbac/roles/agent/permissions', { permissions: without })).status).toBe(200);
+    const without = DEFAULT_ROLE_PERMISSIONS.agent.filter(
+      (permission) => permission !== 'ticket.handle',
+    );
+    expect(
+      (await head.client.put('/v1/rbac/roles/agent/permissions', { permissions: without })).status,
+    ).toBe(200);
     try {
       expect((await bulk(agent, [ticket?.id ?? ''], action)).status).toBe(403);
     } finally {
@@ -140,7 +150,9 @@ describe('assign', () => {
       failed: 0,
       assigneeId: otherAgent.userId,
     });
-    expect((summary?.metadata.results as { ticketId: string; ok: boolean }[]).map((r) => r.ticketId)).toEqual(ids);
+    expect(
+      (summary?.metadata.results as { ticketId: string; ok: boolean }[]).map((r) => r.ticketId),
+    ).toEqual(ids);
   });
 
   it('unassigns with null, and refuses a person who cannot be assigned (per ticket)', async () => {
@@ -169,10 +181,14 @@ describe('one ticket failing does not undo the others', () => {
     await head.client.post(`/v1/tickets/${merged?.id ?? ''}/merge`, { intoTicketId: target?.id });
     const missing = randomUUID();
 
-    const response = await bulk(agent, [good1?.id ?? '', merged?.id ?? '', missing, good2?.id ?? ''], {
-      type: 'assign',
-      assigneeId: agent.userId,
-    });
+    const response = await bulk(
+      agent,
+      [good1?.id ?? '', merged?.id ?? '', missing, good2?.id ?? ''],
+      {
+        type: 'assign',
+        assigneeId: agent.userId,
+      },
+    );
     expect(response.status).toBe(200);
     expect(response.body).toMatchObject({ total: 4, succeeded: 2, failed: 2 });
     const [first, second, third, fourth] = response.body.items;
@@ -183,7 +199,12 @@ describe('one ticket failing does not undo the others', () => {
       key: merged?.key,
       error: { status: 409, code: 'ticket_not_open' },
     });
-    expect(third).toMatchObject({ ticketId: missing, ok: false, key: null, error: { status: 404 } });
+    expect(third).toMatchObject({
+      ticketId: missing,
+      ok: false,
+      key: null,
+      error: { status: 404 },
+    });
     expect(fourth).toMatchObject({ ticketId: good2?.id, ok: true });
 
     expect((await ticketOf(agent, good1?.id ?? '')).assignee?.id).toBe(agent.userId);
@@ -222,15 +243,21 @@ describe('status and priority', () => {
 
   it('cannot make a ticket merged: that is the merge action (400)', async () => {
     const [ticket] = await tickets(1);
-    expect((await bulk(agent, [ticket?.id ?? ''], { type: 'status', status: 'merged' })).status).toBe(400);
+    expect(
+      (await bulk(agent, [ticket?.id ?? ''], { type: 'status', status: 'merged' })).status,
+    ).toBe(400);
   });
 
   it('changes the priority and records from and to on each ticket', async () => {
     const made = await tickets(2, { priority: 'P3' });
-    const response = await bulk(lead, made.map((ticket) => ticket.id), {
-      type: 'priority',
-      priority: 'P1',
-    });
+    const response = await bulk(
+      lead,
+      made.map((ticket) => ticket.id),
+      {
+        type: 'priority',
+        priority: 'P1',
+      },
+    );
     expect(response.body).toMatchObject({ succeeded: 2, failed: 0 });
     for (const ticket of made) {
       expect((await ticketOf(lead, ticket.id)).priority).toBe('P1');
@@ -284,7 +311,10 @@ describe('merge', () => {
       intoTicketId: target?.id,
     });
     expect(selected.status).toBe(400);
-    const unknown = await bulk(agent, [near?.id ?? ''], { type: 'merge', intoTicketId: randomUUID() });
+    const unknown = await bulk(agent, [near?.id ?? ''], {
+      type: 'merge',
+      intoTicketId: randomUUID(),
+    });
     expect(unknown.status).toBe(404);
   });
 });
@@ -295,7 +325,15 @@ describe('what a bulk request can be', () => {
     const id = ticket?.id ?? '';
     const ok = { type: 'priority', priority: 'P2' };
     expect((await bulk(agent, [], ok)).status).toBe(400);
-    expect((await bulk(agent, Array.from({ length: 101 }, () => randomUUID()), ok)).status).toBe(400);
+    expect(
+      (
+        await bulk(
+          agent,
+          Array.from({ length: 101 }, () => randomUUID()),
+          ok,
+        )
+      ).status,
+    ).toBe(400);
     expect((await bulk(agent, [id, id], ok)).status).toBe(400);
     expect((await bulk(agent, ['OPS-1'], ok)).status).toBe(400);
     expect((await bulk(agent, [id], { type: 'reply', body: 'Hello' })).status).toBe(400);
@@ -310,10 +348,10 @@ describe('what a bulk request can be', () => {
     );
     const made = await tickets(2);
     for (const ticket of made) {
-      await pool().query(`UPDATE ticket SET channel = 'gmail', channel_account_id = $2, status = 'open' WHERE id = $1`, [
-        ticket.id,
-        account.rows[0]?.id,
-      ]);
+      await pool().query(
+        `UPDATE ticket SET channel = 'gmail', channel_account_id = $2, status = 'open' WHERE id = $1`,
+        [ticket.id, account.rows[0]?.id],
+      );
     }
     const count = async () =>
       (
@@ -386,25 +424,30 @@ describe('AC-7: a bulk change cannot be used to shake tickets off before clockin
     expect(before.every((blocker) => blocker.cause === undefined)).toBe(true);
 
     // A bulk reassignment to somebody who is not on shift...
-    const away = await bulk(shaker, moved.map((ticket) => ticket.id), {
-      type: 'assign',
-      assigneeId: otherAgent.userId,
-    });
+    const away = await bulk(
+      shaker,
+      moved.map((ticket) => ticket.id),
+      {
+        type: 'assign',
+        assigneeId: otherAgent.userId,
+      },
+    );
     expect(away.body).toMatchObject({ succeeded: 2, failed: 0 });
     // ...and a bulk downgrade to P4.
-    const down = await bulk(shaker, lowered.map((ticket) => ticket.id), {
-      type: 'priority',
-      priority: 'P4',
-    });
+    const down = await bulk(
+      shaker,
+      lowered.map((ticket) => ticket.id),
+      {
+        type: 'priority',
+        priority: 'P4',
+      },
+    );
     expect(down.body).toMatchObject({ succeeded: 1, failed: 0 });
 
     const blockers = await blockersOf(shaker);
     const withCause = blockers.filter((blocker) => blocker.cause !== undefined);
     expect(withCause.map((blocker) => [blocker.ticketId, blocker.cause]).sort()).toEqual(
-      [
-        ...moved.map((ticket) => [ticket.id, 'moved_away']),
-        [lowered[0]?.id, 'downgraded'],
-      ].sort(),
+      [...moved.map((ticket) => [ticket.id, 'moved_away']), [lowered[0]?.id, 'downgraded']].sort(),
     );
     // The ticket still assigned and still P1 is a plain requirement, not a bypass.
     expect(blockers.find((blocker) => blocker.ticketId === kept[0]?.id)?.cause).toBeUndefined();
@@ -412,11 +455,14 @@ describe('AC-7: a bulk change cannot be used to shake tickets off before clockin
     expect((await shaker.client.post('/v1/shifts/clock-out', {})).status).toBe(409);
   });
 
-  it('does not count a lead\'s bulk change against the person whose tickets were moved', async () => {
+  it("does not count a lead's bulk change against the person whose tickets were moved", async () => {
     const holder = await signIn(h, 'agent', undefined, 'Bulk Holder');
     await clockIn(holder);
     const [ticket] = await tickets(1, { priority: 'P1', assigneeId: holder.userId });
-    const response = await bulk(lead, [ticket?.id ?? ''], { type: 'assign', assigneeId: otherAgent.userId });
+    const response = await bulk(lead, [ticket?.id ?? ''], {
+      type: 'assign',
+      assigneeId: otherAgent.userId,
+    });
     expect(response.body.succeeded).toBe(1);
     const moved = await events(ticket?.id ?? '', 'ticket.assigned');
     expect(moved.at(-1)).toMatchObject({ actor_id: lead.userId, payload: { from: holder.userId } });

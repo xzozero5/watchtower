@@ -130,7 +130,10 @@ export class BulkService {
             await this.tickets.merge(
               uow,
               ticketId,
-              { intoTicketId: mergeTargetId, ...(action.reason === undefined ? {} : { reason: action.reason }) },
+              {
+                intoTicketId: mergeTargetId,
+                ...(action.reason === undefined ? {} : { reason: action.reason }),
+              },
               actor,
             );
             return;

@@ -80,7 +80,7 @@ export class OtherMailController {
   @ApiOperation({
     summary: 'This is a ticket: open a ticket from a message in Other mail',
     description:
-      'Does what ingestion would have done for a person\'s mail: the sender becomes (or already is) a ' +
+      "Does what ingestion would have done for a person's mail: the sender becomes (or already is) a " +
       'contact, the message the first message of a new ticket. Nothing is sent to anybody, not even an ' +
       'acknowledgment. The row remembers what it was (`convertedFrom`) and who converted it. Asking ' +
       'again for a message already converted returns the same ticket. 409 for a message that is a ' +

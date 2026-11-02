@@ -71,7 +71,11 @@ export const BUILT_IN_VIEWS = [
   },
   {
     id: 'triage',
-    filters: { ...DEFAULT_FILTERS, status: ['triage'] as TicketStatus[], sort: 'created_asc' as const },
+    filters: {
+      ...DEFAULT_FILTERS,
+      status: ['triage'] as TicketStatus[],
+      sort: 'created_asc' as const,
+    },
   },
   {
     id: 'waiting',
@@ -246,9 +250,13 @@ export function filtersFromView(view: Pick<SavedView, 'filters' | 'sort'>): Queu
 }
 
 /** The filters of the queue as a saved view keeps them: only what is set. */
-export function filtersToView(filters: QueueFilters): { filters: SavedViewFilters; sort: SortOrder } {
+export function filtersToView(filters: QueueFilters): {
+  filters: SavedViewFilters;
+  sort: SortOrder;
+} {
   const q = filters.q.trim();
-  const assignee = filters.assigneeId ?? (filters.assignee === 'any' ? undefined : filters.assignee);
+  const assignee =
+    filters.assigneeId ?? (filters.assignee === 'any' ? undefined : filters.assignee);
   return {
     sort: filters.sort,
     filters: {

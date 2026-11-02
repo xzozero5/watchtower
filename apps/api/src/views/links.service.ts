@@ -131,15 +131,29 @@ export class LinksService {
               ),
             )
             .limit(1);
-          if (reverse) throw conflict('The other ticket is already marked as a duplicate of this one');
+          if (reverse)
+            throw conflict('The other ticket is already marked as a duplicate of this one');
         }
         const [link] = await tx
           .insert(schema.ticketLink)
-          .values({ kind: input.kind, fromTicketId: from, toTicketId: to, createdBy: principal.userId })
+          .values({
+            kind: input.kind,
+            fromTicketId: from,
+            toTicketId: to,
+            createdBy: principal.userId,
+          })
           .returning();
         if (!link) throw new Error('ticket_link insert returned no row');
 
-        await this.recordEvents(tx, VIEWS_TICKET_EVENTS.linked, link.id, input.kind, source, other, principal);
+        await this.recordEvents(
+          tx,
+          VIEWS_TICKET_EVENTS.linked,
+          link.id,
+          input.kind,
+          source,
+          other,
+          principal,
+        );
         await this.audit.recordInTransaction(tx, {
           actor: { type: 'user', id: principal.userId },
           action: AUDIT_ACTIONS.ticketLink,

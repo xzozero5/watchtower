@@ -51,7 +51,9 @@ function otherMailApi(
       const wanted = url.searchParams.get('disposition');
       return {
         json: {
-          items: wanted ? items.filter((entry) => wanted.split(',').includes(entry.disposition)) : items,
+          items: wanted
+            ? items.filter((entry) => wanted.split(',').includes(entry.disposition))
+            : items,
           nextCursor: null,
         },
       };
@@ -93,7 +95,9 @@ describe('Other mail', () => {
     await waitFor(() => {
       expect(screen.queryByRole('button', { name: /Newsletter/ })).toBeNull();
     });
-    expect(api.callsTo('/v1/inbound/other-mail').at(-1)?.search).toContain('disposition=auto_reply');
+    expect(api.callsTo('/v1/inbound/other-mail').at(-1)?.search).toContain(
+      'disposition=auto_reply',
+    );
 
     await user.type(screen.getByRole('searchbox', { name: 'Search other mail' }), 'office');
     await waitFor(() => {
@@ -116,7 +120,9 @@ describe('Other mail', () => {
 
     const detail = await screen.findByRole('article');
     expect(within(detail).getByText('The whole text.')).toBeVisible();
-    expect(within(detail).getByText('The mail headers say it is automatic (out_of_office).')).toBeVisible();
+    expect(
+      within(detail).getByText('The mail headers say it is automatic (out_of_office).'),
+    ).toBeVisible();
     expect(within(detail).getByText('Classified as noise, 87% sure (AI).')).toBeVisible();
     expect(detail).toHaveTextContent('2 attachments');
   });
@@ -149,7 +155,10 @@ describe('Other mail', () => {
     });
     expect(await screen.findByText('Ticket OPS-77 was opened from this message.')).toBeVisible();
     // The detail is gone from the api now (404), yet the person still sees what happened.
-    expect(screen.getByRole('link', { name: 'Open OPS-77' })).toHaveAttribute('href', '/?ticket=OPS-77');
+    expect(screen.getByRole('link', { name: 'Open OPS-77' })).toHaveAttribute(
+      'href',
+      '/?ticket=OPS-77',
+    );
   });
 
   it('explains a refusal in words', async () => {

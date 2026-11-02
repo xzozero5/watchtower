@@ -6,6 +6,7 @@ export const bulkTh: Widen<typeof bulkEn> = {
   region: 'การดำเนินการกับ ticket ที่เลือก',
   selected: 'เลือกแล้ว {count} รายการ',
   clear: 'ล้างการเลือก',
+  rowSelected: 'เลือกแล้ว',
   selectRow: 'เลือก {key}',
   assign: 'มอบหมาย',
   assignTo: 'มอบหมายให้…',

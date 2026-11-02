@@ -3,6 +3,7 @@ export const bulkEn = {
   region: 'Actions for the selected tickets',
   selected: '{count} selected',
   clear: 'Clear selection',
+  rowSelected: 'Selected',
   selectRow: 'Select {key}',
   assign: 'Assign',
   assignTo: 'Assign to…',

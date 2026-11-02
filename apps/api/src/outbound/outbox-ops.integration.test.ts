@@ -171,7 +171,9 @@ describe('GET /v1/ops/outbox/dead', () => {
       expect(item.notReplayableReason).toContain('no source record');
     }
 
-    const filtered = await head.client.get<Page<DeadOutboxItem>>('/v1/ops/outbox/dead?queue=ingest');
+    const filtered = await head.client.get<Page<DeadOutboxItem>>(
+      '/v1/ops/outbox/dead?queue=ingest',
+    );
     expect(filtered.body.items).toEqual([]);
   });
 
@@ -235,9 +237,10 @@ describe('POST /v1/ops/outbox/:id/resend', () => {
       last_error: string | null;
       finished_at: Date | null;
       job_id: string;
-    }>(`SELECT status, payload, attempts, last_error, finished_at, job_id FROM outbox WHERE id = $1`, [
-      row?.id,
-    ]);
+    }>(
+      `SELECT status, payload, attempts, last_error, finished_at, job_id FROM outbox WHERE id = $1`,
+      [row?.id],
+    );
     expect(after.rows[0]).toMatchObject({
       status: 'pending',
       payload: { inboundEventId: queued.inboundEventId },
@@ -260,23 +263,29 @@ describe('POST /v1/ops/outbox/:id/resend', () => {
     });
 
     // It is pending now: a second resend is refused, and the row is not in the dead list.
-    const again = await head.client.post<ApiErrorBody>(`/v1/ops/outbox/${row?.id ?? ''}/resend`, {});
+    const again = await head.client.post<ApiErrorBody>(
+      `/v1/ops/outbox/${row?.id ?? ''}/resend`,
+      {},
+    );
     expect(again.status).toBe(409);
-    expect(
-      (await head.client.get<Page<DeadOutboxItem>>('/v1/ops/outbox/dead')).body.items,
-    ).toEqual([]);
+    expect((await head.client.get<Page<DeadOutboxItem>>('/v1/ops/outbox/dead')).body.items).toEqual(
+      [],
+    );
   });
 
   it('puts a delivery trigger back only while the delivery still waits to be sent', async () => {
     await clearOutbox();
     const ticket = await fileTicket(agent, orgId);
-    await pool().query(`UPDATE ticket SET channel = 'gmail', channel_account_id = $2 WHERE id = $1`, [
-      ticket.id,
-      gmailId,
-    ]);
-    const first = await agent.client.post<{ message: Message }>(`/v1/tickets/${ticket.id}/replies`, {
-      body: 'We are on it.',
-    });
+    await pool().query(
+      `UPDATE ticket SET channel = 'gmail', channel_account_id = $2 WHERE id = $1`,
+      [ticket.id, gmailId],
+    );
+    const first = await agent.client.post<{ message: Message }>(
+      `/v1/tickets/${ticket.id}/replies`,
+      {
+        body: 'We are on it.',
+      },
+    );
     const deliveryId = first.body.message.delivery?.id ?? '';
     expect(deliveryId).not.toBe('');
     const [trigger] = (
@@ -313,18 +322,23 @@ describe('POST /v1/ops/outbox/:id/resend', () => {
   it('rebuilds a delivery trigger with only the delivery id, as the dispatcher expects it', async () => {
     await clearOutbox();
     const ticket = await fileTicket(agent, orgId);
-    await pool().query(`UPDATE ticket SET channel = 'gmail', channel_account_id = $2 WHERE id = $1`, [
-      ticket.id,
-      gmailId,
-    ]);
-    const reply = await agent.client.post<{ message: Message }>(`/v1/tickets/${ticket.id}/replies`, {
-      body: 'Second reply.',
-    });
+    await pool().query(
+      `UPDATE ticket SET channel = 'gmail', channel_account_id = $2 WHERE id = $1`,
+      [ticket.id, gmailId],
+    );
+    const reply = await agent.client.post<{ message: Message }>(
+      `/v1/tickets/${ticket.id}/replies`,
+      {
+        body: 'Second reply.',
+      },
+    );
     const deliveryId = reply.body.message.delivery?.id ?? '';
     await pool().query(
       `UPDATE outbox SET status = 'dead', payload = '{}'::jsonb, finished_at = now() WHERE queue = 'outbound'`,
     );
-    const [row] = (await pool().query<{ id: string }>(`SELECT id FROM outbox WHERE queue = 'outbound'`)).rows;
+    const [row] = (
+      await pool().query<{ id: string }>(`SELECT id FROM outbox WHERE queue = 'outbound'`)
+    ).rows;
     const response = await head.client.post<ResendOutboxResult>(
       `/v1/ops/outbox/${row?.id ?? ''}/resend`,
       {},
@@ -354,9 +368,10 @@ describe('POST /v1/ops/outbox/:id/resend', () => {
     expect(refused.status).toBe(409);
     expect(refused.body.message).toContain('no source record');
     // Still dead afterwards, and nothing was written to the audit log as a success.
-    const status = await pool().query<{ status: string }>(`SELECT status FROM outbox WHERE id = $1`, [
-      email,
-    ]);
+    const status = await pool().query<{ status: string }>(
+      `SELECT status FROM outbox WHERE id = $1`,
+      [email],
+    );
     expect(status.rows[0]?.status).toBe('dead');
     const failed = await pool().query<{ outcome: string }>(
       `SELECT outcome FROM audit_log WHERE action = 'outbox.resend' AND target_id = $1`,

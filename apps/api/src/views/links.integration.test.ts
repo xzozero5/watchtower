@@ -33,7 +33,11 @@ const newTicket = (org = orgId) => fileTicket(lead, org);
 
 const events = async (ticketId: string, type: string) =>
   (
-    await pool().query<{ actor_id: string | null; visibility: string; payload: Record<string, unknown> }>(
+    await pool().query<{
+      actor_id: string | null;
+      visibility: string;
+      payload: Record<string, unknown>;
+    }>(
       `SELECT actor_id, visibility, payload FROM ticket_event WHERE ticket_id = $1 AND type = $2 ORDER BY created_at`,
       [ticketId, type],
     )
@@ -61,8 +65,12 @@ describe('who may see and change links', () => {
     const body = { kind: 'related', ticketId: other.id };
     expect((await link(client, ticket.id, body)).status).toBe(403);
     expect((await h.client().post(`/v1/tickets/${ticket.id}/links`, body)).status).toBe(401);
-    expect((await client.client.delete(`/v1/tickets/${ticket.id}/links/${randomUUID()}`)).status).toBe(403);
-    expect((await h.client().delete(`/v1/tickets/${ticket.id}/links/${randomUUID()}`)).status).toBe(401);
+    expect(
+      (await client.client.delete(`/v1/tickets/${ticket.id}/links/${randomUUID()}`)).status,
+    ).toBe(403);
+    expect((await h.client().delete(`/v1/tickets/${ticket.id}/links/${randomUUID()}`)).status).toBe(
+      401,
+    );
   });
 });
 
@@ -75,7 +83,12 @@ describe('duplicate', () => {
     expect(created.body).toMatchObject({
       kind: 'duplicate',
       relation: 'duplicate_of',
-      ticket: { id: original.id, key: original.key, subject: original.subject, status: original.status },
+      ticket: {
+        id: original.id,
+        key: original.key,
+        subject: original.subject,
+        status: original.status,
+      },
       createdBy: { id: agent.userId, name: 'Agent One' },
     });
 
@@ -130,7 +143,9 @@ describe('duplicate', () => {
     const clientOwn = await newTicket();
     await link(agent, clientOwn.id, { kind: 'related', ticketId: original.id });
     const timeline = await timelineOf(client, mine.body.id);
-    expect(timeline.entries.some((entry: TimelineEntry) => JSON.stringify(entry).includes('linked'))).toBe(false);
+    expect(
+      timeline.entries.some((entry: TimelineEntry) => JSON.stringify(entry).includes('linked')),
+    ).toBe(false);
   });
 
   it('is refused the same way twice, and the other way round (409)', async () => {
@@ -192,11 +207,17 @@ describe('what cannot be linked', () => {
     expect((await link(agent, randomUUID(), { kind: 'related', ticketId: a.id })).status).toBe(404);
     expect((await link(agent, a.id, { kind: 'blocks', ticketId: far.id })).status).toBe(400);
     expect((await link(agent, a.id, { kind: 'related' })).status).toBe(400);
-    expect((await link(agent, a.id, { kind: 'related', ticketId: 'not a ticket' })).status).toBe(400);
+    expect((await link(agent, a.id, { kind: 'related', ticketId: 'not a ticket' })).status).toBe(
+      400,
+    );
     expect(await linksOf(agent, a.id)).toEqual([]);
     expect(
-      (await pool().query(`SELECT 1 FROM audit_log WHERE action = 'ticket.link' AND outcome = 'success' AND target_id = $1`, [a.id]))
-        .rowCount,
+      (
+        await pool().query(
+          `SELECT 1 FROM audit_log WHERE action = 'ticket.link' AND outcome = 'success' AND target_id = $1`,
+          [a.id],
+        )
+      ).rowCount,
     ).toBe(0);
   });
 });
@@ -230,8 +251,12 @@ describe('DELETE /v1/tickets/:id/links/:linkId', () => {
     const b = await newTicket();
     const c = await newTicket();
     const created = await link(agent, b.id, { kind: 'related', ticketId: c.id });
-    expect((await agent.client.delete(`/v1/tickets/${a.id}/links/${created.body.id}`)).status).toBe(404);
-    expect((await agent.client.delete(`/v1/tickets/${a.id}/links/${randomUUID()}`)).status).toBe(404);
+    expect((await agent.client.delete(`/v1/tickets/${a.id}/links/${created.body.id}`)).status).toBe(
+      404,
+    );
+    expect((await agent.client.delete(`/v1/tickets/${a.id}/links/${randomUUID()}`)).status).toBe(
+      404,
+    );
     expect((await agent.client.delete(`/v1/tickets/${a.id}/links/not-a-uuid`)).status).toBe(400);
     expect(await linksOf(agent, b.id)).toHaveLength(1);
   });

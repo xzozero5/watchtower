@@ -86,7 +86,11 @@ export class ViewsService {
       .from(savedView)
       .innerJoin(users, eq(users.id, savedView.ownerId))
       .where(or(eq(savedView.shared, true), eq(savedView.ownerId, principal.userId)))
-      .orderBy(sql`${savedView.shared} DESC`, asc(sql`lower(${savedView.name})`), asc(savedView.id));
+      .orderBy(
+        sql`${savedView.shared} DESC`,
+        asc(sql`lower(${savedView.name})`),
+        asc(savedView.id),
+      );
 
     const system: SavedView[] = SYSTEM_VIEW_KEYS.map((key) => {
       const definition = SYSTEM_VIEWS[key];

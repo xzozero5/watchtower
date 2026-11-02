@@ -66,7 +66,8 @@ export async function convertInboundMessage(
       .from(schema.ticket)
       .where(eq(schema.ticket.id, row.ticketId))
       .limit(1);
-    if (!ticket || !isOtherMail(row.convertedFrom)) throw conflict('This message is a ticket already');
+    if (!ticket || !isOtherMail(row.convertedFrom))
+      throw conflict('This message is a ticket already');
     return fx.result({
       inboundMessageId: row.id,
       ticketId: row.ticketId,

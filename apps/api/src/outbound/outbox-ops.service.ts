@@ -91,7 +91,9 @@ export class OutboxOpsService {
     const conditions: (SQL | undefined)[] = [
       eq(outbox.status, 'dead'),
       query.queue === undefined ? undefined : eq(outbox.queue, query.queue),
-      query.cursor === undefined ? undefined : beforeCursor(key, outbox.id, decodeCursor(query.cursor)),
+      query.cursor === undefined
+        ? undefined
+        : beforeCursor(key, outbox.id, decodeCursor(query.cursor)),
     ];
     const rows = await this.database.db
       .select({
