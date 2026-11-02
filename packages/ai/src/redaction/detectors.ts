@@ -765,6 +765,8 @@ const THAI_RUN_STOPS: readonly string[] = [
   'แล้ว',
   'ต้องการ',
   'อยาก',
+  // "ขอบคุณ" (thank you) is not a name: "คุณภาพดี ขอบคุณครับ".
+  'ขอบ',
   // "คุณ" also means "you": "คุณสามารถรีเซ็ตได้ไหม" must not lose its sentence to the name.
   'สามารถ',
   'จะ',
@@ -795,12 +797,17 @@ function isHorizontalSpace(char: string): boolean {
 function readNameToken(
   text: string,
   from: number,
-  mode: { allowAllCaps: boolean; allowLower: boolean; maxThai: number },
+  mode: { allowAllCaps: boolean; allowLower: boolean; maxThai: number; later?: boolean },
 ): { end: number; word: string } | undefined {
   const first = text.charAt(from);
   if (first === '') return undefined;
   if (THAI_LETTER.test(first)) {
-    const word = thaiRunAt(text, from, mode.maxThai);
+    let word = thaiRunAt(text, from, mode.maxThai);
+    // A later token that contains a cue is the start of the next phrase, not part of the name.
+    if (mode.later === true) {
+      const cueAt = word.indexOf('คุณ', 1);
+      if (cueAt > 0) word = word.slice(0, cueAt);
+    }
     return word === '' ? undefined : { end: from + word.length, word };
   }
   const startsLower = LOWER.test(first);
@@ -836,7 +843,7 @@ interface CueReadOptions {
   allowAllCaps: boolean;
   /** The name may follow the cue with no separator ("Thanks,Somchai", "Mr.Somchai", Thai). */
   attachedOk: boolean;
-  /** The first token may be lower case ("my name is somchai"). Later tokens must be capitalised. */
+  /** The first two tokens may be lower case ("my name is somchai jaidee"); a third must be capitalised. */
   allowLower: boolean;
 }
 
@@ -869,7 +876,8 @@ function readNameAfterCue(
   for (let taken = 0; taken < MAX_CUE_TOKENS; taken += 1) {
     const token = readNameToken(text, position, {
       allowAllCaps: options.allowAllCaps,
-      allowLower: options.allowLower && taken === 0,
+      allowLower: options.allowLower && taken < 2,
+      later: taken > 0,
       maxThai: taken === 0 ? MAX_THAI_TOKEN : MAX_THAI_LATER_TOKEN,
     });
     if (token === undefined || NOT_A_NAME.has(token.word.toLowerCase())) break;

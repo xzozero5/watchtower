@@ -110,7 +110,10 @@ describe('Thai deny list is whole-run only (security review P1-1)', () => {
 
 describe('more cues (security review P2-3)', () => {
   it.each([
-    ['my name is somchai jaidee and I need help', 'my name is [NAME_1] jaidee and I need help'],
+    ['my name is somchai jaidee and I need help', 'my name is [NAME_1] [NAME_2] and I need help'],
+    ['name: somchai jaidee', 'name: [NAME_1] [NAME_2]'],
+    ['ชื่อ somchai jaidee', 'ชื่อ [NAME_1] [NAME_2]'],
+    ['my name is somchai jaidee wong', 'my name is [NAME_1] [NAME_2] wong'],
     ['Name: somchai', 'Name: [NAME_1]'],
     ['ชื่อ somchai', 'ชื่อ [NAME_1]'],
     ['Mr.Somchai Jaidee wrote', 'Mr.[NAME_1] [NAME_2] wrote'],
@@ -130,6 +133,29 @@ describe('more cues (security review P2-3)', () => {
     ['From: Somchai Jaidee <x@y.example>', 'From: [NAME_1] [NAME_2] <[EMAIL_1]>'],
   ])('%s', (input, expected) => {
     expect(redact(input)).toBe(expected);
+  });
+
+  it('known gap: lower case after this is / dear / hi / I am is not taken', () => {
+    expect(redact('hi somchai jaidee')).toBe('hi somchai jaidee');
+    expect(redact('i am somchai jaidee')).toBe('i am somchai jaidee');
+  });
+
+  it('stops a lower-case name at a stop word or punctuation', () => {
+    expect(redact('my name is somchai, and I need help')).toBe(
+      'my name is [NAME_1], and I need help',
+    );
+    expect(redact('my name is somchai and jaidee')).toBe('my name is [NAME_1] and jaidee');
+  });
+
+  it('pins a sign-off followed by a team name (over-redaction, as is)', () => {
+    expect(redact('Best,\nWatchtower Support')).toBe('Best,\n[NAME_1] Support');
+  });
+
+  it('does not turn ขอบคุณ (thank you) into a name', () => {
+    expect(redact('คุณภาพดี ขอบคุณครับ')).toBe('คุณ[NAME_1] ขอบคุณครับ');
+    expect(redact('คุณสมชาย ใจดีขอบคุณครับ')).toBe('คุณ[NAME_1] [NAME_2]ขอบคุณครับ');
+    expect(redact('คุณสมชาย ขอบคุณ')).toBe('คุณ[NAME_1] ขอบคุณ');
+    expect(redact('ชื่อ สมชาย ใจดีวันคุณ')).not.toContain('คุณ[');
   });
 
   it('does not take a lower-case word after this is / dear', () => {
