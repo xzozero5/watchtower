@@ -33,6 +33,9 @@ export const adminKeys = (userId: string) => {
     integrations: [...all, 'integrations'] as const,
     gmailStatus: [...all, 'gmail-status'] as const,
     channelAccounts: [...all, 'channel-accounts'] as const,
+    orgTiers: [...all, 'org-tiers'] as const,
+    outboxHealth: [...all, 'outbox-health'] as const,
+    outboxDead: [...all, 'outbox-dead'] as const,
     auditAll: [...all, 'audit'] as const,
     audit: (filters: unknown) => [...all, 'audit', filters] as const,
   };
@@ -110,10 +113,38 @@ export function useOrgTiers(enabled = true) {
   const api = useApi();
   const userId = useUserId();
   return useQuery({
-    queryKey: [...adminKeys(userId).all, 'org-tiers'],
+    queryKey: adminKeys(userId).orgTiers,
     queryFn: ({ signal }) => api.orgTiers(signal),
     enabled,
     staleTime: 5 * 60_000,
+  });
+}
+
+/** How late the outbox is running; refreshed every 30 s while the page is open (PRD section 8.3). */
+export const OUTBOX_POLL_MS = 30_000;
+
+export function useOutboxHealth(enabled = true) {
+  const api = useApi();
+  const userId = useUserId();
+  return useQuery({
+    queryKey: adminKeys(userId).outboxHealth,
+    queryFn: ({ signal }) => api.outboxHealth(signal),
+    enabled,
+    refetchInterval: OUTBOX_POLL_MS,
+    staleTime: OUTBOX_POLL_MS / 2,
+  });
+}
+
+/** The dead-letter rows, newest first, fifty at a time. */
+export function useDeadOutbox(enabled = true) {
+  const api = useApi();
+  const userId = useUserId();
+  return useInfiniteQuery({
+    queryKey: adminKeys(userId).outboxDead,
+    queryFn: ({ pageParam, signal }) => api.deadOutbox(pageParam, signal),
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (last) => last.nextCursor ?? undefined,
+    enabled,
   });
 }
 

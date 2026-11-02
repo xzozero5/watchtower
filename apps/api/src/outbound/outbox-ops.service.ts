@@ -9,6 +9,7 @@ import {
   INGEST_JOBS,
   isUuid,
   outboxHealthStatus,
+  type DeadOutboxEffect,
   type DeadOutboxItem,
   type DeadOutboxQuery,
   type OutboxHealth,
@@ -29,7 +30,11 @@ const DISPATCH_JOB_ID = /^delivery-([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]
 
 /** What "resend" can do with a dead row. `payload` is the job rebuilt from its source record. */
 type ReplayPlan =
-  | { readonly replayable: true; readonly payload: Record<string, unknown> }
+  | {
+      readonly replayable: true;
+      readonly payload: Record<string, unknown>;
+      readonly effect: DeadOutboxEffect;
+    }
   | { readonly replayable: false; readonly reason: string };
 
 const NOT_REBUILDABLE =
@@ -135,6 +140,7 @@ export class OutboxOpsService {
           finishedAt: row.finishedAt?.toISOString() ?? null,
           replayable: plan?.replayable === true,
           notReplayableReason: plan === undefined || plan.replayable ? null : plan.reason,
+          effect: plan?.replayable === true ? plan.effect : null,
         };
       }),
       nextCursor: page.nextCursor,
@@ -212,16 +218,40 @@ export class OutboxOpsService {
 
     if (deliveries.size > 0) {
       const found = await executor
-        .select({ id: schema.outboundDelivery.id, state: schema.outboundDelivery.state })
+        .select({
+          id: schema.outboundDelivery.id,
+          state: schema.outboundDelivery.state,
+          channel: schema.outboundDelivery.channel,
+          origin: schema.outboundDelivery.origin,
+          accountName: schema.channelAccount.name,
+          ticketNumber: schema.ticket.number,
+        })
         .from(schema.outboundDelivery)
+        .innerJoin(
+          schema.channelAccount,
+          eq(schema.channelAccount.id, schema.outboundDelivery.channelAccountId),
+        )
+        .innerJoin(schema.ticket, eq(schema.ticket.id, schema.outboundDelivery.ticketId))
         .where(inArray(schema.outboundDelivery.id, [...new Set(deliveries.values())]));
-      const states = new Map(found.map((delivery) => [delivery.id, delivery.state]));
+      const byId = new Map(found.map((delivery) => [delivery.id, delivery]));
       for (const [rowId, deliveryId] of deliveries) {
-        const state = states.get(deliveryId);
+        const delivery = byId.get(deliveryId);
+        const state = delivery?.state;
         plans.set(
           rowId,
-          state === 'scheduled'
-            ? { replayable: true, payload: { deliveryId } }
+          delivery !== undefined && state === 'scheduled'
+            ? {
+                replayable: true,
+                payload: { deliveryId },
+                effect: {
+                  kind: 'customer_message',
+                  channel: delivery.channel,
+                  channelAccountName: delivery.accountName,
+                  origin: delivery.origin,
+                  ticketNumber: delivery.ticketNumber,
+                  mayAcknowledge: false,
+                },
+              }
             : {
                 replayable: false,
                 reason:
@@ -234,22 +264,48 @@ export class OutboxOpsService {
     }
     if (events.size > 0) {
       const found = await executor
-        .select({ id: schema.inboundEvent.id, status: schema.inboundEvent.status })
+        .select({
+          id: schema.inboundEvent.id,
+          status: schema.inboundEvent.status,
+          channel: schema.channelAccount.type,
+          accountName: schema.channelAccount.name,
+        })
         .from(schema.inboundEvent)
+        .innerJoin(
+          schema.channelAccount,
+          eq(schema.channelAccount.id, schema.inboundEvent.channelAccountId),
+        )
         .where(inArray(schema.inboundEvent.id, [...new Set(events.values())]));
-      const statuses = new Map(found.map((event) => [event.id, event.status]));
+      const byId = new Map(found.map((event) => [event.id, event]));
       for (const [rowId, eventId] of events) {
-        const status = statuses.get(eventId);
+        const event = byId.get(eventId);
+        const status = event?.status;
         plans.set(
           rowId,
-          status === 'pending' || status === 'failed'
-            ? { replayable: true, payload: { inboundEventId: eventId } }
+          // Only a `pending` event is processed: the consumer skips every other status, so a resend
+          // of a `failed` one would do nothing and the row would vanish from this list.
+          event !== undefined && status === 'pending'
+            ? {
+                replayable: true,
+                payload: { inboundEventId: eventId },
+                effect: {
+                  kind: 'reprocess_inbound',
+                  channel: event.channel,
+                  channelAccountName: event.accountName,
+                  origin: null,
+                  ticketNumber: null,
+                  // The LINE ingest job acknowledges the customer in the same run (T-103c).
+                  mayAcknowledge: event.channel === 'line',
+                },
+              }
             : {
                 replayable: false,
                 reason:
                   status === undefined
                     ? 'The received event no longer exists'
-                    : 'The received event was processed already',
+                    : status === 'failed'
+                      ? 'The received event failed and is not retried automatically, so sending the job again would do nothing'
+                      : 'The received event was processed already',
               },
         );
       }

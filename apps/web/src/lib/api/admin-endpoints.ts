@@ -17,6 +17,10 @@ import {
   forceLogoutResultSchema,
   intentAutonomyChangeSchema,
   orgTierListSchema,
+  orgTierRecordSchema,
+  deadOutboxPageSchema,
+  outboxHealthSchema,
+  resendOutboxResultSchema,
   setAiSwitchResultSchema,
   ticketStatsSchema,
   intentSchema,
@@ -32,6 +36,8 @@ import {
   type CreateChannelAccount,
   type CreateContact,
   type CreateOrganization,
+  type CreateOrgTier,
+  type UpdateOrgTier,
   type CreateSlaPolicy,
   type CreateTeamQueue,
   type CreateUser,
@@ -110,6 +116,24 @@ export function createAdminEndpoints(client: ApiClient) {
         ...withSignal(signal),
       }),
 
+    // --- the outbox, as the head sees it (T-121a) ---
+    outboxHealth: (signal?: AbortSignal) =>
+      client.request({ path: '/v1/ops/outbox', schema: outboxHealthSchema, ...withSignal(signal) }),
+    deadOutbox: (cursor?: string, signal?: AbortSignal) =>
+      client.request({
+        path: '/v1/ops/outbox/dead',
+        query: { limit: 50, cursor },
+        schema: deadOutboxPageSchema,
+        ...withSignal(signal),
+      }),
+    resendOutbox: (rowId: string) =>
+      client.request({
+        method: 'POST',
+        path: `/v1/ops/outbox/${id(rowId)}/resend`,
+        body: {},
+        schema: resendOutboxResultSchema,
+      }),
+
     // --- users ---
     users: (signal?: AbortSignal) =>
       client.request({ path: '/v1/users', schema: userListSchema, ...withSignal(signal) }),
@@ -132,6 +156,22 @@ export function createAdminEndpoints(client: ApiClient) {
     // --- organizations and contacts ---
     orgTiers: (signal?: AbortSignal) =>
       client.request({ path: '/v1/org-tiers', schema: orgTierListSchema, ...withSignal(signal) }),
+    createOrgTier: (body: CreateOrgTier) =>
+      client.request({
+        method: 'POST',
+        path: '/v1/org-tiers',
+        body,
+        schema: orgTierRecordSchema,
+      }),
+    updateOrgTier: (slug: string, body: UpdateOrgTier) =>
+      client.request({
+        method: 'PATCH',
+        path: `/v1/org-tiers/${id(slug)}`,
+        body,
+        schema: orgTierRecordSchema,
+      }),
+    deleteOrgTier: (slug: string) =>
+      client.request({ method: 'DELETE', path: `/v1/org-tiers/${id(slug)}`, schema: null }),
     orgs: (query: Partial<OrganizationListQuery>, signal?: AbortSignal) =>
       client.request({
         path: '/v1/orgs',

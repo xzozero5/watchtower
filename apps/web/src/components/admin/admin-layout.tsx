@@ -18,6 +18,7 @@ import {
   Plug,
   ScrollText,
   Search,
+  Send,
   Tag,
   Timer,
   Users,
@@ -43,6 +44,7 @@ const SECTION_LOOK: Record<string, { icon: LucideIcon; tone: TintId }> = {
   ai: { icon: Bot, tone: 'teal' },
   audit: { icon: ScrollText, tone: 'slate' },
   integrations: { icon: Plug, tone: 'violet' },
+  outbox: { icon: Send, tone: 'orange' },
 };
 
 function isCurrent(section: AdminSection, pathname: string): boolean {

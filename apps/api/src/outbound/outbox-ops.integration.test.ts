@@ -169,6 +169,7 @@ describe('GET /v1/ops/outbox/dead', () => {
         replayable: false,
       });
       expect(item.notReplayableReason).toContain('no source record');
+      expect(item.effect).toBeNull();
     }
 
     const filtered = await head.client.get<Page<DeadOutboxItem>>(
@@ -221,6 +222,15 @@ describe('POST /v1/ops/outbox/:id/resend', () => {
 
     const listed = await head.client.get<Page<DeadOutboxItem>>('/v1/ops/outbox/dead');
     expect(listed.body.items[0]).toMatchObject({ id: row?.id, replayable: true });
+    // The head is told a resend processes a received event for the first time; Gmail sends nothing back.
+    expect(listed.body.items[0]?.effect).toEqual({
+      kind: 'reprocess_inbound',
+      channel: 'gmail',
+      channelAccountName: expect.any(String) as string,
+      origin: null,
+      ticketNumber: null,
+      mayAcknowledge: false,
+    });
 
     const response = await head.client.post<ResendOutboxResult>(
       `/v1/ops/outbox/${row?.id ?? ''}/resend`,
@@ -301,6 +311,17 @@ describe('POST /v1/ops/outbox/:id/resend', () => {
 
     const listed = await head.client.get<Page<DeadOutboxItem>>('/v1/ops/outbox/dead');
     expect(listed.body.items[0]).toMatchObject({ id: trigger?.id, replayable: true });
+    // A resend of a delivery says it may reach a customer, and where: channel, account and ticket,
+    // never the message itself or an address.
+    expect(listed.body.items[0]?.effect).toEqual({
+      kind: 'customer_message',
+      channel: 'gmail',
+      channelAccountName: 'Ops mailbox',
+      origin: expect.any(String) as string,
+      ticketNumber: Number(ticket.key.split('-').at(-1)),
+      mayAcknowledge: false,
+    });
+    expect(JSON.stringify(listed.body.items[0])).not.toContain('We are on it.');
 
     // Undo the send: the delivery is cancelled, so there is nothing left to trigger.
     const cancelled = await agent.client.post<CancelSendResult>(
@@ -359,6 +380,62 @@ describe('POST /v1/ops/outbox/:id/resend', () => {
       [deliveryId],
     );
     expect(state.rows[0]?.state).toBe('scheduled');
+  });
+
+  it('says a LINE message may be acknowledged to the customer by the same job', async () => {
+    await clearOutbox();
+    const queued = await enqueueFakeInbound(h.db.owner, {
+      channel: 'line',
+      userId: 'U-outbox-line',
+      text: 'Hello',
+    });
+    await pool().query(
+      `UPDATE outbox SET status = 'dead', payload = '{}'::jsonb, finished_at = now() WHERE job_id = $1`,
+      [queued.inboundEventId],
+    );
+    const listed = await head.client.get<Page<DeadOutboxItem>>('/v1/ops/outbox/dead');
+    expect(listed.body.items[0]).toMatchObject({ replayable: true });
+    expect(listed.body.items[0]?.effect).toMatchObject({
+      kind: 'reprocess_inbound',
+      channel: 'line',
+      mayAcknowledge: true,
+    });
+  });
+
+  it('does not offer a resend for a received event that failed: the consumer would skip it', async () => {
+    await clearOutbox();
+    const queued = await enqueueFakeInbound(h.db.owner, {
+      channel: 'gmail',
+      from: 'someone-else@customer.example.test',
+      subject: 'Failed one',
+      body: 'It does not work.',
+    });
+    await pool().query(`UPDATE inbound_event SET status = 'failed' WHERE id = $1`, [
+      queued.inboundEventId,
+    ]);
+    await pool().query(
+      `UPDATE outbox SET status = 'dead', payload = '{}'::jsonb, finished_at = now() WHERE job_id = $1`,
+      [queued.inboundEventId],
+    );
+    const [row] = (
+      await pool().query<{ id: string }>(`SELECT id FROM outbox WHERE job_id = $1`, [
+        queued.inboundEventId,
+      ])
+    ).rows;
+    const listed = await head.client.get<Page<DeadOutboxItem>>('/v1/ops/outbox/dead');
+    expect(listed.body.items[0]).toMatchObject({ id: row?.id, replayable: false, effect: null });
+    expect(listed.body.items[0]?.notReplayableReason).toContain('failed');
+    const refused = await head.client.post<ApiErrorBody>(
+      `/v1/ops/outbox/${row?.id ?? ''}/resend`,
+      {},
+    );
+    expect(refused.status).toBe(409);
+    // The row is still there for the head to see.
+    const status = await pool().query<{ status: string }>(
+      `SELECT status FROM outbox WHERE id = $1`,
+      [row?.id],
+    );
+    expect(status.rows[0]?.status).toBe('dead');
   });
 
   it('refuses a row that cannot be rebuilt (409), one that is not dead (409) and one that does not exist (404)', async () => {

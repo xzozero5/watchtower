@@ -393,7 +393,7 @@ describe('admin layout', () => {
     );
   });
 
-  it('lists all nine for the head', async () => {
+  it('lists all ten for the head', async () => {
     consoleApi({ role: 'head' });
     renderApp(
       <AuthGate>
@@ -403,7 +403,7 @@ describe('admin layout', () => {
       </AuthGate>,
     );
     const nav = await screen.findByRole('navigation', { name: 'Admin sections' });
-    expect(within(nav).getAllByRole('link')).toHaveLength(9);
+    expect(within(nav).getAllByRole('link')).toHaveLength(10);
   });
 
   it('shows the denied page when the role has no admin section', async () => {

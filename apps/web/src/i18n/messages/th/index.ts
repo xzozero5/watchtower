@@ -16,6 +16,7 @@ import { detailsTh } from './details';
 import { devHomeTh } from './devHome';
 import { errorsTh } from './errors';
 import { homeTh } from './home';
+import { investigateTh } from './investigate';
 import { keymapTh } from './keymap';
 import { liveTh } from './live';
 import { loadingTh } from './loading';
@@ -23,6 +24,7 @@ import { loginTh } from './login';
 import { newTicketTh } from './newTicket';
 import { notificationsTh } from './notifications';
 import { otherMailTh } from './otherMail';
+import { outboxAdminTh } from './outboxAdmin';
 import { opsTh } from './ops';
 import { outboundTh } from './outbound';
 import { paletteTh } from './palette';
@@ -88,4 +90,6 @@ export const th: Messages = {
   outbound: outboundTh,
   ops: opsTh,
   dashboard: dashboardTh,
+  outboxAdmin: outboxAdminTh,
+  investigate: investigateTh,
 };

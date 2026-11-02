@@ -7,6 +7,7 @@ import {
   DataTable,
   type DataTableColumn,
   EmptyState,
+  IconButton,
   Pill,
   Tabs,
   TabsContent,
@@ -14,7 +15,7 @@ import {
   TabsTrigger,
   toast,
 } from '@watchtower/ui';
-import { CircleCheck, Link2, Pencil, Plus, SearchX, Trash2, Users } from 'lucide-react';
+import { CircleCheck, Layers, Link2, Pencil, Plus, SearchX, Trash2, Users } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 
@@ -25,7 +26,7 @@ import { AppLink } from '@/components/app-link';
 import { OrgHealthCard } from '@/components/ops/org-health-card';
 import { useT } from '@/i18n/provider';
 import { describeError } from '@/lib/admin/errors';
-import { adminKeys, useContacts, useOrg, useSlaPolicies } from '@/lib/admin/queries';
+import { adminKeys, useContacts, useOrg, useOrgTiers, useSlaPolicies } from '@/lib/admin/queries';
 import { isApiError } from '@/lib/api/errors';
 import { useApi } from '@/lib/api/api-context';
 import { useSession, useUserId } from '@/lib/auth/session';
@@ -33,6 +34,7 @@ import { queueHref } from '@/lib/tickets/filters';
 
 import { ContactSheet } from './contact-sheet';
 import { OrgSheet } from './org-sheet';
+import { TiersSheet } from './tiers-sheet';
 
 /** What each way of linking a LINE account means for staff (T-103, PRD R-2.11). */
 const LINE_VIA_COPY = {
@@ -62,6 +64,10 @@ function OrgDetailBody({ orgId }: { orgId: string }) {
   const org = useOrg(orgId);
   const contacts = useContacts(orgId);
   const policies = useSlaPolicies(true);
+  // Adding, renaming and deleting tiers is the head's (`sla.manage`, the same as SLA policies).
+  const canManageTiers = can('sla.manage');
+  const tiers = useOrgTiers();
+  const [managingTiers, setManagingTiers] = useState(false);
   const [editing, setEditing] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
@@ -226,7 +232,20 @@ function OrgDetailBody({ orgId }: { orgId: string }) {
             <TabsContent value="details" className="p-4">
               <dl className="grid max-w-xl grid-cols-[9rem_1fr] gap-x-3 gap-y-2 text-sm">
                 <dt className="text-muted-foreground">{t('admin.orgs.tier')}</dt>
-                <dd>{data.tier}</dd>
+                <dd className="flex items-center gap-1.5">
+                  <span>
+                    {tiers.data?.tiers.find((item) => item.slug === data.tier)?.name ?? data.tier}
+                  </span>
+                  {canManageTiers ? (
+                    <IconButton
+                      label={t('admin.orgs.tiers.manage')}
+                      icon={<Layers aria-hidden className="size-4" />}
+                      onClick={() => {
+                        setManagingTiers(true);
+                      }}
+                    />
+                  ) : null}
+                </dd>
                 <dt className="text-muted-foreground">{t('admin.common.status')}</dt>
                 <dd>
                   {data.status === 'active' ? t('admin.common.active') : t('admin.common.inactive')}
@@ -292,6 +311,14 @@ function OrgDetailBody({ orgId }: { orgId: string }) {
           </Tabs>
         )}
       </AdminBody>
+      {managingTiers ? (
+        <TiersSheet
+          open
+          onClose={() => {
+            setManagingTiers(false);
+          }}
+        />
+      ) : null}
       {editing && data ? (
         <OrgSheet
           open

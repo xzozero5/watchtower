@@ -20,6 +20,7 @@ import { isDetail, isStaffTicket, type TicketItem } from '@/lib/tickets/model';
 import { useTicket } from '@/lib/tickets/queries';
 
 import { ChannelIcon } from './channel-icon';
+import { InvestigatePanel } from './investigate-panel';
 import { Row, TicketDetails } from './ticket-details';
 
 export type PanelTab = 'evidence' | 'details' | 'customer';
@@ -180,7 +181,12 @@ export function TicketPanel({
           ) : ticket.isError ? (
             <p className="p-4 text-sm text-muted-foreground">{t('conversation.error.title')}</p>
           ) : (
-            <TicketDetails ticket={ticket.data} />
+            <>
+              <TicketDetails ticket={ticket.data} />
+              {isStaffTicket(ticket.data) ? (
+                <InvestigatePanel key={ticketKey} ticketKey={ticketKey} />
+              ) : null}
+            </>
           )}
         </TabsContent>
         {showAi ? (
