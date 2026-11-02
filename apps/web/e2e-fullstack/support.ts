@@ -263,6 +263,8 @@ export interface TimelineEntryJson {
   kind: 'message' | 'event';
   visibility: 'public' | 'internal';
   bodyText?: string;
+  /** Messages only. */
+  direction?: 'inbound' | 'outbound';
   /** Events only. */
   type?: string;
   actor?: { type: string; id: string | null; name: string | null };

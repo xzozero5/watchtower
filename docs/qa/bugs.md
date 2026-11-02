@@ -21,7 +21,30 @@ P3 cosmetic or rare, P4 polish. Developers fix; QA verifies. Do not edit an entr
 - **Suggested fix (not applied, app code):** listen to `hashchange` and re-claim the token, then invalidate the ticket query; or refetch on `visibilitychange`/focus.
 - **Status:** open, reported to main thread.
 
+### B-002 (P3) A LINE ticket from an unlinked user does not say "unverified" on the ticket
+
+- **Found:** 2026-11-02, T-113 (`apps/web/e2e-fullstack/ac2-line.e2e.ts`).
+- **Steps:** send a signed LINE webhook from a new user id; open the ticket in the workspace.
+- **Expected (AC-2):** the ticket shows `unverified`.
+- **Actual:** Details shows organization "Unidentified senders" and requester "LINE user", with no verification label. The state is visible only on Admin / Organizations / Unidentified senders / Contacts ("Unverified", "LINE not verified"), and as "Contact not verified" on an AI draft. The ticket JSON has no verification field.
+- **Suggested fix (not applied):** a chip next to the requester in Details, fed by the contact's `verifiedAt`.
+- **Status:** open, reported to main thread.
+
+### B-003 (P3) No acknowledgment email for a new Gmail ticket (PRD 5.1 step 3C)
+
+- **Found:** 2026-11-02, T-113 (`ac1-gmail.e2e.ts`, known-gap test with `test.fail`).
+- **Actual:** the auto-ack (`apps/worker/src/ingest/auto-ack.ts`) is built for LINE only; nothing is sent into the thread of a new Gmail ticket. Check with the owner whether email is meant to be covered before calling it a bug.
+- **Status:** open. Delete the `test.fail` line when built.
+
+### B-004 (P3) a11y: `label-content-name-mismatch` on a link of the P1 critical banner
+
+- **Found:** 2026-11-02, T-113, axe on `/shift/overview` with a real open P1 ticket (WCAG 2.5.3). Element: link with `aria-label="Open OPS-n"` styled as `BUTTON` in `apps/web/src/components/notifications/critical-banner.tsx` (`notifications.banner.openNamed`); the visible text is not contained in the name.
+- **Status:** open, `[UNVERIFIED 70%]` that this is the only element. The test that found it (`ac7-shifts.e2e.ts`) is not committed (unfinished).
+
 ## Observations that are not bugs (recorded so nobody re-investigates them)
+
+- A reply to a LINE ticket within ~50 s of the customer's last message uses the free reply token (not a push, quota unchanged). Correct per R-2.10; a push only follows after the token window.
+- The stack's mock classifier gives text-dependent confidence, so the AI drafts alone for some mails and waits for "Draft a reply" for others (intent not trusted). Tests handle both.
 
 - `GET /v1/auth/config` reports `devLoginEnabled: true` in mock mode, and `POST /v1/auth/dev-login` signs anyone in. Known: T-010 finding C-1, being fixed in `wip/t-010-fixes`. The full-stack e2e never uses dev login (staff use break-glass, clients the magic link), so the fix will not break it.
 - The staff queue opens on the "open" view (statuses new to waiting_on_dev), so a client with 13 tickets sees 8 in the queue; resolved and closed ones are behind the "all" view. The RBAC test asserts that the queue equals the open tickets of the organization.

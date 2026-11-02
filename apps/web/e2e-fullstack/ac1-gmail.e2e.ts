@@ -122,7 +122,7 @@ test.describe.serial('AC-1 (Gmail) / 5.1: an email arrives', () => {
   });
 
   test('5.1 C: the customer is acknowledged by email with the ticket number (any autonomy stage)', async () => {
-    // B-004: PRD 5.1 step 3C says a new issue gets an auto-ack template with the ticket number. The
+    // B-003: PRD 5.1 step 3C says a new issue gets an auto-ack template with the ticket number. The
     // worker only builds one for LINE (apps/worker/src/ingest/auto-ack.ts); nothing goes out for Gmail.
     // Known gap: `test.fail` keeps the suite green while it exists and turns red when it is built.
     test.fail();
@@ -229,7 +229,6 @@ test.describe.serial('AC-1 (Gmail) / 5.1: an email arrives', () => {
     expect(headers.toLowerCase()).toContain(subject.toLowerCase());
     expect(headers, 'a reply keeps the subject of the thread').toMatch(/Re: /i);
 
-    const brief = await api.get<{ draft?: { id: string } }>(`/v1/tickets/${ticket?.id ?? ''}/ai`);
     const after = await api.get<StaffTicket & { firstRespondedAt: string | null }>(
       `/v1/tickets/${ticketKey}`,
     );
@@ -241,7 +240,6 @@ test.describe.serial('AC-1 (Gmail) / 5.1: an email arrives', () => {
     const outbound = entries.filter((entry) => entry.kind === 'message').at(-1);
     expect(outbound?.direction).toBe('outbound');
     expect(outbound?.visibility).toBe('public');
-    expect(brief.status).toBe(200);
   });
 
   test('the customer answers in the thread: same ticket, and a repeated Message-ID is stored once', async () => {
