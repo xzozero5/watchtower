@@ -14,5 +14,7 @@ import { TicketAiService } from './ticket-ai.service.js';
   imports: [TicketsModule],
   controllers: [TicketAiController],
   providers: [TicketAiService],
+  // The assistant (T-134) asks for a draft through the same service as the button does.
+  exports: [TicketAiService],
 })
 export class AiModule {}

@@ -7,6 +7,7 @@ import { LineModule } from './line/line.module.js';
 import { DiscordModule } from './discord/discord.module.js';
 import { NotificationsModule } from './notifications/notifications.module.js';
 import { AiModule } from './ai/ai.module.js';
+import { AssistantModule } from './assistant/assistant.module.js';
 import { KbModule } from './kb/kb.module.js';
 import { CsatModule } from './csat/csat.module.js';
 import { ShiftsModule } from './shifts/shifts.module.js';
@@ -33,6 +34,7 @@ import { UsageModule } from './usage/usage.module.js';
     DiscordModule,
     NotificationsModule,
     AiModule,
+    AssistantModule,
     KbModule,
     CsatModule,
     ShiftsModule,

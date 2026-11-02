@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 
+import { AiRuntimeModule } from '../ai/ai-runtime.module.js';
 import { TicketsModule } from '../tickets/tickets.module.js';
 import { BriefService } from './brief.service.js';
 import { HandoffController } from './handoff.controller.js';
@@ -19,7 +20,7 @@ import { ShiftsService } from './shifts.service.js';
  * to move time.
  */
 @Module({
-  imports: [TicketsModule],
+  imports: [TicketsModule, AiRuntimeModule],
   controllers: [RosterController, ShiftsController, HandoffController, ShiftNotesController],
   providers: [
     { provide: SHIFT_NOW, useValue: () => new Date() },
@@ -29,5 +30,7 @@ import { ShiftsService } from './shifts.service.js';
     ShiftNotes,
     BriefService,
   ],
+  // The assistant (T-134) reads who is on shift through the same service as the assignee list.
+  exports: [BriefService],
 })
 export class ShiftsModule {}

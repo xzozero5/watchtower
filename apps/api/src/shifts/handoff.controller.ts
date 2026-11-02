@@ -1,4 +1,15 @@
-import { Body, Controller, Get, HttpCode, Inject, Param, Post, Put } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Headers,
+  HttpCode,
+  Inject,
+  Param,
+  Post,
+  Put,
+  Query,
+} from '@nestjs/common';
 import {
   ApiConflictResponse,
   ApiNotFoundResponse,
@@ -10,6 +21,7 @@ import {
   AUDIT_ACTIONS,
   ackHandoffItemSchema,
   currentHandoffSchema,
+  handoffAiPrefillResponseSchema,
   handoffItemParamSchema,
   ackResultSchema,
   handoffSchema,
@@ -28,6 +40,7 @@ import {
   RequirePermission,
   type Principal,
 } from '../auth/decorators.js';
+import { pickLocale } from '../ai/locale.js';
 import { parseResponse } from '../common/zod-openapi.js';
 import { HandoffService } from './handoff.service.js';
 
@@ -70,6 +83,32 @@ export class HandoffController {
   @ApiConflictResponse({ description: 'Not clocked in' })
   async prefill(@CurrentPrincipal() principal: Principal) {
     return parseResponse(handoffSchema, await this.handoffs.prefill(principal));
+  }
+
+  @Post('ai-prefill')
+  @HttpCode(200)
+  @RequirePermission('handoff.write')
+  @AuditPiiRead('handoff')
+  @ApiOperation({
+    summary: 'The AI draft of the handoff notes, every sentence with its evidence',
+    description:
+      'Reads the open handoff and asks the AI for at most six claims, each citing the tickets and ' +
+      'items it rests on (`evidence[].href` is a page you may open; a claim with none is `uncited`). ' +
+      'Returns `notes` and `messageForNext` as text to copy into the draft; nothing is saved. ' +
+      '`prefill` is null when the AI is off or over budget. `locale` (th|en) or Accept-Language ' +
+      'decides the language. 409 when there is no handoff draft yet.',
+  })
+  @ApiOkResponse({ standardSchema: handoffAiPrefillResponseSchema })
+  @ApiConflictResponse({ description: 'No handoff draft: start it with POST /v1/handoffs/prefill' })
+  async aiPrefill(
+    @CurrentPrincipal() principal: Principal,
+    @Query('locale') locale: string | undefined,
+    @Headers('accept-language') acceptLanguage: string | undefined,
+  ) {
+    return parseResponse(
+      handoffAiPrefillResponseSchema,
+      await this.handoffs.aiPrefill(principal, pickLocale(locale, acceptLanguage)),
+    );
   }
 
   @Get('incoming')
