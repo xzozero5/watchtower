@@ -6,6 +6,7 @@ import { Button, SegmentedControl, Textarea, toast } from '@watchtower/ui';
 import { useId, useState } from 'react';
 
 import { PageHeader } from '@/components/admin/admin-page';
+import { InvestigatePanel } from '@/components/ticket/investigate-panel';
 import { StatusLabel } from '@/components/ticket/status-label';
 import { useI18n } from '@/i18n/provider';
 import { useApi } from '@/lib/api/api-context';
@@ -273,6 +274,9 @@ function DevTicket({ reference }: { reference: string }) {
           </ul>
         )}
       </section>
+
+      {/* The saved read-only checks (T-203e): `dev` holds `investigate.run` but not `investigate.adhoc`. */}
+      <InvestigatePanel ticketKey={detail.key} className="border-t border-border pt-3" />
 
       <section aria-labelledby={`${base}-conv`}>
         <h3 id={`${base}-conv`} className="mb-1 text-sm font-medium">

@@ -192,15 +192,30 @@ const CARD: EvidenceCard = {
 };
 
 test.describe('ticket: investigation buttons', () => {
-  for (const scheme of ['light', 'dark'] as const) {
-    test(`run a check and see the pinned result (${scheme})`, async ({ page }) => {
+  for (const [role, scheme] of [
+    ['agent', 'light'],
+    ['dev', 'dark'],
+  ] as const) {
+    test(`${role}: run a check and see the pinned result (${scheme})`, async ({ page }) => {
       await page.emulateMedia({ colorScheme: scheme });
       let cards: EvidenceCard[] = [];
       const backend = await mockBackend(page, {
-        role: 'dev',
+        role,
         routes: {
           'GET /v1/tickets/OPS-1/tools': () => ({ json: TOOLS }),
-          'GET /v1/tickets/OPS-1/evidence': () => ({ json: { items: cards } }),
+          // A developer may not list a ticket's pinned cards: the api answers 403.
+          'GET /v1/tickets/OPS-1/evidence': () =>
+            role === 'dev'
+              ? {
+                  status: 403,
+                  json: {
+                    statusCode: 403,
+                    error: 'Error',
+                    code: 'forbidden',
+                    message: 'forbidden',
+                  },
+                }
+              : { json: { items: cards } },
           'POST /v1/tickets/OPS-1/tools/run': () => {
             cards = [CARD];
             return { status: 201, json: CARD };
@@ -209,8 +224,9 @@ test.describe('ticket: investigation buttons', () => {
       });
       await page.setViewportSize({ width: 1400, height: 900 });
       await open(page, '/?ticket=OPS-1');
-      const panel = page.getByRole('region', { name: 'Details & AI' });
-      const section = panel.getByRole('region', { name: 'Investigate' });
+      // A developer has their own screen: the ticket opens from the list.
+      if (role === 'dev') await page.getByRole('button', { name: /^OPS-1 / }).click();
+      const section = page.getByRole('region', { name: 'Investigate' });
       await expect(section.getByRole('button', { name: /Recent errors/ })).toBeVisible();
       await expect(section.getByText('Mock').first()).toBeVisible();
       await expect(section.getByRole('button', { name: /Recent deploys/ })).toBeDisabled();

@@ -211,7 +211,9 @@ describe('Investigation buttons', () => {
     const api = panelApi({ role: 'dev' });
     renderConsole(<InvestigatePanel ticketKey="OPS-1" />);
     await user.click(await screen.findByRole('button', { name: 'Recent errors' }));
-    await screen.findByRole('list', { name: 'Pinned results' });
+    // A developer may not list a ticket's pinned cards (the api answers 403), so they see what they ran.
+    expect(await screen.findByRole('list', { name: 'Pinned results' })).toBeVisible();
+    expect(api.callsTo('/v1/tickets/OPS-1/evidence', 'GET')).toHaveLength(0);
     expect(api.calls.some((call) => call.path.includes('/investigate/adhoc'))).toBe(false);
     expect(screen.queryByRole('button', { name: /ad-hoc|adhoc|query of your own/i })).toBeNull();
   });

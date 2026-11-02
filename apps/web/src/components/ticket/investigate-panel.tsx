@@ -3,6 +3,7 @@
 import type { EvidenceCard } from '@watchtower/shared';
 import {
   Button,
+  cn,
   HelpHint,
   IconButton,
   Input,
@@ -54,14 +55,31 @@ type Outcome = { kind: 'not_connected'; title: string } | { kind: 'error'; messa
  * with personal data already replaced. Whoever holds `investigate.run` sees it (agent, lead, head,
  * dev); the ad-hoc routes are not here: they need `investigate.adhoc` and a screen of their own.
  */
-export function InvestigatePanel({ ticketKey }: { ticketKey: string }) {
+export function InvestigatePanel({
+  ticketKey,
+  className,
+}: {
+  ticketKey: string;
+  /** Replaces the default edge-to-edge look of the ticket panel (the dev screen is padded already). */
+  className?: string;
+}) {
   const { can } = useSession();
   if (!can('investigate.run')) return null;
-  return <InvestigateBody ticketKey={ticketKey} />;
+  return <InvestigateBody ticketKey={ticketKey} className={className} />;
 }
 
-function InvestigateBody({ ticketKey }: { ticketKey: string }) {
+function InvestigateBody({
+  ticketKey,
+  className,
+}: {
+  ticketKey: string;
+  className: string | undefined;
+}) {
   const { t } = useI18n();
+  const { can } = useSession();
+  // A developer may run checks but not list a ticket's pinned cards (`ticket.read`): they see what they ran here.
+  const canList = can('ticket.read');
+  const [ranHere, setRanHere] = useState<EvidenceCard[]>([]);
   const tools = useTicketTools(ticketKey, true);
   const run = useRunTool(ticketKey);
   const [outcome, setOutcome] = useState<Outcome>(null);
@@ -73,8 +91,9 @@ function InvestigateBody({ ticketKey }: { ticketKey: string }) {
     run.mutate(
       { templateId: button.templateId, ...(Object.keys(params).length > 0 ? { params } : {}) },
       {
-        onSuccess: () => {
+        onSuccess: (card) => {
           setAsking(null);
+          if (!canList) setRanHere((current) => [card, ...current]);
         },
         onError: (error) => {
           if (isApiError(error) && error.status === 503) {
@@ -101,7 +120,7 @@ function InvestigateBody({ ticketKey }: { ticketKey: string }) {
   return (
     <section
       aria-labelledby={headingId}
-      className="flex flex-col gap-3 border-t border-border px-4 py-3"
+      className={cn('flex flex-col gap-3', className ?? 'border-t border-border px-4 py-3')}
     >
       <div className="flex items-center gap-1.5">
         <Search aria-hidden className="size-4 shrink-0 text-muted-foreground" />
@@ -169,7 +188,14 @@ function InvestigateBody({ ticketKey }: { ticketKey: string }) {
         ) : null}
       </div>
 
-      <PinnedCards ticketKey={ticketKey} />
+      <PinnedCards
+        ticketKey={ticketKey}
+        canList={canList}
+        ranHere={ranHere}
+        onUnpinned={(id) => {
+          setRanHere((current) => current.filter((card) => card.id !== id));
+        }}
+      />
     </section>
   );
 }
@@ -270,11 +296,22 @@ function ToolButton({
   );
 }
 
-function PinnedCards({ ticketKey }: { ticketKey: string }) {
+function PinnedCards({
+  ticketKey,
+  canList,
+  ranHere,
+  onUnpinned,
+}: {
+  ticketKey: string;
+  canList: boolean;
+  ranHere: readonly EvidenceCard[];
+  onUnpinned: (id: string) => void;
+}) {
   const { t } = useI18n();
-  const cards = useTicketCards(ticketKey, true);
+  const cards = useTicketCards(ticketKey, canList);
+  const items = canList ? (cards.data?.items ?? []) : ranHere;
 
-  if (cards.isPending) {
+  if (canList && cards.isPending) {
     return (
       <div role="status" aria-busy="true">
         <span className="sr-only">{t('investigate.loading')}</span>
@@ -282,10 +319,10 @@ function PinnedCards({ ticketKey }: { ticketKey: string }) {
       </div>
     );
   }
-  if (cards.isError) {
+  if (canList && cards.isError) {
     return <p className="text-sm text-muted-foreground">{t('investigate.evidence.loadError')}</p>;
   }
-  if (cards.data.items.length === 0) {
+  if (items.length === 0) {
     return <p className="text-sm text-muted-foreground">{t('investigate.evidence.empty')}</p>;
   }
   return (
@@ -295,9 +332,9 @@ function PinnedCards({ ticketKey }: { ticketKey: string }) {
         {t('investigate.evidence.title')}
       </h4>
       <ul aria-label={t('investigate.evidence.label')} className="flex flex-col gap-2">
-        {cards.data.items.map((card) => (
+        {items.map((card) => (
           <li key={card.id}>
-            <CardView ticketKey={ticketKey} card={card} />
+            <CardView ticketKey={ticketKey} card={card} onUnpinned={onUnpinned} />
           </li>
         ))}
       </ul>
@@ -305,7 +342,15 @@ function PinnedCards({ ticketKey }: { ticketKey: string }) {
   );
 }
 
-function CardView({ ticketKey, card }: { ticketKey: string; card: EvidenceCard }) {
+function CardView({
+  ticketKey,
+  card,
+  onUnpinned,
+}: {
+  ticketKey: string;
+  card: EvidenceCard;
+  onUnpinned: (id: string) => void;
+}) {
   const { t, locale } = useI18n();
   const unpin = useUnpinCard(ticketKey);
   const now = useNow();
@@ -336,6 +381,7 @@ function CardView({ ticketKey, card }: { ticketKey: string; card: EvidenceCard }
           onClick={() => {
             unpin.mutate(card.id, {
               onSuccess: () => {
+                onUnpinned(card.id);
                 toast(t('investigate.evidence.unpinned'));
               },
             });
