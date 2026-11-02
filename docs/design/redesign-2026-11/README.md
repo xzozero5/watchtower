@@ -99,3 +99,8 @@ Contrast ที่คำนวณมือ (ยังไม่ได้ใส่
 3. chart + trend บน Head home **ทำพร้อม redesign เลย** (ต้องเพิ่ม counts/history API)
 4. draft card อยู่ **คอลัมน์ AI ด้านขวา** (แทน ai-first-workspace.md §3 / T-128 เดิม)
 5. active nav = **gradient navy → teal** · แสงบนการ์ดไฮไลต์ = **seafoam** (เลิกใช้ทอง กันสับสนกับสีเตือน)
+
+### ทิศทางของ UI rework (เจ้าของตอบใน session UI rework, 2026-11-02 ราว 23:55) `[CONFIRMED]`
+- ใช้ **Soft Beacon ทั้งชุด** (tokens, ฟอนต์, การ์ด, shell) พร้อมคำตอบ 5 ข้อข้างบน — ไม่ต้องให้ `po` ตัดสินแทน
+- chart + trend บน Head home: **ทำ layout ตอนนี้ด้วยข้อมูลที่มี** (ปริมาณงาน 7 วันจาก read model ของ dashboard) **ซ่อน trend chip** จนกว่าจะมี counts/history API (งาน API แยก)
+- คงกฎใน `docs/plans/ui-rework-brief.md` §2: สีบอกสถานะเท่านั้น, ปุ่มตัดสินใจมีข้อความ, หน้า ticket ไม่มี global top bar
