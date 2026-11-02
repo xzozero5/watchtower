@@ -172,6 +172,81 @@ export function leadingZeroBits(hash: Uint8Array): number {
   return bits;
 }
 
+// --- attachments (R-9.1, R-9.3, T-140) ---
+
+/** Files per submission or reply. `[ASSUMED]` limits; the api enforces them, the page checks first for a faster answer. */
+export const PORTAL_ATTACHMENT_MAX_FILES = 5;
+export const PORTAL_ATTACHMENT_MAX_BYTES = 10 * 1024 * 1024;
+export const PORTAL_ATTACHMENT_MAX_TOTAL_BYTES = 25 * 1024 * 1024;
+/** Longest file name kept for display; the name is never part of the storage key. */
+export const PORTAL_ATTACHMENT_MAX_NAME = 120;
+
+/** Multipart field names of a submission or reply that carries files. */
+export const PORTAL_MULTIPART_PAYLOAD_FIELD = 'payload';
+export const PORTAL_MULTIPART_FILES_FIELD = 'files';
+
+/**
+ * What a customer may attach, by extension. Images and a PDF are the usual screenshots and
+ * statements; txt/csv/log are for an error log or an export. No SVG or HTML (script in a file a
+ * browser may render), no archives or office files (opaque to the check). The api decides by the
+ * file's own bytes, not by this table: the extension has to agree with what the bytes are.
+ */
+export const PORTAL_ATTACHMENT_EXTENSIONS = [
+  'png',
+  'jpg',
+  'jpeg',
+  'gif',
+  'webp',
+  'pdf',
+  'txt',
+  'csv',
+  'log',
+] as const;
+export type PortalAttachmentExtension = (typeof PORTAL_ATTACHMENT_EXTENSIONS)[number];
+
+/** Value for `<input accept>`. */
+export const PORTAL_ATTACHMENT_ACCEPT = PORTAL_ATTACHMENT_EXTENSIONS.map((ext) => `.${ext}`).join(
+  ',',
+);
+
+/** Lower-case extension of a file name when it is an allowed one, else null. */
+export function portalAttachmentExtension(fileName: string): PortalAttachmentExtension | null {
+  const dot = fileName.lastIndexOf('.');
+  if (dot < 0) return null;
+  const ext = fileName.slice(dot + 1).toLowerCase();
+  return (PORTAL_ATTACHMENT_EXTENSIONS as readonly string[]).includes(ext)
+    ? (ext as PortalAttachmentExtension)
+    : null;
+}
+
+export type PortalAttachmentProblem =
+  'too_many' | 'empty' | 'too_large' | 'type_not_allowed' | 'total_too_large';
+
+/** The checks the page can make without reading the file; the api repeats them and also checks the bytes. */
+export function checkPortalAttachments(
+  files: readonly { readonly name: string; readonly size: number }[],
+): { readonly index: number | null; readonly problem: PortalAttachmentProblem } | null {
+  if (files.length > PORTAL_ATTACHMENT_MAX_FILES) return { index: null, problem: 'too_many' };
+  let total = 0;
+  for (const [index, file] of files.entries()) {
+    if (file.size === 0) return { index, problem: 'empty' };
+    if (file.size > PORTAL_ATTACHMENT_MAX_BYTES) return { index, problem: 'too_large' };
+    if (portalAttachmentExtension(file.name) === null)
+      return { index, problem: 'type_not_allowed' };
+    total += file.size;
+  }
+  return total > PORTAL_ATTACHMENT_MAX_TOTAL_BYTES
+    ? { index: null, problem: 'total_too_large' }
+    : null;
+}
+
+/** An attachment as the customer sees it on the tracking page: name and size, no link. */
+export const portalAttachmentSchema = z.object({
+  name: z.string(),
+  size: z.number().int().min(0),
+});
+export type PortalAttachment = z.infer<typeof portalAttachmentSchema>;
+
 // --- endpoints ---
 
 const requestIdSchema = z
@@ -202,6 +277,20 @@ export const portalSubmitSchema = z.strictObject({
 });
 export type PortalSubmit = z.infer<typeof portalSubmitSchema>;
 
+/**
+ * Text fields of a multipart request: the JSON of the normal body in one `payload` field, the files
+ * in `files`. The api parses `payload` with the schema of the endpoint (`portalSubmitSchema`,
+ * `portalReplySchema`), so there is one definition of each form.
+ */
+export const portalMultipartSchema = z.strictObject({
+  payload: z.string().min(2).max(200_000),
+});
+export type PortalMultipart = z.infer<typeof portalMultipartSchema>;
+
+/** The body of `POST /portal/tickets`: JSON, or the multipart envelope when the request has files. */
+export const portalSubmitRequestSchema = z.union([portalSubmitSchema, portalMultipartSchema]);
+export type PortalSubmitRequest = z.infer<typeof portalSubmitRequestSchema>;
+
 export const portalSubmittedSchema = z.object({
   ticketKey: z.string(),
   /** `a***@example.com`. The tracking link goes to this address only; it is never in this response. */
@@ -230,6 +319,8 @@ export const portalTimelineEntrySchema = z.discriminatedUnion('kind', [
     /** First name of the staff member for `support`; null for `customer`. */
     authorName: z.string().nullable(),
     body: z.string(),
+    /** Files attached to the message (name and size only; the team downloads them, the customer already has them). */
+    attachments: z.array(portalAttachmentSchema).optional(),
     createdAt: z.iso.datetime(),
   }),
   z.object({
@@ -273,12 +364,17 @@ export const portalReplySchema = z.strictObject({
 });
 export type PortalReply = z.infer<typeof portalReplySchema>;
 
+/** The body of `POST /portal/tickets/:key/replies`: JSON, or the multipart envelope when the request has files. */
+export const portalReplyRequestSchema = z.union([portalReplySchema, portalMultipartSchema]);
+export type PortalReplyRequest = z.infer<typeof portalReplyRequestSchema>;
+
 export const portalReplyResultSchema = z.object({
   message: z.object({
     id: z.uuid(),
     from: z.literal('customer'),
     authorName: z.null(),
     body: z.string(),
+    attachments: z.array(portalAttachmentSchema).optional(),
     createdAt: z.iso.datetime(),
   }),
   status: customerStatusSchema,

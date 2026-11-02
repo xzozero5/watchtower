@@ -27,6 +27,7 @@ import { saveSubmitted } from '@/lib/portal/submitted-handoff';
 import { submitRequest } from '@/lib/portal/submit-flow';
 import { useHumanCheck, usePortalApi } from '@/lib/portal/use-portal';
 
+import { AttachmentPicker, useAttachments } from './attachment-picker';
 import { describedBy, FormField } from './form-field';
 import { HumanCheckStatus } from './human-check-status';
 
@@ -100,6 +101,7 @@ const FAILURE_KEYS: Record<Exclude<Failure, 'invalidLink' | 'notOpen'>, MessageK
   rateLimited: 'portal.form.failures.rateLimited',
   network: 'portal.form.failures.network',
   validation: 'portal.form.failures.validation',
+  attachment: 'portal.form.failures.attachment',
   server: 'portal.form.failures.server',
   verifyUnavailable: 'portal.verifyFailed',
 };
@@ -123,6 +125,7 @@ export function SubmitForm() {
   const uid = useId();
   const id = (name: string) => `${uid}-${name}`;
 
+  const attachments = useAttachments();
   const [values, setValues] = useState<FormValues>(EMPTY_FORM);
   const [errors, setErrors] = useState<FormErrors>({});
   const [failure, setFailure] = useState<Failure | null>(null);
@@ -175,7 +178,7 @@ export function SubmitForm() {
     setFailure(null);
     setSubmitting(true);
     try {
-      const submitted = await submitRequest({ api, check }, result.payload);
+      const submitted = await submitRequest({ api, check }, result.payload, attachments.files);
       saveSubmitted(submitted);
       router.push('/portal/submitted');
     } catch (error) {
@@ -422,6 +425,8 @@ export function SubmitForm() {
             }}
           />
         </FormField>
+
+        <AttachmentPicker state={attachments} disabled={submitting} />
 
         {/* Honeypot: invisible and unreachable for people, tempting for form-filling bots. */}
         <div aria-hidden="true" className="sr-only" data-testid="portal-honeypot">

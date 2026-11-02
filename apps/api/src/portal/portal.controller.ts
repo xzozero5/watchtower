@@ -8,11 +8,13 @@ import {
   Param,
   Post,
   Req,
+  UploadedFiles,
   UseInterceptors,
 } from '@nestjs/common';
 import {
   ApiAcceptedResponse,
   ApiBadRequestResponse,
+  ApiConsumes,
   ApiCreatedResponse,
   ApiHeader,
   ApiOkResponse,
@@ -23,19 +25,27 @@ import {
 } from '@nestjs/swagger';
 import {
   AUDIT_ACTIONS,
+  PORTAL_ATTACHMENT_EXTENSIONS,
+  PORTAL_ATTACHMENT_MAX_BYTES,
+  PORTAL_ATTACHMENT_MAX_FILES,
+  PORTAL_ATTACHMENT_MAX_TOTAL_BYTES,
+  PORTAL_MULTIPART_FILES_FIELD,
+  PORTAL_MULTIPART_PAYLOAD_FIELD,
   PORTAL_TOKEN_HEADER,
   humanChallengeSchema,
   portalAcceptedSchema,
+  portalReplyRequestSchema,
   portalReplyResultSchema,
   portalReplySchema,
   portalResendSchema,
+  portalSubmitRequestSchema,
   portalSubmitSchema,
   portalSubmittedSchema,
   portalTicketKeyParamSchema,
   portalTicketViewSchema,
-  type PortalReply,
+  type PortalReplyRequest,
   type PortalResend,
-  type PortalSubmit,
+  type PortalSubmitRequest,
 } from '@watchtower/shared';
 import type { Request } from 'express';
 import type { z } from 'zod';
@@ -43,8 +53,11 @@ import type { z } from 'zod';
 import { Audited, Public } from '../auth/decorators.js';
 import { parseResponse } from '../common/zod-openapi.js';
 import { HUMAN_VERIFICATION, type HumanVerificationProvider } from './human-verification.js';
+import type { UploadedFile } from './portal-attachments.service.js';
 import { PortalHeadersInterceptor } from './portal-headers.interceptor.js';
 import { PortalLimits } from './portal-limits.js';
+import { resolvePortalBody } from './portal-request.js';
+import { PortalUploadInterceptor } from './portal-upload.interceptor.js';
 import { PortalSubmissionService } from './portal-submission.service.js';
 import { PortalTrackingService } from './portal-tracking.service.js';
 
@@ -114,17 +127,35 @@ export class PortalController {
       'organization that claimed the email domain (else an "unmatched" organization for triage, with ' +
       'the typed organization kept in `customFields.portal`), maps `category` to an intent hint and ' +
       '`urgency` to a priority `[ASSUMED]`, computes the SLA, and queues the confirmation email. ' +
-      'The tracking link is only in that email. Attachments are not accepted yet (T-102): an ' +
-      'unknown field such as `attachments` is a 400. Limited per IP, per email and per organization ' +
-      '(429 with Retry-After); a failed verification is 400 `verification_failed`.',
+      'The tracking link is only in that email. Attachments (R-9.1): send `multipart/form-data` ' +
+      `with the form as JSON in the \`${PORTAL_MULTIPART_PAYLOAD_FIELD}\` field and up to ` +
+      `${String(PORTAL_ATTACHMENT_MAX_FILES)} files in \`${PORTAL_MULTIPART_FILES_FIELD}\` ` +
+      `(${String(PORTAL_ATTACHMENT_MAX_BYTES / 1024 / 1024)} MB each, ` +
+      `${String(PORTAL_ATTACHMENT_MAX_TOTAL_BYTES / 1024 / 1024)} MB together; ` +
+      `${PORTAL_ATTACHMENT_EXTENSIONS.join(', ')}). The type is decided from the file's bytes, ` +
+      'not its name; SVG, HTML and anything else is 400 `attachment_rejected` (413 for size or ' +
+      'count). Without files, plain JSON as before. Limited per IP, per email and per ' +
+      'organization (429 with Retry-After); a failed verification is 400 `verification_failed`.',
   })
+  @ApiConsumes('application/json', 'multipart/form-data')
   @ApiCreatedResponse({ standardSchema: portalSubmittedSchema })
-  @ApiBadRequestResponse({ description: 'Invalid form, or verification_failed' })
+  @ApiBadRequestResponse({
+    description: 'Invalid form, verification_failed, or attachment_rejected',
+  })
   @ApiTooManyRequestsResponse({ description: 'Rate limit (portal.rate_limited is audited)' })
-  async submit(@Body({ schema: portalSubmitSchema }) body: PortalSubmit, @Req() request: Request) {
+  @UseInterceptors(PortalUploadInterceptor)
+  async submit(
+    @Body({ schema: portalSubmitRequestSchema }) body: PortalSubmitRequest,
+    @UploadedFiles() files: UploadedFile[] | undefined,
+    @Req() request: Request,
+  ) {
     return parseResponse(
       portalSubmittedSchema,
-      await this.submissions.submit(body, { ip: request.ip ?? null }),
+      await this.submissions.submit(
+        resolvePortalBody(portalSubmitSchema, body),
+        { ip: request.ip ?? null },
+        files ?? [],
+      ),
     );
   }
 
@@ -165,20 +196,32 @@ export class PortalController {
       'Adds a customer message to the timeline of the ticket. A ticket that waits on the customer ' +
       'goes back to work, and one resolved in the last 7 days reopens (the same rules as a reply ' +
       'from a signed-in client). Closed and merged tickets answer 409 `ticket_not_open`. Limited ' +
-      'per IP and per ticket.',
+      'per IP and per ticket. Files (R-9.3) go the same way as on submit: `multipart/form-data` ' +
+      `with the JSON in \`${PORTAL_MULTIPART_PAYLOAD_FIELD}\` and the files in ` +
+      `\`${PORTAL_MULTIPART_FILES_FIELD}\`, same limits and checks.`,
   })
+  @ApiConsumes('application/json', 'multipart/form-data')
   @ApiCreatedResponse({ standardSchema: portalReplyResultSchema })
   @ApiUnauthorizedResponse({ description: 'invalid_or_expired_link' })
+  @ApiBadRequestResponse({ description: 'Invalid reply, or attachment_rejected' })
   @ApiTooManyRequestsResponse({ description: 'Rate limit' })
+  @UseInterceptors(PortalUploadInterceptor)
   async reply(
     @Param({ schema: portalTicketKeyParamSchema }) params: KeyParam,
-    @Body({ schema: portalReplySchema }) body: PortalReply,
+    @Body({ schema: portalReplyRequestSchema }) body: PortalReplyRequest,
+    @UploadedFiles() files: UploadedFile[] | undefined,
     @Headers(PORTAL_TOKEN_HEADER) token: string | undefined,
     @Req() request: Request,
   ) {
     return parseResponse(
       portalReplyResultSchema,
-      await this.tracking.reply(token, params.key, body, request.ip ?? null),
+      await this.tracking.reply(
+        token,
+        params.key,
+        resolvePortalBody(portalReplySchema, body),
+        request.ip ?? null,
+        files ?? [],
+      ),
     );
   }
 

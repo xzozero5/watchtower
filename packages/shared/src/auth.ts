@@ -34,6 +34,10 @@ export const AUTH_ERROR_CODES = [
   'ticket_not_open',
   'channel_no_outbound',
   'verification_failed',
+  // Portal attachments (T-140): a file refused for its size, type, content or count.
+  'attachment_rejected',
+  // Object storage did not take or give a file (503).
+  'storage_unavailable',
   // Autonomy (T-112a): asking for stage 3 or above, which only the owner may decide (N3).
   'autonomy_stage_requires_owner',
   // Credential store (T-116a): a field that an environment variable sets cannot be saved.
@@ -349,6 +353,10 @@ export const CORE_AUDIT_ACTIONS = {
   portalVerificationFailed: 'portal.verification_failed',
   portalRateLimited: 'portal.rate_limited',
   portalAccessDenied: 'portal.access_denied',
+  /** A portal upload was refused for its size, type or content (T-140). */
+  portalAttachmentRejected: 'portal.attachment_rejected',
+  /** A person downloaded a ticket attachment (T-140). */
+  ticketAttachmentDownload: 'ticket.attachment_download',
 } as const;
 
 /** Audit action names, so the UI and the tests do not retype strings: core plus every feature. */

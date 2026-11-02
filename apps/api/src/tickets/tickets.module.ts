@@ -9,6 +9,7 @@ import { APP_CONFIG, type ApiConfig } from '../config/config.js';
 import { TICKET_KEYS, TicketKeys } from './ticket-keys.js';
 import { SlaRemaining } from './sla-remaining.js';
 import { TicketSlaStates } from './sla-states.js';
+import { TicketAttachmentsController } from './ticket-attachments.controller.js';
 import { TicketReader } from './ticket-reader.js';
 import { TicketsController } from './tickets.controller.js';
 import { TicketsService } from './tickets.service.js';
@@ -22,7 +23,7 @@ import { WorkflowController, WorkflowService } from './workflow.service.js';
  */
 @Module({
   imports: [OrgsModule, IntentsModule, SlaModule, TeamQueuesModule, PortalNotificationsModule],
-  controllers: [TicketsController, WorkflowController],
+  controllers: [TicketsController, TicketAttachmentsController, WorkflowController],
   providers: [
     {
       provide: TICKET_KEYS,

@@ -161,6 +161,8 @@ export interface RequestOptions {
 export interface TestResponse<T = unknown> {
   readonly status: number;
   readonly body: T;
+  /** The response body as received, for downloads. */
+  readonly bytes: Uint8Array;
   readonly headers: Headers;
   readonly setCookies: readonly string[];
 }
@@ -190,7 +192,10 @@ export class TestClient {
       'user-agent': 'watchtower-test-client',
       ...options.headers,
     };
-    if (options.body !== undefined) headers['content-type'] = 'application/json';
+    // A FormData body (multipart) sets its own content type, with the boundary, when fetch sends it.
+    if (options.body !== undefined && !(options.body instanceof FormData)) {
+      headers['content-type'] = 'application/json';
+    }
     const origin =
       options.origin === undefined ? new URL(this.config.APP_URL).origin : options.origin;
     if (origin !== null) headers.origin = origin;
@@ -207,16 +212,25 @@ export class TestClient {
       method,
       headers,
       redirect: options.redirect ?? 'manual',
-      ...(options.body === undefined ? {} : { body: JSON.stringify(options.body) }),
+      ...(options.body === undefined
+        ? {}
+        : { body: options.body instanceof FormData ? options.body : JSON.stringify(options.body) }),
     });
     const setCookies = response.headers.getSetCookie();
     this.absorb(setCookies);
-    const text = await response.text();
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    const text = new TextDecoder().decode(bytes);
     let body: unknown = text;
     if (text !== '' && (response.headers.get('content-type') ?? '').includes('json')) {
       body = JSON.parse(text) as unknown;
     }
-    return { status: response.status, body: body as T, headers: response.headers, setCookies };
+    return {
+      status: response.status,
+      body: body as T,
+      bytes,
+      headers: response.headers,
+      setCookies,
+    };
   }
 
   get<T = unknown>(path: string, options?: RequestOptions) {

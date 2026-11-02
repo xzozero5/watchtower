@@ -24,6 +24,7 @@ export type PortalLimitScope =
   | 'submit-ip'
   | 'submit-email'
   | 'submit-org'
+  | 'upload-ip'
   | 'read-ip'
   | 'reply-ip'
   | 'reply-ticket'
@@ -42,6 +43,9 @@ export function portalLimitPolicy(
     'submit-ip': { limit: config.PORTAL_RATE_IP_PER_HOUR, windowSeconds: HOUR },
     'submit-email': { limit: config.PORTAL_RATE_EMAIL_PER_HOUR, windowSeconds: HOUR },
     'submit-org': { limit: config.PORTAL_RATE_ORG_PER_HOUR, windowSeconds: HOUR },
+    // Requests that carry files (T-140), counted before the body is read. `[ASSUMED]`: a person
+    // sends a handful of screenshots an hour; more is a script filling storage.
+    'upload-ip': { limit: 30, windowSeconds: HOUR },
     'read-ip': { limit: 240, windowSeconds: TEN_MINUTES },
     'reply-ip': { limit: 30, windowSeconds: HOUR },
     'reply-ticket': { limit: 10, windowSeconds: HOUR },

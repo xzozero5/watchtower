@@ -24,6 +24,7 @@ import { UnitOfWorkService } from '../realtime/unit-of-work.js';
 import { TICKET_KEYS, type TicketKeys } from '../tickets/ticket-keys.js';
 import type { TicketRow } from '../tickets/ticket-reader.js';
 import { TicketsService } from '../tickets/tickets.service.js';
+import { PortalAttachmentsService, type UploadedFile } from './portal-attachments.service.js';
 import { PortalLimits } from './portal-limits.js';
 import { PortalNotifier } from './portal-notifier.js';
 import { PortalTokensService } from './portal-tokens.service.js';
@@ -66,6 +67,7 @@ export class PortalTrackingService implements OnApplicationShutdown {
     @Inject(TICKET_KEYS) private readonly keys: TicketKeys,
     @Inject(LOGGER) private readonly logger: AppLogger,
     @Inject(EmailTagService) private readonly tags: EmailTagService,
+    @Inject(PortalAttachmentsService) private readonly attachments: PortalAttachmentsService,
   ) {}
 
   async view(
@@ -88,6 +90,7 @@ export class PortalTrackingService implements OnApplicationShutdown {
         id: schema.message.id,
         direction: schema.message.direction,
         bodyText: schema.message.bodyText,
+        attachments: schema.message.attachments,
         createdAt: schema.message.createdAt,
         staffName: schema.users.name,
       })
@@ -161,20 +164,36 @@ export class PortalTrackingService implements OnApplicationShutdown {
     ticketKey: string,
     input: PortalReply,
     ip: string | null,
+    files: readonly UploadedFile[] = [],
   ): Promise<PortalReplyResult> {
     await this.limits.enforce('reply-ip', ip ?? 'unknown');
     const access = await this.access(token, ticketKey, ip);
     await this.limits.enforce('reply-ticket', access.ticket.id);
+    // Only a caller who holds a valid token for this ticket gets its files looked at and stored.
+    const prepared = this.attachments.prepare(files);
+    const stored = await this.attachments.put(prepared);
 
-    const result = await this.uow.run((uow) =>
-      this.tickets.reply(
-        uow,
-        access.ticket.id,
-        { body: input.body },
-        { kind: 'contact', contactId: access.contactId, orgId: access.ticket.orgId },
-        { type: 'anonymous', id: access.contactId },
-      ),
-    );
+    let result;
+    try {
+      result = await this.uow.run((uow) =>
+        this.tickets.reply(
+          uow,
+          access.ticket.id,
+          { body: input.body },
+          { kind: 'contact', contactId: access.contactId, orgId: access.ticket.orgId },
+          { type: 'anonymous', id: access.contactId },
+          stored.records,
+        ),
+      );
+    } catch (error) {
+      await this.attachments.discard(stored.keys);
+      throw error;
+    }
+    if (stored.records.length > 0) {
+      AuditScope.set({
+        metadata: { attachmentCount: stored.records.length, attachmentBytes: stored.bytes },
+      });
+    }
     const status = customerStatus(result.ticket.status as TicketStatus);
     return {
       message: {
@@ -182,6 +201,7 @@ export class PortalTrackingService implements OnApplicationShutdown {
         from: 'customer',
         authorName: null,
         body: result.message.bodyText,
+        ...(stored.view.length > 0 ? { attachments: [...stored.view] } : {}),
         createdAt: result.message.createdAt.toISOString(),
       },
       status,

@@ -22,7 +22,13 @@ import { DATABASE } from '../database/database.module.js';
 import { ContactsService } from '../orgs/contacts.service.js';
 import { UnitOfWorkService, type DbTransaction } from '../realtime/unit-of-work.js';
 import { TICKET_KEYS, type TicketKeys } from '../tickets/ticket-keys.js';
+import type { TicketRow } from '../tickets/ticket-reader.js';
 import { TicketsService } from '../tickets/tickets.service.js';
+import {
+  PortalAttachmentsService,
+  type StoredAttachments,
+  type UploadedFile,
+} from './portal-attachments.service.js';
 import {
   HUMAN_VERIFICATION,
   type HumanVerificationProvider,
@@ -75,8 +81,10 @@ function composeBody(input: PortalSubmit): string {
  * audit rows and the confirmation email (outbox). The tracking link is only in that email: the
  * response never carries it, so someone who types another person's address learns nothing.
  *
- * Attachments are not accepted yet: they need the MinIO handling of T-102 `[ASSUMED]`. The schema
- * is strict, so a request that names `attachments` is answered 400 instead of silently dropping files.
+ * Attachments (R-9.1, T-140): the files are checked by their bytes right after the proof (a refusal
+ * does not burn the proof), stored once the proof is claimed, and referenced from the first message
+ * like mail attachments are. If the ticket is not saved (error, or the proof was already used) the
+ * stored objects are deleted again.
  */
 @Injectable()
 export class PortalSubmissionService {
@@ -92,9 +100,14 @@ export class PortalSubmissionService {
     @Inject(AuditService) private readonly audit: AuditService,
     @Inject(TICKET_KEYS) private readonly keys: TicketKeys,
     @Inject(EmailTagService) private readonly tags: EmailTagService,
+    @Inject(PortalAttachmentsService) private readonly attachments: PortalAttachmentsService,
   ) {}
 
-  async submit(input: PortalSubmit, context: SubmitContext): Promise<PortalSubmitted> {
+  async submit(
+    input: PortalSubmit,
+    context: SubmitContext,
+    files: readonly UploadedFile[] = [],
+  ): Promise<PortalSubmitted> {
     // Order matters (C-3, ADR-007): what costs the caller work comes before what spends a bucket
     // that belongs to someone else.
     //   1. the client address's own limit: whoever floods from one address pays for it, whatever
@@ -112,6 +125,9 @@ export class PortalSubmissionService {
       honeypot: input.website,
     });
     if (!checked.ok) this.refuse(input.email, checked.reason);
+    // Bytes are looked at only for a caller who did the proof-of-work, and before the single-use
+    // claim, so a refused file leaves the proof usable.
+    const prepared = this.attachments.prepare(files);
 
     await this.limits.enforce('submit-email', input.email);
     const placement = await this.place(input.email);
@@ -120,7 +136,32 @@ export class PortalSubmissionService {
     const verified = await this.verification.claim(checked);
     if (!verified.ok) this.refuse(input.email, verified.reason);
 
-    const created = await this.uow.run(async (uow) => {
+    const stored = await this.attachments.put(prepared);
+    let created: { ticket: TicketRow; ticketKey: string; duplicate: boolean };
+    try {
+      created = await this.createTicket(input, placement, verified.challengeId, stored);
+    } catch (error) {
+      await this.attachments.discard(stored.keys);
+      throw error;
+    }
+    // The same submission again (the proof is its idempotency key): the first one's files are the ones kept.
+    if (created.duplicate) await this.attachments.discard(stored.keys);
+
+    return {
+      ticketKey: created.ticketKey,
+      maskedEmail: maskEmail(input.email),
+      status: customerStatus('new'),
+      expectedFirstResponseAt: created.ticket.firstResponseDueAt?.toISOString() ?? null,
+    };
+  }
+
+  private async createTicket(
+    input: PortalSubmit,
+    placement: { orgId: string | null; limitSubject: string },
+    challengeId: string,
+    stored: StoredAttachments,
+  ): Promise<{ ticket: TicketRow; ticketKey: string; duplicate: boolean }> {
+    return this.uow.run(async (uow) => {
       const { tx } = uow;
       const orgId = placement.orgId ?? (await this.ensureUnmatchedOrg(tx));
       const hint = await this.activeIntentKey(tx, PORTAL_CATEGORY_INTENT_HINT[input.category]);
@@ -139,7 +180,8 @@ export class PortalSubmissionService {
         body: composeBody(input),
         channel: 'portal',
         // The challenge id is single-use, so it doubles as the idempotency key of the submission.
-        externalId: `portal:${verified.challengeId}`,
+        externalId: `portal:${challengeId}`,
+        attachments: stored.records,
         requester: { email: input.email, name: input.name },
         ...(hint === null ? {} : { intentKey: hint }),
         ...(priority === undefined ? {} : { priority }),
@@ -169,18 +211,13 @@ export class PortalSubmissionService {
             organizationMatched: placement.orgId !== null,
             emailTag: this.tags.tag(input.email),
             affectedRequestIdCount: input.affectedRequestIds?.length ?? 0,
+            attachmentCount: stored.records.length,
+            attachmentBytes: stored.bytes,
           },
         });
       }
-      return { ticket: result.ticket, ticketKey };
+      return { ticket: result.ticket, ticketKey, duplicate: result.duplicate };
     });
-
-    return {
-      ticketKey: created.ticketKey,
-      maskedEmail: maskEmail(input.email),
-      status: customerStatus('new'),
-      expectedFirstResponseAt: created.ticket.firstResponseDueAt?.toISOString() ?? null,
-    };
   }
 
   /** Audits why a proof was refused and answers 400 `verification_failed` (the reason stays in the audit log). */
