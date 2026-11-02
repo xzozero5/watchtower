@@ -96,13 +96,16 @@ export class AiSummaries {
       );
       if (!turn.allowed) return null;
 
+      // The colleagues' names are part of the dictionary; without the whole list nothing is sent (N4).
+      const staff = await this.staff.list();
+      if (!staff.complete) return null;
       const outcome = await summarizeClaims(this.runtime.deps, {
         scope: key,
         subject: request.subject,
         locale: request.locale,
         facts: request.facts,
         maxClaims: request.maxClaims,
-        names: await this.staff.list(),
+        names: staff.names,
       });
       if (outcome.status !== 'ok') {
         // A refusal (kill switch, budget) is not retried for a minute; a failure neither.

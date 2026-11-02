@@ -46,8 +46,8 @@ function slaFact(
     href: ticketHref(ticket.key),
     text: t(
       locale,
-      `${ticket.key} "${cut(ticket.subject, 100)}" (${ticket.priority}) ${slaWord(locale, state)}${left}.`,
-      `${ticket.key} "${cut(ticket.subject, 100)}" (${ticket.priority}) is ${slaWord(locale, state)}${left}.`,
+      `${ticket.key} "${ticket.subject}" (${ticket.priority}) ${slaWord(locale, state)}${left}.`,
+      `${ticket.key} "${ticket.subject}" (${ticket.priority}) is ${slaWord(locale, state)}${left}.`,
     ),
   };
 }
@@ -60,13 +60,31 @@ function itemFact(locale: AssistantLocale, item: HandoffItem): ClaimFact {
         ? ('ticket' as const)
         : ('note' as const);
   const next =
-    item.nextAction === null ? '' : ` ${t(locale, 'ถัดไป', 'Next')}: ${cut(item.nextAction, 120)}.`;
+    item.nextAction === null ? '' : ` ${t(locale, 'ถัดไป', 'Next')}: ${item.nextAction}.`;
   return {
     kind,
     label: cut(item.ticket?.key ?? item.title, 60),
     href: item.ticket === null ? HANDOFF_HREF : ticketHref(item.ticket.key),
-    text: `${cut(item.title, 160)}.${next}`,
+    text: `${item.title}.${next}`,
   };
+}
+
+/** Every ticket the brief names, whoever it belongs to: mine, carried over, and those in the handoff items. */
+export function briefTicketIds(brief: ShiftBrief): string[] {
+  const items = [
+    ...brief.handoff.handoffs.flatMap((entry) => entry.items),
+    ...brief.incidents,
+    ...brief.snoozedAlerts,
+    ...brief.deploys,
+    ...brief.watchItems,
+  ];
+  return [
+    ...new Set([
+      ...brief.myTickets.map((ticket) => ticket.id),
+      ...brief.carriedOver.map((ticket) => ticket.id),
+      ...items.flatMap((item) => (item.ticket === null ? [] : [item.ticket.id])),
+    ]),
+  ];
 }
 
 /** The daily brief of a person who is on shift. */
@@ -103,8 +121,8 @@ function buildBriefFacts(brief: ShiftBrief, locale: AssistantLocale): ClaimFact[
       href: ticketHref(ticket.key),
       text: t(
         locale,
-        `${ticket.key} "${cut(ticket.subject, 100)}" ค้างมาแล้ว ${String(ticket.crossedShifts)} กะ.`,
-        `${ticket.key} "${cut(ticket.subject, 100)}" has carried over ${String(ticket.crossedShifts)} shift(s).`,
+        `${ticket.key} "${ticket.subject}" ค้างมาแล้ว ${String(ticket.crossedShifts)} กะ.`,
+        `${ticket.key} "${ticket.subject}" has carried over ${String(ticket.crossedShifts)} shift(s).`,
       ),
     });
   }

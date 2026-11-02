@@ -21,6 +21,17 @@ export function mintRedacted(value: string): RedactedText {
 }
 
 /**
+ * Shortens text that has already been redacted. Cutting removes characters and cannot create personal
+ * data, so the result is still redacted; a placeholder cut in half is dropped. Cut AFTER redacting, never
+ * before: a cut e-mail address or phone number (`victim.person@exa`, `081234`) is no longer recognized
+ * and goes to the model as it is.
+ */
+export function clipRedacted(text: RedactedText, max: number): RedactedText {
+  if (text.length <= max) return text;
+  return mintRedacted(`${text.slice(0, max).replace(/\[[A-Z_]*\d*$/, '')}…`);
+}
+
+/**
  * Joins already redacted pieces. Safe without a second pass: every piece went through the
  * redactor, and the separator is chosen by the caller from our own code.
  */

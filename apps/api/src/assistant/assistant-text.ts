@@ -43,9 +43,6 @@ export function slaWord(locale: AssistantLocale, state: SlaState): string {
   return SLA[locale][state];
 }
 
-const clip = (text: string, max: number): string =>
-  text.length <= max ? text : `${text.slice(0, max - 1)}…`;
-
 export interface TicketLine {
   readonly key: string;
   readonly subject: string;
@@ -57,7 +54,7 @@ export interface TicketLine {
 }
 
 export function ticketLine(locale: AssistantLocale, t: TicketLine): string {
-  const subject = clip(t.subject, 120);
+  const subject = t.subject;
   const sla = t.slaState === null ? '' : `, SLA ${slaWord(locale, t.slaState)}`;
   const who =
     t.assignee === null

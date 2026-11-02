@@ -71,7 +71,7 @@ interface Prepared {
 type Built = Omit<Prepared, 'card'> & { readonly card: Omit<StoredCard, 'locale'> };
 
 export type PrepareResult =
-  | { readonly ok: true; readonly card: ProposalCard }
+  | { readonly ok: true; readonly card: ProposalCard; readonly ticketId: string | null }
   | { readonly ok: false; readonly kind: ProposalKind; readonly why: ProposalWhy };
 
 const cut = (text: string, max: number): string =>
@@ -152,7 +152,7 @@ export class AssistantProposals {
       })
       .returning();
     if (row === undefined) throw new Error('proposal not stored');
-    return { ok: true, card: toCard(row) };
+    return { ok: true, card: toCard(row), ticketId: prepared.ticketId };
   }
 
   private async build(

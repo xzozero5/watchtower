@@ -8,19 +8,12 @@ import {
 import { z } from 'zod';
 
 import type { AuditedResult } from '../audited.js';
-import { joinRedacted } from '../redaction/redacted-text.js';
+import { clipRedacted, joinRedacted } from '../redaction/redacted-text.js';
 import { renderPrompt } from '../prompts.js';
 import { neutralizeTags } from './leak-check.js';
 import type { Redactor } from '../redaction/redactor.js';
 import { stripLinks, type AssistantFact } from './assistant.js';
-import {
-  askGuard,
-  clip,
-  extractJsonObject,
-  failureFor,
-  skippedFor,
-  type AgentDeps,
-} from './common.js';
+import { askGuard, extractJsonObject, failureFor, skippedFor, type AgentDeps } from './common.js';
 
 export const CLAIM_SUMMARY_PROMPT_ID = 'claim_summary';
 
@@ -102,14 +95,18 @@ export async function summarizeClaims(
         maxClaims: String(input.maxClaims),
       }),
     );
-    const lines = facts.map((fact, index) =>
-      session.redactToolOutput(
-        'summary',
-        `[f${String(index + 1)}] ${fact.kind}${fact.mock === true ? ' (mock data)' : ''}: ${neutralizeTags(
-          clip(fact.text, MAX_FACT_CHARS),
-        ).replaceAll(/<(\/?\s*facts\b)/gi, '‹$1')}`,
-      ),
-    );
+    const lines = facts
+      .map(
+        (fact, index) =>
+          session.redactToolOutput(
+            'summary',
+            `[f${String(index + 1)}] ${fact.kind}${fact.mock === true ? ' (mock data)' : ''}: ${neutralizeTags(
+              fact.text,
+            ).replaceAll(/<(\/?\s*facts\b)/gi, '‹$1')}`,
+          ),
+        // Cut after redacting: a cut address or number is no longer recognized (N4).
+      )
+      .map((line) => clipRedacted(line, MAX_FACT_CHARS + 40));
     const user = joinRedacted(
       [session.redact('<facts>'), ...lines, session.redact('</facts>')],
       '\n',

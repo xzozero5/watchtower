@@ -461,6 +461,88 @@ describe('regressions from the security review of T-134', () => {
     expect(outcome.redactedText).not.toContain('Somsak');
   });
 
+  it('a masked reader cannot confirm a masked value by guessing: right and wrong guesses read the same', async () => {
+    const VICTIM = 'victim.person@example.test';
+    const askWith = async (guess: string) => {
+      const state = rig({
+        provider: new DevMockLlmProvider({
+          rules: [
+            {
+              promptId: 'assistant_plan',
+              text: JSON.stringify({ calls: [{ tool: 'search_tickets', input: {} }] }),
+            },
+          ],
+        }),
+      });
+      const outcome = await runAssistantTurn(
+        state.deps,
+        input({
+          masked: true,
+          text: `is it ${guess}?`,
+          host: {
+            ...host(['search_tickets']),
+            facts: () => [
+              { kind: 'ticket', label: 'OPS-1', text: `OPS-1 "mail ${VICTIM}" is open` },
+            ],
+          },
+        }),
+      );
+      const answer = state.requests.find((request) => request.prompt.id === 'assistant_answer');
+      return { outcome, prompt: answer?.messages[0]?.content ?? '', runs: state.runs };
+    };
+    const right = await askWith(VICTIM);
+    const wrong = await askWith('someone.else@example.test');
+    // The model reads the very same prompt whether the guess was right or wrong...
+    expect(right.prompt).toBe(wrong.prompt);
+    expect(right.prompt, right.prompt).toContain('[EMAIL_1]');
+    expect(right.prompt).toContain('[EMAIL_1001]');
+    // ...and the person gets the very same answer, with the masked value still masked.
+    expect(JSON.stringify(right.outcome)).toBe(JSON.stringify(wrong.outcome));
+    expect(JSON.stringify(right.outcome)).not.toContain(VICTIM);
+    // Both namespaces are counted in the audit row of the call.
+    expect(right.runs.every((run) => run.redaction.total > 0)).toBe(true);
+  });
+
+  it('a staff reader (who may see it all) still gets one namespace: the same value, the same placeholder', async () => {
+    const state = rig();
+    await runAssistantTurn(
+      state.deps,
+      input({
+        masked: false,
+        text: 'is it victim.person@example.test?',
+        host: {
+          ...host(['search_tickets']),
+          facts: () => [
+            { kind: 'ticket', label: 'OPS-1', text: 'OPS-1 "mail victim.person@example.test"' },
+          ],
+        },
+      }),
+    );
+    const answer = state.requests.find((request) => request.prompt.id === 'assistant_answer');
+    expect(answer?.messages[0]?.content ?? '').not.toContain('[EMAIL_1001]');
+  });
+
+  it('cuts a long fact after redacting it: an address or a number at the cut never reaches the model half-cut', async () => {
+    for (const secret of ['victim.person@example.test', '081-234-5678']) {
+      const state = rig();
+      // The secret starts a few characters before where the old cut fell (500).
+      const text = `${'word '.repeat(98)}${secret} and a long tail ${'tail '.repeat(100)}`;
+      await runAssistantTurn(
+        state.deps,
+        input({
+          host: {
+            ...host(['search_tickets']),
+            facts: () => [{ kind: 'ticket', label: 'OPS-1', text }],
+          },
+        }),
+      );
+      const sent = state.requests.map((request) => request.messages[0]?.content ?? '').join('\n');
+      for (const piece of ['victim', 'example', '081', '5678', '234']) {
+        expect(sent, `${secret} / ${piece}`).not.toContain(piece);
+      }
+    }
+  });
+
   it('redacts what comes back from the model before it can be stored: an address it invented is a placeholder', async () => {
     const state = rig({
       provider: new DevMockLlmProvider({

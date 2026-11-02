@@ -22,7 +22,7 @@ import type { Principal } from '../auth/principal.js';
 import { DATABASE } from '../database/database.module.js';
 import { SlaRemaining } from '../tickets/sla-remaining.js';
 import { TICKET_KEYS, type TicketKeys } from '../tickets/ticket-keys.js';
-import { briefFacts } from './brief-facts.js';
+import { briefFacts, briefTicketIds } from './brief-facts.js';
 import { HandoffReader } from './handoff-reader.js';
 import { SHIFT_NOW, openSessionOf, shiftTimezone, toSession, type ShiftNow } from './shift-core.js';
 import { ShiftNotes } from './shift-notes.service.js';
@@ -124,10 +124,9 @@ export class BriefService {
       facts: briefFacts(
         brief,
         locale,
-        await customerNamesOfTickets(
-          db,
-          tickets.map((ticket) => ticket.id),
-        ),
+        // Every organization that is in the brief, not only the person's own tickets': the handoff
+        // items of colleagues and the incidents, alerts and deploys name tickets of others.
+        await customerNamesOfTickets(db, briefTicketIds(brief)),
       ),
       dataAsOf: now,
       maxClaims: 5,

@@ -1084,6 +1084,85 @@ describe('regressions from the second security review of T-134', () => {
     }
   });
 
+  it('N4: a later turn with no ticket in it still has the people of the earlier tickets; what is stored is redacted with them', async () => {
+    const lena = `Lena${suffix} Boonmee`;
+    const org = (await apiOrg(lead, { name: `Later Org ${suffix}` })).id;
+    const first = await fileTicket(agent, org, {
+      subject: 'Earlier turn',
+      requester: { email: `lena-${suffix}@customer.example`, name: lena },
+    });
+    const who = await asker();
+    const opening = await okReply(who, 'summarize this', { context: { ticket: first.key } });
+    const before = sent.length;
+    // No chip and no ticket number: only the conversation knows which organization this is about.
+    const later = await okReply(who, `and what did ${lena} ask before?`, {
+      conversationId: opening.conversationId,
+    });
+    expect(later.conversationId).toBe(opening.conversationId);
+    expect(sent.slice(before).join('\n')).not.toContain('Boonmee');
+    const stored = await owner().query<{ body: string }>(
+      `SELECT body FROM assistant_message WHERE conversation_id = $1`,
+      [opening.conversationId],
+    );
+    expect(stored.rows.map((row) => row.body).join('\n')).not.toContain('Boonmee');
+  });
+
+  it('N4: what the person typed is stored with the names the tools found, though no ticket was named', async () => {
+    const mook = `Mook${suffix} Chaiyo`;
+    const org = (await apiOrg(lead, { name: `Found Org ${suffix}` })).id;
+    await fileTicket(agent, org, {
+      subject: `Question about foundword${suffix}`,
+      requester: { email: `mook-${suffix}@customer.example`, name: mook },
+    });
+    const who = await asker();
+    // The search finds the ticket (so the tool learns the organization); the name is only in the typed text.
+    script.plan = JSON.stringify({
+      calls: [{ tool: 'search_tickets', input: { query: `foundword${suffix}` } }],
+    });
+    let reply: AssistantReply;
+    try {
+      reply = await okReply(who, `find tickets about foundword${suffix} from ${mook}`);
+    } finally {
+      delete script.plan;
+    }
+    expect(reply.claims.some((claim) => claim.evidence.length > 0)).toBe(true);
+    const stored = await owner().query<{ body: string }>(
+      `SELECT body FROM assistant_message WHERE conversation_id = $1 AND role = 'user'`,
+      [reply.conversationId],
+    );
+    // The plan step could not know this organization before the tool ran (residual, ADR-017), but the
+    // stored text is redacted with everything known by the end of the turn.
+    expect(stored.rows[0]?.body).not.toContain('Chaiyo');
+  });
+
+  it('PRD 8.2: a card shows the subject of its ticket, so it is a read on the log even when no tool read it', async () => {
+    const other = await fileTicket(agent2, orgId, { subject: `Card only ${suffix}` });
+    const who = await asker();
+    script.plan = JSON.stringify({ calls: [] });
+    script.answer = JSON.stringify({
+      claims: [],
+      proposals: [{ kind: 'note', ticket: other.key, body: 'a note' }],
+    });
+    try {
+      const reply = await okReply(who, `please note something on ${other.key}`);
+      expect(reply.tools).toEqual([]);
+      expect(reply.proposals[0]?.target?.key).toBe(other.key);
+      const rows = await owner().query(
+        `SELECT 1 FROM audit_log WHERE action = 'pii.read' AND actor_id = $1 AND target_id = $2`,
+        [who.userId, other.id],
+      );
+      expect(rows.rowCount).toBe(1);
+      const message = await owner().query<{ metadata: { ticketIds: string[] } }>(
+        `SELECT metadata FROM audit_log WHERE action = 'assistant.message' AND target_id = $1`,
+        [reply.conversationId],
+      );
+      expect(message.rows[0]?.metadata.ticketIds).toEqual([other.id]);
+    } finally {
+      delete script.plan;
+      delete script.answer;
+    }
+  });
+
   describe('a developer (T-137, masked)', () => {
     const customer = `Napat${suffix} Dev`;
     let target: TicketDetail;
@@ -1177,6 +1256,37 @@ describe('regressions from the second security review of T-134', () => {
         [ticketForDev.id],
       );
       expect(notes.rows.map((row) => row.body_text)).toContain('Look at the export job');
+    });
+
+    it('cannot confirm a masked value by guessing it: a right guess and a wrong one read the same', async () => {
+      const email = `guess-${suffix}@customer.example`;
+      const guessed = await fileTicket(agent, orgId, {
+        subject: `Guess ${suffix}`,
+        requester: { email, name: customer },
+      });
+      const askAbout = async (guess: string) => {
+        const who = await signIn(h, 'dev');
+        const before = sent.length;
+        const reply = await okReply(who, `summarize this, and is the sender ${guess}?`, {
+          context: { ticket: guessed.key },
+        });
+        // What the model read in the answer step.
+        const prompt = sent
+          .slice(before)
+          .filter((text) => text.includes('<tool_results>'))
+          .at(-1);
+        return { reply, prompt };
+      };
+      const right = await askAbout(email);
+      const wrong = await askAbout(`nobody-${suffix}@customer.example`);
+      expect(right.prompt).toBeDefined();
+      expect(right.prompt).toBe(wrong.prompt);
+      const strip = (value: AssistantReply) => ({ claims: value.claims, tools: value.tools });
+      // The words the person typed come back as typed; compare what the model could say about the ticket.
+      expect(JSON.stringify(strip(right.reply)).replaceAll(email, 'GUESS')).toBe(
+        JSON.stringify(strip(wrong.reply)).replaceAll(`nobody-${suffix}@customer.example`, 'GUESS'),
+      );
+      expect(JSON.stringify(right.reply)).not.toContain(`Napat${suffix}`);
     });
 
     it('sees the claims of the AI report masked too', async () => {

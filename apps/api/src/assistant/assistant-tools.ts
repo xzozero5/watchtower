@@ -95,9 +95,9 @@ const summarizeOutput = z.object({
   intent: z.object({ key: z.string().max(100), name: z.string().max(200) }).nullable(),
   /** Null for a masked reader. */
   requester: person.nullable(),
-  aiSummary: z.string().max(1000).nullable(),
+  aiSummary: z.string().max(5000).nullable(),
   recent: z
-    .array(z.object({ from: z.enum(['customer', 'staff', 'note']), text: z.string().max(400) }))
+    .array(z.object({ from: z.enum(['customer', 'staff', 'note']), text: z.string().max(20_000) }))
     .max(4),
 });
 
@@ -154,7 +154,7 @@ const kbOutput = z.object({
       z.object({
         title: z.string().max(300),
         section: z.string().max(300),
-        snippet: z.string().max(400),
+        snippet: z.string().max(2000),
         lang: z.string().max(10),
       }),
     )
@@ -320,7 +320,7 @@ export function buildAssistantTools(
               ? null
               : { key: view.intentKey, name: view.intentName ?? view.intentKey },
           requester: masked ? null : view.requesterName,
-          aiSummary: view.aiSummary === null ? null : cut(view.aiSummary, 1000),
+          aiSummary: view.aiSummary,
           recent: recent.reverse().map((message) => ({
             from:
               message.visibility === 'internal'
@@ -328,7 +328,8 @@ export function buildAssistantTools(
                 : message.direction === 'inbound'
                   ? ('customer' as const)
                   : ('staff' as const),
-            text: cut(message.text.replaceAll(/\s+/g, ' ').trim(), 400),
+            // Not cut here: the agent redacts first and cuts after, so no address is cut in half (N4).
+            text: message.text.replaceAll(/\s+/g, ' ').trim(),
           })),
         };
       },
@@ -517,9 +518,9 @@ export function buildAssistantTools(
         return {
           mode: result.mode,
           items: result.hits.slice(0, input.limit).map((hit) => ({
-            title: cut(hit.title, 300),
-            section: cut(hit.section, 300),
-            snippet: cut(hit.snippet.replaceAll(/\s+/g, ' ').trim(), 400),
+            title: hit.title,
+            section: hit.section,
+            snippet: hit.snippet.replaceAll(/\s+/g, ' ').trim(),
             lang: hit.lang,
           })),
         };

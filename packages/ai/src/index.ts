@@ -21,7 +21,7 @@ export * from './toolkit/tools.js';
 export * from './toolkit/budget.js';
 export * from './tools.js';
 
-export { joinRedacted, type RedactedText } from './redaction/redacted-text.js';
+export { clipRedacted, joinRedacted, type RedactedText } from './redaction/redacted-text.js';
 export {
   createRedactor,
   RedactionInputTooLargeError,

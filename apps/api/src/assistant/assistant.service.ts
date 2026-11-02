@@ -193,10 +193,13 @@ export class AssistantService {
     principal: Principal,
     chip: string | undefined,
     text: string,
+    earlier: readonly string[],
   ): Promise<{ names: string[]; complete: boolean; orgIds: string[] }> {
     const refs = [
       ...(chip === undefined ? [] : [chip]),
       ...(text.match(TICKET_REF_IN_TEXT) ?? []).slice(0, MAX_TYPED_TICKETS),
+      // A later turn with no ticket in it still carries what was said about the tickets before.
+      ...earlier,
     ];
     const orgIds = new Set<string>();
     for (const ref of new Set(refs)) {
@@ -229,8 +232,12 @@ export class AssistantService {
     const conversationId = await this.conversationFor(principal, body.conversationId, locale);
     // Every redactor of this message knows the staff of the instance, so a colleague's name in what the
     // person typed, or in a ticket, is replaced before a model sees it, and before it is stored (N4).
-    const about = await this.aboutOrgNames(principal, body.context?.ticket, body.text);
-    const staffNames = [...(await this.staff.list()), ...about.names];
+    const earlier = await this.ticketsOfConversation(conversationId);
+    const about = await this.aboutOrgNames(principal, body.context?.ticket, body.text, earlier);
+    const staff = await this.staff.list();
+    // Both lists must be whole, or the redactor cannot be trusted with the text (fail closed).
+    const listsWhole = about.complete && staff.complete;
+    const staffNames = [...staff.names, ...about.names];
     const base = this.runtime.deps;
     const deps = {
       ...base,
@@ -238,10 +245,9 @@ export class AssistantService {
       redactorFor: (names: readonly string[]) =>
         base.redactorFor?.([...names, ...staffNames]) ?? base.redactor,
     };
-    const storage = deps.redactor.session({ scope: conversationId });
     const read = new Map<string, string>();
-    const userBody = storage.redact(body.text);
     const history = await this.history(conversationId);
+    let toolNames: string[] = [];
 
     const standing = await this.standing(principal.userId);
     let claims: Claim[] = [];
@@ -256,14 +262,14 @@ export class AssistantService {
     const intents: { kind: string; why: string }[] = [];
     const prepared: { intent: Parameters<AssistantProposals['prepare']>[0] }[] = [];
 
-    if (standing.state === 'ok' && !about.complete) {
-      // The people of that organization could not all be listed, so the redactor cannot be trusted with the
-      // text: nothing is sent to a model (N4), and the person is told why.
+    if (standing.state === 'ok' && !listsWhole) {
+      // The people could not all be listed, so the redactor cannot be trusted with the text: nothing is sent
+      // to a model, nothing of what was typed is stored (N4), and the person is told why.
       state = 'unavailable';
       reason = 'names_incomplete';
     }
 
-    if (standing.state === 'ok' && about.complete) {
+    if (standing.state === 'ok' && listsWhole) {
       const host = buildAssistantTools(
         {
           database: this.database,
@@ -308,6 +314,7 @@ export class AssistantService {
         if (outcome.status === 'ok') {
           claims = outcome.claims;
           redactedAnswer = outcome.redactedText;
+          toolNames = outcome.names;
           tools = outcome.tools;
           runIds = outcome.runIds;
           usage = outcome.usage;
@@ -327,6 +334,11 @@ export class AssistantService {
     // Store both turns redacted. The answer is kept as the model wrote it, placeholders in: the restored
     // text (names, subjects) is for the screen and is neither stored nor sent to a model again (N4).
     const messageId = randomUUID();
+    const userBody = listsWhole
+      ? (base.redactorFor?.([...staffNames, ...toolNames]) ?? base.redactor)
+          .session({ scope: conversationId })
+          .redact(body.text)
+      : '[names_incomplete]';
     const answerBody =
       redactedAnswer === '' ? `[${reason ?? 'no_answer'}]` : redactedAnswer.slice(0, 20_000);
     await this.database.db.transaction(async (tx) => {
@@ -381,17 +393,6 @@ export class AssistantService {
         });
     });
 
-    // Tickets whose content the assistant read for this person are personal data read (PRD 8.2): one
-    // `pii.read` row each, like the ticket page, so the log says who looked at which ticket.
-    for (const [ticketId] of read) {
-      await this.audit.recordPiiRead({
-        actor: { type: 'user', id: principal.userId },
-        targetType: 'ticket',
-        targetId: ticketId,
-        metadata: { via: 'assistant', conversationId },
-      });
-    }
-
     // The cards, made from the server's own reading of each ticket and person. What cannot be made is
     // said in one line, so the person is not left thinking it was done.
     for (const { intent } of prepared) {
@@ -401,14 +402,28 @@ export class AssistantService {
         conversationId,
         messageId,
       });
-      if (result.ok) cards.push(result.card);
-      else intents.push({ kind: result.kind, why: result.why });
+      if (result.ok) {
+        cards.push(result.card);
+        // A card shows the subject of its ticket: that is a read too, whether or not a tool read it first.
+        if (result.ticketId !== null) read.set(result.ticketId, result.card.target?.key ?? '');
+      } else intents.push({ kind: result.kind, why: result.why });
     }
     cards = cards.slice(0, ASSISTANT_LIMITS.maxProposals);
     for (const miss of intents) {
       if (claims.length >= ASSISTANT_LIMITS.maxClaims) break;
       const why = NOTES.why[miss.why as keyof typeof NOTES.why];
       claims.push(makeClaim(NOTES.couldNot[locale](miss.kind, why[locale])));
+    }
+
+    // Tickets whose content the assistant read for this person are personal data read (PRD 8.2): one
+    // `pii.read` row each, like the ticket page, so the log says who looked at which ticket.
+    for (const [ticketId] of read) {
+      await this.audit.recordPiiRead({
+        actor: { type: 'user', id: principal.userId },
+        targetType: 'ticket',
+        targetId: ticketId,
+        metadata: { via: 'assistant', conversationId },
+      });
     }
 
     AuditScope.set({
@@ -470,6 +485,16 @@ export class AssistantService {
       .returning({ id: table.id });
     if (created === undefined) throw new Error('conversation not stored');
     return created.id;
+  }
+
+  /** The tickets earlier turns of this conversation were about (their chips), to give their people to the redactor. */
+  private async ticketsOfConversation(conversationId: string): Promise<string[]> {
+    const rows = await this.database.db
+      .selectDistinct({ ticket: sql<string | null>`${schema.assistantMessage.context}->>'ticket'` })
+      .from(schema.assistantMessage)
+      .where(eq(schema.assistantMessage.conversationId, conversationId))
+      .limit(20);
+    return rows.flatMap((row) => (row.ticket === null ? [] : [row.ticket]));
   }
 
   private async history(

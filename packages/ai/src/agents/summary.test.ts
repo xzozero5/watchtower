@@ -203,4 +203,21 @@ describe('regressions from the security review of T-135', () => {
     const outcome = await summarizeClaims(rig(provider).deps, { ...base, facts: FACTS });
     expect(outcome.status === 'ok' && outcome.claims[0]?.text).toBe('Go to [link removed] now.');
   });
+
+  it('cuts a long fact after redacting it: nothing of an address at the cut reaches the model', async () => {
+    const { deps, requests } = rig();
+    await summarizeClaims(deps, {
+      ...base,
+      facts: [
+        {
+          kind: 'ticket',
+          label: 'OPS-8',
+          text: `${'word '.repeat(98)}victim.person@example.test and the tail ${'tail '.repeat(100)}`,
+        },
+      ],
+    });
+    const sent = requests[0]?.messages[0]?.content ?? '';
+    expect(sent).not.toContain('victim');
+    expect(sent).not.toContain('example.test');
+  });
 });

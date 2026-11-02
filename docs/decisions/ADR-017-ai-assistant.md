@@ -71,6 +71,14 @@
 - **dev:** ใช้ permission จริง `ticket.read.masked` ที่ decorator (ตัด cast และ `auth.session.self`) · masked = ถือ `ticket.read.masked` โดยไม่มี `ticket.read` (กฎเดียวกับ `TicketReader`) · การ์ดของ dev ใช้ subject ที่ผ่าน masking ของหน้า ticket, สถานะเปลี่ยนได้เฉพาะ `open`↔`waiting_on_dev` และต้องมี note (`isDevStatusMove`, `statusChangeNeedsNote`), ตอนกดส่ง `asDev` เหมือน route · `report.claims` ผ่าน `maskInsight` ด้วย
 - **Audit:** `pii.read` ครบทุก ticket ที่อ่าน (ไม่ตัดที่ 20) และ `assistant.message.metadata.ticketIds` ครบ
 
+## แก้ไขรอบที่ 3 (re-review ที่ `872051a`)
+
+- **P1 เดาค่าที่ถูก mask ไม่ได้ (PRD บรรทัด 103):** สำหรับผู้อ่านแบบ masked ข้อความที่พิมพ์กับผลของ tool ใช้ **คนละ namespace**: ค่าที่พิมพ์ถูกออก token ตั้งแต่ `[X_1001]` ใน session ของตัวเอง ผลของ tool ใช้ `[X_1]` เป็นต้นไป เดาถูกหรือผิด model จึงอ่าน prompt เดียวกันและคำตอบเหมือนกัน (test เทียบ prompt ทั้งสองแบบต้องเท่ากันทุกไบต์) พนักงานที่เห็นข้อมูลเต็มใช้ session เดียวตามเดิม
+- **ตัดหลัง redact:** fact ยาวถูก redact ทั้งก้อนก่อนแล้วค่อยตัด (`clipRedacted`) เดิมตัดก่อนทำให้อีเมล/เบอร์ที่ถูกตัดครึ่งไม่ถูกจับ (`victim.person@exa`) · tool ไม่ตัดข้อความที่ส่งเข้า model อีก
+- **fail closed ครบ:** รายชื่อพนักงานมี `complete` เหมือนรายชื่อ org (ไม่ครบ = ไม่ส่งอะไรให้ model, ไม่เก็บข้อความที่พิมพ์, สรุป brief/handoff ไม่ทำ) · ข้อความผู้ใช้เก็บ **หลัง** เทิร์นและ redact ด้วยชื่อที่ tool พบ · เทิร์นถัดไปที่ไม่มีเลข ticket ยังได้รายชื่อของ org ของ ticket ที่สนทนาเคยพูดถึง · dictionary ของ brief ครอบทุก org ที่ปรากฏ (รวม handoff item ของเพื่อนร่วมงาน, incident, alert, deploy)
+- **Audit:** การ์ดที่แสดง subject ของ ticket นับเป็นการอ่าน ลง `pii.read` แม้ไม่มี tool อ่านก่อน
+- **ส่วนที่เหลือ `[TESTED]` (residual) `[ASK-HUMAN]`:** ชื่อลูกค้าที่ผู้ใช้พิมพ์โดย **ไม่มีเลข ticket ในข้อความ ไม่มี chip และสนทนานี้ยังไม่เคยพูดถึง ticket ใดเลย** ไปถึง model ในขั้น plan ก่อนที่ tool จะรู้ว่าเป็น org ไหน (ผลทดสอบ: ชื่อไม่ถูกเก็บ แต่ขั้น plan เห็น) เจ้าของต้องยอมรับความเสี่ยงนี้ก่อนเปิด live provider · T-137 redact คีย์ยาวเกินจำเป็น (over-redaction) ไม่แก้ในงานนี้ → T-125
+
 ## PII stores ของ assistant (ให้ ADR เรื่อง erasure/PDPA นับ)
 
 | ที่เก็บ | ข้อมูล | อายุ | ลบเมื่อผู้ใช้ถูกลบ |

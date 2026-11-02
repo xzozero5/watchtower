@@ -2,7 +2,7 @@ import type { Handoff, ShiftBrief } from '@watchtower/shared';
 import { claimHrefSchema } from '@watchtower/shared';
 import { describe, expect, it } from 'vitest';
 
-import { briefFacts, briefHandoffFacts } from './brief-facts.js';
+import { briefFacts, briefHandoffFacts, briefTicketIds } from './brief-facts.js';
 
 const ticket = (
   key: string,
@@ -171,5 +171,28 @@ describe('the people of the customers (N4)', () => {
         people,
       ),
     ).toEqual([]);
+  });
+});
+
+describe('briefTicketIds', () => {
+  it('names every ticket the brief mentions, whoever holds it, so every organization is in the dictionary', () => {
+    const mine = ticket('OPS-1', 'breached', 0);
+    const incoming = {
+      handoffs: [{ items: [{ ticket: { id: 'ticket-of-a-colleague' } }, { ticket: null }] }],
+      total: 1,
+      acknowledged: 0,
+      leadAlertAt: null,
+    };
+    const ids = briefTicketIds(
+      brief({
+        myTickets: [mine],
+        carriedOver: [{ ...mine, id: 'carried', crossedShifts: 1 }],
+        handoff: incoming as never,
+        incidents: [{ ticket: { id: 'ticket-of-an-incident' } } as never],
+      }),
+    );
+    expect(new Set(ids)).toEqual(
+      new Set([mine.id, 'carried', 'ticket-of-a-colleague', 'ticket-of-an-incident']),
+    );
   });
 });

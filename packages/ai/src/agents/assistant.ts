@@ -13,8 +13,14 @@ import { z } from 'zod';
 
 import type { AuditedResult } from '../audited.js';
 import type { ScopedTools } from '../contract.js';
-import { joinRedacted } from '../redaction/redacted-text.js';
-import type { RedactionSession, Redactor } from '../redaction/redactor.js';
+import { clipRedacted, joinRedacted } from '../redaction/redacted-text.js';
+import { REDACTION_KINDS } from '../redaction/detectors.js';
+import type {
+  RedactionReport,
+  RedactionSession,
+  RedactionSnapshot,
+  Redactor,
+} from '../redaction/redactor.js';
 import { renderPrompt } from '../prompts.js';
 import { neutralizeTags } from './leak-check.js';
 import {
@@ -169,6 +175,8 @@ export type AssistantOutcome =
        * back to a model as history (N4); the restored text in `claims` is for the screen only.
        */
       readonly redactedText: string;
+      /** Every name the tools gave the redactor in this turn, so the caller can redact what it stores with them too. */
+      readonly names: string[];
       /** Free text restored for the person; structural fields restored only from what they typed. */
       readonly proposals: ProposalIntent[];
       readonly tools: AssistantToolRun[];
@@ -336,6 +344,24 @@ export async function runAssistantTurn(
   const names = [...new Set(facts.flatMap((fact) => fact.names ?? []))];
   const answerRedactor = deps.redactorFor?.(names) ?? deps.redactor;
   const session = answerRedactor.session({ scope: input.scope });
+  // A masked reader must not be able to confirm a masked value by guessing it (PRD 103): what they typed
+  // and what a tool returned are separate namespaces. Typed values are numbered from 1001 in a session of
+  // their own, tool values from 1, so a correct guess gets a token no other than a wrong one would, and
+  // neither the model nor the answer can tell the two apart. Staff, who may see it all, share one session.
+  const typed = input.masked
+    ? answerRedactor.session({ scope: input.scope, snapshot: typedNamespace(input.scope) })
+    : session;
+  const report = (): RedactionReport => {
+    const a = session.report();
+    const b = typed === session ? { total: 0, byKind: {} } : typed.report();
+    const byKind: Record<string, number> = { ...a.byKind };
+    for (const [kind, count] of Object.entries(b.byKind))
+      byKind[kind] = (byKind[kind] ?? 0) + count;
+    return { total: a.total + b.total, byKind };
+  };
+  /** Typed values first (only those tokens are in `typed`), then what the tools returned. */
+  const restoreText = (text: string, audience: 'internal' | 'customer'): string =>
+    session.restore(typed === session ? text : typed.restore(text, 'customer').text, audience).text;
   let answer: z.infer<typeof answerShape>;
   try {
     const system = session.redact(
@@ -346,14 +372,14 @@ export async function runAssistantTurn(
         proposalKinds: input.proposalKinds.length === 0 ? 'none' : input.proposalKinds.join(', '),
       }),
     );
-    const factLines = facts.map((fact, index) =>
-      session.redactToolOutput(
-        'assistant',
-        `[e${String(index + 1)}] ${fact.kind}${fact.mock === true ? ' (mock data)' : ''}: ${neutralize(
-          clip(fact.text, MAX_FACT_CHARS),
-        )}`,
-      ),
-    );
+    const factLines = facts
+      .map((fact, index) =>
+        session.redactToolOutput(
+          'assistant',
+          `[e${String(index + 1)}] ${fact.kind}${fact.mock === true ? ' (mock data)' : ''}: ${neutralize(fact.text)}`,
+        ),
+      )
+      .map((line) => clipRedacted(line, MAX_FACT_CHARS + 40));
     const results_ =
       factLines.length === 0
         ? [
@@ -367,7 +393,7 @@ export async function runAssistantTurn(
         session.redact(renderContext(input)),
         ...renderHistory(input, session),
         ...results_,
-        session.redact(`<request>\n${request}\n</request>`),
+        typed.redact(`<request>\n${request}\n</request>`),
       ],
       '\n',
     );
@@ -376,7 +402,7 @@ export async function runAssistantTurn(
       prompt: answerPrompt.ref,
       system,
       messages: [{ role: 'user', content: user }],
-      redaction: session,
+      redaction: { report },
       ticketId: null,
       toolCalls: () => input.host.tools.calls(),
       maxOutputTokens: 900,
@@ -395,7 +421,7 @@ export async function runAssistantTurn(
 
   // Claims: the model cites ids; the chips come from the facts the host built, never from the model.
   const audience = input.masked ? 'customer' : 'internal';
-  const restore = (text: string): string => session.restore(text, audience).text;
+  const restore = (text: string): string => restoreText(text, audience);
   const claims: Claim[] = [];
   const redactedParts: string[] = [];
   for (const item of answer.claims) {
@@ -426,7 +452,13 @@ export async function runAssistantTurn(
   for (const raw of answer.proposals) {
     const parsed = proposalIntentSchema.safeParse(raw);
     if (!parsed.success || !input.proposalKinds.includes(parsed.data.kind)) continue;
-    proposals.push(restoreIntent(parsed.data, session, audience));
+    proposals.push(
+      restoreIntent(
+        parsed.data,
+        { restore: (text, who) => ({ text: restoreText(text, who) }) },
+        audience,
+      ),
+    );
     if (proposals.length >= input.limits.maxProposals) break;
   }
 
@@ -434,10 +466,21 @@ export async function runAssistantTurn(
     status: 'ok',
     claims,
     redactedText: redactedParts.join('\n'),
+    names,
     proposals,
     tools,
     runIds: results.flatMap((result) => (result.runId === null ? [] : [result.runId])),
     usage: sumUsage(results),
+  };
+}
+
+/** A session start whose numbering begins at 1001, so what it issues cannot be mistaken for a token of the main session. */
+function typedNamespace(scope: string): RedactionSnapshot {
+  return {
+    scope,
+    tokens: Object.fromEntries(
+      REDACTION_KINDS.map((kind) => [`[${kind}_1000]`, { value: '', origin: 'model' as const }]),
+    ),
   };
 }
 
@@ -477,7 +520,7 @@ function restoreStrings(value: unknown, session: RedactionSession): unknown {
  */
 function restoreIntent(
   intent: ProposalIntent,
-  session: RedactionSession,
+  session: { restore(text: string, audience: 'internal' | 'customer'): { text: string } },
   freeTextAudience: 'internal' | 'customer',
 ): ProposalIntent {
   const own = (text: string): string => session.restore(text, 'customer').text;
