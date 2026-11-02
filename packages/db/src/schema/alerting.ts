@@ -116,6 +116,7 @@ export const alert = pgTable(
       .on(table.fingerprint)
       .where(sql`${table.state} <> 'resolved'`),
     index('alert_list_idx').on(table.lastSeenAt.desc(), table.id.desc()),
+    index('alert_first_seen_idx').on(table.firstSeenAt),
     index('alert_state_list_idx').on(table.state, table.lastSeenAt.desc(), table.id.desc()),
     index('alert_service_idx')
       .on(table.serviceId, table.lastSeenAt.desc())

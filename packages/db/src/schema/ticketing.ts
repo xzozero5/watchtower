@@ -305,6 +305,9 @@ export const ticket = pgTable(
     index('ticket_updated_idx').on(table.updatedAt.desc(), table.id.desc()),
     index('ticket_org_created_idx').on(table.orgId, table.createdAt.desc(), table.id.desc()),
     index('ticket_tags_idx').using('gin', table.tags),
+    index('ticket_resolved_idx')
+      .on(table.resolvedAt)
+      .where(sql`${table.resolvedAt} IS NOT NULL`),
     index('ticket_queue_id_idx')
       .on(table.queueId)
       .where(sql`${table.queueId} IS NOT NULL`),

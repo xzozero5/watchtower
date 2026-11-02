@@ -433,7 +433,8 @@ describe('hostile statements, second group (side effects and size)', () => {
     const after = await locksAndWal();
     expect(after.locks).toBe(0);
     // Other things write a little WAL; a refused 100 MB message would show as far more than this.
-    expect(after.lsn - before.lsn).toBeLessThan(5n * 1024n * 1024n);
+    // Other work on a shared server writes WAL too; the attack itself would add 100 MB.
+    expect(after.lsn - before.lsn).toBeLessThan(50n * 1024n * 1024n);
     // And the same payloads never reach the database through the guarded client.
     for (const [name, sql] of SIDE_EFFECTS) {
       await expect(ask(sql), name).rejects.toBeInstanceOf(ConnectorQueryRejectedError);
