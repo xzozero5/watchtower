@@ -82,12 +82,12 @@ test.describe('three-pane layout', () => {
     expect(Math.abs(conversation.y - assistant.y)).toBeLessThan(2);
     expect(queue.x + queue.width).toBeLessThanOrEqual(conversation.x);
     expect(conversation.x + conversation.width).toBeLessThanOrEqual(assistant.x);
-    // Soft Beacon (docs/design/redesign-2026-11): floating cards with a 16px gutter at 1440.
-    expect(Math.round(conversation.x - (queue.x + queue.width))).toBe(16);
-    expect(Math.round(assistant.x - (conversation.x + conversation.width))).toBe(16);
+    // Soft Beacon (docs/design/redesign-2026-11): floating cards with a 1rem (15px) gutter at 1440.
+    expect(Math.round(conversation.x - (queue.x + queue.width))).toBe(15); // 1rem at the 15px base
+    expect(Math.round(assistant.x - (conversation.x + conversation.width))).toBe(15);
     expect(queue.width).toBeLessThanOrEqual(360);
     expect(assistant.width).toBeLessThanOrEqual(320);
-    expect(rail && Math.round(queue.x - (rail.x + rail.width))).toBe(16);
+    expect(rail && Math.round(queue.x - (rail.x + rail.width))).toBe(15);
   });
 
   test('shows one pane at a time with tabs on a phone-sized screen, without sideways scrolling', async ({
