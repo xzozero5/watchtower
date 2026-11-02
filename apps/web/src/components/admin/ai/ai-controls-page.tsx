@@ -112,6 +112,7 @@ function AiControlsBody() {
               ))}
             </ul>
             <StageSummary intents={autonomy.data.intents} />
+            <StageLegend />
           </>
         )}
       </AdminBody>
@@ -194,6 +195,28 @@ function SwitchRow({
         ) : null}
       </div>
     </li>
+  );
+}
+
+function StageLegend() {
+  const t = useT();
+  const items = [
+    'admin.ai.legend0',
+    'admin.ai.legend1',
+    'admin.ai.legend2',
+    'admin.ai.legend3',
+  ] as const;
+  return (
+    <section aria-labelledby="stage-legend" className="px-5 pb-4">
+      <h2 id="stage-legend" className="text-sm font-semibold">
+        {t('admin.ai.legendTitle')}
+      </h2>
+      <ul className="mt-1 flex flex-col gap-0.5 text-sm text-muted-foreground">
+        {items.map((key) => (
+          <li key={key}>{t(key)}</li>
+        ))}
+      </ul>
+    </section>
   );
 }
 

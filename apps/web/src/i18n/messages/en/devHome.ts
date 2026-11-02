@@ -2,6 +2,7 @@
 export const devHomeEn = {
   title: 'Developer home',
   masked: 'Personal data is masked on this page.',
+  freeTextNotice: 'Names in free text may not be fully masked.',
   tabsLabel: 'Which tickets',
   waiting: 'Waiting on dev',
   mine: 'Mine',

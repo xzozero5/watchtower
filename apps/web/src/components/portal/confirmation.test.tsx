@@ -69,6 +69,23 @@ describe('portal confirmation', () => {
     });
     renderApp(<Confirmation />);
     expect(screen.queryByText(/We aim to reply by/)).not.toBeInTheDocument();
+    expect(screen.getByText('We usually reply within business hours.')).toBeInTheDocument();
+  });
+
+  it('shows what happens next on the page, not behind a hint', () => {
+    saveSubmitted({
+      ticketKey: 'OPS-12',
+      maskedEmail: 'a***@example.com',
+      status: 'received',
+      expectedFirstResponseAt: '2026-11-05T08:00:00.000Z',
+    });
+    renderApp(<Confirmation />);
+    expect(screen.getByRole('heading', { name: 'What happens next' })).toBeVisible();
+    expect(screen.getByText('We received your request.')).toBeVisible();
+    expect(screen.getByText('A person reviews it.')).toBeVisible();
+    expect(screen.getByText(/We reply by email\. You can add details/)).toBeVisible();
+    expect(screen.getByText(/We aim to reply by/)).toBeVisible();
+    expect(screen.queryByText('We usually reply within business hours.')).not.toBeInTheDocument();
   });
 
   it('says there is nothing to show when opened directly', () => {

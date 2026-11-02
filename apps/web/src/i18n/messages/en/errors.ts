@@ -5,4 +5,5 @@ export const errorsEn = {
   notFoundTitle: 'Page not found',
   notFoundBody: 'This page does not exist or has moved.',
   backHome: 'Back to the queue',
+  backToPortal: 'Go to the help portal',
 } as const;

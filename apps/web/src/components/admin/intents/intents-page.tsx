@@ -1,16 +1,21 @@
 'use client';
 
-import type { Intent } from '@watchtower/shared';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { INTENT_KEY_PATTERN, type Intent } from '@watchtower/shared';
 import {
   type DataTableColumn,
   DataTable,
+  Button,
   EmptyState,
+  Input,
   SeverityBadge,
   StageBadge,
+  Textarea,
+  toast,
 } from '@watchtower/ui';
-import { Lock, Tags } from 'lucide-react';
+import { Lock, Plus, Tags } from 'lucide-react';
 import { useRouter } from 'next/navigation';
-import { useMemo, useRef, useState } from 'react';
+import { useId, useMemo, useRef, useState } from 'react';
 
 import {
   AdminBody,
@@ -19,13 +24,18 @@ import {
   useAdminListKeys,
 } from '@/components/admin/admin-layout';
 import { LoadError, RequirePermission, TableSkeleton } from '@/components/admin/admin-page';
+import { EntitySheet } from '@/components/admin/entity-sheet';
 import { AppLink } from '@/components/app-link';
+import { FormField } from '@/components/portal/form-field';
 import { useT } from '@/i18n/provider';
-import { useAutonomy, useSlaPolicies } from '@/lib/admin/queries';
+import { describeError } from '@/lib/admin/errors';
+import { adminKeys, useAutonomy, useSlaPolicies } from '@/lib/admin/queries';
 import { asStage, STAGE_LABEL_KEYS } from '@/lib/admin/stages';
+import { useApi } from '@/lib/api/api-context';
+import { useUserId } from '@/lib/auth/session';
 import { usePreferences } from '@/lib/preferences';
 import { severityOf } from '@/lib/tickets/model';
-import { useIntents } from '@/lib/tickets/queries';
+import { referenceKeys, useIntents } from '@/lib/tickets/queries';
 
 export function isFullIntent(item: unknown): item is Intent {
   return typeof item === 'object' && item !== null && 'autonomyStage' in item;
@@ -47,6 +57,7 @@ function IntentsBody() {
   const autonomy = useAutonomy(true);
   const policies = useSlaPolicies(true);
   const [filter, setFilter] = useState('');
+  const [creating, setCreating] = useState(false);
   const filterRef = useRef<HTMLInputElement>(null);
   useAdminListKeys({ focusFilter: () => filterRef.current?.focus() });
 
@@ -143,12 +154,23 @@ function IntentsBody() {
           { label: t('admin.sections.intents') },
         ]}
         actions={
-          <FilterField
-            value={filter}
-            onChange={setFilter}
-            label={t('admin.common.filter')}
-            inputRef={filterRef}
-          />
+          <>
+            <FilterField
+              value={filter}
+              onChange={setFilter}
+              label={t('admin.common.filter')}
+              inputRef={filterRef}
+            />
+            <Button
+              variant="primary"
+              onClick={() => {
+                setCreating(true);
+              }}
+            >
+              <Plus aria-hidden className="size-4" />
+              {t('admin.intents.new')}
+            </Button>
+          </>
         }
       />
       <AdminBody>
@@ -160,6 +182,7 @@ function IntentsBody() {
           <EmptyState
             icon={<Tags />}
             title={filter ? t('admin.common.nothingMatches') : t('admin.intents.empty')}
+            {...(filter ? {} : { description: t('admin.intents.emptyHint') })}
           />
         ) : (
           <DataTable
@@ -176,6 +199,129 @@ function IntentsBody() {
           />
         )}
       </AdminBody>
+      {creating ? (
+        <NewIntentSheet
+          onClose={() => {
+            setCreating(false);
+          }}
+          onCreated={(id) => {
+            router.push(`/admin/intents/${id}`);
+          }}
+        />
+      ) : null}
     </>
+  );
+}
+
+/**
+ * Create an intent (`POST /v1/intents`, `intent.manage`). The api sets the stage to 2 and offers no
+ * way to choose another (N3), so the form only states it. Errors from the api (a taken key, a
+ * rejected field) are shown above the form.
+ */
+export function NewIntentSheet({
+  onClose,
+  onCreated,
+}: {
+  onClose: () => void;
+  onCreated?: (id: string) => void;
+}) {
+  const t = useT();
+  const api = useApi();
+  const userId = useUserId();
+  const queryClient = useQueryClient();
+  const base = useId();
+  const [name, setName] = useState('');
+  const [key, setKey] = useState('');
+  const [description, setDescription] = useState('');
+  const [nameError, setNameError] = useState<string | null>(null);
+  const [keyError, setKeyError] = useState<string | null>(null);
+  const [summary, setSummary] = useState<string | null>(null);
+
+  const save = useMutation({
+    mutationFn: () =>
+      api.createIntent({ key: key.trim(), name: name.trim(), description: description.trim() }),
+    onSuccess: (created) => {
+      void queryClient.invalidateQueries({ queryKey: referenceKeys(userId).intents });
+      void queryClient.invalidateQueries({ queryKey: adminKeys(userId).autonomy });
+      toast(t('admin.common.saved'));
+      onClose();
+      onCreated?.(created.id);
+    },
+    onError: (error) => {
+      setSummary(describeError(error, t).message);
+    },
+  });
+
+  return (
+    <EntitySheet
+      open
+      onClose={onClose}
+      title={t('admin.intents.new')}
+      description={t('admin.intents.newDescription')}
+      dirty={name !== '' || key !== '' || description !== ''}
+      pending={save.isPending}
+      formId={`${base}-form`}
+      error={summary}
+    >
+      <form
+        id={`${base}-form`}
+        noValidate
+        onSubmit={(event) => {
+          event.preventDefault();
+          setSummary(null);
+          const nameMissing = name.trim() === '';
+          const keyBad = !INTENT_KEY_PATTERN.test(key.trim());
+          setNameError(nameMissing ? t('admin.common.required') : null);
+          setKeyError(keyBad ? t('admin.intents.keyInvalid') : null);
+          if (nameMissing || keyBad) return;
+          save.mutate();
+        }}
+        className="flex flex-col gap-3"
+      >
+        <FormField
+          id={`${base}-name`}
+          label={t('admin.common.name')}
+          {...(nameError ? { error: nameError } : {})}
+        >
+          <Input
+            id={`${base}-name`}
+            value={name}
+            aria-invalid={nameError ? true : undefined}
+            aria-describedby={nameError ? `${base}-name-error` : undefined}
+            onChange={(event) => {
+              setName(event.target.value);
+            }}
+          />
+        </FormField>
+        <FormField
+          id={`${base}-key`}
+          label={t('admin.intents.keyLabel')}
+          hint={t('admin.intents.keyHint')}
+          {...(keyError ? { error: keyError } : {})}
+        >
+          <Input
+            id={`${base}-key`}
+            value={key}
+            className="font-mono"
+            aria-invalid={keyError ? true : undefined}
+            aria-describedby={keyError ? `${base}-key-error` : `${base}-key-hint`}
+            onChange={(event) => {
+              setKey(event.target.value);
+            }}
+          />
+        </FormField>
+        <FormField id={`${base}-description`} label={t('admin.intents.description')}>
+          <Textarea
+            id={`${base}-description`}
+            rows={3}
+            value={description}
+            onChange={(event) => {
+              setDescription(event.target.value);
+            }}
+          />
+        </FormField>
+        <p className="text-sm text-muted-foreground">{t('admin.intents.startsAt')}</p>
+      </form>
+    </EntitySheet>
   );
 }
