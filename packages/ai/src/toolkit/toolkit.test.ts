@@ -11,21 +11,21 @@ import {
 } from '../tools.js';
 import { createMemoryToolLedger, withToolBudget, type ToolBudgetLimits } from './budget.js';
 import {
-  stubFixturesSchema,
   type KbHit,
   type KbSearchPort,
   type OrgContext,
   type OrgContextPort,
   type SimilarTicket,
   type SimilarTicketsPort,
+  type SystemToolPorts,
 } from './ports.js';
 import {
   buildAllowList,
-  createBigQueryStub,
-  createGcpLogsStub,
+  createBigQueryTool,
+  createGcpLogsTool,
   createKbSearchTool,
   createOrgContextTool,
-  createRepoChangesStub,
+  createRepoChangesTool,
   createSimilarTicketsTool,
   GENERIC_INVESTIGATOR_TOOLS,
   investigationTools,
@@ -70,28 +70,54 @@ const ORG: OrgContext = {
   href: '/orgs/1',
 };
 
-const FIXTURES = stubFixturesSchema.parse({
-  gcpLogs: [
-    {
-      keywords: ['timeout'],
-      entries: [
-        {
-          timestamp: '2026-01-01T00:00:00Z',
-          severity: 'ERROR',
-          service: 'api',
-          message: 'upstream timed out',
-        },
-      ],
+/** What the systems ports were asked, in order. */
+const SYSTEM_CALLS: { logs: unknown[]; data: unknown[]; repo: unknown[] } = {
+  logs: [],
+  data: [],
+  repo: [],
+};
+
+/** Ports over arrays, standing in for the worker's, which sit on the connectors (mock mode). */
+const SYSTEMS: SystemToolPorts = {
+  logs: {
+    mock: true,
+    run(input) {
+      SYSTEM_CALLS.logs.push(input);
+      return Promise.resolve(
+        input.intentKey === 'upstream_timeout'
+          ? {
+              items: [
+                {
+                  timestamp: '2026-01-01T00:00:00Z',
+                  severity: 'ERROR',
+                  service: 'api',
+                  message: 'upstream timed out',
+                },
+              ],
+            }
+          : { items: [], note: 'No log template for this intent.' },
+      );
     },
-  ],
-  bigquery: [{ template: 'failed_deliveries', columns: ['org', 'failed'], rows: [['a', 3]] }],
-  repoChanges: [
-    {
-      service: 'api',
-      changes: [{ kind: 'deploy', ref: 'v1', title: 'Deploy v1', at: '2026-01-01T00:00:00Z' }],
+  },
+  data: {
+    mock: true,
+    run(input) {
+      SYSTEM_CALLS.data.push(input);
+      return Promise.resolve({ columns: ['org', 'failed'], items: [['a', 3]] });
     },
-  ],
-});
+  },
+  repo: {
+    mock: true,
+    run(input) {
+      SYSTEM_CALLS.repo.push(input);
+      return Promise.resolve(
+        input.service.toLowerCase() === 'api'
+          ? { items: [{ kind: 'deploy' as const, ref: 'v1', title: 'Deploy v1', at: '2026-01-01T00:00:00Z' }] }
+          : { items: [], note: 'No such service in the catalog.' },
+      );
+    },
+  },
+};
 
 function ports() {
   const calls: Record<string, unknown[]> = { kb: [], tickets: [], org: [] };
@@ -130,14 +156,14 @@ function registryWith(tools: readonly ToolDefinition[], intent: string | null = 
 
 describe('investigation tools: schemas and read-only (N2)', () => {
   const p = ports();
-  const all = investigationTools({ ...p, fixtures: FIXTURES });
+  const all = investigationTools({ ...p, systems: SYSTEMS });
 
-  it('registers the three real tools, and the stubs only when fixtures exist', () => {
+  it('registers the three generic tools, and the system tools only when their ports exist', () => {
     expect(all.map((tool) => tool.name).toSorted()).toEqual(Object.values(TOOL_NAMES).toSorted());
     expect(investigationTools(p).map((tool) => tool.name)).toEqual([...GENERIC_INVESTIGATOR_TOOLS]);
   });
 
-  it('every tool is declared read-only and every stub says it is mock', () => {
+  it('every tool is declared read-only and every system tool says whether it is mock', () => {
     for (const tool of all) {
       expect(tool.readOnly).toBe(true);
       expect(tool.mock === true).toBe(SYSTEM_TOOLS.includes(tool.name as never));
@@ -208,49 +234,81 @@ describe('investigation tools: schemas and read-only (N2)', () => {
     expect(own.calls.org).toHaveLength(0);
   });
 
-  it('the stubs answer from fixtures, say so in the output, and find nothing for an unknown key', async () => {
+  it('the system tools answer through their ports, say whether it is mock data, and pass on only what the run owns', async () => {
     const { scope } = registryWith(all, 'upstream_timeout');
     const handle = scope();
-    const logs = (await handle.call(TOOL_NAMES.gcpLogs, { query: 'API TIMEOUT errors' })) as {
+    const logs = (await handle.call(TOOL_NAMES.gcpLogs, { windowMinutes: 30 })) as {
       mock: boolean;
       items: unknown[];
     };
     expect(logs.mock).toBe(true);
-    expect(logs.items).toHaveLength(FIXTURES.gcpLogs[0]?.entries.length ?? -1);
-    const none = (await handle.call(TOOL_NAMES.gcpLogs, { query: 'unrelated' })) as {
-      items: unknown[];
-      note?: string;
-    };
+    expect(logs.items).toHaveLength(1);
+    // The port gets the scope intent and the ticket of the run, a window and a size: no text of any kind.
+    expect(SYSTEM_CALLS.logs.at(-1)).toMatchObject({
+      windowMinutes: 30,
+      limit: 20,
+      intentKey: 'upstream_timeout',
+      ticketId: TICKET,
+    });
+    const none = (await registryWith(all, 'unknown_intent')
+      .scope('investigator', 'upstream_timeout')
+      .call(TOOL_NAMES.repoChanges, { service: 'nowhere' })) as { items: unknown[]; note?: string };
     expect(none.items).toEqual([]);
     expect(none.note).toBeTruthy();
-    const rows = (await handle.call(TOOL_NAMES.bigquery, { template: 'failed_deliveries' })) as {
+    const rows = (await handle.call(TOOL_NAMES.bigquery, {})) as {
       mock: boolean;
       columns: string[];
     };
     expect(rows).toMatchObject({ mock: true, columns: ['org', 'failed'] });
+    expect(SYSTEM_CALLS.data.at(-1)).toMatchObject({ intentKey: 'upstream_timeout', ticketId: TICKET });
     const changes = (await handle.call(TOOL_NAMES.repoChanges, { service: 'API' })) as {
       mock: boolean;
       items: unknown[];
     };
     expect(changes.mock).toBe(true);
     expect(changes.items).toHaveLength(1);
-    // Ad-hoc SQL is not an argument: only a saved template name.
+    // Neither a query nor a statement nor a template name is an argument: the intent's saved template is the query.
+    await expect(
+      handle.call(TOOL_NAMES.gcpLogs, { query: 'severity>=DEFAULT' }),
+    ).rejects.toBeInstanceOf(ToolInputError);
     await expect(
       handle.call(TOOL_NAMES.bigquery, { template: 'x', sql: 'DROP TABLE ticket' }),
     ).rejects.toBeInstanceOf(ToolInputError);
   });
 
-  it('a fixture file with a wrong shape is refused before any tool exists', () => {
-    expect(() => stubFixturesSchema.parse({ gcpLogs: [{ keywords: [], entries: [] }] })).toThrow();
-    expect(stubFixturesSchema.parse({}).repoChanges).toEqual([]);
-    expect(createGcpLogsStub(FIXTURES).mock).toBe(true);
-    expect(createBigQueryStub(FIXTURES).mock).toBe(true);
-    expect(createRepoChangesStub(FIXTURES).mock).toBe(true);
+  it('a system port that says it is live is not labelled mock, and one that answers the wrong shape is refused', async () => {
+    const live = createGcpLogsTool({
+      mock: false,
+      run: () => Promise.resolve({ items: [] }),
+    });
+    expect(live.mock).toBe(false);
+    expect(createBigQueryTool({ mock: true, run: () => Promise.resolve({ columns: [], items: [] }) }).mock).toBe(true);
+    expect(createRepoChangesTool({ mock: false, run: () => Promise.resolve({ items: [] }) }).mock).toBe(false);
+    const { scope } = registryWith(
+      [
+        createGcpLogsTool({
+          mock: false,
+          run: () =>
+            Promise.resolve({
+              items: [{ timestamp: 'x', severity: 'ERROR', service: 's', message: 'm'.repeat(601) }],
+            }),
+        }),
+      ],
+      'upstream_timeout',
+    );
+    await expect(scope().call(TOOL_NAMES.gcpLogs, {})).rejects.toBeInstanceOf(ToolOutputError);
+  });
+
+  it('registers a system tool only for a port it was given', () => {
+    const p2 = ports();
+    expect(
+      investigationTools({ ...p2, systems: { logs: SYSTEMS.logs } }).map((tool) => tool.name).toSorted(),
+    ).toEqual([...GENERIC_INVESTIGATOR_TOOLS, TOOL_NAMES.gcpLogs].toSorted());
   });
 });
 
 describe('allow-list per agent and intent (deny by default)', () => {
-  const all = investigationTools({ ...ports(), fixtures: FIXTURES });
+  const all = investigationTools({ ...ports(), systems: SYSTEMS });
 
   it('gives the generic tools to every intent and the system tools only where allowed_tools names them', () => {
     const { scope } = registryWith(all);
@@ -268,7 +326,7 @@ describe('allow-list per agent and intent (deny by default)', () => {
   it('refuses a tool outside the scope and a name that was never registered', async () => {
     const { scope } = registryWith(all);
     await expect(
-      scope('investigator', 'some_other_intent').call(TOOL_NAMES.gcpLogs, { query: 'timeout' }),
+      scope('investigator', 'some_other_intent').call(TOOL_NAMES.gcpLogs, {}),
     ).rejects.toBeInstanceOf(ToolNotAllowedError);
     await expect(scope().call('not_a_tool', {})).rejects.toBeInstanceOf(ToolNotAllowedError);
     await expect(scope('drafter').call(TOOL_NAMES.orgContext, {})).rejects.toBeInstanceOf(
@@ -289,7 +347,7 @@ describe('the tool budget lives outside the handle (SR106-R8, N2)', () => {
     perTicketPerHour: AI_TOOL_BUDGETS.perRun + 1,
     perToolPerMinute: AI_TOOL_BUDGETS.perToolPerMinute,
   };
-  const all = investigationTools({ ...ports(), fixtures: FIXTURES });
+  const all = investigationTools({ ...ports(), systems: SYSTEMS });
 
   function budgeted(
     ledger: ReturnType<typeof createMemoryToolLedger>,
@@ -348,16 +406,16 @@ describe('the tool budget lives outside the handle (SR106-R8, N2)', () => {
     let now = 5_000_000;
     const tight: ToolBudgetLimits = { ...limits, perToolPerMinute: 2, perTicketPerHour: 1000 };
     const ledger = createMemoryToolLedger(tight, () => now);
-    await budgeted(ledger, 'r1', TICKET).call(TOOL_NAMES.gcpLogs, { query: 'timeout' });
-    await budgeted(ledger, 'r2', OTHER_TICKET).call(TOOL_NAMES.gcpLogs, { query: 'timeout' });
+    await budgeted(ledger, 'r1', TICKET).call(TOOL_NAMES.gcpLogs, {});
+    await budgeted(ledger, 'r2', OTHER_TICKET).call(TOOL_NAMES.gcpLogs, {});
     await expect(
-      budgeted(ledger, 'r3', TICKET).call(TOOL_NAMES.gcpLogs, { query: 'timeout' }),
+      budgeted(ledger, 'r3', TICKET).call(TOOL_NAMES.gcpLogs, {}),
     ).rejects.toBeInstanceOf(ToolBudgetError);
     expect(ledger.rows().at(-1)?.reason).toBe('tool_rate');
     // Another tool has its own bucket; the window slides.
     await budgeted(ledger, 'r4', TICKET).call(TOOL_NAMES.orgContext, {});
     now += 60_001;
-    await budgeted(ledger, 'r5', TICKET).call(TOOL_NAMES.gcpLogs, { query: 'timeout' });
+    await budgeted(ledger, 'r5', TICKET).call(TOOL_NAMES.gcpLogs, {});
   });
 
   it('records a refusal by the allow-list, a failure and a success, and never the input or the result', async () => {
@@ -384,7 +442,7 @@ describe('the tool budget lives outside the handle (SR106-R8, N2)', () => {
         intent: 'other',
         stage: 2,
         hashKey: HASH_KEY,
-      }).call(TOOL_NAMES.gcpLogs, { query: 'timeout' }),
+      }).call(TOOL_NAMES.gcpLogs, {}),
     ).rejects.toBeInstanceOf(ToolNotAllowedError);
     await expect(
       withToolBudget({

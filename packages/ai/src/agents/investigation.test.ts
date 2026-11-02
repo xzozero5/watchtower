@@ -9,10 +9,10 @@ import { DevMockLlmProvider } from '../providers/dev-mock.js';
 import { createRedactor } from '../redaction/redactor.js';
 import { createMemoryToolLedger, withToolBudget } from '../toolkit/budget.js';
 import {
-  stubFixturesSchema,
   type KbHit,
   type OrgContext,
   type SimilarTicket,
+  type SystemToolPorts,
 } from '../toolkit/ports.js';
 import { buildAllowList, investigationTools, TOOL_NAMES } from '../toolkit/tools.js';
 import { createToolRegistry } from '../tools.js';
@@ -60,21 +60,23 @@ const ORG: OrgContext = {
   ticketsLast30Days: 5,
   href: '/orgs/1',
 };
-const FIXTURES = stubFixturesSchema.parse({
-  gcpLogs: [
-    {
-      keywords: ['webhook'],
-      entries: [
-        {
-          timestamp: '2026-01-01T00:00:00Z',
-          severity: 'ERROR',
-          service: 'api',
-          message: 'delivery failed',
-        },
-      ],
-    },
-  ],
-});
+/** The logs port of mock mode: a line for the intent whose template the worker would run. */
+const SYSTEMS: SystemToolPorts = {
+  logs: {
+    mock: true,
+    run: () =>
+      Promise.resolve({
+        items: [
+          {
+            timestamp: '2026-01-01T00:00:00Z',
+            severity: 'ERROR',
+            service: 'api',
+            message: 'delivery failed',
+          },
+        ],
+      }),
+  },
+};
 
 const TURNS: TicketTurn[] = [
   { from: 'customer', text: `Our webhook is not received. Reach me at ${RAW_EMAIL} please.` },
@@ -133,7 +135,7 @@ function rig(
     kb: { search: () => Promise.resolve([KB_HIT]) },
     tickets: { find: () => Promise.resolve([SIMILAR]) },
     org: { get: () => Promise.resolve(ORG) },
-    fixtures: FIXTURES,
+    systems: SYSTEMS,
   })) {
     registry.register(tool);
   }
@@ -185,6 +187,16 @@ describe('planRunbook', () => {
       TOOL_NAMES.repoChanges,
     ]);
     expect(steps[0]?.input).toMatchObject({ query: 'webhook not received' });
+    // The system steps carry no text of the ticket: the intent's saved template is the query.
+    expect(steps[2]?.input).toEqual({ windowMinutes: 60, limit: 10 });
+    expect(JSON.stringify(steps[3]?.input)).not.toContain('webhook not received');
+  });
+
+  it('gives the data step a size and nothing else', () => {
+    const steps = planRunbook({ intentKey: 'webhook_not_received', queryText: 'DROP TABLE x' }, [
+      TOOL_NAMES.bigquery,
+    ]);
+    expect(steps).toEqual([{ tool: TOOL_NAMES.bigquery, input: { limit: 20 } }]);
   });
 
   it('skips a granted tool it has no input for and builds every input from the ticket, not from a model', () => {

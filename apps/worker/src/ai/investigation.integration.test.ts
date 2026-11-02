@@ -109,7 +109,8 @@ beforeAll(async () => {
 
   const [org] = await owner()
     .insert(schema.organization)
-    .values({ name: 'Example Org' })
+    // The fixture log lines carry this id in their org label (examples/tools/fixtures.json).
+    .values({ id: '11111111-1111-4111-8111-111111111111', name: 'Example Org' })
     .returning();
   orgId = org?.id ?? '';
   const [staff] = await owner()
@@ -129,6 +130,33 @@ beforeAll(async () => {
       { key: 'stage_one', name: 'Stage one topic', autonomyStage: 1 },
       { key: 'stage_zero', name: 'Stage zero topic', autonomyStage: 0 },
     ]);
+  // T-203d: the logs and data tools run the templates of the intent, and the repo tool reads a service of the
+  // catalog (the runbook names the intent key as the service). The clients are fakes over examples/tools.
+  const [webhookIntent] = await owner()
+    .select({ id: schema.intent.id })
+    .from(schema.intent)
+    .where(eq(schema.intent.key, 'webhook_not_received'));
+  await owner()
+    .insert(schema.toolTemplate)
+    .values([
+      {
+        kind: 'logs',
+        name: 'delivery-warnings',
+        title: 'Delivery warnings and errors',
+        intentId: webhookIntent?.id ?? null,
+        body: 'service="example-delivery" labels.org_ref={{org_id}} severity>=WARNING',
+      },
+      {
+        kind: 'data',
+        name: 'webhook_not_received',
+        title: 'Deliveries per hour',
+        intentId: webhookIntent?.id ?? null,
+        body: 'SELECT hour, deliveries, failed FROM deliveries WHERE org = {{org_id}}',
+      },
+    ]);
+  await owner()
+    .insert(schema.service)
+    .values({ slug: 'webhook-not-received', name: 'Delivery', repos: ['example/delivery'] });
   await publishedArticle();
 });
 
@@ -284,6 +312,17 @@ describe('investigator and drafter, end to end on the mock provider (stage 2)', 
       mock: true,
       tool: 'gcp_logs',
     });
+    expect(evidence.map((card) => card.kind)).toContain('repo');
+    // N4: the fixture log lines carry a fake e-mail address and a fake phone number. Neither reached the
+    // model, and neither is on the card a person sees: the redactor (`redactToolOutput`) took them out.
+    const logCard = ready.evidence as { kind: string; snippet: string }[];
+    const logText = logCard.find((card) => card.kind === 'log')?.snippet ?? '';
+    expect(logText).toContain('webhook delivery failed');
+    for (const secret of ['jane.doe@example.com', '234 5678', 'sam.example@example.org']) {
+      expect(logText).not.toContain(secret);
+      expect(JSON.stringify(requests)).not.toContain(secret);
+    }
+    expect(logText).toMatch(/\[EMAIL_\d+\]/);
     const report = ready.report as AiReport;
     expect(report.scope).toEqual({ intent: 'webhook_not_received', basis: 'confidence' });
     expect(report.tools.map((tool) => tool.name)).toEqual(

@@ -16,6 +16,7 @@ import { ViewsModule } from './views/views.module.js';
 import { ChannelAccountsModule } from './channel-accounts/channel-accounts.module.js';
 import { AlertsModule } from './alerts/alerts.module.js';
 import { IncidentsModule } from './incidents/incidents.module.js';
+import { ToolsModule } from './tools/tools.module.js';
 import { StatusPageModule } from './statuspage/statuspage.module.js';
 import { UsageModule } from './usage/usage.module.js';
 
@@ -41,6 +42,7 @@ import { UsageModule } from './usage/usage.module.js';
     ChannelAccountsModule,
     AlertsModule,
     IncidentsModule,
+    ToolsModule,
     StatusPageModule,
     UsageModule,
   ],

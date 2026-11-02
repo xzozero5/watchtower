@@ -6,15 +6,19 @@ import {
   aiInvestigateJobSchema,
   aiKbAuthorJobSchema,
   aiSummarizeJobSchema,
+  DATA_COLUMN_ALLOW_LIST,
+  budgetProjectFor,
 } from '@watchtower/shared';
-import { createDatabase, type Database } from '@watchtower/db';
+import { assembleToolClients } from '@watchtower/connectors';
+import { createDatabase, createProductDbExecutor, type Database } from '@watchtower/db';
 import { UnrecoverableError, type Job, type Processor } from 'bullmq';
 
 import type { ProcessorContext } from '../processors/index.js';
 import { makeAiBrief } from './brief.js';
 import { runInvestigation } from './investigation.js';
 import { runKbAuthor } from './kb-author-job.js';
-import { loadStubFixtures, systemToolsAllowed, type ReadDb } from './tool-ports.js';
+import { createSystemToolPorts } from './system-tool-ports.js';
+import { systemToolsAllowed, type ReadDb } from './tool-ports.js';
 
 /**
  * The consumer of the `ai` queue (T-106e, T-108). One queue, four jobs:
@@ -27,7 +31,21 @@ import { loadStubFixtures, systemToolsAllowed, type ReadDb } from './tool-ports.
  */
 export function createAiPipelineProcessor(context: ProcessorContext): Processor {
   const { database, ai, logger, domain, realtime, config } = context;
-  const fixtures = loadStubFixtures(config.AI_TOOL_FIXTURES_DIR);
+  // The clients the logs, data and repo tools read through (mock: fakes over the fixtures and the
+  // local product database; no live adapter before T-208). A client that is not connected leaves its tool unregistered.
+  const toolClients = assembleToolClients({
+    fixturesDir: config.AI_TOOL_FIXTURES_DIR,
+    productDb:
+      config.PRODUCT_DB_URL === undefined
+        ? undefined
+        : createProductDbExecutor({
+            url: config.PRODUCT_DB_URL,
+            applicationName: `${config.OTEL_SERVICE_NAME}-product`,
+          }),
+    allowColumns: DATA_COLUMN_ALLOW_LIST,
+  });
+  const systems = createSystemToolPorts(database.db, toolClients);
+  const budgetProject = budgetProjectFor(config.GCP_PROJECT_ID);
   const allowSystemTools = systemToolsAllowed(config);
   if (!allowSystemTools) {
     logger.warn(
@@ -56,7 +74,8 @@ export function createAiPipelineProcessor(context: ProcessorContext): Processor 
     readDb: readDb(),
     ai,
     ticketKeyPrefix: config.TICKET_KEY_PREFIX,
-    fixtures,
+    systems,
+    budgetProject,
     allowSystemTools,
     realtime,
     logger,

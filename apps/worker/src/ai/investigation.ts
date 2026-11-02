@@ -10,7 +10,7 @@ import {
   type AutonomyStage,
   type InvestigationEvidence,
   type ScopeBasis,
-  type StubFixtures,
+  type SystemToolPorts,
   type TicketTurn,
 } from '@watchtower/ai';
 import { schema, type Database } from '@watchtower/db';
@@ -53,7 +53,10 @@ export interface InvestigationDeps {
   readonly readDb: ReadDb;
   readonly ai: AiRuntime | undefined;
   readonly ticketKeyPrefix: string;
-  readonly fixtures: StubFixtures | undefined;
+  /** The logs, data and repo tools over the read-only clients (T-203d). A missing one leaves that tool unregistered. */
+  readonly systems: SystemToolPorts | undefined;
+  /** The project whose quota the logs, data and repository tools share with people (rate_budget_window). */
+  readonly budgetProject?: string | undefined;
   /** False in production with no read-only database login: no intent can name a system tool then. */
   readonly allowSystemTools: boolean;
   readonly realtime: RealtimeSink;
@@ -339,7 +342,7 @@ export async function runInvestigation(
       kb: createKbSearchPort({ db, ai: runtime, names: contacts.map((contact) => contact.name) }),
       tickets: createSimilarTicketsPort(deps.readDb, keys),
       org: createOrgContextPort(deps.readDb),
-      fixtures: deps.fixtures,
+      systems: deps.systems,
     })) {
       registry.register(tool);
     }
@@ -349,7 +352,11 @@ export async function runInvestigation(
         { agent: 'investigator', intent: scope.intent, stage: scopeStage },
         { abortSignal: signal, ticketId: ticket.id },
       ),
-      ledger: createDbToolLedger({ db, limits: AI_TOOL_BUDGETS }),
+      ledger: createDbToolLedger({
+        db,
+        limits: AI_TOOL_BUDGETS,
+        ...(deps.budgetProject === undefined ? {} : { project: deps.budgetProject }),
+      }),
       runKey: randomUUID(),
       ticketId: ticket.id,
       agent: 'investigator',

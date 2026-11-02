@@ -1,19 +1,15 @@
 import {
   createRedactor,
-  stubFixturesSchema,
   type KbHit,
   type KbSearchPort,
   type OrgContext,
   type OrgContextPort,
   type SimilarTicket,
   type SimilarTicketsPort,
-  type StubFixtures,
 } from '@watchtower/ai';
 import { schema, type Database } from '@watchtower/db';
 import { readActiveEmbeddingIndex, searchKb, type TicketKeys } from '@watchtower/domain';
 import { and, eq, inArray, sql } from 'drizzle-orm';
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
 
 import type { AiRuntime } from './runtime.js';
 
@@ -237,23 +233,6 @@ export function createKbSearchPort(deps: KbPortDeps): KbSearchPort {
       return hits.toSorted((a, b) => Number(b.isRunbook) - Number(a.isRunbook));
     },
   };
-}
-
-/**
- * Fixtures for the three stubs (GCP Logs, BigQuery, repo), from a JSON file of `examples/tools/`.
- * Absent file: no stub is registered, so a run cannot call one (the report then lists no gap for
- * them because the intent could not have named a tool that does not exist). A file that does not
- * parse stops the worker: wrong fixtures would be an invented fact (N5).
- */
-export function loadStubFixtures(dir: string | undefined): StubFixtures | undefined {
-  if (dir === undefined || dir === '') return undefined;
-  let raw: string;
-  try {
-    raw = readFileSync(join(dir, 'fixtures.json'), 'utf8');
-  } catch {
-    return undefined;
-  }
-  return stubFixturesSchema.parse(JSON.parse(raw));
 }
 
 /**
