@@ -65,7 +65,9 @@
 - [x] T-133 `frontend-dev` ลดข้อความทั้งระบบ: toggle พระจันทร์/พระอาทิตย์, ธง SVG เปลี่ยนภาษา, ไอคอน + tooltip แทนข้อความ · แก้ภาษาปนใน AI brief, Markdown ดิบใน evidence, คะแนน 1.00 ที่ดูมั่นใจเกินจริงตอน embedding เป็น mock (N5), intent เป็นรหัสดิบ — merge 2026-11-02
 - [ ] T-134 `ai-engineer` + `frontend-dev` AI assistant bubble ทุกตำแหน่งของทีมงาน (ไม่รวมลูกค้า, po #34) ต้องมี ADR ก่อน · ใช้สิทธิ์ผู้ใช้, redaction, `ai_run`, งบ, สวิตช์ฉุกเฉิน
 - [ ] T-135 `ai-engineer` สรุปจาก AI ทุกจุด: daily brief, handoff prefill, รายงานสืบสวน ทุก claim มีลิงก์ไปหลักฐานจริง ไม่มีหลักฐานต้องบอก
-- [~] T-136 + T-137 บน `wip/t-137`: หน้าเปิด ticket เอง + role `dev` (po #33, #35)
+- [x] T-136 + T-137: หน้าเปิด ticket เอง + role `dev` (po #33, #35)
+
+> **`v0.1.0` (MVP) release 2026-11-02** ที่ `ae380db` · งานที่ยังเปิดด้านล่างไม่อยู่ใน release
 
 ## Phase 2 — Reliability + Usage — แตก task ตอนจบ Phase 1
 - [x] T-200 scaffolding + `packages/connectors` (ADR-015) — mock เท่านั้น 2026-11-02

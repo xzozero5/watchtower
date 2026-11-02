@@ -4,15 +4,16 @@
 snapshot สั้นสำหรับ cold start อยู่ที่ `HANDOFF.md` — ไฟล์นี้คือ log ต่อ task + open questions
 
 ## สถานะปัจจุบัน
-| Phase | สถานะ (2026-11-01) | ค้าง |
+| Phase | สถานะ (2026-11-02) | ค้าง |
 |---|---|---|
-| 0 Foundation | ✅ เสร็จ รอเจ้าของตรวจบนเครื่องก่อน tag `v0.0.1` (CI เขียว) | checklist ใน HANDOFF |
-| 1 Inbox + AI 0–2 + Shifts | 🔄 W0/W1 (T-101, T-124, T-123a, T-122a เสร็จ) | T-106, T-122b, T-123b … |
-| 2 Reliability + Usage | ⬜ | — |
+| 0 Foundation | ✅ | — |
+| 1 Inbox + AI 0–2 + Shifts | ✅ ด้วย mock · **ไม่เคยต่อของจริง** | T-113 ส่วนที่เหลือ, T-114, T-115 pilot (เจ้าของ), T-125, T-103e/f, T-110c |
+| 2 Reliability + Usage | ✅ ด้วย mock/fixture | T-207 |
+| คำขอเจ้าของ 2026-11-02 | T-136, T-137 ✅ · T-133 บางส่วน | T-134/T-135 บน `wip/t-134` (ยังไม่ re-review, ไม่มีเว็บ), T-133 ที่เหลือ |
 | 3 Autonomy + Learning | ⬜ | — |
 | 4 Mobile + Scale | ⬜ | — |
 
-- Test ล่าสุด (main `61e1395`, 2026-11-01 04:05, `--force` ไม่ใช้ cache): lint, typecheck ผ่าน · unit shared 148, api 164, worker 33, db 47, ui 256, web 470, boundaries 94 ผ่าน · integration (main + T-010/T-009 ก่อน merge) api 387, db 107, worker 19 · e2e 99 · full-stack e2e 22 `[TESTED]` · `docker compose up` ด้วย image ยังไม่เคยรัน `[ASK-HUMAN]`
+- **Release `v0.1.0` (MVP)** = `main` @ `ae380db` · CI: เขียวทั้ง 4 job · gate บนเครื่องผ่านทุก merge `[TESTED]`
 - Blockers: ไม่มี · `[ASK-HUMAN]` ค้าง: ดู `HANDOFF.md`
 
 ## Open questions / `[UNVERIFIED]` / `[ASSUMED]` ที่ยังค้าง
@@ -39,6 +40,9 @@ snapshot สั้นสำหรับ cold start อยู่ที่ `HANDOF
 - (2026-11-01) cloud session: `dockerd` ต้องสั่งเอง · Docker Hub 429 → pull ซ้ำทีละ image · build image ไม่ได้ (corepack ไม่เชื่อ CA ของ proxy) · Playwright ใช้ `PW_EXECUTABLE_PATH=/opt/pw-browsers/chromium` · หลาย worktree รัน e2e พร้อมกันต้องตั้ง `E2E_PORT` ต่างกัน · Redis counter ข้ามรอบ test → `RATE_LIMIT_NAMESPACE`
 
 ## Log
+
+## 2026-11-02 15:05 (Asia/Bangkok) — main thread — release `v0.1.0` (MVP)
+- เจ้าของสั่งหยุดที่ checkpoint · หยุด T-134 (push WIP ที่ `7c0b432`) และ T-113 (push ส่วนที่ผ่าน) · README เขียนใหม่ + ลองตามขั้นตอนจริง · CHANGELOG `0.1.0` · HANDOFF ฉบับ release · คู่มือ credential `docs/runbooks/credentials.md`
 
 ## 2026-11-02 14:57 (Asia/Bangkok) — main thread — T-121 UI, T-203e Outbox dead letters, org tiers, investigation buttons ปิด
 - test: main thread รันเองบน Windows: lint, typecheck, unit, integration 389/454/1079/226, e2e 172, full-stack 38, compose `[TESTED]`

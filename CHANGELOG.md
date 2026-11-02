@@ -6,38 +6,47 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+Not merged yet: the AI assistant and AI-written summaries with evidence links (`wip/t-134`), the rest of
+the less-text UI pass (T-133).
+
+## [0.1.0] - 2026-11-02 — MVP
+
+First release. Every integration is tested against fakes and fixtures only: none has been connected to a
+real Gmail, LINE, Discord, GCP or AI account. See the README section "What is real today".
+
 ### Added
-- Phase 1 scaffolding: per-feature files in `packages/shared`, api modules, worker processor
-  registry, Phase 1 environment variables (empty = mock mode), a test network guard, and the
-  Phase 1 permission set (migration `0006`).
+- Omnichannel inbox: Gmail (OAuth of one mailbox, or a service account with domain-wide delegation;
+  Pub/Sub push, bounded full sync), LINE Messaging API (signed webhook, reply-before-push, quota
+  tracking, an automatic acknowledgement from a safe template), the customer portal, and tickets a
+  person opens by hand (phone, walk-in, chat). Admin screens and a CLI to connect channel accounts;
+  integration credentials stored encrypted, never shown again.
+- Outbound delivery through one pipeline with a policy gate and at-most-once sends.
+- AI layer (`mock` or `anthropic`): triage, investigation with read-only tools, reply drafts grounded on
+  the knowledge base, per-intent autonomy stages 0–2 enforced in the database, an emergency switch and a
+  kill switch, PII redaction before any model call, `ai_run` audit with cost, and daily caps.
+- Knowledge base with review by someone other than the author, chunking and search (embeddings are
+  mock only).
+- CSAT, Discord webhook notifications, in-app notifications, shifts, clock-in, handoff with
+  acknowledgement and a daily brief.
+- Phase 2: alert ingest (GCP Pub/Sub push and signed webhooks), dedup and correlation, a service
+  catalog, heartbeats, incidents with mass communication, a status page (off by default), usage metrics
+  with anomaly tickets, Client Health Score, and investigation tools (logs, metrics, repo, data) with a
+  shared rate budget, read-only.
+- Head console (users, orgs, SLA and calendars, intents, queues, audit log, AI controls), an Ops
+  dashboard, an outbox screen to resend dead letters, org tiers, a masked `dev` role, one-click
+  investigation buttons.
+- GCP deployment design (ADR-014), Terraform skeleton and a staging runbook (never applied); a
+  credential runbook for the owner.
+- E2E with no outbound network for the Gmail and LINE paths (AC-1, AC-2).
 
-## [0.0.1] - unreleased (pending owner verification on a local machine; not tagged yet)
+### Known issues
+- Gmail sends no automatic acknowledgement (B-003); a LINE ticket doesn't show that the sender is
+  unverified (B-002); an accessibility issue on the critical banner (B-004). See `docs/qa/bugs.md`.
+- The redactor doesn't remove LINE user ids, JWTs or IP addresses in tool output, and a name it doesn't
+  know can reach the model.
+- No e2e yet for AC-3, AC-4, AC-5, AC-7; the Phase 1 and Phase 2 security and QA passes (T-114, T-207)
+  are not done.
 
-Phase 0 — Foundation.
+## [0.0.1] - never tagged
 
-### Added
-- Monorepo (pnpm + Turborepo) with enforced module boundaries (ADR-002).
-- `apps/api` (NestJS): health, Zod-validated config, OpenAPI at `/docs`, structured logging,
-  OpenTelemetry hooks.
-- Authentication: Google OIDC with PKCE (mock mode for development), magic links for customers,
-  break-glass local admin; rotating refresh tokens, CSRF protection, `__Host-` cookies (ADR-005).
-- RBAC deny-by-default with a permission table, and an append-only, partitioned audit log.
-- Ticket core: organizations, contacts, SLA policies with business calendars, intents (examples in
-  `examples/intents/`), tickets, messages and events; status workflow, SLA due dates with pauses,
-  manual and round-robin assignment, simple merge, duplicate suggestions, trigram search for Thai
-  and English text, REST API and WebSocket realtime events scoped per organization.
-- Transactional outbox with a relay in the worker (ADR-006); secret fields encrypted at rest.
-- Client portal: submit form with self-hosted human verification (proof-of-work, honeypot, rate
-  limits; ADR-007), tracking links, replies, and customer emails through SMTP.
-- Web app (Next.js): three-pane workspace with nav rail, inline ticket properties, timeline,
-  composer, keyboard map and shortcuts (can be turned off), realtime queue, login, PWA shell,
-  TH/EN, light/dark themes; portal pages.
-- Demo seed (`pnpm db:seed`) with fictional organizations, staff, SLA policies and 30 tickets.
-- Docker Compose stack (Postgres + pgvector, Redis, MinIO, Mailpit, api, worker, web, Caddy).
-- Tests: unit, integration against real Postgres/Redis, Playwright e2e with a mocked API, and a
-  full-stack e2e of the portal path (AC-1), magic link and RBAC.
-- GitHub Actions CI: lint, typecheck, unit, integration, e2e, full-stack e2e, and Compose
-  build/up/health.
-
-### Security
-- Phase 0 security review (T-010) findings C-1…C-16 fixed; see `docs/09-SECURITY.md`.
+Phase 0 — Foundation. Rolled into 0.1.0.

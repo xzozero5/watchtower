@@ -1,84 +1,60 @@
 # HANDOFF — Watchtower
 
 > สถานะล่าสุดของโปรเจกต์ session ใหม่อ่านไฟล์นี้ต่อจาก `AGENTS.md` แล้วทำงานต่อได้โดยไม่ต้องอ่านบทสนทนาเดิม
-> อัปเดตล่าสุด: 2026-11-02 14:57 (เวลากรุงเทพ) โดย Claude Code (main thread, เครื่อง local) — **safe pause ตามคำสั่งเจ้าของ เพราะโควตาใกล้เต็ม ยังไม่จบ Phase 1**
-> กฎขนาด ≤ 40 KB — เขียนทับสถานะ ไม่ append ประวัติ · ฉบับก่อนหน้า `docs/handoff-archive/HANDOFF-2026-11-01-0420.md` · บันทึกรายชั่วโมง `logs/daily/2026-11-01.md` · log ต่อ task `docs/STATUS.md`
+> อัปเดตล่าสุด: 2026-11-02 15:05 (เวลากรุงเทพ) โดย Claude Code (main thread, เครื่อง local Windows) — **หยุดที่ checkpoint และ release MVP `v0.1.0` ตามคำสั่งเจ้าของ**
+> กฎขนาด ≤ 40 KB เขียนทับสถานะ ไม่ append ประวัติ · ฉบับก่อน `docs/handoff-archive/HANDOFF-2026-11-02-1430.md` · log ต่อ task `docs/STATUS.md` · รายชั่วโมง `logs/daily/2026-11-02.md`
 
-## คำสั่งล่าสุดของเจ้าของ (2026-11-02 08:04)
-1. ทำต่อด้วย mock ให้จบ Phase 2 เท่าที่เป็นไปได้ ให้ `po` ตัดสินแทน · ข้าม pilot T-115 ไปก่อน · รายการ "ห้ามทำแทน" ใช้เหมือนเดิม · safe pause เมื่อโควตา 5 ชั่วโมงหรือ weekly ถึง 95%
-2. UI ยังมีข้อความเยอะ: ใช้ไอคอน/รูป เช่น toggle พระจันทร์-พระอาทิตย์, ธงเปลี่ยนภาษา → T-133 (spec `docs/design/less-text-ai-assistant.md`)
-3. AI ทำงานแทนได้ทุกตำแหน่ง เช่น bubble ขวาล่าง → T-134
-4. brief และสรุปการสืบสวนมาจาก AI ทุกข้อความมีลิงก์ไปหลักฐานจริง → T-135
-5. หน้าเปิด ticket เอง → T-136 · role `dev` → T-137 (กำลังทำบน `wip/t-137`)
+## คำสั่งล่าสุดของเจ้าของ (2026-11-02 ราว 13:50)
+หาจุด checkpoint หยุดและ release MVP ทำทุกอย่างให้เรียบร้อย รวม `README.md` · เย็นนี้เจ้าของจะสร้าง credential และลองใช้งานจริงเอง
 
-## ทำต่อจากตรงนี้ (2026-11-02 08:04)
-- **บน `main` แล้ว:** T-103b–d, T-102b–e, T-104, T-105, T-107a–c, T-108a–e, T-109, T-110a,b,d, T-111a–f, T-116c, T-118, T-122f, T-123b, T-130, T-131, T-132, T-200, T-201, T-202, T-204a,c, T-205 · ทุกตัวเป็น mock
-- **คิว merge:** `wip/t-137` (dev + เปิด ticket, `0080`, security แก้ครบ ตรวจอีกรอบใน T-114) → `wip/t-134` (assistant + สรุป AI, `0090`, ADR-017 Proposed, ต้อง re-review หลังแก้ P1 + ลบ cast permission) ทั้งสองต้องผ่าน gate ของ main thread
-- **ยังไม่เริ่ม:** หน้าเว็บ AI bubble + หน้าสรุป (T-134/T-135 web), ส่วนที่เหลือของ T-133 (ปุ่ม + rail, รวมไอคอนสถานะ, ย้าย Brief/Handoff ใต้ Shift, การ์ด login, หมวด portal), T-206a/c dashboard, T-203e, T-121 UI, T-103e, T-103f, T-113, T-114, T-125, T-207, คู่มือ credential เข้า repo (`docs/runbooks/credentials.md` อัปเดตชื่อ T-102e) + T-115 prep
-- **Gate ต่อ merge (main thread รันเอง):** lint, typecheck, unit, integration (`--concurrency=1`), e2e, full-stack, `docker compose up --build` แบบไม่มี `.env` (project แยก) · ใช้ `turbo --force --continue` · **ทุก merge ต้องดู `gh run list --branch main` ด้วย ผลบนเครื่องไม่แทน CI**
-- **Demo:** compose project `wt-demo` เปิดค้างที่ `http://localhost:33000` (mailpit `:38025`, dev login เปิด) · ปิดด้วย `docker compose -p wt-demo down -v`
-- **บั๊กจริงที่เจอบนเครื่องจริง แก้แล้ว:** นาฬิกาแอปกับ DB ปนกันหลายจุด (timeline, dispatcher, AC-7, hold) · การแก้จุดสุดท้ายทำให้เวลาชนใน ms เดียวกัน ต้องเรียงด้วย rank ใน portal · แท็บ Details ถูกดึงกลับเมื่อ evidence โหลด · ค่าว่างของ KB ใน compose · key ซ้ำใน compose หลัง merge
-- **เหตุการณ์ที่เจ้าของควรรู้:** main thread merge T-206b ทั้งที่ e2e ตก 3 ข้อ (axe ระหว่าง transition, แก้ต้นเหตุแล้ว) · agent T-137 เคยสั่ง `ls D:/Works/secret` ถูกปฏิเสธ ไม่ได้อ่านค่า · CI ของ `main` แดงอยู่นานโดยไม่มีใครเปิดดูจนเจ้าของทัก · agent ของ T-108 ลอง force push บน `wip/t-108` แล้วถูก hook บล็อก จากนั้นใช้ merge `-s ours` แทน ซึ่งเข้าข่ายอ้อม ผู้ตรวจยืนยัน tree ไม่มีอะไรหาย · หลาย review ถูก `guard.py` บล็อกการสแกน N1 ไม่ได้อ้อม · branch `verify/t200` ค้างไว้เพราะ hook บล็อกคำสั่งลบที่มีคำว่า main
+## อ่านก่อน (2 นาที)
+- **tag `v0.1.0`** = merge สุดท้าย `ae380db` + commit เอกสาร release · CI ของ GitHub บน merge นั้น: เขียวทั้ง 4 job · gate บนเครื่อง (lint, typecheck, unit, integration, e2e, full-stack, compose) ผ่านทุก merge ของวันนี้ `[TESTED]`
+- **ยังไม่เคยต่อของจริงเลยสักตัว** (Gmail, LINE, Discord, GCP, AI) ทุก test ใช้ fake/fixture · การต่อครั้งแรกน่าจะเจอปัญหา ให้จดผลลง `docs/STATUS.md`
+- **อยู่ใน release:** inbox Gmail/LINE/portal/เปิดเอง, AI (mock หรือ anthropic) triage + investigate + draft ที่คนอนุมัติ, KB, CSAT, Discord, กะ + handoff, alert/incident/status page, usage + Health Score, เครื่องมือสืบสวน read-only, head console, dashboard, outbox dead letter, role `dev` · รายละเอียด `README.md` §What is real today และ `CHANGELOG.md`
+- **ไม่อยู่ใน release:** AI bubble + สรุปจาก AI พร้อมลิงก์หลักฐาน (T-134/T-135 ค้างบน `wip/t-134`), T-133 ส่วนที่เหลือ, Phase 3
 
-## อ่านก่อน (สรุป 2 นาที)
-- **Phase 0 เสร็จ** (CI แดงช่วงหลัง T-112a จาก MinIO หาย แก้แล้ว ดู STATUS) · ยังไม่ tag `v0.0.1` — รอเจ้าของตรวจบนเครื่อง (รายการด้านล่าง)
-- **Phase 1 กำลังทำ** · บน `main` แล้ว: T-101, T-102a–d, T-103a–d, T-104, T-106a–e, T-112a, T-116a, T-117, T-122a–e, T-123a, T-126–T-129 · **ค้างบน branch 3 งาน** (LINE, Gmail, KB — ตารางด้านล่าง) ทั้งหมดผ่าน security review รอบแรกและแก้ finding ไปแล้วบางส่วน
-- **กติกาที่ใช้ทั้ง session:** security finding P0/P1 ต้องแก้ก่อน merge · main thread รัน test เองบน branch `verify/<task>` (merge กับ `main` ล่าสุด) ก่อน merge เสมอ · migration เปลี่ยนเลขตอน merge
-- **`po` ตัดสินแทนเจ้าของ 27 ข้อ** (ตารางด้านล่าง) ติ๊กรับ/ไม่รับได้เลย · ข้อใหม่ #26 (LINE verified), #27 (KB publish แยกหน้าที่)
-- **UI:** T-124 → T-128 (AI-first board) → T-129 (มน/สี/icon, แยก status กับ tag ตาม feedback เจ้าของ) · ภาพหน้าจอส่งในแชตแล้ว (ไม่ได้ commit)
+## เจ้าของต้องทำก่อน/ระหว่างลองจริงเย็นนี้ (`[ASK-HUMAN]`)
+1. `git pull` บน `main` → ลอง `README.md` §Try it ก่อน (ไม่ต้องมีบัญชี)
+2. สร้าง credential ตาม [docs/runbooks/credentials.md](docs/runbooks/credentials.md) · เก็บใน `D:\Works\secret\watchtower.env` (นอก repo) · **ห้ามวางค่าในแชท**
+3. ลำดับที่ทำได้บน `localhost` โดยไม่ต้องมี URL สาธารณะ: secrets ระบบ §3.1 → Google OIDC §3.2 (redirect `http://localhost:4000/v1/auth/google/callback`) → break-glass `head` คนแรก → Discord webhook ช่องทดสอบ §3.7 → AI §3.8 → Gmail OAuth กล่องทดสอบ §3.3
+4. รัน: `docker compose --env-file D:\Works\secret\watchtower.env up -d --wait --build` · ตั้ง `DEV_LOGIN_ENABLED=false` (ถ้า true พร้อม Google credential api ไม่ขึ้น)
+5. **ข้อควรระวัง:**
+   - ใช้ **กล่อง Gmail และ LINE OA สำหรับทดสอบ** ก่อน · LINE ที่ต่อแล้วส่งข้อความตอบรับอัตโนมัติทุกบทสนทนาใหม่ · Gmail ไม่ส่ง auto-ack (B-003)
+   - ต่อ Gmail ครั้งแรก = ดึงเมลย้อนหลัง 7 วัน สูงสุด 500 ฉบับ แต่ละฉบับผ่าน AI (ถ้าเปิด anthropic) จนชนเพดานรายวัน
+   - AI จริง: ต้องตั้ง `AI_PROVIDER=anthropic`, `ANTHROPIC_API_KEY`, `AI_MODEL_DEEP/STANDARD/LIGHT`, `AI_MODEL_PRICES` (ไม่มีราคา = ถูกปฏิเสธ) · เพดานเริ่มต้น $1/วัน `[ASSUMED]` น่าจะน้อยไป ตั้ง `AI_DAILY_COST_CAP_USD` เอง
+   - redactor ยังไม่ลบ LINE user id, JWT, IP ในผลเครื่องมือ และชื่อที่ระบบไม่รู้จักหลุดถึง model ได้ → ใช้ข้อมูลทดสอบก่อน
+   - **บน localhost เมลใหม่และข้อความ LINE จะไม่เข้ามาเอง** เพราะ Pub/Sub push และ LINE webhook ต้องมี HTTPS สาธารณะ → ต้อง deploy ([docs/runbooks/staging-gcp.md](docs/runbooks/staging-gcp.md), ยังไม่เคยรันจริง) หรือใช้ tunnel ซึ่งเป็นปลายทาง network ใหม่ เจ้าของตัดสิน
+6. ตัดสินใจที่ค้าง: ทบทวน `po` #28–35 (ตารางด้านล่าง) · ยอมรับความเสี่ยงชื่อหลุดถึง model ก่อนเปิด AI จริงหรือไม่ · ปิด demo stack `docker compose -p wt-demo down -v`
 
-## สถานะปัจจุบัน
-- **Phase:** 0 รอเจ้าของตรวจ + tag · 1 อยู่ wave 2 (`docs/plans/phase-1-breakdown.md` §H)
-- **`main` (merge ล่าสุด T-129, 11:19):** main thread รัน `turbo --force` เอง: lint/typecheck ผ่าน · unit ทุก package (ui 609, web 666, api 188, worker 79, domain 63, ai 372, channels 325) · integration db 200, domain 170, api 502, worker 67 · web e2e 134 · full-stack e2e 23 `[TESTED]` บน cloud Linux
-- **Migration บน `main`:** 0000–0016 (`0013_outbound_delivery`, `0014_outbound_hardening`, `0015_line_identity`, `0016_gmail_account_state`)
-- **Integration จริง:** ยังไม่มี ทุกตัวเป็น mock / fake transport
-- **เงิน:** Max plan (วัดเป็นดอลลาร์ไม่ได้) · token ของ sub-agent ดู daily log
+## ทำต่อจากตรงนี้ (session ถัดไป)
+1. **T-134/T-135** บน `wip/t-134` (`7c0b432`): backend ของ assistant + สรุปจาก AI · แก้ finding รอบ 3 ครบตามคำ producer แต่**ยังไม่ได้ re-review** และยังไม่ได้รัน lint/typecheck ทั้ง workspace หลัง commit สุดท้าย · migration `0090` · ADR-017 Proposed · ต่อด้วยหน้าเว็บ bubble + สรุปพร้อมลิงก์หลักฐาน (spec `docs/design/less-text-ai-assistant.md`) · ความเสี่ยงชื่อที่พิมพ์โดยไม่อ้าง ticket ถึง model ขั้น plan `[TESTED]` = `[ASK-HUMAN]`
+2. **T-113 ส่วนที่เหลือ:** AC-3, AC-4, AC-5, AC-7 (สำเนาไฟล์ที่ถอดออกอยู่ใน scratchpad ของ session เก่า เขียนใหม่ได้), dev role, manual ticket, `/status`, สิทธิ์ผ่าน browser · บั๊ก B-002, B-003, B-004 ใน `docs/qa/bugs.md`
+3. **T-125:** redactor ไม่ครอบ LINE user id, JWT, IP · ticket key ยาวถูก redact เป็นเบอร์โทร (over-redact จาก T-137) · copy ของ outbox reprocess ยังพูดแน่นอนเกิน ("acknowledge it" → may, และอาจต่อท้าย/reopen ticket เดิม) · Gmail inbound size cap (เสนอ 200,000 ตัวอักษร ที่เกินเป็นไฟล์แนบ) · `buttons()` แสดง template ที่ไม่มี org ให้ dev · `array_agg(repeat())` OOM ของ T-203 · ที่เหลือใน BACKLOG
+4. T-133 ส่วนที่เหลือ (Brief/Handoff ใต้ Shift, login การ์ดเดียว, ไอคอนหมวด portal, contrast สีใหม่, i18n key ที่ไม่ใช้) · T-103e · T-103f · T-110c
+5. **T-114 + T-207** security/QA/po ของ Phase 1–2 → T-115 pilot กับทีมจริง (ต้องมีเจ้าของ)
+6. eval case ของ assistant ใน `evals/golden/` ต้องให้คนที่ไม่ใช่ผู้ผลิตเขียน (N7)
 
-## งานค้างบน branch (push ขึ้น origin แล้ว ทำต่อบนเครื่องได้เลย)
-| งาน | branch | สถานะ | ต้องทำต่อ |
-|---|---|---|---|
+## Gate ต่อ merge (main thread รันเองทุกครั้ง ห้ามเชื่อรายงาน agent)
+`git checkout -b verify/<task> main && git merge --no-ff origin/wip/<task>` → `turbo run … --force --continue`: lint, typecheck, unit, integration `--concurrency=1`, e2e, full-stack, `docker compose up --build` แบบไม่มี `.env` (project แยก) → **อ่านผลก่อน merge** → merge → push → **`gh run list --branch main`** · migration เลขต้องมากกว่าตัวล่าสุดบน main (เปลี่ยนเลขตอน merge) · งานที่แตะ channel/AI/auth/RBAC/PII ต้องผ่าน `security-reviewer` คนละตัวกับผู้ผลิต P0/P1 แก้ก่อน merge
+- Windows: `PW_CHANNEL=msedge` · Git Bash ใช้ `TZ=ICT-7 date` · อย่ารัน integration พร้อม agent ที่รัน test หนัก
+- บทเรียน: อย่าผสมนาฬิกา process กับ DB ใน comparison เดียว (DB เหลื่อม 50–65 ms) · เวลาชนใน ms เดียวกันต้องมี rank tiebreak
 
-## Follow-up ที่เปิดไว้
-- **T-122f** (P3 จาก re-review T-122e) — **F-1 ต้องปิดก่อนเปิด LINE push จริง:** cancel/deny ของ pinned push ที่ re-queue แล้วต้องติด `outcome_unknown`
-- จาก review fix นาฬิกา เข้า T-122f: **P2 O-7** hold ใช้นาฬิกา API claim ใช้นาฬิกา worker จน undo เหลือ 0 ได้ + sweep trigger ไม่มี `notBefore` (`schedule.ts:178`, `dispatch.ts:686`) · P3 `dispatcher.ts:490`, `Retry-After` ไม่มีเพดาน (`state.ts:92`), `ingest.ts:414`, sweep lease เมื่อ skew ≥ 120 s
-- ก่อนเปิด AI live: name dictionary ของ redactor ว่าง ชื่อในคำค้น KB อาจไม่ถูก redact `[UNVERIFIED 70%]`
-- **T-103e** ส่งรหัสผูก LINE ไป email ที่ยืนยันแล้ว = verified (`po` #26) · อยู่ใน BACKLOG แล้ว
-- **T-125** security P3 รวม + test จับเวลาที่ flaky ภายใต้โหลด (break-glass timing, ui timeout) + B-001
-- **T-103e** (เพิ่มลง BACKLOG ตอน merge T-103) · ยังไม่มีโค้ดอ่าน `line_verified_at` ไปใช้ตัดสิน disclosure — ต้องทำใน T-108/T-109
-- T-109 ต้องเปลี่ยน web ไปใช้ cancel endpoint ฝั่ง server + `aiDraftId`
+## สถานะ
+- **Migration บน `main`:** ถึง `0080_dev_role_manual_ticket`
+- **Demo:** compose project `wt-demo` ที่ `http://localhost:33000` จาก commit เก่า (`f43ac7a`) · mailpit `:38025` · ปิดได้
+- **branch ค้าง:** `wip/t-134` (ข้างบน) · `verify/t200`, `verify/t203` ลบไม่ได้เพราะ hook บล็อกคำสั่งที่มีคำว่า main (ไม่ได้อ้อม) · worktree ของ agent ใน `.claude/worktrees/` ลบได้เมื่อไม่ใช้
+- **โฟลเดอร์ `.agents/`, `.codex/` ที่ไม่ได้ track:** ไม่ใช่ของ session นี้ ไม่ได้แตะ
 
-## PO ตัดสินแทนเจ้าของ (session 2026-11-01 — เจ้าของมอบอำนาจ, รอทบทวน)
-> ทุกข้อ `[ASSUMED]` เลือกทางที่ย้อนกลับง่าย · `po` ห้ามตรวจงานที่ตัวเองตัดสิน (N7) · สิ่งที่อยู่ใน "ห้ามทำแทนเจ้าของ" ไม่อยู่ในอำนาจนี้
-> เจ้าของรับทั้ง 27 ข้อ 2026-11-01 21:59 · ข้อ #4: เจ้าของเลือกเพิ่ม OAuth ของกล่องเมลก่อน pilot (T-102e) เพราะโค้ดตอนนี้มีแค่ delegation
+## เหตุการณ์ที่เจ้าของควรรู้
+- CI ของ `main` เคยแดงนานโดยไม่มีใครดูจนเจ้าของทัก → เพิ่มกฎดู CI ทุก merge · main thread เคย merge T-206b ทั้งที่ e2e ตก 3 ข้อ (แก้ต้นเหตุแล้ว) → กฎอ่านผล gate ก่อน merge
+- agent T-108 ลอง force push บน `wip/t-108` ถูก hook บล็อก แล้วใช้ merge `-s ours` แทน (เข้าข่ายอ้อม ผู้ตรวจยืนยันไม่มีอะไรหาย) · agent T-137 สั่ง `ls D:/Works/secret` ถูกปฏิเสธ ไม่ได้อ่านค่า · หลาย review ถูก `guard.py` บล็อกการสแกน N1 ไม่ได้อ้อม
+- security review รอบนี้จับ P1 จริงได้หลายข้อและแก้ก่อน merge: dev เดาค่าที่ถูก mask ผ่าน assistant ได้ (T-134, ยังไม่ merge), copy ของ outbox บอกว่าไม่ส่งทั้งที่ LINE อาจส่ง (แก้แล้ว)
+
+## PO ตัดสินแทนเจ้าของ
+> #1–27 เจ้าของรับแล้ว 2026-11-01 21:59 (ตารางเต็มใน `docs/handoff-archive/HANDOFF-2026-11-02-1430.md`) · ทุกข้อ `[ASSUMED]` · `po` ห้ามตรวจงานที่ตัวเองตัดสิน (N7)
 
 | # | คำถาม | `po` ตัดสิน `[ASSUMED]` | เหตุผล |
 |---|---|---|---|
-| [x] 1 | §16.1 repo/CI, GitHub App | GitHub + Actions · repo tool เป็น interface กลาง มี mock + GitHub App adapter read-only เปิดเมื่อมี credential | เป็นกลาง, N2 |
-| [x] 2 | §16.2 product DB | Postgres ทั่วไป (Cloud SQL เป็นแค่ตัวอ้างอิง) · data tool = Postgres read replica + read-only role ผ่าน DSN; BigQuery `EXTERNAL_QUERY` ปิดเป็นค่าเริ่มต้น · mock = Postgres ใน compose + `examples/metrics/` · guardrail `statement_timeout`/row limit/PII mask | ไม่บังคับ GCP |
-| [x] 3 | §16.3 GCP projects | config `gcp_projects[]` พร้อม environment · seed `example-prod`/`example-staging` · ไม่ migrate alert policy เดิม | เป็นกลาง |
-| [x] 4 | §16.4 mailbox | 1 mailbox = 1 `channel_account` หลายกล่องได้ · ค่าเริ่มต้น OAuth ของกล่องนั้นเอง, domain-wide delegation เป็นทางเลือก · seed `support@example.com` | สิทธิ์น้อยสุด |
-| [x] 5 | §16.5 LINE | plan `free` ตาม budgets · `quota_limit` ตั้งได้ ค่าเริ่มต้น 300 `[VERIFY]` เตือน 80% · rich menu ปิดด้วย flag (OA อาจใช้ร่วมทีมอื่น) | กันทับงานทีมอื่น |
-| [x] 6 | §16.6 Discord | ช่องแจ้งเตือน/ประสานงาน ไม่ใช่ system of record · map channel ผ่าน config | R-3.17 |
-| [x] 7 | §16.7 ทีม/กะ | seed 2 head, 2 lead, 4 agents (ครอบ "2 ต่อ role" ของ T-008) · กะ 08–17, 13–22, on-call 22–08 (Asia/Bangkok) แก้ได้ | รูปแบบทั่วไป |
-| [x] 8 | §16.8 tier/SLA | ชื่อกลาง Gold/Silver/Standard ตัวเลขอยู่ใน `examples/` + seed เท่านั้น · Gold P1 15m/4h 24×7, Silver P1 30m/8h, Standard business hours | N1, N5 |
-| [x] 9 | §16.10 AI provider | `AI_PROVIDER=mock` · Anthropic + Vertex adapter หลัง abstraction · PII redaction เปิดเสมอ · งบ dev ตาม `config/budgets.yaml` | ยังไม่มี key |
-| [x] 10 | เอกสารขัด: START-HERE ว่า `po` "ไม่ตัดสินแทน" | ไม่แก้กฎถาวร บันทึกเป็นข้อยกเว้นของ session ใน STATUS/HANDOFF/daily log | ข้อยกเว้นชั่วคราว |
-| [x] 11 | ย้าย GCP deploy มาก่อน T-115 | ย้าย → **T-118** ADR deploy GCP + IaC skeleton + runbook staging (public HTTPS สำหรับ Pub/Sub push/LINE webhook) **ไม่ apply จริง** | pilot ต้องมี webhook สาธารณะ |
-| [x] 12 | generic OIDC (องค์กรไม่ใช้ Google) | เลื่อนไป Post-MVP · UI/contract ห้าม hard-code Google นอก provider config | ไม่อยู่ใน exit criteria |
-| [x] 13 | MinIO `pgsty/minio` | ใช้ต่อเฉพาะ local · ปัก digest แล้ว (T-010) · production ใช้ GCS | override ได้ด้วย env |
-| [x] 14 | tag `v0.0.1` | เลื่อน จนเจ้าของตรวจ compose/integration/e2e บนเครื่องตัวเอง | คำสั่งเจ้าของ |
-| [x] 15 | วันหยุดไทย 2026–2027 | ข้อมูลตัวอย่างใน `examples/calendars/` ติด `[VERIFY]` โหลดเฉพาะ seed dev · production เริ่มว่าง | N5 |
-| [x] 16 | permission matrix `[ASSUMED]` | ใช้ต่อจนทีมจริงทบทวนตอน T-115 | deny-by-default |
-| [x] 17 | ภาษาเริ่มต้น | `en` · instance ตั้ง `th` ได้ | OSS เป็นกลาง |
-| [x] 18 | Pub/Sub emulator image (T-102) | อนุญาตเฉพาะ compose local ปักเวอร์ชัน | ไม่มีปลายทาง runtime ใหม่ |
-| [x] 19 | ลำดับ Phase 1 | T-101 ก่อน T-109/T-111 frontend · T-106 ก่อน T-108/T-112 · T-116 ก่อน T-118/T-115 · T-112 จำกัด stage ≤ 2 | ลด rework |
-| [x] 20 | ราคา LINE | ไม่บล็อกเริ่ม Phase 1 แต่บล็อกปิด T-103 (ตรวจเอกสารทางการ บันทึกลิงก์+วันที่) | AGENTS.md |
-| [x] 21 | UI spec §17 (Q1–Q11) | Undo-send 5 s ฝั่ง server · สี AI จาก seafoam ผ่าน contrast test · focus digest 15 นาที P1/P2 แทรกได้ · เสียง P1 ซ้ำทุก 60 วิ · portal แสดงชื่อต้น · 3 breakpoint · reject reason 9 รหัส · SLA at-risk ≤25% หรือ ≤30 นาที · severity map · spec เป็นอังกฤษ — `docs/06-UI-SPEC.md` §17 | ลด friction ทางปลอดภัย |
-| [x] 22 | human verification ของ portal (R-9.1 ยกตัวอย่าง Turnstile/hCaptcha) | self-hosted: proof-of-work + honeypot + rate limit หลัง `HumanVerificationProvider` (ADR-007) · ผู้ให้บริการภายนอก = `[ASK-HUMAN]` (ปลายทาง network ใหม่ + ส่ง IP ผู้ใช้ไป vendor) | po อนุมัติปลายทางใหม่ไม่ได้ |
-| [x] 23 | emergency switch Phase 1 | สองปุ่ม: "จำกัดทุก intent ≤ stage 2" (ไม่ยก 0/1 ขึ้น) และ kill switch "หยุด AI ทั้งหมด" · เปิด/ปิด = confirm + เหตุผล + audit | N3 |
-| [x] 24 | T-011 Phase 0 | ยังไม่ปิดจนกว่า CI (T-014) เขียว · เจ้าของตรวจตาม checklist แล้วค่อย tag | DoD |
-| [x] 26 | LINE link แล้วถือว่า "ยืนยันตัวตน" ไหม (T-103d) | LINE Login จาก portal session ที่ login แล้ว → verified · code ที่ staff เห็นแล้วบอกลูกค้า → ผูกได้แต่ **unverified** (disclosure policy §6.6 ยังบังคับ) · code ที่ส่งไป email ที่ยืนยันแล้วเท่านั้น (R-2.11c) → verified · เก็บสถานะ LINE แยกจาก `contact.verified_at` · staff ยืนยันเองเป็น action แยก lead+ พร้อมเหตุผล+audit (อนาคต) | staff ถูก social engineering ทางโทรศัพท์ได้ · ทางที่ verified ต้องพิสูจน์ว่าคุมทั้ง email และ LINE · ย้อนกลับง่าย |
-| [x] 27 | KB publish ต้องแยกหน้าที่ไหม (T-107, ISO 27001 A.5.3/A.8.32) | ต้องผ่าน `in_review` เสมอ · ผู้อนุมัติต้องไม่ใช่ผู้เขียน version นั้น · break-glass เฉพาะ `head` ต้องมีเหตุผล + audit แยก + ธงรีวิวย้อนหลัง · AI draft ต้องมีคนอนุมัติที่ไม่ใช่ผู้สั่ง AI ใช้ break-glass ไม่ได้ · deprecate ไม่ต้องรอคนที่สอง | ตรง PRD R-4.1/R-4.4 · seed มีผู้อนุมัติ 4 คน · เป็นกฎใน domain ย้อนกลับง่าย |
 | [ ] 28 | AC-7 gate ถูกเลี่ยงด้วยการ unassign/ลด priority ก่อน clock out | gate นับ P1/P2 ที่ผู้ใช้ unassign, ลด priority หรือโอนให้คนนอกกะในกะนั้นด้วย · ติดจริงใช้ override ได้และมี audit | ไม่ขวาง triage จริง |
 | [ ] 29 | ack handoff โอนให้คนนอกกะ | P1/P2 ปฏิเสธ, P3/P4 อนุญาตพร้อมเตือน | ไม่งั้น "0" ของ AC-7 ไม่จริง |
 | [ ] 30 | ค่าของ T-111 | รับ: override ใช้ `roster.manage`, P2 ต้องอยู่ใน handoff, handoff ไม่ระบุผู้รับเห็นได้ 36 ชม. ใครตอบก่อนได้, reopen ไม่ได้หลังมีคำตอบ, session เกิน 16 ชม. ไม่นับ on shift, clock-in ก่อน 60 นาที, grace 5 นาที, note 48 ชม., stay_with_last fallback load_balanced, เก็บแค่ consent ไม่เก็บพิกัด · แก้: "question" นับเป็น ack แต่ P1/P2 ไม่มีคำตอบ 30 นาทีต้องเตือน lead | ลดภาระ, ไม่ปล่อย P1 ไร้เจ้าของ |
@@ -87,49 +63,14 @@
 | [ ] 33 | role `dev` | อ่านทุก ticket แบบ masked (ไม่เห็น email/phone) · ไม่ตอบลูกค้า ไม่อนุมัติ draft · status `open ↔ waiting_on_dev` ขากลับต้องมี note · รับงานเองผ่าน `dev_owner_id` · `investigate.run` ได้ `adhoc` ไม่ได้ · ไม่อยู่ใน `STAFF_ROLES` ไม่มี gate กะ | เจ้าของบอกให้ดู ticket หยิบไปแก้ ปรับสถานะ · PII น้อยสุด |
 | [ ] 34 | AI assistant | ไม่ต้องกด: ค้น สรุป อธิบาย `investigate.run` ในงบ · กดครั้งเดียว: assign, status, tag, note, create ticket, KB draft, adhoc · ตอบลูกค้าเปิดหน้า review เดิมเสมอ · ใช้สิทธิ์ของผู้ใช้ · **ลูกค้ายังไม่ได้ bubble** เพราะเท่ากับ AI ตอบลูกค้า (N3) · auto-run ภายหลังเฉพาะ tag/note ต้องมี ADR | N2, N3 |
 | [ ] 35 | เปิด ticket เอง | agent/lead/head · บังคับ org, contact, subject, body, channel · เพิ่ม `phone`, `walk_in`, `chat`, `other` · contact ใหม่ไม่ถือว่า verified · SLA เริ่มตอนเปิด ห้ามย้อนเวลา · email ยืนยันผ่าน template, address ใหม่ต้องติ๊ก | กันแต่งตัวเลข, กันส่งผิดคน |
-| [x] 25 | T-011 Phase 1 scope | T-122 ingest + `packages/domain`, T-123 scaffolding, AC-4 → T-108e KB-author ขั้นต่ำ, เลื่อน Discord bot / Web Push / digest / crawler / bulk ไปหลัง T-113, worktree ≤ 3, Phase 1 ปิดที่ "done pending pilot" | credit จำกัด ทำของมีค่าก่อน |
 
 ## การตัดสินใจของเจ้าของที่มีผลอยู่
-- ชื่อ Watchtower · stack ADR-001 · Docker local ก่อน GCP ภายหลัง · feature set PRD v0.1 · repo public เป็นกลาง · SSO domain จาก env · secret infra ใน env / credential integration เข้ารหัสใน DB (ADR-004) · โลโก้ `docs/brand/` · default autonomy stage 2 · ภาษา (โค้ด/commit อังกฤษ, เอกสารไทย) — 2026-10-31
-- 2026-11-01: ทำงานอัตโนมัติจนจบ Phase 1 (หยุดที่ T-115) · มอบอำนาจตัดสินใจให้ `po` ยกเว้นรายการ "ห้ามทำแทน" · งานขนานใน worktree แล้ว main thread ตรวจซ้ำ merge ทีละงาน · UI: ไม่ "ดู AI" (21st.dev แรงบันดาลใจ) → เป็น AI-driven workspace ไม่ใช่ mailbox → มนขึ้น น่ารักขึ้น ลด text ใช้สีและสัญลักษณ์ → แยก status กับ tag ให้ชัด · **11:35 สั่ง pause ไปทำต่อบน local**
-
-- 2026-11-01 21:59: `47f2ae9` ปล่อยไว้ ไม่ล้าง history · ชื่อ git ต่อจากนี้ `xzozero5` (ตั้งใน `git config user.name` ของ clone นี้แล้ว clone ใหม่ต้องตั้งเอง) 28 commit เดิมปล่อยไว้ · เพิ่ม OAuth ของกล่อง Gmail ก่อน pilot · รับรายการตรวจก่อน tag และ `po` #1–27
-
-## ต้องทำบนเครื่องเจ้าของก่อน tag `v0.0.1` (`[ASK-HUMAN]`)
-1. `git fetch origin && git checkout main && git pull` → `git config core.hooksPath tools/githooks` → `pnpm install && pnpm lint && pnpm typecheck && pnpm test`
-2. `docker compose up -d --build --wait` ทุก service healthy · `GET /health` ผ่าน Caddy (`:8080`) — บน cloud build image ไม่ได้ ยังไม่เคยรันจริง
-3. `pnpm db:migrate && pnpm db:seed` บน volume ใหม่ (DB เก่าอาจ checksum ไม่ตรง → `docker compose down -v`)
-4. `pnpm test:integration` · `pnpm test:e2e` · `pnpm test:e2e:fullstack` (Windows: `PW_CHANNEL=msedge`)
-5. ลองมือ: `/portal` แจ้งเรื่อง → ticket → assign → ตอบ → ลูกค้าเห็นในหน้า tracking → resolve → อีเมลใน Mailpit `http://localhost:8025`
-6. **รายการคำต้องห้ามจริงใน `.git/info/forbidden-terms`** (ข้อความสั่งงานมีแต่ placeholder) แล้วสแกน history · ตัดสินเรื่อง commit `47f2ae9` — agent ห้ามแก้ history
-7. ติ๊กการตัดสินใจของ `po` (#1–27) · feedback UI T-129
-8. tag เอง: `git tag v0.0.1 && git push origin v0.0.1`
-
-## ทำต่อบน local — ขั้นตอนแนะนำ
-1. `git fetch origin` แล้วดู branch `verify/t-103bd`, `wip/t-102bd`, `wip/t-107ac` (worktree ของ cloud ไม่ตามไป มีแต่ branch)
-2. env: `TURBO_TELEMETRY_DISABLED=1 NEXT_TELEMETRY_DISABLED=1` · ตรวจด้วย `turbo run … --force` เสมอ (dist ของ `shared`/`domain` ที่ cache ไว้ทำให้ผลหลอกได้) · integration ใช้ `--concurrency=1`
-3. ลำดับ: merge T-103 → Gmail (re-review + renumber) → KB (P2-A/P2-B ให้จบ + re-review) → W3: **T-108** investigator/drafter + KB-author ขั้นต่ำ, T-109 AI sidebar จริง, T-104 Discord webhook, T-105 notifications, T-110 CSAT, T-111 shifts, T-119, T-121, T-116c, T-123b, T-118 → W4: T-113 QA → T-114 security → T-125 → **หยุดที่ T-115** (`.env.example` + คู่มือ credential, `/handoff`)
-4. ทุก merge: `git checkout -b verify/<task> main && git merge --no-ff wip/<task>` → renumber migration ถ้าชน (แก้ test ที่อ้างชื่อ migration ด้วย, ใช้ `migrationsAfter`) → suite เต็ม → `git checkout main && git merge --no-ff verify/<task>` → STATUS + BACKLOG + daily log → push
-
-## รอเจ้าของ (`[ASK-HUMAN]`)
-- [ ] รายการตรวจก่อน tag ข้างบน
-- [ ] integration จริงทุกตัว (T-115) และการทดสอบ live ครั้งแรก: Gmail (service account + domain-wide delegation, scope readonly + send, `format=raw` ใต้ readonly `[VERIFY]`, JWKS ของ push `[VERIFY]`), LINE (pricing `[VERIFY]`, อายุ retry key ~24 ชม. `[VERIFY]`), AI provider, embedding provider (ตอนนี้ mock เท่านั้น — ตั้งเป็นอย่างอื่นแล้ว boot ไม่ขึ้นโดยตั้งใจ)
-- [ ] รับทราบ: approver ที่ไม่ใช่ผู้เขียนหนึ่งคนขยายผู้อ่านบทความ live ได้ทันที ไม่ต้องมีคนที่สอง (ไม่ขัดกฎ `po` #27 แต่ควรรู้)
-- [ ] hosted CAPTCHA / Web Push / KB crawl live — ปลายทาง network ใหม่
-- [ ] ยก autonomy ของ intent ใด ≥ 3 — ห้าม agent ทำ
+- ชื่อ Watchtower · stack ADR-001 · Docker local ก่อน GCP · repo public เป็นกลาง (ไม่มีชื่อองค์กรใน repo, commit, log) · secret infra ใน env, credential integration เข้ารหัสใน DB (ADR-004) · default autonomy stage 2 · โค้ด/commit อังกฤษ เอกสารไทย — 2026-10-31
+- 2026-11-01: `47f2ae9` ปล่อยไว้ · ชื่อ git `xzozero5` · OAuth กล่อง Gmail ก่อน pilot · รับ `po` #1–27
+- 2026-11-02: ทำต่อด้วย mock ให้จบ Phase 2 เท่าที่ได้ · UI ลดข้อความ, AI bubble, สรุปจาก AI พร้อมลิงก์หลักฐาน, เปิด ticket เอง, role `dev` · **หยุดที่ checkpoint และ release MVP `v0.1.0`**
+- ห้ามทำแทนเจ้าของ (แม้ `po` เห็นชอบ): ใช้ credential จริง, ส่งถึงลูกค้าจริง/ต่อ production, ยก autonomy ≥ 3, ลด N1–N10 หรือแก้ `.claude/`/guard, สิ่งที่ย้อนไม่ได้, dependency ที่ยิงปลายทางใหม่, ใช้เงินเกินงบ
 
 ## ยังไม่ยืนยัน (ห้ามเขียนเป็นข้อเท็จจริง)
-- `docker compose up` ด้วย image ที่ build เอง · Google OIDC จริง `[UNVERIFIED 60%]` · permission matrix `[ASSUMED]`
-- live transport ของ Gmail/LINE ไม่เคยคุยกับปลายทางจริง (ทดสอบด้วย scripted fetch เท่านั้น)
-- อายุ retry key LINE 20 ชม. `[ASSUMED]` · heartbeat Gmail 120 นาทีทำการ, full sync 7 วัน/500 ฉบับ `[ASSUMED]` · ขนาด chunk/similarity floor ของ KB `[ASSUMED]` · Thai trigram ทดสอบบน collation `en_US.utf8` เท่านั้น `[UNVERIFIED]`
-- วันหยุดไทย 2026–2027 `[VERIFY]` · CSP ยัง `unsafe-inline` → T-125 · Caddy override + digest MinIO `[VERIFY]`
-
-## วันตรวจซ้ำ
-- LINE pricing/feature: ก่อนปิด T-103 · Google managed MCP: ก่อน T-203 · วันหยุดราชการไทยปีถัดไป: ธันวาคม 2026
-
-## ปิด session (local, 2026-11-01 12:47)
-- เครื่อง: Windows · compose postgres/redis/minio/mailpit รันอยู่ · `.git/info/forbidden-terms` มีรายการจริงแล้ว hook ใช้ได้ (ยังไม่ได้สแกน history)
-- **เว็บยังไม่ได้เปิดให้ดู** ที่เจ้าของถาม: รอจังหวะไม่มี test แล้ว `pnpm db:migrate && pnpm db:seed && pnpm dev` ที่ `http://localhost:3000`
-- ยังไม่ได้เริ่ม: T-108, T-109, T-105, T-110, T-119, T-121, T-116c, T-123b, T-118, T-122f, T-113, T-114, T-125, T-115
-- scan N1 ทั้ง diff ของ T-107 ถูก `guard.py` บล็อกตอน review จึงไม่ได้รัน ไม่ได้อ้อม · อ่าน `examples/kb` แล้วไม่พบชื่อองค์กรจริง
-- บทเรียน: gate ต้องใส่ `--continue` ไม่งั้น turbo หยุดงานอื่นตอนตัวแรกตก · อย่ารัน integration พร้อม agent ที่รัน test หนัก
+- live transport ของ Gmail/LINE/Discord/Anthropic ไม่เคยคุยกับปลายทางจริง · Google OIDC จริง `[UNVERIFIED 60%]` · JWKS ของ Pub/Sub push `[VERIFY]` · Terraform/runbook GCP ไม่เคย apply
+- permission matrix `[ASSUMED]` · ค่า SLA at-risk 60 นาที, CFR 2 ชม., KB stale 90 วัน, heartbeat Gmail 120 นาที, full sync 7 วัน/500 ฉบับ `[ASSUMED]` · น้ำหนัก Health Score `[ASSUMED]` · วันหยุดไทย 2026–2027 `[VERIFY]`
+- KB search ใช้ embedding จำลอง ไม่ใช่ semantic · คำไทยใน UI ที่ agent เขียนยังไม่มีคนอ่าน
