@@ -63,7 +63,7 @@ Pub/Sub ต้องยิง HTTPS เข้ามาหา api จาก inter
 
 **ทุกครั้งที่อยากทดสอบเมลจริง**
 
-4. `docker compose --env-file <env file> --profile gmail-tunnel up -d --build gmail-tunnel`
+4. `docker compose --env-file <env file> --profile gmail-tunnel up -d --build --no-deps gmail-tunnel` — **ต้องมี `--no-deps`**: ไม่งั้น `--build` จะ build และขึ้น api + migrate ใหม่ด้วย (เคยเกิด 2026-11-03: migration ถูกรันบน POC โดยไม่ตั้งใจ)
 5. `docker compose --profile gmail-tunnel logs -f gmail-tunnel` ต้องเห็น `tunnel https://….trycloudflare.com` → `subscription … now pushes to …` → `self-check: … refused by the api (401)` · `503` = api ยังไม่มี `GMAIL_PUSH_AUDIENCE/GMAIL_PUSH_SERVICE_ACCOUNT` · container healthy เมื่อ subscribe สำเร็จเท่านั้น
 6. ส่งเมลจาก**บัญชีภายนอก**เข้ากล่อง support (เมลที่กล่องเดียวกันส่งถึงตัวเองถูกข้าม label `SENT` โดยตั้งใจ) · `users.watch` ต่ออายุเองทุกวัน 02:15 UTC และตอน worker start
 7. ปิด: `docker compose --profile gmail-tunnel stop gmail-tunnel` — subscription ยังชี้ URL ที่ตายแล้ว Pub/Sub จะ retry แล้วทิ้งตาม retention; เมลที่ตกหล่นดึงด้วยปุ่ม Sync/งาน sync ของ worker · container ล่ม/restart = URL ใหม่ + subscribe ใหม่อัตโนมัติ

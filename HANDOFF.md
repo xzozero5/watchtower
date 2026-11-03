@@ -4,11 +4,12 @@
 > ฉบับก่อน: `docs/handoff-archive/HANDOFF-2026-11-03-1320-po-quality-sweep.md`
 
 ## สถานะปัจจุบัน
-- **Branch:** `codex/po-workflow-upgrade` (จาก `main` @ `8be6c5e`) · commit ในเครื่องแล้ว **ยังไม่ push** ตามที่เจ้าของสั่ง ("ทำใน local ให้เสร็จก่อน")
+- **Branch:** งานรอบนี้อยู่ `codex/po-workflow-upgrade` และ **fast-forward เข้า `main` ในเครื่องแล้ว** (เจ้าของสั่ง "พร้อม" 2026-11-03 17:00) · **ยังไม่ push** origin/main ยังเป็น `8be6c5e`
 - **Phase:** 0/1 MVP + 2 mock เหมือนเดิม; รอบนี้ปิด T-165…T-169, เปิด T-170/T-171 (ส่วนที่เหลือ)
 - **ผลตรวจ [TESTED]:** typecheck 17/17, lint 18/18 + prettier ผ่าน; unit ทุก package ผ่าน (web 114 ไฟล์, shared 868, db/seed 64, worker 22 ไฟล์, ai, channels, domain, ui, connectors); api ผ่าน 38/39 ไฟล์ในรอบ gate — ไฟล์ที่ล้ม (email-reply ชนขณะแก้, routes-policy เพราะ dev เข้าถึง uploads) แก้แล้วรันซ้ำเฉพาะไฟล์ผ่าน **แต่ยังไม่ได้รัน api ครบชุดหลังแก้**; integration (agent รันเอง): uploads 8, shifts/incidents/manual/portal 131, kb-sync 5, migration up/down 3
 - **Demo `wt-year` (โค้ดรอบนี้ + seed 1 ปี):** `http://localhost:53000` (api :54000, mailpit :58025, pg :55432) dev login เปิด (เช่น `head@example.com` role Head) · AI/Gmail mock · env/override อยู่ใน scratchpad ของ session (ไม่อยู่ใน repo) · ปิด: `docker compose -p wt-year down -v` · image ชื่อ `wt-year/*` ไม่ทับ POC
-- **POC ของเจ้าของ (`watchtower`, :3000):** ไม่ได้ rebuild/deploy รอบนี้ — ยังเป็นโค้ดเดิม ยกเว้น `claude-bridge` ที่เจ้าของเปิดเอง
+- **POC ของเจ้าของ (`watchtower`, :3000) deploy โค้ดรอบนี้แล้ว 2026-11-03 17:05:** สำรอง DB ก่อน (`D:\Works\watchtower-backups\poc-20261103-1703.dump`, pg_dump -Fc) → build api/worker/web จาก main → migrate (0082/0083 ถูกรันไปแล้วตั้งแต่ 16:39 โดยไม่ตั้งใจ จาก `up --build gmail-tunnel` ที่พ่วง api+migrate — runbook §4 แก้เป็น `--no-deps` แล้ว) → ทุก service healthy, AI provider ready (sonnet ทุก tier, classifier timeout 15 s), OPS-1012 แสดงแบบ Gmail ใน Chrome เจ้าของ `[TESTED]`
+- **bridge ยัง publish `127.0.0.1:4317`** และ env ยังใช้ `host.docker.internal` (ใช้ได้ทั้ง worker เก่า/ใหม่) — ถ้าจะปิด port ให้เจ้าของเปลี่ยน `CLAUDE_CLI_BRIDGE_URL=http://claude-bridge:4317` ก่อน แล้วเอา `ports` ของ claude-bridge ออก
 - **ต้นทุน:** ไม่มี external AI/cloud call ในผลิตภัณฑ์; build agents 6 ตัว (frontend/backend×2/ai/security) ไม่มี meter รวม
 
 ## การตัดสินใจของเจ้าของที่มีผลอยู่
@@ -39,13 +40,13 @@
 - [ ] จะเปิด Watchtower ผ่าน internet เมื่อไร: ตอนนี้ claude-cli ถูกปฏิเสธเมื่อ APP_URL ไม่ใช่ loopback → ต้องเลือก: คง local / แก้ ADR ยอมให้ / ใช้ API key ใน production
 - [ ] หลังแก้ compose รอบนี้ ต้อง `docker compose --env-file D:\Works\secret\watchtower.env --profile ai up -d claude-bridge worker` และตั้ง `CLAUDE_CLI_BRIDGE_URL=http://claude-bridge:4317`
 - [ ] ส่งอีเมลทดสอบจากบัญชีภายนอกเข้ากล่อง support (พิสูจน์ push ครบวงจร) · กำหนดรอบ rotate key ของ `watchtower-pubsub-admin`
-- [ ] merge/deploy POC รอบนี้ (ยังไม่ทำ), malware scanning (T-155), ข้อความไทยให้เจ้าของภาษาตรวจ, T-115 pilot
+- [ ] push `main` ขึ้น origin (ยังไม่ทำตามคำสั่งเจ้าของ), malware scanning (T-155), ข้อความไทยให้เจ้าของภาษาตรวจ, T-115 pilot
 
 ## ขั้นต่อไป (เรียงลำดับ)
-1. รัน api unit ครบชุด + full-stack e2e บน service ทิ้ง ก่อน merge
+1. full-stack e2e + Playwright ของฟีเจอร์ใหม่บน service ทิ้ง (api unit ครบชุดผ่านแล้ว 39 ไฟล์ / 266 test) แล้วค่อย push
 2. เจ้าของตั้ง SA + key แล้วรัน `gmail-tunnel` (runbook §4) → ทดสอบรับ-ส่งอีเมลจริงกับ composer ใหม่ (ยืนยัน Bcc)
 3. T-170, T-171
-4. merge + rebuild POC เมื่อเจ้าของสั่ง
+4. ปิด demo `wt-year` เมื่อไม่ใช้ (`docker compose -p wt-year down -v`)
 5. ของเดิมตาม BACKLOG
 
 ## วิธีเปิดระบบและทดสอบต่อ
