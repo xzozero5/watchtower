@@ -40,6 +40,7 @@ describe('claude-cli adapter (ADR-017)', () => {
       'https://host.docker.internal:4317',
       'http://example.com:4317',
       'http://u:p@localhost:4317',
+      'http://claude-bridge.evil.example:4317',
       'not a url',
     ]) {
       expect(build({ bridgeUrl: bad, token: TOKEN, fetch: forbiddenFetch }), bad).toThrow(
@@ -51,6 +52,7 @@ describe('claude-cli adapter (ADR-017)', () => {
       'http://localhost:4317',
       'http://127.0.0.1:4317',
       'http://[::1]:4317',
+      'http://claude-bridge:4317',
     ]) {
       expect(build({ bridgeUrl: good, token: TOKEN, fetch: forbiddenFetch }), good).not.toThrow();
     }

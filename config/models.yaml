@@ -1,3 +1,4 @@
+# (ADR-019: AI ใน "แอป" ของ instance เจ้าของใช้ AI_MODEL_DEEP/STANDARD/LIGHT=sonnet จาก env file ไม่เกี่ยวกับไฟล์นี้)
 # Model tiers — agent files ใส่ model ตาม tier นี้ ห้าม hardcode ชื่อ model ในโค้ดแอป
 # (โค้ดแอปอ่าน provider/model จาก admin settings ใน DB — PRD §6.7 — ไฟล์นี้ใช้กับ AI ที่ "สร้าง" โปรเจกต์เท่านั้น)
 tiers:

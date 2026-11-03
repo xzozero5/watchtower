@@ -13,7 +13,7 @@ import {
   type AiInsightReason,
   type AiNextStepKind,
 } from '@watchtower/shared';
-import { UnrecoverableError, type Job } from 'bullmq';
+import { DelayedError, UnrecoverableError, type Job } from 'bullmq';
 import { asc, eq } from 'drizzle-orm';
 
 import type { WorkerLogger } from '../logger.js';
@@ -32,6 +32,7 @@ export const NEEDS_HUMAN_LABELS: Readonly<Record<AiInsightReason, string>> = {
   model_output_invalid: 'AI gave no usable answer. Read the ticket.',
   provider_error: 'AI could not be reached. Read the ticket.',
   provider_unavailable: 'AI is not set up. Read the ticket.',
+  provider_offline: 'AI is offline (its host has no internet). It will retry. Read the ticket.',
   audit_failed: 'AI could not be recorded. Read the ticket.',
 };
 
@@ -156,6 +157,10 @@ export async function makeAiBrief(deps: BriefDeps, ticketId: string): Promise<Br
     intents,
   });
   if (classified.status === 'skipped') return needsHuman(classified.reason);
+  // Offline (ADR-019) is a wait, not a failure: say so on the ticket, leave the retry to the processor.
+  if (classified.status === 'failed' && classified.reason === 'provider_offline') {
+    return needsHuman('provider_offline');
+  }
   if (classified.status === 'failed') {
     await write({ state: 'failed', reasonCode: classified.reason });
     throw new BriefFailedError(classified.reason);
@@ -182,6 +187,9 @@ export async function makeAiBrief(deps: BriefDeps, ticketId: string): Promise<Br
     intentKey,
   });
   if (summarized.status === 'skipped') return needsHuman(summarized.reason, known);
+  if (summarized.status === 'failed' && summarized.reason === 'provider_offline') {
+    return needsHuman('provider_offline', known);
+  }
   if (summarized.status === 'failed') {
     await write({ state: 'failed', reasonCode: summarized.reason, ...known });
     throw new BriefFailedError(summarized.reason);
@@ -197,9 +205,29 @@ export async function makeAiBrief(deps: BriefDeps, ticketId: string): Promise<Br
   return { status: 'classified' };
 }
 
+/** While the AI host is offline a brief job is put back this far into the future (ADR-019). */
+export const OFFLINE_RETRY_MS = 5 * 60_000;
+/** After this long since the job was created, an offline job stops waiting; the ticket stays for a person. */
+export const OFFLINE_GIVE_UP_MS = 24 * 3_600_000;
+
+/**
+ * Moves an offline job to a later time without using one of its attempts, and ends this run with
+ * `DelayedError` (BullMQ's way to say "do not complete, do not fail"). Past the give-up age, or with
+ * no lock token, it does nothing and the job completes with the `needs_human` insight as written.
+ */
+export async function delayWhileOffline(
+  job: Pick<Job, 'timestamp' | 'moveToDelayed'>,
+  token: string | undefined,
+  now: number = Date.now(),
+): Promise<void> {
+  if (token === undefined || now - job.timestamp >= OFFLINE_GIVE_UP_MS) return;
+  await job.moveToDelayed(now + OFFLINE_RETRY_MS, token);
+  throw new DelayedError();
+}
+
 /** The BullMQ processor of the `ai` queue. */
 export function createAiProcessor(deps: BriefDeps) {
-  return async (job: Job): Promise<BriefResult> => {
+  return async (job: Job, token?: string): Promise<BriefResult> => {
     if (job.name !== AI_JOBS.summarize) {
       throw new UnrecoverableError(`unknown ai job "${job.name}"`);
     }
@@ -210,6 +238,7 @@ export function createAiProcessor(deps: BriefDeps) {
       { ticketId: parsed.data.ticketId, status: result.status, reason: result.reason },
       'ai brief',
     );
+    if (result.reason === 'provider_offline') await delayWhileOffline(job, token);
     return result;
   };
 }

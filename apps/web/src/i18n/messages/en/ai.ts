@@ -36,6 +36,8 @@ export const aiEn = {
       model_output_invalid: 'The AI gave an answer that could not be used.',
       provider_error: 'The AI service could not be reached.',
       provider_unavailable: 'The AI service is not set up yet.',
+      provider_offline:
+        'AI is offline right now (its host has no internet). It will try again by itself.',
       audit_failed: 'The AI action could not be recorded, so it was dropped.',
     },
     ai: 'AI',

@@ -35,6 +35,7 @@ export const aiTh: Widen<typeof aiEn> = {
       model_output_invalid: 'AI ตอบกลับมาแต่ใช้งานไม่ได้',
       provider_error: 'เชื่อมต่อบริการ AI ไม่ได้',
       provider_unavailable: 'ยังไม่ได้ตั้งค่าบริการ AI',
+      provider_offline: 'AI ออฟไลน์อยู่ (เครื่องโฮสต์ไม่มีอินเทอร์เน็ต) ระบบจะลองใหม่เอง',
       audit_failed: 'บันทึกการทำงานของ AI ไม่ได้ จึงยกเลิกผลลัพธ์',
     },
     ai: 'AI',

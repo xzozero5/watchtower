@@ -85,6 +85,11 @@ export function failedFor(error: unknown): AgentOutcome<never> {
   if (error instanceof ProviderUnavailableError) {
     return { status: 'failed', reason: 'provider_unavailable' };
   }
+  // The claude-cli bridge says "offline" when its host has no route to Anthropic (ADR-019): not a
+  // fault of the provider and not a missing setup, so the job waits and tries again later.
+  if (error instanceof ProviderError && error.code === 'offline') {
+    return { status: 'failed', reason: 'provider_offline' };
+  }
   if (error instanceof ProviderError) return { status: 'failed', reason: 'provider_error' };
   return { status: 'failed', reason: 'provider_error' };
 }

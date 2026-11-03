@@ -390,6 +390,10 @@ services:
     # So AI_PROVIDER=claude-cli can reach the bridge on the host (ADR-017); harmless otherwise.
     extra_hosts:
       - 'host.docker.internal:host-gateway'
+    # The worker is the only service on the `ai` network, so it is the only one that reaches the bridge.
+    networks:
+      - default
+      - ai
     ports:
       - '127.0.0.1:${WORKER_PORT:-4100}:4100'
     depends_on:
@@ -411,6 +415,58 @@ services:
       timeout: 5s
       retries: 10
       start_period: 15s
+
+  claude-bridge:
+    # Long-running bridge to `claude -p` (ADR-019), behind the `ai` profile so a plain `up` never builds it:
+    #   docker compose --profile ai up -d --build claude-bridge
+    # Set AI_PROVIDER=claude-cli and CLAUDE_CLI_BRIDGE_URL=http://claude-bridge:4317 for the worker.
+    # No port is published: only containers on this network reach it, and every call still needs the
+    # bearer token (CLAUDE_CLI_BRIDGE_TOKEN). The login is CLAUDE_CODE_OAUTH_TOKEN from `claude setup-token`
+    # [VERIFY name against current Claude Code docs], read from your env file at run time, never baked
+    # into the image. ANTHROPIC_API_KEY is deliberately not passed (the subscription is the point).
+    # The bridge answers "offline" when the host cannot reach Anthropic; the app then waits and retries.
+    profiles: ['ai']
+    build:
+      context: ./tools/claude-cli-bridge
+      args:
+        CLAUDE_CODE_VERSION: ${CLAUDE_CODE_VERSION:-2.1.316}
+    image: watchtower/claude-bridge:local
+    restart: unless-stopped
+    # Only the worker shares this network (web, caddy, minio cannot reach it); egress to Anthropic stays.
+    networks:
+      - ai
+    read_only: true
+    tmpfs:
+      - /tmp
+      - /home/node/.claude:uid=1000,gid=1000
+      - /home/node/.config:uid=1000,gid=1000
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      CLAUDE_CLI_BRIDGE_TOKEN: ${CLAUDE_CLI_BRIDGE_TOKEN:-}
+      CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN:-}
+      CLAUDE_CLI_BRIDGE_HOST: 0.0.0.0
+      CLAUDE_CLI_BRIDGE_MAX_CONCURRENCY: ${CLAUDE_CLI_BRIDGE_MAX_CONCURRENCY:-2}
+      CLAUDE_CLI_BRIDGE_TIMEOUT_MS: ${CLAUDE_CLI_BRIDGE_TIMEOUT_MS:-180000}
+    volumes:
+      # The knowledge base folder, read-only, for grounded answers later (nothing reads it yet).
+      # WATCHTOWER_KB_DIR is the path on THIS machine; unset, it is an empty placeholder directory.
+      - type: bind
+        source: ${WATCHTOWER_KB_DIR:-./config/no-kb}
+        target: /kb
+        read_only: true
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:4317/healthz').then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1))"
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
   web:
     # apps/web/Dockerfile belongs to T-003. Contract: listens on 3000, GET /health returns 2xx.
@@ -465,6 +521,10 @@ services:
       interval: 10s
       timeout: 3s
       retries: 10
+
+networks:
+  # Worker <-> claude-bridge only (ADR-019).
+  ai: {}
 
 volumes:
   pgdata:

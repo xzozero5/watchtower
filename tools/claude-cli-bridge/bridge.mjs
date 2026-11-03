@@ -5,12 +5,18 @@ import { createHash, timingSafeEqual } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { createServer } from 'node:http';
+import { connect as netConnect } from 'node:net';
 import { tmpdir } from 'node:os';
 import { delimiter, join } from 'node:path';
 
 export const DEFAULT_PORT = 4317;
 export const DEFAULT_TIMEOUT_MS = 180_000;
 export const DEFAULT_MAX_CONCURRENCY = 2;
+/** "Online" means the Anthropic API host accepts a TCP connection (ADR-019). */
+export const ONLINE_CHECK_HOST = 'api.anthropic.com';
+export const ONLINE_CHECK_PORT = 443;
+export const ONLINE_CHECK_TIMEOUT_MS = 3_000;
+export const ONLINE_CACHE_MS = 15_000;
 export const MAX_REQUEST_BYTES = 1_000_000;
 export const MAX_OUTPUT_BYTES = 4_000_000;
 /** A system prompt longer than this goes to stdin: the Windows command line is limited to ~32k. */
@@ -119,6 +125,53 @@ export function validateRequest(body) {
     throw new BridgeHttpError(400, 'bad_request');
   }
   return { model, system, messages, maxOutputTokens };
+}
+
+/** One TCP connect attempt; resolves true when the port accepts, false on error or timeout. */
+export function tcpReachable(host, port, timeoutMs, connect = netConnect) {
+  return new Promise((resolve) => {
+    let socket;
+    const finish = (ok) => {
+      socket?.destroy();
+      resolve(ok);
+    };
+    try {
+      socket = connect({ host, port });
+    } catch {
+      resolve(false);
+      return;
+    }
+    socket.setTimeout(timeoutMs);
+    socket.once('connect', () => finish(true));
+    socket.once('timeout', () => finish(false));
+    socket.once('error', () => finish(false));
+  });
+}
+
+/**
+ * A cached "is the internet (Anthropic) reachable" check. The result lives `ttlMs`; concurrent
+ * callers share one probe. `probe` is injectable so tests never touch the network.
+ */
+export function createOnlineChecker({
+  probe = () => tcpReachable(ONLINE_CHECK_HOST, ONLINE_CHECK_PORT, ONLINE_CHECK_TIMEOUT_MS),
+  ttlMs = ONLINE_CACHE_MS,
+  now = Date.now,
+} = {}) {
+  let last = null; // { online, at }
+  let inflight = null;
+  return async function checkOnline() {
+    if (last !== null && now() - last.at < ttlMs) return { ...last };
+    inflight ??= probe()
+      .catch(() => false)
+      .then((online) => {
+        last = { online: online === true, at: now() };
+        return last;
+      })
+      .finally(() => {
+        inflight = null;
+      });
+    return { ...(await inflight) };
+  };
 }
 
 const sha = (text) => createHash('sha256').update(text).digest();
@@ -244,6 +297,7 @@ export function createBridge({
   maxConcurrency = DEFAULT_MAX_CONCURRENCY,
   env = process.env,
   log = () => {},
+  checkOnline = createOnlineChecker(),
   makeTempDir = () => mkdtemp(join(tmpdir(), 'wt-claude-bridge-')),
   removeDir = (dir) => rm(dir, { recursive: true, force: true }),
 }) {
@@ -261,6 +315,13 @@ export function createBridge({
     const done = (status, extra = {}) => log({ status, ms: Date.now() - started, ...extra });
     void (async () => {
       try {
+        if (req.method === 'GET' && req.url === '/healthz') {
+          // No auth, and nothing but liveness and reachability: no version, path, model or token.
+          const { online, at } = await checkOnline();
+          send(res, 200, { status: 'ok', online, checkedAt: new Date(at).toISOString() });
+          done(200, { route: 'healthz', online });
+          return;
+        }
         if (req.method !== 'POST' || req.url !== '/v1/generate') {
           throw new BridgeHttpError(404, 'not_found');
         }
@@ -268,6 +329,8 @@ export function createBridge({
           throw new BridgeHttpError(401, 'unauthorized');
         }
         const request = validateRequest(await readBody(req));
+        // AI works only while this host is online (ADR-019): say so instead of spawning a doomed CLI.
+        if (!(await checkOnline()).online) throw new BridgeHttpError(503, 'offline');
         if (active >= maxConcurrency) throw new BridgeHttpError(429, 'busy');
         active += 1;
         try {

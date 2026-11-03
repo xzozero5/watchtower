@@ -137,6 +137,7 @@ export const AI_INSIGHT_REASONS = [
   'model_output_invalid',
   'provider_error',
   'provider_unavailable',
+  'provider_offline',
   'audit_failed',
 ] as const;
 export type AiInsightReason = (typeof AI_INSIGHT_REASONS)[number];

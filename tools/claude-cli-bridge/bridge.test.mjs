@@ -7,7 +7,9 @@ import {
   buildCliArgs,
   buildStdin,
   createBridge,
+  createOnlineChecker,
   parseCliOutput,
+  tcpReachable,
   resolveClaudeBinary,
   tokenMatches,
 } from './bridge.mjs';
@@ -79,10 +81,13 @@ async function start(options) {
     makeTempDir: () => Promise.resolve('/tmp/fake-cwd'),
     removeDir: () => Promise.resolve(),
     log: (entry) => logs.push(entry),
+    // Never the real network in tests.
+    checkOnline: () => Promise.resolve({ online: true, at: Date.now() }),
     ...options,
   });
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
-  const url = `http://127.0.0.1:${String(server.address().port)}/v1/generate`;
+  const base = `http://127.0.0.1:${String(server.address().port)}`;
+  const url = `${base}/v1/generate`;
   const post = (body, token = TOKEN) =>
     fetch(url, {
       method: 'POST',
@@ -92,7 +97,7 @@ async function start(options) {
       },
       body: typeof body === 'string' ? body : JSON.stringify(body),
     });
-  return { post, logs, url };
+  return { post, logs, url, base };
 }
 
 const goodBody = {
@@ -269,5 +274,77 @@ describe('http bridge', () => {
     pending[0].stdout.write(cliJson());
     pending[0].emit('close', 0);
     expect((await first).status).toBe(200);
+  });
+});
+
+describe('online check and /healthz (ADR-019)', () => {
+  it('answers /healthz without a token and reveals only status, online and a time', async () => {
+    const { base } = await start({
+      checkOnline: () => Promise.resolve({ online: false, at: Date.UTC(2026, 10, 3) }),
+    });
+    const response = await fetch(`${base}/healthz`);
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(Object.keys(body).toSorted()).toEqual(['checkedAt', 'online', 'status']);
+    expect(body).toMatchObject({ status: 'ok', online: false });
+    expect(JSON.stringify(body)).not.toContain(TOKEN);
+  });
+
+  it('answers 503 offline without spawning the CLI when the host is offline', async () => {
+    const { spawn, calls } = fakeSpawn(succeed());
+    const { post } = await start({
+      spawn,
+      checkOnline: () => Promise.resolve({ online: false, at: Date.now() }),
+    });
+    const response = await post(goodBody);
+    expect(response.status).toBe(503);
+    expect(await response.json()).toEqual({ error: 'offline' });
+    expect(calls).toHaveLength(0);
+  });
+
+  it('still asks for the token before it says anything about being offline', async () => {
+    const { post } = await start({
+      checkOnline: () => Promise.resolve({ online: false, at: Date.now() }),
+    });
+    expect((await post(goodBody, 'wrong-token-0123456789')).status).toBe(401);
+  });
+
+  it('caches the probe for the TTL and shares one in-flight probe', async () => {
+    let now = 1_000;
+    let probes = 0;
+    const check = createOnlineChecker({
+      probe: () => {
+        probes += 1;
+        return Promise.resolve(true);
+      },
+      ttlMs: 10_000,
+      now: () => now,
+    });
+    await Promise.all([check(), check(), check()]);
+    expect(probes).toBe(1);
+    now += 9_000;
+    await check();
+    expect(probes).toBe(1);
+    now += 2_000;
+    await check();
+    expect(probes).toBe(2);
+  });
+
+  it('treats a throwing probe as offline', async () => {
+    const check = createOnlineChecker({ probe: () => Promise.reject(new Error('dns')) });
+    expect((await check()).online).toBe(false);
+  });
+
+  it('tcpReachable is false on error and true on connect (fake socket)', async () => {
+    const make = (event) => () => {
+      const socket = new EventEmitter();
+      socket.setTimeout = () => {};
+      socket.destroy = () => {};
+      queueMicrotask(() => socket.emit(event));
+      return socket;
+    };
+    expect(await tcpReachable('h', 1, 100, make('connect'))).toBe(true);
+    expect(await tcpReachable('h', 1, 100, make('error'))).toBe(false);
+    expect(await tcpReachable('h', 1, 100, make('timeout'))).toBe(false);
   });
 });

@@ -15,6 +15,8 @@ const token = process.env.CLAUDE_CLI_BRIDGE_TOKEN ?? '';
 const port = Number(process.env.CLAUDE_CLI_BRIDGE_PORT ?? DEFAULT_PORT);
 // 127.0.0.1 by default. Docker Desktop reaches it through host.docker.internal; set
 // CLAUDE_CLI_BRIDGE_HOST only if your setup cannot (the token is then the only protection).
+// The container image (ADR-019) sets 0.0.0.0 and publishes no port: only the compose network
+// reaches it, with the bearer token still required.
 const host = process.env.CLAUDE_CLI_BRIDGE_HOST ?? '127.0.0.1';
 
 let server;

@@ -15,7 +15,14 @@ export interface CliBridgeProviderConfig {
 }
 
 /** Where the bridge may run: this machine, or the Docker Desktop alias of it. Nothing else. */
-const BRIDGE_HOSTS = ['localhost', '127.0.0.1', '[::1]', 'host.docker.internal'] as const;
+const BRIDGE_HOSTS = [
+  'localhost',
+  '127.0.0.1',
+  '[::1]',
+  'host.docker.internal',
+  // The compose service of the long-running bridge container (ADR-019); resolves only inside the network.
+  'claude-bridge',
+] as const;
 const DEFAULT_TIMEOUT_MS = 190_000;
 const PROVIDER = 'claude-cli';
 
@@ -37,14 +44,16 @@ function bridgeEndpoint(value: string): string {
     throw new ProviderConfigError('claude-cli adapter: bridgeUrl is not a valid URL');
   }
   if (url.protocol !== 'http:') {
-    throw new ProviderConfigError('claude-cli adapter: bridgeUrl must use http (loopback only)');
+    throw new ProviderConfigError(
+      'claude-cli adapter: bridgeUrl must use http (this machine or the compose network only)',
+    );
   }
   if (url.username !== '' || url.password !== '') {
     throw new ProviderConfigError('claude-cli adapter: bridgeUrl must not hold credentials');
   }
   if (!(BRIDGE_HOSTS as readonly string[]).includes(url.hostname.toLowerCase())) {
     throw new ProviderConfigError(
-      'claude-cli adapter: bridgeUrl host must be localhost, 127.0.0.1, [::1] or host.docker.internal',
+      'claude-cli adapter: bridgeUrl host must be localhost, 127.0.0.1, [::1], host.docker.internal or claude-bridge',
     );
   }
   return `${url.origin}/v1/generate`;
