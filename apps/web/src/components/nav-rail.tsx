@@ -21,11 +21,10 @@ import {
 import Image from 'next/image';
 import type { ReactNode } from 'react';
 
-import { ApiStatus } from '@/components/api-status';
 import { AppLink } from '@/components/app-link';
-import { LiveStatus } from '@/components/live-status';
 import { NotificationCenter } from '@/components/notifications/notification-center';
 import { RAIL_ITEM_CLASSES } from '@/components/rail-styles';
+import { RailStatus } from '@/components/rail-status';
 import { ShiftChip } from '@/components/shift/shift-chip';
 import { UserMenu } from '@/components/user-menu';
 import { useT } from '@/i18n/provider';
@@ -400,15 +399,7 @@ export function NavRail({
           onClick={onOpenPalette}
         />
         <ShiftChip expanded={expanded} />
-        <div
-          className={cn(
-            'flex items-center gap-0.5 md:my-1 md:flex-col md:items-stretch',
-            expanded && 'md:items-start md:px-1',
-          )}
-        >
-          <LiveStatus compact={!expanded} />
-          <ApiStatus compact={!expanded} />
-        </div>
+        <RailStatus expanded={expanded} part="rows" />
         {canToggleExpanded ? (
           <RailButton
             icon={PanelLeft}
@@ -422,7 +413,18 @@ export function NavRail({
             className="max-md:hidden"
           />
         ) : null}
-        <UserMenu onShowShortcuts={onOpenKeymap} showLabel={expanded} />
+        {/* The person, and beside them the one quiet connection dot (rows appear only for trouble). */}
+        <div
+          className={cn(
+            'flex items-center md:flex-col md:items-stretch',
+            expanded && 'md:flex-row',
+          )}
+        >
+          <div className="min-w-0 flex-1">
+            <UserMenu onShowShortcuts={onOpenKeymap} showLabel={expanded} />
+          </div>
+          <RailStatus expanded={expanded} part="dot" />
+        </div>
       </div>
     </header>
   );

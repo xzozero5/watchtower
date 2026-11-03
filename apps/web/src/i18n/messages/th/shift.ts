@@ -48,6 +48,7 @@ export const shiftTh: Widen<typeof shiftEn> = {
     rosterEmpty: 'วันนี้คุณไม่อยู่ในตารางเวร',
     unreadNotes: 'โน้ตที่ยังไม่อ่าน {count} รายการ',
     pendingAcks: 'รายการส่งมอบที่ต้องรับทราบ {count} รายการ',
+    toAcknowledge: 'รอรับทราบ {count}',
     goBrief: 'เปิดสรุปประจำวัน',
     goHandoff: 'เปิดหน้าส่งมอบงาน',
     goNotes: 'เปิดโน้ต',

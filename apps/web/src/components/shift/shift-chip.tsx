@@ -25,8 +25,10 @@ export function ShiftChip({ expanded }: { expanded: boolean }) {
   const label = chipLabel(status.data, t, locale);
   const Icon = label.warning ? TriangleAlert : Clock3;
   const unread = status.data.unreadNotes + status.data.pendingAcks;
+  const toAck = unread > 0 ? t('shift.status.toAcknowledge', { count: unread }) : null;
+  // Words in the order they are drawn, so the name contains the visible text (WCAG 2.5.3).
   const full = [
-    label.text,
+    toAck ? `${label.text} ${toAck}` : label.text,
     status.data.unreadNotes > 0
       ? t('shift.status.unreadNotes', { count: status.data.unreadNotes })
       : null,
@@ -43,7 +45,7 @@ export function ShiftChip({ expanded }: { expanded: boolean }) {
       title={full}
       data-shift-state={label.state}
       className={cn(
-        'flex min-h-control items-center gap-2 rounded-inner px-2 text-xs transition-colors focus-visible:outline-2 focus-visible:outline-offset-0 focus-visible:outline-ring',
+        'flex min-h-control items-center gap-2.5 rounded-inner px-3 text-xs transition-colors focus-visible:outline-2 focus-visible:outline-offset-0 focus-visible:outline-ring',
         // T-151: the chip always says something in words. The narrow rail stacks the icon over
         // the shift's hours; the wide rail shows the whole sentence.
         !expanded && 'md:flex-col md:justify-center md:gap-0.5 md:px-0.5 md:py-1.5 md:text-center',
@@ -58,8 +60,17 @@ export function ShiftChip({ expanded }: { expanded: boolean }) {
         className={cn('size-4 shrink-0', label.warning && TINT_CLASSES.amber.icon)}
       />
       {expanded ? (
-        <span aria-hidden className="truncate max-md:hidden">
-          {label.text}
+        <span className="flex min-w-0 flex-col max-md:hidden">
+          <span aria-hidden className="truncate">
+            {label.text}
+          </span>{' '}
+          {toAck ? (
+            // Words for the number: unread shift notes plus handoff items waiting for you. Part of
+            // the accessible name too (WCAG 2.5.3).
+            <span aria-hidden className="tabular truncate font-medium text-foreground">
+              {toAck}
+            </span>
+          ) : null}
         </span>
       ) : null}
       <span
@@ -71,16 +82,13 @@ export function ShiftChip({ expanded }: { expanded: boolean }) {
       >
         {label.short}
       </span>
-      {unread > 0 ? (
+      {unread > 0 && !expanded ? (
         // The count is drawn from an attribute, not text: the name already spells it out in words, and
         // a bare number in the visible text would not be part of that name (WCAG 2.5.3).
         <span
           aria-hidden
           data-count={unread}
-          className={cn(
-            'tabular ml-auto rounded-full bg-primary-subtle px-1.5 text-foreground after:content-[attr(data-count)]',
-            !expanded && 'sr-only',
-          )}
+          className="tabular rounded-full bg-primary-subtle px-1.5 text-foreground after:content-[attr(data-count)]"
         />
       ) : null}
     </AppLink>

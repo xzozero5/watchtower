@@ -77,6 +77,55 @@ test.describe('no full page reloads', () => {
   });
 });
 
+test.describe('the shell stays mounted', () => {
+  test('the rail keeps its element and no shell skeleton appears while moving between pages', async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await mockConsole(page, 'head');
+    await page.goto('/home');
+    await hydrated(page);
+    const rail = page.getByRole('navigation', { name: 'Main navigation' });
+    await expect(rail).toBeVisible();
+    await markDocument(page);
+    // Tag the element, and watch for the whole-page skeleton of the auth gate.
+    await page.evaluate(() => {
+      const nav = document.querySelector('nav[aria-label="Main navigation"]');
+      (nav as unknown as { __tag: string }).__tag = 'same';
+      const w = window as unknown as { __shellSkeleton: boolean };
+      w.__shellSkeleton = false;
+      new MutationObserver(() => {
+        if (document.querySelector('main[role="status"]')) w.__shellSkeleton = true;
+      }).observe(document.body, { childList: true, subtree: true });
+    });
+
+    const steps: [string, RegExp][] = [
+      ['Admin', /\/admin\//],
+      ['Ops dashboard', /\/dashboard/],
+      ['Home', /\/home/],
+      ['Queue', /\/(\?.*)?$/],
+      ['My shift', /\/shift/],
+      ['Home', /\/home/],
+    ];
+    for (const [name, url] of steps) {
+      await rail.getByRole('link', { name, exact: true }).click();
+      await expect(page).toHaveURL(url);
+      const kept = await page.evaluate(() => {
+        const nav = document.querySelector('nav[aria-label="Main navigation"]');
+        return (nav as unknown as { __tag?: string } | null)?.__tag === 'same';
+      });
+      expect(kept, `the rail was re-created going to ${name}`).toBe(true);
+    }
+    expect(
+      await page.evaluate(
+        () => (window as unknown as { __shellSkeleton: boolean }).__shellSkeleton,
+      ),
+      'a shell-level skeleton appeared',
+    ).toBe(false);
+    await expectSameDocument(page);
+  });
+});
+
 test.describe('where each role starts', () => {
   test('an agent lands on the queue', async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 800 });

@@ -1,9 +1,10 @@
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
-import { cn, Tooltip } from '@watchtower/ui';
+import { cn, TINT_CLASSES, Tooltip } from '@watchtower/ui';
 import { CircleCheck, CircleX, LoaderCircle } from 'lucide-react';
 
+import { RAIL_ITEM_CLASSES } from '@/components/rail-styles';
 import { useT } from '@/i18n/provider';
 import { useRuntimeConfig } from '@/lib/runtime-config-context';
 
@@ -21,48 +22,67 @@ export async function fetchApiHealth(apiUrl: string, signal?: AbortSignal): Prom
   return 'ok';
 }
 
-/**
- * Shows whether the browser can reach the API. It uses the runtime API URL, so it also proves the
- * deployment's configuration is wired up. The state is words plus an icon, never colour alone.
- */
-export function ApiStatus({ compact = false }: { compact?: boolean }) {
-  const t = useT();
+/** The api health check, polled. `success`, `error` or `pending`. */
+export function useApiHealth() {
   const { apiUrl } = useRuntimeConfig();
-  const { status } = useQuery({
+  return useQuery({
     queryKey: ['api-health', apiUrl],
     queryFn: ({ signal }) => fetchApiHealth(apiUrl, signal),
     retry: false,
     refetchInterval: POLL_MS,
-  });
+  }).status;
+}
+
+/**
+ * Shows whether the browser can reach the API. It uses the runtime API URL, so it also proves the
+ * deployment's configuration is wired up. The state is words plus an icon, never colour alone.
+ *
+ * `quiet` (the rail): while all is well the words stay for screen readers and tests but nothing is
+ * drawn, because a normal state is not news (the rail shows one neutral dot instead). A failure is
+ * always a visible row, laid out like the other rail items.
+ */
+export function ApiStatus({
+  compact = false,
+  quiet = false,
+}: {
+  compact?: boolean;
+  quiet?: boolean;
+}) {
+  const t = useT();
+  const status = useApiHealth();
 
   const view =
     status === 'pending'
-      ? {
-          icon: LoaderCircle,
-          text: t('apiStatus.checking'),
-          tone: 'text-muted-foreground',
-          spin: true,
-        }
+      ? { icon: LoaderCircle, text: t('apiStatus.checking'), tone: '', spin: true }
       : status === 'success'
-        ? { icon: CircleCheck, text: t('apiStatus.online'), tone: 'text-success', spin: false }
-        : { icon: CircleX, text: t('apiStatus.offline'), tone: 'text-danger', spin: false };
+        ? { icon: CircleCheck, text: t('apiStatus.online'), tone: '', spin: false }
+        : {
+            icon: CircleX,
+            text: t('apiStatus.offline'),
+            tone: TINT_CLASSES.red.icon,
+            spin: false,
+          };
   const Icon = view.icon;
+  const hidden = quiet && status !== 'error';
 
   return (
-    <Tooltip content={view.text} side="right" disabled={!compact}>
+    <Tooltip content={view.text} side="right" disabled={!compact || hidden}>
       <p
         role="status"
         data-testid="api-status"
         data-state={status}
         aria-label={t('apiStatus.label')}
         className={cn(
-          'flex items-center gap-1.5 text-xs font-medium',
-          compact && 'size-control justify-center',
-          view.tone,
+          hidden
+            ? 'sr-only'
+            : cn(RAIL_ITEM_CLASSES, 'max-md:w-control max-md:justify-center max-md:px-0'),
         )}
       >
-        <Icon aria-hidden className={cn('size-4', view.spin && 'animate-spin')} />
-        <span className={compact ? 'sr-only' : undefined}>{view.text}</span>
+        <Icon
+          aria-hidden
+          className={cn('size-4 shrink-0', view.tone, view.spin && 'animate-spin')}
+        />
+        <span className={compact && !hidden ? 'sr-only' : 'truncate'}>{view.text}</span>
       </p>
     </Tooltip>
   );

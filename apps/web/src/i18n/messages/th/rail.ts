@@ -21,5 +21,7 @@ export const railTh: Widen<typeof railEn> = {
   keymapShort: 'คีย์ลัด',
   collapseShort: 'ย่อเมนู',
   account: 'เมนูบัญชี',
+  statusOk: 'เชื่อมต่อแล้ว: อัปเดตสดทำงาน, API ทำงานปกติ',
+  statusConnecting: 'กำลังเชื่อมต่อการอัปเดตสดและ API',
   signedInAs: 'เข้าสู่ระบบในชื่อ {name}',
 };
