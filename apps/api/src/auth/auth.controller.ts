@@ -116,6 +116,7 @@ export class AuthController {
     response: Response,
     user: Parameters<AuthService['sessionInfo']>[0],
     method: AuthMethod,
+    extraMetadata: Readonly<Record<string, string>> = {},
   ): Promise<SessionInfo> {
     const issued = await this.sessions.issue(user, method, requestMeta(request));
     this.setCookies(response, issued);
@@ -123,7 +124,7 @@ export class AuthController {
       actor: { type: 'user', id: user.id },
       targetType: 'session',
       targetId: issued.sessionId,
-      metadata: { authMethod: method },
+      metadata: { authMethod: method, ...extraMetadata },
     });
     return this.auth.sessionInfo(user, issued, method);
   }
@@ -197,7 +198,8 @@ export class AuthController {
     summary: 'Google redirects here after sign-in',
     description:
       'Verifies state, nonce and the ID token, then requires a verified email and the ' +
-      '`GOOGLE_ALLOWED_DOMAIN` Workspace domain (`hd` claim) on a provisioned staff account. Sets ' +
+      '`GOOGLE_ALLOWED_DOMAIN` Workspace domain (`hd` claim) or an address on `GOOGLE_ALLOWED_EMAILS` ' +
+      '(trial instances only) on a provisioned staff account. Sets ' +
       'the session cookies and redirects to the web app; on any failure redirects to `/login?error=<code>`.',
   })
   @ApiResponse({ status: 302, description: 'Redirect to the web app' })
@@ -223,8 +225,8 @@ export class AuthController {
         query,
         readCookie(request, cookieNames(this.config).oidc),
       );
-      const user = await this.auth.resolveGoogleUser(identity);
-      await this.signIn(request, response, user, 'google');
+      const { user, via } = await this.auth.resolveGoogleUser(identity);
+      await this.signIn(request, response, user, 'google', { via });
       clearOidcCookie(response, this.config);
       return { url: new URL(identity.returnTo, this.config.APP_URL).toString(), statusCode: 302 };
     } catch (error) {

@@ -93,6 +93,78 @@ describe('loadConfig', () => {
   });
 });
 
+describe('GOOGLE_ALLOWED_EMAILS', () => {
+  const live = {
+    GOOGLE_OIDC_CLIENT_ID: 'id',
+    GOOGLE_OIDC_CLIENT_SECRET: 'secret',
+    GOOGLE_ALLOWED_DOMAIN: 'example.com',
+    DEV_LOGIN_ENABLED: 'false',
+  };
+
+  it('is empty by default, also when compose passes it as an empty string', () => {
+    expect(loadConfig(testEnv()).GOOGLE_ALLOWED_EMAILS).toEqual([]);
+    expect(loadConfig(testEnv({ GOOGLE_ALLOWED_EMAILS: '' })).GOOGLE_ALLOWED_EMAILS).toEqual([]);
+    expect(loadConfig(testEnv({ GOOGLE_ALLOWED_EMAILS: ' , ' })).GOOGLE_ALLOWED_EMAILS).toEqual(
+      [],
+    );
+  });
+
+  it('trims and lower-cases each address', () => {
+    const config = loadConfig(
+      testEnv({
+        ...live,
+        GOOGLE_ALLOWED_EMAILS: '  Alice.Smith@Gmail.com ,bob@gmail.com,, ',
+      }),
+    );
+    expect(config.GOOGLE_ALLOWED_EMAILS).toEqual(['alice.smith@gmail.com', 'bob@gmail.com']);
+    expect(config.staffDomain).toBe('example.com');
+  });
+
+  it('rejects anything that is not an exact email address, wildcards included', () => {
+    for (const bad of [
+      '*@gmail.com',
+      '*',
+      '@gmail.com',
+      'gmail.com',
+      'not an email',
+      'a*@gmail.com',
+      'a@*.com',
+      'a@gmail.com;b@gmail.com',
+    ]) {
+      expect(() => loadConfig(testEnv({ ...live, GOOGLE_ALLOWED_EMAILS: bad })), bad).toThrow(
+        /GOOGLE_ALLOWED_EMAILS/,
+      );
+    }
+    // One bad entry spoils the list.
+    expect(() =>
+      loadConfig(testEnv({ ...live, GOOGLE_ALLOWED_EMAILS: 'ok@gmail.com,*@gmail.com' })),
+    ).toThrow(/GOOGLE_ALLOWED_EMAILS/);
+  });
+
+  it('refuses to boot in production when set, with a ConfigError that does not echo the value', () => {
+    expect(() => loadConfig(testEnv(productionEnv))).not.toThrow();
+    let caught: unknown;
+    try {
+      loadConfig(testEnv({ ...productionEnv, GOOGLE_ALLOWED_EMAILS: 'someone@gmail.com' }));
+    } catch (error) {
+      caught = error;
+    }
+    expect(caught).toBeInstanceOf(ConfigError);
+    expect((caught as Error).message).toMatch(/GOOGLE_ALLOWED_EMAILS/);
+    expect((caught as Error).message).not.toContain('someone@gmail.com');
+    // Empty in production is the normal case.
+    expect(() => loadConfig(testEnv({ ...productionEnv, GOOGLE_ALLOWED_EMAILS: '' }))).not.toThrow();
+  });
+
+  it('still refuses dev login together with Google credentials', () => {
+    expect(() =>
+      loadConfig(
+        testEnv({ ...live, DEV_LOGIN_ENABLED: 'true', GOOGLE_ALLOWED_EMAILS: 'a@gmail.com' }),
+      ),
+    ).toThrow(/DEV_LOGIN_ENABLED/);
+  });
+});
+
 describe('auth configuration', () => {
   it('is in mock mode with dev login on when Google credentials are empty and DEV_LOGIN_ENABLED=true', () => {
     const config = loadConfig(testEnv());

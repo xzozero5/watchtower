@@ -33,6 +33,31 @@ const hostList = z.preprocess(
   z.array(z.string().regex(/^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$/, 'must be a host name')).max(100),
 );
 
+/**
+ * `a@gmail.com, B@gmail.com` as a list of lower-case email addresses; empty means none. Exact
+ * addresses only: a wildcard or pattern is refused (ADR-005, 2026-11-03).
+ */
+const emailList = z.preprocess(
+  (value: unknown): unknown => {
+    if (value === undefined) return [];
+    if (typeof value !== 'string') return value;
+    return value
+      .split(',')
+      .map((address) => address.trim().toLowerCase())
+      .filter((address) => address !== '');
+  },
+  z
+    .array(
+      z
+        .email()
+        .refine(
+          (address) => !/[*?%()<>[\]\\]/.test(address),
+          'wildcards and patterns are not allowed',
+        ),
+    )
+    .max(50),
+);
+
 export const portSchema = z.coerce.number().int().min(1).max(65535);
 
 const postgresUrl = z
@@ -98,6 +123,9 @@ export const baseEnvShape = {
   GOOGLE_OIDC_CLIENT_ID: optionalString,
   GOOGLE_OIDC_CLIENT_SECRET: optionalString,
   GOOGLE_ALLOWED_DOMAIN: optionalString,
+  // Exact email addresses that may also sign in (personal Google accounts, trial instances only).
+  // Refused in production: see applyGuards.
+  GOOGLE_ALLOWED_EMAILS: emailList,
   GMAIL_SERVICE_ACCOUNT_JSON_PATH: optionalString,
   GMAIL_IMPERSONATE_USER: optionalString,
   GMAIL_OAUTH_CLIENT_ID: optionalString,
@@ -356,6 +384,18 @@ function applyGuards(env: Readonly<Record<string, unknown>>, ctx: z.RefinementCt
     fail(
       'GOOGLE_ALLOWED_DOMAIN',
       'is required when Google OIDC credentials are set (domain restriction)',
+    );
+  }
+  // Personal Google accounts are outside the organization's control (no forced 2SV, cannot be
+  // disabled when someone leaves), so the allow-list is for trial instances only (ADR-005).
+  if (
+    env.NODE_ENV === 'production' &&
+    Array.isArray(env.GOOGLE_ALLOWED_EMAILS) &&
+    env.GOOGLE_ALLOWED_EMAILS.length > 0
+  ) {
+    fail(
+      'GOOGLE_ALLOWED_EMAILS',
+      'must be empty in production (personal Google accounts are not allowed)',
     );
   }
   // Mock sign-in (dev login) exists only for local work. A production boot without real

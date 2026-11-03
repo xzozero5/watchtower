@@ -68,5 +68,10 @@
 
 - **C-16 (main thread, 2026-11-01):** `DEV_LOGIN_ENABLED=true` ทำให้ boot ล้มถ้า `APP_URL` ไม่ใช่ loopback — `.env.example` ที่ถูก copy ไปขึ้น host ที่เข้าถึงได้จะไม่แจกบัญชี head
 
+## แก้ไข 2026-11-03: allow-list อีเมลสำหรับบัญชี Google ส่วนตัว (เจ้าของสั่ง, POC)
+- **Context:** เจ้าของต้องการใช้ Google login จริงบน instance ทดลองด้วยบัญชี `@gmail.com` ส่วนตัว ซึ่งไม่มี claim `hd` จึงถูกกฎ domain ข้างบนปฏิเสธเสมอ (dev login เป็นทางเดียวที่เหลือ และ dev login ใครก็ล็อกอินเป็น role ไหนก็ได้)
+- **Decision:** เพิ่ม `GOOGLE_ALLOWED_EMAILS` (รายการอีเมลคั่นด้วย comma) เป็นทางที่สองของกฎ staff: ผ่านเมื่อ `email_verified === true` **และ** อีเมล (ตัดช่องว่าง, ตัวพิมพ์เล็ก) **ตรงทั้งตัว** กับรายการ โดยไม่ดู `hd` · กฎ domain เดิมยังทำงานคู่กัน (ผ่านทางใดทางหนึ่ง) · **ไม่ auto-provision** เหมือนเดิม (ต้องมี user ที่ head สร้างไว้) · **ห้ามใน production**: ตั้งค่านี้ขณะ `NODE_ENV=production` แล้ว api ไม่ยอม boot (เหตุผล: บัญชีส่วนตัวอยู่นอกการควบคุมขององค์กร — ปิดบัญชีพนักงานที่ออกไม่ได้, ไม่มี 2SV บังคับ) · ห้ามมี wildcard หรือ pattern · audit การ login บอกว่าผ่านทางไหน (`domain` / `allowlist`) โดยไม่ใส่อีเมลเกินที่ audit เดิมเก็บ
+- **Consequences:** มีทาง login ที่ไม่ผูกกับ Workspace บนเครื่องทดลองได้โดยไม่ต้องเปิด dev login · รายการผิด = คนนั้นเข้าได้ถ้ามี user อยู่แล้ว (สองชั้น: allow-list + ต้องมีบัญชี) · ต้องผ่าน `security-reviewer` ก่อน merge
+
 ## Links
 - PRD §2.2, §2.3, §8.2 · ADR-001 · ADR-004 · `docs/04-ARCHITECTURE.md` §7 · OIDC Core §3.1.3.7 · RFC 7636 (PKCE)

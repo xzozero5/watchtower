@@ -429,3 +429,191 @@ describe('when the provider is unreachable', () => {
     }
   });
 });
+
+describe('an email allow-list for personal Google accounts (GOOGLE_ALLOWED_EMAILS)', () => {
+  const listedEmail = (): string => `Trial.${randomUUID().slice(0, 8)}@Gmail.com`;
+
+  /** A harness whose allow-list holds exactly these addresses. */
+  function withList(emails: string[]): Promise<Harness> {
+    return startHarness({
+      env: {
+        GOOGLE_OIDC_CLIENT_ID: idp.clientId,
+        GOOGLE_OIDC_CLIENT_SECRET: idp.clientSecret,
+        GOOGLE_ALLOWED_DOMAIN: DOMAIN,
+        GOOGLE_ALLOWED_EMAILS: emails.join(' , '),
+      },
+      oidc: { issuer: idp.issuer },
+    });
+  }
+
+  async function run(harness: Harness, claims: IdentityClaims) {
+    const client = harness.client();
+    const start = await client.get('/v1/auth/google/start');
+    const request = idp.parseAuthorize(start.headers.get('location') ?? '');
+    const code = idp.approve(request, claims);
+    const callback = await client.get(
+      `/v1/auth/google/callback?code=${code}&state=${encodeURIComponent(request.state)}`,
+    );
+    return { client, request, start, callback };
+  }
+
+  async function createUser(harness: Harness, email: string, role = 'agent'): Promise<string> {
+    const row = await harness.db.owner.pool.query<{ id: string }>(
+      `INSERT INTO users (email, name, role) VALUES ($1, 'Trial', $2) RETURNING id`,
+      [email.toLowerCase(), role],
+    );
+    return row.rows[0]?.id ?? '';
+  }
+
+  const personal = (email: string, overrides: Partial<IdentityClaims> = {}): IdentityClaims => ({
+    sub: `google-sub-${randomUUID()}`,
+    email,
+    email_verified: true,
+    name: 'Personal',
+    ...overrides,
+  });
+
+  it('does not send the hd hint while the list is set, and keeps sending it when it is empty', async () => {
+    const harness = await withList([listedEmail()]);
+    try {
+      const request = idp.parseAuthorize(
+        (await harness.client().get('/v1/auth/google/start')).headers.get('location') ?? '',
+      );
+      expect(request.hd).toBeNull();
+    } finally {
+      await harness.close();
+    }
+    const plain = idp.parseAuthorize(
+      (await h.client().get('/v1/auth/google/start')).headers.get('location') ?? '',
+    );
+    expect(plain.hd).toBe(DOMAIN);
+  });
+
+  it('signs in a verified @gmail.com account on the list (case and spaces ignored) and records via=allowlist', async () => {
+    const email = listedEmail();
+    const harness = await withList(['  other@gmail.com', email.toUpperCase()]);
+    try {
+      const id = await createUser(harness, email, 'lead');
+      const { client, callback } = await run(harness, personal(email));
+      expect(landed(callback).toString()).toBe('http://localhost:3000/');
+      expect(client.cookie(ACCESS_COOKIE)).toBeDefined();
+      const session = await client.get<SessionInfo>('/v1/auth/session');
+      expect(session.body).toMatchObject({
+        authMethod: 'google',
+        user: { email: email.toLowerCase(), role: 'lead' },
+      });
+      const audit = await harness.db.owner.pool.query<{
+        outcome: string;
+        metadata: Record<string, unknown>;
+      }>(
+        `SELECT outcome, metadata FROM audit_log WHERE action = 'auth.login.google' AND actor_id = $1`,
+        [id],
+      );
+      expect(audit.rows).toHaveLength(1);
+      expect(audit.rows[0]?.outcome).toBe('success');
+      expect(audit.rows[0]?.metadata).toMatchObject({ authMethod: 'google', via: 'allowlist' });
+      expect(JSON.stringify(audit.rows[0]?.metadata)).not.toContain(email.toLowerCase());
+    } finally {
+      await harness.close();
+    }
+  });
+
+  it('refuses a listed account whose email is not verified', async () => {
+    const email = listedEmail();
+    const harness = await withList([email]);
+    try {
+      await createUser(harness, email);
+      for (const verified of [false, undefined]) {
+        const { client, callback } = await run(
+          harness,
+          personal(email, { email_verified: verified }),
+        );
+        expect(landed(callback).searchParams.get('error')).toBe('email_not_verified');
+        expect(client.cookie(ACCESS_COOKIE)).toBeUndefined();
+        expect((await client.get('/v1/auth/session')).status).toBe(401);
+      }
+    } finally {
+      await harness.close();
+    }
+  });
+
+  it('refuses a personal account that is not on the list, even when a user with that address exists', async () => {
+    const harness = await withList([listedEmail()]);
+    try {
+      const email = listedEmail();
+      await createUser(harness, email);
+      const { client, callback } = await run(harness, personal(email));
+      expect(landed(callback).searchParams.get('error')).toBe('domain_not_allowed');
+      expect(client.cookie(ACCESS_COOKIE)).toBeUndefined();
+    } finally {
+      await harness.close();
+    }
+  });
+
+  it('does not treat the list as a pattern: a lookalike or sub-addressed email is refused', async () => {
+    const email = listedEmail();
+    const [local = '', host = ''] = email.toLowerCase().split('@');
+    const harness = await withList([email]);
+    try {
+      for (const lookalike of [
+        `${local}+x@${host}`,
+        `x${local}@${host}`,
+        `${local}@${host}.evil.test`,
+      ]) {
+        const { callback } = await run(harness, personal(lookalike));
+        expect(landed(callback).searchParams.get('error'), lookalike).toBe('domain_not_allowed');
+      }
+    } finally {
+      await harness.close();
+    }
+  });
+
+  it('does not provision: a listed account without a user is staff_not_provisioned', async () => {
+    const email = listedEmail();
+    const harness = await withList([email]);
+    try {
+      const count = async () =>
+        (await harness.db.owner.pool.query<{ n: number }>('SELECT count(*)::int AS n FROM users'))
+          .rows[0]?.n;
+      const before = await count();
+      const { callback } = await run(harness, personal(email));
+      expect(landed(callback).searchParams.get('error')).toBe('staff_not_provisioned');
+      expect(await count()).toBe(before);
+    } finally {
+      await harness.close();
+    }
+  });
+
+  it('keeps the domain rule working next to the list, and records via=domain', async () => {
+    const harness = await withList([listedEmail()]);
+    try {
+      const staff = { email: uniqueEmail('agent'), id: '' };
+      staff.id = await createUser(harness, staff.email);
+      const { client, callback } = await run(harness, goodClaims(staff.email));
+      expect(landed(callback).toString()).toBe('http://localhost:3000/');
+      expect(client.cookie(ACCESS_COOKIE)).toBeDefined();
+      const audit = await harness.db.owner.pool.query<{ metadata: Record<string, unknown> }>(
+        `SELECT metadata FROM audit_log WHERE action = 'auth.login.google' AND actor_id = $1`,
+        [staff.id],
+      );
+      expect(audit.rows[0]?.metadata).toMatchObject({ via: 'domain' });
+      // A domain account with the wrong hd is still refused.
+      const other = { email: uniqueEmail('agent') };
+      await createUser(harness, other.email);
+      const refused = await run(harness, goodClaims(other.email, { hd: 'other.example.org' }));
+      expect(landed(refused.callback).searchParams.get('error')).toBe('domain_not_allowed');
+    } finally {
+      await harness.close();
+    }
+  });
+
+  it('records via=domain on a domain-only instance too', async () => {
+    const staff = await createStaff('agent');
+    await signIn(goodClaims(staff.email));
+    const audit = await pool().query<{ metadata: Record<string, unknown> }>(
+      `SELECT metadata FROM audit_log WHERE action = 'auth.login.google' AND actor_id = $1`,
+      [staff.id],
+    );
+    expect(audit.rows[0]?.metadata).toMatchObject({ via: 'domain' });
+  });
+});

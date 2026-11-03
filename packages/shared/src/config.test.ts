@@ -457,6 +457,35 @@ describe('Google OIDC domain restriction', () => {
   });
 });
 
+describe('GOOGLE_ALLOWED_EMAILS', () => {
+  it('parses a list, trimmed and lower-cased, and is empty when unset', () => {
+    expect(parseEnv(schema, validEnv).GOOGLE_ALLOWED_EMAILS).toEqual([]);
+    const config = parseEnv(schema, {
+      ...validEnv,
+      GOOGLE_ALLOWED_EMAILS: ' A@Gmail.com , b@gmail.com ',
+    });
+    expect(config.GOOGLE_ALLOWED_EMAILS).toEqual(['a@gmail.com', 'b@gmail.com']);
+  });
+
+  it('rejects wildcards and malformed addresses', () => {
+    for (const bad of ['*@gmail.com', 'a*@gmail.com', 'nope']) {
+      // The issue is reported per entry (GOOGLE_ALLOWED_EMAILS.0) and never echoes the value.
+      const names = [...issuesFor({ ...validEnv, GOOGLE_ALLOWED_EMAILS: bad }).keys()];
+      expect(
+        names.some((name) => name.startsWith('GOOGLE_ALLOWED_EMAILS')),
+        bad,
+      ).toBe(true);
+    }
+  });
+
+  it('is refused in production and fine elsewhere', () => {
+    const set = { GOOGLE_ALLOWED_EMAILS: 'a@gmail.com' };
+    expect(issuesFor({ ...productionEnv, ...set }).has('GOOGLE_ALLOWED_EMAILS')).toBe(true);
+    expect(issuesFor({ ...productionEnv, GOOGLE_ALLOWED_EMAILS: '' }).size).toBe(0);
+    expect(issuesFor({ ...validEnv, ...set }).size).toBe(0);
+  });
+});
+
 describe('.env.example', () => {
   const example = parseDotenv(
     readFileSync(new URL('../../../.env.example', import.meta.url), 'utf8'),

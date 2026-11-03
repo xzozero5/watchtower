@@ -33,6 +33,9 @@ export type GoogleLoginFailure =
   | 'account_disabled'
   | 'account_mismatch';
 
+/** Which staff rule let a Google sign-in through; recorded in the login audit entry. */
+export type GoogleLoginRule = 'domain' | 'allowlist';
+
 export class GoogleLoginRejected extends Error {
   constructor(readonly failure: GoogleLoginFailure) {
     super(failure);
@@ -68,13 +71,23 @@ export class AuthService implements OnApplicationBootstrap {
 
   /**
    * Applies the staff rules to a verified Google identity: the email is verified, the `hd` claim
-   * and the address are both on the allowed Workspace domain, and the account was provisioned by
+   * and the address are both on the allowed Workspace domain (or the address is on the allow-list), and the account was provisioned by
    * a head (no self-registration).
    */
-  async resolveGoogleUser(identity: GoogleIdentity): Promise<UserRow> {
+  async resolveGoogleUser(
+    identity: GoogleIdentity,
+  ): Promise<{ readonly user: UserRow; readonly via: GoogleLoginRule }> {
     const domain = this.config.staffDomain;
     if (!identity.emailVerified) throw new GoogleLoginRejected('email_not_verified');
-    if (identity.hostedDomain !== domain || !identity.email.endsWith(`@${domain}`)) {
+    // Two ways in, either is enough: the Workspace domain (hd claim and address), or an exact
+    // address on GOOGLE_ALLOWED_EMAILS (trial instances only; the list is empty in production).
+    // The address is already trimmed and lower-cased; the list entries are too. No wildcards.
+    let via: GoogleLoginRule;
+    if (identity.hostedDomain === domain && identity.email.endsWith(`@${domain}`)) {
+      via = 'domain';
+    } else if (this.config.GOOGLE_ALLOWED_EMAILS.includes(identity.email)) {
+      via = 'allowlist';
+    } else {
       throw new GoogleLoginRejected('domain_not_allowed');
     }
 
@@ -98,7 +111,7 @@ export class AuthService implements OnApplicationBootstrap {
       // The mailbox now belongs to a different Google account than the one first linked.
       throw new GoogleLoginRejected('account_mismatch');
     }
-    return user;
+    return { user, via };
   }
 
   /**

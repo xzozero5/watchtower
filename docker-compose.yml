@@ -90,6 +90,7 @@ x-app-env: &app-env
   GOOGLE_OIDC_CLIENT_ID: ${GOOGLE_OIDC_CLIENT_ID:-}
   GOOGLE_OIDC_CLIENT_SECRET: ${GOOGLE_OIDC_CLIENT_SECRET:-}
   GOOGLE_ALLOWED_DOMAIN: ${GOOGLE_ALLOWED_DOMAIN:-example.com}
+  GOOGLE_ALLOWED_EMAILS: ${GOOGLE_ALLOWED_EMAILS:-}
   # The key file is mounted read-only at this path (x-gmail-key below). The container is pointed at
   # it only when a host path is set; otherwise the variable stays empty and Gmail stays mock.
   GMAIL_SERVICE_ACCOUNT_JSON_PATH: ${GMAIL_SERVICE_ACCOUNT_JSON_PATH:+/run/secrets/gmail-service-account.json}

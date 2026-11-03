@@ -126,8 +126,9 @@ export class GoogleOidcService {
       state,
       nonce,
       // A hint that pre-selects the Workspace domain. It is not a control: the server checks the
-      // `hd` claim of the ID token itself.
-      hd: this.config.staffDomain,
+      // `hd` claim of the ID token itself. Left out while an email allow-list is set, because
+      // the hint would keep personal accounts (no `hd`) from being offered at all.
+      ...(this.config.GOOGLE_ALLOWED_EMAILS.length === 0 ? { hd: this.config.staffDomain } : {}),
       prompt: 'select_account',
     });
     const cookie = await this.tokens.signCookieValue(
