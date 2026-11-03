@@ -43,6 +43,7 @@ import { createNotificationEndpoints } from './notification-endpoints';
 import { createOpsEndpoints } from './ops-endpoints';
 import { createShiftEndpoints } from './shift-endpoints';
 import { createToolEndpoints } from './tool-endpoints';
+import { createUploadEndpoints } from './upload-endpoints';
 import type { ApiClient } from './client';
 
 /** Query for the ticket list as the UI builds it: the schema defaults are applied by the api. */
@@ -76,6 +77,7 @@ export function createEndpoints(client: ApiClient) {
     ...createShiftEndpoints(client),
     ...createOpsEndpoints(client),
     ...createToolEndpoints(client),
+    ...createUploadEndpoints(client),
 
     downloadAttachment: (ref: string, messageId: string, index: number, signal?: AbortSignal) =>
       client.download(

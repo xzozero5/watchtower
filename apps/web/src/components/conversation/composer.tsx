@@ -10,7 +10,6 @@ import {
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
   DropdownMenuTrigger,
-  IconButton,
   Kbd,
   SegmentedControl,
   Tooltip,
@@ -23,7 +22,6 @@ import {
   Flag,
   Lock,
   MessageCircle,
-  Paperclip,
   Send,
 } from 'lucide-react';
 import {
@@ -33,10 +31,16 @@ import {
   useId,
   useImperativeHandle,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
 } from 'react';
 
+import {
+  AttachmentDropZone,
+  AttachmentPicker,
+  useAttachmentUpload,
+} from '@/components/attachments';
 import { ChannelIcon } from '@/components/ticket/channel-icon';
 import { QUEUE_LISTBOX_ID } from '@/components/queue/queue-row';
 import { useI18n } from '@/i18n/provider';
@@ -46,7 +50,7 @@ import { useSession } from '@/lib/auth/session';
 import { useShortcut } from '@/lib/keyboard';
 import { useLineQuota, useSendUndo } from '@/lib/outbound/queries';
 import { isClosedForReplies, isDetail, type TicketItem } from '@/lib/tickets/model';
-import { useIntents, useTicketMutations, useWorkflow } from '@/lib/tickets/queries';
+import { useIntents, useTicketMutations, useTimeline, useWorkflow } from '@/lib/tickets/queries';
 import { statusKey } from '@/lib/tickets/status-key';
 import {
   allowedNextStatuses,
@@ -57,6 +61,9 @@ import {
 } from '@/lib/tickets/templates';
 import { useIsMac } from '@/lib/use-is-mac';
 
+import { EmailComposer, emailDraftStore, type EmailDraft } from './email/email-composer';
+import { textToHtml } from './email/html';
+import type { RichEditorHandle } from './email/rich-editor';
 import { LineQuotaNote } from './line-quota-note';
 
 export type ComposerMode = 'reply' | 'note';
@@ -154,6 +161,14 @@ export function Composer({
   const ids = useId();
   const isMac = useIsMac();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const emailEditorRef = useRef<RichEditorHandle>(null);
+  const [emailDraft, setEmailDraft] = useState<EmailDraft | null>(null);
+  const [emailResetKey, setEmailResetKey] = useState(0);
+  const upload = useAttachmentUpload();
+  // Uploads the email editor put into the text as pictures: they travel inline, not as files.
+  const pictured = useRef(new Map<string, string>());
+  const expectPictures = useRef(0);
+  const [pictureUrls, setPictureUrls] = useState<ReadonlyMap<string, string>>(() => new Map());
 
   const canReply = can('ticket.reply') || can('ticket.reply.own');
   const canNote = can('ticket.handle');
@@ -184,11 +199,36 @@ export function Composer({
   const quota = useLineQuota(isStaff && mode === 'reply' && viaLine);
   const mutation = mode === 'reply' ? reply : note;
 
+  // A reply on an email ticket is written in the email tool (recipients, subject, rich text, signature).
+  const emailMode = mode === 'reply' && isStaff && ticketChannel === 'gmail';
+  const timeline = useTimeline(emailMode ? ticket.key : null);
+  const timelineEntries = useMemo(
+    () => (timeline.data?.pages ?? []).flatMap((page) => page.entries),
+    [timeline.data],
+  );
+
+  // A picture pasted, dropped or picked in the email editor is uploaded, then placed in the text.
   useEffect(() => {
-    if (focusTick > 0) textareaRef.current?.focus();
+    if (expectPictures.current <= 0) return;
+    for (const item of upload.items) {
+      const id = item.attachment?.id;
+      if (item.status !== 'done' || !id || !item.previewUrl || pictured.current.has(id)) continue;
+      if (!item.type.startsWith('image/') || expectPictures.current <= 0) continue;
+      expectPictures.current -= 1;
+      pictured.current.set(id, item.previewUrl);
+      setPictureUrls(new Map(pictured.current));
+      emailEditorRef.current?.insertImage(item.previewUrl, id, item.name);
+    }
+  }, [upload.items]);
+
+  useEffect(() => {
+    if (focusTick > 0) {
+      textareaRef.current?.focus();
+      emailEditorRef.current?.focus();
+    }
   }, [focusTick]);
 
-  const body = bodies[mode];
+  const body = emailMode ? (emailDraft?.text ?? '') : bodies[mode];
 
   // The box grows with the text, from 3 rows to 12, then scrolls.
   useLayoutEffect(() => {
@@ -222,6 +262,11 @@ export function Composer({
   const quote = (text: string) => {
     if (!replyAllowed) return;
     setMode('reply');
+    if (emailMode && emailEditorRef.current) {
+      emailEditorRef.current.insertHtml(`<blockquote>${textToHtml(text)}</blockquote><p><br></p>`);
+      setSent(null);
+      return;
+    }
     setBodies((current) => {
       const next = `${current.reply}${current.reply && !current.reply.endsWith('\n') ? '\n\n' : ''}${asQuote(text)}`;
       draftStore.set(ticket.key, 'reply', next);
@@ -288,7 +333,9 @@ export function Composer({
     if (!template) return;
     const { text } = renderTemplate(template.body, values);
     const area = textareaRef.current;
-    if (!area || body === '') {
+    if (emailMode && emailEditorRef.current) {
+      emailEditorRef.current.insertHtml(textToHtml(text));
+    } else if (!area || body === '') {
       setBody(text);
     } else {
       const start = area.selectionStart;
@@ -298,19 +345,57 @@ export function Composer({
     setFocusTick((tick) => tick + 1);
   };
 
-  const canSend = body.trim() !== '' && unresolved.length === 0 && !mutation.isPending;
+  const recipientsOk = !emailMode || (emailDraft?.to.length ?? 0) > 0;
+  const canSend =
+    body.trim() !== '' &&
+    unresolved.length === 0 &&
+    recipientsOk &&
+    !upload.busy &&
+    !mutation.isPending;
 
   const submit = () => {
     if (!canSend) return;
     const text = body.trim();
+    const inlineIds = new Set(
+      (emailMode ? (emailDraft?.inline ?? []) : []).map((e) => e.attachmentId),
+    );
+    const attachmentIds = upload.attachmentIds.filter(
+      (id) => !pictured.current.has(id) || inlineIds.has(id),
+    );
+    const files = attachmentIds.length > 0 ? { attachmentIds } : {};
     const done = () => {
-      setBody('');
+      upload.clear();
+      pictured.current.clear();
+      setPictureUrls(new Map());
+      if (emailMode) {
+        emailDraftStore.set(ticket.key, '');
+        setEmailDraft(null);
+        setEmailResetKey((key) => key + 1);
+      } else {
+        setBody('');
+      }
       setNextStatus('');
       setSent(mode);
     };
     if (mode === 'reply') {
       reply.mutate(
-        { body: text, ...(nextStatus ? { setStatus: nextStatus } : {}) },
+        {
+          body: text,
+          ...files,
+          ...(nextStatus ? { setStatus: nextStatus } : {}),
+          ...(emailMode && emailDraft
+            ? {
+                email: {
+                  to: emailDraft.to,
+                  cc: emailDraft.cc,
+                  bcc: emailDraft.bcc,
+                  subject: emailDraft.subject,
+                  bodyHtml: emailDraft.html,
+                  inline: emailDraft.inline,
+                },
+              }
+            : {}),
+        },
         {
           onSuccess: (result) => {
             // The server holds a Gmail or LINE reply for its undo window; Undo cancels it there.
@@ -320,11 +405,11 @@ export function Composer({
         },
       );
     } else {
-      note.mutate({ body: text }, { onSuccess: done });
+      note.mutate({ body: text, ...files }, { onSuccess: done });
     }
   };
 
-  const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+  const onKeyDown = (event: KeyboardEvent<HTMLElement>) => {
     if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) {
       event.preventDefault();
       submit();
@@ -362,7 +447,6 @@ export function Composer({
         ? 'composer.placeholders.reply'
         : 'composer.placeholders.client',
   );
-  const soon = t('composer.toolbar.phase1');
 
   return (
     <form
@@ -431,23 +515,51 @@ export function Composer({
           ) : null}
         </div>
 
-        <label htmlFor={textareaId} className="sr-only">
-          {t(isNote ? 'composer.fields.note' : 'composer.fields.reply')}
-        </label>
-        <textarea
-          ref={textareaRef}
-          id={textareaId}
-          value={body}
-          rows={MIN_ROWS}
-          placeholder={placeholder}
-          onChange={(event) => {
-            setBody(event.target.value);
-          }}
-          onKeyDown={onKeyDown}
-          aria-describedby={isNote ? undefined : hintId}
-          aria-keyshortcuts="Control+Enter Meta+Enter"
-          className="block w-full resize-none bg-transparent px-3 py-2 text-sm leading-normal text-foreground outline-hidden placeholder:text-muted-foreground"
-        />
+        {emailMode ? (
+          <EmailComposer
+            key={emailResetKey}
+            ticketKey={ticket.key}
+            ticketSubject={ticket.subject}
+            requesterAddress={staffTicket?.requester?.email ?? null}
+            requesterName={staffTicket?.requester?.name ?? null}
+            entries={timelineEntries}
+            self={session?.user.email ?? null}
+            senderName={session?.user.name ?? ''}
+            label={t('composer.fields.reply')}
+            placeholder={placeholder}
+            editorRef={emailEditorRef}
+            onChange={setEmailDraft}
+            onKeyDown={onKeyDown}
+            describedBy={hintId}
+            localImages={pictureUrls}
+            onImageFiles={(files) => {
+              expectPictures.current += files.filter((file) =>
+                file.type.startsWith('image/'),
+              ).length;
+              upload.add(files);
+            }}
+          />
+        ) : (
+          <AttachmentDropZone upload={upload} disabled={!isStaff}>
+            <label htmlFor={textareaId} className="sr-only">
+              {t(isNote ? 'composer.fields.note' : 'composer.fields.reply')}
+            </label>
+            <textarea
+              ref={textareaRef}
+              id={textareaId}
+              value={body}
+              rows={MIN_ROWS}
+              placeholder={placeholder}
+              onChange={(event) => {
+                setBody(event.target.value);
+              }}
+              onKeyDown={onKeyDown}
+              aria-describedby={isNote ? undefined : hintId}
+              aria-keyshortcuts="Control+Enter Meta+Enter"
+              className="block w-full resize-none bg-transparent px-3 py-2 text-sm leading-normal text-foreground outline-hidden placeholder:text-muted-foreground"
+            />
+          </AttachmentDropZone>
+        )}
 
         <div
           role="group"
@@ -474,17 +586,6 @@ export function Composer({
                   : t('composer.template.choose')}
               </span>
             </Combobox>
-          ) : null}
-          {isStaff ? (
-            <>
-              <IconButton
-                aria-disabled="true"
-                label={t('composer.toolbar.attach')}
-                tooltip={`${t('composer.toolbar.attach')} — ${soon}`}
-                icon={<Paperclip aria-hidden className="size-4" />}
-                className="text-muted-foreground"
-              />
-            </>
           ) : null}
 
           <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
@@ -557,6 +658,12 @@ export function Composer({
           </div>
         </div>
       </div>
+
+      {isStaff ? (
+        <div className="px-1 pt-2">
+          <AttachmentPicker upload={upload} hideHint disabled={mutation.isPending} />
+        </div>
+      ) : null}
 
       {isNote ? null : (
         <div className="mt-1.5 flex items-center justify-between gap-3 px-1 text-xs text-muted-foreground">

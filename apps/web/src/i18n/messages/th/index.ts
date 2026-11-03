@@ -1,5 +1,6 @@
 import type { Messages } from '../en';
 import { adminTh } from './admin';
+import { attachmentsTh } from './attachments';
 import { aiTh } from './ai';
 import { apiStatusTh } from './apiStatus';
 import { appTh } from './app';
@@ -8,6 +9,7 @@ import { bulkTh } from './bulk';
 import { channelTh } from './channel';
 import { commandsTh } from './commands';
 import { composerTh } from './composer';
+import { emailTh } from './email';
 import { conversationTh } from './conversation';
 import { csatTh } from './csat';
 import { customerTh } from './customer';
@@ -57,6 +59,8 @@ export const th: Messages = {
   conversation: conversationTh,
   timeline: timelineTh,
   composer: composerTh,
+  attachments: attachmentsTh,
+  email: emailTh,
   details: detailsTh,
   sla: slaTh,
   workspace: workspaceTh,

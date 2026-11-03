@@ -27,6 +27,7 @@ import { alias } from 'drizzle-orm/pg-core';
 
 import { notFound } from '../auth/http-errors.js';
 import { SlaRemaining } from '../tickets/sla-remaining.js';
+import { parseAttachments } from './shift-notes.service.js';
 import { TICKET_KEYS, type TicketKeys } from '../tickets/ticket-keys.js';
 import { SHIFT_NOW, type ShiftNow } from './shift-core.js';
 
@@ -151,6 +152,7 @@ export class HandoffReader {
       items,
       notes: h.notes,
       messageForNext: h.messageForNext,
+      attachments: parseAttachments(h.attachments),
       confirmedAt: h.confirmedAt?.toISOString() ?? null,
       createdAt: h.createdAt.toISOString(),
       updatedAt: h.updatedAt.toISOString(),
@@ -395,6 +397,7 @@ export class HandoffReader {
         confirmedAt: (row.h.confirmedAt ?? row.h.createdAt).toISOString(),
         notes: row.h.notes,
         messageForNext: row.h.messageForNext,
+        attachments: parseAttachments(row.h.attachments),
         items: list,
       };
     });

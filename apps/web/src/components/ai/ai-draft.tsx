@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { Fragment, useEffect, useId, useRef, useState } from 'react';
 
+import { textToHtml } from '@/components/conversation/email/html';
 import { useI18n } from '@/i18n/provider';
 import { changedFraction } from '@/lib/ai/model';
 import { useAiDraftActions } from '@/lib/ai/queries';
@@ -139,7 +140,14 @@ export function AiDraftCard({
     // the person's own text, and the server records the draft as edited with the distance.
     const unchanged = body === draft.body.trim();
     reply.mutate(
-      { body, ...(unchanged ? { aiDraftId: draft.id } : { editedFromDraftId: draft.id }) },
+      {
+        body,
+        ...(unchanged ? { aiDraftId: draft.id } : { editedFromDraftId: draft.id }),
+        // On an email ticket the approved text goes out as a real email: HTML with the text copy.
+        ...('channel' in ticket && ticket.channel === 'gmail'
+          ? { email: { cc: [], bcc: [], inline: [], bodyHtml: textToHtml(body) } }
+          : {}),
+      },
       {
         onSuccess: (result) => {
           // The server holds the reply for its undo window; Undo cancels it there.

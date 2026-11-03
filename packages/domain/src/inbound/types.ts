@@ -60,6 +60,8 @@ export interface NormalisedInboundMessage {
   readonly subject: string;
   readonly bodyText: string;
   readonly bodyHtml: string | null;
+  /** Email only: the header block (From / To / Cc / Subject) for the timeline. */
+  readonly emailMeta?: Record<string, unknown> | null | undefined;
   readonly attachments: readonly InboundAttachment[];
   readonly receivedAt: Date;
   readonly rawObjectKey: string | null;

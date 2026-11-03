@@ -14,6 +14,13 @@ import { Button, EmptyState, Input, Select, Textarea, toast } from '@watchtower/
 import { CalendarCheck, CircleX, ClipboardList, Plus, Trash2 } from 'lucide-react';
 import { useEffect, useId, useRef, useState } from 'react';
 
+import {
+  AttachmentDropZone,
+  AttachmentGallery,
+  AttachmentPicker,
+  useAttachmentUpload,
+} from '@/components/attachments';
+
 import { LoadError, RequirePermission } from '@/components/admin/admin-page';
 import { AppLink } from '@/components/app-link';
 import { FormField } from '@/components/portal/form-field';
@@ -156,6 +163,8 @@ function HandoffEditor({ handoff, current }: { handoff: Handoff; current: Curren
   const format = useShiftFormat(status.data?.timezone);
   const base = useId();
   const summaryRef = useRef<HTMLDivElement>(null);
+  const upload = useAttachmentUpload({ initial: handoff.attachments });
+  const [baselineIds] = useState(() => handoff.attachments.map((file) => file.id).join(','));
   const [baseline] = useState<HandoffDraft>(() => draftFromHandoff(handoff));
   const [draft, setDraft] = useState<HandoffDraft>(baseline);
   const [attempted, setAttempted] = useState(false);
@@ -163,7 +172,7 @@ function HandoffEditor({ handoff, current }: { handoff: Handoff; current: Curren
   const [failure, setFailure] = useState<string | null>(null);
   const focusAfterRender = useRef<string | null>(null);
   const confirmed = handoff.status === 'confirmed';
-  const dirty = !sameDraft(draft, baseline);
+  const dirty = !sameDraft(draft, baseline) || upload.attachmentIds.join(',') !== baselineIds;
 
   // The links from the clock-out gate end in `#handoff-next-<ticket>`: put the cursor in that field.
   useEffect(() => {
@@ -180,7 +189,8 @@ function HandoffEditor({ handoff, current }: { handoff: Handoff; current: Curren
   const refresh = () => queryClient.invalidateQueries({ queryKey: shiftKeys(userId).all });
 
   const save = useMutation({
-    mutationFn: () => api.saveHandoff(handoff.id, toSaveBody(draft)),
+    mutationFn: () =>
+      api.saveHandoff(handoff.id, { ...toSaveBody(draft), attachmentIds: upload.attachmentIds }),
     onSuccess: async () => {
       setFailure(null);
       await refresh();
@@ -193,7 +203,10 @@ function HandoffEditor({ handoff, current }: { handoff: Handoff; current: Curren
 
   const confirm = useMutation({
     mutationFn: async () => {
-      await api.saveHandoff(handoff.id, toSaveBody(draft));
+      await api.saveHandoff(handoff.id, {
+        ...toSaveBody(draft),
+        attachmentIds: upload.attachmentIds,
+      });
       return api.confirmHandoff(handoff.id);
     },
     onSuccess: async () => {
@@ -245,7 +258,7 @@ function HandoffEditor({ handoff, current }: { handoff: Handoff; current: Curren
 
   const pending = draft.items.filter((item) => item.kind === 'pending');
   const others = draft.items.filter((item) => item.kind !== 'pending');
-  const busy = save.isPending || confirm.isPending || reopen.isPending;
+  const busy = save.isPending || confirm.isPending || reopen.isPending || upload.busy;
 
   function onConfirm() {
     setAttempted(true);
@@ -602,16 +615,18 @@ function HandoffEditor({ handoff, current }: { handoff: Handoff; current: Curren
         icon={ClipboardList}
       >
         <FormField id={`${base}-notes`} label={t('shift.handoff.notesLabel')}>
-          <Textarea
-            id={`${base}-notes`}
-            value={draft.notes}
-            maxLength={5000}
-            disabled={confirmed}
-            className="w-full"
-            onChange={(event) => {
-              setDraft((value) => ({ ...value, notes: event.target.value }));
-            }}
-          />
+          <AttachmentDropZone upload={upload} disabled={confirmed}>
+            <Textarea
+              id={`${base}-notes`}
+              value={draft.notes}
+              maxLength={5000}
+              disabled={confirmed}
+              className="w-full"
+              onChange={(event) => {
+                setDraft((value) => ({ ...value, notes: event.target.value }));
+              }}
+            />
+          </AttachmentDropZone>
         </FormField>
         <FormField
           id={`${base}-message`}
@@ -630,6 +645,11 @@ function HandoffEditor({ handoff, current }: { handoff: Handoff; current: Curren
             }}
           />
         </FormField>
+        {confirmed ? (
+          <AttachmentGallery attachments={handoff.attachments} />
+        ) : (
+          <AttachmentPicker upload={upload} disabled={save.isPending || confirm.isPending} />
+        )}
       </ShiftSection>
 
       {confirmed ? null : (

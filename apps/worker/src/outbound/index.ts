@@ -1,5 +1,6 @@
 import { line } from '@watchtower/channels';
 
+import { createS3ObjectStore, type ObjectStore } from '../ingest/object-store.js';
 import { lineChannelsFrom } from '../line/transports.js';
 import type { ProcessorContext } from '../processors/index.js';
 import { NO_CHANNELS, type OutboundChannels } from './channels.js';
@@ -17,6 +18,8 @@ export interface OutboundOverrides {
   readonly channels?: OutboundChannels;
   readonly lineQuotaLimit?: number | null;
   readonly lineRouter?: DispatcherDeps['lineRouter'];
+  /** Where a reply's attachments are read from; without an override, the deployment's S3 bucket. */
+  readonly objects?: ObjectStore;
 }
 
 /**
@@ -31,6 +34,17 @@ export function outboundChannelsFor(context: ProcessorContext): OutboundChannels
 
 export function createOutboundDispatcherFor(context: ProcessorContext) {
   const outbound = context.overrides.outbound ?? {};
+  const { config } = context;
+  // A staff reply's attachments and inline images are in the same bucket the api uploads them to.
+  const objects =
+    outbound.objects ??
+    createS3ObjectStore({
+      endpoint: config.S3_ENDPOINT,
+      region: config.S3_REGION,
+      bucket: config.S3_BUCKET,
+      accessKey: config.S3_ACCESS_KEY,
+      secretKey: config.S3_SECRET_KEY,
+    });
   return createOutboundDispatcher({
     database: context.database,
     domain: context.domain,
@@ -38,6 +52,7 @@ export function createOutboundDispatcherFor(context: ProcessorContext) {
     appHost: new URL(context.config.APP_URL).hostname,
     realtime: context.realtime,
     logger: context.logger,
+    objects,
     ...(outbound.lineQuotaLimit === undefined ? {} : { lineQuotaLimit: outbound.lineQuotaLimit }),
     ...(outbound.lineRouter === undefined ? {} : { lineRouter: outbound.lineRouter }),
   });

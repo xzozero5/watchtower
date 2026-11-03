@@ -22,6 +22,7 @@ function message(overrides: Partial<MessageRow> = {}): MessageRow {
     senderUserId: USER,
     bodyText: 'hello',
     bodyHtml: null,
+    emailMeta: null,
     bodyRedacted: null,
     attachments: [],
     visibility: 'public',

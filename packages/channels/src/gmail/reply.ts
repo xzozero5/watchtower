@@ -46,6 +46,26 @@ export const replyInputSchema = z.object({
   /** Overrides the default recipients. */
   to: z.array(addressSchema).min(1).optional(),
   cc: z.array(addressSchema).default([]),
+  /** Blind copies: sent as a `Bcc` header, which Gmail uses for delivery and removes `[UNVERIFIED 80%]`. */
+  bcc: z.array(addressSchema).default([]),
+  /** The person's own subject (an email reply composer). Replaces the parent's; the ticket token rule still applies. */
+  subject: z.string().max(998).optional(),
+  /** Files that travel with the mail. `contentId` + `inline` makes it an inline image (`cid:`), else an attachment. */
+  attachments: z
+    .array(
+      z.object({
+        filename: z.string().min(1).max(255),
+        contentType: z.string().regex(/^[a-z0-9][a-z0-9!#$&^_.+-]*\/[a-z0-9][a-z0-9!#$&^_.+-]*$/i),
+        data: z.custom<Uint8Array>((value) => value instanceof Uint8Array),
+        contentId: z
+          .string()
+          .regex(/^[^\s<>@]+(@[^\s<>@]+)?$/)
+          .optional(),
+        inline: z.boolean().default(false),
+      }),
+    )
+    .max(20)
+    .default([]),
   textBody: z.string().min(1),
   htmlBody: z.string().optional(),
   /** This message's `Message-ID` without angle brackets, for example from `makeMessageId`. */
@@ -159,6 +179,103 @@ function toBase64Url(buffer: Buffer): string {
   return buffer.toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
 
+type ReplyAttachment = z.output<typeof replyInputSchema>['attachments'][number];
+
+function textPart(text: string): string[] {
+  return [
+    'Content-Type: text/plain; charset="UTF-8"',
+    'Content-Transfer-Encoding: base64',
+    '',
+    base64Lines(text),
+  ];
+}
+
+function htmlPart(html: string): string[] {
+  return [
+    'Content-Type: text/html; charset="UTF-8"',
+    'Content-Transfer-Encoding: base64',
+    '',
+    base64Lines(html),
+  ];
+}
+
+function isInline(file: ReplyAttachment): boolean {
+  return file.inline && file.contentId !== undefined;
+}
+
+function filePart(file: ReplyAttachment): string[] {
+  assertSingleLine('attachment name', file.filename);
+  const quoted = file.filename.replace(/[^\x20-\x7e]/g, '_').replace(/(["\\])/g, '\\$1');
+  const star = isAscii(file.filename)
+    ? ''
+    : `; filename*=UTF-8''${encodeURIComponent(file.filename)}`;
+  const encoded = Buffer.from(file.data).toString('base64');
+  return [
+    `Content-Type: ${file.contentType}; name="${quoted}"`,
+    'Content-Transfer-Encoding: base64',
+    `Content-Disposition: ${isInline(file) ? 'inline' : 'attachment'}; filename="${quoted}"${star}`,
+    ...(file.contentId === undefined ? [] : [`Content-ID: <${file.contentId}>`]),
+    '',
+    (encoded.match(/.{1,76}/g) ?? []).join('\r\n'),
+  ];
+}
+
+interface Wrapped {
+  readonly header: string;
+  readonly body: string;
+}
+
+/**
+ * The MIME tree: `multipart/alternative` (text, html) at the core, `multipart/related` when the html
+ * has inline images (`cid:`), `multipart/mixed` on top when files are attached.
+ */
+function buildBody(
+  input: z.output<typeof replyInputSchema>,
+  boundary: string,
+  headerLines: string[],
+): string {
+  const wrap = (kind: string, suffix: string, parts: string[][]): Wrapped => {
+    const id = suffix === '' ? boundary : `${boundary}-${suffix}`;
+    return {
+      header: `Content-Type: ${kind}; boundary="${id}"`,
+      body: [...parts.flatMap((part) => [`--${id}`, ...part]), `--${id}--`, ''].join('\r\n'),
+    };
+  };
+  const nested = (w: Wrapped): string[] => [w.header, '', w.body];
+  const inlineFiles = input.attachments.filter(isInline);
+  const regularFiles = input.attachments.filter((file) => !isInline(file));
+
+  if (input.htmlBody === undefined) {
+    if (input.attachments.length === 0) {
+      headerLines.push(
+        'Content-Type: text/plain; charset="UTF-8"',
+        'Content-Transfer-Encoding: base64',
+      );
+      return base64Lines(input.textBody);
+    }
+    const mixed = wrap('multipart/mixed', 'm', [
+      textPart(input.textBody),
+      ...input.attachments.map(filePart),
+    ]);
+    headerLines.push(mixed.header);
+    return mixed.body;
+  }
+  const htmlSide =
+    inlineFiles.length === 0
+      ? htmlPart(input.htmlBody)
+      : nested(
+          wrap('multipart/related', 'r', [htmlPart(input.htmlBody), ...inlineFiles.map(filePart)]),
+        );
+  const alternative = wrap('multipart/alternative', '', [textPart(input.textBody), htmlSide]);
+  if (regularFiles.length === 0) {
+    headerLines.push(alternative.header);
+    return alternative.body;
+  }
+  const mixed = wrap('multipart/mixed', 'm', [nested(alternative), ...regularFiles.map(filePart)]);
+  headerLines.push(mixed.header);
+  return mixed.body;
+}
+
 export function buildReply(rawInput: ReplyInput): BuiltReply {
   const parsed = replyInputSchema.safeParse(rawInput);
   if (!parsed.success) throw new ReplyBuildError('invalid_input', 'schema validation failed');
@@ -171,8 +288,9 @@ export function buildReply(rawInput: ReplyInput): BuiltReply {
   if (recipients.length === 0) throw new ReplyBuildError('invalid_input', 'no recipient');
 
   // Subject: same as the parent (R-2.3), plus the ticket token when it is not already there.
-  let subject = assertSingleLine('subject', parent.subject.trim());
-  if (input.subjectMode === 'prefix_re' && !/^re:/i.test(subject)) subject = `Re: ${subject}`;
+  let subject = assertSingleLine('subject', (input.subject ?? parent.subject).trim());
+  if (input.subject === undefined && input.subjectMode === 'prefix_re' && !/^re:/i.test(subject))
+    subject = `Re: ${subject}`;
   if (input.ticketKey !== undefined) {
     const token = `[${input.ticketKey.toUpperCase()}]`;
     if (!subject.toUpperCase().includes(token)) subject = `${subject} ${token}`.trim();
@@ -197,6 +315,7 @@ export function buildReply(rawInput: ReplyInput): BuiltReply {
     foldHeader('From', formatAddress(input.from)),
     foldHeader('To', recipients.map(formatAddress).join(', ')),
     ...(input.cc.length > 0 ? [foldHeader('Cc', input.cc.map(formatAddress).join(', '))] : []),
+    ...(input.bcc.length > 0 ? [foldHeader('Bcc', input.bcc.map(formatAddress).join(', '))] : []),
     `Subject: ${encodeHeaderText(subject)}`,
     `Date: ${date}`,
     `Message-ID: <${messageId}>`,
@@ -208,30 +327,7 @@ export function buildReply(rawInput: ReplyInput): BuiltReply {
     'MIME-Version: 1.0',
   ];
 
-  let body: string;
-  if (input.htmlBody === undefined) {
-    headerLines.push(
-      'Content-Type: text/plain; charset="UTF-8"',
-      'Content-Transfer-Encoding: base64',
-    );
-    body = base64Lines(input.textBody);
-  } else {
-    headerLines.push(`Content-Type: multipart/alternative; boundary="${boundary}"`);
-    body = [
-      `--${boundary}`,
-      'Content-Type: text/plain; charset="UTF-8"',
-      'Content-Transfer-Encoding: base64',
-      '',
-      base64Lines(input.textBody),
-      `--${boundary}`,
-      'Content-Type: text/html; charset="UTF-8"',
-      'Content-Transfer-Encoding: base64',
-      '',
-      base64Lines(input.htmlBody),
-      `--${boundary}--`,
-      '',
-    ].join('\r\n');
-  }
+  const body = buildBody(input, boundary, headerLines);
 
   const message = `${headerLines.join('\r\n')}\r\n\r\n${body}`;
   return {

@@ -4,6 +4,7 @@ import {
   date,
   index,
   integer,
+  jsonb,
   pgTable,
   primaryKey,
   text,
@@ -109,6 +110,11 @@ export const handoff = pgTable(
     status: text('status').notNull().default('draft'),
     notes: text('notes').notNull().default(''),
     messageForNext: text('message_for_next').notNull().default(''),
+    /** References [{id, filename, contentType, size}] to `staff_upload` rows (migration 0083). */
+    attachments: jsonb('attachments')
+      .$type<Record<string, unknown>[]>()
+      .notNull()
+      .default(sql`'[]'::jsonb`),
     confirmedAt: timestamptz('confirmed_at'),
     createdAt: timestamptz('created_at').notNull().defaultNow(),
     updatedAt: timestamptz('updated_at').notNull().defaultNow(),
@@ -173,6 +179,11 @@ export const shiftNote = pgTable(
     toUserId: uuid('to_user_id').references(() => users.id, { onDelete: 'cascade' }),
     deliverAt: timestamptz('deliver_at'),
     body: text('body').notNull(),
+    /** References to `staff_upload` rows (migration 0083). */
+    attachments: jsonb('attachments')
+      .$type<Record<string, unknown>[]>()
+      .notNull()
+      .default(sql`'[]'::jsonb`),
     handoffId: uuid('handoff_id').references(() => handoff.id, { onDelete: 'set null' }),
     createdAt: timestamptz('created_at').notNull().defaultNow(),
   },

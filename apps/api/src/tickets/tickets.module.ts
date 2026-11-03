@@ -5,6 +5,7 @@ import { OrgsModule } from '../orgs/orgs.module.js';
 import { PortalNotificationsModule } from '../portal/portal-notifications.module.js';
 import { SlaModule } from '../sla/sla.module.js';
 import { TeamQueuesModule } from '../team-queues/team-queues.module.js';
+import { UploadsModule } from '../uploads/uploads.module.js';
 import { APP_CONFIG, type ApiConfig } from '../config/config.js';
 import { TICKET_KEYS, TicketKeys } from './ticket-keys.js';
 import { SlaRemaining } from './sla-remaining.js';
@@ -22,7 +23,14 @@ import { WorkflowController, WorkflowService } from './workflow.service.js';
  * create a ticket inside its own transaction (`UnitOfWorkService.run`).
  */
 @Module({
-  imports: [OrgsModule, IntentsModule, SlaModule, TeamQueuesModule, PortalNotificationsModule],
+  imports: [
+    OrgsModule,
+    IntentsModule,
+    SlaModule,
+    TeamQueuesModule,
+    PortalNotificationsModule,
+    UploadsModule,
+  ],
   controllers: [TicketsController, TicketAttachmentsController, WorkflowController],
   providers: [
     {

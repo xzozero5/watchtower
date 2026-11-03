@@ -288,11 +288,11 @@ export function createOpsEndpoints(client: ApiClient) {
         schema: changedSchema,
       }),
 
-    addIncidentNote: (incidentId: string, text: string) =>
+    addIncidentNote: (incidentId: string, text: string, attachmentIds?: readonly string[]) =>
       client.request({
         method: 'POST',
         path: `/v1/incidents/${id(incidentId)}/notes`,
-        body: { text },
+        body: attachmentIds && attachmentIds.length > 0 ? { text, attachmentIds } : { text },
         schema: noteResultSchema,
       }),
 

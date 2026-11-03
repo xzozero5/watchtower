@@ -337,6 +337,8 @@ export const message = pgTable(
     bodyText: text('body_text').notNull(),
     bodyHtml: text('body_html'),
     bodyRedacted: text('body_redacted'),
+    /** Email header block: { to, cc, bcc, subject }. Null for a message that is not an email. */
+    emailMeta: jsonb('email_meta'),
     attachments: jsonb('attachments')
       .notNull()
       .default(sql`'[]'::jsonb`),

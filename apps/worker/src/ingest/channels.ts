@@ -177,6 +177,12 @@ export function createGmailIngestor(options: GmailIngestorOptions): ChannelInges
           subject: email.subject,
           bodyText: email.textBody,
           bodyHtml: email.safeHtml,
+          emailMeta: {
+            from: email.from,
+            to: email.to,
+            cc: email.cc,
+            subject: email.subject,
+          },
           attachments: email.attachments.map((attachment) => ({
             partId: attachment.partId,
             filename: attachment.filename,

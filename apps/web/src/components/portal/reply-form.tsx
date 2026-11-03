@@ -14,7 +14,7 @@ import { classifyPortalError } from '@/lib/portal/portal-client';
 import { formatWait } from '@/lib/portal/portal-format';
 import { usePortalApi } from '@/lib/portal/use-portal';
 
-import { AttachmentPicker, useAttachments } from './attachment-picker';
+import { AttachmentPicker, PortalPasteZone, useAttachments } from './attachment-picker';
 import { describedBy, FormField } from './form-field';
 
 /** Appends a freshly sent reply to the view the page already has, without waiting for a refetch. */
@@ -125,18 +125,20 @@ export function ReplyForm({
         hint={t('portal.tracking.replyHint')}
         error={fieldError ? t(fieldError) : undefined}
       >
-        <Textarea
-          id={id}
-          name="body"
-          rows={5}
-          aria-invalid={fieldError ? true : undefined}
-          aria-describedby={describedBy(id, true, fieldError !== null)}
-          value={body}
-          onChange={(event) => {
-            setBody(event.target.value);
-            if (fieldError) setFieldError(null);
-          }}
-        />
+        <PortalPasteZone state={attachments} disabled={sending}>
+          <Textarea
+            id={id}
+            name="body"
+            rows={5}
+            aria-invalid={fieldError ? true : undefined}
+            aria-describedby={describedBy(id, true, fieldError !== null)}
+            value={body}
+            onChange={(event) => {
+              setBody(event.target.value);
+              if (fieldError) setFieldError(null);
+            }}
+          />
+        </PortalPasteZone>
       </FormField>
       <AttachmentPicker state={attachments} disabled={sending} />
       {failure ? (

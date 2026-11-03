@@ -7,6 +7,7 @@
  */
 import type { Widen } from '../types';
 import { adminEn } from './admin';
+import { attachmentsEn } from './attachments';
 import { aiEn } from './ai';
 import { apiStatusEn } from './apiStatus';
 import { appEn } from './app';
@@ -15,6 +16,7 @@ import { bulkEn } from './bulk';
 import { channelEn } from './channel';
 import { commandsEn } from './commands';
 import { composerEn } from './composer';
+import { emailEn } from './email';
 import { conversationEn } from './conversation';
 import { csatEn } from './csat';
 import { customerEn } from './customer';
@@ -63,6 +65,8 @@ export const en = {
   conversation: conversationEn,
   timeline: timelineEn,
   composer: composerEn,
+  attachments: attachmentsEn,
+  email: emailEn,
   details: detailsEn,
   sla: slaEn,
   workspace: workspaceEn,

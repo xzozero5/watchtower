@@ -66,6 +66,8 @@ export interface CreateTicketInput {
   readonly threadKey?: string;
   /** Sanitised HTML of the first message, when the channel has one. */
   readonly bodyHtml?: string;
+  /** Email header block of the first message (From / To / Cc / Subject). */
+  readonly emailMeta?: Record<string, unknown>;
   /** Attachment references of the first message (objects already in storage). */
   readonly attachments?: readonly Record<string, unknown>[];
   /** Finds the organization's contact by address, or creates it. */
@@ -241,6 +243,7 @@ export async function createTicket(
       senderUserId: input.senderUserId ?? null,
       bodyText: input.body,
       bodyHtml: input.bodyHtml ?? null,
+      emailMeta: input.emailMeta ?? null,
       attachments: [...(input.attachments ?? [])],
       visibility: 'public',
       // The customer wrote it to us; there is nothing for us to deliver.

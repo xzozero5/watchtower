@@ -23,6 +23,13 @@ import {
 import { useId, useState } from 'react';
 
 import { LoadError } from '@/components/admin/admin-page';
+import {
+  AttachmentDropZone,
+  AttachmentGallery,
+  AttachmentPicker,
+  parseStaffAttachments,
+  useAttachmentUpload,
+} from '@/components/attachments';
 import { ConfirmDialog } from '@/components/admin/confirm-dialog';
 import { AppLink } from '@/components/app-link';
 import { ChangesPanel } from '@/components/ops/incidents/changes-panel';
@@ -317,10 +324,12 @@ function Timeline({ incident }: { incident: IncidentDetail }) {
   const base = useId();
   const [text, setText] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const upload = useAttachmentUpload();
   const add = useMutation({
-    mutationFn: () => api.addIncidentNote(incident.id, text.trim()),
+    mutationFn: () => api.addIncidentNote(incident.id, text.trim(), upload.attachmentIds),
     onSuccess: async () => {
       setText('');
+      upload.clear();
       setError(null);
       await queryClient.invalidateQueries({ queryKey: opsKeys(userId).incident(incident.id) });
       toast(t('ops.incidents.timeline.noteAdded'));
@@ -342,6 +351,10 @@ function Timeline({ incident }: { incident: IncidentDetail }) {
               setError(t('ops.common.required'));
               return;
             }
+            if (upload.busy) {
+              setError(t('attachments.waitForUploads'));
+              return;
+            }
             add.mutate();
           }}
         >
@@ -351,19 +364,22 @@ function Timeline({ incident }: { incident: IncidentDetail }) {
             hint={t('ops.incidents.timeline.noteHint')}
             {...(error ? { error } : {})}
           >
-            <Input
-              id={`${base}-note`}
-              value={text}
-              maxLength={2000}
-              aria-invalid={error ? true : undefined}
-              aria-describedby={`${base}-note-hint${error ? ` ${base}-note-error` : ''}`}
-              onChange={(e) => {
-                setText(e.target.value);
-              }}
-            />
+            <AttachmentDropZone upload={upload} disabled={add.isPending}>
+              <Input
+                id={`${base}-note`}
+                value={text}
+                maxLength={2000}
+                aria-invalid={error ? true : undefined}
+                aria-describedby={`${base}-note-hint${error ? ` ${base}-note-error` : ''}`}
+                onChange={(e) => {
+                  setText(e.target.value);
+                }}
+              />
+            </AttachmentDropZone>
           </FormField>
+          <AttachmentPicker upload={upload} disabled={add.isPending} />
           <div>
-            <Button type="submit" disabled={add.isPending}>
+            <Button type="submit" disabled={add.isPending || upload.busy}>
               {t('ops.incidents.timeline.addNote')}
             </Button>
           </div>
@@ -383,6 +399,12 @@ function Timeline({ incident }: { incident: IncidentDetail }) {
                 <Moment iso={entry.createdAt} />
               </p>
               <p className="whitespace-pre-wrap break-words">{timelineLine(entry, t)}</p>
+              {entry.type === 'note' ? (
+                <AttachmentGallery
+                  attachments={parseStaffAttachments(entry.payload.attachments)}
+                  className="mt-2"
+                />
+              ) : null}
             </li>
           ))}
         </ol>

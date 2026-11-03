@@ -1,7 +1,9 @@
 import type { schema } from '@watchtower/db';
 import { MASKED_ATTACHMENT_NAME } from '../masking/pii-masker.js';
 import {
+  emailMetaSchema,
   type ChannelType,
+  type EmailMeta,
   type DeliverySummary,
   type Message,
   type TimelineEntry,
@@ -54,6 +56,11 @@ export function toMessage(row: MessageRow, context: MessageContext): Message {
     visibility: row.visibility as Message['visibility'],
     sender,
     bodyText: row.bodyText,
+    // The sanitised HTML and the header block are for staff: a client reads the text.
+    ...(context.audience === 'staff' && row.bodyHtml !== null ? { bodyHtml: row.bodyHtml } : {}),
+    ...(context.audience === 'staff' && row.emailMeta != null
+      ? { emailMeta: emailMetaOf(row.emailMeta) }
+      : {}),
     deliveryStatus: row.deliveryStatus as Message['deliveryStatus'],
     ...(context.audience === 'staff' && context.delivery !== undefined
       ? { delivery: context.delivery }
@@ -61,6 +68,11 @@ export function toMessage(row: MessageRow, context: MessageContext): Message {
     attachments: viewAttachments(row.attachments, context.audience),
     createdAt: row.createdAt.toISOString(),
   };
+}
+
+function emailMetaOf(value: unknown): EmailMeta | null {
+  const parsed = emailMetaSchema.safeParse(value);
+  return parsed.success ? parsed.data : null;
 }
 
 /**
@@ -132,6 +144,9 @@ export function maskMessage<T extends Message>(message: T, session: MessageMaske
   return {
     ...message,
     bodyText: session.text(message.bodyText),
+    // HTML and addresses cannot be masked piecemeal; a masked reader gets the masked text only.
+    bodyHtml: null,
+    emailMeta: null,
     sender:
       message.sender.type === 'contact'
         ? { ...message.sender, name: session.name(message.sender.name) }

@@ -40,6 +40,8 @@ export async function createManualTicket(
   tx: DbTransaction,
   ctx: DomainContext,
   input: CreateManualTicket,
+  /** Files already in storage (staff uploads) kept on the first message. */
+  attachments: readonly Record<string, unknown>[] = [],
 ): Promise<DomainResult<CreateManualTicketResult>> {
   const fx = new Effects();
 
@@ -66,6 +68,7 @@ export async function createManualTicket(
     ...(input.priority === undefined ? {} : { priority: input.priority }),
     ...(input.queueId === undefined ? {} : { queueId: input.queueId }),
     ...(input.tags === undefined ? {} : { tags: input.tags }),
+    ...(attachments.length === 0 ? {} : { attachments }),
   });
   fx.events.push(...created.events);
   if (created.audited) fx.audited = true;

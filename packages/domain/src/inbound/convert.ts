@@ -101,6 +101,7 @@ export async function convertInboundMessage(
     subject: ticketSubject({ subject: row.subject, bodyText: row.bodyText }),
     body: row.bodyText,
     ...(row.bodyHtml === null ? {} : { bodyHtml: row.bodyHtml }),
+    ...(row.emailMeta == null ? {} : { emailMeta: row.emailMeta as Record<string, unknown> }),
     attachments: (row.attachments as readonly InboundAttachment[]).map((attachment) => ({
       ...attachment,
     })),

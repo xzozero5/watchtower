@@ -359,6 +359,10 @@ export const CORE_AUDIT_ACTIONS = {
   portalAttachmentRejected: 'portal.attachment_rejected',
   /** A person downloaded a ticket attachment (T-140). */
   ticketAttachmentDownload: 'ticket.attachment_download',
+  /** A person uploaded an image or file for a note, handoff, incident note or ticket. */
+  uploadCreate: 'upload.create',
+  /** A person opened an uploaded file. */
+  uploadDownload: 'upload.download',
 } as const;
 
 /** Audit action names, so the UI and the tests do not retype strings: core plus every feature. */

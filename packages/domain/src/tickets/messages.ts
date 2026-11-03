@@ -35,6 +35,8 @@ export interface NoteInput {
   readonly ref: string;
   readonly note: Note;
   readonly sender: { readonly userId: string };
+  /** Attachment records of the note (uploads already in storage). */
+  readonly attachments?: readonly Record<string, unknown>[];
 }
 
 export interface MessageResult {
@@ -113,6 +115,13 @@ export async function replyToTicket(
       `This ticket was resolved more than ${String(windowDays)} days ago; open a new one`,
     );
   }
+  const email = body.email;
+  if (email !== undefined) {
+    if (fromCustomer) throw badRequest('A client cannot use the email composer');
+    if (ticket.channel !== 'gmail') {
+      throw badRequest('The email composer is for tickets that came by email');
+    }
+  }
   if (fromCustomer && body.aiDraftId !== undefined) {
     throw badRequest('A client cannot send an AI draft');
   }
@@ -162,6 +171,17 @@ export async function replyToTicket(
       senderUserId: sender.kind === 'contact' ? null : sender.userId,
       senderContactId: contactId,
       bodyText: body.body,
+      ...(email === undefined
+        ? {}
+        : {
+            bodyHtml: email.bodyHtml ?? null,
+            emailMeta: {
+              to: email.to ?? [],
+              cc: email.cc,
+              bcc: email.bcc,
+              subject: email.subject ?? null,
+            },
+          }),
       attachments: [...(input.attachments ?? [])],
       visibility: 'public',
       deliveryStatus: viaDispatcher
@@ -259,6 +279,7 @@ export async function addTicketNote(
       direction: 'internal',
       senderUserId: input.sender.userId,
       bodyText: input.note.body,
+      attachments: [...(input.attachments ?? [])],
       visibility: 'internal',
       deliveryStatus: 'not_applicable',
     },

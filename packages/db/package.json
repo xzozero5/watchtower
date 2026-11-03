@@ -28,7 +28,9 @@
     "db:migrate": "pnpm run build && node --env-file-if-exists=../../.env dist/cli.js up",
     "db:rollback": "pnpm run build && node --env-file-if-exists=../../.env dist/cli.js down",
     "db:status": "pnpm run build && node --env-file-if-exists=../../.env dist/cli.js status",
-    "db:seed": "pnpm run build && node --env-file-if-exists=../../.env dist/seed-cli.js"
+    "db:seed": "pnpm run build && node --env-file-if-exists=../../.env dist/seed-cli.js",
+    "db:seed:year": "pnpm run build && node --env-file-if-exists=../../.env dist/seed-cli.js --scenario year",
+    "kb:sync": "pnpm run build && node --env-file-if-exists=../../.env dist/kb-sync-cli.js"
   },
   "dependencies": {
     "@watchtower/shared": "workspace:*",

@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { emailSchema } from './auth.js';
 import { manualChannelSchema } from './channels.js';
 import { ticketPrioritySchema } from './sla.js';
+import { attachmentIdsSchema } from './uploads.js';
 import {
   ticketDetailSchema,
   ticketStatusSchema,
@@ -51,6 +52,8 @@ export const createManualTicketSchema = z
     priority: ticketPrioritySchema.optional(),
     queueId: z.uuid().optional(),
     tags: ticketTagsSchema.optional(),
+    /** Uploaded files (`POST /v1/uploads`) kept on the first message of the ticket. */
+    attachmentIds: attachmentIdsSchema.optional(),
   })
   .refine((value) => (value.requesterContactId === undefined) !== (value.requester === undefined), {
     message: 'give either requesterContactId or requester',

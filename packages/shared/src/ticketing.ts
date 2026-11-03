@@ -9,6 +9,7 @@ import { FEATURES, FEATURE_TICKET_EVENTS } from './features/index.js';
 import { deliverySummarySchema } from './features/outbound.js';
 import { ticketSlaViewSchema } from './features/shifts.js';
 import { slaStateSchema, ticketPrioritySchema } from './sla.js';
+import { attachmentIdsSchema } from './uploads.js';
 
 /**
  * HTTP contract of the ticket endpoints (PRD section 4.1) and the rules both sides share: the
@@ -537,6 +538,55 @@ export const mergeTicketSchema = z.object({
 });
 export type MergeTicket = z.infer<typeof mergeTicketSchema>;
 
+export const emailAddressSchema = z.object({
+  address: z.email().max(320),
+  name: z.string().max(200).nullable().optional(),
+});
+export type EmailAddress = z.infer<typeof emailAddressSchema>;
+
+/** The header block of an email message: who it went to and the subject. */
+export const emailMetaSchema = z.object({
+  from: emailAddressSchema.nullable().optional(),
+  to: z.array(emailAddressSchema).max(50).default([]),
+  cc: z.array(emailAddressSchema).max(50).default([]),
+  bcc: z.array(emailAddressSchema).max(50).default([]),
+  subject: z.string().max(998).nullable().optional(),
+});
+export type EmailMeta = z.infer<typeof emailMetaSchema>;
+
+/** What the email composer adds to a reply on an email ticket. */
+export const emailReplySchema = z.object({
+  /** Recipients the person chose; without `to` the reply goes to the requester. */
+  to: z.array(emailAddressSchema).min(1).max(50).optional(),
+  cc: z.array(emailAddressSchema).max(50).default([]),
+  bcc: z.array(emailAddressSchema).max(50).default([]),
+  subject: z
+    .string()
+    .trim()
+    .min(1)
+    .max(998)
+    // No control characters (CR/LF would split the header); one check over UTF-16 units is enough.
+    .refine(
+      (value) =>
+        Array.from({ length: value.length }, (_, i) => value.charCodeAt(i)).every((c) => c >= 32),
+      'subject is one line',
+    )
+    .optional(),
+  /** The composed HTML. Sanitised on the server before it is stored or sent. */
+  bodyHtml: z.string().max(400_000).optional(),
+  /** Uploaded images (`attachmentIds`) that the HTML shows with `cid:<contentId>`; sent inline, not as files. */
+  inline: z
+    .array(
+      z.object({
+        attachmentId: z.uuid(),
+        contentId: z.string().regex(/^[A-Za-z0-9._-]{1,80}@[A-Za-z0-9.-]{1,80}$/),
+      }),
+    )
+    .max(20)
+    .default([]),
+});
+export type EmailReply = z.infer<typeof emailReplySchema>;
+
 export const replySchema = z.object({
   body: z.string().trim().min(1).max(20_000),
   /** "Reply and set status" (R-1.4). Staff only; checked against the workflow. */
@@ -552,10 +602,18 @@ export const replySchema = z.object({
    * records the draft as edited with the distance between the two (T-108c). Not with `aiDraftId`.
    */
   editedFromDraftId: z.uuid().optional(),
+  /** Staff only, email tickets: recipients, subject and HTML from the email composer. */
+  email: emailReplySchema.optional(),
+  /** Staff only: files uploaded with `POST /v1/uploads` that travel with the reply (attachments on an email). */
+  attachmentIds: attachmentIdsSchema.optional(),
 });
 export type Reply = z.infer<typeof replySchema>;
 
-export const noteSchema = z.object({ body: z.string().trim().min(1).max(20_000) });
+export const noteSchema = z.object({
+  body: z.string().trim().min(1).max(20_000),
+  /** Files uploaded with `POST /v1/uploads` that stay with the note. */
+  attachmentIds: attachmentIdsSchema.optional(),
+});
 export type Note = z.infer<typeof noteSchema>;
 
 export const messageSenderSchema = z.object({
@@ -573,6 +631,10 @@ export const messageSchema = z.object({
   visibility: messageVisibilitySchema,
   sender: messageSenderSchema,
   bodyText: z.string(),
+  /** Sanitised HTML of an email message (staff only; `cid:` images only). */
+  bodyHtml: z.string().nullable().optional(),
+  /** Staff only, email messages: To / Cc / Bcc / Subject. */
+  emailMeta: emailMetaSchema.nullable().optional(),
   deliveryStatus: deliveryStatusSchema,
   /** Staff only, outbound replies on Gmail or LINE: the delivery behind `deliveryStatus` (Undo, Retry). */
   delivery: deliverySummarySchema.nullable().optional(),

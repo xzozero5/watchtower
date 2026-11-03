@@ -7,6 +7,8 @@ import {
   type TimelineEntry,
 } from '@watchtower/shared';
 import { Avatar, cn, toast, Tooltip } from '@watchtower/ui';
+import { Fragment, useState } from 'react';
+
 import { AlertTriangle, Bot, Clock, Copy, Lock, Quote, Settings2, Undo2 } from 'lucide-react';
 
 import { ChannelIcon } from '@/components/ticket/channel-icon';
@@ -16,6 +18,8 @@ import { useSendUndo } from '@/lib/outbound/queries';
 import { useNow } from '@/lib/use-now';
 import { statusKey } from '@/lib/tickets/status-key';
 
+import { EmailMessageCard } from './email/email-message';
+import { defaultExpandedIds, emailMessages, isEmailMessage, threadSubject } from './email/thread';
 import { MessageAttachments } from './message-attachments';
 
 type EventEntry = Extract<TimelineEntry, { kind: 'event' }>;
@@ -291,6 +295,108 @@ function MessageRow({
   );
 }
 
+/** An email in the thread: a Gmail-style card, full width, collapsed or open. */
+function EmailRow({
+  message,
+  expanded,
+  onToggle,
+  onQuote,
+  canQuote,
+}: {
+  message: MessageEntry;
+  expanded: boolean;
+  onToggle: () => void;
+  onQuote?: (text: string) => void;
+  canQuote: boolean;
+}) {
+  const { t } = useI18n();
+  const kind = messageKind(message) === 'reply' ? 'reply' : 'customer';
+  const copy = () => {
+    void navigator.clipboard
+      .writeText(message.bodyText)
+      .then(() => {
+        toast(t('timeline.copied'));
+      })
+      .catch(() => undefined);
+  };
+  return (
+    <li className="px-4 pt-3">
+      <EmailMessageCard
+        message={message}
+        kind={kind}
+        expanded={expanded}
+        onToggle={onToggle}
+        footer={<DeliveryNote message={message} />}
+        actions={
+          <div role="group" aria-label={t('timeline.actions')} className="flex gap-0.5">
+            <Tooltip content={t('timeline.copy')}>
+              <button
+                type="button"
+                aria-label={t('timeline.copy')}
+                onClick={copy}
+                className={ICON_BUTTON}
+              >
+                <Copy aria-hidden className="size-3.5" />
+              </button>
+            </Tooltip>
+            {canQuote && onQuote ? (
+              <Tooltip content={t('timeline.quote')}>
+                <button
+                  type="button"
+                  aria-label={t('timeline.quote')}
+                  onClick={() => {
+                    onQuote(message.bodyText);
+                    toast(t('timeline.quoted'));
+                  }}
+                  className={ICON_BUTTON}
+                >
+                  <Quote aria-hidden className="size-3.5" />
+                </button>
+              </Tooltip>
+            ) : null}
+          </div>
+        }
+      />
+    </li>
+  );
+}
+
+/** The subject of the thread, how many mails it has, and Expand all / Collapse all. */
+function ThreadHeader({
+  subject,
+  count,
+  allOpen,
+  onToggleAll,
+}: {
+  subject: string | null;
+  count: number;
+  allOpen: boolean;
+  onToggleAll: () => void;
+}) {
+  const { t } = useI18n();
+  return (
+    <li className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 pt-3">
+      {subject ? (
+        <h3 className="min-w-0 flex-1 text-base font-medium break-words text-foreground">
+          {subject}
+        </h3>
+      ) : (
+        <span className="flex-1" />
+      )}
+      <span className="text-xs text-muted-foreground">{t('email.thread.messages', { count })}</span>
+      {count > 1 ? (
+        <button
+          type="button"
+          onClick={onToggleAll}
+          className="rounded-sm text-xs text-link hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+        >
+          {allOpen ? t('email.thread.collapseAll') : t('email.thread.expandAll')}
+        </button>
+      ) : null}
+    </li>
+  );
+}
+
 /**
  * Messages and system events in time order. A customer's message sits on the left on a raised
  * surface; a team reply sits on the right on a navy tint; an internal note keeps its dashed border
@@ -307,10 +413,40 @@ export function Timeline({
 }) {
   const t = useI18n().t;
   const now = useNow();
+  // Email is drawn as a thread: the newest mail is open, older ones are a line each. A person's own
+  // toggles win over that default.
+  const mails = emailMessages(entries);
+  const defaults = defaultExpandedIds(entries);
+  const [overrides, setOverrides] = useState<Record<string, boolean>>({});
+  const isOpen = (id: string) => overrides[id] ?? defaults.has(id);
+  const allOpen = mails.every((mail) => isOpen(mail.id));
+  const firstMailId = mails[0]?.id ?? null;
   return (
     <ol aria-label={t('timeline.label')} className="flex flex-col pt-1 pb-3">
       {entries.map((entry, index) =>
-        entry.kind === 'message' ? (
+        entry.kind === 'message' && isEmailMessage(entry) ? (
+          <Fragment key={`m-${entry.id}`}>
+            {entry.id === firstMailId ? (
+              <ThreadHeader
+                subject={threadSubject(entries)}
+                count={mails.length}
+                allOpen={allOpen}
+                onToggleAll={() => {
+                  setOverrides(Object.fromEntries(mails.map((mail) => [mail.id, !allOpen])));
+                }}
+              />
+            ) : null}
+            <EmailRow
+              message={entry}
+              expanded={isOpen(entry.id)}
+              onToggle={() => {
+                setOverrides((current) => ({ ...current, [entry.id]: !isOpen(entry.id) }));
+              }}
+              onQuote={onQuote}
+              canQuote={canQuote}
+            />
+          </Fragment>
+        ) : entry.kind === 'message' ? (
           <MessageRow
             key={`m-${entry.id}`}
             message={entry}

@@ -63,6 +63,7 @@ export const inboundMessage = pgTable(
     subject: text('subject').notNull().default(''),
     bodyText: text('body_text').notNull().default(''),
     bodyHtml: text('body_html'),
+    emailMeta: jsonb('email_meta'),
     attachments: jsonb('attachments')
       .notNull()
       .default(sql`'[]'::jsonb`),

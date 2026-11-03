@@ -12,6 +12,11 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useId, useRef, useState, type KeyboardEvent } from 'react';
 
 import { AccessDenied, PageHeader } from '@/components/admin/admin-page';
+import {
+  AttachmentDropZone,
+  AttachmentPicker,
+  useAttachmentUpload,
+} from '@/components/attachments';
 import { AppLink } from '@/components/app-link';
 import { FormField } from '@/components/portal/form-field';
 import { useI18n } from '@/i18n/provider';
@@ -71,6 +76,7 @@ function NewTicketForm() {
   const [confirmation, setConfirmation] = useState<boolean | null>(null);
   const [errors, setErrors] = useState<Partial<Record<Field, string>>>({});
   const [failure, setFailure] = useState<string | null>(null);
+  const upload = useAttachmentUpload();
   const refs = useRef<Partial<Record<Field, HTMLElement | null>>>({});
 
   const orgs = useQuery({
@@ -116,6 +122,10 @@ function NewTicketForm() {
 
   const submit = (): void => {
     if (create.isPending) return;
+    if (upload.busy) {
+      setFailure(t('attachments.waitForUploads'));
+      return;
+    }
     const next: Partial<Record<Field, string>> = {};
     const required = t('newTicket.required');
     if (orgId === '') next.org = required;
@@ -145,6 +155,7 @@ function NewTicketForm() {
         ? { requesterContactId: contactId }
         : { requester: { email: email.trim(), name: name.trim() } }),
       sendConfirmation,
+      ...(upload.attachmentIds.length > 0 ? { attachmentIds: upload.attachmentIds } : {}),
     });
   };
 
@@ -366,21 +377,24 @@ function NewTicketForm() {
             label={t('newTicket.body')}
             {...(errors.body ? { error: errors.body } : {})}
           >
-            <Textarea
-              id={`${base}-body`}
-              ref={(node) => {
-                refs.current.body = node;
-              }}
-              rows={6}
-              maxLength={20000}
-              value={body}
-              className="w-full"
-              {...invalid('body')}
-              onChange={(event) => {
-                setBody(event.target.value);
-              }}
-            />
+            <AttachmentDropZone upload={upload} disabled={create.isPending}>
+              <Textarea
+                id={`${base}-body`}
+                ref={(node) => {
+                  refs.current.body = node;
+                }}
+                rows={6}
+                maxLength={20000}
+                value={body}
+                className="w-full"
+                {...invalid('body')}
+                onChange={(event) => {
+                  setBody(event.target.value);
+                }}
+              />
+            </AttachmentDropZone>
           </FormField>
+          <AttachmentPicker upload={upload} disabled={create.isPending} />
 
           <div className="flex flex-col gap-1">
             <label className="flex items-center gap-2 text-sm">
@@ -409,7 +423,7 @@ function NewTicketForm() {
             </p>
           ) : null}
           <div>
-            <Button type="submit" variant="primary" disabled={create.isPending}>
+            <Button type="submit" variant="primary" disabled={create.isPending || upload.busy}>
               {create.isPending ? t('newTicket.submitting') : t('newTicket.submit')}
             </Button>
           </div>

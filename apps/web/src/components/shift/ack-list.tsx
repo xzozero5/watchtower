@@ -6,6 +6,7 @@ import { Button, cn, Dialog, DialogContent, Select, Textarea, toast } from '@wat
 import { CircleX, Repeat, TriangleAlert } from 'lucide-react';
 import { type KeyboardEvent, useId, useRef, useState } from 'react';
 
+import { AttachmentGallery } from '@/components/attachments';
 import { PriorityBadge, TicketLink, useShiftFormat } from '@/components/shift/shift-bits';
 import { FormField } from '@/components/portal/form-field';
 import { useI18n } from '@/i18n/provider';
@@ -173,6 +174,7 @@ export function AckList({ data, timezone }: { data: IncomingHandoffs; timezone: 
                 {handoff.notes}
               </p>
             ) : null}
+            <AttachmentGallery attachments={handoff.attachments} />
             <ul aria-label={t('shift.ack.listLabel')} className="flex flex-col gap-2">
               {handoff.items.map((item, index) => (
                 <AckItem

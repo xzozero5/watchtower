@@ -36,6 +36,7 @@ function parseBody(body: BodyInit | null | undefined): unknown {
       payload: typeof payload === 'string' ? (JSON.parse(payload) as unknown) : undefined,
       files: body
         .getAll('files')
+        .concat(body.getAll('file'))
         .filter((part): part is File => part instanceof File)
         .map((file) => ({ name: file.name, size: file.size, type: file.type })),
     };

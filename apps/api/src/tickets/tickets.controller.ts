@@ -75,6 +75,7 @@ import {
 } from '../auth/decorators.js';
 import { badRequest, forbidden } from '../auth/http-errors.js';
 import { RateLimiter } from '../auth/rate-limiter.js';
+import { StaffUploadsService } from '../uploads/staff-uploads.service.js';
 import { parseResponse } from '../common/zod-openapi.js';
 import { UnitOfWorkService } from '../realtime/unit-of-work.js';
 import { maskMessage, toMessage } from './message-view.js';
@@ -87,6 +88,7 @@ import {
   type Sender,
 } from './tickets.service.js';
 import { TimelineService } from './timeline.service.js';
+import { markInlineImages, prepareEmailReply } from './email-reply.js';
 
 type RefParam = z.infer<typeof ticketRefParamSchema>;
 type ReferenceParam = z.infer<typeof ticketReferenceParamSchema>;
@@ -118,6 +120,7 @@ export class TicketsController {
     @Inject(UnitOfWorkService) private readonly uow: UnitOfWorkService,
     @Inject(TICKET_KEYS) private readonly keys: TicketKeys,
     @Inject(RateLimiter) private readonly limiter: RateLimiter,
+    @Inject(StaffUploadsService) private readonly uploads: StaffUploadsService,
   ) {}
 
   @Get()
@@ -218,8 +221,9 @@ export class TicketsController {
       MANUAL_TICKET_LIMITS.perUserPerHour,
       3600,
     );
+    const attachments = await this.uploads.messageRecords(principal.userId, body.attachmentIds);
     const created = await this.uow.run((uow) =>
-      this.tickets.createManual(uow, body, actorOf(principal)),
+      this.tickets.createManual(uow, body, actorOf(principal), attachments),
     );
     AuditScope.set({ metadata: { channel: body.channel, confirmation: created.confirmation } });
     return parseResponse(manualTicketResultSchema, {
@@ -484,8 +488,24 @@ export class TicketsController {
             name: principal.name,
           }
         : { kind: 'staff', userId: principal.userId };
+    if (sender.kind !== 'staff' && body.attachmentIds !== undefined) throw forbidden();
+    const files =
+      sender.kind === 'staff' && body.attachmentIds !== undefined && body.attachmentIds.length > 0
+        ? markInlineImages(
+            await this.uploads.messageRecords(principal.userId, body.attachmentIds),
+            body.attachmentIds,
+            body.email?.inline ?? [],
+          )
+        : undefined;
     const result = await this.uow.run((uow) =>
-      this.tickets.reply(uow, params.id, body, sender, actorOf(principal)),
+      this.tickets.reply(
+        uow,
+        params.id,
+        sender.kind === 'staff' ? prepareEmailReply(body) : body,
+        sender,
+        actorOf(principal),
+        files,
+      ),
     );
     return parseResponse(replyResultSchema, {
       message: toMessage(result.message, {
@@ -519,8 +539,19 @@ export class TicketsController {
     @Body({ schema: noteSchema }) body: Note,
     @CurrentPrincipal() principal: Principal,
   ) {
+    const files =
+      body.attachmentIds !== undefined && body.attachmentIds.length > 0
+        ? await this.uploads.messageRecords(principal.userId, body.attachmentIds)
+        : undefined;
     const result = await this.uow.run((uow) =>
-      this.tickets.note(uow, params.id, body, { userId: principal.userId }, actorOf(principal)),
+      this.tickets.note(
+        uow,
+        params.id,
+        body,
+        { userId: principal.userId },
+        actorOf(principal),
+        files,
+      ),
     );
     const message = toMessage(result.message, {
       ticketKey: this.keys.format(result.ticket.number),

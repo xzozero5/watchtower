@@ -124,6 +124,7 @@ export async function runSeed(database: Database, options: SeedOptions = {}): Pr
 }
 
 export { DEFAULT_EXAMPLES_DIR, SeedError } from './common.js';
+export { seedYear, type YearSeedOptions, type YearSeedResult } from './year/index.js';
 export { seedDemo, type DemoSeedResult } from './demo.js';
 export { seedShiftDefinitions, type ShiftSeedResult } from './shifts.js';
 export {

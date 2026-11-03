@@ -6,9 +6,21 @@ import {
   PORTAL_ATTACHMENT_MAX_FILES,
 } from '@watchtower/shared';
 import { Alert, Button } from '@watchtower/ui';
-import { Paperclip, X } from 'lucide-react';
-import { useCallback, useId, useRef, useState, type ChangeEvent } from 'react';
+import { FileText, Paperclip, X } from 'lucide-react';
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+  type ChangeEvent,
+  type ClipboardEvent,
+  type DragEvent,
+  type ReactNode,
+} from 'react';
 
+import { filesFromTransfer, isImageFile } from '@/components/attachments/validate';
 import { useI18n } from '@/i18n/provider';
 import {
   addAttachments,
@@ -57,6 +69,99 @@ export function useAttachments(): AttachmentState {
   }, []);
 
   return { ...state, add, remove, clear };
+}
+
+/** A local thumbnail of a chosen image, released when the row goes away. */
+function useFilePreview(file: File): string | null {
+  const url = useMemo(
+    () =>
+      isImageFile(file) && typeof URL.createObjectURL === 'function'
+        ? URL.createObjectURL(file)
+        : null,
+    [file],
+  );
+  useEffect(
+    () => () => {
+      if (url !== null) URL.revokeObjectURL(url);
+    },
+    [url],
+  );
+  return url;
+}
+
+/**
+ * Wraps the description or reply box so a customer can paste a screenshot or drop files on it. Text
+ * pastes are untouched. The same checks as the file button apply (type, size, count).
+ */
+export function PortalPasteZone({
+  state,
+  disabled = false,
+  children,
+}: {
+  state: AttachmentState;
+  disabled?: boolean;
+  children: ReactNode;
+}) {
+  const { t } = useI18n();
+  const hasFiles = (event: DragEvent): boolean =>
+    Array.from(event.dataTransfer.types).includes('Files');
+  return (
+    <div
+      onPaste={(event: ClipboardEvent) => {
+        if (disabled) return;
+        const files = filesFromTransfer(event.clipboardData, t('attachments.pastedName'), true);
+        if (files.length === 0) return;
+        event.preventDefault();
+        state.add(files);
+      }}
+      onDragOver={(event) => {
+        if (!disabled && hasFiles(event)) event.preventDefault();
+      }}
+      onDrop={(event) => {
+        if (disabled || !hasFiles(event)) return;
+        event.preventDefault();
+        state.add(filesFromTransfer(event.dataTransfer, t('attachments.pastedName'), false));
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
+function FileRow({
+  file,
+  disabled,
+  onRemove,
+}: {
+  file: File;
+  disabled: boolean;
+  onRemove: () => void;
+}) {
+  const { t } = useI18n();
+  const preview = useFilePreview(file);
+  return (
+    <li className="flex items-center gap-2 rounded-inner bg-surface-muted px-3 py-1.5 text-sm">
+      {preview !== null ? (
+        // A local object URL of the file the customer just chose; not a remote image.
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={preview} alt="" className="size-10 shrink-0 rounded-inner object-cover" />
+      ) : (
+        <FileText aria-hidden className="size-5 shrink-0 text-muted-foreground" />
+      )}
+      <span className="min-w-0 flex-1 break-all">{file.name}</span>
+      <span className="shrink-0 text-muted-foreground tabular-nums">{formatBytes(file.size)}</span>
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon"
+        disabled={disabled}
+        aria-label={t('portal.attachments.remove', { name: file.name })}
+        onClick={onRemove}
+      >
+        <X aria-hidden className="size-4" />
+      </Button>
+    </li>
+  );
 }
 
 /**
@@ -143,29 +248,16 @@ export function AttachmentPicker({
       {files.length > 0 ? (
         <ul aria-label={t('portal.attachments.listLabel')} className="flex flex-col gap-1.5">
           {files.map((file, index) => (
-            <li
+            <FileRow
               key={`${file.name}-${String(file.size)}-${String(file.lastModified)}`}
-              className="flex items-center gap-2 rounded-inner bg-surface-muted px-3 py-1.5 text-sm"
-            >
-              <span className="min-w-0 flex-1 break-all">{file.name}</span>
-              <span className="shrink-0 text-muted-foreground tabular-nums">
-                {formatBytes(file.size)}
-              </span>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                disabled={disabled}
-                aria-label={t('portal.attachments.remove', { name: file.name })}
-                onClick={() => {
-                  remove(index, file.name);
-                  // The row with the pressed button disappears; keep focus on something real.
-                  setTimeout(() => addRef.current?.focus(), 0);
-                }}
-              >
-                <X aria-hidden className="size-4" />
-              </Button>
-            </li>
+              file={file}
+              disabled={disabled}
+              onRemove={() => {
+                remove(index, file.name);
+                // The row with the pressed button disappears; keep focus on something real.
+                setTimeout(() => addRef.current?.focus(), 0);
+              }}
+            />
           ))}
         </ul>
       ) : null}

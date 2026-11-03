@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 
 import { TicketsModule } from '../tickets/tickets.module.js';
+import { UploadsModule } from '../uploads/uploads.module.js';
 import { BriefService } from './brief.service.js';
 import { HandoffController } from './handoff.controller.js';
 import { HandoffReader } from './handoff-reader.js';
@@ -19,7 +20,7 @@ import { ShiftsService } from './shifts.service.js';
  * to move time.
  */
 @Module({
-  imports: [TicketsModule],
+  imports: [TicketsModule, UploadsModule],
   controllers: [RosterController, ShiftsController, HandoffController, ShiftNotesController],
   providers: [
     { provide: SHIFT_NOW, useValue: () => new Date() },

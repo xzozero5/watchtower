@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 
+import { UploadsModule } from '../uploads/uploads.module.js';
 import { NO_REPO_CHANGES, REPO_CHANGES } from './changes.js';
 import { DeploysController, IncidentsController } from './incidents.controller.js';
 import { IncidentsService } from './incidents.service.js';
@@ -10,6 +11,7 @@ import { IncidentsService } from './incidents.service.js';
  * `@RequirePermission` / `@RequireAnyPermission` or `@Public()`.
  */
 @Module({
+  imports: [UploadsModule],
   controllers: [IncidentsController, DeploysController],
   // No repository is connected in this build: the changes view shows deploys and says repoSource none.
   // A live client (T-203a RepoClient, behind [ASK-HUMAN]) replaces this provider.

@@ -477,16 +477,13 @@ describe('composer: one box', () => {
     expect(box.style.height).toMatch(/^\d+px$/);
   });
 
-  it('keeps attach as a placeholder that says "Coming in Phase 1" and does nothing; the AI lives in the brief', async () => {
-    const user = userEvent.setup();
-    const api = workspaceApi({ tickets: [ticket1] });
+  it('offers a real attach button for staff; the AI lives in the brief', async () => {
+    workspaceApi({ tickets: [ticket1] });
     await openTicket();
-    const attach = await screen.findByRole('button', { name: 'Attach a file' });
-    expect(attach).toHaveAttribute('aria-disabled', 'true');
+    const attach = await screen.findByRole('button', { name: 'Attach images or files' });
+    expect(attach).not.toHaveAttribute('aria-disabled');
+    expect(attach).toBeEnabled();
     expect(screen.queryByRole('button', { name: 'Draft with AI' })).toBeNull();
-    const before = api.calls.length;
-    await user.click(attach);
-    expect(api.calls).toHaveLength(before);
   });
 
   it('puts a customer message into the reply as a quote from its hover action', async () => {

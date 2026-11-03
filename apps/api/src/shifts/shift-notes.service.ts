@@ -9,9 +9,12 @@ import {
   type ShiftNote,
   type ShiftNotePage,
   type ShiftNoteQuery,
+  type StaffAttachment,
+  staffAttachmentSchema,
 } from '@watchtower/shared';
 import { and, desc, eq, gte, isNull, lte, ne, or, sql, type SQL } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
+import { z } from 'zod';
 
 import { AuditService } from '../audit/audit.service.js';
 import { notFound } from '../auth/http-errors.js';
@@ -20,6 +23,7 @@ import { beforeCursor, decodeCursor, preciseTimestamp, toPage } from '../common/
 import { DATABASE } from '../database/database.module.js';
 import { translating } from '../domain/domain-errors.js';
 import { UnitOfWorkService } from '../realtime/unit-of-work.js';
+import { StaffUploadsService } from '../uploads/staff-uploads.service.js';
 import { SHIFT_NOW, type Executor, type ShiftNow } from './shift-core.js';
 
 const author = alias(schema.users, 'note_author');
@@ -53,6 +57,7 @@ export class ShiftNotes {
     @Inject(UnitOfWorkService) private readonly uow: UnitOfWorkService,
     @Inject(AuditService) private readonly audit: AuditService,
     @Inject(SHIFT_NOW) private readonly now: ShiftNow,
+    @Inject(StaffUploadsService) private readonly uploads: StaffUploadsService,
   ) {}
 
   /** Unread notes in the person's inbox: the badge on the shift chip. */
@@ -101,6 +106,7 @@ export class ShiftNotes {
   }
 
   async create(principal: Principal, input: CreateShiftNote): Promise<ShiftNote> {
+    const attachments = await this.uploads.claim(principal.userId, input.attachmentIds);
     return this.uow.run(async (uow) => {
       if (input.toUserId !== undefined) {
         await translating(() => assertAssignableStaff(uow.tx, [input.toUserId as string]));
@@ -113,6 +119,7 @@ export class ShiftNotes {
           toUserId: input.toUserId ?? null,
           deliverAt: input.deliverAt === undefined ? null : new Date(input.deliverAt),
           body: input.body,
+          attachments,
           createdAt: this.now(),
         })
         .returning({ id: note.id });
@@ -126,6 +133,7 @@ export class ShiftNotes {
           audience: input.audience,
           toUserId: input.toUserId ?? null,
           deliverAt: input.deliverAt ?? null,
+          attachments: attachments.length,
         },
       });
       return this.one(uow.tx, principal.userId, created.id);
@@ -187,6 +195,12 @@ interface NoteRow {
   readonly readAt: Date | null;
 }
 
+/** References stored as jsonb, checked on the way out so a bad row cannot break the page. */
+export function parseAttachments(value: unknown): StaffAttachment[] {
+  const parsed = z.array(staffAttachmentSchema).safeParse(value);
+  return parsed.success ? parsed.data : [];
+}
+
 function toNote(row: NoteRow): ShiftNote {
   return {
     id: row.n.id,
@@ -198,6 +212,7 @@ function toNote(row: NoteRow): ShiftNote {
         : null,
     deliverAt: row.n.deliverAt?.toISOString() ?? null,
     body: row.n.body,
+    attachments: parseAttachments(row.n.attachments),
     createdAt: row.n.createdAt.toISOString(),
     readAt: row.readAt?.toISOString() ?? null,
   };

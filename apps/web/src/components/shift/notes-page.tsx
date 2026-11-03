@@ -15,6 +15,12 @@ import { StickyNote } from 'lucide-react';
 import { useId, useState } from 'react';
 
 import { LoadError, RequirePermission } from '@/components/admin/admin-page';
+import {
+  AttachmentDropZone,
+  AttachmentGallery,
+  AttachmentPicker,
+  useAttachmentUpload,
+} from '@/components/attachments';
 import { FormField } from '@/components/portal/form-field';
 import { ShiftSection, ShiftSkeleton, useShiftFormat } from '@/components/shift/shift-bits';
 import { useI18n } from '@/i18n/provider';
@@ -142,6 +148,7 @@ function NoteCard({ note, box }: { note: ShiftNote; box: 'inbox' | 'sent' }) {
           {format.dateTime(note.createdAt)}
         </p>
         <p className="whitespace-pre-wrap">{note.body}</p>
+        <AttachmentGallery attachments={note.attachments} className="mt-2" />
       </div>
       {box === 'inbox' ? (
         note.readAt === null ? (
@@ -179,12 +186,14 @@ function Compose() {
   const [body, setBody] = useState('');
   const [errors, setErrors] = useState<{ body?: boolean; person?: boolean; at?: boolean }>({});
   const [failure, setFailure] = useState<string | null>(null);
+  const upload = useAttachmentUpload();
   const people = (assignees.data?.assignees ?? []).filter((person) => person.id !== selfId);
 
   const send = useMutation({
     mutationFn: (payload: CreateShiftNote) => api.createShiftNote(payload),
     onSuccess: async () => {
       setBody('');
+      upload.clear();
       setFailure(null);
       await queryClient.invalidateQueries({ queryKey: shiftKeys(userId).notesAll });
       toast(t('shift.notes.sentDone'));
@@ -214,11 +223,16 @@ function Compose() {
           };
           setErrors(next);
           if (next.body || next.person || next.at) return;
+          if (upload.busy) {
+            setFailure(t('attachments.waitForUploads'));
+            return;
+          }
           const payload: CreateShiftNote = {
             audience,
             body: body.trim(),
             ...(audience === 'person' ? { toUserId } : {}),
             ...(audience === 'datetime' && iso ? { deliverAt: iso } : {}),
+            ...(upload.attachmentIds.length > 0 ? { attachmentIds: upload.attachmentIds } : {}),
           };
           send.mutate(payload);
         }}
@@ -284,25 +298,28 @@ function Compose() {
           label={t('shift.notes.body')}
           {...(errors.body ? { error: t('shift.common.required') } : {})}
         >
-          <Textarea
-            id={`${base}-body`}
-            value={body}
-            maxLength={2000}
-            aria-invalid={errors.body ? true : undefined}
-            aria-describedby={errors.body ? `${base}-body-error` : undefined}
-            className="w-full"
-            onChange={(event) => {
-              setBody(event.target.value);
-            }}
-          />
+          <AttachmentDropZone upload={upload} disabled={send.isPending}>
+            <Textarea
+              id={`${base}-body`}
+              value={body}
+              maxLength={2000}
+              aria-invalid={errors.body ? true : undefined}
+              aria-describedby={errors.body ? `${base}-body-error` : undefined}
+              className="w-full"
+              onChange={(event) => {
+                setBody(event.target.value);
+              }}
+            />
+          </AttachmentDropZone>
         </FormField>
+        <AttachmentPicker upload={upload} disabled={send.isPending} />
         {failure ? (
           <p role="alert" className="text-sm font-medium text-danger">
             {failure}
           </p>
         ) : null}
         <div>
-          <Button type="submit" variant="primary" disabled={send.isPending}>
+          <Button type="submit" variant="primary" disabled={send.isPending || upload.busy}>
             {send.isPending ? t('shift.common.saving') : t('shift.notes.send')}
           </Button>
         </div>

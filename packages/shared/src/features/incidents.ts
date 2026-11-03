@@ -9,6 +9,8 @@
  */
 import { z } from 'zod';
 
+import { attachmentIdsSchema } from '../uploads.js';
+
 /** Audit `action` strings written by this feature. Metadata holds ids and enumerations. */
 export const INCIDENTS_AUDIT_ACTIONS = {
   incidentCreate: 'incident.create',
@@ -152,7 +154,11 @@ export type UpdateIncident = z.infer<typeof updateIncidentSchema>;
 
 export const linkTicketSchema = z.strictObject({ ticketId: z.uuid() });
 export const linkAlertSchema = z.strictObject({ alertId: z.uuid() });
-export const incidentNoteSchema = z.strictObject({ text: z.string().trim().min(1).max(2000) });
+export const incidentNoteSchema = z.strictObject({
+  text: z.string().trim().min(1).max(2000),
+  /** Uploaded files (`POST /v1/uploads`) shown with the note; stored as `payload.attachments`. */
+  attachmentIds: attachmentIdsSchema.optional(),
+});
 export type LinkTicket = z.infer<typeof linkTicketSchema>;
 export type LinkAlert = z.infer<typeof linkAlertSchema>;
 export type IncidentNote = z.infer<typeof incidentNoteSchema>;

@@ -22,6 +22,7 @@ import { useRouter } from 'next/navigation';
 import type { ReactNode } from 'react';
 
 import { LoadError, RequirePermission } from '@/components/admin/admin-page';
+import { AttachmentGallery } from '@/components/attachments';
 import { AckList } from '@/components/shift/ack-list';
 import {
   EmptyLine,
@@ -373,6 +374,7 @@ function NoteRow({ note }: { note: ShiftNote }): ReactNode {
           {t('shift.notes.from', { name: note.author.name })} · {format.dateTime(note.createdAt)}
         </p>
         <p className="whitespace-pre-wrap">{note.body}</p>
+        <AttachmentGallery attachments={note.attachments} className="mt-2" />
       </div>
       <Button
         size="sm"

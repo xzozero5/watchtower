@@ -32,6 +32,7 @@ import { domainContext, settle } from '../domain/domain-context.js';
 import { translating } from '../domain/domain-errors.js';
 import { DOMAIN, type Domain } from '../domain/domain.module.js';
 import { RealtimePublisher } from '../realtime/realtime-publisher.js';
+import { StaffUploadsService } from '../uploads/staff-uploads.service.js';
 import { REPO_CHANGES, type RepoChangesPort } from './changes.js';
 import type { UnitOfWork } from '../realtime/unit-of-work.js';
 
@@ -88,6 +89,7 @@ export class IncidentsService {
     @Inject(DOMAIN) private readonly domain: Domain,
     @Inject(RealtimePublisher) private readonly publisher: RealtimePublisher,
     @Inject(REPO_CHANGES) private readonly repo: RepoChangesPort,
+    @Inject(StaffUploadsService) private readonly uploads: StaffUploadsService,
   ) {}
 
   /**
@@ -303,13 +305,19 @@ export class IncidentsService {
     );
   }
 
-  note(uow: UnitOfWork, actor: Actor, incidentId: string, input: IncidentNote) {
+  async note(uow: UnitOfWork, actor: Actor, incidentId: string, input: IncidentNote) {
+    // Only a person writes notes; `claim` keeps to the files that person uploaded.
+    const attachments =
+      actor.type === 'user' && actor.id !== null
+        ? await this.uploads.claim(actor.id, input.attachmentIds)
+        : [];
     return translating(async () =>
       settle(
         uow,
         await this.domain.incidents.note(uow.tx, domainContext(this.domain, actor), {
           incidentId,
           text: input.text,
+          attachments,
         }),
       ),
     );

@@ -1,0 +1,43 @@
+import type { attachmentsEn } from '../en/attachments';
+import type { Widen } from '../types';
+
+export const attachmentsTh: Widen<typeof attachmentsEn> = {
+  label: 'ไฟล์แนบ',
+  add: 'แนบรูปหรือไฟล์',
+  addMore: 'แนบเพิ่ม',
+  hint: 'วางภาพหน้าจอ ลากไฟล์มาวางที่นี่ หรือเลือกไฟล์ ได้สูงสุด {count} ไฟล์ ไฟล์ละไม่เกิน {size} MB',
+  dropHere: 'วางเพื่อแนบ',
+  listLabel: 'ไฟล์ที่จะแนบ',
+  uploading: 'กำลังอัปโหลด {name}',
+  uploaded: 'แนบแล้ว',
+  failed: 'อัปโหลดไม่สำเร็จ',
+  retry: 'ลอง {name} อีกครั้ง',
+  remove: 'ลบ {name}',
+  removed: 'ลบ {name} แล้ว',
+  waitForUploads: 'รอให้อัปโหลดไฟล์เสร็จก่อน',
+  pastedName: 'ภาพหน้าจอ',
+  errors: {
+    title: 'บางไฟล์ไม่ได้ถูกแนบ',
+    tooMany: '{name}: แนบได้สูงสุด {count} ไฟล์',
+    tooLarge: '{name} ใหญ่เกิน {size} MB',
+    empty: '{name} ไม่มีเนื้อหา',
+    typeNotAllowed: '{name} ไม่ใช่รูปหรือไฟล์ชนิดที่แนบได้',
+    rejected: 'เซิร์ฟเวอร์ไม่รับ {name}: เนื้อหาไม่ใช่ไฟล์ชนิดที่อนุญาต',
+    rateLimited: 'อัปโหลดถี่เกินไป ลองใหม่อีกสักครู่',
+    unavailable: 'ตอนนี้บันทึกไฟล์ไม่ได้ ลองใหม่อีกสักครู่',
+    generic: 'อัปโหลด {name} ไม่สำเร็จ',
+  },
+  gallery: {
+    label: 'ไฟล์ที่แนบ',
+    open: 'เปิด {name}',
+    download: 'ดาวน์โหลด {name}',
+    loading: 'กำลังโหลด {name}',
+    loadFailed: 'โหลด {name} ไม่สำเร็จ',
+    retry: 'ลองอีกครั้ง',
+    dialog: 'ตัวดูรูป',
+    close: 'ปิด',
+    previous: 'รูปก่อนหน้า',
+    next: 'รูปถัดไป',
+    counter: '{index} จาก {total}',
+  },
+};

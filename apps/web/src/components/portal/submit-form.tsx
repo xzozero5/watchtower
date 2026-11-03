@@ -27,7 +27,7 @@ import { saveSubmitted } from '@/lib/portal/submitted-handoff';
 import { submitRequest } from '@/lib/portal/submit-flow';
 import { useHumanCheck, usePortalApi } from '@/lib/portal/use-portal';
 
-import { AttachmentPicker, useAttachments } from './attachment-picker';
+import { AttachmentPicker, PortalPasteZone, useAttachments } from './attachment-picker';
 import { describedBy, FormField } from './form-field';
 import { HumanCheckStatus } from './human-check-status';
 
@@ -396,15 +396,17 @@ export function SubmitForm() {
           label={t('portal.form.description')}
           error={errorText('description')}
         >
-          <Textarea
-            {...fieldProps('description', true)}
-            name="description"
-            rows={6}
-            value={values.description}
-            onChange={(event) => {
-              set('description', event.target.value);
-            }}
-          />
+          <PortalPasteZone state={attachments} disabled={submitting}>
+            <Textarea
+              {...fieldProps('description', true)}
+              name="description"
+              rows={6}
+              value={values.description}
+              onChange={(event) => {
+                set('description', event.target.value);
+              }}
+            />
+          </PortalPasteZone>
         </FormField>
 
         <FormField

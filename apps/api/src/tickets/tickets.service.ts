@@ -106,9 +106,13 @@ export class TicketsService {
     uow: UnitOfWork,
     input: CreateManualTicket,
     actor: Actor,
+    attachments: readonly Record<string, unknown>[] = [],
   ): Promise<CreateManualTicketResult> {
     return translating(async () =>
-      settle(uow, await this.domain.tickets.createManual(uow.tx, this.context(actor), input)),
+      settle(
+        uow,
+        await this.domain.tickets.createManual(uow.tx, this.context(actor), input, attachments),
+      ),
     );
   }
 
@@ -227,11 +231,17 @@ export class TicketsService {
     input: Note,
     sender: { readonly userId: string },
     actor: Actor,
+    attachments?: readonly Record<string, unknown>[],
   ): Promise<{ message: MessageRow; ticket: TicketRow }> {
     return translating(async () =>
       settle(
         uow,
-        await this.domain.tickets.note(uow.tx, this.context(actor), { ref, note: input, sender }),
+        await this.domain.tickets.note(uow.tx, this.context(actor), {
+          ref,
+          note: input,
+          sender,
+          ...(attachments === undefined ? {} : { attachments }),
+        }),
       ),
     );
   }

@@ -11,7 +11,6 @@ import {
   incidentNoteSchema,
   updateIncidentSchema,
   type CreateIncident,
-  type IncidentNote,
   type IncidentStatus,
   type UpdateIncident,
 } from '@watchtower/shared';
@@ -373,7 +372,12 @@ export async function linkIncidentAlert(
 export async function addIncidentNote(
   tx: DbTransaction,
   ctx: DomainContext,
-  input: { readonly incidentId: string } & IncidentNote,
+  input: {
+    readonly incidentId: string;
+    readonly text: string;
+    /** References to staff uploads, kept in the timeline payload (`[{id, filename, contentType, size}]`). */
+    readonly attachments?: readonly Record<string, unknown>[];
+  },
 ): Promise<DomainResult<{ readonly timelineId: string }>> {
   const fx = new Effects();
   if (actorUserId(ctx) === null) throw badRequest('Only a person can add a note');
@@ -381,14 +385,16 @@ export async function addIncidentNote(
   if (!parsed.success) throw badRequest('The note is not valid');
   const current = await lockIncident(tx, input.incidentId);
   if (current.status === 'resolved') throw conflict('A resolved incident cannot take new notes');
+  const attachments = input.attachments ?? [];
   const timelineId = await addTimelineEntry(tx, ctx, input.incidentId, 'note', {
     text: parsed.data.text,
+    ...(attachments.length === 0 ? {} : { attachments }),
   });
   await recordAuditInTx(tx, ctx, fx, {
     action: INCIDENTS_AUDIT_ACTIONS.incidentNote,
     targetType: 'incident',
     targetId: input.incidentId,
-    metadata: { length: parsed.data.text.length },
+    metadata: { length: parsed.data.text.length, attachments: attachments.length },
   });
   return fx.result({ timelineId });
 }

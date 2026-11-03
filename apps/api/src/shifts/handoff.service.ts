@@ -28,6 +28,7 @@ import { domainContext, settle } from '../domain/domain-context.js';
 import { translating } from '../domain/domain-errors.js';
 import { DOMAIN } from '../domain/domain.module.js';
 import { UnitOfWorkService, type UnitOfWork } from '../realtime/unit-of-work.js';
+import { StaffUploadsService } from '../uploads/staff-uploads.service.js';
 import { assertCanRead } from '../tickets/ticket-reader.js';
 import { TICKET_KEYS, type TicketKeys } from '../tickets/ticket-keys.js';
 import { HandoffReader } from './handoff-reader.js';
@@ -57,6 +58,7 @@ export class HandoffService {
     @Inject(HandoffReader) private readonly reader: HandoffReader,
     @Inject(TICKET_KEYS) private readonly keys: TicketKeys,
     @Inject(SHIFT_NOW) private readonly now: ShiftNow,
+    @Inject(StaffUploadsService) private readonly uploads: StaffUploadsService,
   ) {}
 
   // --- reads ---
@@ -212,6 +214,10 @@ export class HandoffService {
   /** Saves the draft: the whole item list, the incoming person, the free text and the message for the next shift. */
   async save(principal: Principal, handoffId: string, input: SaveHandoff): Promise<Handoff> {
     const actor = { type: 'user' as const, id: principal.userId };
+    const attachments =
+      input.attachmentIds === undefined
+        ? undefined
+        : await this.uploads.claim(principal.userId, input.attachmentIds);
     return this.uow.run(async (uow) => {
       await this.ownDraft(uow.tx, principal, handoffId);
       if (input.toUserId !== undefined && input.toUserId !== null) {
@@ -316,6 +322,7 @@ export class HandoffService {
           ...(input.toUserId === undefined ? {} : { toUserId: input.toUserId }),
           ...(input.notes === undefined ? {} : { notes: input.notes }),
           ...(input.messageForNext === undefined ? {} : { messageForNext: input.messageForNext }),
+          ...(attachments === undefined ? {} : { attachments }),
           updatedAt: this.now(),
         })
         .where(eq(schema.handoff.id, handoffId));
@@ -366,6 +373,7 @@ export class HandoffService {
           authorId: principal.userId,
           audience: 'next_shift',
           body: message,
+          attachments: handoff.attachments,
           handoffId,
           createdAt: now,
         });

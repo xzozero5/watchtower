@@ -12,6 +12,7 @@
  */
 import { z } from 'zod';
 
+import { attachmentIdsSchema, staffAttachmentSchema } from '../uploads.js';
 import { cursorSchema, pageLimit } from '../common.js';
 import {
   addDaysToDateKey,
@@ -529,6 +530,8 @@ export const handoffSchema = z.object({
   notes: z.string(),
   /** Left for the next shift; becomes a shift note when the handoff is confirmed. */
   messageForNext: z.string(),
+  /** Images and files on the handoff (screenshots of what the next shift will meet). */
+  attachments: z.array(staffAttachmentSchema),
   confirmedAt: z.iso.datetime().nullable(),
   createdAt: z.iso.datetime(),
   updatedAt: z.iso.datetime(),
@@ -580,6 +583,8 @@ export const saveHandoffSchema = z.object({
   toUserId: z.uuid().nullable().optional(),
   notes: z.string().max(5000).optional(),
   messageForNext: z.string().max(2000).optional(),
+  /** Uploaded files (`POST /v1/uploads`) to keep on the handoff; replaces the earlier set when given. */
+  attachmentIds: attachmentIdsSchema.optional(),
   /** The whole list: an item left out is removed. */
   items: z.array(saveHandoffItemSchema).max(200),
 });
@@ -593,6 +598,7 @@ export const incomingHandoffSchema = z.object({
   confirmedAt: z.iso.datetime(),
   notes: z.string(),
   messageForNext: z.string(),
+  attachments: z.array(staffAttachmentSchema),
   items: z.array(handoffItemSchema),
 });
 
@@ -699,6 +705,7 @@ export const shiftNoteSchema = z.object({
   /** For `datetime`: when it starts to show. */
   deliverAt: z.iso.datetime().nullable(),
   body: z.string(),
+  attachments: z.array(staffAttachmentSchema),
   createdAt: z.iso.datetime(),
   /** When the caller marked it read; null while unread. */
   readAt: z.iso.datetime().nullable(),
@@ -711,6 +718,8 @@ export const createShiftNoteSchema = z
     toUserId: z.uuid().optional(),
     deliverAt: z.iso.datetime().optional(),
     body: z.string().trim().min(1).max(2000),
+    /** Uploaded files (`POST /v1/uploads`) shown with the note. */
+    attachmentIds: attachmentIdsSchema.optional(),
   })
   .refine((value) => value.audience !== 'person' || value.toUserId !== undefined, {
     message: 'a note to a person needs toUserId',

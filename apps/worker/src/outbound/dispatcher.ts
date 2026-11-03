@@ -1,4 +1,4 @@
-import { ChannelError, gmail, line } from '@watchtower/channels';
+import { ChannelError, gmail, line, type ObjectStore } from '@watchtower/channels';
 import { schema, type Database } from '@watchtower/db';
 import {
   authorityNow,
@@ -70,6 +70,8 @@ export interface DispatcherDeps {
   /** Monthly LINE push allowance when no counter row exists yet (po #5: 300 `[VERIFY]`). */
   readonly lineQuotaLimit?: number | null;
   readonly lineRouter?: Partial<line.LineRouterConfig>;
+  /** Where attachment bytes live; without it an email goes out without its files (the body still goes). */
+  readonly objects?: ObjectStore;
 }
 
 const SYSTEM_ACTOR = { type: 'system', id: null } as const;
@@ -78,6 +80,80 @@ const FAILURE_ALERT_COUNT = 3;
 const RECORD_RETRIES = 3;
 /** A trigger this close ahead of its delivery is held until it is due; further ahead it is dropped. */
 const EARLY_TOLERANCE_MS = 10_000;
+
+interface MailFile {
+  readonly filename: string;
+  readonly contentType: string;
+  readonly data: Uint8Array;
+  readonly contentId?: string;
+  readonly inline: boolean;
+}
+
+interface MailAddress {
+  readonly address: string;
+  readonly name: string | null;
+}
+
+function addressesOf(value: unknown): MailAddress[] {
+  if (!Array.isArray(value)) return [];
+  const list: MailAddress[] = [];
+  for (const item of value as unknown[]) {
+    if (typeof item !== 'object' || item === null) continue;
+    const { address, name } = item as { address?: unknown; name?: unknown };
+    if (typeof address === 'string' && address.includes('@')) {
+      list.push({ address, name: typeof name === 'string' ? name : null });
+    }
+  }
+  return list;
+}
+
+/** The recipients and subject the email composer stored on the message (null/empty: the defaults apply). */
+export function emailRecipientsOf(meta: unknown): {
+  to: MailAddress[];
+  cc: MailAddress[];
+  bcc: MailAddress[];
+  subject: string | null;
+} {
+  const record = (typeof meta === 'object' && meta !== null ? meta : {}) as Record<string, unknown>;
+  const subject =
+    typeof record.subject === 'string' && record.subject.trim() !== '' ? record.subject : null;
+  return {
+    to: addressesOf(record.to),
+    cc: addressesOf(record.cc),
+    bcc: addressesOf(record.bcc),
+    subject,
+  };
+}
+
+/** Files of a message read from object storage; one that cannot be read is left out, not fatal. */
+export async function loadMailAttachments(
+  objects: ObjectStore | undefined,
+  attachments: unknown,
+  logger: WorkerLogger,
+): Promise<MailFile[]> {
+  if (objects === undefined || !Array.isArray(attachments)) return [];
+  const files: MailFile[] = [];
+  for (const item of attachments as Record<string, unknown>[]) {
+    const { objectKey, filename, contentType, contentId, disposition } = item;
+    if (typeof objectKey !== 'string' || typeof filename !== 'string') continue;
+    try {
+      const data = await objects.get(objectKey);
+      if (data === null) continue;
+      files.push({
+        filename,
+        contentType: typeof contentType === 'string' ? contentType : 'application/octet-stream',
+        data,
+        ...(typeof contentId === 'string' && contentId !== ''
+          ? { contentId: contentId.replace(/^<|>$/g, '') }
+          : {}),
+        inline: disposition === 'inline' && typeof contentId === 'string' && contentId !== '',
+      });
+    } catch (error) {
+      logger.warn({ err: error, filename }, 'attachment could not be read for the email');
+    }
+  }
+  return files;
+}
 
 /** The row is no longer ours; thrown inside a transaction to roll the transaction back. */
 class ClaimLost extends Error {
@@ -308,6 +384,7 @@ export function createOutboundDispatcher(deps: DispatcherDeps) {
     const { ticket, message, parent, requester } = context;
     const recipient = parent?.fromAddress ?? requester?.emails[0] ?? null;
     if (recipient === null) return failNow(delivery, 'no_recipient');
+    const email = emailRecipientsOf(message.emailMeta);
     const threadId = context.gmailThreadId ?? undefined;
     // The route is written once (T-122f F-3): a retry keeps the label of the attempt that set it.
     const route: DeliveryRoute =
@@ -329,8 +406,16 @@ export function createOutboundDispatcher(deps: DispatcherDeps) {
             : { address: parent.fromAddress, name: parent.fromName },
         replyTo: [],
       },
-      to: [{ address: recipient, name: requester?.name ?? parent?.fromName ?? null }],
+      to:
+        email.to.length > 0
+          ? email.to
+          : [{ address: recipient, name: requester?.name ?? parent?.fromName ?? null }],
+      cc: email.cc,
+      bcc: email.bcc,
+      ...(email.subject === null ? {} : { subject: email.subject }),
       textBody: message.bodyText,
+      ...(message.bodyHtml === null ? {} : { htmlBody: message.bodyHtml }),
+      attachments: await loadMailAttachments(deps.objects, message.attachments, logger),
       messageId,
       ...(threadId === undefined ? {} : { threadId }),
       ticketKey: ticketKeys.format(ticket.number),

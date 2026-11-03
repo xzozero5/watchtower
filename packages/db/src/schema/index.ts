@@ -24,3 +24,4 @@ export * from './incident.js';
 export * from './tools.js';
 export * from './statuspage.js';
 export * from './usage.js';
+export * from './uploads.js';

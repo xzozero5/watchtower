@@ -165,7 +165,9 @@ export class ApiClient {
     const headers: Record<string, string> = {
       Accept: options.responseType === 'blob' ? 'application/octet-stream' : 'application/json',
     };
-    if (options.body !== undefined) headers['Content-Type'] = 'application/json';
+    // A FormData body (an upload) sets its own multipart content type, with the boundary.
+    const isForm = typeof FormData !== 'undefined' && options.body instanceof FormData;
+    if (options.body !== undefined && !isForm) headers['Content-Type'] = 'application/json';
     if (!SAFE_METHODS.has(method) && this.csrfToken) headers[CSRF_HEADER] = this.csrfToken;
 
     let response: Response;
@@ -176,7 +178,9 @@ export class ApiClient {
         headers,
         credentials: 'include',
         cache: 'no-store',
-        ...(options.body === undefined ? {} : { body: JSON.stringify(options.body) }),
+        ...(options.body === undefined
+          ? {}
+          : { body: isForm ? (options.body as FormData) : JSON.stringify(options.body) }),
         ...(options.signal ? { signal: options.signal } : {}),
       });
     } catch (error) {
