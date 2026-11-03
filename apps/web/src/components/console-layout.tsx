@@ -18,8 +18,12 @@ export function destinationFor(pathname: string): RailDestination {
       return 'dashboard';
     case 'admin':
       return 'admin';
-    case 'shift':
+    case 'shift': {
+      const second = pathname.split('/')[2] ?? '';
+      if (second === 'brief') return 'brief';
+      if (second === 'handoff') return 'handoff';
       return 'shift';
+    }
     case 'other-mail':
       return 'otherMail';
     case 'alerts':

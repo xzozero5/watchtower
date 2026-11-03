@@ -156,6 +156,8 @@ export type RailDestination =
   | 'dashboard'
   | 'admin'
   | 'shift'
+  | 'brief'
+  | 'handoff'
   | 'otherMail'
   | 'alerts'
   | 'incidents'
@@ -212,7 +214,8 @@ export function NavRail({
     <header
       className={cn(
         'flex h-[48px] shrink-0 items-center gap-1 border-b border-border/60 bg-frame px-3',
-        'md:h-auto md:flex-col md:items-stretch md:gap-1 md:border-r md:border-b-0 md:px-3 md:py-4',
+        // The column is never taller than the window: the destinations scroll, the foot stays in view.
+        'md:h-full md:min-h-0 md:flex-col md:items-stretch md:gap-1 md:border-r md:border-b-0 md:px-3 md:py-4',
         expanded ? 'md:w-[248px]' : 'md:w-[68px]',
       )}
     >
@@ -237,7 +240,10 @@ export function NavRail({
         </p>
       </AppLink>
 
-      <nav aria-label={t('rail.label')} className="hidden flex-col gap-1 md:flex">
+      <nav
+        aria-label={t('rail.label')}
+        className="hidden min-h-0 flex-1 flex-col gap-1 overflow-x-hidden overflow-y-auto md:flex"
+      >
         <RailButton
           icon={Inbox}
           tone="teal"
@@ -296,6 +302,7 @@ export function NavRail({
                 tone="amber"
                 label={t('rail.brief')}
                 expanded={expanded}
+                current={destination === 'brief'}
                 keyShortcuts="g b"
                 href="/shift/brief"
               />
@@ -306,6 +313,7 @@ export function NavRail({
                 tone="indigo"
                 label={t('rail.handoff')}
                 expanded={expanded}
+                current={destination === 'handoff'}
                 keyShortcuts="g h"
                 href="/shift/handoff"
               />
@@ -388,7 +396,7 @@ export function NavRail({
         ) : null}
       </nav>
 
-      <div className="ml-auto flex items-center gap-1 md:mt-auto md:ml-0 md:flex-col md:items-stretch md:gap-0.5">
+      <div className="ml-auto flex min-w-0 items-center gap-1 md:mt-auto md:ml-0 md:shrink-0 md:flex-col md:items-stretch md:gap-0.5 md:pt-1">
         <RailButton
           icon={CommandIcon}
           label={t('topbar.openPalette')}
