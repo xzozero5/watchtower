@@ -34,6 +34,19 @@ const hostList = z.preprocess(
 );
 
 /**
+ * Lower-cases A-Z only. `String.toLowerCase` also folds some non-ASCII characters onto ASCII ones
+ * (U+212A KELVIN SIGN becomes "k"), which would let a look-alike address match an exact one.
+ */
+export const asciiLowerCase = (value: string): string =>
+  value.replace(/[A-Z]/g, (letter) => String.fromCharCode(letter.charCodeAt(0) + 32));
+
+/** True when every character is printable ASCII. */
+export const isAscii = (value: string): boolean => /^[ -~]*$/.test(value);
+
+/** The only mail domains an allow-list entry may use: Google-run, not expirable by a third party. */
+export const GOOGLE_PERSONAL_EMAIL_DOMAINS: readonly string[] = ['gmail.com', 'googlemail.com'];
+
+/**
  * `a@gmail.com, B@gmail.com` as a list of lower-case email addresses; empty means none. Exact
  * addresses only: a wildcard or pattern is refused (ADR-005, 2026-11-03).
  */
@@ -43,13 +56,19 @@ const emailList = z.preprocess(
     if (typeof value !== 'string') return value;
     return value
       .split(',')
-      .map((address) => address.trim().toLowerCase())
+      .map((address) => asciiLowerCase(address.trim()))
       .filter((address) => address !== '');
   },
   z
     .array(
       z
         .email()
+        .refine((address) => isAscii(address), 'must be ASCII only')
+        .refine(
+          (address) =>
+            GOOGLE_PERSONAL_EMAIL_DOMAINS.includes(address.slice(address.lastIndexOf('@') + 1)),
+          'must be a gmail.com or googlemail.com address',
+        )
         .refine(
           (address) => !/[*?%()<>[\]\\]/.test(address),
           'wildcards and patterns are not allowed',
@@ -397,6 +416,28 @@ function applyGuards(env: Readonly<Record<string, unknown>>, ctx: z.RefinementCt
       'GOOGLE_ALLOWED_EMAILS',
       'must be empty in production (personal Google accounts are not allowed)',
     );
+  }
+  // The allow-list is for a test instance on this machine only: refuse any APP_URL that is not
+  // loopback (compose defaults NODE_ENV to development, so NODE_ENV alone is not enough).
+  if (Array.isArray(env.GOOGLE_ALLOWED_EMAILS) && env.GOOGLE_ALLOWED_EMAILS.length > 0) {
+    if (!isLoopbackUrl(text(env, 'APP_URL') ?? '')) {
+      fail('GOOGLE_ALLOWED_EMAILS', 'must be empty unless APP_URL is a loopback address');
+    }
+    // An address on the staff domain would skip the `hd` check, so it must not be listed.
+    const staffDomain = (text(env, 'GOOGLE_ALLOWED_DOMAIN') ?? '').toLowerCase();
+    if (
+      staffDomain !== '' &&
+      env.GOOGLE_ALLOWED_EMAILS.some(
+        (entry) =>
+          typeof entry === 'string' &&
+          (entry.endsWith(`@${staffDomain}`) || entry.endsWith(`.${staffDomain}`)),
+      )
+    ) {
+      fail(
+        'GOOGLE_ALLOWED_EMAILS',
+        'must not contain an address on GOOGLE_ALLOWED_DOMAIN or one of its subdomains',
+      );
+    }
   }
   // Mock sign-in (dev login) exists only for local work. A production boot without real
   // credentials would leave it reachable, so refuse to start (docs/04-ARCHITECTURE.md section 6).

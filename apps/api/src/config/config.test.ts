@@ -156,6 +156,52 @@ describe('GOOGLE_ALLOWED_EMAILS', () => {
     expect(() => loadConfig(testEnv({ ...productionEnv, GOOGLE_ALLOWED_EMAILS: '' }))).not.toThrow();
   });
 
+  it('accepts only gmail.com and googlemail.com addresses, ASCII only', () => {
+    expect(
+      loadConfig(testEnv({ ...live, GOOGLE_ALLOWED_EMAILS: 'a@GoogleMail.com, b@gmail.com' }))
+        .GOOGLE_ALLOWED_EMAILS,
+    ).toEqual(['a@googlemail.com', 'b@gmail.com']);
+    for (const bad of ['a@example.org', 'a@sub.gmail.com', 'a@gmail.com.evil.test', 'Ka@gmail.com']) {
+      expect(() => loadConfig(testEnv({ ...live, GOOGLE_ALLOWED_EMAILS: bad })), bad).toThrow(
+        /GOOGLE_ALLOWED_EMAILS/,
+      );
+    }
+  });
+
+  it('rejects an entry on the staff domain or one of its subdomains', () => {
+    for (const domain of ['gmail.com', 'GMAIL.com']) {
+      expect(() =>
+        loadConfig(
+          testEnv({ ...live, GOOGLE_ALLOWED_DOMAIN: domain, GOOGLE_ALLOWED_EMAILS: 'a@gmail.com' }),
+        ),
+      ).toThrow(/GOOGLE_ALLOWED_EMAILS/);
+    }
+    // Another domain than the staff one is fine.
+    expect(() =>
+      loadConfig(
+        testEnv({
+          ...live,
+          GOOGLE_ALLOWED_DOMAIN: 'googlemail.com',
+          GOOGLE_ALLOWED_EMAILS: 'a@gmail.com',
+        }),
+      ),
+    ).not.toThrow();
+  });
+
+  it('refuses to boot unless APP_URL is loopback, whatever NODE_ENV says', () => {
+    const set = { ...live, GOOGLE_ALLOWED_EMAILS: 'a@gmail.com' };
+    const reachable = {
+      APP_URL: 'https://support.example.com',
+      JWT_SECRET: 'x'.repeat(48),
+      APP_ENCRYPTION_KEY: Buffer.alloc(32, 5).toString('base64'),
+    };
+    expect(() => loadConfig(testEnv({ ...set, ...reachable }))).toThrow(/GOOGLE_ALLOWED_EMAILS/);
+    expect(() => loadConfig(testEnv({ ...reachable, ...live }))).not.toThrow();
+    for (const url of ['http://localhost:3000', 'http://127.0.0.1:3000', 'http://[::1]:3000']) {
+      expect(() => loadConfig(testEnv({ ...set, APP_URL: url })), url).not.toThrow();
+    }
+  });
+
   it('still refuses dev login together with Google credentials', () => {
     expect(() =>
       loadConfig(

@@ -11,6 +11,8 @@ import {
   type DevLoginRequest,
   type Role,
   type SessionInfo,
+  asciiLowerCase,
+  isAscii,
 } from '@watchtower/shared';
 import { eq, sql } from 'drizzle-orm';
 import type { Request } from 'express';
@@ -62,6 +64,11 @@ export class AuthService implements OnApplicationBootstrap {
   ) {}
 
   onApplicationBootstrap(): void {
+    if (this.config.GOOGLE_ALLOWED_EMAILS.length > 0) {
+      this.logger.warn(
+        `Google sign-in allow-list is ON (GOOGLE_ALLOWED_EMAILS, ${String(this.config.GOOGLE_ALLOWED_EMAILS.length)} entries): personal Google accounts can sign in. Local test instances only.`,
+      );
+    }
     if (this.config.devLoginEnabled) {
       this.logger.warn(
         'dev login is ON (DEV_LOGIN_ENABLED=true, no Google credentials): POST /v1/auth/dev-login signs anyone in as any role, for accounts it created. Local development only.',
@@ -79,13 +86,24 @@ export class AuthService implements OnApplicationBootstrap {
   ): Promise<{ readonly user: UserRow; readonly via: GoogleLoginRule }> {
     const domain = this.config.staffDomain;
     if (!identity.emailVerified) throw new GoogleLoginRejected('email_not_verified');
+    // Compare in ASCII only: a non-ASCII character that case-folds onto an ASCII one (U+212A
+    // KELVIN SIGN to "k") must never make a different address look like a listed one.
+    if (!isAscii(identity.email) || asciiLowerCase(identity.email) !== identity.email) {
+      throw new GoogleLoginRejected('domain_not_allowed');
+    }
     // Two ways in, either is enough: the Workspace domain (hd claim and address), or an exact
     // address on GOOGLE_ALLOWED_EMAILS (trial instances only; the list is empty in production).
     // The address is already trimmed and lower-cased; the list entries are too. No wildcards.
     let via: GoogleLoginRule;
     if (identity.hostedDomain === domain && identity.email.endsWith(`@${domain}`)) {
       via = 'domain';
-    } else if (this.config.GOOGLE_ALLOWED_EMAILS.includes(identity.email)) {
+    } else if (
+      // Never accept a staff-domain address here: it would skip the `hd` check. The config
+      // guard refuses such entries; this repeats it so one mistake cannot open the hole.
+      !identity.email.endsWith(`@${domain}`) &&
+      !identity.email.endsWith(`.${domain}`) &&
+      this.config.GOOGLE_ALLOWED_EMAILS.includes(identity.email)
+    ) {
       via = 'allowlist';
     } else {
       throw new GoogleLoginRejected('domain_not_allowed');

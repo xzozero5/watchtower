@@ -607,6 +607,40 @@ describe('an email allow-list for personal Google accounts (GOOGLE_ALLOWED_EMAIL
     }
   });
 
+  it('refuses a different Google account for a listed address once one is linked (account_mismatch)', async () => {
+    const email = listedEmail();
+    const harness = await withList([email]);
+    try {
+      await createUser(harness, email);
+      const first = await run(harness, personal(email));
+      expect(landed(first.callback).pathname).toBe('/');
+      const second = await run(harness, personal(email));
+      expect(landed(second.callback).searchParams.get('error')).toBe('account_mismatch');
+      expect(second.client.cookie(ACCESS_COOKIE)).toBeUndefined();
+    } finally {
+      await harness.close();
+    }
+  });
+
+  it('compares in ASCII only: a Kelvin sign (U+212A) does not pass for "k"', async () => {
+    const local = `kelvin-${randomUUID().slice(0, 8)}`;
+    const harness = await withList([`${local}@gmail.com`]);
+    try {
+      await createUser(harness, `${local}@gmail.com`);
+      const lookalike = `K${local.slice(1)}@gmail.com`;
+      // What toLowerCase() would have produced from the look-alike.
+      expect(lookalike.toLowerCase()).toBe(`${local}@gmail.com`);
+      const { client, callback } = await run(harness, personal(lookalike));
+      expect(landed(callback).searchParams.get('error')).toBe('domain_not_allowed');
+      expect(client.cookie(ACCESS_COOKIE)).toBeUndefined();
+      // The real address still works.
+      const ok = await run(harness, personal(`${local}@gmail.com`.toUpperCase()));
+      expect(landed(ok.callback).pathname).toBe('/');
+    } finally {
+      await harness.close();
+    }
+  });
+
   it('records via=domain on a domain-only instance too', async () => {
     const staff = await createStaff('agent');
     await signIn(goodClaims(staff.email));

@@ -2,6 +2,8 @@ import { Inject, Injectable, Optional } from '@nestjs/common';
 import { createRemoteJWKSet, jwtVerify } from 'jose';
 import * as client from 'openid-client';
 
+import { asciiLowerCase } from '@watchtower/shared';
+
 import { APP_CONFIG, type ApiConfig } from '../config/config.js';
 import { TokenService } from './token.service.js';
 
@@ -188,9 +190,9 @@ export class GoogleOidcService {
     if (!claims || typeof claims.email !== 'string') throw new OidcError('google_unavailable');
     return {
       sub: claims.sub,
-      email: claims.email.trim().toLowerCase(),
+      email: asciiLowerCase(claims.email.trim()),
       emailVerified: claims.email_verified === true,
-      hostedDomain: typeof claims.hd === 'string' ? claims.hd.toLowerCase() : undefined,
+      hostedDomain: typeof claims.hd === 'string' ? asciiLowerCase(claims.hd) : undefined,
       name: typeof claims.name === 'string' ? claims.name : undefined,
       returnTo: sanitizeReturnTo(typeof returnTo === 'string' ? returnTo : undefined),
     };
