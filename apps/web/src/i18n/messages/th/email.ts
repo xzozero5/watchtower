@@ -41,6 +41,8 @@ export const emailTh: Widen<typeof emailEn> = {
     bcc: 'สำเนาลับ (Bcc)',
     addCc: 'เพิ่ม Cc',
     addBcc: 'เพิ่ม Bcc',
+    removeCc: 'นำแถว Cc ออก',
+    removeBcc: 'นำแถว Bcc ออก',
     replyAll: 'ตอบทุกคน',
     recipientHint: 'พิมพ์อีเมลแล้วกด Enter หรือจุลภาค',
     remove: 'ลบ {address}',

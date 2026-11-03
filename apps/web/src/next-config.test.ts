@@ -55,7 +55,7 @@ describe('contentSecurityPolicy', () => {
   });
 
   it('allows images from here and data: only, and no remote fonts or manifests', () => {
-    expect(pinned.get('img-src')).toEqual(["'self'", 'data:']);
+    expect(pinned.get('img-src')).toEqual(["'self'", 'data:', 'blob:']);
     expect(pinned.get('font-src')).toEqual(["'self'"]);
     expect(pinned.get('manifest-src')).toEqual(["'self'"]);
   });

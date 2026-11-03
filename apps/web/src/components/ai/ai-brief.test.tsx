@@ -254,6 +254,27 @@ describe('the AI brief', () => {
     ).toHaveFocus();
   });
 
+  it('puts the box opened by "Write myself" away again, keeping what was typed', async () => {
+    const user = userEvent.setup();
+    workspaceApi({ tickets: [ticket1], ai: { 'OPS-1': makeInsight() } });
+    const { conversation } = await openTicket();
+    await within(conversation).findByRole('region', { name: 'AI brief' });
+    await user.click(within(conversation).getByRole('button', { name: 'Write myself' }));
+    await user.type(
+      await within(conversation).findByRole('textbox', { name: 'Public reply' }),
+      'Half a sentence',
+    );
+
+    await user.click(within(conversation).getByRole('button', { name: /Close the reply box/ }));
+    expect(within(conversation).queryByRole('textbox', { name: 'Public reply' })).toBeNull();
+    expect(within(conversation).getByRole('button', { name: /Write a reply/ })).toBeVisible();
+
+    await user.click(within(conversation).getByRole('button', { name: /Write a reply/ }));
+    expect(await within(conversation).findByRole('textbox', { name: 'Public reply' })).toHaveValue(
+      'Half a sentence',
+    );
+  });
+
   it('opens the composer with C and the note box with N when it is hidden', async () => {
     const user = userEvent.setup();
     workspaceApi({ tickets: [ticket1], ai: { 'OPS-1': makeInsight() } });

@@ -1,5 +1,6 @@
 export const composerEn = {
   label: 'Write a message',
+  close: 'Close the reply box (what you typed is kept)',
   modeGroup: 'Kind of message',
   modes: { reply: 'Reply', note: 'Internal note', noteShort: 'Note' },
   hints: {

@@ -42,7 +42,10 @@ export interface PolicyOptions {
  *    here is the `API_URL` present at **build** time. When it is absent the policy falls back to
  *    any http(s) and ws(s) host, which keeps a runtime-configured image working and is the weakest
  *    part of this policy. Build with `API_URL` set, or use the proxy follow-up, to pin it.
- *  - `img-src 'self' data:`, no remote images; `object-src 'none'`, `base-uri 'self'`,
+ *  - `img-src 'self' data: blob:`, no remote images. `blob:` is for pictures the app fetches itself
+ *    through the authenticated api and shows as object URLs (attachment thumbnails, inline `cid:`
+ *    images in an email, which the email's srcdoc frame inherits this policy for); a blob URL can only
+ *    be made by script on this origin. `object-src 'none'`, `base-uri 'self'`,
  *    `form-action 'self'`, `frame-ancestors 'none'`.
  *  - `worker-src 'self' blob:`: the portal proof-of-work may run in a Web Worker built from a Blob.
  */
@@ -59,7 +62,7 @@ export function contentSecurityPolicy(options: PolicyOptions = {}): string {
     "default-src 'self'",
     `script-src ${script.join(' ')}`,
     "style-src 'self' 'unsafe-inline'",
-    "img-src 'self' data:",
+    "img-src 'self' data: blob:",
     "font-src 'self'",
     `connect-src ${connect.join(' ')}`,
     "worker-src 'self' blob:",

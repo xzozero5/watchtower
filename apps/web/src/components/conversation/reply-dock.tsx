@@ -91,6 +91,14 @@ export function ReplyDock({
         autoFocus={request !== null}
         {...(request ? { initialMode: request.mode } : {})}
         {...(request?.quote !== undefined ? { initialQuote: request.quote } : {})}
+        // Opened on request while the AI leads: it can be put away again (the draft is kept).
+        {...(aiLed && !pinned
+          ? {
+              onClose: () => {
+                setRequest(null);
+              },
+            }
+          : {})}
       />
     );
   }

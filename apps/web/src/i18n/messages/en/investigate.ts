@@ -22,6 +22,7 @@ export const investigateEn = {
   notConnected: 'Not connected',
   notConnectedTip: 'This system is not connected on this instance, so the check cannot run.',
   notConnectedAnswer: '{title}: the system is not connected here. Nothing was run.',
+  dismiss: 'Dismiss',
   mock: 'Mock',
   mockTip: 'Sample data from a stand-in, not the real system.',
   budget: 'Too many checks just now. Try again in a minute.',

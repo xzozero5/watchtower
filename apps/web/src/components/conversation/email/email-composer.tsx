@@ -2,7 +2,7 @@
 
 import type { EmailAddress, TimelineEntry } from '@watchtower/shared';
 import { Button, cn } from '@watchtower/ui';
-import { Eye, PenLine, Pencil, Users } from 'lucide-react';
+import { Eye, Pencil, PenLine, Users, X } from 'lucide-react';
 import { type KeyboardEvent, type Ref, useEffect, useMemo, useState } from 'react';
 
 import { useI18n } from '@/i18n/provider';
@@ -287,22 +287,44 @@ export function EmailComposer({
           </div>
         </div>
         {ccVisible ? (
-          <RecipientField
-            label={t('email.compose.cc')}
-            value={cc}
-            onChange={(next) => {
-              setEdits((current) => ({ ...current, cc: next }));
-            }}
-          />
+          <div className="flex items-start">
+            <div className="min-w-0 flex-1">
+              <RecipientField
+                label={t('email.compose.cc')}
+                value={cc}
+                onChange={(next) => {
+                  setEdits((current) => ({ ...current, cc: next }));
+                }}
+              />
+            </div>
+            <RemoveRowButton
+              label={t('email.compose.removeCc')}
+              onClick={() => {
+                setEdits((current) => ({ ...current, cc: [] }));
+                setShowCc(false);
+              }}
+            />
+          </div>
         ) : null}
         {bccVisible ? (
-          <RecipientField
-            label={t('email.compose.bcc')}
-            value={bcc}
-            onChange={(next) => {
-              setEdits((current) => ({ ...current, bcc: next }));
-            }}
-          />
+          <div className="flex items-start">
+            <div className="min-w-0 flex-1">
+              <RecipientField
+                label={t('email.compose.bcc')}
+                value={bcc}
+                onChange={(next) => {
+                  setEdits((current) => ({ ...current, bcc: next }));
+                }}
+              />
+            </div>
+            <RemoveRowButton
+              label={t('email.compose.removeBcc')}
+              onClick={() => {
+                setEdits((current) => ({ ...current, bcc: [] }));
+                setShowBcc(false);
+              }}
+            />
+          </div>
         ) : null}
         <div className="flex items-center gap-2 px-3 py-1 text-sm">
           <label
@@ -470,5 +492,20 @@ export function EmailComposer({
         </>
       )}
     </div>
+  );
+}
+
+/** The X at the end of the Cc or Bcc row: takes the row away with the addresses in it. */
+function RemoveRowButton({ label, onClick }: { label: string; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      title={label}
+      onClick={onClick}
+      className="mt-1.5 mr-2 grid size-6 shrink-0 place-items-center rounded-full text-muted-foreground hover:bg-surface-muted hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring"
+    >
+      <X aria-hidden className="size-3.5" />
+    </button>
   );
 }

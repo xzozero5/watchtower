@@ -25,6 +25,7 @@ export const investigateTh: Widen<typeof investigateEn> = {
   notConnected: 'ยังไม่เชื่อมต่อ',
   notConnectedTip: 'ระบบนี้ยังไม่ได้เชื่อมต่อในระบบนี้ จึงรันการตรวจไม่ได้',
   notConnectedAnswer: '{title}: ระบบนี้ยังไม่ได้เชื่อมต่อ ไม่ได้รันอะไร',
+  dismiss: 'ปิด',
   mock: 'จำลอง',
   mockTip: 'ข้อมูลตัวอย่างจากตัวแทน ไม่ใช่ระบบจริง',
   budget: 'ตรวจถี่เกินไปในตอนนี้ ลองใหม่ในอีกสักครู่',

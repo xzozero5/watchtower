@@ -23,6 +23,7 @@ import {
   Lock,
   MessageCircle,
   Send,
+  X,
 } from 'lucide-react';
 import {
   type KeyboardEvent,
@@ -146,6 +147,7 @@ export function Composer({
   initialMode,
   autoFocus = false,
   initialQuote,
+  onClose,
 }: {
   ticket: TicketItem;
   handleRef?: Ref<ComposerHandle>;
@@ -155,6 +157,11 @@ export function Composer({
   autoFocus?: boolean;
   /** A customer's words to quote as soon as the box appears. */
   initialQuote?: string;
+  /**
+   * Put the box away (the dock goes back to its slim bar). Given only where the box was opened on
+   * request; what was typed stays in the draft store and comes back when it is opened again.
+   */
+  onClose?: () => void;
 }) {
   const { t } = useI18n();
   const { can, session } = useSession();
@@ -512,6 +519,20 @@ export function Composer({
               <Lock aria-hidden className="size-3.5" />
               {t('composer.noteBanner')}
             </p>
+          ) : null}
+          {onClose ? (
+            <Tooltip content={t('composer.close')}>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                aria-label={t('composer.close')}
+                className="ml-auto size-7 rounded-full"
+                onClick={onClose}
+              >
+                <X aria-hidden className="size-4" />
+              </Button>
+            </Tooltip>
           ) : null}
         </div>
 

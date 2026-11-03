@@ -38,6 +38,8 @@ export const emailEn = {
     bcc: 'Bcc',
     addCc: 'Add Cc',
     addBcc: 'Add Bcc',
+    removeCc: 'Remove the Cc row',
+    removeBcc: 'Remove the Bcc row',
     replyAll: 'Reply all',
     recipientHint: 'Type an address, then press Enter or comma',
     remove: 'Remove {address}',

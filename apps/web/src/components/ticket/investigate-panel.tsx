@@ -179,12 +179,26 @@ function InvestigateBody({
         {outcome?.kind === 'not_connected' ? (
           <p className="flex items-start gap-1.5 text-sm text-muted-foreground">
             <Unplug aria-hidden className="mt-0.5 size-4 shrink-0" />
-            {t('investigate.notConnectedAnswer', { title: outcome.title })}
+            <span className="flex-1">
+              {t('investigate.notConnectedAnswer', { title: outcome.title })}
+            </span>
+            <DismissOutcome
+              label={t('investigate.dismiss')}
+              onClick={() => {
+                setOutcome(null);
+              }}
+            />
           </p>
         ) : outcome?.kind === 'error' ? (
           <p className="flex items-start gap-1.5 text-sm font-medium text-danger">
             <Info aria-hidden className="mt-0.5 size-4 shrink-0" />
-            {outcome.message}
+            <span className="flex-1">{outcome.message}</span>
+            <DismissOutcome
+              label={t('investigate.dismiss')}
+              onClick={() => {
+                setOutcome(null);
+              }}
+            />
           </p>
         ) : null}
       </div>
@@ -429,5 +443,20 @@ function CardView({
         </details>
       ) : null}
     </article>
+  );
+}
+
+/** Takes an answer line away (it otherwise stays until the next button is pressed). */
+function DismissOutcome({ label, onClick }: { label: string; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      title={label}
+      onClick={onClick}
+      className="grid size-5 shrink-0 place-items-center rounded-full text-muted-foreground hover:bg-surface-muted hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring"
+    >
+      <X aria-hidden className="size-3.5" />
+    </button>
   );
 }

@@ -20,6 +20,10 @@ function contentIdOf(file: Message['attachments'][number]): string | null {
  * The inline images (`cid:`) of one message, fetched through the authenticated attachment download
  * and held as object URLs for as long as the message is on screen. Only raster images are used; an
  * SVG or any other type stays a placeholder.
+ *
+ * An object URL is revoked only when the component goes away, never when the effect runs again: the
+ * frame may still be showing it, and a revoked URL draws a broken image. Each image is fetched once
+ * per message. The page's CSP must allow `img-src blob:` (the srcdoc frame inherits it).
  */
 export function useCidImages(
   message: Message | undefined,
@@ -27,12 +31,21 @@ export function useCidImages(
 ): Map<string, string> {
   const api = useApi();
   const [urls, setUrls] = useState<Map<string, string>>(() => new Map());
+  // `${message id}:${content id}` to object URL, for everything this component created.
+  const made = useRef(new Map<string, string>());
   const key = wanted.join('|');
+
+  useEffect(() => {
+    const owned = made.current;
+    return () => {
+      for (const url of owned.values()) URL.revokeObjectURL(url);
+      owned.clear();
+    };
+  }, []);
 
   useEffect(() => {
     if (message === undefined || wanted.length === 0) return;
     const controller = new AbortController();
-    const created: string[] = [];
     void (async () => {
       const next = new Map<string, string>();
       for (const [index, file] of message.attachments.entries()) {
@@ -41,6 +54,11 @@ export function useCidImages(
         const size = typeof file.size === 'number' ? file.size : 0;
         if (id === null || !wanted.includes(id) || !IMAGE_TYPES.has(type)) continue;
         if (typeof file.objectKey !== 'string' || size > MAX_INLINE_BYTES) continue;
+        const cached = made.current.get(`${message.id}:${id}`);
+        if (cached !== undefined) {
+          next.set(id, cached);
+          continue;
+        }
         try {
           const bytes = await api.downloadAttachment(
             message.ticketKey,
@@ -50,7 +68,7 @@ export function useCidImages(
           );
           if (controller.signal.aborted) return;
           const url = URL.createObjectURL(new Blob([bytes], { type }));
-          created.push(url);
+          made.current.set(`${message.id}:${id}`, url);
           next.set(id, url);
         } catch {
           // The image stays a placeholder; the text of the mail is still readable.
@@ -60,7 +78,6 @@ export function useCidImages(
     })();
     return () => {
       controller.abort();
-      for (const url of created) URL.revokeObjectURL(url);
     };
     // `key` stands for `wanted`; the message identity decides the rest.
     // eslint-disable-next-line react-hooks/exhaustive-deps

@@ -3,6 +3,7 @@ import type { Widen } from '../types';
 
 export const composerTh: Widen<typeof composerEn> = {
   label: 'เขียนข้อความ',
+  close: 'ปิดกล่องเขียนข้อความ (ข้อความที่พิมพ์ไว้ยังอยู่)',
   modeGroup: 'ประเภทข้อความ',
   modes: { reply: 'ตอบลูกค้า', note: 'บันทึกภายใน', noteShort: 'บันทึก' },
   hints: {
