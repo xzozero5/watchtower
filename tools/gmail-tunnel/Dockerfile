@@ -7,6 +7,9 @@ FROM cloudflare/cloudflared:2026.10.2@sha256:0e56c13c7058fcef9c4f0e7d83372f82330
 
 FROM node:22-bookworm-slim@sha256:4b150b48b4116e2a22f2c39cc27025fbf4f153e2078fd3b14d159fdb5c7279da
 COPY --from=cloudflared /usr/local/bin/cloudflared /usr/local/bin/cloudflared
+# cloudflared verifies Cloudflare's TLS with the system CA bundle, which the slim node image lacks
+# (node carries its own); take the one the cloudflared image ships with.
+COPY --from=cloudflared /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 
 WORKDIR /app
 COPY push-only-filter/server.mjs push-only-filter/filter.mjs ./push-only-filter/

@@ -11,7 +11,9 @@ export const TOKEN_URI = 'https://oauth2.googleapis.com/token';
 export const PUBSUB_SCOPE = 'https://www.googleapis.com/auth/pubsub';
 const PUBSUB_API = 'https://pubsub.googleapis.com/v1';
 
-const TUNNEL_URL = /https:\/\/[a-z0-9-]+\.trycloudflare\.com/;
+// A quick tunnel is named with hyphenated words (`brave-lake-...`); `api.trycloudflare.com`, which
+// cloudflared also logs (it asks that host for the tunnel), has no hyphen and is not a tunnel.
+const TUNNEL_URL = /https:\/\/[a-z0-9]+(?:-[a-z0-9]+)+\.trycloudflare\.com/;
 // Pub/Sub resource ids: letters, digits and - _ . ~ + %, starting with a letter (project ids are stricter).
 const PROJECT_ID = /^[a-z][a-z0-9-]{4,28}[a-z0-9]$/;
 const SUBSCRIPTION_ID = /^[A-Za-z][A-Za-z0-9\-_.~+%]{2,254}$/;
@@ -122,25 +124,13 @@ export async function modifyPushConfig(fetchFn, accessToken, tunnelUrl, settings
 }
 
 /**
- * Waits until the tunnel answers from the internet: the filter says 404 to a GET of `/`. A new
- * quick tunnel takes a few seconds before its name resolves.
+ * cloudflared logs this once the tunnel holds a connection to the Cloudflare edge: from then on the
+ * URL answers from the internet. Readiness is taken from here rather than from fetching the URL,
+ * because this machine's resolver may not know a minutes-old trycloudflare name (or may have cached
+ * that it does not exist) while Google's, which Pub/Sub uses, already does.
  */
-export async function waitForTunnel(
-  fetchFn,
-  tunnelUrl,
-  { attempts = 30, delayMs = 2000, sleep } = {},
-) {
-  const pause = sleep ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
-  for (let attempt = 1; attempt <= attempts; attempt += 1) {
-    try {
-      const response = await fetchFn(`${tunnelUrl}/`, { method: 'GET', redirect: 'manual' });
-      if (response.status === 404) return true;
-    } catch {
-      // not resolvable yet
-    }
-    await pause(delayMs);
-  }
-  return false;
+export function isConnectionRegistered(line) {
+  return /Registered tunnel connection/.test(line);
 }
 
 /**

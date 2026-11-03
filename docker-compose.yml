@@ -439,6 +439,11 @@ services:
     # Only the worker shares this network (web, caddy, minio cannot reach it); egress to Anthropic stays.
     networks:
       - ai
+    # Also on this machine's loopback, for a worker that reaches it as http://host.docker.internal:4317
+    # (an image built before ADR-019 accepts only that host). Never on another interface; the bearer
+    # token is still required. Drop it once every worker uses http://claude-bridge:4317.
+    ports:
+      - '127.0.0.1:${CLAUDE_CLI_BRIDGE_PORT:-4317}:4317'
     read_only: true
     tmpfs:
       - /tmp

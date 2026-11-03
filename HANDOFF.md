@@ -29,7 +29,8 @@
 ## ค้าง / ติดอะไร
 - T-170: แถบ "AI offline" ทั้งระบบ, investigation/draft เลื่อนเมื่อ offline, kb:sync ลบไฟล์ → deprecate, ยืนยันชื่อ `CLAUDE_CODE_OAUTH_TOKEN` `[VERIFY]` + build image bridge (เจ้าของ build แล้วใช้งานอยู่ — ยังไม่ได้ตรวจผลใน `ai_run`)
 - T-171: draft AI ลง rich editor, style อีเมลลูกค้าหายตอน ingest, audit ผู้รับ/allow-list domain, Gmail ตัด Bcc `[UNVERIFIED 80%]`, EXIF WebP/GIF, Playwright email/upload
-- **T-172 ทำแล้ว (ADR-020):** container `gmail-tunnel` (profile `gmail-tunnel`) เปิด quick tunnel → filter → api แล้ว subscribe Pub/Sub ให้เองทุกครั้งที่ขึ้น · unit 15 + image build + start-without-key ผ่าน · **ยังไม่ได้รันกับ GCP/tunnel จริง** — เจ้าของต้องสร้าง SA `watchtower-pubsub-admin` + key แล้วรันตาม runbook §4
+- **T-172 (ADR-020) รันจริงแล้ว 2026-11-03:** IAM ใน `watchtower-513514` ครบ (custom role get/update, SA `watchtower-pubsub-admin`), key อยู่โฟลเดอร์ secret, env audience คงที่ `watchtower-gmail-push` · `gmail-tunnel` healthy, subscribe สำเร็จ, self-check 401 · **ยังไม่ได้ทดสอบอีเมลจริงจากบัญชีภายนอก**
+- **AI บน POC:** worker image เก่ายอมแค่ `host.docker.internal` → bridge publish `127.0.0.1:4317` (ชั่วคราว) แล้ว `claude -p` ผ่าน bridge ตอบจริง `[TESTED]` · เจ้าของตั้ง sonnet ทุก tier เอง · หลัง rebuild POC + migrate 0082/0083 ให้เปลี่ยนเป็น `http://claude-bridge:4317` แล้วเอา port ออก
 - ของเดิม: T-154/T-155, T-158 rail counts, T-159, T-141…147, B-002/B-003/B-004, T-113/T-114/T-207, T-115, T-161 flaky
 - ไม่แก้/commit `.agents/` และ `.codex/`
 
@@ -37,7 +38,7 @@
 - [ ] เงื่อนไขบริการ Anthropic กับการใช้ subscription แบบอัตโนมัติ + ข้อมูลลูกค้าผ่าน `claude -p` (ADR-019)
 - [ ] จะเปิด Watchtower ผ่าน internet เมื่อไร: ตอนนี้ claude-cli ถูกปฏิเสธเมื่อ APP_URL ไม่ใช่ loopback → ต้องเลือก: คง local / แก้ ADR ยอมให้ / ใช้ API key ใน production
 - [ ] หลังแก้ compose รอบนี้ ต้อง `docker compose --env-file D:\Works\secret\watchtower.env --profile ai up -d claude-bridge worker` และตั้ง `CLAUDE_CLI_BRIDGE_URL=http://claude-bridge:4317`
-- [ ] สร้าง SA `watchtower-pubsub-admin` (Pub/Sub Editor บน subscription เดียว + Service Account User บน SA push) + key JSON นอก repo สำหรับ `gmail-tunnel`
+- [ ] ส่งอีเมลทดสอบจากบัญชีภายนอกเข้ากล่อง support (พิสูจน์ push ครบวงจร) · กำหนดรอบ rotate key ของ `watchtower-pubsub-admin`
 - [ ] merge/deploy POC รอบนี้ (ยังไม่ทำ), malware scanning (T-155), ข้อความไทยให้เจ้าของภาษาตรวจ, T-115 pilot
 
 ## ขั้นต่อไป (เรียงลำดับ)

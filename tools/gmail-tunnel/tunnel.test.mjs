@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 import {
   buildPushConfig,
   fetchAccessToken,
+  isConnectionRegistered,
   modifyPushConfig,
   parseServiceAccountKey,
   parseTunnelUrl,
@@ -13,7 +14,6 @@ import {
   selfCheck,
   signAssertion,
   TOKEN_URI,
-  waitForTunnel,
 } from './tunnel.mjs';
 
 // Made-up values, not credentials. The key pair is generated for the test.
@@ -53,6 +53,9 @@ describe('parseTunnelUrl', () => {
     expect(parseTunnelUrl('INF see https://developers.cloudflare.com/docs')).toBeNull();
     expect(parseTunnelUrl('https://evil.example/trycloudflare.com')).toBeNull();
     expect(parseTunnelUrl('http://abc.trycloudflare.com')).toBeNull();
+    expect(
+      parseTunnelUrl('failed to request quick Tunnel: Post "https://api.trycloudflare.com/tunnel"'),
+    ).toBeNull();
   });
 });
 
@@ -177,20 +180,20 @@ describe('modifyPushConfig', () => {
   });
 });
 
-describe('waitForTunnel and selfCheck', () => {
-  it('waits until the filter answers 404 through the tunnel', async () => {
-    const { calls, fetchFn } = recorder([new Error('ENOTFOUND'), { status: 530 }, { status: 404 }]);
-    await expect(waitForTunnel(fetchFn, URL_, { sleep: async () => {} })).resolves.toBe(true);
-    expect(calls).toHaveLength(3);
+describe('isConnectionRegistered', () => {
+  it('recognises the line cloudflared logs once the edge connection is up', () => {
+    expect(
+      isConnectionRegistered(
+        '2026-11-03T09:35:29Z INF Registered tunnel connection connIndex=0 connection=abc location=sin01 protocol=quic',
+      ),
+    ).toBe(true);
+    expect(isConnectionRegistered('INF Requesting new quick Tunnel on trycloudflare.com...')).toBe(
+      false,
+    );
   });
+});
 
-  it('gives up after the attempts', async () => {
-    const { fetchFn } = recorder([{ status: 530 }, { status: 530 }]);
-    await expect(
-      waitForTunnel(fetchFn, URL_, { attempts: 2, sleep: async () => {} }),
-    ).resolves.toBe(false);
-  });
-
+describe('selfCheck', () => {
   it('posts a push with a made-up token and returns the status', async () => {
     const { calls, fetchFn } = recorder([{ status: 401 }]);
     await expect(selfCheck(fetchFn, URL_)).resolves.toBe(401);

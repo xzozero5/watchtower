@@ -11,12 +11,12 @@ import { createInterface } from 'node:readline';
 
 import {
   fetchAccessToken,
+  isConnectionRegistered,
   modifyPushConfig,
   parseServiceAccountKey,
   parseTunnelUrl,
   readSettings,
   selfCheck,
-  waitForTunnel,
 } from './tunnel.mjs';
 
 const KEY_PATH = process.env.GMAIL_TUNNEL_KEY_FILE ?? '/secrets/pubsub-admin.json';
@@ -80,7 +80,12 @@ for (const child of [filter, tunnel]) {
 }
 
 let url = null;
+let markRegistered;
+const registered = new Promise((resolve) => (markRegistered = resolve));
 createInterface({ input: tunnel.stderr }).on('line', (line) => {
+  // cloudflared's own failures (a quick tunnel carries no credential, so its log has none to leak).
+  if (/\b(ERR|failed)\b/.test(line)) log(`cloudflared: ${line.slice(0, 300)}`);
+  if (isConnectionRegistered(line)) markRegistered();
   if (url !== null) return;
   const found = parseTunnelUrl(line);
   if (found === null) return;
@@ -92,9 +97,12 @@ setTimeout(() => {
   if (url === null) fail('cloudflared printed no tunnel URL within 60 s');
 }, 60_000).unref();
 
+const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
 async function subscribe(tunnelUrl) {
   log(`tunnel ${tunnelUrl}`);
-  if (!(await waitForTunnel(fetch, tunnelUrl))) fail('the tunnel did not answer within 60 s');
+  const ready = await Promise.race([registered.then(() => true), pause(60_000).then(() => false)]);
+  if (!ready) fail('cloudflared did not connect to the Cloudflare edge within 60 s');
   try {
     const token = await fetchAccessToken(fetch, key, Math.floor(Date.now() / 1000));
     await modifyPushConfig(fetch, token, tunnelUrl, settings);
@@ -103,14 +111,32 @@ async function subscribe(tunnelUrl) {
   }
   subscribed = true;
   log(`subscription ${settings.subscription} now pushes to ${tunnelUrl}/v1/inbound/gmail/push`);
-  const status = await selfCheck(fetch, tunnelUrl).catch(() => 0);
-  if (status === 401)
-    log(
-      'self-check: a push with a made-up token reaches the api and is refused (401), as it should be',
-    );
-  else if (status === 503)
-    log(
-      'self-check: the api answered 503 — GMAIL_PUSH_AUDIENCE / GMAIL_PUSH_SERVICE_ACCOUNT not set on the api',
-    );
-  else log(`self-check: unexpected HTTP ${String(status)} for the self-check push`);
+  void reportSelfCheck(tunnelUrl);
+}
+
+/** Best effort, never fatal: a new name may not resolve on this machine for a few minutes. */
+async function reportSelfCheck(tunnelUrl) {
+  for (let attempt = 1; attempt <= 12; attempt += 1) {
+    const status = await selfCheck(fetch, tunnelUrl).catch(() => 0);
+    if (status === 401) {
+      log(
+        'self-check: a push with a made-up token reaches the api and is refused (401), as it should be',
+      );
+      return;
+    }
+    if (status === 503) {
+      log(
+        'self-check: the api answered 503 — GMAIL_PUSH_AUDIENCE / GMAIL_PUSH_SERVICE_ACCOUNT not set on the api',
+      );
+      return;
+    }
+    if (status !== 0) {
+      log(`self-check: unexpected HTTP ${String(status)} for the self-check push`);
+      return;
+    }
+    await pause(15_000);
+  }
+  log(
+    'self-check: this machine cannot resolve the tunnel name yet (local DNS); Pub/Sub resolves through Google and is not affected',
+  );
 }
