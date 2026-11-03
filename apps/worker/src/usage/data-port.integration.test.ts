@@ -248,14 +248,18 @@ describe('the adapter', () => {
 
     // The system is held to the shared window: once people and the system have taken everything but the
     // AI's floor of that project's data budget, the read is refused and never reaches the database.
-    const before = (await owner().select().from(schema.toolExecution)).length;
+    // Only the usage agent's rows: other packages' integration tests share this database in CI and
+    // write their own tool_execution rows at the same time.
+    const usageRows = () =>
+      owner().select().from(schema.toolExecution).where(eq(schema.toolExecution.agent, 'usage'));
+    const before = (await usageRows()).length;
     await owner()
       .insert(schema.rateBudgetWindow)
       .values({ resource: `data:${project}`, slot: new Date(), total: 50, ai: 0 });
     await expect(
       port.query({ metricKey: key, sql, params: window(), maxRows: 10 }),
     ).rejects.toThrow('rate_limited');
-    const after = await owner().select().from(schema.toolExecution);
+    const after = await usageRows();
     expect(after).toHaveLength(before + 1);
     expect(after.filter((row) => row.status === 'denied' && row.agent === 'usage')).toHaveLength(1);
     await tools.close?.();

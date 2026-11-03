@@ -204,13 +204,10 @@ export function ConsoleShell({ destination, skipTo, children }: ConsoleShellProp
     [t, router, signOut, can, killOn, capOn, goHome, goAdmin, goTo, destination],
   );
 
-  // Owner, 2026-11-02: the floating sheet on a gradient backdrop is for Overview only; every other
-  // page is full screen. One frame element for both, only its classes change, so the rail inside
-  // is not remounted when the page changes.
-  const Frame = ShellFrame;
-  const framed = destination === 'home';
+  // Owner, 2026-11-03: every page is the floating sheet on the gradient backdrop that Overview had
+  // (it was Overview only since 2026-11-02). One frame element, so the rail inside is never remounted.
   return (
-    <Frame framed={framed} data-hydrated={hydrated} className="md:flex-row">
+    <ShellFrame data-hydrated={hydrated} className="md:flex-row">
       <a
         href={skipTo.href}
         className="sr-only focus:not-sr-only focus:absolute focus:z-50 focus:m-2 focus:rounded-md focus:bg-primary focus:px-3 focus:py-2 focus:text-primary-foreground"
@@ -247,33 +244,25 @@ export function ConsoleShell({ destination, skipTo, children }: ConsoleShellProp
           setSwitchTarget(null);
         }}
       />
-    </Frame>
+    </ShellFrame>
   );
 }
 
 /**
- * The window frame. Overview floats it as a sheet on the gradient backdrop (the same two-box
- * structure as the UI package's AppFrame); every other page fills the window. It is one component
- * for both, so changing page restyles it instead of replacing it.
+ * The window frame: a sheet floating on the gradient backdrop (the same two-box structure as the UI
+ * package's AppFrame); compact density fills the window instead. Both boxes are `relative` and clip:
+ * an absolutely positioned descendant (an `sr-only` label far down a long list) otherwise takes the
+ * page as its containing block and makes the whole document scroll past the sheet.
  */
-function ShellFrame({
-  framed,
-  className,
-  ...props
-}: HTMLAttributes<HTMLDivElement> & { framed: boolean }) {
+function ShellFrame({ className, ...props }: HTMLAttributes<HTMLDivElement>) {
   return (
     <div
-      {...(framed ? { 'data-app-frame': '' } : {})}
-      className={cn(
-        'flex h-dvh min-h-0 flex-col',
-        framed && 'md:bg-backdrop md:p-4 lg:p-6 in-data-[density=compact]:p-0',
-      )}
+      data-app-frame=""
+      className="relative flex h-dvh min-h-0 flex-col overflow-hidden md:bg-backdrop md:p-4 lg:p-6 in-data-[density=compact]:p-0"
     >
       <div
         className={cn(
-          'flex min-h-0 flex-1 flex-col bg-frame',
-          framed &&
-            'overflow-hidden md:rounded-app md:shadow-app in-data-[density=compact]:rounded-none in-data-[density=compact]:shadow-none',
+          'relative flex min-h-0 flex-1 flex-col overflow-hidden bg-frame md:rounded-app md:shadow-app in-data-[density=compact]:rounded-none in-data-[density=compact]:shadow-none',
           className,
         )}
         {...props}
