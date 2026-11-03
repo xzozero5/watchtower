@@ -24,6 +24,8 @@ export function ShiftChip({ expanded }: { expanded: boolean }) {
   if (!allowed || !status.data) return null;
   const label = chipLabel(status.data, t, locale);
   const Icon = label.warning ? TriangleAlert : Clock3;
+  // A shift's hours ("13:00–22:00") split at the dash, for two lines in the narrow rail.
+  const shortParts = label.short.split('–');
   // Green on a rostered shift that is going as planned; not when clocked in without a roster entry,
   // which should not look settled (owner, 2026-11-03).
   const onPlan =
@@ -88,7 +90,16 @@ export function ShiftChip({ expanded }: { expanded: boolean }) {
           expanded ? 'md:hidden' : 'md:text-[0.6667rem]',
         )}
       >
-        {label.short}
+        {shortParts.length === 2 ? (
+          // The narrow rail is too thin for "13:00–22:00" on one line: start over end there; one
+          // line on the phone bar. The words are the same text, so the name check still holds.
+          <>
+            <span className="md:block">{shortParts[0]}–</span>
+            <span className="md:block">{shortParts[1]}</span>
+          </>
+        ) : (
+          label.short
+        )}
       </span>
       {unread > 0 && !expanded ? (
         // The count is drawn from an attribute, not text: the name already spells it out in words, and
