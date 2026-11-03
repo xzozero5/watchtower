@@ -88,15 +88,17 @@ export interface PinnedRow {
 }
 
 /**
- * The non-empty sections in board order; inside a section the api's order is kept. The open
- * ticket can be `pinned` to the section it was opened from: resolving it, or an AI update, then
- * does not make it jump to another section under the cursor (PRD section 10). It moves when
- * another ticket is opened.
+ * The non-empty sections in board order. Inside a section the api's order is kept, which is the
+ * person's "Sort by" choice; only `urgencyOrder` re-sorts by SLA state, priority and due time (the
+ * "SLA: most urgent first" choice, and the default when no choice is given). The open ticket can be
+ * `pinned` to the section it was opened from: resolving it, or an AI update, then does not make it
+ * jump to another section under the cursor (PRD section 10). It moves when another ticket is opened.
  */
 export function groupRows(
   rows: readonly RowModel[],
   pinned: PinnedRow | null = null,
   scope?: TriageScope,
+  { urgencyOrder = true }: { urgencyOrder?: boolean } = {},
 ): RowGroup[] {
   const buckets = new Map<TriageGroup, RowModel[]>();
   for (const row of rows) {
@@ -112,7 +114,7 @@ export function groupRows(
   }
   return TRIAGE_GROUPS.flatMap((id) => {
     const bucket = buckets.get(id);
-    return bucket ? [{ id, rows: sortBySlaThenPriority(bucket) }] : [];
+    return bucket ? [{ id, rows: urgencyOrder ? sortBySlaThenPriority(bucket) : bucket }] : [];
   });
 }
 

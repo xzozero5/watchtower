@@ -275,4 +275,15 @@ describe('sorting inside a section (QA-01, QA-02)', () => {
     const p1 = row('P1', { priority: 'P1' });
     expect(groupRows([a, p1])[0]?.rows.map((r) => r.key)).toEqual(['P1', 'A']);
   });
+
+  it('keeps the api order (the chosen "Sort by") inside a section when urgency order is off', () => {
+    const newest = row('NEW', { priority: 'P4' });
+    const p1 = row('P1', { priority: 'P1' });
+    const breached = row('LATE', { sla: { ...ON_TRACK, state: 'breached' } });
+    expect(
+      groupRows([newest, p1, breached], null, undefined, { urgencyOrder: false })[0]?.rows.map(
+        (r) => r.key,
+      ),
+    ).toEqual(['NEW', 'P1', 'LATE']);
+  });
 });

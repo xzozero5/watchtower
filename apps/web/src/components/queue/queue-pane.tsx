@@ -327,8 +327,14 @@ export function QueuePane({
   }
   const groups = useMemo<RowGroup[]>(
     () =>
-      isClient ? (rows.length > 0 ? [{ id: 'all', rows }] : []) : groupRows(rows, pinned, scope),
-    [isClient, rows, pinned, scope],
+      isClient
+        ? rows.length > 0
+          ? [{ id: 'all', rows }]
+          : []
+        : // "Sort by" decides the order inside each section (the api sorts); only the SLA choice
+          // re-sorts by urgency here, because the api's SLA order does not weigh priority.
+          groupRows(rows, pinned, scope, { urgencyOrder: filters.sort === 'sla_due_asc' }),
+    [isClient, rows, pinned, scope, filters.sort],
   );
   const walkable = useMemo(
     () => navigableRows(groups, folded, selectedKey),

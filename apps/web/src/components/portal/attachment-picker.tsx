@@ -106,7 +106,9 @@ export function PortalPasteZone({
   const hasFiles = (event: DragEvent): boolean =>
     Array.from(event.dataTransfer.types).includes('Files');
   return (
+    // A column, like the form field around it, so the text box inside still stretches to full width.
     <div
+      className="flex flex-col"
       onPaste={(event: ClipboardEvent) => {
         if (disabled) return;
         const files = filesFromTransfer(event.clipboardData, t('attachments.pastedName'), true);
