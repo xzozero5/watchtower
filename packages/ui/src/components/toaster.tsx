@@ -31,6 +31,9 @@ export function Toaster({ regionLabel }: ToasterProps) {
   return (
     <Sonner
       position="top-right"
+      // Below the page header (56 px + its padding), so a toast never covers the header's actions.
+      offset={{ top: 80, right: 16 }}
+      mobileOffset={{ top: 64, right: 16, left: 16 }}
       duration={6000}
       visibleToasts={3}
       gap={8}
