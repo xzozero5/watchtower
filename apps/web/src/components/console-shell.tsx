@@ -1,6 +1,6 @@
 'use client';
 
-import { AppFrame, cn } from '@watchtower/ui';
+import { cn } from '@watchtower/ui';
 import { useRouter } from 'next/navigation';
 import {
   type HTMLAttributes,
@@ -205,10 +205,12 @@ export function ConsoleShell({ destination, skipTo, children }: ConsoleShellProp
   );
 
   // Owner, 2026-11-02: the floating sheet on a gradient backdrop is for Overview only; every other
-  // page is full screen.
-  const Frame = destination === 'home' ? AppFrame : FullScreen;
+  // page is full screen. One frame element for both, only its classes change, so the rail inside
+  // is not remounted when the page changes.
+  const Frame = ShellFrame;
+  const framed = destination === 'home';
   return (
-    <Frame data-hydrated={hydrated} className="md:flex-row">
+    <Frame framed={framed} data-hydrated={hydrated} className="md:flex-row">
       <a
         href={skipTo.href}
         className="sr-only focus:not-sr-only focus:absolute focus:z-50 focus:m-2 focus:rounded-md focus:bg-primary focus:px-3 focus:py-2 focus:text-primary-foreground"
@@ -249,7 +251,33 @@ export function ConsoleShell({ destination, skipTo, children }: ConsoleShellProp
   );
 }
 
-/** Every page but Overview: the shell fills the window, the rail on the frame ground. */
-function FullScreen({ className, ...props }: HTMLAttributes<HTMLDivElement>) {
-  return <div className={cn('flex h-dvh flex-col bg-frame', className)} {...props} />;
+/**
+ * The window frame. Overview floats it as a sheet on the gradient backdrop (the same two-box
+ * structure as the UI package's AppFrame); every other page fills the window. It is one component
+ * for both, so changing page restyles it instead of replacing it.
+ */
+function ShellFrame({
+  framed,
+  className,
+  ...props
+}: HTMLAttributes<HTMLDivElement> & { framed: boolean }) {
+  return (
+    <div
+      {...(framed ? { 'data-app-frame': '' } : {})}
+      className={cn(
+        'flex h-dvh min-h-0 flex-col',
+        framed && 'md:bg-backdrop md:p-4 lg:p-6 in-data-[density=compact]:p-0',
+      )}
+    >
+      <div
+        className={cn(
+          'flex min-h-0 flex-1 flex-col bg-frame',
+          framed &&
+            'overflow-hidden md:rounded-app md:shadow-app in-data-[density=compact]:rounded-none in-data-[density=compact]:shadow-none',
+          className,
+        )}
+        {...props}
+      />
+    </div>
+  );
 }

@@ -18,5 +18,7 @@ export const railEn = {
   keymapShort: 'Keyboard shortcuts',
   collapseShort: 'Collapse',
   account: 'Account menu',
+  statusOk: 'Connected: live updates on, API online',
+  statusConnecting: 'Connecting to live updates and the API',
   signedInAs: 'Signed in as {name}',
 } as const;

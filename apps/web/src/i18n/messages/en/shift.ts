@@ -45,6 +45,7 @@ export const shiftEn = {
     rosterEmpty: 'You are not on the roster today.',
     unreadNotes: 'Unread notes: {count}',
     pendingAcks: 'Handoff items to acknowledge: {count}',
+    toAcknowledge: '{count} to acknowledge',
     goBrief: 'Open the daily brief',
     goHandoff: 'Open the handoff',
     goNotes: 'Open the notes',

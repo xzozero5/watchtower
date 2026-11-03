@@ -11,15 +11,20 @@ import { useSession } from '@/lib/auth/session';
  * inside the auth gate and the realtime provider.
  */
 export function AppShell() {
-  const { can } = useSession();
-  // A developer reads every ticket with personal data masked and has no queue of their own (T-137).
-  const developer = can('ticket.read.masked') && !can('ticket.read');
   return (
     <ConsoleShell
       destination="queue"
       skipTo={{ href: '#pane-conversation', label: 'app.skipToContent' }}
     >
-      {developer ? <DevHome /> : <Workspace />}
+      <QueueHome />
     </ConsoleShell>
   );
+}
+
+/** What the app root shows inside the shell: the queue workspace, or the developer home. */
+export function QueueHome() {
+  const { can } = useSession();
+  // A developer reads every ticket with personal data masked and has no queue of their own (T-137).
+  const developer = can('ticket.read.masked') && !can('ticket.read');
+  return developer ? <DevHome /> : <Workspace />;
 }

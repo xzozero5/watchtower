@@ -44,6 +44,24 @@ describe('shift chip', () => {
     expect(chip).toHaveAccessibleName(/Handoff items to acknowledge: 1/);
   });
 
+  it('says in words what the number is: 3 to acknowledge, on the wide rail and in the name on the narrow one', async () => {
+    shiftApi({
+      overrides: {
+        'GET /v1/shifts/status': { json: shiftStatus({ unreadNotes: 2, pendingAcks: 1 }) },
+      },
+    });
+    const wide = renderConsole(<ShiftChip expanded />);
+    const chip = await screen.findByRole('link', { name: /On shift/ });
+    expect(chip).toHaveTextContent('3 to acknowledge');
+    expect(chip).toHaveAccessibleName(/3 to acknowledge/);
+    wide.unmount();
+
+    renderConsole(<ShiftChip expanded={false} />);
+    const narrow = await screen.findByRole('link', { name: /On shift/ });
+    expect(narrow).toHaveAccessibleName(/3 to acknowledge/);
+    expect(narrow.querySelector('[data-count="3"]')).not.toBeNull();
+  });
+
   it('asks to finish the handoff once the shift has ended', async () => {
     shiftApi({
       overrides: { 'GET /v1/shifts/status': { json: shiftStatus({ minutesToEnd: -10 }) } },
