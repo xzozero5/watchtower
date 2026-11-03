@@ -75,6 +75,15 @@ Pub/Sub ต้องยิง HTTPS เข้ามาหา api จาก inter
 - ทางฉุกเฉิน: break-glass (`BREAK_GLASS_EMAIL`/`_PASSWORD` ใน env file) ที่ปุ่ม Emergency บนหน้า login
 - จะเปิด dev login อีก: ต้อง comment `GOOGLE_OIDC_CLIENT_ID/SECRET` ออกก่อน (สองอย่างเปิดพร้อมกันระบบไม่ยอม boot)
 
+## 5b. ข้อมูลจำลอง 1 ปีใน POC (สำหรับ demo) — ทำแล้ว 2026-11-03
+เจ้าของเลือกให้ POC เป็นชุดเดียวทั้งต่อของจริงและมีข้อมูลจำลอง (ไม่มี demo stack แยก) · seed รันใน compose network ผ่าน `docker-compose.seed.yml` จึงใช้รหัส DB/MinIO จาก env file โดยไม่ต้องคัดลอก:
+```bash
+docker compose --env-file <env file> -f docker-compose.yml -f docker-compose.seed.yml --profile seed run --rm --no-deps seed
+```
+- **สำรองก่อนเสมอ:** `pg_dump -Fc` ลง `D:\Works\watchtower-backups\` (ทำแล้ว `poc-20261103-1711-pre-year-seed.dump`) · ถอนข้อมูลจำลองทั้งหมด = restore ไฟล์นั้น (ข้อมูลจริงที่เข้ามาหลัง 17:11 จะหายด้วย)
+- seed ปฏิเสธฐานที่มี ticket > 100 และรันซ้ำไม่เพิ่ม (มี org `Kestrel Freight` เป็นตัวบอก) · tier ของ SLA ห้ามซ้ำ: policy ทดสอบ `Smoke Gold`/`QA Head SLA` ถูกปลด tier และผูกกับ org ของมันตรง ๆ แทน เพื่อให้ seed สร้าง Gold/Silver/Standard
+- ข้อมูลจำลองใช้โดเมน `example` ทั้งหมด: ถ้าตอบ ticket จำลองทาง Gmail จริง อีเมลจะเด้งกลับ (ไม่ถึงใคร) · พนักงานจำลอง (`@ops.example.com`) ล็อกอินไม่ได้เพราะ dev login ปิด — เดโมด้วยบัญชี Google ของเจ้าของ (role head)
+
 ## 6. รัน test โดยไม่แตะข้อมูลของ POC
 integration/e2e เขียนลง DB → **ห้ามชี้ไปที่ DB/Redis/MinIO ของ stack ที่เปิดอยู่** ใช้ container ทิ้งได้:
 ```bash

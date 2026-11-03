@@ -1,0 +1,36 @@
+# One-off seeding inside the compose network (docs/runbooks/local-poc.md section 7): the reference
+# data and demo people (`pnpm db:seed`), then the one-year scenario with its screenshots in MinIO.
+# Settings come from the same env file as the stack, so nobody has to copy a password by hand:
+#   docker compose --env-file <env file> -f docker-compose.yml -f docker-compose.seed.yml \
+#     --profile seed run --rm seed
+# The year scenario refuses NODE_ENV=production and a database that already holds more than 100
+# tickets (packages/db/src/seed/year). It writes fictional data: take a backup first.
+services:
+  seed:
+    profiles: ['seed']
+    image: watchtower/api:local
+    restart: 'no'
+    command:
+      - sh
+      - -c
+      - node node_modules/@watchtower/db/dist/seed-cli.js && node node_modules/@watchtower/db/dist/seed-cli.js --scenario year
+    environment:
+      MIGRATION_DATABASE_URL: postgres://${POSTGRES_USER:-watchtower}:${POSTGRES_PASSWORD:-watchtower}@postgres:5432/${POSTGRES_DB:-watchtower}
+      NODE_ENV: ${NODE_ENV:-development}
+      TICKET_KEY_PREFIX: ${TICKET_KEY_PREFIX:-OPS}
+      SEED_EXAMPLES_DIR: /examples
+      S3_ENDPOINT: http://minio:9000
+      S3_REGION: ${S3_REGION:-us-east-1}
+      S3_BUCKET: ${S3_BUCKET:-watchtower}
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:-minio}
+      S3_SECRET_KEY: ${S3_SECRET_KEY:-minio12345}
+    volumes:
+      - type: bind
+        source: ./examples
+        target: /examples
+        read_only: true
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
