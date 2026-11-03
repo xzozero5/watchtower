@@ -22,6 +22,7 @@ export const homeTh: Widen<typeof homeEn> = {
   volume: 'ปริมาณงาน',
   volumeCreated: 'สร้าง {count} งาน · 7 วันล่าสุด',
   volumeUnavailable: 'ยังดูปริมาณงานไม่ได้',
+  aiDraftsWindow: '7 วันล่าสุด',
   byStatus: 'ตามสถานะ',
   byQueue: 'ตามคิว',
   noQueue: 'ไม่อยู่ในคิวใด',

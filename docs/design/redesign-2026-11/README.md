@@ -104,3 +104,7 @@ Contrast ที่คำนวณมือ (ยังไม่ได้ใส่
 - ใช้ **Soft Beacon ทั้งชุด** (tokens, ฟอนต์, การ์ด, shell) พร้อมคำตอบ 5 ข้อข้างบน — ไม่ต้องให้ `po` ตัดสินแทน
 - chart + trend บน Head home: **ทำ layout ตอนนี้ด้วยข้อมูลที่มี** (ปริมาณงาน 7 วันจาก read model ของ dashboard) **ซ่อน trend chip** จนกว่าจะมี counts/history API (งาน API แยก)
 - คงกฎใน `docs/plans/ui-rework-brief.md` §2: สีบอกสถานะเท่านั้น, ปุ่มตัดสินใจมีข้อความ, หน้า ticket ไม่มี global top bar
+
+### draft card (เจ้าของตอบใน session UI rework, 2026-11-03) `[CONFIRMED]`
+- **draft card อยู่ตรงกลางใต้ AI brief ตามเดิม** — แทนคำตอบข้อ 4 ข้างบน · เหตุผล: right pane เปิดที่แท็บ Details เป็น default (คำตัดสิน QA 2026-11-02) และเป็น drawer ที่ 768–1023 px/แท็บแยกบนมือถือ ถ้าย้ายไปขวา draft จะไม่เห็นทันทีเมื่อเปิด ticket
+- การ์ดไฮไลต์บน Home = "Drafts accepted" 7 วัน จาก read model ของ dashboard (ไม่มีตัวเลข = ไม่แสดงการ์ด) · trend chip และกราฟแยกตามช่องทางรอ counts/history API · top bar ของ Overview ไม่ทำ (ปุ่ม New ticket จะซ้ำกับใน rail)
