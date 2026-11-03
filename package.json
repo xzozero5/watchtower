@@ -20,7 +20,9 @@
     "typecheck": "turbo run typecheck",
     "db:migrate": "turbo run db:migrate --env-mode=loose",
     "db:seed": "turbo run db:seed --env-mode=loose",
+    "db:seed:year": "turbo run db:seed:year --env-mode=loose",
     "eval": "turbo run eval --env-mode=loose",
+    "kb:sync": "pnpm --filter @watchtower/db run kb:sync --",
     "claude-bridge": "node --env-file-if-exists=.env tools/claude-cli-bridge/server.mjs",
     "format": "prettier --write .",
     "push-filter": "node tools/push-only-filter/server.mjs"

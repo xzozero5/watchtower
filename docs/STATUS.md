@@ -15,6 +15,7 @@ snapshot สั้นสำหรับ cold start อยู่ที่ `HANDOF
 
 - **Release `v0.1.0` (MVP)** = `main` @ `ae380db` · CI: เขียวทั้ง 4 job · gate บนเครื่องผ่านทุก merge `[TESTED]`
 - **PO quality sweep 2026-11-03:** T-156/T-162…164 ปิดบน `codex/po-quality-sweep`; T-158/T-161 ปิดบางส่วน · ยังไม่ merge/deploy · รายงาน `docs/qa/2026-11-03-po-quality-sweep.md`
+- **คำขอเจ้าของ 2026-11-03 บ่าย:** T-165…T-169 ปิด (rail, Gmail view/composer, แนบรูป, claude-bridge docker ADR-019, seed 1 ปี) บน `codex/po-workflow-upgrade` ยังไม่ push
 - Blockers: ไม่มี · `[ASK-HUMAN]` ค้าง: ดู `HANDOFF.md`
 
 ## Open questions / `[UNVERIFIED]` / `[ASSUMED]` ที่ยังค้าง
@@ -41,6 +42,13 @@ snapshot สั้นสำหรับ cold start อยู่ที่ `HANDOF
 - (2026-11-01) cloud session: `dockerd` ต้องสั่งเอง · Docker Hub 429 → pull ซ้ำทีละ image · build image ไม่ได้ (corepack ไม่เชื่อ CA ของ proxy) · Playwright ใช้ `PW_EXECUTABLE_PATH=/opt/pw-browsers/chromium` · หลาย worktree รัน e2e พร้อมกันต้องตั้ง `E2E_PORT` ต่างกัน · Redis counter ข้ามรอบ test → `RATE_LIMIT_NAMESPACE`
 
 ## Log
+
+## 2026-11-03 15:50 (Asia/Bangkok) — Claude Code main thread — คำขอเจ้าของ 6 ข้อ: T-165…T-169 ปิด, T-170/T-171 เปิด
+- **ทำอะไร:** rail ไฮไลต์ brief/handoff + ไม่ล้น (main) · agent ขนาน 4 ตัว: Gmail view + email composer + MIME (frontend-dev), แนบรูปทุกที่ `/v1/uploads` (backend-dev), ADR-019 claude-bridge docker + KB folder + offline (ai-engineer), seed 1 ปี (backend-dev) · main ต่อ object store เข้า dispatcher, แก้ lint/format, แก้ตาม security review C-1/C-3/C-6/C-9 + ตัด dev จาก uploads (T-137)
+- **Review N7:** security-reviewer อิสระ: ไม่มี P0/P1; P2 C-1/C-3 แก้, C-2/C-4 → T-171; P3 C-6/C-9 แก้, C-5/C-7/C-8 → T-171
+- **Gate [TESTED]:** typecheck 17/17, lint 18/18, prettier ผ่าน; unit concurrency1/maxWorkers4: ทุก package ผ่าน ยกเว้น api 38/39 ไฟล์ (ชนขณะแก้ + routes-policy) → แก้แล้วรันเฉพาะไฟล์ผ่าน, api ครบชุดยังไม่รันซ้ำ · seed 1 ปีรันจริงบน pg ทิ้ง (18.8 s, รันซ้ำไม่เพิ่ม) และบน demo `wt-year` พร้อม MinIO (รูป 8) · ตรวจบนจอจริง (`wt-year` :53000): Home มีข้อมูล, highlight brief/handoff, rail foot อยู่ในกรอบที่ 800×600, อีเมลแบบ Gmail + composer ครบปุ่ม
+- **Migration:** 0082 `email_meta`, 0083 `staff_upload` + attachments ใน shift_note/handoff
+- **ค้าง/ไม่ยืนยัน:** ดู HANDOFF §ค้าง, T-170/T-171, คำขอใหม่ Gmail tunnel container · ไม่มี external AI/cloud call
 
 ## 2026-11-03 13:20 (Asia/Bangkok) — Codex main thread — PO takeover / T-156, T-158(part), T-161(part), T-162…164
 - **ขอบเขต:** เจ้าของมอบให้ทดสอบหลาย stakeholder และปรับปรุงตามดุลยพินิจ; branch `codex/po-quality-sweep` จาก `d7b70d2` ไม่ merge/deploy POC; รายงาน `docs/qa/2026-11-03-po-quality-sweep.md`

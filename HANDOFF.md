@@ -1,61 +1,62 @@
 # HANDOFF — Watchtower
 
-> อัปเดตล่าสุด: 2026-11-03 13:20 (เวลากรุงเทพ) โดย Codex main thread — PO takeover / stakeholder quality sweep
-> ฉบับก่อน: `docs/handoff-archive/HANDOFF-2026-11-03-pre-po-quality-sweep.md` · รายงานรอบนี้ `docs/qa/2026-11-03-po-quality-sweep.md`
+> อัปเดตล่าสุด: 2026-11-03 15:50 (เวลากรุงเทพ) โดย Claude Code main thread — คำขอเจ้าของ 6 ข้อ (rail, อีเมลแบบ Gmail, แนบรูป, `claude -p` docker, seed 1 ปี)
+> ฉบับก่อน: `docs/handoff-archive/HANDOFF-2026-11-03-1320-po-quality-sweep.md`
 
 ## สถานะปัจจุบัน
-- **Branch:** `codex/po-quality-sweep` จาก `main` @ `d7b70d2`; งานรอบนี้แยก branch ไม่มี merge เข้า main หรือ deploy POC
-- **Phase:** 0/1 MVP และ 2 mock พร้อมของเดิม; รอบนี้ปิด T-156/T-162/T-163/T-164 และ T-158 เฉพาะ QA-06 ยังไม่เริ่ม Phase 3
-- **ผลตรวจ:** final unit+boundaries4911ผ่าน/29contractskip (18tasks,0cached), lint18/typecheck17ผ่าน; รายละเอียดอยู่ entry PO quality sweep ใน STATUS; browser อิสระ 186 pass /32 screenshot-only skip, fullstack 38 completed (37 pass + 1 expected failure B-003 Gmail ack), independent PO/security ผ่าน
-- **Deployment เดิม:** localhost web3000/api4000; staff Google login จริง (POC gmail allow-list, dev loginปิด), Gmailจริง, AI `claude -p`; LINE/Discord/SMTPออก/GCPยังmock ไม่ได้ทดสอบข้อมูลจริงรอบนี้
-- **ต้นทุน:** ไม่มี external AI/cloud API call รอบนี้; token/ต้นทุน build agents ไม่มี meter รวมให้ตรวจ ไม่ได้ประมาณเป็น0
+- **Branch:** `codex/po-workflow-upgrade` (จาก `main` @ `8be6c5e`) · commit ในเครื่องแล้ว **ยังไม่ push** ตามที่เจ้าของสั่ง ("ทำใน local ให้เสร็จก่อน")
+- **Phase:** 0/1 MVP + 2 mock เหมือนเดิม; รอบนี้ปิด T-165…T-169, เปิด T-170/T-171 (ส่วนที่เหลือ)
+- **ผลตรวจ [TESTED]:** typecheck 17/17, lint 18/18 + prettier ผ่าน; unit ทุก package ผ่าน (web 114 ไฟล์, shared 868, db/seed 64, worker 22 ไฟล์, ai, channels, domain, ui, connectors); api ผ่าน 38/39 ไฟล์ในรอบ gate — ไฟล์ที่ล้ม (email-reply ชนขณะแก้, routes-policy เพราะ dev เข้าถึง uploads) แก้แล้วรันซ้ำเฉพาะไฟล์ผ่าน **แต่ยังไม่ได้รัน api ครบชุดหลังแก้**; integration (agent รันเอง): uploads 8, shifts/incidents/manual/portal 131, kb-sync 5, migration up/down 3
+- **Demo `wt-year` (โค้ดรอบนี้ + seed 1 ปี):** `http://localhost:53000` (api :54000, mailpit :58025, pg :55432) dev login เปิด (เช่น `head@example.com` role Head) · AI/Gmail mock · env/override อยู่ใน scratchpad ของ session (ไม่อยู่ใน repo) · ปิด: `docker compose -p wt-year down -v` · image ชื่อ `wt-year/*` ไม่ทับ POC
+- **POC ของเจ้าของ (`watchtower`, :3000):** ไม่ได้ rebuild/deploy รอบนี้ — ยังเป็นโค้ดเดิม ยกเว้น `claude-bridge` ที่เจ้าของเปิดเอง
+- **ต้นทุน:** ไม่มี external AI/cloud call ในผลิตภัณฑ์; build agents 6 ตัว (frontend/backend×2/ai/security) ไม่มี meter รวม
 
 ## การตัดสินใจของเจ้าของที่มีผลอยู่
-- เจ้าของมอบให้ PO เข้าใจระบบ ทดสอบหลาย stakeholder และปรับปรุงตามดุลยพินิจ 2026-11-03; รอบนี้ agent จำลองมุมผู้ใช้ ไม่ใช่สัมภาษณ์ stakeholderจริง
-- AI ในผลิตภัณฑ์ยังใช้ `claude -p` ตาม ADR-017; ไม่เปลี่ยน provider/stack/schema/autonomy และไม่เพิ่ม dependency
-- ใช้ Soft Beacon ตาม ADR-018; stage ≥3 ยังต้องผ่าน gate/เจ้าของอนุมัติ
+- **ADR-019 (2026-11-03):** `claude -p` เป็น AI หลักไปก่อน, sonnet ทุก tier (ตั้งใน env ไม่ hardcode), bridge เป็น compose service เปิดค้าง (profile `ai`, network `ai` เฉพาะ worker), AI ใช้ได้เมื่อ host online — offline = รอ/ลองใหม่ ไม่ fallback mock · KB folder ภายนอก `D:\Works\watchtower-kb` (`WATCHTOWER_KB_DIR`) + `pnpm kb:sync` · **ยังคงข้อห้าม claude-cli เมื่อ `NODE_ENV=production` หรือ `APP_URL` ไม่ใช่ loopback** (ดูรอเจ้าของ)
+- อีเมลแสดงแบบ Gmail + composer จริง, แนบรูปทุกที่ (คำขอ 2026-11-03)
+- ADR-017/018 เดิมยังมีผล
 
 ## ทำเสร็จใน session นี้
 | งาน | ผล | ไฟล์หลัก |
 | --- | --- | --- |
-| T-156 | Staffเห็นชื่อ/ขนาดไฟล์ ดาวน์โหลดผ่าน authenticated API, coordinated refresh, pending/error/retry; devไม่มีraw download; ไม่เผยstorage URL | conversation/message-attachments.tsx, lib/api/client.ts |
-| T-158 QA-06 | AI Waitอ่านtimelineล่าสุดก่อนยืนยัน/ยกเลิก; error/incompleteไม่เขียน; ออกหน้าแล้วcallbackเก่าไม่เปลี่ยนสถานะ | ai/ai-brief.tsx, ticket/waiting-customer-confirm.tsx |
-| T-162 | Home SLA/unassigned/oldest filtersตรงจำนวน, show-allยอดจริง/lower bound, devไม่ปนworkload, No queueไม่ลิงก์ไปทุกqueue | home/home-page.tsx, home-sections.tsx, lib/admin/queries.ts |
-| T-163/B-001 | Portalรับhashchangeและrefetchแม้tokenเดิม; stale GET/POST401ไม่ลบลิงก์ใหม่; current401ยังrevoke; ลบknown-fail markerหลังพิสูจน์จริง | portal/tracking-page.tsx, e2e-fullstack/ac1-portal.e2e.ts |
-| T-164 | เติมtesting/checklistที่AGENTSอ้างแต่ไม่มี, stakeholder report, independent acceptance5ข้อ, scope retry testให้ถูกsection | docs/07-TESTING.md, docs/08-QA-CHECKLIST.md, e2e/po-audit.e2e.ts |
+| T-165 | Daily brief/Shift handoff ไฮไลต์ถูก; rail ไม่ล้น (nav scroll) — ตรวจบนจอจริง | nav-rail.tsx, console-layout.tsx |
+| T-166 | Gmail thread view (iframe sandbox + sanitizer + บล็อกรูป remote + cid), email composer (To/Cc/Bcc, Subject, rich text, signature, quote, preview, รูป inline), MIME multipart, migration 0082 | conversation/email/*, composer.tsx, channels gmail/reply.ts, api tickets/email-reply.ts |
+| T-167 | `/v1/uploads` + แนบกับ note/handoff/incident/manual ticket/reply/internal note; dev ไม่มีสิทธิ์ (T-137) | api uploads/*, web components/attachments/*, migration 0083 |
+| T-168 | ADR-019, bridge Dockerfile + compose, healthz/online, brief เลื่อนเมื่อ offline, kb:sync | tools/claude-cli-bridge/*, packages/ai, packages/db/src/kb-sync |
+| T-169 | `pnpm db:seed:year` ~3.8k tickets, 21.6k ข้อความ, KB 95, incident 21, กะ/handoff ทั้งปี, AI/CSAT, รูปแนบ 8 ภาพ (มี S3) — รันจริง 2 รอบ | packages/db/src/seed/year/* |
+| Security review (N7) | ไม่มี P0/P1 · แก้แล้ว: C-1 approve draft ส่ง HTML อื่น, C-3 seed guard, C-6 แยก network bridge, C-9 flag seed · ค้าง C-2/4/5/7/8 → T-171 | |
 
 ## ค้าง / ติดอะไร
-- T-154 slow upload admission/slot starvation และ T-155 quota/retention/orphan sweep/streaming ยังเปิด; รอบนี้ไม่ใช่ internet-readiness signoff
-- T-158 rail countsยังไม่ทำ; T-159 history/trend APIยังเปิด; T-141 lead morning workflowยังมีส่วนเหลือ
-- B-002 unverified LINE requester, B-003 Gmail ack และ B-004 critical banner a11y ยังต้องตรวจ/ปิดแยก; อย่าอ้าง test.fail เป็นfeatureผ่าน
-- T-113/T-114/T-207 phase QA/security/PO gate กับ T-115 pilot ยังไม่ปิด
-- T-161 ส่วน PoW batch test แก้โดย QA (bounded known vector, ไม่เพิ่ม timeout/retry); flakyอื่นยังไม่สรุป root cause; รอบนี้พบ boundary lint fixture test timeout90sใต้โหลดหนัก เคยผ่านเมื่อจำกัดTurbo concurrency2; พบcomposer-send fixture5sหมดก่อนassertใต้โหลดหนักเพิ่ม (ยังเปิด); final gateใช้concurrency1/maxWorkers4ตามdocs/07; build/typecheck/browserต้องเรียงลำดับบนWindows
-- ไม่แก้/commit `.agents/` และ `.codex/` ที่ untracked อยู่ก่อนเริ่ม
+- T-170: แถบ "AI offline" ทั้งระบบ, investigation/draft เลื่อนเมื่อ offline, kb:sync ลบไฟล์ → deprecate, ยืนยันชื่อ `CLAUDE_CODE_OAUTH_TOKEN` `[VERIFY]` + build image bridge (เจ้าของ build แล้วใช้งานอยู่ — ยังไม่ได้ตรวจผลใน `ai_run`)
+- T-171: draft AI ลง rich editor, style อีเมลลูกค้าหายตอน ingest, audit ผู้รับ/allow-list domain, Gmail ตัด Bcc `[UNVERIFIED 80%]`, EXIF WebP/GIF, Playwright email/upload
+- **คำขอใหม่เจ้าของ (ยังไม่เริ่ม):** container cloudflare tunnel ที่ตอนขึ้น subscribe Pub/Sub topic ของ Gmail ไปที่ URL tunnel เพื่อทดสอบรับ-ส่งอีเมลจริง
+- ของเดิม: T-154/T-155, T-158 rail counts, T-159, T-141…147, B-002/B-003/B-004, T-113/T-114/T-207, T-115, T-161 flaky
+- ไม่แก้/commit `.agents/` และ `.codex/`
 
 ## รอเจ้าของ (`[ASK-HUMAN]`)
-- [ ] malware scanning dependency (T-155) และข้อกำหนดการเก็บไฟล์จริง
-- [ ] ข้อความไทยใหม่/เดิมยังต้องเจ้าของภาษาตรวจ
-- [ ] T-115 pilot: ย้ายจากPOCไปWorkspace/stagingตามrunbookก่อนเปิดinternet; GCP stagingยังไม่เคยรันจริง
-- [ ] Gmail tunnel เจ้าของเปิดเองเมื่อจะทดสอบpushจริงตามrunbook §4; ไม่ต้องเปิดเพื่อunit/mock/fullstackรอบนี้
+- [ ] เงื่อนไขบริการ Anthropic กับการใช้ subscription แบบอัตโนมัติ + ข้อมูลลูกค้าผ่าน `claude -p` (ADR-019)
+- [ ] จะเปิด Watchtower ผ่าน internet เมื่อไร: ตอนนี้ claude-cli ถูกปฏิเสธเมื่อ APP_URL ไม่ใช่ loopback → ต้องเลือก: คง local / แก้ ADR ยอมให้ / ใช้ API key ใน production
+- [ ] หลังแก้ compose รอบนี้ ต้อง `docker compose --env-file D:\Works\secret\watchtower.env --profile ai up -d claude-bridge worker` และตั้ง `CLAUDE_CLI_BRIDGE_URL=http://claude-bridge:4317`
+- [ ] merge/deploy POC รอบนี้ (ยังไม่ทำ), malware scanning (T-155), ข้อความไทยให้เจ้าของภาษาตรวจ, T-115 pilot
 
 ## ขั้นต่อไป (เรียงลำดับ)
-1. Review/merge branchรอบนี้ตามgit workflow แล้วdeploy/rebuild POCด้วยconfigเดิมเมื่อพร้อม (ยังไม่ได้ทำ)
-2. T-154/T-155 ทำstorage/capacityให้พร้อมก่อนpublic portal; malwareต้องถามตามdependency guard
-3. T-159 history/trend และ T-158 railcounts; ต่อ T-141/T-142/T-143/T-144/T-145/T-146/T-147 ตามBACKLOG
-4. เติมrole-based fullstack AC-3/5/7/dev, วิเคราะห์T-161, ปิดT-113/T-114/T-207
-5. Pilotกับผู้ใช้จริง เก็บผลก่อนเริ่มPhase3/gate stage3
+1. รัน api unit ครบชุด + full-stack e2e บน service ทิ้ง ก่อน merge
+2. Gmail tunnel container (คำขอใหม่) → ทดสอบรับ-ส่งอีเมลจริงกับ composer ใหม่ (ยืนยัน Bcc)
+3. T-170, T-171
+4. merge + rebuild POC เมื่อเจ้าของสั่ง
+5. ของเดิมตาม BACKLOG
 
 ## วิธีเปิดระบบและทดสอบต่อ
-- อ่าน `docs/runbooks/local-poc.md` + `docs/07-TESTING.md` ก่อนใช้service; integration/fullstackห้ามใช้DB/Redis/MinIO/MailpitของPOC
-- **bridgeไม่ได้รันค้าง:** ก่อนทดสอบAIจริง เจ้าของ/ผู้รับช่วงเปิด terminalแยก `node --env-file=D:\Works\secret\watchtower.env tools/claude-cli-bridge/server.mjs`; ทดสอบPOSTไม่มีtokenที่4317ต้อง401; bridgeไม่เปิด=audited provider_unavailable ไม่fallbackmock
-- ห้ามพิมพ์ค่าenv/credential; จริงอยู่ภายนอกrepoตามrunbook
-- รอบนี้ใช้containerทิ้งชื่อ `wt-codex-po-pg/redis/mailpit` บน45560/46560/41560/48560; ล้างเฉพาะcontainerที่สร้างเองหลังgate (ดูdaily)
-- web browser port3100จองคนเดียว; `pnpm build`ให้จบก่อน `pnpm typecheck`/browser; Windows `.next`ชนกันเกิดEBUSY/TS6053
+- `docs/runbooks/local-poc.md` (§3/§3b claude-bridge + KB) + `docs/07-TESTING.md`; integration/fullstack ห้ามใช้ DB/Redis/MinIO ของ POC
+- seed demo: `pnpm db:seed` แล้ว `pnpm db:seed:year` (ฐานต้องว่าง/มีแค่ demo; ใส่ `S3_*` เพื่อให้มีรูปแนบ)
+- gate บน Windows: `pnpm exec turbo run test test:boundaries --concurrency=1 -- --maxWorkers=4`; build/typecheck/browser เรียงลำดับ
+- compose build: `migrate` กับ `api` ใช้ image เดียวกัน → `up --build` ครั้งแรกอาจล้ม "image already exists" ให้ `build api` ก่อนแล้วค่อย `up`
+- ห้ามพิมพ์ค่า env/credential
 
 ## ยังไม่ยืนยัน
-- mobileจริง, native Thai copy, external sandbox, internet readiness และstaging deploy ไม่ได้ยืนยันรอบนี้
-- file download browserทดสอบbinary mock; ไม่ได้ทดสอบของจริงในMinIOรอบนี้ (APIrouteเดิมไม่แก้)
-- business-hours copy, name-cue recallกับข้อมูลลูกค้าจริง, upload memoryในcontainer, rail outageบนจอจริง และcache skeleton30s ยังไม่ยืนยันตามฉบับก่อน
+- Gmail จริงกับ composer ใหม่ (HTML/cc/bcc/inline image), cid image ใน browser จริงจากข้อความที่ส่งจริง, bridge ใน container login ด้วย token, offline detection บนเครื่องจริง
+- api unit ครบชุดหลังแก้, full-stack e2e, Playwright ของฟีเจอร์ใหม่ ยังไม่รัน
+- mobile จริง, ข้อความไทยโดยเจ้าของภาษา
 
 ## วันตรวจซ้ำ
-- PO/QA/security review: 2026-11-03
+- security review: 2026-11-03 (diff รอบนี้)
