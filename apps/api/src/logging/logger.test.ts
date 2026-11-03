@@ -104,4 +104,39 @@ describe('NestPinoLogger', () => {
     new NestPinoLogger(logger).error(new Error('kaput'));
     expect(capture.lines()[0]).toMatchObject({ level: 'error', msg: 'kaput' });
   });
+
+  describe('a failed database statement (T-140 security review)', () => {
+    const SQL = 'insert into "message" ("body_text", "attachments") values ($1, $2)';
+    const SECRET = 'Nok Customer <nok@customer.example> secret-plan.pdf';
+    const failed = () => {
+      const pg = Object.assign(new Error('unsupported Unicode escape sequence'), { code: '22P05' });
+      const error = new Error(`Failed query: ${SQL}\nparams: ${SECRET},[{"filename":"x"}]`, {
+        cause: pg,
+      });
+      error.name = 'DrizzleQueryError';
+      return error;
+    };
+
+    it('never logs the statement or its parameters, from Nest or from a direct log call', () => {
+      const { capture, logger } = loggerWithCapture();
+      const nest = new NestPinoLogger(logger);
+      const error = failed();
+      nest.error(error.message, error.stack, 'ExceptionsHandler');
+      nest.error(error);
+      logger.error({ err: error }, 'request failed');
+      const raw = capture.raw();
+      expect(raw).not.toContain('secret-plan');
+      expect(raw).not.toContain('nok@customer.example');
+      expect(raw).not.toContain('insert into');
+      expect(raw).toContain('Failed query: [redacted]');
+    });
+
+    it('keeps the database error code and the error type', () => {
+      const { capture, logger } = loggerWithCapture();
+      logger.error({ err: failed() }, 'request failed');
+      expect(capture.lines()[0]).toMatchObject({
+        err: { type: 'DrizzleQueryError', code: '22P05' },
+      });
+    });
+  });
 });

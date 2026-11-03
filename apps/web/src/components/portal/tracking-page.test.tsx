@@ -343,3 +343,110 @@ describe('errors', () => {
     expect(await screen.findByRole('heading', { name: 'OPS-12' })).toBeInTheDocument();
   });
 });
+
+describe('portal tracking page attachments (R-9.3)', () => {
+  const picker = () => screen.getByLabelText(/^Attachments/, { selector: 'input' });
+  const png = (name = 'screen.png') => new File(['png-bytes'], name, { type: 'image/png' });
+
+  it('sends a reply with files as multipart and shows their names on the timeline', async () => {
+    const user = userEvent.setup();
+    const message = {
+      id: uuid(9),
+      from: 'customer' as const,
+      authorName: null,
+      body: 'Log attached.',
+      attachments: [{ name: 'screen.png', size: 9 }],
+      createdAt: '2026-11-05T05:00:00.000Z',
+    };
+    let replied = false;
+    const api = openTracking({
+      // The refetch after a reply returns the message with its files, as the real api does.
+      'GET /v1/portal/tickets/:key': () => ({
+        json: makeView({
+          timeline: [
+            ...makeView().timeline,
+            ...(replied ? [{ kind: 'message' as const, ...message }] : []),
+          ],
+        }),
+      }),
+      'POST /v1/portal/tickets/:key/replies': () => {
+        replied = true;
+        return {
+          status: 201,
+          json: { message, status: 'in_progress', statusLabel: 'In progress' },
+        };
+      },
+    });
+    await screen.findByRole('heading', { name: 'OPS-12' });
+    await user.type(screen.getByLabelText('Your message'), 'Log attached.');
+    await user.upload(picker(), [png()]);
+    await user.click(screen.getByRole('button', { name: 'Send reply' }));
+
+    expect(await screen.findByText('Your reply was sent.')).toBeInTheDocument();
+    const [post] = api.callsTo('/v1/portal/tickets/OPS-12/replies', 'POST');
+    expect(post?.body).toEqual({
+      payload: { body: 'Log attached.' },
+      files: [{ name: 'screen.png', size: 9, type: 'image/png' }],
+    });
+    expect(post?.headers.get('x-portal-token')).toBe(SAMPLE);
+    // The picker is empty again after a send; the name now shows under the message.
+    expect(screen.queryByRole('list', { name: 'Files to send' })).not.toBeInTheDocument();
+    expect(screen.getByRole('list', { name: 'Attachments' })).toHaveTextContent('screen.png');
+  });
+
+  it('checks type before sending and says what is wrong; the reply then goes without the file', async () => {
+    // The browser's file dialog filters by `accept`, but a dropped or pasted file is not filtered.
+    const user = userEvent.setup({ applyAccept: false });
+    const api = openTracking();
+    await screen.findByRole('heading', { name: 'OPS-12' });
+    await user.upload(picker(), [new File(['<html>'], 'page.html', { type: 'text/html' })]);
+    expect(screen.getByRole('alert')).toHaveTextContent('page.html is not an accepted type');
+    await user.type(screen.getByLabelText('Your message'), 'hi');
+    await user.click(screen.getByRole('button', { name: 'Send reply' }));
+    await waitFor(() => {
+      expect(api.callsTo('/v1/portal/tickets/OPS-12/replies', 'POST')).toHaveLength(1);
+    });
+    expect(api.callsTo('/v1/portal/tickets/OPS-12/replies', 'POST')[0]?.body).toEqual({
+      body: 'hi',
+    });
+  });
+
+  it('keeps the message and the files when the api refuses a file', async () => {
+    const user = userEvent.setup();
+    openTracking({ 'POST /v1/portal/tickets/:key/replies': apiError(400, 'attachment_rejected') });
+    await screen.findByRole('heading', { name: 'OPS-12' });
+    await user.type(screen.getByLabelText('Your message'), 'hello');
+    await user.upload(picker(), [png()]);
+    await user.click(screen.getByRole('button', { name: 'Send reply' }));
+    expect(
+      await screen.findByText(
+        'We could not accept one of your files. Remove it or choose another, then send again.',
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText('Your message')).toHaveValue('hello');
+    expect(screen.getByRole('list', { name: 'Files to send' })).toBeInTheDocument();
+  });
+
+  it('shows the attachment names of earlier customer messages', async () => {
+    openTracking({
+      'GET /v1/portal/tickets/:key': () => ({
+        json: makeView({
+          timeline: [
+            {
+              kind: 'message',
+              id: uuid(3),
+              from: 'customer',
+              authorName: null,
+              body: 'See attached.',
+              attachments: [{ name: 'trace.log', size: 2048 }],
+              createdAt: '2026-11-05T05:00:00.000Z',
+            },
+          ],
+        }),
+      }),
+    });
+    await screen.findByRole('heading', { name: 'OPS-12' });
+    expect(screen.getByRole('list', { name: 'Attachments' })).toHaveTextContent('trace.log');
+    expect(screen.getByRole('list', { name: 'Attachments' })).toHaveTextContent('2.0 KB');
+  });
+});

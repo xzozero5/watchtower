@@ -4,6 +4,8 @@ import {
   csatResponseResultSchema,
   csatSurveyViewSchema,
   humanChallengeSchema,
+  PORTAL_MULTIPART_FILES_FIELD,
+  PORTAL_MULTIPART_PAYLOAD_FIELD,
   PORTAL_TOKEN_HEADER,
   portalAcceptedSchema,
   portalReplyResultSchema,
@@ -24,7 +26,14 @@ import type { z } from 'zod';
 
 /** What went wrong, in the terms the pages talk about. */
 export type PortalFailureKind =
-  'verification' | 'rateLimited' | 'invalidLink' | 'notOpen' | 'validation' | 'network' | 'server';
+  | 'verification'
+  | 'rateLimited'
+  | 'invalidLink'
+  | 'notOpen'
+  | 'attachment'
+  | 'validation'
+  | 'network'
+  | 'server';
 
 export class PortalApiError extends Error {
   constructor(
@@ -59,6 +68,10 @@ export function classifyPortalError(error: unknown): PortalFailure {
   }
   if (error.code === 'verification_failed')
     return { kind: 'verification', retryAfterSeconds: none };
+  // A file the api would not take (type, content, size, count): the person removes it and retries.
+  if (error.code === 'attachment_rejected' || error.status === 413) {
+    return { kind: 'attachment', retryAfterSeconds: none };
+  }
   if (error.status === 401 || error.code === 'invalid_or_expired_link') {
     return { kind: 'invalidLink', retryAfterSeconds: none };
   }
@@ -79,6 +92,15 @@ export function parseRetryAfter(value: string | null, now: number = Date.now()):
   const date = Date.parse(trimmed);
   if (Number.isNaN(date)) return null;
   return Math.max(1, Math.ceil((date - now) / 1000));
+}
+
+/** The JSON body as it is, or multipart (`payload` + `files`) when there are files to send. */
+export function multipartBody(payload: unknown, files: readonly File[]): unknown {
+  if (files.length === 0) return payload;
+  const form = new FormData();
+  form.append(PORTAL_MULTIPART_PAYLOAD_FIELD, JSON.stringify(payload));
+  for (const file of files) form.append(PORTAL_MULTIPART_FILES_FIELD, file, file.name);
+  return form;
 }
 
 export interface PortalClientOptions {
@@ -117,11 +139,16 @@ export class PortalClient {
     });
   }
 
-  submit(body: PortalSubmit, signal?: AbortSignal): Promise<PortalSubmitted> {
+  /** With files the request is multipart: the form as JSON in `payload`, the files in `files`. */
+  submit(
+    body: PortalSubmit,
+    signal?: AbortSignal,
+    files: readonly File[] = [],
+  ): Promise<PortalSubmitted> {
     return this.call({
       method: 'POST',
       path: '/v1/portal/tickets',
-      body,
+      body: multipartBody(body, files),
       schema: portalSubmittedSchema,
       ...(signal ? { signal } : {}),
     });
@@ -137,11 +164,16 @@ export class PortalClient {
     });
   }
 
-  reply(key: string, token: string, body: PortalReply): Promise<PortalReplyResult> {
+  reply(
+    key: string,
+    token: string,
+    body: PortalReply,
+    files: readonly File[] = [],
+  ): Promise<PortalReplyResult> {
     return this.call({
       method: 'POST',
       path: `/v1/portal/tickets/${encodeURIComponent(key)}/replies`,
-      body,
+      body: multipartBody(body, files),
       schema: portalReplyResultSchema,
       token,
     });
@@ -184,7 +216,10 @@ export class PortalClient {
   private async call<Output>(call: Call<Output>): Promise<Output> {
     const fetchFn = (this.options.fetchImpl ?? (() => fetch))();
     const headers: Record<string, string> = { accept: 'application/json' };
-    if (call.body !== undefined) headers['content-type'] = 'application/json';
+    // A FormData body gets its content type, with the boundary, from the browser.
+    if (call.body !== undefined && !(call.body instanceof FormData)) {
+      headers['content-type'] = 'application/json';
+    }
     if (call.token !== undefined) headers[call.tokenHeader ?? PORTAL_TOKEN_HEADER] = call.token;
 
     let response: Response;
@@ -192,7 +227,9 @@ export class PortalClient {
       response = await fetchFn(new URL(call.path, `${this.options.baseUrl}/`).toString(), {
         method: call.method,
         headers,
-        ...(call.body === undefined ? {} : { body: JSON.stringify(call.body) }),
+        ...(call.body === undefined
+          ? {}
+          : { body: call.body instanceof FormData ? call.body : JSON.stringify(call.body) }),
         // No ambient authority: nothing the browser stores is sent, nothing is cached.
         credentials: 'omit',
         cache: 'no-store',

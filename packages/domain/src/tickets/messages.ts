@@ -26,6 +26,8 @@ export interface ReplyInput {
   readonly ref: string;
   readonly reply: Reply;
   readonly sender: Sender;
+  /** Attachment references of the message (objects already in storage; the portal reply, T-140). */
+  readonly attachments?: readonly Record<string, unknown>[];
 }
 
 export interface NoteInput {
@@ -160,6 +162,7 @@ export async function replyToTicket(
       senderUserId: sender.kind === 'contact' ? null : sender.userId,
       senderContactId: contactId,
       bodyText: body.body,
+      attachments: [...(input.attachments ?? [])],
       visibility: 'public',
       deliveryStatus: viaDispatcher
         ? 'scheduled'

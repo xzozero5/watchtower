@@ -19,6 +19,7 @@ import { RealtimeModule } from './realtime/realtime.module.js';
 import { RbacModule } from './rbac/rbac.module.js';
 import { RedisModule } from './redis/redis.module.js';
 import { SlaModule } from './sla/sla.module.js';
+import { StorageModule } from './storage/storage.module.js';
 import { TeamQueuesModule } from './team-queues/team-queues.module.js';
 import { TicketsModule } from './tickets/tickets.module.js';
 import { TelemetryModule } from './telemetry/telemetry.module.js';
@@ -46,6 +47,7 @@ export class AppModule {
         TelemetryModule,
         DatabaseModule,
         DomainModule,
+        StorageModule,
         RedisModule,
         QueueModule,
         RealtimeModule.forRoot(options.queuePrefix),

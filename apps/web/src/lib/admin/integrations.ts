@@ -3,15 +3,17 @@ import {
   GMAIL_OAUTH_RESULTS,
   INTEGRATION_CATALOG,
   type CredentialFieldStatus,
+  type GmailManualSyncResult,
   type GmailOauthResult,
   type IntegrationDefinition,
   type IntegrationKey,
   type IntegrationStatus,
 } from '@watchtower/shared';
 
-import type { MessageKey, Translate } from '@/i18n';
+import type { Locale, MessageKey, Translate } from '@/i18n';
 import { isApiError } from '@/lib/api/errors';
 import { describeError, type ErrorView } from '@/lib/admin/errors';
+import { formatWait } from '@/lib/portal/portal-format';
 
 /** Field names that have a translated label under `admin.integrations.fields`. */
 const KNOWN_FIELDS = [
@@ -157,6 +159,38 @@ export function describeIntegrationError(error: unknown, t: Translate): ErrorVie
     }
   }
   return describeError(error, t);
+}
+
+/**
+ * The toast for a finished "Sync now" (T-150): how many mailboxes were queued, or, when all of
+ * them were synced a moment ago, how long to wait. No mailbox switched on reads as that.
+ */
+export function describeGmailSync(
+  result: GmailManualSyncResult,
+  t: Translate,
+  locale: Locale,
+): string {
+  if (result.queued.length > 0) {
+    return t('admin.integrations.gmail.sync.queued', { count: result.queued.length });
+  }
+  if (result.throttled.length > 0) {
+    const seconds = Math.min(...result.throttled.map((entry) => entry.retryAfterSeconds));
+    return t('admin.integrations.gmail.sync.throttled', { time: formatWait(seconds, locale) });
+  }
+  return t('admin.integrations.gmail.sync.noMailbox');
+}
+
+/** 409: no Gmail mailbox is switched on. 429: wait as long as `Retry-After` says. */
+export function describeGmailSyncError(error: unknown, t: Translate, locale: Locale): string {
+  if (isApiError(error)) {
+    if (error.status === 409) return t('admin.integrations.gmail.sync.noMailbox');
+    if (error.status === 429 && error.retryAfterSeconds !== undefined) {
+      return t('admin.integrations.gmail.sync.rateLimited', {
+        time: formatWait(error.retryAfterSeconds, locale),
+      });
+    }
+  }
+  return describeIntegrationError(error, t).message;
 }
 
 export const GMAIL_RESULT_KEY = (result: GmailOauthResult): MessageKey =>

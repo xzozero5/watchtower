@@ -19,6 +19,28 @@ export interface SlaView {
 export const AT_RISK_FRACTION = 0.25;
 export const AT_RISK_MS = 30 * 60_000;
 
+/** Why a due time is missing, or on which clock it counts (T-138). */
+export type DueNote =
+  | { kind: 'noPolicy' }
+  | { kind: 'noTarget'; priority: string; policyName: string }
+  | { kind: 'unknown' };
+
+/**
+ * Tells "no SLA policy" from "the policy has no target for this priority" when a ticket has no due
+ * time. `policy` is the ticket's policy from the policy list; undefined while that list is not
+ * loaded or does not hold it, which stays the old "Not set" (`unknown`) rather than a guess.
+ */
+export function dueNote(
+  ticket: Pick<TicketSummary, 'slaPolicyId' | 'priority'>,
+  policy: { name: string; targets: Partial<Record<string, unknown>> } | undefined,
+): DueNote {
+  if (ticket.slaPolicyId === null) return { kind: 'noPolicy' };
+  if (policy && policy.targets[ticket.priority] === undefined) {
+    return { kind: 'noTarget', priority: ticket.priority, policyName: policy.name };
+  }
+  return { kind: 'unknown' };
+}
+
 const NONE: SlaView = { state: 'none', target: null, ms: 0, dueAt: null };
 
 const SERVER_STATE = {

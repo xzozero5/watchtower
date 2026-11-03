@@ -24,6 +24,7 @@ import { UnitOfWorkService } from '../realtime/unit-of-work.js';
 import { TICKET_KEYS, type TicketKeys } from '../tickets/ticket-keys.js';
 import type { TicketRow } from '../tickets/ticket-reader.js';
 import { TicketsService } from '../tickets/tickets.service.js';
+import { PortalAttachmentsService, type UploadedFile } from './portal-attachments.service.js';
 import { PortalLimits } from './portal-limits.js';
 import { PortalNotifier } from './portal-notifier.js';
 import { PortalTokensService } from './portal-tokens.service.js';
@@ -66,6 +67,7 @@ export class PortalTrackingService implements OnApplicationShutdown {
     @Inject(TICKET_KEYS) private readonly keys: TicketKeys,
     @Inject(LOGGER) private readonly logger: AppLogger,
     @Inject(EmailTagService) private readonly tags: EmailTagService,
+    @Inject(PortalAttachmentsService) private readonly attachments: PortalAttachmentsService,
   ) {}
 
   async view(
@@ -88,6 +90,7 @@ export class PortalTrackingService implements OnApplicationShutdown {
         id: schema.message.id,
         direction: schema.message.direction,
         bodyText: schema.message.bodyText,
+        attachments: schema.message.attachments,
         createdAt: schema.message.createdAt,
         staffName: schema.users.name,
       })
@@ -156,38 +159,65 @@ export class PortalTrackingService implements OnApplicationShutdown {
     };
   }
 
+  /**
+   * Checks the token for this ticket without doing anything else. The upload interceptor calls it
+   * before it reads a multipart body, so a caller without a valid token never gets files buffered.
+   * Same single 401 for every failure, and the same audit entry, as every other portal read.
+   */
+  async authorize(token: string | undefined, ticketKey: string, ip: string | null): Promise<void> {
+    await this.access(token, ticketKey, ip);
+  }
+
   async reply(
     token: string | undefined,
     ticketKey: string,
     input: PortalReply,
     ip: string | null,
+    files: readonly UploadedFile[] = [],
   ): Promise<PortalReplyResult> {
-    await this.limits.enforce('reply-ip', ip ?? 'unknown');
     const access = await this.access(token, ticketKey, ip);
+    // Only a caller who holds a valid token for this ticket gets its files looked at and stored.
+    // The reply limits count after the files pass, so a bad file does not use up the customer's
+    // allowance (the token check above has its own per-address limit).
+    const prepared = this.attachments.prepare(files);
+    await this.limits.enforce('reply-ip', ip ?? 'unknown');
     await this.limits.enforce('reply-ticket', access.ticket.id);
+    const stored = await this.attachments.put(prepared);
 
-    // Decided before the transaction (Redis, not Postgres): at most one confirmation per ticket
-    // per window. A Redis failure rejects like the other limits do (fail closed).
-    const confirm = await this.limits.hit('reply-confirm', access.ticket.id);
-
-    const result = await this.uow.run(async (uow) => {
-      const replied = await this.tickets.reply(
-        uow,
-        access.ticket.id,
-        { body: input.body },
-        { kind: 'contact', contactId: access.contactId, orgId: access.ticket.orgId },
-        { type: 'anonymous', id: access.contactId },
-      );
-      if (confirm.allowed) {
-        await this.notifier.replyReceived(
-          uow.tx,
-          replied.ticket,
-          this.keys.format(replied.ticket.number),
-          replied.message,
+    let result;
+    try {
+      // Decided before the transaction (Redis, not Postgres): at most one confirmation per ticket
+      // per window. A Redis failure rejects like the other limits do (fail closed).
+      const confirm = await this.limits.hit('reply-confirm', access.ticket.id);
+      result = await this.uow.run(async (uow) => {
+        const replied = await this.tickets.reply(
+          uow,
+          access.ticket.id,
+          { body: input.body },
+          { kind: 'contact', contactId: access.contactId, orgId: access.ticket.orgId },
+          { type: 'anonymous', id: access.contactId },
+          stored.records,
         );
-      }
-      return replied;
-    });
+        if (confirm.allowed) {
+          await this.notifier.replyReceived(
+            uow.tx,
+            replied.ticket,
+            this.keys.format(replied.ticket.number),
+            replied.message,
+          );
+        }
+        return replied;
+      });
+    } catch (error) {
+      // Nothing points at the stored objects unless the reply was saved.
+      await this.attachments.discard(stored.keys);
+      throw error;
+    }
+    if (stored.records.length > 0) {
+      AuditScope.set({
+        metadata: { attachmentCount: stored.records.length, attachmentBytes: stored.bytes },
+      });
+    }
     const status = customerStatus(result.ticket.status as TicketStatus);
     return {
       message: {
@@ -195,6 +225,7 @@ export class PortalTrackingService implements OnApplicationShutdown {
         from: 'customer',
         authorName: null,
         body: result.message.bodyText,
+        ...(stored.view.length > 0 ? { attachments: [...stored.view] } : {}),
         createdAt: result.message.createdAt.toISOString(),
       },
       status,

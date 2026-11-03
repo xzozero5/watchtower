@@ -4,7 +4,9 @@ import { OrgsModule } from '../orgs/orgs.module.js';
 import { TicketsModule } from '../tickets/tickets.module.js';
 import { HUMAN_VERIFICATION } from './human-verification.js';
 import { PortalController } from './portal.controller.js';
+import { PortalAttachmentsService } from './portal-attachments.service.js';
 import { PortalLimits } from './portal-limits.js';
+import { PortalUploadInterceptor } from './portal-upload.interceptor.js';
 import { PortalNotificationsModule } from './portal-notifications.module.js';
 import { PortalStaffController } from './portal-staff.controller.js';
 import { PortalSubmissionService } from './portal-submission.service.js';
@@ -22,6 +24,8 @@ import { SelfHostedHumanVerificationProvider } from './self-hosted-verification.
   controllers: [PortalController, PortalStaffController],
   providers: [
     PortalLimits,
+    PortalAttachmentsService,
+    PortalUploadInterceptor,
     PortalSubmissionService,
     PortalTrackingService,
     { provide: HUMAN_VERIFICATION, useClass: SelfHostedHumanVerificationProvider },

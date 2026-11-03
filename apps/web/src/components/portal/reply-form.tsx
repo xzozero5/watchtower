@@ -14,6 +14,7 @@ import { classifyPortalError } from '@/lib/portal/portal-client';
 import { formatWait } from '@/lib/portal/portal-format';
 import { usePortalApi } from '@/lib/portal/use-portal';
 
+import { AttachmentPicker, useAttachments } from './attachment-picker';
 import { describedBy, FormField } from './form-field';
 
 /** Appends a freshly sent reply to the view the page already has, without waiting for a refetch. */
@@ -30,6 +31,7 @@ export function withReply(view: PortalTicketView, result: PortalReplyResult): Po
         from: 'customer',
         authorName: null,
         body: result.message.body,
+        ...(result.message.attachments ? { attachments: result.message.attachments } : {}),
         createdAt: result.message.createdAt,
       },
     ],
@@ -56,6 +58,7 @@ export function ReplyForm({
   const { t, locale } = useI18n();
   const api = usePortalApi();
   const id = useId();
+  const attachments = useAttachments();
   const [body, setBody] = useState('');
   const [fieldError, setFieldError] = useState<MessageKey | null>(null);
   const [failure, setFailure] = useState<{ key: MessageKey; wait: number | null } | null>(null);
@@ -81,8 +84,12 @@ export function ReplyForm({
     setFieldError(null);
     setSending(true);
     try {
-      const result = await api.reply(ticketKey, token, { body: text });
+      const result =
+        attachments.files.length === 0
+          ? await api.reply(ticketKey, token, { body: text })
+          : await api.reply(ticketKey, token, { body: text }, attachments.files);
       setBody('');
+      attachments.clear();
       setSent(true);
       onSent(result);
     } catch (error) {
@@ -98,9 +105,11 @@ export function ReplyForm({
             ? 'portal.tracking.errors.notOpen'
             : classified.kind === 'rateLimited'
               ? 'portal.tracking.errors.rateLimited'
-              : classified.kind === 'network'
-                ? 'portal.tracking.errors.network'
-                : 'portal.tracking.errors.server',
+              : classified.kind === 'attachment'
+                ? 'portal.tracking.errors.attachment'
+                : classified.kind === 'network'
+                  ? 'portal.tracking.errors.network'
+                  : 'portal.tracking.errors.server',
         wait: classified.retryAfterSeconds,
       });
     } finally {
@@ -129,6 +138,7 @@ export function ReplyForm({
           }}
         />
       </FormField>
+      <AttachmentPicker state={attachments} disabled={sending} />
       {failure ? (
         <Alert
           tone="error"

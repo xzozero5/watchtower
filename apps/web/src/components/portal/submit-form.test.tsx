@@ -82,8 +82,8 @@ describe('portal submit form', () => {
     expect(screen.getByRole('radio', { name: /Something is broken/ })).toBeInTheDocument();
     expect(screen.getByRole('radio', { name: /A question/ })).toBeInTheDocument();
     expect(screen.queryByText(/\bP[1-4]\b/)).not.toBeInTheDocument();
-    // No attachments yet, so nothing about them.
-    expect(screen.queryByText(/attach/i)).not.toBeInTheDocument();
+    // Attachments are optional too (T-140).
+    expect(screen.getByLabelText(/^Attachments/, { selector: 'input' })).toBeInTheDocument();
   });
 
   it('has a honeypot that people cannot see or reach', () => {
@@ -272,5 +272,121 @@ describe('portal submit form', () => {
     expect(screen.getByRole('radio', { name: /ใช้งานไม่ได้เลย/ })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'ส่งคำขอ' })).toBeInTheDocument();
     expect(await screen.findByText('ตรวจสอบแล้ว ส่งคำขอได้เลย')).toBeInTheDocument();
+  });
+});
+
+describe('portal submit form attachments (R-9.1)', () => {
+  const picker = () => screen.getByLabelText(/^Attachments/, { selector: 'input' });
+  const png = (name = 'shot.png') => new File(['png-bytes'], name, { type: 'image/png' });
+
+  it('has an optional file input that accepts the allowed types and several files', () => {
+    openForm();
+    const input = picker();
+    expect(input).toHaveAttribute('type', 'file');
+    expect(input).toHaveAttribute('multiple');
+    expect(input.getAttribute('accept')).toBe('.png,.jpg,.jpeg,.gif,.webp,.pdf,.txt,.csv,.log');
+    expect(
+      screen.getByText('Screenshots, PDF, text, CSV or log files. Up to 5 files, 10 MB each.'),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Add files' })).toBeEnabled();
+  });
+
+  it('lists the chosen files, each with a remove button, and removes one', async () => {
+    const user = userEvent.setup();
+    openForm();
+    await user.upload(picker(), [png('a.png'), png('b.png')]);
+    const list = screen.getByRole('list', { name: 'Files to send' });
+    expect(within(list).getAllByRole('listitem')).toHaveLength(2);
+    expect(screen.getByRole('button', { name: 'Add more files' })).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Remove a.png' }));
+    expect(within(list).getAllByRole('listitem')).toHaveLength(1);
+    expect(within(list).queryByText('a.png')).not.toBeInTheDocument();
+    expect(screen.getByText('Removed a.png')).toHaveAttribute('role', 'status');
+  });
+
+  it('says in words why a file was not added, and keeps the good ones', async () => {
+    // The browser's file dialog filters by `accept`, but a dropped or pasted file is not filtered.
+    const user = userEvent.setup({ applyAccept: false });
+    openForm();
+    await user.upload(picker(), [
+      png('ok.png'),
+      new File(['<svg/>'], 'logo.svg', { type: 'image/svg+xml' }),
+    ]);
+    expect(screen.getByText('Some files were not added')).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'logo.svg is not an accepted type. Use PNG, JPG, GIF, WebP, PDF, TXT, CSV or LOG.',
+      ),
+    ).toBeInTheDocument();
+    const list = screen.getByRole('list', { name: 'Files to send' });
+    expect(within(list).getAllByRole('listitem')).toHaveLength(1);
+  });
+
+  it('refuses a file over 10 MB before anything is sent', async () => {
+    const user = userEvent.setup();
+    const api = openForm();
+    const big = new File(['x'], 'huge.log');
+    Object.defineProperty(big, 'size', { value: 10 * 1024 * 1024 + 1 });
+    await user.upload(picker(), [big]);
+    expect(screen.getByText('huge.log is larger than 10 MB.')).toBeInTheDocument();
+    expect(screen.queryByRole('list', { name: 'Files to send' })).not.toBeInTheDocument();
+    expect(api.callsTo('/v1/portal/tickets', 'POST')).toHaveLength(0);
+  });
+
+  it('sends the form and the files as multipart', async () => {
+    const user = userEvent.setup();
+    const api = openForm();
+    await fillValid(user);
+    await user.upload(picker(), [
+      png('screen.png'),
+      new File(['line'], 'app.log', { type: 'text/plain' }),
+    ]);
+    await user.click(screen.getByRole('button', { name: 'Submit request' }));
+    await waitFor(() => {
+      expect(push).toHaveBeenCalledWith('/portal/submitted');
+    });
+    const [post] = api.callsTo('/v1/portal/tickets', 'POST');
+    const sent = post?.body as { payload: Record<string, unknown>; files: { name: string }[] };
+    expect(sent.files.map((file) => file.name)).toEqual(['screen.png', 'app.log']);
+    expect(sent.payload).toMatchObject({ name: 'Dana Demo', category: 'api_error' });
+    expect(sent.payload).not.toHaveProperty('attachments');
+    // The browser sets the multipart content type itself, with the boundary.
+    expect(post?.headers.get('content-type')).toBeNull();
+  });
+
+  it('sends plain JSON when no file was chosen', async () => {
+    const user = userEvent.setup();
+    const api = openForm();
+    await fillValid(user);
+    await user.click(screen.getByRole('button', { name: 'Submit request' }));
+    await waitFor(() => {
+      expect(push).toHaveBeenCalled();
+    });
+    const [post] = api.callsTo('/v1/portal/tickets', 'POST');
+    expect(post?.headers.get('content-type')).toBe('application/json');
+  });
+
+  it('keeps the files and the form when the api refuses a file, and reuses the proof', async () => {
+    const user = userEvent.setup();
+    const api = openForm({ 'POST /v1/portal/tickets': apiError(400, 'attachment_rejected') });
+    await fillValid(user);
+    await user.upload(picker(), [png()]);
+    await user.click(screen.getByRole('button', { name: 'Submit request' }));
+    expect(
+      await screen.findByText(
+        'We could not accept one of your files. Remove it or choose another, then send again.',
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText('Your name')).toHaveValue('Dana Demo');
+    expect(screen.getByRole('list', { name: 'Files to send' })).toBeInTheDocument();
+    // The proof was not used up by a refused file, so no new challenge is asked for.
+    expect(api.callsTo('/v1/portal/challenge', 'GET')).toHaveLength(1);
+  });
+
+  it('is available in Thai', () => {
+    openForm({}, 'th');
+    expect(screen.getByLabelText(/^ไฟล์แนบ/, { selector: 'input' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'เพิ่มไฟล์' })).toBeInTheDocument();
   });
 });

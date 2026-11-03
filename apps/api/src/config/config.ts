@@ -96,6 +96,15 @@ const apiEnvSchema = createEnvSchema({
    * cost of a flood of forged requests.
    */
   ALERT_INGEST_RATE_PER_MINUTE: z.coerce.number().int().min(1).max(100_000).default(600),
+  /**
+   * Portal uploads (T-140) are buffered in memory before they are checked, so the number read at the
+   * same time is bounded: in this process, and per client address. More than that: 503 + Retry-After.
+   * `[ASSUMED]` values; raise them only together with the api container's memory limit.
+   */
+  PORTAL_UPLOAD_MAX_CONCURRENT: z.coerce.number().int().min(1).max(50).default(3),
+  PORTAL_UPLOAD_MAX_PER_ADDRESS: z.coerce.number().int().min(1).max(10).default(1),
+  /** A portal upload that sends nothing for this long is cut off (and all of it must arrive in 4 times as long). */
+  PORTAL_UPLOAD_IDLE_SECONDS: seconds(30, 1, 300),
   /** Portal submissions per hour: per client IP, per email address, per organization. */
   PORTAL_RATE_IP_PER_HOUR: z.coerce.number().int().min(1).max(10_000).default(20),
   PORTAL_RATE_EMAIL_PER_HOUR: z.coerce.number().int().min(1).max(1000).default(5),

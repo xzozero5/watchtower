@@ -205,6 +205,7 @@ export class TicketsService {
     input: Reply,
     sender: Sender,
     actor: Actor,
+    attachments?: readonly Record<string, unknown>[],
   ): Promise<{ message: MessageRow; ticket: TicketRow; delivery?: OutboundDeliveryRow | null }> {
     return translating(async () =>
       settle(
@@ -213,6 +214,7 @@ export class TicketsService {
           ref,
           reply: input,
           sender,
+          ...(attachments === undefined ? {} : { attachments }),
         }),
       ),
     );

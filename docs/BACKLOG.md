@@ -68,9 +68,9 @@
 - [x] T-136 + T-137: หน้าเปิด ticket เอง + role `dev` (po #33, #35)
 
 ### จาก role-play QA 2026-11-02 (`docs/qa/2026-11-02-roleplay-triage.md`, po triage)
-- [ ] T-138 `backend-dev` SLA ตอนสร้าง ticket (QA-17a ตรวจก่อนว่า bug หรือไม่มี policy) + คำอธิบาย business hours / เตือน Business clock ไม่มี calendar / รับ 4h, 2d (QA-17b)
+- [~] T-138 SLA: QA-17a ไม่ใช่ bug (policy ไม่มี target ของ P3) · ข้อความใน ticket แยก "No SLA policy" / "No target for P3 in <policy>" / "Counted in business hours" — merge 2026-11-03 · **ค้าง:** เตือนใน admin เมื่อ policy ไม่ครบทุก priority หรือ Business clock ไม่มี calendar, รับ 4h/2d
 - [ ] T-139 `backend-dev` + `frontend-dev` สถานะการส่งของอีเมลยืนยันบน timeline + ไอคอนอีเมล (QA-05)
-- [ ] T-140 `frontend-dev` + `backend-dev` แนบไฟล์ใน portal (R-9.1/R-9.3 เป็น P0) จำกัดชนิด/ขนาด + security review (QA-21) — **ต้องเสร็จก่อน T-115**
+- [x] T-140 แนบไฟล์ใน portal (submit + reply, ≤5 ไฟล์/10 MB/25 MB รวม, png/jpg/gif/webp/pdf/txt/csv/log ตรวจ magic bytes) + ดาวน์โหลดสำหรับ staff/client · security review 2 รอบ (P1 memory DoS ปิดด้วย upload slot + token ก่อนอ่าน body) · ADR-007 — merge 2026-11-03
 - [ ] T-141 `frontend-dev` + `backend-dev` หน้าเช้าของ lead: ใครอยู่กะ/ไม่มา, งานไม่มีคนรับในคิวทีม, นิยามตัวเลขให้ตรงกันทุกหน้า (QA-13)
 - [ ] T-142 `backend-dev` + `frontend-dev` การ์ดงบ AI: ใช้ไป/วงเงิน/ถึงวงเงินแล้วเกิดอะไร (PRD §6.6) (QA-14)
 - [ ] T-143 `frontend-dev` keyboard map ตาม UI-SPEC §14 (I/P/S, คำสั่ง ticket ใน palette) (QA-10)
@@ -78,12 +78,17 @@
 - [ ] T-145 `frontend-dev` status page draft ไม่มี component / post ผูก incident (QA-15) · Invite state "Invited" + copy ตามวิธีล็อกอินจริง (QA-16) · ฟอร์มเปิด ticket เอง: priority, org ใหม่ (QA-25)
 - [ ] T-146 `ux-designer` + `frontend-dev` glossary ภาษาไทยใน UI-SPEC §16 + lint th/*.ts (QA-19b) · shift/handoff polish (QA-26) · audit log "ซ่อน read" + target อ่านได้ (QA-27) · polish รวม (QA-28) · อัปเดต UI-SPEC §3.1 ให้ตรงกับ T-124
 - [ ] T-147 `ai-engineer` ไม่เสนอ Reply บน channel ที่ส่งออกไม่ได้ + เสนอ priority (QA-29)
-- [ ] T-148 `backend-dev` template อีเมล ack (สรุป + ETA + ปุ่ม) + อีเมลยืนยันเมื่อลูกค้า reply (QA-24)
+- [x] T-148 อีเมลตอบรับใหม่ (หมวด/ความเร่งด่วนที่ลูกค้าเลือก, 3 ขั้นตอน, เวลาตอบเมื่อรู้, ปุ่ม + URL; ไม่ echo subject ตาม ADR-007 C-11) + อีเมลยืนยันเมื่อลูกค้าตอบ — merge 2026-11-03
 - [ ] T-149 `architect` + `backend-dev` ADR-005 grace window ของ refresh rotation ก่อนแก้โค้ด (QA-31) · เพิ่มเข้า T-125: audit OAuth callback ไม่มี session, ปิด /docs ใน production, CSP (QA-32, QA-33)
-- [ ] T-150 `backend-dev` ปุ่ม/endpoint "Sync Gmail now" สำหรับ head เมื่อ push เสีย (พบระหว่าง live test: sync ด้วยมือมีเฉพาะตอน Connect)
+- [x] T-150 `POST /v1/admin/integrations/gmail/sync` (head, audit, 1 ครั้ง/นาที/กล่อง) + ปุ่ม "Sync now" ใน Integrations — merge 2026-11-03
 - [ ] T-151 `frontend-dev` ชิปสถานะกะเป็นข้อความ ("On shift 08–17") + toast มุมขวาบนตาม UI-SPEC §8.1 (QA-20 ส่วน app-shell)
 - [ ] T-152 `backend-dev` + `frontend-dev` → `security-reviewer` "ส่งลิงก์คำขอของฉันทางอีเมล" (202 เหมือนกันทุกกรณี + Turnstile + rate limit, ไม่สร้างบัญชีอัตโนมัติ) + client ที่ sign in อ่าน ticket ใน org ตัวเองผ่าน session (QA-23)
 - [ ] T-153 `ai-engineer` ประเมิน NER แบบ local (ไม่มี network) สำหรับชื่อที่ไม่มี cue — dependency ใหม่ต้องถามคนก่อน (QA-30 residual)
+- [ ] T-154 `backend-dev` upload slot ถูกแย่งได้ด้วยคนส่งช้าไม่กี่ IP (security re-review T-140 P2-A): throughput ขั้นต่ำแทน deadline ตายตัว, proof ของ submit ทาง header ก่อนจอง slot, metric + alert `upload_busy` · `TRUST_PROXY_HOPS` หลัง Caddy · token reply ตรวจ 2 รอบ (P3-B)
+- [ ] T-155 `backend-dev` + `architect` quota/retention ของ object ที่ลูกค้าอัปโหลด + ตัว sweep object กำพร้า + ดาวน์โหลดแบบ stream (T-140 P2-3, P3-3) · สแกนมัลแวร์ (ClamAV) ต้องเขียน ADR + ถามเจ้าของเรื่อง dependency `[ASK-HUMAN]`
+- [ ] T-156 `frontend-dev` ลิงก์ดาวน์โหลดไฟล์แนบบน timeline ของ staff (route `GET /v1/tickets/:id/messages/:messageId/attachments/:index` พร้อมแล้ว; ตอนนี้ staff เห็นแค่ชื่อไฟล์) — ทำหลัง merge UI rework
+- [ ] T-157 `ai-engineer` QA-30 ที่เหลือ: cue ระดับกลางตัวพิมพ์เล็ก (`hi somchai`, `I am somchai`, `dear somchai`), นามสกุลบรรทัดถัดไปหลัง sign-off, วัด recall/false positive ภาษาไทยกับเจ้าของภาษา (T-302)
+- [ ] T-158 `frontend-dev` นับจำนวนจริงให้ไอคอน Alerts/Incidents ใน rail (ตอนนี้เป็นสีกลางเสมอ เพราะยังไม่มี count ส่งเข้า) + ปุ่ม next-step "Wait for the customer" ใน AI card ยังไม่มี confirm แบบ QA-06
 - [x] 5 เรื่องที่ต้องตัดสิน (QA-30, 02/03, 08, 20, 23): **po ตัดสินแทนเจ้าของ 2026-11-02** ตามที่เจ้าของมอบ — ดูไฟล์ triage §คำตัดสิน · QA-30 แก้ ADR-008 แล้ว
 
 > **`v0.1.0` (MVP) release 2026-11-02** ที่ `ae380db` · งานที่ยังเปิดด้านล่างไม่อยู่ใน release

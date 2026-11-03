@@ -2,8 +2,10 @@
 
 import type { CustomerStatus, PortalTimelineEntry } from '@watchtower/shared';
 import { cn } from '@watchtower/ui';
+import { Paperclip } from 'lucide-react';
 
 import { useI18n } from '@/i18n/provider';
+import { formatBytes } from '@/lib/portal/attachments';
 import { formatPortalTime } from '@/lib/portal/portal-format';
 
 import { customerStatusKey } from './customer-status-label';
@@ -74,6 +76,20 @@ export function PortalTimeline({
                 </time>
               </p>
               <p className="mt-1 break-words whitespace-pre-wrap">{entry.body}</p>
+              {entry.attachments && entry.attachments.length > 0 ? (
+                <ul
+                  aria-label={t('portal.attachments.label')}
+                  className="mt-1 flex flex-col gap-0.5 text-sm text-muted-foreground"
+                >
+                  {entry.attachments.map((file, index) => (
+                    <li key={`${file.name}-${String(index)}`} className="flex gap-2">
+                      <Paperclip aria-hidden className="mt-0.5 size-3.5 shrink-0" />
+                      <span className="min-w-0 break-all">{file.name}</span>
+                      <span className="shrink-0 tabular-nums">{formatBytes(file.size)}</span>
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
             </li>
           );
         })}

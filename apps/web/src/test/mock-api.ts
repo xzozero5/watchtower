@@ -11,6 +11,7 @@ export interface MockRequest {
 export interface MockResult {
   status?: number;
   json?: unknown;
+  headers?: Record<string, string>;
 }
 
 export type MockHandler = ((request: MockRequest) => MockResult | Promise<MockResult>) | MockResult;
@@ -21,6 +22,25 @@ export interface RecordedCall {
   search: string;
   body: unknown;
   headers: Headers;
+}
+
+/**
+ * A JSON body parsed; a multipart body (portal uploads) as `{ payload, files }`, where `payload` is
+ * the parsed JSON field and `files` lists the name, size and type of each file part.
+ */
+function parseBody(body: BodyInit | null | undefined): unknown {
+  if (typeof body === 'string') return JSON.parse(body) as unknown;
+  if (body instanceof FormData) {
+    const payload = body.get('payload');
+    return {
+      payload: typeof payload === 'string' ? (JSON.parse(payload) as unknown) : undefined,
+      files: body
+        .getAll('files')
+        .filter((part): part is File => part instanceof File)
+        .map((file) => ({ name: file.name, size: file.size, type: file.type })),
+    };
+  }
+  return undefined;
 }
 
 function compile(pattern: string): { method: string; regex: RegExp; names: string[] } {
@@ -49,7 +69,7 @@ export function mockApi(routes: Record<string, MockHandler>) {
     const url = new URL(input instanceof Request ? input.url : input.toString());
     const method = (init?.method ?? 'GET').toUpperCase();
     const headers = new Headers(init?.headers);
-    const body = typeof init?.body === 'string' ? (JSON.parse(init.body) as unknown) : undefined;
+    const body = parseBody(init?.body);
     calls.push({ method, path: url.pathname, search: url.search, body, headers });
 
     for (const route of compiled) {
@@ -67,7 +87,7 @@ export function mockApi(routes: Record<string, MockHandler>) {
       if (status === 204 || result.json === undefined) return new Response(null, { status });
       return new Response(JSON.stringify(result.json), {
         status,
-        headers: { 'content-type': 'application/json' },
+        headers: { 'content-type': 'application/json', ...result.headers },
       });
     }
     return new Response(
