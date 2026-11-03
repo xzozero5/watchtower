@@ -429,9 +429,14 @@ export function NavRail({
           )}
         >
           <div className="min-w-0 flex-1">
-            <UserMenu onShowShortcuts={onOpenKeymap} showLabel={expanded} />
+            <UserMenu
+              onShowShortcuts={onOpenKeymap}
+              showLabel={expanded}
+              // Narrow rail: the dot sits on the avatar's corner (presence style), not on a row of its own.
+              {...(expanded ? {} : { avatarBadge: <RailStatus expanded={false} part="badge" /> })}
+            />
           </div>
-          <RailStatus expanded={expanded} part="dot" />
+          {expanded ? <RailStatus expanded part="dot" /> : null}
         </div>
       </div>
     </header>

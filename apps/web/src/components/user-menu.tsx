@@ -21,6 +21,7 @@ import {
 } from '@watchtower/ui';
 import { Keyboard, LogOut, Moon, Rows2, Rows4, SunMoon } from 'lucide-react';
 import { useRouter } from 'next/navigation';
+import type { ReactNode } from 'react';
 
 import { isLocale, LOCALE_FLAGS, LOCALE_LABELS, LOCALES } from '@/i18n';
 import { useI18n } from '@/i18n/provider';
@@ -38,10 +39,13 @@ import { setDensity, setTheme, usePreferences } from '@/lib/preferences';
 export function UserMenu({
   onShowShortcuts,
   showLabel,
+  avatarBadge,
 }: {
   onShowShortcuts: () => void;
   /** In the expanded rail the name sits next to the avatar. */
   showLabel: boolean;
+  /** Drawn on the avatar's lower right corner (the narrow rail's connection dot). Decoration only. */
+  avatarBadge?: ReactNode;
 }) {
   const { t, locale } = useI18n();
   const router = useRouter();
@@ -66,7 +70,16 @@ export function UserMenu({
             }
             className="flex h-control items-center gap-2.5 rounded-full px-1 text-left transition-colors duration-(--wt-motion-duration-fast) ease-out hover:bg-surface-muted data-[state=open]:bg-surface-muted md:px-1.5"
           >
-            <Avatar name={user.name} id={user.id} size={24} drawInitials />
+            {avatarBadge ? (
+              <span className="relative inline-flex shrink-0">
+                <Avatar name={user.name} id={user.id} size={24} drawInitials />
+                <span aria-hidden className="absolute -right-0.5 -bottom-0.5">
+                  {avatarBadge}
+                </span>
+              </span>
+            ) : (
+              <Avatar name={user.name} id={user.id} size={24} drawInitials />
+            )}
             {showLabel ? (
               <span className="hidden min-w-0 flex-1 flex-col md:flex">
                 <span className="truncate text-sm leading-tight font-medium">{user.name}</span>

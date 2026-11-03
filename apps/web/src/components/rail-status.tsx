@@ -15,7 +15,17 @@ import { useRealtime } from '@/lib/realtime/realtime-provider';
  * row with words and an amber or red icon, from LiveStatus and ApiStatus. The two status elements
  * are always in the page (hidden while healthy), so the checks that read their state keep working.
  */
-export function RailStatus({ expanded, part }: { expanded: boolean; part: 'rows' | 'dot' }) {
+export function RailStatus({
+  expanded,
+  part,
+}: {
+  expanded: boolean;
+  /**
+   * `badge`: the same dot, small and ringed, for the corner of the avatar in the narrow rail. It is
+   * decoration there (inside the account button); the status words stay in the page through `rows`.
+   */
+  part: 'rows' | 'dot' | 'badge';
+}) {
   const t = useT();
   const { state } = useRealtime();
   const api = useApiHealth();
@@ -29,6 +39,17 @@ export function RailStatus({ expanded, part }: { expanded: boolean; part: 'rows'
         <LiveStatus compact={!expanded} quiet />
         <ApiStatus compact={!expanded} quiet />
       </>
+    );
+  }
+  if (part === 'badge') {
+    return trouble ? null : (
+      <span
+        data-testid="rail-status-badge"
+        className={cn(
+          'block size-2.5 rounded-full ring-2 ring-frame',
+          settling ? 'bg-muted-foreground/60' : TINT_CLASSES.green.dot,
+        )}
+      />
     );
   }
   return (

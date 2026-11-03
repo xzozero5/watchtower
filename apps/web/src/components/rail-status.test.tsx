@@ -17,6 +17,7 @@ function renderStatus(expanded = true) {
     <RealtimeProvider createSocket={sockets.create}>
       <RailStatus expanded={expanded} part="rows" />
       <RailStatus expanded={expanded} part="dot" />
+      <RailStatus expanded={false} part="badge" />
     </RealtimeProvider>,
     { apiUrl: 'http://api.test:4000' },
   );
@@ -42,6 +43,8 @@ describe('RailStatus', () => {
         'Connected: live updates on, API online',
       );
     });
+    // The narrow rail's badge on the avatar says the same, in green.
+    expect(screen.getByTestId('rail-status-badge').className).toContain('bg-tint-green-icon');
     // Green when connected: a grey dot beside a person reads as offline.
     expect(screen.getByTestId('rail-status-dot').firstElementChild?.className).toContain(
       'bg-tint-green-icon',
@@ -57,5 +60,6 @@ describe('RailStatus', () => {
     expect(await screen.findByText('API unreachable')).toBeVisible();
     expect(screen.getByTestId('api-status').className).not.toContain('sr-only');
     expect(screen.queryByTestId('rail-status-dot')).toBeNull();
+    expect(screen.queryByTestId('rail-status-badge')).toBeNull();
   });
 });
