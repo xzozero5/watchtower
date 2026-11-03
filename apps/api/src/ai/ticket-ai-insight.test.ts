@@ -41,3 +41,14 @@ describe('toTicketAiInsight reason code (QA-07)', () => {
     expect(insight).not.toHaveProperty('reasonCode');
   });
 });
+
+describe('toTicketAiInsight stage', () => {
+  it('shows the stage of the intent the ticket has now, not the one when the brief was made', () => {
+    // Classified while the ticket had no intent (stage 0); a person then set an intent at stage 2.
+    expect(toTicketAiInsight(row({ stage: 0 }), undefined, 2).stage).toBe(2);
+  });
+
+  it('keeps the stored stage when the ticket has no intent', () => {
+    expect(toTicketAiInsight(row({ stage: 0 })).stage).toBe(0);
+  });
+});

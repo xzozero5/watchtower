@@ -62,7 +62,16 @@ export function toAiDraft(row: DraftRow): AiDraft {
  * `draft_ready` brief whose draft is no longer waiting (approved, sent, replaced) reads as
  * `classified`, so the web never offers to approve what a person already used.
  */
-export function toTicketAiInsight(row: InsightRow, draft?: DraftRow): TicketAiInsight {
+export function toTicketAiInsight(
+  row: InsightRow,
+  draft?: DraftRow,
+  /**
+   * The autonomy stage of the ticket's intent now. The stored stage is the one in force when the
+   * brief was made; when a person sets or changes the intent afterwards (or the intent's stage
+   * moves), the brief must show, and offer, what the gate will allow today.
+   */
+  currentStage?: number,
+): TicketAiInsight {
   const evidence = z.array(aiEvidenceSchema).safeParse(row.evidence);
   const report = aiReportSchema.safeParse(row.report);
   const progress = aiProgressSchema.safeParse(row.progress);
@@ -98,7 +107,7 @@ export function toTicketAiInsight(row: InsightRow, draft?: DraftRow): TicketAiIn
     ...(waiting === undefined ? {} : { draft: toAiDraft(waiting) }),
     ...(report.success ? { report: report.data } : {}),
     ...(progress.success && state === 'investigating' ? { progress: progress.data } : {}),
-    stage: row.stage,
+    stage: currentStage ?? row.stage,
     generatedAt: row.generatedAt.toISOString(),
   };
 }
@@ -137,7 +146,16 @@ export class TicketAiService {
               .where(eq(schema.aiDraft.id, row.draftId))
               .limit(1)
           )[0];
-    const insight = toTicketAiInsight(row, draft);
+    // The same rule "Draft a reply" is checked against below: the stage of the intent the ticket has now.
+    const [intent] =
+      ticket.t.intentId === null
+        ? []
+        : await this.database.db
+            .select({ stage: schema.intent.autonomyStage })
+            .from(schema.intent)
+            .where(eq(schema.intent.id, ticket.t.intentId))
+            .limit(1);
+    const insight = toTicketAiInsight(row, draft, intent?.stage);
     // A developer reads the brief masked (T-137): the redactor again, and no draft reply.
     return {
       ticketId: ticket.t.id,
