@@ -317,6 +317,11 @@ export function slaLeftText(minutesLeft: number | null): string | null {
 
 export interface ChipLabel {
   text: string;
+  /**
+   * A few words that fit under the icon of the narrow rail (T-151): the shift's hours, or "Off
+   * shift" / "Ended". `text` stays the accessible name and the tooltip.
+   */
+  short: string;
   /** Late, or the shift is over and the handoff is not: shown with a warning icon. */
   warning: boolean;
   state: ChipState['kind'];
@@ -335,6 +340,7 @@ export function chipLabel(
   if (state.kind === 'off') {
     return {
       text: `${t('shift.chip.off')} — ${t('shift.chip.clockIn')}`,
+      short: t('shift.chip.off'),
       warning: false,
       state: 'off',
     };
@@ -342,6 +348,7 @@ export function chipLabel(
   if (state.kind === 'ended') {
     return {
       text: t('shift.chip.ended', { over: minutesToClock(state.minutesOver) }),
+      short: t('shift.chip.endedShort'),
       warning: true,
       state: 'ended',
     };
@@ -355,14 +362,16 @@ export function chipLabel(
     range !== null && state.minutesToEnd !== null
       ? t('shift.chip.on', { range, left: minutesToClock(state.minutesToEnd) })
       : t('shift.chip.onNoEnd', { name: session?.shiftName ?? t('shift.chip.notRostered') });
+  const short = range ?? t('shift.chip.onShort');
   if (state.lateMinutes > 0) {
     return {
       text: `${base} · ${t('shift.chip.late', { minutes: state.lateMinutes })}`,
+      short,
       warning: true,
       state: 'on',
     };
   }
-  return { text: base, warning: false, state: 'on' };
+  return { text: base, short, warning: false, state: 'on' };
 }
 
 /** "Firefox on Windows" from the user agent, for the clock-in record. Never longer than 200 characters. */

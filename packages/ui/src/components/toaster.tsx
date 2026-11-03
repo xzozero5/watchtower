@@ -23,14 +23,14 @@ export interface ToasterProps {
 }
 
 /**
- * Toasts (Sonner, restyled with the design tokens). Mount once. Use `toast(message, { action })` for
+ * Toasts (Sonner, restyled with the design tokens), top right (UI-SPEC section 8.1, T-151). Mount once. Use `toast(message, { action })` for
  * an "Undo" action. Toasts last six seconds, so there is time to reach the action by keyboard
  * (Alt+T moves focus into them), and hovering pauses the timer.
  */
 export function Toaster({ regionLabel }: ToasterProps) {
   return (
     <Sonner
-      position="bottom-left"
+      position="top-right"
       duration={6000}
       visibleToasts={3}
       gap={8}
@@ -39,7 +39,7 @@ export function Toaster({ regionLabel }: ToasterProps) {
         unstyled: true,
         classNames: {
           toast:
-            'flex w-[min(22rem,calc(100vw-2rem))] items-center gap-3 rounded-2xl border border-border/60 bg-surface px-3 py-2.5 text-sm text-foreground shadow-overlay',
+            'flex w-[min(22rem,calc(100vw-2rem))] items-center gap-3 rounded-card border border-border/60 bg-surface px-3 py-2.5 text-sm text-foreground shadow-overlay',
           icon: 'flex size-6 shrink-0 items-center justify-center rounded-full bg-tint-teal-bg text-tint-teal-icon motion-safe:animate-check-pop [&_svg]:size-4',
           title: 'font-medium',
           description: 'text-muted-foreground',

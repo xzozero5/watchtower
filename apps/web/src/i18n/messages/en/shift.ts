@@ -30,6 +30,8 @@ export const shiftEn = {
     late: 'Late {minutes}m',
     clockIn: 'Clock in',
     notRostered: 'Not on the roster',
+    onShort: 'On shift',
+    endedShort: 'Ended',
   },
   status: {
     heading: 'Current shift',

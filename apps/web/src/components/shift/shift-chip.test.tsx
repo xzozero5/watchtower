@@ -53,6 +53,15 @@ describe('shift chip', () => {
     expect(chip).toHaveAttribute('data-shift-state', 'ended');
   });
 
+  it('says the shift in words even on the narrow rail, not as an icon alone (T-151)', async () => {
+    shiftApi({ overrides: { 'GET /v1/shifts/status': { json: shiftStatus() } } });
+    renderConsole(<ShiftChip expanded={false} />);
+    const chip = await screen.findByRole('link', { name: /^On shift/ });
+    // The visible short form is the shift's hours; the full sentence stays the name.
+    expect(chip.textContent).toMatch(/\d{1,2}[:.]\d{2}\s*–\s*\d{1,2}[:.]\d{2}/);
+    expect(chip.textContent).not.toMatch(/left/);
+  });
+
   it('shows nothing for a customer, and nothing while the status cannot be read', async () => {
     shiftApi({ role: 'client' });
     const view = renderConsole(<ShiftChip expanded />);
