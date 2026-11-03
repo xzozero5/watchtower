@@ -1,0 +1,6 @@
+# Build context of the gmail-tunnel image (tools/gmail-tunnel/Dockerfile): only what it copies.
+*
+!push-only-filter/server.mjs
+!push-only-filter/filter.mjs
+!gmail-tunnel/tunnel.mjs
+!gmail-tunnel/server.mjs

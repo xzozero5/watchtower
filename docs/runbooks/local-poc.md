@@ -51,14 +51,22 @@ AI ใช้ได้ **เมื่อเครื่อง host online เท�
 - นำเข้า: shell ต้องมี `WATCHTOWER_KB_DIR` และ `MIGRATION_DATABASE_URL` (ชี้ Postgres ที่เครื่องนี้เข้าถึง เช่น host `localhost` ไม่ใช่ `postgres`) แล้ว `pnpm kb:sync --dry-run` (อ่าน/ตรวจไฟล์อย่างเดียว) → `pnpm kb:sync` (idempotent) · `pnpm kb:sync` อ่านเฉพาะ `.env` ใน repo root จึง export สองตัวแปรนี้ใน shell เอง ไม่พิมพ์ค่า
 - `internal` → published + embedding ผ่าน worker · `customer`/`orgs` → **draft** ให้คน publish ในแอป · แก้ไฟล์ = เพิ่ม version · ลบไฟล์ไม่ทำอะไร
 
-## 4. Gmail push (เฉพาะตอนอยากให้เมลใหม่ไหลเข้าเอง)
-Pub/Sub ต้องยิง HTTPS เข้ามาหา api จาก internet → ต้องมี tunnel · **ห้ามชี้ tunnel ไปที่ api ตรง ๆ**
-1. เปิดตัวกรอง (ค้างไว้): `pnpm push-filter` → `127.0.0.1:4318` ปล่อยเฉพาะ `POST /v1/inbound/gmail/push`
-2. เจ้าของเปิด tunnel เอง (agent ถูกระบบสิทธิ์บล็อกไม่ให้เปิด ingress): `cloudflared tunnel --url http://localhost:4318` → ได้ `https://<สุ่ม>.trycloudflare.com` (เปลี่ยนทุกครั้ง)
-3. ตั้ง `GMAIL_PUSH_AUDIENCE=<URL>/v1/inbound/gmail/push` ใน env file → `docker compose ... up -d --no-deps api worker`
-4. GCP console → Pub/Sub → subscription `gmail-push-sub` → Edit: Endpoint URL + Audience = ค่าเดียวกันตรงทุกตัวอักษร (SA `watchtower-pubsub-push`)
-5. ตรวจ: ยิงผ่าน tunnel แบบไม่มี token ต้องได้ 401, dev login ผ่าน tunnel ต้องได้ 404
-6. เมลที่ส่งจากกล่องเดียวกันถึงตัวเองไม่กลายเป็น ticket (label `SENT` ถูกข้ามโดยตั้งใจ) ต้องส่งจากบัญชีภายนอก · `users.watch` ต่ออายุเองทุกวัน 02:15 UTC และตอน worker start
+## 4. Gmail push (เฉพาะตอนอยากให้เมลใหม่ไหลเข้าเอง) — container `gmail-tunnel` (ADR-020)
+Pub/Sub ต้องยิง HTTPS เข้ามาหา api จาก internet → container `gmail-tunnel` ทำครบในตัว: ตัวกรอง push-only (ปล่อยแค่ `POST /v1/inbound/gmail/push`) + Cloudflare quick tunnel (URL สุ่มใหม่ทุกครั้งที่ขึ้น) + เรียก Pub/Sub `modifyPushConfig` ชี้ subscription ไปที่ URL ใหม่เอง · audience ของ OIDC เป็นค่าคงที่ `GMAIL_PUSH_AUDIENCE` จึง**ไม่ต้อง restart api** เมื่อ URL เปลี่ยน · **ห้ามชี้ tunnel ไปที่ api ตรง ๆ**
+
+**ตั้งครั้งเดียว**
+1. GCP: สร้าง service account เช่น `watchtower-pubsub-admin` ที่แก้ได้เฉพาะ subscription นี้ — role `Pub/Sub Editor` บน **subscription** `gmail-push-sub` (ไม่ใช่ทั้ง project) + `Service Account User` บน SA ผู้ลงนาม push (`watchtower-pubsub-push`) เพราะการตั้ง OIDC ต้อง actAs SA นั้น `[VERIFY กับเอกสาร Pub/Sub ตอนตั้งจริง]` → สร้าง key JSON เก็บนอก repo ในโฟลเดอร์ secret เดียวกับ env file
+2. env file: `PUBSUB_PROJECT_ID`, `GMAIL_PUSH_SERVICE_ACCOUNT` (SA ผู้ลงนาม push), `GMAIL_PUSH_AUDIENCE` = ข้อความคงที่ใดก็ได้ที่จะไม่เปลี่ยนอีก เช่น `watchtower-gmail-push` (Pub/Sub ใส่ค่านี้ใน token, api ตรวจตรงทุกตัวอักษร), `GMAIL_TUNNEL_SA_KEY_PATH=<path ของ key JSON>`, `GMAIL_TUNNEL_SUBSCRIPTION` (ไม่ใส่ = `gmail-push-sub`)
+3. ถ้า `GMAIL_PUSH_AUDIENCE` เปลี่ยนจากค่าเดิม → `docker compose --env-file <env file> up -d --no-deps api` หนึ่งครั้ง
+
+**ทุกครั้งที่อยากทดสอบเมลจริง**
+
+4. `docker compose --env-file <env file> --profile gmail-tunnel up -d --build gmail-tunnel`
+5. `docker compose --profile gmail-tunnel logs -f gmail-tunnel` ต้องเห็น `tunnel https://….trycloudflare.com` → `subscription … now pushes to …` → `self-check: … refused by the api (401)` · `503` = api ยังไม่มี `GMAIL_PUSH_AUDIENCE/GMAIL_PUSH_SERVICE_ACCOUNT` · container healthy เมื่อ subscribe สำเร็จเท่านั้น
+6. ส่งเมลจาก**บัญชีภายนอก**เข้ากล่อง support (เมลที่กล่องเดียวกันส่งถึงตัวเองถูกข้าม label `SENT` โดยตั้งใจ) · `users.watch` ต่ออายุเองทุกวัน 02:15 UTC และตอน worker start
+7. ปิด: `docker compose --profile gmail-tunnel stop gmail-tunnel` — subscription ยังชี้ URL ที่ตายแล้ว Pub/Sub จะ retry แล้วทิ้งตาม retention; เมลที่ตกหล่นดึงด้วยปุ่ม Sync/งาน sync ของ worker · container ล่ม/restart = URL ใหม่ + subscribe ใหม่อัตโนมัติ
+
+- ทางเดิมแบบมือยังใช้ได้: `pnpm push-filter` + `cloudflared tunnel --url http://localhost:4318` แล้วแก้ Endpoint ใน console เอง (audience คงเดิม)
 
 ## 5. ล็อกอินและผู้ใช้
 - คนใหม่: head สร้าง user ที่ Admin → Users (ระบบไม่สร้างให้อัตโนมัติ) **และ** เพิ่มอีเมลใน `GOOGLE_ALLOWED_EMAILS` (รับเฉพาะ `@gmail.com`/`@googlemail.com`) **และ** เพิ่มเป็น test user ใน GCP → Google Auth Platform → Audience (แอปอยู่สถานะ Testing)

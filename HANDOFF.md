@@ -29,7 +29,7 @@
 ## ค้าง / ติดอะไร
 - T-170: แถบ "AI offline" ทั้งระบบ, investigation/draft เลื่อนเมื่อ offline, kb:sync ลบไฟล์ → deprecate, ยืนยันชื่อ `CLAUDE_CODE_OAUTH_TOKEN` `[VERIFY]` + build image bridge (เจ้าของ build แล้วใช้งานอยู่ — ยังไม่ได้ตรวจผลใน `ai_run`)
 - T-171: draft AI ลง rich editor, style อีเมลลูกค้าหายตอน ingest, audit ผู้รับ/allow-list domain, Gmail ตัด Bcc `[UNVERIFIED 80%]`, EXIF WebP/GIF, Playwright email/upload
-- **คำขอใหม่เจ้าของ (ยังไม่เริ่ม):** container cloudflare tunnel ที่ตอนขึ้น subscribe Pub/Sub topic ของ Gmail ไปที่ URL tunnel เพื่อทดสอบรับ-ส่งอีเมลจริง
+- **T-172 ทำแล้ว (ADR-020):** container `gmail-tunnel` (profile `gmail-tunnel`) เปิด quick tunnel → filter → api แล้ว subscribe Pub/Sub ให้เองทุกครั้งที่ขึ้น · unit 15 + image build + start-without-key ผ่าน · **ยังไม่ได้รันกับ GCP/tunnel จริง** — เจ้าของต้องสร้าง SA `watchtower-pubsub-admin` + key แล้วรันตาม runbook §4
 - ของเดิม: T-154/T-155, T-158 rail counts, T-159, T-141…147, B-002/B-003/B-004, T-113/T-114/T-207, T-115, T-161 flaky
 - ไม่แก้/commit `.agents/` และ `.codex/`
 
@@ -37,11 +37,12 @@
 - [ ] เงื่อนไขบริการ Anthropic กับการใช้ subscription แบบอัตโนมัติ + ข้อมูลลูกค้าผ่าน `claude -p` (ADR-019)
 - [ ] จะเปิด Watchtower ผ่าน internet เมื่อไร: ตอนนี้ claude-cli ถูกปฏิเสธเมื่อ APP_URL ไม่ใช่ loopback → ต้องเลือก: คง local / แก้ ADR ยอมให้ / ใช้ API key ใน production
 - [ ] หลังแก้ compose รอบนี้ ต้อง `docker compose --env-file D:\Works\secret\watchtower.env --profile ai up -d claude-bridge worker` และตั้ง `CLAUDE_CLI_BRIDGE_URL=http://claude-bridge:4317`
+- [ ] สร้าง SA `watchtower-pubsub-admin` (Pub/Sub Editor บน subscription เดียว + Service Account User บน SA push) + key JSON นอก repo สำหรับ `gmail-tunnel`
 - [ ] merge/deploy POC รอบนี้ (ยังไม่ทำ), malware scanning (T-155), ข้อความไทยให้เจ้าของภาษาตรวจ, T-115 pilot
 
 ## ขั้นต่อไป (เรียงลำดับ)
 1. รัน api unit ครบชุด + full-stack e2e บน service ทิ้ง ก่อน merge
-2. Gmail tunnel container (คำขอใหม่) → ทดสอบรับ-ส่งอีเมลจริงกับ composer ใหม่ (ยืนยัน Bcc)
+2. เจ้าของตั้ง SA + key แล้วรัน `gmail-tunnel` (runbook §4) → ทดสอบรับ-ส่งอีเมลจริงกับ composer ใหม่ (ยืนยัน Bcc)
 3. T-170, T-171
 4. merge + rebuild POC เมื่อเจ้าของสั่ง
 5. ของเดิมตาม BACKLOG

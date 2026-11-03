@@ -347,6 +347,10 @@ services:
     # each (PORTAL_UPLOAD_MAX_CONCURRENT), on top of the api's normal use. `[ASSUMED]` size; a
     # runaway process is restarted instead of taking the host down.
     mem_limit: 1g
+    # `push` is shared with the gmail-tunnel container only (ADR-020): from there it reaches the api, nothing else.
+    networks:
+      - default
+      - push
     environment:
       <<: *app-env
       HOST: 0.0.0.0
@@ -468,6 +472,47 @@ services:
       retries: 5
       start_period: 10s
 
+  gmail-tunnel:
+    # Gmail push over a Cloudflare quick tunnel, for testing real mail on this machine (ADR-020):
+    #   docker compose --env-file <env> --profile gmail-tunnel up -d --build gmail-tunnel
+    # On start it opens https://<random>.trycloudflare.com -> push-only filter -> api (POST
+    # /v1/inbound/gmail/push only) and points the Pub/Sub subscription at it; restarted, it gets a new
+    # URL and subscribes again. The OIDC audience stays GMAIL_PUSH_AUDIENCE, so the api needs no restart.
+    # Needs a key file of a service account that may update that one subscription (runbook section 4).
+    profiles: ['gmail-tunnel']
+    build:
+      context: ./tools
+      dockerfile: gmail-tunnel/Dockerfile
+    image: watchtower/gmail-tunnel:local
+    restart: unless-stopped
+    # Not on `default`: from the internet-facing tunnel only the api is reachable, not postgres/redis/minio.
+    networks:
+      - push
+    mem_limit: 256m
+    pids_limit: 64
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      PUBSUB_PROJECT_ID: ${PUBSUB_PROJECT_ID:-}
+      GMAIL_TUNNEL_SUBSCRIPTION: ${GMAIL_TUNNEL_SUBSCRIPTION:-gmail-push-sub}
+      GMAIL_PUSH_AUDIENCE: ${GMAIL_PUSH_AUDIENCE:-}
+      GMAIL_PUSH_SERVICE_ACCOUNT: ${GMAIL_PUSH_SERVICE_ACCOUNT:-}
+      PUSH_FILTER_UPSTREAM: http://api:4000
+    volumes:
+      # The key file on THIS machine; unset, an empty placeholder directory and the container says so.
+      - type: bind
+        source: ${GMAIL_TUNNEL_SA_KEY_PATH:-./config/no-key}
+        target: /secrets/pubsub-admin.json
+        read_only: true
+    depends_on:
+      api:
+        condition: service_healthy
+
   web:
     # apps/web/Dockerfile belongs to T-003. Contract: listens on 3000, GET /health returns 2xx.
     <<: *node-service
@@ -525,6 +570,8 @@ services:
 networks:
   # Worker <-> claude-bridge only (ADR-019).
   ai: {}
+  # api <-> gmail-tunnel only (ADR-020).
+  push: {}
 
 volumes:
   pgdata:
