@@ -66,10 +66,11 @@ export function UserMenu({
             }
             className="flex h-control items-center gap-2.5 rounded-full px-1 text-left transition-colors duration-(--wt-motion-duration-fast) ease-out hover:bg-surface-muted data-[state=open]:bg-surface-muted md:px-1.5"
           >
-            <Avatar name={user.name} id={user.id} size={24} />
+            <Avatar name={user.name} id={user.id} size={24} drawInitials />
             {showLabel ? (
               <span className="hidden min-w-0 flex-1 flex-col md:flex">
                 <span className="truncate text-sm leading-tight font-medium">{user.name}</span>
+                {/* A real space between the two lines, so the visible text reads as the name does. */}{' '}
                 <span className="truncate text-xs leading-tight text-muted-foreground">
                   {t(`roles.${user.role}`)}
                 </span>

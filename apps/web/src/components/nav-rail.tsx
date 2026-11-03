@@ -31,6 +31,7 @@ import { UserMenu } from '@/components/user-menu';
 import { useT } from '@/i18n/provider';
 import { adminSectionsFor, HOME_PERMISSION } from '@/lib/admin/sections';
 import { useSession } from '@/lib/auth/session';
+import { roleHomePath } from '@/lib/role-home';
 import { opsSectionsFor } from '@/lib/ops/sections';
 import { shiftSectionsFor } from '@/lib/shifts/sections';
 
@@ -105,9 +106,11 @@ function RailButton({
         {shortLabel ?? label}
       </span>
       {expanded && shortcut ? (
-        <span className="ml-auto flex gap-0.5 max-md:hidden">
+        // The keys are announced through aria-keyshortcuts. They are drawn from an attribute, not text, so the
+        // button's visible text stays the words that its accessible name contains (WCAG 2.5.3, axe label-content-name-mismatch).
+        <span aria-hidden className="ml-auto flex gap-0.5 max-md:hidden">
           {shortcut.map((key) => (
-            <Kbd key={key}>{key}</Kbd>
+            <Kbd key={key} data-key={key} className="after:content-[attr(data-key)]" />
           ))}
         </span>
       ) : null}
@@ -164,6 +167,8 @@ export interface NavRailProps {
   /** The page being shown. */
   destination?: RailDestination;
   expanded: boolean;
+  /** False in the 768-1023 px layout, where the rail stays icons and the switch is hidden. */
+  canToggleExpanded?: boolean;
   onToggleExpanded: () => void;
   onOpenPalette: () => void;
   onOpenKeymap: () => void;
@@ -180,13 +185,14 @@ export interface NavRailProps {
 export function NavRail({
   destination = 'queue',
   expanded: railExpanded,
+  canToggleExpanded = true,
   onToggleExpanded,
   onOpenPalette,
   onOpenKeymap,
   isMac,
 }: NavRailProps) {
   const t = useT();
-  const { can } = useSession();
+  const { can, session } = useSession();
   const handler = can('ticket.handle');
   const showOtherMail = can('inbound.read');
   const canReadTickets = can('ticket.read');
@@ -211,8 +217,14 @@ export function NavRail({
         expanded ? 'md:w-[248px]' : 'md:w-[68px]',
       )}
     >
-      <div className="flex items-center gap-2.5 md:mb-4 md:px-1.5">
-        {/* The name sits next to it as text, so the icon adds nothing for a screen reader. */}
+      {/* The logo is a link to the signed-in role's start page (lib/role-home.ts), through the router. */}
+      <AppLink
+        href={roleHomePath(session?.user.role)}
+        aria-label={`${t('app.name')}: ${t('rail.goHome')}`}
+        data-testid="rail-logo"
+        className="flex items-center gap-2.5 rounded-xl outline-offset-2 focus-visible:outline-2 focus-visible:outline-ring md:mb-4 md:px-1.5"
+      >
+        {/* The link's name says where it goes, so the icon adds nothing for a screen reader. */}
         <Image
           src="/brand/watchtower-icon.png"
           alt=""
@@ -224,7 +236,7 @@ export function NavRail({
         <p className={cn('text-base font-semibold', expanded ? 'md:block' : 'md:sr-only')}>
           {t('app.name')}
         </p>
-      </div>
+      </AppLink>
 
       <nav aria-label={t('rail.label')} className="hidden flex-col gap-1 md:flex">
         <RailButton
@@ -397,17 +409,19 @@ export function NavRail({
           <LiveStatus compact={!expanded} />
           <ApiStatus compact={!expanded} />
         </div>
-        <RailButton
-          icon={PanelLeft}
-          label={t(expanded ? 'rail.collapse' : 'rail.expand')}
-          shortLabel={expanded ? t('rail.collapseShort') : undefined}
-          expanded={expanded}
-          shortcut={[mod, 'B']}
-          keyShortcuts="Control+B Meta+B"
-          expandedState={expanded}
-          onClick={onToggleExpanded}
-          className="max-md:hidden"
-        />
+        {canToggleExpanded ? (
+          <RailButton
+            icon={PanelLeft}
+            label={t(expanded ? 'rail.collapse' : 'rail.expand')}
+            shortLabel={expanded ? t('rail.collapseShort') : undefined}
+            expanded={expanded}
+            shortcut={[mod, 'B']}
+            keyShortcuts="Control+B Meta+B"
+            expandedState={expanded}
+            onClick={onToggleExpanded}
+            className="max-md:hidden"
+          />
+        ) : null}
         <UserMenu onShowShortcuts={onOpenKeymap} showLabel={expanded} />
       </div>
     </header>

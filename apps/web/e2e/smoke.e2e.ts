@@ -67,7 +67,8 @@ test.describe('three-pane layout', () => {
     await page.setViewportSize({ width: 1440, height: 900 });
     await openHome(page);
     const rail = await page.getByRole('banner').boundingBox();
-    expect(rail?.width).toBe(68);
+    // Expanded by default (248 px with words) until someone collapses it.
+    expect(rail?.width).toBe(248);
     const boxes = await Promise.all(
       ['pane-queue', 'pane-conversation', 'pane-assistant'].map(async (id) => {
         const box = await page.locator(`#${id}`).boundingBox();

@@ -12,7 +12,11 @@ export const SSO_PROVIDER = { id: 'google', displayName: 'Google' } as const;
  * Where the browser goes to start staff sign-in, or null when the instance has no SSO (mock mode).
  * `returnTo` is a path inside this app; the api refuses anything else.
  */
-export function ssoStartUrl(apiUrl: string, config: AuthConfig, returnTo = '/'): string | null {
+export function ssoStartUrl(
+  apiUrl: string,
+  config: AuthConfig,
+  returnTo = '/start',
+): string | null {
   const startPath = config[SSO_PROVIDER.id].startPath;
   if (startPath === null) return null;
   const url = new URL(startPath, `${apiUrl}/`);

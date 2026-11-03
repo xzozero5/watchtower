@@ -31,7 +31,7 @@ test.describe('sign-in', () => {
     await expect(page.getByRole('heading', { name: 'Sign in', level: 1 })).toBeVisible();
     await expect(page.getByRole('link', { name: 'Continue with Google' })).toHaveAttribute(
       'href',
-      /\/v1\/auth\/google\/start\?returnTo=%2F$/,
+      /\/v1\/auth\/google\/start\?returnTo=%2Fstart$/,
     );
   });
 
@@ -121,8 +121,9 @@ test.describe('sign-in', () => {
     await page.getByLabel('Email address').last().fill('admin@example.com');
     await page.getByLabel('Password').fill('a long passphrase');
     await page.getByRole('button', { name: 'Sign in', exact: true }).click();
-    await page.waitForURL((url) => url.pathname === '/');
-    await expect(queue(page)).toBeVisible();
+    // A head starts on the team overview (lib/role-home.ts).
+    await page.waitForURL('**/home');
+    await expect(page.getByRole('heading', { name: 'Home', level: 1 })).toBeVisible();
     expect(backend.to('POST', '/v1/auth/break-glass')[0]?.body).toEqual({
       email: 'admin@example.com',
       password: 'a long passphrase',

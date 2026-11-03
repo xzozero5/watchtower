@@ -6,6 +6,7 @@ import { type ReactNode, useEffect } from 'react';
 
 import { useT } from '@/i18n/provider';
 import { useSession } from '@/lib/auth/session';
+import { safeNextPath } from '@/lib/role-home';
 
 /**
  * Shows its children only to a signed-in user. While the session loads (or the browser is being
@@ -18,7 +19,11 @@ export function AuthGate({ children }: { children: ReactNode }) {
   const { status, retry } = useSession();
 
   useEffect(() => {
-    if (status === 'anonymous') router.replace('/login');
+    if (status === 'anonymous') {
+      // Remember where they were going (a ticket link, a page they bookmarked) so sign-in returns there.
+      const next = safeNextPath(window.location.pathname + window.location.search);
+      router.replace(next && next !== '/' ? `/login?next=${encodeURIComponent(next)}` : '/login');
+    }
   }, [status, router]);
 
   if (status === 'authenticated') return <>{children}</>;

@@ -59,13 +59,26 @@ export interface AvatarProps extends Omit<HTMLAttributes<HTMLSpanElement>, 'chil
   /** Stable identifier that picks the hue. Defaults to the name. */
   id?: string;
   size?: AvatarSize;
+  /**
+   * Draw the initials from an attribute instead of as text. For a button whose accessible name
+   * already holds the person's name: the initials then are not part of the button's visible text,
+   * which keeps the name containing the visible words (WCAG 2.5.3).
+   */
+  drawInitials?: boolean;
 }
 
 /**
  * Initials on a muted hue. Never a remote image (privacy, and no network request per person). It
  * is decorative because the name always sits next to it; give it an `aria-label` where it does not.
  */
-export function Avatar({ name, id, size = 24, className, ...props }: AvatarProps) {
+export function Avatar({
+  name,
+  id,
+  size = 24,
+  drawInitials = false,
+  className,
+  ...props
+}: AvatarProps) {
   const labelled = props['aria-label'] !== undefined;
   return (
     <span
@@ -76,11 +89,13 @@ export function Avatar({ name, id, size = 24, className, ...props }: AvatarProps
         'inline-flex shrink-0 items-center justify-center rounded-full font-medium ring-2 ring-background select-none',
         SIZE[size],
         HUES[avatarHue(id ?? name) - 1],
+        drawInitials && 'after:content-[attr(data-initials)]',
         className,
       )}
+      {...(drawInitials ? { 'data-initials': initialsOf(name) } : {})}
       {...props}
     >
-      {initialsOf(name)}
+      {drawInitials ? null : initialsOf(name)}
     </span>
   );
 }

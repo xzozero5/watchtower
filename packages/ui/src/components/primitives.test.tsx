@@ -57,6 +57,13 @@ describe('Avatar', () => {
     rerender(<Avatar name="Alex Agent" aria-label="Assigned to Alex Agent" />);
     expect(screen.getByRole('img', { name: 'Assigned to Alex Agent' })).toBeInTheDocument();
   });
+
+  it('can draw the initials from an attribute so they are not part of the text', () => {
+    const { container } = render(<Avatar name="Alex Agent" drawInitials />);
+    const avatar = container.firstElementChild;
+    expect(avatar).toHaveAttribute('data-initials', 'AA');
+    expect(avatar).toHaveTextContent('');
+  });
 });
 
 describe('pills', () => {

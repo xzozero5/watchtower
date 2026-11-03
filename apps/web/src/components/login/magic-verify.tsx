@@ -12,6 +12,7 @@ import { LoginLayout } from '@/components/login/login-layout';
 import { useT } from '@/i18n/provider';
 import { useApi } from '@/lib/api/api-context';
 import { ApiRequestError, isApiError } from '@/lib/api/errors';
+import { START_PATH } from '@/lib/role-home';
 
 /** The token the emailed link carries in the URL fragment (`#token=...`), or null if missing or malformed. */
 export function readMagicToken(hash: string): string | null {
@@ -42,7 +43,7 @@ export function MagicVerify() {
       return api.verifyMagicLink(token);
     },
     onSuccess: () => {
-      router.replace('/');
+      router.replace(START_PATH);
     },
   });
   const { mutate } = verify;

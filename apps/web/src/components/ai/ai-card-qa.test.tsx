@@ -11,8 +11,9 @@ import { workspaceApi } from '@/test/scenarios';
 import { evidenceHref } from './evidence-href';
 import { WEAK_EVIDENCE_THRESHOLD, splitEvidence } from './evidence-split';
 
+const push = vi.hoisted(() => vi.fn());
 vi.mock('next/navigation', () => ({
-  useRouter: () => ({ refresh: vi.fn(), replace: vi.fn() }),
+  useRouter: () => ({ refresh: vi.fn(), replace: vi.fn(), push }),
 }));
 
 beforeEach(() => {
@@ -147,6 +148,28 @@ describe('evidence relevance', () => {
     await user.click(screen.getByRole('tab', { name: 'Evidence' }));
     const panel = await screen.findByRole('tabpanel', { name: 'Evidence' });
     expect(within(panel).queryByRole('link')).toBeNull();
+  });
+
+  it('opens an in-app source through the router, an outside one in a new tab', async () => {
+    const user = userEvent.setup();
+    const linked = makeInsight({
+      evidence: [
+        evidence('inside', 0.9, { href: '/?ticket=OPS-2' }),
+        evidence('outside', 0.8, { href: 'https://docs.example.com/a' }),
+      ],
+      draft: undefined,
+      nextStep: undefined,
+    });
+    workspaceApi({ tickets: [ticket1], ai: { 'OPS-1': linked } });
+    const conversation = await openTicket();
+    await within(conversation).findByRole('region', { name: 'AI brief' });
+    await user.click(screen.getByRole('tab', { name: 'Evidence' }));
+    const panel = await screen.findByRole('tabpanel', { name: 'Evidence' });
+    const links = within(panel).getAllByRole('link', { name: /Open/ });
+    expect(links[1]).toHaveAttribute('target', '_blank');
+    push.mockClear();
+    await user.click(links[0] as HTMLElement);
+    expect(push).toHaveBeenCalledWith('/?ticket=OPS-2');
   });
 
   it('splits at the named threshold and never folds a cited or pointed-at card', () => {

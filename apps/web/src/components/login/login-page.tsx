@@ -23,6 +23,7 @@ import { useI18n } from '@/i18n/provider';
 import type { MessageKey } from '@/i18n';
 import { useApi } from '@/lib/api/api-context';
 import { isApiError } from '@/lib/api/errors';
+import { safeNextPath, startUrl } from '@/lib/role-home';
 import { parseSsoError, type SsoFailure, SSO_PROVIDER, ssoStartUrl } from '@/lib/auth/providers';
 import { useSession } from '@/lib/auth/session';
 import { useRuntimeConfig } from '@/lib/runtime-config-context';
@@ -105,13 +106,14 @@ function Field({
   );
 }
 
-function StaffSso({ config }: { config: AuthConfig }) {
+function StaffSso({ config, next }: { config: AuthConfig; next: string | null }) {
   const { t } = useI18n();
   const { apiUrl } = useRuntimeConfig();
-  const href = ssoStartUrl(apiUrl, config);
+  const href = ssoStartUrl(apiUrl, config, startUrl(next));
   return (
     <Section title={t('login.staff.title')} icon={BadgeCheck} tone="blue">
       {href ? (
+        // A plain anchor on purpose: the api starts the OAuth flow and redirects to the provider.
         <a
           href={href}
           className={cn(buttonVariants({ variant: 'primary' }), 'w-full rounded-full')}
@@ -356,6 +358,7 @@ export function LoginPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { status } = useSession();
+  const next = safeNextPath(searchParams.get('next'));
 
   const config = useQuery({
     queryKey: ['auth-config'],
@@ -366,11 +369,12 @@ export function LoginPage() {
 
   // Someone who is already signed in has nothing to do here.
   useEffect(() => {
-    if (status === 'authenticated') router.replace('/');
-  }, [status, router]);
+    if (status === 'authenticated') router.replace(startUrl(next));
+  }, [status, router, next]);
 
+  // /start sends them to `next` (a deep link) or to their role's start page once the role is known.
   const goHome = () => {
-    router.replace('/');
+    router.replace(startUrl(next));
   };
   const failure = parseSsoError(searchParams.get('error'));
 
@@ -406,7 +410,7 @@ export function LoginPage() {
         </Alert>
       ) : (
         <>
-          <StaffSso config={config.data} />
+          <StaffSso config={config.data} next={next} />
           {config.data.devLoginEnabled ? <DevLogin onSignedIn={goHome} /> : null}
           {config.data.magicLinkEnabled ? <MagicLinkRequest /> : null}
           {config.data.breakGlassEnabled ? <BreakGlass onSignedIn={goHome} /> : null}

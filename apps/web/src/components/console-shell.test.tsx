@@ -7,6 +7,7 @@ import { AuthGate } from '@/components/auth-gate';
 import { ConsoleShell } from '@/components/console-shell';
 import type { RailDestination } from '@/components/nav-rail';
 import { resetPreferencesCache } from '@/lib/preferences';
+import { RAIL_STORAGE_KEY, resetRailPreference } from '@/lib/rail-preference';
 import { RealtimeProvider } from '@/lib/realtime/realtime-provider';
 import { consoleApi } from '@/test/console-api';
 import { makeAutonomy } from '@/test/console-fixtures';
@@ -24,6 +25,7 @@ vi.mock('next/navigation', () => ({
 beforeEach(() => {
   localStorage.clear();
   resetPreferencesCache();
+  resetRailPreference();
   pathname = '/home';
 });
 afterEach(() => {
@@ -55,6 +57,54 @@ function renderShell(
 async function ready() {
   await screen.findByRole('navigation', { name: 'Main navigation' });
 }
+
+describe('rail expand and collapse', () => {
+  const stubWidth = (wide: boolean) => {
+    vi.stubGlobal('matchMedia', (query: string) => ({
+      matches: wide,
+      media: query,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    }));
+  };
+  const toggleName = /(Collapse|Expand) the navigation/;
+  const toggle = () => screen.getByRole('button', { name: toggleName });
+
+  it('starts expanded, remembers a collapse, and starts collapsed next time', async () => {
+    consoleApi({ role: 'head' });
+    const first = renderShell();
+    await ready();
+    expect(toggle()).toHaveAttribute('aria-expanded', 'true');
+    await userEvent.click(toggle());
+    expect(toggle()).toHaveAttribute('aria-expanded', 'false');
+    expect(localStorage.getItem(RAIL_STORAGE_KEY)).toBe('0');
+    first.unmount();
+
+    renderShell();
+    await ready();
+    expect(toggle()).toHaveAttribute('aria-expanded', 'false');
+  });
+
+  it('Ctrl+B flips it', async () => {
+    consoleApi({ role: 'head' });
+    renderShell();
+    await ready();
+    await userEvent.keyboard('{Control>}b{/Control}');
+    expect(toggle()).toHaveAttribute('aria-expanded', 'false');
+    await userEvent.keyboard('{Control>}b{/Control}');
+    expect(toggle()).toHaveAttribute('aria-expanded', 'true');
+  });
+
+  it('at 768-1023 px it stays icons, hides the switch and leaves the saved choice alone', async () => {
+    stubWidth(false);
+    consoleApi({ role: 'head' });
+    renderShell();
+    await ready();
+    expect(screen.queryByRole('button', { name: toggleName })).toBeNull();
+    await userEvent.keyboard('{Control>}b{/Control}');
+    expect(localStorage.getItem(RAIL_STORAGE_KEY)).toBeNull();
+  });
+});
 
 describe('rail entries', () => {
   it.each<[Role, boolean, boolean]>([

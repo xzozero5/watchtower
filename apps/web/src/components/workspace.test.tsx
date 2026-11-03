@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { SINGLE_KEY_STORAGE_KEY, resetPreferencesCache } from '@/lib/preferences';
+import { RAIL_STORAGE_KEY } from '@/lib/rail-preference';
 import { renderWorkspace } from '@/test-utils';
 import { makeInsight } from '@/test/ai-fixtures';
 import { workspaceApi } from '@/test/scenarios';
@@ -11,6 +12,8 @@ vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: vi.fn(), replac
 
 beforeEach(() => {
   localStorage.clear();
+  // Most tests here are about something else and want the short account name of the icon rail.
+  localStorage.setItem(RAIL_STORAGE_KEY, '0');
   resetPreferencesCache();
 });
 afterEach(() => {
@@ -655,23 +658,24 @@ describe('under 768 px: one pane at a time', () => {
 });
 
 describe('navigation rail', () => {
-  it('is 68 px of icons and expands to 248 px with Ctrl+B, announcing the state', async () => {
+  it('is 248 px with words by default, collapses to 68 px with Ctrl+B, announcing the state', async () => {
+    localStorage.removeItem(RAIL_STORAGE_KEY);
     const user = userEvent.setup();
     workspaceApi();
     await openWorkspace();
     const rail = screen.getByRole('banner');
-    expect(rail.className).toContain('md:w-[68px]');
-    const toggle = screen.getByRole('button', { name: 'Expand the navigation' });
-    expect(toggle).toHaveAttribute('aria-expanded', 'false');
-
-    fireEvent.keyDown(document.body, { key: 'b', code: 'KeyB', ctrlKey: true });
     expect(rail.className).toContain('md:w-[248px]');
     expect(screen.getByRole('button', { name: 'Collapse the navigation' })).toHaveAttribute(
       'aria-expanded',
       'true',
     );
-    await user.click(screen.getByRole('button', { name: 'Collapse the navigation' }));
+
+    fireEvent.keyDown(document.body, { key: 'b', code: 'KeyB', ctrlKey: true });
     expect(rail.className).toContain('md:w-[68px]');
+    const toggle = screen.getByRole('button', { name: 'Expand the navigation' });
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    await user.click(toggle);
+    expect(rail.className).toContain('md:w-[248px]');
   });
 
   it('gives every icon a tooltip with its shortcut, on keyboard focus too', async () => {

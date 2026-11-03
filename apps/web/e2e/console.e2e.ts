@@ -57,7 +57,10 @@ test.describe('head: Home', () => {
     await page.keyboard.press('g');
     await page.keyboard.press('d');
     await page.waitForURL('**/home');
-    await expect(page.getByRole('link', { name: 'Home' })).toHaveAttribute('aria-current', 'page');
+    await expect(page.getByRole('link', { name: 'Home', exact: true })).toHaveAttribute(
+      'aria-current',
+      'page',
+    );
   });
 
   for (const scheme of ['light', 'dark'] as const) {

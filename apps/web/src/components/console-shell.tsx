@@ -26,6 +26,8 @@ import { useT } from '@/i18n/provider';
 import { useAutonomy } from '@/lib/admin/queries';
 import { adminSectionsFor, HOME_PERMISSION } from '@/lib/admin/sections';
 import { useSession } from '@/lib/auth/session';
+import { getRailExpanded, setRailExpanded, useRailExpanded } from '@/lib/rail-preference';
+import { RAIL_ROOM_QUERY, useMediaQuery } from '@/lib/use-media-query';
 import { useShortcut, useShortcutSequence } from '@/lib/keyboard';
 import { saveLocale } from '@/lib/locale-cookie';
 import { setDensity, setSingleKeyShortcuts, setTheme } from '@/lib/preferences';
@@ -61,7 +63,11 @@ export function ConsoleShell({ destination, skipTo, children }: ConsoleShellProp
   const { signOut, can } = useSession();
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
-  const [railExpanded, setRailExpanded] = useState(false);
+  // The rail shows words per the saved choice, but only where there is room (from 1024 px). In the
+  // 768-1023 px two-pane layout it stays icons; that forced state is never saved as the choice.
+  const railRoom = useMediaQuery(RAIL_ROOM_QUERY);
+  const railPreferred = useRailExpanded();
+  const railExpanded = railRoom && railPreferred;
   const [switchTarget, setSwitchTarget] = useState<SwitchTarget | null>(null);
   const isMac = useSyncExternalStore(subscribeNever, detectMac, serverIsMac);
   // False in the server HTML, true once React has taken over. The e2e tests wait for it.
@@ -75,8 +81,9 @@ export function ConsoleShell({ destination, skipTo, children }: ConsoleShellProp
     setPaletteOpen((open) => !open);
   }, []);
   const toggleRail = useCallback(() => {
-    setRailExpanded((expanded) => !expanded);
-  }, []);
+    if (!railRoom) return;
+    setRailExpanded(!getRailExpanded());
+  }, [railRoom]);
   usePaletteShortcut(togglePalette);
   useModifierShortcut('b', toggleRail);
   useShortcut('?', () => {
@@ -168,6 +175,7 @@ export function ConsoleShell({ destination, skipTo, children }: ConsoleShellProp
           setSingleKeyShortcuts,
           setLocale: (locale) => {
             saveLocale(locale);
+            // Re-renders the server components in place (the language is a cookie); not a reload.
             router.refresh();
           },
           showShortcuts: () => {
@@ -210,6 +218,7 @@ export function ConsoleShell({ destination, skipTo, children }: ConsoleShellProp
       <NavRail
         destination={destination}
         expanded={railExpanded}
+        canToggleExpanded={railRoom}
         onToggleExpanded={toggleRail}
         onOpenPalette={togglePalette}
         onOpenKeymap={() => {

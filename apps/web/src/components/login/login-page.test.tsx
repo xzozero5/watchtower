@@ -52,7 +52,7 @@ describe('staff sign-in', () => {
   it('links to the api to start single sign-on, taking the provider name from configuration', async () => {
     openLogin(LIVE);
     const link = await screen.findByRole('link', { name: 'Continue with Google' });
-    expect(link).toHaveAttribute('href', 'http://api.test/v1/auth/google/start?returnTo=%2F');
+    expect(link).toHaveAttribute('href', 'http://api.test/v1/auth/google/start?returnTo=%2Fstart');
     expect(screen.queryByRole('heading', { name: 'Development sign-in' })).not.toBeInTheDocument();
   });
 
@@ -85,6 +85,38 @@ describe('staff sign-in', () => {
   });
 });
 
+describe('where sign-in leads', () => {
+  it('carries a valid next through /start and into the Google link', async () => {
+    search = 'next=%2F%3Fticket%3DOPS-9';
+    openLogin(LIVE);
+    const link = await screen.findByRole('link', { name: 'Continue with Google' });
+    const returnTo = new URL(link.getAttribute('href') ?? '').searchParams.get('returnTo');
+    expect(returnTo).toBe('/start?next=%2F%3Fticket%3DOPS-9');
+  });
+
+  it('drops an off-site next', async () => {
+    search = 'next=https%3A%2F%2Fevil.example%2Fx';
+    openLogin(LIVE);
+    const link = await screen.findByRole('link', { name: 'Continue with Google' });
+    expect(new URL(link.getAttribute('href') ?? '').searchParams.get('returnTo')).toBe('/start');
+  });
+
+  it('dev sign-in goes to /start with next', async () => {
+    search = 'next=%2Fadmin%2Fusers';
+    const user = userEvent.setup();
+    openLogin(MOCK, { 'POST /v1/auth/dev-login': { json: makeSession('agent') } });
+    const section = (await screen.findByRole('heading', { name: 'Development sign-in' })).closest(
+      'section',
+    );
+    if (!section) throw new Error('dev section not found');
+    await user.type(within(section).getByLabelText('Email address'), 'a@example.com');
+    await user.click(within(section).getByRole('button', { name: 'Sign in for development' }));
+    await waitFor(() => {
+      expect(replace).toHaveBeenCalledWith('/start?next=%2Fadmin%2Fusers');
+    });
+  });
+});
+
 describe('development sign-in', () => {
   it('signs in with an email and role, then goes to the queue', async () => {
     const user = userEvent.setup();
@@ -102,7 +134,7 @@ describe('development sign-in', () => {
     await user.click(form.getByRole('button', { name: 'Sign in for development' }));
 
     await waitFor(() => {
-      expect(replace).toHaveBeenCalledWith('/');
+      expect(replace).toHaveBeenCalledWith('/start');
     });
     expect(api.callsTo('/v1/auth/dev-login', 'POST')[0]?.body).toEqual({
       email: 'lead@example.com',
@@ -202,7 +234,7 @@ describe('break-glass sign-in', () => {
     await user.click(form.getByRole('button', { name: 'Sign in' }));
 
     await waitFor(() => {
-      expect(replace).toHaveBeenCalledWith('/');
+      expect(replace).toHaveBeenCalledWith('/start');
     });
     expect(api.callsTo('/v1/auth/break-glass', 'POST')[0]?.body).toEqual({
       email: 'admin@example.com',
@@ -267,7 +299,7 @@ describe('the login page as a whole', () => {
     });
     renderApp(<LoginPage />);
     await waitFor(() => {
-      expect(replace).toHaveBeenCalledWith('/');
+      expect(replace).toHaveBeenCalledWith('/start');
     });
   });
 

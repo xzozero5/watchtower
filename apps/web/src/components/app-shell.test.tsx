@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { resetPreferencesCache } from '@/lib/preferences';
+import { RAIL_STORAGE_KEY } from '@/lib/rail-preference';
 import { renderWorkspace } from '@/test-utils';
 import { workspaceApi } from '@/test/scenarios';
 
@@ -12,6 +13,8 @@ vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh, replace }) }));
 
 beforeEach(() => {
   localStorage.clear();
+  // These tests are about the account menu, which has its short name while the rail is icons.
+  localStorage.setItem(RAIL_STORAGE_KEY, '0');
   resetPreferencesCache();
 });
 
@@ -122,7 +125,7 @@ describe('AppShell for staff', () => {
     await choose(user, screen.getByRole('menuitem', { name: 'Sign out' }));
 
     await waitFor(() => {
-      expect(replace).toHaveBeenCalledWith('/login');
+      expect(replace).toHaveBeenCalledWith(expect.stringMatching(/^\/login/));
     });
     expect(api.callsTo('/v1/auth/logout', 'POST')).toHaveLength(1);
   });

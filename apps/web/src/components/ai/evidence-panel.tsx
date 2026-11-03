@@ -5,6 +5,7 @@ import { Button, cn, Skeleton, TintChip } from '@watchtower/ui';
 import { Bot, ExternalLink, Quote } from 'lucide-react';
 import { useState } from 'react';
 
+import { AppLink } from '@/components/app-link';
 import { useI18n } from '@/i18n/provider';
 import { confidenceBand, formatConfidence, isDemoInsight } from '@/lib/ai/model';
 import { stripMarkdown } from '@/lib/ai/prose';
@@ -18,6 +19,9 @@ import { splitEvidence } from './evidence-split';
 
 /** The DOM id of an evidence card, so a chip or a citation can move focus to it. */
 export const evidenceDomId = (id: string) => `evidence-card-${id.replace(/[^A-Za-z0-9_-]/g, '_')}`;
+
+const EVIDENCE_LINK =
+  'ml-auto inline-flex items-center gap-1 text-link hover:underline focus-visible:outline-2 focus-visible:outline-ring';
 
 function EvidenceCard({
   entry,
@@ -77,14 +81,17 @@ function EvidenceCard({
           </TintChip>
         ) : null}
         {href ? (
-          <a
-            href={href}
-            {...(external ? { target: '_blank', rel: 'noopener noreferrer' } : {})}
-            className="ml-auto inline-flex items-center gap-1 text-link hover:underline focus-visible:outline-2 focus-visible:outline-ring"
-          >
-            {t('ai.evidence.open')}
-            {external ? <ExternalLink aria-hidden className="size-3" /> : null}
-          </a>
+          external ? (
+            <a href={href} target="_blank" rel="noopener noreferrer" className={EVIDENCE_LINK}>
+              {t('ai.evidence.open')}
+              <ExternalLink aria-hidden className="size-3" />
+            </a>
+          ) : (
+            // An in-app destination (an org, a ticket): move through the router, no page reload.
+            <AppLink href={href} className={EVIDENCE_LINK}>
+              {t('ai.evidence.open')}
+            </AppLink>
+          )
         ) : null}
       </div>
     </li>
