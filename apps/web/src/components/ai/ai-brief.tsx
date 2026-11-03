@@ -16,11 +16,13 @@ import {
   Send,
   TriangleAlert,
 } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 import { AiStateChip } from '@/components/ai/ai-state-chip';
 import { usePreferences } from '@/lib/preferences';
 import { useStatusMove } from '@/components/ticket/use-status-move';
+import { WaitingCustomerConfirm } from '@/components/ticket/waiting-customer-confirm';
+import { awaitsFirstAnswer } from '@/components/ticket/waiting-on-customer';
 import { useI18n } from '@/i18n/provider';
 import { useAutonomy } from '@/lib/admin/queries';
 import { confidenceBand, formatConfidence, hasBrief, isDemoInsight } from '@/lib/ai/model';
@@ -31,6 +33,7 @@ import { isApiError } from '@/lib/api/errors';
 import { formatAge, formatDateTime } from '@/lib/format';
 import { useNow } from '@/lib/use-now';
 import type { TicketItem } from '@/lib/tickets/model';
+import { useTimeline } from '@/lib/tickets/queries';
 
 import { AiDraftCard } from './ai-draft';
 import { AiReportDetails } from './ai-report';
@@ -165,6 +168,20 @@ export function AiBrief({
   const autonomy = useAutonomy(true);
   const aiRequest = useAiRequest(ticket.key);
   const [approveOpen, setApproveOpen] = useState(false);
+  const [confirmWaiting, setConfirmWaiting] = useState(false);
+  const [checkingWaiting, setCheckingWaiting] = useState(false);
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+  const timeline = useTimeline(
+    query.data?.nextStep?.kind === 'wait_customer' && status.can('waiting_on_customer')
+      ? ticket.key
+      : null,
+  );
   const { session } = useSession();
   // The raw intent key is for people who tune intents, in a tooltip (docs/design/less-text-ai-assistant.md 4).
   const seesIntentKey = session?.user.role === 'lead' || session?.user.role === 'head';
@@ -232,12 +249,42 @@ export function AiBrief({
           }
         : null
       : nextStep.kind === 'reply'
-        ? onWriteMyself
+        ? canWrite
+          ? onWriteMyself
+          : null
         : stepTarget !== null && status.can(stepTarget)
           ? () => {
-              status.move(stepTarget);
+              if (stepTarget !== 'waiting_on_customer') {
+                status.move(stepTarget);
+                return;
+              }
+              // Check the latest thread, including replies cancelled since the brief was made.
+              setCheckingWaiting(true);
+              void timeline.refetch().then((result) => {
+                if (!mounted.current) return;
+                setCheckingWaiting(false);
+                if (
+                  result.isError ||
+                  !result.data ||
+                  result.data.pages.at(-1)?.nextCursor != null
+                ) {
+                  toast(t('details.errors.generic'));
+                  return;
+                }
+                if (awaitsFirstAnswer(result.data.pages.flatMap((page) => page.entries))) {
+                  setConfirmWaiting(true);
+                } else {
+                  status.move('waiting_on_customer');
+                }
+              });
             }
           : null;
+  const canActOnStep =
+    nextStep?.kind === 'approve_draft'
+      ? Boolean(draft && canReview)
+      : nextStep?.kind === 'reply'
+        ? canWrite
+        : stepTarget !== null && status.can(stepTarget);
 
   return (
     <>
@@ -351,8 +398,15 @@ export function AiBrief({
 
         {nextStep || canWrite ? (
           <div role="group" aria-label={t('ai.brief.nextStep')} className="flex flex-wrap gap-2">
-            {nextStep && stepAction ? (
-              <Button variant="primary" className="rounded-full px-4" onClick={stepAction}>
+            {nextStep && canActOnStep ? (
+              <Button
+                variant="primary"
+                className="rounded-full px-4"
+                disabled={status.pending || checkingWaiting}
+                onClick={() => {
+                  stepAction?.();
+                }}
+              >
                 {(() => {
                   const StepIcon = STEP_ICONS[nextStep.kind];
                   return StepIcon ? <StepIcon aria-hidden className="size-4" /> : null;
@@ -439,6 +493,14 @@ export function AiBrief({
 
         {report ? <AiReportDetails report={report} evidence={evidence} /> : null}
       </section>
+
+      <WaitingCustomerConfirm
+        open={confirmWaiting}
+        onOpenChange={setConfirmWaiting}
+        onConfirm={() => {
+          if (status.can('waiting_on_customer')) status.move('waiting_on_customer');
+        }}
+      />
 
       {draft && canReview ? (
         <AiDraftCard

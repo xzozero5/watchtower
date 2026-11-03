@@ -63,9 +63,19 @@ describe('solvePow', () => {
   }
 
   it('returns the same nonce whatever the batch size', async () => {
+    const vector = VECTORS[0];
+    const maxAttempts = Number(vector.nonce) + 1;
+    // Batch invariance is a correctness check, not a WebCrypto load benchmark. Bound the known
+    // 8-bit vector so an oversized batch does not enqueue 100,000 digests under parallel tests.
+    // The separate vector tests above still solve the 12-bit and 16-bit challenges in full.
     for (const batchSize of [1, 7, 512, 100_000]) {
-      const solution = await solvePow(CHALLENGE, { difficultyBits: 12, batchSize });
-      expect(solution.nonce, `batch ${String(batchSize)}`).toBe('4984');
+      const solution = await solvePow(CHALLENGE, {
+        difficultyBits: vector.bits,
+        batchSize,
+        maxAttempts,
+      });
+      expect(solution.nonce, `batch ${String(batchSize)}`).toBe(vector.nonce);
+      expect(solution.attempts, `batch ${String(batchSize)}`).toBe(maxAttempts);
     }
   });
 

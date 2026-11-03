@@ -4,7 +4,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { PortalReplyResult, PortalTicketView } from '@watchtower/shared';
 import { Alert, Button, buttonVariants, Skeleton } from '@watchtower/ui';
 import Link from 'next/link';
-import { useCallback, useEffect, useSyncExternalStore } from 'react';
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 
 import { useI18n } from '@/i18n/provider';
 import { classifyPortalError } from '@/lib/portal/portal-client';
@@ -27,20 +27,45 @@ import { PortalTimeline } from './timeline';
  * The token of this ticket for this tab. `undefined` until the browser has been asked (the server
  * cannot read the address-bar fragment), then the token or `null` when the tab has none.
  */
-function useTrackingToken(ticketKey: string): [string | null | undefined, () => void] {
+function useTrackingToken(ticketKey: string): [string | null | undefined, () => void, number] {
+  const [linkRevision, setLinkRevision] = useState(0);
+  const activeLink = useRef({ active: false, revision: 0 });
   const token = useSyncExternalStore(
     subscribeToClaims,
     () => claimedToken(ticketKey),
     () => undefined,
   );
   useEffect(() => {
+    const link = activeLink.current;
+    link.active = true;
     // Reads the fragment, removes it from the address bar and keeps the token for this tab only.
     claimIntoStore(ticketKey);
+    const claimNewLink = () => {
+      if (window.location.hash === '') return;
+      claimIntoStore(ticketKey);
+      // A new link must not reuse fresh cached data, even when it carries the same token.
+      // Only this opaque counter enters the query key; the credential stays out of the cache key.
+      link.revision += 1;
+      setLinkRevision(link.revision);
+    };
+    window.addEventListener('hashchange', claimNewLink);
+    return () => {
+      link.active = false;
+      window.removeEventListener('hashchange', claimNewLink);
+    };
   }, [ticketKey]);
   const drop = useCallback(() => {
+    // A reply started under an older link can finish after rotation, including a same-token
+    // link. Its refusal must not revoke the access now displayed by this tab.
+    if (
+      !activeLink.current.active ||
+      activeLink.current.revision !== linkRevision ||
+      claimedToken(ticketKey) !== token
+    )
+      return;
     dropFromStore(ticketKey);
-  }, [ticketKey]);
-  return [token, drop];
+  }, [ticketKey, token, linkRevision]);
+  return [token, drop, linkRevision];
 }
 
 function Loading() {
@@ -167,8 +192,8 @@ export function TrackingPage({ ticketKey }: { ticketKey: string }) {
   const { t, locale } = useI18n();
   const api = usePortalApi();
   const queryClient = useQueryClient();
-  const [token, dropToken] = useTrackingToken(ticketKey);
-  const queryKey = ['portal-ticket', ticketKey] as const;
+  const [token, dropToken, linkRevision] = useTrackingToken(ticketKey);
+  const queryKey = ['portal-ticket', ticketKey, linkRevision] as const;
 
   const query = useQuery({
     queryKey,

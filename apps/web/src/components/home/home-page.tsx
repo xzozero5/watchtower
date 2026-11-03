@@ -115,7 +115,11 @@ function HomeBody() {
       ...(riskTotal !== null && overdue > 0
         ? { sub: t('home.overdueCount', { count: overdue }) }
         : {}),
-      href: queueHref({ sort: 'due_asc', status: OPEN_STATUSES }),
+      href: queueHref({
+        sort: 'sla_due_asc',
+        status: OPEN_STATUSES,
+        slaState: ['at_risk', 'breached'],
+      }),
       tone: 'amber',
       icon: Hourglass,
     },
@@ -124,7 +128,7 @@ function HomeBody() {
       label: t('home.unassigned'),
       value: unassignedCount,
       ...(oldest && unassignedCount ? { sub: oldest } : {}),
-      href: queueHref({ assignee: 'unassigned', status: ['new', 'triage', 'open'] }),
+      href: queueHref({ assignee: 'unassigned', status: OPEN_STATUSES }),
       tone: 'sky',
       icon: UserRoundX,
     },
@@ -156,7 +160,9 @@ function HomeBody() {
     const byPerson = new Map(stats.data.byAssignee.map((entry) => [entry.assigneeId, entry]));
     return users.data.users
       .filter(
-        (user) => user.status === 'active' && user.role !== 'client' && user.role !== 'system',
+        (user) =>
+          user.status === 'active' &&
+          (user.role === 'agent' || user.role === 'lead' || user.role === 'head'),
       )
       .map((user) => {
         const entry = byPerson.get(user.id);
@@ -234,7 +240,9 @@ function HomeBody() {
           ) : (
             <>
               <SlaRiskList rows={rows} />
-              {rows.length > 10 ? <ShowAllLink count={rows.length} /> : null}
+              {(riskTotal ?? rows.length) > 10 || riskCapped ? (
+                <ShowAllLink count={riskTotal ?? rows.length} capped={riskCapped} />
+              ) : null}
             </>
           )}
         </HomeSection>

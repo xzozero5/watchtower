@@ -9,6 +9,16 @@ export const timelineTh: Widen<typeof timelineEn> = {
   now: 'ตอนนี้',
   byActor: 'โดย {name}',
   internalHint: 'เห็นได้เฉพาะทีมของคุณ และจะไม่ถูกส่งถึงลูกค้า',
+  attachments: {
+    label: 'ไฟล์แนบ',
+    unnamed: 'ไฟล์แนบ {number}',
+    download: 'ดาวน์โหลด {name}',
+    downloading: 'กำลังดาวน์โหลด {name}',
+    unavailable: 'ไม่พบไฟล์สำหรับดาวน์โหลด',
+    failed: 'ดาวน์โหลดไฟล์ไม่สำเร็จ กรุณาลองอีกครั้ง',
+    forbidden: 'คุณไม่มีสิทธิ์เข้าถึงไฟล์นี้แล้ว',
+    missing: 'ไฟล์นี้ไม่พร้อมให้ดาวน์โหลดแล้ว',
+  },
   kinds: {
     customer: 'ข้อความจากลูกค้า',
     reply: 'คำตอบถึงลูกค้า',

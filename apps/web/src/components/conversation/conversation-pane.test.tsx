@@ -141,11 +141,11 @@ describe('timeline', () => {
               },
       },
     });
-    await openTicket();
-    expect(await screen.findByText('The messages could not be loaded')).toBeVisible();
+    const { conversation } = await openTicket();
+    expect(await within(conversation).findByText('The messages could not be loaded')).toBeVisible();
     fail = false;
-    await user.click(screen.getByRole('button', { name: 'Try again' }));
-    expect(await screen.findByText('Now it works')).toBeVisible();
+    await user.click(within(conversation).getByRole('button', { name: 'Try again' }));
+    expect(await within(conversation).findByText('Now it works')).toBeVisible();
   });
 
   it('follows every page of a long conversation', async () => {

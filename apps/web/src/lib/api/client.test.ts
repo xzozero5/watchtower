@@ -55,6 +55,61 @@ describe('buildUrl', () => {
 });
 
 describe('ApiClient', () => {
+  it('downloads binary through the authenticated endpoint with a coordinated refresh', async () => {
+    let attempts = 0;
+    const fresh = makeSession('agent');
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      expect(init?.credentials).toBe('include');
+      const path = new URL(input instanceof Request ? input.url : input.toString()).pathname;
+      if (path === '/v1/auth/refresh') {
+        return new Response(JSON.stringify(fresh), {
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      attempts += 1;
+      return attempts === 1
+        ? new Response(
+            JSON.stringify({
+              statusCode: 401,
+              error: 'Error',
+              code: 'unauthenticated',
+              message: 'expired',
+            }),
+            { status: 401 },
+          )
+        : new Response(new Uint8Array([0, 255, 42]), {
+            headers: { 'content-type': 'application/pdf' },
+          });
+    });
+    const { api, onSession } = makeClient({
+      fetchImpl: () => (input, init) => Promise.resolve(fetchMock(input, init)),
+    });
+    const blob = await api.downloadAttachment('OPS-1', 'message/1', 2);
+    expect(Array.from(new Uint8Array(await blob.arrayBuffer()))).toEqual([0, 255, 42]);
+    expect(
+      fetchMock.mock.calls.map(
+        ([input]) => new URL(input instanceof Request ? input.url : input.toString()).pathname,
+      ),
+    ).toEqual([
+      '/v1/tickets/OPS-1/messages/message%2F1/attachments/2',
+      '/v1/auth/refresh',
+      '/v1/tickets/OPS-1/messages/message%2F1/attachments/2',
+    ]);
+    const request = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect(request[1].credentials).toBe('include');
+    expect(request[1].cache).toBe('no-store');
+    expect(onSession).toHaveBeenCalledWith(fresh);
+  });
+
+  it('does not turn denied or missing downloads into blobs or retry their authorization', async () => {
+    const mock = mockApi({
+      'GET /v1/tickets/:id/messages/:messageId/attachments/:index': apiError(403, 'forbidden'),
+    });
+    const { api } = makeClient();
+    await expect(api.downloadAttachment('OPS-1', 'm1', 0)).rejects.toMatchObject({ status: 403 });
+    expect(mock.callsTo('/v1/auth/refresh')).toHaveLength(0);
+  });
+
   it('sends cookies, and the CSRF token only on unsafe methods once a session is known', async () => {
     const session = makeSession('agent');
     const mock = mockApi({

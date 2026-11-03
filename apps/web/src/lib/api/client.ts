@@ -14,6 +14,8 @@ export interface RequestOptions<Output> {
   body?: unknown;
   /** Validates the JSON body. Pass `null` for an endpoint that answers 204. */
   schema: z.ZodType<Output> | null;
+  /** Binary downloads use the same authentication and retry path as JSON requests. */
+  responseType?: 'blob';
   signal?: AbortSignal;
   /**
    * `false` for the sign-in and refresh endpoints: a 401 there is an answer, not a reason to
@@ -110,6 +112,11 @@ export class ApiClient {
     }
   }
 
+  /** An authenticated download; a refused session shares the tab's coordinated refresh. */
+  download(path: string, signal?: AbortSignal): Promise<Blob> {
+    return this.request<Blob>({ path, schema: null, responseType: 'blob', signal });
+  }
+
   /** The CSRF token is tied to the session; read it again once and retry. */
   private async retryAfterCsrf<Output>(options: RequestOptions<Output>): Promise<Output> {
     const session = await this.send({
@@ -155,7 +162,9 @@ export class ApiClient {
 
   private async send<Output>(options: RequestOptions<Output>): Promise<Output> {
     const method = options.method ?? 'GET';
-    const headers: Record<string, string> = { Accept: 'application/json' };
+    const headers: Record<string, string> = {
+      Accept: options.responseType === 'blob' ? 'application/octet-stream' : 'application/json',
+    };
     if (options.body !== undefined) headers['Content-Type'] = 'application/json';
     if (!SAFE_METHODS.has(method) && this.csrfToken) headers[CSRF_HEADER] = this.csrfToken;
 
@@ -176,6 +185,7 @@ export class ApiClient {
     }
 
     if (!response.ok) throw await errorFromResponse(response);
+    if (options.responseType === 'blob') return (await response.blob()) as Output;
     if (options.schema === null) return undefined as Output;
 
     let json: unknown;

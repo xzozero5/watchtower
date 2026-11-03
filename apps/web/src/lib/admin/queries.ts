@@ -96,7 +96,7 @@ export function useOldestUnassigned(enabled: boolean) {
     queryFn: ({ signal }) =>
       api.listTickets(
         {
-          status: ['new', 'triage', 'open'],
+          status: [...OPEN_WORK_STATUSES],
           assignee: 'unassigned',
           sort: 'created_asc',
           limit: 1,

@@ -6,17 +6,7 @@ import {
   type TicketStatus,
   type TicketSummary,
 } from '@watchtower/shared';
-import {
-  Alert,
-  Avatar,
-  Button,
-  Combobox,
-  type ComboboxOption,
-  Dialog,
-  DialogContent,
-  Pill,
-  SeverityBadge,
-} from '@watchtower/ui';
+import { Alert, Avatar, Combobox, type ComboboxOption, Pill, SeverityBadge } from '@watchtower/ui';
 import { type ReactNode, useEffect, useId, useMemo, useRef, useState } from 'react';
 
 import { useI18n } from '@/i18n/provider';
@@ -35,6 +25,7 @@ import { allowedNextStatuses } from '@/lib/tickets/templates';
 import { ChannelIcon } from './channel-icon';
 import { StatusLabel } from './status-label';
 import { awaitsFirstAnswer } from './waiting-on-customer';
+import { WaitingCustomerConfirm } from './waiting-customer-confirm';
 import { useOptimisticEdit } from './use-optimistic-edit';
 
 /** The id of the status field, so the S shortcut can move focus to it. */
@@ -525,33 +516,13 @@ export function TicketDetails({ ticket }: { ticket: TicketItem }) {
         </p>
       ) : null}
 
-      <Dialog open={confirmWaiting} onOpenChange={setConfirmWaiting}>
-        <DialogContent
-          title={t('details.waitingConfirm.title')}
-          description={t('details.waitingConfirm.body')}
-          closeLabel={t('details.waitingConfirm.close')}
-          footer={
-            <>
-              <Button
-                onClick={() => {
-                  setConfirmWaiting(false);
-                }}
-              >
-                {t('details.waitingConfirm.cancel')}
-              </Button>
-              <Button
-                variant="primary"
-                onClick={() => {
-                  setConfirmWaiting(false);
-                  changeStatus('waiting_on_customer', false, true);
-                }}
-              >
-                {t('details.waitingConfirm.confirm')}
-              </Button>
-            </>
-          }
-        />
-      </Dialog>
+      <WaitingCustomerConfirm
+        open={confirmWaiting}
+        onOpenChange={setConfirmWaiting}
+        onConfirm={() => {
+          changeStatus('waiting_on_customer', false, true);
+        }}
+      />
 
       <div
         id={`${ids}-status`}

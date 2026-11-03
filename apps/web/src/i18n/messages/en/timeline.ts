@@ -6,6 +6,16 @@ export const timelineEn = {
   now: 'now',
   byActor: 'by {name}',
   internalHint: 'Only your team can see this. It is never sent to the customer.',
+  attachments: {
+    label: 'Attachments',
+    unnamed: 'Attachment {number}',
+    download: 'Download {name}',
+    downloading: 'Downloading {name}',
+    unavailable: 'File unavailable',
+    failed: 'Could not download this file. Try again.',
+    forbidden: 'You no longer have access to this file.',
+    missing: 'This file is no longer available.',
+  },
   kinds: {
     customer: 'Customer message',
     reply: 'Public reply',

@@ -77,6 +77,12 @@ export function createEndpoints(client: ApiClient) {
     ...createOpsEndpoints(client),
     ...createToolEndpoints(client),
 
+    downloadAttachment: (ref: string, messageId: string, index: number, signal?: AbortSignal) =>
+      client.download(
+        `${refPath(ref)}/messages/${encodeURIComponent(messageId)}/attachments/${String(index)}`,
+        signal,
+      ),
+
     // --- auth (public) ---
     authConfig: (signal?: AbortSignal) =>
       client.request({

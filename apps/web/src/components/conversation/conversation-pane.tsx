@@ -262,6 +262,7 @@ export function ConversationPane({
 
         {canReviewAi ? (
           <AiBrief
+            key={data.key}
             ticket={data}
             query={ai}
             canReview={canReviewAi}

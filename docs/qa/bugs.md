@@ -50,6 +50,12 @@ P3 cosmetic or rare, P4 polish. Developers fix; QA verifies. Do not edit an entr
 - The staff queue opens on the "open" view (statuses new to waiting_on_dev), so a client with 13 tickets sees 8 in the queue; resolved and closed ones are behind the "all" view. The RBAC test asserts that the queue equals the open tickets of the organization.
 - The e2e signs staff in as the break-glass account, which has role `head`. Agent- and lead-specific permission limits are therefore not exercised through the browser yet (the api integration tests cover them). A follow-up could provision an agent through a mock identity provider once one is available for a running stack.
 
+## ตรวจซ้ำ 2026-11-03 — PO quality sweep
+
+- **B-001 ปิด [TESTED]:** ฟัง hashchange + refetch ด้วย revision ที่ไม่บรรจุ token; current401 revoke ตามเดิม แต่ stale GET/POST401 ไม่ลบลิงก์ใหม่; unit regression 29 กรณีผ่านโดย security reviewer (producer suite รวม store 40) และ browser same-document acceptance ผ่าน
+- Fullstack เดิมที่ยังมี test.fail รันแล้ว B-001 **ผ่านโดยไม่ควรล้ม** (Expected to fail, but passed) จึงให้ QA คนละตัวนำ marker และ about:blank workaround ออก แล้วรัน suite ซ้ำ ดูผลสุดท้าย STATUS/รายงานรอบนี้
+- ประวัติเดิมในหัวข้อ Open ด้านบนเก็บไว้ตามกฎ append-only; สถานะปัจจุบัน B-001 = closed ส่วน B-002/B-003/B-004 ต้องตรวจ/ปิดต่อแยก ห้ามตีความ browser gate ว่าปิด known gaps เหล่านี้แล้ว
+
 ## Closed
 
 (none)

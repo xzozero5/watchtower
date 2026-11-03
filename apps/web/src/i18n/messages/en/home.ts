@@ -20,6 +20,7 @@ export const homeEn = {
   statsUnavailable: 'Counts are not available.',
   changedPill: '{count} changed — press .',
   showAll: 'Show all {count}',
+  showAllAtLeast: 'Show all ({count}+)',
   openTickets: 'Open tickets',
   volume: 'Ticket volume',
   volumeCreated: '{count} created · last 7 days',

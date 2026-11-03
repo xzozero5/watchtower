@@ -16,6 +16,8 @@ import { useSendUndo } from '@/lib/outbound/queries';
 import { useNow } from '@/lib/use-now';
 import { statusKey } from '@/lib/tickets/status-key';
 
+import { MessageAttachments } from './message-attachments';
+
 type EventEntry = Extract<TimelineEntry, { kind: 'event' }>;
 type MessageEntry = Extract<TimelineEntry, { kind: 'message' }>;
 
@@ -240,6 +242,7 @@ function MessageRow({
         <p className="text-sm break-words whitespace-pre-wrap text-foreground">
           {message.bodyText}
         </p>
+        <MessageAttachments message={message} />
         <DeliveryNote message={message} />
         {continued ? (
           <Tooltip content={t('timeline.at', { time: exact })}>

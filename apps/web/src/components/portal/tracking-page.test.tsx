@@ -1,4 +1,4 @@
-import { screen, waitFor, within } from '@testing-library/react';
+import { act, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -36,6 +36,139 @@ function openTracking(routes: Record<string, MockHandler> = {}, locale?: 'th') {
 }
 
 describe('portal tracking page', () => {
+  const followLink = (token: string) => {
+    act(() => {
+      window.history.replaceState(null, '', `/portal/tickets/OPS-12#token=${token}`);
+      window.dispatchEvent(new HashChangeEvent('hashchange'));
+    });
+  };
+
+  it.each([
+    { label: 'same token', nextToken: SAMPLE },
+    { label: 'rotated token', nextToken: 'bmV3LWxpbmstZm9yLXRlc3Rz' },
+  ])('refreshes a fresh same-ticket cache on an emailed link ($label)', async ({ nextToken }) => {
+    let reads = 0;
+    const api = openTracking({
+      'GET /v1/portal/tickets/:key': () => ({
+        json: makeView({ subject: ++reads === 1 ? 'Before the reply' : 'After the reply' }),
+      }),
+    });
+    await screen.findByText('Before the reply');
+    followLink(nextToken);
+    expect(window.location.hash).toBe('');
+    expect(await screen.findByText('After the reply')).toBeVisible();
+    const calls = api.callsTo('/v1/portal/tickets/OPS-12', 'GET');
+    expect(calls).toHaveLength(2);
+    expect(calls[1]?.headers.get('x-portal-token')).toBe(nextToken);
+    expect(calls.every((call) => call.search === '')).toBe(true);
+    expect(document.body.innerHTML).not.toContain(nextToken);
+    expect(sessionStorage.getItem('wt-portal-token:OPS-12')).toBe(nextToken);
+    expect(localStorage.getItem('wt-portal-token:OPS-12')).toBeNull();
+  });
+
+  it('recovers from a refused token when a fresh link is opened in the same tab', async () => {
+    const rotated = 'bmV3LWxpbmstZm9yLXRlc3Rz';
+    openTracking({
+      'GET /v1/portal/tickets/:key': ({ headers }) =>
+        headers.get('x-portal-token') === rotated
+          ? { json: makeView() }
+          : apiError(401, 'invalid_or_expired_link'),
+    });
+    await screen.findByRole('heading', { name: 'This link has expired' });
+    await waitFor(() => {
+      expect(sessionStorage.getItem('wt-portal-token:OPS-12')).toBeNull();
+    });
+    followLink(rotated);
+    expect(await screen.findByRole('heading', { name: 'OPS-12' })).toBeVisible();
+    expect(sessionStorage.getItem('wt-portal-token:OPS-12')).toBe(rotated);
+  });
+
+  it('does not let an older request refusal erase the newly opened link', async () => {
+    let refuseOld!: (value: ReturnType<typeof apiError>) => void;
+    const rotated = 'bmV3LWxpbmstZm9yLXRlc3Rz';
+    const api = openTracking({
+      'GET /v1/portal/tickets/:key': ({ headers }) =>
+        headers.get('x-portal-token') === SAMPLE
+          ? new Promise((resolve) => {
+              refuseOld = resolve;
+            })
+          : { json: makeView({ subject: 'Fresh access' }) },
+    });
+    await waitFor(() => {
+      expect(api.callsTo('/v1/portal/tickets/OPS-12', 'GET')).toHaveLength(1);
+    });
+    followLink(rotated);
+    await screen.findByText('Fresh access');
+    await act(async () => {
+      refuseOld(apiError(401, 'invalid_or_expired_link'));
+      await Promise.resolve();
+    });
+    expect(screen.getByText('Fresh access')).toBeVisible();
+    expect(sessionStorage.getItem('wt-portal-token:OPS-12')).toBe(rotated);
+  });
+
+  it('removes its fragment listener on unmount', async () => {
+    mockApi({ 'GET /v1/portal/tickets/:key': { json: makeView() } });
+    const view = renderApp(<TrackingPage ticketKey="OPS-12" />);
+    await screen.findByRole('heading', { name: 'OPS-12' });
+    view.unmount();
+    followLink('bmV3LWxpbmstZm9yLXRlc3Rz');
+    expect(window.location.hash).not.toBe('');
+    expect(sessionStorage.getItem('wt-portal-token:OPS-12')).toBe(SAMPLE);
+  });
+
+  it.each([
+    { label: 'same token', nextToken: SAMPLE },
+    { label: 'rotated token', nextToken: 'bmV3LWxpbmstZm9yLXRlc3Rz' },
+  ])('ignores a late reply refusal from before a new link ($label)', async ({ nextToken }) => {
+    const user = userEvent.setup();
+    let refuseReply!: (value: ReturnType<typeof apiError>) => void;
+    let replyFinished!: () => void;
+    const finished = new Promise<void>((resolve) => {
+      replyFinished = resolve;
+    });
+    let reads = 0;
+    const api = openTracking({
+      'GET /v1/portal/tickets/:key': () => ({
+        json: makeView({ subject: ++reads === 1 ? 'Original access' : 'Fresh access' }),
+      }),
+      'POST /v1/portal/tickets/:key/replies': async () => {
+        const result = await new Promise<ReturnType<typeof apiError>>((resolve) => {
+          refuseReply = resolve;
+        });
+        replyFinished();
+        return result;
+      },
+    });
+    await screen.findByText('Original access');
+    await user.type(screen.getByLabelText('Your message'), 'A pending reply');
+    await user.click(screen.getByRole('button', { name: 'Send reply' }));
+    expect(api.callsTo('/v1/portal/tickets/OPS-12/replies', 'POST')).toHaveLength(1);
+    followLink(nextToken);
+    await screen.findByText('Fresh access');
+    await act(async () => {
+      refuseReply(apiError(401, 'invalid_or_expired_link'));
+      await finished;
+    });
+    expect(screen.getByText('Fresh access')).toBeVisible();
+    expect(
+      screen.queryByRole('heading', { name: 'This link has expired' }),
+    ).not.toBeInTheDocument();
+    expect(sessionStorage.getItem('wt-portal-token:OPS-12')).toBe(nextToken);
+  });
+
+  it('forgets the current link when its own reply is refused', async () => {
+    const user = userEvent.setup();
+    openTracking({
+      'POST /v1/portal/tickets/:key/replies': apiError(401, 'invalid_or_expired_link'),
+    });
+    await screen.findByRole('heading', { name: 'OPS-12' });
+    await user.type(screen.getByLabelText('Your message'), 'Current reply');
+    await user.click(screen.getByRole('button', { name: 'Send reply' }));
+    expect(await screen.findByRole('heading', { name: 'This link has expired' })).toBeVisible();
+    expect(sessionStorage.getItem('wt-portal-token:OPS-12')).toBeNull();
+  });
+
   it('takes the value from the fragment, removes it from the address bar and sends it as a header', async () => {
     const api = openTracking();
     expect(await screen.findByRole('heading', { name: 'OPS-12' })).toBeInTheDocument();

@@ -4,7 +4,7 @@
 snapshot สั้นสำหรับ cold start อยู่ที่ `HANDOFF.md` — ไฟล์นี้คือ log ต่อ task + open questions
 
 ## สถานะปัจจุบัน
-| Phase | สถานะ (2026-11-02) | ค้าง |
+| Phase | สถานะ (2026-11-03) | ค้าง |
 |---|---|---|
 | 0 Foundation | ✅ | — |
 | 1 Inbox + AI 0–2 + Shifts | ✅ · **POC ต่อ Gmail จริง + AI จริง (`claude -p`) แล้ว 2026-11-03** · LINE/Discord/SMTP ยัง mock | T-113 ส่วนที่เหลือ, T-114, T-115 pilot (เจ้าของ), T-125, T-103e/f, T-110c |
@@ -14,6 +14,7 @@ snapshot สั้นสำหรับ cold start อยู่ที่ `HANDOF
 | 4 Mobile + Scale | ⬜ | — |
 
 - **Release `v0.1.0` (MVP)** = `main` @ `ae380db` · CI: เขียวทั้ง 4 job · gate บนเครื่องผ่านทุก merge `[TESTED]`
+- **PO quality sweep 2026-11-03:** T-156/T-162…164 ปิดบน `codex/po-quality-sweep`; T-158/T-161 ปิดบางส่วน · ยังไม่ merge/deploy · รายงาน `docs/qa/2026-11-03-po-quality-sweep.md`
 - Blockers: ไม่มี · `[ASK-HUMAN]` ค้าง: ดู `HANDOFF.md`
 
 ## Open questions / `[UNVERIFIED]` / `[ASSUMED]` ที่ยังค้าง
@@ -40,6 +41,16 @@ snapshot สั้นสำหรับ cold start อยู่ที่ `HANDOF
 - (2026-11-01) cloud session: `dockerd` ต้องสั่งเอง · Docker Hub 429 → pull ซ้ำทีละ image · build image ไม่ได้ (corepack ไม่เชื่อ CA ของ proxy) · Playwright ใช้ `PW_EXECUTABLE_PATH=/opt/pw-browsers/chromium` · หลาย worktree รัน e2e พร้อมกันต้องตั้ง `E2E_PORT` ต่างกัน · Redis counter ข้ามรอบ test → `RATE_LIMIT_NAMESPACE`
 
 ## Log
+
+## 2026-11-03 13:20 (Asia/Bangkok) — Codex main thread — PO takeover / T-156, T-158(part), T-161(part), T-162…164
+- **ขอบเขต:** เจ้าของมอบให้ทดสอบหลาย stakeholder และปรับปรุงตามดุลยพินิจ; branch `codex/po-quality-sweep` จาก `d7b70d2` ไม่ merge/deploy POC; รายงาน `docs/qa/2026-11-03-po-quality-sweep.md`
+- **ทำอะไร:** staff attachments authenticated download + coordinated refresh + loading/error/retry; AI Wait อ่าน timeline ล่าสุด + warning เดียวกับ properties + cancel/no write + unmount/partial/error guards; Home SLA/unassigned/oldest ใช้ filters ตรงจำนวน, show-all authoritative/lower bound, workload ไม่รวมdev, No queue ไม่ลิงก์ผิด; portal B-001 hashchange/refetch + stale GET/POST401 ไม่ลบลิงก์ใหม่; เติม docs07/08 ที่ AGENTS อ้างแต่ไม่มี; QA acceptance ใหม่5ข้อ; QAแก้ PoW batch test ให้ bounded known vectorโดยคง crypto12/16bitและทุกbatchsize
+- **Review N7:** independent PO (ไม่ตรวจ portal ที่ตนผลิต) unit72ผ่าน + scopeรับรอง; security จับ stale POST401 หลังfixแรก แล้ว producerแก้+เพิ่มregressionและ securityรัน29ผ่าน; QA baselineเดิม59ผ่านแต่ acceptanceใหม่ reproduce3bugs, หลังแก้ browser186ผ่าน/32screenshot-onlyskip/0retry + source review Home/AI; main เปิดdiffจริงและรันเองตามด้านล่าง
+- **Gate main [TESTED]:** build10packagesผ่าน และ finalwebbuildผ่าน; `pnpm typecheck`17/17 (16cached), `pnpm lint`18/18 (16cached); final `pnpm exec turbo run test test:boundaries --concurrency=1 -- --maxWorkers=4` **18/18 tasks,0cached; unit+boundaries4911ผ่าน/29 external-transport contract skips** (web1228, boundaries238, shared865, ai586, channels447, db60, connectors133, ui807, domain153, api256, worker138); main final-build acceptance5/5ผ่าน
+- **Full-stack main [TESTED]:** isolated pg45560/redis46560/smtp41560/mailpit48560; **38 completed =37actual pass+1expected failure B-003 Gmail auto-ack**; B-001ผ่านแบบunexpectedpassก่อนให้QAลบtest.fail/about:blank workaround แล้วรันsuiteเต็มซ้ำผ่าน; ไม่อ้างknown failureว่าfeatureผ่าน; containerที่สร้างเอง3ตัวล้างแล้ว
+- **เหตุการณ์ระหว่างgate:** Windows buildชนbrowser `.next/standalone` EBUSY และ typegenชนbuild TS6053 → serializeใหม่; lint errors callback/ref inference แก้แล้ว; test global Retry หลายsection → QA scopeConversation; boundary90s timeoutใต้โหลด, PoW20s timeoutจากbatch overshoot (QAแก้boundedvector), composer pending-send fixture5sหมดก่อนassertใต้โหลดหนัก (ยังเปิด T-161) → final gateจำกัดงานพร้อมกัน ไม่เพิ่มtimeout/retryหรือตัดassertion ทุกfailureเก็บในรายงาน/daily ไม่ใช้retryผ่านมาปิดสาเหตุทั้งหมด
+- **เอกสาร:** HANDOFFเขียนทับ+archive, BACKLOGปิดT-156/162/163/164, T-158ยังเปิดrailcounts, T-161ปิดเฉพาะPoW; เพิ่มstrategy/checklist/รายงานและappendB-001closureในbuglog
+- **ค้าง/ไม่ยืนยัน:** T-154/T-155ยังเป็นก่อนเปิดinternet; pilot/staging/external/mobile/Thai native review/stage3ยังไม่ยืนยัน; ไม่รัน API attachment integration/MinIOจริงรอบนี้ (APIrouteเดิมไม่แก้); phase gates T-113/T-114/T-207ยังเปิด ไม่เปลี่ยนstack/schema/autonomy/dependency; ไม่มี external AI/cloud call; build agent token/costไม่มีmeterรวมให้ตรวจ
 
 ## 2026-11-03 12:30 (Asia/Bangkok) — main thread — Google login จริง + UX (shell ถาวร, หน้าแรกตาม role) + ส่งต่อให้ Codex
 - **ทำอะไร:** `GOOGLE_ALLOWED_EMAILS` (ADR-005 แก้ไข 2026-11-03) ล็อกอินจริงด้วยบัญชีเจ้าของ (audit `via: allowlist`) · dev login ปิดใน env · ลิงก์ Evidence ไม่ reload ทั้งหน้า · shell ย้ายเข้า `app/(console)/layout.tsx` (เปลี่ยนเมนูไม่ remount rail และไม่มี skeleton ทั้งจอ) · เมนูซ้ายจำสถานะ (ค่าเริ่มต้นขยาย) · โลโก้และหลังล็อกอินไปหน้าแรกตาม role (`lib/role-home.ts`, `/start`, `next` ปลอดภัย) · rail: จุดสถานะเดียวสีกลาง (เตือนเป็นคำเฉพาะตอนมีปัญหา), ชิปกะ "รอรับทราบ N" · UI rework Soft Beacon merge ครบสองรอบ · ตัวกรอง push-only เข้า repo (`pnpm push-filter`) + `docs/runbooks/local-poc.md`

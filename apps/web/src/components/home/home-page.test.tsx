@@ -3,8 +3,9 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { apiError } from '@/test/mock-api';
 import { consoleApi } from '@/test/console-api';
-import { makeAutonomy, STATS } from '@/test/console-fixtures';
+import { dueTicket, makeAutonomy, makeUser, STATS, USERS } from '@/test/console-fixtures';
 import { dashboardOps } from '@/test/dashboard-fixtures';
+import { uuid } from '@/test/fixtures';
 import { renderConsole } from '@/test/render-console';
 
 import { HomePage } from './home-page';
@@ -30,7 +31,10 @@ describe('Home', () => {
     // 5 at risk and 2 overdue from the counts endpoint: 7 in all.
     expect(sla).toHaveTextContent('7');
     expect(sla).toHaveTextContent('2 overdue');
-    expect(sla.getAttribute('href')).toContain('sort=due_asc');
+    expect(sla.getAttribute('href')).toContain('sort=sla_due_asc');
+    expect(
+      new URL(sla.getAttribute('href') ?? '', 'http://localhost').searchParams.get('slaState'),
+    ).toBe('at_risk,breached');
     const unassigned = tile(/^Unassigned\s*3/);
     expect(unassigned).toHaveAttribute('href', expect.stringContaining('assignee=unassigned'));
     expect(tile(/^New\s*4/)).toHaveAttribute('href', '/?status=new');
@@ -55,6 +59,9 @@ describe('Home', () => {
       .find((params) => params.get('assignee') === 'unassigned');
     expect(oldest?.get('sort')).toBe('created_asc');
     expect(oldest?.get('limit')).toBe('1');
+    const href = new URL(tile(/^Unassigned/).getAttribute('href') ?? '', 'http://localhost');
+    expect(oldest?.get('status')).toBe('new,triage,open,waiting_on_customer,waiting_on_dev');
+    expect(href.searchParams.get('status')).toBe(oldest?.get('status'));
   });
 
   it('shows how many open tickets and how many at risk each person holds', async () => {
@@ -64,6 +71,52 @@ describe('Home', () => {
     const mana = (await within(load).findByText('Mana K.')).closest('a') as HTMLElement;
     expect(mana).toHaveTextContent('9');
     expect(mana).toHaveTextContent('2 at risk');
+  });
+
+  it('excludes developers from the support assignment workload', async () => {
+    consoleApi({
+      overrides: {
+        'GET /v1/users': {
+          json: {
+            users: [...USERS, makeUser({ id: uuid(930), name: 'Dee Developer', role: 'dev' })],
+          },
+        },
+      },
+    });
+    renderConsole(<HomePage />);
+    const load = await screen.findByRole('region', { name: 'Open per person' });
+    expect(await within(load).findByText('Mana K.')).toBeVisible();
+    expect(within(load).queryByText('Dee Developer')).toBeNull();
+  });
+
+  it('shows the authoritative SLA total even when the preview holds fewer tickets', async () => {
+    consoleApi({
+      stats: {
+        ...STATS,
+        total: { ...STATS.total, sla: { ok: 0, at_risk: 70, breached: 5, paused: 0 } },
+      },
+    });
+    renderConsole(<HomePage />);
+    const all = await screen.findByRole('link', { name: 'Show all 75' });
+    const params = new URL(all.getAttribute('href') ?? '', 'http://localhost').searchParams;
+    expect(params.get('slaState')).toBe('at_risk,breached');
+    expect(params.get('sort')).toBe('sla_due_asc');
+  });
+
+  it('labels a capped SLA preview as a lower bound when counts are unavailable', async () => {
+    consoleApi({
+      stats: () => apiError(500, 'internal'),
+      overrides: {
+        'GET /v1/tickets': ({ url }) => ({
+          json: {
+            items: [dueTicket(1, 30, { priority: 'P1' })],
+            nextCursor: url.searchParams.has('slaState') ? uuid(99) : null,
+          },
+        }),
+      },
+    });
+    renderConsole(<HomePage />);
+    expect(await screen.findByRole('link', { name: 'Show all (1+)' })).toBeVisible();
   });
 
   it('lists the tickets at risk with severity, key, SLA and who has them', async () => {
@@ -89,7 +142,8 @@ describe('Home', () => {
       'href',
       expect.stringContaining('queueId='),
     );
-    expect(screen.getByRole('link', { name: /^No queue\s*3/ })).toBeVisible();
+    expect(screen.getByText('No queue').parentElement).toHaveTextContent('3');
+    expect(screen.queryByRole('link', { name: /^No queue/ })).toBeNull();
     const load = screen.getByRole('region', { name: 'Open per person' });
     expect(within(load).getByText('Mana K.')).toBeVisible();
     expect(within(load).getByText('Pim S.')).toBeVisible();

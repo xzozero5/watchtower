@@ -18,6 +18,7 @@ export const homeTh: Widen<typeof homeEn> = {
   statsUnavailable: 'ยังไม่มีตัวเลขสรุป',
   changedPill: 'เปลี่ยน {count} รายการ — กด .',
   showAll: 'ดูทั้งหมด {count}',
+  showAllAtLeast: 'ดูทั้งหมด ({count}+)',
   openTickets: 'งานที่เปิดอยู่',
   volume: 'ปริมาณงาน',
   volumeCreated: 'สร้าง {count} งาน · 7 วันล่าสุด',

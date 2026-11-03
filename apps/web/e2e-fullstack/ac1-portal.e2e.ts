@@ -23,16 +23,6 @@ import {
  */
 const BUDGET_MS = 10_000;
 
-/**
- * Opens an emailed link as a customer does, in a fresh page load. A link that differs from the page
- * already open only in its #fragment is a same-document navigation and does not reload the page
- * (docs/qa/bugs.md B-001), which a mail client opening a new tab never hits.
- */
-async function openLink(page: Page, link: string): Promise<void> {
-  await page.goto('about:blank');
-  await page.goto(link);
-}
-
 interface Actor {
   context: BrowserContext;
   page: Page;
@@ -252,7 +242,7 @@ test.describe.serial('AC-1: portal submission to resolution', () => {
     expect(reply.text, 'the email names the reply, not its text').not.toContain(replyText);
 
     const cust = customer.page;
-    await openLink(cust, reply.link);
+    await cust.goto(reply.link);
     const timeline = cust.getByRole('region', { name: 'Conversation' });
     await expect(timeline.getByText(replyText)).toBeVisible();
     await expect(timeline.getByText(requestText)).toBeVisible();
@@ -276,7 +266,7 @@ test.describe.serial('AC-1: portal submission to resolution', () => {
     await expect(conversation().getByText(noteText)).toBeVisible();
 
     const cust = customer.page;
-    await openLink(cust, trackingLink);
+    await cust.goto(trackingLink);
     await expect(
       cust.getByRole('region', { name: 'Conversation' }).getByText(requestText),
     ).toBeVisible();
@@ -307,7 +297,7 @@ test.describe.serial('AC-1: portal submission to resolution', () => {
     expect(email.text).toContain('reopen it');
 
     const cust = customer.page;
-    await openLink(cust, email.link);
+    await cust.goto(email.link);
     await expect(cust.getByRole('heading', { name: ticketKey, level: 1 })).toBeVisible();
     await expect(cust.getByText('Resolved', { exact: true }).first()).toBeVisible();
     await expect(
@@ -322,12 +312,8 @@ test.describe.serial('AC-1: portal submission to resolution', () => {
     expect(after.json.resolvedAt).not.toBeNull();
   });
 
-  // Known bug B-001 (docs/qa/bugs.md): the page open in this tab is for the same ticket, so a newer
-  // emailed link that differs only in its #fragment does not reload it and the new reply is missing.
-  // `test.fail` keeps the suite green while the bug exists and turns red when it is fixed: then
-  // delete the `test.fail` line (and the openLink workaround above).
+  // Regression B-001: an emailed fragment must refresh this already-open tracking page.
   test('B-001: a newer emailed link opened in the same tab shows the new reply', async () => {
-    test.fail();
     const followUp = `One more thing: please retry the export (${unique('later')}).`;
     const sent = await staffApi.post(`/v1/tickets/${ticketId}/replies`, { body: followUp });
     expect(sent.status).toBe(201);

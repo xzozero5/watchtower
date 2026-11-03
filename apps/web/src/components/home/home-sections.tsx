@@ -228,14 +228,18 @@ export function SlaRiskList({ rows }: { rows: readonly RiskRow[] }) {
   );
 }
 
-export function ShowAllLink({ count }: { count: number }) {
+export function ShowAllLink({ count, capped = false }: { count: number; capped?: boolean }) {
   const t = useT();
   return (
     <AppLink
-      href={queueHref({ sort: 'due_asc' })}
+      href={queueHref({
+        status: OPEN_STATUSES,
+        sort: 'sla_due_asc',
+        slaState: ['at_risk', 'breached'],
+      })}
       className="mt-2 inline-flex items-center gap-1 rounded-sm text-sm font-medium underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
     >
-      {t('home.showAll', { count })}
+      {capped ? t('home.showAllAtLeast', { count }) : t('home.showAll', { count })}
       <ArrowRight aria-hidden className="size-3.5" />
     </AppLink>
   );
@@ -284,19 +288,19 @@ export function QueueBreakdown({
     <ul className="flex flex-wrap gap-2">
       {groups.map((queue) => (
         <li key={queue.queueId ?? 'none'}>
-          <CountLink
-            href={
-              queue.queueId
-                ? queueHref({ queueId: queue.queueId, status: OPEN_STATUSES })
-                : queueHref({})
-            }
-            label={
-              queue.queueId
-                ? (names.get(queue.queueId) ?? t('home.unknownQueue'))
-                : t('home.noQueue')
-            }
-            count={queue.count}
-          />
+          {queue.queueId ? (
+            <CountLink
+              href={queueHref({ queueId: queue.queueId, status: OPEN_STATUSES })}
+              label={names.get(queue.queueId) ?? t('home.unknownQueue')}
+              count={queue.count}
+            />
+          ) : (
+            // There is no queue-less filter in the API yet. Do not link this count to all work.
+            <span className="inline-flex items-baseline gap-1.5 rounded-full bg-surface-muted px-3.5 py-1.5 text-sm">
+              <span className="text-muted-foreground">{t('home.noQueue')}</span>
+              <span className="tabular font-semibold">{queue.count}</span>
+            </span>
+          )}
         </li>
       ))}
     </ul>

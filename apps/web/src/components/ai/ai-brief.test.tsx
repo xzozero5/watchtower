@@ -13,6 +13,7 @@ import {
   makeUncitedInsight,
 } from '@/test/ai-fixtures';
 import { makeMessage, makeTicket, uuid } from '@/test/fixtures';
+import { apiError } from '@/test/mock-api';
 import { workspaceApi } from '@/test/scenarios';
 
 vi.mock('next/navigation', () => ({
@@ -423,5 +424,63 @@ describe('the single-key preference', () => {
     expect(within(draft).queryByRole('textbox')).toBeNull();
     await user.click(within(draft).getByRole('button', { name: /^Approve/ }));
     expect(await screen.findByRole('dialog', { name: 'Send this reply?' })).toBeVisible();
+  });
+});
+
+describe('AI suggestion: wait for the customer', () => {
+  const base = makeTicket(1);
+  const setup = (messages = [makeMessage(1, base)], failTimeline = false) =>
+    workspaceApi({
+      tickets: [base],
+      timelines: { 'OPS-1': messages },
+      ai: { 'OPS-1': makeInsight({ nextStep: { kind: 'wait_customer', label: 'Wait' } }) },
+      overrides: {
+        'POST /v1/tickets/:id/status': { json: { ...base, status: 'waiting_on_customer' } },
+        ...(failTimeline
+          ? { 'GET /v1/tickets/:id/timeline': () => apiError(503, 'unavailable') }
+          : {}),
+      },
+    });
+
+  it('requires confirmation before pausing an unanswered customer request, and cancel makes no write', async () => {
+    const user = userEvent.setup();
+    const api = setup();
+    await openTicket();
+    await user.click(await screen.findByRole('button', { name: 'Wait for the customer' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Set Waiting on customer?' });
+    expect(api.callsTo('/v1/tickets/OPS-1/status', 'POST')).toHaveLength(0);
+    await user.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+    expect(api.callsTo('/v1/tickets/OPS-1/status', 'POST')).toHaveLength(0);
+    await user.click(screen.getByRole('button', { name: 'Wait for the customer' }));
+    await user.click(await screen.findByRole('button', { name: 'Set anyway' }));
+    await waitFor(() => {
+      expect(api.callsTo('/v1/tickets/OPS-1/status', 'POST')).toHaveLength(1);
+    });
+  });
+
+  it('moves immediately if a delivered public reply follows the last customer message', async () => {
+    const user = userEvent.setup();
+    const api = setup([
+      makeMessage(1, base),
+      makeMessage(2, base, { direction: 'outbound', deliveryStatus: 'delivered' }),
+    ]);
+    await openTicket();
+    await user.click(await screen.findByRole('button', { name: 'Wait for the customer' }));
+    await waitFor(() => {
+      expect(api.callsTo('/v1/tickets/OPS-1/status', 'POST')).toHaveLength(1);
+    });
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
+  it('keeps the ticket active if the latest conversation cannot be checked', async () => {
+    const user = userEvent.setup();
+    const api = setup(undefined, true);
+    await openTicket();
+    await user.click(await screen.findByRole('button', { name: 'Wait for the customer' }));
+    expect(
+      await screen.findByText('Something went wrong. Nothing was changed; try again.'),
+    ).toBeVisible();
+    expect(api.callsTo('/v1/tickets/OPS-1/status', 'POST')).toHaveLength(0);
+    expect(screen.queryByRole('dialog')).toBeNull();
   });
 });
