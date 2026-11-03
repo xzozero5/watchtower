@@ -382,6 +382,44 @@ describe('the "N new" pill', () => {
     expect(api.callsTo('/v1/tickets')).toHaveLength(2);
   });
 
+  it('opens the newest ticket the pill counted, wherever the sort puts it', async () => {
+    const user = userEvent.setup();
+    const tickets = [makeTicket(1, { subject: 'Cannot log in' })];
+    workspaceApi({
+      overrides: {
+        'GET /v1/tickets': () => ({ json: { items: tickets, nextCursor: null } }),
+        'GET /v1/tickets/:id': ({ params }) => {
+          const found = tickets.find((t) => t.id === params.id || t.key === params.id);
+          return found ? { json: found } : { status: 404, json: { code: 'not_found' } };
+        },
+      },
+    });
+    const { sockets } = await openQueue();
+    await screen.findByText('Cannot log in');
+    await waitFor(() => {
+      expect(sockets.sockets).toHaveLength(1);
+    });
+    await act(async () => {
+      sockets.last.ready();
+      await Promise.resolve();
+    });
+
+    const older = makeTicket(5, { subject: 'Arrived first' });
+    const newest = makeTicket(6, { subject: 'Arrived last' });
+    await emit(sockets, ticketCreatedEvent(older));
+    await emit(sockets, ticketCreatedEvent(newest));
+    // Sorted by urgency, the new ones land below the old ticket, not on top.
+    tickets.push(older, newest);
+    await user.click(await screen.findByRole('button', { name: '2 new — press .' }));
+
+    await waitFor(() => {
+      expect(screen.getByRole('option', { name: /OPS-6/ })).toHaveAttribute(
+        'aria-selected',
+        'true',
+      );
+    });
+  });
+
   it('counts only the tickets that belong to the filter on screen (queue, assignee)', async () => {
     const queueA = uuid(700);
     const queueB = uuid(701);

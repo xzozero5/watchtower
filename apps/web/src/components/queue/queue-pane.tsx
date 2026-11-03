@@ -50,7 +50,7 @@ import { useShortcut, stepIndex } from '@/lib/keyboard';
 import { usePreferences } from '@/lib/preferences';
 import { useNow } from '@/lib/use-now';
 import { useThrottledValue } from '@/lib/use-throttled-value';
-import { countNewMatching } from '@/lib/realtime/new-tickets';
+import { countNewMatching, matchesFilters } from '@/lib/realtime/new-tickets';
 import { useRealtime } from '@/lib/realtime/realtime-provider';
 import {
   activeFilterCount,
@@ -443,13 +443,46 @@ export function QueuePane({
   // Screen readers hear the count at most once per 30 s; the visible pill updates at once.
   const announcedCount = useThrottledValue(newCount, PILL_ANNOUNCE_INTERVAL_MS, isZero);
   const { clearNewTickets } = realtime;
+  const pillApi = useApi();
+  // The pill opens the newest ticket it counted. The list is sorted by the person's choice (most
+  // urgent first by default), so a new ticket is often not at the top; scrolling there showed nothing.
   const showNew = useCallback(() => {
+    const newest = realtime.newTickets
+      .filter((ticket) => matchesFilters(ticket, filters, userId))
+      .at(-1);
     clearNewTickets();
     void queryClient.invalidateQueries({ queryKey: ticketKeys(userId).lists }).then(() => {
-      const list = document.getElementById('queue-list');
-      if (list) list.scrollTop = 0;
+      if (!newest) {
+        const list = document.getElementById('queue-list');
+        if (list) list.scrollTop = 0;
+        return;
+      }
+      const loaded = rows.find((row) => row.id === newest.id);
+      if (loaded) {
+        onSelect(loaded.key);
+        onActivate?.();
+        return;
+      }
+      // Not in the page that is loaded (or not yet in the old list): ask for it by id.
+      void pillApi
+        .getTicket(newest.id)
+        .then((ticket) => {
+          onSelect(ticket.key);
+          onActivate?.();
+        })
+        .catch(() => undefined); // the list is refreshed; nothing opens
     });
-  }, [clearNewTickets, queryClient, userId]);
+  }, [
+    clearNewTickets,
+    queryClient,
+    userId,
+    realtime.newTickets,
+    filters,
+    rows,
+    onSelect,
+    onActivate,
+    pillApi,
+  ]);
 
   useShortcut('j', () => {
     move(1);
