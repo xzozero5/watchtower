@@ -41,7 +41,10 @@ export const queueFiltersSchema = z.object({
 });
 export type QueueFilters = z.infer<typeof queueFiltersSchema>;
 
-/** The queue a person lands in: everything still open, newest first. */
+/**
+ * The queue a person lands in: everything still open, most urgent first (breached, at risk, then
+ * priority and due time inside each section; owner, 2026-11-03). "Newest first" is one click away.
+ */
 export const DEFAULT_FILTERS: QueueFilters = {
   status: [...OPEN_STATUSES],
   priority: [],
@@ -49,7 +52,7 @@ export const DEFAULT_FILTERS: QueueFilters = {
   q: '',
   overdue: false,
   slaState: [],
-  sort: 'created_desc',
+  sort: 'sla_due_asc',
 };
 
 /**

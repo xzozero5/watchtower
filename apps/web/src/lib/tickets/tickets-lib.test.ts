@@ -23,10 +23,10 @@ import { allowedNextStatuses, draftStore, findPlaceholders, renderTemplate } fro
 const NOW = Date.parse('2026-11-02T03:00:00.000Z');
 
 describe('queue filters', () => {
-  it('maps the default view to "all open, newest first" and leaves empty parts out', () => {
+  it('maps the default view to "all open, most urgent first" and leaves empty parts out', () => {
     expect(filtersToParams(DEFAULT_FILTERS)).toEqual({
       status: ['new', 'triage', 'open', 'waiting_on_customer', 'waiting_on_dev'],
-      sort: 'created_desc',
+      sort: 'sla_due_asc',
       limit: 50,
     });
   });

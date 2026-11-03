@@ -155,7 +155,7 @@ describe('server views in the view switcher', () => {
         status: ['new', 'triage', 'open', 'waiting_on_customer', 'waiting_on_dev'],
         priority: ['P1'],
       },
-      sort: 'created_desc',
+      sort: 'sla_due_asc',
       shared: false,
     });
     // The saved view's filters (priority P1 only, as the mock stores them) are not the current ones,

@@ -132,11 +132,11 @@ describe('triage board', () => {
         .querySelector('[role="option"][aria-selected="true"]')
         ?.getAttribute('data-ticket-key');
 
-    // Inside "Needs you" the default "Sort by" (newest first, as the api sent them) is kept: OPS-1, then OPS-4.
-    await user.keyboard('j');
-    expect(selected()).toBe('OPS-1');
+    // The default "Sort by" is most urgent first: OPS-4 has a breached SLA, so it leads "Needs you".
     await user.keyboard('j');
     expect(selected()).toBe('OPS-4');
+    await user.keyboard('j');
+    expect(selected()).toBe('OPS-1');
     await user.keyboard('j');
     expect(selected()).toBe('OPS-2'); // first row of the next section
     // The keyboard follows into that section's listbox.
