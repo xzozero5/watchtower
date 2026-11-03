@@ -7,7 +7,7 @@
 ## อ่านก่อน (2 นาที)
 - **`main` ในเครื่องนำ `origin/main` อยู่ ~30 commit** (push ตอนจบ session นี้ถ้า gate ผ่าน — ดู §สถานะ) · tag `v0.1.0` ยังเป็นของเมื่อวาน
 - **ต่อของจริงแล้วบางส่วน (POC บน localhost):** Gmail จริง (OAuth + Pub/Sub push ผ่าน tunnel), AI จริงผ่าน `claude -p` ของเจ้าของ (provider `claude-cli`, ADR-017) · ยังเป็น mock: LINE, Discord, SMTP ออกจริง (ไป Mailpit), GCP logs/BigQuery
-- **UI rework "Soft Beacon" (`claude/ui-rework-bbf2dc`) เจ้าของสั่ง merge แล้ว ("Merge เลย")** — branch merge `main` `a8f20be` แล้ว + งานต่อ (การ์ดไฮไลต์ AI บน Home, T-151) · main thread เป็นคน merge เข้า `main` · คำตัดสินเจ้าของ: Soft Beacon ทั้งชุด, แผ่นลอยเฉพาะ Overview/Login, **draft card อยู่ตรงกลางตามเดิม** (แทนคำตอบข้อ 4 เดิม) → `docs/design/redesign-2026-11/README.md` · ภาพก่อน/หลัง `docs/screenshots/ui-rework/`
+- **UI rework "Soft Beacon" merge เข้า `main` แล้ว** (`daed9f2` รอบแรก, `bc96365` รอบสอง: การ์ด Drafts accepted, T-151) — คำตัดสินเจ้าของ: Soft Beacon ทั้งชุด, แผ่นลอยเฉพาะ Overview/Login, **draft card อยู่ตรงกลางตามเดิม** (แทนคำตอบข้อ 4) → `docs/design/redesign-2026-11/README.md` · ภาพก่อน/หลัง `docs/screenshots/ui-rework/` · checkout เดิมต้อง `pnpm install` (ฟอนต์ `@fontsource` ใหม่) · **ที่เหลือของ mockup Home ติดอยู่:** trend chip "เทียบช่วงก่อน" และกราฟปริมาณแยกตามช่องทาง ต้องมี counts/history API ก่อน (T-159; token สี `chart-email/line/portal` มีแล้ว) · top bar ของ Overview (ค้นหา, คนในกะ, New ticket) ไม่ทำ เพราะปุ่ม New ticket จะซ้ำกับใน rail ทำให้ชื่อปุ่มซ้ำ (e2e/screen reader)
 - คำตัดสิน 5 ข้อ (QA-30, QA-02/03, QA-08, QA-20, QA-23) **po ตัดสินแทนเจ้าของ** ตามที่เจ้าของมอบ → `docs/qa/2026-11-02-roleplay-triage.md` §คำตัดสิน
 
 ## สถานะ
@@ -29,15 +29,15 @@
 | บั๊กอื่น | `/v1/tickets/stats` 500, ค้นอีเมลผ่าน stats ไม่ลง audit, 404 โลโก้ทับ, worker integration รันข้าง dev stack ไม่ได้ (`TEST_*`), tab ใน panel ล้นทับปุ่ม (axe) |
 
 ## รอเจ้าของ (`[ASK-HUMAN]`)
-- [x] สั่ง merge UI rework — เจ้าของสั่งแล้ว 2026-11-03 ("Merge เลย") · ยังรอ main thread merge + push
-- [ ] full-stack `ac1-gmail.e2e.ts:283` "noise" ตกเมื่อรันทั้งชุด (auto-reply ไม่เข้า Other mail) ทั้งบน `main` `a8f20be` และ branch UI · รันไฟล์เดียวผ่าน 8/8 → น่าจะเป็นข้อมูลค้างระหว่าง test หรือ ingest auto-reply ต้องมีคนดู
+- [x] สั่ง merge UI rework — เจ้าของสั่ง 2026-11-03 ("Merge เลย") · merge แล้ว (`daed9f2`, `bc96365`)
+- [ ] **flaky** full-stack `ac1-gmail.e2e.ts:283` "noise": เมื่อรันทั้งชุด auto-reply บางครั้งไม่เข้า Other mail ภายใน 20 s (หน้าแสดงแต่ newsletter) · ตกบน `main` `a8f20be` (36/37) และบน branch UI · รันไฟล์ `ac1-gmail` เดียวผ่าน 8/8 สองรอบ และรอบ gate สุดท้ายของ UI ผ่าน 38/38 → `[UNVERIFIED]` น่าจะเป็นจังหวะ ingest ใต้โหลดหรือข้อมูลค้างระหว่าง test · ต้องมีคนดู ingest ของ auto-reply / เพิ่มเวลารอใน test
 - [ ] เปิด tunnel ใหม่เมื่อจะทดสอบ Gmail push (ดู §สถานะ) · ส่งเมลทดสอบจากบัญชีภายนอก (เมลที่ส่งถึงตัวเองถูกข้ามโดยตั้งใจ เพราะมี label `SENT`) — สองครั้งที่เจ้าของส่งเมื่อคืนไม่ถึงกล่องเลย ให้ตรวจที่อยู่ผู้รับ
 - [ ] ข้อความไทยใหม่ทั้งหมด (stop/deny list ของ redaction, copy portal/อีเมล) ยังไม่ผ่านเจ้าของภาษา
 - [ ] สแกนมัลแวร์ไฟล์แนบ (T-155) ต้องเพิ่ม dependency
 - [ ] T-115 pilot: เงื่อนไขของ ADR-008 ครบแล้ว (QA-30 + re-test) แต่ยังมี T-154/T-155 และ UI rework ที่ควรเสร็จก่อน
 
 ## ขั้นต่อไป (เรียงลำดับ)
-1. merge `claude/ui-rework-bbf2dc` เข้า `main` (gate ผ่านแล้ว ยกเว้น full-stack "noise" ที่ตกบน main เหมือนกัน) แล้วทำ T-156 (ลิงก์ดาวน์โหลดไฟล์แนบของ staff) บนดีไซน์ใหม่ · ที่เหลือจาก mockup รอ API: trend chip, กราฟแยกตามช่องทาง (T-159)
+1. T-156 (ลิงก์ดาวน์โหลดไฟล์แนบของ staff) บนดีไซน์ใหม่ · T-159 counts/history API เพื่อปิดส่วนที่เหลือของ Home
 2. T-154 (upload slot) และ T-155 (quota/retention) ก่อนเปิด portal สู่ internet
 3. BACKLOG หัวข้อ "จาก role-play QA 2026-11-02": T-141 หน้าเช้าของ lead, T-142 การ์ดงบ AI, T-143 keyboard, T-144 timeline, T-145, T-146, T-147, T-149, T-152, T-157, T-158
 4. role-play รอบสองหลัง UI rework (ใช้ brief เดิม `scratchpad` ไม่อยู่ใน repo — ดูรูปแบบใน `docs/qa/2026-11-02-roleplay-triage.md`)
