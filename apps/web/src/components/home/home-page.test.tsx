@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { apiError } from '@/test/mock-api';
 import { consoleApi } from '@/test/console-api';
 import { makeAutonomy, STATS } from '@/test/console-fixtures';
+import { dashboardOps } from '@/test/dashboard-fixtures';
 import { renderConsole } from '@/test/render-console';
 
 import { HomePage } from './home-page';
@@ -211,5 +212,23 @@ describe('Home', () => {
     renderConsole(<HomePage />, { locale: 'th' });
     expect(await screen.findByRole('link', { name: /^ใกล้หลุด SLA\s*7/ })).toBeVisible();
     expect(screen.getByRole('region', { name: 'งานที่เปิดอยู่ต่อคน' })).toBeVisible();
+  });
+
+  it('shows the share of accepted AI drafts on the highlight card, and no card without a figure', async () => {
+    consoleApi({
+      overrides: { 'GET /v1/dashboard/ops': () => ({ json: dashboardOps() }) },
+    });
+    renderConsole(<HomePage />);
+    const card = await screen.findByRole('region', { name: 'Drafts accepted' });
+    expect(card).toHaveClass('bg-highlight');
+    expect(card).toHaveTextContent('85%');
+    expect(card).toHaveTextContent('20 decided, 5 edited');
+  });
+
+  it('leaves the highlight card out when the dashboard figures cannot be read (N5)', async () => {
+    consoleApi({ overrides: { 'GET /v1/dashboard/ops': () => apiError(500, 'internal') } });
+    renderConsole(<HomePage />);
+    await screen.findByRole('link', { name: /^SLA at risk\s*7/ });
+    expect(screen.queryByRole('region', { name: 'Drafts accepted' })).toBeNull();
   });
 });

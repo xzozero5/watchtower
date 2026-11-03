@@ -81,7 +81,7 @@
 - [x] T-148 อีเมลตอบรับใหม่ (หมวด/ความเร่งด่วนที่ลูกค้าเลือก, 3 ขั้นตอน, เวลาตอบเมื่อรู้, ปุ่ม + URL; ไม่ echo subject ตาม ADR-007 C-11) + อีเมลยืนยันเมื่อลูกค้าตอบ — merge 2026-11-03
 - [ ] T-149 `architect` + `backend-dev` ADR-005 grace window ของ refresh rotation ก่อนแก้โค้ด (QA-31) · เพิ่มเข้า T-125: audit OAuth callback ไม่มี session, ปิด /docs ใน production, CSP (QA-32, QA-33)
 - [x] T-150 `POST /v1/admin/integrations/gmail/sync` (head, audit, 1 ครั้ง/นาที/กล่อง) + ปุ่ม "Sync now" ใน Integrations — merge 2026-11-03
-- [ ] T-151 `frontend-dev` ชิปสถานะกะเป็นข้อความ ("On shift 08–17") + toast มุมขวาบนตาม UI-SPEC §8.1 (QA-20 ส่วน app-shell)
+- [x] T-151 `frontend-dev` ชิปสถานะกะเป็นข้อความ ("On shift 08–17") + toast มุมขวาบนตาม UI-SPEC §8.1 (QA-20 ส่วน app-shell) · **ปิด 2026-11-03** บน `claude/ui-rework-bbf2dc` (ชิปแสดงช่วงเวลากะใต้ไอคอนใน rail แคบ, toast มุมขวาบน)
 - [ ] T-152 `backend-dev` + `frontend-dev` → `security-reviewer` "ส่งลิงก์คำขอของฉันทางอีเมล" (202 เหมือนกันทุกกรณี + Turnstile + rate limit, ไม่สร้างบัญชีอัตโนมัติ) + client ที่ sign in อ่าน ticket ใน org ตัวเองผ่าน session (QA-23)
 - [ ] T-153 `ai-engineer` ประเมิน NER แบบ local (ไม่มี network) สำหรับชื่อที่ไม่มี cue — dependency ใหม่ต้องถามคนก่อน (QA-30 residual)
 - [ ] T-154 `backend-dev` upload slot ถูกแย่งได้ด้วยคนส่งช้าไม่กี่ IP (security re-review T-140 P2-A): throughput ขั้นต่ำแทน deadline ตายตัว, proof ของ submit ทาง header ก่อนจอง slot, metric + alert `upload_busy` · `TRUST_PROXY_HOPS` หลัง Caddy · token reply ตรวจ 2 รอบ (P3-B)
@@ -89,6 +89,8 @@
 - [ ] T-156 `frontend-dev` ลิงก์ดาวน์โหลดไฟล์แนบบน timeline ของ staff (route `GET /v1/tickets/:id/messages/:messageId/attachments/:index` พร้อมแล้ว; ตอนนี้ staff เห็นแค่ชื่อไฟล์) — ทำหลัง merge UI rework
 - [ ] T-157 `ai-engineer` QA-30 ที่เหลือ: cue ระดับกลางตัวพิมพ์เล็ก (`hi somchai`, `I am somchai`, `dear somchai`), นามสกุลบรรทัดถัดไปหลัง sign-off, วัด recall/false positive ภาษาไทยกับเจ้าของภาษา (T-302)
 - [ ] T-158 `frontend-dev` นับจำนวนจริงให้ไอคอน Alerts/Incidents ใน rail (ตอนนี้เป็นสีกลางเสมอ เพราะยังไม่มี count ส่งเข้า) + ปุ่ม next-step "Wait for the customer" ใน AI card ยังไม่มี confirm แบบ QA-06
+- [x] T-160 UI rework "Soft Beacon" (visual layer, `docs/plans/ui-rework-brief.md`): tokens/ฟอนต์ self-host, rail + PageHeader, Home ตาม mockup (การ์ด Open tickets, Ticket volume, ไฮไลต์ Drafts accepted), การ์ดทุกหน้า, ticket workspace เป็นการ์ดลอย, Login/404/portal · **ปิด 2026-11-03** บน `claude/ui-rework-bbf2dc` รอ main thread merge
+- [ ] T-159 `backend-dev` + `frontend-dev` counts/history API สำหรับ Home: trend chip เทียบช่วงก่อน + ปริมาณต่อวันแยกตามช่องทาง (stacked bar สี `chart-email/line/portal` มี token แล้ว) — ส่วนที่เหลือของ mockup Soft Beacon (เจ้าของตอบข้อ 3: ทำ chart+trend)
 - [x] 5 เรื่องที่ต้องตัดสิน (QA-30, 02/03, 08, 20, 23): **po ตัดสินแทนเจ้าของ 2026-11-02** ตามที่เจ้าของมอบ — ดูไฟล์ triage §คำตัดสิน · QA-30 แก้ ADR-008 แล้ว
 
 > **`v0.1.0` (MVP) release 2026-11-02** ที่ `ae380db` · งานที่ยังเปิดด้านล่างไม่อยู่ใน release

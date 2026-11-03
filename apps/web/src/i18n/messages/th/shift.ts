@@ -33,6 +33,8 @@ export const shiftTh: Widen<typeof shiftEn> = {
     late: 'สาย {minutes} นาที',
     clockIn: 'เข้ากะ',
     notRostered: 'ไม่อยู่ในตารางเวร',
+    onShort: 'อยู่ในกะ',
+    endedShort: 'กะจบแล้ว',
   },
   status: {
     heading: 'กะปัจจุบัน',

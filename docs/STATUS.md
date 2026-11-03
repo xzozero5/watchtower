@@ -41,6 +41,12 @@ snapshot สั้นสำหรับ cold start อยู่ที่ `HANDOF
 
 ## Log
 
+## 2026-11-03 09:25 (Asia/Bangkok) — UI rework session — T-160 Soft Beacon + T-151 ปิด (branch `claude/ui-rework-bbf2dc`, รอ main thread merge)
+- **ทำอะไร:** visual layer ตาม `docs/plans/ui-rework-brief.md` และคำตัดสินเจ้าของใน `docs/design/redesign-2026-11/README.md` (Soft Beacon ทั้งชุด, แผ่นลอยเฉพาะ Overview/Login, draft card อยู่ตรงกลางตามเดิม) · tokens + ฟอนต์ self-host (`@fontsource`, ไม่มี CDN) · Card/HighlightCard/TrendChip/AppFrame · rail 68/248 + gradient tile, PageHeader 26/300 · Home ตาม mockup (Open tickets, Ticket volume 7 วัน, Drafts accepted) · การ์ดบน shift/ops/status/other-mail/dashboard/admin/portal/login/404 · ticket workspace เป็นการ์ดลอย · T-151 ชิปกะเป็นคำ + toast มุมขวาบนใต้หัวหน้าเพจ · QA-20 tile ค่า 0 สีกลาง
+- **Test (รันเองบน service ทิ้งได้ pg :45450 redis :46450 mailpit :48050 — ไม่แตะ stack POC):** lint 18/18, typecheck 17/17, unit 18/18 task (web 1144, ui 806) · web e2e 173/173 · full-stack 38/38 · axe ไม่ถูกลด · e2e ที่แก้โดยตั้งใจ: ความกว้าง rail, ช่องระหว่าง pane, แถวที่เลือกในคิว
+- **เจอระหว่างทาง:** toast มุมขวาบนบังปุ่มในหัวหน้าเพจ (shift AC-7 คลิก Lead view ไม่ได้) → offset ลงใต้หัวหน้าเพจ · full-stack "noise" (`ac1-gmail.e2e.ts:283`) ตกเมื่อรันทั้งชุดทั้งบน `main` `a8f20be` และ branch นี้ก่อนหน้า แต่รอบสุดท้ายผ่าน → `[UNVERIFIED]` flaky ใต้โหลด
+- **ค้าง:** T-159 counts/history API (trend chip + กราฟแยกตามช่องทาง) · top bar ของ Overview ไม่ทำ (ปุ่ม New ticket ซ้ำ rail) · ภาพก่อน/หลัง `docs/screenshots/ui-rework/`
+
 ## 2026-11-03 02:40 (Asia/Bangkok) — main thread — POC ต่อของจริง + role-play QA + แก้ตาม feedback (เจ้าของมอบ po ตัดสิน)
 - **ทำอะไร:** ต่อ Gmail จริง (OAuth + Pub/Sub push ผ่าน tunnel ที่มีตัวกรอง push-only) และ AI จริงผ่าน `claude -p` (ADR-017) · agent 5 บทบาทใช้ stack จริง → 34 รายการ (`docs/qa/2026-11-02-roleplay-triage.md`) · po ตัดสิน bucket C 5 ข้อแทนเจ้าของ · merge: bucket A ทั้งหมด (คิว, ticket pane, ค้นเลข/อีเมล, assignees, intents UI, portal next steps, 404, rail, dev notice, reasonCode), QA-30 name-cue + dictionary (ADR-008 แก้ไข), T-140 แนบไฟล์ portal (ADR-007), T-148 อีเมลตอบรับ, T-150 Sync Gmail now, T-138 ข้อความ SLA, บั๊ก: redaction ใน prompt, stats 500, audit gap ค้นอีเมล, 404 โลโก้, axe target-size
 - **Review (N7):** security-reviewer ทุกงานที่แตะ redaction/ค้นหา/upload — รอบแรกไม่ผ่าน 2 ครั้ง (P1 ชื่อเพื่อนร่วมงานจาก `similar_tickets` หลุดเข้า draft ลูกค้า; P1 memory DoS ของ upload สาธารณะ) แก้แล้ว review ซ้ำผ่าน

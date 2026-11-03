@@ -51,7 +51,12 @@ const t = (key: Parameters<typeof translate>[1], values?: Record<string, string 
 describe('shift chip (spec 9.1)', () => {
   it('off shift says how to clock in', () => {
     const label = chipLabel(offShiftStatus(), t, 'en');
-    expect(label).toEqual({ text: 'Off shift — Clock in', warning: false, state: 'off' });
+    expect(label).toEqual({
+      text: 'Off shift — Clock in',
+      short: 'Off shift',
+      warning: false,
+      state: 'off',
+    });
   });
 
   it('on shift shows the range in the shift zone and the time left', () => {

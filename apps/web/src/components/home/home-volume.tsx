@@ -1,9 +1,10 @@
 'use client';
 
-import { BarChart, type BarChartDatum } from '@watchtower/ui';
+import { BarChart, type BarChartDatum, HighlightCard } from '@watchtower/ui';
+import { Bot } from 'lucide-react';
 
 import { useI18n } from '@/i18n/provider';
-import { formatCount, formatDay } from '@/lib/dashboard/format';
+import { formatCount, formatDay, formatRate } from '@/lib/dashboard/format';
 import { useDashboardOps } from '@/lib/dashboard/queries';
 
 const VOLUME_DAYS = 7;
@@ -60,5 +61,42 @@ export function VolumeCard() {
         </p>
       )}
     </section>
+  );
+}
+
+/**
+ * The highlight card (Soft Beacon): one fact worth a glance, the share of AI drafts the team
+ * accepted over the last week, with how many were decided and edited. Navy with a seafoam glow,
+ * never gold, never a celebration. Missing figures hide the card instead of showing a zero (N5).
+ */
+export function AiDraftsHighlight() {
+  const { t, locale } = useI18n();
+  const query = useDashboardOps(VOLUME_DAYS, true);
+  const ai = query.data?.ai;
+  if (ai?.status !== 'ok' || ai.data.drafts.status !== 'ok') return null;
+  const drafts = ai.data.drafts.data;
+  return (
+    <HighlightCard as="section" aria-labelledby="home-ai-drafts" className="lg:p-7">
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <div className="min-w-0">
+          <h2 id="home-ai-drafts" className="flex items-center gap-2 text-title font-medium">
+            <Bot aria-hidden className="size-5" />
+            {t('dashboard.ai.acceptance')}
+          </h2>
+          <p className="text-sm text-muted-foreground">{t('home.aiDraftsWindow')}</p>
+        </div>
+        <div className="text-right">
+          <p className="tabular text-hero font-light">
+            {formatRate(drafts.acceptanceRate, locale)}
+          </p>
+          <p className="tabular text-sm text-muted-foreground">
+            {t('dashboard.ai.acceptanceDetail', {
+              decided: formatCount(drafts.decided, locale),
+              edited: formatCount(drafts.edited, locale),
+            })}
+          </p>
+        </div>
+      </div>
+    </HighlightCard>
   );
 }

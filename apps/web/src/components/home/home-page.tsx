@@ -38,7 +38,7 @@ import { useQueues } from '@/lib/tickets/queries';
 import { useNow } from '@/lib/use-now';
 
 import { AiStatus, BotMark, SystemHealth } from './home-status';
-import { VolumeCard } from './home-volume';
+import { AiDraftsHighlight, VolumeCard } from './home-volume';
 import {
   CountsUnavailable,
   type LoadRowData,
@@ -285,6 +285,8 @@ function HomeBody() {
             <SystemHealth query={ready} />
           </HomeSection>
         </div>
+
+        {showVolume ? <AiDraftsHighlight /> : null}
       </div>
     </main>
   );

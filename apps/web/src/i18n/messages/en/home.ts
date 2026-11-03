@@ -24,6 +24,7 @@ export const homeEn = {
   volume: 'Ticket volume',
   volumeCreated: '{count} created · last 7 days',
   volumeUnavailable: 'Volume is not available.',
+  aiDraftsWindow: 'Last 7 days',
   byStatus: 'By status',
   byQueue: 'By queue',
   noQueue: 'No queue',
