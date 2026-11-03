@@ -6,6 +6,19 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- Gmail-style email view (sandboxed HTML, collapsed threads, inline images) and an email composer (To/Cc/Bcc, rich text, signature, quote, preview, attachments) sending multipart HTML.
+- Image and file uploads for replies, notes, new tickets, shift notes, handoffs, incident notes and the portal (`/v1/uploads`).
+- `claude-cli` AI provider as a compose service (`claude-bridge`, profile `ai`) with online checks and offline retry (ADR-019); knowledge base Markdown folder and `pnpm kb:sync`.
+- `gmail-tunnel` container: Cloudflare quick tunnel plus automatic Pub/Sub push subscription (ADR-020).
+- One-year demo data: `pnpm db:seed:year` and `docker-compose.seed.yml`.
+
+### Changed
+- Every page uses the floating sheet of the Overview page; the rail highlights Daily brief and Shift handoff; the connection dot is green when connected.
+- The AI brief shows the stage of the ticket's current intent, so "Draft a reply" appears once an intent is set.
+- The reply box, the Cc/Bcc rows and investigation results can be closed.
+- CSP allows `blob:` images (inline email images and attachment thumbnails).
+
 Not merged yet: the AI assistant and AI-written summaries with evidence links (`wip/t-134`), the rest of
 the less-text UI pass (T-133).
 
