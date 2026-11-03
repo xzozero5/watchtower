@@ -241,7 +241,14 @@ test.describe('a session that expires', () => {
         },
         'GET /v1/tickets': guarded(() => ({ items: own[state.who], nextCursor: null })),
         'GET /v1/tickets/OPS-1': guarded(() => own[state.who][0]),
-        'GET /v1/tickets/OPS-2': guarded(() => own.A[1]),
+        // Like the real api: only Alex may read Alex's second ticket.
+        'GET /v1/tickets/OPS-2': () =>
+          state.expired || state.who !== 'A'
+            ? {
+                status: 404,
+                json: { statusCode: 404, error: 'E', code: 'not_found', message: 'x' },
+              }
+            : { json: own.A[1] },
         'GET /v1/tickets/OPS-1/timeline': guarded(() => ({ entries: [], nextCursor: null })),
         'GET /v1/tickets/OPS-2/timeline': guarded(() => ({ entries: [], nextCursor: null })),
       },
@@ -256,7 +263,7 @@ test.describe('a session that expires', () => {
     // The session ends; the next call fails and the refresh fails too.
     state.expired = true;
     await row(page, 'OPS-2').click();
-    await page.waitForURL('**/login');
+    await page.waitForURL(/\/login/);
     await expect(page.getByRole('heading', { name: 'Sign in', level: 1 })).toBeVisible();
 
     // Bea signs in on the same tab, without a page load in between.
@@ -318,24 +325,28 @@ test.describe('layout details', () => {
     await expect(page.getByRole('button', { name: 'Account menu' })).toBeVisible();
   });
 
-  test('1024 px and wider: Ctrl+B expands the rail to 248 px with words, and back', async ({
+  test('1024 px and wider: the rail starts at 248 px with words; Ctrl+B collapses it to 68 px, and back', async ({
     page,
   }) => {
     await page.setViewportSize({ width: 1280, height: 800 });
     await openWorkspace(page);
     const rail = page.getByRole('banner');
-    expect((await rail.boundingBox())?.width).toBe(68);
-    await page.keyboard.press('ControlOrMeta+B');
-    await expect.poll(async () => (await rail.boundingBox())?.width).toBe(248);
+    expect((await rail.boundingBox())?.width).toBe(248);
     await expect(rail.getByText('Queue', { exact: true })).toBeVisible();
     await page.keyboard.press('ControlOrMeta+B');
     await expect.poll(async () => (await rail.boundingBox())?.width).toBe(68);
+    await page.keyboard.press('ControlOrMeta+B');
+    await expect.poll(async () => (await rail.boundingBox())?.width).toBe(248);
   });
 
   test('tooltips on the rail icons carry the shortcut, and show on keyboard focus', async ({
     page,
   }) => {
     await page.setViewportSize({ width: 1280, height: 800 });
+    // Tooltips are for the icon rail; the expanded rail shows the words and the keys instead.
+    await page.addInitScript(() => {
+      localStorage.setItem('wt-rail-expanded', '0');
+    });
     await openWorkspace(page);
     await page.getByRole('button', { name: 'Open command palette' }).focus();
     const tip = page.getByRole('tooltip');

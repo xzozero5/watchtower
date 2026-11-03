@@ -72,15 +72,16 @@ export function ShiftChip({ expanded }: { expanded: boolean }) {
         {label.short}
       </span>
       {unread > 0 ? (
+        // The count is drawn from an attribute, not text: the name already spells it out in words, and
+        // a bare number in the visible text would not be part of that name (WCAG 2.5.3).
         <span
           aria-hidden
+          data-count={unread}
           className={cn(
-            'tabular ml-auto rounded-full bg-primary-subtle px-1.5 text-foreground',
+            'tabular ml-auto rounded-full bg-primary-subtle px-1.5 text-foreground after:content-[attr(data-count)]',
             !expanded && 'sr-only',
           )}
-        >
-          {unread}
-        </span>
+        />
       ) : null}
     </AppLink>
   );

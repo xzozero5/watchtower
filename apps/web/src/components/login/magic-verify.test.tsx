@@ -45,13 +45,13 @@ describe('readMagicToken', () => {
 });
 
 describe('MagicVerify', () => {
-  it('posts the token once, removes it from the address bar and goes to the queue', async () => {
+  it('posts the token once, removes it from the address bar and goes to the start page', async () => {
     const api = openLink(`#token=${TOKEN}`, {
       'POST /v1/auth/magic-link/verify': { json: makeSession('client') },
     });
 
     await waitFor(() => {
-      expect(replace).toHaveBeenCalledWith('/');
+      expect(replace).toHaveBeenCalledWith('/start');
     });
     expect(api.callsTo('/v1/auth/magic-link/verify', 'POST')).toHaveLength(1);
     expect(api.callsTo('/v1/auth/magic-link/verify', 'POST')[0]?.body).toEqual({ token: TOKEN });

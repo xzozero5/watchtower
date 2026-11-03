@@ -3,6 +3,7 @@ import type { Widen } from '../types';
 
 export const railTh: Widen<typeof railEn> = {
   label: 'เมนูหลัก',
+  goHome: 'ไปหน้าแรก',
   queue: 'คิวงาน',
   otherMail: 'อีเมลอื่น ๆ',
   home: 'หน้าหลัก',
@@ -16,9 +17,9 @@ export const railTh: Widen<typeof railEn> = {
   comingSoon: 'เร็ว ๆ นี้',
   expand: 'ขยายเมนู',
   collapse: 'ย่อเมนู',
-  paletteShort: 'แผงคำสั่ง',
+  paletteShort: 'เปิดแผงคำสั่ง',
   keymapShort: 'คีย์ลัด',
-  collapseShort: 'ย่อ',
+  collapseShort: 'ย่อเมนู',
   account: 'เมนูบัญชี',
   signedInAs: 'เข้าสู่ระบบในชื่อ {name}',
 };

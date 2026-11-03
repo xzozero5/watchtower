@@ -6,6 +6,8 @@ import { useCallback, useSyncExternalStore } from 'react';
 export const SIDE_BY_SIDE_QUERY = '(min-width: 48rem)';
 /** From 64rem (1024 px) the details panel is a third column. */
 export const THREE_PANES_QUERY = '(min-width: 64rem)';
+/** From 1024 px there is room for the rail to show words; 768-1023 px keeps it to icons. */
+export const RAIL_ROOM_QUERY = THREE_PANES_QUERY;
 
 /**
  * Whether a media query matches, live. Without `matchMedia` (tests) it answers `fallback`, which

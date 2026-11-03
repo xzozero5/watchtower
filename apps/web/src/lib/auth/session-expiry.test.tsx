@@ -158,7 +158,7 @@ describe('a session that expires', () => {
       await expect(handles().api.getTicket('OPS-2')).rejects.toThrow();
     });
     await waitFor(() => {
-      expect(replace).toHaveBeenCalledWith('/login');
+      expect(replace).toHaveBeenCalledWith(expect.stringMatching(/^\/login/));
     });
 
     // Exactly what sign out does: the unsent drafts and every cached query of A are gone.
