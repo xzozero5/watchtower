@@ -8,6 +8,9 @@
 - กติกาทั้งหมดอยู่ใน `AGENTS.md` (ใช้กับทุก AI) · hook ใน `.claude/` บังคับได้เฉพาะ Claude Code → **คุณต้องถือ Non-negotiables N1–N10 เอง** โดยเฉพาะ N1 (ห้ามพิมพ์/commit secret, repo ต้องไม่มีชื่อองค์กร/อีเมลส่วนตัว), N4 (redact ก่อนส่ง LLM), N7 (คนตรวจคนละตัวกับคนทำ)
 - บทบาทใน `.claude/agents/*.md` และขั้นตอนใน `.claude/commands/*.md` เป็น markdown ธรรมดา ใช้เป็น prompt ของ sub-task ได้
 - **AI ในระบบใช้ `claude -p` ต่อไป (เจ้าของสั่ง 2026-11-03)** ไม่ต้องย้ายไปใช้ API key หรือ provider อื่น — bridge รันบน host แยกจากเครื่องมือเขียนโค้ด: ดู `docs/runbooks/local-poc.md` §3 (ADR-017)
+- **⚠️ bridge `claude -p` และตัวกรอง push-only ไม่ได้รันค้างไว้ให้** — process ที่ Claude Code เปิดไว้หยุดเมื่อ session นั้นปิด ก่อนใช้หรือทดสอบ AI ในระบบ **ต้องเปิด bridge ใหม่ใน terminal แยกแล้วปล่อยค้างไว้**:
+  `node --env-file=D:\Works\secret\watchtower.env tools/claude-cli-bridge/server.mjs` (ฟัง `127.0.0.1:4317`)
+  ตรวจว่าเปิดอยู่: `curl -s -o /dev/null -w "%{http_code}" -X POST http://127.0.0.1:4317/v1/generate` ต้องได้ `401` (ไม่มี token = bridge ตอบอยู่) ถ้าเชื่อมต่อไม่ได้ = ยังไม่เปิด · bridge ไม่เปิด → AI ทุกครั้งล้มแบบบันทึกไว้ (`provider_unavailable` ใน `ai_run`, การ์ด AI บอกเหตุผล) ไม่สลับไป mock เอง · ตัวกรอง push-only (`pnpm push-filter`) เปิดเฉพาะตอนจะใช้ tunnel ของ Gmail
 - วิธีเปิดระบบทั้งหมดบนเครื่องนี้ (stack, bridge, tunnel, ผู้ใช้, การรัน test บน DB ทิ้งได้): **`docs/runbooks/local-poc.md`**
 
 ## สถานะ
