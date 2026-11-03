@@ -232,7 +232,9 @@ export function SubmitForm() {
   return (
     <>
       <div>
-        <h1 className="text-2xl font-semibold">{t('portal.form.title')}</h1>
+        <h1 className="text-[1.7333rem] leading-tight font-light text-foreground-strong">
+          {t('portal.form.title')}
+        </h1>
       </div>
 
       <form noValidate onSubmit={(event) => void onSubmit(event)} className="flex flex-col gap-5">

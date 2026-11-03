@@ -1,4 +1,11 @@
-import { type ColorTokens, COLOR_TOKENS, THEME_NAMES, TINT_IDS, type ThemeName } from './colors.js';
+import {
+  CHART_CHANNELS,
+  type ColorTokens,
+  COLOR_TOKENS,
+  THEME_NAMES,
+  TINT_IDS,
+  type ThemeName,
+} from './colors.js';
 import { SEVERITY_IDS } from './severity.js';
 
 /** WCAG 2.x AA thresholds (PRD section 10). */
@@ -49,7 +56,14 @@ export const CHART_ORDINAL_RATIO = 2;
 
 const CHART_SURFACES = ['background', 'surface'] as const;
 
-const SURFACES = ['background', 'surface', 'surfaceMuted', 'primarySubtle', 'aiSubtle'] as const;
+const SURFACES = [
+  'background',
+  'surface',
+  'frame',
+  'surfaceMuted',
+  'primarySubtle',
+  'aiSubtle',
+] as const;
 
 /**
  * Every colour pair the UI is allowed to draw, with the AA ratio it must reach. Add a pair here
@@ -78,6 +92,7 @@ export function contrastRequirements(
   for (const surface of SURFACES) {
     requirements.push(
       text(`foreground on ${surface}`, tokens.foreground, tokens[surface]),
+      text(`foregroundStrong on ${surface}`, tokens.foregroundStrong, tokens[surface]),
       text(`mutedForeground on ${surface}`, tokens.mutedForeground, tokens[surface]),
       text(`link on ${surface}`, tokens.link, tokens[surface]),
       ui(`primary fill on ${surface}`, tokens.primary, tokens[surface]),
@@ -89,6 +104,19 @@ export function contrastRequirements(
     );
   }
   requirements.push(text('primaryForeground on primary', tokens.primaryForeground, tokens.primary));
+
+  // Gradient grounds: the text must pass on every stop, so it passes everywhere between them.
+  for (const stop of ['navActiveFrom', 'navActiveVia', 'navActiveTo'] as const) {
+    requirements.push(
+      text(`navActiveForeground on ${stop}`, tokens.navActiveForeground, tokens[stop]),
+    );
+  }
+  for (const stop of ['highlightFrom', 'highlightTo'] as const) {
+    requirements.push(
+      text(`highlightForeground on ${stop}`, tokens.highlightForeground, tokens[stop]),
+      text(`highlightMuted on ${stop}`, tokens.highlightMuted, tokens[stop]),
+    );
+  }
 
   // The brand moment ground (login, portal header) carries its own text and controls.
   requirements.push(
@@ -140,6 +168,11 @@ export function contrastRequirements(
   // bucket is labelled and has a table view.
   for (const surface of CHART_SURFACES) {
     requirements.push(ui(`chart series on ${surface}`, tokens.chart.series, tokens[surface]));
+    for (const channel of CHART_CHANNELS) {
+      requirements.push(
+        ui(`chart ${channel} on ${surface}`, tokens.chart.channel[channel], tokens[surface]),
+      );
+    }
     tokens.chart.ordinal.forEach((value, index) => {
       requirements.push({
         name: `${theme}: chart ordinal ${String(index + 1)} on ${surface}`,

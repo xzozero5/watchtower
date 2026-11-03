@@ -65,7 +65,7 @@ function RailButton({
   href?: string;
   icon: LucideIcon;
   label: string;
-  /** What the expanded rail shows when the full name is too long for 220px; the name stays full. */
+  /** What the expanded rail shows when the full name is too long for 248px; the name stays full. */
   shortLabel?: string;
   expanded: boolean;
   shortcut?: readonly string[];
@@ -81,8 +81,9 @@ function RailButton({
   const classes = cn(
     RAIL_ITEM_CLASSES,
     'max-md:w-control max-md:justify-center max-md:px-0',
+    // Soft Beacon: the current page is the navy to teal gradient tile with ivory text and icon.
     current
-      ? 'bg-primary-subtle font-medium text-foreground'
+      ? 'bg-nav-active font-medium shadow-card'
       : 'text-muted-foreground hover:bg-surface-muted hover:text-foreground',
     unavailable && 'opacity-60 hover:bg-transparent hover:text-muted-foreground',
     className,
@@ -93,7 +94,8 @@ function RailButton({
         aria-hidden
         className={cn(
           'size-4 shrink-0',
-          tone && railLit(current, count) && TINT_CLASSES[tone].icon,
+          // On the gradient tile the icon keeps the tile's ivory; elsewhere it lights with a count.
+          tone && !current && railLit(current, count) && TINT_CLASSES[tone].icon,
         )}
       />
       <span
@@ -169,8 +171,8 @@ export interface NavRailProps {
 }
 
 /**
- * The navigation rail (docs/design/ui-refresh-2026-11.md section 3.1): 56px of icons with tooltips,
- * 220px with words after Ctrl/Cmd+B. It replaces the top bar: the brand, the destinations, the
+ * The navigation rail (docs/design/ui-refresh-2026-11.md section 3.1): 68px of icons with tooltips,
+ * 248px with words after Ctrl/Cmd+B. It replaces the top bar: the brand, the destinations, the
  * command palette and the keyboard map at the top and middle; live and API status, the expand
  * switch and the account menu at the foot. Below 768px it is a 48px bar across the top with the
  * palette, the status icons and the account menu.
@@ -204,12 +206,12 @@ export function NavRail({
   return (
     <header
       className={cn(
-        'flex h-[48px] shrink-0 items-center gap-1 border-b border-border/60 bg-background px-3',
-        'md:h-auto md:flex-col md:items-stretch md:gap-0.5 md:border-r md:border-b-0 md:px-2 md:py-3',
-        expanded ? 'md:w-[220px]' : 'md:w-[56px]',
+        'flex h-[48px] shrink-0 items-center gap-1 border-b border-border/60 bg-frame px-3',
+        'md:h-auto md:flex-col md:items-stretch md:gap-1 md:border-r md:border-b-0 md:px-3 md:py-4',
+        expanded ? 'md:w-[248px]' : 'md:w-[68px]',
       )}
     >
-      <div className="flex items-center gap-2.5 md:mb-3 md:px-1.5">
+      <div className="flex items-center gap-2.5 md:mb-4 md:px-1.5">
         {/* The name sits next to it as text, so the icon adds nothing for a screen reader. */}
         <Image
           src="/brand/watchtower-icon.png"
@@ -224,7 +226,7 @@ export function NavRail({
         </p>
       </div>
 
-      <nav aria-label={t('rail.label')} className="hidden flex-col gap-0.5 md:flex">
+      <nav aria-label={t('rail.label')} className="hidden flex-col gap-1 md:flex">
         <RailButton
           icon={Inbox}
           tone="teal"

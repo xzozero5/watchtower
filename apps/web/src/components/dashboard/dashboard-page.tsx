@@ -35,10 +35,10 @@ function DashboardSkeleton() {
       <span className="sr-only">{t('dashboard.loading')}</span>
       <div className="grid grid-cols-[repeat(auto-fill,minmax(10rem,1fr))] gap-2">
         {Array.from({ length: 8 }, (_, index) => (
-          <Skeleton key={index} className="h-[5.5rem] rounded-lg" />
+          <Skeleton key={index} className="h-[5.5rem] rounded-card" />
         ))}
       </div>
-      <Skeleton className="h-40 rounded-lg" />
+      <Skeleton className="h-40 rounded-card" />
     </div>
   );
 }
@@ -95,7 +95,7 @@ function DashboardBody() {
         aria-busy={query.isPending || undefined}
         className="min-h-0 flex-1 overflow-y-auto"
       >
-        <div className="mx-auto flex w-full max-w-6xl flex-col gap-4 px-4 py-4">
+        <div className="mx-auto flex w-full max-w-6xl flex-col gap-4 p-4 lg:p-6">
           <div className="flex flex-wrap items-center gap-2">
             <SegmentedControl<'7' | '30' | '90'>
               aria-label={t('dashboard.window.label')}

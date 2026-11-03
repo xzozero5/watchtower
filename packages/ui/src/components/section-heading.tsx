@@ -12,6 +12,11 @@ export interface SectionHeadingProps extends Omit<HTMLAttributes<HTMLSpanElement
   children: ReactNode;
   /** A count in a soft pill after the name. */
   count?: number;
+  /**
+   * No dot and a neutral icon: for headings where colour would carry no state (Soft Beacon cards,
+   * QA-20: colour means state only). `tone` is then ignored.
+   */
+  plain?: boolean;
 }
 
 /**
@@ -24,14 +29,25 @@ export function SectionHeading({
   icon: Icon,
   children,
   count,
+  plain = false,
   className,
   ...props
 }: SectionHeadingProps) {
   const classes = TINT_CLASSES[tone];
   return (
     <span className={cn('inline-flex min-w-0 items-center gap-1.5', className)} {...props}>
-      <span aria-hidden className={cn('size-2 shrink-0 rounded-full', classes.dot)} />
-      <Icon aria-hidden className={cn('size-3.5 shrink-0', classes.icon)} strokeWidth={2} />
+      {plain ? null : (
+        <span aria-hidden className={cn('size-2 shrink-0 rounded-full', classes.dot)} />
+      )}
+      <Icon
+        aria-hidden
+        className={cn(
+          'shrink-0',
+          plain ? 'size-4 text-muted-foreground' : 'size-3.5',
+          !plain && classes.icon,
+        )}
+        strokeWidth={plain ? 1.75 : 2}
+      />
       <span className="truncate">{children}</span>
       {count === undefined ? null : (
         <span className="tabular rounded-full bg-surface-muted px-1.5 text-foreground">

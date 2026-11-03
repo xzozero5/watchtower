@@ -38,7 +38,7 @@ export function ShiftFrame({ children }: { children: ReactNode }) {
                       className={cn(
                         'inline-flex h-control items-center rounded-full px-3 text-sm focus-visible:outline-2 focus-visible:outline-offset-0 focus-visible:outline-ring',
                         current
-                          ? 'bg-primary-subtle font-medium text-foreground'
+                          ? 'bg-nav-active font-medium shadow-card'
                           : 'text-muted-foreground hover:bg-surface-muted hover:text-foreground',
                       )}
                     >
@@ -52,7 +52,7 @@ export function ShiftFrame({ children }: { children: ReactNode }) {
         }
       />
       <main id="main-content" className="min-h-0 flex-1 overflow-y-auto">
-        <div className="mx-auto flex w-full max-w-4xl flex-col gap-6 p-4">{children}</div>
+        <div className="mx-auto flex w-full max-w-4xl flex-col gap-6 p-4 lg:p-6">{children}</div>
       </main>
     </div>
   );

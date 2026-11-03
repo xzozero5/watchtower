@@ -15,10 +15,14 @@ const BRAND = {
 };
 
 describe('brand palette in the tokens', () => {
-  it('keeps the app canvas neutral and the ivory for brand moments only', () => {
-    const [r, g, b] = [1, 3, 5].map((i) => COLOR_TOKENS.light.background.slice(i, i + 2));
-    expect(r).toBe(g);
-    expect(g).toBe(b);
+  it('keeps the app canvas a near-neutral cool grey and the ivory for brand moments only', () => {
+    // Soft Beacon: a faint cool cast (blue a few steps above red), never a hue of its own.
+    const [r, g, b] = [1, 3, 5].map((i) =>
+      parseInt(COLOR_TOKENS.light.background.slice(i, i + 2), 16),
+    );
+    expect(Math.max(r ?? 0, g ?? 0, b ?? 0) - Math.min(r ?? 0, g ?? 0, b ?? 0)).toBeLessThanOrEqual(
+      6,
+    );
     expect(COLOR_TOKENS.light.background).not.toBe(BRAND.ivory);
     expect(COLOR_TOKENS.light.brandSurface).toBe(BRAND.ivory);
   });

@@ -1,7 +1,15 @@
 'use client';
 
+import { AppFrame, cn } from '@watchtower/ui';
 import { useRouter } from 'next/navigation';
-import { type ReactNode, useCallback, useMemo, useState, useSyncExternalStore } from 'react';
+import {
+  type HTMLAttributes,
+  type ReactNode,
+  useCallback,
+  useMemo,
+  useState,
+  useSyncExternalStore,
+} from 'react';
 
 import {
   SwitchConfirmDialog,
@@ -188,8 +196,11 @@ export function ConsoleShell({ destination, skipTo, children }: ConsoleShellProp
     [t, router, signOut, can, killOn, capOn, goHome, goAdmin, goTo, destination],
   );
 
+  // Owner, 2026-11-02: the floating sheet on a gradient backdrop is for Overview only; every other
+  // page is full screen.
+  const Frame = destination === 'home' ? AppFrame : FullScreen;
   return (
-    <div data-hydrated={hydrated} className="flex h-dvh flex-col md:flex-row">
+    <Frame data-hydrated={hydrated} className="md:flex-row">
       <a
         href={skipTo.href}
         className="sr-only focus:not-sr-only focus:absolute focus:z-50 focus:m-2 focus:rounded-md focus:bg-primary focus:px-3 focus:py-2 focus:text-primary-foreground"
@@ -206,7 +217,7 @@ export function ConsoleShell({ destination, skipTo, children }: ConsoleShellProp
         }}
         isMac={isMac}
       />
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-background">
         <CriticalBanner />
         <AiPausedBanner />
         {children}
@@ -225,6 +236,11 @@ export function ConsoleShell({ destination, skipTo, children }: ConsoleShellProp
           setSwitchTarget(null);
         }}
       />
-    </div>
+    </Frame>
   );
+}
+
+/** Every page but Overview: the shell fills the window, the rail on the frame ground. */
+function FullScreen({ className, ...props }: HTMLAttributes<HTMLDivElement>) {
+  return <div className={cn('flex h-dvh flex-col bg-frame', className)} {...props} />;
 }

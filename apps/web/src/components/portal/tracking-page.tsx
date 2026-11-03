@@ -78,7 +78,7 @@ function TicketView({
   return (
     <>
       <div className="flex flex-col gap-2">
-        <h1 className="text-2xl font-semibold">
+        <h1 className="text-[1.7333rem] leading-tight font-light text-foreground-strong">
           <span className="font-mono tabular-nums">{view.key}</span>
         </h1>
         <p className="text-lg">{view.subject}</p>

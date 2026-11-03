@@ -59,7 +59,7 @@ export function StatTile({
     <div
       data-state={state}
       className={cn(
-        'flex min-w-0 flex-col gap-1 rounded-lg border border-border/60 bg-surface px-3 py-2',
+        'flex min-w-0 flex-col gap-1 rounded-card bg-surface px-4 py-3 shadow-card',
         className,
       )}
     >
@@ -70,12 +70,12 @@ export function StatTile({
         <p className="min-w-0 flex-1 text-xs text-muted-foreground">{label}</p>
         {info && infoLabel ? <HelpHint label={infoLabel}>{info}</HelpHint> : null}
       </div>
-      <div className="flex min-h-8 items-center">
+      <div className="flex min-h-10 items-center">
         {state === 'ok' ? (
           <p
             className={cn(
-              'text-xl leading-tight font-semibold',
-              alert ? 'text-danger' : 'text-foreground',
+              'text-[1.8667rem] leading-tight font-light',
+              alert ? 'text-danger' : 'text-foreground-strong',
             )}
           >
             {value}

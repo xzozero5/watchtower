@@ -12,7 +12,8 @@ import { useI18n } from '@/i18n/provider';
  * The public portal's page frame (UI spec section 10): brand, the language flags and the theme switch,
  * one centred
  * column, nothing else. No app navigation, no sign-in gate. The header is the portal's brand
- * moment (docs/design/ui-refresh-2026-11.md rule 3).
+ * moment (docs/design/ui-refresh-2026-11.md rule 3). Soft Beacon: the header on the white frame,
+ * the page one white card on the Canvas from 768 px (full width on a phone).
  */
 export function PortalFrame({
   children,
@@ -30,8 +31,8 @@ export function PortalFrame({
 }) {
   const { t } = useI18n();
   return (
-    <div className="flex min-h-dvh flex-col">
-      <header className="border-b border-border/60 bg-background">
+    <div className="flex min-h-dvh flex-col bg-background">
+      <header className="border-b border-border/60 bg-frame">
         <div
           className={`mx-auto flex w-full ${width} items-center justify-between gap-3 px-pane py-3`}
         >
@@ -51,7 +52,7 @@ export function PortalFrame({
       </header>
       <main
         aria-label={t(mainKey)}
-        className={`mx-auto flex w-full ${width} flex-1 flex-col gap-stack px-pane py-6`}
+        className={`mx-auto flex w-full ${width} flex-1 flex-col gap-stack bg-surface px-pane py-6 md:my-6 md:flex-none md:rounded-card md:px-8 md:py-7 md:shadow-card`}
       >
         {children}
       </main>

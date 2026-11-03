@@ -55,7 +55,7 @@ export function CommsPanel({ incidentId }: { incidentId: string }) {
           {comms.data.items.map((comm) => (
             <li
               key={comm.id}
-              className="flex flex-col gap-2 rounded-lg border border-border px-3 py-2 text-sm"
+              className="flex flex-col gap-2 rounded-inner bg-surface px-3.5 py-2.5 shadow-card text-sm"
             >
               <div className="flex flex-wrap items-center gap-2">
                 {comm.origin === 'ai' ? (

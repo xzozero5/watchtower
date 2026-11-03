@@ -22,7 +22,8 @@
 | Density + font scale | `tokens/density.ts` `DENSITY_TOKENS` | `--wt-row-height`, `--wt-control-height`, `--wt-pane-padding`, `--wt-stack-gap`, `--wt-font-scale` → `h-row`, `h-control`, `p-pane`, `gap-stack` | `comfortable` 15 px base / `compact` 14 px base `[ASSUMED]` (PRD §10). Switched by `data-density` on `<html>`. |
 | Motion | `density.ts` `MOTION_TOKENS` | `--wt-motion-duration-fast/base` | Zeroed under `prefers-reduced-motion` in generated CSS. |
 | Theme switching | `packages/ui/src/theme/preferences.ts`, `apps/web/src/lib/preferences.ts` | `data-theme` on `<html>` (override) else OS | System / light / dark. Init script prevents flash. |
-| Fonts | `tokens/css.ts` `SANS_STACK`, `MONO_STACK` | `font-sans`, `font-mono` | Inter + Noto Sans Thai. Thai needs line-height ≥ 1.5 for body text so tone marks don't clip. |
+| Fonts | `tokens/css.ts` `SANS_STACK`, `MONO_STACK` | `font-sans`, `font-mono` | Plus Jakarta Sans Variable + IBM Plex Sans Thai (+ IBM Plex Mono), self-hosted with `@fontsource` (owner 2026-11-02: no font CDN at runtime). Thai line-height 1.6 on `html:lang(th)`, never below 1.5. |
+| Soft Beacon surfaces (2026-11-03) | `colors.ts` `frame`, `foregroundStrong`, `navActive*`, `highlight*`, `backdrop*`, `chart.channel`; `RADIUS_TOKENS`; `SHADOW_TOKENS` | `bg-frame`, `text-foreground-strong`, `bg-nav-active`, `bg-highlight`, `bg-backdrop`, `bg-chart-email/line/portal`, `rounded-control/inner/card/app` (12/14/20/28), `shadow-card/lift/app`, `text-title/display/hero` (18/34/52) | Canvas `background` is the cool grey work area; cards are white with `shadow-card` and no border. Gradient grounds are `@utility` classes in `tailwind-theme.css`; text on every gradient stop is in `contrast.test.ts`. Highlight glow is seafoam, never gold (no warning look). Source: `docs/design/redesign-2026-11/README.md`. |
 
 **Brand rules** (`docs/brand/README.md`, `[CONFIRMED]`): Coral `#E5594A` is logo-only, never a UI token. Primary buttons are navy (light) / inverted canvas (dark) via `primary`. Red in the UI means **P1 / SEV1 or an error**, nothing else.
 
@@ -62,6 +63,8 @@ Rule for `danger` (`#b91c1c` / `#fca5a5`): text and outline only (form errors, f
 ---
 
 ## 3. App shell and three-pane layout
+
+> **Current shell (Soft Beacon, 2026-11-03, `[TESTED]` by e2e `smoke`/`keyboard`):** no global top bar. A rail on the `frame` ground: 68 px icons, 248 px with words (Ctrl/Cmd+B), a 48 px bar across the top below 768 px. The current page is the `bg-nav-active` gradient tile with ivory icon; other icons are neutral and light only with a count above zero. Overview (`/home`) and Login sit in a floating sheet (`AppFrame`, radius 28, `shadow-app`) on the `bg-backdrop` gradient from 768 px, full screen on a phone and in compact density; every other page is full screen. In the ticket workspace each pane is a white card (radius 20, `shadow-card`) on the Canvas with a 1 rem gutter from 768 px; on a phone a pane fills the screen. Page headers: Overview 34/300 with a one-line subtitle; other pages 26/300, no hairline. The wireframe below is the original Phase 1 plan and is kept for the behaviour it describes.
 
 ### 3.1 Wireframe (≥ 1024 px, comfortable)
 ```

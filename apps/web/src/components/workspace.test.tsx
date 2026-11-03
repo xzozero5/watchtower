@@ -655,23 +655,23 @@ describe('under 768 px: one pane at a time', () => {
 });
 
 describe('navigation rail', () => {
-  it('is 56 px of icons and expands to 220 px with Ctrl+B, announcing the state', async () => {
+  it('is 68 px of icons and expands to 248 px with Ctrl+B, announcing the state', async () => {
     const user = userEvent.setup();
     workspaceApi();
     await openWorkspace();
     const rail = screen.getByRole('banner');
-    expect(rail.className).toContain('md:w-[56px]');
+    expect(rail.className).toContain('md:w-[68px]');
     const toggle = screen.getByRole('button', { name: 'Expand the navigation' });
     expect(toggle).toHaveAttribute('aria-expanded', 'false');
 
     fireEvent.keyDown(document.body, { key: 'b', code: 'KeyB', ctrlKey: true });
-    expect(rail.className).toContain('md:w-[220px]');
+    expect(rail.className).toContain('md:w-[248px]');
     expect(screen.getByRole('button', { name: 'Collapse the navigation' })).toHaveAttribute(
       'aria-expanded',
       'true',
     );
     await user.click(screen.getByRole('button', { name: 'Collapse the navigation' }));
-    expect(rail.className).toContain('md:w-[56px]');
+    expect(rail.className).toContain('md:w-[68px]');
   });
 
   it('gives every icon a tooltip with its shortcut, on keyboard focus too', async () => {

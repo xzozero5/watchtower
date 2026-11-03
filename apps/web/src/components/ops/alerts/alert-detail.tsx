@@ -298,7 +298,7 @@ export function AlertDetail({
             {escalations.data.items.map((step) => (
               <li
                 key={`${String(step.level)}-${step.createdAt}`}
-                className="rounded-lg border border-border px-3 py-2 text-sm"
+                className="rounded-inner bg-surface px-3.5 py-2.5 shadow-card text-sm"
               >
                 <p className="font-medium">
                   {t('ops.alerts.detail.step', {

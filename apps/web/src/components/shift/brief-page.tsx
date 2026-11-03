@@ -265,7 +265,10 @@ function ItemSection({
       ) : (
         <ul className="flex flex-col gap-2">
           {items.map((item) => (
-            <li key={item.id} className="rounded-lg border border-border px-3 py-2 text-sm">
+            <li
+              key={item.id}
+              className="rounded-inner bg-surface px-3.5 py-2.5 shadow-card text-sm"
+            >
               <p className="font-medium">
                 {item.severity ? <span className="mr-2 text-xs">{item.severity}</span> : null}
                 {item.title}
@@ -328,7 +331,7 @@ function TicketList({ tickets }: { tickets: readonly BriefTicket[] }) {
       {tickets.map((ticket) => (
         <li
           key={ticket.id}
-          className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-border px-3 py-2 text-sm"
+          className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-inner bg-surface px-3.5 py-2.5 shadow-card text-sm"
         >
           <TicketLink ticketKey={ticket.key} />
           <PriorityBadge priority={ticket.priority} />
@@ -364,7 +367,7 @@ function NoteRow({ note }: { note: ShiftNote }): ReactNode {
     },
   });
   return (
-    <li className="flex flex-wrap items-start justify-between gap-2 rounded-lg border border-border px-3 py-2 text-sm">
+    <li className="flex flex-wrap items-start justify-between gap-2 rounded-inner bg-surface px-3.5 py-2.5 shadow-card text-sm">
       <div className="min-w-0">
         <p className="text-xs text-muted-foreground">
           {t('shift.notes.from', { name: note.author.name })} · {format.dateTime(note.createdAt)}

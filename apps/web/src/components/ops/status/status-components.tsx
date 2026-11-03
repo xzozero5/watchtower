@@ -63,7 +63,7 @@ export function StatusComponentsSection() {
           {list.data.items.map((component) => (
             <li
               key={component.id}
-              className="flex flex-wrap items-start justify-between gap-2 rounded-lg border border-border px-3 py-2 text-sm"
+              className="flex flex-wrap items-start justify-between gap-2 rounded-inner bg-surface px-3.5 py-2.5 shadow-card text-sm"
             >
               <div className="flex min-w-0 flex-col gap-1">
                 <p className="flex flex-wrap items-center gap-2">

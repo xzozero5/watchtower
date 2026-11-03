@@ -283,7 +283,7 @@ function HandoffEditor({ handoff, current }: { handoff: Handoff; current: Curren
       </div>
 
       {confirmed ? (
-        <div className="flex flex-wrap items-center gap-3 rounded-xl border border-border bg-surface p-3 text-sm">
+        <div className="flex flex-wrap items-center gap-3 rounded-card bg-surface shadow-card p-3 text-sm">
           <span>
             {t('shift.handoff.confirmedLine', {
               time: handoff.confirmedAt ? format.dateTime(handoff.confirmedAt) : '',
@@ -307,7 +307,7 @@ function HandoffEditor({ handoff, current }: { handoff: Handoff; current: Curren
         className="outline-hidden focus-visible:outline-2 focus-visible:outline-ring"
       >
         {attempted && problemCount > 0 ? (
-          <div className="flex flex-col gap-2 rounded-xl border border-danger/50 bg-surface p-3">
+          <div className="flex flex-col gap-2 rounded-card border border-danger/50 bg-surface shadow-card p-3">
             <p className="flex items-center gap-1 text-sm font-semibold text-danger">
               <CircleX aria-hidden className="size-4" />
               {t('shift.handoff.errorsHeading')} —{' '}
@@ -545,7 +545,7 @@ function HandoffEditor({ handoff, current }: { handoff: Handoff; current: Curren
             {others.map((item) => (
               <li
                 key={item.key}
-                className="flex flex-wrap items-center gap-2 rounded-lg border border-border px-3 py-2"
+                className="flex flex-wrap items-center gap-2 rounded-inner bg-surface px-3.5 py-2.5 shadow-card"
               >
                 <span className="text-xs font-medium text-muted-foreground">
                   {t(`shift.handoff.kind.${item.kind}`)}

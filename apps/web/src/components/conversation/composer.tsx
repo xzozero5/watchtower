@@ -376,10 +376,11 @@ export function Composer({
       <div
         data-mode={mode}
         className={cn(
-          'rounded-2xl border transition-colors duration-(--wt-motion-duration-fast) ease-out focus-within:outline-2 focus-within:outline-offset-1 focus-within:outline-ring',
+          'rounded-card border transition-colors duration-(--wt-motion-duration-fast) ease-out focus-within:outline-2 focus-within:outline-offset-1 focus-within:outline-ring',
           isNote
             ? 'border-dashed border-border-strong bg-surface-muted'
-            : 'border-border-strong bg-surface',
+            : // Soft Beacon: a quiet grey well; the dashed outline stays the note's own sign.
+              'border-border bg-surface-muted',
         )}
       >
         <div className="flex flex-wrap items-center gap-2 px-2 pt-2">

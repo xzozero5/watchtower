@@ -106,7 +106,7 @@ function StatusView({ status }: { status: ShiftStatus }) {
           </span>
         }
       >
-        <div className="flex flex-col gap-3 rounded-xl border border-border bg-surface p-4">
+        <div className="flex flex-col gap-3 rounded-card bg-surface shadow-card p-4">
           <p
             data-testid="shift-chip-text"
             className={chip.warning ? 'text-base font-semibold' : 'text-base font-medium'}

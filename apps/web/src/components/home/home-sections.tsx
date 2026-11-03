@@ -33,8 +33,8 @@ import { statusKey } from '@/lib/tickets/status-key';
 export const LIST_CAP = 200;
 
 /**
- * A rounded card with an `h2`: a coloured dot, an icon in the same hue and 14px/600 text
- * (docs/design/friendly-polish.md section 3).
+ * A Soft Beacon card with an `h2`: a quiet icon and an 18px/500 title (docs/design/redesign-2026-11).
+ * The icon stays neutral: colour on this page means state only (QA-20).
  */
 export function HomeSection({
   id,
@@ -56,14 +56,11 @@ export function HomeSection({
   return (
     <section
       aria-labelledby={id}
-      className={cn(
-        'min-w-0 rounded-2xl bg-surface px-5 py-4 ring-1 ring-border/60 ring-inset',
-        className,
-      )}
+      className={cn('min-w-0 rounded-card bg-surface px-5 py-4 shadow-card', className)}
     >
       <div className="mb-3 flex items-center justify-between gap-3">
-        <h2 id={id} className="text-sm font-semibold">
-          <SectionHeading tone={tone} icon={icon}>
+        <h2 id={id} className="text-title font-medium text-foreground-strong">
+          <SectionHeading tone={tone} icon={icon} plain>
             {title}
           </SectionHeading>
         </h2>
@@ -99,43 +96,74 @@ export interface Tile {
 }
 
 /**
- * The numbers the head decides on, as soft tinted tiles: an icon, a big number, a short label, a
- * link to the queue with the matching filter. No sentences.
+ * The hero card (Soft Beacon): the total of open tickets in a large light number, then the numbers
+ * the head decides on as neutral wells, each a link to the queue with the matching filter. Only the
+ * icon takes its hue, and only when there is something to do (a count above zero); zero or no
+ * figure stays grey (QA-20).
  */
-export function TileStrip({ tiles }: { tiles: readonly Tile[] }) {
+export function OpenTicketsCard({
+  total,
+  tiles,
+}: {
+  /** `null`: the counts are not available. */
+  total: number | null;
+  tiles: readonly Tile[];
+}) {
   const t = useT();
   return (
-    <ul className="grid grid-cols-2 gap-3 p-4 md:grid-cols-4">
-      {tiles.map((tile) => {
-        const Icon = tile.icon;
-        return (
-          <li key={tile.id}>
-            <AppLink
-              href={tile.href}
-              data-tone={tile.tone}
-              className={cn(
-                'relative flex h-full flex-col gap-0.5 rounded-2xl px-4 py-3.5 transition-transform duration-(--wt-motion-duration-fast) ease-out motion-safe:hover:-translate-y-0.5 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring',
-                TINT_CLASSES[tile.tone].chip,
-              )}
-            >
-              {/* Read in this order (label, number, note); drawn with the number on top. */}
-              <span className="order-2 text-xs font-medium">{tile.label}</span>
-              <span className="tabular order-1 text-3xl leading-tight font-semibold">
-                {tile.value ?? <span title={t('home.unavailable')}>—</span>}
-              </span>
-              {tile.sub ? <span className="tabular order-3 text-xs">{tile.sub}</span> : null}
-              <span
-                aria-hidden
-                className="absolute top-3 right-3 inline-flex size-9 items-center justify-center rounded-full bg-surface/70"
+    <section
+      aria-labelledby="home-open"
+      className="flex min-w-0 flex-col gap-4 rounded-card bg-surface p-5 shadow-card lg:p-6"
+    >
+      <h2 id="home-open" className="text-title font-medium text-foreground-strong">
+        {t('home.openTickets')}
+      </h2>
+      <p className="tabular text-hero font-light text-foreground-strong">
+        {total ?? <span title={t('home.unavailable')}>—</span>}
+      </p>
+      <ul className="grid grid-cols-2 gap-2.5 xl:grid-cols-4">
+        {tiles.map((tile) => {
+          const Icon = tile.icon;
+          const tone: TintId = needsAction(tile.value) ? tile.tone : 'slate';
+          return (
+            <li key={tile.id}>
+              <AppLink
+                href={tile.href}
+                data-tone={tone}
+                className={cn(
+                  'flex h-full flex-col gap-0.5 rounded-inner px-3.5 py-3 transition-[box-shadow,transform] duration-(--wt-motion-duration-fast) ease-out hover:shadow-lift motion-safe:hover:-translate-y-0.5 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring',
+                  'bg-surface-muted text-foreground',
+                )}
               >
-                <Icon className={cn('size-5', TINT_CLASSES[tile.tone].icon)} />
-              </span>
-            </AppLink>
-          </li>
-        );
-      })}
-    </ul>
+                {/* Read in this order (label, number, note); the icon leads the label. */}
+                <span className="flex items-center gap-1.5 text-xs font-medium">
+                  <Icon
+                    aria-hidden
+                    className={cn(
+                      'size-3.5 shrink-0',
+                      tone === 'slate' ? 'text-muted-foreground' : TINT_CLASSES[tone].icon,
+                    )}
+                  />
+                  {tile.label}
+                </span>
+                <span className="tabular text-[1.6rem] leading-tight font-light">
+                  {tile.value ?? <span title={t('home.unavailable')}>—</span>}
+                </span>
+                {tile.sub ? <span className="tabular text-xs">{tile.sub}</span> : null}
+              </AppLink>
+            </li>
+          );
+        })}
+      </ul>
+    </section>
   );
+}
+
+/** A count above zero is something to act on; zero, or a figure that is not there, is not. */
+function needsAction(value: Tile['value']): boolean {
+  if (typeof value === 'number') return value > 0;
+  if (typeof value === 'string') return /[1-9]/.test(value);
+  return false;
 }
 
 export interface RiskRow {
@@ -280,7 +308,7 @@ export function CountLink({ href, label, count }: { href: string; label: string;
   return (
     <AppLink
       href={href}
-      className="inline-flex items-baseline gap-1.5 rounded-full bg-surface-muted px-3 py-1 text-sm transition-colors duration-(--wt-motion-duration-fast) ease-out hover:bg-primary-subtle focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+      className="inline-flex items-baseline gap-1.5 rounded-full bg-surface-muted px-3.5 py-1.5 text-sm transition-colors duration-(--wt-motion-duration-fast) ease-out hover:bg-primary-subtle focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
     >
       <span className="text-muted-foreground">{label}</span>
       <span className="tabular font-semibold">{count}</span>
@@ -295,20 +323,25 @@ export interface LoadRowData {
   atRisk: number;
 }
 
+/**
+ * Open tickets per person, each with a bar against the busiest person. The at-risk share of the
+ * bar is hatched amber and also written out, so the colour never carries it alone.
+ */
 export function LoadList({ rows }: { rows: readonly LoadRowData[] }) {
   const t = useT();
   if (rows.length === 0)
     return <p className="text-sm text-muted-foreground">{t('home.empty.load')}</p>;
+  const most = Math.max(1, ...rows.map((row) => row.open));
   return (
-    <ul className="divide-y divide-border/60">
+    <ul className="flex flex-col gap-1">
       {rows.map((row) => (
         <li key={row.id}>
           <AppLink
             href={queueHref({ assignee: row.id, status: OPEN_STATUSES })}
-            className="flex min-h-row items-center gap-2 rounded-xl px-1 hover:bg-surface-muted focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
+            className="grid min-h-row grid-cols-[auto_minmax(0,1fr)_auto_4rem] items-center gap-x-2.5 gap-y-1 rounded-inner px-1.5 py-1 hover:bg-surface-muted focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
           >
-            <Avatar name={row.name} id={row.id} size={20} />
-            <span className="min-w-0 flex-1 truncate text-sm">{row.name}</span>
+            <Avatar name={row.name} id={row.id} size={32} className="row-span-2" />
+            <span className="min-w-0 truncate text-sm font-medium">{row.name}</span>
             <span className="tabular text-sm font-semibold">{row.open}</span>
             {row.atRisk > 0 ? (
               <span className="tabular w-16 text-right text-xs text-foreground">
@@ -317,6 +350,19 @@ export function LoadList({ rows }: { rows: readonly LoadRowData[] }) {
             ) : (
               <span aria-hidden className="w-16" />
             )}
+            <span
+              aria-hidden
+              className="col-span-3 col-start-2 flex h-1.5 overflow-hidden rounded-full bg-surface-muted"
+            >
+              <span
+                className="h-full bg-chart-email"
+                style={{ width: `${String(((row.open - row.atRisk) / most) * 100)}%` }}
+              />
+              <span
+                className="h-full bg-[repeating-linear-gradient(135deg,var(--color-tint-amber-icon)_0_3px,transparent_3px_5px)]"
+                style={{ width: `${String((row.atRisk / most) * 100)}%` }}
+              />
+            </span>
           </AppLink>
         </li>
       ))}
