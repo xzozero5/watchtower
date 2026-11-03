@@ -1,57 +1,51 @@
 # HANDOFF — Watchtower
 
 > สถานะล่าสุดของโปรเจกต์ session ใหม่อ่านไฟล์นี้ต่อจาก `AGENTS.md` แล้วทำงานต่อได้โดยไม่ต้องอ่านบทสนทนาเดิม
-> อัปเดตล่าสุด: 2026-11-03 ~02:30 (เวลากรุงเทพ) โดย Claude Code (main thread, เครื่อง local Windows) — **POC ต่อของจริง + role-play QA + แก้ตาม feedback ทั้งคืน** (เจ้าของเข้านอน ~00:00 และมอบให้ `po` ตัดสินทุกเรื่อง)
-> ฉบับก่อน `docs/handoff-archive/HANDOFF-2026-11-02-1505-v0.1.0.md` · log ต่อ task `docs/STATUS.md` · รายชั่วโมง `logs/daily/2026-11-02.md`, `logs/daily/2026-11-03.md`
+> อัปเดตล่าสุด: 2026-11-03 12:30 (เวลากรุงเทพ) โดย Claude Code (main thread, เครื่อง local Windows) — **ส่งต่อให้ Codex ทำต่อ** (เจ้าของสั่ง)
+> ฉบับก่อน `docs/handoff-archive/HANDOFF-2026-11-03-pre-codex.md` (รายละเอียดคืน 2–3 พ.ย.) · log ต่อ task `docs/STATUS.md` · รายชั่วโมง `logs/daily/2026-11-03.md`
 
-## อ่านก่อน (2 นาที)
-- **`main` ในเครื่องนำ `origin/main` อยู่ ~30 commit** (push ตอนจบ session นี้ถ้า gate ผ่าน — ดู §สถานะ) · tag `v0.1.0` ยังเป็นของเมื่อวาน
-- **ต่อของจริงแล้วบางส่วน (POC บน localhost):** Gmail จริง (OAuth + Pub/Sub push ผ่าน tunnel), AI จริงผ่าน `claude -p` ของเจ้าของ (provider `claude-cli`, ADR-017) · ยังเป็น mock: LINE, Discord, SMTP ออกจริง (ไป Mailpit), GCP logs/BigQuery
-- **UI rework "Soft Beacon" merge เข้า `main` แล้ว** (`daed9f2` รอบแรก, `bc96365` รอบสอง: การ์ด Drafts accepted, T-151) — คำตัดสินเจ้าของ: Soft Beacon ทั้งชุด, แผ่นลอยเฉพาะ Overview/Login, **draft card อยู่ตรงกลางตามเดิม** (แทนคำตอบข้อ 4) → `docs/design/redesign-2026-11/README.md` · ภาพก่อน/หลัง `docs/screenshots/ui-rework/` · checkout เดิมต้อง `pnpm install` (ฟอนต์ `@fontsource` ใหม่) · **ที่เหลือของ mockup Home ติดอยู่:** trend chip "เทียบช่วงก่อน" และกราฟปริมาณแยกตามช่องทาง ต้องมี counts/history API ก่อน (T-159; token สี `chart-email/line/portal` มีแล้ว) · top bar ของ Overview (ค้นหา, คนในกะ, New ticket) ไม่ทำ เพราะปุ่ม New ticket จะซ้ำกับใน rail ทำให้ชื่อปุ่มซ้ำ (e2e/screen reader)
-- คำตัดสิน 5 ข้อ (QA-30, QA-02/03, QA-08, QA-20, QA-23) **po ตัดสินแทนเจ้าของ** ตามที่เจ้าของมอบ → `docs/qa/2026-11-02-roleplay-triage.md` §คำตัดสิน
+## ถ้าคุณคือ Codex (หรือ AI อื่นที่ไม่ใช่ Claude Code)
+- กติกาทั้งหมดอยู่ใน `AGENTS.md` (ใช้กับทุก AI) · hook ใน `.claude/` บังคับได้เฉพาะ Claude Code → **คุณต้องถือ Non-negotiables N1–N10 เอง** โดยเฉพาะ N1 (ห้ามพิมพ์/commit secret, repo ต้องไม่มีชื่อองค์กร/อีเมลส่วนตัว), N4 (redact ก่อนส่ง LLM), N7 (คนตรวจคนละตัวกับคนทำ)
+- บทบาทใน `.claude/agents/*.md` และขั้นตอนใน `.claude/commands/*.md` เป็น markdown ธรรมดา ใช้เป็น prompt ของ sub-task ได้
+- **AI ในระบบใช้ `claude -p` ต่อไป (เจ้าของสั่ง 2026-11-03)** ไม่ต้องย้ายไปใช้ API key หรือ provider อื่น — bridge รันบน host แยกจากเครื่องมือเขียนโค้ด: ดู `docs/runbooks/local-poc.md` §3 (ADR-017)
+- วิธีเปิดระบบทั้งหมดบนเครื่องนี้ (stack, bridge, tunnel, ผู้ใช้, การรัน test บน DB ทิ้งได้): **`docs/runbooks/local-poc.md`**
 
 ## สถานะ
-- **Gate บน `main` ล่าสุด `1a3ef28` (main thread รันเอง, service ทิ้งได้):** lint/typecheck/unit ผ่าน · integration api 1137 · full-stack 38/38 · web e2e 180 (`shift.e2e.ts` AC-7 flaky ล้มบางรอบ; ทั้งชุด ×3 ผ่าน 540/540)
-- **Stack จริงบนเครื่องเจ้าของ:** compose project `watchtower` (`docker compose --env-file D:\Works\secret\watchtower.env up -d --wait --build`) · **ล็อกอินด้วย Google จริงแล้ว (2026-11-03)** ผ่าน `GOOGLE_ALLOWED_EMAILS` (ADR-005 แก้ไข 2026-11-03; ใช้ได้เฉพาะ APP_URL loopback, รับเฉพาะ @gmail.com/@googlemail.com) · **dev login ปิดแล้ว** → บัญชี `*@example.com` จาก QA ล็อกอินไม่ได้ · มี break-glass ใน env file (ค่าไม่อยู่ใน repo) · demo stack `wt-demo` ยังรันอยู่ (port 3xxxx)
-- **หน้าแรกตาม role (`apps/web/src/lib/role-home.ts`):** agent → `/`, lead/head → `/home`, dev → `/` (DevHome), client → `/` · โลโก้และหลังล็อกอิน (ผ่าน `/start`, `next` ต้องเป็น path ภายใน) ใช้ map เดียวกัน · เมนูซ้ายจำสถานะใน localStorage `wt-rail-expanded` (ค่าเริ่มต้นขยาย)
-- **Process บนเครื่องที่ session นี้เปิดไว้ (หายเมื่อปิด session):** bridge `claude -p` ที่ 127.0.0.1:4317 (`node --env-file=D:\Works\secret\watchtower.env tools/claude-cli-bridge/server.mjs`), ตัวกรอง push-only ที่ 127.0.0.1:4318 (scratchpad ของ session — **ใช้ทุกครั้งที่เปิด tunnel**: ถึง dev login จะปิดแล้วก็ไม่ควรเปิด API ทั้งตัวสู่ internet) · tunnel cloudflared เจ้าของรันเองใน PowerShell → URL เปลี่ยนทุกครั้ง ต้องแก้ `GMAIL_PUSH_AUDIENCE` + push subscription ตาม
-- **Container ทดสอบทิ้งได้:** `wt-qc-pg` … `wt-qc-pg4` (45432–45435), `wt-qc-redis*` (46379–46382), `wt-qc-minio` (49000), `wt-qc-mailpit` (41025/48025) — ใช้รัน integration/e2e โดยไม่แตะ DB ของ POC · ลบได้ด้วย `docker rm -f` เมื่อไม่ใช้
+- **`main` = `origin/main`** (push แล้ว) · tag `v0.1.0` = MVP เมื่อ 2 พ.ย. (ยังไม่ได้ tag รุ่นใหม่)
+- **Gate ล่าสุดบน `main` (main thread รันเอง, service ทิ้งได้):** ดู STATUS entry 2026-11-03 12:30
+- **ระบบจริงบนเครื่องเจ้าของ (POC, localhost):**
+  - ล็อกอิน staff ด้วย **Google จริง** ผ่าน `GOOGLE_ALLOWED_EMAILS` (ADR-005 แก้ไข 2026-11-03: เฉพาะ @gmail.com/@googlemail.com, เฉพาะ APP_URL loopback, ไม่ auto-provision) · **dev login ปิด** (บัญชี `*@example.com` จาก QA ใช้ไม่ได้) · break-glass อยู่ใน env file
+  - AI จริงผ่าน `claude -p` (provider `claude-cli`) · Gmail จริง (OAuth + Pub/Sub push ต้องมี tunnel + `pnpm push-filter`; ไม่มี tunnel ใช้ปุ่ม "Sync now") · LINE/Discord/SMTP ออก/GCP logs ยังเป็น mock
+- **UI:** ดีไซน์ "Soft Beacon" (`docs/design/redesign-2026-11/README.md`) · shell ถาวรใน `apps/web/src/app/(console)/layout.tsx` (เปลี่ยนเมนูไม่ remount) · หน้าแรกตาม role `apps/web/src/lib/role-home.ts` (agent → `/`, lead/head → `/home`, dev → DevHome, client → `/`; ผ่าน `/start`, `next` ต้องเป็น path ภายใน) · เมนูซ้ายจำสถานะใน localStorage `wt-rail-expanded` (ค่าเริ่มต้นขยาย)
 
-## ทำเสร็จ 2026-11-02 เย็น → 2026-11-03 เช้า
-| งาน | ผล |
-|---|---|
-| GCP POC | Gmail API, Pub/Sub topic `gmail-push` + push subscription `gmail-push-sub` (OIDC, SA `watchtower-pubsub-push`), OAuth consent (External/Testing) + client `watchtower-poc-web` · secret ที่หลุดเข้าแชทถูก disable และหมุนแล้ว |
-| AI ผ่าน `claude -p` (ADR-017) | bridge + provider `claude-cli`, ทดสอบจริงบน ticket (classifier/summarizer/investigator) |
-| Role-play QA | 5 บทบาทใช้ stack จริง → 34 รายการ, po triage + คำตัดสิน → `docs/qa/2026-11-02-roleplay-triage.md` |
-| แก้บั๊กจาก AI จริง | redactor ใส่ placeholder ใน prompt ของระบบ (brief ล้ม 2/3), `[NAME_n]` บน evidence (security review 2 รอบ) |
-| QA-30 (N4) | name-cue detector TH/EN + dictionary ครบ (requester, contact, client user, ผู้ส่ง) + `dictionary_incomplete` · ADR-008 แก้ไข · security review 3 รอบ · **re-test บน stack จริง (OPS-1011) ผ่าน:** ไม่มีชื่อ/เบอร์/อีเมลดิบใน output ของ AI |
-| Bucket A | คิว (เลข ticket, SLA slot, Needs you, เรียงตามความเร่งด่วน, subject + AI line), ticket pane (ตอบกลับบน channel ที่ส่งไม่ได้, เตือนรอลูกค้า, AI card เหตุผล/relevance/label, default tab Details, assignee ทุกคน), ค้นด้วยเลข/อีเมล + go-to, สร้าง intent ใน UI + stage legend, portal ขั้นต่อไป + 404 ลูกค้า, ชื่อ rail ไทย, rail สีกลาง, notice มุมมอง dev, reasonCode |
-| Bucket B | T-140 แนบไฟล์ portal (security review 2 รอบ: P1 memory DoS ปิด), T-148 อีเมลตอบรับใหม่, T-150 Sync Gmail now, T-138 ข้อความ SLA |
-| บั๊กอื่น | `/v1/tickets/stats` 500, ค้นอีเมลผ่าน stats ไม่ลง audit, 404 โลโก้ทับ, worker integration รันข้าง dev stack ไม่ได้ (`TEST_*`), tab ใน panel ล้นทับปุ่ม (axe) |
+## ทำเสร็จช่วง 2–3 พ.ย. (สรุป — รายละเอียดใน archive และ STATUS)
+- ต่อของจริง (GCP OAuth/Pub/Sub, Gmail, AI ผ่าน `claude -p`) · role-play QA 5 บทบาท → 34 รายการ (`docs/qa/2026-11-02-roleplay-triage.md`) · แก้ bucket A ทั้งหมด + T-140 แนบไฟล์ portal, T-148 อีเมลตอบรับ, T-150 Sync Gmail, T-138, T-151 · QA-30 redaction ชื่อ (ADR-008) · UI rework Soft Beacon · Google login (ADR-005) · แก้ UX: ไม่ reload ทั้งหน้า, shell ไม่ remount, เมนูจำสถานะ, โลโก้ → หน้าแรกตาม role, จุดสถานะเดียวใน rail, ชิปกะ "รอรับทราบ N"
+- ทุกงานที่แตะ redaction / ค้นหา / upload / auth ผ่าน `security-reviewer` (รอบแรกไม่ผ่าน 3 ครั้ง: ชื่อเพื่อนร่วมงานหลุดเข้า draft, memory DoS ของ upload, allow-list ข้าม hd — แก้แล้วทั้งหมด)
 
 ## รอเจ้าของ (`[ASK-HUMAN]`)
-- [x] สั่ง merge UI rework — เจ้าของสั่ง 2026-11-03 ("Merge เลย") · merge แล้ว (`daed9f2`, `bc96365`)
-- [ ] **flaky** full-stack `ac1-gmail.e2e.ts:283` "noise": เมื่อรันทั้งชุด auto-reply บางครั้งไม่เข้า Other mail ภายใน 20 s (หน้าแสดงแต่ newsletter) · ตกบน `main` `a8f20be` (36/37) และบน branch UI · รันไฟล์ `ac1-gmail` เดียวผ่าน 8/8 สองรอบ และรอบ gate สุดท้ายของ UI ผ่าน 38/38 → `[UNVERIFIED]` น่าจะเป็นจังหวะ ingest ใต้โหลดหรือข้อมูลค้างระหว่าง test · ต้องมีคนดู ingest ของ auto-reply / เพิ่มเวลารอใน test
-- [ ] เปิด tunnel ใหม่เมื่อจะทดสอบ Gmail push (ดู §สถานะ) · ส่งเมลทดสอบจากบัญชีภายนอก (เมลที่ส่งถึงตัวเองถูกข้ามโดยตั้งใจ เพราะมี label `SENT`) — สองครั้งที่เจ้าของส่งเมื่อคืนไม่ถึงกล่องเลย ให้ตรวจที่อยู่ผู้รับ
-- [ ] ข้อความไทยใหม่ทั้งหมด (stop/deny list ของ redaction, copy portal/อีเมล) ยังไม่ผ่านเจ้าของภาษา
+- [ ] ข้อความไทยใหม่ (stop/deny list ของ redaction, copy portal/อีเมล/rail) ยังไม่ผ่านเจ้าของภาษา
 - [ ] สแกนมัลแวร์ไฟล์แนบ (T-155) ต้องเพิ่ม dependency
-- [ ] T-115 pilot: เงื่อนไขของ ADR-008 ครบแล้ว (QA-30 + re-test) แต่ยังมี T-154/T-155 และ UI rework ที่ควรเสร็จก่อน
+- [ ] T-115 pilot: เงื่อนไข ADR-008 ครบแล้ว แต่ควรปิด T-154/T-155 ก่อนเปิด portal สู่ internet และต้องย้ายจาก POC (dev/gmail.com allow-list) ไป Workspace + deploy (staging-gcp runbook ยังไม่เคยรันจริง)
+- [ ] เมื่ออยากทดสอบเมลไหลเข้าเอง: เจ้าของเปิด tunnel เอง (agent ถูกระบบสิทธิ์บล็อก) แล้วอัปเดต audience + subscription ตาม runbook §4 · เมลทดสอบต้องส่งจากบัญชีภายนอก
 
-## ขั้นต่อไป (เรียงลำดับ)
-1. T-156 (ลิงก์ดาวน์โหลดไฟล์แนบของ staff) บนดีไซน์ใหม่ · T-159 counts/history API เพื่อปิดส่วนที่เหลือของ Home
-2. T-154 (upload slot) และ T-155 (quota/retention) ก่อนเปิด portal สู่ internet
-3. BACKLOG หัวข้อ "จาก role-play QA 2026-11-02": T-141 หน้าเช้าของ lead, T-142 การ์ดงบ AI, T-143 keyboard, T-144 timeline, T-145, T-146, T-147, T-149, T-152, T-157, T-158
-4. role-play รอบสองหลัง UI rework (ใช้ brief เดิม `scratchpad` ไม่อยู่ใน repo — ดูรูปแบบใน `docs/qa/2026-11-02-roleplay-triage.md`)
+## ขั้นต่อไป (เรียงลำดับ — ID ใน `docs/BACKLOG.md`)
+1. T-156 ลิงก์ดาวน์โหลดไฟล์แนบสำหรับ staff (route API พร้อมแล้ว) · T-159 counts/history API (ปิด trend chip + กราฟแยกช่องทางบน Home)
+2. T-154 (upload slot ถูกแย่ง) + T-155 (quota/retention/sweep) ก่อนเปิด portal สู่ internet
+3. หน้าเช้าของ lead (T-141), การ์ดงบ AI (T-142), keyboard ตาม spec (T-143), timeline from→to (T-144), T-145, T-146 (glossary ไทย), T-147, T-149, T-152, T-157, T-158
+4. T-161 หาสาเหตุ flaky: `apps/web/e2e/shift.e2e.ts` AC-7, `apps/web/e2e/keyboard.e2e.ts` (focus race), `e2e-fullstack/ac1-gmail.e2e.ts` "noise", `lib/portal/pow-core.test.ts` (timeout ใต้โหลด)
+5. role-play รอบสองบน UI ใหม่ (รูปแบบใน `docs/qa/2026-11-02-roleplay-triage.md`; brief ฉบับเดิมไม่ได้อยู่ใน repo — เขียนใหม่ตามรูปแบบนั้น)
 
-## กติกาที่ได้เรียนรู้คืนนี้ (ใช้ต่อ)
-- integration/e2e **ห้ามรันกับ DB/Redis/MinIO ของ stack ที่เปิดอยู่** (test เขียนลง DB เดียวกัน) ใช้ `TEST_DATABASE_URL`, `TEST_REDIS_URL`, `TEST_S3_*`, `TEST_SMTP_PORT`, `MAILPIT_URL` ชี้ container ทิ้งได้ และแยกชุดต่อ agent ที่รันพร้อมกัน ไม่งั้น hook timeout 30 s
-- web e2e ใช้ port 3100 ตายตัว ห้ามรันสองชุดพร้อมกัน · e2e รัน standalone build → แก้ web แล้วต้อง `pnpm build` ก่อน
-- `PW_CHANNEL=chrome` บนเครื่องนี้ (ไม่ได้ดาวน์โหลด browser ของ Playwright)
-- Postgres volume เดิมถูก init ด้วยรหัสเก่า: เปลี่ยน `POSTGRES_PASSWORD` แล้วต้อง `ALTER ROLE` ใน container (ไม่ต้องลบ volume)
-- security review จับของจริงได้ทุกรอบ (P1 ชื่อเพื่อนร่วมงานหลุดเข้า draft, P1 memory DoS) — งานที่แตะ redaction/upload/auth ต้องผ่าน reviewer คนละตัวก่อน merge เสมอ (N7)
+## กติกาที่ได้เรียนรู้ (ใช้ต่อ)
+- integration/e2e **ห้ามชี้ DB/Redis/MinIO ของ stack ที่เปิดอยู่** — ใช้ container ทิ้งได้ (`docs/runbooks/local-poc.md` §6) · หลายงานรันพร้อมกันต้องแยกชุด
+- web e2e: port 3100 ตายตัว, ต้อง `pnpm build` ก่อน, `PW_CHANNEL=chrome` บนเครื่องนี้ · full-stack สร้าง stack ของตัวเอง (ต้องตั้ง `TEST_DATABASE_URL`)
+- test e2e ที่ตรวจ "ไม่ reload" ต้องตรวจทั้ง document **และ** ว่า element ของ shell ยังเป็นตัวเดิม (บทเรียนจากรอบนี้)
+- หลัง pull ที่มี dependency ใหม่: `pnpm install --frozen-lockfile`
+- งานที่แตะ redaction/upload/auth/การค้นหา PII: reviewer คนละตัวก่อน merge เสมอ — รอบนี้จับปัญหาจริงได้ทุกครั้ง
+- อย่าเขียนสคริปต์ชั่วคราวชื่อซ้ำกันใน scratchpad ที่ใช้ร่วมกัน (มี agent รันสคริปต์ของอีกตัวผิดไฟล์)
 
 ## ยังไม่ยืนยัน (ห้ามเขียนเป็นข้อเท็จจริง)
-- ข้อความ "Counted in business hours" / "นับเฉพาะเวลาทำการ" ในอีเมลและ ticket `[ASSUMED]` ว่า calendar ของ policy เป็น business hours
+- ข้อความ "Counted in business hours" / "นับเฉพาะเวลาทำการ" `[ASSUMED]` ว่า calendar ของ policy เป็น business hours
 - recall ของ name-cue กับข้อความลูกค้าจริง `[UNVERIFIED]` (T-302)
-- ลูกค้าบนมือถือจริงกับปุ่มเลือกไฟล์ (iOS/Android picker) `[UNVERIFIED 80%]`
-- memory ของ upload วัดใน harness ไม่ใช่ container production `[UNVERIFIED]`
+- ปุ่มเลือกไฟล์บนมือถือจริง `[UNVERIFIED 80%]` · memory ของ upload วัดใน harness ไม่ใช่ container `[UNVERIFIED]`
+- แถวสถานะ rail ตอนมีปัญหา (reconnecting/API unreachable) ทดสอบแค่ unit ยังไม่เห็นบนจอจริง `[UNVERIFIED]`
+- skeleton ตอนกลับหน้าเดิมหลัง cache เกิน 30 s ยังไม่ได้วัด `[UNVERIFIED]`

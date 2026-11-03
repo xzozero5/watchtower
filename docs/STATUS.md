@@ -41,6 +41,13 @@ snapshot สั้นสำหรับ cold start อยู่ที่ `HANDOF
 
 ## Log
 
+## 2026-11-03 12:30 (Asia/Bangkok) — main thread — Google login จริง + UX (shell ถาวร, หน้าแรกตาม role) + ส่งต่อให้ Codex
+- **ทำอะไร:** `GOOGLE_ALLOWED_EMAILS` (ADR-005 แก้ไข 2026-11-03) ล็อกอินจริงด้วยบัญชีเจ้าของ (audit `via: allowlist`) · dev login ปิดใน env · ลิงก์ Evidence ไม่ reload ทั้งหน้า · shell ย้ายเข้า `app/(console)/layout.tsx` (เปลี่ยนเมนูไม่ remount rail และไม่มี skeleton ทั้งจอ) · เมนูซ้ายจำสถานะ (ค่าเริ่มต้นขยาย) · โลโก้และหลังล็อกอินไปหน้าแรกตาม role (`lib/role-home.ts`, `/start`, `next` ปลอดภัย) · rail: จุดสถานะเดียวสีกลาง (เตือนเป็นคำเฉพาะตอนมีปัญหา), ชิปกะ "รอรับทราบ N" · UI rework Soft Beacon merge ครบสองรอบ · ตัวกรอง push-only เข้า repo (`pnpm push-filter`) + `docs/runbooks/local-poc.md`
+- **Review (N7):** security-reviewer allow-list: รอบแรก P2×2 (อีเมลโดเมน staff ใน list ข้าม hd; guard production พึ่ง NODE_ENV อย่างเดียว) + P3×3 → แก้ (loopback APP_URL, ASCII only, gmail เท่านั้น) → ตรวจซ้ำผ่าน
+- **Test (`d1abab4`, รันเองบน service ทิ้งได้):** lint, typecheck ผ่าน · web unit 1205 (pow-core timeout ใต้โหลด 1 ครั้ง รันซ้ำผ่าน) · web e2e 181 · full-stack 38/38 · integration api 1137 (`1a3ef28`) · live: Google login → `/home`, เมนูย่อแล้วจำหลังรีโหลด, ไม่มีเมนูไหน reload document
+- **เหตุการณ์:** agent รันสคริปต์ชั่วคราวผิดไฟล์ (ชื่อซ้ำใน scratchpad) แก้ไฟล์ใน worktree เก่าที่ merge แล้ว 1 ไฟล์ — main thread ย้อนแล้ว ไม่กระทบ `main`
+- **ค้าง:** ดู HANDOFF §ขั้นต่อไป · flaky: shift AC-7, keyboard focus, ac1-gmail noise, pow-core
+
 ## 2026-11-03 09:25 (Asia/Bangkok) — UI rework session — T-160 Soft Beacon + T-151 ปิด (branch `claude/ui-rework-bbf2dc`, รอ main thread merge)
 - **ทำอะไร:** visual layer ตาม `docs/plans/ui-rework-brief.md` และคำตัดสินเจ้าของใน `docs/design/redesign-2026-11/README.md` (Soft Beacon ทั้งชุด, แผ่นลอยเฉพาะ Overview/Login, draft card อยู่ตรงกลางตามเดิม) · tokens + ฟอนต์ self-host (`@fontsource`, ไม่มี CDN) · Card/HighlightCard/TrendChip/AppFrame · rail 68/248 + gradient tile, PageHeader 26/300 · Home ตาม mockup (Open tickets, Ticket volume 7 วัน, Drafts accepted) · การ์ดบน shift/ops/status/other-mail/dashboard/admin/portal/login/404 · ticket workspace เป็นการ์ดลอย · T-151 ชิปกะเป็นคำ + toast มุมขวาบนใต้หัวหน้าเพจ · QA-20 tile ค่า 0 สีกลาง
 - **Test (รันเองบน service ทิ้งได้ pg :45450 redis :46450 mailpit :48050 — ไม่แตะ stack POC):** lint 18/18, typecheck 17/17, unit 18/18 task (web 1144, ui 806) · web e2e 173/173 · full-stack 38/38 · axe ไม่ถูกลด · e2e ที่แก้โดยตั้งใจ: ความกว้าง rail, ช่องระหว่าง pane, แถวที่เลือกในคิว

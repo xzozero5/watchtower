@@ -89,8 +89,11 @@
 - [ ] T-156 `frontend-dev` ลิงก์ดาวน์โหลดไฟล์แนบบน timeline ของ staff (route `GET /v1/tickets/:id/messages/:messageId/attachments/:index` พร้อมแล้ว; ตอนนี้ staff เห็นแค่ชื่อไฟล์) — ทำหลัง merge UI rework
 - [ ] T-157 `ai-engineer` QA-30 ที่เหลือ: cue ระดับกลางตัวพิมพ์เล็ก (`hi somchai`, `I am somchai`, `dear somchai`), นามสกุลบรรทัดถัดไปหลัง sign-off, วัด recall/false positive ภาษาไทยกับเจ้าของภาษา (T-302)
 - [ ] T-158 `frontend-dev` นับจำนวนจริงให้ไอคอน Alerts/Incidents ใน rail (ตอนนี้เป็นสีกลางเสมอ เพราะยังไม่มี count ส่งเข้า) + ปุ่ม next-step "Wait for the customer" ใน AI card ยังไม่มี confirm แบบ QA-06
-- [x] T-160 UI rework "Soft Beacon" (visual layer, `docs/plans/ui-rework-brief.md`): tokens/ฟอนต์ self-host, rail + PageHeader, Home ตาม mockup (การ์ด Open tickets, Ticket volume, ไฮไลต์ Drafts accepted), การ์ดทุกหน้า, ticket workspace เป็นการ์ดลอย, Login/404/portal · **ปิด 2026-11-03** บน `claude/ui-rework-bbf2dc` รอ main thread merge
+- [x] T-160 UI rework "Soft Beacon" (visual layer, `docs/plans/ui-rework-brief.md`): tokens/ฟอนต์ self-host, rail + PageHeader, Home ตาม mockup (การ์ด Open tickets, Ticket volume, ไฮไลต์ Drafts accepted), การ์ดทุกหน้า, ticket workspace เป็นการ์ดลอย, Login/404/portal · **merge เข้า main 2026-11-03** (`daed9f2`, `bc96365`)
 - [ ] T-159 `backend-dev` + `frontend-dev` counts/history API สำหรับ Home: trend chip เทียบช่วงก่อน + ปริมาณต่อวันแยกตามช่องทาง (stacked bar สี `chart-email/line/portal` มี token แล้ว) — ส่วนที่เหลือของ mockup Soft Beacon (เจ้าของตอบข้อ 3: ทำ chart+trend)
+- [x] UX จากเจ้าของ 2026-11-03: ไม่ reload ทั้งหน้า (Evidence link), shell ถาวร `app/(console)/layout.tsx`, เมนูซ้ายจำสถานะ, โลโก้ + หลังล็อกอินไปหน้าแรกตาม role (`lib/role-home.ts`), จุดสถานะเดียวใน rail, ชิปกะ "รอรับทราบ N" — merge 2026-11-03
+- [x] Google login ด้วย allow-list อีเมลส่วนตัว (ADR-005 แก้ไข 2026-11-03, security review ผ่าน) — merge 2026-11-03
+- [ ] T-161 `qa-engineer` หาสาเหตุ flaky: `apps/web/e2e/shift.e2e.ts` AC-7, `keyboard.e2e.ts` (focus race หลัง soft navigation), `e2e-fullstack/ac1-gmail.e2e.ts` "noise", `lib/portal/pow-core.test.ts` (timeout ใต้โหลด) · และเพิ่มภาพ/e2e ของแถวสถานะ rail ตอนมีปัญหา (reconnecting, API unreachable)
 - [x] 5 เรื่องที่ต้องตัดสิน (QA-30, 02/03, 08, 20, 23): **po ตัดสินแทนเจ้าของ 2026-11-02** ตามที่เจ้าของมอบ — ดูไฟล์ triage §คำตัดสิน · QA-30 แก้ ADR-008 แล้ว
 
 > **`v0.1.0` (MVP) release 2026-11-02** ที่ `ae380db` · งานที่ยังเปิดด้านล่างไม่อยู่ใน release
