@@ -283,7 +283,10 @@ export async function signInStaff(page: Page): Promise<void> {
   await form.getByLabel('Email address').fill(breakGlassEmail);
   await form.getByLabel('Password').fill(breakGlassPassword);
   await form.getByRole('button', { name: 'Sign in', exact: true }).click();
-  await page.waitForURL((url) => url.pathname === '/');
+  // A head starts on the team overview (lib/role-home.ts). Tests that follow expect the queue, so
+  // the helper opens it afterwards.
+  await page.waitForURL((url) => url.pathname === '/home');
+  await page.goto('/');
   await expect(page.getByRole('region', { name: 'Queue' })).toBeVisible();
 }
 
@@ -334,7 +337,9 @@ export async function signInDev(
   await form.getByLabel('Email address').fill(email);
   await form.getByLabel('Role').selectOption(role);
   await form.getByRole('button', { name: 'Sign in for development' }).click();
-  await page.waitForURL((url) => url.pathname === '/');
+  // Each role starts on its own page (lib/role-home.ts): lead and head on the overview, the rest on `/`.
+  const home = role === 'lead' || role === 'head' ? '/home' : '/';
+  await page.waitForURL((url) => url.pathname === home);
   return { email };
 }
 

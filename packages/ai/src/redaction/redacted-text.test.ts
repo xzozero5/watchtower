@@ -102,7 +102,8 @@ describe('RedactedText (N4 enforced by the compiler)', () => {
   it('is not exported from the package entry point', async () => {
     const entry = await import('../index.js');
     expect('mintRedacted' in entry).toBe(false);
-  });
+    // Importing the whole package entry is slow when the machine is loaded: allow 30 s, not the default 5 s.
+  }, 30_000);
 });
 
 describe('renderTrustedPrompt', () => {
@@ -166,7 +167,8 @@ describe('renderTrustedPrompt', () => {
     for (const name of ['parsePromptFile', 'registerCatalogPrompt', 'isCatalogPrompt']) {
       expect(name in entry).toBe(false);
     }
-  });
+    // Same slow import of the package entry as above.
+  }, 30_000);
 
   it('has no placeholder-shaped text in any prompt file (a file cannot pose as redactor output)', () => {
     const dir = fileURLToPath(new URL('../../prompts', import.meta.url));

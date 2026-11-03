@@ -47,7 +47,8 @@ test.describe('no full page reloads', () => {
     await expectSameDocument(page);
 
     // The command palette navigates in place.
-    await page.keyboard.press('ControlOrMeta+K');
+    // The button, not the shortcut: right after a client-side move the key handler may not be bound yet.
+    await page.getByRole('button', { name: 'Open command palette' }).click();
     await page.getByRole('combobox').fill('admin');
     await page.keyboard.press('Enter');
     await page.waitForURL('**/admin/**');

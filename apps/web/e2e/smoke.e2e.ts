@@ -169,9 +169,10 @@ test.describe('theme, density and motion', () => {
   test('uses a 15px base, and 14px when compact', async ({ page }) => {
     await openHome(page);
     const fontSize = () => page.evaluate(() => getComputedStyle(document.documentElement).fontSize);
-    expect(await fontSize()).toBe('15px');
+    await expect.poll(fontSize).toBe('15px');
     await chooseFromAccountMenu(page, 'Compact');
-    expect(await fontSize()).toBe('14px');
+    // Polled: under load the style recalculation can land a frame after the click returns.
+    await expect.poll(fontSize).toBe('14px');
   });
 
   test('drops motion when the OS asks for reduced motion', async ({ page }) => {
