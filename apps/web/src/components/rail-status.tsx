@@ -1,6 +1,6 @@
 'use client';
 
-import { Tooltip } from '@watchtower/ui';
+import { cn, TINT_CLASSES, Tooltip } from '@watchtower/ui';
 
 import { ApiStatus, useApiHealth } from '@/components/api-status';
 import { LiveStatus } from '@/components/live-status';
@@ -8,9 +8,10 @@ import { useT } from '@/i18n/provider';
 import { useRealtime } from '@/lib/realtime/realtime-provider';
 
 /**
- * The connection state of the rail, in two parts. Healthy: one small neutral dot with a tooltip
- * and an accessible name ("Connected: live updates on, API online"), because a normal state should
- * be quiet. Trouble (api unreachable, live updates reconnecting, paused or unavailable): a visible
+ * The connection state of the rail, in two parts. Healthy: one small green dot with a tooltip and
+ * an accessible name ("Connected: live updates on, API online") — green because a grey dot beside a
+ * person reads as offline (owner, 2026-11-03), and small so a normal state stays quiet; grey while
+ * still connecting. Trouble (api unreachable, live updates reconnecting, paused or unavailable): a visible
  * row with words and an amber or red icon, from LiveStatus and ApiStatus. The two status elements
  * are always in the page (hidden while healthy), so the checks that read their state keep working.
  */
@@ -41,7 +42,13 @@ export function RailStatus({ expanded, part }: { expanded: boolean; part: 'rows'
             data-testid="rail-status-dot"
             className="grid size-control shrink-0 place-items-center rounded-full outline-offset-0 focus-visible:outline-2 focus-visible:outline-ring"
           >
-            <span aria-hidden className="size-2 rounded-full bg-muted-foreground/60" />
+            <span
+              aria-hidden
+              className={cn(
+                'size-2 rounded-full',
+                settling ? 'bg-muted-foreground/60' : TINT_CLASSES.green.dot,
+              )}
+            />
           </span>
         </Tooltip>
       )}

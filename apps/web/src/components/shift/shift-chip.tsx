@@ -24,6 +24,10 @@ export function ShiftChip({ expanded }: { expanded: boolean }) {
   if (!allowed || !status.data) return null;
   const label = chipLabel(status.data, t, locale);
   const Icon = label.warning ? TriangleAlert : Clock3;
+  // Green on a rostered shift that is going as planned; not when clocked in without a roster entry,
+  // which should not look settled (owner, 2026-11-03).
+  const onPlan =
+    label.state === 'on' && !label.warning && Boolean(status.data.session?.scheduledStart);
   const unread = status.data.unreadNotes + status.data.pendingAcks;
   const toAck = unread > 0 ? t('shift.status.toAcknowledge', { count: unread }) : null;
   // Words in the order they are drawn, so the name contains the visible text (WCAG 2.5.3).
@@ -56,8 +60,12 @@ export function ShiftChip({ expanded }: { expanded: boolean }) {
     >
       <Icon
         aria-hidden
-        // Amber only while something needs doing (late, or the handoff is not finished).
-        className={cn('size-4 shrink-0', label.warning && TINT_CLASSES.amber.icon)}
+        // Amber while something needs doing (late, or the handoff is not finished); green on plan.
+        className={cn(
+          'size-4 shrink-0',
+          label.warning && TINT_CLASSES.amber.icon,
+          onPlan && TINT_CLASSES.green.icon,
+        )}
       />
       {expanded ? (
         <span className="flex min-w-0 flex-col max-md:hidden">

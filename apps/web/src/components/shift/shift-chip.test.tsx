@@ -80,6 +80,42 @@ describe('shift chip', () => {
     expect(chip.textContent).not.toMatch(/left/);
   });
 
+  it('greens the clock on a rostered shift going to plan, but not off the roster or when late', async () => {
+    const iconOf = (chip: HTMLElement) => chip.querySelector('svg')?.getAttribute('class') ?? '';
+
+    shiftApi({ overrides: { 'GET /v1/shifts/status': { json: shiftStatus() } } });
+    const rostered = renderConsole(<ShiftChip expanded />);
+    expect(iconOf(await screen.findByRole('link', { name: /^On shift/ }))).toContain(
+      'text-tint-green-icon',
+    );
+    rostered.unmount();
+
+    shiftApi({
+      overrides: {
+        'GET /v1/shifts/status': {
+          json: shiftStatus({
+            session: shiftSession({ scheduledStart: null, scheduledEnd: null }),
+          }),
+        },
+      },
+    });
+    const offRoster = renderConsole(<ShiftChip expanded />);
+    expect(iconOf(await screen.findByRole('link', { name: /^On shift/ }))).not.toContain('green');
+    offRoster.unmount();
+
+    shiftApi({
+      overrides: {
+        'GET /v1/shifts/status': {
+          json: shiftStatus({ session: shiftSession({ late: true, lateMinutes: 12 }) }),
+        },
+      },
+    });
+    renderConsole(<ShiftChip expanded />);
+    const late = iconOf(await screen.findByRole('link', { name: /Late 12m/ }));
+    expect(late).toContain('text-tint-amber-icon');
+    expect(late).not.toContain('green');
+  });
+
   it('shows nothing for a customer, and nothing while the status cannot be read', async () => {
     shiftApi({ role: 'client' });
     const view = renderConsole(<ShiftChip expanded />);

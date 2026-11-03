@@ -42,6 +42,10 @@ describe('RailStatus', () => {
         'Connected: live updates on, API online',
       );
     });
+    // Green when connected: a grey dot beside a person reads as offline.
+    expect(screen.getByTestId('rail-status-dot').firstElementChild?.className).toContain(
+      'bg-tint-green-icon',
+    );
     // The words are still there for assistive technology and for the checks that read them.
     expect(screen.getByTestId('api-status').className).toContain('sr-only');
     expect(screen.getByTestId('live-status')).toBeInTheDocument();
