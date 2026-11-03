@@ -58,12 +58,12 @@ export function Confirmation() {
     <>
       <div className="flex items-start gap-3">
         <CircleCheck aria-hidden className="mt-1 size-6 shrink-0 text-success" />
-        <h1 className="text-2xl font-semibold">
+        <h1 className="text-[1.7333rem] leading-tight font-light text-foreground-strong">
           {t('portal.received', { number: result.ticketKey })}
         </h1>
       </div>
 
-      <div className="flex items-center justify-between gap-3 rounded-2xl bg-surface p-pane ring-1 ring-border/60 ring-inset">
+      <div className="flex items-center justify-between gap-3 rounded-inner bg-surface-muted p-pane">
         <dl>
           <dt className="text-sm text-muted-foreground">{t('portal.confirmation.number')}</dt>
           <dd className="mt-0.5 font-mono text-3xl font-semibold tabular-nums">

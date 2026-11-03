@@ -144,11 +144,9 @@ export function TicketPanel({
       >
         <TabsList
           aria-label={t('panel.label')}
-          // Three labelled tabs must fit beside the pane buttons: tighter tabs, and a scroll as the last resort.
-          className={cn(
-            'min-w-0 flex-1 gap-0.5 overflow-x-auto [scrollbar-width:none] [&>*]:shrink-0 [&>*]:px-2.5',
-            collapsed && 'lg:hidden',
-          )}
+          // Three labelled tabs beside the pane buttons: tighter padding; the triggers shrink and
+          // truncate their labels (the full name stays in aria-label and the tooltip).
+          className={cn('min-w-0 flex-1 gap-0.5 [&>*]:px-2.5', collapsed && 'lg:hidden')}
           // A press on the tab already showing is a choice too; the Tabs change event skips it.
           onClickCapture={(event) => {
             const value = (event.target as HTMLElement)

@@ -65,8 +65,8 @@ export function PortalTimeline({
               key={entry.id}
               data-from={entry.from}
               className={cn(
-                'rounded-lg border px-3 py-2',
-                mine ? 'border-border bg-surface-muted' : 'border-border-strong bg-surface',
+                'rounded-inner px-3.5 py-2.5',
+                mine ? 'bg-primary-subtle' : 'bg-surface-muted',
               )}
             >
               <p className="flex flex-wrap items-baseline justify-between gap-x-3 text-sm">

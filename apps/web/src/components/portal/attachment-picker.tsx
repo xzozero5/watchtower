@@ -145,7 +145,7 @@ export function AttachmentPicker({
           {files.map((file, index) => (
             <li
               key={`${file.name}-${String(file.size)}-${String(file.lastModified)}`}
-              className="flex items-center gap-2 rounded-lg border border-border bg-surface px-3 py-1.5 text-sm"
+              className="flex items-center gap-2 rounded-inner bg-surface-muted px-3 py-1.5 text-sm"
             >
               <span className="min-w-0 flex-1 break-all">{file.name}</span>
               <span className="shrink-0 text-muted-foreground tabular-nums">
