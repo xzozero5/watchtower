@@ -20,6 +20,8 @@ docker compose --env-file D:\Works\secret\watchtower.env up -d --wait --build
 - Postgres volume เดิมที่ถูก init ด้วยรหัสอื่น: เปลี่ยน `POSTGRES_PASSWORD` แล้วต้อง `ALTER ROLE` ใน container (ใช้ค่าจาก env ของ container เอง ไม่พิมพ์) ไม่ต้องลบ volume
 
 ## 3. AI ผ่าน `claude -p` (bridge ใน Docker เปิดค้าง) — ADR-019
+> `claude -p` (sonnet) ใช้ ~5–10 s ต่อครั้ง `[TESTED 2026-11-03]` ซึ่งนานกว่า `INGEST_CLASSIFIER_TIMEOUT_MS` default 3000 → ตั้ง `INGEST_CLASSIFIER_TIMEOUT_MS=15000` ใน env file ไม่งั้นตอนรับเมลเข้าจะใช้ rules แทน AI (classify ตามหลังยังทำงาน)
+
 AI ใช้ได้ **เมื่อเครื่อง host online เท่านั้น**: bridge เช็คการเข้าถึง `api.anthropic.com:443` (cache 15 s) ตอน offline จะตอบ `503 offline` โดยไม่เรียก CLI → งาน AI ถูกบันทึก (`ai_run` error) ไม่ fallback เป็น mock → ticket แสดง "AI ออฟไลน์ … ระบบจะลองใหม่เอง" → งาน brief ถูกเลื่อนลองใหม่ทุก 5 นาที (นานสุด 24 ชม.) · ต่อเน็ตกลับมาแล้วไม่ต้องทำอะไร
 1. **ขอ token (ครั้งเดียว, เจ้าของทำเอง):** ใน terminal ที่ login Claude Code แล้วรัน `claude setup-token` (ต้องมี Claude subscription) นำ token ที่ได้ไปใส่ในไฟล์ env นอก repo เป็น `CLAUDE_CODE_OAUTH_TOKEN` (ชื่อตัวแปร `[VERIFY]` กับเอกสาร Claude Code ปัจจุบัน) · **ห้ามพิมพ์/แปะ token ในแชตหรือ log**
 2. **env file** (`D:\Works\secret\watchtower.env`) ต้องมีตัวแปรเหล่านี้ (ค่าตัวอย่างเฉพาะที่ไม่ลับ):
