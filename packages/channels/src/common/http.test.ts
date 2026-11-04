@@ -8,7 +8,13 @@ import {
   timeoutError,
 } from './__fixtures__/scripted-fetch.js';
 import { ChannelError } from './errors.js';
-import { HttpClient, backoffDelayMs, parseRetryAfter, type HttpRequest } from './http.js';
+import {
+  HttpClient,
+  MAX_RETRY_AFTER_MS,
+  backoffDelayMs,
+  parseRetryAfter,
+  type HttpRequest,
+} from './http.js';
 
 const net = disableNetConnect();
 afterAll(() => {
@@ -39,6 +45,14 @@ describe('parseRetryAfter', () => {
   it('reads fractional seconds (Discord) and rounds up, never as a date', () => {
     expect(parseRetryAfter('1.5', 0)).toBe(1500);
     expect(parseRetryAfter('0.0004', 0)).toBe(1);
+  });
+
+  it('never believes more than an hour, in any of the three forms (T-125)', () => {
+    expect(parseRetryAfter('86400', 0)).toBe(MAX_RETRY_AFTER_MS);
+    expect(parseRetryAfter('99999999999', 0)).toBe(MAX_RETRY_AFTER_MS);
+    expect(parseRetryAfter('7200.5', 0)).toBe(MAX_RETRY_AFTER_MS);
+    expect(parseRetryAfter('Fri, 31 Dec 9999 23:59:59 GMT', 0)).toBe(MAX_RETRY_AFTER_MS);
+    expect(parseRetryAfter('3600', 0)).toBe(3_600_000);
   });
 
   it('returns undefined for absent or garbage values', () => {
