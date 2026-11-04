@@ -39,7 +39,17 @@ export {
   type SessionOptions,
   type TokenEntry,
   type TokenOrigin,
+  setDefaultNameFinder,
 } from './redaction/redactor.js';
+export {
+  createLocalNameFinder,
+  applyRedactionNer,
+  NerLimitError,
+  REDACTION_NER_MODES,
+  type NameFinder,
+  type NameSpot,
+  type RedactionNerMode,
+} from './redaction/ner-local.js';
 export {
   DictionaryTooLargeError,
   MAX_DICTIONARY_CHARS,

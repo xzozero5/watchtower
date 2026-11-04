@@ -1,0 +1,1046 @@
+{
+  "note": "Made-up data only (N1). Generated once; edit by hand afterwards. known:true = a gap the redactor documents; it is counted but does not gate.",
+  "cases": [
+    {
+      "id": "name-dictionary-01",
+      "category": "name_dictionary",
+      "lang": "en",
+      "text": "Please ask Somchai Jaidee to call the customer back before noon.",
+      "redact": [
+        "Somchai Jaidee"
+      ],
+      "keep": [],
+      "names": [
+        "Somchai Jaidee"
+      ]
+    },
+    {
+      "id": "name-dictionary-02",
+      "category": "name_dictionary",
+      "lang": "en",
+      "text": "Maria Garcia reported the outage and Wei Zhang confirmed it.",
+      "redact": [
+        "Maria Garcia",
+        "Wei Zhang"
+      ],
+      "keep": [],
+      "names": [
+        "Maria Garcia",
+        "Wei Zhang"
+      ]
+    },
+    {
+      "id": "name-dictionary-03",
+      "category": "name_dictionary",
+      "lang": "en",
+      "text": "Escalated to PRIYA NAIR (on call).",
+      "redact": [
+        "PRIYA NAIR"
+      ],
+      "keep": [],
+      "names": [
+        "Priya Nair"
+      ]
+    },
+    {
+      "id": "name-dictionary-04",
+      "category": "name_dictionary",
+      "lang": "en",
+      "text": "Forwarding from Anne-Marie O’Brien, who owns the invoice.",
+      "redact": [
+        "Anne-Marie",
+        "Brien"
+      ],
+      "keep": [],
+      "names": [
+        "Anne-Marie O’Brien"
+      ]
+    },
+    {
+      "id": "name-dictionary-05",
+      "category": "name_dictionary",
+      "lang": "th",
+      "text": "สมชาย ใจดี แจ้งว่าระบบช้าตั้งแต่เช้า",
+      "redact": [
+        "สมชาย",
+        "ใจดี"
+      ],
+      "keep": [],
+      "names": [
+        "สมชาย ใจดี"
+      ]
+    },
+    {
+      "id": "name-dictionary-06",
+      "category": "name_dictionary",
+      "lang": "th",
+      "text": "ฝากบอก วิภา ศรีสุข ให้ติดต่อกลับด้วย",
+      "redact": [
+        "วิภา",
+        "ศรีสุข"
+      ],
+      "keep": [],
+      "names": [
+        "วิภา ศรีสุข"
+      ]
+    },
+    {
+      "id": "name-dictionary-07",
+      "category": "name_dictionary",
+      "lang": "en",
+      "text": "Kenji Watanabe asked about the refund; kenji wrote again today.",
+      "redact": [
+        "Kenji",
+        "Watanabe",
+        "kenji"
+      ],
+      "keep": [],
+      "names": [
+        "Kenji Watanabe"
+      ]
+    },
+    {
+      "id": "name-dictionary-08",
+      "category": "name_dictionary",
+      "lang": "en",
+      "text": "Handled by Nattaya Rungrueng.",
+      "redact": [
+        "Nattaya",
+        "Rungrueng"
+      ],
+      "keep": [],
+      "names": [
+        "Nattaya Rungrueng"
+      ]
+    },
+    {
+      "id": "name-cue-01",
+      "category": "name_cue",
+      "lang": "en",
+      "text": "Hello, my name is Somchai Jaidee and I cannot log in.",
+      "redact": [
+        "Somchai",
+        "Jaidee"
+      ],
+      "keep": []
+    },
+    {
+      "id": "name-cue-02",
+      "category": "name_cue",
+      "lang": "en",
+      "text": "This is Maria Garcia from the finance team, please call me.",
+      "redact": [
+        "Maria",
+        "Garcia"
+      ],
+      "keep": []
+    },
+    {
+      "id": "name-cue-03",
+      "category": "name_cue",
+      "lang": "en",
+      "text": "Thanks for the quick fix.\nRegards,\nJohn Smith\nAcme Logistics",
+      "redact": [
+        "John",
+        "Smith"
+      ],
+      "keep": [
+        "Acme Logistics"
+      ]
+    },
+    {
+      "id": "name-cue-04",
+      "category": "name_cue",
+      "lang": "en",
+      "text": "Dear Priya Nair,\nWe have reviewed your request.",
+      "redact": [
+        "Priya",
+        "Nair"
+      ],
+      "keep": []
+    },
+    {
+      "id": "name-cue-05",
+      "category": "name_cue",
+      "lang": "en",
+      "text": "Mr Zhang called twice this morning.",
+      "redact": [
+        "Zhang"
+      ],
+      "keep": []
+    },
+    {
+      "id": "name-cue-06",
+      "category": "name_cue",
+      "lang": "en",
+      "text": "Hi Wei, the report is attached.",
+      "redact": [
+        "Wei"
+      ],
+      "keep": []
+    },
+    {
+      "id": "name-cue-07",
+      "category": "name_cue",
+      "lang": "en",
+      "text": "Name: Anne Marie Walker\nCompany: Acme Logistics",
+      "redact": [
+        "Anne",
+        "Walker"
+      ],
+      "keep": [
+        "Acme Logistics"
+      ]
+    },
+    {
+      "id": "name-cue-08",
+      "category": "name_cue",
+      "lang": "en",
+      "text": "I am Kenji Watanabe, the new admin.",
+      "redact": [
+        "Kenji",
+        "Watanabe"
+      ],
+      "keep": []
+    },
+    {
+      "id": "name-cue-09",
+      "category": "name_cue",
+      "lang": "th",
+      "text": "สวัสดีครับ ผมชื่อ สมชาย ใจดี เข้าระบบไม่ได้",
+      "redact": [
+        "สมชาย",
+        "ใจดี"
+      ],
+      "keep": []
+    },
+    {
+      "id": "name-cue-10",
+      "category": "name_cue",
+      "lang": "th",
+      "text": "ขอบคุณค่ะ\nคุณวิภา ศรีสุข",
+      "redact": [
+        "วิภา",
+        "ศรีสุข"
+      ],
+      "keep": []
+    },
+    {
+      "id": "name-cue-11",
+      "category": "name_cue",
+      "lang": "th",
+      "text": "ประสาน คุณประเสริฐ แก้วมณี เรียบร้อยแล้ว",
+      "redact": [
+        "ประเสริฐ",
+        "แก้วมณี"
+      ],
+      "keep": []
+    },
+    {
+      "id": "name-cue-12",
+      "category": "name_cue",
+      "lang": "th",
+      "text": "เรียน คุณณัฐธิดา เจริญผล",
+      "redact": [
+        "ณัฐธิดา",
+        "เจริญผล"
+      ],
+      "keep": []
+    },
+    {
+      "id": "name-cue-13",
+      "category": "name_cue",
+      "lang": "th",
+      "text": "ชื่อ: สมพงษ์ รุ่งเรือง\nบริษัท: แอคมี ล็อกิสติกส์",
+      "redact": [
+        "สมพงษ์",
+        "รุ่งเรือง"
+      ],
+      "keep": [
+        "แอคมี ล็อกิสติกส์"
+      ]
+    },
+    {
+      "id": "name-nocue-01",
+      "category": "name_nocue",
+      "lang": "en",
+      "text": "Yesterday John Smith opened three tickets about the same invoice.",
+      "redact": [
+        "John",
+        "Smith"
+      ],
+      "keep": [],
+      "known": true
+    },
+    {
+      "id": "name-nocue-02",
+      "category": "name_nocue",
+      "lang": "en",
+      "text": "The account belongs to Maria Garcia and was renewed in March.",
+      "redact": [
+        "Maria",
+        "Garcia"
+      ],
+      "keep": [],
+      "known": true
+    },
+    {
+      "id": "name-nocue-03",
+      "category": "name_nocue",
+      "lang": "en",
+      "text": "Wei Zhang from procurement forwarded the contract.",
+      "redact": [
+        "Wei",
+        "Zhang"
+      ],
+      "keep": [],
+      "known": true
+    },
+    {
+      "id": "name-nocue-04",
+      "category": "name_nocue",
+      "lang": "en",
+      "text": "We spoke with Priya Nair last week; she asked for a refund.",
+      "redact": [
+        "Priya",
+        "Nair"
+      ],
+      "keep": [],
+      "known": true
+    },
+    {
+      "id": "name-nocue-05",
+      "category": "name_nocue",
+      "lang": "en",
+      "text": "Reported by Kenji Watanabe.",
+      "redact": [
+        "Kenji",
+        "Watanabe"
+      ],
+      "keep": [],
+      "known": true
+    },
+    {
+      "id": "name-nocue-06",
+      "category": "name_nocue",
+      "lang": "th",
+      "text": "สมชาย ใจดี โทรมาเมื่อวานนี้แล้วบอกว่าใบแจ้งหนี้ผิด",
+      "redact": [
+        "สมชาย",
+        "ใจดี"
+      ],
+      "keep": [],
+      "known": true
+    },
+    {
+      "id": "name-nocue-07",
+      "category": "name_nocue",
+      "lang": "th",
+      "text": "บัญชีนี้เป็นของ วิภา ศรีสุข ต่ออายุแล้วเมื่อเดือนก่อน",
+      "redact": [
+        "วิภา",
+        "ศรีสุข"
+      ],
+      "keep": [],
+      "known": true
+    },
+    {
+      "id": "name-nocue-08",
+      "category": "name_nocue",
+      "lang": "th",
+      "text": "ฝ่ายจัดซื้อส่งสัญญามาให้ ณัฐธิดา เจริญผล แล้ว",
+      "redact": [
+        "ณัฐธิดา",
+        "เจริญผล"
+      ],
+      "keep": [],
+      "known": true
+    },
+    {
+      "id": "email-01",
+      "category": "email",
+      "lang": "en",
+      "text": "Reach me at somchai.jaidee@acme-logistics.example.",
+      "redact": [
+        "somchai.jaidee@acme-logistics.example"
+      ],
+      "keep": []
+    },
+    {
+      "id": "email-02",
+      "category": "email",
+      "lang": "en",
+      "text": "CC: Maria.Garcia+billing@Example.TEST and finance@example.test",
+      "redact": [
+        "Maria.Garcia+billing@Example.TEST",
+        "finance@example.test"
+      ],
+      "keep": []
+    },
+    {
+      "id": "email-03",
+      "category": "email",
+      "lang": "en",
+      "text": "From: \"Wei Zhang\" <wei.zhang@corp.example.test>",
+      "redact": [
+        "wei.zhang@corp.example.test"
+      ],
+      "keep": []
+    },
+    {
+      "id": "email-04",
+      "category": "email",
+      "lang": "th",
+      "text": "ติดต่อที่ somchai@example.testครับ",
+      "redact": [
+        "somchai@example.test"
+      ],
+      "keep": []
+    },
+    {
+      "id": "email-05",
+      "category": "email",
+      "lang": "th",
+      "text": "อีเมลคือ priya_nair@example.test นะคะ",
+      "redact": [
+        "priya_nair@example.test"
+      ],
+      "keep": []
+    },
+    {
+      "id": "email-06",
+      "category": "email",
+      "lang": "en",
+      "text": "mailto:support.team@example.test?subject=help",
+      "redact": [
+        "support.team@example.test"
+      ],
+      "keep": []
+    },
+    {
+      "id": "email-07",
+      "category": "email",
+      "lang": "en",
+      "text": "https://portal.example.test/unsubscribe?email=kenji%40example.test&id=7",
+      "redact": [
+        "kenji%40example.test"
+      ],
+      "keep": []
+    },
+    {
+      "id": "email-08",
+      "category": "email",
+      "lang": "en",
+      "text": "Write to john [at] example.test if the form fails.",
+      "redact": [
+        "john [at] example.test"
+      ],
+      "keep": [],
+      "known": true
+    },
+    {
+      "id": "email-09",
+      "category": "email",
+      "lang": "en",
+      "text": "My address is j.smith @ example.test (spaces added by my mail client).",
+      "redact": [
+        "j.smith @ example.test"
+      ],
+      "keep": [],
+      "known": true
+    },
+    {
+      "id": "email-10",
+      "category": "email",
+      "lang": "en",
+      "text": "Line one\nanne.walker@example.test\nLine three",
+      "redact": [
+        "anne.walker@example.test"
+      ],
+      "keep": []
+    },
+    {
+      "id": "phone-01",
+      "category": "phone",
+      "lang": "en",
+      "text": "Call me on 081-234-5678 after lunch.",
+      "redact": [
+        "081-234-5678"
+      ],
+      "keep": []
+    },
+    {
+      "id": "phone-02",
+      "category": "phone",
+      "lang": "en",
+      "text": "Mobile 0812345678, office (02) 123 4567.",
+      "redact": [
+        "0812345678",
+        "(02) 123 4567"
+      ],
+      "keep": []
+    },
+    {
+      "id": "phone-03",
+      "category": "phone",
+      "lang": "en",
+      "text": "My number is +66 81 234 5678.",
+      "redact": [
+        "+66 81 234 5678"
+      ],
+      "keep": []
+    },
+    {
+      "id": "phone-04",
+      "category": "phone",
+      "lang": "en",
+      "text": "LINE call to 66812345678 please.",
+      "redact": [
+        "66812345678"
+      ],
+      "keep": []
+    },
+    {
+      "id": "phone-05",
+      "category": "phone",
+      "lang": "th",
+      "text": "โทรกลับ 089 765 4321 ได้เลยครับ",
+      "redact": [
+        "089 765 4321"
+      ],
+      "keep": []
+    },
+    {
+      "id": "phone-06",
+      "category": "phone",
+      "lang": "th",
+      "text": "เบอร์ติดต่อ 0 9 1 2 3 4 5 6 7 8",
+      "redact": [
+        "0 9 1 2 3 4 5 6 7 8"
+      ],
+      "keep": []
+    },
+    {
+      "id": "phone-07",
+      "category": "phone",
+      "lang": "en",
+      "text": "US contact: +1 415 555 0132.",
+      "redact": [
+        "+1 415 555 0132"
+      ],
+      "keep": []
+    },
+    {
+      "id": "phone-08",
+      "category": "phone",
+      "lang": "th",
+      "text": "เบอร์ไม่คือ ๐๘๑๒๓๔๕๖๗๘",
+      "redact": [
+        "๐๘๑๒๓๔๕๖๗๘"
+      ],
+      "keep": []
+    },
+    {
+      "id": "phone-09",
+      "category": "phone",
+      "lang": "en",
+      "text": "Landline 02-345-6789 ext 12, mobile 062.345.6789.",
+      "redact": [
+        "02-345-6789",
+        "062.345.6789"
+      ],
+      "keep": []
+    },
+    {
+      "id": "national-id-01",
+      "category": "national_id",
+      "lang": "th",
+      "text": "เลขบัตรประชาชน 1-1017-00123-45-6",
+      "redact": [
+        "1-1017-00123-45-6"
+      ],
+      "keep": []
+    },
+    {
+      "id": "national-id-02",
+      "category": "national_id",
+      "lang": "en",
+      "text": "National ID: 3100901234561",
+      "redact": [
+        "3100901234561"
+      ],
+      "keep": []
+    },
+    {
+      "id": "national-id-03",
+      "category": "national_id",
+      "lang": "en",
+      "text": "ID card 5101 2009 8765 9",
+      "redact": [
+        "5101 2009 8765 9"
+      ],
+      "keep": []
+    },
+    {
+      "id": "national-id-04",
+      "category": "national_id",
+      "lang": "th",
+      "text": "บัตร ๑๑๐๑๗๐๐๑๒๓๔๕๖ หมดอายุแล้ว",
+      "redact": [
+        "๑๑๐๑๗๐๐๑๒๓๔๕๖"
+      ],
+      "keep": []
+    },
+    {
+      "id": "national-id-05",
+      "category": "national_id",
+      "lang": "en",
+      "text": "ID 1 1 0 1 7 0 0 1 2 3 4 5 6",
+      "redact": [
+        "1 1 0 1 7 0 0 1 2 3 4 5 6"
+      ],
+      "keep": []
+    },
+    {
+      "id": "national-id-06",
+      "category": "national_id",
+      "lang": "en",
+      "text": "Citizen id (31009) 01234561",
+      "redact": [
+        "31009) 01234561"
+      ],
+      "keep": []
+    },
+    {
+      "id": "card-01",
+      "category": "card",
+      "lang": "en",
+      "text": "Card 4111 1111 1111 1111 was declined.",
+      "redact": [
+        "4111 1111 1111 1111"
+      ],
+      "keep": []
+    },
+    {
+      "id": "card-02",
+      "category": "card",
+      "lang": "en",
+      "text": "Visa 4111-1111-1111-1111 exp 12/29",
+      "redact": [
+        "4111-1111-1111-1111"
+      ],
+      "keep": [
+        "12/29"
+      ]
+    },
+    {
+      "id": "card-03",
+      "category": "card",
+      "lang": "en",
+      "text": "Mastercard 5555555555554444 charged twice.",
+      "redact": [
+        "5555555555554444"
+      ],
+      "keep": []
+    },
+    {
+      "id": "card-04",
+      "category": "card",
+      "lang": "en",
+      "text": "Amex 3782 822463 10005 please check.",
+      "redact": [
+        "3782 822463 10005"
+      ],
+      "keep": []
+    },
+    {
+      "id": "card-05",
+      "category": "card",
+      "lang": "th",
+      "text": "บัตรเครดิต 4 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 ใช้ไม่ได้",
+      "redact": [
+        "4 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1"
+      ],
+      "keep": []
+    },
+    {
+      "id": "card-06",
+      "category": "card",
+      "lang": "th",
+      "text": "เลขบัตร ๔๑๑๑๑๑๑๑๑๑๑๑๑๑๑๑",
+      "redact": [
+        "๔๑๑๑๑๑๑๑๑๑๑๑๑๑๑๑"
+      ],
+      "keep": []
+    },
+    {
+      "id": "passport-01",
+      "category": "passport",
+      "lang": "en",
+      "text": "Passport no. AA1234567 expires next year.",
+      "redact": [
+        "AA1234567"
+      ],
+      "keep": []
+    },
+    {
+      "id": "passport-02",
+      "category": "passport",
+      "lang": "en",
+      "text": "Passport: P1234567",
+      "redact": [
+        "P1234567"
+      ],
+      "keep": []
+    },
+    {
+      "id": "passport-03",
+      "category": "passport",
+      "lang": "th",
+      "text": "หนังสือเดินทางเลขที่ AB 1234567",
+      "redact": [
+        "AB 1234567"
+      ],
+      "keep": []
+    },
+    {
+      "id": "passport-04",
+      "category": "passport",
+      "lang": "en",
+      "text": "MRZ line:\nAB12345671THA9001011M3001019<<<<<<<<<<<<<<04",
+      "redact": [
+        "AB12345671THA9001011M3001019<<<<<<<<<<<<<<04"
+      ],
+      "keep": []
+    },
+    {
+      "id": "passport-05",
+      "category": "passport",
+      "lang": "en",
+      "text": "passport number is x4455667 (scan attached)",
+      "redact": [
+        "x4455667"
+      ],
+      "keep": []
+    },
+    {
+      "id": "passport-06",
+      "category": "passport",
+      "lang": "en",
+      "text": "Travel doc AB1234567 was scanned.",
+      "redact": [
+        "AB1234567"
+      ],
+      "keep": [],
+      "known": true
+    },
+    {
+      "id": "csat-link-01",
+      "category": "csat_link",
+      "lang": "en",
+      "text": "Here is my survey link https://portal.example.test/csat/wtc1.a1b2c3d4e5f60718293a4b5c6d7e8f90.k9x2.Zk3-Qm9_Lx2vT7pRa5NwYc8HdJe1UoGsIb4FtMhK6qE thanks",
+      "redact": [
+        "wtc1.a1b2c3d4e5f60718293a4b5c6d7e8f90.k9x2.Zk3-Qm9_Lx2vT7pRa5NwYc8HdJe1UoGsIb4FtMhK6qE"
+      ],
+      "keep": []
+    },
+    {
+      "id": "csat-link-02",
+      "category": "csat_link",
+      "lang": "en",
+      "text": "Token only: wtc1.0f1e2d3c4b5a69788796a5b4c3d2e1f0.m3.AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+      "redact": [
+        "wtc1.0f1e2d3c4b5a69788796a5b4c3d2e1f0.m3.AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+      ],
+      "keep": []
+    },
+    {
+      "id": "csat-link-03",
+      "category": "csat_link",
+      "lang": "th",
+      "text": "ลิงก์ประเมินคือ /csat/wtc1.a1b2c3d4e5f60718293a4b5c6d7e8f90.k9x2.Zk3-Qm9_Lx2vT7pRa5NwYc8HdJe1UoGsIb4FtMhK6qE?lang=th ค่ะ",
+      "redact": [
+        "wtc1.a1b2c3d4e5f60718293a4b5c6d7e8f90.k9x2.Zk3-Qm9_Lx2vT7pRa5NwYc8HdJe1UoGsIb4FtMhK6qE"
+      ],
+      "keep": []
+    },
+    {
+      "id": "csat-link-04",
+      "category": "csat_link",
+      "lang": "en",
+      "text": "Quoted back:\n> wtc1.a1b2c3d4e5f60718293a4b5c6d7e8f90.k9x2.Zk3-Qm9_Lx2vT7pRa5NwYc8HdJe1UoGsIb4FtMhK6qE\n> wtc1.0f1e2d3c4b5a69788796a5b4c3d2e1f0.m3.AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+      "redact": [
+        "wtc1.a1b2c3d4e5f60718293a4b5c6d7e8f90.k9x2.Zk3-Qm9_Lx2vT7pRa5NwYc8HdJe1UoGsIb4FtMhK6qE",
+        "wtc1.0f1e2d3c4b5a69788796a5b4c3d2e1f0.m3.AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+      ],
+      "keep": []
+    },
+    {
+      "id": "keep-01",
+      "category": "keep",
+      "lang": "en",
+      "text": "Ticket WT-1042 was reopened on 2026-11-04 at 14:30 ICT after error 502 on /v1/orders.",
+      "redact": [],
+      "keep": [
+        "WT-1042",
+        "2026-11-04",
+        "14:30",
+        "502",
+        "/v1/orders"
+      ]
+    },
+    {
+      "id": "keep-02",
+      "category": "keep",
+      "lang": "en",
+      "text": "Invoice INV-2026-001234 for THB 12,500.00 is overdue by 14 days.",
+      "redact": [],
+      "keep": [
+        "INV-2026-001234",
+        "THB 12,500.00",
+        "14 days"
+      ],
+      "known": true
+    },
+    {
+      "id": "keep-03",
+      "category": "keep",
+      "lang": "en",
+      "text": "Dear Team,\nThis is Important: the queue is paused.\nThanks,\nSupport",
+      "redact": [],
+      "keep": [
+        "Dear Team",
+        "This is Important",
+        "Support"
+      ]
+    },
+    {
+      "id": "keep-04",
+      "category": "keep",
+      "lang": "en",
+      "text": "Deployed v2.14.3 to Google Cloud in asia-southeast1 at 2026-11-04T09:15:00Z.",
+      "redact": [],
+      "keep": [
+        "v2.14.3",
+        "Google Cloud",
+        "asia-southeast1",
+        "2026-11-04T09:15:00Z"
+      ]
+    },
+    {
+      "id": "keep-05",
+      "category": "keep",
+      "lang": "en",
+      "text": "Request id 3f2b8c1e-9d4a-4e7b-8a6f-1c2d3e4f5a6b returned in 230 ms.",
+      "redact": [],
+      "keep": [
+        "3f2b8c1e-9d4a-4e7b-8a6f-1c2d3e4f5a6b",
+        "230 ms"
+      ]
+    },
+    {
+      "id": "keep-06",
+      "category": "keep",
+      "lang": "en",
+      "text": "SKU-20481-TH is back in stock; 1,200 units in the Bangkok warehouse.",
+      "redact": [],
+      "keep": [
+        "SKU-20481-TH",
+        "1,200 units",
+        "Bangkok warehouse"
+      ]
+    },
+    {
+      "id": "keep-07",
+      "category": "keep",
+      "lang": "en",
+      "text": "Hi team, the Watchtower alert fired on pod api-7f9c at 03:12.",
+      "redact": [],
+      "keep": [
+        "Watchtower alert",
+        "api-7f9c",
+        "03:12"
+      ]
+    },
+    {
+      "id": "keep-08",
+      "category": "keep",
+      "lang": "en",
+      "text": "Server 10.0.12.7 answered on port 5432 with status 200.",
+      "redact": [],
+      "keep": [
+        "10.0.12.7",
+        "5432",
+        "200"
+      ]
+    },
+    {
+      "id": "keep-09",
+      "category": "keep",
+      "lang": "en",
+      "text": "Order 20261104 shipped; tracking 2026110400 pending; batch 4471.",
+      "redact": [],
+      "keep": [
+        "20261104",
+        "4471"
+      ]
+    },
+    {
+      "id": "keep-10",
+      "category": "keep",
+      "lang": "en",
+      "text": "Please check the monthly report for October and the Mr Coffee machine on floor 3.",
+      "redact": [],
+      "keep": [
+        "monthly report for October",
+        "floor 3"
+      ]
+    },
+    {
+      "id": "keep-11",
+      "category": "keep",
+      "lang": "th",
+      "text": "ขอบคุณครับ คุณภาพของระบบดีขึ้นมาก",
+      "redact": [],
+      "keep": [
+        "คุณภาพของระบบดีขึ้นมาก"
+      ]
+    },
+    {
+      "id": "keep-12",
+      "category": "keep",
+      "lang": "th",
+      "text": "สาขากรุงเทพแจ้งว่า ticket WT-2210 ยังค้าง 3 วัน",
+      "redact": [],
+      "keep": [
+        "กรุงเทพ",
+        "WT-2210",
+        "3 วัน"
+      ]
+    },
+    {
+      "id": "keep-13",
+      "category": "keep",
+      "lang": "th",
+      "text": "ยอดชำระ 1,250.50 บาท ครบกำหนด 15/11/2569",
+      "redact": [],
+      "keep": [
+        "1,250.50 บาท",
+        "15/11/2569"
+      ]
+    },
+    {
+      "id": "keep-14",
+      "category": "keep",
+      "lang": "th",
+      "text": "ระบบคิวค้างตั้งแต่ 08:45 เกิด error E1042 ซ้ำหลายครั้ง",
+      "redact": [],
+      "keep": [
+        "08:45",
+        "E1042"
+      ]
+    },
+    {
+      "id": "keep-15",
+      "category": "keep",
+      "lang": "en",
+      "text": "Contact the on-call lead through the status page, not by phone.",
+      "redact": [],
+      "keep": [
+        "on-call lead",
+        "status page"
+      ]
+    },
+    {
+      "id": "keep-16",
+      "category": "keep",
+      "lang": "en",
+      "text": "Dr. Strange is a movie; the Doctor role in the roster is unrelated.",
+      "redact": [],
+      "keep": [
+        "movie"
+      ]
+    },
+    {
+      "id": "keep-17",
+      "category": "keep",
+      "lang": "en",
+      "text": "On Monday the Bangkok office saw Apple Pay failures in the Google Cloud console.",
+      "redact": [],
+      "keep": [
+        "Monday",
+        "Bangkok office",
+        "Apple Pay",
+        "Google Cloud"
+      ],
+      "known": false
+    },
+    {
+      "id": "keep-18",
+      "category": "keep",
+      "lang": "en",
+      "text": "Please update the Annual Report for Sunday and send it to the Finance Department.",
+      "redact": [],
+      "keep": [
+        "Annual Report",
+        "Sunday",
+        "Finance Department"
+      ],
+      "known": false
+    },
+    {
+      "id": "keep-19",
+      "category": "keep",
+      "lang": "en",
+      "text": "Summer sale orders from March were refunded through Stripe and PayPal.",
+      "redact": [],
+      "keep": [
+        "Summer sale",
+        "March",
+        "Stripe",
+        "PayPal"
+      ],
+      "known": false
+    },
+    {
+      "id": "keep-20",
+      "category": "keep",
+      "lang": "en",
+      "text": "The Smart Meter firmware from North Region needs Windows Server 2022 and Active Directory.",
+      "redact": [],
+      "keep": [
+        "Smart Meter",
+        "North Region",
+        "Windows Server 2022",
+        "Active Directory"
+      ],
+      "known": false
+    },
+    {
+      "id": "keep-21",
+      "category": "keep",
+      "lang": "en",
+      "text": "Escalate to the Platform Team when Redis Cluster latency passes the Service Level target.",
+      "redact": [],
+      "keep": [
+        "Platform Team",
+        "Redis Cluster",
+        "Service Level"
+      ],
+      "known": false
+    },
+    {
+      "id": "keep-22",
+      "category": "keep",
+      "lang": "en",
+      "text": "Our Customer Success group runs the Weekly Review every Friday morning.",
+      "redact": [],
+      "keep": [
+        "Customer Success",
+        "Weekly Review",
+        "Friday"
+      ],
+      "known": false
+    }
+  ]
+}

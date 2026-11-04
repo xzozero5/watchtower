@@ -11,6 +11,7 @@ import {
   type RedactionKind,
   type Span,
 } from './detectors.js';
+import type { NameFinder } from './ner-local.js';
 import { buildView } from './normalize.js';
 import { mintRedacted, type RedactedText } from './redacted-text.js';
 
@@ -128,6 +129,39 @@ export interface RedactorOptions {
   matchNameParts?: boolean;
   /** Longest text one call may redact (UTF-16 units). Longer input is refused. Default 1,000,000. */
   maxInputChars?: number;
+  /**
+   * Finds names that have no cue and are not in the dictionary (T-153). Absent: the process default
+   * (`setDefaultNameFinder`); `null`: none. If it throws, `redact` throws: do not send the text.
+   */
+  nameFinder?: NameFinder | null;
+}
+
+/**
+ * The finder used by every redactor that is not given one (T-153). The app sets it once at boot from
+ * `REDACTION_NER` (`off` = none, the default); a redactor made with its own `nameFinder` ignores it.
+ */
+let defaultNameFinder: NameFinder | null = null;
+export function setDefaultNameFinder(finder: NameFinder | null): void {
+  defaultNameFinder = finder;
+}
+
+/** Priority of a finder's span: below the dictionary and the cues, which are exact and win a tie. */
+const NER_PRIORITY = 30;
+const WORD = /[\p{L}\p{M}\p{N}'’-]+/gu;
+
+/** One NAME span per word of what the finder found, so a word shares its placeholder with the dictionary. */
+function findNames(finder: NameFinder | null, text: string): Span[] {
+  if (finder === null) return [];
+  const spans: Span[] = [];
+  for (const spot of finder(text)) {
+    const start = Math.max(0, spot.start);
+    const end = Math.min(text.length, spot.end);
+    for (const word of text.slice(start, end).matchAll(WORD)) {
+      const from = start + word.index;
+      spans.push({ start: from, end: from + word[0].length, kind: 'NAME', priority: NER_PRIORITY });
+    }
+  }
+  return spans;
 }
 
 export class RedactionInputTooLargeError extends Error {
@@ -144,6 +178,8 @@ export function createRedactor(options: RedactorOptions = {}): Redactor {
   const minNameLength = options.minNameLength ?? 3;
   const matchParts = options.matchNameParts ?? true;
   const maxInputChars = options.maxInputChars ?? DEFAULT_MAX_INPUT_CHARS;
+  const finderOf = (): NameFinder | null =>
+    options.nameFinder === undefined ? defaultNameFinder : options.nameFinder;
 
   return {
     session({ scope, snapshot }) {
@@ -212,6 +248,7 @@ export function createRedactor(options: RedactorOptions = {}): Redactor {
           ...detectPassports(view),
           ...detectNames(view),
           ...detectNameCues(view),
+          ...findNames(finderOf(), view.text),
         ];
 
         let output = '';

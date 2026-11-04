@@ -299,6 +299,18 @@ export const adminEn = {
       assistantRow: '{tokens} tokens · {messages} messages',
       assistantFull: 'At the limit',
     },
+    models: {
+      title: 'Model per AI agent',
+      loadError: 'Couldn’t load the AI models.',
+      intro: 'Set in the environment (AI_MODEL_* and AI_AGENT_MODEL_<AGENT>). Read-only here.',
+      tier: 'Tier',
+      notSet: 'Not set',
+      noPrice: 'No price: calls are refused',
+      source: { default: 'Default', tier: 'Tier chosen', alias: 'Model chosen' },
+      independent: 'The grader runs on a different model than the drafter.',
+      notIndependent:
+        'The grader runs on the same model as the drafter. Its grades are not independent yet.',
+    },
     capTitle: 'Never let AI send on its own (cap at Stage 2)',
     capBody:
       'Keeps every intent at its stage or lower and blocks raising. Never raises Stage 0 or 1.',

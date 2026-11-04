@@ -1,5 +1,6 @@
 import {
   aiBudgetSchema,
+  aiModelMappingSchema,
   aiStatusSchema,
   authConfigSchema,
   bulkResultSchema,
@@ -352,6 +353,14 @@ export function createEndpoints(client: ApiClient) {
       client.request({
         path: '/v1/ai/budget',
         schema: aiBudgetSchema,
+        ...(signal ? { signal } : {}),
+      }),
+
+    /** Which model each AI agent uses, read-only (T-301c). */
+    aiModels: (signal?: AbortSignal) =>
+      client.request({
+        path: '/v1/ai/models',
+        schema: aiModelMappingSchema,
         ...(signal ? { signal } : {}),
       }),
 

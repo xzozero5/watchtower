@@ -1,10 +1,11 @@
 import { Controller, Get, Inject } from '@nestjs/common';
 import { ApiForbiddenResponse, ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
-import { aiBudgetSchema, aiStatusSchema } from '@watchtower/shared';
+import { aiBudgetSchema, aiModelMappingSchema, aiStatusSchema } from '@watchtower/shared';
 
 import { RequireAnyPermission, RequirePermission } from '../auth/decorators.js';
 import { parseResponse } from '../common/zod-openapi.js';
 import { AiBudgetService } from './ai-budget.service.js';
+import { AiModelsService } from './ai-models.service.js';
 import { AiStatusService } from './ai-status.service.js';
 
 @ApiTags('ai')
@@ -13,6 +14,7 @@ export class AiStatusController {
   constructor(
     @Inject(AiStatusService) private readonly status: AiStatusService,
     @Inject(AiBudgetService) private readonly budget: AiBudgetService,
+    @Inject(AiModelsService) private readonly models: AiModelsService,
   ) {}
 
   @Get('budget')
@@ -29,6 +31,21 @@ export class AiStatusController {
   @ApiForbiddenResponse({ description: 'Needs ai.autonomy.set' })
   async getBudget() {
     return parseResponse(aiBudgetSchema, await this.budget.read());
+  }
+
+  @Get('models')
+  @RequirePermission('ai.autonomy.set')
+  @ApiOperation({
+    summary: 'Which model each AI agent uses, read-only (lead, head)',
+    description:
+      'The tier and model of every agent from `AI_MODEL_*` and `AI_AGENT_MODEL_<AGENT>`, where the ' +
+      'choice came from, whether the model has a price, and whether the grader runs on a different ' +
+      'model than the drafter (ADR-025 condition 7). Changed in the environment, never here.',
+  })
+  @ApiOkResponse({ standardSchema: aiModelMappingSchema })
+  @ApiForbiddenResponse({ description: 'Needs ai.autonomy.set' })
+  getModels() {
+    return parseResponse(aiModelMappingSchema, this.models.read());
   }
 
   @Get('status')

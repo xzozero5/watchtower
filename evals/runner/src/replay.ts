@@ -14,7 +14,10 @@ type Turn = { from: 'customer' | 'staff' | 'note'; text: string };
  */
 export function scrub(session: RedactionSession, text: string): string {
   const redacted: string = session.redact(text);
-  return redacted.replaceAll(/\[([A-Z][A-Z_]*)_\d+\]/g, (_, kind: string) => `(${kind.toLowerCase()})`);
+  return redacted.replaceAll(
+    /\[([A-Z][A-Z_]*)_\d+\]/g,
+    (_, kind: string) => `(${kind.toLowerCase()})`,
+  );
 }
 
 export interface ReplayOptions {
@@ -143,7 +146,8 @@ export async function exportReplay(options: ReplayOptions): Promise<ReplayExport
       cases.push({
         id: `${id}-drafter`,
         agent: 'drafter',
-        description: 'Replay of the thread up to the first staff reply; checks language and review flags.',
+        description:
+          'Replay of the thread up to the first staff reply; checks language and review flags.',
         intent: key,
         input: {
           subject,

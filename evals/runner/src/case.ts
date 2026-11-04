@@ -113,8 +113,14 @@ const graderCase = z.object({
   }),
   expect: z.object({
     resolutionClass: z.enum(['verified', 'contained', 'assumed']).optional(),
-    resolutionClassIn: z.array(z.enum(['verified', 'contained', 'assumed'])).min(1).optional(),
-    draftVerdictIn: z.array(z.enum(['matches', 'partial', 'differs', 'no_draft'])).min(1).optional(),
+    resolutionClassIn: z
+      .array(z.enum(['verified', 'contained', 'assumed']))
+      .min(1)
+      .optional(),
+    draftVerdictIn: z
+      .array(z.enum(['matches', 'partial', 'differs', 'no_draft']))
+      .min(1)
+      .optional(),
     minDraftQuality: z.number().min(0).max(1).optional(),
     maxViolations: z.number().int().min(0).optional(),
     minViolations: z.number().int().min(0).optional(),

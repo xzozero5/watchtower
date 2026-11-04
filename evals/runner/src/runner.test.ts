@@ -23,7 +23,9 @@ afterEach(() => {
   rmSync(dir, { recursive: true, force: true });
 });
 
-const classifierCase = (over: Partial<Extract<EvalCase, { agent: 'classifier' }>> = {}): EvalCase => ({
+const classifierCase = (
+  over: Partial<Extract<EvalCase, { agent: 'classifier' }>> = {},
+): EvalCase => ({
   id: 'unit-classifier',
   agent: 'classifier',
   mockAnswer: { type: 'new_customer_issue', intentKey: 'a', confidence: 0.9, reason: 'r' },
@@ -43,10 +45,16 @@ describe('loadCases', () => {
     writeFileSync(join(dir, 'one.json'), JSON.stringify(classifierCase({ id: 'one-case' })));
     writeFileSync(
       join(dir, 'many.json'),
-      JSON.stringify({ cases: [classifierCase({ id: 'two-case' }), classifierCase({ id: 'three-case' })] }),
+      JSON.stringify({
+        cases: [classifierCase({ id: 'two-case' }), classifierCase({ id: 'three-case' })],
+      }),
     );
     const found = loadCases([{ dir, source: 'golden' }], dir);
-    expect(found.map((item) => item.case.id).toSorted()).toEqual(['one-case', 'three-case', 'two-case']);
+    expect(found.map((item) => item.case.id).toSorted()).toEqual([
+      'one-case',
+      'three-case',
+      'two-case',
+    ]);
     expect(found.every((item) => item.source === 'golden')).toBe(true);
   });
 
@@ -189,7 +197,11 @@ describe('prompt versions', () => {
       env: {},
       prompts: loadPromptCatalog(twoVersions()),
     });
-    const [pinned] = await runEval({ cases: [loaded(classifierCase())], rig, pins: { classifier: 1 } });
+    const [pinned] = await runEval({
+      cases: [loaded(classifierCase())],
+      rig,
+      pins: { classifier: 1 },
+    });
     expect(pinned?.promptVersion).toBe(1);
     const [latest] = await runEval({ cases: [loaded(classifierCase())], rig });
     expect(latest?.promptVersion).toBe(2);
@@ -220,8 +232,16 @@ describe('compareReports', () => {
   });
 
   it('names a case that passed before and fails now, and a pass rate that fell', () => {
-    const before = buildReport('mock', [item('a-case', true), item('b-case', false), item('c-case', true)]);
-    const now = buildReport('mock', [item('a-case', false), item('b-case', true), item('c-case', true)]);
+    const before = buildReport('mock', [
+      item('a-case', true),
+      item('b-case', false),
+      item('c-case', true),
+    ]);
+    const now = buildReport('mock', [
+      item('a-case', false),
+      item('b-case', true),
+      item('c-case', true),
+    ]);
     const comparison = compareReports(now, parseBaseline(JSON.parse(JSON.stringify(before))));
     expect(comparison.regressions).toEqual([
       expect.objectContaining({ agent: 'classifier', cases: ['a-case'] }),
@@ -274,14 +294,21 @@ describe('a real provider', () => {
         }),
       },
       fetch: (input, init) => {
-        calls.push(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url);
+        calls.push(
+          typeof input === 'string' ? input : input instanceof URL ? input.href : input.url,
+        );
         const body = JSON.parse(typeof init?.body === 'string' ? init.body : '{}') as {
           model?: string;
         };
         return Promise.resolve(
           new Response(
             JSON.stringify({
-              text: JSON.stringify({ type: 'new_customer_issue', intentKey: 'a', confidence: 0.9, reason: 'r' }),
+              text: JSON.stringify({
+                type: 'new_customer_issue',
+                intentKey: 'a',
+                confidence: 0.9,
+                reason: 'r',
+              }),
               model: body.model ?? 'tier-light',
               usage: { inputTokens: 1000, outputTokens: 100 },
             }),
@@ -291,7 +318,10 @@ describe('a real provider', () => {
       },
     });
     const results = await runEval({
-      cases: [loaded(classifierCase({ id: 'live-one' })), loaded(classifierCase({ id: 'live-two' }))],
+      cases: [
+        loaded(classifierCase({ id: 'live-one' })),
+        loaded(classifierCase({ id: 'live-two' })),
+      ],
       rig,
     });
     expect(calls).toEqual(['http://127.0.0.1:4317/v1/generate']);

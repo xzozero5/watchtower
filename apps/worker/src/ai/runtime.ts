@@ -5,6 +5,7 @@ import {
   createAuditedLlm,
   createRedactor,
   loadPromptCatalog,
+  applyRedactionNer,
   type AgentDeps,
   type AuditedEmbedder,
   type EmbeddingProvider,
@@ -129,6 +130,7 @@ export function createAiRuntime(
 ): AiRuntime {
   // A provider that is not wired stops the boot: it is never ignored in silence (N5).
   assertKbEmbeddingProvider(config.EMBEDDING_PROVIDER);
+  applyRedactionNer(config.REDACTION_NER);
 
   const caps = resolveAiCaps(config);
   const prompts = loadPromptCatalog();
