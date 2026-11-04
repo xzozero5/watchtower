@@ -1,0 +1,293 @@
+{
+  "cases": [
+    {
+      "id": "gold-kb-author-no-customer-detail",
+      "agent": "kb_author",
+      "description": "The article keeps the steps and none of the customer's own details.",
+      "intent": "reset_password",
+      "mockAnswer": {
+        "title": "Password reset email does not arrive",
+        "bodyMd": "## Symptoms\n\nThe reset email does not arrive.\n\n## Resolution\n\n1. Check the spam folder.\n2. Ask the user to request the email again.\n\n## When to escalate\n\nIf it still does not arrive, ask an engineer to check the mail logs.",
+        "intentTags": [
+          "reset_password"
+        ],
+        "kind": "article"
+      },
+      "input": {
+        "subject": "Reset email does not arrive",
+        "turns": [
+          {
+            "from": "customer",
+            "text": "I asked for a reset email twice and nothing came."
+          },
+          {
+            "from": "staff",
+            "text": "Please check the spam folder, then request the email again from the sign in page."
+          }
+        ],
+        "intentKey": "reset_password",
+        "knownIntents": [
+          "reset_password",
+          "billing_question"
+        ]
+      },
+      "expect": {
+        "drafted": true,
+        "tagsInclude": [
+          "reset_password"
+        ],
+        "bodyMustNotContain": [
+          "twice"
+        ]
+      }
+    },
+    {
+      "id": "gold-kb-author-no-pii",
+      "agent": "kb_author",
+      "description": "Contact details in the ticket (email, phone, name) must not reach the article.",
+      "intent": "account_access",
+      "mockAnswer": {
+        "title": "Invitation email does not arrive",
+        "bodyMd": "## Symptoms\n\nThe invited user never receives the invitation.\n\n## Cause\n\nNot confirmed.\n\n## Resolution\n\n1. An admin opens Users and chooses Invite again.\n2. The link is valid for 7 days.\n\n## When to escalate\n\nIf the new invitation does not arrive either.",
+        "intentTags": [
+          "account_access"
+        ],
+        "kind": "article"
+      },
+      "input": {
+        "intentKey": "account_access",
+        "knownIntents": [
+          "account_access",
+          "api_error",
+          "billing_report",
+          "feature_question",
+          "incident_inquiry",
+          "other",
+          "processing_failure",
+          "result_dispute",
+          "upstream_timeout",
+          "webhook_not_received",
+          "workspace_config"
+        ],
+        "subject": "Invitation not received",
+        "turns": [
+          {
+            "from": "customer",
+            "text": "Hello, I am Somchai. The invitation to somchai@customer.example never arrived. Call me on 081-000-0000."
+          },
+          {
+            "from": "staff",
+            "text": "The admin can resend the invitation from Users, Invite; the link lasts 7 days."
+          }
+        ]
+      },
+      "expect": {
+        "drafted": true,
+        "tagsInclude": [
+          "account_access"
+        ],
+        "bodyMustNotContain": [
+          "somchai",
+          "@",
+          "081",
+          "customer.example"
+        ]
+      }
+    },
+    {
+      "id": "gold-kb-author-too-little",
+      "agent": "kb_author",
+      "description": "The ticket holds nothing to write from: no article.",
+      "intent": "other",
+      "mockAnswer": {
+        "title": "",
+        "bodyMd": "",
+        "intentTags": [],
+        "kind": "article"
+      },
+      "input": {
+        "intentKey": "other",
+        "knownIntents": [
+          "account_access",
+          "api_error",
+          "billing_report",
+          "feature_question",
+          "incident_inquiry",
+          "other",
+          "processing_failure",
+          "result_dispute",
+          "upstream_timeout",
+          "webhook_not_received",
+          "workspace_config"
+        ],
+        "subject": "Thanks",
+        "turns": [
+          {
+            "from": "customer",
+            "text": "Thank you, bye."
+          },
+          {
+            "from": "staff",
+            "text": "You are welcome."
+          }
+        ]
+      },
+      "expect": {
+        "drafted": false
+      }
+    },
+    {
+      "id": "gold-kb-author-no-internal-link-th",
+      "agent": "kb_author",
+      "description": "Thai ticket: the staff mentions an internal wiki link, the article must not carry it.",
+      "intent": "webhook_not_received",
+      "mockAnswer": {
+        "title": "ไม่ได้รับ callback เพราะปลายทางตอบ 500",
+        "bodyMd": "## Symptoms\n\nไม่ได้รับ callback\n\n## Cause\n\nปลายทางตอบ 500\n\n## Resolution\n\n1. แก้ให้ปลายทางตอบ 200\n2. ระบบจะส่งซ้ำเอง\n\n## When to escalate\n\nหากยังไม่ได้รับหลังแก้",
+        "intentTags": [
+          "webhook_not_received"
+        ],
+        "kind": "article"
+      },
+      "input": {
+        "intentKey": "webhook_not_received",
+        "knownIntents": [
+          "account_access",
+          "api_error",
+          "billing_report",
+          "feature_question",
+          "incident_inquiry",
+          "other",
+          "processing_failure",
+          "result_dispute",
+          "upstream_timeout",
+          "webhook_not_received",
+          "workspace_config"
+        ],
+        "subject": "ไม่ได้รับ callback",
+        "turns": [
+          {
+            "from": "customer",
+            "text": "เราไม่ได้รับ callback ตั้งแต่เมื่อวาน"
+          },
+          {
+            "from": "staff",
+            "text": "ตรวจแล้วปลายทางตอบ 500 ดูขั้นตอนที่ https://wiki.corp.invalid/p/12 แล้วแก้ให้ปลายทางตอบ 200 ระบบจะส่งซ้ำเอง"
+          }
+        ]
+      },
+      "expect": {
+        "drafted": true,
+        "tagsInclude": [
+          "webhook_not_received"
+        ],
+        "bodyMustNotContain": [
+          "corp.invalid",
+          "wiki"
+        ]
+      }
+    },
+    {
+      "id": "gold-kb-author-invented-tag-dropped",
+      "agent": "kb_author",
+      "description": "A tag the model invents is dropped and the ticket intent is added.",
+      "intent": "upstream_timeout",
+      "mockAnswer": {
+        "title": "Verification times out",
+        "bodyMd": "## Symptoms\n\nVerification times out.\n\n## Cause\n\nNot confirmed.\n\n## Resolution\n\n1. Retry after a minute.\n\n## When to escalate\n\nIf it keeps failing, contact the provider.",
+        "intentTags": [
+          "made_up_tag"
+        ],
+        "kind": "article"
+      },
+      "input": {
+        "intentKey": "upstream_timeout",
+        "knownIntents": [
+          "account_access",
+          "api_error",
+          "billing_report",
+          "feature_question",
+          "incident_inquiry",
+          "other",
+          "processing_failure",
+          "result_dispute",
+          "upstream_timeout",
+          "webhook_not_received",
+          "workspace_config"
+        ],
+        "subject": "Provider timeout",
+        "turns": [
+          {
+            "from": "customer",
+            "text": "Verification times out."
+          },
+          {
+            "from": "staff",
+            "text": "Retry after a minute; if it keeps failing we contact the provider."
+          }
+        ]
+      },
+      "expect": {
+        "drafted": true,
+        "tagsInclude": [
+          "upstream_timeout"
+        ],
+        "titleContains": [
+          "times out"
+        ]
+      }
+    },
+    {
+      "id": "gold-kb-author-no-invented-steps",
+      "agent": "kb_author",
+      "description": "The article keeps only the steps in the ticket; a step the staff never wrote is a defect a reviewer should see.",
+      "intent": "processing_failure",
+      "mockAnswer": {
+        "title": "Processing job is stuck",
+        "bodyMd": "## Symptoms\n\nThe processing job does not finish.\n\n## Cause\n\nNot confirmed.\n\n## Resolution\n\n1. Restart the job from the admin console.\n\n## When to escalate\n\nIf the restarted job does not complete.",
+        "intentTags": [
+          "processing_failure"
+        ],
+        "kind": "runbook"
+      },
+      "input": {
+        "intentKey": "processing_failure",
+        "knownIntents": [
+          "account_access",
+          "api_error",
+          "billing_report",
+          "feature_question",
+          "incident_inquiry",
+          "other",
+          "processing_failure",
+          "result_dispute",
+          "upstream_timeout",
+          "webhook_not_received",
+          "workspace_config"
+        ],
+        "subject": "Job stuck",
+        "turns": [
+          {
+            "from": "customer",
+            "text": "The processing job is stuck."
+          },
+          {
+            "from": "staff",
+            "text": "We restarted the job from the admin console and it completed."
+          }
+        ]
+      },
+      "expect": {
+        "drafted": true,
+        "tagsInclude": [
+          "processing_failure"
+        ],
+        "bodyMustNotContain": [
+          "reinstall",
+          "delete the account",
+          "contact sales"
+        ]
+      }
+    }
+  ]
+}
