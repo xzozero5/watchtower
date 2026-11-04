@@ -5,7 +5,7 @@ import { AiStatusService } from './ai-status.service.js';
 
 function make(provider: 'mock' | 'claude-cli', get: () => Promise<string | null>) {
   const redis = { get: vi.fn(get) };
-  const service = new AiStatusService(redis as never, { AI_PROVIDER: provider });
+  const service = new AiStatusService(redis, { AI_PROVIDER: provider });
   let clock = 1_000;
   service.now = () => clock;
   return { service, redis, tick: (ms: number) => (clock += ms) };
