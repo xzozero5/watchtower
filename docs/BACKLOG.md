@@ -150,12 +150,12 @@
 - [x] T-303c `ai-engineer` investigator/drafter ใช้ procedure ที่ publish · `ai_run` เก็บ version — **ปิด 2026-11-04** (proposal card ของ escalate → T-303f)
 - [x] T-303d `ai-engineer` simulation กับ ticket เก่า (runner 302c) ต้องผ่านก่อน publish — **ปิด 2026-11-04**
 - [x] T-303e `frontend-dev` editor NL → preview → simulate → publish + `examples/procedures/` — **ปิด 2026-11-04** (แท็บ Procedure ใน admin intents; Simulate รอ T-303d)
-- [ ] T-304a `architect` (+`security-reviewer`) ADR stage 3: flag env `AI_AUTOSEND_ENABLED` (ปิด, env เท่านั้น), shadow mode, เงื่อนไข §6.4/§6.6, promotion ต้อง head + gate report + เจ้าของ, auto-rollback, A-9/A-10/A-11 จาก T-125
+- [x] T-304a `architect` (+`security-reviewer`) ADR stage 3: flag env `AI_AUTOSEND_ENABLED` (ปิด, env เท่านั้น), shadow mode, เงื่อนไข §6.4/§6.6, promotion ต้อง head + gate report + เจ้าของ, auto-rollback, A-9/A-10/A-11 จาก T-125 — **ปิด 2026-11-04**
 - [x] T-304b `backend-dev` CHECK ≤ 3 + trigger ต้องมีแถว promotion + shadow · down migration — **ปิด 2026-11-04** (0096)
-- [ ] T-304c `ai-engineer` gate ใน `decide.ts` + shadow (`would_auto_send`) · property test: flag OFF = ไม่มี ai_auto
-- [ ] T-304d `ai-engineer` grader ตรวจก่อนส่งใน dispatcher + ข้อความแจ้งว่าเป็นคำตอบอัตโนมัติ
-- [ ] T-304e `backend-dev` auto-rollback (violation/reopen/CSAT/grader fail) → stage 2 + audit + แจ้ง head
-- [ ] T-304f `backend-dev` รายงาน ready for promotion รายสัปดาห์ (§6.4) **ไม่นับข้อมูล seed**
+- [x] T-304c `ai-engineer` gate ใน `decide.ts` + shadow (`would_auto_send`) · property test: flag OFF = ไม่มี ai_auto — **ปิด 2026-11-04**
+- [x] T-304d `ai-engineer` grader ตรวจก่อนส่งใน dispatcher + ข้อความแจ้งว่าเป็นคำตอบอัตโนมัติ — **ปิด 2026-11-04**
+- [x] T-304e `backend-dev` auto-rollback (violation/reopen/CSAT/grader fail) → stage 2 + audit + แจ้ง head — **ปิด 2026-11-04**
+- [x] T-304f `backend-dev` รายงาน ready for promotion รายสัปดาห์ (§6.4) **ไม่นับข้อมูล seed** — **ปิด 2026-11-04**
 - [ ] T-304g `frontend-dev` admin intents: ปุ่ม stage 3 ปิดจน flag + รายงานเขียว · แสดง shadow
 - [x] T-305a `backend-dev`+`frontend-dev` cost dashboard ต่อ agent/intent/ticket (รวม T-142) — **ปิด 2026-11-04** (ยังไม่มี e2e/axe ของหน้าใหม่)
 - [x] T-305b `backend-dev`+`frontend-dev` CEO view §9.2 + tile plug-in (API/CSV) — **ปิด 2026-11-04** (0099, §9.2 ข้อ 2,3,5,6 ยังไม่ทำ)
