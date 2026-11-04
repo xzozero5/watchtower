@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { createHmac, randomBytes } from 'node:crypto';
+import { createHmac, createPrivateKey, randomBytes, sign } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
@@ -168,6 +168,8 @@ export class Mailbox {
 export interface ApiResult<T = unknown> {
   status: number;
   json: T;
+  /** Response headers, lower-cased names. */
+  headers: Record<string, string>;
 }
 
 /**
@@ -195,7 +197,11 @@ export class Api {
     const response = await this.request.get(this.url(path), {
       headers: { origin: stack().webUrl },
     });
-    return { status: response.status(), json: (await response.json().catch(() => null)) as T };
+    return {
+      status: response.status(),
+      json: (await response.json().catch(() => null)) as T,
+      headers: response.headers(),
+    };
   }
 
   async post<T = unknown>(path: string, body?: unknown): Promise<ApiResult<T>> {
@@ -223,7 +229,11 @@ export class Api {
       headers: { origin: stack().webUrl, [CSRF_HEADER]: await this.csrfToken() },
       ...(body === undefined ? {} : { data: body }),
     });
-    return { status: response.status(), json: (await response.json().catch(() => null)) as T };
+    return {
+      status: response.status(),
+      json: (await response.json().catch(() => null)) as T,
+      headers: response.headers(),
+    };
   }
 
   /** Every page of a list endpoint that answers `{ items, nextCursor }`. */
@@ -449,6 +459,155 @@ export interface GmailSend {
 /** What the stack's worker sent through the (in-memory) Gmail API: thread id and headers, never a body. */
 export function gmailSends(): GmailSend[] {
   return jsonLines<GmailSend>(need('E2E_GMAIL_LOG'));
+}
+
+// ---------------------------------------------------------------- alerts and Discord (T-207)
+
+/** `X-Watchtower-Signature` of the machine-alert webhook: `t=<unix s>,v1=HMAC-SHA256("<t>.alerts-webhook." + body)`. */
+export function alertSignature(
+  rawBody: string,
+  timestampSeconds = Math.floor(Date.now() / 1000),
+): string {
+  const mac = createHmac('sha256', need('E2E_ALERT_WEBHOOK_SECRET'))
+    .update(`${String(timestampSeconds)}.alerts-webhook.`)
+    .update(rawBody)
+    .digest('hex');
+  return `t=${String(timestampSeconds)},v1=${mac}`;
+}
+
+/** An Alertmanager v4 notification with one alert. `startsAt` differs per real fire; `fingerprint` is the dedupe key. */
+export function alertmanagerBody(input: {
+  alertname: string;
+  fingerprint: string;
+  status?: 'firing' | 'resolved';
+  startsAt?: string;
+  labels?: Record<string, string>;
+}): string {
+  const status = input.status ?? 'firing';
+  return JSON.stringify({
+    version: '4',
+    groupKey: '{}:{}',
+    status,
+    receiver: 'watchtower',
+    externalURL: 'https://alertmanager.example.invalid',
+    alerts: [
+      {
+        status,
+        labels: { alertname: input.alertname, severity: 'critical', ...input.labels },
+        annotations: { summary: 'Error rate above 5%' },
+        startsAt: input.startsAt ?? new Date().toISOString(),
+        endsAt: status === 'resolved' ? new Date().toISOString() : '0001-01-01T00:00:00Z',
+        generatorURL: 'https://prometheus.example.invalid/graph',
+        fingerprint: input.fingerprint,
+      },
+    ],
+  });
+}
+
+/** POSTs a signed alert body to the real public webhook of the api (no session, no browser). */
+export async function postAlertWebhook(
+  rawBody: string,
+): Promise<{ status: number; json: unknown }> {
+  const response = await fetch(new URL('/v1/inbound/alerts/webhook', stack().apiUrl), {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      'x-watchtower-signature': alertSignature(rawBody),
+    },
+    body: rawBody,
+  });
+  return { status: response.status, json: await response.json().catch(() => null) };
+}
+
+export interface DiscordCall {
+  op: 'postMessage' | 'editMessage' | 'createThread' | 'postInThread';
+  target: string;
+  payload: {
+    content?: string;
+    name?: string;
+    components?: { components: { custom_id: string; label: string }[] }[];
+  };
+  at: number;
+}
+
+/** What the stack's worker "sent" to Discord (the in-memory bot records the JSON a live bot would send), oldest first. */
+export function discordCalls(): DiscordCall[] {
+  return jsonLines<DiscordCall>(need('E2E_DISCORD_LOG'));
+}
+
+/** The `custom_id`s of the buttons on a recorded message. */
+export function buttonIds(call: DiscordCall): string[] {
+  return (call.payload.components ?? []).flatMap((row) => row.components.map((b) => b.custom_id));
+}
+
+let discordSnowflake = 700_000_000_000_000_000n;
+export const nextSnowflake = (): string => String(++discordSnowflake);
+
+/**
+ * Links a staff user to a made-up Discord account (`users.discord_user_id`). There is no api for it yet
+ * (the linking flow is a later task), so this is a direct write against the throwaway database.
+ */
+export function linkDiscordAccount(userId: string, discordUserId: string): void {
+  const script = `
+    const { createRequire } = require('node:module');
+    const req = createRequire(process.env.PG_FROM);
+    const { Client } = req('pg');
+    (async () => {
+      const client = new Client({ connectionString: process.env.DATABASE_URL });
+      await client.connect();
+      const r = await client.query('UPDATE users SET discord_user_id = $1 WHERE id = $2', [process.env.DISCORD_ID, process.env.USER_ID]);
+      await client.end();
+      if (r.rowCount !== 1) process.exit(3);
+    })().catch(() => process.exit(1));`;
+  const result = spawnSync(process.execPath, ['-e', script], {
+    env: {
+      NODE_ENV: 'test',
+      PATH: process.env.PATH ?? '',
+      DATABASE_URL: need('E2E_DATABASE_URL'),
+      PG_FROM: join(need('E2E_API_DIST'), '..', 'package.json'),
+      DISCORD_ID: discordUserId,
+      USER_ID: userId,
+    },
+    encoding: 'utf8',
+  });
+  if (result.status !== 0)
+    throw new Error(`linking a Discord account failed (exit ${String(result.status)})`);
+}
+
+/** A Discord button press (interaction type 3) signed with the private key of the stack's Discord application. */
+export async function pressDiscordButton(
+  discordUserId: string,
+  customId: string,
+  options: { interactionId?: string } = {},
+): Promise<{ status: number; json: { type: number; data?: { content: string } } | null }> {
+  const raw = JSON.stringify({
+    id: options.interactionId ?? nextSnowflake(),
+    type: 3,
+    member: { user: { id: discordUserId } },
+    data: { custom_id: customId, component_type: 2 },
+  });
+  const timestamp = String(Math.floor(Date.now() / 1000));
+  const signature = sign(
+    null,
+    Buffer.concat([Buffer.from(timestamp), Buffer.from(raw)]),
+    createPrivateKey(need('E2E_DISCORD_PRIVATE_KEY')),
+  ).toString('hex');
+  const response = await fetch(new URL('/v1/inbound/discord/interactions', stack().apiUrl), {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      'x-signature-ed25519': signature,
+      'x-signature-timestamp': timestamp,
+    },
+    body: raw,
+  });
+  return {
+    status: response.status,
+    json: (await response.json().catch(() => null)) as {
+      type: number;
+      data?: { content: string };
+    } | null,
+  };
 }
 
 /** The id of a demo organization by name (staff REST). */

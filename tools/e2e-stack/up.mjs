@@ -221,6 +221,8 @@ async function main() {
   writeFileSync(netLog, '');
   writeFileSync(lineLog, '');
   writeFileSync(gmailLog, '');
+  const discordLog = join(logDir, 'discord-calls.jsonl');
+  writeFileSync(discordLog, '');
   // Every stack process loads the guard that refuses any connection that is not loopback (T-113).
   const guard = join(import.meta.dirname, 'no-network.cjs');
   const guarded = { NODE_OPTIONS: `--require=${guard}`, E2E_NET_LOG: netLog };
@@ -255,6 +257,9 @@ async function main() {
     EMBEDDING_PROVIDER: 'mock',
     AI_TOOL_FIXTURES_DIR: join(root, 'examples', 'tools'),
     AI_TOOLS_WITHOUT_READONLY_LOGIN: 'true',
+    // The status page is open in this stack. The worker needs it as much as the api: with it closed the worker
+    // sends no confirmation and no notice (reason `page_closed`), however the api answers.
+    STATUS_PAGE_PUBLIC: 'true',
     ...guarded,
   };
   start('worker', [join(import.meta.dirname, 'worker-runner.mjs')], {
@@ -262,6 +267,7 @@ async function main() {
     WORKER_PORT: String(WORKER_PORT),
     E2E_LINE_LOG: lineLog,
     E2E_GMAIL_LOG: gmailLog,
+    E2E_DISCORD_LOG: discordLog,
   });
   start('api', [join(import.meta.dirname, 'api-runner.mjs')], {
     ...shared,
@@ -313,6 +319,7 @@ async function main() {
         E2E_NET_LOG: netLog,
         E2E_LINE_LOG: lineLog,
         E2E_GMAIL_LOG: gmailLog,
+        E2E_DISCORD_LOG: discordLog,
         E2E_API_DIST: join(root, 'apps', 'api', 'dist'),
       },
     }),

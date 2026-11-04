@@ -10,6 +10,9 @@ mocked (the UI tests in `../e2e/` mock the api; these do not). It covers:
 | `rbac.e2e.ts`              | A client sees only their own organization (REST and UI), never an internal note, cannot use staff actions; checked for two clients of two organizations                                                                                                                                                                                                                                                                                                                    |
 | `ac1-gmail.e2e.ts`         | AC-1 Gmail path and PRD 5.1 with the stack's in-memory Gmail: ticket with org / intent / SLA within 10 s, investigation report with cited KB sections, draft, approve, thread replies, noise in Other mail, merge                                                                                                                                                                                                                                                          |
 | `ac2-line.e2e.ts`          | AC-2 and PRD 5.2 with the stack's in-memory LINE: signed webhook, ack by reply token within 5 s, push quota, identity link                                                                                                                                                                                                                                                                                                                                                 |
+| `ac3-alerts.e2e.ts` | AC-3: the same alert fired twice in 5 minutes is one alert with count 2 (a redelivery is not a third fire), not acknowledged within T1 (20 s here) the lead is told in Discord with an Ack button, an unlinked Discord account is refused, a signed button press acknowledges and the open web page shows it within 2 s (measured), the head step is no longer scheduled |
+| `ac5-investigation.e2e.ts` | AC-5: a `webhook_not_received` ticket, one click on the intent's log template pins one evidence card (mock fixture, personal data redacted), the organization-scoped template finds none of other organizations' lines, and people clicking far past the budget are accepted at most 20 each / 55 together (the rest 429 with Retry-After) |
+| `scenario-5-3-incident.e2e.ts` | PRD 5.3: alert -> incident (alert and ticket linked) -> Discord thread (mock, mirrored lines) -> status post draft (agent cannot publish, lead can; subscriber mailed) -> mass update with the recipient count confirmed -> alert closed by the tool, incident closed by a person, page operational |
 | `ac4-kb.e2e.ts`            | AC-4: an article written by an agent and published by a lead is found by "webhook retry" with a section-level citation; resolving a ticket that cited nothing leaves an AI draft `in_review` within 5 min, which its requester cannot publish and another lead can                                                                                                                                                                                                         |
 | `ac7-shifts.e2e.ts`        | AC-7 and PRD 5.4: clock-out blocked by an open P1 without a handoff entry (UI and 409), handoff confirmation, lead sees 1 unacknowledged, incoming agent accepts with the keyboard, lead sees 0; axe on each page                                                                                                                                                                                                                                                          |
 | `staff-permissions.e2e.ts` | Agent, lead and head through the browser: rail links, admin sections, denied pages and the same limits over REST (403)                                                                                                                                                                                                                                                                                                                                                     |
@@ -82,6 +85,15 @@ needed. The web build and the api/worker builds come from turbo (`dependsOn` in 
 - The same workflow has a `compose` job that builds the images, runs `docker compose up -d --wait` and probes
   `/health` on the published ports. It does not run these tests; to run them against it use the "docker compose up"
   section above.
+
+## Mock integrations the stack provides (T-113, T-207)
+
+Webhook secret of machine alerts, Discord application key pair and LINE channel secret are generated per run
+(`tools/e2e-stack/up.mjs`); the tests read them from `E2E_*` variables, never from a file in the repo. The worker's
+Discord bot is the in-memory fake wrapped to append every call it would make to `discord-calls.jsonl`
+(`discordCalls()` in `support.ts`); a press of a button is posted to the real interactions endpoint, signed with the
+private key of the run (`pressDiscordButton`). Linking a Discord account to a staff user is a direct write to the
+throwaway database (`linkDiscordAccount`) until the app has a flow for it.
 
 ## Notes
 

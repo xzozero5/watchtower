@@ -64,11 +64,49 @@ const gmailRuntime = {
     };
   },
 };
+// Discord has no bot token either: the bot transport is the in-memory fake, wrapped so each call it records
+// (the final JSON a live transport would send: content and buttons, never a token) is appended to
+// E2E_DISCORD_LOG. The alert escalation and the incident threads share one transport, as they would one bot.
+const discordLog = process.env.E2E_DISCORD_LOG;
+let discordBot;
+if (discordLog) {
+  const { discord } = await import(
+    pathToFileURL(join(root, 'packages', 'channels', 'dist', 'index.js')).href
+  );
+  class RecordingBot extends discord.FakeBotTransport {
+    #record() {
+      const call = this.calls.at(-1);
+      appendFileSync(discordLog, `${JSON.stringify({ ...call, at: call.at.getTime() })}\n`);
+    }
+    async postMessage(...args) {
+      const result = await super.postMessage(...args);
+      this.#record();
+      return result;
+    }
+    async editMessage(...args) {
+      const result = await super.editMessage(...args);
+      this.#record();
+      return result;
+    }
+    async createThread(...args) {
+      const result = await super.createThread(...args);
+      this.#record();
+      return result;
+    }
+    async postInThread(...args) {
+      const result = await super.postInThread(...args);
+      this.#record();
+      return result;
+    }
+  }
+  discordBot = new RecordingBot();
+}
 const worker = await startWorker(config, logger, {
   ...(prefix ? { queuePrefix: prefix } : {}),
   overrides: {
     gmail: { runtime: gmailRuntime },
     ingest: { store: createMemoryObjectStore() },
+    ...(discordBot ? { alerts: { bot: discordBot }, incidents: { bot: discordBot } } : {}),
     ...(lineTransport ? { line: { transportFor: () => lineTransport } } : {}),
   },
 });
