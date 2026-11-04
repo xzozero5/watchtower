@@ -5,7 +5,7 @@ import {
   type InvestigationEvidence,
   type SettingsSource,
 } from '@watchtower/ai';
-import type { Database } from '@watchtower/db';
+import { schema, type Database } from '@watchtower/db';
 import {
   DomainError,
   composeAutoSendText,
@@ -18,6 +18,7 @@ import {
   type Domain,
 } from '@watchtower/domain';
 import type { RealtimeEvent } from '@watchtower/shared';
+import { inArray } from 'drizzle-orm';
 
 import type { WorkerLogger } from '../logger.js';
 import type { RealtimeSink } from '../realtime.js';
@@ -214,7 +215,7 @@ export async function runAutoSendStep(
     );
     // T-306e C-11: no `ai_run` row of the drafter or the grader, no grade: the models cannot be vouched for. (The
     // settings are no stand-in: they say what should have run, not what did.)
-    if (graderRun === undefined || draftRun === undefined) {
+    if (graded.runId === null || graderRun === undefined || draftRun === undefined) {
       await record(['ai_run_missing'], null, {
         reason: 'run_missing',
         graderRun: graderRun !== undefined,

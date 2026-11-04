@@ -152,7 +152,7 @@ async function gradeOne(
   const runs = await modelsOf(db, [graded.runId, draft.aiRunId]);
   const graderRun = graded.runId === null ? undefined : runs.get(graded.runId);
   const draftRun = draft.aiRunId === null ? undefined : runs.get(draft.aiRunId);
-  if (graderRun === undefined || draftRun === undefined) {
+  if (graded.runId === null || graderRun === undefined || draftRun === undefined) {
     deps.logger.warn(
       { ticketId: ticket.id },
       'sampled grade not stored: the ai_run row of the drafter or the grader is missing',
