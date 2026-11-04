@@ -52,6 +52,27 @@ export class ExternalRecipientsError extends HttpException {
   }
 }
 
+/** A reason code is a short snake_case word: anything else (free text, an internal) is never sent to a client. */
+const REASON_CODE = /^[a-z][a-z0-9_]{0,63}$/;
+
+/**
+ * 403 `forbidden` for a `policy_denied` refusal. The body also carries `reason`, the machine-readable code the
+ * domain gave (`report_not_green`, `confirm_key_mismatch`, ...), so a client can say why (B-011).
+ */
+export class PolicyDeniedError extends HttpException {
+  readonly code = 'forbidden';
+
+  constructor(
+    message: string,
+    readonly reason: string,
+  ) {
+    super(
+      { statusCode: HttpStatus.FORBIDDEN, error: 'Forbidden', code: 'forbidden', message, reason },
+      HttpStatus.FORBIDDEN,
+    );
+  }
+}
+
 /** A `DomainError` becomes its HTTP error; anything else passes through untouched. */
 export function toHttpError(error: unknown): unknown {
   if (!isDomainError(error)) return error;
@@ -61,6 +82,12 @@ export function toHttpError(error: unknown): unknown {
       error.message,
       Array.isArray(domains) ? (domains as string[]) : [],
     );
+  }
+  if (error.code === 'policy_denied') {
+    const reason = error.details?.reason;
+    if (typeof reason === 'string' && REASON_CODE.test(reason)) {
+      return new PolicyDeniedError(error.message, reason);
+    }
   }
   return HTTP_ERRORS[error.code](error.message);
 }

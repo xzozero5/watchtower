@@ -45,6 +45,8 @@ export interface ApiErrorBody {
   statusCode: number;
   code: string;
   message: string;
+  /** Only on a `policy_denied` refusal (403): the machine-readable reason code. */
+  reason?: string;
 }
 
 /** An organization created through the API by someone who may. */
