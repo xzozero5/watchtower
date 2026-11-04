@@ -165,6 +165,8 @@ export interface DecideStagePromotionInput {
   readonly reason: string;
   /** When the person last proved who they are. Only used to approve; the database wants it inside 5 minutes. */
   readonly reauthAt?: Date | undefined;
+  /** How the person proved it (`google_oidc` for a step-up at Google); only written to the audit row (T-306a C-5). */
+  readonly reauthMethod?: string | undefined;
   /** The key of the intent, typed by the person. Only used to approve. */
   readonly confirmKey?: string | undefined;
 }
@@ -211,6 +213,7 @@ export async function decideStagePromotion(
       self_approved: selfApproved,
       requestedBy: before.requestedBy,
       reason,
+      ...(input.approve ? { reauthMethod: input.reauthMethod ?? null } : {}),
     },
   });
   return fx.result({ status, selfApproved });

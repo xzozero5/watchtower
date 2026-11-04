@@ -16,6 +16,8 @@ export interface IdentityClaims {
   readonly email_verified?: boolean | undefined;
   readonly hd?: string | undefined;
   readonly name?: string | undefined;
+  /** When the person authenticated at the provider (seconds since the epoch); a step-up checks it. */
+  readonly auth_time?: number | undefined;
 }
 
 export interface TokenFaults {

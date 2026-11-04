@@ -91,6 +91,9 @@ export const sessions = pgTable(
     expiresAt: timestamptz('expires_at').notNull(),
     revokedAt: timestamptz('revoked_at'),
     revokedReason: text('revoked_reason'),
+    /** Result of a step-up through Google OIDC (migration 0108, T-306a C-5): auth_time of the provider, and how. */
+    stepUpAt: timestamptz('step_up_at'),
+    stepUpMethod: text('step_up_method'),
   },
   (table) => [
     index('sessions_user_active_idx')

@@ -109,32 +109,30 @@ export class PortalMyRequestsService implements OnApplicationShutdown {
 
   private async issue(email: string, locale: PortalLocale | undefined, ip: string | null) {
     const emailTag = this.tags.tag(email);
-    // Cheapest and most specific first; the global ceiling is counted last so a request already
-    // refused for its address does not use up what everyone else shares.
-    const scopes: readonly (readonly [PortalLimitScope, string])[] = [
-      ['mine-email', email],
-      ['mine-domain', emailDomain(email) ?? 'unknown'],
-      ['mine-global', 'all'],
-    ];
-    for (const [scope, subject] of scopes) {
+    // Cheapest and most specific first. The global ceiling is counted last, and only for an address that belongs
+    // to a contact (T-306a C-12): requests for addresses nobody owns must not be able to use up what every real
+    // customer shares.
+    const limited = async (scope: PortalLimitScope, subject: string): Promise<boolean> => {
       const hit = await this.limits.hit(scope, subject);
-      if (!hit.allowed) {
-        await this.audit.record({
-          actor: { type: 'anonymous', id: null },
-          action: AUDIT_ACTIONS.portalRateLimited,
-          outcome: 'denied',
-          targetType: 'email',
-          targetId: emailTag,
-          ip,
-          metadata: { scope, flow: 'my_requests', retryAfterSeconds: hit.retryAfterSeconds },
-        });
-        return;
-      }
-    }
+      if (hit.allowed) return false;
+      await this.audit.record({
+        actor: { type: 'anonymous', id: null },
+        action: AUDIT_ACTIONS.portalRateLimited,
+        outcome: 'denied',
+        targetType: 'email',
+        targetId: emailTag,
+        ip,
+        metadata: { scope, flow: 'my_requests', retryAfterSeconds: hit.retryAfterSeconds },
+      });
+      return true;
+    };
+    if (await limited('mine-email', email)) return;
+    if (await limited('mine-domain', emailDomain(email) ?? 'unknown')) return;
 
     const contact = await this.contacts.findByEmail(this.database.db, email);
     // A retired placeholder (merged into another contact) is nobody's inbox.
     if (!contact || contact.mergedIntoContactId !== null) return;
+    if (await limited('mine-global', 'all')) return;
 
     const token = mintListToken();
     const now = Date.now();

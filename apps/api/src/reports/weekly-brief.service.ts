@@ -9,6 +9,7 @@ import {
   toWeeklyBrief,
 } from '@watchtower/domain';
 import {
+  WORKSPACE_ROLES,
   evidenceOutsideDraft,
   weeklyBriefContentSchema,
   weeklyBriefEmailParts,
@@ -18,7 +19,7 @@ import {
   type WeeklyBriefPublishResult,
   type WeeklyBriefPublished,
 } from '@watchtower/shared';
-import { eq } from 'drizzle-orm';
+import { and, eq, inArray, sql } from 'drizzle-orm';
 
 import { badRequest, conflict, forbidden, notFound } from '../auth/http-errors.js';
 import type { Principal } from '../auth/principal.js';
@@ -26,7 +27,10 @@ import { APP_CONFIG, type ApiConfig } from '../config/config.js';
 import { DATABASE } from '../database/database.module.js';
 import { EmailOutbox } from '../queue/queue.module.js';
 
-type Config = Pick<ApiConfig, 'APP_URL' | 'WEEKLY_BRIEF_RECIPIENTS'>;
+type Config = Pick<
+  ApiConfig,
+  'APP_URL' | 'WEEKLY_BRIEF_RECIPIENTS' | 'WEEKLY_BRIEF_RECIPIENT_DOMAINS'
+>;
 
 /** How long a published brief stays worth emailing if the queue cannot deliver it. */
 const BRIEF_EMAIL_TTL_SECONDS = 3 * 24 * 3600;
@@ -96,13 +100,47 @@ export class WeeklyBriefService {
     return toWeeklyBrief(updated, { includeAi: true });
   }
 
+  /**
+   * T-306a C-13: a head may send the brief to the instance's own list, to an active member of the workspace, or to
+   * an address on a domain the operator allowed; never to a free-form outside address (the brief holds the figures
+   * of the company).
+   */
+  private async requireAllowedRecipients(list: readonly string[]): Promise<void> {
+    const configured = new Set(this.config.WEEKLY_BRIEF_RECIPIENTS);
+    const domains = new Set(this.config.WEEKLY_BRIEF_RECIPIENT_DOMAINS);
+    const open = list.filter(
+      (to) => !configured.has(to) && !domains.has(to.slice(to.lastIndexOf('@') + 1)),
+    );
+    if (open.length === 0) return;
+    const staff = await this.database.db
+      .select({ email: schema.users.email })
+      .from(schema.users)
+      .where(
+        and(
+          inArray(sql`lower(${schema.users.email})`, [...open]),
+          eq(schema.users.status, 'active'),
+          inArray(schema.users.role, [...WORKSPACE_ROLES]),
+        ),
+      );
+    const known = new Set(staff.map((row) => row.email.toLowerCase()));
+    const outside = open.filter((to) => !known.has(to));
+    if (outside.length > 0) {
+      throw badRequest(
+        `${String(outside.length)} recipient(s) are neither active staff nor on an allowed domain`,
+      );
+    }
+  }
+
   async publish(
     id: string,
     recipients: readonly string[] | undefined,
     principal: Principal,
   ): Promise<WeeklyBriefPublishResult> {
     this.requireAll(principal);
-    const list = [...new Set(recipients ?? this.config.WEEKLY_BRIEF_RECIPIENTS)];
+    const list = [
+      ...new Set((recipients ?? this.config.WEEKLY_BRIEF_RECIPIENTS).map((to) => to.toLowerCase())),
+    ];
+    if (recipients !== undefined) await this.requireAllowedRecipients(list);
     const pageUrl = new URL('/dashboard/ceo', this.config.APP_URL).toString();
     return this.database.db.transaction(async (tx) => {
       const [row] = await tx

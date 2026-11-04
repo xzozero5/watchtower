@@ -72,7 +72,11 @@ async function seedDraft(
 
 beforeAll(async () => {
   h = await startHarness({
-    env: { WEEKLY_BRIEF_RECIPIENTS: 'Board@Example.test, ceo@example.test, board@example.test' },
+    env: {
+      WEEKLY_BRIEF_RECIPIENTS: 'Board@Example.test, ceo@example.test, board@example.test',
+      // The operator's own domain: the publish dialog may also send to it (C-13).
+      WEEKLY_BRIEF_RECIPIENT_DOMAINS: 'Example.test',
+    },
   });
   head = await signIn(h, 'head');
   lead = await signIn(h, 'lead');
@@ -203,6 +207,52 @@ describe('editing', () => {
       { body: { content: DRAFT } },
     );
     expect(response.status).toBe(404);
+  });
+});
+
+describe('who the brief may be sent to (C-13)', () => {
+  const staffMail = async (email: string, role: string, status = 'active') => {
+    const created =
+      role === 'client'
+        ? await run(`INSERT INTO organization (name) VALUES ('Brief Org') RETURNING id`)
+        : undefined;
+    const orgId = (created?.rows[0] as { id: string } | undefined)?.id ?? null;
+    await run(
+      `INSERT INTO users (email, name, role, status, org_id) VALUES ($1, 'X', $2, $3, $4)`,
+      [email, role, status, orgId],
+    );
+  };
+
+  it('refuses an address that is neither active staff, nor on an allowed domain, nor in the instance list', async () => {
+    const id = await seedDraft();
+    await staffMail('gone@elsewhere.invalid', 'lead', 'disabled');
+    await staffMail('customer@elsewhere.invalid', 'client');
+    for (const recipients of [
+      ['stranger@elsewhere.invalid'],
+      ['a@example.test', 'stranger@elsewhere.invalid'],
+      ['gone@elsewhere.invalid'],
+      ['customer@elsewhere.invalid'],
+    ]) {
+      const response = await head.client.request('POST', `/v1/reports/ceo/brief/${id}/publish`, {
+        body: { recipients },
+      });
+      expect(response.status, recipients.join()).toBe(400);
+    }
+    // Nothing was published or queued by the refusals.
+    expect((await run(`SELECT 1 FROM weekly_brief WHERE status = 'published'`)).rows).toHaveLength(
+      0,
+    );
+    expect((await run(`SELECT 1 FROM outbox WHERE queue = 'email'`)).rows).toHaveLength(0);
+  });
+
+  it('allows active staff of any domain, a domain the operator named, and the instance list', async () => {
+    const id = await seedDraft();
+    await staffMail('lead@elsewhere.invalid', 'lead');
+    const response = await head.client.request('POST', `/v1/reports/ceo/brief/${id}/publish`, {
+      body: { recipients: ['Lead@Elsewhere.invalid', 'anyone@example.test', 'board@example.test'] },
+    });
+    expect(response.status).toBe(201);
+    expect(weeklyBriefPublishResultSchema.parse(response.body).queued).toBe(3);
   });
 });
 

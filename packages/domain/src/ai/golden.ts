@@ -1,5 +1,5 @@
 import { schema, type Database } from '@watchtower/db';
-import { and, desc, eq, isNull, sql } from 'drizzle-orm';
+import { and, desc, eq, isNull, or, sql } from 'drizzle-orm';
 
 /**
  * Golden answers (T-302a, PRD 6.4): replies a lead or head marked as a good answer to an intent, kept
@@ -20,11 +20,15 @@ export interface GoldenExample {
 /**
  * The golden answers of one intent for a new draft: those in the customer's language first, then the
  * newest. At most `GOLDEN_EXAMPLES_MAX`. Deleted ones are never returned.
+ *
+ * T-306a C-8: only the golden answers of the same organization as the ticket, plus those a lead marked
+ * `shareable` ("no customer-specific data"). An organization's own replies never reach another's drafter by default.
  */
 export async function goldenExamplesFor(
   db: Pick<Database['db'], 'select'>,
   intentId: string,
   language: 'th' | 'en',
+  orgId: string | null,
   limit: number = GOLDEN_EXAMPLES_MAX,
 ): Promise<GoldenExample[]> {
   const rows = await db
@@ -34,7 +38,16 @@ export async function goldenExamplesFor(
       language: schema.goldenAnswer.language,
     })
     .from(schema.goldenAnswer)
-    .where(and(eq(schema.goldenAnswer.intentId, intentId), isNull(schema.goldenAnswer.deletedAt)))
+    .innerJoin(schema.ticket, eq(schema.ticket.id, schema.goldenAnswer.ticketId))
+    .where(
+      and(
+        eq(schema.goldenAnswer.intentId, intentId),
+        isNull(schema.goldenAnswer.deletedAt),
+        orgId === null
+          ? eq(schema.goldenAnswer.shareable, true)
+          : or(eq(schema.ticket.orgId, orgId), eq(schema.goldenAnswer.shareable, true)),
+      ),
+    )
     .orderBy(
       sql`(${schema.goldenAnswer.language} IS NOT DISTINCT FROM ${language}) DESC`,
       desc(schema.goldenAnswer.createdAt),

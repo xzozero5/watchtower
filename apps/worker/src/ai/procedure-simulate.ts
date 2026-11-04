@@ -25,6 +25,7 @@ import {
 import {
   PROCEDURE_SIMULATION,
   detectLanguage,
+  simulationStages,
   type AiInsightReason,
   type ProcedureSimulationMetrics,
 } from '@watchtower/shared';
@@ -121,7 +122,12 @@ export async function runProcedureSimulationJob(
   // One entry per ticket: its case, its agents (the redaction dictionary is that ticket's people) and its names.
   const prepared = new Map<
     string,
-    { input: SimulationCaseInput; agents: AgentDeps; names: readonly string[] }
+    {
+      ticket: SimulationTicket;
+      contact: { verifiedAt: Date | null; lineVerifiedAt: Date | null } | undefined;
+      agents: AgentDeps;
+      names: readonly string[];
+    }
   >();
   for (const ticket of tickets) {
     const people = await ticketPeopleNames(db, ticket);
@@ -138,7 +144,8 @@ export async function runProcedureSimulationJob(
             .where(eq(schema.contact.id, ticket.requesterContactId))
             .limit(1);
     prepared.set(ticket.id, {
-      input: caseOf(ticket, keys, stage, intent.key, contact),
+      ticket,
+      contact,
       agents: runtime.agentDeps(people.names, { dictionaryIncomplete: !people.complete }),
       names: people.names,
     });
@@ -175,7 +182,7 @@ export async function runProcedureSimulationJob(
       }
       return withToolBudget({
         scoped: registry.scope(
-          { agent: 'investigator', intent: intent.key, stage },
+          { agent: 'investigator', intent: intent.key, stage: input.stage },
           { abortSignal: signal, ticketId: input.ticketId },
         ),
         ledger,
@@ -184,14 +191,24 @@ export async function runProcedureSimulationJob(
         // The bucket of the simulation: its own rows in `tool_execution`, a lower share of the per-minute budget.
         agent: 'simulation',
         intent: intent.key,
-        stage,
+        stage: input.stage,
         hashKey: settings.inputHashKey,
       });
     },
   };
 
+  // C-7: every stage where the steps in force differ from the base stage is simulated too (usually just one),
+  // and the pass rule has to hold over all of those cases.
+  const stages = simulationStages(target.steps, stage).map(
+    (value) => Math.min(4, Math.max(0, value)) as AutonomyStage,
+  );
+  const cases = stages.flatMap((value) =>
+    [...prepared.values()].map((item) =>
+      caseOf(item.ticket, keys, value, intent.key, item.contact),
+    ),
+  );
   const outcome = await runProcedureSimulation(env, {
-    cases: [...prepared.values()].map((item) => item.input),
+    cases,
     candidate: { versionId: target.versionId, steps: target.steps },
     baseline:
       target.baseline === null

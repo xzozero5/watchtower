@@ -546,7 +546,14 @@ export const ticketGradeResponseSchema = z.object({ grade: ticketGradeSchema.nul
 export type TicketGradeResponse = z.infer<typeof ticketGradeResponseSchema>;
 
 /** Body of `POST /v1/tickets/:id/golden` (T-302a): the sent reply to keep as a golden answer. */
-export const markGoldenSchema = z.object({ messageId: z.uuid() });
+export const markGoldenSchema = z.object({
+  messageId: z.uuid(),
+  /**
+   * The lead confirms the reply holds no customer-specific data. Only then may the drafter of another
+   * organization read it (T-306a C-8); absent or false, only the ticket's own organization does.
+   */
+  shareable: z.boolean().optional(),
+});
 export type MarkGolden = z.infer<typeof markGoldenSchema>;
 
 export const goldenAnswerSchema = z.object({

@@ -47,7 +47,8 @@ async function refusal(work: Promise<unknown>): Promise<DomainError> {
 
 /** A passing simulation of the version, the way the runner of T-303d will write one. */
 async function simulate(versionId: string, over: { passed?: boolean; seedOnly?: boolean } = {}) {
-  const [row] = await env.database.db
+  // The schema owner writes the fixture: the application role goes through record_procedure_simulation().
+  const [row] = await env.db.owner.db
     .insert(schema.procedureSimulation)
     .values({
       procedureVersionId: versionId,

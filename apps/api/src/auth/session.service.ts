@@ -232,6 +232,32 @@ export class SessionService {
     };
   }
 
+  /**
+   * Stores the result of a step-up through Google on the session that asked for it (T-306a C-5): the time the
+   * provider authenticated the person (`auth_time`), and how. Only a live session of that user takes it, and the
+   * mark never moves to another session.
+   */
+  async recordStepUp(
+    sessionId: string,
+    userId: string,
+    authTime: Date,
+    method: 'google_oidc',
+  ): Promise<boolean> {
+    const rows = await this.database.db
+      .update(schema.sessions)
+      .set({ stepUpAt: authTime, stepUpMethod: method })
+      .where(
+        and(
+          eq(schema.sessions.id, sessionId),
+          eq(schema.sessions.userId, userId),
+          isNull(schema.sessions.revokedAt),
+          gt(schema.sessions.expiresAt, new Date()),
+        ),
+      )
+      .returning({ id: schema.sessions.id });
+    return rows.length > 0;
+  }
+
   /** Revokes one session. With `userId`, only if it belongs to that user. Returns whether it was live. */
   async revoke(sessionId: string, reason: string, userId?: string): Promise<boolean> {
     const rows = await this.database.db

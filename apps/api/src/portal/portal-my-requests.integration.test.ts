@@ -8,10 +8,11 @@ import {
   type PortalSubmitted,
   type PortalTicketView,
 } from '@watchtower/shared';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
 import { startHarness, uniqueEmail, type Harness, type TestClient } from '../testing/harness.js';
 import { apiOrg, signIn, type ApiErrorBody, type Persona } from '../testing/ticketing.js';
+import { PortalLimits } from './portal-limits.js';
 import { PortalMyRequestsService } from './portal-my-requests.service.js';
 import { solveChallenge } from './pow.js';
 
@@ -187,6 +188,26 @@ describe('POST /v1/portal/my-requests', () => {
          AND metadata->>'scope' = 'mine-email'`,
     );
     expect(rows.length).toBeGreaterThan(0);
+  });
+
+  it('counts the instance-wide ceiling only for an address that belongs to a contact (C-12)', async () => {
+    const limits = h.app.get(PortalLimits);
+    const hit = vi.spyOn(limits, 'hit');
+    try {
+      const globalHits = () => hit.mock.calls.filter(([scope]) => scope === 'mine-global').length;
+      // Strangers: any number of them, from anywhere, must not use up what the real customers share.
+      for (let i = 0; i < 5; i += 1) {
+        expect((await ask(h.client(), uniqueEmail('nobody', DOMAIN))).status).toBe(202);
+      }
+      await settle();
+      expect(globalHits()).toBe(0);
+      // A contact: one hit.
+      const { email } = await customer();
+      await linkFor(email);
+      expect(globalHits()).toBe(1);
+    } finally {
+      hit.mockRestore();
+    }
   });
 
   it('limits per domain silently and counts it in the audit log', async () => {

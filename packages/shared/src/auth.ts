@@ -310,6 +310,9 @@ export const CORE_AUDIT_ACTIONS = {
   csrfRejected: 'auth.csrf_rejected',
   loginGoogle: 'auth.login.google',
   loginGoogleFailed: 'auth.login.google_failed',
+  /** A signed-in person proved who they are again at Google (prompt=login, max_age, auth_time): T-306a C-5. */
+  stepUpGoogle: 'auth.step_up.google',
+  stepUpFailed: 'auth.step_up.failed',
   loginDev: 'auth.login.dev',
   magicLinkRequested: 'auth.magic_link.requested',
   magicLinkRateLimited: 'auth.magic_link.rate_limited',

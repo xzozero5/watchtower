@@ -5,7 +5,7 @@ import {
   type InvestigationEvidence,
   type SettingsSource,
 } from '@watchtower/ai';
-import { schema, type Database } from '@watchtower/db';
+import type { Database } from '@watchtower/db';
 import {
   DomainError,
   composeAutoSendText,
@@ -18,7 +18,6 @@ import {
   type Domain,
 } from '@watchtower/domain';
 import type { RealtimeEvent } from '@watchtower/shared';
-import { inArray } from 'drizzle-orm';
 
 import type { WorkerLogger } from '../logger.js';
 import type { RealtimeSink } from '../realtime.js';
@@ -75,21 +74,6 @@ export interface AutoSendStepInput {
 }
 
 export type AutoSendStepResult = 'off' | 'shadow' | 'scheduled' | 'held' | 'error';
-
-async function modelsOf(
-  db: Database['db'],
-  runIds: readonly (string | null)[],
-): Promise<Map<string, { provider: string; model: string }>> {
-  const ids = runIds.filter((id): id is string => id !== null);
-  const found = new Map<string, { provider: string; model: string }>();
-  if (ids.length === 0) return found;
-  const rows = await db
-    .select({ id: schema.aiRun.id, provider: schema.aiRun.provider, model: schema.aiRun.model })
-    .from(schema.aiRun)
-    .where(inArray(schema.aiRun.id, [...ids]));
-  for (const row of rows) found.set(row.id, { provider: row.provider, model: row.model });
-  return found;
-}
 
 /** The reason code a refusal carries (the gate puts it in the details), else the error code. */
 function reasonOf(error: DomainError): string {
@@ -192,25 +176,22 @@ export async function runAutoSendStep(
       await record(['grade_missing'], null, { grader: graded.status, reason: graded.reason });
       return await held('grade_missing', ['grade_missing']);
     }
-    const runs = await modelsOf(db, [graded.runId]);
-    const graderRun = graded.runId === null ? undefined : runs.get(graded.runId);
-    const draftRun = (await modelsOf(db, [input.draft.aiRunId ?? null])).get(
-      input.draft.aiRunId ?? '',
-    );
+    // No ai_run of the grader or of the drafter: nothing to read the models from, so nothing can clear the send
+    // (the database refuses the grade without them, C-11).
+    const draftRunId = input.draft.aiRunId;
+    if (graded.runId === null || draftRunId === null) {
+      await record(['grade_missing'], null, { reason: 'no_ai_run' });
+      return await held('grade_missing', ['grade_missing']);
+    }
     const gradeId = await recordPreSendGrade(db, {
       aiDraftId: input.draft.id,
       ticketId: input.ticket.id,
       text,
       graderAiRunId: graded.runId,
-      graderProvider: graderRun?.provider ?? graderRef.provider,
-      graderModel: graderRun?.model ?? graderRef.model,
-      drafterProvider: draftRun?.provider ?? drafterRef.provider,
-      drafterModel: draftRun?.model ?? drafterRef.model,
       score: graded.value.score,
       passed: graded.value.passed,
       violations: graded.value.violations,
       promptVersion: graded.value.promptVersion,
-      mock: graded.value.mock,
     });
 
     const evaluation = await gate.evaluateAutoSend(request(gradeId), mode);

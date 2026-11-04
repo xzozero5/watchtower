@@ -77,6 +77,28 @@ const apiEnvSchema = createEnvSchema({
         return [...new Set(list)];
       }),
   ),
+  /**
+   * Mail domains, besides the active staff, that the publish dialog of the weekly brief may send to (T-306a C-13):
+   * comma-separated (for example the company's own domain). Empty: only active staff and the addresses of
+   * WEEKLY_BRIEF_RECIPIENTS. A head cannot send the brief to an address outside this set.
+   */
+  WEEKLY_BRIEF_RECIPIENT_DOMAINS: z.preprocess(
+    emptyToUndefined,
+    z
+      .string()
+      .optional()
+      .transform((value, ctx) => {
+        const list = (value ?? '')
+          .split(',')
+          .map((item) => item.trim().toLowerCase())
+          .filter((item) => item !== '');
+        if (list.length > 20 || !list.every((item) => /^[a-z0-9]([a-z0-9.-]*[a-z0-9])?.[a-z]{2,}$/.test(item))) {
+          ctx.addIssue({ code: 'custom', message: 'must be up to 20 comma-separated domains' });
+          return z.NEVER;
+        }
+        return [...new Set(list)];
+      }),
+  ),
   /** How long a client magic link stays valid. */
   MAGIC_LINK_TTL_SECONDS: seconds(900, 60, 3600),
   /**

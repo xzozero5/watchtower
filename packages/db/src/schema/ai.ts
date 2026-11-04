@@ -227,6 +227,8 @@ export const goldenAnswer = pgTable(
       .references(() => intent.id, { onDelete: 'restrict' }),
     bodyRedacted: text('body_redacted').notNull(),
     language: text('language'),
+    /** A lead ticked "no customer-specific data": other organizations' drafters may read it (migration 0108, C-8). */
+    shareable: boolean('shareable').notNull().default(false),
     createdBy: uuid('created_by')
       .notNull()
       .references(() => users.id, { onDelete: 'restrict' }),

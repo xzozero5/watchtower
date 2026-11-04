@@ -249,8 +249,12 @@ export async function readReportInputs(
   // The window is the stretch spent at this stage, at most the last 28 days (a long stay is not a reason to
   // count old tickets); never empty.
   const earliest = new Date(now.getTime() - GATE_WINDOW_DAYS * 86_400_000);
+  // Never before the intent existed (record_autonomy_gate_report refuses such a window, C-6), never empty.
   const windowStart = new Date(
-    Math.min(Math.max(since.getTime(), earliest.getTime()), now.getTime() - 1000),
+    Math.max(
+      Math.min(Math.max(since.getTime(), earliest.getTime()), now.getTime() - 1000),
+      intent.createdAt.getTime(),
+    ),
   );
   const from = windowStart.toISOString();
   const to = now.toISOString();
@@ -330,25 +334,20 @@ export async function generateGateReport(
   const spansWindow = now.getTime() - windowStart.getTime() >= GATE_WINDOW_DAYS * 86_400_000;
   const status = built.status === 'green' && !spansWindow ? 'insufficient_data' : built.status;
   return db.transaction(async (tx) => {
-    const [row] = await tx
-      .insert(schema.autonomyGateReport)
-      .values({
-        intentId: input.intentId,
-        status,
-        triggerKind: input.trigger,
-        windowStart,
-        windowEnd: now,
-        metrics: built.metrics,
-        criteria: built.criteria.map((criterion) => ({
-          key: criterion.key,
-          pass: criterion.pass,
-          value: criterion.value,
-          threshold: criterion.threshold,
-        })),
-        seedExcluded: true,
-        generatedBy: input.generatedBy,
-      })
-      .returning({ id: schema.autonomyGateReport.id });
+    // Through record_autonomy_gate_report() (migration 0108, C-6): the application role cannot insert a report.
+    const criteria = built.criteria.map((criterion) => ({
+      key: criterion.key,
+      pass: criterion.pass,
+      value: criterion.value,
+      threshold: criterion.threshold,
+    }));
+    const written = await tx.execute<{ id: string } & Record<string, unknown>>(sql`
+      SELECT public.record_autonomy_gate_report(
+        ${input.intentId}::uuid, ${status}, ${input.trigger}, ${windowStart.toISOString()}::timestamptz,
+        ${now.toISOString()}::timestamptz, ${JSON.stringify(built.metrics)}::jsonb,
+        ${JSON.stringify(criteria)}::jsonb, true, ${input.generatedBy}::uuid
+      ) AS id`);
+    const row = written.rows[0];
     if (row === undefined) throw new DomainError('conflict', 'The report was not written');
     const actor: Actor = ctx.actor;
     await recordAuditInTx(

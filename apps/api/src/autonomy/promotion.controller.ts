@@ -179,7 +179,7 @@ export class PromotionDecisionController {
   @ApiOperation({
     summary: 'Approve, reject or withdraw a promotion request',
     description:
-      'Approving is for the holder of `ai.autonomy.owner_approve` only (403 `owner_only`), needs `confirmKey` (the key of the intent, typed) and a sign-in from the last 5 minutes: the session behind the request must have been created within 300 seconds, else 403 `reauth_required` and the UI sends the person through sign-in again. The owner may approve a request of their own (`selfApproved: true`, audited). Rejecting is for the owner or any head; the requester withdrawing their own request answers `cancelled`.',
+      'Approving is for the holder of `ai.autonomy.owner_approve` only (403 `owner_only`), needs `confirmKey` (the key of the intent, typed) and a step-up at Google from the last 5 minutes (T-306a C-5): the browser goes through `GET /v1/auth/google/step-up` (prompt=login, max_age=300, auth_time checked), which stores the result on the session; a session that is merely new, a magic link or a break-glass sign-in does not count, and the answer is 403 `reauth_required`. A development stack without Google (mock mode) falls back to the age of the session. The audit row names the method (`reauthMethod`). The owner may approve a request of their own (`selfApproved: true`, audited). Rejecting is for the owner or any head; the requester withdrawing their own request answers `cancelled`.',
   })
   @ApiOkResponse({ standardSchema: decidePromotionResultSchema })
   @ApiForbiddenResponse({ description: 'owner_only, reauth_required, or the database refused' })

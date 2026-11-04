@@ -68,7 +68,9 @@ async function simulate(
   versionId: string,
   over: { passed?: boolean; seedOnly?: boolean; ageDays?: number } = {},
 ): Promise<string> {
-  const row = await app.query<{ id: string }>(
+  // The schema owner writes the fixture: the application role goes through record_procedure_simulation()
+  // (migration 0108; its own tests are in review-hardening.integration.test.ts).
+  const row = await owner().query<{ id: string }>(
     `INSERT INTO procedure_simulation (procedure_version_id, passed, seed_only, case_count, metrics, created_at)
      VALUES ($1, $2, $3, 5, '{"violations":0}'::jsonb, clock_timestamp() - make_interval(days => $4))
      RETURNING id`,
@@ -77,11 +79,22 @@ async function simulate(
   return row.rows[0]?.id ?? '';
 }
 
-const publish = (versionId: string, actor: string | null) =>
-  app.query<{ previous: string | null }>(
+/** A publisher is a real, active person who may publish (migration 0108): a head, made on first use. */
+async function ensureHead(id: string): Promise<void> {
+  await owner().query(
+    `INSERT INTO users (id, email, name, role) VALUES ($1::uuid, $1::text || '@example.com', 'Publisher', 'head')
+     ON CONFLICT (id) DO NOTHING`,
+    [id],
+  );
+}
+
+const publish = async (versionId: string, actor: string | null) => {
+  if (actor !== null) await ensureHead(actor);
+  return app.query<{ previous: string | null }>(
     `SELECT public.publish_procedure_version($1::uuid, $2::uuid) AS previous`,
     [versionId, actor],
   );
+};
 
 const statusOf = async (versionId: string) =>
   (
@@ -328,7 +341,7 @@ describe('procedure_simulation', () => {
     await confirm(id);
     expect(
       await code(
-        app.query(
+        owner().query(
           `INSERT INTO procedure_simulation (procedure_version_id, passed, case_count) VALUES ($1, true, 0)`,
           [id],
         ),
@@ -435,6 +448,8 @@ describe('publish_procedure_version()', () => {
     const id = await newVersion(procedureId);
     await confirm(id);
     await simulate(id);
+    const publisher = person();
+    await ensureHead(publisher);
     const client = await owner().connect();
     try {
       await client.query(`CREATE TEMP TABLE procedure_version (LIKE public.procedure_version)`);
@@ -445,7 +460,7 @@ describe('publish_procedure_version()', () => {
       await client.query(`CREATE TEMP TABLE intent (LIKE public.intent)`);
       await client.query(`SELECT public.publish_procedure_version($1::uuid, $2::uuid)`, [
         id,
-        person(),
+        publisher,
       ]);
       await client.query(
         `DROP TABLE pg_temp.procedure_version, pg_temp.procedure_simulation, pg_temp.procedure, pg_temp.intent`,

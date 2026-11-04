@@ -488,7 +488,7 @@ export async function runInvestigation(
   await progress({ phase: 'drafting', step: 0, steps: 1 });
   const customerLanguage = detectLanguage(customerText);
   // Golden answers of the same intent (T-302a): stored redacted, and the drafter feeds them through its session.
-  const golden = await goldenExamplesFor(db, ticketIntent.id, customerLanguage);
+  const golden = await goldenExamplesFor(db, ticketIntent.id, customerLanguage, ticket.orgId);
   const drafted = await draftReply(agents, {
     ticketId: ticket.id,
     subject: ticket.subject,
