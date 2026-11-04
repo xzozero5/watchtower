@@ -17,6 +17,7 @@ export const adminTh: Widen<typeof adminEn> = {
     audit: 'บันทึกการตรวจสอบ',
     integrations: 'การเชื่อมต่อ',
     shifts: 'กะและตารางเวร',
+    golden: 'คำตอบ golden',
     outbox: 'Outbox',
   },
   common: {

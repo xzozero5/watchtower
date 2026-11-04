@@ -54,6 +54,7 @@ describe('Ops dashboard: structure', () => {
       'Quality',
       'Reliability',
       'AI',
+      'Verified or assumed, by intent',
       'Team',
       'Product usage',
       'Service status',

@@ -30,6 +30,7 @@ import { AppLink } from '@/components/app-link';
 import { ChannelIcon } from '@/components/ticket/channel-icon';
 import { useI18n } from '@/i18n/provider';
 import { formatAge, formatDateTime } from '@/lib/format';
+import { GoldenMarkButton } from '@/components/ai/golden-mark';
 import { useSendUndo } from '@/lib/outbound/queries';
 import { useNow } from '@/lib/use-now';
 import { statusKey } from '@/lib/tickets/status-key';
@@ -413,6 +414,7 @@ function MessageRow({
               </button>
             </Tooltip>
           ) : null}
+          <GoldenMarkButton message={message} className={ICON_BUTTON} />
         </div>
       </article>
     </li>
@@ -478,6 +480,7 @@ function EmailRow({
                 </button>
               </Tooltip>
             ) : null}
+            <GoldenMarkButton message={message} className={ICON_BUTTON} />
           </div>
         }
       />

@@ -14,6 +14,7 @@ import { CircleCheck, Copy, MessagesSquare, MousePointerClick } from 'lucide-rea
 import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 
 import { AiBrief } from '@/components/ai/ai-brief';
+import { AiGradeCard } from '@/components/ai/ai-grade';
 import { SlaBadge } from '@/components/ticket/sla-badge';
 import { StatusLabel } from '@/components/ticket/status-label';
 import { TicketDetails } from '@/components/ticket/ticket-details';
@@ -270,6 +271,15 @@ export function ConversationPane({
             canRequest={can('ticket.handle')}
             onOpenEvidence={(id) => onOpenEvidence?.(id)}
             onWriteMyself={() => dockRef.current?.open('reply')}
+          />
+        ) : null}
+
+        {/* The grader's verdict on a resolved ticket (T-301d). A client never sees it; the api redacts it for a developer. */}
+        {!isClient && (can('ticket.read') || can('ticket.read.masked')) ? (
+          <AiGradeCard
+            key={`grade-${data.key}`}
+            ticketKey={data.key}
+            enabled={data.status === 'resolved' || data.status === 'closed'}
           />
         ) : null}
 

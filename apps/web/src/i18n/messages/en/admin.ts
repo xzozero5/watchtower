@@ -14,6 +14,7 @@ export const adminEn = {
     audit: 'Audit log',
     integrations: 'Integrations',
     shifts: 'Shifts and roster',
+    golden: 'Golden answers',
     outbox: 'Outbox',
   },
   common: {
