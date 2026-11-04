@@ -1,4 +1,5 @@
 import { fireEvent, render } from '@testing-library/react';
+import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
@@ -151,6 +152,39 @@ describe('useShortcutSequence', () => {
     expect(other).toHaveBeenCalledTimes(1);
     key('q', 'KeyQ');
     expect(goQueue).not.toHaveBeenCalled();
+  });
+
+  it('two listeners of the same prefix both work, whichever subscribed first', () => {
+    const goQueue = vi.fn();
+    const goHome = vi.fn();
+    function Workspace() {
+      useShortcutSequence('g', { q: goQueue });
+      return null;
+    }
+    function Shell({ children }: { children: ReactNode }) {
+      useShortcutSequence('g', { d: goHome });
+      return children;
+    }
+    const { rerender } = render(
+      <Shell>
+        <Workspace />
+      </Shell>,
+    );
+    const press = (k: string, code: string) => fireEvent.keyDown(document.body, { key: k, code });
+    press('g', 'KeyG');
+    press('q', 'KeyQ');
+    // The workspace is mounted again (a soft navigation): it now subscribes after the shell.
+    rerender(
+      <Shell>
+        <Workspace key="again" />
+      </Shell>,
+    );
+    press('g', 'KeyG');
+    press('q', 'KeyQ');
+    press('g', 'KeyG');
+    press('d', 'KeyD');
+    expect(goQueue).toHaveBeenCalledTimes(2);
+    expect(goHome).toHaveBeenCalledTimes(1);
   });
 
   it('times out', () => {

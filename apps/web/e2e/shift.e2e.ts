@@ -16,6 +16,11 @@ async function open(page: Page, path: string) {
 }
 
 async function expectNoViolations(page: Page) {
+  // On a soft navigation Next removes the <title> and puts it back when the new page's metadata has
+  // streamed in, which can be after the URL and the page body have already changed (measured: the
+  // title was missing in ~1 of 3 runs under load). Scan the page once it is whole, not mid-swap;
+  // the `document-title` rule still runs below.
+  await expect(page).toHaveTitle(/\S/);
   // A toast that is still fading in has a transient opacity that axe reads as low contrast.
   const results = await new AxeBuilder({ page })
     .withTags(WCAG_TAGS)

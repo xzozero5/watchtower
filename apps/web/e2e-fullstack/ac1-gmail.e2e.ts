@@ -229,13 +229,20 @@ test.describe.serial('AC-1 (Gmail) / 5.1: an email arrives', () => {
     expect(headers.toLowerCase()).toContain(subject.toLowerCase());
     expect(headers, 'a reply keeps the subject of the thread').toMatch(/Re: /i);
 
-    const after = await api.get<StaffTicket & { firstRespondedAt: string | null }>(
-      `/v1/tickets/${ticketKey}`,
-    );
-    expect(
-      after.json.firstRespondedAt,
-      'the first response is recorded for the SLA',
-    ).not.toBeNull();
+    // The log above is written when the worker calls Gmail; the worker records the send (and with it
+    // the first response) in its own transaction right after the call returns. Reading the ticket
+    // in between saw `null`, so wait for that write.
+    await expect
+      .poll(
+        async () =>
+          (
+            await api.get<StaffTicket & { firstRespondedAt: string | null }>(
+              `/v1/tickets/${ticketKey}`,
+            )
+          ).json.firstRespondedAt,
+        { timeout: 15_000, message: 'the first response is recorded for the SLA' },
+      )
+      .not.toBeNull();
     const entries = await timeline(ticket?.id ?? '');
     const outbound = entries.filter((entry) => entry.kind === 'message').at(-1);
     expect(outbound?.direction).toBe('outbound');
@@ -295,6 +302,21 @@ test.describe.serial('AC-1 (Gmail) / 5.1: an email arrives', () => {
       body: 'I am out of the office until Monday.',
       kind: 'auto_reply',
     });
+
+    // The worker ingests the two mails one after the other, and the Other mail page reads its list
+    // once when it opens (it never polls: a refresh is the person's call). Opening it while the
+    // second mail is still queued showed a list without it for good. Open it once the api has both.
+    await expect
+      .poll(
+        async () => {
+          const listed = await api.get<{ items: { subject: string }[] }>(
+            `/v1/inbound/other-mail?q=${encodeURIComponent(tag)}&limit=50`,
+          );
+          return listed.json.items.map((item) => item.subject).sort();
+        },
+        { timeout: 30_000, message: 'both mails reached Other mail' },
+      )
+      .toEqual([autoSubject, newsletterSubject].sort());
 
     const page = head.page;
     await page.goto('/other-mail');

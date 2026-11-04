@@ -23,7 +23,7 @@ import {
   uuid,
 } from '../src/test/fixtures';
 
-import { E2E_API_URL, E2E_PORT } from './constants';
+import { E2E_API_URL, E2E_API_WS_URL, E2E_PORT } from './constants';
 
 /**
  * A stand-in for apps/api, served from the browser with `page.route` (the full-stack e2e is T-009).
@@ -244,7 +244,7 @@ export async function mockBackend(page: Page, options: BackendOptions = {}) {
     return fulfill(route, 404, errorBody(404, 'not_found'));
   });
 
-  await page.routeWebSocket(`ws://127.0.0.1:4999/v1/realtime`, (socket) => {
+  await page.routeWebSocket(`${E2E_API_WS_URL}/v1/realtime`, (socket) => {
     sockets = [...sockets, socket];
     socket.send(
       JSON.stringify({
