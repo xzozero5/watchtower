@@ -738,3 +738,67 @@ describe('authorKbDraft (T-108e)', () => {
     expect(outcome.value.intentTags).toEqual(['real_one']);
   });
 });
+
+describe('priority suggestion and blocked reply (T-147)', () => {
+  const pinned = (answer: Record<string, unknown>): LlmProvider => ({
+    kind: 'mock',
+    generate: (request) =>
+      Promise.resolve({
+        text: JSON.stringify({
+          findings: [{ text: 'Delivery failed in the logs.', evidenceIds: ['ev-4'] }],
+          likelyCause: null,
+          confidence: 0.7,
+          openQuestions: [],
+          nextStep: { kind: 'reply', label: 'Reply to the customer' },
+          ...answer,
+        }),
+        finishReason: 'stop' as const,
+        usage: { inputTokens: 1, outputTokens: 1 },
+        model: request.model,
+      }),
+  });
+  const suggestion = { priority: 'P2', reason: 'Errors in the logs', confidence: 0.6 };
+
+  it('uses investigator prompt v2 and keeps the suggestion in the report, never changing a ticket', async () => {
+    const r = rig({ provider: pinned({ suggestedPriority: suggestion }) });
+    const outcome = await investigateTicket(r.deps, r.input());
+    if (outcome.status !== 'ok') throw new Error('expected ok');
+    expect(outcome.value.report.suggestedPriority).toEqual(suggestion);
+    expect(outcome.value.report.promptVersion).toBe('v2');
+    expect(outcome.value.report.replyBlocked).toBeUndefined();
+    expect(outcome.value.nextStep.kind).toBe('reply');
+  });
+
+  it('drops a suggestion with an unknown priority instead of failing the report', async () => {
+    const r = rig({ provider: pinned({ suggestedPriority: { ...suggestion, priority: 'P9' } }) });
+    const outcome = await investigateTicket(r.deps, r.input());
+    if (outcome.status !== 'ok') throw new Error('expected ok');
+    expect(outcome.value.report.suggestedPriority).toBeUndefined();
+    expect(outcome.value.report.findings.length).toBeGreaterThan(0);
+  });
+
+  it('accepts a null suggestion', async () => {
+    const r = rig({ provider: pinned({ suggestedPriority: null }) });
+    const outcome = await investigateTicket(r.deps, r.input());
+    expect(outcome.status).toBe('ok');
+  });
+
+  it('turns a reply step into a plain step and records the reason when nothing can be sent', async () => {
+    const r = rig({ provider: pinned({}) });
+    const outcome = await investigateTicket(
+      r.deps,
+      r.input({ replyBlocked: 'no_outbound_channel' }),
+    );
+    if (outcome.status !== 'ok') throw new Error('expected ok');
+    expect(outcome.value.nextStep.kind).toBe('other');
+    expect(outcome.value.report.replyBlocked).toBe('no_outbound_channel');
+    // The other kinds are left alone.
+    const r2 = rig({ provider: pinned({ nextStep: { kind: 'escalate_dev', label: 'Ask dev' } }) });
+    const second = await investigateTicket(
+      r2.deps,
+      r2.input({ replyBlocked: 'channel_not_connected' }),
+    );
+    if (second.status !== 'ok') throw new Error('expected ok');
+    expect(second.value.nextStep.kind).toBe('escalate_dev');
+  });
+});

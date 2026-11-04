@@ -234,7 +234,7 @@ type Actor = { type: 'system' | 'user'; id: string | null };
 async function createTicket(
   subject: string,
   body: string,
-  options: { intentKey?: string; actor?: Actor } = {},
+  options: { intentKey?: string; actor?: Actor; channel?: 'phone' | 'internal' | 'portal' } = {},
 ): Promise<string> {
   const created = await appDatabase.db.transaction((tx) =>
     domain.tickets.create(
@@ -249,6 +249,7 @@ async function createTicket(
           name: 'Pat Example',
         },
         ...(options.intentKey === undefined ? {} : { intentKey: options.intentKey }),
+        ...(options.channel === undefined ? {} : { channel: options.channel }),
       },
     ),
   );
@@ -787,5 +788,35 @@ describe('the AI host is offline (ADR-019, T-170)', () => {
     } finally {
       offlineFor = undefined;
     }
+  });
+});
+
+describe('no customer reply where nothing can be sent (T-147, QA-29)', () => {
+  it('a phone ticket gets a report and no draft, with the reason in the report and no reply step', async () => {
+    classifierConfidence = 0.9;
+    classifierIntent = 'webhook_not_received';
+    const ticketId = await createTicket(
+      'Called about webhook',
+      'They phoned: webhook not received.',
+      {
+        intentKey: 'webhook_not_received',
+        channel: 'phone',
+      },
+    );
+    const row = await settled(ticketId);
+    expect(row.nextStepKind).not.toBe('reply');
+    expect(row.nextStepKind).not.toBe('approve_draft');
+    expect((row.report as { replyBlocked?: string } | null)?.replyBlocked).toBe(
+      'no_outbound_channel',
+    );
+    // Long enough for a draft to have been made if one was going to be.
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+    expect(await draftsOf(ticketId)).toHaveLength(0);
+    expect((await runsOf(ticketId)).filter((run) => run.agent === 'drafter')).toHaveLength(0);
+
+    // A staff request for a draft on the same ticket is refused the same way.
+    await enqueueAi(AI_JOBS.draft, { ticketId, requestedBy: staffId });
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+    expect(await draftsOf(ticketId)).toHaveLength(0);
   });
 });

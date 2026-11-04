@@ -505,3 +505,95 @@ describe('AI suggestion: wait for the customer', () => {
     expect(screen.queryByRole('dialog')).toBeNull();
   });
 });
+
+describe('no reply where nothing can be sent (T-147, QA-29)', () => {
+  it('on a phone ticket shows the reason and no draft, no A/E/R, no reply step', async () => {
+    const phone = makeTicket(1, { channel: 'phone', priority: 'P2' });
+    workspaceApi({
+      tickets: [phone],
+      ai: {
+        'OPS-1': makeInsight({ nextStep: { kind: 'reply', label: 'Reply to the customer' } }),
+      },
+    });
+    const { conversation } = await openTicket();
+    const brief = await within(conversation).findByRole('region', { name: 'AI brief' });
+    expect(within(brief).getByTestId('ai-reply-blocked')).toHaveTextContent(
+      /no channel the AI can send a reply on/,
+    );
+    expect(within(conversation).queryByTestId('ai-draft')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Approve' })).toBeNull();
+    expect(within(brief).queryByRole('button', { name: 'Reply' })).toBeNull();
+    expect(within(brief).queryByRole('button', { name: 'Write myself' })).toBeNull();
+    expect(within(brief).queryByRole('button', { name: /draft/i })).toBeNull();
+  });
+
+  it('shows the worker reason for a channel that is not connected', async () => {
+    workspaceApi({
+      tickets: [ticket1],
+      ai: {
+        'OPS-1': makeInsight({
+          draft: undefined,
+          nextStep: { kind: 'other', label: 'Handle this inside the team' },
+          report: makeReport({ replyBlocked: 'channel_not_connected' }),
+        }),
+      },
+    });
+    const { conversation } = await openTicket();
+    const brief = await within(conversation).findByRole('region', { name: 'AI brief' });
+    expect(within(brief).getByTestId('ai-reply-blocked')).toHaveTextContent(/not connected/);
+  });
+
+  it('keeps the draft on a channel that can be replied on', async () => {
+    workspaceApi({ tickets: [ticket1], ai: { 'OPS-1': makeInsight() } });
+    const { conversation } = await openTicket();
+    await within(conversation).findByRole('region', { name: 'AI brief' });
+    expect(within(conversation).queryByTestId('ai-reply-blocked')).toBeNull();
+    expect(await within(conversation).findByTestId('ai-draft')).toBeVisible();
+  });
+});
+
+describe('the AI suggests a priority (T-147, QA-29)', () => {
+  const suggested = makeReport({
+    suggestedPriority: {
+      priority: 'P1',
+      reason: 'Many customers cannot sign in.',
+      confidence: 0.8,
+    },
+  });
+
+  it('shows the priority with its reason and confidence, and changes nothing until it is accepted', async () => {
+    const user = userEvent.setup();
+    const api = workspaceApi({
+      tickets: [ticket1],
+      ai: { 'OPS-1': makeInsight({ report: suggested }) },
+      overrides: { 'PATCH /v1/tickets/:id': { json: { ...ticket1, priority: 'P1' } } },
+    });
+    const { conversation } = await openTicket();
+    const row = await within(conversation).findByTestId('ai-priority-suggestion');
+    expect(row).toHaveTextContent('AI suggests P1');
+    expect(row).toHaveTextContent('Many customers cannot sign in.');
+    expect(api.callsTo('/v1/tickets/OPS-1', 'PATCH')).toHaveLength(0);
+
+    await user.click(within(row).getByRole('button', { name: 'Set to P1' }));
+    await waitFor(() => {
+      expect(api.callsTo('/v1/tickets/OPS-1', 'PATCH')).toHaveLength(1);
+    });
+    expect(api.callsTo('/v1/tickets/OPS-1', 'PATCH')[0]?.body).toEqual({ priority: 'P1' });
+  });
+
+  it('says nothing when the suggestion is the priority the ticket already has', async () => {
+    workspaceApi({
+      tickets: [ticket1],
+      ai: {
+        'OPS-1': makeInsight({
+          report: makeReport({
+            suggestedPriority: { priority: 'P2', reason: 'Same.', confidence: 0.7 },
+          }),
+        }),
+      },
+    });
+    const { conversation } = await openTicket();
+    await within(conversation).findByRole('region', { name: 'AI brief' });
+    expect(within(conversation).queryByTestId('ai-priority-suggestion')).toBeNull();
+  });
+});

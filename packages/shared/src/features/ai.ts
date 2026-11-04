@@ -10,6 +10,7 @@
  */
 import { z } from 'zod';
 
+import { ticketPrioritySchema } from '../sla.js';
 import { claimSchema } from './claims.js';
 
 /** Audit `action` strings written by this feature. */
@@ -240,6 +241,28 @@ export type AiDraft = z.infer<typeof aiDraftSchema>;
 /** The autonomy stage in force for the ticket's intent. Phase 1 renders 0 to 2 only (N3). */
 export const aiStageSchema = z.number().int().min(0).max(4);
 
+/**
+ * Why the AI offers no customer reply on a ticket (T-147, QA-29): `no_outbound_channel` is a ticket on a
+ * channel nothing is delivered on (internal, phone, walk-in, chat, other); `channel_not_connected` is a
+ * channel whose account is missing or switched off. The web shows the reason where the A/E/R buttons would be.
+ */
+export const AI_REPLY_BLOCK_REASONS = ['no_outbound_channel', 'channel_not_connected'] as const;
+export const aiReplyBlockReasonSchema = z.enum(AI_REPLY_BLOCK_REASONS);
+export type AiReplyBlockReason = z.infer<typeof aiReplyBlockReasonSchema>;
+
+/**
+ * A priority the AI proposes for the ticket (T-147). It is a suggestion: a person accepts it, and only
+ * then does the ticket change, through the same update as any edit (N2, N3).
+ */
+export const aiPrioritySuggestionSchema = z.object({
+  priority: ticketPrioritySchema,
+  /** Why, in the language of the ticket. */
+  reason: z.string().max(300),
+  /** 0 to 1. */
+  confidence: z.number().min(0).max(1),
+});
+export type AiPrioritySuggestion = z.infer<typeof aiPrioritySuggestionSchema>;
+
 /** The investigation report (T-108b): what the tools found, and what they could not. */
 export const aiReportSchema = z.object({
   /** One claim, and the evidence cards it rests on. A finding with no evidence is shown as `Uncited`. */
@@ -275,6 +298,10 @@ export const aiReportSchema = z.object({
       basis: z.enum(['human_confirmed', 'confidence', 'none']),
     })
     .optional(),
+  /** A proposed priority (T-147). Absent when the model had no view. */
+  suggestedPriority: aiPrioritySuggestionSchema.optional(),
+  /** Set when no customer reply is offered on this ticket, and why (T-147). */
+  replyBlocked: aiReplyBlockReasonSchema.optional(),
 });
 export type AiReport = z.infer<typeof aiReportSchema>;
 

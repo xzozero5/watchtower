@@ -1,7 +1,12 @@
 'use client';
 
 import type { UseQueryResult } from '@tanstack/react-query';
-import type { AiProgress, TicketAiInsight } from '@watchtower/shared';
+import {
+  hasOutboundChannel,
+  type AiProgress,
+  type AiReplyBlockReason,
+  type TicketAiInsight,
+} from '@watchtower/shared';
 import { Button, IntentChip, Skeleton, StageBadge, TintChip, toast, Tooltip } from '@watchtower/ui';
 import {
   ArrowUpRight,
@@ -36,6 +41,7 @@ import type { TicketItem } from '@/lib/tickets/model';
 import { useTimeline } from '@/lib/tickets/queries';
 
 import { AiDraftCard } from './ai-draft';
+import { AiPrioritySuggestionRow } from './ai-priority-suggestion';
 import { AiReportDetails } from './ai-report';
 import { AiProse } from './ai-prose';
 import { ConfidenceMeter } from './confidence-meter';
@@ -148,7 +154,7 @@ export function AiBrief({
   ticket,
   query,
   canReview,
-  canWrite,
+  canWrite: canWriteReply,
   canRequest,
   onOpenEvidence,
   onWriteMyself,
@@ -199,7 +205,15 @@ export function AiBrief({
   const insight = query.data;
   if (!hasBrief(insight)) return <Quiet>{t('ai.brief.none')}</Quiet>;
 
-  const { intent, nextStep, draft, evidence, report, progress } = insight;
+  const { intent, nextStep, evidence, report, progress } = insight;
+  // T-147: nothing can be sent to the customer on this ticket, so no reply, no draft and no A/E/R.
+  // The channel is known here; the worker's reason (a channel whose account is off) arrives in the report.
+  const replyBlocked: AiReplyBlockReason | undefined =
+    'channel' in ticket && !hasOutboundChannel(ticket.channel)
+      ? 'no_outbound_channel'
+      : report?.replyBlocked;
+  const draft = replyBlocked === undefined ? insight.draft : undefined;
+  const canWrite = canWriteReply && replyBlocked === undefined;
   const paused =
     autonomy.data?.switches.some((item) => item.key === 'ai_kill_switch' && item.on) ?? false;
   const running = insight.state === 'investigating' || aiRequest.isPending;
@@ -396,6 +410,26 @@ export function AiBrief({
           </p>
         ) : null}
 
+        {replyBlocked ? (
+          <p
+            role="status"
+            data-testid="ai-reply-blocked"
+            className="flex items-center gap-1.5 text-xs font-medium text-foreground"
+          >
+            <TriangleAlert aria-hidden className="size-3.5 shrink-0 text-tint-amber-icon" />
+            {t(`ai.brief.replyBlocked.${replyBlocked}`)}
+          </p>
+        ) : null}
+
+        {report?.suggestedPriority ? (
+          <AiPrioritySuggestionRow
+            ticketKey={ticket.key}
+            current={ticket.priority}
+            suggestion={report.suggestedPriority}
+            canAccept={canRequest}
+          />
+        ) : null}
+
         {nextStep || canWrite ? (
           <div role="group" aria-label={t('ai.brief.nextStep')} className="flex flex-wrap gap-2">
             {nextStep && canActOnStep ? (
@@ -434,7 +468,7 @@ export function AiBrief({
 
         {canRequest ? (
           <div role="group" aria-label={t('ai.request.group')} className="flex flex-wrap gap-2">
-            {!draft && insight.stage >= 1 ? (
+            {!draft && insight.stage >= 1 && replyBlocked === undefined ? (
               <Button
                 className="rounded-full"
                 disabled={!canAsk}
