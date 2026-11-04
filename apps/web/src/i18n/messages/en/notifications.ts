@@ -8,7 +8,7 @@ export const notificationsEn = {
   center: {
     title: 'Notifications',
     openLabel: 'Notifications',
-    openLabelUnread: 'Notifications, {count} unread',
+    openLabelUnread: 'Notifications {count} unread',
     unreadBadge: '{count} unread',
     markAllRead: 'Mark all read',
     markRead: 'Mark read',

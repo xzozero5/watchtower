@@ -65,7 +65,7 @@ describe('the bell', () => {
 
     const button = await bell();
     await waitFor(() => {
-      expect(button).toHaveAccessibleName('Notifications, 3 unread');
+      expect(button).toHaveAccessibleName('Notifications 3 unread');
     });
     expect(screen.getByTestId('notification-badge')).toHaveTextContent('3');
 
