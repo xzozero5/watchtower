@@ -198,6 +198,12 @@ afterAll(async () => {
 });
 
 describe('GET /v1/tickets/stats', () => {
+  it('answers a staff member who gives no filter at all (the assistant asks like this)', async () => {
+    const response = await lead.client.get<TicketStats>('/v1/tickets/stats');
+    expect(response.status).toBe(200);
+    expect(response.body.total.count).toBeGreaterThanOrEqual(10);
+  });
+
   it('counts by status, queue, assignee, priority and SLA state in one answer', async () => {
     const response = await stats(lead);
     expect(response.status).toBe(200);

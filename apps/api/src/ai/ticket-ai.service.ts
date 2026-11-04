@@ -10,6 +10,7 @@ import {
   aiProgressSchema,
   aiReportSchema,
   type AiDraft,
+  type Claim,
   type AiRequest,
   type AiState,
   type RejectAiDraft,
@@ -27,6 +28,7 @@ import { domainContext, settle } from '../domain/domain-context.js';
 import { translating } from '../domain/domain-errors.js';
 import type { UnitOfWork } from '../realtime/unit-of-work.js';
 import { TicketReader, isMasked } from '../tickets/ticket-reader.js';
+import { claimsOfReport, ticketKeyOfHref } from './insight-claims.js';
 import { maskInsight } from './mask-insight.js';
 
 type InsightRow = typeof schema.aiTicketInsight.$inferSelect;
@@ -57,6 +59,12 @@ export function toAiDraft(row: DraftRow): AiDraft {
   };
 }
 
+/** What the row alone does not hold: the name of the intent and the report's findings as claims (T-135). */
+export interface InsightExtras {
+  readonly intentName?: string | null;
+  readonly claims?: Claim[];
+}
+
 /**
  * Row to contract. Absent pieces stay absent: the web shows what exists and nothing else (N5). A
  * `draft_ready` brief whose draft is no longer waiting (approved, sent, replaced) reads as
@@ -71,6 +79,7 @@ export function toTicketAiInsight(
    * moves), the brief must show, and offer, what the gate will allow today.
    */
   currentStage?: number,
+  extras: InsightExtras = {},
 ): TicketAiInsight {
   const evidence = z.array(aiEvidenceSchema).safeParse(row.evidence);
   const report = aiReportSchema.safeParse(row.report);
@@ -86,6 +95,9 @@ export function toTicketAiInsight(
       : {
           intent: {
             key: row.intentKey,
+            ...(extras.intentName === undefined || extras.intentName === null
+              ? {}
+              : { name: extras.intentName }),
             confidence: row.intentConfidence,
             reason: row.intentReason ?? '',
           },
@@ -105,7 +117,14 @@ export function toTicketAiInsight(
       ? { reasonCode: row.reasonCode as NonNullable<TicketAiInsight['reasonCode']> }
       : {}),
     ...(waiting === undefined ? {} : { draft: toAiDraft(waiting) }),
-    ...(report.success ? { report: report.data } : {}),
+    ...(report.success
+      ? {
+          report: {
+            ...report.data,
+            ...(extras.claims === undefined ? {} : { claims: extras.claims }),
+          },
+        }
+      : {}),
     ...(progress.success && state === 'investigating' ? { progress: progress.data } : {}),
     stage: currentStage ?? row.stage,
     generatedAt: row.generatedAt.toISOString(),
@@ -147,15 +166,36 @@ export class TicketAiService {
               .limit(1)
           )[0];
     // The same rule "Draft a reply" is checked against below: the stage of the intent the ticket has now.
+    // Also the name of the intent, and the report as claims whose links this viewer may open (T-135).
     const [intent] =
       ticket.t.intentId === null
         ? []
         : await this.database.db
-            .select({ stage: schema.intent.autonomyStage })
+            .select({ stage: schema.intent.autonomyStage, name: schema.intent.name })
             .from(schema.intent)
             .where(eq(schema.intent.id, ticket.t.intentId))
             .limit(1);
-    const insight = toTicketAiInsight(row, draft, intent?.stage);
+    const report = aiReportSchema.safeParse(row.report);
+    const cards = z.array(aiEvidenceSchema).safeParse(row.evidence);
+    let claims: Claim[] | undefined;
+    if (report.success) {
+      const evidence = cards.success ? cards.data : [];
+      const open = new Set<string>();
+      for (const key of new Set(evidence.map((card) => ticketKeyOfHref(card.href)))) {
+        if (key === null) continue;
+        try {
+          await this.tickets.viewRow(key, principal);
+          open.add(key);
+        } catch {
+          // A ticket this viewer cannot read gets no link.
+        }
+      }
+      claims = claimsOfReport(report.data, evidence, open);
+    }
+    const insight = toTicketAiInsight(row, draft, intent?.stage, {
+      intentName: intent?.name ?? null,
+      ...(claims === undefined ? {} : { claims }),
+    });
     // A developer reads the brief masked (T-137): the redactor again, and no draft reply.
     return {
       ticketId: ticket.t.id,

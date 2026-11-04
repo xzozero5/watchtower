@@ -8,6 +8,10 @@ export const CLEANUP_TARGETS = [
   'portal_access_token',
   'break_glass_attempt',
   'status_subscription',
+  'assistant_conversation',
+  'assistant_proposal',
+  'assistant_usage',
+  'ai_summary',
 ] as const;
 export type CleanupTarget = (typeof CLEANUP_TARGETS)[number];
 
@@ -25,6 +29,22 @@ export interface CleanupOptions {
    * incident review. `[ASSUMED]` 30 days.
    */
   readonly breakGlassRetentionDays?: number;
+  /**
+   * How long a conversation with the assistant (with its messages) is kept, counted from the day it began,
+   * so a conversation that stays in use still ends (T-134, ADR-023 section 8). It holds redacted text only.
+   * The per-day usage numbers of a person follow the same period. `[ASSUMED]` 30 days.
+   */
+  readonly assistantRetentionDays?: number;
+  /**
+   * How long a proposal is kept after it expired or was decided. Until then it holds what the card was
+   * made from (a note, an address): real values, not redacted, because the press needs them. `[ASSUMED]` 1 day.
+   */
+  readonly assistantProposalRetentionDays?: number;
+  /**
+   * How long a cached AI summary (daily brief, handoff) is kept. It holds sentences with the names and
+   * subjects the person saw, so it is a cache of days, not a record. `[ASSUMED]` 2 days.
+   */
+  readonly aiSummaryRetentionDays?: number;
   /** Rows deleted per statement, so a large backlog never holds a long lock. */
   readonly batchSize?: number;
   /** Statements per table per run; a backlog bigger than `batchSize * maxBatches` finishes on the next run. */
@@ -38,6 +58,9 @@ export type CleanupResult = Record<CleanupTarget, number> & {
 
 export const DEFAULT_AUTH_RETENTION_DAYS = 7;
 export const DEFAULT_BREAK_GLASS_RETENTION_DAYS = 30;
+export const DEFAULT_ASSISTANT_RETENTION_DAYS = 30;
+export const DEFAULT_ASSISTANT_PROPOSAL_RETENTION_DAYS = 1;
+export const DEFAULT_AI_SUMMARY_RETENTION_DAYS = 2;
 const DEFAULT_BATCH_SIZE = 1000;
 const DEFAULT_MAX_BATCHES = 100;
 
@@ -45,7 +68,7 @@ interface Statement {
   readonly table: CleanupTarget;
   /** `$1` = retention days, `$2` = batch size. The row locator is `id`, or `ctid` where there is none. */
   readonly sql: string;
-  readonly retention: 'auth' | 'breakGlass';
+  readonly retention: 'auth' | 'breakGlass' | 'assistant' | 'proposal' | 'summary';
 }
 
 const batch = (table: string, locator: string, condition: string): string =>
@@ -115,6 +138,38 @@ const STATEMENTS: readonly Statement[] = [
       `state = 'pending' AND confirm_expires_at < now() - make_interval(days => $1::int)`,
     ),
   },
+  {
+    table: 'assistant_conversation',
+    retention: 'assistant',
+    // Messages go with it (ON DELETE CASCADE), and so do its proposals. By the day it began, not the day it
+    // was last used. The audit log of what was pressed stays.
+    sql: batch(
+      'assistant_conversation',
+      'id',
+      `created_at < now() - make_interval(days => $1::int)`,
+    ),
+  },
+  {
+    table: 'assistant_proposal',
+    retention: 'proposal',
+    // Whatever its state: a pending one that nobody pressed is dead after it expired.
+    sql: batch(
+      'assistant_proposal',
+      'id',
+      `expires_at < now() - make_interval(days => $1::int)
+         OR (decided_at IS NOT NULL AND decided_at < now() - make_interval(days => $1::int))`,
+    ),
+  },
+  {
+    table: 'assistant_usage',
+    retention: 'assistant',
+    sql: batch('assistant_usage', 'ctid', `day < current_date - $1::int`),
+  },
+  {
+    table: 'ai_summary',
+    retention: 'summary',
+    sql: batch('ai_summary', 'ctid', `generated_at < now() - make_interval(days => $1::int)`),
+  },
 ];
 
 function assertCount(name: string, value: number, min: number, max: number): number {
@@ -152,6 +207,24 @@ export async function purgeExpired(
     0,
     3650,
   );
+  const assistantDays = assertCount(
+    'assistantRetentionDays',
+    options.assistantRetentionDays ?? DEFAULT_ASSISTANT_RETENTION_DAYS,
+    0,
+    3650,
+  );
+  const proposalDays = assertCount(
+    'assistantProposalRetentionDays',
+    options.assistantProposalRetentionDays ?? DEFAULT_ASSISTANT_PROPOSAL_RETENTION_DAYS,
+    0,
+    3650,
+  );
+  const summaryDays = assertCount(
+    'aiSummaryRetentionDays',
+    options.aiSummaryRetentionDays ?? DEFAULT_AI_SUMMARY_RETENTION_DAYS,
+    0,
+    3650,
+  );
   const batchSize = assertCount('batchSize', options.batchSize ?? DEFAULT_BATCH_SIZE, 1, 100_000);
   const maxBatches = assertCount(
     'maxBatches',
@@ -167,10 +240,20 @@ export async function purgeExpired(
     portal_access_token: 0,
     break_glass_attempt: 0,
     status_subscription: 0,
+    assistant_conversation: 0,
+    assistant_proposal: 0,
+    assistant_usage: 0,
+    ai_summary: 0,
   };
   let more = false;
   for (const statement of STATEMENTS) {
-    const days = statement.retention === 'auth' ? authDays : breakGlassDays;
+    const days = {
+      auth: authDays,
+      breakGlass: breakGlassDays,
+      assistant: assistantDays,
+      proposal: proposalDays,
+      summary: summaryDays,
+    }[statement.retention];
     for (let run = 0; run < maxBatches; run += 1) {
       const result = await database.pool.query(statement.sql, [days, batchSize]);
       const count = result.rowCount ?? 0;

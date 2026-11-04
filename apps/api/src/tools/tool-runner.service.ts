@@ -15,16 +15,22 @@ import {
 } from '@watchtower/connectors';
 import { schema, type Database } from '@watchtower/db';
 import {
+  createDbToolLedger,
   createHumanToolLedger,
   getToolTemplate,
+  templateForAi,
   templatesForTicket,
+  type DbToolLedger,
   type HumanToolLedger,
 } from '@watchtower/domain';
 import {
+  AI_TOOL_BUDGETS,
+  AUDIT_ACTIONS,
   DATA_RUN_MAX_ROWS,
   DATA_RUN_TIMEOUT_MS,
   budgetProjectFor,
   RATE_TOOL_NAMES,
+  runToolSchema,
   TOOL_AUTO_PARAMS,
   TOOLS_AUDIT_ACTIONS,
   type AdhocData,
@@ -119,6 +125,16 @@ interface Finding {
   readonly mock: boolean;
 }
 
+/** What a run the assistant chose returns: the finding, with nothing stored. */
+export interface AssistantFinding {
+  readonly kind: 'logs' | 'data' | 'repo' | 'metrics';
+  readonly title: string;
+  readonly summary: string;
+  readonly excerpt: string;
+  readonly resultCount: number;
+  readonly mock: boolean;
+}
+
 interface Attempt {
   readonly templateId: string | null;
   readonly templateName: string;
@@ -163,6 +179,8 @@ function translateConnectorError(error: unknown): never {
 export class ToolRunner implements OnModuleDestroy {
   private readonly hashKey: string;
   private readonly ledger: HumanToolLedger;
+  /** The ledger of a run the assistant chose: the AI's budget and the AI's share of the rate window. */
+  private readonly aiLedger: DbToolLedger;
   private readonly project: string;
 
   constructor(
@@ -176,6 +194,11 @@ export class ToolRunner implements OnModuleDestroy {
     this.hashKey = deriveSubkey(config.APP_ENCRYPTION_KEY, KEY_LABELS.aiInputHash).toString('hex');
     this.project = budgetProjectFor(config.GCP_PROJECT_ID);
     this.ledger = createHumanToolLedger({ db: database.db, project: this.project });
+    this.aiLedger = createDbToolLedger({
+      db: database.db,
+      limits: AI_TOOL_BUDGETS,
+      project: this.project,
+    });
   }
 
   async onModuleDestroy(): Promise<void> {
@@ -252,6 +275,132 @@ export class ToolRunner implements OnModuleDestroy {
 
   /** Runs a saved template for a ticket or an incident and pins what it found. */
   async runTemplate(subject: Subject, body: RunTool, principal: Principal): Promise<EvidenceCard> {
+    const attempt = await this.templateAttempt(subject, body, principal);
+    return this.execute(subject, attempt, principal, TOOLS_AUDIT_ACTIONS.toolRun);
+  }
+
+  /**
+   * A run the assistant chose (ADR-023, N2). Nobody pressed a button, so it is not a person's act: it
+   * takes the AI's budget and the AI's share of the rate window, the ledger says `agent` is the
+   * assistant, the audit actor is `ai` (on behalf of the person), and NOTHING is pinned: no evidence card
+   * is written. The person who wants the result on the ticket presses the ordinary button.
+   */
+  async runForAssistant(
+    subject: Extract<Subject, { kind: 'ticket' }>,
+    templateId: string,
+    principal: Principal,
+  ): Promise<AssistantFinding> {
+    const attempt = await this.templateAttempt(
+      subject,
+      runToolSchema.parse({ templateId }),
+      principal,
+    );
+    const runKey = randomUUID();
+    const decision = await this.aiLedger.begin({
+      runKey,
+      ticketId: subject.ticketId,
+      agent: 'personal_assistant',
+      tool: attempt.tool,
+      intent: subject.intentKey,
+      stage: 2,
+      inputHash: hmacJson(this.hashKey, attempt.paramsForHash),
+      mock: attempt.mock,
+    });
+    if (!decision.allowed) throw new RateLimitedError(60);
+    const started = Date.now();
+    let finding: Finding;
+    try {
+      finding = await attempt.run(AbortSignal.timeout(DATA_RUN_TIMEOUT_MS * 3));
+    } catch (error) {
+      await this.aiLedger.finish(decision.id, {
+        status: 'error',
+        errorCode: error instanceof Error ? error.name : 'UnknownError',
+        latencyMs: Date.now() - started,
+        resultCount: null,
+      });
+      translateConnectorError(error);
+    }
+    await this.aiLedger.finish(decision.id, {
+      status: 'ok',
+      errorCode: null,
+      latencyMs: Date.now() - started,
+      resultCount: finding.count,
+    });
+    // N4: this text goes to a model. If the organization has more people than the redactor can be given,
+    // the redactor cannot be trusted to find every name: the excerpt is replaced by a notice (fail closed).
+    const { names, complete } = await subject.orgNames();
+    const session = createRedactor({ names: () => names }).session({ scope: subject.ticketId });
+    const excerpt = complete
+      ? session
+          .redactToolOutput(attempt.tool, finding.text.slice(0, EXCERPT_CHARS * 2))
+          .slice(0, EXCERPT_CHARS)
+      : MASKED_TEXT_UNAVAILABLE;
+    await this.audit.record({
+      actor: { type: 'ai', id: null },
+      action: AUDIT_ACTIONS.assistantToolRun,
+      targetType: 'ticket',
+      targetId: subject.ticketId,
+      metadata: {
+        via: 'assistant',
+        onBehalfOf: principal.userId,
+        kind: finding.kind,
+        template: attempt.templateName,
+        resultCount: finding.count,
+        mock: finding.mock,
+        runKey,
+      },
+    });
+    return {
+      kind: finding.kind,
+      title: finding.title,
+      summary: finding.summary,
+      excerpt,
+      resultCount: finding.count,
+      mock: finding.mock,
+    };
+  }
+
+  /**
+   * The template the assistant may run for this ticket, as the AI's worker does (ADR-016, SR106-R8): the
+   * ticket's intent was set or changed by staff (the classifier's word alone does not open the logs), the
+   * template is the intent's own, marked `run_by_ai` and about the ticket's organization, needs no value
+   * from a person, and its system is connected. Null otherwise: then nothing runs.
+   */
+  async aiTemplateOf(subject: Extract<Subject, { kind: 'ticket' }>): Promise<string | null> {
+    if (subject.intentKey === null) return null;
+    const [event] = await this.database.db
+      .select({ id: schema.ticketEvent.id })
+      .from(schema.ticketEvent)
+      .where(
+        and(
+          eq(schema.ticketEvent.ticketId, subject.ticketId),
+          eq(schema.ticketEvent.actorType, 'user'),
+          sql`EXISTS (SELECT 1 FROM users u WHERE u.id::text = ${schema.ticketEvent.actorId}
+                AND u.role IN ('agent', 'lead', 'head'))`,
+          sql`(${schema.ticketEvent.type} = 'ticket.created'
+               OR (${schema.ticketEvent.type} = 'ticket.updated' AND ${schema.ticketEvent.payload}->'changed' ? 'intent'))`,
+        ),
+      )
+      .limit(1);
+    if (event === undefined) return null;
+    for (const kind of ['logs', 'data'] as const) {
+      const template = await templateForAi(this.database.db, subject.intentKey, kind);
+      if (template === null) continue;
+      const connected =
+        kind === 'logs' ? this.clients.logs !== undefined : this.clients.data !== undefined;
+      const needsPerson = templatePlaceholders(template.body).some(
+        (name) => !(TOOL_AUTO_PARAMS as readonly string[]).includes(name),
+      );
+      if (connected && !needsPerson) return template.id;
+    }
+    return null;
+  }
+
+  private async templateAttempt(
+    subject: Subject,
+    body: RunTool,
+    principal: Principal,
+  ): Promise<Attempt> {
     const template = await getToolTemplate(this.database.db, body.templateId);
     if (template === null || !template.active) throw notFound('No such template');
     if (
@@ -307,7 +456,7 @@ export class ToolRunner implements OnModuleDestroy {
         return this.dataFinding(`Data: ${template.title}`, result, null, null);
       },
     };
-    return this.execute(subject, attempt, principal, TOOLS_AUDIT_ACTIONS.toolRun);
+    return attempt;
   }
 
   async runAdhocLogs(body: AdhocLogs, principal: Principal): Promise<EvidenceCard> {

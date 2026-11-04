@@ -94,6 +94,7 @@ export const PROCESSORS: readonly ProcessorRegistration[] = [
       createCleanupProcessor(database, logger, {
         authRetentionDays: config.CLEANUP_AUTH_RETENTION_DAYS,
         breakGlassRetentionDays: config.CLEANUP_BREAK_GLASS_RETENTION_DAYS,
+        assistantRetentionDays: config.ASSISTANT_RETENTION_DAYS,
       }),
     concurrency: 1,
   },

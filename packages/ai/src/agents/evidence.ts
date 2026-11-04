@@ -57,7 +57,7 @@ export function rawEvidenceFrom(tool: string, output: unknown): RawEvidence[] {
         confidence: clamp01(hit.score),
         href: hit.href,
         customerSafe: hit.customerVisible,
-        mock: false,
+        mock: hit.mock === true,
       }));
     case TOOL_NAMES.similarTickets:
       return similarTicketsOutput.parse(output).items.map((ticket) => ({
@@ -180,6 +180,8 @@ export function protectEvidence(
         snippet: show(snippet),
         confidence: item.confidence,
         ...(item.href === undefined ? {} : { href: item.href }),
+        // A card scored by mock embeddings, or read from a fixture, says so (N5).
+        ...(item.mock ? { mock: true } : {}),
         tool: item.tool,
         customerSafe: item.customerSafe,
         mock: item.mock,

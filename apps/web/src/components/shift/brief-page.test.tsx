@@ -110,6 +110,15 @@ describe('Daily brief', () => {
               generatedAt: '2026-11-02T01:01:00.000Z',
               dataAsOf: '2026-11-02T01:00:00.000Z',
               aiRunId: 'run-1',
+              // T-135: the api now sends the claims behind `text`; the screen still shows `text` until the claim line is built.
+              claims: [
+                {
+                  text: 'Two tickets need you first.',
+                  evidence: [{ kind: 'ticket', label: 'OPS-1', href: '/?ticket=OPS-1' }],
+                  uncited: false,
+                },
+              ],
+              mock: false,
             },
           }),
         },

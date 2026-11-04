@@ -324,6 +324,14 @@ describe('every route states who may call it', () => {
         'POST /v1/incidents/:id/tools/run',
         'DELETE /v1/tickets/:id/evidence/:cardId',
         'DELETE /v1/incidents/:id/evidence/:cardId',
+        // The AI assistant (T-134, ADR-023): the tools read through the masking of the ticket page, a card
+        // shows the subject masked, a developer's status and note are the developer's own two moves, and the
+        // free text the model writes is redacted before it is stored (tested in assistant.integration.test).
+        'GET /v1/assistant/starters',
+        'POST /v1/assistant/messages',
+        'POST /v1/assistant/proposals/:id/confirm',
+        'POST /v1/assistant/proposals/:id/reject',
+        'DELETE /v1/assistant/conversations/:id',
       ].sort(),
     );
   });

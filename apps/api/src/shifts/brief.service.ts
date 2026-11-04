@@ -4,6 +4,7 @@ import { onShiftCondition, openTicketCounts } from '@watchtower/domain';
 import {
   OPEN_STATUSES,
   STAFF_ROLES,
+  type AssistantLocale,
   type AssigneeList,
   type AssigneeQuery,
   type HandoffItem,
@@ -15,10 +16,13 @@ import {
 } from '@watchtower/shared';
 import { and, asc, eq, inArray } from 'drizzle-orm';
 
+import { AiSummaries, joinClaims } from '../ai/ai-summaries.service.js';
+import { customerNamesOfTickets } from '../ai/customer-names.js';
 import type { Principal } from '../auth/principal.js';
 import { DATABASE } from '../database/database.module.js';
 import { SlaRemaining } from '../tickets/sla-remaining.js';
 import { TICKET_KEYS, type TicketKeys } from '../tickets/ticket-keys.js';
+import { briefFacts, briefTicketIds } from './brief-facts.js';
 import { HandoffReader } from './handoff-reader.js';
 import { SHIFT_NOW, openSessionOf, shiftTimezone, toSession, type ShiftNow } from './shift-core.js';
 import { ShiftNotes } from './shift-notes.service.js';
@@ -29,9 +33,11 @@ const SLA_RANK: Readonly<Record<SlaState, number>> = { breached: 0, at_risk: 1, 
 type BriefTicket = ShiftBrief['myTickets'][number];
 
 /**
- * The daily brief at clock in (R-7.4), made entirely from data by code. The handoff from the
- * previous shift comes first and is enough for AC-7; nothing here depends on an AI. There is no
- * AI summary yet: `aiSummary` is null.
+ * The daily brief at clock in (R-7.4), made from data by code. The handoff from the previous shift
+ * comes first and is enough for AC-7; nothing here depends on an AI. `aiSummary` (T-135) is the AI's
+ * reading of the same data as claims with links to the tickets and pages behind them, in the language
+ * of the screen; it is null when the AI is off, over budget, failing or has nothing to say, and the
+ * brief is complete without it.
  */
 @Injectable()
 export class BriefService {
@@ -42,9 +48,10 @@ export class BriefService {
     @Inject(SlaRemaining) private readonly sla: SlaRemaining,
     @Inject(TICKET_KEYS) private readonly keys: TicketKeys,
     @Inject(SHIFT_NOW) private readonly now: ShiftNow,
+    @Inject(AiSummaries) private readonly summaries: AiSummaries,
   ) {}
 
-  async brief(principal: Principal): Promise<ShiftBrief> {
+  async brief(principal: Principal, locale: AssistantLocale = 'en'): Promise<ShiftBrief> {
     const db = this.database.db;
     const now = this.now();
     const session = await openSessionOf(db, principal.userId);
@@ -92,7 +99,7 @@ export class BriefService {
         a.number - b.number,
     );
 
-    return {
+    const brief = {
       generatedAt: now.toISOString(),
       timezone: await shiftTimezone(db),
       session: session === undefined ? null : toSession(session),
@@ -107,6 +114,26 @@ export class BriefService {
         .map((entry) => ({ ...entry.view, crossedShifts: entry.crossed })),
       notes: await this.notes.unread(db, principal.userId),
       aiSummary: null,
+    } satisfies ShiftBrief;
+    const block = await this.summaries.claims({
+      kind: 'brief',
+      userId: principal.userId,
+      locale,
+      subject: 'the daily brief of a shift that is starting',
+      // The customers' people named in these tickets: their names stay out of what a model reads (N4).
+      facts: briefFacts(
+        brief,
+        locale,
+        // Every organization that is in the brief, not only the person's own tickets': the handoff
+        // items of colleagues and the incidents, alerts and deploys name tickets of others.
+        await customerNamesOfTickets(db, briefTicketIds(brief)),
+      ),
+      dataAsOf: now,
+      maxClaims: 5,
+    });
+    return {
+      ...brief,
+      aiSummary: block === null ? null : { ...block, text: joinClaims(block.claims) },
     };
   }
 
