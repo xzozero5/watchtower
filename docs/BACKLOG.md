@@ -159,7 +159,7 @@
 - [ ] T-304g `frontend-dev` admin intents: ปุ่ม stage 3 ปิดจน flag + รายงานเขียว · แสดง shadow
 - [x] T-305a `backend-dev`+`frontend-dev` cost dashboard ต่อ agent/intent/ticket (รวม T-142) — **ปิด 2026-11-04** (ยังไม่มี e2e/axe ของหน้าใหม่)
 - [x] T-305b `backend-dev`+`frontend-dev` CEO view §9.2 + tile plug-in (API/CSV) — **ปิด 2026-11-04** (0099, §9.2 ข้อ 2,3,5,6 ยังไม่ทำ)
-- [ ] T-305c `ai-engineer` weekly brief (claim + หลักฐาน T-135, root cause top 5) head แก้ได้ + ตั้งเวลาส่ง
+- [x] T-305c `ai-engineer` weekly brief (claim + หลักฐาน T-135, root cause top 5) head แก้ได้ + ตั้งเวลาส่ง — **ปิด 2026-11-04** (0101; ตั้งเวลาใน admin ยังไม่ทำ)
 - [x] T-305d `backend-dev` export PDF (เจ้าของอนุมัติ dependency 2026-11-04 — ADR เลือก library ก่อน, ไม่มี network) · Google Docs mock — **ปิด 2026-11-04** (ADR-028)
 - [x] T-305e `backend-dev`+`ai-engineer`+`frontend-dev` roster planner (R-7.2) solver deterministic + AI อธิบาย · apply ต้องคนกด — **ปิด 2026-11-04** (0102; วันลาไม่มีตารางถาวร)
 - [ ] T-306a `security-reviewer` ตรวจ autonomy (bypass gate, injection → auto-send, เปิดเผยให้ unverified)
