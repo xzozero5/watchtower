@@ -9,7 +9,7 @@ import {
 } from '@nestjs/swagger';
 import {
   AUDIT_ACTIONS,
-  PHASE_MAX_AUTONOMY_STAGE,
+  MANUAL_MAX_AUTONOMY_STAGE,
   autonomyHistoryPageSchema,
   autonomyHistoryQuerySchema,
   idParamSchema,
@@ -85,11 +85,11 @@ export class IntentAutonomyController {
     @Body({ schema: setIntentAutonomySchema }) body: SetIntentAutonomy,
     @CurrentPrincipal() principal: Principal,
   ) {
-    if (body.stage !== undefined && body.stage > PHASE_MAX_AUTONOMY_STAGE) {
+    if (body.stage !== undefined && body.stage > MANUAL_MAX_AUTONOMY_STAGE) {
       throw new ApiHttpError(
         403,
         'autonomy_stage_requires_owner',
-        "Stage 3 and above (auto-send) cannot be set here: it is the owner's decision",
+        'Stage 3 and above (auto-send) cannot be set here: it is reached by a promotion the owner approves',
       );
     }
     if (body.pinned !== undefined && !principal.permissions.has('ai.autonomy.set.any')) {

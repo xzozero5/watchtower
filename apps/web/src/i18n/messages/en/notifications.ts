@@ -46,6 +46,8 @@ export const notificationsEn = {
     opsSmtpAuthFailed: 'The mail server refused our login: check SMTP_USER and SMTP_PASSWORD',
     opsUploadQuotaGlobal: 'The daily cap on portal uploads is full: customers cannot attach files',
     opsOutboxDead: '{count} queued jobs were given up on and need a look',
+    autonomyRollback:
+      'The intent {intent} was taken back from stage 3 to stage 2 by the system ({rule})',
   },
   kindName: {
     ticketP1: 'P1 tickets',
@@ -58,6 +60,7 @@ export const notificationsEn = {
     opsSmtpAuthFailed: 'System: mail login refused (heads)',
     opsUploadQuotaGlobal: 'System: upload cap full (heads)',
     opsOutboxDead: 'System: jobs given up on (heads)',
+    autonomyRollback: 'System: an intent was taken back from stage 3 (heads)',
   },
   banner: {
     label: 'Critical alert',

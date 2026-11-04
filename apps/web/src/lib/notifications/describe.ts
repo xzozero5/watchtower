@@ -14,6 +14,7 @@ export const KIND_KEY = {
   'ops.smtp_auth_failed': 'opsSmtpAuthFailed',
   'ops.upload_quota_global': 'opsUploadQuotaGlobal',
   'ops.outbox_dead': 'opsOutboxDead',
+  'autonomy.rollback': 'autonomyRollback',
 } as const satisfies Record<NotificationKind, string>;
 
 export function kindMessageKey(kind: NotificationKind): MessageKey {
@@ -27,9 +28,13 @@ export function kindNameKey(kind: NotificationKind): MessageKey {
 /** The placeholders a kind's sentence needs: the ticket key, or the count of items. */
 export function kindValues(item: Notification): Record<string, string | number> {
   const count = item.data.count;
+  const { intent, rule } = item.data;
   return {
     key: item.ticket?.key ?? '',
     count: typeof count === 'number' ? count : 0,
+    // `autonomy.rollback` (T-304e): the intent key and the rule that fired.
+    intent: typeof intent === 'string' ? intent : '',
+    rule: typeof rule === 'string' ? rule : '',
   };
 }
 

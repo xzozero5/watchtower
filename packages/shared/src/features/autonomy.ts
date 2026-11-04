@@ -11,6 +11,9 @@
 import { z } from 'zod';
 
 import { cursorSchema, pageLimit } from '../common.js';
+import { intentAutosendSchema } from './autonomy-stage3.js';
+
+export * from './autonomy-stage3.js';
 
 /** Audit `action` strings written by this feature. */
 export const AUTONOMY_AUDIT_ACTIONS = {
@@ -35,27 +38,64 @@ export const AUTONOMY_AUDIT_ACTIONS = {
   autonomyAutosendConfigSet: 'autonomy.autosend_config_set',
   /** The schema owner gave (or took away) `ai.autonomy.owner_approve` to a person, from the command line. */
   autonomyOwnerApprovalSet: 'autonomy.owner_approval_set',
+  // Stage 3 runtime (T-304c-f).
+  /** A process booted with `AI_AUTOSEND_ENABLED=true` (one row per boot of the api or the worker). */
+  autonomyAutosendFlagBoot: 'autonomy.autosend_flag_boot',
+  /** The AI meant to send on its own and was held back (the first failed condition is in the metadata). */
+  autonomyAutosendHeld: 'autonomy.autosend_held',
+  /** An automatic send was scheduled (the grade and the hold are in the metadata). */
+  autonomyAutosendScheduled: 'autonomy.autosend_scheduled',
+  /** A gate report was written (weekly or on demand). */
+  autonomyGateReportGenerated: 'autonomy.gate_report_generated',
+  /** A head changed the customer-facing disclosure footer of automatic replies. */
+  autonomyDisclosureSet: 'autonomy.disclosure_set',
 } as const satisfies Record<string, string>;
 
 /** `ticket_event.type` strings written by this feature. */
-export const AUTONOMY_TICKET_EVENTS = {} as const satisfies Record<string, string>;
+export const AUTONOMY_TICKET_EVENTS = {
+  /** Internal note on the timeline: "AI meant to send but was held: <reason>" (ADR-025 section 4). */
+  autosendHeld: 'autonomy.autosend_held',
+} as const satisfies Record<string, string>;
 
-/** BullMQ queue names owned by this feature (producer: api, consumer: worker). */
-export const AUTONOMY_QUEUES = {} as const satisfies Record<string, string>;
+/** BullMQ queue names owned by this feature (producer: api, worker; consumer: worker). */
+export const AUTONOMY_QUEUES = {
+  autonomy: 'autonomy',
+} as const satisfies Record<string, string>;
+
+export const AUTONOMY_JOBS = {
+  /** Look at the intents at stage 3 for a rollback condition (an event, or every 15 minutes). */
+  watch: 'autonomy.watch',
+  /** The weekly gate report of every intent at stage 2 or 3. */
+  weeklyReports: 'autonomy.weekly_reports',
+} as const satisfies Record<string, string>;
+export const AUTONOMY_WATCH_EVERY_MS = 15 * 60_000;
+
+/**
+ * `AI_AUTOSEND_ENABLED` (ADR-025 section 2). ON only for the string `true`, exactly: not `TRUE`, not `1`, not
+ * ` true`. Anything else, including unset, is OFF. Read once at boot by the api and by the worker.
+ */
+export function parseAutosendFlag(raw: string | undefined): boolean {
+  return raw === 'true';
+}
+export const autosendFlagSchema = z.string().optional().transform(parseAutosendFlag);
 
 // --- vocabulary shared by the gate, the api and the UI (ADR-011) ---
 
 /**
- * The highest autonomy stage any intent may have in Phase 1. Stage 3 (auto-send) is the owner's
- * decision (N3, PRD section 6.4): the database CHECK, the domain and the api all refuse it. Phase 3
- * lifts it with a new migration, an ADR and the owner's approval; no agent raises it.
+ * The highest autonomy stage the schema and the domain know (ADR-025, migration 0096). Stage 3 (auto-send) is
+ * the owner's decision (N3, PRD section 6.4) and is reached only through a promotion: a head asks, the owner
+ * approves with a fresh sign-in and the typed key. Even then the system acts on `min(stage, 2)` unless the
+ * instance runs with `AI_AUTOSEND_ENABLED=true`.
  */
-export const PHASE_MAX_AUTONOMY_STAGE = 2;
+export const PHASE_MAX_AUTONOMY_STAGE = 3;
+/** The highest stage a person can set by hand (`POST /v1/intents/:id/autonomy`): 3 is never set, only promoted. */
+export const MANUAL_MAX_AUTONOMY_STAGE = 2;
 
 export const AUTONOMY_STAGE_NAMES = {
   0: 'observe',
   1: 'suggest',
   2: 'draft_for_approval',
+  3: 'auto_send',
 } as const;
 
 /** The two global switches (po decision 23). Keys are the primary key of table `ai_switch`. */
@@ -94,19 +134,26 @@ export const autonomyIntentSchema = z.object({
   key: z.string(),
   name: z.string(),
   isActive: z.boolean(),
-  /** The stage stored on the intent (0-2 in Phase 1). */
+  /** The stage stored on the intent (0-3; 3 only through a promotion). */
   stage: z.number().int().min(0).max(PHASE_MAX_AUTONOMY_STAGE),
-  /** The stage the system acts on: `min(stage, ceiling)`. Equal to `stage` while the CHECK holds. */
+  /** The stage the system acts on: `min(stage, 2)` while `autosendFlag` is off, else `min(stage, 3)`. */
   effectiveStage: z.number().int().min(0).max(PHASE_MAX_AUTONOMY_STAGE),
   /** True when the head pinned the stage: nobody changes it until it is unpinned. */
   pinned: z.boolean(),
+  /** The auto-send settings (shadow mode, score, daily cap, allow-list). Absent in older clients' fixtures. */
+  autosend: intentAutosendSchema.optional(),
   updatedAt: z.iso.datetime(),
 });
 export type AutonomyIntent = z.infer<typeof autonomyIntentSchema>;
 
 export const autonomyStateSchema = z.object({
-  /** Highest stage the system allows anywhere (2 in Phase 1). */
-  stageCeiling: z.literal(PHASE_MAX_AUTONOMY_STAGE),
+  /** Highest stage a person can set by hand (2): stage 3 is reached only by a promotion. */
+  stageCeiling: z.literal(MANUAL_MAX_AUTONOMY_STAGE),
+  /**
+   * `AI_AUTOSEND_ENABLED` of the api process, read once at boot. Read-only here: it is not in the database and
+   * no endpoint changes it. With it off, `effectiveStage` never exceeds 2 and a promotion answers 409.
+   */
+  autosendFlag: z.boolean().default(false),
   switches: z.array(aiSwitchSchema),
   intents: z.array(autonomyIntentSchema),
 });
@@ -121,7 +168,7 @@ export type SetAiSwitchResult = z.infer<typeof setAiSwitchResultSchema>;
 
 export const setIntentAutonomySchema = z
   .object({
-    /** New stage. 3 and above are refused with `autonomy_stage_requires_owner` in Phase 1. */
+    /** New stage, 0-2. 3 and above are refused with `autonomy_stage_requires_owner`: they are reached by a promotion. */
     stage: z.number().int().min(0).max(100).optional(),
     /** Pin or unpin the stage (head only). */
     pinned: z.boolean().optional(),

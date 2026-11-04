@@ -1,6 +1,12 @@
 import { Global, Module } from '@nestjs/common';
 import type { Database } from '@watchtower/db';
-import { createDomain, createPolicyGate, type Domain } from '@watchtower/domain';
+import {
+  createDomain,
+  createPolicyGate,
+  instanceOrigins,
+  resolveAiCaps,
+  type Domain,
+} from '@watchtower/domain';
 import { CSAT_LANDING_PATH } from '@watchtower/shared';
 import { KEY_LABELS, deriveSubkey } from '@watchtower/shared/secret-box';
 
@@ -35,7 +41,14 @@ export type { Domain };
             signingKey: deriveSubkey(config.APP_ENCRYPTION_KEY, KEY_LABELS.csatLink),
             landingUrl: new URL(CSAT_LANDING_PATH, config.APP_URL).toString(),
           },
-          policyGate: createPolicyGate({ db: database.db }),
+          // `AI_AUTOSEND_ENABLED` is read once at boot (ADR-025 section 2); nothing changes it at run time.
+          autosendEnabled: config.AI_AUTOSEND_ENABLED,
+          policyGate: createPolicyGate({
+            db: database.db,
+            autosendEnabled: config.AI_AUTOSEND_ENABLED,
+            aiCaps: resolveAiCaps(config),
+            linkOrigins: instanceOrigins(config.APP_URL),
+          }),
         }),
     },
   ],

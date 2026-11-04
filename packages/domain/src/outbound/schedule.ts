@@ -18,6 +18,7 @@ import { requireCustomerSend } from '../policy.js';
 import type { AiDraftRow, MessageRow, OutboundDeliveryRow, TicketRow } from '../rows.js';
 import { insertMessage, lockTicketRow, ticketEvent, ticketKeysOf } from '../tickets/support.js';
 import { Effects, type DbTransaction, type DomainContext, type DomainResult } from '../types.js';
+import { AUTOSEND_HOLD_SECONDS } from '../autonomy/decide.js';
 import { readUndoSendSeconds } from './settings.js';
 import { contentHash, dispatchJobId } from './state.js';
 import { renderInputsOf, renderSystemTemplate } from './templates.js';
@@ -34,7 +35,10 @@ import { renderInputsOf, renderSystemTemplate } from './templates.js';
  *  - `ai_approved`: an `ai_draft` of this ticket that is still a draft, whose content hash equals
  *    the hash of the text being sent (A-2). Sending approves it: the sender is the approver;
  *  - `system_template`: the message body must be what the template key renders on the server (A-3);
- *  - `ai_auto` is refused here whatever the gate says: Phase 1 has no such path.
+ *  - `ai_auto` (ADR-025): a draft that is still waiting, a pre-send grade of exactly this text, and the gate's
+ *    twelve conditions (it loads the facts itself). The draft becomes `auto_approved` (the database checks
+ *    the grade again), the message has no author, and the send waits `AUTOSEND_HOLD_SECONDS` so a person
+ *    can step in. Only Gmail and the portal.
  */
 
 export type ScheduleOrigin = 'human' | 'ai_approved' | 'system_template' | 'ai_auto';
@@ -45,8 +49,10 @@ export interface ScheduleSendInput {
   /** An outbound public message with `delivery_status = 'scheduled'` on that ticket. */
   readonly message: MessageRow;
   readonly origin: ScheduleOrigin;
-  /** `ai_approved`: the draft being sent. */
+  /** `ai_approved` and `ai_auto`: the draft being sent. */
   readonly aiDraftId?: string | undefined;
+  /** `ai_auto`: the pre-send grade of exactly this text. */
+  readonly aiGradeId?: string | undefined;
   /** `system_template`: the key the body was rendered from. */
   readonly templateKey?: string | undefined;
   /**
@@ -104,6 +110,29 @@ async function lockMatchingDraft(
 }
 
 /**
+ * The draft an automatic send is about: on this ticket and still waiting. The text it sends is the draft plus
+ * the notice, so no hash of the draft is compared here: the gate compares the hash of the grade with the text.
+ */
+async function lockDraftForAuto(
+  tx: DbTransaction,
+  ticket: TicketRow,
+  aiDraftId: string,
+): Promise<AiDraftRow> {
+  const [draft] = await tx
+    .select()
+    .from(schema.aiDraft)
+    .where(eq(schema.aiDraft.id, aiDraftId))
+    .for('update');
+  if (draft === undefined || draft.ticketId !== ticket.id) {
+    throw denied('ai_draft_not_found', 'No such AI draft on this ticket');
+  }
+  if (draft.status !== 'draft') {
+    throw denied('ai_draft_not_pending', 'This AI draft was already approved, sent or rejected');
+  }
+  return draft;
+}
+
+/**
  * T-122f (N-1): a person's own reply cannot be the text of an AI draft nobody sent. That text would go out
  * as `human` and skip the policy gate that judges `ai_approved`; the person sends the draft as the draft,
  * or edits it first and the edit is theirs. (The database refuses it too.)
@@ -133,7 +162,18 @@ async function refuseUnsentAiDraftText(
 }
 
 function gateRequest(ctx: DomainContext, input: ScheduleSendInput) {
+  const { message } = input;
   return {
+    autoSend:
+      input.origin === 'ai_auto' && input.aiDraftId !== undefined && input.aiGradeId !== undefined
+        ? {
+            aiDraftId: input.aiDraftId,
+            aiGradeId: input.aiGradeId,
+            text: message.bodyText,
+            attachmentCount: Array.isArray(message.attachments) ? message.attachments.length : 0,
+            hasHtml: message.bodyHtml !== null,
+          }
+        : undefined,
     ticketId: input.ticket.id,
     channel: input.via?.channel ?? input.ticket.channel,
     intentId: input.ticket.intentId,
@@ -160,8 +200,10 @@ export async function scheduleCustomerSend(
   ) {
     throw badRequest('Only a public outbound message waiting for delivery can be scheduled');
   }
-  const viaChannel = input.via?.channel ?? ticket.channel;
-  if (!isDeliveryChannel(viaChannel)) {
+  const viaChannel: string = input.via?.channel ?? ticket.channel;
+  // The portal shows a message at once for a person's reply; an automatic one is held like the others, so it
+  // goes through a delivery too (migration 0106 lets the table carry it).
+  if (!isDeliveryChannel(viaChannel) && !(origin === 'ai_auto' && viaChannel === 'portal')) {
     throw badRequest(`The ${ticket.channel} channel has no outbound dispatcher`);
   }
   const channel = viaChannel;
@@ -183,8 +225,16 @@ export async function scheduleCustomerSend(
   if (origin === 'ai_approved') {
     if (input.aiDraftId === undefined) throw denied('approval_missing', 'No AI draft is named');
     draft = await lockMatchingDraft(tx, ticket, message, input.aiDraftId);
+  } else if (origin === 'ai_auto') {
+    // With no draft and no grade named the gate has nothing to decide on and refuses (and audits) below.
+    if (input.aiDraftId !== undefined && input.aiGradeId !== undefined) {
+      draft = await lockDraftForAuto(tx, ticket, input.aiDraftId);
+    }
   } else if (input.aiDraftId !== undefined) {
     throw badRequest('aiDraftId is only for an AI draft sent by a person');
+  }
+  if (origin !== 'ai_auto' && input.aiGradeId !== undefined) {
+    throw badRequest('aiGradeId is only for an automatic send');
   }
   if (origin === 'human') await refuseUnsentAiDraftText(tx, ticket, message);
   let templateKey: string | null = null;
@@ -211,12 +261,23 @@ export async function scheduleCustomerSend(
 
   // The gate (N3). Throws a DomainError(policy_denied) on a denial, on no gate, and on a gate error.
   await requireCustomerSend(ctx, gateRequest(ctx, input));
-  // Whatever a gate says, there is no stage-3 path in Phase 1 (the table refuses the origin too).
-  if (origin === 'ai_auto') throw denied('ai_auto_send_disabled_phase1', 'AI auto-send is off');
+  if (origin === 'ai_auto' && (draft === undefined || input.aiGradeId === undefined)) {
+    // The gate cannot have allowed this; kept as a second wall.
+    throw denied('approval_missing', 'An automatic send names its draft and its grade');
+  }
 
   // The hold is stamped by the clock the worker's claim and the cancel also read (review O-7).
   const now = await authorityNow(tx, ctx);
-  if (draft !== undefined) {
+  if (draft !== undefined && origin === 'ai_auto') {
+    // The database asks again: a fresh passing independent grade, a stage 3 intent, both switches off.
+    const auto = await tx
+      .update(schema.aiDraft)
+      .set({ status: 'auto_approved', autoApprovedAt: now })
+      .where(and(eq(schema.aiDraft.id, draft.id), eq(schema.aiDraft.status, 'draft')))
+      .returning({ id: schema.aiDraft.id });
+    if (auto.length === 0) throw conflict('This AI draft was just used');
+    await syncInsightForDraft(tx, draft.id, 'classified');
+  } else if (draft !== undefined) {
     const actorId = ctx.actor.id;
     if (actorId === null) throw denied('approval_missing', 'An AI draft needs a person to send it');
     const approved = await tx
@@ -237,7 +298,12 @@ export async function scheduleCustomerSend(
   }
 
   // A reply written by a person waits so it can be undone; an automatic acknowledgment does not.
-  const holdSeconds = origin === 'system_template' ? 0 : await readUndoSendSeconds(tx);
+  const holdSeconds =
+    origin === 'system_template'
+      ? 0
+      : origin === 'ai_auto'
+        ? AUTOSEND_HOLD_SECONDS
+        : await readUndoSendSeconds(tx);
   const nextAttemptAt = new Date(now.getTime() + holdSeconds * 1000);
   const hash = contentHash(message.bodyText);
   // A unique index allows one active delivery per message and one per draft; a second is a conflict.
@@ -252,11 +318,12 @@ export async function scheduleCustomerSend(
       templateKey,
       renderInputs,
       aiDraftId: draft?.id ?? null,
+      aiGradeId: origin === 'ai_auto' ? (input.aiGradeId ?? null) : null,
       contentHash: hash,
-      approvedBy: draft === undefined ? null : ctx.actor.id,
+      approvedBy: draft === undefined || origin === 'ai_auto' ? null : ctx.actor.id,
       holdSeconds,
       nextAttemptAt,
-      createdBy: origin === 'system_template' ? null : ctx.actor.id,
+      createdBy: origin === 'system_template' || origin === 'ai_auto' ? null : ctx.actor.id,
       createdAt: now,
       updatedAt: now,
     })
@@ -285,10 +352,26 @@ export async function scheduleCustomerSend(
       origin,
       templateKey,
       aiDraftId: draft?.id ?? null,
+      aiGradeId: delivery.aiGradeId,
       approvedBy: delivery.approvedBy,
       holdSeconds,
     },
   });
+  if (origin === 'ai_auto') {
+    await recordAuditInTx(tx, ctx, fx, {
+      action: AUDIT_ACTIONS.autonomyAutosendScheduled,
+      targetType: 'outbound_delivery',
+      targetId: delivery.id,
+      metadata: {
+        ticketId: ticket.id,
+        intentId: ticket.intentId,
+        aiDraftId: draft?.id ?? null,
+        aiGradeId: delivery.aiGradeId,
+        channel,
+        holdSeconds,
+      },
+    });
+  }
   fx.emit(ticketEvent(ctx, 'ticket.updated', ticket, ['delivery']));
   return fx.result({ delivery });
 }
@@ -389,6 +472,64 @@ export async function scheduleTemplateAck(
     origin: 'system_template',
     templateKey: input.templateKey,
     via: input.via,
+  });
+  return {
+    value: { delivery: scheduled.value.delivery, message },
+    events: scheduled.events,
+    audited: scheduled.audited,
+  };
+}
+
+export interface AutoSendInput {
+  /** A ticket id or key. */
+  readonly ref: string;
+  readonly aiDraftId: string;
+  /** The pre-send grade of exactly `text`. */
+  readonly aiGradeId: string;
+  /** The text to send: the draft plus the notice that it is automatic. */
+  readonly text: string;
+}
+
+/** Statuses where an automatic reply still makes sense: the customer is waiting for an answer. */
+const AUTO_SEND_OPEN_STATUSES = ['new', 'triage', 'open', 'waiting_on_customer'] as const;
+
+/**
+ * An automatic reply (ADR-025): saves the text as the ticket's outbound message (no author, no HTML, no
+ * file) and schedules it as `ai_auto`. Everything is judged by `scheduleCustomerSend` and the gate; a denial
+ * is a `DomainError('policy_denied')` and the transaction the caller opened is rolled back. Run it as
+ * `{ type: 'ai', id: null }`.
+ */
+export async function scheduleAutoSend(
+  tx: DbTransaction,
+  ctx: DomainContext,
+  input: AutoSendInput,
+): Promise<DomainResult<ScheduledSend & { message: MessageRow }>> {
+  if (ctx.actor.type !== 'ai') {
+    throw denied('actor_origin_mismatch', 'Only the AI actor sends an automatic reply');
+  }
+  const ticket = await lockTicketRow(tx, ctx, input.ref);
+  if (!(AUTO_SEND_OPEN_STATUSES as readonly string[]).includes(ticket.status)) {
+    throw denied('ticket_not_open', 'The ticket is no longer waiting for an answer');
+  }
+  const now = ctx.now();
+  const { message } = await insertMessage(
+    tx,
+    {
+      ticketId: ticket.id,
+      channelAccountId: ticket.channelAccountId,
+      direction: 'outbound',
+      bodyText: input.text,
+      visibility: 'public',
+      deliveryStatus: 'scheduled',
+    },
+    { updatedAt: now },
+  );
+  const scheduled = await scheduleCustomerSend(tx, ctx, {
+    ticket,
+    message,
+    origin: 'ai_auto',
+    aiDraftId: input.aiDraftId,
+    aiGradeId: input.aiGradeId,
   });
   return {
     value: { delivery: scheduled.value.delivery, message },

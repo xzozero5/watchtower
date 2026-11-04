@@ -7,7 +7,8 @@ import type { Actor, DomainContext } from './types.js';
  * - `human`: a person wrote and sent it.
  * - `ai_approved`: the AI drafted it and a person approved and sent it (`approvedBy`).
  * - `system_template`: an automatic acknowledgment from a safe template; no AI text.
- * - `ai_auto`: the AI sends on its own. Stage 3+. Refused in Phase 1, always.
+ * - `ai_auto`: the AI sends on its own. Stage 3 only, and only with `AI_AUTOSEND_ENABLED`, a promotion and the
+ *   twelve conditions of ADR-025 section 4; the gate loads the facts itself (`autoSend`).
  * - `ai_internal`: not customer-facing at all (classification, summary, investigation, note).
  */
 export const SEND_ORIGINS = [
@@ -38,7 +39,21 @@ export interface CustomerSendRequest {
   readonly templateKey?: string | null | undefined;
   /** The person who approved an AI draft (`ai_approved`); must be the acting user. */
   readonly approvedBy?: string | null | undefined;
+  /** `ai_auto` only: which draft, which grade and which exact text. The gate reads the rest from the tables. */
+  readonly autoSend?: AutoSendRequestInfo | undefined;
   readonly auditMeta?: GateAuditMeta | undefined;
+}
+
+/** What a caller names for an automatic send; the gate checks every claim against the rows. */
+export interface AutoSendRequestInfo {
+  readonly aiDraftId: string;
+  readonly aiGradeId: string;
+  /** The exact text: the composed body (before a message exists) or the stored message body (at claim time). */
+  readonly text: string;
+  readonly attachmentCount: number;
+  readonly hasHtml: boolean;
+  /** The delivery being claimed (its own row is not counted against the daily cap or the streak). */
+  readonly excludeDeliveryId?: string | undefined;
 }
 
 /** An AI action that does not reach a customer: classify, summarize, investigate, write a note. */
@@ -64,6 +79,28 @@ export type PolicyDecision =
 export interface PolicyGate {
   check(request: CustomerSendRequest): Promise<PolicyDecision>;
   checkAiAction(request: AiActionRequest): Promise<PolicyDecision>;
+  /**
+   * Every condition of ADR-025 section 4 that stands in the way of an automatic send, for the evaluation
+   * record (T-304c). `live`: the real decision, nothing waived. `shadow`: asks what would still stand in
+   * the way if the intent were promoted (the flag, the cap switch and the stage are taken as given), and
+   * is never a permission. Absent on a gate that cannot do it: the caller then records nothing.
+   */
+  evaluateAutoSend?(
+    request: CustomerSendRequest,
+    mode: 'live' | 'shadow',
+  ): Promise<AutoSendEvaluation>;
+}
+
+/** The answer of `evaluateAutoSend`. Counts and codes only; never customer text. */
+export interface AutoSendEvaluation {
+  readonly mode: 'live' | 'shadow';
+  readonly decision: PolicyDecision;
+  /** Failed conditions, in the order of ADR-025 section 4. Empty = would send. */
+  readonly failed: readonly string[];
+  /** The stage the system acts on for this intent right now (`min(stage, 2)` while the flag is off). */
+  readonly effectiveStage: number;
+  readonly intentId: string | null;
+  readonly summary: Readonly<Record<string, unknown>>;
 }
 
 type GateContext = Pick<DomainContext, 'policyGate'> & Partial<Pick<DomainContext, 'auditMeta'>>;

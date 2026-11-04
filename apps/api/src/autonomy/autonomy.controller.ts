@@ -31,7 +31,7 @@ export class AutonomyController {
   @ApiOperation({
     summary: 'Autonomy stages and the AI switches',
     description:
-      'Every intent with its stage (0-2 in Phase 1; stage 3 and above does not exist yet), whether ' +
+      'Every intent with its stage (0-3; 3 only after a promotion), the stage the system acts on (`effectiveStage`: at most 2 unless `autosendFlag` is true), its auto-send settings, whether ' +
       'it is pinned, and the two global switches with who flipped them last and why. Staff use it ' +
       'to show the "AI paused" banner and the stage badge.',
   })

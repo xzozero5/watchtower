@@ -16,6 +16,7 @@ import {
 import { eq } from 'drizzle-orm';
 
 import { recordAuditInTx } from '../audit.js';
+import { enqueueAutonomyWatch } from '../autonomy/watch.js';
 import { scheduleSurvey, voidOpenSurveys } from '../csat/survey.js';
 import { badRequest, forbidden, invalidTransition, notFound } from '../errors.js';
 import { enqueueJob } from '../outbox.js';
@@ -140,6 +141,8 @@ export async function applyStatus(
       reopenCount: after.reopenCount,
       ...(options.reason === undefined ? {} : { reason: options.reason }),
     });
+    // Stage 3 (ADR-025 section 7): a reopen can be a reason to take an intent back to stage 2.
+    await enqueueAutonomyWatch(tx, ctx, after.intentId, 'ticket_reopened');
   }
   for (const event of slaEvents) {
     await recordTicketEvent(tx, after.id, event.type, ctx.actor, 'internal', event.payload);

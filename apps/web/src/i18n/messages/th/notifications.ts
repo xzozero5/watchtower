@@ -44,6 +44,7 @@ export const notificationsTh: Widen<typeof notificationsEn> = {
     opsSmtpAuthFailed: 'เมลเซิร์ฟเวอร์ปฏิเสธการล็อกอิน: ตรวจ SMTP_USER และ SMTP_PASSWORD',
     opsUploadQuotaGlobal: 'โควตาอัปโหลดรายวันของ portal เต็ม: ลูกค้าแนบไฟล์ไม่ได้',
     opsOutboxDead: 'งานในคิว {count} รายการถูกยกเลิกหลังลองซ้ำจนครบ ต้องตรวจสอบ',
+    autonomyRollback: 'ระบบลด intent {intent} จาก stage 3 กลับเป็น stage 2 แล้ว ({rule})',
   },
   kindName: {
     ticketP1: 'ตั๋ว P1',
@@ -56,6 +57,7 @@ export const notificationsTh: Widen<typeof notificationsEn> = {
     opsSmtpAuthFailed: 'ระบบ: ล็อกอินเมลถูกปฏิเสธ (head)',
     opsUploadQuotaGlobal: 'ระบบ: โควตาอัปโหลดเต็ม (head)',
     opsOutboxDead: 'ระบบ: งานในคิวถูกยกเลิก (head)',
+    autonomyRollback: 'ระบบ: intent ถูกลดจาก stage 3 (head)',
   },
   banner: {
     label: 'แจ้งเตือนวิกฤต',

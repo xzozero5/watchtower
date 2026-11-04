@@ -161,6 +161,7 @@ export function makeAutonomy(overrides: Partial<AutonomyState> = {}): AutonomySt
   });
   return {
     stageCeiling: 2,
+    autosendFlag: false,
     switches: [
       {
         key: 'ai_stage_cap_pinned',

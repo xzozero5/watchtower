@@ -2,7 +2,13 @@ import { readFileSync } from 'node:fs';
 import type { AddressInfo } from 'node:net';
 
 import { createDatabase, type OutboxPublisher } from '@watchtower/db';
-import { createDomain, createPolicyGate } from '@watchtower/domain';
+import {
+  createDomain,
+  createPolicyGate,
+  instanceOrigins,
+  recordAutosendFlagBoot,
+  resolveAiCaps,
+} from '@watchtower/domain';
 import { CSAT_LANDING_PATH, parseRedisUrl, QUEUE_NAMES, type QueueName } from '@watchtower/shared';
 import { KEY_LABELS, deriveSubkey } from '@watchtower/shared/secret-box';
 import { Queue, Worker, type Processor } from 'bullmq';
@@ -99,8 +105,24 @@ export async function startWorker(
       signingKey: deriveSubkey(config.APP_ENCRYPTION_KEY, KEY_LABELS.csatLink),
       landingUrl: new URL(CSAT_LANDING_PATH, config.APP_URL).toString(),
     },
-    policyGate: createPolicyGate({ db: database.db }),
+    // `AI_AUTOSEND_ENABLED` is read here, once (ADR-025 section 2): the worker decides with its own copy,
+    // so an api that has it on and a worker that has it off sends nothing.
+    autosendEnabled: config.AI_AUTOSEND_ENABLED,
+    policyGate: createPolicyGate({
+      db: database.db,
+      autosendEnabled: config.AI_AUTOSEND_ENABLED,
+      aiCaps: resolveAiCaps(config),
+      linkOrigins: instanceOrigins(config.APP_URL),
+    }),
   });
+  if (config.AI_AUTOSEND_ENABLED) {
+    logger.warn(
+      'AI_AUTOSEND_ENABLED=true: intents at stage 3 can send replies without a person (ADR-025)',
+    );
+    await recordAutosendFlagBoot(database.db, 'worker').catch((error: unknown) => {
+      logger.error({ err: error }, 'could not record the auto-send flag at boot');
+    });
+  }
   const realtimeRedis = new Redis({
     ...connection,
     connectionName: `${config.OTEL_SERVICE_NAME}-realtime`,

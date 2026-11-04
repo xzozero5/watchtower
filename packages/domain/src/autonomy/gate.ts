@@ -3,8 +3,11 @@ import { AUDIT_ACTIONS, type AiSwitchKey } from '@watchtower/shared';
 import { eq } from 'drizzle-orm';
 
 import { recordAuditInTx } from '../audit.js';
+import { readAiUsage } from '../ai/budget.js';
+import type { AiCaps } from '../ai/budget.js';
 import type {
   AiActionRequest,
+  AutoSendEvaluation,
   CustomerSendRequest,
   GateAuditMeta,
   PolicyDecision,
@@ -12,7 +15,16 @@ import type {
   SendOrigin,
 } from '../policy.js';
 import type { Actor } from '../types.js';
-import { decide, type IntentStanding, type SwitchState } from './decide.js';
+import { loadAutoSendFacts } from './autosend-facts.js';
+import {
+  SHADOW_WAIVERS,
+  decide,
+  decideAutoSend,
+  effectiveStage,
+  evaluateAutoSend,
+  type IntentStanding,
+  type SwitchState,
+} from './decide.js';
 import { SAFE_AUTO_ACK_TEMPLATES } from './safe-templates.js';
 
 /** What the gate needs from the database: read the stage and the switches, write a denial. */
@@ -24,6 +36,15 @@ export interface PolicyGateOptions {
    * denial usually ends the request in an error, and its audit row must survive the rollback.
    */
   readonly db: GateDatabase;
+  /**
+   * `AI_AUTOSEND_ENABLED` of this process (ADR-025 section 2), read once at boot from the environment. Absent
+   * or false: no `ai_auto` decision can be allowed. The flag is never read from the database.
+   */
+  readonly autosendEnabled?: boolean | undefined;
+  /** The daily AI caps (condition 12). Without them the budget fact is unknown and the decision is a denial. */
+  readonly aiCaps?: AiCaps | undefined;
+  /** Origins of the portal and the knowledge base of this instance (condition 9: no other link). */
+  readonly linkOrigins?: readonly string[] | undefined;
 }
 
 /** Test seam only (not exported from the package): a gate with its own template list (review A-7). */
@@ -83,15 +104,42 @@ function originFor(actor: Actor, given: SendOrigin | undefined): SendOrigin | nu
  * handle, so both processes run the same rules.
  */
 export function createPolicyGate(options: PolicyGateOptions): PolicyGate {
-  return buildPolicyGate(options.db, SAFE_AUTO_ACK_TEMPLATES);
+  return buildPolicyGate(options, SAFE_AUTO_ACK_TEMPLATES);
 }
 
 /** For tests only: the production list cannot be replaced through `createPolicyGate`. */
 export function createPolicyGateForTest(options: TestPolicyGateOptions): PolicyGate {
-  return buildPolicyGate(options.db, options.safeTemplates);
+  return buildPolicyGate(options, options.safeTemplates);
 }
 
-function buildPolicyGate(db: GateDatabase, safeTemplates: ReadonlySet<string>): PolicyGate {
+function buildPolicyGate(
+  options: PolicyGateOptions,
+  safeTemplates: ReadonlySet<string>,
+): PolicyGate {
+  const db = options.db;
+  // Read once, here: the flag of this process. A gate built without it can never allow `ai_auto`.
+  const flagOn = options.autosendEnabled === true;
+
+  /** The facts of an automatic send, read fresh from the tables. */
+  async function autoSendFacts(request: CustomerSendRequest) {
+    const info = request.autoSend;
+    if (info === undefined) return undefined;
+    const caps = options.aiCaps;
+    return loadAutoSendFacts(
+      db,
+      { ticketId: request.ticketId, ...info },
+      {
+        flagOn,
+        linkOrigins: options.linkOrigins ?? [],
+        aiBudgetExceeded: async () => {
+          if (caps === undefined) return null;
+          const usage = await readAiUsage(db, new Date());
+          return usage.costUsd >= caps.dailyCostUsd || usage.tokens >= caps.dailyTokens;
+        },
+      },
+    );
+  }
+
   async function denyAudit(
     actor: Actor,
     auditMeta: GateAuditMeta | undefined,
@@ -120,6 +168,9 @@ function buildPolicyGate(db: GateDatabase, safeTemplates: ReadonlySet<string>): 
         readIntentStanding(db, request.intentId),
         readSwitchState(db),
       ]);
+      // The stage and the facts come from the tables, not from the caller: the intent standing of an
+      // `ai_auto` request is the one the facts loader read for the ticket itself.
+      const loaded = origin === 'ai_auto' ? await autoSendFacts(request) : undefined;
       const decision: PolicyDecision =
         origin === null
           ? { allowed: false, reason: 'actor_origin_mismatch' }
@@ -130,8 +181,9 @@ function buildPolicyGate(db: GateDatabase, safeTemplates: ReadonlySet<string>): 
                 actorId: request.actor.id,
                 templateKey: request.templateKey ?? null,
                 approvedBy: request.approvedBy ?? null,
-                intent,
+                intent: loaded === undefined ? intent : loaded.intent,
                 switches,
+                autosend: loaded?.facts,
               },
               safeTemplates,
             );
@@ -144,9 +196,43 @@ function buildPolicyGate(db: GateDatabase, safeTemplates: ReadonlySet<string>): 
           stage: intent.kind === 'found' ? intent.stage : null,
           killSwitch: switches.killSwitch,
           stageCapPinned: switches.stageCapPinned,
+          autosendFlag: flagOn,
         });
       }
       return decision;
+    },
+
+    async evaluateAutoSend(
+      request: CustomerSendRequest,
+      mode: 'live' | 'shadow',
+    ): Promise<AutoSendEvaluation> {
+      const switches = await readSwitchState(db);
+      const loaded = await autoSendFacts(request);
+      const input = {
+        actorType: request.actor.type,
+        intent: loaded?.intent ?? ({ kind: 'none' } as const),
+        switches,
+        autosend: loaded?.facts,
+      };
+      const failed = evaluateAutoSend(input, mode === 'shadow' ? SHADOW_WAIVERS : undefined);
+      const decision: PolicyDecision =
+        mode === 'live'
+          ? decideAutoSend(input)
+          : { allowed: failed.length === 0, reason: failed[0] ?? 'ai_auto_send_allowed' };
+      const stage = input.intent.kind === 'found' ? input.intent.stage : -1;
+      return {
+        mode,
+        decision,
+        failed,
+        effectiveStage: stage < 0 ? 0 : effectiveStage(stage, flagOn),
+        intentId: loaded?.intentId ?? null,
+        summary: {
+          ...loaded?.summary,
+          flagOn,
+          stageCapPinned: switches.stageCapPinned,
+          killSwitch: switches.killSwitch,
+        },
+      };
     },
 
     async checkAiAction(request: AiActionRequest): Promise<PolicyDecision> {

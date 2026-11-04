@@ -15,7 +15,7 @@ import { readOnlyLoginProblems, systemToolsAllowed, type ReadDb } from './tool-p
 export function createInvestigationDepsFactory(
   context: ProcessorContext,
 ): () => Promise<InvestigationDeps> {
-  const { database, ai, logger, realtime, config } = context;
+  const { database, ai, logger, realtime, config, domain } = context;
   // The clients the logs, data and repo tools read through (mock: fakes over the fixtures and the
   // local product database; no live adapter before T-208). A client that is not connected leaves its tool unregistered.
   const toolClients = assembleToolClients({
@@ -86,5 +86,7 @@ export function createInvestigationDepsFactory(
     allowSystemTools: allowSystemTools && (await readOnlyLoginOk()),
     realtime,
     logger,
+    // Stage 3 and its shadow mode (ADR-025): the same domain (and gate) the dispatcher uses.
+    autosend: { domain, flagOn: config.AI_AUTOSEND_ENABLED },
   });
 }

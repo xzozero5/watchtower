@@ -44,6 +44,8 @@ export const NOTIFICATIONS_JOBS = {
  *  - `alert.escalated`: nobody acknowledged an alert in time and it reached you (lead or head);
  *  - `ops.*` (T-176): the system itself needs the head: the mail server refused our login, the
  *    instance-wide upload cap is full, outbox rows were given up on. At most one per kind per hour.
+ *  - `autonomy.rollback` (T-304e): an intent was moved from stage 3 back to 2 by the system. Sent to the heads
+ *    at once, one per rollback (data: `intent` key and the rule that fired; never customer text).
  */
 export const NOTIFICATION_KINDS = [
   'ticket.p1',
@@ -56,6 +58,7 @@ export const NOTIFICATION_KINDS = [
   'ops.smtp_auth_failed',
   'ops.upload_quota_global',
   'ops.outbox_dead',
+  'autonomy.rollback',
 ] as const;
 export type NotificationKind = (typeof NOTIFICATION_KINDS)[number];
 export const notificationKindSchema = z.enum(NOTIFICATION_KINDS);

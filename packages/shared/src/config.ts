@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+import { autosendFlagSchema } from './features/autonomy.js';
+
 /**
  * Environment contract shared by apps/api and apps/worker (docs/04-ARCHITECTURE.md section 5).
  * `.env.example` is the only list of variables. This module is pure: it validates a plain object
@@ -247,6 +249,10 @@ export const phase1EnvShape = {
   AI_AGENT_MODEL_KB_AUTHOR: optionalString,
   AI_AGENT_MODEL_ROSTER_PLANNER: optionalString,
   AI_AGENT_MODEL_PERSONAL_ASSISTANT: optionalString,
+  // Stage 3 auto-send (ADR-025 section 2). ON only for the string `true`, exactly (not TRUE, not 1). Read once at
+  // boot by the api and by the worker; never in the database, never settable from the app. Off = no `ai_auto`.
+  // [ASK-HUMAN] to set it on the POC or on any instance with real customers.
+  AI_AUTOSEND_ENABLED: autosendFlagSchema,
   // JSON object keyed by model id: {"<model id>":{"inputUsdPerMTok":0,"outputUsdPerMTok":0}}. A real
   // provider needs a price for every tier's model, otherwise the daily cost cap could not count.
   AI_MODEL_PRICES: optionalString,

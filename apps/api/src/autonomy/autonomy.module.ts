@@ -3,6 +3,7 @@ import { Module } from '@nestjs/common';
 import { AutonomyController } from './autonomy.controller.js';
 import { AutonomyService } from './autonomy.service.js';
 import { IntentAutonomyController } from './intent-autonomy.controller.js';
+import { IntentPromotionController, PromotionDecisionController } from './promotion.controller.js';
 
 /**
  * Autonomy stage per intent and the emergency switches (T-112a, ADR-011). The policy gate itself is
@@ -11,7 +12,12 @@ import { IntentAutonomyController } from './intent-autonomy.controller.js';
  * must also be listed in `./public-routes.ts` (none here).
  */
 @Module({
-  controllers: [AutonomyController, IntentAutonomyController],
+  controllers: [
+    AutonomyController,
+    IntentAutonomyController,
+    IntentPromotionController,
+    PromotionDecisionController,
+  ],
   providers: [AutonomyService],
 })
 export class AutonomyModule {}

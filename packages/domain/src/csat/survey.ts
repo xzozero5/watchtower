@@ -31,6 +31,7 @@ import {
 import { and, asc, eq, gt, inArray, lte, ne, sql } from 'drizzle-orm';
 
 import { recordAuditInTx } from '../audit.js';
+import { enqueueAutonomyWatch } from '../autonomy/watch.js';
 import { conflict, notFound } from '../errors.js';
 import { enqueueJob } from '../outbox.js';
 import type { ContactRow, TicketRow } from '../rows.js';
@@ -757,6 +758,8 @@ export async function answerSurvey(
       options: AI_OUTBOX_JOB_OPTIONS,
     });
   }
+  // Stage 3 (ADR-025 section 7): a low answer can be a reason to take an intent back to stage 2.
+  await enqueueAutonomyWatch(tx, ctx, ticket.intentId, 'csat_responded');
   await recordAuditInTx(tx, actx, fx, {
     action: AUDIT_ACTIONS.csatResponse,
     targetType: 'csat_survey',
