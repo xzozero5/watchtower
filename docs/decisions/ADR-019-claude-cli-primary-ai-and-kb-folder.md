@@ -25,6 +25,9 @@
 - ยังไม่ทำ: banner "AI offline" ระดับทั้งระบบ, offline handling ของ investigation/draft job (ยังเข้า retry 3 ครั้งเดิมแล้วแสดงข้อความ offline), การเลื่อน attempt ของ job อื่นที่เรียก AI
 - ตรวจซ้ำ: เมื่อ Claude Code เปลี่ยน auth/flag, เมื่อเจ้าของตอบเรื่องเงื่อนไขบริการ, เมื่อจะให้คนอื่นเข้า instance
 
+## แก้ภายหลัง
+- **2026-11-04 ([ADR-023](ADR-023-ai-assistant.md) "Live provider"):** §3 ที่ว่า worker เป็นสมาชิกเดียวของ network `ai` แก้เป็น `worker` + `api` (assistant ของ api เรียก bridge ตรง) · ข้อจำกัดอื่นของ §3 คงเดิม
+
 ## Links
 - แก้ [ADR-017](ADR-017-claude-cli-dev-provider.md) · ADR-008 (ไม่ fallback เงียบ) · ADR-013 · N1–N4
 - `tools/claude-cli-bridge/`, `docs/runbooks/local-poc.md` §3, `packages/db/src/kb-sync/`

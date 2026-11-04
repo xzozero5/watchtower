@@ -1,10 +1,13 @@
 import {
   DevMockLlmProvider,
+  buildAiSettings,
   createAuditedLlm,
+  createLiveProvider,
   createRedactor,
   loadPromptCatalog,
-  mockSettings,
+  type AiCredentialReader,
   type AssistantDeps,
+  type FetchLike,
   type LlmProvider,
   type ProviderKind,
 } from '@watchtower/ai';
@@ -20,19 +23,25 @@ import {
 
 import type { ApiConfig } from '../config/config.js';
 import type { AppLogger } from '../logging/logger.js';
+import { limitConcurrency } from './concurrency-limit.js';
 
 /** DI token of the AI layer as the api uses it (T-134, ADR-023). */
 export const AI_RUNTIME = Symbol('AI_RUNTIME');
 /** The model provider of the api: `null` when none is wired (a test replaces it to count or fail). */
 export const API_LLM = Symbol('API_LLM');
 
+/** Where the compose `claude-bridge` service is (ADR-019). */
+export const DEFAULT_CLAUDE_CLI_BRIDGE_URL = 'http://claude-bridge:4317';
+
 /**
  * The AI layer of the api: the audited LLM wired to the `ai_run` recorder, the guard (kill switch
  * through the policy gate, daily budget), the prompt catalog and a redactor. The worker has its own
- * (`apps/worker/src/ai/runtime.ts`) with live providers; the api serves the assistant and the AI
- * summaries and, until the owner approves a key and a live wiring (`[ASK-HUMAN]`), only the mock
- * provider is wired here: a real `AI_PROVIDER` answers `provider_unavailable`, never a made-up
- * answer and never a silent fallback to the mock (N5).
+ * (`apps/worker/src/ai/runtime.ts`); the api serves the assistant and the AI summaries with the same
+ * live provider factory (`createLiveProvider`, `buildAiSettings` of `@watchtower/ai`; ADR-023 "Live
+ * provider"). A real `AI_PROVIDER` that is not fully set up (no model, price or bridge secret) is
+ * not ready and answers `provider_unavailable`: never a made-up answer and never a silent fallback
+ * to the mock (N5). The api's calls are capped (`AI_API_MAX_CONCURRENCY`) so they cannot take every
+ * slot of the bridge from the worker.
  */
 export interface AiRuntime {
   readonly provider: ProviderKind;
@@ -40,18 +49,35 @@ export interface AiRuntime {
   readonly ready: boolean;
   /** Why not, as a stable code. */
   readonly notReadyReason: 'provider_unavailable' | null;
+  /** Plain-language reasons a live provider is not ready (no values), for the boot log. */
+  readonly problems: readonly string[];
   readonly deps: AssistantDeps;
 }
 
 export interface AiRuntimeOptions {
   readonly config: Pick<
     ApiConfig,
-    'AI_PROVIDER' | 'AI_DAILY_COST_CAP_USD' | 'AI_DAILY_TOKEN_CAP' | 'AI_BUDGET_ALERT_PERCENT'
+    | 'AI_PROVIDER'
+    | 'AI_DAILY_COST_CAP_USD'
+    | 'AI_DAILY_TOKEN_CAP'
+    | 'AI_BUDGET_ALERT_PERCENT'
+    | 'AI_MODEL_DEEP'
+    | 'AI_MODEL_STANDARD'
+    | 'AI_MODEL_LIGHT'
+    | 'AI_MODEL_PRICES'
+    | 'APP_ENCRYPTION_KEY'
+    | 'AI_API_MAX_CONCURRENCY'
+    | 'CLAUDE_CLI_BRIDGE_URL'
+    | 'CLAUDE_CLI_BRIDGE_TOKEN'
   >;
   readonly database: Database;
   readonly logger: AppLogger;
-  /** Absent or null with `AI_PROVIDER=mock`: the dev mock. Null otherwise: not ready. */
+  /** Replaces the provider (tests count or fail calls with it). Absent: the mock for `mock`, the live adapter otherwise. */
   readonly llm?: LlmProvider | null | undefined;
+  /** Where the `anthropic` key comes from (the credential store). Absent: those calls are refused. */
+  readonly credentials?: AiCredentialReader | undefined;
+  /** Network access of a live provider. Default: the process `fetch`. Never used by mock. */
+  readonly fetch?: FetchLike | undefined;
   readonly now?: () => Date;
 }
 
@@ -76,11 +102,47 @@ export function createApiAiRuntime(options: AiRuntimeOptions): AiRuntime {
   });
 
   const kind = config.AI_PROVIDER;
-  const provider = kind === 'mock' ? (options.llm ?? new DevMockLlmProvider()) : null;
-  const settings = mockSettings();
+  const built = buildAiSettings(config);
+  const settings = built.settings;
+  const problems = [...built.problems];
+  if (kind === 'claude-cli' && (config.CLAUDE_CLI_BRIDGE_TOKEN ?? '').trim() === '') {
+    problems.push('the bridge secret (CLAUDE_CLI_BRIDGE_TOKEN) is not set');
+  }
+  if (kind === 'vertex') problems.push('no Vertex access token source is wired in the api');
+
+  let provider: LlmProvider | null;
+  if (options.llm !== undefined && options.llm !== null) {
+    provider = options.llm;
+  } else if (kind === 'mock') {
+    provider = new DevMockLlmProvider();
+  } else if (problems.length > 0) {
+    provider = null;
+  } else {
+    provider = limitConcurrency(
+      createLiveProvider({
+        kind,
+        settings,
+        credentials: options.credentials ?? { read: () => Promise.resolve({}) },
+        claudeCli: {
+          bridgeUrl: config.CLAUDE_CLI_BRIDGE_URL ?? DEFAULT_CLAUDE_CLI_BRIDGE_URL,
+          token: config.CLAUDE_CLI_BRIDGE_TOKEN,
+        },
+        fetch: options.fetch ?? ((input, init) => globalThis.fetch(input, init)),
+        logger,
+        now: () => now().getTime(),
+      }),
+      { maxConcurrent: config.AI_API_MAX_CONCURRENCY },
+    );
+  }
+  if (kind !== 'mock' && problems.length > 0) {
+    logger.error(
+      { provider: kind, problems },
+      'AI provider is selected but not fully set up: the assistant answers unavailable',
+    );
+  }
   const llm = createAuditedLlm({
     settings: { load: () => Promise.resolve(settings) },
-    providers: provider === null ? {} : { mock: provider },
+    providers: provider === null ? {} : { [kind]: provider },
     sink: createAiRunRecorder({ db: database.db }),
     now: () => now().getTime(),
   });
@@ -95,6 +157,7 @@ export function createApiAiRuntime(options: AiRuntimeOptions): AiRuntime {
     provider: kind,
     ready: provider !== null,
     notReadyReason: provider === null ? 'provider_unavailable' : null,
+    problems,
     deps,
   };
 }

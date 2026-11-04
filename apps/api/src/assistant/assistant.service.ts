@@ -21,6 +21,7 @@ import {
 import { and, desc, eq, gt, gte, sql } from 'drizzle-orm';
 
 import { AI_RUNTIME, type AiRuntime } from '../ai/ai-runtime.js';
+import { AiStatusService } from '../ai/ai-status.service.js';
 import { StaffNames } from '../ai/staff-names.service.js';
 import { AuditScope } from '../audit/audit-scope.js';
 import { AuditService } from '../audit/audit.service.js';
@@ -92,6 +93,7 @@ export class AssistantService {
     @Inject(AssistantProposals) private readonly proposals: AssistantProposals,
     @Inject(StaffNames) private readonly staff: StaffNames,
     @Inject(AuditService) private readonly audit: AuditService,
+    @Inject(AiStatusService) private readonly aiStatus: AiStatusService,
   ) {}
 
   // --- state ------------------------------------------------------------------------------------
@@ -106,6 +108,10 @@ export class AssistantService {
         state: 'unavailable',
         reason: this.runtime.notReadyReason ?? 'provider_unavailable',
       };
+    }
+    // A real provider whose host the worker reports offline (T-170): say so without a model call.
+    if (this.config.AI_PROVIDER !== 'mock' && (await this.aiStatus.status()).status === 'offline') {
+      return { state: 'unavailable', reason: 'provider_offline' };
     }
     const db = this.database.db;
     const switches = await readSwitchState(db);

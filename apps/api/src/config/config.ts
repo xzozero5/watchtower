@@ -39,6 +39,15 @@ const apiEnvSchema = createEnvSchema({
     emptyToUndefined,
     z.coerce.number().min(0).max(1).default(0.25),
   ),
+  /**
+   * Most model calls the api (the assistant, AI summaries) has in flight at once against a live
+   * provider. The claude-bridge has 4 slots by default; this leaves the rest to the worker (ADR-023
+   * "Live provider"). Raise it together with CLAUDE_CLI_BRIDGE_MAX_CONCURRENCY.
+   */
+  AI_API_MAX_CONCURRENCY: z.preprocess(
+    emptyToUndefined,
+    z.coerce.number().int().min(1).max(16).default(2),
+  ),
   /** Lifetime of the access JWT. Short on purpose: refresh renews it. */
   ACCESS_TOKEN_TTL_SECONDS: seconds(900, 60, 3600),
   /** Lifetime of one refresh token (idle limit); every use issues a new one. */

@@ -10,7 +10,7 @@ const CACHE_MS = 5000;
 
 /**
  * Whether the AI can be reached (T-170). The worker probes the provider and leaves the result in
- * Redis (it is the only process on the claude-bridge network, ADR-019); this reads it. `mock` is
+ * Redis (it probes the claude-bridge on a schedule, ADR-019; the api is on that network too for the assistant, ADR-023); this reads it. `mock` is
  * `disabled`; a missing, stale or unreadable report is `offline`, because nobody is checking the AI.
  * Nothing about the bridge (URL, token) is ever returned.
  */

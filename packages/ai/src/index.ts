@@ -74,3 +74,6 @@ export {
   type VertexClaudeConfig,
   type VertexProviderConfig,
 } from './providers/vertex.js';
+
+export * from './live/live-provider.js';
+export * from './live/settings.js';
