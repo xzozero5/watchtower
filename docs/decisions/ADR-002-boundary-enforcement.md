@@ -23,5 +23,10 @@
 - ข้ามได้ด้วย `eslint-disable` และ `import(variable)` ต้องจับตอน review
 - ตรวจ TypeScript 7 ซ้ำเมื่อ `typescript-eslint` ขยาย peer
 
+## แก้ไข 2026-11-05 — `evals/runner` ใช้ `@watchtower/domain` ได้ (T-306g, main thread ตัดสิน)
+- เหตุผล: CLI บันทึกผล replay ต้องคำนวณ "ชุดปัจจุบัน" ของ intent และเขียนผ่าน `record_replay_result()` แบบเดียวกับที่ gate ของ stage 3 อ่าน (`replaySetFor`/`recordReplayResult`) — ทำซ้ำใน runner จะทำให้สองที่คิดชุดต่างกัน (N6)
+- ขอบเขต: runner ยังเป็นเครื่องมือของคน ไม่มี package ไหน import runner · ยังห้าม `http` · ไม่ใช้ domain เขียนอะไรนอกจาก replay result (DB บังคับสิทธิ์ `ai.autonomy.promote`)
+- ไฟล์: `tools/eslint/boundaries.mjs` (allow เพิ่ม `@watchtower/domain` ให้ `evals/runner`)
+
 ## Links
 - PRD §12 · BACKLOG T-001 · `docs/04-ARCHITECTURE.md` §3 · npm registry (ตรวจ 2026-10-31)

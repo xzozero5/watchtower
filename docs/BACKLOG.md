@@ -173,7 +173,7 @@
 - [x] T-305f `backend-dev` (เจ้าของ 2026-11-04 "In-app yes, email no"): อีเมล weekly brief ไม่ restore ชื่อลูกค้า/หัวเรื่อง ticket — ส่งแค่ตัวเลข, ticket key (OPS-n) และลิงก์กลับเข้าแอป · ในแอปคงเดิม — **ปิด 2026-11-04**
 - [x] T-306e `ai-engineer` แก้ T-306a C-1 (P1), C-2, C-3, C-4, C-10, C-11, C-14 (gate/facts/text/report/watch)
 - [ ] T-306f `backend-dev` แก้ T-306a C-5, C-6, C-7, C-8, C-9, C-12, C-13 (migration 0108, api auth/portal/brief, golden, simulation)
-- [ ] T-306g `ai-engineer` เขียน `ai_replay_result` จาก eval runner: CLI `pnpm eval:record` ที่รัน replay + simulation ของชุด (drafter, grader, prompt, procedure) ปัจจุบันแล้วเรียก `record_replay_result()` ด้วยผู้ถือ `ai.autonomy.promote` (main thread ตัดสิน 2026-11-05) — จนกว่าจะมี ทุก intent ติด `replay_missing` (ปลอดภัย)
+- [x] T-306g `ai-engineer` เขียน `ai_replay_result` จาก eval runner: CLI `pnpm eval:record` ที่รัน replay + simulation ของชุด (drafter, grader, prompt, procedure) ปัจจุบันแล้วเรียก `record_replay_result()` ด้วยผู้ถือ `ai.autonomy.promote` (main thread ตัดสิน 2026-11-05) — จนกว่าจะมี ทุก intent ติด `replay_missing` (ปลอดภัย) — **ปิด 2026-11-05** (`pnpm --filter @watchtower/eval-runner record`)
 - [ ] T-306h `backend-dev` portal: เปิดลิงก์ "คำขอของฉัน" (T-152) หรือยืนยันอีเมลจากลิงก์ tracking = พิสูจน์กล่องอีเมล → ตั้ง `customFields.portal.requesterVerified=true` ให้ ticket ของ contact นั้น (main thread ตัดสิน) · drafter stage 2 คง `contact.verifiedAt` เดิมเพราะมีคนอนุมัติ
 - [ ] T-306c `po` review + เสนอ 2–3 intent → [ASK-HUMAN] เลื่อน stage
 - [ ] T-301 Grader + verified/contained/assumed resolution (§6.2, §6.4)

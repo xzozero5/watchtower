@@ -118,7 +118,7 @@ export const WORKSPACES = {
   },
   // The eval runner (T-302): runs the agents on cases and reads past tickets for the replay export. A
   // tool for people, not part of the running system; nothing imports it. T-306g: it records a replay result through
-  // `@watchtower/domain` (the same `replaySetFor`/`recordReplayResult` the gate's facts use) [ASK-HUMAN: boundary note for an ADR].
+  // `@watchtower/domain` (the same `replaySetFor`/`recordReplayResult` the gate's facts use) (ADR-002, แก้ไข 2026-11-05).
   'evals/runner': {
     name: '@watchtower/eval-runner',
     allow: ['@watchtower/ai', '@watchtower/db', '@watchtower/domain', SHARED],
