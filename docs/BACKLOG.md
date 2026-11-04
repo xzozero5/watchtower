@@ -167,6 +167,7 @@
 - [ ] T-306d `backend-dev` + `architect` runbook deploy instance ใหม่สำหรับ pilot (DB สะอาด, seed reference เท่านั้น, env/secret checklist, backup/restore ซ้อม) — เจ้าของจะ deploy เองตอนเริ่ม pilot
 - [ ] T-301e `backend-dev` re-grade เมื่อ CSAT มาถึงหลัง grade (ไม่งั้น verified ต่ำกว่าจริง) — ก่อน T-304f *(กำลังทำใน T-304b)* · + `capResolutionClass` ต้องดูข้อความลูกค้าที่ปฏิเสธ ("ยังไม่หาย") ไม่ใช่แค่ CSAT (qa T-302b)
 - [ ] T-175a `backend-dev` P3 จาก review T-175/T-142/T-147: concurrency ต่อคน/host + negative cache, IPv6 allow 2000::/3 ก่อน blocklist, deadline ก่อน DNS, proxy env, permission `ai.budget.read`, PATCH priority จาก AI ลง audit `source` + ยืนยันก่อนขึ้น P1, reply-block ผูก channelAccountId
+- [ ] T-182 `backend-dev` B-007 (เจ้าของ 2026-11-04 "Reject at upload"): อ่าน central directory ของ zip (และ archive ที่รับ) ตอนอัปโหลด ถ้า member ใด uncompressed > เพดานสแกน (MaxFileSize) หรือรวม > MaxScanSize หรือ nested ลึกเกิน → ปฏิเสธพร้อมข้อความชัด · ไฟล์แนบปกติไม่กระทบ
 - [ ] T-306c `po` review + เสนอ 2–3 intent → [ASK-HUMAN] เลื่อน stage
 - [ ] T-301 Grader + verified/contained/assumed resolution (§6.2, §6.4)
 - [ ] T-302 Eval set + replay runner + golden answers + KB author (§6.5, R-4.4–4.6)
