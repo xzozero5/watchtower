@@ -130,6 +130,7 @@
 - [x] T-204 Status page + subscriptions (R-6.x)
 - [x] T-205 Usage metric definitions + scheduler + anomaly → proactive ticket + Client Health Score (R-8.x)
 - [x] T-206 Ops dashboard (§9.1) — ใช้ skill `dataviz` ก่อนเขียน chart — merge 2026-11-02
+- [ ] T-207a `backend-dev` แก้ finding security review T-207 (`docs/decisions/T-207-security-review.md`) C-1, C-3, C-4, C-5…C-10 · C-2 → T-208
 - [ ] T-207 QA/security/po review + `/handoff`
 
 ## Phase 3 — Autonomy + Learning — แตก task ตอนจบ Phase 2
