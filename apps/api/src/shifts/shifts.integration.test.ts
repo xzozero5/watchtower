@@ -1124,6 +1124,21 @@ describe('the incoming person acknowledges each item', () => {
     ).not.toContain(handoff.id);
   });
 
+  it('refuses a reassign back to the person who handed it over, even when they are clocked in again (T-125a)', async () => {
+    const { outgoing, ticket, item } = await outgoingWithTicket('Out Back');
+    const incoming = await agentNamed('In Back');
+    await clockIn(incoming);
+    await clockIn(outgoing); // a new session: "on shift" would let the reassign through
+    const refused = await incoming.client.post<ApiErrorBody>(`/v1/handoffs/items/${item.id}/ack`, {
+      decision: 'reassign',
+      assigneeId: outgoing.userId,
+    });
+    expect(refused.status).toBe(400);
+    expect(refused.body.message).toContain(ticket.key);
+    const unchanged = await incoming.client.get<TicketDetail>(`/v1/tickets/${ticket.id}`);
+    expect(unchanged.body.assignee?.id).toBe(outgoing.userId);
+  });
+
   it('refuses a reassign of a P1 to someone off shift, and warns when a P3 goes to one', async () => {
     const urgent = await outgoingWithTicket('Out Off1');
     const incoming = await agentNamed('In Off1');
@@ -1375,6 +1390,40 @@ describe('AC-7: a P1 ticket cannot be shaken off to get past the gate', () => {
     expect(refused.body.blockers.map((blocker) => [blocker.ticketId, blocker.cause])).toEqual([
       [toAway.id, 'moved_away'],
     ]);
+  });
+
+  it('merging a P1 into a resolved P3 does not make it vanish: the target becomes an open P1 and stays on the gate (T-125a)', async () => {
+    const agent = await agentNamed('Merger');
+    await clockIn(agent);
+    const p1 = await assigned('P1', agent);
+    const target = await fileTicket(lead, orgId, { priority: 'P3' });
+    expect(
+      (await lead.client.post(`/v1/tickets/${target.id}/status`, { status: 'resolved' })).status,
+    ).toBe(200);
+    const merged = await agent.client.post(`/v1/tickets/${p1.id}/merge`, {
+      intoTicketId: target.id,
+    });
+    expect(merged.status).toBe(200);
+
+    const now = await lead.client.get<TicketDetail>(`/v1/tickets/${target.id}`);
+    expect(now.body).toMatchObject({ priority: 'P1', status: 'open' });
+    const status = await agent.client.get<ShiftStatus>('/v1/shifts/status');
+    expect(status.body.clockOutBlocked?.blockers).toEqual([
+      expect.objectContaining({ ticketId: target.id, priority: 'P1', cause: 'moved_away' }),
+    ]);
+    expect((await agent.client.post('/v1/shifts/clock-out', {})).status).toBe(409);
+  });
+
+  it('merging a P3 into an unassigned P1 does not put that P1 on the person', async () => {
+    const agent = await agentNamed('Merger P3');
+    await clockIn(agent);
+    const p3 = await assigned('P3', agent);
+    const target = await fileTicket(lead, orgId, { priority: 'P1' });
+    expect(
+      (await agent.client.post(`/v1/tickets/${p3.id}/merge`, { intoTicketId: target.id })).status,
+    ).toBe(200);
+    const status = await agent.client.get<ShiftStatus>('/v1/shifts/status');
+    expect(status.body.clockOutBlocked?.blockers ?? []).toEqual([]);
   });
 
   it('is checked again at clock out, and a lead override still works and is audited with the cause', async () => {

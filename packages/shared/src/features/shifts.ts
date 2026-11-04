@@ -211,7 +211,7 @@ export function handoffBlockers(
 export interface OwnTicketChange {
   readonly ticketId: string;
   readonly kind: HandoffBlockerCause;
-  /** For `downgraded`: the priority it had before the first downgrade of the shift. */
+  /** For `downgraded`: the priority it had before the first downgrade of the shift; for a merge: that of the merged ticket. */
   readonly fromPriority: z.infer<typeof ticketPrioritySchema> | null;
 }
 
@@ -259,7 +259,7 @@ export function departedRequirements(input: {
     if (ticket.assigneeId === input.userId && downgrade === undefined) continue;
     const priority = isHandoffRequiredPriority(ticket.priority)
       ? ticket.priority
-      : (downgrade?.fromPriority ?? null);
+      : (downgrade?.fromPriority ?? moved?.fromPriority ?? null);
     if (priority === null || !isHandoffRequiredPriority(priority)) continue;
     out.push({
       id: ticket.id,

@@ -95,7 +95,16 @@ export function hasIdempotencyKey(route: string | null): boolean {
  */
 export function decideFailure(
   facts: FailureFacts,
-  context: { readonly route: string | null; readonly attempts: number },
+  context: {
+    readonly route: string | null;
+    readonly attempts: number;
+    /**
+     * An earlier attempt of this delivery already pushed (the row was pinned to `line_push`) and its
+     * outcome was never learned. A later attempt that is refused cleanly (401, 429, a spent allowance,
+     * attempts used up) does not tell us what the first one did, so a final failure stays "unknown".
+     */
+    readonly earlierPush?: boolean;
+  },
 ): FailureDecision {
   const code = `channel_${facts.kind}`;
   const exhausted = context.attempts >= DELIVERY_MAX_ATTEMPTS;
@@ -111,7 +120,7 @@ export function decideFailure(
   if (facts.retryable && !exhausted) {
     return { action: 'retry', delaySeconds: delay(), errorCode: code };
   }
-  return { action: 'fail', errorCode: code, outcomeUnknown: false };
+  return { action: 'fail', errorCode: code, outcomeUnknown: context.earlierPush === true };
 }
 
 /**

@@ -977,6 +977,50 @@ describe('a pinned push that cannot be repeated may already have reached the cus
     expect((audit[0]?.metadata as { outcomeUnknown?: boolean }).outcomeUnknown).toBe(true);
   });
 
+  it('keeps outcomeUnknown when the retry after a push timeout is refused with the provider monthly limit (T-125a)', async () => {
+    const { delivery } = await timedOutPush('Maybe sent, then wall');
+    clock.now = at(20);
+    fakeLine.failNext(
+      'message.push',
+      new ChannelError({
+        provider: 'line',
+        operation: 'message.push',
+        kind: 'rate_limited',
+        status: 429,
+        code: 'monthly_limit',
+      }),
+    );
+    expect(await dispatcher.dispatch(delivery.id)).toEqual({
+      status: 'failed',
+      errorCode: 'quota_exhausted',
+      outcomeUnknown: true,
+    });
+    expect(await deliveryRow(delivery.id)).toMatchObject({ state: 'failed', outcomeUnknown: true });
+  });
+
+  it('keeps outcomeUnknown when the retry after a push timeout is refused for good (401), and gives this attempt its reservation back (T-125a)', async () => {
+    const { delivery } = await timedOutPush('Maybe sent, then 401');
+    const before = await quotaUsed();
+    clock.now = at(20);
+    fakeLine.failNext(
+      'message.push',
+      new ChannelError({
+        provider: 'line',
+        operation: 'message.push',
+        kind: 'auth',
+        status: 401,
+      }),
+    );
+    expect(await dispatcher.dispatch(delivery.id)).toMatchObject({
+      status: 'failed',
+      errorCode: 'channel_auth',
+      outcomeUnknown: true,
+    });
+    expect(await deliveryRow(delivery.id)).toMatchObject({ state: 'failed', outcomeUnknown: true });
+    // The timed-out attempt keeps its reservation (it may have been sent); this one sent nothing.
+    expect(await quotaUsed()).toBe(before);
+  });
+
   it('records outcomeUnknown when the channel is no longer connected', async () => {
     const { delivery } = await timedOutPush('Maybe sent too');
     clock.now = at(20);

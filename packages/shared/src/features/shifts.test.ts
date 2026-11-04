@@ -249,13 +249,25 @@ describe('departedRequirements (tickets the person took off their own plate)', (
   });
   const moved = { ticketId: ID, kind: 'moved_away' as const, fromPriority: null };
   const lowered = { ticketId: ID, kind: 'downgraded' as const, fromPriority: 'P1' as const };
-  const run = (tickets: ReturnType<typeof ticket>[], changes: (typeof moved | typeof lowered)[]) =>
-    departedRequirements({ userId: ME, tickets, changes });
+  const run = (
+    tickets: ReturnType<typeof ticket>[],
+    changes: (
+      typeof moved | typeof lowered | { ticketId: string; kind: 'moved_away'; fromPriority: 'P1' }
+    )[],
+  ) => departedRequirements({ userId: ME, tickets, changes });
 
   it('keeps a P1 ticket the person unassigned', () => {
     expect(run([ticket()], [moved])).toEqual([
       { id: ID, key: 'OPS-1', priority: 'P1', cause: 'moved_away' },
     ]);
+  });
+
+  it('keeps a ticket a P1 was merged into at the merged ticket priority, even if the target is lower', () => {
+    const merged = { ticketId: ID, kind: 'moved_away' as const, fromPriority: 'P1' as const };
+    expect(run([ticket({ priority: 'P4' })], [merged])).toEqual([
+      { id: ID, key: 'OPS-1', priority: 'P1', cause: 'moved_away' },
+    ]);
+    expect(run([ticket({ priority: 'P4', open: false })], [merged])).toEqual([]);
   });
 
   it('keeps one handed to someone who is off shift, but not one handed to someone on shift', () => {

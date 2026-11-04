@@ -288,9 +288,17 @@ export function createOutboundDispatcher(deps: DispatcherDeps) {
   async function conclude(
     delivery: OutboundDeliveryRow,
     decision: FailureDecision,
-    options: { release?: { accountId: string; period: string }; reason?: string } = {},
+    options: {
+      release?: { accountId: string; period: string };
+      reason?: string;
+      /** This attempt certainly sent nothing, whatever an earlier attempt did: its reservation goes back. */
+      thisAttemptSentNothing?: boolean;
+    } = {},
   ): Promise<DispatchOutcome> {
-    const giveBack = decision.action === 'retry' || !decision.outcomeUnknown;
+    const giveBack =
+      decision.action === 'retry' ||
+      !decision.outcomeUnknown ||
+      options.thisAttemptSentNothing === true;
     const recorded = await transact(async (tx, ctx) => {
       if (options.release !== undefined && giveBack) {
         await moveQuota(tx, options.release.accountId, options.release.period, -1, ctx.now());
@@ -337,19 +345,21 @@ export function createOutboundDispatcher(deps: DispatcherDeps) {
     error: unknown,
     route: DeliveryRoute | null,
     release?: { accountId: string; period: string },
+    earlierPush = false,
   ): Promise<DispatchOutcome> {
     const facts = factsOf(error, route !== null);
     const options = release === undefined ? {} : { release };
+    const sentNothing = !facts.outcomeUnknown;
     // LINE answers 429 with `monthly_limit` when the plan's allowance is spent: not a delay, a wall.
     if (error instanceof ChannelError && error.code === 'monthly_limit') {
       return conclude(
         delivery,
-        { action: 'fail', errorCode: 'quota_exhausted', outcomeUnknown: false },
-        { ...options, reason: 'suggest_email' },
+        { action: 'fail', errorCode: 'quota_exhausted', outcomeUnknown: earlierPush },
+        { ...options, reason: 'suggest_email', thisAttemptSentNothing: true },
       );
     }
-    const decision = decideFailure(facts, { route, attempts: delivery.attempts });
-    return conclude(delivery, decision, options);
+    const decision = decideFailure(facts, { route, attempts: delivery.attempts, earlierPush });
+    return conclude(delivery, decision, { ...options, thisAttemptSentNothing: sentNothing });
   }
 
   async function recordSentWithRetries(
@@ -622,6 +632,8 @@ export function createOutboundDispatcher(deps: DispatcherDeps) {
           error,
           plan.route,
           plan.route === 'line_push' ? release : undefined,
+          // The row was pinned to a push before this attempt: that one may have reached the customer.
+          delivery.route === 'line_push',
         );
       }
     }
