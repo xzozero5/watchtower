@@ -1,4 +1,4 @@
-import { screen, waitFor } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { GoldenAnswer, Message } from '@watchtower/shared';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -71,16 +71,48 @@ describe('GoldenMarkButton', () => {
     const user = userEvent.setup();
     const api = open(REPLY);
     await user.click(await screen.findByRole('button', { name: 'Mark as golden answer' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Keep this reply as a golden answer' });
+    const shareable = within(dialog).getByRole('checkbox', {
+      name: /Shareable with other organizations/,
+    });
+    expect(shareable).not.toBeChecked();
+    expect(within(dialog).getByText(/replaced by placeholders/)).toBeVisible();
+    await user.click(within(dialog).getByRole('button', { name: 'Keep as golden answer' }));
     await waitFor(() => {
       expect(api.callsTo('/v1/tickets/OPS-7/golden', 'POST')).toHaveLength(1);
     });
     expect(api.callsTo('/v1/tickets/OPS-7/golden', 'POST')[0]?.body).toEqual({
       messageId: REPLY.id,
+      shareable: false,
     });
     expect(await screen.findByRole('button', { name: 'Golden answer' })).toHaveAttribute(
       'aria-disabled',
       'true',
     );
+  });
+
+  it('sends shareable: true only when the lead ticks the box', async () => {
+    const user = userEvent.setup();
+    const api = open(REPLY);
+    await user.click(await screen.findByRole('button', { name: 'Mark as golden answer' }));
+    await user.click(await screen.findByRole('checkbox', { name: /Shareable with other/ }));
+    await user.click(screen.getByRole('button', { name: 'Keep as golden answer' }));
+    await waitFor(() => {
+      expect(api.callsTo('/v1/tickets/OPS-7/golden', 'POST')).toHaveLength(1);
+    });
+    expect(api.callsTo('/v1/tickets/OPS-7/golden', 'POST')[0]?.body).toEqual({
+      messageId: REPLY.id,
+      shareable: true,
+    });
+  });
+
+  it('sends nothing when the lead cancels the dialog', async () => {
+    const user = userEvent.setup();
+    const api = open(REPLY);
+    await user.click(await screen.findByRole('button', { name: 'Mark as golden answer' }));
+    await user.click(await screen.findByRole('button', { name: 'Cancel' }));
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(api.callsTo('/v1/tickets/OPS-7/golden', 'POST')).toHaveLength(0);
   });
 
   it('shows a reply that is already golden as marked, with no way to mark it twice', async () => {
@@ -99,6 +131,7 @@ describe('GoldenMarkButton', () => {
       ),
     });
     await user.click(await screen.findByRole('button', { name: 'Mark as golden answer' }));
+    await user.click(await screen.findByRole('button', { name: 'Keep as golden answer' }));
     expect(
       await screen.findByText('Set the intent of the ticket first, then mark the reply.'),
     ).toBeVisible();

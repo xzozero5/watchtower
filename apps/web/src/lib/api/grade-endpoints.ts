@@ -38,11 +38,11 @@ export function createGradeEndpoints(client: ApiClient) {
         ...withSignal(signal),
       }),
 
-    markGolden: (ref: string, messageId: string) =>
+    markGolden: (ref: string, messageId: string, shareable = false) =>
       client.request({
         method: 'POST',
         path: `${ticket(ref)}/golden`,
-        body: { messageId },
+        body: { messageId, shareable },
         schema: goldenAnswerSchema,
       }),
 
