@@ -168,9 +168,9 @@
 - [ ] T-301e `backend-dev` re-grade เมื่อ CSAT มาถึงหลัง grade (ไม่งั้น verified ต่ำกว่าจริง) — ก่อน T-304f *(กำลังทำใน T-304b)* · + `capResolutionClass` ต้องดูข้อความลูกค้าที่ปฏิเสธ ("ยังไม่หาย") ไม่ใช่แค่ CSAT (qa T-302b)
 - [x] T-175a `backend-dev` P3 จาก review T-175/T-142/T-147: concurrency ต่อคน/host + negative cache, IPv6 allow 2000::/3 ก่อน blocklist, deadline ก่อน DNS, proxy env, permission `ai.budget.read`, PATCH priority จาก AI ลง audit `source` + ยืนยันก่อนขึ้น P1, reply-block ผูก channelAccountId — **ปิด 2026-11-04**
 - [x] T-182 `backend-dev` B-007 (เจ้าของ 2026-11-04 "Reject at upload"): อ่าน central directory ของ zip (และ archive ที่รับ) ตอนอัปโหลด ถ้า member ใด uncompressed > เพดานสแกน (MaxFileSize) หรือรวม > MaxScanSize หรือ nested ลึกเกิน → ปฏิเสธพร้อมข้อความชัด · ไฟล์แนบปกติไม่กระทบ — **ปิด 2026-11-04** (archive guard)
-- [ ] T-183 `qa-engineer` B-009: `apps/api/src/reports/reports.integration.test.ts` 4 test ตกเมื่อ process TZ = Asia/Bangkok (ผ่านเมื่อ TZ=UTC) — หาว่าเป็นบั๊กของรายงาน (ช่วงวันคิดด้วย TZ ของ Node) หรือ test
-- [ ] T-303f `frontend-dev`+`backend-dev` proposal card ของ `escalate` ใน AI sidebar + endpoint apply ตาม ADR-026 §10 · ส่ง `template` ของ tool step ต่อไปที่ port · ต่อปุ่ม Simulate ใน editor (T-303e) กับ endpoint T-303d
-- [ ] T-305f `backend-dev` (เจ้าของ 2026-11-04 "In-app yes, email no"): อีเมล weekly brief ไม่ restore ชื่อลูกค้า/หัวเรื่อง ticket — ส่งแค่ตัวเลข, ticket key (OPS-n) และลิงก์กลับเข้าแอป · ในแอปคงเดิม
+- [x] T-183 `qa-engineer` B-009: `apps/api/src/reports/reports.integration.test.ts` 4 test ตกเมื่อ process TZ = Asia/Bangkok (ผ่านเมื่อ TZ=UTC) — หาว่าเป็นบั๊กของรายงาน (ช่วงวันคิดด้วย TZ ของ Node) หรือ test — **ปิด 2026-11-04** (บั๊ก test: นาฬิกา DB เร็วกว่า Node)
+- [x] T-303f `frontend-dev`+`backend-dev` proposal card ของ `escalate` ใน AI sidebar + endpoint apply ตาม ADR-026 §10 · ส่ง `template` ของ tool step ต่อไปที่ port · ต่อปุ่ม Simulate ใน editor (T-303e) กับ endpoint T-303d — **ปิด 2026-11-04** (migration 0107)
+- [x] T-305f `backend-dev` (เจ้าของ 2026-11-04 "In-app yes, email no"): อีเมล weekly brief ไม่ restore ชื่อลูกค้า/หัวเรื่อง ticket — ส่งแค่ตัวเลข, ticket key (OPS-n) และลิงก์กลับเข้าแอป · ในแอปคงเดิม — **ปิด 2026-11-04**
 - [ ] T-306c `po` review + เสนอ 2–3 intent → [ASK-HUMAN] เลื่อน stage
 - [ ] T-301 Grader + verified/contained/assumed resolution (§6.2, §6.4)
 - [ ] T-302 Eval set + replay runner + golden answers + KB author (§6.5, R-4.4–4.6)
