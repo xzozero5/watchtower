@@ -1,6 +1,6 @@
 # ADR-019 — `claude -p` เป็น AI หลักของ instance เจ้าของ (bridge ใน Docker, ทำงานเมื่อ host online, KB folder นอก repo)
 
-- **Status:** Accepted (แก้ ADR-017 เฉพาะ "dev/POC เท่านั้น" → "AI หลักของ instance ส่วนตัวของเจ้าของ" · ข้อห้าม production/loopback ยังอยู่)
+- **Status:** Accepted (แก้ ADR-017 เฉพาะ "dev/POC เท่านั้น" → "AI หลักของ instance ส่วนตัวของเจ้าของ" · ข้อห้าม production/loopback ยังอยู่) · **ข้อ 2 และ [ASK-HUMAN] เรื่องเงื่อนไขบริการถูกแก้โดย [ADR-021](ADR-021-claude-cli-remote-opt-in.md) 2026-11-04**
 - **Date:** 2026-11-03 (เวลากรุงเทพ) · **ผู้ตัดสิน:** เจ้าของโปรเจกต์ ("AI จะใช้ท่า `claude -p` เป็นท่าหลักไปก่อน … ใช้ sonnet … Watchtower จะใช้ feature AI ต่อเมื่อเครื่อง host online อยู่บน internet … อาจจะทำเป็น docker เปิดค้างไว้ … folder ใน /works เพื่อจัดการ knowledge base")
 - **Context:** ADR-017 ทำให้ `claude-cli` ใช้ได้ แต่ต้องเปิด bridge ใน terminal เองทุกครั้ง และ AI ล้มแบบไม่แยกว่า "ไม่มี internet" กับ "พัง" เจ้าของต้องการให้ท่านี้เป็นท่าหลักชั่วคราว ใช้ model `sonnet` ทุก tier รัน bridge ค้างใน Docker และมี folder KB ของตัวเองนอก repo
 

@@ -4,18 +4,19 @@
 snapshot สั้นสำหรับ cold start อยู่ที่ `HANDOFF.md` — ไฟล์นี้คือ log ต่อ task + open questions
 
 ## สถานะปัจจุบัน
-| Phase | สถานะ (2026-11-03) | ค้าง |
+| Phase | สถานะ (2026-11-04) | ค้าง |
 |---|---|---|
 | 0 Foundation | ✅ | — |
-| 1 Inbox + AI 0–2 + Shifts | ✅ · **POC ต่อ Gmail จริง + AI จริง (`claude -p`) แล้ว 2026-11-03** · LINE/Discord/SMTP ยัง mock | T-113 ส่วนที่เหลือ, T-114, T-115 pilot (เจ้าของ), T-125, T-103e/f, T-110c |
-| 2 Reliability + Usage | ✅ ด้วย mock/fixture | T-207 |
+| 1 Inbox + AI 0–2 + Shifts | 🟡 ฟีเจอร์ครบ gate ค้าง · **POC ต่อ Gmail จริง + AI จริง (`claude -p`) แล้ว 2026-11-03** · LINE/Discord/SMTP ยัง mock | T-113 ส่วนที่เหลือ, T-114, T-115 pilot (เจ้าของ), T-125, T-103e/f, T-110c |
+| 2 Reliability + Usage | 🟡 ฟีเจอร์ครบด้วย mock/fixture, gate ค้าง | T-207 |
 | คำขอเจ้าของ 2026-11-02 | T-136, T-137 ✅ · T-133 บางส่วน | T-134/T-135 บน `wip/t-134` (ยังไม่ re-review, ไม่มีเว็บ), T-133 ที่เหลือ |
 | 3 Autonomy + Learning | ⬜ | — |
 | 4 Mobile + Scale | ⬜ | — |
 
 - **Release `v0.1.0` (MVP)** = `main` @ `ae380db` · CI: เขียวทั้ง 4 job · gate บนเครื่องผ่านทุก merge `[TESTED]`
-- **PO quality sweep 2026-11-03:** T-156/T-162…164 ปิดบน `codex/po-quality-sweep`; T-158/T-161 ปิดบางส่วน · ยังไม่ merge/deploy · รายงาน `docs/qa/2026-11-03-po-quality-sweep.md`
-- **คำขอเจ้าของ 2026-11-03 บ่าย:** T-165…T-169 ปิด (rail, Gmail view/composer, แนบรูป, claude-bridge docker ADR-019, seed 1 ปี) บน `codex/po-workflow-upgrade` ยังไม่ push
+- **PO quality sweep 2026-11-03:** T-156/T-162…164 ปิด, merge + push แล้ว; T-158/T-161 ปิดบางส่วน · รายงาน `docs/qa/2026-11-03-po-quality-sweep.md`
+- **คำขอเจ้าของ 2026-11-03 บ่าย:** T-165…T-169 ปิด (rail, Gmail view/composer, แนบรูป, claude-bridge docker ADR-019, seed 1 ปี) merge + push แล้ว (`origin/main` = `ae3effd` 2026-11-04) · T-172 gmail-tunnel รันจริง + ทดสอบอีเมลจริงครบวงจรแล้ว (daily log 2026-11-03 16:54) · polish UI หลัง 17:44 (fa6a5cf…ae3effd) บันทึกเป็น T-173
+- **การตัดสินของเจ้าของ 2026-11-04 `[CONFIRMED]`:** (1) ใช้ `claude -p` อัตโนมัติกับข้อมูลลูกค้าได้ (2) แก้ ADR ให้ยอม claude-cli บน instance ที่ไม่ใช่ loopback → ADR-021 (3) ย้าย worker ไป `http://claude-bridge:4317` + ปิด port 4317 + กำหนดรอบ rotate key → main thread ตัดสิน 90 วัน (4) ClamAV + pilot ให้ main thread ตัดสิน → ADR-022; pilot T-115 เริ่มเมื่อ T-113, T-114 (ไม่มี P0/P1), T-125a, T-207 ปิด (5) ข้อความไทย: ทำตาม glossary ไปก่อน เจ้าของตรวจรวบตอนจบ · feature ที่เจ้าของอยากได้เร็ว: AI bubble (T-134), อีเมลประเมินความพึงพอใจ (T-174)
 - Blockers: ไม่มี · `[ASK-HUMAN]` ค้าง: ดู `HANDOFF.md`
 
 ## Open questions / `[UNVERIFIED]` / `[ASSUMED]` ที่ยังค้าง
