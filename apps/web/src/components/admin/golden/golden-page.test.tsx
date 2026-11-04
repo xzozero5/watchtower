@@ -29,6 +29,7 @@ const ROW: GoldenAnswer = {
   intent: { key: 'password_reset', name: 'Password reset' },
   text: 'Hello [NAME_1], we reset your password.',
   language: 'en',
+  shareable: false,
   createdBy: { id: uuid(900), name: 'Lena Lead' },
   createdAt: AT,
 };
@@ -55,6 +56,17 @@ describe('Golden answers (admin)', () => {
     expect(within(row).getByText('Hello [NAME_1], we reset your password.')).toBeVisible();
     expect(within(row).getByText('Lena Lead')).toBeVisible();
     expect(within(row).getByRole('link', { name: 'OPS-7' })).toBeVisible();
+  });
+
+  it('marks a shareable answer with a badge and no other', async () => {
+    open([ROW, { ...ROW, id: uuid(51), ticketKey: 'OPS-8', shareable: true }]);
+    const table = await screen.findByRole('table', { name: 'Golden answers' });
+    expect(
+      within(within(table).getByRole('row', { name: /OPS-8/ })).getByText('Shareable'),
+    ).toBeVisible();
+    expect(
+      within(within(table).getByRole('row', { name: /OPS-7/ })).queryByText('Shareable'),
+    ).toBeNull();
   });
 
   it('asks first, then removes the answer and says so', async () => {

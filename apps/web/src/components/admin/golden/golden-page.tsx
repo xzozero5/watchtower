@@ -8,9 +8,10 @@ import {
   HelpHint,
   IconButton,
   Button,
+  TintChip,
   toast,
 } from '@watchtower/ui';
-import { RefreshCw, Star, Trash2 } from 'lucide-react';
+import { RefreshCw, Share2, Star, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 
 import { AdminBody, AdminHeader } from '@/components/admin/admin-layout';
@@ -54,7 +55,16 @@ function GoldenBody() {
     {
       id: 'reply',
       header: t('grade.admin.col.reply'),
-      cell: (row) => <p className="max-w-xl text-sm break-words whitespace-pre-wrap">{row.text}</p>,
+      cell: (row) => (
+        <div className="flex max-w-xl flex-col items-start gap-1">
+          <p className="text-sm break-words whitespace-pre-wrap">{row.text}</p>
+          {row.shareable ? (
+            <TintChip tone="teal" icon={Share2}>
+              {t('grade.admin.shareableBadge')}
+            </TintChip>
+          ) : null}
+        </div>
+      ),
     },
     {
       id: 'ticket',

@@ -60,6 +60,19 @@ export function useTicketGolden(ticketKey: string, enabled: boolean) {
   });
 }
 
+/** The scrubbed text of a reply, fetched only while the lead has the shareable box ticked. */
+export function useGoldenPreview(ticketKey: string, messageId: string, enabled: boolean) {
+  const api = useApi();
+  const userId = useUserId();
+  return useQuery({
+    queryKey: [...gradeKeys(userId).goldenOfTicket(ticketKey), 'preview', messageId] as const,
+    queryFn: ({ signal }) => api.goldenPreview(ticketKey, messageId, signal),
+    enabled,
+    retry: false,
+    staleTime: 60_000,
+  });
+}
+
 export function useMarkGolden(ticketKey: string) {
   const api = useApi();
   const userId = useUserId();

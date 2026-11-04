@@ -1,6 +1,7 @@
 import {
   goldenAnswerListSchema,
   goldenAnswerSchema,
+  goldenPreviewSchema,
   intentGradeMetricsResponseSchema,
   ticketGradeResponseSchema,
 } from '@watchtower/shared';
@@ -35,6 +36,15 @@ export function createGradeEndpoints(client: ApiClient) {
       client.request({
         path: `${ticket(ref)}/golden`,
         schema: goldenAnswerListSchema,
+        ...withSignal(signal),
+      }),
+
+    /** What marking this reply would keep, after the scrub of organization names, contract ids and amounts. */
+    goldenPreview: (ref: string, messageId: string, signal?: AbortSignal) =>
+      client.request({
+        path: `${ticket(ref)}/golden/preview`,
+        query: { messageId },
+        schema: goldenPreviewSchema,
         ...withSignal(signal),
       }),
 
