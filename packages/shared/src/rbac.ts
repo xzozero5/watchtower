@@ -38,6 +38,7 @@ export const PERMISSIONS = {
   'ticket.read.org': 'View the tickets of the caller own organization (client)',
   'ticket.reply.own': 'Reply on a ticket of the caller own organization (client)',
   'ai.draft.review': 'Approve, edit or reject AI drafts',
+  'ai.golden.manage': 'Mark a sent reply as a golden answer, list and remove golden answers',
   'ai.autonomy.set':
     'Change AI autonomy stage per intent (0-2 in Phase 1; stage 3 and above is the owner decision)',
   'ai.autonomy.set.any': 'Change AI autonomy stage per intent to any stage',
@@ -164,6 +165,7 @@ const LEAD: readonly Permission[] = [
   'ai.emergency_switch',
   'csat.read',
   'ai.run.read',
+  'ai.golden.manage',
   'ticket.cancel.any',
   'ticket.dev.release.any',
   'alert.manage',

@@ -19,7 +19,8 @@ import {
   uuid,
 } from 'drizzle-orm/pg-core';
 
-import { ticket } from './ticketing.js';
+import { users } from './auth.js';
+import { intent, message, ticket } from './ticketing.js';
 
 const timestamptz = (name: string) => timestamp(name, { withTimezone: true, mode: 'date' });
 
@@ -200,3 +201,40 @@ export const aiResolutionGrade = pgTable(
 
 export type AiResolutionGradeRow = typeof aiResolutionGrade.$inferSelect;
 export type NewAiResolutionGradeRow = typeof aiResolutionGrade.$inferInsert;
+
+/**
+ * A sent reply that a lead or head marked as a good answer to its intent (T-302a, migration 0098), kept in
+ * redacted form only. Append and soft delete: the app role may set `deleted_at` / `deleted_by` and nothing else.
+ * The SQL file is the source of truth for the CHECKs and the partial unique index.
+ */
+export const goldenAnswer = pgTable(
+  'golden_answer',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    ticketId: uuid('ticket_id')
+      .notNull()
+      .references(() => ticket.id, { onDelete: 'restrict' }),
+    messageId: uuid('message_id')
+      .notNull()
+      .references(() => message.id, { onDelete: 'restrict' }),
+    intentId: uuid('intent_id')
+      .notNull()
+      .references(() => intent.id, { onDelete: 'restrict' }),
+    bodyRedacted: text('body_redacted').notNull(),
+    language: text('language'),
+    createdBy: uuid('created_by')
+      .notNull()
+      .references(() => users.id, { onDelete: 'restrict' }),
+    createdAt: timestamptz('created_at').notNull().defaultNow(),
+    deletedAt: timestamptz('deleted_at'),
+    deletedBy: uuid('deleted_by').references(() => users.id, { onDelete: 'restrict' }),
+  },
+  (table) => [
+    index('golden_answer_intent_idx')
+      .on(table.intentId, table.createdAt.desc())
+      .where(sql`${table.deletedAt} IS NULL`),
+  ],
+);
+
+export type GoldenAnswerRow = typeof goldenAnswer.$inferSelect;
+export type NewGoldenAnswerRow = typeof goldenAnswer.$inferInsert;
