@@ -3,6 +3,9 @@ import { schema, type Database } from '@watchtower/db';
 import { toDeliverySummary } from '@watchtower/domain';
 import {
   CLIENT_HIDDEN_DELIVERY_STATUSES,
+  INCIDENTS_TICKET_EVENTS,
+  TICKET_EVENT_TYPES,
+  formatIncidentKey,
   type ChannelType,
   type DeliverySummary,
   type TimelineEntry,
@@ -28,6 +31,56 @@ import { TICKET_KEYS, type TicketKeys } from './ticket-keys.js';
  * A client's timeline holds public messages and public events only, with staff identities and
  * staff-only payload fields removed (`toMessage`, `toTimelineEvent`).
  */
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+interface EventNames {
+  readonly users: ReadonlyMap<string, string>;
+  readonly queues: ReadonlyMap<string, string>;
+  readonly incidents: ReadonlyMap<string, { key: string; title: string | null }>;
+}
+
+/**
+ * Adds `fromName` / `toName` / `queueName` to an assignment and `incidentKey` / `incidentTitle` to an
+ * incident link, so the UI can say "Assignee: Mana K. to Pim S." (T-144). Other entries pass through.
+ */
+export function withNames(entry: TimelineEntry, names: EventNames | null): TimelineEntry {
+  if (names === null || entry.kind !== 'event') return entry;
+  const payload = entry.payload;
+  const lookup = (value: unknown, map: ReadonlyMap<string, string>): string | undefined =>
+    typeof value === 'string' ? map.get(value) : undefined;
+  if (entry.type === TICKET_EVENT_TYPES.assigned) {
+    const fromName = lookup(payload.from, names.users);
+    const toName = lookup(payload.to, names.users);
+    const queueName = lookup(payload.queueId, names.queues);
+    return {
+      ...entry,
+      payload: {
+        ...payload,
+        ...(fromName === undefined ? {} : { fromName }),
+        ...(toName === undefined ? {} : { toName }),
+        ...(queueName === undefined ? {} : { queueName }),
+      },
+    };
+  }
+  if (
+    entry.type === INCIDENTS_TICKET_EVENTS.incidentLinked ||
+    entry.type === INCIDENTS_TICKET_EVENTS.incidentUnlinked
+  ) {
+    const found =
+      typeof payload.incidentId === 'string' ? names.incidents.get(payload.incidentId) : undefined;
+    if (found === undefined) return entry;
+    return {
+      ...entry,
+      payload: {
+        ...payload,
+        incidentKey: found.key,
+        ...(found.title === null ? {} : { incidentTitle: found.title }),
+      },
+    };
+  }
+  return entry;
+}
+
 @Injectable()
 export class TimelineService {
   constructor(
@@ -145,6 +198,10 @@ export class TimelineService {
       .orderBy(asc(ticketEvent.createdAt), asc(ticketEvent.id))
       .limit(query.limit + 1);
 
+    // Staff read who an assignment moved from and to, and which incident a link points at, by name:
+    // the event itself holds ids only (T-144). A client never gets these events' payload at all.
+    const names = audience === 'staff' ? await this.eventNames(events, session === null) : null;
+
     // Two sorted streams, each cut at limit + 1, merge into the correct first `limit` entries.
     const merged = [
       ...messages.map((entry) => ({
@@ -172,11 +229,14 @@ export class TimelineService {
         sortKey: entry.sortKey,
         id: entry.row.id,
         build: (): TimelineEntry =>
-          toTimelineEvent(entry.row, {
-            ticketKey: this.keys.format(numbers.get(entry.row.ticketId)?.number ?? root.t.number),
-            actorName: shownName(entry.actorName, entry.actorRole),
-            audience,
-          }),
+          withNames(
+            toTimelineEvent(entry.row, {
+              ticketKey: this.keys.format(numbers.get(entry.row.ticketId)?.number ?? root.t.number),
+              actorName: shownName(entry.actorName, entry.actorRole),
+              audience,
+            }),
+            names,
+          ),
       })),
     ].sort((a, b) => {
       // Plain string order, the same as Postgres' for fixed-width timestamps and lower-case uuids.
@@ -193,6 +253,72 @@ export class TimelineService {
       }),
       nextCursor:
         merged.length > query.limit && last ? encodeCursor({ v: last.sortKey, id: last.id }) : null,
+    };
+  }
+
+  /** Names for the ids that staff-visible events carry: people (assignments) and incidents (links). */
+  private async eventNames(
+    events: readonly { row: { type: string; payload: unknown } }[],
+    showTitles: boolean,
+  ): Promise<EventNames> {
+    const userIds = new Set<string>();
+    const queueIds = new Set<string>();
+    const incidentIds = new Set<string>();
+    for (const { row } of events) {
+      const payload = (row.payload ?? {}) as Record<string, unknown>;
+      if (row.type === TICKET_EVENT_TYPES.assigned) {
+        for (const key of ['from', 'to'] as const) {
+          const value = payload[key];
+          if (typeof value === 'string' && UUID.test(value)) userIds.add(value);
+        }
+        if (typeof payload.queueId === 'string' && UUID.test(payload.queueId)) {
+          queueIds.add(payload.queueId);
+        }
+      }
+      if (
+        (row.type === INCIDENTS_TICKET_EVENTS.incidentLinked ||
+          row.type === INCIDENTS_TICKET_EVENTS.incidentUnlinked) &&
+        typeof payload.incidentId === 'string' &&
+        UUID.test(payload.incidentId)
+      ) {
+        incidentIds.add(payload.incidentId);
+      }
+    }
+    const db = this.database.db;
+    const people =
+      userIds.size === 0
+        ? []
+        : await db
+            .select({ id: schema.users.id, name: schema.users.name })
+            .from(schema.users)
+            .where(inArray(schema.users.id, [...userIds]));
+    const queues =
+      queueIds.size === 0
+        ? []
+        : await db
+            .select({ id: schema.teamQueue.id, name: schema.teamQueue.name })
+            .from(schema.teamQueue)
+            .where(inArray(schema.teamQueue.id, [...queueIds]));
+    const incidents =
+      incidentIds.size === 0
+        ? []
+        : await db
+            .select({
+              id: schema.incident.id,
+              number: schema.incident.number,
+              title: schema.incident.title,
+            })
+            .from(schema.incident)
+            .where(inArray(schema.incident.id, [...incidentIds]));
+    return {
+      users: new Map(people.map((row) => [row.id, row.name])),
+      queues: new Map(queues.map((row) => [row.id, row.name])),
+      incidents: new Map(
+        incidents.map((row) => [
+          row.id,
+          { key: formatIncidentKey(row.number), title: showTitles ? row.title : null },
+        ]),
+      ),
     };
   }
 }
