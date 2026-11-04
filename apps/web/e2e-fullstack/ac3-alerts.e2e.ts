@@ -172,13 +172,19 @@ test.describe.serial('AC-3: dedupe, escalate after T1, acknowledge in Discord', 
       )
       .toBe(true);
 
-    const steps = (
-      await head.api.get<{ items: EscalationJson[] }>(`/v1/alerts/${alertId}/escalations`)
-    ).json.items;
-    const leadStep = steps.find((step) => step.target === 'lead');
-    expect(leadStep?.level).toBe(1);
-    // `mock`: the in-memory bot recorded the page and nothing left the process (never reported as sent).
-    expect(leadStep?.chatState).toBe('mock');
+    // The step row exists before the chat post is made (`pending`/`sending`); the post settles as `mock`:
+    // the in-memory bot recorded the page and nothing left the process (never reported as sent).
+    await expect
+      .poll(
+        async () => {
+          const steps = await head.api.get<{ items: EscalationJson[] }>(
+            `/v1/alerts/${alertId}/escalations`,
+          );
+          return steps.json.items.find((step) => step.target === 'lead');
+        },
+        { message: 'the lead step settles as mock' },
+      )
+      .toMatchObject({ level: 1, chatState: 'mock' });
 
     await expect
       .poll(

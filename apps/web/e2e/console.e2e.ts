@@ -33,10 +33,12 @@ test.describe('head: Home', () => {
     const risk = page.getByRole('list', { name: 'SLA at risk' });
     await expect(risk.getByRole('listitem')).toHaveCount(2);
     await expect(page.getByText('Database and Redis: ready')).toBeVisible();
-    await expect(page.getByRole('region', { name: 'AI' })).toContainText(
+    await expect(page.getByRole('region', { name: 'AI', exact: true })).toContainText(
       'Stage 2 · Draft for approval',
     );
-    await expect(page.getByRole('region', { name: 'AI' })).not.toContainText('Stage 3');
+    await expect(page.getByRole('region', { name: 'AI', exact: true })).not.toContainText(
+      'Stage 3',
+    );
   });
 
   test('a number opens the queue with that filter', async ({ page }) => {
