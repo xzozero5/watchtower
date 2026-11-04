@@ -95,6 +95,17 @@ export const ticketAttachmentParamSchema = z.object({
 });
 export type TicketAttachmentParam = z.infer<typeof ticketAttachmentParamSchema>;
 
+/** The picture to proxy (T-175): the ticket and message in the path, and `u`, the position among the message's remote images. */
+export const ticketRemoteImageParamSchema = z.object({
+  id: ticketRefSchema,
+  messageId: z.uuid(),
+});
+export const ticketRemoteImageQuerySchema = z.object({
+  u: z.coerce.number().int().min(0).max(199),
+});
+export type TicketRemoteImageParam = z.infer<typeof ticketRemoteImageParamSchema>;
+export type TicketRemoteImageQuery = z.infer<typeof ticketRemoteImageQuerySchema>;
+
 /** The routes on one AI draft of a ticket (T-108): the ticket by id or number, and the draft. */
 export const aiDraftRefParamSchema = z.object({ id: ticketRefSchema, draftId: z.uuid() });
 export type AiDraftRefParam = z.infer<typeof aiDraftRefParamSchema>;

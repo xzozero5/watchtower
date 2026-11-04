@@ -121,6 +121,13 @@ export interface SanitizeEmailOptions {
   readonly styles?: boolean;
   /** Turns a `cid:` content id (no scheme, lower-case) into a URL the page may load, or null. */
   readonly resolveCid?: (contentId: string) => string | null;
+  /**
+   * Turns the position of a remote image among the `data-remote-src` of the mail (document order, the same
+   * order the api counts in) into a URL the page may load, or null while it is not there yet (T-175: the
+   * page's CSP allows no remote host, so the api fetches the picture and the caller holds it as a blob URL).
+   * Used only together with `allowRemoteImages`. Without it a remote address goes into `src` as written.
+   */
+  readonly resolveRemote?: (index: number) => string | null;
 }
 
 export interface SanitizedEmailHtml {
@@ -129,6 +136,8 @@ export interface SanitizedEmailHtml {
   readonly blockedImages: number;
   /** `cid:` ids the markup refers to (lower-case), so the caller can fetch only those. */
   readonly contentIds: readonly string[];
+  /** How many pictures carry a `data-remote-src`; the api serves them by position `0..n-1`. */
+  readonly remoteImageCount: number;
 }
 
 function parse(html: string): Document {
@@ -151,6 +160,11 @@ export function sanitizeEmailHtml(
   const root = target.createElement('div');
   let blocked = 0;
   const contentIds = new Set<string>();
+  // The api addresses a remote picture by its position among the `data-remote-src` of the stored HTML.
+  const remoteIndex = new Map<Element, number>();
+  Array.from(source.querySelectorAll('img[data-remote-src]')).forEach((element, index) => {
+    remoteIndex.set(element, index);
+  });
 
   const copyImage = (element: Element): Element | null => {
     const src = (element.getAttribute('src') ?? '').trim();
@@ -183,6 +197,22 @@ export function sanitizeEmailHtml(
       if (options.allowRemoteImages !== true) {
         blocked += 1;
         image.setAttribute('data-blocked', '1');
+        return image;
+      }
+      if (options.resolveRemote !== undefined) {
+        const position = remoteIndex.get(element);
+        // No position (an address in `src`, older stored mail) means the api cannot serve it: keep the placeholder.
+        if (position === undefined) {
+          image.setAttribute('data-blocked', '1');
+          return image;
+        }
+        const proxied = options.resolveRemote(position);
+        if (proxied === null) {
+          image.setAttribute('data-blocked', '1');
+          return image;
+        }
+        image.setAttribute('src', proxied);
+        image.setAttribute('loading', 'lazy');
         return image;
       }
       image.setAttribute('src', remote);
@@ -250,7 +280,12 @@ export function sanitizeEmailHtml(
   };
 
   copyChildren(source.body, root, 0);
-  return { html: root.innerHTML, blockedImages: blocked, contentIds: [...contentIds] };
+  return {
+    html: root.innerHTML,
+    blockedImages: blocked,
+    contentIds: [...contentIds],
+    remoteImageCount: remoteIndex.size,
+  };
 }
 
 export function escapeHtml(text: string): string {

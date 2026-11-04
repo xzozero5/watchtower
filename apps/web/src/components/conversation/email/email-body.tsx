@@ -86,6 +86,87 @@ export function useCidImages(
   return urls;
 }
 
+/** The raster type the first bytes say; the api only serves these, so anything else is dropped. */
+async function imageTypeOf(file: Blob): Promise<string | null> {
+  const b = new Uint8Array(await file.slice(0, 12).arrayBuffer());
+  const is = (offset: number, ...values: number[]) => values.every((v, i) => b[offset + i] === v);
+  if (is(0, 0x89, 0x50, 0x4e, 0x47)) return 'image/png';
+  if (is(0, 0xff, 0xd8, 0xff)) return 'image/jpeg';
+  if (is(0, 0x47, 0x49, 0x46, 0x38)) return 'image/gif';
+  if (is(0, 0x52, 0x49, 0x46, 0x46) && is(8, 0x57, 0x45, 0x42, 0x50)) return 'image/webp';
+  return null;
+}
+
+const REMOTE_PARALLEL = 4;
+
+/**
+ * The remote pictures of one message once the reader pressed "Display images" (T-175). The page's CSP
+ * lets images come from the page itself, `data:` and `blob:` only, and the sender should not see who read the
+ * mail anyway, so each picture is fetched by the api (`remote-image?u=<position>`, the api's own SSRF-guarded
+ * proxy) and shown from a blob URL, like the `cid:` images. Nothing is requested until `enabled`; a picture
+ * that fails stays a placeholder. Object URLs are revoked when the component goes away.
+ */
+export function useRemoteImages(
+  message: Message | undefined,
+  count: number,
+  enabled: boolean,
+): ReadonlyMap<number, string> {
+  const api = useApi();
+  const [urls, setUrls] = useState<ReadonlyMap<number, string>>(() => new Map());
+  const made = useRef(new Map<string, string>());
+
+  useEffect(() => {
+    const owned = made.current;
+    return () => {
+      for (const url of owned.values()) URL.revokeObjectURL(url);
+      owned.clear();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (message === undefined || !enabled || count === 0) return;
+    const controller = new AbortController();
+    const next = new Map<number, string>();
+    let cursor = 0;
+    const worker = async (): Promise<void> => {
+      while (!controller.signal.aborted) {
+        const index = cursor;
+        cursor += 1;
+        if (index >= count) return;
+        const key = `${message.id}:${String(index)}`;
+        const known = made.current.get(key);
+        if (known !== undefined) {
+          next.set(index, known);
+          setUrls(new Map(next));
+          continue;
+        }
+        try {
+          const bytes = await api.downloadRemoteImage(
+            message.ticketKey,
+            message.id,
+            index,
+            controller.signal,
+          );
+          const type = await imageTypeOf(bytes);
+          if (controller.signal.aborted || type === null) continue;
+          const url = URL.createObjectURL(new Blob([bytes], { type }));
+          made.current.set(key, url);
+          next.set(index, url);
+          setUrls(new Map(next));
+        } catch {
+          // This picture stays a placeholder; the rest of the mail is readable.
+        }
+      }
+    };
+    void Promise.all(Array.from({ length: REMOTE_PARALLEL }, worker));
+    return () => {
+      controller.abort();
+    };
+  }, [api, message?.id, message?.ticketKey, count, enabled]);
+
+  return urls;
+}
+
 /**
  * One email body, drawn in a sandboxed iframe: `srcdoc`, no scripts (the sandbox has no
  * `allow-scripts`, and a CSP says the same), no network except images the reader allowed. Its CSS
@@ -112,20 +193,26 @@ export function EmailBody({
 }) {
   const frame = useRef<HTMLIFrameElement>(null);
   const [height, setHeight] = useState(80);
-  const wanted = useMemo(() => sanitizeEmailHtml(html).contentIds, [html]);
+  const first = useMemo(() => sanitizeEmailHtml(html), [html]);
+  const wanted = first.contentIds;
   const cids = useCidImages(message, wanted);
+  const remote = useRemoteImages(message, first.remoteImageCount, showImages);
 
   const clean = useMemo(
     () =>
       sanitizeEmailHtml(html, {
         allowRemoteImages: showImages,
         resolveCid: (id) => cids.get(id) ?? localImages?.get(id) ?? null,
+        // With a message the pictures come through the api; a preview of an unsent mail has none.
+        ...(message === undefined
+          ? {}
+          : { resolveRemote: (index: number) => remote.get(index) ?? null }),
       }),
-    [html, showImages, cids, localImages],
+    [html, showImages, cids, localImages, remote, message],
   );
   const srcDoc = useMemo(
-    () => buildSrcDoc(clean.html, { allowRemoteImages: showImages }),
-    [clean.html, showImages],
+    () => buildSrcDoc(clean.html, { allowRemoteImages: showImages && message === undefined }),
+    [clean.html, showImages, message],
   );
 
   useEffect(() => {

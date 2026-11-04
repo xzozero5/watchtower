@@ -65,6 +65,34 @@ describe('sanitizeEmailHtml', () => {
     ).toBe('');
   });
 
+  it('shows a remote image through a URL the caller gives, numbering them the way the api does (T-175)', () => {
+    const html =
+      '<p><img data-remote-src="https://a.example/1.png"></p><img src="cid:x@y">' +
+      '<img data-remote-src="javascript:alert(1)"><img data-remote-src="https://b.example/2.png">';
+    const asked: number[] = [];
+    const shown = sanitizeEmailHtml(html, {
+      allowRemoteImages: true,
+      resolveRemote: (index) => {
+        asked.push(index);
+        return index === 0 ? 'blob:null/one' : null;
+      },
+    });
+    expect(shown.remoteImageCount).toBe(3); // the unsafe one still takes its place in the count
+    expect(asked).toEqual([0, 2]); // the api's position of b.example is 2, not 1
+    expect(shown.html).toContain('src="blob:null/one"');
+    expect(shown.html).not.toMatch(/a.example|b.example|data-remote-src/);
+    expect(shown.html).toContain('data-blocked="1"'); // not loaded yet: a placeholder
+    // Nothing is asked for before the reader allows images, and an address in src has no position.
+    const held = sanitizeEmailHtml(html, { resolveRemote: () => 'blob:null/never' });
+    expect(held.html).not.toContain('blob:null/never');
+    const legacy = sanitizeEmailHtml('<img src="https://t.example/p.png">', {
+      allowRemoteImages: true,
+      resolveRemote: () => 'blob:null/never',
+    });
+    expect(legacy.html).not.toContain('t.example');
+    expect(legacy.html).not.toContain('blob:null/never');
+  });
+
   it('resolves cid images through the caller and refuses other schemes', () => {
     const out = sanitizeEmailHtml(
       '<img src="cid:a@x"><img src="javascript:alert(1)"><img src="/relative.png"><img src="data:image/svg+xml;base64,AAAA">',
