@@ -24,6 +24,8 @@ export const PROCEDURE_AUDIT_ACTIONS = {
   procedurePublished: 'procedure.published',
   /** A version was retired (live one: the intent returns to the default runbook) or a draft thrown away. */
   procedureRetired: 'procedure.retired',
+  /** A person pressed an escalation card (T-303f). Metadata: via=procedure, proposal id, step id, version id, target kind. */
+  procedureEscalationApplied: 'procedure.escalation_applied',
 } as const satisfies Record<string, string>;
 
 /** `ticket_event.type` strings written by this feature (T-303c adds the escalation and require-human events). */
@@ -32,6 +34,8 @@ export const PROCEDURE_TICKET_EVENTS = {
   procedureEscalationProposed: 'procedure.escalation_proposed',
   /** A procedure step `require_human` matched: nothing of this ticket goes out by itself (T-304 reads it, ADR-025 condition 11). Payload: step id, reason, version id. */
   procedureRequireHuman: 'procedure.require_human',
+  /** A person pressed the card of an escalation proposal (T-303f). Payload: proposal id (the event id of the proposal), step id, version id, what was done. */
+  procedureEscalationApplied: 'procedure.escalation_applied',
 } as const satisfies Record<string, string>;
 
 /** BullMQ queue names owned by this feature. */

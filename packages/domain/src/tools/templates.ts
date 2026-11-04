@@ -79,12 +79,14 @@ export async function templatesForTicket(
 /**
  * The template the AI runs for an intent and a kind: the first active one marked `run_by_ai`, by name.
  * A generic template is never run by the AI, because its scope would not come from an intent
- * (SR106-R8). Null when the intent has none.
+ * (SR106-R8). Null when the intent has none. With `name` (a procedure step names its template, T-303f) only the one of
+ * that name, under the same rules: another intent's template, an inactive one or one not marked `run_by_ai` is null.
  */
 export async function templateForAi(
   db: Reader,
   intentKey: string,
   kind: ToolKind,
+  name?: string,
 ): Promise<ToolTemplateRecord | null> {
   const [row] = await select(
     db,
@@ -93,6 +95,7 @@ export async function templateForAi(
       eq(schema.toolTemplate.kind, kind),
       eq(schema.toolTemplate.active, true),
       eq(schema.toolTemplate.runByAi, true),
+      ...(name === undefined ? [] : [eq(schema.toolTemplate.name, name)]),
       // Only a template about the ticket's organization (also a CHECK of the table).
       sql`position('{{org_id}}' in ${schema.toolTemplate.body}) > 0`,
     ),

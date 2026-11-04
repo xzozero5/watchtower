@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { AiRequest, RejectAiDraft, TicketAiInsight } from '@watchtower/shared';
 
 import { useApi } from '@/lib/api/api-context';
+import { isApiError } from '@/lib/api/errors';
 import { useUserId } from '@/lib/auth/session';
 import { ticketKeys } from '@/lib/tickets/queries';
 
@@ -70,6 +71,40 @@ export function useAiDraftActions(ticketKey: string) {
       settle(draftId, 'classified');
     },
   };
+}
+
+/**
+ * The escalation cards of a ticket (T-303f, `GET /v1/tickets/:id/procedure-proposals`): asked only when the report
+ * of the brief says a procedure step proposed one (`enabled`). A failure means "no cards": the brief stays as it is.
+ */
+export function useProcedureProposals(ticketKey: string, enabled: boolean) {
+  const api = useApi();
+  const userId = useUserId();
+  return useQuery({
+    queryKey: [...aiKey(userId, ticketKey), 'procedure-proposals'] as const,
+    queryFn: ({ signal }) => api.procedureProposals(ticketKey, signal),
+    enabled,
+    retry: false,
+    staleTime: 15_000,
+  });
+}
+
+/**
+ * Presses one card. The ticket may have changed (queue, priority, a note, a notification), so the ticket, its
+ * timeline and the brief are read again; a 409 (expired) also refreshes the card list so it shows why.
+ */
+export function useApplyProcedureProposal(ticketKey: string) {
+  const api = useApi();
+  const userId = useUserId();
+  const queryClient = useQueryClient();
+  const refresh = () => queryClient.invalidateQueries({ queryKey: ticketKeys(userId).all });
+  return useMutation({
+    mutationFn: (proposalId: string) => api.applyProcedureProposal(ticketKey, proposalId),
+    onSuccess: refresh,
+    onError: (failure) => {
+      if (isApiError(failure) && failure.status === 409) void refresh();
+    },
+  });
 }
 
 /**

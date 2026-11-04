@@ -38,6 +38,7 @@ export const notificationsEn = {
   kind: {
     ticketP1: 'P1 ticket {key}',
     ticketAssigned: '{key} was assigned to you',
+    ticketEscalationRequested: '{key}: a procedure asks you to look at this ticket',
     shiftHandoffOverdue: '{count} handoff items were not acknowledged in time',
     shiftNoShow: 'Someone has not clocked in for their shift',
     alertFired: 'An alert needs you',
@@ -49,6 +50,7 @@ export const notificationsEn = {
   kindName: {
     ticketP1: 'P1 tickets',
     ticketAssigned: 'Tickets assigned to me',
+    ticketEscalationRequested: 'Tickets a procedure asks a lead or head to look at',
     shiftHandoffOverdue: 'Handoff items not acknowledged (leads)',
     shiftNoShow: 'Shift no-shows (leads)',
     alertFired: 'Alerts that need me (on shift)',

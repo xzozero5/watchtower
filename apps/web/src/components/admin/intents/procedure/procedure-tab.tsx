@@ -39,6 +39,7 @@ import { isApiError } from '@/lib/api/errors';
 import { useSession } from '@/lib/auth/session';
 import { formatDateTime } from '@/lib/format';
 
+import { SimulationSection } from './simulation-section';
 import { StepEditor, stepKindLabelKey } from './step-editor';
 
 const STATUS_KEYS: Record<ProcedureVersionStatus, MessageKey> = {
@@ -619,35 +620,7 @@ function VersionPanel({
         </section>
       ) : null}
 
-      <section aria-labelledby={`${base}-sim`} className="flex flex-col gap-1">
-        <h4 id={`${base}-sim`} className="text-base font-medium text-foreground-strong">
-          {t('procedure.simulation.title')}
-        </h4>
-        {version.simulation ? (
-          <div className="text-sm">
-            <p className={version.simulation.passed ? 'text-success' : 'font-medium text-danger'}>
-              {t(
-                version.simulation.passed
-                  ? 'procedure.simulation.passed'
-                  : 'procedure.simulation.failed',
-                {
-                  count: version.simulation.caseCount,
-                },
-              )}
-            </p>
-            <p className="text-xs text-muted-foreground">
-              {t('procedure.simulation.at', {
-                date: formatDateTime(version.simulation.createdAt, locale),
-              })}
-            </p>
-            {version.simulation.seedOnly ? (
-              <p className="text-xs text-muted-foreground">{t('procedure.simulation.seedOnly')}</p>
-            ) : null}
-          </div>
-        ) : (
-          <p className="text-sm text-muted-foreground">{t('procedure.simulation.none')}</p>
-        )}
-      </section>
+      <SimulationSection intentId={intentId} version={version} canRun={canPublish} />
 
       <div className="flex flex-col gap-2 border-t border-border pt-3">
         <div className="flex flex-wrap items-center gap-2">
@@ -678,12 +651,6 @@ function VersionPanel({
               {t('procedure.action.confirm')}
             </Button>
           ) : null}
-          {version.status === 'confirmed' && canAuthor ? (
-            // The simulation runner (T-303d) has no endpoint yet: say so instead of hiding the step.
-            <Button disabled aria-describedby={`${base}-sim-reason`}>
-              {t('procedure.action.simulate')}
-            </Button>
-          ) : null}
           {canGoLive && canPublish ? (
             <Button
               variant="primary"
@@ -711,11 +678,6 @@ function VersionPanel({
         </div>
         {editable && confirmBlocked ? (
           <p className="text-xs text-muted-foreground">{t(confirmBlocked)}</p>
-        ) : null}
-        {version.status === 'confirmed' ? (
-          <p id={`${base}-sim-reason`} className="text-xs text-muted-foreground">
-            {t('procedure.simulation.unavailable')}
-          </p>
         ) : null}
         {version.status !== 'draft' && version.status !== 'published' && !canPublish ? (
           <p className="text-xs text-muted-foreground">{t('procedure.action.needPublish')}</p>

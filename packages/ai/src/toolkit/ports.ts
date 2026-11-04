@@ -120,6 +120,8 @@ export interface LogsToolPort {
   run(input: {
     readonly windowMinutes: number;
     readonly limit: number;
+    /** A procedure step named this template of the scope intent (T-303f); absent: the first one the AI may run. */
+    readonly template?: string | undefined;
     /** The scope intent: the port finds its template. Null: there is none and the port answers with a note. */
     readonly intentKey: string | null;
     readonly ticketId: string | null;
@@ -132,6 +134,8 @@ export interface DataToolPort {
   readonly mock: boolean;
   run(input: {
     readonly limit: number;
+    /** See `LogsToolPort`. */
+    readonly template?: string | undefined;
     readonly intentKey: string | null;
     readonly ticketId: string | null;
     readonly signal?: AbortSignal | undefined;

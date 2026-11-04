@@ -48,6 +48,7 @@ export const NOTIFICATIONS_JOBS = {
 export const NOTIFICATION_KINDS = [
   'ticket.p1',
   'ticket.assigned',
+  'ticket.escalation_requested',
   'shift.handoff_overdue',
   'shift.no_show',
   'alert.fired',

@@ -248,13 +248,169 @@ describe('Procedure tab', () => {
     expect(within(diff).getByText('Changed: params')).toBeVisible();
   });
 
-  it('shows Simulate closed with the reason while the server cannot simulate yet', async () => {
-    const confirmed = version(1, { status: 'confirmed', confirmedBy: uuid(1), confirmedAt: AT });
-    open([confirmed]);
-    const button = await screen.findByRole('button', { name: 'Simulate' });
-    expect(button).toBeDisabled();
-    expect(screen.getByText(/Simulation is not available on this server yet/)).toBeVisible();
-    expect(screen.queryByRole('button', { name: 'Publish' })).toBeNull();
+  describe('simulation (T-303f)', () => {
+    const confirmed = () =>
+      version(1, { status: 'confirmed', confirmedBy: uuid(1), confirmedAt: AT });
+    const metrics = (over: Record<string, unknown> = {}) => ({
+      mode: 'instance',
+      caseCount: 12,
+      failedCases: 0,
+      seededCases: 0,
+      candidate: {
+        editDistance: 21.5,
+        uncitedClaims: 1,
+        drafted: 12,
+        violations: 0,
+        disclosureLeaks: 0,
+      },
+      baseline: { editDistance: 24, uncitedClaims: 2, drafted: 12 },
+      baselineVersionId: uuid(950),
+      deadSteps: [],
+      toolCalls: 30,
+      failReasons: [],
+      cases: [],
+      ...over,
+    });
+    const result = (v: ProcedureVersion, passed: boolean, over: Record<string, unknown> = {}) => ({
+      id: uuid(7),
+      versionId: v.id,
+      stepsHash: v.stepsHash,
+      passed,
+      seedOnly: false,
+      caseCount: 12,
+      metrics: metrics(),
+      ranBy: uuid(1),
+      createdAt: AT,
+      ...over,
+    });
+
+    it('queues a run, reads the result when it appears and shows the numbers; Publish stays closed until the versions refresh says simulated', async () => {
+      const user = userEvent.setup();
+      const v = confirmed();
+      let ran = false;
+      const api = open([v], {
+        overrides: {
+          [`POST ${BASE}/:versionId/simulate`]: () => {
+            ran = true;
+            return { status: 202, json: { versionId: v.id, queued: true } };
+          },
+          [`GET ${BASE}/:versionId/simulation`]: () => ({
+            json: { versionId: v.id, simulation: ran ? result(v, true) : null },
+          }),
+        },
+      });
+      expect(await screen.findByText('Not simulated yet.')).toBeVisible();
+      expect(screen.queryByRole('button', { name: 'Publish' })).toBeNull();
+      await user.click(screen.getByRole('button', { name: 'Run simulation' }));
+      await waitFor(() => {
+        expect(api.callsTo(`${BASE}/${v.id}/simulate`, 'POST')).toHaveLength(1);
+      });
+      expect(await screen.findByText('Passed on 12 tickets')).toBeVisible();
+      expect(screen.getByText('Tickets replayed')).toBeVisible();
+      expect(screen.getByText(/This version 21\.5 · Live now 24\.0/)).toBeVisible();
+    });
+
+    it('keeps asking while the worker runs, says it is running, and shows the result when it lands', async () => {
+      const user = userEvent.setup();
+      const v = confirmed();
+      let reads = 0;
+      let ran = false;
+      open([v], {
+        overrides: {
+          [`POST ${BASE}/:versionId/simulate`]: () => {
+            ran = true;
+            return { status: 202, json: { versionId: v.id, queued: true } };
+          },
+          [`GET ${BASE}/:versionId/simulation`]: () => {
+            if (ran) reads += 1;
+            return {
+              json: { versionId: v.id, simulation: ran && reads >= 2 ? result(v, false) : null },
+            };
+          },
+        },
+      });
+      await user.click(await screen.findByRole('button', { name: 'Run simulation' }));
+      expect((await screen.findAllByText(/Simulating on resolved tickets/)).length).toBeGreaterThan(
+        0,
+      );
+      expect(screen.getByRole('button', { name: 'Run simulation' })).toBeDisabled();
+      expect(
+        await screen.findByText('Did not pass on 12 tickets', {}, { timeout: 8000 }),
+      ).toBeVisible();
+      await waitFor(() => {
+        expect(screen.queryByText(/Simulating on resolved tickets/)).toBeNull();
+      });
+    }, 15000);
+
+    it('says why a simulation did not pass, in words', async () => {
+      const v = version(1, {
+        status: 'simulated',
+        simulation: { id: uuid(7), passed: false, seedOnly: true, caseCount: 0, createdAt: AT },
+      });
+      open([v], {
+        overrides: {
+          [`GET ${BASE}/:versionId/simulation`]: {
+            json: {
+              versionId: v.id,
+              simulation: result(v, false, {
+                seedOnly: true,
+                caseCount: 0,
+                metrics: metrics({
+                  caseCount: 0,
+                  failReasons: ['no_cases', 'disclosure_leak'],
+                  deadSteps: ['search_kb'],
+                  mode: 'fixture',
+                }),
+              }),
+            },
+          },
+        },
+      });
+      expect(await screen.findByText('Did not pass on 0 tickets')).toBeVisible();
+      expect(
+        await screen.findByText('There are no resolved tickets of this intent to replay yet.'),
+      ).toBeVisible();
+      expect(screen.getByText('A reply told what a disclosure step forbids.')).toBeVisible();
+      expect(
+        within(screen.getByRole('region', { name: 'Simulation' })).getByText('search_kb'),
+      ).toBeVisible();
+      expect(screen.getByText('Made-up test cases, not tickets of this instance.')).toBeVisible();
+      expect(
+        screen.getByText(
+          'Seeded tickets only: it does not count for an intent at Stage 3 or higher.',
+        ),
+      ).toBeVisible();
+      // Not passed: Publish exists but is closed, with the reason.
+      expect(screen.getByRole('button', { name: 'Publish' })).toBeDisabled();
+    });
+
+    it('explains a 503 (the AI cannot run) and a 409 instead of failing silently', async () => {
+      const user = userEvent.setup();
+      const v = confirmed();
+      let status = 503;
+      open([v], {
+        overrides: {
+          [`POST ${BASE}/:versionId/simulate`]: () =>
+            status === 503
+              ? apiError(503, 'ai_unavailable', 'x')
+              : apiError(409, 'conflict', 'A version in status draft cannot be simulated'),
+        },
+      });
+      await user.click(await screen.findByRole('button', { name: 'Run simulation' }));
+      expect(await screen.findByText(/The AI cannot run right now/)).toBeVisible();
+      status = 409;
+      await user.click(screen.getByRole('button', { name: 'Run simulation' }));
+      expect(await screen.findByText(/cannot be simulated in its current state/)).toBeVisible();
+    });
+
+    it('does not offer the run to someone who cannot publish', async () => {
+      open([confirmed()], { role: 'agent' });
+      expect(await screen.findByText('Not simulated yet.')).toBeVisible();
+      expect(screen.queryByRole('button', { name: 'Run simulation' })).toBeNull();
+      expect(
+        screen.getByText('Needs permission to publish procedures to run a simulation.'),
+      ).toBeVisible();
+    });
   });
 
   it('publishes a version whose simulation passed, after asking', async () => {

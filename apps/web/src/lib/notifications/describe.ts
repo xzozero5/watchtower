@@ -6,6 +6,7 @@ import type { MessageKey } from '@/i18n';
 export const KIND_KEY = {
   'ticket.p1': 'ticketP1',
   'ticket.assigned': 'ticketAssigned',
+  'ticket.escalation_requested': 'ticketEscalationRequested',
   'shift.handoff_overdue': 'shiftHandoffOverdue',
   'shift.no_show': 'shiftNoShow',
   'alert.fired': 'alertFired',

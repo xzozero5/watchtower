@@ -77,7 +77,7 @@ export function createLogsToolPort(
       if (input.intentKey === null || input.ticketId === null) {
         return { items: [], note: 'No intent in scope.' };
       }
-      const template = await templateForAi(db, input.intentKey, 'logs');
+      const template = await templateForAi(db, input.intentKey, 'logs', input.template);
       if (template === null) return { items: [], note: 'No log template for this intent.' };
       const params = await ticketParams(db, template.body, input.ticketId);
       if (params === null)
@@ -130,7 +130,7 @@ export function createDataToolPort(
           };
         }
       }
-      const template = await templateForAi(db, input.intentKey, 'data');
+      const template = await templateForAi(db, input.intentKey, 'data', input.template);
       if (template === null) {
         return { columns: [], items: [], note: 'No query template for this intent.' };
       }

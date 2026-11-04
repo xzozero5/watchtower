@@ -273,6 +273,7 @@ describe('preferences', () => {
     ).toEqual([
       ['ticket.p1', true, true],
       ['ticket.assigned', true, false],
+      ['ticket.escalation_requested', true, false],
       ['shift.handoff_overdue', true, false],
       ['shift.no_show', true, false],
       ['alert.fired', true, false],

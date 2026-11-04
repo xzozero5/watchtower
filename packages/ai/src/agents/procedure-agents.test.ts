@@ -97,6 +97,30 @@ describe('planRunbook with a procedure (ADR-026 section 1)', () => {
     expect(planned).toEqual([{ tool: 'bigquery_query', input: { limit: 20 }, stepId: 'data' }]);
   });
 
+  it('hands the template a step names to the logs and data tools, and to no other tool (T-303f)', () => {
+    const procedure = steps([
+      { kind: 'tool', id: 'logs', tool: 'gcp_logs', template: 'checkout-errors' },
+      { kind: 'tool', id: 'data', tool: 'bigquery_query', template: 'recent_orders' },
+      { kind: 'tool', id: 'kb', tool: 'kb_search', template: 'ignored-by-kb' },
+    ]);
+    const planned = planRunbook(context, GRANTED_ALL, procedure);
+    expect(planned.find((step) => step.stepId === 'logs')?.input).toEqual({
+      windowMinutes: 60,
+      limit: 10,
+      template: 'checkout-errors',
+    });
+    expect(planned.find((step) => step.stepId === 'data')?.input).toEqual({
+      limit: 20,
+      template: 'recent_orders',
+    });
+    expect(planned.find((step) => step.stepId === 'kb')?.input).not.toHaveProperty('template');
+    // No template named: the input is what it was, so the port takes the first one the AI may run.
+    expect(
+      planRunbook(context, GRANTED_ALL, steps([{ kind: 'tool', id: 'logs', tool: 'gcp_logs' }]))[0]
+        ?.input,
+    ).toEqual({ windowMinutes: 60, limit: 10 });
+  });
+
   it('leaves out a step whose stage or condition does not hold, and a second step for one tool', () => {
     const procedure = steps([
       { kind: 'tool', id: 'kb', tool: 'kb_search' },

@@ -25,6 +25,7 @@ export * from './logging.js';
 export * from './portal.js';
 export * from './procedure.js';
 export * from './procedure-simulation.js';
+export * from './procedure-proposals.js';
 export * from './queues.js';
 export * from './rbac.js';
 export * from './seed-data.js';

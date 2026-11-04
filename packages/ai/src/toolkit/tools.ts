@@ -75,9 +75,16 @@ export const orgContextOutput = z.object({
  * intent, and the model (or the ticket) names only a window and a size. Customer text never becomes
  * part of a query (T-203d).
  */
+/** The name of one saved template of the scope intent, from a procedure step (T-303f). Never a query: the port runs it only if it is the intent's own, active and `run_by_ai`. */
+const templateNameInput = z
+  .string()
+  .regex(/^[a-z][a-z0-9_-]{1,60}$/)
+  .optional();
+
 export const gcpLogsInput = z.strictObject({
   windowMinutes: z.number().int().min(1).max(1440).default(60),
   limit: z.number().int().min(1).max(50).default(20),
+  template: templateNameInput,
 });
 export const gcpLogsOutput = z.object({
   /** True when the lines come from a fake or a sandbox. */
@@ -89,6 +96,7 @@ export const gcpLogsOutput = z.object({
 /** The data template of the scope intent is the query (ad-hoc SQL is for a person, R-5.2). */
 export const bigqueryInput = z.strictObject({
   limit: z.number().int().min(1).max(100).default(20),
+  template: templateNameInput,
 });
 export const bigqueryOutput = z.object({
   mock: z.boolean(),
@@ -181,6 +189,7 @@ export function createGcpLogsTool(port: LogsToolPort) {
       const result = await port.run({
         windowMinutes: input.windowMinutes,
         limit: input.limit,
+        ...(input.template === undefined ? {} : { template: input.template }),
         intentKey: context.intent,
         ticketId: context.ticketId ?? null,
         signal: context.abortSignal,
@@ -207,6 +216,7 @@ export function createBigQueryTool(port: DataToolPort) {
     async execute(input, context) {
       const result = await port.run({
         limit: input.limit,
+        ...(input.template === undefined ? {} : { template: input.template }),
         intentKey: context.intent,
         ticketId: context.ticketId ?? null,
         signal: context.abortSignal,
