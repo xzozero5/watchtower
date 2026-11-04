@@ -23,6 +23,7 @@ export * from './features/index.js';
 export * from './config.js';
 export * from './logging.js';
 export * from './portal.js';
+export * from './procedure.js';
 export * from './queues.js';
 export * from './rbac.js';
 export * from './seed-data.js';

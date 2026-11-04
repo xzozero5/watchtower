@@ -34,7 +34,14 @@ describe('the dev role (T-137)', () => {
 
   it('reads masked, does the developer work and investigates; nothing else', () => {
     expect([...dev].toSorted()).toEqual(
-      ['auth.session.self', 'investigate.run', 'ticket.dev.work', 'ticket.read.masked'].toSorted(),
+      [
+        'auth.session.self',
+        'investigate.run',
+        // T-303b: a developer reads the procedure of an intent (ADR-026).
+        'procedure.read',
+        'ticket.dev.work',
+        'ticket.read.masked',
+      ].toSorted(),
     );
     for (const refused of [
       'ticket.read',

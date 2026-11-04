@@ -30,6 +30,8 @@ const EXPECTED_FEATURES = [
   'usage',
   'dashboard',
   'uploads',
+  // T-303b: procedures per intent.
+  'procedure',
 ];
 
 describe('feature records', () => {
