@@ -78,7 +78,7 @@
 - [x] T-144 `backend-dev` + `frontend-dev` timeline แสดง from→to, ลำดับเวลา, ไอคอน note, link incident (QA-18) — **ปิด 2026-11-04**
 - [ ] T-145 `frontend-dev` status page draft ไม่มี component / post ผูก incident (QA-15) · Invite state "Invited" + copy ตามวิธีล็อกอินจริง (QA-16) · ฟอร์มเปิด ticket เอง: priority, org ใหม่ (QA-25)
 - [ ] T-146 `ux-designer` + `frontend-dev` glossary ภาษาไทยใน UI-SPEC §16 + lint th/*.ts (QA-19b) · shift/handoff polish (QA-26) · audit log "ซ่อน read" + target อ่านได้ (QA-27) · polish รวม (QA-28) · อัปเดต UI-SPEC §3.1 ให้ตรงกับ T-124
-- [ ] T-147 `ai-engineer` ไม่เสนอ Reply บน channel ที่ส่งออกไม่ได้ + เสนอ priority (QA-29)
+- [x] T-147 `ai-engineer` ไม่เสนอ Reply บน channel ที่ส่งออกไม่ได้ + เสนอ priority (QA-29) — **ปิด 2026-11-04** (priority เสนอที่ investigator; classifier ยังไม่)
 - [x] T-148 อีเมลตอบรับใหม่ (หมวด/ความเร่งด่วนที่ลูกค้าเลือก, 3 ขั้นตอน, เวลาตอบเมื่อรู้, ปุ่ม + URL; ไม่ echo subject ตาม ADR-007 C-11) + อีเมลยืนยันเมื่อลูกค้าตอบ — merge 2026-11-03
 - [ ] T-149 `architect` + `backend-dev` ADR-005 grace window ของ refresh rotation ก่อนแก้โค้ด (QA-31) · เพิ่มเข้า T-125: audit OAuth callback ไม่มี session, ปิด /docs ใน production, CSP (QA-32, QA-33)
 - [x] T-150 `POST /v1/admin/integrations/gmail/sync` (head, audit, 1 ครั้ง/นาที/กล่อง) + ปุ่ม "Sync now" ใน Integrations — merge 2026-11-03
