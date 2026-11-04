@@ -40,6 +40,8 @@ export const aiDraft = pgTable(
     aiRunId: uuid('ai_run_id'),
     approvedBy: uuid('approved_by'),
     approvedAt: timestamptz('approved_at'),
+    /** Set with status `auto_approved` (stage 3, migration 0096); `approvedBy` stays null. */
+    autoApprovedAt: timestamptz('auto_approved_at'),
     createdAt: timestamptz('created_at').notNull().defaultNow(),
     // T-108 (migration 0034): what the drafter wrote and what a person did with it.
     language: text('language'),
@@ -93,6 +95,8 @@ export const outboundDelivery = pgTable(
     /** Inputs the acknowledgment was rendered from; the dispatcher renders again and compares (review O-4). */
     renderInputs: jsonb('render_inputs'),
     aiDraftId: uuid('ai_draft_id').references(() => aiDraft.id, { onDelete: 'restrict' }),
+    /** The pre-send grade that cleared an `ai_auto` send (migration 0096); null for every other origin. FK in SQL. */
+    aiGradeId: uuid('ai_grade_id'),
     contentHash: text('content_hash').notNull(),
     approvedBy: uuid('approved_by'),
     state: text('state').notNull().default('scheduled'),

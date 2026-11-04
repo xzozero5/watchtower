@@ -413,6 +413,32 @@ describe('answering (R-10.2, R-10.5, R-1.10)', () => {
     expect(await eventTypes(env, made.ticketId)).toContain('ticket.csat_received');
   });
 
+  it('asks the grader to look again after an answer (T-301e), but not when the answer reopens the ticket', async () => {
+    const gradeJobs = async (ticketId: string) =>
+      (
+        await env.db.owner.db
+          .select()
+          .from(schema.outbox)
+          .where(and(eq(schema.outbox.queue, 'ai'), eq(schema.outbox.jobName, 'grade')))
+      ).filter((row) => (row.payload as { ticketId?: string }).ticketId === ticketId);
+
+    const good = await sentSurvey();
+    await answer(good.id, good.answerAt, { score: 5, resolved: true });
+    const jobs = await gradeJobs(good.made.ticketId);
+    const csatJob = jobs.find((row) => row.jobId.endsWith('-csat'));
+    expect(csatJob?.payload).toMatchObject({
+      ticketId: good.made.ticketId,
+      reopenCount: 0,
+      afterCsat: true,
+    });
+
+    const bad = await sentSurvey();
+    await answer(bad.id, bad.answerAt, { score: 1 });
+    expect((await gradeJobs(bad.made.ticketId)).some((row) => row.jobId.endsWith('-csat'))).toBe(
+      false,
+    );
+  });
+
   it('audits the answer with the score but never the comment (N4)', async () => {
     const { id, answerAt } = await sentSurvey();
     await answer(id, answerAt, { score: 5, comment: 'My phone number is 0812345678' });

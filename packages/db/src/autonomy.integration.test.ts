@@ -103,9 +103,13 @@ describe('intent autonomy ceiling (Phase 1)', () => {
     await app.query(`UPDATE intent SET name = 'Renamed', updated_at = now() WHERE id = $1`, [id]);
   });
 
-  it('refuses the function for stage 3 (CHECK) and an empty reason', async () => {
+  it('refuses the function for stage 3 (WT003) and an empty or too short reason', async () => {
     const id = await newIntent('fn_bounds');
-    await expect(setAutonomy(id, 3, null)).rejects.toMatchObject({ code: CHECK_VIOLATION });
+    await expect(setAutonomy(id, 3, null)).rejects.toMatchObject({ code: 'WT003' });
+    await expect(setAutonomy(id, 1, null, 'ab')).rejects.toMatchObject({ code: CHECK_VIOLATION });
+    await expect(setAutonomy(id, 1, null, 'x'.repeat(501))).rejects.toMatchObject({
+      code: CHECK_VIOLATION,
+    });
     await expect(setAutonomy(id, 1, null, '   ')).rejects.toMatchObject({
       code: CHECK_VIOLATION,
     });
@@ -230,9 +234,9 @@ describe('set_intent_autonomy() and the history', () => {
     await expect(owner().query('TRUNCATE intent_autonomy_history')).rejects.toMatchObject({
       code: RESTRICT_VIOLATION,
     });
-    // An intent with history cannot be deleted away from its log.
+    // An intent is never deleted by the application (A-9, soft-delete); the log stays with it.
     await expect(app.query('DELETE FROM intent WHERE id = $1', [id])).rejects.toMatchObject({
-      code: '23503',
+      code: INSUFFICIENT_PRIVILEGE,
     });
   });
 
@@ -421,13 +425,20 @@ describe('SECURITY DEFINER functions cannot be fooled with TEMP objects (securit
         WHERE n.nspname = 'public' AND p.prosecdef ORDER BY p.proname`,
     );
     expect(rows.rows.map((row) => row.proname)).toEqual([
+      'apply_stage_promotion',
+      'decide_stage_promotion',
       'ensure_monthly_partitions',
       // 0097 (T-303b)
       'procedure_simulation_apply',
       'publish_procedure_version',
       'retire_procedure_version',
+      'request_stage_promotion',
+      'rollback_intent_autonomy',
       'set_ai_switch',
       'set_intent_autonomy',
+      'set_intent_autosend',
+      'user_holds_permission',
+      'user_is_owner_approver',
     ]);
     for (const row of rows.rows) {
       expect(row.proconfig, row.proname).toEqual(['search_path=pg_catalog, pg_temp']);

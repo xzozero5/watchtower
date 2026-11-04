@@ -127,6 +127,11 @@ export const POLICY_VIOLATION_CODES = [
 export const aiGradeJobSchema = z.object({
   ticketId: z.uuid(),
   reopenCount: z.number().int().min(0).default(0),
+  /**
+   * Set by the CSAT answer (T-301e): grade again a resolution that was graded before the answer came.
+   * The job re-grades once (only a grade made without a CSAT answer) and otherwise does nothing.
+   */
+  afterCsat: z.boolean().default(false),
 });
 export type AiGradeJob = z.infer<typeof aiGradeJobSchema>;
 

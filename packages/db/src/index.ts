@@ -75,6 +75,18 @@ export {
   type SeedResult,
 } from './seed/index.js';
 export {
+  castOrganizationNames,
+  markSeed,
+  type MarkSeedKindReport,
+  type MarkSeedOptions,
+  type MarkSeedReport,
+} from './seed/mark.js';
+export {
+  OWNER_APPROVAL_PERMISSION,
+  setOwnerApproval,
+  type OwnerApprovalChange,
+} from './owner-approval.js';
+export {
   DEFAULT_INTENT_EXAMPLES_DIR,
   IntentSeedError,
   loadIntentDefinitions,

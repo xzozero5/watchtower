@@ -47,6 +47,9 @@ const ADDED_LATER = [
   'procedure.read',
   'procedure.author',
   'procedure.publish',
+  // 0096 (T-304b)
+  'ai.autonomy.promote',
+  'ai.autonomy.owner_approve',
 ] as const;
 
 let testDb: TestDatabase;

@@ -1,6 +1,12 @@
 import { buildGradeFacts, gradeResolution, type TicketTurn } from '@watchtower/ai';
 import { schema, type Database } from '@watchtower/db';
-import { TicketKeys, hasResolutionGrade, recordResolutionGrade } from '@watchtower/domain';
+import {
+  TicketKeys,
+  type NewResolutionGrade,
+  readResolutionGradeCsat,
+  recordResolutionGrade,
+  regradeResolution,
+} from '@watchtower/domain';
 import { detectLanguage, type AiInsightReason } from '@watchtower/shared';
 import { and, asc, desc, eq, sql } from 'drizzle-orm';
 
@@ -19,7 +25,8 @@ export interface GradeDeps {
 
 export interface GradeResult {
   readonly status: 'graded' | 'skipped' | 'failed' | 'missing';
-  readonly reason?: AiInsightReason | 'not_resolved' | 'reopened' | 'already_graded';
+  readonly reason?:
+    AiInsightReason | 'not_resolved' | 'reopened' | 'already_graded' | 'no_csat_answer';
 }
 
 class GradeFailedError extends Error {
@@ -43,7 +50,12 @@ class GradeFailedError extends Error {
  */
 export async function runGrader(
   deps: GradeDeps,
-  job: { readonly ticketId: string; readonly reopenCount: number },
+  job: {
+    readonly ticketId: string;
+    readonly reopenCount: number;
+    /** T-301e: the CSAT answer came; grade again a resolution that was graded without it. */
+    readonly afterCsat?: boolean | undefined;
+  },
 ): Promise<GradeResult> {
   const db = deps.database.db;
   const [ticket] = await db
@@ -65,7 +77,11 @@ export async function runGrader(
     return { status: 'skipped', reason: 'not_resolved' };
   }
   if (ticket.reopenCount !== job.reopenCount) return { status: 'skipped', reason: 'reopened' };
-  if (await hasResolutionGrade(db, ticket.id, job.reopenCount)) {
+  // One row per resolution. A job finds its row and stops, except the one the CSAT answer sends: it
+  // replaces a grade made without an answer, once (version 2), and does nothing otherwise. When the
+  // resolution was not graded yet it grades normally, and the grade sees the answer.
+  const existing = await readResolutionGradeCsat(db, ticket.id, job.reopenCount);
+  if (existing !== undefined && (job.afterCsat !== true || existing.csatScore !== null)) {
     return { status: 'skipped', reason: 'already_graded' };
   }
   const runtime = deps.ai;
@@ -142,6 +158,9 @@ export async function runGrader(
     survey === undefined
       ? null
       : { score: survey.score, resolved: survey.resolved, comment: survey.comment };
+  // A re-grade needs the answer it was sent for; without it nothing would change and the model call is wasted.
+  if (existing !== undefined && csat === null)
+    return { status: 'skipped', reason: 'no_csat_answer' };
   const kbCited = drafts.some((draft) => draft.disposition !== 'rejected' && draft.cited);
   const key = new TicketKeys(deps.ticketKeyPrefix).format(ticket.number);
   const built = buildGradeFacts({
@@ -173,7 +192,7 @@ export async function runGrader(
   if (outcome.status === 'failed') throw new GradeFailedError(outcome.reason);
 
   const grade = outcome.value;
-  await recordResolutionGrade(db, {
+  const verdict: NewResolutionGrade = {
     ticketId: ticket.id,
     cycle: job.reopenCount,
     intentKey: intent?.key ?? null,
@@ -193,6 +212,12 @@ export async function runGrader(
     aiRunId: outcome.runId,
     promptVersion: grade.promptVersion,
     mock: grade.mock,
-  });
+  };
+  if (existing !== undefined) {
+    // T-301e: the one re-grade. Another job that got here first leaves nothing to replace.
+    await regradeResolution(db, verdict);
+  } else {
+    await recordResolutionGrade(db, verdict);
+  }
   return { status: 'graded' };
 }

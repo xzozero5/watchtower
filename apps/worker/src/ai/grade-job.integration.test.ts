@@ -276,6 +276,64 @@ describe('runGrader', () => {
     expect(rows.map((r) => r.cycle).toSorted()).toEqual([0, 1]);
   });
 
+  it('re-grades once when the CSAT answer arrives after the grade (T-301e)', async () => {
+    const made = await resolvedTicket({ subject: 'Late answer' });
+    expect(await runGrader(deps(), { ticketId: made.ticketId, reopenCount: 0 })).toEqual({
+      status: 'graded',
+    });
+    const first = await owner()
+      .select()
+      .from(schema.aiResolutionGrade)
+      .where(eq(schema.aiResolutionGrade.ticketId, made.ticketId));
+    expect(first).toHaveLength(1);
+    expect(first[0]).toMatchObject({ csatScore: null, version: 1, regradedAt: null });
+
+    // The answer job before any answer exists does nothing and costs no model call.
+    const calls = requests.length;
+    expect(
+      await runGrader(deps(), { ticketId: made.ticketId, reopenCount: 0, afterCsat: true }),
+    ).toEqual({ status: 'skipped', reason: 'no_csat_answer' });
+    expect(requests).toHaveLength(calls);
+    // A plain job still stops at the grade it finds.
+    expect(await runGrader(deps(), { ticketId: made.ticketId, reopenCount: 0 })).toEqual({
+      status: 'skipped',
+      reason: 'already_graded',
+    });
+
+    await owner()
+      .insert(schema.csatSurvey)
+      .values({
+        ticketId: made.ticketId,
+        contactId,
+        orgId,
+        status: 'answered',
+        sendAfter: new Date(),
+        sentAt: new Date(),
+        tokenExpiresAt: new Date(Date.now() + 86_400_000),
+        answeredAt: new Date(),
+        score: 5,
+        resolved: true,
+      });
+    expect(
+      await runGrader(deps(), { ticketId: made.ticketId, reopenCount: 0, afterCsat: true }),
+    ).toEqual({ status: 'graded' });
+    const rows = await owner()
+      .select()
+      .from(schema.aiResolutionGrade)
+      .where(eq(schema.aiResolutionGrade.ticketId, made.ticketId));
+    // Still one row for the resolution (metrics count it once), now version 2 with the answer in it.
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ csatScore: 5, csatResolved: true, version: 2 });
+    expect(rows[0]?.regradedAt).toBeInstanceOf(Date);
+    expect(rows[0]?.resolutionClass).toBe('verified');
+    // The job sent twice (a retry, a double answer) changes nothing and costs nothing.
+    const after = requests.length;
+    expect(
+      await runGrader(deps(), { ticketId: made.ticketId, reopenCount: 0, afterCsat: true }),
+    ).toEqual({ status: 'skipped', reason: 'already_graded' });
+    expect(requests).toHaveLength(after);
+  });
+
   it('waits when the AI host is offline and writes nothing', async () => {
     const made = await resolvedTicket({ subject: 'Offline' });
     offline = true;

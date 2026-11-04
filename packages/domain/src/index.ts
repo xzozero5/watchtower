@@ -14,6 +14,13 @@ import { sweepEscalations } from './alerts/escalation.js';
 import { recordHeartbeat, sweepHeartbeats } from './alerts/heartbeat.js';
 import { ingestAlert } from './alerts/ingest.js';
 import { endExpiredSnoozes, snoozeAlert, unsnoozeAlert } from './alerts/snooze.js';
+import {
+  applyStagePromotion,
+  decideStagePromotion,
+  requestStagePromotion,
+  rollbackIntentAutonomy,
+  setIntentAutosend,
+} from './autonomy/promotion.js';
 import { readAutonomyState, setAiSwitch, setIntentAutonomy } from './autonomy/state.js';
 import { findOrCreateContactByEmail } from './contacts.js';
 import {
@@ -284,7 +291,9 @@ export { GOLDEN_EXAMPLES_MAX, goldenExamplesFor, type GoldenExample } from './ai
 export {
   hasResolutionGrade,
   intentGradeMetrics,
+  readResolutionGradeCsat,
   recordResolutionGrade,
+  regradeResolution,
   type NewResolutionGrade,
 } from './ai/grades.js';
 export {
@@ -580,6 +589,22 @@ export {
 } from './procedures/versions.js';
 export { validateProcedureSteps, type ProcedureValidationContext } from './procedures/validate.js';
 export {
+  PROMOTION_BLOCKERS,
+  PROMOTION_SQLSTATE,
+  applyStagePromotion,
+  blockerFrom,
+  decideStagePromotion,
+  requestStagePromotion,
+  rollbackIntentAutonomy,
+  setIntentAutosend,
+  type DecideStagePromotionInput,
+  type DecideStagePromotionResult,
+  type PromotionBlocker,
+  type RequestStagePromotionInput,
+  type RollbackIntentInput,
+  type SetIntentAutosendInput,
+} from './autonomy/promotion.js';
+export {
   readAutonomyState,
   readSwitches,
   setAiSwitch,
@@ -737,6 +762,12 @@ export interface Domain {
     readonly read: typeof readAutonomyState;
     readonly setSwitch: typeof setAiSwitch;
     readonly setIntentStage: typeof setIntentAutonomy;
+    /** Stage 3 (ADR-025): ask, decide, apply, roll back, and the auto-send rules of an intent. */
+    readonly requestPromotion: typeof requestStagePromotion;
+    readonly decidePromotion: typeof decideStagePromotion;
+    readonly applyPromotion: typeof applyStagePromotion;
+    readonly rollbackIntent: typeof rollbackIntentAutonomy;
+    readonly setAutosend: typeof setIntentAutosend;
   };
   /** Procedures per intent (T-303b, ADR-026): drafts, the compiler's steps, confirm, publish, retire. */
   readonly procedures: {
@@ -941,6 +972,11 @@ export function createDomain(options: DomainOptions): Domain {
       read: readAutonomyState,
       setSwitch: setAiSwitch,
       setIntentStage: setIntentAutonomy,
+      requestPromotion: requestStagePromotion,
+      decidePromotion: decideStagePromotion,
+      applyPromotion: applyStagePromotion,
+      rollbackIntent: rollbackIntentAutonomy,
+      setAutosend: setIntentAutosend,
     },
     procedures: {
       readVersions: readProcedureVersions,

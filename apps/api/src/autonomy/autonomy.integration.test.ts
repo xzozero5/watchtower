@@ -323,7 +323,7 @@ describe('the database underneath', () => {
         lead.userId,
         'forced',
       ]),
-    ).rejects.toMatchObject({ code: '23514' });
+    ).rejects.toMatchObject({ code: 'WT003' });
   });
 
   it('keeps the history append-only for the application role', async () => {

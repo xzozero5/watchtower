@@ -1,5 +1,7 @@
 import { schema, type Database } from '@watchtower/db';
 import {
+  AI_JOBS,
+  AI_OUTBOX_JOB_OPTIONS,
   AUDIT_ACTIONS,
   CSAT_CONTACT_COOLDOWN_DAYS,
   CSAT_COOLDOWN_MAX_DAYS,
@@ -743,6 +745,17 @@ export async function answerSurvey(
       .update(schema.csatSurvey)
       .set({ reopened: true })
       .where(eq(schema.csatSurvey.id, survey.id));
+  } else if (locked.status === 'resolved' || locked.status === 'closed') {
+    // T-301e: the grader may have judged this resolution before the answer came. Ask it to look again, once:
+    // the job re-grades only a grade made without a CSAT answer, and does nothing when it was never graded
+    // (then the first grade sees the answer). A reopen starts a new resolution, which is graded on its own.
+    await enqueueJob(tx, ctx.config, {
+      queue: QUEUE_NAMES.ai,
+      name: AI_JOBS.grade,
+      jobId: `ai-grade-${locked.id}-${String(locked.reopenCount)}-csat`,
+      payload: { ticketId: locked.id, reopenCount: locked.reopenCount, afterCsat: true },
+      options: AI_OUTBOX_JOB_OPTIONS,
+    });
   }
   await recordAuditInTx(tx, actx, fx, {
     action: AUDIT_ACTIONS.csatResponse,

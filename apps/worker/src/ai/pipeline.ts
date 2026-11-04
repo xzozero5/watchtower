@@ -175,7 +175,11 @@ export function createAiPipelineProcessor(context: ProcessorContext): Processor 
         if (!parsed.success) throw new UnrecoverableError('ai job payload is invalid');
         const result = await runGrader(
           { database, ai, logger, ticketKeyPrefix: config.TICKET_KEY_PREFIX },
-          { ticketId: parsed.data.ticketId, reopenCount: parsed.data.reopenCount },
+          {
+            ticketId: parsed.data.ticketId,
+            reopenCount: parsed.data.reopenCount,
+            afterCsat: parsed.data.afterCsat,
+          },
         );
         logger.info({ ticketId: parsed.data.ticketId, ...result }, 'ai grade');
         // Offline (ADR-019): wait for the AI host without using an attempt, as the brief does.

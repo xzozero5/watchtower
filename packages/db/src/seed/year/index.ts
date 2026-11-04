@@ -302,8 +302,29 @@ export async function seedYear(
   const written: Record<string, number> = {};
   await database.db.transaction(async (tx) => {
     await ensurePastPartitions(tx, start, options.now);
+    // Organizations and tickets of the scenario are marked (migration 0096, ADR-025 section 10): the
+    // promotion reports count only rows with no batch.
+    // Only the schema owner may write a batch; with the application role the rows load unmarked and
+    // `pnpm db:mark-seed` (as the owner) marks them afterwards.
+    const privilege = await tx.execute<{ ok: boolean }>(
+      sql`SELECT has_table_privilege(current_user, 'public.seed_batch', 'INSERT') AS ok`,
+    );
+    let batchId: string | null = null;
+    if (privilege.rows[0]?.ok === true) {
+      const batch = await tx.execute<{ id: string }>(
+        sql`INSERT INTO seed_batch (kind, note) VALUES ('year', 'one-year scenario') RETURNING id`,
+      );
+      batchId = batch.rows[0]?.id ?? null;
+      if (batchId === null) throw new SeedError('seed batch was not created');
+    } else {
+      log('seed rows are not marked as seed data: this connection is not the schema owner');
+    }
     for (const table of INSERT_ORDER) {
-      const rows = plan.tables.get(table) ?? [];
+      const planned = plan.tables.get(table) ?? [];
+      const rows =
+        batchId !== null && (table === 'organization' || table === 'ticket')
+          ? planned.map((row) => ({ ...row, seed_batch_id: batchId }))
+          : planned;
       written[table] = await bulkInsert(tx, table, rows);
       if (table === 'contact') {
         // organization.primary_contact_id points at a contact, which needs the organization first.

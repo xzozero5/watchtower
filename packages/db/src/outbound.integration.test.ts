@@ -194,9 +194,9 @@ describe('0010 outbound_delivery', () => {
     expect(rows[0]?.content_hash).not.toBe('f'.repeat(64));
   });
 
-  it('has no ai_auto origin: the database refuses what Phase 1 must never send', async () => {
+  it('refuses ai_auto without an auto-approved draft and a grade (stage 3 rules: stage3-autosend.integration.test.ts)', async () => {
     const f = await fixture();
-    await rejects(insertDelivery(app, f, { origin: 'ai_auto' }), PG.checkViolation);
+    await rejects(insertDelivery(app, f, { origin: 'ai_auto' }), INTEGRITY);
   });
 
   it('starts a delivery scheduled and empty', async () => {

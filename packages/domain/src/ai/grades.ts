@@ -68,6 +68,69 @@ export async function recordResolutionGrade(
   return { inserted: written.length > 0 };
 }
 
+/**
+ * T-301e: replaces the verdict of a resolution that was graded before the customer's CSAT answer came,
+ * once. The row stays one row per resolution (metrics count it once); `version` goes to 2 and
+ * `regraded_at` says when. Only a grade stored without a CSAT score is replaced, and only by a verdict
+ * that has one, so a second job (or a retry) changes nothing. The first verdict stays in its `ai_run` row.
+ * Returns whether this call replaced it.
+ */
+export async function regradeResolution(
+  db: Pick<Database['db'], 'update'>,
+  input: NewResolutionGrade,
+): Promise<{ readonly replaced: boolean }> {
+  if (input.csatScore === null) return { replaced: false };
+  const updated = await db
+    .update(schema.aiResolutionGrade)
+    .set({
+      intentKey: input.intentKey,
+      resolutionClass: input.resolutionClass,
+      modelClass: input.modelClass,
+      draftId: input.draftId,
+      draftVerdict: input.draftVerdict,
+      draftQuality: input.draftQuality,
+      policyViolations: [...input.policyViolations],
+      violationCount: input.policyViolations.length,
+      kbGap: input.kbGap,
+      reasoning: [...input.reasoning],
+      csatScore: input.csatScore,
+      csatResolved: input.csatResolved,
+      aiRunId: input.aiRunId,
+      promptVersion: input.promptVersion,
+      mock: input.mock,
+      version: sql`${schema.aiResolutionGrade.version} + 1`,
+      regradedAt: sql`clock_timestamp()`,
+    })
+    .where(
+      and(
+        eq(schema.aiResolutionGrade.ticketId, input.ticketId),
+        eq(schema.aiResolutionGrade.cycle, input.cycle),
+        sql`${schema.aiResolutionGrade.csatScore} IS NULL`,
+      ),
+    )
+    .returning({ id: schema.aiResolutionGrade.id });
+  return { replaced: updated.length > 0 };
+}
+
+/** The CSAT score stored on the grade of a resolution, or `undefined` when it was never graded. */
+export async function readResolutionGradeCsat(
+  db: Pick<Database['db'], 'select'>,
+  ticketId: string,
+  cycle: number,
+): Promise<{ readonly csatScore: number | null } | undefined> {
+  const [row] = await db
+    .select({ csatScore: schema.aiResolutionGrade.csatScore })
+    .from(schema.aiResolutionGrade)
+    .where(
+      and(
+        eq(schema.aiResolutionGrade.ticketId, ticketId),
+        eq(schema.aiResolutionGrade.cycle, cycle),
+      ),
+    )
+    .limit(1);
+  return row;
+}
+
 export async function hasResolutionGrade(
   db: Pick<Database['db'], 'select'>,
   ticketId: string,

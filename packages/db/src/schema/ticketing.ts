@@ -5,6 +5,7 @@ import {
   index,
   integer,
   jsonb,
+  numeric,
   pgTable,
   primaryKey,
   smallint,
@@ -137,6 +138,8 @@ export const organization = pgTable(
     }),
     notes: text('notes').notNull().default(''),
     status: text('status').notNull().default('active'),
+    /** Written only by the schema owner (the seed): a trigger refuses anyone else (migration 0096). FK in SQL. */
+    seedBatchId: uuid('seed_batch_id'),
     createdAt: timestamptz('created_at').notNull().defaultNow(),
     updatedAt: timestamptz('updated_at').notNull().defaultNow(),
   },
@@ -217,6 +220,16 @@ export const intent = pgTable(
     // only way is set_intent_autonomy() (migration 0007, ADR-011).
     autonomyStage: smallint('autonomy_stage').notNull().default(2),
     autonomyPinned: boolean('autonomy_pinned').notNull().default(false),
+    // Stage 3 settings (migration 0096, ADR-025). Loosening them on a stage 3 intent goes through
+    // set_intent_autosend(). `autosendMinScore` is numeric(4,3), so the driver returns a string.
+    autosendShadow: boolean('autosend_shadow').notNull().default(false),
+    autosendMinScore: numeric('autosend_min_score', { precision: 4, scale: 3 })
+      .notNull()
+      .default('0.850'),
+    autosendDailyCap: integer('autosend_daily_cap').notNull().default(20),
+    autosendPolicy: jsonb('autosend_policy')
+      .notNull()
+      .default(sql`'{}'::jsonb`),
     procedureVersionId: uuid('procedure_version_id'),
     replyTemplates: jsonb('reply_templates')
       .notNull()
@@ -287,6 +300,8 @@ export const ticket = pgTable(
     aiHandled: boolean('ai_handled').notNull().default(false),
     reopenCount: integer('reopen_count').notNull().default(0),
     csatScore: smallint('csat_score'),
+    /** Written only by the schema owner (the seed): a trigger refuses anyone else (migration 0096). FK in SQL. */
+    seedBatchId: uuid('seed_batch_id'),
     createdAt: timestamptz('created_at').notNull().defaultNow(),
     updatedAt: timestamptz('updated_at').notNull().defaultNow(),
   },
