@@ -8,7 +8,7 @@ import {
 import { createIngestProcessor } from './processor.js';
 import type { InboundClassifierFactory } from './classifier.js';
 import type { ProcessorContext } from '../processors/index.js';
-import type { gmail } from '@watchtower/channels';
+import { archiveLimitsFromConfig, type ArchiveLimits, type gmail } from '@watchtower/channels';
 import { createOutboundDispatcherFor, outboundChannelsFor } from '../outbound/index.js';
 import { createLineAutoAck } from './auto-ack.js';
 
@@ -36,6 +36,8 @@ export interface IngestOverrides {
     account: IngestAccount,
   ) => gmail.GmailTransport | undefined | Promise<gmail.GmailTransport | undefined>;
   readonly classifier?: InboundClassifierFactory;
+  /** For tests: the archive limits to apply whatever `UPLOAD_SCAN` says (T-182). */
+  readonly archiveLimits?: ArchiveLimits;
 }
 
 /**
@@ -86,5 +88,8 @@ export function createIngestRegistration(context: ProcessorContext) {
     logger: context.logger,
     classifier: ingest.classifier ?? context.ai?.classifierFor,
     classifierTimeoutMs: config.INGEST_CLASSIFIER_TIMEOUT_MS,
+    archiveLimits:
+      ingest.archiveLimits ??
+      (config.UPLOAD_SCAN === 'clamav' ? archiveLimitsFromConfig(config) : undefined),
   });
 }

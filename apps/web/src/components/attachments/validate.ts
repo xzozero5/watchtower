@@ -29,6 +29,7 @@ export function validateStaffFile(file: File): AttachmentIssue | null {
 /** The message for a failed upload, from what the api answered. */
 export function uploadErrorKey(error: unknown): MessageKey {
   if (isApiError(error)) {
+    if (error.code === 'archive_not_accepted') return 'attachments.errors.archive';
     if (error.status === 413) return 'attachments.errors.tooLarge';
     if (error.status === 400) return 'attachments.errors.rejected';
     if (error.status === 429) return 'attachments.errors.rateLimited';

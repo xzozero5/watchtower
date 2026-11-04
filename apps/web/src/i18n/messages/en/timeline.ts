@@ -17,6 +17,16 @@ export const timelineEn = {
     missing: 'This file is no longer available.',
     scanPending: 'This file is still being checked for malware. Try again in a moment.',
     infected: 'This file was blocked and removed because it contained malware.',
+    blocked: {
+      archive_member_too_large: 'File blocked: a file inside is too large to be scanned',
+      archive_total_too_large: 'File blocked: the contents are too large to be scanned',
+      archive_too_many_members: 'File blocked: too many files inside',
+      archive_nested: 'File blocked: an archive inside an archive',
+      archive_path_traversal: 'File blocked: unsafe file path inside',
+      archive_unreadable: 'File blocked: the archive cannot be read',
+      archive_unsupported: 'File blocked: this archive type cannot be scanned',
+      other: 'File blocked',
+    },
     scan: {
       pending: 'Checking file',
       infected: 'File blocked (malware)',

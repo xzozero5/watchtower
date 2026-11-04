@@ -118,7 +118,7 @@ export class UploadsController {
     },
   })
   @ApiCreatedResponse({ standardSchema: staffAttachmentSchema })
-  @ApiBadRequestResponse({ description: 'attachment_rejected' })
+  @ApiBadRequestResponse({ description: 'attachment_rejected or archive_not_accepted' })
   async upload(
     @UploadedFile() file: { originalname: string; buffer: Buffer } | undefined,
     @CurrentPrincipal() principal: Principal,

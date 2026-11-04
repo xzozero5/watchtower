@@ -1,5 +1,6 @@
 import { createRedactor } from '@watchtower/ai';
 import { randomBytes } from 'node:crypto';
+import { deflateRawSync } from 'node:zlib';
 
 import { gmail } from '@watchtower/channels';
 import { enqueueOutbox, schema } from '@watchtower/db';
@@ -114,6 +115,8 @@ beforeAll(async () => {
     overrides: {
       ingest: {
         store,
+        // T-182: small limits so a test bomb is a few hundred bytes.
+        archiveLimits: { maxMemberBytes: 100_000, maxTotalBytes: 300_000, maxMembers: 10 },
         // Resolved per event: 'none' behaves like production today (no classifier registered).
         classifier: () => ({
           redact: (text) => hook.redact(text),
@@ -243,6 +246,71 @@ function mailPayload(
   };
 }
 
+/** One-member zip (central directory and all), for a test bomb. */
+function tinyZip(name: string, data: Buffer): Buffer {
+  const body = deflateRawSync(data);
+  const fileName = Buffer.from(name);
+  const local = Buffer.alloc(30);
+  local.writeUInt32LE(0x04034b50, 0);
+  local.writeUInt16LE(8, 8);
+  local.writeUInt32LE(body.length, 18);
+  local.writeUInt32LE(data.length, 22);
+  local.writeUInt16LE(fileName.length, 26);
+  const central = Buffer.alloc(46);
+  central.writeUInt32LE(0x02014b50, 0);
+  central.writeUInt16LE(8, 10);
+  central.writeUInt32LE(body.length, 20);
+  central.writeUInt32LE(data.length, 24);
+  central.writeUInt16LE(fileName.length, 28);
+  const directoryOffset = 30 + fileName.length + body.length;
+  const end = Buffer.alloc(22);
+  end.writeUInt32LE(0x06054b50, 0);
+  end.writeUInt16LE(1, 8);
+  end.writeUInt16LE(1, 10);
+  end.writeUInt32LE(46 + fileName.length, 12);
+  end.writeUInt32LE(directoryOffset, 16);
+  return Buffer.concat([local, fileName, body, central, fileName, end]);
+}
+
+/** A mail with attachments: `buildFakeMime` has none, so the multipart is written here. */
+function mailWithAttachments(files: readonly { name: string; type: string; data: Buffer }[]) {
+  sequence += 1;
+  const from = `sender${String(sequence)}@customer.example.test`;
+  const messageId = `att${String(sequence)}-${randomBytes(3).toString('hex')}@customer.example.test`;
+  const boundary = `b-${randomBytes(6).toString('hex')}`;
+  const crlf = '\r\n';
+  const parts = [
+    [`--${boundary}`, 'Content-Type: text/plain; charset=UTF-8', '', 'see attached', ''].join(crlf),
+    ...files.map((file) =>
+      [
+        `--${boundary}`,
+        `Content-Type: ${file.type}; name="${file.name}"`,
+        `Content-Disposition: attachment; filename="${file.name}"`,
+        'Content-Transfer-Encoding: base64',
+        '',
+        file.data.toString('base64').replace(/.{1,76}/g, `$&${crlf}`),
+      ].join(crlf),
+    ),
+    `--${boundary}--${crlf}`,
+  ];
+  const head = [
+    `From: ${from}`,
+    'To: support@fake.example.test',
+    'Subject: files',
+    `Date: ${new Date().toUTCString().replace('GMT', '+0000')}`,
+    `Message-ID: <${messageId}>`,
+    'MIME-Version: 1.0',
+    `Content-Type: multipart/mixed; boundary="${boundary}"`,
+  ].join(crlf);
+  const raw = Buffer.from(`${head}${crlf}${crlf}${parts.join('')}`);
+  return {
+    id: `g-${prefix}-${String(sequence)}`,
+    threadId: `thread-${prefix}-${String(sequence)}`,
+    labelIds: ['INBOX', 'UNREAD'],
+    raw: raw.toString('base64url'),
+  };
+}
+
 async function messageFor(eventId: string) {
   const [row] = await owner()
     .select()
@@ -309,6 +377,37 @@ describe('ingest queue: an event becomes a ticket', () => {
     );
     expect(audit).toHaveLength(1);
     expect(audit[0]).toMatchObject({ actorType: 'system', metadata: { disposition: 'ticket' } });
+  });
+
+  it('blocks an archive clamd could not scan in full: metadata and a blocked label, no object (T-182)', async () => {
+    const bomb = tinyZip('big.bin', Buffer.alloc(500_000));
+    expect(bomb.length).toBeLessThan(2000);
+    const payload = mailWithAttachments([
+      { name: 'notes.txt', type: 'text/plain', data: Buffer.from('plain notes') },
+      { name: 'bomb.zip', type: 'application/zip', data: bomb },
+      { name: 'ok.zip', type: 'application/zip', data: tinyZip('a.txt', Buffer.alloc(1000, 97)) },
+    ]);
+    const eventId = await receive(gmailId, payload.id, payload);
+    expect(await settled(eventId)).toMatchObject({ status: 'processed' });
+    const inbound = await messageFor(eventId);
+    const files = (inbound?.attachments ?? []) as {
+      filename: string;
+      objectKey: string | null;
+      blocked?: string;
+      size: number;
+    }[];
+    const byName = new Map(files.map((file) => [file.filename, file]));
+    expect(byName.get('bomb.zip')).toMatchObject({
+      objectKey: null,
+      blocked: 'archive_member_too_large',
+    });
+    expect(byName.get('bomb.zip')?.size).toBeGreaterThan(0);
+    expect(byName.get('notes.txt')?.objectKey).toMatch(/^attachments\//);
+    expect(byName.get('notes.txt')?.blocked).toBeUndefined();
+    expect(byName.get('ok.zip')?.objectKey).toMatch(/^attachments\//);
+    // Nothing was written for the blocked part.
+    const keys = [...storedKeys].filter((key) => key.includes(`g-${prefix}-`));
+    expect(keys.filter((key) => key.startsWith('attachments/'))).toHaveLength(2);
   });
 
   it('is idempotent on replay: a second job for a finished event, and a re-run of an unfinished one', async () => {

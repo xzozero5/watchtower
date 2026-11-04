@@ -77,6 +77,9 @@ const emailList = z.preprocess(
     .max(50),
 );
 
+/** ClamAV size syntax: digits and an optional K, M or G. */
+const clamSize = z.string().regex(/^\s*\d+\s*[kKmMgG]?\s*$/, 'a size such as 25M');
+
 export const portSchema = z.coerce.number().int().min(1).max(65535);
 
 const postgresUrl = z
@@ -173,6 +176,16 @@ export const baseEnvShape = {
   UPLOAD_SCAN: z.preprocess(emptyToUndefined, z.enum(['off', 'clamav']).default('off')),
   CLAMAV_HOST: z.preprocess(emptyToUndefined, z.string().min(1).default('clamav')),
   CLAMAV_PORT: z.preprocess(emptyToUndefined, portSchema.default(3310)),
+  // T-182 / B-007: archives are refused at upload when a member or the total is bigger than clamd would
+  // scan (it answers OK for the unscanned rest). Keep these equal to `MaxFileSize`, `MaxScanSize` and
+  // `MaxFiles` in config/clamav/clamd.conf (ClamAV size syntax: 25M, 512K, plain bytes); a test checks
+  // that the defaults are the numbers in that file. Used only when UPLOAD_SCAN=clamav.
+  CLAMAV_MAX_FILE_SIZE: z.preprocess(emptyToUndefined, clamSize.default('25M')),
+  CLAMAV_MAX_SCAN_SIZE: z.preprocess(emptyToUndefined, clamSize.default('100M')),
+  CLAMAV_MAX_FILES: z.preprocess(
+    emptyToUndefined,
+    z.coerce.number().int().min(1).max(1_000_000).default(10000),
+  ),
   VERTEX_PROJECT_ID: optionalString,
   VERTEX_LOCATION: optionalString,
   WEB_PUSH_VAPID_PUBLIC: optionalString,

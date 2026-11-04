@@ -209,6 +209,38 @@ describe('staff message attachments', () => {
     expect(download).not.toHaveBeenCalled();
   });
 
+  it('shows a blocked label and no download for an archive the worker refused (T-182)', async () => {
+    const download = setup(() => new Response('unexpected'));
+    const blocked = {
+      ...message,
+      attachments: [
+        { filename: 'bomb.zip', size: 4096, objectKey: null, blocked: 'archive_member_too_large' },
+        { filename: 'odd.zip', size: 10, objectKey: null, blocked: 'something_new' },
+      ],
+    };
+    renderApp(<MessageAttachments message={blocked} />);
+    expect(
+      await screen.findByText('File blocked: a file inside is too large to be scanned'),
+    ).toBeVisible();
+    expect(screen.getByText('File blocked')).toBeVisible();
+    expect(screen.queryByRole('button')).toBeNull();
+    expect(download).not.toHaveBeenCalled();
+  });
+
+  it('shows the blocked label in Thai', async () => {
+    setup(() => new Response('unexpected'));
+    renderApp(
+      <MessageAttachments
+        message={{
+          ...message,
+          attachments: [{ filename: 'a.zip', objectKey: null, blocked: 'archive_nested' }],
+        }}
+      />,
+      { locale: 'th' },
+    );
+    expect(await screen.findByText('ไฟล์ถูกบล็อก: มีไฟล์บีบอัดซ้อนอยู่ข้างใน')).toBeVisible();
+  });
+
   it('offers a localized download control in Thai', async () => {
     setup(() => new Response('trace'));
     renderApp(<MessageAttachments message={message} />, { locale: 'th' });

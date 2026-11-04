@@ -1,4 +1,4 @@
-import { ChannelError } from '@watchtower/channels';
+import { ChannelError, inspectArchive, type ArchiveLimits } from '@watchtower/channels';
 import type { Database } from '@watchtower/db';
 import { schema } from '@watchtower/db';
 import {
@@ -61,6 +61,12 @@ export interface IngestDeps {
   /** Absent: header rules only (no AI layer, for example a test without one). */
   readonly classifier?: InboundClassifierFactory | undefined;
   readonly classifierTimeoutMs?: number;
+  /**
+   * Set when the malware scan is on (`UPLOAD_SCAN=clamav`, T-182): an archive attachment that clamd
+   * could not scan in full, or whose listing cannot be read, is not stored; the message keeps its
+   * metadata marked `blocked`. Absent: attachments are stored as they come.
+   */
+  readonly archiveLimits?: ArchiveLimits | undefined;
   /**
    * Runs after the commit, with what was ingested, for work that must never undo or repeat the
    * ingestion: the LINE auto-ack (T-103c). An error is logged and swallowed.
@@ -166,6 +172,18 @@ export function createIngestProcessor(deps: IngestDeps) {
       if (bytes === undefined) {
         attachments.push(attachment);
         continue;
+      }
+      if (deps.archiveLimits !== undefined) {
+        const verdict = inspectArchive(bytes, deps.archiveLimits, attachment.filename);
+        if (verdict.status === 'refused') {
+          // No object is written: the file never reaches storage, the scanner or a person.
+          deps.logger.warn(
+            { reason: verdict.reason, size: attachment.size },
+            'archive attachment blocked at ingest',
+          );
+          attachments.push({ ...attachment, objectKey: null, blocked: verdict.reason });
+          continue;
+        }
       }
       const key = attachmentObjectKey(rawKey, attachment.partId);
       await deps.store.put(key, bytes, attachment.contentType || 'application/octet-stream');

@@ -34,8 +34,9 @@ export const AUTH_ERROR_CODES = [
   'ticket_not_open',
   'channel_no_outbound',
   'verification_failed',
-  // Portal attachments (T-140): a file refused for its size, type, content or count.
+  // Portal attachments (T-140): a file refused for its size, type, content or count; an archive (T-182).
   'attachment_rejected',
+  'archive_not_accepted',
   // Object storage did not take or give a file (503).
   'storage_unavailable',
   'remote_image_unavailable',

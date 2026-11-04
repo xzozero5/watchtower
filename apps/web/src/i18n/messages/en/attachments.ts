@@ -19,6 +19,7 @@ export const attachmentsEn = {
     tooLarge: '{name} is larger than {size} MB.',
     empty: '{name} is empty.',
     typeNotAllowed: '{name} is not an image or a file type that can be attached.',
+    archive: '{name} is an archive (zip, rar, 7z, gzip). Archives are not accepted; attach the files one by one.',
     rejected: 'The server did not accept {name}: its content is not an allowed file type.',
     rateLimited: 'Too many uploads for now; try again in a moment.',
     unavailable: 'Files cannot be saved right now; try again in a moment.',

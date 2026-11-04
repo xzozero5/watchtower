@@ -22,6 +22,7 @@ export const attachmentsTh: Widen<typeof attachmentsEn> = {
     tooLarge: '{name} ใหญ่เกิน {size} MB',
     empty: '{name} ไม่มีเนื้อหา',
     typeNotAllowed: '{name} ไม่ใช่รูปหรือไฟล์ชนิดที่แนบได้',
+    archive: '{name} เป็นไฟล์บีบอัด (zip, rar, 7z, gzip) ระบบไม่รับไฟล์บีบอัด กรุณาแนบทีละไฟล์',
     rejected: 'เซิร์ฟเวอร์ไม่รับ {name}: เนื้อหาไม่ใช่ไฟล์ชนิดที่อนุญาต',
     rateLimited: 'อัปโหลดถี่เกินไป ลองใหม่อีกสักครู่',
     unavailable: 'ตอนนี้บันทึกไฟล์ไม่ได้ ลองใหม่อีกสักครู่',
