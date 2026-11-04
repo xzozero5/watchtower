@@ -3,10 +3,12 @@ import { schema, type Database } from '@watchtower/db';
 import {
   HEAD_ONLY_PERMISSIONS,
   LOCKED_HEAD_PERMISSIONS,
+  OWNER_ONLY_PERMISSIONS,
   PERMISSION_KEYS,
   PERMISSIONS,
   ROLES,
   isHeadOnlyPermission,
+  isOwnerOnlyPermission,
   isPermission,
   type Permission,
   type Role,
@@ -49,6 +51,8 @@ export class RbacService {
       if (!isPermission(row.permission)) continue;
       // A head-only permission on any other role (a row put there by hand) does nothing.
       if (isHeadOnlyPermission(row.permission) && row.role !== 'head') continue;
+      // An owner-only permission is never read from a role (it lives in users.permissions).
+      if (isOwnerOnlyPermission(row.permission)) continue;
       roles.get(row.role as Role)?.add(row.permission);
     }
     this.cache = { at: now, roles };
@@ -94,6 +98,12 @@ export class RbacService {
     permissions: readonly Permission[],
   ): Promise<{ before: Permission[]; after: Permission[] }> {
     const wanted = new Set(permissions);
+    const ownerOnly = OWNER_ONLY_PERMISSIONS.filter((permission) => wanted.has(permission));
+    if (ownerOnly.length > 0) {
+      throw conflict(
+        `${ownerOnly.join(', ')} cannot be given to a role; the owner grants it to a person`,
+      );
+    }
     if (role !== 'head') {
       const headOnly = HEAD_ONLY_PERMISSIONS.filter((permission) => wanted.has(permission));
       if (headOnly.length > 0) {

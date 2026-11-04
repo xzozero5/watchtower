@@ -190,6 +190,9 @@ export const aiResolutionGrade = pgTable(
     promptVersion: integer('prompt_version').notNull(),
     mock: boolean('mock').notNull().default(false),
     gradedAt: timestamptz('graded_at').notNull().defaultNow(),
+    /** 1 for the first grade; 2 once it was re-made after the CSAT answer arrived (T-301e, migration 0096). */
+    version: integer('version').notNull().default(1),
+    regradedAt: timestamptz('regraded_at'),
   },
   (table) => [
     unique('ai_resolution_grade_ticket_cycle_key').on(table.ticketId, table.cycle),

@@ -109,6 +109,7 @@ export async function runSeed(database: Database, options: SeedOptions = {}): Pr
       : await seedDemo(tx, {
           now: options.now ?? new Date(),
           ticketKeyPrefix: options.ticketKeyPrefix ?? DEFAULT_TICKET_KEY_PREFIX,
+          log,
         });
     const kb = referenceOnly ? { created: [], existing: [] } : await seedKbArticles(tx, kbArticles);
     return { calendars, policies, intents, shifts, demo, kb };

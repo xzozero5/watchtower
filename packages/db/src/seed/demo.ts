@@ -11,6 +11,7 @@ import { and, arrayContains, eq, inArray, sql } from 'drizzle-orm';
 
 import { auditLog } from '../schema/audit.js';
 import { users } from '../schema/auth.js';
+import { seedBatch } from '../schema/autonomy.js';
 import {
   businessCalendar,
   channelAccount,
@@ -49,6 +50,7 @@ export interface DemoSeedOptions {
   readonly now: Date;
   /** Prefix of the ticket key written into merge events (`TICKET_KEY_PREFIX`). */
   readonly ticketKeyPrefix: string;
+  readonly log?: ((message: string) => void) | undefined;
 }
 
 export interface DemoSeedResult {
@@ -119,6 +121,37 @@ export async function seedDemo(
   executor: SeedExecutor,
   options: DemoSeedOptions,
 ): Promise<DemoSeedResult> {
+  // Everything created here belongs to one batch (migration 0096, ADR-025 section 10), made on first use,
+  // so a run that adds nothing leaves no batch behind. A row that existed already is left as it is.
+  // Only the schema owner may write a batch. A seed run with the restricted application role still loads
+  // the data, unmarked (ADR-025 section 10 [UNVERIFIED 60%]: which role runs the seed): `pnpm db:mark-seed`
+  // run as the owner marks it afterwards.
+  let batchId: string | null = null;
+  let canMark: boolean | null = null;
+  const batch = async (): Promise<string | null> => {
+    if (canMark === null) {
+      const result = await executor.execute<{ ok: boolean }>(
+        sql`SELECT has_table_privilege(current_user, 'public.seed_batch', 'INSERT') AS ok`,
+      );
+      canMark = result.rows[0]?.ok === true;
+      if (!canMark) {
+        options.log?.(
+          'seed rows are not marked as seed data: this connection is not the schema owner (run pnpm db:mark-seed as the owner)',
+        );
+      }
+    }
+    if (!canMark) return null;
+    if (batchId === null) {
+      const [row] = await executor
+        .insert(seedBatch)
+        .values({ kind: 'demo', loadedBy: sql`current_user`, note: 'default demo seed' })
+        .returning({ id: seedBatch.id });
+      if (!row) throw new SeedError('seed batch was not created');
+      batchId = row.id;
+    }
+    return batchId;
+  };
+  const markedOrgs = new Set<string>();
   const created = {
     users: 0,
     organizations: 0,
@@ -198,6 +231,7 @@ export async function seedDemo(
     let orgId = found?.id;
     let orgIsNew = false;
     if (orgId === undefined) {
+      const orgBatch = await batch();
       const [inserted] = await executor
         .insert(organization)
         .values({
@@ -205,10 +239,12 @@ export async function seedDemo(
           tier: demoOrg.tier,
           domains: [...demoOrg.domains],
           notes: demoOrg.notes,
+          seedBatchId: orgBatch,
         })
         .returning({ id: organization.id });
       if (!inserted) throw new SeedError(`organization ${demoOrg.name} was not created`);
       orgId = inserted.id;
+      if (orgBatch !== null) markedOrgs.add(orgId);
       orgIsNew = true;
       newOrgs.push({ id: orgId, name: demoOrg.name });
     }
@@ -411,7 +447,17 @@ export async function seedDemo(
   for (const part of chunks(planned)) {
     const inserted = await executor
       .insert(ticket)
-      .values(part.map((entry) => entry.ticket))
+      // A ticket joins the batch only with its organization (a trigger insists); one in an organization
+      // that was there before this run stays unmarked, and `pnpm db:mark-seed` is the way to mark it.
+      .values(
+        await Promise.all(
+          part.map(async (entry) =>
+            markedOrgs.has(entry.ticket.orgId)
+              ? { ...entry.ticket, seedBatchId: await batch() }
+              : entry.ticket,
+          ),
+        ),
+      )
       .returning({ id: ticket.id });
     created.tickets += inserted.length;
   }

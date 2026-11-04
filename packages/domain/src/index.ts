@@ -14,6 +14,13 @@ import { sweepEscalations } from './alerts/escalation.js';
 import { recordHeartbeat, sweepHeartbeats } from './alerts/heartbeat.js';
 import { ingestAlert } from './alerts/ingest.js';
 import { endExpiredSnoozes, snoozeAlert, unsnoozeAlert } from './alerts/snooze.js';
+import {
+  applyStagePromotion,
+  decideStagePromotion,
+  requestStagePromotion,
+  rollbackIntentAutonomy,
+  setIntentAutosend,
+} from './autonomy/promotion.js';
 import { readAutonomyState, setAiSwitch, setIntentAutonomy } from './autonomy/state.js';
 import { findOrCreateContactByEmail } from './contacts.js';
 import { claimCsatEmail, finishCsatEmail, releaseCsatEmail } from './csat/dispatch.js';
@@ -271,7 +278,9 @@ export {
 export {
   hasResolutionGrade,
   intentGradeMetrics,
+  readResolutionGradeCsat,
   recordResolutionGrade,
+  regradeResolution,
   type NewResolutionGrade,
 } from './ai/grades.js';
 export {
@@ -550,6 +559,22 @@ export {
 } from './autonomy/gate.js';
 export { SAFE_AUTO_ACK_TEMPLATES } from './autonomy/safe-templates.js';
 export {
+  PROMOTION_BLOCKERS,
+  PROMOTION_SQLSTATE,
+  applyStagePromotion,
+  blockerFrom,
+  decideStagePromotion,
+  requestStagePromotion,
+  rollbackIntentAutonomy,
+  setIntentAutosend,
+  type DecideStagePromotionInput,
+  type DecideStagePromotionResult,
+  type PromotionBlocker,
+  type RequestStagePromotionInput,
+  type RollbackIntentInput,
+  type SetIntentAutosendInput,
+} from './autonomy/promotion.js';
+export {
   readAutonomyState,
   readSwitches,
   setAiSwitch,
@@ -707,6 +732,12 @@ export interface Domain {
     readonly read: typeof readAutonomyState;
     readonly setSwitch: typeof setAiSwitch;
     readonly setIntentStage: typeof setIntentAutonomy;
+    /** Stage 3 (ADR-025): ask, decide, apply, roll back, and the auto-send rules of an intent. */
+    readonly requestPromotion: typeof requestStagePromotion;
+    readonly decidePromotion: typeof decideStagePromotion;
+    readonly applyPromotion: typeof applyStagePromotion;
+    readonly rollbackIntent: typeof rollbackIntentAutonomy;
+    readonly setAutosend: typeof setIntentAutosend;
   };
   /** Knowledge base articles (T-107): create, edit, move between statuses, publish. */
   readonly kb: {
@@ -898,6 +929,11 @@ export function createDomain(options: DomainOptions): Domain {
       read: readAutonomyState,
       setSwitch: setAiSwitch,
       setIntentStage: setIntentAutonomy,
+      requestPromotion: requestStagePromotion,
+      decidePromotion: decideStagePromotion,
+      applyPromotion: applyStagePromotion,
+      rollbackIntent: rollbackIntentAutonomy,
+      setAutosend: setIntentAutosend,
     },
     kb: {
       create: createKbArticle,

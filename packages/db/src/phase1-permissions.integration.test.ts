@@ -41,6 +41,9 @@ const ADDED_LATER = [
   'ticket.read.masked',
   'ticket.dev.work',
   'ticket.dev.release.any',
+  // 0096 (T-304b)
+  'ai.autonomy.promote',
+  'ai.autonomy.owner_approve',
 ] as const;
 
 let testDb: TestDatabase;

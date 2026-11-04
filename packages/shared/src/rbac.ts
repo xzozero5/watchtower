@@ -41,6 +41,10 @@ export const PERMISSIONS = {
   'ai.autonomy.set':
     'Change AI autonomy stage per intent (0-2 in Phase 1; stage 3 and above is the owner decision)',
   'ai.autonomy.set.any': 'Change AI autonomy stage per intent to any stage',
+  'ai.autonomy.promote':
+    'Ask the owner to promote one intent to stage 3 (auto-send) with a green gate report',
+  'ai.autonomy.owner_approve':
+    'Owner only: approve a stage 3 promotion (granted per user from the command line, never to a role)',
   'investigate.run': 'Run read-only investigation tools',
   'incident.create': 'Create an incident',
   'incident.manage': 'Close incidents and publish status page posts',
@@ -176,6 +180,7 @@ const LEAD: readonly Permission[] = [
 const HEAD: readonly Permission[] = [
   ...LEAD,
   'ai.autonomy.set.any',
+  'ai.autonomy.promote',
   'integration.manage',
   'ai.provider.manage',
   'apikey.manage',
@@ -235,6 +240,19 @@ export const HEAD_ONLY_PERMISSIONS = [
 
 export function isHeadOnlyPermission(permission: string): boolean {
   return (HEAD_ONLY_PERMISSIONS as readonly string[]).includes(permission);
+}
+
+/**
+ * Permissions that no role can hold (ADR-025, owner decision 1). The schema owner puts one in the
+ * `users.permissions` of a single person from the command line (`pnpm db:grant-owner-approval`); a row in
+ * `role_permissions` does nothing and the role editor refuses it.
+ */
+export const OWNER_ONLY_PERMISSIONS = [
+  'ai.autonomy.owner_approve',
+] as const satisfies readonly Permission[];
+
+export function isOwnerOnlyPermission(permission: string): boolean {
+  return (OWNER_ONLY_PERMISSIONS as readonly string[]).includes(permission);
 }
 
 /** Permissions a head can never remove from the head role, or nobody could undo a mistake. */

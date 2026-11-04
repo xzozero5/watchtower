@@ -22,6 +22,19 @@ export const AUTONOMY_AUDIT_ACTIONS = {
   autonomyPinSet: 'autonomy.pin_set',
   /** The policy gate refused something an AI or a system sender tried (N3, ADR-011). */
   autonomyPolicyDenied: 'autonomy.policy_denied',
+  // Stage 3 (ADR-025, migration 0096).
+  /** A head asked for a promotion to stage 3 with a green gate report. */
+  autonomyPromotionRequested: 'autonomy.promotion_requested',
+  /** The owner approved, rejected or withdrew a promotion (metadata carries `selfApproved`). */
+  autonomyPromotionDecided: 'autonomy.promotion_decided',
+  /** An approved promotion was applied: the intent is at stage 3. */
+  autonomyPromoted: 'autonomy.promoted',
+  /** The system moved an intent from stage 3 back to 2. */
+  autonomyAutoRollback: 'autonomy.auto_rollback',
+  /** A head changed the auto-send rules of an intent. */
+  autonomyAutosendConfigSet: 'autonomy.autosend_config_set',
+  /** The schema owner gave (or took away) `ai.autonomy.owner_approve` to a person, from the command line. */
+  autonomyOwnerApprovalSet: 'autonomy.owner_approval_set',
 } as const satisfies Record<string, string>;
 
 /** `ticket_event.type` strings written by this feature. */
@@ -128,7 +141,15 @@ export type IntentAutonomyChange = z.infer<typeof intentAutonomyChangeSchema>;
 
 // --- autonomy history (T-127, UI spec 18.9 H6) ---
 
-export const AUTONOMY_HISTORY_CHANGES = ['stage', 'pin', 'unpin'] as const;
+export const AUTONOMY_HISTORY_CHANGES = [
+  'stage',
+  'pin',
+  'unpin',
+  // Stage 3 (ADR-025, migration 0096).
+  'promotion',
+  'auto_rollback',
+  'autosend',
+] as const;
 
 export const autonomyHistoryEntrySchema = z.object({
   id: z.uuid(),
@@ -139,7 +160,7 @@ export const autonomyHistoryEntrySchema = z.object({
   /** The pin state after this change. */
   pinned: z.boolean(),
   reason: z.string(),
-  changedBy: z.uuid(),
+  changedBy: z.uuid().nullable(),
   /** Display name of the person; null if the account no longer exists. */
   changedByName: z.string().nullable(),
   changedAt: z.iso.datetime(),
