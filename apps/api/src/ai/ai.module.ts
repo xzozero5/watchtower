@@ -4,6 +4,8 @@ import { TicketsModule } from '../tickets/tickets.module.js';
 import { AiBudgetService } from './ai-budget.service.js';
 import { AiGradesController } from './ai-grades.controller.js';
 import { AiGradesService } from './ai-grades.service.js';
+import { GoldenController } from './golden.controller.js';
+import { GoldenService } from './golden.service.js';
 import { AiStatusController } from './ai-status.controller.js';
 import { AiStatusService } from './ai-status.service.js';
 import { TicketAiController } from './ticket-ai.controller.js';
@@ -17,8 +19,8 @@ import { TicketAiService } from './ticket-ai.service.js';
  */
 @Module({
   imports: [TicketsModule],
-  controllers: [TicketAiController, AiStatusController, AiGradesController],
-  providers: [TicketAiService, AiStatusService, AiBudgetService, AiGradesService],
+  controllers: [TicketAiController, AiStatusController, AiGradesController, GoldenController],
+  providers: [TicketAiService, AiStatusService, AiBudgetService, AiGradesService, GoldenService],
   // The assistant (T-134) asks for a draft through the same service as the button does.
   exports: [TicketAiService, AiStatusService],
 })
