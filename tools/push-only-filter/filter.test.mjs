@@ -2,7 +2,14 @@ import { createServer } from 'node:http';
 
 import { afterEach, describe, expect, it } from 'vitest';
 
-import { createLimiter, createPushFilter, MAX_BODY_BYTES, PUSH_PATH } from './filter.mjs';
+import {
+  createLimiter,
+  createPushFilter,
+  MAX_BODY_BYTES,
+  PER_CLIENT_PER_MINUTE,
+  PUSH_PATH,
+  TOTAL_PER_MINUTE,
+} from './filter.mjs';
 
 const servers = [];
 afterEach(async () => {
@@ -37,8 +44,14 @@ async function fakeApi() {
   return { seen, upstream: new URL(`http://127.0.0.1:${String(port)}`) };
 }
 
-async function filterFor(upstream, limit) {
-  const port = await listen(createPushFilter({ upstream, ...(limit ? { limit } : {}) }));
+async function filterFor(upstream, limit, totalLimit) {
+  const port = await listen(
+    createPushFilter({
+      upstream,
+      ...(limit ? { limit } : {}),
+      ...(totalLimit ? { totalLimit } : {}),
+    }),
+  );
   return `http://127.0.0.1:${String(port)}`;
 }
 
@@ -120,6 +133,31 @@ describe('push-only filter', () => {
       await send('203.0.113.9'),
     ]).toEqual([204, 204, 429]);
     expect(await send('198.51.100.7')).toBe(204);
+  });
+
+  it('caps the total that reaches the api, so many callers cannot fill its one bucket (T-114a C-7)', async () => {
+    const api = await fakeApi();
+    const base = await filterFor(api.upstream, 10, 3);
+    const send = (ip, headers = SIGNED) =>
+      fetch(`${base}${PUSH_PATH}`, {
+        method: 'POST',
+        headers: { ...headers, 'cf-connecting-ip': ip },
+        body: '{}',
+      }).then((r) => r.status);
+    expect([
+      await send('203.0.113.1'),
+      await send('203.0.113.2'),
+      await send('203.0.113.3'),
+      await send('203.0.113.4'),
+    ]).toEqual([204, 204, 204, 429]);
+    expect(api.seen).toHaveLength(3);
+    // An unsigned request never reaches the api, so it does not use up the total either.
+    expect(await send('203.0.113.5', { 'content-type': 'application/json' })).toBe(401);
+  });
+
+  it('keeps the total below the api limit (600 per minute by default)', () => {
+    expect(TOTAL_PER_MINUTE).toBeLessThan(600);
+    expect(PER_CLIENT_PER_MINUTE).toBeLessThanOrEqual(TOTAL_PER_MINUTE);
   });
 });
 
