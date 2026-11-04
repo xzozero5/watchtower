@@ -76,12 +76,13 @@
 - งานตามมา: T-301b (`ai_grade` ตาม §5), T-304b–g · T-125 ตัด A-9/10/11 มาไว้ที่นี่ · ADR-011 §2 superseded เมื่อ Accepted
 - ตรวจซ้ำ: ก่อนตั้ง flag บน instance ใด, ก่อนเปิด LINE auto-send, ก่อน stage 4, rollback > 1 ครั้ง/intent/เดือน
 
-## คำถามเจ้าของ (ก่อน Accepted)
-1. ผู้อนุมัติ promotion ≠ ผู้ขอ — ถ้าเจ้าของเป็น head คนเดียวกัน: บัญชีแยก / คนเดียวได้แต่ re-auth + พิมพ์ยืนยัน / ให้ flag env เป็นการยินยอมของเจ้าของ
-2. grader อิสระ = ต่าง model vendor เดียวกันพอ หรือต้องต่าง vendor
-3. footer แจ้งลูกค้าว่าเป็นคำตอบอัตโนมัติ เปิดเป็นค่าเริ่มต้น + ข้อความ TH/EN
-4. rollback: reopen / CSAT ≤ 2 ครั้งเดียวทันที หรือเป็นอัตราในช่วงเวลา
-5. seed marker บน POC: backfill หรือลบ seed ออก · ช่องทาง auto-send รอบแรก Gmail + portal เท่านั้น
+## การตัดสินของเจ้าของ 2026-11-04 `[CONFIRMED]` (แทนค่า [ASSUMED] ที่ขัดกันในข้อบน)
+1. **ผู้อนุมัติ promotion:** คนเดียวกับผู้ขอได้ (เจ้าของเป็น head) แต่ต้อง re-auth + พิมพ์ key ของ intent ยืนยัน → CHECK ผู้ขอ ≠ ผู้อนุมัติ ใช้ **เฉพาะเมื่อผู้อนุมัติไม่มีสิทธิ์ `ai.autonomy.owner_approve`**; ผู้ถือสิทธิ์ owner (ให้ผ่าน CLI) อนุมัติคำขอของตัวเองได้พร้อม re-auth + typed confirm และลง audit `self_approved: true`
+2. **grader อิสระ = ต่าง model vendor เดียวกันพอ** (เช่น grader `opus` ตรวจ drafter `sonnet` ผ่าน claude-cli) · เงื่อนไข 7 ตรวจ model id ต่างกัน
+3. **footer แจ้งลูกค้าว่าเป็นคำตอบอัตโนมัติ เปิดเป็นค่าเริ่มต้น** (head แก้ข้อความ TH/EN หรือปิดได้ + audit)
+4. **rollback:** policy/data-leak violation → ทันที · reopen หรือ CSAT ≤ 2 → เมื่อรวม ≥ 2 ใน 20 auto-send ล่าสุดของ intent
+5. seed: instance pilot ใหม่ไม่มี seed (เจ้าของ) · POC ทำ `db:mark-seed --dry-run` ก่อน รันจริง = `[ASK-HUMAN]` · ช่องทาง auto-send รอบแรก Gmail + portal เท่านั้น (LINE = feature ภายหลัง)
+- Status คงเป็น Proposed จน `security-reviewer` ตรวจ (T-306a)
 
 ## Links
 PRD §6.4–6.6, §9 · BACKLOG T-301b, T-302c/d, T-304a–g, T-306a–c, T-125 · ADR-010 §5, ADR-011, ADR-013 §6, ADR-019, ADR-023, ADR-026 · migration 0007, 0013, 0014 · `packages/domain/src/autonomy/decide.ts`, `apps/worker/src/outbound/dispatcher.ts`, `apps/worker/src/ai/investigation.ts`
