@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { schema } from '@watchtower/db';
 import {
   AUDIT_ACTIONS,
+  AUTONOMY_TICKET_EVENTS,
   DELIVERY_LEASE_SECONDS,
   DELIVERY_MAX_ATTEMPTS,
   DELIVERY_RETRY_KEY_MAX_AGE_SECONDS,
@@ -12,7 +13,7 @@ import {
   QUEUE_NAMES,
   type DeliveryRoute,
 } from '@watchtower/shared';
-import { and, asc, eq, gte, lt, lte, or, sql, type SQL } from 'drizzle-orm';
+import { and, asc, eq, gt, gte, lt, lte, ne, or, sql, type SQL } from 'drizzle-orm';
 
 import { restoreAiDraft } from '../ai/drafts.js';
 import { recordAuditInTx } from '../audit.js';
@@ -74,6 +75,9 @@ export function actorOfDelivery(delivery: OutboundDeliveryRow): Actor {
       return { type: 'user', id: delivery.createdBy };
     case 'ai_approved':
       return { type: 'user', id: delivery.approvedBy };
+    case 'ai_auto':
+      // The AI is the sender; the gate wants an AI actor for this origin.
+      return { type: 'ai', id: null };
     default:
       return { type: 'system', id: null };
   }
@@ -149,7 +153,10 @@ export async function vetDelivery(
   if (contentHash(message.bodyText) !== delivery.contentHash) {
     return { ok: false, reason: 'content_changed' };
   }
-  if (delivery.aiDraftId !== null) {
+  if (delivery.origin === 'ai_auto') {
+    const refusal = await vetAutoSend(db, delivery, ticket, message);
+    if (refusal !== null) return { ok: false, reason: refusal };
+  } else if (delivery.aiDraftId !== null) {
     const [draft] = await db
       .select()
       .from(schema.aiDraft)
@@ -192,12 +199,74 @@ export async function vetDelivery(
     channel: ticket.channel,
     intentId: ticket.intentId,
     actor: actorOfDelivery(delivery),
-    origin: delivery.origin as 'human' | 'ai_approved' | 'system_template',
+    origin: delivery.origin as 'human' | 'ai_approved' | 'system_template' | 'ai_auto',
     templateKey: delivery.templateKey,
     approvedBy: delivery.approvedBy,
+    // An automatic send is judged again from the tables, with this process' own flag (ADR-025 section 2).
+    autoSend:
+      delivery.origin === 'ai_auto' && delivery.aiDraftId !== null && delivery.aiGradeId !== null
+        ? {
+            aiDraftId: delivery.aiDraftId,
+            aiGradeId: delivery.aiGradeId,
+            text: message.bodyText,
+            attachmentCount: Array.isArray(message.attachments) ? message.attachments.length : 0,
+            hasHtml: message.bodyHtml !== null,
+            excludeDeliveryId: delivery.id,
+          }
+        : undefined,
     auditMeta: ctx.auditMeta,
   });
   return decision.allowed ? { ok: true, ticket, message } : { ok: false, reason: decision.reason };
+}
+
+/**
+ * What only an automatic send has to prove at claim time besides the gate (ADR-025 section 4): the draft is
+ * still the one the system approved, the ticket is still open, and no person has stepped in during the hold
+ * (a reply of staff, or an assignment, after the delivery was made). A person stepping in is a refusal, not
+ * a failure: the draft goes back to waiting and the ticket says why.
+ */
+async function vetAutoSend(
+  db: ReadExecutor,
+  delivery: OutboundDeliveryRow,
+  ticket: TicketRow,
+  message: MessageRow,
+): Promise<string | null> {
+  if (delivery.aiDraftId === null || delivery.aiGradeId === null) return 'ai_draft_not_approved';
+  const [draft] = await db
+    .select({ status: schema.aiDraft.status, approvedBy: schema.aiDraft.approvedBy })
+    .from(schema.aiDraft)
+    .where(eq(schema.aiDraft.id, delivery.aiDraftId))
+    .limit(1);
+  if (draft === undefined) return 'ai_draft_not_found';
+  if (draft.status !== 'auto_approved' || draft.approvedBy !== null) return 'ai_draft_not_approved';
+  if (['resolved', 'closed', 'merged'].includes(ticket.status)) return 'ticket_not_open';
+  const [staffReply] = await db
+    .select({ id: schema.message.id })
+    .from(schema.message)
+    .where(
+      and(
+        eq(schema.message.ticketId, ticket.id),
+        eq(schema.message.direction, 'outbound'),
+        sql`${schema.message.senderUserId} IS NOT NULL`,
+        ne(schema.message.id, message.id),
+        gt(schema.message.createdAt, delivery.createdAt),
+      ),
+    )
+    .limit(1);
+  if (staffReply !== undefined) return 'human_stepped_in';
+  const [assigned] = await db
+    .select({ id: schema.ticketEvent.id })
+    .from(schema.ticketEvent)
+    .where(
+      and(
+        eq(schema.ticketEvent.ticketId, ticket.id),
+        eq(schema.ticketEvent.type, 'ticket.assigned'),
+        gt(schema.ticketEvent.createdAt, delivery.createdAt),
+      ),
+    )
+    .limit(1);
+  if (assigned !== undefined) return 'human_stepped_in';
+  return null;
 }
 
 async function ticketOf(tx: DbTransaction, ticketId: string): Promise<TicketRow | undefined> {
@@ -250,12 +319,31 @@ export async function denyDelivery(
     .where(owned(delivery))
     .returning({ id: schema.outboundDelivery.id });
   if (updated === undefined) return fx.result(false);
+  // An automatic message that was refused was never tried: it shows as cancelled, not failed.
   await tx
     .update(schema.message)
-    .set({ deliveryStatus: 'failed' })
+    .set({ deliveryStatus: delivery.origin === 'ai_auto' ? 'cancelled' : 'failed' })
     .where(eq(schema.message.id, delivery.messageId));
   await reopenDraft(tx, delivery);
   const ticket = await ticketOf(tx, delivery.ticketId);
+  if (delivery.origin === 'ai_auto') {
+    // The note on the timeline (ADR-025 section 4): the AI meant to send and was held back.
+    await recordTicketEvent(
+      tx,
+      delivery.ticketId,
+      AUTONOMY_TICKET_EVENTS.autosendHeld,
+      ctx.actor,
+      'internal',
+      { deliveryId: delivery.id, reason },
+    );
+    await recordAuditInTx(tx, ctx, fx, {
+      action: AUDIT_ACTIONS.autonomyAutosendHeld,
+      outcome: 'denied',
+      targetType: 'ticket',
+      targetId: delivery.ticketId,
+      metadata: { stage: 'claim', deliveryId: delivery.id, reason },
+    });
+  }
   await recordTicketEvent(
     tx,
     delivery.ticketId,
@@ -313,7 +401,8 @@ export async function markDispatched(
 }
 
 export interface SentResult {
-  readonly route: DeliveryRoute;
+  /** Null for the portal: nothing is called outside, the message is simply shown (ADR-025, migration 0106). */
+  readonly route: DeliveryRoute | null;
   readonly providerMessageId: string | null;
   /** Our `Message-ID`, normalised (Gmail). */
   readonly rfc822MessageId: string | null;
@@ -386,7 +475,24 @@ export async function recordSent(
     })
     .where(eq(schema.message.id, delivery.messageId))
     .returning();
-  if (delivery.aiDraftId !== null) {
+  if (delivery.origin === 'ai_auto' && delivery.aiDraftId !== null) {
+    // The system approved it itself: `approved_by` stays null, `auto_approved_at` carries the moment.
+    await tx
+      .update(schema.aiDraft)
+      .set({
+        status: 'sent',
+        disposition: 'approved',
+        editDistance: 0,
+        resolvedAt: sql`COALESCE(${schema.aiDraft.resolvedAt}, ${now})`,
+      })
+      .where(
+        and(eq(schema.aiDraft.id, delivery.aiDraftId), eq(schema.aiDraft.status, 'auto_approved')),
+      );
+    await tx
+      .update(schema.ticket)
+      .set({ aiHandled: true })
+      .where(eq(schema.ticket.id, delivery.ticketId));
+  } else if (delivery.aiDraftId !== null) {
     await tx
       .update(schema.aiDraft)
       // `draft` too: an unknown outcome reopened the draft and a late success closes it again.

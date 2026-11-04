@@ -2,7 +2,9 @@ import { schema } from '@watchtower/db';
 import {
   AI_SWITCH_KEYS,
   AUDIT_ACTIONS,
+  MANUAL_MAX_AUTONOMY_STAGE,
   PHASE_MAX_AUTONOMY_STAGE,
+  parseAutosendPolicy,
   type AiSwitch,
   type AiSwitchKey,
   type AutonomyIntent,
@@ -48,7 +50,7 @@ function toSwitch(
   };
 }
 
-export function toAutonomyIntent(row: IntentRow): AutonomyIntent {
+export function toAutonomyIntent(row: IntentRow, autosendEnabled = false): AutonomyIntent {
   const stage = Math.min(row.autonomyStage, PHASE_MAX_AUTONOMY_STAGE);
   return {
     id: row.id,
@@ -56,8 +58,15 @@ export function toAutonomyIntent(row: IntentRow): AutonomyIntent {
     name: row.name,
     isActive: row.isActive,
     stage,
-    effectiveStage: effectiveStage(row.autonomyStage),
+    effectiveStage: effectiveStage(row.autonomyStage, autosendEnabled),
     pinned: row.autonomyPinned,
+    autosend: {
+      shadow: row.autosendShadow,
+      minScore: Number(row.autosendMinScore),
+      dailyCap: row.autosendDailyCap,
+      // A stored policy that does not parse shows as the empty one (no channel): the gate denies it the same way.
+      policy: parseAutosendPolicy(row.autosendPolicy) ?? parseAutosendPolicy({}) ?? { channels: [], action: 'reply', maxChars: 1200 },
+    },
     updatedAt: row.updatedAt.toISOString(),
   };
 }
@@ -84,15 +93,19 @@ export async function readSwitches(executor: ReadExecutor): Promise<AiSwitch[]> 
 }
 
 /** What `GET /v1/autonomy` returns: the ceiling, both switches, and every intent's stage. */
-export async function readAutonomyState(executor: ReadExecutor): Promise<AutonomyState> {
+export async function readAutonomyState(
+  executor: ReadExecutor,
+  autosendEnabled = false,
+): Promise<AutonomyState> {
   const [switches, intents] = await Promise.all([
     readSwitches(executor),
     executor.select().from(schema.intent).orderBy(asc(schema.intent.key)),
   ]);
   return {
-    stageCeiling: PHASE_MAX_AUTONOMY_STAGE,
+    stageCeiling: MANUAL_MAX_AUTONOMY_STAGE,
+    autosendFlag: autosendEnabled,
     switches,
-    intents: intents.map(toAutonomyIntent),
+    intents: intents.map((row) => toAutonomyIntent(row, autosendEnabled)),
   };
 }
 
@@ -192,10 +205,10 @@ export async function setIntentAutonomy(
   }
   if (input.stage !== undefined) {
     if (!Number.isInteger(input.stage) || input.stage < 0) throw badRequest('Invalid stage');
-    if (input.stage > PHASE_MAX_AUTONOMY_STAGE) {
+    if (input.stage > MANUAL_MAX_AUTONOMY_STAGE) {
       throw new DomainError(
         'policy_denied',
-        'Stage 3 and above (auto-send) is not available: only the owner can decide it',
+        'Stage 3 and above (auto-send) is reached by a promotion, never set by hand',
         { reason: 'stage_requires_owner' },
       );
     }
@@ -244,5 +257,8 @@ export async function setIntentAutonomy(
       metadata: { intentKey: after.key, stageChanged, pinChanged, reason },
     });
   }
-  return fx.result({ intent: toAutonomyIntent(after), changed: written > 0 });
+  return fx.result({
+    intent: toAutonomyIntent(after, ctx.config.autosendEnabled === true),
+    changed: written > 0,
+  });
 }

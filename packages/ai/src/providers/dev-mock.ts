@@ -444,6 +444,11 @@ export class DevMockLlmProvider implements LlmProvider {
       case 'grader':
         text = gradeResolution(request);
         break;
+      case 'grader_pre_send':
+        // A stand-in that finds nothing wrong. The grade it makes is flagged `mock`, and the gate never
+        // lets a mock grade clear an automatic send, so this can only exercise the pipeline.
+        text = JSON.stringify({ score: 0.9, violations: [] });
+        break;
       case 'procedure_compiler':
         text = compileProcedureExample();
         break;

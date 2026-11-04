@@ -40,6 +40,11 @@ export interface DomainConfig {
    * never sends a link it cannot sign). The same signing key in api and worker.
    */
   readonly csat?: CsatConfig | undefined;
+  /**
+   * `AI_AUTOSEND_ENABLED` of this process (ADR-025 section 2). Only used to show the stage the system acts on;
+   * the gate has its own copy and decides with it. Unset: off.
+   */
+  readonly autosendEnabled?: boolean | undefined;
 }
 
 export interface CsatConfig {

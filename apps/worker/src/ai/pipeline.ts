@@ -104,6 +104,8 @@ export function createAiPipelineProcessor(context: ProcessorContext): Processor 
     allowSystemTools: allowSystemTools && (await readOnlyLoginOk()),
     realtime,
     logger,
+    // Stage 3 and its shadow mode (ADR-025): the same domain (and gate) the dispatcher uses.
+    autosend: { domain, flagOn: config.AI_AUTOSEND_ENABLED },
   });
 
   return async (job: Job, token?: string): Promise<unknown> => {

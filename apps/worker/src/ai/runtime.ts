@@ -21,6 +21,7 @@ import {
   createAiRunRecorder,
   createBudgetMonitor,
   createPolicyGate,
+  instanceOrigins,
   resolveAiCaps,
   type AiCaps,
   type BudgetEventNotice,
@@ -146,7 +147,12 @@ export function createAiRuntime(
     },
   });
   const guard = createAiGuard({
-    policyGate: createPolicyGate({ db: database.db }),
+    policyGate: createPolicyGate({
+      db: database.db,
+      autosendEnabled: config.AI_AUTOSEND_ENABLED,
+      aiCaps: caps,
+      linkOrigins: instanceOrigins(config.APP_URL),
+    }),
     db: database.db,
     budget,
     caps,

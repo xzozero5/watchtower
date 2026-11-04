@@ -51,7 +51,7 @@ export type DispatchOutcome =
   | { readonly status: 'skipped' }
   /** Scheduled, not due yet by this process' clock: the job has to come back at `notBefore`. */
   | { readonly status: 'early'; readonly notBefore: Date }
-  | { readonly status: 'sent'; readonly route: DeliveryRoute }
+  | { readonly status: 'sent'; readonly route: DeliveryRoute | null }
   | { readonly status: 'retry'; readonly errorCode: string }
   | { readonly status: 'failed'; readonly errorCode: string; readonly outcomeUnknown: boolean }
   /** The gate or a content check refused at claim time; nothing was sent. */
@@ -660,6 +660,24 @@ export function createOutboundDispatcher(deps: DispatcherDeps) {
     }
   }
 
+  // -- Portal -------------------------------------------------------------------------------------
+
+  /**
+   * The portal reads the message from the table, so there is no provider to call: the delivery ends the hold
+   * by marking the message delivered (the customer's screen shows it from then on). Only an automatic reply
+   * gets here (the table refuses any other origin on this channel), after the same vetting as the others.
+   */
+  function sendPortal(delivery: OutboundDeliveryRow): Promise<DispatchOutcome> {
+    return recordSentWithRetries(delivery, {
+      route: null,
+      providerMessageId: null,
+      rfc822MessageId: null,
+      providerThreadId: null,
+      threadKey: null,
+      alreadyAccepted: false,
+    });
+  }
+
   // -- entry points -------------------------------------------------------------------------------
 
   /** Sends one delivery if it is due. Safe to call any number of times, from any number of workers. */
@@ -727,7 +745,9 @@ export function createOutboundDispatcher(deps: DispatcherDeps) {
         ? await sendGmail(claimed, context)
         : context.account.type === 'line'
           ? await sendLine(claimed, context)
-          : await failNow(claimed, 'channel_not_supported');
+          : context.account.type === 'portal' && claimed.origin === 'ai_auto'
+            ? await sendPortal(claimed)
+            : await failNow(claimed, 'channel_not_supported');
     } catch (error) {
       // A bug or a database error between the claim and a result. The row stays `sending`; the
       // sweeper decides from `dispatched_at`: never reached the provider -> back to scheduled.

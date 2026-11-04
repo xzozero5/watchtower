@@ -1,6 +1,6 @@
 import { schema, type Database } from '@watchtower/db';
 import { AUDIT_ACTIONS, editDistance, type RejectAiDraft } from '@watchtower/shared';
-import { and, eq, gt, ne, sql } from 'drizzle-orm';
+import { and, eq, gt, inArray, ne, sql } from 'drizzle-orm';
 
 import { recordAuditInTx } from '../audit.js';
 import { DomainError, conflict, notFound } from '../errors.js';
@@ -120,12 +120,19 @@ export async function restoreAiDraft(tx: DbTransaction, draftId: string): Promis
       status: 'draft',
       approvedBy: null,
       approvedAt: null,
+      // A draft the system approved on its own (ADR-025) goes back the same way.
+      autoApprovedAt: null,
       disposition: null,
       editDistance: null,
       resolvedBy: null,
       resolvedAt: null,
     })
-    .where(and(eq(schema.aiDraft.id, draftId), eq(schema.aiDraft.status, 'approved')))
+    .where(
+      and(
+        eq(schema.aiDraft.id, draftId),
+        inArray(schema.aiDraft.status, ['approved', 'auto_approved']),
+      ),
+    )
     .returning({ ticketId: schema.aiDraft.ticketId, createdAt: schema.aiDraft.createdAt });
   if (restored === undefined) return;
   const newer = await tx

@@ -83,7 +83,7 @@ import {
   sweepDeliveries,
   vetDelivery,
 } from './outbound/dispatch.js';
-import { scheduleCustomerSend, scheduleTemplateAck } from './outbound/schedule.js';
+import { scheduleAutoSend, scheduleCustomerSend, scheduleTemplateAck } from './outbound/schedule.js';
 import { readOutboundSettings, setUndoSendSeconds } from './outbound/settings.js';
 import { plainPortalUrl } from './outbound/templates.js';
 import { notifyOpsAlert, notifyShiftAlerts } from './notifications.js';
@@ -509,9 +509,11 @@ export {
 } from './outbound/reply-token.js';
 export {
   approveAiDraftSent,
+  scheduleAutoSend,
   scheduleCustomerSend,
   scheduleTemplateAck,
   usesDispatcher,
+  type AutoSendInput,
   type ScheduleOrigin,
   type ScheduleSendInput,
   type ScheduledSend,
@@ -554,15 +556,55 @@ export {
   type SendOrigin,
 } from './policy.js';
 export {
+  AUTOSEND_GRADE_MAX_AGE_SECONDS,
+  AUTOSEND_HOLD_SECONDS,
+  AUTOSEND_MAX_STREAK,
   GATE_REASONS,
   ORIGIN_ACTOR,
+  SHADOW_WAIVERS,
   decide,
+  decideAutoSend,
   effectiveStage,
+  evaluateAutoSend,
+  type AutoSendBudgetFacts,
+  type AutoSendContentFacts,
+  type AutoSendDisclosureFacts,
+  type AutoSendEvaluationInput,
+  type AutoSendFacts,
+  type AutoSendGradeFacts,
+  type AutoSendProcedureFacts,
+  type AutoSendTicketFacts,
+  type AutoSendWaiver,
   type DecisionInput,
   type GateReason,
   type IntentStanding,
   type SwitchState,
 } from './autonomy/decide.js';
+export {
+  composeAutoSendText,
+  countPlaceholders,
+  customerWantsHuman,
+  disclosureFor,
+  instanceOrigins,
+  linksAllowed,
+  senderAuthenticated,
+} from './autonomy/autosend-text.js';
+export {
+  loadAutoSendFacts,
+  type AutoSendLoadOptions,
+  type AutoSendRequest,
+  type LoadedAutoSend,
+} from './autonomy/autosend-facts.js';
+export {
+  noteAutoSendHeld,
+  readAutosendDisclosure,
+  recordAutoSendEvaluation,
+  recordAutosendFlagBoot,
+  setAutosendDisclosure,
+  recordPreSendGrade,
+  type NewAutoSendEvaluation,
+  type NewPreSendGrade,
+} from './autonomy/autosend-record.js';
 export {
   createPolicyGate,
   readSwitchState,
@@ -717,6 +759,8 @@ export interface DomainOptions {
   readonly reopenWindowDays?: number;
   /** Free mail provider domains (matched by whole address when replying by email); default: the built-in list. */
   readonly freeMailDomains?: readonly string[] | undefined;
+  /** `AI_AUTOSEND_ENABLED` of this process (ADR-025 section 2); only used to show the stage the system acts on. Default off. */
+  readonly autosendEnabled?: boolean | undefined;
   /** Absent means every customer-bound AI action is refused (fail closed, N3). `createPolicyGate` builds the real one. */
   readonly policyGate?: PolicyGate | undefined;
   readonly now?: () => Date;
@@ -816,6 +860,8 @@ export interface Domain {
   readonly outbound: {
     readonly schedule: typeof scheduleCustomerSend;
     readonly scheduleTemplateAck: typeof scheduleTemplateAck;
+    /** An automatic reply of the AI (ADR-025): the message and the `ai_auto` delivery, held 120 s. */
+    readonly scheduleAutoSend: typeof scheduleAutoSend;
     readonly cancel: typeof cancelSend;
     readonly claim: typeof claimDelivery;
     readonly vet: typeof vetDelivery;
@@ -938,6 +984,7 @@ export function createDomain(options: DomainOptions): Domain {
     portalUrl: plainPortalUrl(options.portalUrl),
     retryKeyMaxAgeSeconds: options.retryKeyMaxAgeSeconds,
     csat: options.csat,
+    autosendEnabled: options.autosendEnabled === true,
   };
   const now = options.now ?? ((): Date => new Date());
   return {
@@ -1019,6 +1066,7 @@ export function createDomain(options: DomainOptions): Domain {
     outbound: {
       schedule: scheduleCustomerSend,
       scheduleTemplateAck,
+      scheduleAutoSend,
       cancel: cancelSend,
       claim: claimDelivery,
       vet: vetDelivery,

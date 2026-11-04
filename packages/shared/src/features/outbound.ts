@@ -65,15 +65,16 @@ export const deliveryStateSchema = z.enum(DELIVERY_STATES);
 export type DeliveryState = z.infer<typeof deliveryStateSchema>;
 
 /**
- * Where a delivery comes from. `ai_auto` is not here on purpose: Phase 1 has no path for an AI to
- * send on its own (N3), so the table refuses such a row (CHECK) as well as the gate. Phase 3 widens
- * this with its own ADR and migration.
+ * Where a delivery comes from. `ai_auto` (ADR-025, migration 0096) is the AI sending on its own: only for an
+ * intent at stage 3 with `AI_AUTOSEND_ENABLED`, only by Gmail or the portal, and only through the gate.
  */
-export const DELIVERY_ORIGINS = ['human', 'ai_approved', 'system_template'] as const;
+export const DELIVERY_ORIGINS = ['human', 'ai_approved', 'ai_auto', 'system_template'] as const;
 export type DeliveryOrigin = (typeof DELIVERY_ORIGINS)[number];
 
 export const DELIVERY_CHANNELS = ['gmail', 'line'] as const;
 export type DeliveryChannel = (typeof DELIVERY_CHANNELS)[number];
+/** Channels a delivery row can carry: the two with a provider, and the portal (automatic replies only, migration 0106). */
+export const DELIVERY_ROW_CHANNELS = [...DELIVERY_CHANNELS, 'portal'] as const;
 
 export const DELIVERY_ROUTES = ['line_reply', 'line_push', 'gmail_thread', 'gmail_new'] as const;
 export type DeliveryRoute = (typeof DELIVERY_ROUTES)[number];
@@ -108,7 +109,7 @@ export const deliverySummarySchema = z.object({
   id: z.uuid(),
   state: deliveryStateSchema,
   origin: z.enum(DELIVERY_ORIGINS),
-  channel: z.enum(DELIVERY_CHANNELS),
+  channel: z.enum(DELIVERY_ROW_CHANNELS),
   /** When the message is sent (the end of the undo window); moves on a retry with backoff. */
   sendAt: z.iso.datetime(),
   /** True while Undo still works: `scheduled` and `sendAt` is in the future. */

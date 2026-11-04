@@ -16,11 +16,14 @@ import {
 import { schema, type Database } from '@watchtower/db';
 import {
   createDbToolLedger,
+  disclosureFor,
   effectiveStage,
   goldenExamplesFor,
   saveAiDraft,
+  senderAuthenticated,
   TicketKeys,
   writeAiInvestigation,
+  type Domain,
 } from '@watchtower/domain';
 import {
   AI_INTENT_SCOPE_MIN_CONFIDENCE,
@@ -36,6 +39,7 @@ import { z } from 'zod';
 
 import type { WorkerLogger } from '../logger.js';
 import type { RealtimeSink } from '../realtime.js';
+import { runAutoSendStep } from './autosend.js';
 import { NEEDS_HUMAN_LABELS } from './brief.js';
 import { replyBlockReason } from './reply-block.js';
 import { ticketPeopleNames, warnIfIncomplete } from './people-names.js';
@@ -63,6 +67,11 @@ export interface InvestigationDeps {
   readonly allowSystemTools: boolean;
   readonly realtime: RealtimeSink;
   readonly logger: WorkerLogger;
+  /**
+   * Stage 3 (ADR-025): the domain (for the gate and the send) and this process' `AI_AUTOSEND_ENABLED`. Absent:
+   * no shadow evaluation and no automatic send, whatever the intent says.
+   */
+  readonly autosend?: { readonly domain: Domain; readonly flagOn: boolean } | undefined;
   readonly now?: () => Date;
   /** Overrides the 110 s deadline (tests). */
   readonly deadlineMs?: number;
@@ -140,38 +149,9 @@ export async function resolveToolScope(
   return { intent: null, basis: 'none' };
 }
 
-/** Every inbound email message came from a sender the receiving server authenticated (`pass`). */
-export function senderAuthenticated(
-  messages: readonly { direction: string; emailMeta: unknown }[],
-): boolean {
-  return messages
-    .filter((message) => message.direction === 'inbound')
-    .every((message) => {
-      const meta = message.emailMeta;
-      return (
-        typeof meta === 'object' &&
-        meta !== null &&
-        (meta as { senderAuth?: unknown }).senderAuth === 'pass'
-      );
-    });
-}
-
-/** Verified for the disclosure policy (po #26): LINE tickets need the LINE identity verified, others the contact. */
-export function disclosureFor(
-  channel: string,
-  contact: { verifiedAt: Date | null; lineVerifiedAt: Date | null } | undefined,
-  /**
-   * Email only (T-114a C-3): did the receiving server authenticate every inbound message's sender?
-   * `From` is typed by the sender, so a verified contact's address alone proves nothing.
-   * Undefined means the question does not apply (not an email ticket).
-   */
-  senderAuthenticated?: boolean,
-): 'verified' | 'restricted' {
-  if (contact === undefined) return 'restricted';
-  if (channel === 'gmail' && senderAuthenticated === false) return 'restricted';
-  const verified = channel === 'line' ? contact.lineVerifiedAt : contact.verifiedAt;
-  return verified === null ? 'restricted' : 'verified';
-}
+// The disclosure policy (po #26, T-114a) lives in the domain so the gate of an automatic send asks the very same
+// question (ADR-025 condition 8); re-exported here for the callers and tests that import it from this file.
+export { disclosureFor, senderAuthenticated };
 
 /**
  * What the investigator stores per card: the contract fields plus where it came from and whether it is
@@ -290,6 +270,7 @@ export async function runInvestigation(
         id: schema.intent.id,
         key: schema.intent.key,
         stage: schema.intent.autonomyStage,
+        autosendShadow: schema.intent.autosendShadow,
         allowedTools: schema.intent.allowedTools,
       })
       .from(schema.intent)
@@ -321,7 +302,10 @@ export async function runInvestigation(
     .join(' ');
   const ticketIntent = intents.find((intent) => intent.id === ticket.intentId);
   // The stage that governs drafts is the one of the ticket's own intent (the gate reads that one).
-  const stage = ticketIntent === undefined ? 0 : effectiveStage(ticketIntent.stage);
+  const stage =
+    ticketIntent === undefined
+      ? 0
+      : effectiveStage(ticketIntent.stage, deps.autosend?.flagOn === true);
   const scopeStage = Math.min(4, Math.max(0, stage)) as AutonomyStage;
 
   warnIfIncomplete(deps.logger, ticket.id, contacts);
@@ -499,5 +483,40 @@ export async function runInvestigation(
     draftId: saved.id,
     nextStep: { kind: 'approve_draft', label: 'Review the draft reply' },
   });
+  // Stage 3 and its shadow mode (ADR-025): the draft stays a draft unless every condition holds. A failure
+  // here never fails the job (a retry would write another draft); a person reviews the draft either way.
+  if (deps.autosend !== undefined && job.mode === 'investigate') {
+    await runAutoSendStep(
+      {
+        database: deps.database,
+        domain: deps.autosend.domain,
+        settings: runtime.settings,
+        realtime: deps.realtime,
+        logger: deps.logger,
+        flagOn: deps.autosend.flagOn,
+      },
+      {
+        ticket: { id: ticket.id, channel: ticket.channel },
+        intent: {
+          id: ticketIntent.id,
+          key: ticketIntent.key,
+          stage: ticketIntent.stage,
+          autosendShadow: ticketIntent.autosendShadow,
+        },
+        draft: {
+          id: saved.id,
+          body: drafted.value.body,
+          aiRunId: drafted.runId,
+          language: drafted.value.language,
+          citedEvidenceIds: drafted.value.citedEvidenceIds,
+        },
+        evidence,
+        customerTurns: turns.filter((turn) => turn.from === 'customer').map((turn) => turn.text),
+        agents,
+        locale: customerLanguage,
+        signal,
+      },
+    );
+  }
   return { status: 'drafted' };
 }

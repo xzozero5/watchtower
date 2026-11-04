@@ -17,6 +17,7 @@ export * from './agents/investigate.js';
 export * from './agents/draft.js';
 export * from './agents/kb-author.js';
 export * from './agents/grade.js';
+export * from './agents/grade-presend.js';
 export * from './agents/procedure-compiler.js';
 export * from './agents/assistant.js';
 export * from './agents/summary.js';
