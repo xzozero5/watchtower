@@ -17,7 +17,7 @@ import { useId, useState } from 'react';
 import { useI18n } from '@/i18n/provider';
 import { describeError } from '@/lib/admin/errors';
 import { adminKeys, stage3Keys } from '@/lib/admin/queries';
-import { approveReturnPath } from '@/lib/admin/stage3';
+import { approveReturnPath, refusedReasonKey } from '@/lib/admin/stage3';
 import { useApi } from '@/lib/api/api-context';
 import { isApiError } from '@/lib/api/errors';
 import { SSO_PROVIDER, stepUpUrl } from '@/lib/auth/providers';
@@ -121,6 +121,13 @@ export function PromotionDialog({
       if (isApiError(failure) && failure.code === 'autosend_flag_off') {
         setError(t('stage3.promo.flagOff'));
         return;
+      }
+      if (isApiError(failure) && failure.status === 403) {
+        const key = refusedReasonKey(failure.details);
+        if (key !== null) {
+          setError(t(key));
+          return;
+        }
       }
       setError(describeError(failure, t).message);
     },

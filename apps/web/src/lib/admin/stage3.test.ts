@@ -1,4 +1,10 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+
 import { describe, expect, it } from 'vitest';
+
+import { en } from '@/i18n/messages/en';
+import { th } from '@/i18n/messages/th';
 
 import { makeGateReport, makePromotion } from '@/test/stage3-fixtures';
 
@@ -7,6 +13,7 @@ import {
   heldReasonCode,
   heldReasonKey,
   promotionBlock,
+  refusedReasonKey,
   shadowMetrics,
 } from './stage3';
 
@@ -71,5 +78,50 @@ describe('shadowMetrics and the return address', () => {
 
   it('brings the owner back to the Stage 3 tab with the request to approve', () => {
     expect(approveReturnPath('abc', 'def')).toBe('/admin/intents/abc?tab=stage3&approve=def');
+  });
+});
+
+/** `GATE_REASONS` of the domain, read from its source (the web app does not depend on the domain package). */
+function gateDenyReasons(): string[] {
+  const source = readFileSync(
+    join(process.cwd(), '..', '..', 'packages', 'domain', 'src', 'autonomy', 'decide.ts'),
+    'utf8',
+  );
+  const block = /GATE_REASONS = \{([\s\S]*?)\} as const;/.exec(source)?.[1] ?? '';
+  const afterAllowed = block.split('// denied')[1] ?? '';
+  return [...afterAllowed.matchAll(/^\s+\w+: '([a-z0-9_]+)',/gm)].map((match) => match[1] ?? '');
+}
+
+describe('every deny reason of the gate has words', () => {
+  const reasons = gateDenyReasons();
+
+  it('reads a believable list from the domain', () => {
+    expect(reasons.length).toBeGreaterThan(40);
+    expect(reasons).toContain('replay_missing');
+    expect(reasons).not.toContain('human_staff');
+  });
+
+  it.each(reasons)('%s has a key and copy in TH and EN', (reason) => {
+    const key = heldReasonKey(reason);
+    expect(key).not.toBeNull();
+    const name = (key ?? '').replace('stage3.held.', '');
+    expect(Object.hasOwn(en.stage3.held, name)).toBe(true);
+    expect(Object.hasOwn(th.stage3.held, name)).toBe(true);
+  });
+});
+
+describe('refusedReasonKey', () => {
+  it('maps a known reason and ignores a missing or unknown one', () => {
+    expect(refusedReasonKey({ reason: 'report_not_green' })).toBe(
+      'stage3.refused.report_not_green',
+    );
+    expect(refusedReasonKey({ reason: 'confirm_key_mismatch' })).toBe(
+      'stage3.refused.confirm_key_mismatch',
+    );
+    expect(refusedReasonKey({ reason: 'something_new' })).toBeNull();
+    expect(refusedReasonKey({ reason: 'toString' })).toBeNull();
+    expect(refusedReasonKey({ reason: 3 })).toBeNull();
+    expect(refusedReasonKey({})).toBeNull();
+    expect(refusedReasonKey(undefined)).toBeNull();
   });
 });

@@ -162,6 +162,49 @@ describe('Stage 3 tab: the button to ask', () => {
     });
   });
 
+  async function askRefused(json: Record<string, unknown>) {
+    const user = userEvent.setup();
+    setup({
+      overrides: {
+        'POST /v1/intents/:id/autonomy/promotions': {
+          status: 403,
+          json: { statusCode: 403, error: 'Forbidden', ...json },
+        },
+      },
+    });
+    await openStage3(user);
+    await screen.findByRole('heading', { name: 'Gate report' });
+    await user.click(askButton());
+    const dialog = await screen.findByRole('dialog', {
+      name: 'Ask the owner to move this intent to Stage 3',
+    });
+    await user.type(within(dialog).getByLabelText(/Reason/), 'Four weeks green');
+    await user.click(within(dialog).getByRole('button', { name: 'Send the request' }));
+    return dialog;
+  }
+
+  it('says why a refusal happened when the 403 carries a reason', async () => {
+    const dialog = await askRefused({
+      code: 'forbidden',
+      message: 'This intent cannot be promoted now',
+      reason: 'report_not_green',
+    });
+    expect(
+      await within(dialog).findByText('The gate report is not green. Every check must pass.'),
+    ).toBeVisible();
+  });
+
+  it('falls back to the generic message when the reason is absent or unknown', async () => {
+    const dialog = await askRefused({
+      code: 'forbidden',
+      message: 'This intent cannot be promoted now',
+      reason: 'a_reason_from_the_future',
+    });
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent(
+      'You do not have permission to do this.',
+    );
+  });
+
   it('is not drawn for a lead, who can read but not ask', async () => {
     const user = userEvent.setup();
     setup({ session: LEAD });
