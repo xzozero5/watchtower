@@ -371,7 +371,8 @@ export const adminEn = {
       reminder: 'Remind after (hours)',
       reminderHint: 'One reminder if there is no answer. 0 means no reminder. Up to {max}.',
       cooldown: 'Quiet period per contact (days)',
-      cooldownHint: 'A contact is surveyed at most once in this many days. 0 means no limit. Up to {max}.',
+      cooldownHint:
+        'A contact is surveyed at most once in this many days. 0 means no limit. Up to {max}.',
       rangeError: 'Enter a whole number from 0 to {max}.',
       save: 'Save',
       saving: 'Saving…',
