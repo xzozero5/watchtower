@@ -139,7 +139,8 @@ async function resolvedTicket(
       senderUserId: lead.id,
       bodyText: 'Please check that the endpoint answers within ten seconds.',
       visibility: 'public',
-      createdAt: new Date(Date.now() + 1000),
+      // The database clock, not the host's: the customer message took now() of the database (Docker's clock can run ahead).
+      createdAt: sql`now() + interval '1 second'`,
     });
   }
   return id;

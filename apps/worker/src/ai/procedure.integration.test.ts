@@ -16,7 +16,7 @@ import {
 } from '@watchtower/shared';
 import { disableNetConnect } from '@watchtower/shared/testing';
 import { Queue } from 'bullmq';
-import { and, eq, isNotNull } from 'drizzle-orm';
+import { and, eq, isNotNull, sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { createMemoryObjectStore } from '../ingest/object-store.js';
@@ -424,7 +424,8 @@ describe('simulation job (T-303d)', () => {
           bodyText:
             'Thanks for writing to us. Please make sure the endpoint answers within ten seconds.',
           visibility: 'public',
-          createdAt: new Date(Date.now() + 1000),
+          // The database clock, not the host's: the customer message took now() of the database (Docker's clock can run ahead).
+          createdAt: sql`now() + interval '1 second'`,
         });
     }
 
