@@ -462,6 +462,7 @@ export function Composer({
         event.preventDefault();
         submit();
       }}
+      data-sticky-footer=""
       className="shrink-0 border-t border-border p-3"
     >
       <div

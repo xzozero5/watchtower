@@ -390,6 +390,7 @@ Single-letter keys work only when focus is **not** in a text field, select or co
 | Scope | Key | Action |
 |---|---|---|
 | Global | `Ctrl/⌘ K` | Command palette (exists) |
+| Global | `Ctrl/⌘ /` | Open / close the AI assistant (also from a text field; palette command "Ask AI"; not offered to a customer). **Not `Ctrl/⌘ J`**: that is Downloads in Chrome, Edge and Firefox and a page cannot rely on overriding it `[UNVERIFIED 60%]`; not `.` (taken by "N new"); not `Ctrl/⌘ I` (Page info in Firefox, Mail in Safari). `Ctrl/⌘ /` has no browser binding we know of and, with the modifier, does not collide with the bare `/` (queue search) or `/` at line start (templates) `[ASSUMED]`. On a keyboard where `/` needs Shift the palette command and the button are the way in. |
 | Global | `?` | Shortcut help |
 | Global | `/` | Focus queue search |
 | Global | `g` then `q` / `o` / `b` / `h` / `n` | Go to queue / Other mail / Brief / Handoff / Notifications |
@@ -477,6 +478,9 @@ Conflicts: `A` means Approve when a draft is present and Acknowledge only on an 
 | `composer.lineQuotaOut` | Monthly push quota used up. Send by email instead. | โควตา push เดือนนี้หมดแล้ว ส่งทางอีเมลแทน |
 | `composer.unverifiedWarn` | Unverified contact — don't share account data, internal links or root causes. | ผู้ติดต่อยังไม่ยืนยันตัวตน — ห้ามให้ข้อมูลบัญชี ลิงก์ภายใน หรือสาเหตุของปัญหา |
 | `composer.unresolvedVar` | `Fill in {variable} before sending.` | `กรอก {variable} ก่อนส่ง` |
+| `keymap.assistant` | Open or close the AI assistant (`Ctrl/⌘ /`) | เปิดหรือปิดผู้ช่วย AI (`Ctrl/⌘ /`) |
+| `commands.askAssistant` | Ask AI | ถาม AI |
+| `prefs.assistantButton` | AI assistant button (account menu; unchecked hides the floating button, the shortcut and "Ask AI" still work) | ปุ่มผู้ช่วย AI (ในเมนูบัญชี; เอาติ๊กออกเพื่อซ่อนปุ่มลอย คีย์ลัดและ "ถาม AI" ยังใช้ได้) |
 | `ai.investigating` | `Investigating… step {step} of {total}: {label}` | `กำลังตรวจสอบ… ขั้นที่ {step} จาก {total}: {label}` |
 | `ai.evidence` | Evidence | หลักฐาน |
 | `ai.openSource` | Open source | เปิดแหล่งที่มา |

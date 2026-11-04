@@ -12,6 +12,7 @@ export const prefsTh: Widen<typeof prefsEn> = {
   },
   density: { label: 'ความหนาแน่น', comfortable: 'สบายตา', compact: 'กะทัดรัด' },
   language: { label: 'ภาษา' },
+  assistantButton: 'ปุ่มผู้ช่วย AI',
   singleKey: {
     label: 'คีย์ลัดปุ่มเดี่ยว',
     hint: 'ปุ่มตัวอักษรและสัญลักษณ์อย่าง J, K และ ? ปิดไว้หากกดโดยไม่ตั้งใจ เช่น เมื่อใช้เสียงสั่งงาน',

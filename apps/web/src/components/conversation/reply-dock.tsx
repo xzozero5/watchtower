@@ -108,6 +108,7 @@ export function ReplyDock({
     <div
       role="group"
       aria-label={t('composer.label')}
+      data-sticky-footer=""
       className="flex shrink-0 gap-2 border-t border-border/60 p-3"
     >
       {canReply ? (

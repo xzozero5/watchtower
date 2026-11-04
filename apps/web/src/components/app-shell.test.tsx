@@ -2,6 +2,10 @@ import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import {
+  ASSISTANT_HIDDEN_STORAGE_KEY,
+  resetAssistantHiddenCache,
+} from '@/lib/assistant/assistant-ui';
 import { resetPreferencesCache } from '@/lib/preferences';
 import { RAIL_STORAGE_KEY } from '@/lib/rail-preference';
 import { renderWorkspace } from '@/test-utils';
@@ -16,6 +20,7 @@ beforeEach(() => {
   // These tests are about the account menu, which has its short name while the rail is icons.
   localStorage.setItem(RAIL_STORAGE_KEY, '0');
   resetPreferencesCache();
+  resetAssistantHiddenCache();
 });
 
 afterEach(() => {
@@ -177,6 +182,38 @@ describe('AppShell for staff', () => {
     );
     await choose(user, compact);
     expect(document.documentElement).toHaveAttribute('data-density', 'compact');
+  });
+
+  it('hides and shows the AI assistant button from the account menu, and remembers it', async () => {
+    const user = userEvent.setup();
+    workspaceApi();
+    await openWorkspace();
+    await user.click(screen.getByRole('button', { name: 'Account menu' }));
+    const item = await screen.findByRole('menuitemcheckbox', { name: 'AI assistant button' });
+    expect(item).toHaveAttribute('aria-checked', 'true');
+    await choose(user, item);
+    expect(localStorage.getItem(ASSISTANT_HIDDEN_STORAGE_KEY)).toBe('hidden');
+
+    await user.click(screen.getByRole('button', { name: 'Account menu' }));
+    const again = await screen.findByRole('menuitemcheckbox', { name: 'AI assistant button' });
+    expect(again).toHaveAttribute('aria-checked', 'false');
+    await choose(user, again);
+    expect(localStorage.getItem(ASSISTANT_HIDDEN_STORAGE_KEY)).toBeNull();
+  });
+
+  it('has an "Ask AI" command in the palette that asks the assistant to open', async () => {
+    const user = userEvent.setup();
+    workspaceApi();
+    await openWorkspace();
+    const asked = vi.fn();
+    window.addEventListener('wt:assistant-open', asked);
+    fireEvent.keyDown(document.body, { key: 'k', ctrlKey: true });
+    await user.type(await screen.findByRole('combobox', { name: 'Command palette' }), 'ask ai');
+    await user.keyboard('{Enter}');
+    await waitFor(() => {
+      expect(asked).toHaveBeenCalledTimes(1);
+    });
+    window.removeEventListener('wt:assistant-open', asked);
   });
 
   it('the account menu no longer holds the single-key switch: the keyboard map does', async () => {

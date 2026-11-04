@@ -8,6 +8,7 @@ export const commandsEn = {
   aiResume: 'AI: Resume AI runs…',
   aiLimit: 'AI: Limit all intents to Stage 2…',
   aiUnlimit: 'AI: Remove the stage limit…',
+  askAssistant: 'Ask AI',
   showShortcuts: 'Show keyboard shortcuts',
   signOut: 'Sign out',
   themeSystem: 'Theme: follow system',
