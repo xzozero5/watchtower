@@ -132,6 +132,9 @@ describe('the instance-wide cap is only a backstop (C-1)', () => {
         PORTAL_UPLOAD_DAILY_MB: '2',
       },
     });
+    await h.db.owner.pool.query(
+      `INSERT INTO users (email, name, role) VALUES ('head-quota@example.test', 'Head', 'head')`,
+    );
   });
   afterAll(async () => {
     await h.close();
@@ -155,6 +158,17 @@ describe('the instance-wide cap is only a backstop (C-1)', () => {
     expect(await auditReasons(h)).toContain('upload_quota_global');
     const metrics = await (await fetch(`${h.base}/metrics`)).text();
     expect(metrics).toMatch(/portal_upload_quota_global_total\S* [1-9]/);
+  });
+
+  it('tells the head in the app, once, when the instance-wide cap is reached (T-176)', async () => {
+    // The test above filled the cap; two more refused uploads must not make a second notice.
+    expect((await submit(h.client(), [big()])).response.status).toBe(429);
+    expect((await submit(h.client(), [big()])).response.status).toBe(429);
+    const { rows } = await h.db.owner.pool.query<{ kind: string; severity: string }>(
+      `SELECT n.kind, n.severity FROM notification n JOIN users u ON u.id = n.user_id
+        WHERE u.email = 'head-quota@example.test'`,
+    );
+    expect(rows).toEqual([{ kind: 'ops.upload_quota_global', severity: 'high' }]);
   });
 });
 

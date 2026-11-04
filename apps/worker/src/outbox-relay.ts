@@ -109,6 +109,11 @@ export interface OutboxRelayOptions extends RelayOptions {
   readonly intervalMs?: number;
   /** Finished rows older than this many days are deleted. Default 7. */
   readonly retentionDays?: number;
+  /**
+   * Called when a pass gave up on rows (T-176): the app tells the heads. A failure here is logged and
+   * never stops the loop; the caller owns the once-an-hour rule.
+   */
+  readonly onDead?: (dead: number) => Promise<void>;
 }
 
 export interface RunningOutboxRelay {
@@ -172,7 +177,12 @@ export function startOutboxRelay(options: OutboxRelayOptions): RunningOutboxRela
         );
       }
     }
-    if (total.dead > 0) logger.error({ dead: total.dead }, 'outbox rows given up on');
+    if (total.dead > 0) {
+      logger.error({ dead: total.dead }, 'outbox rows given up on');
+      await options.onDead?.(total.dead).catch((error: unknown) => {
+        logger.warn({ err: error }, 'outbox: the heads could not be told about dead rows');
+      });
+    }
     if (total.expired > 0) {
       logger.warn({ expired: total.expired }, 'outbox rows expired before they could be relayed');
     }

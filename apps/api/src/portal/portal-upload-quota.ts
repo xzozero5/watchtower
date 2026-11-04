@@ -1,13 +1,17 @@
 import { createHash } from 'node:crypto';
 
 import { HttpStatus, Inject, Injectable } from '@nestjs/common';
+import type { Database } from '@watchtower/db';
 import { AUDIT_ACTIONS } from '@watchtower/shared';
 import type { Redis } from 'ioredis';
 
 import { AuditScope } from '../audit/audit-scope.js';
 import { ApiHttpError } from '../auth/http-errors.js';
 import { APP_CONFIG, type ApiConfig } from '../config/config.js';
+import { DATABASE } from '../database/database.module.js';
+import { DOMAIN, type Domain } from '../domain/domain.module.js';
 import { LOGGER, type AppLogger } from '../logging/logger.js';
+import { RealtimePublisher } from '../realtime/realtime-publisher.js';
 import { REDIS } from '../redis/redis.module.js';
 import { TelemetryService } from '../telemetry/telemetry.service.js';
 
@@ -88,6 +92,9 @@ export class PortalUploadQuota {
     >,
     @Inject(LOGGER) private readonly logger: AppLogger,
     @Inject(TelemetryService) private readonly telemetry: TelemetryService,
+    @Inject(DATABASE) private readonly database: Database,
+    @Inject(DOMAIN) private readonly domain: Domain,
+    @Inject(RealtimePublisher) private readonly publisher: RealtimePublisher,
   ) {
     this.namespace = config.RATE_LIMIT_NAMESPACE;
     this.caps = {
@@ -183,6 +190,21 @@ export class PortalUploadQuota {
         'the instance-wide daily cap on portal uploads is reached: customers cannot attach files until it resets; ' +
           'look for one source in the audit log (portal.attachment_rejected, reason upload_quota_global) or raise the cap',
       );
+      await this.tellHeads();
+    }
+  }
+
+  /** The heads hear about it in the app (T-176). Never lets a failure here change the 429 the caller gets. */
+  private async tellHeads(): Promise<void> {
+    try {
+      const notice = await this.domain.notifications.opsAlert(
+        this.database.db,
+        this.domain.context({ actor: { type: 'system', id: null } }),
+        { kind: 'ops.upload_quota_global', data: { capMb: this.caps.global / MB } },
+      );
+      for (const event of notice.events) await this.publisher.publish(event);
+    } catch (error) {
+      this.logger.warn({ err: error }, 'portal upload quota: the heads could not be notified');
     }
   }
 }

@@ -16,6 +16,7 @@ import { defaultGmailRuntime } from './gmail/index.js';
 import { createHealthServer } from './health.js';
 import type { WorkerLogger } from './logger.js';
 import { createSmtpMailer, type Mailer } from './mailer.js';
+import { tellHeads } from './ops-notice.js';
 import {
   createBullmqPublisher,
   startOutboxRelay,
@@ -220,6 +221,8 @@ export async function startWorker(
     publish: options.outboxPublisher ?? publisher.publish,
     logger,
     intervalMs: config.OUTBOX_POLL_INTERVAL_MS,
+    onDead: (dead) =>
+      tellHeads({ database, domain, realtime, logger }, 'ops.outbox_dead', { count: dead }),
   });
 
   const health = createHealthServer({

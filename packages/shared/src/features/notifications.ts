@@ -32,7 +32,9 @@ export const NOTIFICATIONS_QUEUES = {} as const satisfies Record<string, string>
  *  - `ticket.assigned`: a ticket was handed to you by someone else;
  *  - `shift.handoff_overdue`, `shift.no_show`: for leads (R-7.3, AC-7), raised from the shift overview;
  *  - `alert.fired`: an alert needs you (first step of its escalation policy: you are on shift);
- *  - `alert.escalated`: nobody acknowledged an alert in time and it reached you (lead or head).
+ *  - `alert.escalated`: nobody acknowledged an alert in time and it reached you (lead or head);
+ *  - `ops.*` (T-176): the system itself needs the head: the mail server refused our login, the
+ *    instance-wide upload cap is full, outbox rows were given up on. At most one per kind per hour.
  */
 export const NOTIFICATION_KINDS = [
   'ticket.p1',
@@ -41,9 +43,22 @@ export const NOTIFICATION_KINDS = [
   'shift.no_show',
   'alert.fired',
   'alert.escalated',
+  'ops.smtp_auth_failed',
+  'ops.upload_quota_global',
+  'ops.outbox_dead',
 ] as const;
 export type NotificationKind = (typeof NOTIFICATION_KINDS)[number];
 export const notificationKindSchema = z.enum(NOTIFICATION_KINDS);
+
+/** Kinds about the system, not a ticket. Sent to heads only (T-176), at most once an hour per kind. */
+export const OPS_NOTIFICATION_KINDS = [
+  'ops.smtp_auth_failed',
+  'ops.upload_quota_global',
+  'ops.outbox_dead',
+] as const satisfies readonly NotificationKind[];
+export type OpsNotificationKind = (typeof OPS_NOTIFICATION_KINDS)[number];
+/** One system notice per kind per this many seconds, however often the fault repeats. */
+export const OPS_NOTIFICATION_EVERY_SECONDS = 3600;
 
 /** `critical` is what the sticky banner shows. */
 export const NOTIFICATION_SEVERITIES = ['critical', 'high', 'normal'] as const;

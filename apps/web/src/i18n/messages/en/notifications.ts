@@ -32,6 +32,9 @@ export const notificationsEn = {
     shiftNoShow: 'Someone has not clocked in for their shift',
     alertFired: 'An alert needs you',
     alertEscalated: 'An alert was not acknowledged and has reached you',
+    opsSmtpAuthFailed: 'The mail server refused our login: check SMTP_USER and SMTP_PASSWORD',
+    opsUploadQuotaGlobal: 'The daily cap on portal uploads is full: customers cannot attach files',
+    opsOutboxDead: '{count} queued jobs were given up on and need a look',
   },
   kindName: {
     ticketP1: 'P1 tickets',
@@ -40,6 +43,9 @@ export const notificationsEn = {
     shiftNoShow: 'Shift no-shows (leads)',
     alertFired: 'Alerts that need me (on shift)',
     alertEscalated: 'Alerts that were not acknowledged in time',
+    opsSmtpAuthFailed: 'System: mail login refused (heads)',
+    opsUploadQuotaGlobal: 'System: upload cap full (heads)',
+    opsOutboxDead: 'System: jobs given up on (heads)',
   },
   banner: {
     label: 'Critical alert',

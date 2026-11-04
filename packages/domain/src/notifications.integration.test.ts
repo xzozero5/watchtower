@@ -5,7 +5,7 @@ import { and, eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { Effects } from './types.js';
-import { notifyIn, notifyShiftAlerts } from './notifications.js';
+import { notifyIn, notifyOpsAlert, notifyShiftAlerts } from './notifications.js';
 import {
   addOrg,
   addQueue,
@@ -263,5 +263,64 @@ describe('shift alerts', () => {
       }),
     );
     expect(made).toBe(0);
+  });
+});
+
+describe('a system notice for the heads (T-176)', () => {
+  const systemCtx = () => env.ctx({ type: 'system', id: null });
+
+  it('tells every active head, not a lead or an agent, and emits one realtime event each', async () => {
+    const head = await addStaff(env, 'head');
+    const lead = await addStaff(env, 'lead');
+    const agent = await addStaff(env, 'agent');
+    // Earlier tests may have left a notice of this kind inside the hour: this one is its own kind.
+    const result = await notifyOpsAlert(env.db.owner.db, systemCtx(), {
+      kind: 'ops.smtp_auth_failed',
+      data: { responseCode: 535 },
+    });
+    expect(result.created).toBeGreaterThanOrEqual(1);
+    const mine = await notificationsOf(head.id);
+    expect(mine.filter((row) => row.kind === 'ops.smtp_auth_failed')).toHaveLength(1);
+    expect(mine[0]?.severity).toBe('high');
+    expect(await notificationsOf(lead.id)).toEqual([]);
+    expect(await notificationsOf(agent.id)).toEqual([]);
+    expect(result.events.some((event) => event.type === 'notification.created')).toBe(true);
+  });
+
+  it('makes at most one per kind per hour, and another kind is not held back by it', async () => {
+    const head = await addStaff(env, 'head');
+    const start = Date.now();
+    const ctxAt = (offsetMinutes: number) =>
+      env.ctx(
+        { type: 'system', id: null },
+        { now: () => new Date(start + offsetMinutes * 60_000) },
+      );
+    const first = await notifyOpsAlert(env.db.owner.db, ctxAt(0), { kind: 'ops.outbox_dead' });
+    const again = await notifyOpsAlert(env.db.owner.db, ctxAt(30), { kind: 'ops.outbox_dead' });
+    expect(first.created).toBeGreaterThanOrEqual(1);
+    expect(again.created).toBe(0);
+    expect(again.events).toEqual([]);
+    const other = await notifyOpsAlert(env.db.owner.db, ctxAt(30), {
+      kind: 'ops.upload_quota_global',
+    });
+    expect(other.created).toBeGreaterThanOrEqual(1);
+    const later = await notifyOpsAlert(env.db.owner.db, ctxAt(61), { kind: 'ops.outbox_dead' });
+    expect(later.created).toBeGreaterThanOrEqual(1);
+    const mine = (await notificationsOf(head.id)).filter((row) => row.kind === 'ops.outbox_dead');
+    expect(mine.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('two at once make one', async () => {
+    await addStaff(env, 'head');
+    // The first test made one of this kind just now: a clock five hours ahead starts a fresh hour.
+    const far = env.ctx(
+      { type: 'system', id: null },
+      { now: () => new Date(Date.now() + 5 * 3600_000) },
+    );
+    const [a, b] = await Promise.all([
+      notifyOpsAlert(env.db.owner.db, far, { kind: 'ops.smtp_auth_failed' }),
+      notifyOpsAlert(env.db.owner.db, far, { kind: 'ops.smtp_auth_failed' }),
+    ]);
+    expect([a.created > 0, b.created > 0].filter(Boolean)).toHaveLength(1);
   });
 });

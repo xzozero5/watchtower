@@ -72,6 +72,8 @@ async function addReader(label: string): Promise<string> {
   return email;
 }
 
+const published: unknown[] = [];
+
 function processor(open: boolean, send: (message: OutboundMessage) => Promise<void>) {
   const config = testConfig({
     DATABASE_URL: testDb.appUrl,
@@ -85,6 +87,12 @@ function processor(open: boolean, send: (message: OutboundMessage) => Promise<vo
     database: appDb,
     mailer,
     domain,
+    realtime: {
+      publish: (event: unknown) => {
+        published.push(event);
+        return Promise.resolve();
+      },
+    },
   } as unknown as ProcessorContext;
   const run = createStatusPageRegistration(context);
   return () =>
@@ -162,6 +170,16 @@ describe('the notice job', () => {
     await owner().delete(schema.statusSubscription);
     await owner().delete(schema.statusNotification);
     const readers = [await addReader('au1'), await addReader('au2'), await addReader('au3')];
+    const [head] = await owner()
+      .insert(schema.users)
+      .values({
+        email: `head-${randomBytes(3).toString('hex')}@example.test`,
+        name: 'Head',
+        role: 'head',
+      })
+      .returning({ id: schema.users.id });
+    const headId = head?.id ?? '';
+    published.length = 0;
     let attempts = 0;
     const run = processor(true, () => {
       attempts += 1;
@@ -174,6 +192,17 @@ describe('the notice job', () => {
     // It did not hammer the server once per reader, and nobody was written off as a bounce.
     expect(attempts).toBe(1);
     expect(await claims()).toHaveLength(0);
+    // The head is told in the app (T-176), once: two more failing runs within the hour add nothing.
+    await run().catch(() => undefined);
+    await run().catch(() => undefined);
+    const headNotices = () =>
+      owner().select().from(schema.notification).where(eq(schema.notification.userId, headId));
+    const notices = await headNotices();
+    expect(notices).toHaveLength(1);
+    expect(notices[0]).toMatchObject({ kind: 'ops.smtp_auth_failed', severity: 'high' });
+    expect(JSON.stringify(notices[0]?.data)).not.toMatch(/password|Invalid login/i);
+    expect(published).toHaveLength(1);
+    await owner().delete(schema.notification).where(eq(schema.notification.userId, headId));
     // After the credentials are fixed, the next run reaches everyone.
     const sent: string[] = [];
     const fixed = processor(true, (message) => {
