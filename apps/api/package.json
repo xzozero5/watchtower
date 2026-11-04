@@ -21,6 +21,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@fontsource/ibm-plex-sans-thai": "^5.3.0",
     "@nestjs/common": "^12.3.2",
     "@nestjs/core": "^12.3.2",
     "@nestjs/platform-express": "^12.3.2",
@@ -42,6 +43,7 @@
     "ioredis": "^6.0.0",
     "jose": "^6.2.14",
     "openid-client": "^6.8.8",
+    "pdfkit": "^0.20.2",
     "pg": "^8.23.1",
     "pino": "^10.4.0",
     "reflect-metadata": "^0.2.2",
@@ -53,6 +55,7 @@
     "@nestjs/testing": "^12.3.2",
     "@types/express": "^5.0.6",
     "@types/node": "catalog:",
+    "@types/pdfkit": "^0.17.7",
     "@types/pg": "^8.23.1",
     "@types/ws": "^8.18.2",
     "bullmq": "^6.5.3",

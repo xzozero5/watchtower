@@ -144,7 +144,7 @@ export const CEO_KPI_LABELS: Readonly<Record<CeoKpiKey, { label: string; unit: s
 
 const KPI_ORDER = Object.keys(CEO_KPI_LABELS) as CeoKpiKey[];
 
-interface ExportRow {
+export interface ExportRow {
   readonly kind: 'kpi' | 'external';
   readonly key: string;
   readonly label: string;
@@ -161,7 +161,7 @@ const NOT_AVAILABLE: Readonly<Record<string, string>> = {
   not_implemented: 'not built yet',
 };
 
-function rowsOf(view: CeoView): ExportRow[] {
+export function rowsOf(view: CeoView): ExportRow[] {
   const kpis = KPI_ORDER.map((key): ExportRow => {
     const meta = CEO_KPI_LABELS[key];
     const figure = view.kpis[key];

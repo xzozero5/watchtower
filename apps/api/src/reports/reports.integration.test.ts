@@ -499,12 +499,29 @@ describe('export', () => {
     expect(response.body).not.toMatch(/<(link|img|iframe|script)|src=|href=/);
   });
 
+  it('writes a PDF of the same view and audits it', async () => {
+    const response = await lead.client.request(
+      'GET',
+      '/v1/reports/ceo/export?days=7&format=pdf',
+      {},
+    );
+    expect(response.status).toBe(200);
+    expect(response.headers.get('content-type')).toBe('application/pdf');
+    expect(response.headers.get('content-disposition')).toMatch(/ceo-view-\d{4}-\d{2}-\d{2}\.pdf/u);
+    expect(response.headers.get('cache-control')).toBe('no-store');
+    expect(Buffer.from(response.bytes.subarray(0, 5)).toString('latin1')).toBe('%PDF-');
+    const audit = await run(
+      `SELECT metadata FROM audit_log WHERE action = 'ceo.export' ORDER BY created_at DESC LIMIT 1`,
+    );
+    expect((audit.rows[0] as { metadata: { format: string } }).metadata.format).toBe('pdf');
+  });
+
   it('refuses an agent and an unknown format', async () => {
     expect(
       (await agent.client.request('GET', '/v1/reports/ceo/export?format=csv', {})).status,
     ).toBe(403);
-    expect((await lead.client.request('GET', '/v1/reports/ceo/export?format=pdf', {})).status).toBe(
-      400,
-    );
+    expect(
+      (await lead.client.request('GET', '/v1/reports/ceo/export?format=docx', {})).status,
+    ).toBe(400);
   });
 });
