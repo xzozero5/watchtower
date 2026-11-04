@@ -635,7 +635,9 @@ describe('the gate report reads the replay and shows the reviewers (T-306e C-4b,
       intentId,
       trigger: 'on_demand',
       generatedBy: headId,
-      now: new Date(),
+      // A little ahead (the database refuses a window that ends more than a minute ahead of it, 0108): rows made by
+      // `now()` in the database may be stamped after this host's clock.
+      now: new Date(Date.now() + 30_000),
     });
     const [report] = await readGateReports(database.db, intentId);
     return report;
