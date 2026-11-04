@@ -36,6 +36,7 @@ import { z } from 'zod';
 import type { WorkerLogger } from '../logger.js';
 import type { RealtimeSink } from '../realtime.js';
 import { NEEDS_HUMAN_LABELS } from './brief.js';
+import { replyBlockReason } from './reply-block.js';
 import { ticketPeopleNames, warnIfIncomplete } from './people-names.js';
 import type { AiRuntime } from './runtime.js';
 import {
@@ -81,7 +82,7 @@ export interface InvestigationJob {
 
 export interface InvestigationResult {
   readonly status: 'drafted' | 'investigated' | 'needs_human' | 'missing' | 'skipped';
-  readonly reason?: AiInsightReason | 'stage' | 'no_intent';
+  readonly reason?: AiInsightReason | 'stage' | 'no_intent' | 'reply_blocked';
 }
 
 class InvestigationFailedError extends Error {
@@ -343,6 +344,8 @@ export async function runInvestigation(
   // category). A draft on its own is only made when that intent is one we trust for the tools too; a
   // person can still ask for one (SR108-1).
   const intentTrusted = ticketIntent !== undefined && scope.intent === ticketIntent.key;
+  // T-147: no draft and no `reply` step on a ticket nothing can be sent on.
+  const replyBlocked = (await replyBlockReason(db, ticket.channel)) ?? undefined;
 
   // --- evidence: collect it now, or reuse what the last investigation stored (a draft on request) ---
   let evidence: InvestigationEvidence[];
@@ -398,6 +401,7 @@ export async function runInvestigation(
       intentKey: scope.intent,
       scopeBasis: scope.basis,
       stage: scopeStage,
+      replyBlocked,
       tools,
       onProgress: progress,
       abortSignal: signal,
@@ -431,11 +435,14 @@ export async function runInvestigation(
     job.mode === 'investigate' && stage >= 2 && intentTrusted && job.noDraft !== true;
   const draftsOnRequest = job.mode === 'draft' && stage >= 1;
   // Not drafting: close the "working" state a request opened (an investigation already did).
-  const finish = async (reason: 'stage' | 'no_intent'): Promise<InvestigationResult> => {
+  const finish = async (
+    reason: 'stage' | 'no_intent' | 'reply_blocked',
+  ): Promise<InvestigationResult> => {
     if (!investigated) await write({ state: 'classified', progress: null, stage });
     return { status: investigated ? 'investigated' : 'skipped', reason };
   };
   if (!draftsOnItsOwn && !draftsOnRequest) return finish('stage');
+  if (replyBlocked !== undefined) return finish('reply_blocked');
   if (ticketIntent === undefined) return finish('no_intent');
 
   await progress({ phase: 'drafting', step: 0, steps: 1 });

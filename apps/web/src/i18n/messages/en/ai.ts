@@ -58,6 +58,11 @@ export const aiEn = {
     pausedTip: 'The emergency switch is on: nothing new is drafted and replies are manual.',
     demo: 'Demo',
     demoTip: 'Sample data from a stand-in AI. Its scores mean nothing.',
+    replyBlocked: {
+      no_outbound_channel:
+        'This ticket has no channel the AI can send a reply on, so it offers no draft. Note it or move the ticket on.',
+      channel_not_connected: 'This channel is not connected, so the AI offers no draft reply.',
+    },
     steps: {
       approve_draft: 'Approve reply',
       reply: 'Reply',
@@ -65,6 +70,14 @@ export const aiEn = {
       wait_customer: 'Wait for the customer',
       resolve: 'Resolve',
     },
+  },
+  priority: {
+    suggest: 'AI suggests {priority}',
+    confidence: 'Confidence {value}',
+    accept: 'Set to {priority}',
+    done: 'Priority set to {priority}',
+    forbidden: 'You may not change the priority.',
+    failed: 'Could not change the priority.',
   },
   report: {
     title: 'What the AI found',

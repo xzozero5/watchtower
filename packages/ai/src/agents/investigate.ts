@@ -1,5 +1,7 @@
 import {
   aiNextStepKindSchema,
+  aiPrioritySuggestionSchema,
+  type AiReplyBlockReason,
   type AiProgress,
   type AiReport,
   type AiNextStepKind,
@@ -51,6 +53,11 @@ export const investigatorAnswerSchema = z.object({
     kind: aiNextStepKindSchema.exclude(['approve_draft']),
     label: z.string().trim().min(1).max(120),
   }),
+  /** T-147 (investigator v2). A bad suggestion is dropped, it does not fail the report. */
+  suggestedPriority: z.preprocess(
+    (value) => (aiPrioritySuggestionSchema.safeParse(value).success ? value : undefined),
+    aiPrioritySuggestionSchema.optional(),
+  ),
 });
 
 export interface RunbookStep {
@@ -120,6 +127,8 @@ export interface InvestigateInput {
   readonly intentKey: string | null;
   readonly scopeBasis: ScopeBasis;
   readonly stage: AutonomyStage;
+  /** Set when nothing can be sent to the customer on this ticket: no `reply` next step is offered (T-147). */
+  readonly replyBlocked?: AiReplyBlockReason | undefined;
   /** The scoped, budgeted handle of this run (`withToolBudget`). */
   readonly tools: BudgetedTools;
   /** Called before each step so the web can show where the job is. */
@@ -243,6 +252,7 @@ export async function investigateTicket(
           confidence: 0,
           openQuestions: ['No tool returned evidence for this ticket.'],
           promptVersion: version,
+          ...(input.replyBlocked === undefined ? {} : { replyBlocked: input.replyBlocked }),
           ...base,
         },
       },
@@ -300,7 +310,7 @@ export async function investigateTicket(
     value: {
       evidence,
       session,
-      nextStep: { kind: answer.nextStep.kind, label: show(answer.nextStep.label) },
+      nextStep: nextStepFor(answer.nextStep, input.replyBlocked, show),
       report: {
         findings: answer.findings.map((finding) => ({
           text: show(finding.text).slice(0, 600),
@@ -311,8 +321,32 @@ export async function investigateTicket(
         confidence: answer.confidence,
         openQuestions: answer.openQuestions.map((question) => show(question).slice(0, 300)),
         promptVersion: version,
+        ...(answer.suggestedPriority === undefined
+          ? {}
+          : {
+              suggestedPriority: {
+                ...answer.suggestedPriority,
+                reason: show(answer.suggestedPriority.reason).slice(0, 300),
+              },
+            }),
+        ...(input.replyBlocked === undefined ? {} : { replyBlocked: input.replyBlocked }),
         ...base,
       },
     },
   };
+}
+
+/**
+ * The next step the model proposed, unless it is a customer reply on a ticket nothing can be sent on
+ * (T-147): then it becomes a plain `other` step, so the card never offers a reply that cannot be delivered.
+ */
+function nextStepFor(
+  step: { readonly kind: AiNextStepKind; readonly label: string },
+  replyBlocked: AiReplyBlockReason | undefined,
+  show: (text: string) => string,
+): { readonly kind: AiNextStepKind; readonly label: string } {
+  if (replyBlocked !== undefined && step.kind === 'reply') {
+    return { kind: 'other', label: 'Handle this inside the team' };
+  }
+  return { kind: step.kind, label: show(step.label) };
 }

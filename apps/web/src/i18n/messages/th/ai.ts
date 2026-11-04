@@ -56,6 +56,11 @@ export const aiTh: Widen<typeof aiEn> = {
     pausedTip: 'สวิตช์ฉุกเฉินเปิดอยู่ ไม่มีการร่างใหม่และต้องตอบด้วยตนเอง',
     demo: 'เดโม',
     demoTip: 'ข้อมูลตัวอย่างจาก AI จำลอง คะแนนที่เห็นไม่มีความหมาย',
+    replyBlocked: {
+      no_outbound_channel:
+        'ตั๋วนี้ไม่มีช่องทางที่ส่งคำตอบถึงลูกค้าได้ AI จึงไม่เสนอร่างคำตอบ ให้บันทึกเป็นโน้ตหรือเปลี่ยนสถานะ',
+      channel_not_connected: 'ช่องทางนี้ยังไม่เชื่อมต่อ AI จึงไม่เสนอร่างคำตอบ',
+    },
     steps: {
       approve_draft: 'อนุมัติคำตอบ',
       reply: 'ตอบลูกค้า',
@@ -63,6 +68,14 @@ export const aiTh: Widen<typeof aiEn> = {
       wait_customer: 'รอลูกค้า',
       resolve: 'ปิดเรื่อง',
     },
+  },
+  priority: {
+    suggest: 'AI แนะนำ {priority}',
+    confidence: 'ความมั่นใจ {value}',
+    accept: 'ตั้งเป็น {priority}',
+    done: 'ตั้ง priority เป็น {priority} แล้ว',
+    forbidden: 'คุณไม่มีสิทธิ์เปลี่ยน priority',
+    failed: 'เปลี่ยน priority ไม่สำเร็จ',
   },
   report: {
     title: 'สิ่งที่ AI พบ',

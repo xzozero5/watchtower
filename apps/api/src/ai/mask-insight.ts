@@ -57,6 +57,14 @@ export function maskInsight(insight: TicketAiInsight, session: MaskingSession): 
                     })),
                   })),
                 }),
+            ...(insight.report.suggestedPriority === undefined
+              ? {}
+              : {
+                  suggestedPriority: {
+                    ...insight.report.suggestedPriority,
+                    reason: session.text(insight.report.suggestedPriority.reason),
+                  },
+                }),
             likelyCause: session.textOrNull(insight.report.likelyCause),
             openQuestions: insight.report.openQuestions.map((question) => session.text(question)),
           },

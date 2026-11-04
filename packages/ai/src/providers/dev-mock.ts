@@ -226,6 +226,13 @@ function investigate(request: LlmRequest, hash: string): string {
     confidence: cards.length === 0 ? 0 : between(hash, 4, 0.35, 0.8),
     openQuestions: [thai ? 'ยังไม่ทราบสาเหตุที่แน่ชัด' : 'The cause is not confirmed yet.'],
     nextStep,
+    suggestedPriority: system
+      ? {
+          priority: 'P2',
+          reason: thai ? 'พบ error ใน log ที่เกี่ยวข้อง' : 'Errors found in the related logs',
+          confidence: 0.6,
+        }
+      : null,
   });
 }
 
