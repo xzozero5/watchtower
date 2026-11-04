@@ -226,10 +226,10 @@ export async function scheduleCustomerSend(
     if (input.aiDraftId === undefined) throw denied('approval_missing', 'No AI draft is named');
     draft = await lockMatchingDraft(tx, ticket, message, input.aiDraftId);
   } else if (origin === 'ai_auto') {
-    if (input.aiDraftId === undefined || input.aiGradeId === undefined) {
-      throw denied('approval_missing', 'An automatic send names its draft and its grade');
+    // With no draft and no grade named the gate has nothing to decide on and refuses (and audits) below.
+    if (input.aiDraftId !== undefined && input.aiGradeId !== undefined) {
+      draft = await lockDraftForAuto(tx, ticket, input.aiDraftId);
     }
-    draft = await lockDraftForAuto(tx, ticket, input.aiDraftId);
   } else if (input.aiDraftId !== undefined) {
     throw badRequest('aiDraftId is only for an AI draft sent by a person');
   }
@@ -261,6 +261,10 @@ export async function scheduleCustomerSend(
 
   // The gate (N3). Throws a DomainError(policy_denied) on a denial, on no gate, and on a gate error.
   await requireCustomerSend(ctx, gateRequest(ctx, input));
+  if (origin === 'ai_auto' && (draft === undefined || input.aiGradeId === undefined)) {
+    // The gate cannot have allowed this; kept as a second wall.
+    throw denied('approval_missing', 'An automatic send names its draft and its grade');
+  }
 
   // The hold is stamped by the clock the worker's claim and the cancel also read (review O-7).
   const now = await authorityNow(tx, ctx);
