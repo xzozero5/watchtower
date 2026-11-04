@@ -20,6 +20,8 @@ const GOOD: ReportInputs = {
   shadowEvaluations: 80,
   shadowDecided: 60,
   shadowAccepted: 57,
+  replay: { passed: true, violations: 0, redactionPassed: true, caseCount: 30 },
+  reviewers: [],
 };
 
 const criterion = (report: ReturnType<typeof buildReport>, key: string) =>
@@ -30,15 +32,62 @@ describe('the gate report (ADR-025 section 6)', () => {
     const report = buildReport(GOOD);
     expect(report.status).toBe('green');
     expect(report.criteria.filter((c) => c.pass === false)).toEqual([]);
-    // The two checks that run outside the database are listed, never decide.
-    expect(criterion(report, 'eval_replay_violations')).toMatchObject({
+    expect(criterion(report, 'eval_replay_violations')).toMatchObject({ pass: true, value: 0 });
+    expect(criterion(report, 'redaction_eval')).toMatchObject({ pass: true, value: 'pass' });
+  });
+
+  it('the replay and the redaction eval decide (T-306e C-4): no result is never green, a failure is red', () => {
+    const none = buildReport({ ...GOOD, replay: null });
+    expect(none.status).toBe('insufficient_data');
+    expect(criterion(none, 'eval_replay_violations')).toMatchObject({
       pass: null,
       value: 'not_measured',
     });
-    expect(criterion(report, 'redaction_eval')).toMatchObject({
-      pass: null,
-      value: 'not_measured',
+    expect(criterion(none, 'redaction_eval')?.pass).toBeNull();
+    const violated = buildReport({
+      ...GOOD,
+      replay: { passed: false, violations: 2, redactionPassed: true, caseCount: 30 },
     });
+    expect(violated.status).toBe('red');
+    expect(criterion(violated, 'eval_replay_violations')?.pass).toBe(false);
+    const leaked = buildReport({
+      ...GOOD,
+      replay: { passed: false, violations: 0, redactionPassed: false, caseCount: 30 },
+    });
+    expect(leaked.status).toBe('red');
+    expect(criterion(leaked, 'redaction_eval')).toMatchObject({ pass: false, value: 'fail' });
+  });
+
+  it('shows the share of approve, edit and reject per reviewer (T-306e C-14)', () => {
+    const report = buildReport({
+      ...GOOD,
+      reviewers: [
+        { reviewer: 'u1', approved: 9, edited: 1, rejected: 0 },
+        { reviewer: 'u2', approved: 1, edited: 1, rejected: 2 },
+      ],
+    });
+    expect(report.metrics.reviewers).toEqual([
+      {
+        reviewer: 'u1',
+        total: 10,
+        approved: 9,
+        edited: 1,
+        rejected: 0,
+        approvedShare: 0.9,
+        editedShare: 0.1,
+        rejectedShare: 0,
+      },
+      {
+        reviewer: 'u2',
+        total: 4,
+        approved: 1,
+        edited: 1,
+        rejected: 2,
+        approvedShare: 0.25,
+        editedShare: 0.25,
+        rejectedShare: 0.5,
+      },
+    ]);
   });
 
   it('marks the PRD criteria as PRD and the rest as ASSUMED', () => {

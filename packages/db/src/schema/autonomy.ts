@@ -17,6 +17,7 @@ import {
   uuid,
 } from 'drizzle-orm/pg-core';
 
+import { procedureVersion } from './procedure.js';
 import { intent } from './ticketing.js';
 
 const timestamptz = (name: string) => timestamp(name, { withTimezone: true, mode: 'date' });
@@ -197,5 +198,46 @@ export const aiAutosendEvaluation = pgTable(
   (table) => [
     index('ai_autosend_evaluation_intent_idx').on(table.intentId, table.evaluatedAt.desc()),
     index('ai_autosend_evaluation_draft_idx').on(table.aiDraftId),
+  ],
+);
+
+/**
+ * The outcome of a replay (the eval set or a procedure simulation) for one set of drafter model, grader model,
+ * prompt versions and procedure version (0109, T-306e). Append-only; rows come only from record_replay_result().
+ * The gate reads the latest row of the set in force: no row, or a failed one, suspends auto-send.
+ */
+export const aiReplayResult = pgTable(
+  'ai_replay_result',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    intentId: uuid('intent_id')
+      .notNull()
+      .references(() => intent.id, { onDelete: 'restrict' }),
+    /** 'eval' or 'simulation'. */
+    source: text('source').notNull(),
+    drafterModel: text('drafter_model').notNull(),
+    graderModel: text('grader_model').notNull(),
+    drafterPromptVersion: integer('drafter_prompt_version').notNull(),
+    graderPromptVersion: integer('grader_prompt_version').notNull(),
+    procedureVersionId: uuid('procedure_version_id').references(() => procedureVersion.id, {
+      onDelete: 'restrict',
+    }),
+    caseCount: integer('case_count').notNull(),
+    violations: integer('violations').notNull(),
+    redactionPassed: boolean('redaction_passed').notNull(),
+    mock: boolean('mock').notNull().default(false),
+    passed: boolean('passed').notNull(),
+    recordedBy: uuid('recorded_by').notNull(),
+    createdAt: timestamptz('created_at').notNull().defaultNow(),
+  },
+  (table) => [
+    index('ai_replay_result_set_idx').on(
+      table.intentId,
+      table.drafterModel,
+      table.graderModel,
+      table.drafterPromptVersion,
+      table.graderPromptVersion,
+      table.createdAt.desc(),
+    ),
   ],
 );

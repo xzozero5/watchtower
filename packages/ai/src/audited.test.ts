@@ -111,6 +111,45 @@ describe('createAuditedLlm', () => {
     expect((await llm.generate(call)).run.costUsd).toBeNull();
   });
 
+  it('records the model id the provider answered with next to the alias of the settings (T-306e C-11)', async () => {
+    const { call } = setup();
+    const records: AiRunRecord[] = [];
+    const answering = (model: unknown): LlmProvider => ({
+      kind: 'mock',
+      generate: () =>
+        Promise.resolve({
+          text: 'ok',
+          finishReason: 'stop',
+          usage: { inputTokens: 1, outputTokens: 1 },
+          model,
+        } as LlmResponse),
+    });
+    const run = async (model: unknown) => {
+      const llm = createAuditedLlm({
+        guard: ALLOW_ALL_GUARD,
+        settings: { load: () => Promise.resolve(mockSettings()) },
+        providers: { mock: answering(model) },
+        sink: {
+          record: (record) => {
+            records.push(record);
+            return Promise.resolve();
+          },
+        },
+      });
+      return (await llm.generate(call)).run;
+    };
+    expect(await run('dated-model-id-20260101')).toMatchObject({
+      model: 'mock-light',
+      responseModel: 'dated-model-id-20260101',
+    });
+    // Nothing reported (or something that is not a model id): null, never the alias passed off as an answer.
+    expect((await run(undefined)).responseModel).toBeNull();
+    expect((await run('')).responseModel).toBeNull();
+    expect((await run(42)).responseModel).toBeNull();
+    expect((await run('x'.repeat(201))).responseModel).toBeNull();
+    expect(records).toHaveLength(5);
+  });
+
   it('lists the tools that were called', async () => {
     const { llm, call } = setup();
     const { run } = await llm.generate({

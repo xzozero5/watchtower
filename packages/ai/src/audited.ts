@@ -216,6 +216,12 @@ export function createAuditedLlm(deps: AuditedLlmDeps) {
                 'UnknownError',
               );
         const text = typeof response?.text === 'string' ? response.text : undefined;
+        // The id the provider says answered (T-306e C-11); nothing else about the response is trusted here.
+        const reported = (response as { model?: unknown } | null)?.model;
+        const reportedModel =
+          typeof reported === 'string' && reported.length > 0 && reported.length <= 200
+            ? reported
+            : null;
         const minimal = (): { run: AiRunRecord; degraded: boolean } => ({
           run: aiRunRecordSchema.parse({
             ...base,
@@ -234,6 +240,7 @@ export function createAuditedLlm(deps: AuditedLlmDeps) {
             ...base,
             tools: attempt(() => (call.toolCalls?.() ?? []).map((tool) => tool.name), []),
             output: text ?? null,
+            responseModel: reportedModel,
             confidence:
               text === undefined
                 ? null

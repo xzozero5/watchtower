@@ -1,6 +1,6 @@
 import { schema, type Database } from '@watchtower/db';
 import { AUDIT_ACTIONS, type GateCriterion, type GateReport } from '@watchtower/shared';
-import { desc, eq, sql } from 'drizzle-orm';
+import { and, desc, eq, sql } from 'drizzle-orm';
 
 import { recordAuditInTx } from '../audit.js';
 import { DomainError, notFound } from '../errors.js';
@@ -20,9 +20,12 @@ import type { Actor, DomainContext } from '../types.js';
  *
  * A criterion with too little data is `pass: null`. The status is `red` when a measurable criterion fails,
  * `insufficient_data` when none fails but one cannot be measured yet, `green` only when all can and pass.
- * The replay of the eval set and the redaction eval run outside the database (`evals/runner`): they are listed
- * as `not_measured` and do not decide the status `[UNVERIFIED]` — the owner's approval step is where they are
- * read.
+ * The replay of the eval set and the redaction eval run outside the database (`evals/runner`); their outcome is
+ * stored in `ai_replay_result` (T-306e C-4). The latest eval replay of the intent decides like the other criteria:
+ * a violation or a failed redaction eval is red, no result is `insufficient_data` (never green).
+ *
+ * `metrics.reviewers` shows, per person who handled the AI drafts of the window, the share they approved, edited
+ * and rejected (T-306e C-14): the AI group is defined by what people accepted, so a skewed reviewer is visible.
  */
 
 /** Days a promotion needs at stage 2 (PRD 6.4: 4 weeks). */
@@ -48,6 +51,22 @@ export interface GroupStats {
   readonly csatAvg: number | null;
 }
 
+/** The latest eval replay of the intent (`ai_replay_result`, source `eval`, not a mock run). */
+export interface ReplayEvidence {
+  readonly passed: boolean;
+  readonly violations: number;
+  readonly redactionPassed: boolean;
+  readonly caseCount: number;
+}
+
+/** What one person did with the AI drafts of the window. */
+export interface ReviewerDisposition {
+  readonly reviewer: string;
+  readonly approved: number;
+  readonly edited: number;
+  readonly rejected: number;
+}
+
 export interface ReportInputs {
   readonly stage: number;
   /** Days the intent has been at its stage without a change (promotion, rollback, manual change). */
@@ -58,6 +77,9 @@ export interface ReportInputs {
   /** Shadow "would send" rows whose draft a person later handled. */
   readonly shadowDecided: number;
   readonly shadowAccepted: number;
+  /** Null: no replay has been recorded for the intent. */
+  readonly replay: ReplayEvidence | null;
+  readonly reviewers: readonly ReviewerDisposition[];
 }
 
 const rate = (part: number, whole: number): number | null => (whole === 0 ? null : part / whole);
@@ -151,27 +173,26 @@ export function buildReport(input: ReportInputs): {
       basis: 'ASSUMED',
     },
   );
-  // Outside the database: listed so a person reads them, never decide the status.
+  // Run outside the database, stored in ai_replay_result: they decide like the rest (no result = unknown).
+  const replay = input.replay;
   criteria.push(
     {
       key: 'eval_replay_violations',
-      pass: null,
-      value: 'not_measured',
+      pass: replay === null ? null : replay.passed && replay.violations === 0,
+      value: replay === null ? 'not_measured' : replay.violations,
       threshold: 0,
       basis: 'ASSUMED',
     },
     {
       key: 'redaction_eval',
-      pass: null,
-      value: 'not_measured',
+      pass: replay === null ? null : replay.redactionPassed,
+      value: replay === null ? 'not_measured' : replay.redactionPassed ? 'pass' : 'fail',
       threshold: 'pass',
       basis: 'ASSUMED',
     },
   );
 
-  const deciding = criteria.filter(
-    (criterion) => !criterion.key.startsWith('eval_') && criterion.key !== 'redaction_eval',
-  );
+  const deciding = criteria;
   const status: GateReport['status'] = deciding.some((criterion) => criterion.pass === false)
     ? 'red'
     : deciding.every((criterion) => criterion.pass === true)
@@ -191,6 +212,20 @@ export function buildReport(input: ReportInputs): {
         accepted: input.shadowAccepted,
         precision: round(precision),
       },
+      replay: replay === null ? null : { ...replay },
+      reviewers: input.reviewers.map((row) => {
+        const total = row.approved + row.edited + row.rejected;
+        return {
+          reviewer: row.reviewer,
+          total,
+          approved: row.approved,
+          edited: row.edited,
+          rejected: row.rejected,
+          approvedShare: round(rate(row.approved, total)),
+          editedShare: round(rate(row.edited, total)),
+          rejectedShare: round(rate(row.rejected, total)),
+        };
+      }),
       groups:
         'AI = reply was an AI draft sent as it was or edited by at most 10%, or an automatic reply; human = every other graded ticket',
     },
@@ -296,6 +331,41 @@ export async function readReportInputs(
        AND e.evaluated_at >= ${from}::timestamptz AND e.evaluated_at < ${to}::timestamptz
   `);
   const s = shadow.rows[0];
+  const reviewerRows = await db.execute<
+    { reviewer: string; approved: string; edited: string; rejected: string } & Record<
+      string,
+      unknown
+    >
+  >(sql`
+    SELECT d.resolved_by::text AS reviewer,
+           count(*) FILTER (WHERE d.disposition = 'approved') AS approved,
+           count(*) FILTER (WHERE d.disposition = 'edited') AS edited,
+           count(*) FILTER (WHERE d.disposition = 'rejected') AS rejected
+      FROM ai_draft d
+      JOIN ticket t ON t.id = d.ticket_id AND t.intent_id = ${intentId}::uuid AND t.seed_batch_id IS NULL
+     WHERE d.disposition IS NOT NULL AND d.resolved_by IS NOT NULL
+       AND d.resolved_at >= ${from}::timestamptz AND d.resolved_at < ${to}::timestamptz
+     GROUP BY d.resolved_by
+     ORDER BY count(*) DESC, d.resolved_by
+     LIMIT 100
+  `);
+  const [replayRow] = await db
+    .select({
+      passed: schema.aiReplayResult.passed,
+      violations: schema.aiReplayResult.violations,
+      redactionPassed: schema.aiReplayResult.redactionPassed,
+      caseCount: schema.aiReplayResult.caseCount,
+    })
+    .from(schema.aiReplayResult)
+    .where(
+      and(
+        eq(schema.aiReplayResult.intentId, intentId),
+        eq(schema.aiReplayResult.source, 'eval'),
+        eq(schema.aiReplayResult.mock, false),
+      ),
+    )
+    .orderBy(desc(schema.aiReplayResult.createdAt), desc(schema.aiReplayResult.id))
+    .limit(1);
   return {
     windowStart,
     inputs: {
@@ -306,6 +376,13 @@ export async function readReportInputs(
       shadowEvaluations: Number(s?.total ?? 0),
       shadowDecided: Number(s?.decided ?? 0),
       shadowAccepted: Number(s?.accepted ?? 0),
+      replay: replayRow ?? null,
+      reviewers: reviewerRows.rows.map((row) => ({
+        reviewer: row.reviewer,
+        approved: Number(row.approved),
+        edited: Number(row.edited),
+        rejected: Number(row.rejected),
+      })),
     },
   };
 }

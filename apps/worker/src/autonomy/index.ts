@@ -14,8 +14,10 @@ import { and, eq, inArray } from 'drizzle-orm';
 import { z } from 'zod';
 
 import type { WorkerLogger } from '../logger.js';
+import type { AiRuntime } from '../ai/runtime.js';
 import type { ProcessorContext } from '../processors/index.js';
 import type { RealtimeSink } from '../realtime.js';
+import { sampleSentReplies } from './sampled-grades.js';
 
 /**
  * `autonomy-watch` (T-304e, ADR-025 section 7) and the weekly gate reports (T-304f). The watch looks at the
@@ -30,6 +32,8 @@ export interface AutonomyDeps {
   readonly domain: Domain;
   readonly realtime: RealtimeSink;
   readonly logger: WorkerLogger;
+  /** The AI layer, for the sampled grades of sent replies (T-306e C-4c). Absent: no sampling, the other rules still run. */
+  readonly ai?: AiRuntime | undefined;
 }
 
 export interface WatchResult {
@@ -55,6 +59,8 @@ export async function runAutonomyWatch(
   const rolledBack: { intent: string; rule: RollbackRule }[] = [];
   for (const intent of intents) {
     try {
+      // Grade a sample of what was sent first, so a violation in it is seen by the rules in this same run.
+      await sampleSentReplies(deps, intent);
       const finding = await findRollbackReason(db, intent.id);
       if (finding === null) continue;
       const ctx = domain.context({ actor: SYSTEM });
@@ -128,6 +134,7 @@ export function createAutonomyRegistration(context: ProcessorContext): Processor
     domain: context.domain,
     realtime: context.realtime,
     logger: context.logger,
+    ai: context.ai,
   };
   return async (job: Job): Promise<unknown> => {
     switch (job.name) {

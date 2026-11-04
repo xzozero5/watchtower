@@ -616,14 +616,27 @@ export {
   type RollbackRule,
 } from './autonomy/watch.js';
 export {
+  autosendContactVerified,
   composeAutoSendText,
   countPlaceholders,
   customerWantsHuman,
   disclosureFor,
   instanceOrigins,
   linksAllowed,
+  normalizeText,
   senderAuthenticated,
 } from './autonomy/autosend-text.js';
+export {
+  findSampleCandidates,
+  readAutosendSampling,
+  type SampleCandidate,
+} from './autonomy/sampling.js';
+export {
+  recordReplayResult,
+  replayPassedForSet,
+  type NewReplayResult,
+  type ReplaySet,
+} from './autonomy/replay.js';
 export {
   loadAutoSendFacts,
   type AutoSendLoadOptions,

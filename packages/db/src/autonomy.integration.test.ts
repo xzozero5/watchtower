@@ -431,6 +431,8 @@ describe('SECURITY DEFINER functions cannot be fooled with TEMP objects (securit
       // 0097 (T-303b)
       'procedure_simulation_apply',
       'publish_procedure_version',
+      // 0109 (T-306e)
+      'record_replay_result',
       'request_stage_promotion',
       'retire_procedure_version',
       'rollback_intent_autonomy',

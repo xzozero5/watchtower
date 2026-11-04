@@ -16,12 +16,13 @@ import {
   createPolicyGate,
   instanceOrigins,
   recordPreSendGrade,
+  recordReplayResult,
   resolveAiCaps,
   type Domain,
 } from '@watchtower/domain';
 import { AUDIT_ACTIONS, AUTONOMY_TICKET_EVENTS, type RealtimeEvent } from '@watchtower/shared';
 import { disableNetConnect } from '@watchtower/shared/testing';
-import { and, eq } from 'drizzle-orm';
+import { and, desc, eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
 import { createLogger } from '../logger.js';
@@ -259,6 +260,102 @@ async function promote(intentId: string, key: string): Promise<void> {
   );
 }
 
+/** The `ai_run` row of a drafter call, as the audited layer writes it. */
+async function insertDrafterRun(ticketId: string): Promise<string> {
+  const [run] = await owner()
+    .insert(schema.aiRun)
+    .values({
+      startedAt: new Date(),
+      agent: 'drafter',
+      ticketId,
+      provider: 'anthropic',
+      model: 'drafter-fixture',
+      responseModel: 'drafter-fixture',
+      tier: 'standard',
+      promptId: 'drafter',
+      promptVersion: DRAFTER_PROMPT_VERSION,
+      promptHash: 'a'.repeat(64),
+      inputHmac: 'b'.repeat(64),
+      redaction: { total: 0, byKind: {} },
+      status: 'ok',
+    })
+    .returning({ id: schema.aiRun.id });
+  return run?.id ?? '';
+}
+
+const DRAFTER_PROMPT_VERSION = 2;
+
+/** The `ai_run` row of a grader call (what `recordPreSendGrade` points at). */
+async function insertGraderRun(ticketId: string): Promise<string> {
+  const [run] = await owner()
+    .insert(schema.aiRun)
+    .values({
+      startedAt: new Date(),
+      agent: 'grader',
+      ticketId,
+      provider: 'anthropic',
+      model: 'grader-fixture',
+      responseModel: 'grader-fixture',
+      tier: 'standard',
+      promptId: 'grader_pre_send',
+      promptVersion: runtime.prompts.latest('grader_pre_send').ref.version,
+      promptHash: 'c'.repeat(64),
+      inputHmac: 'd'.repeat(64),
+      redaction: { total: 0, byKind: {} },
+      status: 'ok',
+    })
+    .returning({ id: schema.aiRun.id });
+  return run?.id ?? '';
+}
+
+/** A passing replay (T-306e C-4) of the drafter, grader, prompts and published procedure the scenario runs on. */
+/** What a replay row of the scenario's combination looks like; a test changes one field of it. */
+async function replayBase(s: { intentId: string }) {
+  const [published] = (
+    await testDb.owner.pool.query<{ id: string }>(
+      `SELECT pv.id FROM procedure p JOIN procedure_version pv ON pv.procedure_id = p.id AND pv.status = 'published'
+        WHERE p.intent_id = $1`,
+      [s.intentId],
+    )
+  ).rows;
+  return {
+    intentId: s.intentId,
+    source: 'eval' as const,
+    drafterModel: 'drafter-fixture',
+    graderModel: 'grader-fixture',
+    drafterPromptVersion: DRAFTER_PROMPT_VERSION,
+    graderPromptVersion: runtime.prompts.latest('grader_pre_send').ref.version,
+    procedureVersionId: published?.id ?? null,
+    caseCount: 12,
+    violations: 0,
+    redactionPassed: true,
+    mock: false,
+  };
+}
+
+async function passReplay(intentId: string, over: { violations?: number } = {}): Promise<void> {
+  const [published] = (
+    await testDb.owner.pool.query<{ id: string }>(
+      `SELECT pv.id FROM procedure p JOIN procedure_version pv ON pv.procedure_id = p.id AND pv.status = 'published'
+        WHERE p.intent_id = $1`,
+      [intentId],
+    )
+  ).rows;
+  await recordReplayResult(database.db, headId, {
+    intentId,
+    source: 'eval',
+    drafterModel: 'drafter-fixture',
+    graderModel: 'grader-fixture',
+    drafterPromptVersion: DRAFTER_PROMPT_VERSION,
+    graderPromptVersion: runtime.prompts.latest('grader_pre_send').ref.version,
+    procedureVersionId: published?.id ?? null,
+    caseCount: 12,
+    violations: over.violations ?? 0,
+    redactionPassed: true,
+    mock: false,
+  });
+}
+
 interface Scenario {
   intentId: string;
   intentKey: string;
@@ -277,6 +374,16 @@ async function scenario(
     policyChannels?: ('gmail' | 'portal')[];
     verified?: boolean;
     priority?: string;
+    /** Record a passing replay of the combination in force (default true); false: none, so the gate suspends. */
+    replay?: boolean;
+    /** The text of the draft (default: a plain reset answer). */
+    body?: string;
+    /** The customer-facing passage the draft cites (default: a plain sentence). */
+    snippet?: string;
+    /** A portal ticket the portal itself calls verified (`customFields.portal.requesterVerified`, ADR-007 C-4). */
+    portalVerified?: boolean;
+    /** Give the draft the `ai_run` row of its drafter (default true); false: the row is missing. */
+    drafterRun?: boolean;
   } = {},
 ): Promise<Scenario> {
   const key = `intent_${randomUUID().slice(0, 8).replace(/-/g, '')}`;
@@ -352,10 +459,13 @@ async function scenario(
       intentId,
       priority: options.priority ?? 'P3',
       ...(options.channel === 'portal' ? { channel: 'portal', channelAccountId: portalId } : {}),
+      ...(options.portalVerified === undefined
+        ? {}
+        : { customFields: { portal: { requesterVerified: options.portalVerified } } }),
     })
     .where(eq(schema.ticket.id, ticketId));
 
-  const body = 'You can reset your password with the link on the sign in page.';
+  const body = options.body ?? 'You can reset your password with the link on the sign in page.';
   await owner()
     .insert(schema.aiTicketInsight)
     .values({
@@ -368,14 +478,16 @@ async function scenario(
           kind: 'kb',
           customerSafe: true,
           title: 'Reset a password',
-          snippet: 'Use the reset link.',
+          snippet: options.snippet ?? 'Use the reset link.',
         },
       ],
     });
+  const drafterRunId = options.drafterRun === false ? null : await insertDrafterRun(ticketId);
   const [draft] = await owner()
     .insert(schema.aiDraft)
     .values({
       ticketId,
+      aiRunId: drafterRunId,
       bodyText: body,
       language: 'en',
       customerLanguage: 'en',
@@ -384,6 +496,7 @@ async function scenario(
     })
     .returning({ id: schema.aiDraft.id });
   const draftId = draft?.id ?? '';
+  if (options.replay !== false) await passReplay(intentId);
   return {
     intentId,
     intentKey: key,
@@ -398,14 +511,20 @@ async function scenario(
         stage: options.stage ?? 2,
         autosendShadow: options.shadow ?? false,
       },
-      draft: { id: draftId, body, aiRunId: null, language: 'en', citedEvidenceIds: ['kb1'] },
+      draft: {
+        id: draftId,
+        body,
+        aiRunId: drafterRunId,
+        language: 'en',
+        citedEvidenceIds: ['kb1'],
+      },
       evidence: [
         {
           id: 'kb1',
           kind: 'kb',
           tool: 'kb_search',
           title: 'Reset a password',
-          snippet: 'Use the reset link.',
+          snippet: options.snippet ?? 'Use the reset link.',
           customerSafe: true,
           mock: false,
         },
@@ -569,7 +688,7 @@ describe('the live path (stage 3, flag on)', () => {
   });
 
   it('sends on the portal too: no provider is called, the message is shown (route null)', async () => {
-    const s = await scenario({ stage: 3, channel: 'portal' });
+    const s = await scenario({ stage: 3, channel: 'portal', portalVerified: true });
     expect(await step(s)).toBe('scheduled');
     const [delivery] = await deliveriesOf(s.ticketId);
     expect(delivery).toMatchObject({ origin: 'ai_auto', channel: 'portal' });
@@ -583,6 +702,20 @@ describe('the live path (stage 3, flag on)', () => {
       .from(schema.message)
       .where(eq(schema.message.id, delivery?.messageId ?? ''));
     expect(message?.deliveryStatus).toBe('delivered');
+  });
+
+  it('holds a portal ticket whose requester the portal did not verify, even when the contact is verified (C-3)', async () => {
+    for (const portalVerified of [undefined, false]) {
+      const s = await scenario({
+        stage: 3,
+        channel: 'portal',
+        ...(portalVerified === undefined ? {} : { portalVerified }),
+      });
+      expect(await step(s)).toBe('held');
+      expect(await deliveriesOf(s.ticketId)).toHaveLength(0);
+      const [row] = await evaluations(s.draftId);
+      expect(row?.failedConditions).toContain('contact_unverified');
+    }
   });
 
   it('holds back, with a note and the draft left for a person, when a condition fails (policy has no channel)', async () => {
@@ -792,7 +925,7 @@ describe('the pre-send grade is bound to the exact text', () => {
     const base = {
       aiDraftId: s.draftId,
       ticketId: s.ticketId,
-      graderAiRunId: null,
+      graderAiRunId: await insertGraderRun(s.ticketId),
       graderProvider: 'anthropic',
       graderModel: 'grader-fixture',
       drafterProvider: 'anthropic',
@@ -833,5 +966,219 @@ describe('the pre-send grade is bound to the exact text', () => {
     expect((await ask(same, text))?.failed).toEqual(['grader_not_independent']);
     const mock = await recordPreSendGrade(database.db, { ...base, text, mock: true });
     expect((await ask(mock, text))?.failed).toEqual(['grade_mock']);
+  });
+});
+
+describe('the review findings of T-306a (T-306e)', () => {
+  async function publishedVersionId(intentId: string): Promise<string> {
+    const rows = await testDb.owner.pool.query<{ id: string }>(
+      `SELECT pv.id FROM procedure p JOIN procedure_version pv ON pv.procedure_id = p.id AND pv.status = 'published'
+        WHERE p.intent_id = $1`,
+      [intentId],
+    );
+    return rows.rows[0]?.id ?? '';
+  }
+  /** The failed conditions of the newest evaluation of the draft (ordered: a heap scan has no order). */
+  const failedOf = async (s: Scenario) =>
+    (
+      await owner()
+        .select({ failed: schema.aiAutosendEvaluation.failedConditions })
+        .from(schema.aiAutosendEvaluation)
+        .where(eq(schema.aiAutosendEvaluation.aiDraftId, s.draftId))
+        .orderBy(desc(schema.aiAutosendEvaluation.evaluatedAt))
+        .limit(1)
+    )[0]?.failed;
+
+  it('C-1: a require_human step of the procedure holds the send (procedure_requires_human)', async () => {
+    const s = await scenario({ stage: 3 });
+    await owner()
+      .insert(schema.ticketEvent)
+      .values({
+        ticketId: s.ticketId,
+        type: 'procedure.require_human',
+        actorType: 'ai',
+        visibility: 'internal',
+        payload: {
+          versionId: await publishedVersionId(s.intentId),
+          stepId: 'check',
+          reason: 'ask',
+        },
+      });
+    expect(await step(s)).toBe('held');
+    expect(await deliveriesOf(s.ticketId)).toHaveLength(0);
+    expect(await failedOf(s)).toEqual(['procedure_requires_human']);
+  });
+
+  it('C-1: an escalation card nobody pressed holds the send until it is applied (escalation_pending)', async () => {
+    const s = await scenario({ stage: 3 });
+    const versionId = await publishedVersionId(s.intentId);
+    const [card] = await owner()
+      .insert(schema.ticketEvent)
+      .values({
+        ticketId: s.ticketId,
+        type: 'procedure.escalation_proposed',
+        actorType: 'ai',
+        visibility: 'internal',
+        payload: { stepId: 'esc', versionId, to: { role: 'lead' }, note: 'look at this' },
+      })
+      .returning({ id: schema.ticketEvent.id });
+    expect(await step(s)).toBe('held');
+    expect(await failedOf(s)).toEqual(['escalation_pending']);
+    // A card that was pressed is no longer pending.
+    await owner()
+      .insert(schema.ticketEvent)
+      .values({
+        ticketId: s.ticketId,
+        type: 'procedure.escalation_applied',
+        actorType: 'user',
+        actorId: headId,
+        visibility: 'internal',
+        payload: { proposalId: card?.id, stepId: 'esc', versionId },
+      });
+    expect(await step(s)).not.toBe('error');
+    expect(await failedOf(s)).toEqual([]);
+  });
+
+  it('C-4: no replay of the combination in force suspends auto-send (replay_missing), a later failed one too', async () => {
+    const none = await scenario({ stage: 3, replay: false });
+    expect(await step(none)).toBe('held');
+    expect(await deliveriesOf(none.ticketId)).toHaveLength(0);
+    expect(await failedOf(none)).toEqual(['replay_missing']);
+
+    const s = await scenario({ stage: 3 });
+    // The newest result of the combination fails: suspended.
+    await passReplay(s.intentId, { violations: 1 });
+    expect(await step(s)).toBe('held');
+    expect(await failedOf(s)).toEqual(['replay_missing']);
+    // A passing replay after it lifts the suspension.
+    await passReplay(s.intentId);
+    expect(await step(s)).toBe('scheduled');
+  });
+
+  it('C-4: a replay of another model or prompt version is not a replay of this one', async () => {
+    const s = await scenario({ stage: 3, replay: false });
+    const base = await replayBase(s);
+    for (const other of [
+      { drafterModel: 'another-drafter' },
+      { graderModel: 'another-grader' },
+      { drafterPromptVersion: DRAFTER_PROMPT_VERSION + 1 },
+      { graderPromptVersion: base.graderPromptVersion + 1 },
+      { procedureVersionId: null },
+    ]) {
+      await recordReplayResult(database.db, headId, { ...base, ...other });
+    }
+    expect(await step(s)).toBe('held');
+    expect(await failedOf(s)).toEqual(['replay_missing']);
+  });
+
+  it('C-4: a mock replay, one with no cases or one whose redaction eval failed never counts as passed', async () => {
+    const s = await scenario({ stage: 3, replay: false });
+    const base = await replayBase(s);
+    for (const bad of [{ mock: true }, { caseCount: 0 }, { redactionPassed: false }]) {
+      await recordReplayResult(database.db, headId, { ...base, ...bad });
+      expect(await step(s)).toBe('held');
+      expect(await failedOf(s)).toEqual(['replay_missing']);
+    }
+  });
+
+  it('C-4: the application role cannot write a replay result itself, and a person without the permission cannot either', async () => {
+    const s = await scenario({ stage: 3, replay: false });
+    await expect(
+      database.db.insert(schema.aiReplayResult).values({
+        intentId: s.intentId,
+        source: 'eval',
+        drafterModel: 'a',
+        graderModel: 'b',
+        drafterPromptVersion: 1,
+        graderPromptVersion: 1,
+        caseCount: 1,
+        violations: 0,
+        redactionPassed: true,
+        passed: true,
+        recordedBy: headId,
+      }),
+    ).rejects.toThrow();
+    const [rookie] = await owner()
+      .insert(schema.users)
+      .values({ email: `${randomUUID()}@example.test`, name: 'Agent', role: 'agent' })
+      .returning({ id: schema.users.id });
+    await expect(
+      recordReplayResult(database.db, rookie?.id ?? '', {
+        ...(await replayBase(s)),
+        drafterModel: 'a',
+        graderModel: 'b',
+      }),
+    ).rejects.toThrow();
+  });
+
+  it('C-11: a draft with no ai_run row of its drafter is denied (ai_run_missing)', async () => {
+    const s = await scenario({ stage: 3, drafterRun: false });
+    expect(await step(s)).toBe('held');
+    expect(await failedOf(s)).toContain('ai_run_missing');
+    expect(await deliveriesOf(s.ticketId)).toHaveLength(0);
+  });
+
+  it('C-2: a phone number the cited passage does not carry holds the send; one it carries does not', async () => {
+    const phone = await scenario({
+      stage: 3,
+      body: 'You can reach our desk on 02-123-4567 today.',
+    });
+    expect(await step(phone)).toBe('held');
+    expect(await failedOf(phone)).toEqual(['link_not_allowed']);
+    const carried = await scenario({
+      stage: 3,
+      body: 'You can reach our desk on 02-123-4567 today.',
+      snippet: 'Desk phone: 02-123-4567',
+    });
+    expect(await step(carried)).toBe('scheduled');
+  });
+
+  it('C-2: after an automatic reply, a later message from the customer asks for a person until a person answers', async () => {
+    const s = await scenario({ stage: 3 });
+    expect(await step(s)).toBe('scheduled');
+    await testDb.owner.pool.query(
+      `INSERT INTO message (ticket_id, direction, visibility, body_text, created_at)
+       VALUES ($1, 'inbound', 'public', 'It still does not work, same error.', $2::timestamptz)`,
+      [s.ticketId, new Date(T0.getTime() + 10 * 60_000)],
+    );
+    expect(await step(s)).toBe('held');
+    expect(await failedOf(s)).toContain('customer_wants_human');
+    // A person answers: the next automatic reply is possible again.
+    await testDb.owner.pool.query(
+      `INSERT INTO message (ticket_id, direction, visibility, body_text, sender_user_id, created_at)
+       VALUES ($1, 'outbound', 'public', 'Let me look into it.', $2, $3::timestamptz)`,
+      [s.ticketId, headId, new Date(T0.getTime() + 20 * 60_000)],
+    );
+    expect(await step(s)).not.toBe('error');
+    expect(await failedOf(s)).not.toContain('customer_wants_human');
+  });
+
+  it('C-10: the latest messages count however long the ticket is (the old read stopped at the first 200)', async () => {
+    const s = await scenario({ stage: 3 });
+    await testDb.owner.pool.query(
+      `INSERT INTO message (ticket_id, direction, visibility, body_text, created_at)
+       SELECT $1, 'inbound', 'public', 'still waiting, number ' || n, $2::timestamptz + make_interval(secs => n)
+         FROM generate_series(1, 250) AS n`,
+      [s.ticketId, new Date(T0.getTime() + 60_000)],
+    );
+    await testDb.owner.pool.query(
+      `INSERT INTO message (ticket_id, direction, visibility, body_text, created_at)
+       VALUES ($1, 'inbound', 'public', 'ขอคุยกับเจ้าหน้าที่หน่อยครับ', $2::timestamptz + interval '1 hour')`,
+      [s.ticketId, new Date(T0.getTime() + 3_600_000 * 24)],
+    );
+    expect(await step(s)).toBe('held');
+    expect(await failedOf(s)).toContain('customer_wants_human');
+  });
+
+  it('C-10: so many messages that they cannot all be read count as asking for a person', async () => {
+    const s = await scenario({ stage: 3 });
+    await testDb.owner.pool.query(
+      `INSERT INTO message (ticket_id, direction, visibility, body_text, created_at)
+       SELECT $1, 'inbound', 'public', 'ok ' || n, $2::timestamptz + make_interval(secs => n)
+         FROM generate_series(1, 1100) AS n`,
+      [s.ticketId, new Date(T0.getTime() + 60_000)],
+    );
+    expect(await step(s)).toBe('held');
+    expect(await failedOf(s)).toContain('customer_wants_human');
   });
 });
