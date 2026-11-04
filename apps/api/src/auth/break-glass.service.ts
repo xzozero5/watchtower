@@ -15,6 +15,7 @@ import { DATABASE } from '../database/database.module.js';
 import { LOGGER, type AppLogger } from '../logging/logger.js';
 import type { UserRow } from '../users/users.service.js';
 import { provisionBreakGlass, type ProvisionResult } from './break-glass-provision.js';
+import { ipBucket } from './ip-bucket.js';
 import { invalidCredentials, RateLimitedError } from './http-errors.js';
 import { PasswordService } from './password.service.js';
 import { RateLimiter } from './rate-limiter.js';
@@ -47,7 +48,7 @@ const UNKNOWN_IP = 'unknown';
  * Sign-in is limited per IP address (10 attempts per 15 minutes) and the lockout is per
  * (account, IP): the 5th wrong password from an address locks that address out of that account for
  * a minute, and every further wrong one doubles the lock up to an hour. A lock never applies to
- * other addresses, so someone who knows the admin's email cannot lock the admin out by typing
+ * other addresses (an IPv6 address counts as its /64, T-125 C-7), so someone who knows the admin's email cannot lock the admin out by typing
  * wrong passwords from elsewhere (the old account-wide lock allowed exactly that). The price is
  * that a botnet gets 5 free guesses per address; against an argon2id hash of a 12+ character
  * password, behind the per-IP limit, that is accepted `[ASSUMED]`. A correct password during a
@@ -74,7 +75,9 @@ export class BreakGlassService {
    * body whether the account is missing, locked or the password is wrong) or 429.
    */
   async authenticate(email: string, password: string, ip: string | null): Promise<UserRow> {
-    const limited = await this.limiter.hit('bg-ip', ip ?? UNKNOWN_IP, IP_LIMIT, IP_WINDOW_SECONDS);
+    // An IPv6 client is counted as its /64 (T-125 C-7): a new address inside it is not a new guesser.
+    const address = ipBucket(ip ?? UNKNOWN_IP);
+    const limited = await this.limiter.hit('bg-ip', address, IP_LIMIT, IP_WINDOW_SECONDS);
     if (!limited.allowed) {
       AuditScope.set({ action: AUDIT_ACTIONS.breakGlassRateLimited, outcome: 'denied' });
       throw new RateLimitedError(limited.retryAfterSeconds);
@@ -97,7 +100,6 @@ export class BreakGlassService {
     }
     AuditScope.set({ targetType: 'user', targetId: user.id });
 
-    const address = ip ?? UNKNOWN_IP;
     const lockedUntil = await this.lockedUntil(user.id, address);
     if (lockedUntil !== null) {
       await this.passwords.verifyAgainstDummy(password);
@@ -131,7 +133,7 @@ export class BreakGlassService {
         ...(attempt.lockedUntil === null ? {} : { lockedUntil: attempt.lockedUntil.toISOString() }),
       },
     });
-    if (attempt.lockedUntil !== null) await this.announceLock(user.id, address, attempt);
+    if (attempt.lockedUntil !== null) await this.announceLock(user.id, address, ip, attempt);
     throw invalidCredentials();
   }
 
@@ -188,6 +190,7 @@ export class BreakGlassService {
   private async announceLock(
     userId: string,
     ip: string,
+    rawIp: string | null,
     attempt: { failed: number; lockedUntil: Date | null },
   ): Promise<void> {
     const seconds = lockSeconds(attempt.failed);
@@ -202,7 +205,7 @@ export class BreakGlassService {
         outcome: 'denied',
         targetType: 'user',
         targetId: userId,
-        ip: ip === UNKNOWN_IP ? null : ip,
+        ip: rawIp,
         metadata: {
           failedAttempts: attempt.failed,
           lockedForSeconds: seconds,
