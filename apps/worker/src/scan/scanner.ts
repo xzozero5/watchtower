@@ -7,7 +7,7 @@ import {
   STAFF_UPLOAD_ORPHAN_HOURS,
   TICKET_EVENT_TYPES,
 } from '@watchtower/shared';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 
 import type { WorkerLogger } from '../logger.js';
 import { ScanUnavailable, type Clamd } from './clamd.js';
@@ -36,10 +36,13 @@ export function backoffMs(attempts: number): number {
   return Math.min(BACKOFF_FIRST_MS * 2 ** Math.max(0, attempts), BACKOFF_MAX_MS);
 }
 
-/** Text from a stored record that goes into an audit row or a ticket note: no control characters, bounded. */
-function tidy(value: string | null, max: number): string {
-  // eslint-disable-next-line no-control-regex -- stripping control characters is the point
-  return (value ?? '').replace(/[\u0000-\u001f\u007f]/g, ' ').slice(0, max);
+/**
+ * Text from a stored record that goes into an audit row or a ticket note: no control characters, no
+ * format characters (bidi overrides such as U+202E that reverse how a file name reads, zero-width
+ * joiners, BOM), no line or paragraph separators; bounded (T-155a C-8).
+ */
+export function tidy(value: string | null, max: number): string {
+  return (value ?? '').replace(/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/gu, ' ').slice(0, max);
 }
 
 const MESSAGE_LIKE = (table: 'message' | 'inbound_message', source: string, since: string) => `
@@ -192,10 +195,19 @@ async function markInfected(deps: ScannerDeps, row: DueRow, signature: string): 
   const { db } = deps.database;
   const name = tidy(row.filename, 120);
   await db.transaction(async (tx) => {
-    await tx
+    // Only the run that turns `pending` into `infected` writes the audit row and the notes: a second
+    // worker (or a tick that overlaps) that scanned the same file finds it already decided and adds none.
+    const decided = await tx
       .update(schema.objectScan)
       .set({ scanStatus: 'infected', signature, scannedAt: new Date(), lastError: null })
-      .where(eq(schema.objectScan.objectKey, row.object_key));
+      .where(
+        and(
+          eq(schema.objectScan.objectKey, row.object_key),
+          eq(schema.objectScan.scanStatus, 'pending'),
+        ),
+      )
+      .returning({ key: schema.objectScan.objectKey });
+    if (decided.length === 0) return;
     await tx.insert(schema.auditLog).values({
       actorType: 'system',
       actorId: null,
@@ -231,8 +243,46 @@ async function markInfected(deps: ScannerDeps, row: DueRow, signature: string): 
   await removeInfected(deps, row.object_key);
 }
 
+/**
+ * The raw payloads (`inbound_message.raw_object_key`, `inbound_event.raw_object_key`) of the mail an
+ * infected attachment came from. The raw `.eml` still contains the infected bytes (base64), and it is
+ * what a person opening it from a mail client would hit (T-155a C-3). Empty for a file that is not
+ * from inbound mail.
+ */
+async function rawKeysOfInbound(deps: ScannerDeps, attachmentKey: string): Promise<string[]> {
+  const found = await deps.database.pool.query<{ key: string }>(
+    `SELECT m.raw_object_key AS key
+       FROM inbound_message m
+      WHERE m.raw_object_key IS NOT NULL
+        AND m.attachments @> jsonb_build_array(jsonb_build_object('objectKey', $1::text))
+     UNION
+     SELECT e.raw_object_key
+       FROM inbound_message m
+       JOIN inbound_event e ON e.id = m.inbound_event_id
+      WHERE e.raw_object_key IS NOT NULL
+        AND m.attachments @> jsonb_build_array(jsonb_build_object('objectKey', $1::text))`,
+    [attachmentKey],
+  );
+  return found.rows.map((row) => row.key);
+}
+
+/** Deletes one raw object and forgets its key on the inbound rows, so nothing points at a missing file. */
+async function dropRaw(deps: ScannerDeps, rawKey: string): Promise<void> {
+  await deps.store.delete(rawKey);
+  await deps.database.pool.query(
+    `UPDATE inbound_message SET raw_object_key = NULL WHERE raw_object_key = $1`,
+    [rawKey],
+  );
+  await deps.database.pool.query(
+    `UPDATE inbound_event SET raw_object_key = NULL WHERE raw_object_key = $1`,
+    [rawKey],
+  );
+}
+
 async function removeInfected(deps: ScannerDeps, key: string): Promise<boolean> {
   try {
+    // The raw message goes first: `removed_at` is what stops the retry, so it is set only when both are gone.
+    for (const rawKey of await rawKeysOfInbound(deps, key)) await dropRaw(deps, rawKey);
     await deps.store.delete(key);
   } catch (error) {
     deps.logger.warn(
@@ -313,30 +363,52 @@ export async function housekeeping(
  */
 export async function sweepOrphanStaffUploads(deps: ScannerDeps): Promise<number> {
   const { pool } = deps.database;
-  const deleted = await pool.query<{ object_key: string }>(
-    `WITH candidates AS (
-       SELECT id, object_key, created_at FROM staff_upload su
-        WHERE su.created_at < now() - ($1::int * interval '1 hour')
-        ORDER BY su.created_at
-        LIMIT ${String(ORPHAN_BATCH)}
-     )
-     DELETE FROM staff_upload su USING candidates c
-      WHERE su.id = c.id
-        AND NOT EXISTS (SELECT 1 FROM shift_note n
-                         WHERE n.attachments @> jsonb_build_array(jsonb_build_object('id', c.id)))
-        AND NOT EXISTS (SELECT 1 FROM handoff h
-                         WHERE h.attachments @> jsonb_build_array(jsonb_build_object('id', c.id)))
-        AND NOT EXISTS (SELECT 1 FROM incident_timeline i
-                         WHERE i.payload -> 'attachments'
-                               @> jsonb_build_array(jsonb_build_object('id', c.id)))
-        AND NOT EXISTS (SELECT 1 FROM message m
-                         WHERE m.created_at >= c.created_at
-                           AND m.attachments
-                               @> jsonb_build_array(jsonb_build_object('objectKey', c.object_key)))
-     RETURNING su.object_key`,
-    [STAFF_UPLOAD_ORPHAN_HOURS],
-  );
-  for (const row of deleted.rows) {
+  // Two statements in one transaction (T-155a C-9). The first takes a try-lock on each candidate: a
+  // file that a request is attaching right now holds the shared advisory lock of the same name
+  // (StaffUploadsService `claim`) and is skipped, not waited for. (The app role has no UPDATE on
+  // staff_upload, so `FOR UPDATE SKIP LOCKED` is not available; an advisory lock needs no privilege.)
+  // The second runs after the locks are held, so its snapshot already sees any message that committed
+  // in between (one statement would not: its snapshot is taken before it locks anything).
+  const client = await pool.connect();
+  let deleted: { object_key: string }[];
+  try {
+    await client.query('BEGIN');
+    const locked = await client.query<{ id: string }>(
+      `SELECT c.id FROM (
+         SELECT su.id FROM staff_upload su
+          WHERE su.created_at < now() - ($1::int * interval '1 hour')
+          ORDER BY su.created_at
+          LIMIT ${String(ORPHAN_BATCH)}
+       ) c
+        WHERE pg_try_advisory_xact_lock(hashtextextended('staff_upload:' || c.id::text, 0))`,
+      [STAFF_UPLOAD_ORPHAN_HOURS],
+    );
+    const result = await client.query<{ object_key: string }>(
+      `DELETE FROM staff_upload su
+        WHERE su.id = ANY($1::uuid[])
+          AND NOT EXISTS (SELECT 1 FROM shift_note n
+                           WHERE n.attachments @> jsonb_build_array(jsonb_build_object('id', su.id)))
+          AND NOT EXISTS (SELECT 1 FROM handoff h
+                           WHERE h.attachments @> jsonb_build_array(jsonb_build_object('id', su.id)))
+          AND NOT EXISTS (SELECT 1 FROM incident_timeline i
+                           WHERE i.payload -> 'attachments'
+                                 @> jsonb_build_array(jsonb_build_object('id', su.id)))
+          AND NOT EXISTS (SELECT 1 FROM message m
+                           WHERE m.created_at >= su.created_at
+                             AND m.attachments
+                                 @> jsonb_build_array(jsonb_build_object('objectKey', su.object_key)))
+       RETURNING su.object_key`,
+      [locked.rows.map((row) => row.id)],
+    );
+    await client.query('COMMIT');
+    deleted = result.rows;
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => undefined);
+    throw error;
+  } finally {
+    client.release();
+  }
+  for (const row of deleted) {
     try {
       await deps.store.delete(row.object_key);
     } catch (error) {
@@ -348,7 +420,7 @@ export async function sweepOrphanStaffUploads(deps: ScannerDeps): Promise<number
     }
     await pool.query(`DELETE FROM object_scan WHERE object_key = $1`, [row.object_key]);
   }
-  return deleted.rowCount ?? 0;
+  return deleted.length;
 }
 
 /**
@@ -387,6 +459,48 @@ export async function expireByRetention(deps: ScannerDeps, days: number): Promis
       [row.object_key],
     );
     expired += 1;
+  }
+  return expired + (await expireRawByRetention(deps, days));
+}
+
+/**
+ * The raw payloads (`.eml`, the LINE and Discord JSON) of messages on tickets closed for `days`: they
+ * hold the whole message, attachments included, so they follow the same retention as the files (PDPA,
+ * T-155a C-3). The parsed message in the database stays. Counts one per object deleted.
+ */
+async function expireRawByRetention(deps: ScannerDeps, days: number): Promise<number> {
+  const { pool } = deps.database;
+  const rows = await pool.query<{ raw_object_key: string }>(
+    `SELECT DISTINCT raw_key AS raw_object_key FROM (
+       SELECT m.raw_object_key AS raw_key, t.closed_at
+         FROM inbound_message m
+         JOIN ticket t ON t.id = m.ticket_id
+        WHERE m.raw_object_key IS NOT NULL
+          AND t.status = 'closed' AND t.closed_at IS NOT NULL
+          AND t.closed_at < now() - ($1::int * interval '1 day')
+       UNION ALL
+       SELECT e.raw_object_key, t.closed_at
+         FROM inbound_message m
+         JOIN inbound_event e ON e.id = m.inbound_event_id
+         JOIN ticket t ON t.id = m.ticket_id
+        WHERE e.raw_object_key IS NOT NULL
+          AND t.status = 'closed' AND t.closed_at IS NOT NULL
+          AND t.closed_at < now() - ($1::int * interval '1 day')
+     ) raw
+     LIMIT ${String(RETENTION_BATCH)}`,
+    [days],
+  );
+  let expired = 0;
+  for (const row of rows.rows) {
+    try {
+      await dropRaw(deps, row.raw_object_key);
+      expired += 1;
+    } catch (error) {
+      deps.logger.warn(
+        { err: error },
+        'an expired raw message could not be deleted; the next run tries again',
+      );
+    }
   }
   return expired;
 }

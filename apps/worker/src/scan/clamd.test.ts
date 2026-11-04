@@ -79,3 +79,44 @@ describe('clamd client (fake TCP server)', () => {
     ).rejects.toThrow(/timed out/);
   });
 });
+
+describe('clamd client: total deadline (T-155a C-10)', () => {
+  it('gives up on a peer that keeps sending one byte now and then, which an idle timeout never catches', async () => {
+    const server = await fake('trickle');
+    const clamd = createClamd({
+      host: '127.0.0.1',
+      port: server.port,
+      timeoutMs: 5000,
+      deadlineMs: 300,
+    });
+    const started = Date.now();
+    await expect(clamd.scan(Buffer.from('x'))).rejects.toThrow(/deadline/);
+    expect(Date.now() - started).toBeLessThan(2000);
+  });
+});
+
+describe('clamd client: a file the scanner could not look into (T-155a C-2)', () => {
+  it('reads `Heuristics.Encrypted.Zip FOUND` as infected, not as clean or as an error', () => {
+    expect(parseClamdReply('stream: Heuristics.Encrypted.Zip FOUND')).toEqual({
+      kind: 'infected',
+      signature: 'Heuristics.Encrypted.Zip',
+    });
+    expect(parseClamdReply('stream: Heuristics.Limits.Exceeded FOUND').kind).toBe('infected');
+  });
+
+  it('is infected for a zip with the encrypted flag, through the wire format', async () => {
+    const server = await fake();
+    const zip = Buffer.concat([
+      Buffer.from([0x50, 0x4b, 0x03, 0x04, 0x14, 0x00, 0x01, 0x00]),
+      Buffer.from('rest of a password-protected zip'),
+    ]);
+    expect(await createClamd({ host: '127.0.0.1', port: server.port }).scan(zip)).toEqual({
+      kind: 'infected',
+      signature: 'Heuristics.Encrypted.Zip',
+    });
+    const plain = Buffer.from([0x50, 0x4b, 0x03, 0x04, 0x14, 0x00, 0x00, 0x00, 0x61]);
+    expect(await createClamd({ host: '127.0.0.1', port: server.port }).scan(plain)).toEqual({
+      kind: 'clean',
+    });
+  });
+});
