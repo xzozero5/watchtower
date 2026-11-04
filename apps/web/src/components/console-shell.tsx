@@ -35,6 +35,7 @@ import { saveLocale } from '@/lib/locale-cookie';
 import { setDensity, setSingleKeyShortcuts, setTheme } from '@/lib/preferences';
 import { useRuntimeConfig } from '@/lib/runtime-config-context';
 import { shiftSectionsFor } from '@/lib/shifts/sections';
+import { requestTicketField } from '@/lib/tickets/field-focus';
 import { requestOpenTicket, withSelectedTicket } from '@/lib/tickets/selection';
 import { useModifierShortcut } from '@/lib/use-modifier-shortcut';
 
@@ -198,6 +199,15 @@ export function ConsoleShell({ destination, skipTo, children }: ConsoleShellProp
           askAssistant: () => {
             setTimeout(requestAssistantOpen, 50);
           },
+          // Only the queue has a details panel; elsewhere the request is ignored.
+          focusTicketField:
+            destination === 'queue'
+              ? (field) => {
+                  setTimeout(() => {
+                    requestTicketField(field);
+                  }, 50);
+                }
+              : undefined,
           goHome,
           goAdmin,
           goTo,

@@ -43,6 +43,22 @@ describe('buildCommands', () => {
     expect(a.setSingleKeyShortcuts).toHaveBeenNthCalledWith(2, true);
   });
 
+  it('offers status, priority and assign only to people who can handle tickets', () => {
+    const a: CommandActions = { ...actions(), focusTicketField: vi.fn() };
+    const handler = buildCommands(tEn, a, { can: (p) => p === 'ticket.handle' });
+    const ids = handler.filter((c) => c.group === 'ticket').map((c) => c.id);
+    expect(ids).toEqual(['ticket.status', 'ticket.priority', 'ticket.assignee']);
+    handler.find((c) => c.id === 'ticket.priority')?.run();
+    handler.find((c) => c.id === 'ticket.assignee')?.run();
+    expect(a.focusTicketField).toHaveBeenNthCalledWith(1, 'priority');
+    expect(a.focusTicketField).toHaveBeenNthCalledWith(2, 'assignee');
+
+    const customer = buildCommands(tEn, a, { can: () => false });
+    expect(customer.some((c) => c.group === 'ticket')).toBe(false);
+    const away = buildCommands(tEn, actions(), { can: () => true });
+    expect(away.some((c) => c.group === 'ticket')).toBe(false);
+  });
+
   it('has unique ids', () => {
     const ids = buildCommands(tEn, actions()).map((c) => c.id);
     expect(new Set(ids).size).toBe(ids.length);

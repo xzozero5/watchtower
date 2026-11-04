@@ -22,11 +22,15 @@ import { evidenceDomId } from '@/components/ai/evidence-panel';
 import { ConversationPane } from '@/components/conversation/conversation-pane';
 import { QueuePane } from '@/components/queue/queue-pane';
 import { QUEUE_LISTBOX_ID } from '@/components/queue/queue-row';
-import { STATUS_FIELD_ID } from '@/components/ticket/ticket-details';
 import { type PanelTab, TicketPanel } from '@/components/ticket/ticket-panel';
 import { useT } from '@/i18n/provider';
 import { useSession } from '@/lib/auth/session';
 import { type PaneCommand, useShortcut, useShortcutSequence, usePaneKeys } from '@/lib/keyboard';
+import {
+  TICKET_FIELD_ID,
+  type TicketField,
+  useTicketFieldRequests,
+} from '@/lib/tickets/field-focus';
 import { useSelectedTicket } from '@/lib/tickets/selection';
 import { SIDE_BY_SIDE_QUERY, THREE_PANES_QUERY, useMediaQuery } from '@/lib/use-media-query';
 
@@ -310,18 +314,38 @@ export function Workspace() {
       goToPane('queue');
     },
   });
-  // S: show the Details tab, reveal the panel if it is folded, and move focus to the status field.
+  // S / P / I (and the palette commands): show the Details tab, reveal the panel if it is folded,
+  // and move focus to the status / priority / assignee field.
+  const focusTicketField = (field: TicketField) => {
+    setPanelTab('details');
+    if (layout === 'narrow') setTab('assistant');
+    if (layout === 'wide') setAssistantCollapsed(false);
+    if (layout === 'medium') setDrawerOpen(true);
+    requestFocus(TICKET_FIELD_ID[field]);
+  };
+  const fieldKeysOn = showPanel && canEdit && selectedKey !== null;
   useShortcut(
     's',
     () => {
-      setPanelTab('details');
-      if (layout === 'narrow') setTab('assistant');
-      if (layout === 'wide') setAssistantCollapsed(false);
-      if (layout === 'medium') setDrawerOpen(true);
-      requestFocus(STATUS_FIELD_ID);
+      focusTicketField('status');
     },
-    showPanel && canEdit && selectedKey !== null,
+    fieldKeysOn,
   );
+  useShortcut(
+    'p',
+    () => {
+      focusTicketField('priority');
+    },
+    fieldKeysOn,
+  );
+  useShortcut(
+    'i',
+    () => {
+      focusTicketField('assignee');
+    },
+    fieldKeysOn,
+  );
+  useTicketFieldRequests(focusTicketField, fieldKeysOn);
 
   // An evidence chip or a citation: open the panel on the Evidence tab and move to that card.
   const openEvidence = (id: string) => {

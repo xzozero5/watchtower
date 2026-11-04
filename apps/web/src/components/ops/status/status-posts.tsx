@@ -111,6 +111,9 @@ export function StatusPostsSection() {
   const draftRight = can('incident.create');
   const publishRight = can('incident.manage');
   const nameOf = (id: string) => components.data?.items.find((c) => c.id === id)?.name ?? id;
+  const openIncidents = useIncidentList({ open: true });
+  const incidentKeyOf = (id: string) =>
+    openIncidents.data?.pages.flatMap((page) => page.items).find((item) => item.id === id)?.key;
   const filterId = useId();
   return (
     <section aria-label={t('ops.statusAdmin.posts.title')} className="flex flex-col gap-2">
@@ -189,7 +192,13 @@ export function StatusPostsSection() {
                 {t('ops.statusAdmin.posts.impact')}: <ImpactText impact={post.impact} />
                 {post.componentIds.length > 0
                   ? ` · ${post.componentIds.map(nameOf).join(', ')}`
-                  : ''}
+                  : ` · ${t('ops.statusAdmin.posts.noComponent')}`}
+                {' · '}
+                {post.incidentId === null
+                  ? t('ops.statusAdmin.posts.noIncident')
+                  : t('ops.statusAdmin.posts.linkedIncident', {
+                      key: incidentKeyOf(post.incidentId) ?? t('ops.statusAdmin.posts.anIncident'),
+                    })}
               </p>
               <div className="flex flex-wrap gap-1.5">
                 {post.state === 'draft' && draftRight ? (
@@ -303,6 +312,10 @@ function PostSheet({ post, onClose }: { post: StatusPostStaff | null; onClose: (
   const [phase, setPhase] = useState<StatusPostPhase>(post?.phase ?? 'investigating');
   const [impact, setImpact] = useState<StatusPostImpact>(post?.impact ?? 'minor');
   const [componentIds, setComponentIds] = useState<string[]>(post?.componentIds ?? []);
+  // The link is chosen when the draft is created; an existing post keeps the one it has.
+  const [incidentId, setIncidentId] = useState('');
+  const incidents = useIncidentList({ open: true });
+  const openIncidents = incidents.data?.pages.flatMap((page) => page.items) ?? [];
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [summary, setSummary] = useState<string | null>(null);
   const [dirty, setDirty] = useState(false);
@@ -313,7 +326,9 @@ function PostSheet({ post, onClose }: { post: StatusPostStaff | null; onClose: (
   const save = useMutation({
     mutationFn: () => {
       const fields = { title: title.trim(), body: body.trim(), phase, impact, componentIds };
-      return post === null ? api.createStatusPost(fields) : api.updateStatusPost(post.id, fields);
+      return post === null
+        ? api.createStatusPost({ ...fields, incidentId: incidentId === '' ? null : incidentId })
+        : api.updateStatusPost(post.id, fields);
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: opsKeys(userId).statusPostsAll });
@@ -438,6 +453,35 @@ function PostSheet({ post, onClose }: { post: StatusPostStaff | null; onClose: (
             touch();
           }}
         />
+        {componentIds.length === 0 ? (
+          <p className="text-sm text-muted-foreground">
+            {t('ops.statusAdmin.posts.noComponentHint')}
+          </p>
+        ) : null}
+        {post === null ? (
+          <FormField
+            id={`${base}-incident`}
+            label={t('ops.statusAdmin.posts.incidentOptional')}
+            hint={t('ops.statusAdmin.posts.incidentHint')}
+          >
+            <Select
+              id={`${base}-incident`}
+              value={incidentId}
+              aria-describedby={`${base}-incident-hint`}
+              onChange={(e) => {
+                setIncidentId(e.target.value);
+                touch();
+              }}
+            >
+              <option value="">{t('ops.statusAdmin.posts.noIncident')}</option>
+              {openIncidents.map((incident) => (
+                <option key={incident.id} value={incident.id}>
+                  {incident.key} · {incident.title}
+                </option>
+              ))}
+            </Select>
+          </FormField>
+        ) : null}
       </form>
     </EntitySheet>
   );
@@ -624,11 +668,11 @@ function PublishPostDialog({ post, onClose }: { post: StatusPostStaff; onClose: 
   return (
     <PublishDialog
       title={t('ops.statusAdmin.posts.publishTitle')}
-      description={
+      description={`${
         subscribers.data
           ? t('ops.statusAdmin.publishBody', { count: subscribers.data.confirmed })
           : t('ops.statusAdmin.publishBodyUnknown')
-      }
+      }${post.componentIds.length === 0 ? ` ${t('ops.statusAdmin.posts.publishNoComponent')}` : ''}`}
       heading={post.title}
       body={post.body}
       confirmLabel={t('ops.statusAdmin.publish')}

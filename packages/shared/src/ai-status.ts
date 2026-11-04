@@ -20,6 +20,34 @@ export const aiStatusSchema = z.object({
 });
 export type AiStatus = z.infer<typeof aiStatusSchema>;
 
+/**
+ * Today's AI spend against the daily caps (T-142, PRD section 6.6). The day is UTC. `level` is `ok`,
+ * `alert` (at or above `alertPercent` of a cap) or `stop` (a cap is reached: the app's AI runs
+ * stop and every answer falls back to rules until `resetsAt`). The assistant has its own cap per
+ * person; `users` lists today's heaviest users, by tokens.
+ */
+export const aiBudgetSchema = z.object({
+  day: z.string(),
+  resetsAt: z.iso.datetime(),
+  level: z.enum(['ok', 'alert', 'stop']),
+  alertPercent: z.number(),
+  cost: z.object({ spentUsd: z.number(), capUsd: z.number() }),
+  tokens: z.object({ spent: z.number(), cap: z.number() }),
+  assistant: z.object({
+    userDailyTokens: z.number(),
+    users: z.array(
+      z.object({
+        userId: z.string(),
+        name: z.string(),
+        tokens: z.number(),
+        messages: z.number(),
+        costUsd: z.number().nullable(),
+      }),
+    ),
+  }),
+});
+export type AiBudget = z.infer<typeof aiBudgetSchema>;
+
 /** Redis key the worker writes and the api reads. */
 export const AI_STATUS_REDIS_KEY = 'watchtower:ai:status';
 /** How often the worker probes (ms), and how long a report stays valid (ms): a missed report or two means offline. */

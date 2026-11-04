@@ -84,6 +84,29 @@ const listbox = () => {
   return found;
 };
 
+describe('ticket field keys (UI-SPEC section 14)', () => {
+  it('S, P and I move focus to the status, priority and assignee fields', async () => {
+    const user = userEvent.setup();
+    stubViewport(1600);
+    workspaceApi();
+    await openWorkspace();
+    await user.click(screen.getByRole('option', { name: /OPS-1/ }));
+    await screen.findByRole('textbox', { name: 'Public reply' });
+    for (const [key, id] of [
+      ['s', 'ticket-field-status'],
+      ['p', 'ticket-field-priority'],
+      ['i', 'ticket-field-assignee'],
+    ] as const) {
+      await user.keyboard(key);
+      await waitFor(() => {
+        expect(document.getElementById(id)).toHaveFocus();
+      });
+      // Back to the queue so the next key is not typed into a field.
+      listbox().focus();
+    }
+  });
+});
+
 describe('single-key shortcuts preference (WCAG 2.1.4)', () => {
   it('turns every single-character shortcut off, keeps Ctrl+K and the buttons, and is saved', async () => {
     const user = userEvent.setup();
@@ -102,7 +125,7 @@ describe('single-key shortcuts preference (WCAG 2.1.4)', () => {
     expect(screen.getByRole('option', { name: /OPS-1/ })).toHaveAttribute('aria-selected', 'true');
 
     // "[[" types a literal "[" in user-event's key syntax.
-    for (const key of ['c', 'n', 's', '/', '?', '[[', ']', 'o']) {
+    for (const key of ['c', 'n', 's', 'p', 'i', '/', '?', '[[', ']', 'o']) {
       await user.keyboard(key);
     }
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();

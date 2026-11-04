@@ -1,4 +1,5 @@
 import {
+  aiBudgetSchema,
   aiStatusSchema,
   authConfigSchema,
   bulkResultSchema,
@@ -343,6 +344,14 @@ export function createEndpoints(client: ApiClient) {
       client.request({
         path: '/v1/ai/status',
         schema: aiStatusSchema,
+        ...(signal ? { signal } : {}),
+      }),
+
+    /** Today's AI spend against the daily caps, and the heaviest assistant users (T-142). */
+    aiBudget: (signal?: AbortSignal) =>
+      client.request({
+        path: '/v1/ai/budget',
+        schema: aiBudgetSchema,
         ...(signal ? { signal } : {}),
       }),
 

@@ -7,6 +7,7 @@ export const paletteEn = {
   emptyHint: 'Try a different word, such as "theme" or "language".',
   groups: {
     general: 'General',
+    ticket: 'Ticket',
     display: 'Display',
     language: 'Language',
     admin: 'Admin',

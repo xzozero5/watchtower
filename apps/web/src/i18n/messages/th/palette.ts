@@ -10,6 +10,7 @@ export const paletteTh: Widen<typeof paletteEn> = {
   emptyHint: 'ลองคำอื่น เช่น "ธีม" หรือ "ภาษา"',
   groups: {
     general: 'ทั่วไป',
+    ticket: 'Ticket',
     display: 'การแสดงผล',
     language: 'ภาษา',
     admin: 'ผู้ดูแลระบบ',
