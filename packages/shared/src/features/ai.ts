@@ -64,6 +64,8 @@ export const AI_JOBS = {
   kbAuthor: 'kb_author',
   /** Grade one resolved ticket: resolution class, draft quality, policy violations, KB gap (T-301, PRD 6.2). */
   grade: 'grade',
+  /** The weekly brief of the CEO view (T-305c). Repeats every few minutes; makes at most one brief per weekly slot. */
+  weeklyBrief: 'weekly_brief',
 } as const;
 
 /** Payload of an `ai` `investigate` job. `requestedBy` is the person who asked, or null when the system did. */

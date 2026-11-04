@@ -77,6 +77,7 @@ export * from './statuspage.js';
 export * from './usage.js';
 export * from './dashboard.js';
 export * from './reports.js';
+export * from './weekly-brief.js';
 export * from './uploads.js';
 export * from './procedure.js';
 export * from './roster-plan.js';

@@ -1115,3 +1115,28 @@ export function createDomain(options: DomainOptions): Domain {
     notifications: { shiftAlerts: notifyShiftAlerts, opsAlert: notifyOpsAlert },
   };
 }
+
+// Reports shared by the api and the worker (T-305b, T-305c).
+export { SeedTicketFilter, type SeedPort } from './reports/seed-filter.js';
+export { reportWindow, windowDays, type ReportWindow } from './reports/window.js';
+export { readCeoExternalTiles, readCeoView, type CeoViewOptions } from './reports/ceo-view.js';
+export {
+  CEO_PAGE_HREF,
+  figureFacts,
+  incidentPageHref,
+  ticketPageHref,
+  weeklyBriefFacts,
+  type BriefFact,
+  type WeeklyFacts,
+} from './reports/weekly-brief-facts.js';
+export {
+  currentWeeklySlot,
+  insertWeeklyBriefDraft,
+  latestDraftWeeklyBrief,
+  latestPublishedWeeklyBrief,
+  toWeeklyBrief,
+  weeklyBriefExists,
+  weeklySlotInstant,
+  type NewWeeklyBrief,
+  type WeeklySlotConfig,
+} from './reports/weekly-brief.js';

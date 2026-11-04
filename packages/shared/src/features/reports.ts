@@ -20,6 +20,10 @@ export const REPORTS_AUDIT_ACTIONS = {
   ceoMetricDelete: 'ceo.metric.delete',
   /** The CEO view was exported (CSV or HTML). */
   ceoExport: 'ceo.export',
+  /** A head edited the draft of the weekly brief (T-305c). */
+  briefEdit: 'ceo.brief.edit',
+  /** A head published the weekly brief and it was queued by email (T-305c). */
+  briefPublish: 'ceo.brief.publish',
 } as const satisfies Record<string, string>;
 
 export const REPORTS_TICKET_EVENTS = {} as const satisfies Record<string, string>;

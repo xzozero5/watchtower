@@ -16,20 +16,25 @@ import { runGrader } from './grade-job.js';
 import { runInvestigation } from './investigation.js';
 import { runKbAuthor } from './kb-author-job.js';
 import { createInvestigationDepsFactory } from './investigation-deps.js';
+import { runWeeklyBrief } from './weekly-brief-job.js';
 
 /**
- * The consumer of the `ai` queue (T-106e, T-108). One queue, five jobs:
+ * The consumer of the `ai` queue (T-106e, T-108). One queue, six jobs:
  *  - `summarize`: classify and summarize a new ticket; when that worked, queue an `investigate` job;
  *  - `investigate`: tools, evidence, report, and a draft reply when the intent is at stage 2;
  *  - `draft`: a person asked for a draft (stage 1 and up), or for a new one;
  *  - `kb_author`: a resolved ticket that cited no article becomes a draft article in review;
  *  - `grade`: a resolved ticket is graded (verified/contained/assumed, draft quality, T-301).
+ *  - `weekly_brief`: a repeating tick that drafts the weekly brief of the CEO view once per slot (T-305c).
  * Each is its own job, so a failure retries only that step (the tool budget is per ticket and hour).
  * The investigation never sends anything to a customer (N3): the draft waits for a person.
  */
 export function createAiPipelineProcessor(context: ProcessorContext): Processor {
   const { database, ai, logger, domain, config } = context;
   const investigationDeps = createInvestigationDepsFactory(context);
+
+  // Failed model attempts per weekly slot, kept between ticks.
+  const weeklyAttempts = new Map<string, number>();
 
   return async (job: Job, token?: string): Promise<unknown> => {
     switch (job.name) {
@@ -109,6 +114,30 @@ export function createAiPipelineProcessor(context: ProcessorContext): Processor 
         logger.info({ ticketId: parsed.data.ticketId, ...result }, 'ai grade');
         // Offline (ADR-019): wait for the AI host without using an attempt, as the brief does.
         if (result.reason === 'provider_offline') await delayWhileOffline(job, token);
+        return result;
+      }
+
+      case AI_JOBS.weeklyBrief: {
+        const result = await runWeeklyBrief({
+          database,
+          ai,
+          logger,
+          attempts: weeklyAttempts,
+          settings: {
+            enabled: config.WEEKLY_BRIEF_ENABLED,
+            day: config.WEEKLY_BRIEF_DAY,
+            time: config.WEEKLY_BRIEF_TIME,
+            timeZone: config.WEEKLY_BRIEF_TIMEZONE,
+            locale: config.WEEKLY_BRIEF_LOCALE,
+            ticketKeyPrefix: config.TICKET_KEY_PREFIX,
+            minutesPerTicket: config.CEO_MINUTES_SAVED_PER_AI_TICKET,
+            staffCostUsdPerHour: config.CEO_STAFF_COST_USD_PER_HOUR ?? null,
+          },
+        });
+        // An offline AI host is a wait, not a failure: the next tick is the retry.
+        if (result.status !== 'exists' && result.status !== 'disabled') {
+          logger.info({ ...result }, 'ai weekly brief');
+        }
         return result;
       }
 

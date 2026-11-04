@@ -230,3 +230,47 @@ export function claimSummary(request: LlmRequest): string {
       .map((fact) => ({ text: firstSentence(fact.text, 200), factIds: [fact.id] })),
   });
 }
+
+/**
+ * Weekly brief (T-305c): the first figures as summary sentences, each intent group with the tickets after it as
+ * a root cause, and each incident that is not resolved as a decision. Every sentence cites the facts it came
+ * from, so the offline demo shows the real shape (chips and all) without any model.
+ */
+export function weeklyBrief(request: LlmRequest): string {
+  const raw = request.messages[0]?.content ?? '';
+  const facts = [...raw.matchAll(/^\[(f\d+)\] ([a-z]+)(?: \(mock data\))?: (.*)$/gm)].map(
+    (match) => ({
+      id: match[1] ?? '',
+      kind: match[2] ?? '',
+      text: (match[3] ?? '').replaceAll(/\s+/g, ' ').trim(),
+    }),
+  );
+  const summary = facts
+    .filter((fact) => fact.kind === 'data' && !/^(intent|incidents?) /i.test(fact.text))
+    .slice(0, 6)
+    .map((fact) => ({ text: firstSentence(fact.text, 220), factIds: [fact.id] }));
+  const rootCauses: { title: string; text: string; factIds: string[]; ask: string }[] = [];
+  facts.forEach((fact, index) => {
+    if (fact.kind !== 'data' || !/^intent /i.test(fact.text)) return;
+    const ids = [fact.id];
+    for (const next of facts.slice(index + 1)) {
+      if (next.kind !== 'ticket') break;
+      ids.push(next.id);
+    }
+    rootCauses.push({
+      title: firstSentence(fact.text, 100),
+      text: firstSentence(fact.text, 200),
+      factIds: ids,
+      ask: '',
+    });
+  });
+  const decisions = facts
+    .filter(
+      (fact) =>
+        fact.kind === 'incident' &&
+        /\(SEV\d, (investigating|identified|monitoring)\)/.test(fact.text),
+    )
+    .slice(0, 4)
+    .map((fact) => ({ text: firstSentence(fact.text, 220), factIds: [fact.id] }));
+  return JSON.stringify({ summary, rootCauses: rootCauses.slice(0, 5), decisions });
+}

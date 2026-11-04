@@ -1,7 +1,7 @@
 'use client';
 
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { CeoPointsBody } from '@watchtower/shared';
+import type { CeoPointsBody, WeeklyBriefContent } from '@watchtower/shared';
 
 import { useApi } from '@/lib/api/api-context';
 import { useUserId } from '@/lib/auth/session';
@@ -16,6 +16,7 @@ export const reportKeys = (userId: string) => {
     all,
     aiCost: (days: number, top: number) => [...all, 'ai-cost', days, top] as const,
     ceo: (days: number) => [...all, 'ceo', days] as const,
+    brief: [...all, 'brief'] as const,
   };
 };
 
@@ -76,6 +77,57 @@ export function useDeleteCeoMetric() {
   const refresh = useCeoRefresh();
   return useMutation({
     mutationFn: (key: string) => api.deleteCeoMetric(key),
+    onSuccess: () => void refresh(),
+  });
+}
+
+/** The newest published weekly brief (T-305c). It changes once a week: a minute is fresh enough. */
+export function useWeeklyBrief(enabled: boolean) {
+  const api = useApi();
+  const userId = useUserId();
+  return useQuery({
+    queryKey: [...reportKeys(userId).brief, 'published'],
+    queryFn: ({ signal }) => api.weeklyBrief(signal),
+    enabled,
+    refetchInterval: REPORTS_POLL_MS,
+    staleTime: REPORTS_POLL_MS / 2,
+  });
+}
+
+/** The newest draft and the default recipients (head). Not polled: the head is editing it. */
+export function useWeeklyBriefDraft(enabled: boolean) {
+  const api = useApi();
+  const userId = useUserId();
+  return useQuery({
+    queryKey: [...reportKeys(userId).brief, 'draft'],
+    queryFn: ({ signal }) => api.weeklyBriefDraft(signal),
+    enabled,
+    staleTime: REPORTS_POLL_MS / 2,
+  });
+}
+
+function useBriefRefresh() {
+  const queryClient = useQueryClient();
+  const userId = useUserId();
+  return () => queryClient.invalidateQueries({ queryKey: reportKeys(userId).brief });
+}
+
+export function useEditWeeklyBrief() {
+  const api = useApi();
+  const refresh = useBriefRefresh();
+  return useMutation({
+    mutationFn: (input: { id: string; content: WeeklyBriefContent }) =>
+      api.editWeeklyBrief(input.id, input.content),
+    onSuccess: () => void refresh(),
+  });
+}
+
+export function usePublishWeeklyBrief() {
+  const api = useApi();
+  const refresh = useBriefRefresh();
+  return useMutation({
+    mutationFn: (input: { id: string; recipients: readonly string[] }) =>
+      api.publishWeeklyBrief(input.id, input.recipients),
     onSuccess: () => void refresh(),
   });
 }

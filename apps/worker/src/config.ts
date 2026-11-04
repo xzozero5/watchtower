@@ -8,6 +8,8 @@ import {
   createEnvSchema,
   emptyToUndefined,
   parseEnv,
+  parseWeeklyBriefTime,
+  WEEKLY_BRIEF_DAYS,
   portSchema,
   ticketKeyPrefixSchema,
 } from '@watchtower/shared';
@@ -122,6 +124,38 @@ const workerEnvSchema = createEnvSchema({
     emptyToUndefined,
     z.coerce.number().int().min(0).max(36_500).default(0),
   ),
+  /**
+   * The weekly brief of the CEO view (T-305c): which weekday and time of day (in the zone) the AI drafts it.
+   * The drafting job ticks every few minutes and makes one brief per weekly slot; a worker that was down at
+   * the time makes it when it is back. `WEEKLY_BRIEF_ENABLED=false` switches the job off. `[ASSUMED]` Monday
+   * 08:00, so the head can edit it at the start of the week.
+   */
+  WEEKLY_BRIEF_ENABLED: z.preprocess(emptyToUndefined, z.stringbool().default(true)),
+  WEEKLY_BRIEF_DAY: z.preprocess(emptyToUndefined, z.enum(WEEKLY_BRIEF_DAYS).default('mon')),
+  WEEKLY_BRIEF_TIME: z.preprocess(
+    emptyToUndefined,
+    z
+      .string()
+      .refine((value) => parseWeeklyBriefTime(value) !== null, 'must be HH:MM on a 24-hour clock')
+      .default('08:00'),
+  ),
+  /** An IANA zone name (the day and time above are read in it). `[ASSUMED]` the default shift zone of the product. */
+  WEEKLY_BRIEF_TIMEZONE: z.preprocess(
+    emptyToUndefined,
+    z
+      .string()
+      .refine((value) => {
+        try {
+          new Intl.DateTimeFormat('en-US', { timeZone: value });
+          return true;
+        } catch {
+          return false;
+        }
+      }, 'must be an IANA time zone name')
+      .default('Asia/Bangkok'),
+  ),
+  /** The language of the brief. */
+  WEEKLY_BRIEF_LOCALE: z.preprocess(emptyToUndefined, z.enum(['th', 'en']).default('en')),
   /** Days to keep a break-glass lockout counter after its last failed sign-in (still locked ones stay). `[ASSUMED]` 30. */
   CLEANUP_BREAK_GLASS_RETENTION_DAYS: z.coerce.number().int().min(1).max(365).default(30),
   /**

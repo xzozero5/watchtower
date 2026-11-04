@@ -54,6 +54,29 @@ const apiEnvSchema = createEnvSchema({
   REFRESH_TOKEN_TTL_SECONDS: seconds(7 * 24 * 3600, 300, 90 * 24 * 3600),
   /** Absolute lifetime of a session; refresh cannot extend it. */
   SESSION_MAX_AGE_SECONDS: seconds(30 * 24 * 3600, 3600, 365 * 24 * 3600),
+  /**
+   * Who the weekly brief of the CEO view is emailed to when a head publishes it (T-305c): comma-separated
+   * addresses, at most 50. The head can change the list in the publish dialog. Empty: nobody by default (the
+   * brief is published on the page only). An address is personal data of the instance, so it is configuration,
+   * never code.
+   */
+  WEEKLY_BRIEF_RECIPIENTS: z.preprocess(
+    emptyToUndefined,
+    z
+      .string()
+      .optional()
+      .transform((value, ctx) => {
+        const list = (value ?? '')
+          .split(',')
+          .map((item) => item.trim().toLowerCase())
+          .filter((item) => item !== '');
+        if (list.length > 50 || !list.every((item) => z.email().safeParse(item).success)) {
+          ctx.addIssue({ code: 'custom', message: 'must be up to 50 comma-separated email addresses' });
+          return z.NEVER;
+        }
+        return [...new Set(list)];
+      }),
+  ),
   /** How long a client magic link stays valid. */
   MAGIC_LINK_TTL_SECONDS: seconds(900, 60, 3600),
   /**

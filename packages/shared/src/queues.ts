@@ -137,6 +137,28 @@ export const emailJobSchema = z.discriminatedUnion('kind', [
      */
     gmail: z.object({ accountId: z.uuid(), surveyId: z.uuid() }).optional(),
   }),
+  // The weekly brief of the CEO view (T-305c): the published text, read from the brief when it was
+  // published. `pageUrl` is a page of the app, not a secret; it is sealed like the other links only because the
+  // envelope of an email job always has a sealed part.
+  z.object({
+    kind: z.literal('weekly_brief'),
+    to: z.string().min(3).max(254),
+    locale: portalLocaleSchema,
+    periodFrom: z.iso.datetime(),
+    periodTo: z.iso.datetime(),
+    pageUrl: z.url().max(1000),
+    summary: z.array(z.string().max(900)).max(8),
+    rootCauses: z
+      .array(
+        z.object({
+          title: z.string().max(200),
+          text: z.string().max(1600),
+          ask: z.string().max(400).nullable(),
+        }),
+      )
+      .max(5),
+    decisions: z.array(z.string().max(900)).max(5),
+  }),
 ]);
 export type EmailJob = z.infer<typeof emailJobSchema>;
 
@@ -146,7 +168,7 @@ export type EmailJob = z.infer<typeof emailJobSchema>;
  * APP_ENCRYPTION_KEY) before the job is written to the outbox, so neither Postgres nor Redis ever
  * holds them in the clear; the worker opens them just before it talks to SMTP (ADR-006).
  */
-export const EMAIL_SECRET_FIELDS = ['link', 'trackingUrl', 'surveyUrl'] as const;
+export const EMAIL_SECRET_FIELDS = ['link', 'trackingUrl', 'surveyUrl', 'pageUrl'] as const;
 
 /** Splits a validated email job into the fields that travel in the clear and the ones to seal. */
 export function splitEmailSecrets(job: EmailJob): {

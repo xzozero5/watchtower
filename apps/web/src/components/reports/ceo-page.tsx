@@ -46,6 +46,7 @@ import { useCeoView, useDeleteCeoMetric, useImportCeoCsv } from '@/lib/reports/q
 import { type Better, changeOf } from '@/lib/reports/trend';
 
 import { ChangeChip, type ReportWindow, saveBlob, WindowControl } from './report-bits';
+import { WeeklyBriefCard } from './weekly-brief-card';
 
 function CeoSkeleton() {
   const { t } = useI18n();
@@ -172,6 +173,7 @@ function CeoBody() {
               {view.seedExcluded ? (
                 <p className="text-sm text-muted-foreground">{t('reports.ceo.seedExcluded')}</p>
               ) : null}
+              <WeeklyBriefCard />
               <KpiTiles view={view} />
               <FormulaSection view={view} />
               <ExternalTiles view={view} />

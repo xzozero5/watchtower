@@ -46,6 +46,9 @@ export function consoleApi({
 }: ConsoleOptions = {}) {
   const defaults: Record<string, MockHandler> = {
     'GET /health': { json: { status: 'ok' } },
+    // The weekly brief of the CEO view (T-305c): none published, no draft.
+    'GET /v1/reports/ceo/brief': { json: { brief: null } },
+    'GET /v1/reports/ceo/brief/draft': { json: { draft: null, defaultRecipients: [] } },
     'GET /health/ready': {
       json: {
         status: 'ok',
