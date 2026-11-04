@@ -960,6 +960,87 @@
       "keep": [
         "movie"
       ]
+    },
+    {
+      "id": "keep-17",
+      "category": "keep",
+      "lang": "en",
+      "text": "On Monday the Bangkok office saw Apple Pay failures in the Google Cloud console.",
+      "redact": [],
+      "keep": [
+        "Monday",
+        "Bangkok office",
+        "Apple Pay",
+        "Google Cloud"
+      ],
+      "known": false
+    },
+    {
+      "id": "keep-18",
+      "category": "keep",
+      "lang": "en",
+      "text": "Please update the Annual Report for Sunday and send it to the Finance Department.",
+      "redact": [],
+      "keep": [
+        "Annual Report",
+        "Sunday",
+        "Finance Department"
+      ],
+      "known": false
+    },
+    {
+      "id": "keep-19",
+      "category": "keep",
+      "lang": "en",
+      "text": "Summer sale orders from March were refunded through Stripe and PayPal.",
+      "redact": [],
+      "keep": [
+        "Summer sale",
+        "March",
+        "Stripe",
+        "PayPal"
+      ],
+      "known": false
+    },
+    {
+      "id": "keep-20",
+      "category": "keep",
+      "lang": "en",
+      "text": "The Smart Meter firmware from North Region needs Windows Server 2022 and Active Directory.",
+      "redact": [],
+      "keep": [
+        "Smart Meter",
+        "North Region",
+        "Windows Server 2022",
+        "Active Directory"
+      ],
+      "known": false
+    },
+    {
+      "id": "keep-21",
+      "category": "keep",
+      "lang": "en",
+      "text": "Escalate to the Platform Team when Redis Cluster latency passes the Service Level target.",
+      "redact": [],
+      "keep": [
+        "Platform Team",
+        "Redis Cluster",
+        "Service Level"
+      ],
+      "known": false
+    },
+    {
+      "id": "keep-22",
+      "category": "keep",
+      "lang": "en",
+      "text": "Our Customer Success group runs the Weekly Review every Friday morning.",
+      "redact": [],
+      "keep": [
+        "Customer Success",
+        "Weekly Review",
+        "Friday"
+      ],
+      "known": false
     }
   ]
 }

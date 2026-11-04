@@ -237,6 +237,9 @@ export const phase1EnvShape = {
   // JSON object keyed by model id: {"<model id>":{"inputUsdPerMTok":0,"outputUsdPerMTok":0}}. A real
   // provider needs a price for every tier's model, otherwise the daily cost cap could not count.
   AI_MODEL_PRICES: optionalString,
+  // Names with no cue and not in the dictionary (T-153): `off` (default) or `local`, an in-process
+  // finder with no network. English only; it does not find Thai names (ADR-026 draft).
+  REDACTION_NER: z.preprocess(emptyToUndefined, z.enum(['off', 'local']).default('off')),
   // AI budget (T-106d). Empty falls back to the default in config/budgets.yaml; a value overrides it.
   AI_DAILY_COST_CAP_USD: optionalPositiveNumber,
   AI_DAILY_TOKEN_CAP: z.preprocess(emptyToUndefined, z.coerce.number().int().positive().optional()),

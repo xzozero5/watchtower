@@ -5,6 +5,7 @@ import {
   createLiveProvider,
   createRedactor,
   loadPromptCatalog,
+  applyRedactionNer,
   type AiCredentialReader,
   type AssistantDeps,
   type FetchLike,
@@ -58,6 +59,7 @@ export interface AiRuntimeOptions {
   readonly config: Pick<
     ApiConfig,
     | 'AI_PROVIDER'
+    | 'REDACTION_NER'
     | 'AI_DAILY_COST_CAP_USD'
     | 'AI_DAILY_TOKEN_CAP'
     | 'AI_BUDGET_ALERT_PERCENT'
@@ -83,6 +85,7 @@ export interface AiRuntimeOptions {
 
 export function createApiAiRuntime(options: AiRuntimeOptions): AiRuntime {
   const { config, database, logger } = options;
+  applyRedactionNer(config.REDACTION_NER);
   const now = options.now ?? ((): Date => new Date());
   const caps = resolveAiCaps(config);
   const budget = createBudgetMonitor({

@@ -3,7 +3,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 
-import { createRedactor } from '@watchtower/ai';
+import { createLocalNameFinder, createRedactor } from '@watchtower/ai';
 import { createDatabase } from '@watchtower/db';
 
 import { EVAL_AGENTS, EVAL_SOURCES, type EvalAgent, type EvalSource } from './case.js';
@@ -47,7 +47,7 @@ Options
   --min-pass-rate 1              exit 1 when any prompt version passes less often (default 1)
   --max-calls 100                stop after this many model calls (the budget guard of the run)
 
-  pnpm --filter @watchtower/eval-runner redaction [--json] [--min-recall 1] [--max-false-positive 0.02]
+  pnpm --filter @watchtower/eval-runner redaction [--ner off|local] [--json] [--min-recall 1] [--max-false-positive 0.02]
     deterministic recall / false-positive eval of the redactor on evals/runner/redaction/corpus.json (no model, no network, T-302e)
 
   pnpm --filter @watchtower/eval-runner replay -- --days 30 --limit 50
@@ -168,16 +168,21 @@ function redaction(argv: string[]): number {
     options: {
       json: { type: 'boolean', default: false },
       corpus: { type: 'string', default: join(EVALS, 'runner', 'redaction', 'corpus.json') },
+      ner: { type: 'string', default: 'off' },
       'min-recall': { type: 'string', default: '1' },
       'max-false-positive': { type: 'string', default: '0.02' },
     },
   });
   const corpus = redactionCorpusSchema.parse(JSON.parse(readFileSync(values.corpus, 'utf8')));
+  if (values.ner !== 'off' && values.ner !== 'local') {
+    throw new EvalSetupError(`unknown --ner: ${values.ner} (off or local)`);
+  }
+  const nameFinder = values.ner === 'local' ? createLocalNameFinder() : null;
   const redactor: RedactFn = (text, names) =>
-    createRedactor({ names: () => names })
+    createRedactor({ names: () => names, nameFinder })
       .session({ scope: 'eval:redaction' })
       .redact(text);
-  const report = evaluateRedaction('createRedactor()', corpus.cases, redactor);
+  const report = evaluateRedaction(`createRedactor() ner=${values.ner}`, corpus.cases, redactor);
   console.log(values.json ? JSON.stringify(report, null, 2) : formatRedactionReport(report));
   const problems = redactionGate(report, {
     minRecall: Number(values['min-recall']),

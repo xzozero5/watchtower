@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
-import { createRedactor } from '@watchtower/ai';
+import { createLocalNameFinder, createRedactor } from '@watchtower/ai';
 import { describe, expect, it } from 'vitest';
 
 import {
@@ -70,5 +70,22 @@ describe('redaction eval (T-302e)', () => {
     expect(nocue?.recall.rate).toBe(0);
     expect(report.overall.recall.rate).toBeLessThan(1);
     expect(formatRedactionReport(report)).toContain('name_nocue');
+  });
+
+  it('the local name finder (T-153) lifts recall on names with no cue and adds no false positive', () => {
+    const finder = createLocalNameFinder();
+    const withNer: RedactFn = (text, names) =>
+      createRedactor({ names: () => names, nameFinder: finder })
+        .session({ scope: 'eval:ner' })
+        .redact(text);
+    const before = evaluateRedaction('off', corpus.cases, real);
+    const after = evaluateRedaction('local', corpus.cases, withNer);
+    const nocue = (report: typeof before) =>
+      report.byCategory.find((row) => row.category === 'name_nocue')?.recall.rate ?? 0;
+    expect(nocue(after)).toBeGreaterThan(nocue(before));
+    expect(after.overall.falsePositives.misses).toBeLessThanOrEqual(
+      before.overall.falsePositives.misses,
+    );
+    expect(redactionGate(after, { minRecall: 1, maxFalsePositive: 0.02 })).toEqual([]);
   });
 });

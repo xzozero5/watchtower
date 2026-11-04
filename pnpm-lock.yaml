@@ -381,6 +381,9 @@ importers:
       ai:
         specifier: 7.0.159
         version: 7.0.159(zod@4.6.7)
+      compromise:
+        specifier: 14.19.0
+        version: 14.19.0
       zod:
         specifier: ^4.6.7
         version: 4.6.7
@@ -2820,6 +2823,10 @@ packages:
       react: ^18 || ^19 || ^19.0.0-rc
       react-dom: ^18 || ^19 || ^19.0.0-rc
 
+  compromise@14.19.0:
+    resolution: {integrity: sha512-nA/ClpXt0PaS2Ne389wClhxFBBxV0el3nv6V7XFpoRRQBr8eCnV3Iv4ZY6C5H06UHq1k7bqth73nVc/hv/rrCg==}
+    engines: {node: '>=18'}
+
   content-disposition@2.0.1:
     resolution: {integrity: sha512-e+H0ZXHSWYrENhQzw1LPuP4oF5MzVKmDU6d3hxlvaPEYLLg62MxtQNPRx4SYSuYJSBUgnQIG4HIN2tEtNv7Dog==}
     engines: {node: '>=18'}
@@ -3017,6 +3024,10 @@ packages:
 
   ee-first@1.1.1:
     resolution: {integrity: sha512-WMwm9LhRUo+WUaRN+vRuETqG89IgZphVSNkdFgeb6sS/E4OrDIN7t48CAewSHXc6C8lefD8KKfr5vY61brQlow==}
+
+  efrt@2.9.0:
+    resolution: {integrity: sha512-ZMAvlcu4AfmtJ4K/0hs0uofVUZPSeLG/w4yOyZawQLl9YEy8iDKIxIIPsUAlS907clC7bgD17e73vi5unwNE/g==}
+    engines: {node: '>=12.0.0'}
 
   electron-to-chromium@1.5.472:
     resolution: {integrity: sha512-s4+nfT29b0FKpVKoaIxl2pWsoNcn7A/nMPSrxayw4T3BsmPeV2lF9Y06BsAQeMGhCTQ4nYJ5XST7jkqe4ZEqFw==}
@@ -4145,6 +4156,10 @@ packages:
         optional: true
       babel-plugin-macros:
         optional: true
+
+  suffix-thumb@6.0.0:
+    resolution: {integrity: sha512-HsCTMLaupbob5ZG//ZW6PSj446tHT5kSJ1qXS5F/qO2Nt13uAn6ZLPhJQ/H6bN/jVQCb+pcqe2psEwy4Mp5+Vw==}
+    engines: {node: '>=18'}
 
   swagger-ui-dist@5.34.0:
     resolution: {integrity: sha512-H6tAIjr3XqE31PbkZl0OFya1ziRLDfTwh3J6OHdumPtPCLfjTnyLeagl/55kFNZcTOz9a9QI9WP0FXldwiGJag==}
@@ -6315,6 +6330,11 @@ snapshots:
       - '@types/react'
       - '@types/react-dom'
 
+  compromise@14.19.0:
+    dependencies:
+      efrt: 2.9.0
+      suffix-thumb: 6.0.0
+
   content-disposition@2.0.1: {}
 
   content-type@2.1.0: {}
@@ -6404,6 +6424,8 @@ snapshots:
       safe-buffer: 5.2.1
 
   ee-first@1.1.1: {}
+
+  efrt@2.9.0: {}
 
   electron-to-chromium@1.5.472: {}
 
@@ -7621,6 +7643,8 @@ snapshots:
       react: 19.3.1
     optionalDependencies:
       '@babel/core': 7.29.7
+
+  suffix-thumb@6.0.0: {}
 
   swagger-ui-dist@5.34.0:
     dependencies:
