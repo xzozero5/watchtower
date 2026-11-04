@@ -94,6 +94,14 @@ docker compose --env-file <env file> -f docker-compose.yml -f docker-compose.see
 - seed ปฏิเสธฐานที่มี ticket > 100 และรันซ้ำไม่เพิ่ม (มี org `Kestrel Freight` เป็นตัวบอก) · tier ของ SLA ห้ามซ้ำ: policy ทดสอบ `Smoke Gold`/`QA Head SLA` ถูกปลด tier และผูกกับ org ของมันตรง ๆ แทน เพื่อให้ seed สร้าง Gold/Silver/Standard
 - ข้อมูลจำลองใช้โดเมน `example` ทั้งหมด: ถ้าตอบ ticket จำลองทาง Gmail จริง อีเมลจะเด้งกลับ (ไม่ถึงใคร) · พนักงานจำลอง (`@ops.example.com`) ล็อกอินไม่ได้เพราะ dev login ปิด — เดโมด้วยบัญชี Google ของเจ้าของ (role head)
 
+## 5c. สแกนมัลแวร์ไฟล์อัปโหลด (ClamAV, ADR-022) — ปิดไว้เป็นค่าเริ่มต้น
+- เปิด: ตั้ง `UPLOAD_SCAN=clamav` ใน `D:\Works\secret\watchtower.env` แล้ว `docker compose --env-file D:\Works\secret\watchtower.env --profile scan up -d --wait` (container `clamav` กิน RAM ~1.5 GB; ครั้งแรกโหลด signature ~300 MB ใช้เวลาหลายนาที — `docker compose ps` ต้องขึ้น healthy ก่อน)
+- ผล: ไฟล์ใหม่เป็น `pending` ไม่กี่วินาทีก่อนเปิดได้ (api ตอบ 409 `scan_pending`), ไฟล์ที่มีอยู่ก่อนถูกสแกนย้อนหลังครั้งเดียวโดยอัตโนมัติ (worker enrol ตอนเริ่มและทุกวัน 04:00 UTC), ไฟล์ติดมัลแวร์ถูกลบจาก MinIO + audit `upload.scan_infected` + ticket note ภายใน (api ตอบ 410 `file_infected`), เมลตอบที่แนบไฟล์ไม่ส่งจนกว่าไฟล์ `clean`
+- clamd ล่ม = ไฟล์ค้าง `pending` (backoff 30 วินาที → 1 ชม., 8 ครั้งแล้วเป็น `error`; ทุกวันตั้งกลับเป็น `pending` ให้ลองใหม่) ไม่เคยถูกปล่อยโดยไม่สแกน
+- ดูสถานะ: `GET /v1/admin/upload-scan` (head) → `mode`, `notice: "scan_off"` ถ้าไม่ได้สแกน, จำนวนต่อสถานะ · ปิดกลับ: `UPLOAD_SCAN=off` (ไฟล์เสิร์ฟตามเดิมทันที แต่ไม่มีการตรวจ)
+- เพดานที่ clamd รับต่อไฟล์ (`StreamMaxLength` ค่าเริ่มต้น 25 MB) `[VERIFY]` — ไฟล์ที่ใหญ่กว่าจะจบที่ `error` และไม่ถูกเสิร์ฟ
+- ที่เกี่ยวข้อง (T-155): `PORTAL_UPLOAD_DAILY_MB` เพดานไฟล์ลูกค้าต่อ 24 ชม., staff upload ที่ไม่มีใครแนบเกิน 24 ชม. ถูกลบรายวัน, `UPLOAD_RETENTION_DAYS` (0 = เก็บตลอด) ลบไฟล์ของ ticket ที่ปิดนานเกินกำหนด (ข้อความและ audit ยังอยู่ ดาวน์โหลดตอบ 404)
+
 ## 6. รัน test โดยไม่แตะข้อมูลของ POC
 integration/e2e เขียนลง DB → **ห้ามชี้ไปที่ DB/Redis/MinIO ของ stack ที่เปิดอยู่** ใช้ container ทิ้งได้:
 ```bash

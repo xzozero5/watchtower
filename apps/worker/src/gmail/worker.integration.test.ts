@@ -63,6 +63,7 @@ beforeAll(async () => {
       await real.put(key, body, contentType);
     },
     get: (key) => real.get(key),
+    getStream: (key) => real.getStream(key),
     delete: (key) => real.delete(key),
   };
   runtime = createMockGmailRuntime({ database });

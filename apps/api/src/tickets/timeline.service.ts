@@ -7,6 +7,7 @@ import {
   type DeliverySummary,
   type TimelineEntry,
   type TimelineQuery,
+  type UploadScanState,
 } from '@watchtower/shared';
 import { WORKSPACE_ROLES } from '@watchtower/shared';
 import { and, asc, eq, gte, inArray, notInArray, sql } from 'drizzle-orm';
@@ -14,6 +15,7 @@ import { and, asc, eq, gte, inArray, notInArray, sql } from 'drizzle-orm';
 import type { Principal } from '../auth/principal.js';
 import { afterCursor, decodeCursor, encodeCursor, preciseTimestamp } from '../common/keyset.js';
 import { DATABASE } from '../database/database.module.js';
+import { UploadScanGate } from '../storage/upload-scan-gate.js';
 import { maskEntry, toMessage, toTimelineEvent, type Audience } from './message-view.js';
 import { TicketReader, isClient, isMasked } from './ticket-reader.js';
 import { TICKET_KEYS, type TicketKeys } from './ticket-keys.js';
@@ -34,6 +36,7 @@ export class TimelineService {
     @Inject(DATABASE) private readonly database: Database,
     @Inject(TicketReader) private readonly reader: TicketReader,
     @Inject(TICKET_KEYS) private readonly keys: TicketKeys,
+    @Inject(UploadScanGate) private readonly scanGate: UploadScanGate,
   ) {}
 
   async timeline(
@@ -122,6 +125,20 @@ export class TimelineService {
       for (const row of rows) deliveries.set(row.messageId, toDeliverySummary(row, now));
     }
 
+    // ADR-022: with the malware scan on, staff see where each file stands.
+    let scanStates: ReadonlyMap<string, UploadScanState> | undefined;
+    if (audience === 'staff' && this.scanGate.enabled) {
+      const keys = messages.flatMap((entry) =>
+        (Array.isArray(entry.row.attachments)
+          ? (entry.row.attachments as { objectKey?: unknown }[])
+          : []
+        ).flatMap((attachment) =>
+          typeof attachment.objectKey === 'string' ? [attachment.objectKey] : [],
+        ),
+      );
+      if (keys.length > 0) scanStates = await this.scanGate.states(keys);
+    }
+
     const events = await this.database.db
       .select({
         row: ticketEvent,
@@ -161,6 +178,7 @@ export class TimelineService {
               senderUserRole: entry.userRole,
               senderContactName: entry.contactName,
               audience,
+              ...(scanStates === undefined ? {} : { scanStates }),
               ...(deliveries.has(entry.row.id)
                 ? { delivery: deliveries.get(entry.row.id) ?? null }
                 : {}),

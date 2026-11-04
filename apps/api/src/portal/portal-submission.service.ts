@@ -136,6 +136,7 @@ export class PortalSubmissionService {
     const verified = await this.verification.claim(checked);
     if (!verified.ok) this.refuse(input.email, verified.reason);
 
+    await this.attachments.assertQuota(prepared);
     const stored = await this.attachments.put(prepared);
     let created: { ticket: TicketRow; ticketKey: string; duplicate: boolean };
     try {

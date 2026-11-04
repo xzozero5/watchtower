@@ -53,6 +53,7 @@ export function createOutboundDispatcherFor(context: ProcessorContext) {
     realtime: context.realtime,
     logger: context.logger,
     objects,
+    uploadScan: config.UPLOAD_SCAN,
     ...(outbound.lineQuotaLimit === undefined ? {} : { lineQuotaLimit: outbound.lineQuotaLimit }),
     ...(outbound.lineRouter === undefined ? {} : { lineRouter: outbound.lineRouter }),
   });

@@ -2,6 +2,7 @@ import { Global, Module } from '@nestjs/common';
 import { createS3ObjectStore, type ObjectStore } from '@watchtower/channels';
 
 import { APP_CONFIG, type ApiConfig } from '../config/config.js';
+import { UploadScanGate } from './upload-scan-gate.js';
 
 /** DI token of the object store (MinIO locally, GCS through its S3 endpoint). Inject with `@Inject(OBJECT_STORE)`. */
 export const OBJECT_STORE = Symbol('OBJECT_STORE');
@@ -27,7 +28,9 @@ export type { ObjectStore };
           secretKey: config.S3_SECRET_KEY,
         }),
     },
+    // The verdicts of the malware scan (ADR-022); every download and listing of an upload asks it.
+    UploadScanGate,
   ],
-  exports: [OBJECT_STORE],
+  exports: [OBJECT_STORE, UploadScanGate],
 })
 export class StorageModule {}

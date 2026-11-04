@@ -15,6 +15,7 @@ import { createIncidentsRegistration, type IncidentsOverrides } from '../inciden
 import { createCsatRegistration } from '../csat/index.js';
 import { createStatusPageRegistration } from '../statuspage/index.js';
 import { createUsageRegistration, type UsageOverrides } from '../usage/index.js';
+import { createScanRegistration, type ScanOverrides } from '../scan/index.js';
 import { createIngestRegistration, type IngestOverrides } from '../ingest/index.js';
 import type { WorkerLogger } from '../logger.js';
 import { createLineRegistration } from '../line/index.js';
@@ -60,6 +61,7 @@ export interface ProcessorOverrides {
   readonly alerts?: AlertsOverrides;
   readonly incidents?: IncidentsOverrides;
   readonly usage?: UsageOverrides;
+  readonly scan?: ScanOverrides;
 }
 
 export interface ProcessorRegistration {
@@ -168,4 +170,8 @@ export const PROCESSORS: readonly ProcessorRegistration[] = [
   // --- usage (T-205b) ---
   // One at a time: two ticks would only contend for the same metrics (each is claimed under a row lock).
   { queue: QUEUE_NAMES.usage, create: createUsageRegistration, concurrency: 1 },
+
+  // --- uploads (T-155) ---
+  // One at a time: two ticks would scan the same files twice.
+  { queue: QUEUE_NAMES.scan, create: createScanRegistration, concurrency: 1 },
 ];

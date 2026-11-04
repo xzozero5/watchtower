@@ -83,6 +83,12 @@ x-app-env: &app-env
   PORTAL_UPLOAD_MAX_CONCURRENT: ${PORTAL_UPLOAD_MAX_CONCURRENT:-3}
   PORTAL_UPLOAD_MAX_PER_ADDRESS: ${PORTAL_UPLOAD_MAX_PER_ADDRESS:-1}
   PORTAL_UPLOAD_IDLE_SECONDS: ${PORTAL_UPLOAD_IDLE_SECONDS:-30}
+  PORTAL_UPLOAD_DAILY_MB: ${PORTAL_UPLOAD_DAILY_MB:-2048}
+  # Malware scan of uploaded files (ADR-022, T-155): off unless you set clamav AND start the `scan` profile.
+  UPLOAD_SCAN: ${UPLOAD_SCAN:-off}
+  CLAMAV_HOST: ${CLAMAV_HOST:-clamav}
+  CLAMAV_PORT: ${CLAMAV_PORT:-3310}
+  UPLOAD_RETENTION_DAYS: ${UPLOAD_RETENTION_DAYS:-0}
   PORTAL_RATE_IP_PER_HOUR: ${PORTAL_RATE_IP_PER_HOUR:-20}
   PORTAL_RATE_EMAIL_PER_HOUR: ${PORTAL_RATE_EMAIL_PER_HOUR:-5}
   PORTAL_RATE_ORG_PER_HOUR: ${PORTAL_RATE_ORG_PER_HOUR:-60}
@@ -481,6 +487,29 @@ services:
       retries: 5
       start_period: 10s
 
+  clamav:
+    # Malware scanner for uploaded files (ADR-022, T-155). Only with the profile `scan`:
+    #   UPLOAD_SCAN=clamav docker compose --profile scan up -d
+    # clamd listens on 3310 inside the compose network only (no published port); the worker sends it
+    # files with INSTREAM. `freshclam` inside the container downloads signatures from
+    # database.clamav.net: the only new egress (docs/09-SECURITY.md). The first start downloads
+    # ~300 MB and can take several minutes (the healthcheck waits). Loads the signatures into RAM.
+    # Official image, pinned by tag and digest; checked against Docker Hub on 2026-11-04 `[VERIFY]`
+    # (digest = the multi-arch index of 1.5.3; update both together).
+    profiles: ['scan']
+    image: ${CLAMAV_IMAGE:-clamav/clamav:1.5.3@sha256:d06c1d6a451d616e1dd79b42f44c8c8c291bba9cf4e75ebc4d0e43c1c6dd87bb}
+    restart: unless-stopped
+    mem_limit: 1536m
+    volumes:
+      - clamavdb:/var/lib/clamav
+    healthcheck:
+      # clamdcheck.sh ships in the official image (PING to clamd) `[VERIFY]`.
+      test: ['CMD', 'clamdcheck.sh']
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 600s
+
   gmail-tunnel:
     # Gmail push over a Cloudflare quick tunnel, for testing real mail on this machine (ADR-020):
     #   docker compose --env-file <env> --profile gmail-tunnel up -d --build gmail-tunnel
@@ -586,5 +615,6 @@ volumes:
   pgdata:
   redisdata:
   miniodata:
+  clamavdb:
   caddy_data:
   caddy_config:

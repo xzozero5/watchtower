@@ -116,6 +116,31 @@ describe('S3 object store', () => {
     expect((error as Error).message).not.toContain('secret-host');
   });
 
+  it('streams an object with its size, answers null for a missing one, and fails on an error', async () => {
+    const found = createS3ObjectStore(SETTINGS, {
+      fetch: () =>
+        Promise.resolve(
+          new Response(Uint8Array.from([1, 2, 3]), { headers: { 'content-length': '3' } }),
+        ),
+      now,
+    });
+    const opened = await found.getStream('k');
+    expect(opened?.size).toBe(3);
+    const chunks: Buffer[] = [];
+    for await (const chunk of opened?.stream ?? []) chunks.push(chunk as Buffer);
+    expect(Buffer.concat(chunks)).toEqual(Buffer.from([1, 2, 3]));
+    const missing = createS3ObjectStore(SETTINGS, {
+      fetch: () => Promise.resolve(new Response(null, { status: 404 })),
+      now,
+    });
+    expect(await missing.getStream('k')).toBeNull();
+    const denied = createS3ObjectStore(SETTINGS, {
+      fetch: () => Promise.resolve(new Response('no', { status: 403 })),
+      now,
+    });
+    await expect(denied.getStream('k')).rejects.toMatchObject({ status: 403 });
+  });
+
   it('deletes, and treats a missing object as deleted', async () => {
     const { fetch: fakeFetch, seen } = recordingFetch(() => new Response(null, { status: 404 }));
     await createS3ObjectStore(SETTINGS, { fetch: fakeFetch, now }).delete('k');
@@ -130,7 +155,12 @@ describe('memory object store', () => {
     await store.put('k', bytes, 'text/plain');
     bytes[0] = 9;
     expect(await store.get('k')).toEqual(Uint8Array.from([1, 2]));
+    const opened = await store.getStream('k');
+    const chunks: Buffer[] = [];
+    for await (const chunk of opened?.stream ?? []) chunks.push(chunk as Buffer);
+    expect(Buffer.concat(chunks)).toEqual(Buffer.from([1, 2]));
     await store.delete('k');
     expect(await store.get('k')).toBeNull();
+    expect(await store.getStream('k')).toBeNull();
   });
 });

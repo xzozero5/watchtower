@@ -40,6 +40,11 @@ export const AUTH_ERROR_CODES = [
   'storage_unavailable',
   // Too many uploads are being read at once (503 + Retry-After); try again shortly.
   'upload_busy',
+  // Uploads (T-155, ADR-022): the daily cap on customer files is used up (429); a file is still being
+  // scanned for malware (409); a file was found infected and removed (410).
+  'upload_quota',
+  'scan_pending',
+  'file_infected',
   // Autonomy (T-112a): asking for stage 3 or above, which only the owner may decide (N3).
   'autonomy_stage_requires_owner',
   // Credential store (T-116a): a field that an environment variable sets cannot be saved.

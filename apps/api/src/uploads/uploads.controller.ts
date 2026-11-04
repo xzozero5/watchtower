@@ -169,11 +169,11 @@ export class UploadsController {
     response.set({
       'Content-Type': contentType,
       'Content-Disposition': attachmentDisposition(file.filename),
-      'Content-Length': String(file.bytes.length),
+      'Content-Length': String(file.size),
       'X-Content-Type-Options': 'nosniff',
       'Content-Security-Policy': "default-src 'none'; sandbox",
       'Cache-Control': 'private, no-store',
     });
-    return new StreamableFile(file.bytes);
+    return new StreamableFile(file.stream);
   }
 }

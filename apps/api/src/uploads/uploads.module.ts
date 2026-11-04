@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 
 import { StaffUploadsService } from './staff-uploads.service.js';
+import { UploadScanController } from './upload-scan.controller.js';
 import { UploadsController } from './uploads.controller.js';
 
 /**
@@ -8,7 +9,7 @@ import { UploadsController } from './uploads.controller.js';
  * exported so those modules can turn the `attachmentIds` they receive into references.
  */
 @Module({
-  controllers: [UploadsController],
+  controllers: [UploadsController, UploadScanController],
   providers: [StaffUploadsService],
   exports: [StaffUploadsService],
 })

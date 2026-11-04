@@ -63,3 +63,12 @@
 - [x] `pnpm audit --prod` clean on 2026-11-01 `[TESTED]`
 - [x] Runtime deps only where used (`bullmq` in api) — T-010 C-12 `[TESTED]`
 - [ ] New runtime network destination requires `[ASK-HUMAN]` (AGENTS.md)
+
+## 10. Uploaded files and egress (ADR-022, T-155)
+- [x] Malware scan: `UPLOAD_SCAN=off|clamav` (default off). With `clamav` a file is served (ticket and staff download) and attached to outgoing mail only when its `object_scan` row is `clean`; no row, `pending` and `error` are all "not yet" (fail closed); `infected` → object deleted, audit `upload.scan_infected`, internal ticket note `[TESTED]` (fake clamd over TCP; the real ClamAV image has not been run `[UNVERIFIED 70%]`)
+- [x] Admin notice when the scan is off: `GET /v1/admin/upload-scan` → `notice: "scan_off"` (head only) `[TESTED]`
+- [x] Daily cap on customer files through the portal (`PORTAL_UPLOAD_DAILY_MB`, 429 `upload_quota`), unattached staff uploads deleted after 24 h, optional retention of the files of long-closed tickets (`UPLOAD_RETENTION_DAYS`, default 0 = keep) `[TESTED]`
+- [x] Downloads stream from the object store (no whole file in api memory) `[TESTED]`
+- [ ] Not covered: an object in the bucket that no database row points to (needs a bucket listing or a bucket lifecycle rule) `[OPEN]`
+- **Egress added by ADR-022 (only with compose profile `scan`):** the `clamav` container runs `freshclam` to `database.clamav.net` (HTTPS) to download signatures. `api` and `worker` gain no new destination: the worker reaches clamd at `clamav:3310` inside the compose network, which is not published to the host.
+- **Not a malware scan of what leaves:** files staff attach to a reply are held back by the same rule (not `clean` = not sent), but nothing re-scans after the fact when signatures are updated. A later signature update does not re-check files already `clean` `[ASSUMED]` acceptable for v1.

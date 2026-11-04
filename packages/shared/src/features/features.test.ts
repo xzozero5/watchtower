@@ -29,6 +29,7 @@ const EXPECTED_FEATURES = [
   'statuspage',
   'usage',
   'dashboard',
+  'uploads',
 ];
 
 describe('feature records', () => {

@@ -7,6 +7,7 @@ import {
   type DeliverySummary,
   type Message,
   type TimelineEntry,
+  type UploadScanState,
 } from '@watchtower/shared';
 
 export type MessageRow = typeof schema.message.$inferSelect;
@@ -26,6 +27,8 @@ export interface MessageContext {
   readonly audience: Audience;
   /** The delivery behind an outbound reply on Gmail or LINE. Shown to staff only. */
   readonly delivery?: DeliverySummary | null;
+  /** Malware scan state per object key, present only when the scan is on (ADR-022). Shown to staff only. */
+  readonly scanStates?: ReadonlyMap<string, UploadScanState>;
 }
 
 /**
@@ -65,7 +68,7 @@ export function toMessage(row: MessageRow, context: MessageContext): Message {
     ...(context.audience === 'staff' && context.delivery !== undefined
       ? { delivery: context.delivery }
       : {}),
-    attachments: viewAttachments(row.attachments, context.audience),
+    attachments: viewAttachments(row.attachments, context.audience, context.scanStates),
     createdAt: row.createdAt.toISOString(),
   };
 }
@@ -80,9 +83,21 @@ function emailMetaOf(value: unknown): EmailMeta | null {
  * gets name, type and size only: the storage key and the content hash stay on the server, and the
  * file itself is fetched through the authorised download route by its position.
  */
-export function viewAttachments(value: unknown, audience: Audience): Record<string, unknown>[] {
+export function viewAttachments(
+  value: unknown,
+  audience: Audience,
+  scanStates?: ReadonlyMap<string, UploadScanState>,
+): Record<string, unknown>[] {
   const list = (Array.isArray(value) ? value : []) as Record<string, unknown>[];
-  if (audience === 'staff') return list;
+  if (audience === 'staff') {
+    if (scanStates === undefined) return list;
+    // ADR-022: with the scan on, each file says where it stands ("being checked", "clean", "infected").
+    return list.map((attachment) => {
+      const state =
+        typeof attachment.objectKey === 'string' ? scanStates.get(attachment.objectKey) : undefined;
+      return state === undefined ? attachment : { ...attachment, scanState: state };
+    });
+  }
   return list.map((attachment) => ({
     ...(typeof attachment.filename === 'string' ? { filename: attachment.filename } : {}),
     ...(typeof attachment.contentType === 'string' ? { contentType: attachment.contentType } : {}),
