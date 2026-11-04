@@ -171,8 +171,10 @@
 - [x] T-183 `qa-engineer` B-009: `apps/api/src/reports/reports.integration.test.ts` 4 test ตกเมื่อ process TZ = Asia/Bangkok (ผ่านเมื่อ TZ=UTC) — หาว่าเป็นบั๊กของรายงาน (ช่วงวันคิดด้วย TZ ของ Node) หรือ test — **ปิด 2026-11-04** (บั๊ก test: นาฬิกา DB เร็วกว่า Node)
 - [x] T-303f `frontend-dev`+`backend-dev` proposal card ของ `escalate` ใน AI sidebar + endpoint apply ตาม ADR-026 §10 · ส่ง `template` ของ tool step ต่อไปที่ port · ต่อปุ่ม Simulate ใน editor (T-303e) กับ endpoint T-303d — **ปิด 2026-11-04** (migration 0107)
 - [x] T-305f `backend-dev` (เจ้าของ 2026-11-04 "In-app yes, email no"): อีเมล weekly brief ไม่ restore ชื่อลูกค้า/หัวเรื่อง ticket — ส่งแค่ตัวเลข, ticket key (OPS-n) และลิงก์กลับเข้าแอป · ในแอปคงเดิม — **ปิด 2026-11-04**
-- [ ] T-306e `ai-engineer` แก้ T-306a C-1 (P1), C-2, C-3, C-4, C-10, C-11, C-14 (gate/facts/text/report/watch)
+- [x] T-306e `ai-engineer` แก้ T-306a C-1 (P1), C-2, C-3, C-4, C-10, C-11, C-14 (gate/facts/text/report/watch)
 - [ ] T-306f `backend-dev` แก้ T-306a C-5, C-6, C-7, C-8, C-9, C-12, C-13 (migration 0108, api auth/portal/brief, golden, simulation)
+- [ ] T-306g `ai-engineer` เขียน `ai_replay_result` จาก eval runner: CLI `pnpm eval:record` ที่รัน replay + simulation ของชุด (drafter, grader, prompt, procedure) ปัจจุบันแล้วเรียก `record_replay_result()` ด้วยผู้ถือ `ai.autonomy.promote` (main thread ตัดสิน 2026-11-05) — จนกว่าจะมี ทุก intent ติด `replay_missing` (ปลอดภัย)
+- [ ] T-306h `backend-dev` portal: เปิดลิงก์ "คำขอของฉัน" (T-152) หรือยืนยันอีเมลจากลิงก์ tracking = พิสูจน์กล่องอีเมล → ตั้ง `customFields.portal.requesterVerified=true` ให้ ticket ของ contact นั้น (main thread ตัดสิน) · drafter stage 2 คง `contact.verifiedAt` เดิมเพราะมีคนอนุมัติ
 - [ ] T-306c `po` review + เสนอ 2–3 intent → [ASK-HUMAN] เลื่อน stage
 - [ ] T-301 Grader + verified/contained/assumed resolution (§6.2, §6.4)
 - [ ] T-302 Eval set + replay runner + golden answers + KB author (§6.5, R-4.4–4.6)
