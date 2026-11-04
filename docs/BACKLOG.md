@@ -116,7 +116,7 @@
 - [x] T-175 `backend-dev` + `security-reviewer` image proxy สำหรับปุ่ม Display images ในอีเมล (CSP `img-src` บล็อกอยู่; ต้องกัน SSRF) — **ปิด 2026-11-04** (รอ security review)
 - [x] T-176 `backend-dev` + `frontend-dev` แจ้ง head ในแอป: SMTP 535, ชน quota upload global (ตอนนี้แค่ log/audit/metric) — **ปิด 2026-11-04**
 - [ ] T-179 `frontend-dev` portal ส่ง header `x-portal-proof` แล้วเปลี่ยน `PORTAL_UPLOAD_PROOF_HEADER=required` · ตั้ง `TRUST_PROXY_HOPS` ให้ตรง deploy หลัง Caddy `[VERIFY]`
-- [ ] T-180 `qa-engineer` รัน ClamAV image จริงกับ `config/clamav/clamd.conf` (path, cap, AlertEncrypted*) ก่อนเปิด `UPLOAD_SCAN=clamav` บน POC
+- [x] T-180 `qa-engineer` รัน ClamAV image จริงกับ `config/clamav/clamd.conf` (path, cap, AlertEncrypted*) ก่อนเปิด `UPLOAD_SCAN=clamav` บน POC — **ปิด 2026-11-04** (ClamAV image จริง: B-005/B-006 แก้, B-007 [ASK-HUMAN])
 - [x] T-181 `ai-engineer` C-9: redact เลขพาสปอร์ต (เจ้าของตัดสิน 2026-11-04: ชื่อพนักงาน/IP/ที่อยู่/LINE userId ไม่ต้อง redact) — **ปิด 2026-11-04**
 - [x] 5 เรื่องที่ต้องตัดสิน (QA-30, 02/03, 08, 20, 23): **po ตัดสินแทนเจ้าของ 2026-11-02** ตามที่เจ้าของมอบ — ดูไฟล์ triage §คำตัดสิน · QA-30 แก้ ADR-008 แล้ว
 
@@ -130,7 +130,7 @@
 - [x] T-204 Status page + subscriptions (R-6.x)
 - [x] T-205 Usage metric definitions + scheduler + anomaly → proactive ticket + Client Health Score (R-8.x)
 - [x] T-206 Ops dashboard (§9.1) — ใช้ skill `dataviz` ก่อนเขียน chart — merge 2026-11-02
-- [ ] T-207a `backend-dev` แก้ finding security review T-207 (`docs/decisions/T-207-security-review.md`) C-1, C-3, C-4, C-5…C-10 · C-2 → T-208
+- [x] T-207a `backend-dev` แก้ finding security review T-207 (`docs/decisions/T-207-security-review.md`) C-1, C-3, C-4, C-5…C-10 · C-2 → T-208 — **ปิด 2026-11-04** (C-1,C-3..C-10 · migration 0093)
 - [ ] T-207 QA/security/po review + `/handoff`
 
 ## Phase 3 — Autonomy + Learning — แตก task ตอนจบ Phase 2
@@ -138,13 +138,13 @@
 > **แตกงานโดย po 2026-11-04** (เจ้าของสั่ง "ปิด phase 1-3 … เร็วและคุณภาพที่สุด") · migration เลขกำหนดโดย main thread ตอน merge · **N3: stage 3 ทำ code + test + shadow ได้ แต่ห้ามตั้ง `AI_AUTOSEND_ENABLED` บน POC/production จนกว่าเจ้าของสั่ง**
 - [x] T-301a `ai-engineer` grader agent + prompt + Zod (verified/contained/assumed, violations, score, KB gap, citation) — **ปิด 2026-11-04** (grader + ai_resolution_grade 0094 + job grade + metrics API (รวม T-301b บางส่วน))
 - [ ] T-301b `backend-dev` `ai_grade` append-only + domain writer + worker queue `grade` (resolve + สุ่มที่ stage ≥ 3)
-- [ ] T-301c `ai-engineer` provider/model ต่อ agent ผ่าน config (รวม T-106f) grader แยกจาก drafter · admin/ai อ่านอย่างเดียว
+- [x] T-301c `ai-engineer` provider/model ต่อ agent ผ่าน config (รวม T-106f) grader แยกจาก drafter · admin/ai อ่านอย่างเดียว — **ปิด 2026-11-04** (AI_AGENT_MODEL_* + GET /v1/ai/models + การ์ด Admin›AI)
 - [ ] T-301d `frontend-dev` grade + KB gap ใน AI sidebar, dashboard verified vs assumed
 - [ ] T-302a `backend-dev`+`frontend-dev` mark golden (lead/head) + ตาราง golden redact + drafter ใช้เป็นตัวอย่าง
-- [ ] T-302b `qa-engineer` golden สังเคราะห์ใน `evals/golden/` (ai-engineer ห้ามแก้ N7)
+- [x] T-302b `qa-engineer` golden สังเคราะห์ใน `evals/golden/` (ai-engineer ห้ามแก้ N7) — **ปิด 2026-11-04** (53 เคส golden, เจ้าของรับ; guard/pre-commit ใหม่)
 - [x] T-302c `ai-engineer` `pnpm eval` replay ต่อ intent (accuracy, edit distance, violations) CI ใช้ mock — **ปิด 2026-11-04** (evals/runner + replay, mock 100%)
 - [ ] T-302d `backend-dev` แก้ prompt/procedure/model → replay อัตโนมัติ, regression บล็อก
-- [ ] T-302e `ai-engineer` eval redaction (T-157) recall/FP ไทย + **T-153 NER local** (เจ้าของอนุมัติ dependency 2026-11-04 — ADR เลือก model/library ไม่มี network, วัดก่อน/หลัง)
+- [x] T-302e `ai-engineer` eval redaction (T-157) recall/FP ไทย + **T-153 NER local** (เจ้าของอนุมัติ dependency 2026-11-04 — ADR เลือก model/library ไม่มี network, วัดก่อน/หลัง) — **ปิด 2026-11-04** (redaction eval 92 เคส + T-153 ขั้น 1 ADR-027)
 - [ ] T-303a `architect` ADR procedures (schema steps Zod, NL→steps, versioning, intent/stage, ความสัมพันธ์ ADR-013)
 - [ ] T-303b `backend-dev` migration + CRUD + compile (AI ร่าง คนยืนยัน) + audit
 - [ ] T-303c `ai-engineer` investigator/drafter ใช้ procedure ที่ publish · `ai_run` เก็บ version
@@ -165,7 +165,7 @@
 - [ ] T-306a `security-reviewer` ตรวจ autonomy (bypass gate, injection → auto-send, เปิดเผยให้ unverified)
 - [ ] T-306b `qa-engineer` e2e shadow, flag ON ใน stack ทิ้ง (mock), rollback, eval gate
 - [ ] T-306d `backend-dev` + `architect` runbook deploy instance ใหม่สำหรับ pilot (DB สะอาด, seed reference เท่านั้น, env/secret checklist, backup/restore ซ้อม) — เจ้าของจะ deploy เองตอนเริ่ม pilot
-- [ ] T-301e `backend-dev` re-grade เมื่อ CSAT มาถึงหลัง grade (ไม่งั้น verified ต่ำกว่าจริง) — ก่อน T-304f
+- [ ] T-301e `backend-dev` re-grade เมื่อ CSAT มาถึงหลัง grade (ไม่งั้น verified ต่ำกว่าจริง) — ก่อน T-304f *(กำลังทำใน T-304b)* · + `capResolutionClass` ต้องดูข้อความลูกค้าที่ปฏิเสธ ("ยังไม่หาย") ไม่ใช่แค่ CSAT (qa T-302b)
 - [ ] T-175a `backend-dev` P3 จาก review T-175/T-142/T-147: concurrency ต่อคน/host + negative cache, IPv6 allow 2000::/3 ก่อน blocklist, deadline ก่อน DNS, proxy env, permission `ai.budget.read`, PATCH priority จาก AI ลง audit `source` + ยืนยันก่อนขึ้น P1, reply-block ผูก channelAccountId
 - [ ] T-306c `po` review + เสนอ 2–3 intent → [ASK-HUMAN] เลื่อน stage
 - [ ] T-301 Grader + verified/contained/assumed resolution (§6.2, §6.4)
