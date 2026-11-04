@@ -16,6 +16,18 @@ import { ingestAlert } from './alerts/ingest.js';
 import { endExpiredSnoozes, snoozeAlert, unsnoozeAlert } from './alerts/snooze.js';
 import { readAutonomyState, setAiSwitch, setIntentAutonomy } from './autonomy/state.js';
 import { findOrCreateContactByEmail } from './contacts.js';
+import {
+  confirmProcedureVersion,
+  createProcedureDraft,
+  publishProcedureVersion,
+  readProcedureValidationContext,
+  readProcedureVersion,
+  readProcedureVersions,
+  recordProcedureCompile,
+  retireProcedureVersion,
+  updateProcedureDraft,
+  validateProcedureVersion,
+} from './procedures/versions.js';
 import { claimCsatEmail, finishCsatEmail, releaseCsatEmail } from './csat/dispatch.js';
 import { decideCsatReopen } from './csat/reopen.js';
 import {
@@ -550,6 +562,23 @@ export {
 } from './autonomy/gate.js';
 export { SAFE_AUTO_ACK_TEMPLATES } from './autonomy/safe-templates.js';
 export {
+  confirmProcedureVersion,
+  createProcedureDraft,
+  publishProcedureVersion,
+  readProcedureValidationContext,
+  readProcedureVersion,
+  readProcedureVersions,
+  recordProcedureCompile,
+  retireProcedureVersion,
+  toProcedureVersion,
+  updateProcedureDraft,
+  validateProcedureVersion,
+  type CreateProcedureDraftInput,
+  type RecordProcedureCompileInput,
+  type UpdateProcedureDraftInput,
+} from './procedures/versions.js';
+export { validateProcedureSteps, type ProcedureValidationContext } from './procedures/validate.js';
+export {
   readAutonomyState,
   readSwitches,
   setAiSwitch,
@@ -707,6 +736,19 @@ export interface Domain {
     readonly read: typeof readAutonomyState;
     readonly setSwitch: typeof setAiSwitch;
     readonly setIntentStage: typeof setIntentAutonomy;
+  };
+  /** Procedures per intent (T-303b, ADR-026): drafts, the compiler's steps, confirm, publish, retire. */
+  readonly procedures: {
+    readonly readVersions: typeof readProcedureVersions;
+    readonly readVersion: typeof readProcedureVersion;
+    readonly validationContext: typeof readProcedureValidationContext;
+    readonly validate: typeof validateProcedureVersion;
+    readonly createDraft: typeof createProcedureDraft;
+    readonly updateDraft: typeof updateProcedureDraft;
+    readonly recordCompile: typeof recordProcedureCompile;
+    readonly confirm: typeof confirmProcedureVersion;
+    readonly publish: typeof publishProcedureVersion;
+    readonly retire: typeof retireProcedureVersion;
   };
   /** Knowledge base articles (T-107): create, edit, move between statuses, publish. */
   readonly kb: {
@@ -898,6 +940,18 @@ export function createDomain(options: DomainOptions): Domain {
       read: readAutonomyState,
       setSwitch: setAiSwitch,
       setIntentStage: setIntentAutonomy,
+    },
+    procedures: {
+      readVersions: readProcedureVersions,
+      readVersion: readProcedureVersion,
+      validationContext: readProcedureValidationContext,
+      validate: validateProcedureVersion,
+      createDraft: createProcedureDraft,
+      updateDraft: updateProcedureDraft,
+      recordCompile: recordProcedureCompile,
+      confirm: confirmProcedureVersion,
+      publish: publishProcedureVersion,
+      retire: retireProcedureVersion,
     },
     kb: {
       create: createKbArticle,
