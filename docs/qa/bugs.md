@@ -64,6 +64,37 @@ P3 cosmetic or rare, P4 polish. Developers fix; QA verifies. Do not edit an entr
 
 - **Found:** 2026-11-04 (main regression). The test read the first hit of the article for "webhook retry" and expected section "Backoff schedule". The title chunk and that section score the same in the keyword list (`word_similarity` 1 for both words) and ties are broken by chunk id (a random uuid), so either can come first. Not an app bug (up to two chunks of one article are returned by design); the test now looks at the article's hits as a set. Passed in the 3 full runs after the change. Related, not fixed: `ac1-gmail` "5.1 step 4" (a KB card with a section citation) failed once in 3 runs with the same kind of tie in the brief's KB retrieval; it needs the owner of the retrieval ordering.
 
+### B-009 (P3) "AI meant to send but was held" shows an unexplained code for four of the reasons (T-304g / T-306e)
+
+- **Found:** 2026-11-05, T-306b (`apps/web/e2e-fullstack/stage3-autosend.e2e.ts`, flag ON).
+- **Area:** `apps/web/src/i18n/messages/{en,th}/stage3.ts` (`held`), `components/conversation/timeline.tsx` (`heldUnknown`).
+- **Steps:** with the flag on, a stage 3 intent with no passing replay gets a ticket; open it in the workspace.
+- **Expected:** the note says why in words, like the other reasons ("the reply does not cite a customer-facing article").
+- **Actual:** the reason codes `replay_missing`, `procedure_requires_human`, `escalation_pending` and `ai_run_missing` (added by T-306e, migration 0108-0110) have no entry in `stage3.held`, so the line reads `the check "replay_missing" did not pass` (the `heldUnknown` fallback). The person who picks up the draft cannot tell a missing replay from a real fault.
+- **Suggested fix (not applied, app code):** add the four codes to `stage3.held` in TH and EN (and a unit test that every `GATE_REASONS` value has copy in both languages).
+- **Status:** open, reported to main thread.
+
+### B-011 (P3) A refused promotion request carries no `reason` code over HTTP, against its OpenAPI text (T-304d)
+
+- **Found:** 2026-11-05, T-306b (`stage3-autosend.e2e.ts`, "eval gate").
+- **Steps:** `POST /v1/intents/:id/autonomy/promotions` with a gate report that is not green (an intent with no replay: `eval_replay_violations` is `not_measured`).
+- **Expected:** 403 with the `reason` code the OpenAPI description of the route promises (`report_not_green`, `window_not_at_stage_2`, `pinned`, `stage_cap_on`, ...). The domain builds it: `DomainError('policy_denied', ..., { reason })` in `packages/domain/src/autonomy/promotion.ts`.
+- **Actual:** `{"statusCode":403,"error":"Forbidden","code":"forbidden","message":"This intent cannot be promoted now"}`. `toHttpError` in `apps/api/src/domain/domain-errors.ts` maps `policy_denied` to `forbidden(message)` and drops `details`. The same holds for `confirm_key_mismatch` (wrong key typed by the owner). A client (the Stage 3 dialog) cannot say why the request was refused.
+- **Suggested fix (not applied, app code):** carry `details.reason` into the body for `policy_denied` (like `domains` for `external_recipients`), or change the OpenAPI text.
+- **Status:** open, reported to main thread.
+
+### B-010 (P2) A bad reply in the same minute as an earlier one does not wake the autonomy watch: the rollback waits for the 15-minute run (T-304e)
+
+- **Found:** 2026-11-05, T-306b (`stage3-autosend.e2e.ts`, test "rollback timing ... (B-010)", needs `E2E_STAGE3_SLOW=1`). Measured `[TESTED]` once in a throwaway stack: **688 s** from the second reopen to the rollback.
+- **Area:** `packages/domain/src/autonomy/watch.ts` `enqueueAutonomyWatch` (jobId `autonomy-watch-<intent>-<minute>`), `apps/worker/src/autonomy/index.ts`.
+- **Steps (flag ON, an intent at stage 3, two automatic replies sent)**
+  1. Reopen the first ticket (resolved, then open). The event enqueues job `autonomy-watch-<intent>-<minute>`; the watch runs and finds 1 bad reply of the last 20: no rollback (correct).
+  2. 15 s later, in the same wall-clock minute, reopen the second ticket (2 bad replies now: the rule of the owner's decision 4).
+- **Expected:** rolled back within seconds to a minute or two (ADR-025 section 7: "worker `autonomy-watch` (event + every 15 minutes)"; the decision says 2 of the last 20 "rolls it back").
+- **Actual:** the second event enqueues nothing (same jobId as the first, already queued or retained; the delay is `[TESTED]`, the jobId cause is from reading the code, the queue was not inspected `[UNVERIFIED 80%]`), so nothing looks at the intent until the periodic run (`AUTONOMY_WATCH_EVERY_MS`, 15 minutes). The intent stayed at stage 3 for 688 s here and could for nearly 15 minutes, which is time in which it keeps sending automatic replies. When the second reopen falls in another minute (the test "2 reopened replies among the last 20", with the second reopen 62 s later) the rollback comes within a minute, and when both fall within the same second the one job sees both: the loss needs the first job to have already run. The same applies to a CSAT answer and to the "violation" rule (`violation` fired promptly in the test because the sampled grade runs in the same job that found it).
+- **Suggested fix (not applied, app code):** do not let an event be dropped by a job that has already started: use a jobId per minute only while the job is still waiting (`delay` + dedupe by jobId, or `removeOnComplete: true` so a finished job frees its id), or let the 15-minute run be shorter for intents at stage 3.
+- **Status:** open, reported to main thread. The test is gated by `E2E_STAGE3_SLOW=1` because it takes up to 20 minutes; it goes green when this is fixed.
+
 ## Observations that are not bugs (recorded so nobody re-investigates them)
 
 - A reply to a LINE ticket within ~50 s of the customer's last message uses the free reply token (not a push, quota unchanged). Correct per R-2.10; a push only follows after the token window.

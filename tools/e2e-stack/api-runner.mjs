@@ -15,5 +15,13 @@ const config = loadConfig(process.env);
 const logger = createLogger(config);
 const prefix = process.env.E2E_QUEUE_PREFIX;
 const app = await createApp(config, logger, prefix ? { queuePrefix: prefix } : {});
+if (config.AI_AUTOSEND_ENABLED) {
+  // The same as main.ts (ADR-025 section 2): one audit row per boot of a process that runs with the flag on.
+  const { recordAutosendFlagBoot } = await import(
+    pathToFileURL(join(root, 'packages', 'domain', 'dist', 'index.js')).href
+  );
+  const { DATABASE } = await load('database/database.module.js');
+  await recordAutosendFlagBoot(app.get(DATABASE).db, 'api').catch(() => undefined);
+}
 await app.listen(config.listenPort, config.HOST);
 logger.info({ port: config.listenPort }, 'e2e api listening');
