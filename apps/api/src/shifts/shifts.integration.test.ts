@@ -886,9 +886,11 @@ describe('the incoming person acknowledges each item', () => {
       expect.objectContaining({ itemId: item.id, ticketKey: ticket.key, overdue: false }),
     ]);
 
-    // The brief shows the handoff first; nothing in it needs an AI.
+    // The brief shows the handoff first; nothing in it needs an AI. The AI summary (T-135) is extra:
+    // claims that cite the handoff page, written by the mock provider here.
     const brief = await incoming.client.get<ShiftBrief>('/v1/shifts/brief');
-    expect(brief.body.aiSummary).toBeNull();
+    expect(brief.body.aiSummary?.mock).toBe(true);
+    expect(brief.body.aiSummary?.claims.every((claim) => !claim.uncited)).toBe(true);
     // (Other handoffs of this database are addressed to the same people, so look at this one.)
     expect(brief.body.handoff.total).toBeGreaterThanOrEqual(1);
     expect(brief.body.handoff.leadAlertAt).not.toBeNull();
@@ -1640,7 +1642,14 @@ describe('the daily brief', () => {
     const body = brief.body;
     expect(body.timezone).toBe('Asia/Bangkok');
     expect(body.session?.userId).toBe(me.userId);
-    expect(body.aiSummary).toBeNull();
+    // Every sentence of the AI summary rests on something in the brief, and links to a page that exists.
+    expect(body.aiSummary?.claims.length).toBeGreaterThan(0);
+    for (const claim of body.aiSummary?.claims ?? []) {
+      expect(claim.uncited).toBe(false);
+      expect(claim.evidence[0]?.href).toMatch(
+        /^\/(\?ticket=[A-Z]+-\d+|shift\/(handoff|notes|brief))$/,
+      );
+    }
 
     const fromOutgoing = body.handoff.handoffs.find((entry) => entry.from.id === outgoing.userId);
     expect(fromOutgoing?.messageForNext).toBe('Mind the carried ticket');

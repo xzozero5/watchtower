@@ -10,6 +10,7 @@ import { adminEn } from './admin';
 import { attachmentsEn } from './attachments';
 import { aiEn } from './ai';
 import { aiOfflineEn } from './aiOffline';
+import { assistantEn } from './assistant';
 import { apiStatusEn } from './apiStatus';
 import { appEn } from './app';
 import { authEn } from './auth';
@@ -73,6 +74,7 @@ export const en = {
   workspace: workspaceEn,
   ai: aiEn,
   aiOffline: aiOfflineEn,
+  assistant: assistantEn,
   live: liveEn,
   keymap: keymapEn,
   auth: authEn,

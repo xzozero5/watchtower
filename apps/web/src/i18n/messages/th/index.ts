@@ -3,6 +3,7 @@ import { adminTh } from './admin';
 import { attachmentsTh } from './attachments';
 import { aiTh } from './ai';
 import { aiOfflineTh } from './aiOffline';
+import { assistantTh } from './assistant';
 import { apiStatusTh } from './apiStatus';
 import { appTh } from './app';
 import { authTh } from './auth';
@@ -67,6 +68,7 @@ export const th: Messages = {
   workspace: workspaceTh,
   ai: aiTh,
   aiOffline: aiOfflineTh,
+  assistant: assistantTh,
   live: liveTh,
   keymap: keymapTh,
   auth: authTh,

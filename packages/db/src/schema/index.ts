@@ -25,3 +25,5 @@ export * from './tools.js';
 export * from './statuspage.js';
 export * from './usage.js';
 export * from './uploads.js';
+// The AI assistant and AI summaries (T-134/T-135, migration 0090).
+export * from './assistant.js';

@@ -15,12 +15,14 @@ export * from './agents/evidence.js';
 export * from './agents/investigate.js';
 export * from './agents/draft.js';
 export * from './agents/kb-author.js';
+export * from './agents/assistant.js';
+export * from './agents/summary.js';
 export * from './toolkit/ports.js';
 export * from './toolkit/tools.js';
 export * from './toolkit/budget.js';
 export * from './tools.js';
 
-export { joinRedacted, type RedactedText } from './redaction/redacted-text.js';
+export { clipRedacted, joinRedacted, type RedactedText } from './redaction/redacted-text.js';
 export {
   createRedactor,
   RedactionInputTooLargeError,

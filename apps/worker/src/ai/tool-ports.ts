@@ -75,7 +75,8 @@ export function createSimilarTicketsPort(db: ReadDb, keys: TicketKeys): SimilarT
               snippet: (row.snippet ?? '').slice(0, 600),
               similarity: Math.min(1, Math.max(0, row.similarity)),
               sameOrg: row.same_org,
-              href: `/tickets/${key}`,
+              // The queue with the ticket open: the one page of the web that shows a ticket.
+              href: `/?ticket=${key}`,
             };
           });
         },
@@ -184,6 +185,13 @@ export function createKbSearchPort(deps: KbPortDeps): KbSearchPort {
   return {
     async search(input): Promise<KbHit[]> {
       const embedding = await embedQuery(deps, input.query);
+      // With mock embeddings the order of vector hits means nothing: flag the hits (N5).
+      const mockScores =
+        embedding !== undefined &&
+        (await deps.ai.settings.load().then(
+          (settings) => settings.embedding.provider === 'mock',
+          () => false,
+        ));
       const outcome = await searchKb(deps.db, {
         query: input.query,
         audience: { kind: 'staff' },
@@ -228,6 +236,7 @@ export function createKbSearchPort(deps: KbPortDeps): KbSearchPort {
           input.intentKey !== null &&
           hit.intentTags.includes(input.intentKey),
         href: `/kb/${hit.slug}`,
+        ...(mockScores ? { mock: true } : {}),
       }));
       // The runbook of the ticket's intent first, then the rest in rank order.
       return hits.toSorted((a, b) => Number(b.isRunbook) - Number(a.isRunbook));

@@ -1,0 +1,490 @@
+'use client';
+
+import type { AssistantReply, AssistantState } from '@watchtower/shared';
+import { Button, IconButton, Skeleton, TintChip } from '@watchtower/ui';
+import {
+  Bot,
+  CirclePause,
+  Copy,
+  CloudOff,
+  Check,
+  RefreshCw,
+  SendHorizontal,
+  Square,
+  Trash2,
+  Wallet,
+  X,
+} from 'lucide-react';
+import { useEffect, useId, useRef, useState, type KeyboardEvent } from 'react';
+
+import { AppLink } from '@/components/app-link';
+import { ClaimLine } from '@/components/claims/claim-line';
+import { useI18n } from '@/i18n/provider';
+import { useSession } from '@/lib/auth/session';
+import { contextForRequest, type PageContext } from '@/lib/assistant/page-context';
+import {
+  useAssistantChat,
+  useAssistantStarters,
+  type ChatErrorKind,
+} from '@/lib/assistant/use-assistant-chat';
+
+import { ProposalCard } from './proposal-card';
+
+const CLOSED_STATES: readonly AssistantState[] = ['paused', 'budget', 'unavailable'];
+
+/** Plain text of an answer, for the Copy button: each sentence, with its sources in brackets. */
+export function answerText(reply: AssistantReply): string {
+  return reply.claims
+    .map((claim) =>
+      claim.evidence.length === 0
+        ? claim.text
+        : `${claim.text} [${claim.evidence.map((item) => item.label).join(', ')}]`,
+    )
+    .join('\n');
+}
+
+export interface AssistantPanelProps {
+  id: string;
+  context: PageContext;
+  /** False while the panel is folded away: it stays mounted so the thread and the typed text stay. */
+  open: boolean;
+  /** Closes the panel; the bubble gives focus back to its button. */
+  onClose: () => void;
+}
+
+/**
+ * The chat panel (docs/design/less-text-ai-assistant.md section 2). A non-modal dialog so the page
+ * beside it stays readable and a link to evidence can be followed with the panel open; on a small
+ * screen it fills the window. Esc closes it, the typed text stays. The thread is a polite `log`
+ * that announces "The answer is ready" once, never token by token.
+ */
+export function AssistantPanel({ id, context, open, onClose }: AssistantPanelProps) {
+  const { t, locale } = useI18n();
+  const { can } = useSession();
+  const titleId = useId();
+  const chat = useAssistantChat();
+  const [text, setText] = useState('');
+  const here = `${context.page}|${context.ticket ?? ''}`;
+  const [removedAt, setRemovedAt] = useState({ here: '', page: false, ticket: false });
+  const [copied, setCopied] = useState<string | null>(null);
+  const input = useRef<HTMLTextAreaElement>(null);
+  const thread = useRef<HTMLDivElement>(null);
+
+  // A chip the person removed stays removed for that page and ticket only; a new place is new context.
+  const removed = removedAt.here === here ? removedAt : { page: false, ticket: false };
+
+  const ticketChip = context.ticket !== null && !removed.ticket;
+  const pageChip = !removed.page;
+  const starters = useAssistantStarters({
+    enabled: open,
+    locale,
+    page: pageChip ? context.page : undefined,
+    ticket: ticketChip ? context.ticket : null,
+  });
+  const state: AssistantState = chat.state !== 'ok' ? chat.state : (starters.data?.state ?? 'ok');
+  const closed = CLOSED_STATES.includes(state);
+
+  useEffect(() => {
+    if (open) input.current?.focus();
+  }, [open]);
+  // New content: keep the latest in view without stealing focus.
+  useEffect(() => {
+    const element = thread.current;
+    if (element) element.scrollTop = element.scrollHeight;
+  }, [chat.turns.length, chat.pending, chat.error]);
+
+  const submit = (value: string) => {
+    if (closed || chat.pending || value.trim() === '') return;
+    chat.send(value, locale, contextForRequest(context, removed));
+    setText('');
+  };
+
+  const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {
+      event.preventDefault();
+      submit(text);
+    }
+  };
+
+  const onPanelKeyDown = (event: KeyboardEvent<HTMLElement>) => {
+    if (event.key !== 'Escape' || event.defaultPrevented) return;
+    event.stopPropagation();
+    onClose();
+  };
+
+  const copy = (messageId: string, reply: AssistantReply) => {
+    void navigator.clipboard.writeText(answerText(reply)).then(() => {
+      setCopied(messageId);
+    });
+  };
+
+  const empty = chat.turns.length === 0 && !chat.pending;
+  const pageName = t(`assistant.context.page.${context.page}`);
+  const remaining = starters.data?.limits.remainingThisHour;
+
+  return (
+    <section
+      id={id}
+      role="dialog"
+      aria-modal="false"
+      hidden={!open}
+      aria-labelledby={titleId}
+      onKeyDown={onPanelKeyDown}
+      data-testid="assistant-panel"
+      className="fixed inset-0 z-30 flex flex-col [&[hidden]]:hidden bg-surface text-foreground md:inset-auto md:right-4 md:bottom-20 md:h-[min(40rem,calc(100dvh-7rem))] md:w-[25rem] md:rounded-app md:shadow-overlay md:ring-1 md:ring-border md:ring-inset"
+    >
+      <header className="flex items-center justify-between gap-2 border-b border-border px-4 py-3">
+        <div className="flex min-w-0 items-center gap-2">
+          <span className="inline-flex size-7 shrink-0 items-center justify-center rounded-full bg-ai-subtle text-ai-accent">
+            <Bot aria-hidden className="size-4" />
+          </span>
+          <h2 id={titleId} className="truncate text-base font-semibold">
+            {t('assistant.name')}
+          </h2>
+        </div>
+        <div className="flex items-center gap-1">
+          {chat.turns.length > 0 ? (
+            <IconButton
+              label={t('assistant.newChat')}
+              tooltip={t('assistant.newChatTip')}
+              icon={<Trash2 />}
+              onClick={() => {
+                chat.clear();
+                input.current?.focus();
+              }}
+            />
+          ) : null}
+          <IconButton
+            label={t('assistant.close')}
+            shortcut={['Esc']}
+            icon={<X />}
+            onClick={onClose}
+          />
+        </div>
+      </header>
+
+      <p className="px-4 pt-2 text-xs text-muted-foreground">{t('assistant.description')}</p>
+
+      <div
+        ref={thread}
+        role="log"
+        aria-live="polite"
+        aria-relevant="additions"
+        aria-busy={chat.pending}
+        aria-label={t('assistant.thread.label')}
+        className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-4 py-3"
+      >
+        {state !== 'ok' && closed ? (
+          <StateNotice state={state} canControl={can('ai.autonomy.set')} />
+        ) : null}
+
+        {empty && !closed ? (
+          <div className="flex flex-col gap-2">
+            {starters.isPending ? (
+              <div
+                aria-label={t('assistant.starters.loading')}
+                role="status"
+                className="flex flex-col gap-2"
+              >
+                <Skeleton className="h-8 w-3/4" />
+                <Skeleton className="h-8 w-2/3" />
+              </div>
+            ) : (starters.data?.starters.length ?? 0) > 0 ? (
+              <>
+                <p className="text-xs font-medium text-muted-foreground">
+                  {t('assistant.starters.label')}
+                </p>
+                <ul className="flex flex-col items-start gap-2">
+                  {starters.data?.starters.map((starter) => (
+                    <li key={starter.id} className="max-w-full">
+                      <Button
+                        variant="secondary"
+                        className="h-auto max-w-full py-1.5 text-left whitespace-normal"
+                        onClick={() => {
+                          submit(starter.text);
+                        }}
+                      >
+                        {starter.text}
+                      </Button>
+                    </li>
+                  ))}
+                </ul>
+              </>
+            ) : null}
+          </div>
+        ) : null}
+
+        {chat.turns.map((turn) =>
+          turn.kind === 'user' ? (
+            <div key={turn.id} className="flex flex-col items-end gap-0.5">
+              <span className="text-[11px] text-muted-foreground">{t('assistant.thread.you')}</span>
+              <p className="max-w-[90%] rounded-card bg-primary-subtle px-3 py-2 text-sm break-words whitespace-pre-wrap">
+                {turn.text}
+              </p>
+            </div>
+          ) : (
+            <div key={turn.id} className="flex flex-col gap-2" data-testid="assistant-answer">
+              <span className="text-[11px] text-muted-foreground">{t('assistant.thread.ai')}</span>
+              {turn.reply.claims.length > 0 ? (
+                <ul className="flex flex-col gap-3 rounded-card bg-ai-subtle p-3 ring-1 ring-ai-accent/20 ring-inset">
+                  {turn.reply.claims.map((claim, index) => (
+                    <ClaimLine key={index} claim={claim} onOpen={closeOnPhone(onClose)} />
+                  ))}
+                </ul>
+              ) : turn.reply.proposals.length === 0 && turn.reply.state === 'ok' ? (
+                <div className="rounded-card bg-ai-subtle p-3 text-sm ring-1 ring-ai-accent/20 ring-inset">
+                  <p className="font-medium">{t('assistant.answer.noEvidence')}</p>
+                  <p className="text-muted-foreground">{t('assistant.answer.noEvidenceBody')}</p>
+                </div>
+              ) : null}
+
+              {turn.reply.proposals.map((card) => {
+                const view = chat.proposals[card.id];
+                return view ? (
+                  <ProposalCard
+                    key={card.id}
+                    view={view}
+                    onConfirm={(proposalId) => {
+                      void chat.confirm(proposalId);
+                    }}
+                    onReject={(proposalId) => {
+                      void chat.reject(proposalId);
+                    }}
+                    onOpen={closeOnPhone(onClose)}
+                  />
+                ) : null;
+              })}
+
+              {turn.reply.tools.length > 0 ? (
+                <details className="text-xs text-muted-foreground">
+                  <summary className="w-fit cursor-pointer rounded-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">
+                    {t('assistant.answer.steps', { count: turn.reply.tools.length })}
+                  </summary>
+                  <ul className="mt-1 flex flex-col gap-0.5">
+                    {turn.reply.tools.map((tool, index) => (
+                      <li key={index} className="flex flex-wrap items-center gap-1.5">
+                        <code>{tool.name}</code>
+                        <span>
+                          {tool.status === 'ok'
+                            ? t('assistant.answer.stepOk')
+                            : tool.status === 'denied'
+                              ? t('assistant.answer.stepDenied')
+                              : t('assistant.answer.stepError')}
+                        </span>
+                        {tool.mock ? (
+                          <TintChip tone="slate" title={t('assistant.answer.demoTip')}>
+                            {t('assistant.answer.demo')}
+                          </TintChip>
+                        ) : null}
+                      </li>
+                    ))}
+                  </ul>
+                </details>
+              ) : null}
+
+              {turn.reply.claims.length > 0 ? (
+                <div>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => {
+                      copy(turn.id, turn.reply);
+                    }}
+                  >
+                    {copied === turn.id ? (
+                      <Check aria-hidden className="size-3.5" />
+                    ) : (
+                      <Copy aria-hidden className="size-3.5" />
+                    )}
+                    {copied === turn.id ? t('assistant.answer.copied') : t('assistant.answer.copy')}
+                  </Button>
+                </div>
+              ) : null}
+            </div>
+          ),
+        )}
+
+        {chat.pending ? (
+          <p role="status" className="flex items-center gap-2 text-sm text-muted-foreground">
+            <Bot aria-hidden className="size-4 text-ai-accent motion-safe:animate-pulse" />
+            {t('assistant.thread.thinking')}
+          </p>
+        ) : null}
+
+        {chat.stopped ? (
+          <p role="status" className="text-sm text-muted-foreground">
+            {t('assistant.thread.stopped')}
+          </p>
+        ) : null}
+
+        {chat.error !== null ? (
+          <div
+            role="alert"
+            className="flex flex-col items-start gap-2 rounded-card bg-surface-muted p-3 text-sm"
+          >
+            <p>{errorText(chat.error, t)}</p>
+            {chat.error === 'generic' || chat.error === 'rate' ? (
+              <Button size="sm" onClick={chat.retry}>
+                <RefreshCw aria-hidden className="size-3.5" />
+                {t('assistant.error.retry')}
+              </Button>
+            ) : null}
+          </div>
+        ) : null}
+        <p className="sr-only" role="status">
+          {chat.turns.at(-1)?.kind === 'ai' && !chat.pending ? t('assistant.thread.ready') : ''}
+        </p>
+      </div>
+
+      <footer className="flex flex-col gap-2 border-t border-border px-4 py-3">
+        <div
+          className="flex flex-wrap items-center gap-1.5"
+          aria-label={t('assistant.context.label')}
+          role="group"
+        >
+          {pageChip ? (
+            <ContextChip
+              label={pageName}
+              removeLabel={t('assistant.context.remove', { name: pageName })}
+              onRemove={() => {
+                setRemovedAt({ ...removed, here, page: true });
+              }}
+            />
+          ) : null}
+          {ticketChip && context.ticket !== null ? (
+            <ContextChip
+              label={context.ticket}
+              removeLabel={t('assistant.context.remove', { name: context.ticket })}
+              onRemove={() => {
+                setRemovedAt({ ...removed, here, ticket: true });
+              }}
+            />
+          ) : null}
+        </div>
+
+        <div className="flex items-end gap-2">
+          <textarea
+            ref={input}
+            value={text}
+            rows={2}
+            maxLength={2000}
+            disabled={closed}
+            aria-label={t('assistant.input.label')}
+            placeholder={t('assistant.input.placeholder')}
+            onChange={(event) => {
+              setText(event.target.value);
+            }}
+            onKeyDown={onKeyDown}
+            className="min-h-control flex-1 resize-none rounded-md border border-border-strong bg-surface px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring disabled:opacity-50"
+          />
+          {chat.pending ? (
+            <IconButton label={t('assistant.input.stop')} icon={<Square />} onClick={chat.stop} />
+          ) : (
+            <IconButton
+              label={t('assistant.input.send')}
+              variant="primary"
+              icon={<SendHorizontal />}
+              disabled={closed || text.trim() === ''}
+              onClick={() => {
+                submit(text);
+              }}
+            />
+          )}
+        </div>
+        <p className="text-[11px] text-muted-foreground">
+          {t('assistant.input.hint')}
+          {remaining !== undefined ? ` · ${t('assistant.input.left', { count: remaining })}` : ''}
+        </p>
+      </footer>
+    </section>
+  );
+}
+
+/** On a phone the panel covers the page, so following a link closes it; beside the page it stays. */
+function closeOnPhone(close: () => void): () => void {
+  return () => {
+    if (
+      typeof window.matchMedia === 'function' &&
+      !window.matchMedia('(min-width: 48rem)').matches
+    ) {
+      close();
+    }
+  };
+}
+
+function ContextChip({
+  label,
+  removeLabel,
+  onRemove,
+}: {
+  label: string;
+  removeLabel: string;
+  onRemove: () => void;
+}) {
+  return (
+    <span className="inline-flex items-center gap-1 rounded-full bg-surface-muted py-0.5 pr-0.5 pl-2 text-xs ring-1 ring-border ring-inset">
+      {label}
+      <button
+        type="button"
+        aria-label={removeLabel}
+        onClick={onRemove}
+        className="inline-flex size-5 items-center justify-center rounded-full hover:bg-primary-subtle focus-visible:outline-2 focus-visible:outline-ring"
+      >
+        <X aria-hidden className="size-3" />
+      </button>
+    </span>
+  );
+}
+
+function errorText(kind: ChatErrorKind, t: ReturnType<typeof useI18n>['t']): string {
+  switch (kind) {
+    case 'forbidden':
+      return t('assistant.error.forbidden');
+    case 'rate':
+      return t('assistant.error.rate');
+    case 'notFound':
+      return t('assistant.error.notFound');
+    default:
+      return t('assistant.error.generic');
+  }
+}
+
+/** Paused, over budget or offline: the input is closed and the words say why (never an icon alone). */
+function StateNotice({ state, canControl }: { state: AssistantState; canControl: boolean }) {
+  const { t } = useI18n();
+  const Icon = state === 'paused' ? CirclePause : state === 'budget' ? Wallet : CloudOff;
+  const title =
+    state === 'paused'
+      ? t('assistant.state.paused')
+      : state === 'budget'
+        ? t('assistant.state.budget')
+        : t('assistant.state.unavailable');
+  const body =
+    state === 'paused'
+      ? t('assistant.state.pausedBody')
+      : state === 'budget'
+        ? t('assistant.state.budgetBody')
+        : t('assistant.state.unavailableBody');
+  return (
+    <div
+      role="status"
+      data-testid="assistant-state"
+      data-state={state}
+      className="flex gap-2 rounded-card bg-surface-muted p-3 text-sm"
+    >
+      <Icon aria-hidden className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+      <div className="flex flex-col gap-1">
+        <p className="font-medium">{title}</p>
+        <p className="text-muted-foreground">{body}</p>
+        {canControl && state !== 'unavailable' ? (
+          <AppLink
+            href="/admin/ai"
+            className="w-fit rounded-sm text-link underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+          >
+            {t('assistant.state.controls')}
+          </AppLink>
+        ) : null}
+      </div>
+    </div>
+  );
+}

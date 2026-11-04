@@ -23,6 +23,11 @@ export const kbHitSchema = z.object({
   isRunbook: z.boolean(),
   /** Path inside Watchtower, for the evidence card. */
   href: z.string().max(500),
+  /**
+   * The rank came from mock embeddings, so it says nothing about how well the article fits (N5): the
+   * card is labelled `Demo` and the web shows no number.
+   */
+  mock: z.boolean().optional(),
 });
 export type KbHit = z.infer<typeof kbHitSchema>;
 

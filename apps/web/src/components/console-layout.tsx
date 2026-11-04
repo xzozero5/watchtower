@@ -3,6 +3,7 @@
 import { usePathname } from 'next/navigation';
 import type { ReactNode } from 'react';
 
+import { AssistantBubble } from '@/components/assistant/assistant-bubble';
 import { AuthGate } from '@/components/auth-gate';
 import { ConsoleShell } from '@/components/console-shell';
 import type { RailDestination } from '@/components/nav-rail';
@@ -58,6 +59,7 @@ export function ConsoleLayout({ children }: { children: ReactNode }) {
         >
           {children}
         </ConsoleShell>
+        <AssistantBubble />
       </RealtimeProvider>
     </AuthGate>
   );

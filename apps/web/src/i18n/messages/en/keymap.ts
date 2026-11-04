@@ -40,6 +40,7 @@ export const keymapEn = {
   send: 'Send the message',
   leave: 'Leave the field and go back to the queue',
   palette: 'Open the command palette',
+  assistant: 'Open or close the AI assistant',
   help: 'Show this list',
   approve: 'Approve the AI draft (opens a preview)',
   edit: 'Edit the AI draft',

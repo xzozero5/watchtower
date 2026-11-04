@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpCode, Inject, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, Headers, HttpCode, Inject, Post, Query } from '@nestjs/common';
 import {
   ApiConflictResponse,
   ApiForbiddenResponse,
@@ -30,6 +30,7 @@ import {
   RequirePermission,
   type Principal,
 } from '../auth/decorators.js';
+import { pickLocale } from '../ai/locale.js';
 import { parseResponse } from '../common/zod-openapi.js';
 import { BriefService } from './brief.service.js';
 import { ShiftsService } from './shifts.service.js';
@@ -120,13 +121,23 @@ export class ShiftsController {
   @ApiOperation({
     summary: 'The daily brief',
     description:
-      'Made from data, not by an AI. Section 1 is the handoff from the previous shift, which is ' +
-      'enough to meet AC-7; the others follow the order of UI spec 9.2. `aiSummary` is reserved and ' +
-      'null today.',
+      'Made from data by code. Section 1 is the handoff from the previous shift, which is enough to ' +
+      'meet AC-7; the others follow the order of UI spec 9.2. `aiSummary` is the AI reading of them: ' +
+      'at most five `claims`, each with `evidence` links to pages you may open (a claim with none is ' +
+      '`uncited`), `mock: true` when the mock provider wrote it, and `text`, the claims joined. It is ' +
+      'null when the AI is off, over budget or has nothing to say; the brief does not depend on it. ' +
+      '`locale` (th|en) or Accept-Language sets the language; a summary is cached against the facts.',
   })
   @ApiOkResponse({ standardSchema: shiftBriefSchema })
-  async getBrief(@CurrentPrincipal() principal: Principal) {
-    return parseResponse(shiftBriefSchema, await this.brief.brief(principal));
+  async getBrief(
+    @CurrentPrincipal() principal: Principal,
+    @Query('locale') locale: string | undefined,
+    @Headers('accept-language') acceptLanguage: string | undefined,
+  ) {
+    return parseResponse(
+      shiftBriefSchema,
+      await this.brief.brief(principal, pickLocale(locale, acceptLanguage)),
+    );
   }
 
   @Post('shifts/brief/read')

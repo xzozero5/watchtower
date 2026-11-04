@@ -13,13 +13,17 @@ import {
   shiftWindow,
   type AckHandoffItem,
   type AckResult,
+  type AssistantLocale,
   type CurrentHandoff,
   type Handoff,
+  type HandoffAiPrefillResponse,
   type IncomingHandoffs,
   type SaveHandoff,
 } from '@watchtower/shared';
 import { and, asc, eq, inArray, notInArray, sql } from 'drizzle-orm';
 
+import { AiSummaries, joinClaims } from '../ai/ai-summaries.service.js';
+import { customerNamesOfTickets } from '../ai/customer-names.js';
 import { AuditService } from '../audit/audit.service.js';
 import { badRequest, conflict, notFound } from '../auth/http-errors.js';
 import { assertOrgAccess, type Principal } from '../auth/principal.js';
@@ -31,6 +35,7 @@ import { UnitOfWorkService, type UnitOfWork } from '../realtime/unit-of-work.js'
 import { StaffUploadsService } from '../uploads/staff-uploads.service.js';
 import { assertCanRead } from '../tickets/ticket-reader.js';
 import { TICKET_KEYS, type TicketKeys } from '../tickets/ticket-keys.js';
+import { briefHandoffFacts } from './brief-facts.js';
 import { HandoffReader } from './handoff-reader.js';
 import {
   HandoffIncompleteError,
@@ -59,6 +64,7 @@ export class HandoffService {
     @Inject(TICKET_KEYS) private readonly keys: TicketKeys,
     @Inject(SHIFT_NOW) private readonly now: ShiftNow,
     @Inject(StaffUploadsService) private readonly uploads: StaffUploadsService,
+    @Inject(AiSummaries) private readonly summaries: AiSummaries,
   ) {}
 
   // --- reads ---
@@ -131,6 +137,44 @@ export class HandoffService {
   }
 
   // --- the outgoing person ---
+
+  /**
+   * The AI's draft of the free text of the handoff (T-135): claims, each with the tickets and items it
+   * rests on, and the same as lines for the two text boxes. Nothing is saved; the person reads, copies
+   * what is right and saves and confirms as usual. `null` when the AI is off, over budget, failing or
+   * has nothing to say: the handoff never depends on it (AC-7).
+   */
+  async aiPrefill(
+    principal: Principal,
+    locale: AssistantLocale,
+  ): Promise<HandoffAiPrefillResponse> {
+    const current = await this.current(principal);
+    if (current.handoff === null) throw conflict('Start the handoff draft first');
+    const block = await this.summaries.claims({
+      kind: 'handoff',
+      userId: principal.userId,
+      locale,
+      subject: 'the notes of a shift handoff, written by the person who leaves',
+      facts: briefHandoffFacts(
+        current.handoff,
+        locale,
+        await customerNamesOfTickets(
+          this.database.db,
+          current.handoff.items.flatMap((item) => (item.ticket === null ? [] : [item.ticket.id])),
+        ),
+      ),
+      dataAsOf: this.now(),
+      maxClaims: 6,
+    });
+    if (block === null) return { prefill: null };
+    return {
+      prefill: {
+        ...block,
+        notes: block.claims.map((claim) => `- ${claim.text}`).join('\n'),
+        messageForNext: joinClaims(block.claims.slice(0, 3)).replaceAll('\n', ' '),
+      },
+    };
+  }
 
   /**
    * Creates the draft handoff of the open session, or adds to it the open tickets assigned to the
