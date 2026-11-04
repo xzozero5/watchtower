@@ -244,6 +244,50 @@ export function createKbSearchPort(deps: KbPortDeps): KbSearchPort {
   };
 }
 
+interface LoginRow extends Record<string, unknown> {
+  superuser: boolean;
+  bypass_rls: boolean;
+  member: boolean;
+  writable: string | number;
+}
+
+/**
+ * Is the connection behind `AI_READONLY_DATABASE_URL` really read-only (N2, T-114a C-4)? A URL that
+ * points at the application login by mistake would give the AI tools write access, so the worker
+ * checks at boot: the role must be a member of `watchtower_ai_ro`, must not be a superuser or bypass
+ * row security, and must hold no INSERT, UPDATE or DELETE on any table or view outside the catalogs.
+ * Returns the problems found; an empty list means it is fine. A query that fails is a problem too.
+ */
+export async function readOnlyLoginProblems(db: ReadDb): Promise<string[]> {
+  try {
+    const result = await db.execute<LoginRow>(sql`
+      SELECT
+        r.rolsuper AS superuser,
+        r.rolbypassrls AS bypass_rls,
+        pg_has_role(current_user, 'watchtower_ai_ro', 'member') AS member,
+        (SELECT count(*) FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+          WHERE c.relkind IN ('r', 'p', 'v', 'm', 'f')
+            AND n.nspname NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
+            AND (has_table_privilege(c.oid, 'INSERT') OR has_table_privilege(c.oid, 'UPDATE')
+                 OR has_table_privilege(c.oid, 'DELETE') OR has_table_privilege(c.oid, 'TRUNCATE'))
+        ) AS writable
+      FROM pg_roles r WHERE r.rolname = current_user
+    `);
+    const row = result.rows[0];
+    if (row === undefined) return ['the login role was not found'];
+    const problems: string[] = [];
+    if (row.superuser) problems.push('the login is a superuser');
+    if (row.bypass_rls) problems.push('the login bypasses row security');
+    if (!row.member) problems.push('the login is not a member of watchtower_ai_ro');
+    if (Number(row.writable) > 0) {
+      problems.push(`the login can write to ${String(row.writable)} table(s)`);
+    }
+    return problems;
+  } catch {
+    return ['the read-only check could not run'];
+  }
+}
+
 /**
  * The logs, data and repo tools reach past the application's own tables, so they run only behind the
  * database's read-only login (`AI_READONLY_DATABASE_URL`, N2). With none they are off, unless

@@ -18,7 +18,7 @@ import { delayWhileOffline, makeAiBrief } from './brief.js';
 import { runInvestigation } from './investigation.js';
 import { runKbAuthor } from './kb-author-job.js';
 import { createSystemToolPorts } from './system-tool-ports.js';
-import { systemToolsAllowed, type ReadDb } from './tool-ports.js';
+import { readOnlyLoginProblems, systemToolsAllowed, type ReadDb } from './tool-ports.js';
 
 /**
  * The consumer of the `ai` queue (T-106e, T-108). One queue, four jobs:
@@ -69,14 +69,36 @@ export function createAiPipelineProcessor(context: ProcessorContext): Processor 
     return readOnly.db;
   };
 
-  const investigationDeps = () => ({
+  // The read-only login is checked on first use and again a minute after a failure (N2, T-114a C-4):
+  // a login that can write switches the logs, data and repo tools off and says so in the log.
+  const RECHECK_MS = 60_000;
+  let loginVerified = config.AI_READONLY_DATABASE_URL === undefined;
+  let loginCheckedAt = 0;
+  const readOnlyLoginOk = async (): Promise<boolean> => {
+    if (loginVerified) return true;
+    if (Date.now() - loginCheckedAt < RECHECK_MS && loginCheckedAt !== 0) return false;
+    loginCheckedAt = Date.now();
+    const problems = await readOnlyLoginProblems(readDb());
+    if (problems.length === 0) {
+      loginVerified = true;
+      return true;
+    }
+    logger.error(
+      { problems },
+      'AI_READONLY_DATABASE_URL is not a read-only login: the logs, data and repo tools are off',
+    );
+    return false;
+  };
+  if (allowSystemTools) void readOnlyLoginOk();
+
+  const investigationDeps = async () => ({
     database,
     readDb: readDb(),
     ai,
     ticketKeyPrefix: config.TICKET_KEY_PREFIX,
     systems,
     budgetProject,
-    allowSystemTools,
+    allowSystemTools: allowSystemTools && (await readOnlyLoginOk()),
     realtime,
     logger,
   });
@@ -109,7 +131,7 @@ export function createAiPipelineProcessor(context: ProcessorContext): Processor 
       case AI_JOBS.investigate: {
         const parsed = aiInvestigateJobSchema.safeParse(job.data);
         if (!parsed.success) throw new UnrecoverableError('ai job payload is invalid');
-        const result = await runInvestigation(investigationDeps(), {
+        const result = await runInvestigation(await investigationDeps(), {
           ticketId: parsed.data.ticketId,
           requestedBy: parsed.data.requestedBy,
           mode: 'investigate',
@@ -123,7 +145,7 @@ export function createAiPipelineProcessor(context: ProcessorContext): Processor 
       case AI_JOBS.draft: {
         const parsed = aiDraftJobSchema.safeParse(job.data);
         if (!parsed.success) throw new UnrecoverableError('ai job payload is invalid');
-        const result = await runInvestigation(investigationDeps(), {
+        const result = await runInvestigation(await investigationDeps(), {
           ticketId: parsed.data.ticketId,
           requestedBy: parsed.data.requestedBy,
           mode: 'draft',
