@@ -112,31 +112,67 @@ export function useShortcutSequence(
   });
   useEffect(() => {
     if (!enabled) return;
-    let armedAt: number | null = null;
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (['Shift', 'Control', 'Alt', 'Meta'].includes(event.key)) return;
-      if (armedAt !== null) {
-        const fresh = Date.now() - armedAt <= SEQUENCE_TIMEOUT_MS;
-        armedAt = null;
-        if (fresh) {
-          for (const [key, action] of Object.entries(latest.current)) {
-            if (!isShortcut(event, key)) continue;
-            event.preventDefault();
-            action();
-            return;
+    return joinSequence(prefix, latest);
+  }, [prefix, enabled]);
+}
+
+type SequenceActions = Readonly<Record<string, () => void>>;
+
+/**
+ * Every component that listens for the same prefix (the console shell has `g d`, the workspace
+ * `g q`) shares one listener and one "armed" flag per prefix. With a listener each, whichever ran
+ * first called `preventDefault()` on the `g`, `isShortcut` then refused it for the others, and the
+ * second key found nobody armed. Which one ran first depended on when each had last subscribed
+ * (the workspace after a soft navigation runs after the shell), so `g q` worked or not by timing.
+ */
+interface SequenceGroup {
+  members: Set<{ current: SequenceActions }>;
+  armedAt: number | null;
+  listener: (event: KeyboardEvent) => void;
+}
+const sequenceGroups = new Map<string, SequenceGroup>();
+
+function joinSequence(prefix: string, member: { current: SequenceActions }): () => void {
+  let group = sequenceGroups.get(prefix);
+  if (!group) {
+    const created: SequenceGroup = {
+      members: new Set(),
+      armedAt: null,
+      listener: (event) => {
+        if (['Shift', 'Control', 'Alt', 'Meta'].includes(event.key)) return;
+        if (created.armedAt !== null) {
+          const fresh = Date.now() - created.armedAt <= SEQUENCE_TIMEOUT_MS;
+          created.armedAt = null;
+          if (fresh) {
+            for (const { current } of created.members) {
+              for (const [key, action] of Object.entries(current)) {
+                if (!isShortcut(event, key)) continue;
+                event.preventDefault();
+                action();
+                return;
+              }
+            }
           }
         }
-      }
-      if (isShortcut(event, prefix)) {
-        event.preventDefault();
-        armedAt = Date.now();
-      }
+        if (isShortcut(event, prefix)) {
+          event.preventDefault();
+          created.armedAt = Date.now();
+        }
+      },
     };
-    document.addEventListener('keydown', onKeyDown);
-    return () => {
-      document.removeEventListener('keydown', onKeyDown);
-    };
-  }, [prefix, enabled]);
+    document.addEventListener('keydown', created.listener);
+    sequenceGroups.set(prefix, created);
+    group = created;
+  }
+  const joined = group;
+  joined.members.add(member);
+  return () => {
+    joined.members.delete(member);
+    if (joined.members.size === 0) {
+      document.removeEventListener('keydown', joined.listener);
+      sequenceGroups.delete(prefix);
+    }
+  };
 }
 
 /** What a pane key press asks for: step through the panes, or jump to the n-th (0-based). */

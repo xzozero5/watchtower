@@ -147,12 +147,15 @@ describe('the email composer', () => {
 
   it('fills in To and Subject from the thread and sends HTML with the recipients', async () => {
     const user = userEvent.setup();
-    const sent = makeScheduledReply(60, ticket, 5000);
     const api = workspaceApi({
       tickets: [ticket],
       timelines: { 'OPS-1': [customerMail] },
       overrides: {
-        'POST /v1/tickets/:id/replies': { status: 201, json: { message: sent, ticket } },
+        // Built when answered: the 5 s hold starts then, not when the test is set up.
+        'POST /v1/tickets/:id/replies': () => ({
+          status: 201,
+          json: { message: makeScheduledReply(60, ticket, 5000), ticket },
+        }),
       },
     });
     const editor = await open();

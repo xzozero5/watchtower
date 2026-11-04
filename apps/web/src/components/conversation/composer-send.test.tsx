@@ -113,7 +113,9 @@ describe('Send via and the LINE allowance', () => {
 });
 
 describe('undo send, held by the server', () => {
-  const sentReply = (ticket: typeof lineTicket) => ({
+  // Built when the api answers: the hold is measured from that moment. A reply made at setup would
+  // already be past its 5 s window if typing under load took longer, and no Undo bar would show.
+  const sentReply = (ticket: typeof lineTicket) => () => ({
     status: 201,
     json: { message: makeScheduledReply(60, ticket, 5000), ticket },
   });
