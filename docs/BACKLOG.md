@@ -139,8 +139,8 @@
 - [x] T-301a `ai-engineer` grader agent + prompt + Zod (verified/contained/assumed, violations, score, KB gap, citation) — **ปิด 2026-11-04** (grader + ai_resolution_grade 0094 + job grade + metrics API (รวม T-301b บางส่วน))
 - [ ] T-301b `backend-dev` `ai_grade` append-only + domain writer + worker queue `grade` (resolve + สุ่มที่ stage ≥ 3)
 - [x] T-301c `ai-engineer` provider/model ต่อ agent ผ่าน config (รวม T-106f) grader แยกจาก drafter · admin/ai อ่านอย่างเดียว — **ปิด 2026-11-04** (AI_AGENT_MODEL_* + GET /v1/ai/models + การ์ด Admin›AI)
-- [ ] T-301d `frontend-dev` grade + KB gap ใน AI sidebar, dashboard verified vs assumed
-- [ ] T-302a `backend-dev`+`frontend-dev` mark golden (lead/head) + ตาราง golden redact + drafter ใช้เป็นตัวอย่าง
+- [x] T-301d `frontend-dev` grade + KB gap ใน AI sidebar, dashboard verified vs assumed — **ปิด 2026-11-04** (ลิงก์ KB gap รอหน้า KB ในเว็บ)
+- [x] T-302a `backend-dev`+`frontend-dev` mark golden (lead/head) + ตาราง golden redact + drafter ใช้เป็นตัวอย่าง — **ปิด 2026-11-04** (0098, permission ai.golden.manage)
 - [x] T-302b `qa-engineer` golden สังเคราะห์ใน `evals/golden/` (ai-engineer ห้ามแก้ N7) — **ปิด 2026-11-04** (53 เคส golden, เจ้าของรับ; guard/pre-commit ใหม่)
 - [x] T-302c `ai-engineer` `pnpm eval` replay ต่อ intent (accuracy, edit distance, violations) CI ใช้ mock — **ปิด 2026-11-04** (evals/runner + replay, mock 100%)
 - [ ] T-302d `backend-dev` แก้ prompt/procedure/model → replay อัตโนมัติ, regression บล็อก
