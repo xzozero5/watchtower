@@ -10,6 +10,9 @@ export const KIND_KEY = {
   'shift.no_show': 'shiftNoShow',
   'alert.fired': 'alertFired',
   'alert.escalated': 'alertEscalated',
+  'ops.smtp_auth_failed': 'opsSmtpAuthFailed',
+  'ops.upload_quota_global': 'opsUploadQuotaGlobal',
+  'ops.outbox_dead': 'opsOutboxDead',
 } as const satisfies Record<NotificationKind, string>;
 
 export function kindMessageKey(kind: NotificationKind): MessageKey {

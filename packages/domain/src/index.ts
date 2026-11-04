@@ -67,7 +67,7 @@ import {
 import { scheduleCustomerSend, scheduleTemplateAck } from './outbound/schedule.js';
 import { readOutboundSettings, setUndoSendSeconds } from './outbound/settings.js';
 import { plainPortalUrl } from './outbound/templates.js';
-import { notifyShiftAlerts } from './notifications.js';
+import { notifyOpsAlert, notifyShiftAlerts } from './notifications.js';
 import { enqueueJob } from './outbox.js';
 import type { PolicyGate } from './policy.js';
 import {
@@ -442,10 +442,13 @@ export {
 export { NO_NOTIFIER, type TicketNotifier } from './notifier.js';
 export {
   notifyIn,
+  notifyOpsAlert,
   notifyShiftAlerts,
   notifyTicketAssigned,
   notifyTicketP1,
   type NotifyInput,
+  type OpsNoticeInput,
+  type OpsNoticeResult,
   type ShiftAlertInput,
 } from './notifications.js';
 export { enqueueJob, type OutboxRequest } from './outbox.js';
@@ -839,7 +842,11 @@ export interface Domain {
    * In-app notifications (T-105). Ticket alerts (P1, assigned) are raised inside `tickets.*`; the
    * shift alerts for leads are raised by whoever has the shift overview (T-111).
    */
-  readonly notifications: { readonly shiftAlerts: typeof notifyShiftAlerts };
+  readonly notifications: {
+    readonly shiftAlerts: typeof notifyShiftAlerts;
+    /** A system notice for the heads, once an hour per kind (T-176). */
+    readonly opsAlert: typeof notifyOpsAlert;
+  };
 }
 
 export function createDomain(options: DomainOptions): Domain {
@@ -994,6 +1001,6 @@ export function createDomain(options: DomainOptions): Domain {
       verifyToken: verifyCsatToken,
       decideReopen: decideCsatReopen,
     },
-    notifications: { shiftAlerts: notifyShiftAlerts },
+    notifications: { shiftAlerts: notifyShiftAlerts, opsAlert: notifyOpsAlert },
   };
 }

@@ -1,11 +1,26 @@
-import { createHash } from 'node:crypto';
+import { createHmac } from 'node:crypto';
 
 import { Inject, Injectable } from '@nestjs/common';
+import { KEY_LABELS, deriveSubkey } from '@watchtower/shared/secret-box';
 import type { Redis } from 'ioredis';
 
 import { APP_CONFIG, type ApiConfig } from '../config/config.js';
 import { REDIS } from '../redis/redis.module.js';
 import { RateLimitedError } from './http-errors.js';
+
+/**
+ * The part of a counter's Redis key that stands for the subject: an HMAC with a key derived from
+ * `APP_ENCRYPTION_KEY`, not a bare hash. Anyone who can read Redis could test a guess of an IP
+ * address or email against a plain SHA-256 (there are only 2^32 IPv4 addresses); without the key
+ * they cannot. 128 bits are kept, which is plenty to avoid collisions.
+ */
+export function subjectDigest(key: Buffer, subject: string): string {
+  return createHmac('sha256', key).update(subject).digest('hex').slice(0, 32);
+}
+
+export function rateLimitKey(config: Pick<ApiConfig, 'APP_ENCRYPTION_KEY'>): Buffer {
+  return deriveSubkey(config.APP_ENCRYPTION_KEY, KEY_LABELS.rateLimit);
+}
 
 export interface RateLimitResult {
   readonly allowed: boolean;
@@ -25,19 +40,21 @@ return {count, ttl}
 `;
 
 /**
- * Fixed-window counters in Redis. The subject (an IP address, an email) is hashed before it
- * becomes part of a key, so Redis holds no addresses. If Redis is down the call rejects and the
+ * Fixed-window counters in Redis. The subject (an IP address, an email) is HMAC'd (T-125) before it
+ * becomes part of a key, so Redis holds no addresses and none can be guessed back from it. If Redis is down the call rejects and the
  * auth endpoint fails closed with 500/503 rather than letting attempts through unmetered.
  */
 @Injectable()
 export class RateLimiter {
   private readonly namespace: string;
+  private readonly hmacKey: Buffer;
 
   constructor(
     @Inject(REDIS) private readonly redis: Redis,
-    @Inject(APP_CONFIG) config: Pick<ApiConfig, 'RATE_LIMIT_NAMESPACE'>,
+    @Inject(APP_CONFIG) config: Pick<ApiConfig, 'RATE_LIMIT_NAMESPACE' | 'APP_ENCRYPTION_KEY'>,
   ) {
     this.namespace = config.RATE_LIMIT_NAMESPACE;
+    this.hmacKey = rateLimitKey(config);
   }
 
   async hit(
@@ -46,7 +63,7 @@ export class RateLimiter {
     limit: number,
     windowSeconds: number,
   ): Promise<RateLimitResult> {
-    const digest = createHash('sha256').update(subject).digest('hex').slice(0, 32);
+    const digest = subjectDigest(this.hmacKey, subject);
     const key = `${this.namespace}:rl:${scope}:${digest}`;
     const reply = (await this.redis.eval(HIT_SCRIPT, 1, key, String(windowSeconds))) as [
       number,
@@ -66,7 +83,7 @@ export class RateLimiter {
     subject: string,
     limit: number,
   ): Promise<{ readonly blocked: boolean; readonly retryAfterSeconds: number }> {
-    const digest = createHash('sha256').update(subject).digest('hex').slice(0, 32);
+    const digest = subjectDigest(this.hmacKey, subject);
     const key = `${this.namespace}:rl:${scope}:${digest}`;
     const count = Number((await this.redis.get(key)) ?? 0);
     if (count < limit) return { blocked: false, retryAfterSeconds: 0 };

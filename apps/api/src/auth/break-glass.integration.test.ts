@@ -195,18 +195,59 @@ describe('signing in', () => {
     await clearLockouts();
   });
 
+  it('counts an IPv6 client as its /64: new addresses inside it share one lockout (T-125 C-7)', async () => {
+    await clearLockouts();
+    const client = h.client();
+    const prefix = '2001:db8:7a:1';
+    // Five wrong passwords, each from a different address of the same /64.
+    for (let attempt = 1; attempt <= LOCKOUT_THRESHOLD; attempt += 1) {
+      const hex = attempt.toString(16);
+      const response = await client.post(
+        '/v1/auth/break-glass',
+        { email: EMAIL, password: `wrong-password-${String(attempt)}` },
+        { headers: { 'x-forwarded-for': `${prefix}::${hex}:${hex}` } },
+      );
+      expect(response.status).toBe(401);
+    }
+    const row = await attemptsFor('2001:0db8:007a:0001::/64');
+    expect(row?.failed_count).toBe(LOCKOUT_THRESHOLD);
+    expect(row?.seconds_left).toBeGreaterThan(0);
+    // A sixth address of the /64 is locked out even with the right password; another /64 is not.
+    const sixth = await client.post(
+      '/v1/auth/break-glass',
+      { email: EMAIL, password: PASSWORD },
+      { headers: { 'x-forwarded-for': `${prefix}:ffff:ffff:ffff:ffff` } },
+    );
+    expect(sixth.status).toBe(401);
+    const elsewhere = await client.post(
+      '/v1/auth/break-glass',
+      { email: EMAIL, password: PASSWORD },
+      { headers: { 'x-forwarded-for': '2001:db8:7a:2::1' } },
+    );
+    expect(elsewhere.status).toBe(200);
+    await clearLockouts();
+  });
+
   it('spends the cost of a password check even when the account does not exist', async () => {
+    // Timing under load (T-125): both sides are the fastest of several tries, so a CPU spike during
+    // one measurement cannot make the unknown account look cheaper than a real check. The point is
+    // that the ghost request is not a quick early return (a missing hash is microseconds, a check
+    // is tens of milliseconds), so half of the cheapest real check is a wide margin.
     const passwords = new PasswordService();
     const hash = await passwords.hash('timing-reference-password');
-    const started = performance.now();
-    await passwords.verify(hash, 'timing-reference-password');
-    const oneCheck = performance.now() - started;
-
-    const client = h.client();
-    const unknownStart = performance.now();
-    await client.post('/v1/auth/break-glass', { email: uniqueEmail('ghost'), password: PASSWORD });
-    const unknown = performance.now() - unknownStart;
-    expect(unknown).toBeGreaterThan(oneCheck * 0.5);
+    const checks: number[] = [];
+    const ghosts: number[] = [];
+    for (let round = 0; round < 3; round += 1) {
+      const started = performance.now();
+      await passwords.verify(hash, 'timing-reference-password');
+      checks.push(performance.now() - started);
+      const ghostStart = performance.now();
+      await h
+        .client()
+        .post('/v1/auth/break-glass', { email: uniqueEmail('ghost'), password: PASSWORD });
+      ghosts.push(performance.now() - ghostStart);
+    }
+    expect(Math.min(...ghosts)).toBeGreaterThan(Math.min(...checks) * 0.5);
   });
 
   it('refuses a disabled account', async () => {

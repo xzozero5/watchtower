@@ -1,6 +1,12 @@
 import { randomBytes } from 'node:crypto';
 
-import { createDatabase, enqueueOutbox, type Database, type OutboxPublisher } from '@watchtower/db';
+import {
+  PermanentOutboxError,
+  createDatabase,
+  enqueueOutbox,
+  type Database,
+  type OutboxPublisher,
+} from '@watchtower/db';
 import { createTestDatabase, type TestDatabase } from '@watchtower/db/testing';
 import {
   EMAIL_JOBS,
@@ -47,6 +53,7 @@ beforeAll(async () => {
   // The "network": a publisher that fails exactly like ioredis does while Redis is unreachable.
   const publish: OutboxPublisher = async (row) => {
     if (!redisUp) throw new Error('connect ECONNREFUSED 127.0.0.1:6379');
+    if (row.jobId.startsWith('poison-')) throw new PermanentOutboxError('refused for good');
     await emailQueue.add(row.jobName, withNotAfter(row.payload, row.expiresAt), {
       ...EMAIL_OUTBOX_JOB_OPTIONS,
       jobId: row.jobId,
@@ -262,6 +269,39 @@ describe('outbox relay in the worker', () => {
     await new Promise((resolve) => setTimeout(resolve, 500));
     expect(handedOver).not.toContain(jobId);
     expect(await mailFor(recipient)).toBeUndefined();
+  });
+
+  it('tells the head in the app when rows are given up on, once an hour (T-176)', async () => {
+    redisUp = true;
+    const owner = testDb.owner.pool;
+    const { rows: made } = await owner.query<{ id: string }>(
+      `INSERT INTO users (email, name, role) VALUES ($1, 'Head', 'head') RETURNING id`,
+      [`head-${randomBytes(4).toString('hex')}@example.com`],
+    );
+    const headId = made[0]?.id ?? '';
+    const poisoned = async (): Promise<void> => {
+      const jobId = `poison-${randomBytes(4).toString('hex')}`;
+      await apiWritesEmail(`poison-${randomBytes(3).toString('hex')}@example.com`, jobId);
+      await waitFor(
+        async () => ((await rowStatus(jobId))?.status === 'dead' ? true : undefined),
+        'a dead row',
+      );
+    };
+    const notices = async (): Promise<{ kind: string; data: unknown }[]> =>
+      (
+        await owner.query<{ kind: string; data: unknown }>(
+          'SELECT kind, data FROM notification WHERE user_id = $1',
+          [headId],
+        )
+      ).rows;
+    await poisoned();
+    await waitFor(async () => ((await notices()).length > 0 ? true : undefined), 'the head notice');
+    await poisoned();
+    await new Promise((resolve) => setTimeout(resolve, 600));
+    const after = await notices();
+    expect(after).toHaveLength(1);
+    expect(after[0]?.kind).toBe('ops.outbox_dead');
+    expect(JSON.stringify(after[0]?.data)).not.toContain('refused');
   });
 
   it('sends one email when the same job id is written twice', async () => {

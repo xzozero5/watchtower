@@ -10,6 +10,7 @@ import { KEY_LABELS, deriveSubkey } from '@watchtower/shared/secret-box';
 import { UnrecoverableError, type Job } from 'bullmq';
 import { and, asc, eq, notInArray, sql } from 'drizzle-orm';
 
+import { tellHeads } from '../ops-notice.js';
 import type { ProcessorContext } from '../processors/index.js';
 import { renderConfirmation, renderNotice } from './email.js';
 import { classifySmtpError } from './smtp-error.js';
@@ -32,7 +33,7 @@ const localeOf = (value: string): StatusLocale => (value === 'th' ? 'th' : 'en')
  * All email goes through the worker's `Mailer` (Mailpit locally); the unsubscribe link is in every notice.
  */
 export function createStatusPageRegistration(context: ProcessorContext) {
-  const { database, mailer, config, logger } = context;
+  const { database, mailer, config, logger, domain, realtime } = context;
   const db = database.db;
   const pageUrl = new URL('/status', config.APP_URL).toString();
   const linkUrl = (path: string, token: string): string => {
@@ -46,11 +47,11 @@ export function createStatusPageRegistration(context: ProcessorContext) {
 
   /**
    * The mail server refused OUR login (535 and kin). Retrying cannot help and it is not the reader's fault:
-   * the job ends here (no retry loop, no reader marked rejected) and the alert below is what the head
-   * of the team acts on until in-app delivery of system alerts exists. Ids and codes only, never the
+   * the job ends here (no retry loop, no reader marked rejected). The heads are told in the app (T-176,
+   * once an hour) and the log line stays for whoever watches logs. Ids and codes only, never the
    * credentials or the server's text.
    */
-  function failOnSmtpAuth(error: unknown, jobKind: 'confirm' | 'notify'): never {
+  async function failOnSmtpAuth(error: unknown, jobKind: 'confirm' | 'notify'): Promise<never> {
     const { responseCode, code } = error as { responseCode?: unknown; code?: unknown };
     logger.error(
       {
@@ -62,6 +63,10 @@ export function createStatusPageRegistration(context: ProcessorContext) {
       },
       'status page email: the SMTP server refused our login; fix SMTP_USER / SMTP_PASSWORD, then publish again',
     );
+    await tellHeads({ database, domain, realtime, logger }, 'ops.smtp_auth_failed', {
+      ...(typeof responseCode === 'number' ? { responseCode } : {}),
+      ...(typeof code === 'string' ? { code } : {}),
+    });
     throw new UnrecoverableError('smtp_auth_failed');
   }
 
@@ -96,7 +101,7 @@ export function createStatusPageRegistration(context: ProcessorContext) {
       );
     } catch (error) {
       const failure = classifySmtpError(error);
-      if (failure === 'auth') failOnSmtpAuth(error, 'confirm');
+      if (failure === 'auth') await failOnSmtpAuth(error, 'confirm');
       // The mailbox refuses for good: nothing to retry. A 4xx (451) is thrown: the job retries with backoff.
       if (failure === 'permanent') return { sent: false, reason: 'rejected' };
       throw error;
@@ -246,7 +251,7 @@ export function createStatusPageRegistration(context: ProcessorContext) {
           if (failure === 'auth') {
             // Our login, not this reader: free the claim so nobody is skipped later, and stop at once.
             await releaseClaim(subscriber.id);
-            failOnSmtpAuth(error, 'notify');
+            await failOnSmtpAuth(error, 'notify');
           }
           // One reader's failure never stops the others.
           if (failure === 'permanent') {

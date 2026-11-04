@@ -47,6 +47,9 @@ export const PREFERENCES: NotificationPreferences = {
     { kind: 'shift.no_show', inApp: true, mandatory: false },
     { kind: 'alert.fired', inApp: true, mandatory: false },
     { kind: 'alert.escalated', inApp: true, mandatory: false },
+    { kind: 'ops.smtp_auth_failed', inApp: true, mandatory: false },
+    { kind: 'ops.upload_quota_global', inApp: true, mandatory: false },
+    { kind: 'ops.outbox_dead', inApp: true, mandatory: false },
   ],
 };
 

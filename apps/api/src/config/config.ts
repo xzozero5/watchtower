@@ -22,7 +22,7 @@ const apiEnvSchema = createEnvSchema({
   API_PORT: portSchema.default(4000),
   /** Cloud Run injects PORT; it wins over API_PORT when present. */
   PORT: z.preprocess(emptyToUndefined, portSchema.optional()),
-  /** Serve OpenAPI at /docs. Defaults to on outside production. */
+  /** Serve OpenAPI at /docs. Defaults to on outside production; ignored (always off) in production. */
   DOCS_ENABLED: z.preprocess(emptyToUndefined, z.stringbool().optional()),
   OTEL_SERVICE_NAME: z.string().min(1).default('watchtower-api'),
   /**
@@ -160,7 +160,7 @@ const apiEnvSchema = createEnvSchema({
 export type ApiConfig = z.output<typeof apiEnvSchema> & {
   /** Resolved listen port: PORT, else API_PORT. */
   readonly listenPort: number;
-  /** Resolved docs switch: DOCS_ENABLED, else on unless production. */
+  /** Resolved docs switch: DOCS_ENABLED (default on), but always off when NODE_ENV is production. */
   readonly docsEnabled: boolean;
   /** `live` only when both Google credentials are set; otherwise `mock` (nothing leaves the machine). */
   readonly googleMode: IntegrationMode;
@@ -192,7 +192,8 @@ export function loadConfig(
   return {
     ...parsed,
     listenPort: parsed.PORT ?? parsed.API_PORT,
-    docsEnabled: parsed.DOCS_ENABLED ?? !production,
+    // Never in production (T-125 QA-33): the OpenAPI document lists every route and field to anyone.
+    docsEnabled: !production && (parsed.DOCS_ENABLED ?? true),
     googleMode,
     staffDomain: (parsed.GOOGLE_ALLOWED_DOMAIN ?? 'example.com').toLowerCase(),
     devLoginEnabled: parsed.DEV_LOGIN_ENABLED && googleMode === 'mock' && !production,

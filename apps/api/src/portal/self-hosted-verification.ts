@@ -20,6 +20,8 @@ const REPLAY_SLACK_SECONDS = 60;
 export interface ReplayStore {
   /** True when `id` had not been used and now is; false when it was already used. */
   claim(id: string, ttlSeconds: number): Promise<boolean>;
+  /** True when `id` was already used. Read-only: nothing is written (T-125 C-17). */
+  isUsed(id: string): Promise<boolean>;
 }
 
 export class RedisReplayStore implements ReplayStore {
@@ -30,6 +32,10 @@ export class RedisReplayStore implements ReplayStore {
     // is down this rejects and the endpoint fails closed.
     const reply = await this.redis.set(`wt:portal:pow:${id}`, '1', 'EX', ttlSeconds, 'NX');
     return reply === 'OK';
+  }
+
+  async isUsed(id: string): Promise<boolean> {
+    return (await this.redis.exists(`wt:portal:pow:${id}`)) === 1;
   }
 }
 
@@ -42,7 +48,8 @@ export interface SelfHostedSettings {
 
 /**
  * Proof-of-work + honeypot + minimum fill time (ADR-007). `check` runs from cheapest to most
- * expensive and touches no storage, so garbage costs the server one HMAC and never a Redis write;
+ * expensive; garbage costs the server one HMAC and never reaches Redis, a proof that is valid gets one
+ * read-only look for replay, and nothing is ever written by it;
  * `claim` makes the challenge single use and is called only after the caller's rate limits.
  */
 export class SelfHostedHumanVerification implements HumanVerificationProvider {
@@ -70,8 +77,18 @@ export class SelfHostedHumanVerification implements HumanVerificationProvider {
     });
   }
 
-  check(submission: VerificationSubmission): Promise<CheckedSubmission> {
-    return Promise.resolve(this.checkSync(submission));
+  /**
+   * The stateless checks first (they cost the server one HMAC and no storage), then ONE read-only
+   * look at whether the challenge was already used (T-125 C-17): a replayed proof is turned away
+   * before the per-email and per-organization limits, so it can no longer eat a bucket that belongs
+   * to someone else. Garbage never reaches the read. If Redis is down this rejects (fail closed).
+   */
+  async check(submission: VerificationSubmission): Promise<CheckedSubmission> {
+    const checked = this.checkSync(submission);
+    if (checked.ok && (await this.replay.isUsed(checked.challengeId))) {
+      return { ok: false, reason: 'replayed' };
+    }
+    return checked;
   }
 
   private checkSync(submission: VerificationSubmission): CheckedSubmission {

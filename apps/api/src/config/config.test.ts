@@ -58,9 +58,13 @@ describe('loadConfig', () => {
     expect(loadConfig(testEnv({ API_PORT: '4001', PORT: '' })).listenPort).toBe(4001);
   });
 
-  it('turns docs off in production unless DOCS_ENABLED says otherwise', () => {
+  it('turns docs off in production, even when DOCS_ENABLED says true (T-125 QA-33)', () => {
     expect(loadConfig(testEnv(productionEnv)).docsEnabled).toBe(false);
-    expect(loadConfig(testEnv({ ...productionEnv, DOCS_ENABLED: 'true' })).docsEnabled).toBe(true);
+    expect(loadConfig(testEnv({ ...productionEnv, DOCS_ENABLED: 'true' })).docsEnabled).toBe(
+      false,
+    );
+    expect(loadConfig(testEnv({ DOCS_ENABLED: 'true' })).docsEnabled).toBe(true);
+    expect(loadConfig(testEnv({})).docsEnabled).toBe(true);
     expect(loadConfig(testEnv({ DOCS_ENABLED: 'false' })).docsEnabled).toBe(false);
   });
 

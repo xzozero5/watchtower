@@ -30,6 +30,9 @@ export const notificationsTh: Widen<typeof notificationsEn> = {
     shiftNoShow: 'มีคนยังไม่ลงเวลาเข้ากะ',
     alertFired: 'มี alert ที่ต้องการคุณ',
     alertEscalated: 'alert ยังไม่มีคนรับทราบและส่งต่อมาถึงคุณ',
+    opsSmtpAuthFailed: 'เมลเซิร์ฟเวอร์ปฏิเสธการล็อกอิน: ตรวจ SMTP_USER และ SMTP_PASSWORD',
+    opsUploadQuotaGlobal: 'โควตาอัปโหลดรายวันของ portal เต็ม: ลูกค้าแนบไฟล์ไม่ได้',
+    opsOutboxDead: 'งานในคิว {count} รายการถูกยกเลิกหลังลองซ้ำจนครบ ต้องตรวจสอบ',
   },
   kindName: {
     ticketP1: 'ตั๋ว P1',
@@ -38,6 +41,9 @@ export const notificationsTh: Widen<typeof notificationsEn> = {
     shiftNoShow: 'คนไม่มาเข้ากะ (หัวหน้ากะ)',
     alertFired: 'alert ที่ต้องการฉัน (ขณะอยู่ในกะ)',
     alertEscalated: 'alert ที่ไม่มีคนรับทราบทันเวลา',
+    opsSmtpAuthFailed: 'ระบบ: ล็อกอินเมลถูกปฏิเสธ (head)',
+    opsUploadQuotaGlobal: 'ระบบ: โควตาอัปโหลดเต็ม (head)',
+    opsOutboxDead: 'ระบบ: งานในคิวถูกยกเลิก (head)',
   },
   banner: {
     label: 'แจ้งเตือนวิกฤต',

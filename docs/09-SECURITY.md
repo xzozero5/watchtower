@@ -46,13 +46,16 @@
 
 ## 7. Transport, headers, deployment
 - [x] API: nosniff, `frame-ancestors 'none'`, `no-store` on auth, HSTS in production — T-010 C-5 `[TESTED]`
-- [ ] Web: CSP with `connect-src` limited to self + API URL, `frame-ancestors 'none'`, `object-src 'none'` — headers exist, but `script-src 'unsafe-inline'` and a build-time `connect-src` fallback remain → T-125
+- [x] Web: CSP with a per-response nonce (`script-src 'self' 'nonce-…' 'strict-dynamic'`, no `'unsafe-inline'` for scripts) and `connect-src` = self + `API_URL` read at run time, sent by `apps/web/src/proxy.ts` (T-125 C-5); `frame-ancestors 'none'`, `object-src 'none'`. `style-src` keeps `'unsafe-inline'` (React inline style attributes cannot carry a nonce) `[TESTED]` unit + a production build served and checked: every `<script>` in `/login` carried the nonce
 - [x] Compose ports bound to 127.0.0.1, `read_only`, `cap_drop: ALL`, `no-new-privileges` `[REVIEWED]`
 - [ ] Trusted proxy hops correct behind Caddy; :4000 not published in the proxied profile — T-010 C-8 · override `docker-compose.proxy.yml` มีแล้ว ยังไม่รันกับ Caddy จริง `[VERIFY]` → T-125
 - [x] Third-party images pinned by digest (MinIO fork, ADR-003) — T-010 C-14 `[TESTED]`
 - [x] Service worker caches only same-origin static assets, never HTML or API `[REVIEWED]`
 
 ## 8. Integrations and AI (Phase 1 — T-114)
+- [x] Sign-in limits and upload quotas: the subject part of a Redis counter key is an HMAC (key derived from `APP_ENCRYPTION_KEY`), not a bare SHA-256; break-glass counts an IPv6 client as its /64 (T-125 C-7) `[TESTED]`
+- [x] `/docs` (OpenAPI) is never served when `NODE_ENV=production`, whatever `DOCS_ENABLED` says (T-125 QA-33) `[TESTED]`
+- [x] A replayed portal proof-of-work is turned away by a read-only check before the email/organization limits can be spent (T-125 C-17) `[TESTED]`
 - [ ] Webhook signatures verified on raw body (LINE HMAC, Discord Ed25519, Pub/Sub OIDC) `[OPEN]`
 - [ ] Mock mode makes no network calls (`disableNetConnect` in tests) `[OPEN]`
 - [ ] Investigation tools read-only with allow-listed tables/views; never `outbox`, sessions, tokens (N2) `[OPEN]`

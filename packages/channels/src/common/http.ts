@@ -60,16 +60,27 @@ export interface HttpRequest {
   readonly retryOn429?: (response: Response) => Promise<boolean>;
 }
 
-/** `Retry-After` is either delta-seconds or an HTTP date. Returns milliseconds, or undefined. */
+/**
+ * The longest `Retry-After` this package believes (T-125): a hostile or broken server saying
+ * "come back in 10 years" must not park a ledger row or a queue job that long. One hour `[ASSUMED]`.
+ */
+export const MAX_RETRY_AFTER_MS = 3_600_000;
+
+/**
+ * `Retry-After` is either delta-seconds or an HTTP date. Returns milliseconds (at most
+ * `MAX_RETRY_AFTER_MS`), or undefined.
+ */
 export function parseRetryAfter(value: string | null, nowMs: number): number | undefined {
   if (value === null) return undefined;
   const trimmed = value.trim();
-  if (/^\d+$/.test(trimmed)) return Number(trimmed) * 1000;
+  if (/^\d+$/.test(trimmed)) return Math.min(MAX_RETRY_AFTER_MS, Number(trimmed) * 1000);
   // Discord answers with fractional seconds ("1.5"); without this the text would parse as a date.
-  if (/^\d+\.\d+$/.test(trimmed)) return Math.ceil(Number(trimmed) * 1000);
+  if (/^\d+\.\d+$/.test(trimmed)) {
+    return Math.min(MAX_RETRY_AFTER_MS, Math.ceil(Number(trimmed) * 1000));
+  }
   const date = Date.parse(trimmed);
   if (Number.isNaN(date)) return undefined;
-  return Math.max(0, date - nowMs);
+  return Math.min(MAX_RETRY_AFTER_MS, Math.max(0, date - nowMs));
 }
 
 /** Full-jitter exponential backoff: random in [0, min(maxDelay, base * 2^(attempt-1))]. */

@@ -1,17 +1,20 @@
 import { randomUUID } from 'node:crypto';
 
-import { schema } from '@watchtower/db';
+import { schema, type Database } from '@watchtower/db';
 import {
+  OPS_NOTIFICATION_EVERY_SECONDS,
   STAFF_ROLES,
   isMandatoryNotification,
   type NotificationKind,
   type NotificationSeverity,
+  type OpsNotificationKind,
+  type RealtimeEvent,
 } from '@watchtower/shared';
-import { and, eq, inArray } from 'drizzle-orm';
+import { and, eq, gt, inArray, sql } from 'drizzle-orm';
 
 import type { TicketRow } from './rows.js';
 import { ticketKeysOf } from './tickets/support.js';
-import type { DbTransaction, DomainContext, Effects } from './types.js';
+import { Effects, type DbTransaction, type DomainContext } from './types.js';
 
 /** Roles that hear lead alerts: a P1 is never left to the people in one queue alone. */
 const LEAD_ROLES = ['lead', 'head'] as const;
@@ -237,4 +240,58 @@ export async function notifyShiftAlerts(
     });
   }
   return made;
+}
+
+export interface OpsNoticeInput {
+  readonly kind: OpsNotificationKind;
+  /** Counts and codes only, never a credential, an address or a server's text. */
+  readonly data?: Readonly<Record<string, string | number>> | undefined;
+}
+
+export interface OpsNoticeResult {
+  /** Notifications made (one per active head); 0 when one of this kind was made within the hour. */
+  readonly created: number;
+  readonly events: RealtimeEvent[];
+}
+
+/**
+ * Tells every active head that the system itself needs them (T-176): the mail server refused our
+ * login, the instance-wide upload cap is full, outbox rows were given up on. Until now these only
+ * went to a log line nobody was watching.
+ *
+ * Anti-spam: at most one notice per kind per hour, however often the fault repeats (a failing job
+ * retried every minute makes one). The check and the insert run under one advisory lock per kind, so
+ * two workers at once make one. Heads who turned the kind off hear nothing (not mandatory).
+ * The caller publishes `events` after the commit; a failure to do so is not worth failing the job for.
+ */
+export async function notifyOpsAlert(
+  db: Database['db'],
+  ctx: DomainContext,
+  input: OpsNoticeInput,
+): Promise<OpsNoticeResult> {
+  const fx = new Effects();
+  const created = await db.transaction(async (tx) => {
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`ops-notice:${input.kind}`}))`);
+    const since = new Date(ctx.now().getTime() - OPS_NOTIFICATION_EVERY_SECONDS * 1000);
+    const [recent] = await tx
+      .select({ id: schema.notification.id })
+      .from(schema.notification)
+      .where(
+        and(eq(schema.notification.kind, input.kind), gt(schema.notification.createdAt, since)),
+      )
+      .limit(1);
+    if (recent !== undefined) return 0;
+    const heads = await tx
+      .select({ id: schema.users.id })
+      .from(schema.users)
+      .where(and(eq(schema.users.role, 'head'), eq(schema.users.status, 'active')));
+    return notifyIn(tx, ctx, fx, {
+      kind: input.kind,
+      severity: 'high',
+      recipients: heads.map((row) => row.id),
+      dedupeKey: `${input.kind}:${Math.floor(ctx.now().getTime() / 1000).toString()}`,
+      data: input.data,
+    });
+  });
+  return { created, events: fx.events };
 }
