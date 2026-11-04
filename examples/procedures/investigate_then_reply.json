@@ -1,0 +1,26 @@
+{
+  "key": "investigate_then_reply",
+  "name": "Investigate, then reply with care",
+  "description": "Look at the knowledge base, similar tickets and the organization first. Reply only with what the evidence supports.",
+  "sourceMd": "1. Search the knowledge base for the problem.\n2. Look at similar tickets that were resolved, and at the organization.\n3. Check that the evidence shows a likely cause. If it does not, say so in the report.\n4. Write the reply plainly and name what we know and what we do not know yet.\n5. Never promise a time to fix.",
+  "steps": {
+    "schemaVersion": 1,
+    "autosend": "never",
+    "steps": [
+      { "kind": "tool", "id": "search_kb", "tool": "kb_search", "params": { "limit": 5 } },
+      { "kind": "tool", "id": "find_similar", "tool": "similar_tickets", "params": { "limit": 5 } },
+      { "kind": "tool", "id": "look_up_org", "tool": "org_context" },
+      {
+        "kind": "check",
+        "id": "cause_supported",
+        "question": "Does the evidence from the knowledge base and the similar tickets point to a likely cause?",
+        "evidenceFrom": ["search_kb", "find_similar"]
+      },
+      {
+        "kind": "reply_guideline",
+        "id": "plain_reply",
+        "text": "Say what we know and what we do not know yet. Do not promise a time to fix."
+      }
+    ]
+  }
+}

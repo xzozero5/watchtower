@@ -33,6 +33,7 @@ import { referenceKeys, useIntents } from '@/lib/tickets/queries';
 
 import { isFullIntent } from './intents-page';
 import { IntentAutonomyControl } from './intent-autonomy-control';
+import { ProcedureTab } from './procedure/procedure-tab';
 
 export function IntentDetailPage({ intentId }: { intentId: string }) {
   return (
@@ -81,6 +82,9 @@ function IntentDetailBody({ intentId }: { intentId: string }) {
             <TabsList className="border-b border-border px-4 pt-1.5 pb-2">
               <TabsTrigger value="details">{t('admin.intents.tabs.details')}</TabsTrigger>
               <TabsTrigger value="autonomy">{t('admin.intents.tabs.autonomy')}</TabsTrigger>
+              {can('procedure.read') ? (
+                <TabsTrigger value="procedure">{t('procedure.tab')}</TabsTrigger>
+              ) : null}
               <TabsTrigger value="history">{t('admin.intents.tabs.history')}</TabsTrigger>
             </TabsList>
             <TabsContent value="details" className="p-4">
@@ -104,6 +108,11 @@ function IntentDetailBody({ intentId }: { intentId: string }) {
                 />
               )}
             </TabsContent>
+            {can('procedure.read') ? (
+              <TabsContent value="procedure" className="p-4">
+                <ProcedureTab intentId={intentId} />
+              </TabsContent>
+            ) : null}
             <TabsContent value="history" className="p-4">
               {!canHistory || history.isError ? (
                 <p className="text-sm text-muted-foreground">

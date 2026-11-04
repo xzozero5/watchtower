@@ -17,6 +17,7 @@ import { csatTh } from './csat';
 import { customerTh } from './customer';
 import { dashboardTh } from './dashboard';
 import { reportsTh } from './reports';
+import { procedureTh } from './procedure';
 import { detailsTh } from './details';
 import { devHomeTh } from './devHome';
 import { errorsTh } from './errors';
@@ -102,6 +103,7 @@ export const th: Messages = {
   ops: opsTh,
   dashboard: dashboardTh,
   reports: reportsTh,
+  procedure: procedureTh,
   outboxAdmin: outboxAdminTh,
   investigate: investigateTh,
 };
