@@ -22,6 +22,7 @@ export const REDACTION_KINDS = [
   'NAME',
   'LITERAL',
   'LINK',
+  'PASSPORT',
 ] as const;
 export type RedactionKind = (typeof REDACTION_KINDS)[number];
 
@@ -41,6 +42,7 @@ const PRIORITY = {
   LITERAL: 200,
   LINK: 150,
   THAI_ID: 100,
+  PASSPORT: 95,
   CARD: 90,
   EMAIL: 80,
   BANK_CONTEXT: 70,
@@ -604,6 +606,137 @@ export function detectNumbers(text: string): Span[] {
     detectSingleDigits(text, cluster, spans);
   }
   detectBankAfterKeyword(text, clusters, spans);
+  return spans;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Passport numbers (C-9: the owner decided passports are redacted; staff names, IPs, addresses
+// and LINE userIds are not)
+// ---------------------------------------------------------------------------------------------
+// Cues are matched on the case-folded view. A bare letters+digits string is never redacted without
+// a cue (ticket keys and order ids look the same); the MRZ line needs no cue because its check
+// digits make a false positive negligible.
+const PASSPORT_CUES = [
+  'passport',
+  'หนังสือเดินทาง',
+  'พาสปอร์ต',
+  'พาสปอต',
+  'พาสพอร์ต',
+  'พาสปอร์ท',
+] as const;
+const PASSPORT_FILLERS = [
+  'number',
+  'num',
+  'no',
+  'id',
+  'is',
+  'เลขที่',
+  'หมายเลข',
+  'เลข',
+  'คือ',
+] as const;
+const PASSPORT_MAX_SKIP = 32;
+const isAsciiLetter = (c: string): boolean => c >= 'a' && c <= 'z';
+const isAsciiDigit = (c: string): boolean => c >= '0' && c <= '9';
+const PASSPORT_SEPARATOR = /^[\s:.#=,;'"()[\]/\\-]$/;
+
+/** 1-2 letters, optional single space, 6-9 digits, then a non-alphanumeric boundary. */
+function matchPassportNumber(folded: string, from: number): number {
+  let i = from;
+  let letters = 0;
+  while (letters < 2 && i < folded.length && isAsciiLetter(folded[i] ?? '')) {
+    i += 1;
+    letters += 1;
+  }
+  if (letters === 0 || isAsciiLetter(folded[i] ?? '')) return -1;
+  if (folded[i] === ' ' && isAsciiDigit(folded[i + 1] ?? '')) i += 1;
+  const digitsStart = i;
+  while (i < folded.length && isAsciiDigit(folded[i] ?? '')) i += 1;
+  const digits = i - digitsStart;
+  if (digits < 6 || digits > 9) return -1;
+  const next = folded[i] ?? '';
+  if (isAsciiLetter(next) || isAsciiDigit(next)) return -1;
+  return i;
+}
+
+function detectCuedPassports(folded: string, spans: Span[]): void {
+  for (const cue of PASSPORT_CUES) {
+    let at = folded.indexOf(cue);
+    while (at !== -1) {
+      let i = at + cue.length;
+      const limit = Math.min(folded.length, i + PASSPORT_MAX_SKIP);
+      while (i < limit) {
+        if (PASSPORT_SEPARATOR.test(folded[i] ?? '')) {
+          i += 1;
+          continue;
+        }
+        const filler = PASSPORT_FILLERS.find((word) => folded.startsWith(word, i));
+        // A filler word only counts when it is not the start of the number itself.
+        if (filler !== undefined && matchPassportNumber(folded, i) === -1) {
+          i += filler.length;
+          continue;
+        }
+        break;
+      }
+      const end = matchPassportNumber(folded, i);
+      if (end !== -1) spans.push(span(i, end, 'PASSPORT', PRIORITY.PASSPORT));
+      at = folded.indexOf(cue, at + cue.length);
+    }
+  }
+}
+
+const MRZ_LENGTH = 44;
+const MRZ_WEIGHTS = [7, 3, 1] as const;
+function mrzValue(c: string): number {
+  if (c >= '0' && c <= '9') return c.charCodeAt(0) - 48;
+  if (c >= 'A' && c <= 'Z') return c.charCodeAt(0) - 55;
+  return 0; // '<'
+}
+function mrzCheck(field: string, expected: string): boolean {
+  if (!isAsciiDigit(expected)) return false;
+  let sum = 0;
+  for (let i = 0; i < field.length; i += 1) {
+    sum += mrzValue(field[i] ?? '<') * (MRZ_WEIGHTS[i % 3] ?? 0);
+  }
+  return sum % 10 === Number(expected);
+}
+const isMrzChar = (c: string): boolean => c === '<' || (c >= 'A' && c <= 'Z') || isAsciiDigit(c);
+
+/** TD3 line 2 (44 chars): document number, DOB, expiry and composite check digits must all hold. */
+function detectMrz(text: string, spans: Span[]): void {
+  let i = 0;
+  while (i < text.length) {
+    if (!isMrzChar(text[i] ?? '')) {
+      i += 1;
+      continue;
+    }
+    let runEnd = i;
+    while (runEnd < text.length && isMrzChar(text[runEnd] ?? '')) runEnd += 1;
+    for (let s = i; s + MRZ_LENGTH <= runEnd; s += 1) {
+      const d = (k: number): string => text[s + k] ?? '';
+      if (!isAsciiDigit(d(9)) || !isAsciiDigit(d(19)) || !isAsciiDigit(d(27))) continue;
+      if (!'MF<X'.includes(d(20))) continue;
+      const composite =
+        text.slice(s, s + 10) + text.slice(s + 13, s + 20) + text.slice(s + 21, s + 43);
+      if (
+        mrzCheck(text.slice(s, s + 9), d(9)) &&
+        mrzCheck(text.slice(s + 13, s + 19), d(19)) &&
+        mrzCheck(text.slice(s + 21, s + 27), d(27)) &&
+        mrzCheck(composite, d(43))
+      ) {
+        spans.push(span(s, s + MRZ_LENGTH, 'PASSPORT', PRIORITY.PASSPORT));
+        s += MRZ_LENGTH - 1;
+      }
+    }
+    i = runEnd;
+  }
+}
+
+/** Passport numbers: after a cue word, or as a TD3 MRZ line 2 with valid check digits. */
+export function detectPassports(view: NormalizedView): Span[] {
+  const spans: Span[] = [];
+  detectCuedPassports(view.folded, spans);
+  detectMrz(view.text, spans);
   return spans;
 }
 

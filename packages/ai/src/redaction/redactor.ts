@@ -3,6 +3,7 @@ import {
   detectNameCues,
   detectEmails,
   detectNumbers,
+  detectPassports,
   detectSurveyLinks,
   detectTokenShapes,
   resolveOverlaps,
@@ -208,6 +209,7 @@ export function createRedactor(options: RedactorOptions = {}): Redactor {
           ...detectSurveyLinks(view.text),
           ...detectNumbers(view.text),
           ...detectEmails(view.text),
+          ...detectPassports(view),
           ...detectNames(view),
           ...detectNameCues(view),
         ];
