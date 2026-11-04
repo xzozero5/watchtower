@@ -73,10 +73,10 @@
 - [x] T-139 `backend-dev` + `frontend-dev` สถานะการส่งของอีเมลยืนยันบน timeline + ไอคอนอีเมล (QA-05) — **ปิด 2026-11-04**
 - [x] T-140 แนบไฟล์ใน portal (submit + reply, ≤5 ไฟล์/10 MB/25 MB รวม, png/jpg/gif/webp/pdf/txt/csv/log ตรวจ magic bytes) + ดาวน์โหลดสำหรับ staff/client · security review 2 รอบ (P1 memory DoS ปิดด้วย upload slot + token ก่อนอ่าน body) · ADR-007 — merge 2026-11-03
 - [x] T-141 `frontend-dev` + `backend-dev` หน้าเช้าของ lead: ใครอยู่กะ/ไม่มา, งานไม่มีคนรับในคิวทีม, นิยามตัวเลขให้ตรงกันทุกหน้า (QA-13) — **ปิด 2026-11-04** (การ์ด Team now + Waiting for an owner บน Home)
-- [ ] T-142 `backend-dev` + `frontend-dev` การ์ดงบ AI: ใช้ไป/วงเงิน/ถึงวงเงินแล้วเกิดอะไร (PRD §6.6) (QA-14)
-- [ ] T-143 `frontend-dev` keyboard map ตาม UI-SPEC §14 (I/P/S, คำสั่ง ticket ใน palette) (QA-10)
+- [x] T-142 `backend-dev` + `frontend-dev` การ์ดงบ AI: ใช้ไป/วงเงิน/ถึงวงเงินแล้วเกิดอะไร (PRD §6.6) (QA-14) — **ปิด 2026-11-04**
+- [x] T-143 `frontend-dev` keyboard map ตาม UI-SPEC §14 (I/P/S, คำสั่ง ticket ใน palette) (QA-10) — **ปิด 2026-11-04**
 - [x] T-144 `backend-dev` + `frontend-dev` timeline แสดง from→to, ลำดับเวลา, ไอคอน note, link incident (QA-18) — **ปิด 2026-11-04**
-- [ ] T-145 `frontend-dev` status page draft ไม่มี component / post ผูก incident (QA-15) · Invite state "Invited" + copy ตามวิธีล็อกอินจริง (QA-16) · ฟอร์มเปิด ticket เอง: priority, org ใหม่ (QA-25)
+- [x] T-145 `frontend-dev` status page draft ไม่มี component / post ผูก incident (QA-15) · Invite state "Invited" + copy ตามวิธีล็อกอินจริง (QA-16) · ฟอร์มเปิด ticket เอง: priority, org ใหม่ (QA-25) — **ปิด 2026-11-04**
 - [ ] T-146 `ux-designer` + `frontend-dev` glossary ภาษาไทยใน UI-SPEC §16 + lint th/*.ts (QA-19b) · shift/handoff polish (QA-26) · audit log "ซ่อน read" + target อ่านได้ (QA-27) · polish รวม (QA-28) · อัปเดต UI-SPEC §3.1 ให้ตรงกับ T-124
 - [x] T-147 `ai-engineer` ไม่เสนอ Reply บน channel ที่ส่งออกไม่ได้ + เสนอ priority (QA-29) — **ปิด 2026-11-04** (priority เสนอที่ investigator; classifier ยังไม่)
 - [x] T-148 อีเมลตอบรับใหม่ (หมวด/ความเร่งด่วนที่ลูกค้าเลือก, 3 ขั้นตอน, เวลาตอบเมื่อรู้, ปุ่ม + URL; ไม่ echo subject ตาม ADR-007 C-11) + อีเมลยืนยันเมื่อลูกค้าตอบ — merge 2026-11-03
@@ -113,7 +113,7 @@
 - [x] T-155a `backend-dev` แก้ finding review T-155 + assistant live (quota portal ต่อ IP/email/org, clamd alert zip มีรหัส, ลบ raw ติดเชื้อ, assistant 1 ข้อความ/คน, network scan, bridge kill child) — ปิด 2026-11-04
 - [x] T-177 `frontend-dev` นิยาม SLA at-risk เดียวทุกที่ (dashboard ใช้ของ stats) — ปิด 2026-11-04
 - [x] T-178 `frontend-dev` เว็บแสดงสถานะสแกนไฟล์ + ป้าย admin · B-004 a11y — ปิด 2026-11-04
-- [ ] T-175 `backend-dev` + `security-reviewer` image proxy สำหรับปุ่ม Display images ในอีเมล (CSP `img-src` บล็อกอยู่; ต้องกัน SSRF)
+- [x] T-175 `backend-dev` + `security-reviewer` image proxy สำหรับปุ่ม Display images ในอีเมล (CSP `img-src` บล็อกอยู่; ต้องกัน SSRF) — **ปิด 2026-11-04** (รอ security review)
 - [ ] T-176 `backend-dev` + `frontend-dev` แจ้ง head ในแอป: SMTP 535, ชน quota upload global (ตอนนี้แค่ log/audit/metric)
 - [ ] T-179 `frontend-dev` portal ส่ง header `x-portal-proof` แล้วเปลี่ยน `PORTAL_UPLOAD_PROOF_HEADER=required` · ตั้ง `TRUST_PROXY_HOPS` ให้ตรง deploy หลัง Caddy `[VERIFY]`
 - [ ] T-180 `qa-engineer` รัน ClamAV image จริงกับ `config/clamav/clamd.conf` (path, cap, AlertEncrypted*) ก่อนเปิด `UPLOAD_SCAN=clamav` บน POC
