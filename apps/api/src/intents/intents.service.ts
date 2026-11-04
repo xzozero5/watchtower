@@ -152,16 +152,19 @@ export class IntentsService {
     const before = await this.find(id);
     if (!before) throw notFound('No such intent');
     AuditScope.set({ targetType: 'intent', targetId: id, before: snapshot(before) });
-    try {
-      await this.database.db.delete(schema.intent).where(eq(schema.intent.id, id));
-    } catch (error) {
-      if (isPgError(error, PG.foreignKeyViolation)) {
-        throw conflict(
-          'Tickets or its autonomy history use this intent; set it to inactive instead',
-        );
-      }
-      throw error;
+    // A-9 (ADR-025, migration 0096): the app role may not DELETE an intent; it is referenced by key
+    // everywhere, so "delete" turns an unused one inactive (a soft delete) and refuses a used one as before.
+    const used = await this.database.db.execute<{ used: boolean }>(
+      sql`SELECT EXISTS (SELECT 1 FROM ticket WHERE intent_id = ${id})
+              OR EXISTS (SELECT 1 FROM intent_autonomy_history WHERE intent_id = ${id}) AS used`,
+    );
+    if (used.rows[0]?.used === true) {
+      throw conflict('Tickets or its autonomy history use this intent; set it to inactive instead');
     }
+    await this.database.db
+      .update(schema.intent)
+      .set({ isActive: false })
+      .where(eq(schema.intent.id, id));
   }
 
   private translate(error: unknown): unknown {

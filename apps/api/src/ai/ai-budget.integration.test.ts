@@ -1,6 +1,7 @@
 import type { AiBudget } from '@watchtower/shared';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
+import { RbacService } from '../rbac/rbac.service.js';
 import { startHarness, type Harness } from '../testing/harness.js';
 import { signIn, type Persona } from '../testing/ticketing.js';
 
@@ -69,6 +70,8 @@ describe('GET /v1/ai/budget', () => {
     await pool.query(
       `DELETE FROM role_permissions WHERE role = 'lead' AND permission = 'ai.budget.read'`,
     );
+    // Role permissions are cached for 5 s; a change made straight in the database needs the cache dropped.
+    h.app.get(RbacService).invalidate();
     try {
       // Still holds ai.autonomy.set, but not the read permission: refused on both routes.
       expect((await lead.client.get('/v1/ai/budget')).status).toBe(403);
@@ -77,10 +80,12 @@ describe('GET /v1/ai/budget', () => {
       await pool.query(
         `INSERT INTO role_permissions (role, permission) VALUES ('lead', 'ai.budget.read')`,
       );
+      h.app.get(RbacService).invalidate();
     }
     await pool.query(
       `DELETE FROM role_permissions WHERE role = 'lead' AND permission = 'ai.autonomy.set'`,
     );
+    h.app.get(RbacService).invalidate();
     try {
       // The other way round: the read permission alone is enough.
       expect((await lead.client.get('/v1/ai/budget')).status).toBe(200);
@@ -89,6 +94,7 @@ describe('GET /v1/ai/budget', () => {
       await pool.query(
         `INSERT INTO role_permissions (role, permission) VALUES ('lead', 'ai.autonomy.set')`,
       );
+      h.app.get(RbacService).invalidate();
     }
   });
 
