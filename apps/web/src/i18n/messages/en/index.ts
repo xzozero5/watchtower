@@ -24,6 +24,7 @@ import { csatEn } from './csat';
 import { customerEn } from './customer';
 import { dashboardEn } from './dashboard';
 import { reportsEn } from './reports';
+import { procedureEn } from './procedure';
 import { detailsEn } from './details';
 import { devHomeEn } from './devHome';
 import { errorsEn } from './errors';
@@ -108,6 +109,7 @@ export const en = {
   ops: opsEn,
   dashboard: dashboardEn,
   reports: reportsEn,
+  procedure: procedureEn,
   outboxAdmin: outboxAdminEn,
   investigate: investigateEn,
 } as const;

@@ -1,0 +1,31 @@
+{
+  "key": "disclosure_guard",
+  "name": "Protect what must not be shared",
+  "description": "Keep internal causes out of replies, and share account details only with a verified contact.",
+  "sourceMd": "1. Search the knowledge base and look up the organization.\n2. Never mention internal system names or the cause of an incident in a reply.\n3. Share details of the account only when the contact is verified.\n4. Keep the reply short and polite.",
+  "steps": {
+    "schemaVersion": 1,
+    "autosend": "never",
+    "steps": [
+      { "kind": "tool", "id": "search_kb", "tool": "kb_search", "params": { "limit": 5 } },
+      { "kind": "tool", "id": "look_up_org", "tool": "org_context" },
+      {
+        "kind": "disclosure",
+        "id": "no_internal_names",
+        "rule": "never_mention",
+        "topic": "Internal system names and the technical cause of an incident"
+      },
+      {
+        "kind": "disclosure",
+        "id": "account_details_verified",
+        "rule": "verified_only",
+        "topic": "Details of the customer account"
+      },
+      {
+        "kind": "reply_guideline",
+        "id": "short_polite",
+        "text": "Keep the reply short and polite."
+      }
+    ]
+  }
+}

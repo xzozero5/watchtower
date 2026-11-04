@@ -1,0 +1,27 @@
+{
+  "key": "escalate_urgent_to_lead",
+  "name": "Urgent or unsure: a person looks first",
+  "description": "A P1 ticket goes to a lead. A draft the system is unsure about is never sent without a person.",
+  "sourceMd": "1. Search the knowledge base and look at similar tickets.\n2. If the ticket is P1, hand it to a lead with a short note.\n3. If the classifier is less than 60% sure, a person must read the draft before anything goes out.",
+  "steps": {
+    "schemaVersion": 1,
+    "autosend": "never",
+    "steps": [
+      { "kind": "tool", "id": "search_kb", "tool": "kb_search", "params": { "limit": 5 } },
+      { "kind": "tool", "id": "find_similar", "tool": "similar_tickets", "params": { "limit": 5 } },
+      {
+        "kind": "escalate",
+        "id": "p1_to_lead",
+        "when": { "all": [{ "field": "ticket.priority", "op": "eq", "value": "P1" }] },
+        "to": { "role": "lead" },
+        "note": "P1 ticket: a lead should look at it first."
+      },
+      {
+        "kind": "require_human",
+        "id": "unsure_classifier",
+        "when": { "all": [{ "field": "classifier.confidence", "op": "lte", "value": 0.6 }] },
+        "reason": "The classifier is not sure about the intent."
+      }
+    ]
+  }
+}
