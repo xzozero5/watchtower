@@ -3,7 +3,8 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { consoleApi } from '@/test/console-api';
-import { PEOPLE, USERS } from '@/test/console-fixtures';
+import { makeUser, PEOPLE, USERS } from '@/test/console-fixtures';
+import { uuid } from '@/test/fixtures';
 import { apiError } from '@/test/mock-api';
 import { renderConsole } from '@/test/render-console';
 
@@ -51,6 +52,24 @@ describe('Users', () => {
     expect(within(rowOf('Pim S.')).getByText('Active')).toBeVisible();
     expect(within(rowOf('Dao N.')).getByText('Disabled')).toBeVisible();
     expect(screen.queryByText('Casey Customer')).not.toBeInTheDocument();
+  });
+
+  it('shows a person who was added but has not signed in as Invited, never the emergency account', async () => {
+    consoleApi({
+      overrides: {
+        'GET /v1/users': {
+          json: {
+            users: [...USERS, makeUser({ id: uuid(920), name: 'Nok N.', lastLoginAt: null })],
+          },
+        },
+      },
+    });
+    renderConsole(<UsersPage />);
+    await screen.findByRole('table', { name: 'Users' });
+    expect(within(rowOf('Nok N.')).getByText('Invited')).toBeVisible();
+    expect(within(rowOf('Nok N.')).getByText('Not signed in yet')).toBeVisible();
+    expect(within(rowOf('Pim S.')).getByText('Active')).toBeVisible();
+    expect(within(rowOf('Break Glass')).queryByText('Invited')).not.toBeInTheDocument();
   });
 
   it('locks your own row and the emergency account, with the reason as text', async () => {
@@ -141,7 +160,9 @@ describe('Users', () => {
     await screen.findByRole('table', { name: 'Users' });
     await user.click(screen.getByRole('button', { name: 'Invite' }));
     const sheet = await screen.findByRole('dialog', { name: 'Invite' });
-    expect(within(sheet).getByText('They sign in with Google using this address.')).toBeVisible();
+    expect(
+      within(sheet).getByText(/They sign in with Google using this address. No email is sent/),
+    ).toBeVisible();
     await user.click(within(sheet).getByRole('button', { name: 'Invite' }));
     expect(within(sheet).getByText('Enter a valid email address.')).toBeVisible();
     expect(api.callsTo('/v1/users', 'POST')).toHaveLength(0);

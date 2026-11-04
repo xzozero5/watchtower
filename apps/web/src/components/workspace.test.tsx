@@ -125,7 +125,7 @@ describe('single-key shortcuts preference (WCAG 2.1.4)', () => {
     expect(screen.getByRole('option', { name: /OPS-1/ })).toHaveAttribute('aria-selected', 'true');
 
     // "[[" types a literal "[" in user-event's key syntax.
-    for (const key of ['c', 'n', 's', '/', '?', '[[', ']', 'o']) {
+    for (const key of ['c', 'n', 's', 'p', 'i', '/', '?', '[[', ']', 'o']) {
       await user.keyboard(key);
     }
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();

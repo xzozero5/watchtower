@@ -43,6 +43,11 @@ import { usePreferences } from '@/lib/preferences';
 const EDITABLE_ROLES = ['agent', 'lead', 'head', 'dev'] as const satisfies readonly Role[];
 type EditableRole = (typeof EDITABLE_ROLES)[number];
 
+/** An on account whose owner has not signed in yet (the break-glass account is never "invited"). */
+function isInvited(user: User): boolean {
+  return user.status === 'active' && user.lastLoginAt === null && !user.isBreakGlass;
+}
+
 type Pending =
   | { kind: 'promote'; user: User }
   | { kind: 'disable'; user: User }
@@ -178,13 +183,23 @@ function UsersBody() {
     {
       id: 'status',
       header: t('admin.common.status'),
-      sortValue: (row) => row.status,
-      cell: (row) => (
-        <span className="inline-flex items-center gap-1.5" data-status={row.status}>
-          <StatusDot tone={row.status === 'active' ? 'success' : 'outline'} />
-          {row.status === 'active' ? t('admin.common.active') : t('admin.users.disabled')}
-        </span>
-      ),
+      sortValue: (row) => (isInvited(row) ? 'invited' : row.status),
+      cell: (row) => {
+        // Invited: the account exists and is on, but the person has not signed in yet.
+        const state = isInvited(row) ? 'invited' : row.status;
+        return (
+          <span className="inline-flex items-center gap-1.5" data-status={state}>
+            <StatusDot
+              tone={state === 'active' ? 'success' : state === 'invited' ? 'info' : 'outline'}
+            />
+            {state === 'active'
+              ? t('admin.common.active')
+              : state === 'invited'
+                ? t('admin.users.invitedState')
+                : t('admin.users.disabled')}
+          </span>
+        );
+      },
     },
     {
       id: 'last',
@@ -193,6 +208,8 @@ function UsersBody() {
       cell: (row) =>
         row.lastLoginAt ? (
           <RelativeTime iso={row.lastLoginAt} />
+        ) : isInvited(row) ? (
+          <span className="text-muted-foreground">{t('admin.users.neverSignedIn')}</span>
         ) : (
           <span className="text-muted-foreground">—</span>
         ),
@@ -431,7 +448,7 @@ function InviteSheet({
         onClose();
       }}
       title={t('admin.users.invite')}
-      description={t('admin.users.inviteHint', { provider: SSO_PROVIDER.displayName })}
+      description={`${t('admin.users.inviteHint', { provider: SSO_PROVIDER.displayName })} ${t('admin.users.inviteNoEmail')}`}
       dirty={email !== '' || name !== ''}
       pending={create.isPending}
       formId={`${base}-form`}

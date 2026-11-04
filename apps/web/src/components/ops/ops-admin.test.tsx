@@ -93,10 +93,7 @@ describe('Status page admin: publishing is a person pressing a button (N3)', () 
     await user.type(within(dialog).getByRole('textbox', { name: /Title/ }), 'Heads up');
     await user.type(within(dialog).getByRole('textbox', { name: /Text/ }), 'Slow responses');
     expect(within(dialog).getByText(/No component picked/)).toBeVisible();
-    await user.selectOptions(
-      within(dialog).getByRole('combobox', { name: /Incident/ }),
-      linked.id,
-    );
+    await user.selectOptions(within(dialog).getByRole('combobox', { name: /Incident/ }), linked.id);
     await user.click(within(dialog).getByRole('button', { name: /^Save/ }));
     await waitFor(() => {
       expect(api.calls.some((c) => c.method === 'POST' && c.path.endsWith('/posts'))).toBe(true);

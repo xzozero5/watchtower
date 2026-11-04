@@ -64,7 +64,11 @@ export const adminEn = {
   users: {
     invite: 'Invite',
     inviteHint: 'They sign in with {provider} using this address.',
-    invited: 'Invitation created',
+    invited: 'Account created. Tell them to sign in.',
+    invitedState: 'Invited',
+    neverSignedIn: 'Not signed in yet',
+    inviteNoEmail:
+      'No email is sent: tell them to open the sign-in page. It works only if their address is allowed on this instance (the company domain, or a listed personal address).',
     email: 'Email',
     role: 'Role',
     lastSignIn: 'Last sign-in',
