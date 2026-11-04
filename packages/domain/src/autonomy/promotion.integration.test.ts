@@ -34,7 +34,13 @@ afterAll(async () => {
 });
 
 async function greenReport(intentId: string): Promise<string> {
-  const [row] = await env.database.db
+  // The schema owner writes the fixture: the application role cannot insert a report (migration 0108), and a
+  // window cannot start before the intent existed, so the intent is made old enough for it.
+  await env.db.owner.db
+    .update(schema.intent)
+    .set({ createdAt: new Date(Date.now() - 90 * 86_400_000) })
+    .where(eq(schema.intent.id, intentId));
+  const [row] = await env.db.owner.db
     .insert(schema.autonomyGateReport)
     .values({
       intentId,

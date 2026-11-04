@@ -24,9 +24,13 @@ export interface GoogleIdentity {
   readonly name: string | undefined;
   /** Where to send the browser afterwards. Always a relative path. */
   readonly returnTo: string;
+  /** `auth_time` of the ID token (seconds since the epoch): when the person last authenticated at the provider. */
+  readonly authTime: number | undefined;
+  /** Set when the flow was a step-up of a signed-in session (see `start`); the session and user it was started for. */
+  readonly stepUp: { readonly sessionId: string; readonly userId: string } | undefined;
 }
 
-export type OidcFailure = 'state_invalid' | 'google_denied' | 'google_unavailable';
+export type OidcFailure = 'state_invalid' | 'google_denied' | 'google_unavailable' | 'reauth_stale';
 
 export class OidcError extends Error {
   constructor(
@@ -41,6 +45,10 @@ export class OidcError extends Error {
 const GOOGLE_ISSUER = new URL('https://accounts.google.com');
 const STATE_PURPOSE = 'oidc-state';
 const STATE_TTL_SECONDS = 600;
+/** A step-up needs the provider to have authenticated the person within this many seconds (`max_age`, ADR-025 section 6). */
+export const STEP_UP_MAX_AGE_SECONDS = 300;
+/** Clock difference tolerated between this host and the provider when reading `auth_time`. */
+const AUTH_TIME_SKEW_SECONDS = 30;
 
 /** Only a same-site relative path may be a post-login target, never another host. */
 export function sanitizeReturnTo(value: string | undefined): string {
@@ -115,6 +123,11 @@ export class GoogleOidcService {
   /** The Google URL to send the browser to, and the cookie value that binds the flow to it. */
   async start(
     returnTo: string | undefined,
+    /**
+     * A step-up of a signed-in session (T-306a C-5): the person must type their credentials again
+     * (`prompt=login`) and the provider must report an `auth_time` no older than `max_age`.
+     */
+    stepUp?: { readonly sessionId: string; readonly userId: string; readonly email: string },
   ): Promise<{ readonly url: string; readonly cookie: string }> {
     const configuration = await this.configuration();
     const verifier = client.randomPKCECodeVerifier();
@@ -131,11 +144,25 @@ export class GoogleOidcService {
       // `hd` claim of the ID token itself. Left out while an email allow-list is set, because
       // the hint would keep personal accounts (no `hd`) from being offered at all.
       ...(this.config.GOOGLE_ALLOWED_EMAILS.length === 0 ? { hd: this.config.staffDomain } : {}),
-      prompt: 'select_account',
+      ...(stepUp === undefined
+        ? { prompt: 'select_account' }
+        : {
+            prompt: 'login',
+            max_age: String(STEP_UP_MAX_AGE_SECONDS),
+            login_hint: stepUp.email,
+          }),
     });
     const cookie = await this.tokens.signCookieValue(
       STATE_PURPOSE,
-      { state, nonce, verifier, returnTo: sanitizeReturnTo(returnTo) },
+      {
+        state,
+        nonce,
+        verifier,
+        returnTo: sanitizeReturnTo(returnTo),
+        ...(stepUp === undefined
+          ? {}
+          : { stepUpSession: stepUp.sessionId, stepUpUser: stepUp.userId }),
+      },
       STATE_TTL_SECONDS,
     );
     return { url: url.toString(), cookie };
@@ -160,7 +187,11 @@ export class GoogleOidcService {
     const saved = stateCookie
       ? await this.tokens.verifyCookieValue(STATE_PURPOSE, stateCookie)
       : null;
-    const { state, nonce, verifier, returnTo } = saved ?? {};
+    const { state, nonce, verifier, returnTo, stepUpSession, stepUpUser } = saved ?? {};
+    const stepUp =
+      typeof stepUpSession === 'string' && typeof stepUpUser === 'string'
+        ? { sessionId: stepUpSession, userId: stepUpUser }
+        : undefined;
     if (
       typeof state !== 'string' ||
       typeof nonce !== 'string' ||
@@ -181,6 +212,8 @@ export class GoogleOidcService {
         expectedState: state,
         expectedNonce: nonce,
         idTokenExpected: true,
+        // For a step-up the library also refuses a token without `auth_time` or an older one.
+        ...(stepUp === undefined ? {} : { maxAge: STEP_UP_MAX_AGE_SECONDS }),
       });
       claims = tokens.claims();
       await this.verifySignature(configuration, tokens.id_token);
@@ -188,6 +221,18 @@ export class GoogleOidcService {
       throw new OidcError('google_unavailable', error);
     }
     if (!claims || typeof claims.email !== 'string') throw new OidcError('google_unavailable');
+    const authTime = typeof claims.auth_time === 'number' ? claims.auth_time : undefined;
+    if (stepUp !== undefined) {
+      // Checked here as well as by the library: the proof of a step-up is this number and nothing else.
+      const age = Date.now() / 1000 - (authTime ?? Number.NEGATIVE_INFINITY);
+      if (
+        authTime === undefined ||
+        age > STEP_UP_MAX_AGE_SECONDS + AUTH_TIME_SKEW_SECONDS ||
+        age < -AUTH_TIME_SKEW_SECONDS
+      ) {
+        throw new OidcError('reauth_stale');
+      }
+    }
     return {
       sub: claims.sub,
       email: asciiLowerCase(claims.email.trim()),
@@ -195,6 +240,8 @@ export class GoogleOidcService {
       hostedDomain: typeof claims.hd === 'string' ? asciiLowerCase(claims.hd) : undefined,
       name: typeof claims.name === 'string' ? claims.name : undefined,
       returnTo: sanitizeReturnTo(typeof returnTo === 'string' ? returnTo : undefined),
+      authTime,
+      stepUp,
     };
   }
 }

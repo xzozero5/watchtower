@@ -3,6 +3,7 @@ import { schema, type Database } from '@watchtower/db';
 import {
   claimSchema,
   detectLanguage,
+  scrubGoldenIdentifiers,
   ticketGradeViolationSchema,
   type Claim,
   type GoldenAnswer,
@@ -105,6 +106,7 @@ export class GoldenService {
     ref: string,
     messageId: string,
     principal: Principal,
+    shareable = false,
   ): Promise<{ ticketId: string; golden: GoldenAnswer }> {
     const ticket = await this.tickets.viewRow(ref, principal);
     if (ticket.t.intentId === null) {
@@ -130,7 +132,9 @@ export class GoldenService {
       throw badRequest('Only a reply that was sent to the customer can be marked as golden');
     }
     const session = await this.tickets.maskingFor(ticket.t.id, [ticket]);
-    const redacted = session.text(message.text).trim();
+    // The PII redactor takes people; the name of the organization, contract numbers and amounts go here (C-8).
+    const orgNames = await this.orgNames(ticket.t.orgId);
+    const redacted = scrubGoldenIdentifiers(session.text(message.text), orgNames).trim();
     if (redacted === '' || redacted === MASKED_TEXT_UNAVAILABLE) {
       throw badRequest('This reply cannot be redacted safely, so it cannot be kept');
     }
@@ -151,6 +155,7 @@ export class GoldenService {
         intentId: ticket.t.intentId,
         bodyRedacted: redacted,
         language,
+        shareable,
         createdBy: principal.userId,
       })
       .returning({ id: schema.goldenAnswer.id });
@@ -158,6 +163,17 @@ export class GoldenService {
     const [golden] = await this.list({ ids: [row.id] });
     if (golden === undefined) throw conflict('Could not keep this reply');
     return { ticketId: ticket.t.id, golden };
+  }
+
+  /** The names an organization is known by (its name and its mail domains), for the scrub of a golden answer. */
+  private async orgNames(orgId: string | null): Promise<string[]> {
+    if (orgId === null) return [];
+    const [org] = await this.database.db
+      .select({ name: schema.organization.name, domains: schema.organization.domains })
+      .from(schema.organization)
+      .where(eq(schema.organization.id, orgId))
+      .limit(1);
+    return org === undefined ? [] : [org.name, ...org.domains];
   }
 
   /** The golden answers kept from one ticket (so the web can show which replies are marked). */

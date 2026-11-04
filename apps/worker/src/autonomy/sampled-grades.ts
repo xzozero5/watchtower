@@ -152,7 +152,7 @@ async function gradeOne(
   const runs = await modelsOf(db, [graded.runId, draft.aiRunId]);
   const graderRun = graded.runId === null ? undefined : runs.get(graded.runId);
   const draftRun = draft.aiRunId === null ? undefined : runs.get(draft.aiRunId);
-  if (graderRun === undefined || draftRun === undefined) {
+  if (graded.runId === null || graderRun === undefined || draftRun === undefined) {
     deps.logger.warn(
       { ticketId: ticket.id },
       'sampled grade not stored: the ai_run row of the drafter or the grader is missing',
@@ -165,15 +165,10 @@ async function gradeOne(
     ticketId: ticket.id,
     text: candidate.text,
     graderAiRunId: graded.runId,
-    graderProvider: graderRun.provider,
-    graderModel: graderRun.model,
-    drafterProvider: draftRun.provider,
-    drafterModel: draftRun.model,
     score: graded.value.score,
     passed: graded.value.passed,
     violations: graded.value.violations,
     promptVersion: graded.value.promptVersion,
-    mock: graded.value.mock,
   });
   return graded.value.violations.length;
 }

@@ -38,11 +38,12 @@ async function golden(
   text: string,
   language: 'th' | 'en',
   createdAt: Date,
+  options: { org?: string; shareable?: boolean } = {},
 ): Promise<string> {
   const db = env.db.owner.db;
   const [ticket] = await db
     .insert(schema.ticket)
-    .values({ orgId, subject: 'Probe' })
+    .values({ orgId: options.org ?? orgId, subject: 'Probe' })
     .returning({ id: schema.ticket.id });
   const [message] = await db
     .insert(schema.message)
@@ -61,6 +62,7 @@ async function golden(
       intentId,
       bodyRedacted: text,
       language,
+      shareable: options.shareable ?? false,
       createdBy: userId,
       createdAt,
     })
@@ -78,16 +80,36 @@ describe('goldenExamplesFor', () => {
     await golden(intentA, 'en newest', 'en', day(5));
     await golden(intentB, 'other intent', 'en', day(6));
 
-    const english = await goldenExamplesFor(env.database.db, intentA, 'en');
+    const english = await goldenExamplesFor(env.database.db, intentA, 'en', orgId);
     expect(english.map((item) => item.text)).toEqual(['en newest', 'en newer', 'en new']);
     expect(english.length).toBeLessThanOrEqual(GOLDEN_EXAMPLES_MAX);
 
-    const thai = await goldenExamplesFor(env.database.db, intentA, 'th');
+    const thai = await goldenExamplesFor(env.database.db, intentA, 'th', orgId);
     expect(thai.map((item) => item.text)).toEqual(['th mid', 'en newest', 'en newer']);
 
-    expect((await goldenExamplesFor(env.database.db, intentB, 'en')).map((i) => i.text)).toEqual([
-      'other intent',
-    ]);
+    expect(
+      (await goldenExamplesFor(env.database.db, intentB, 'en', orgId)).map((i) => i.text),
+    ).toEqual(['other intent']);
+  });
+
+  it("keeps one organization's replies from another organization's drafter unless a lead marked them shareable (C-8)", async () => {
+    const other = (await addOrg(env)).id;
+    const intents = await env.db.owner.db
+      .insert(schema.intent)
+      .values({ key: `golden_c_${randomUUID().slice(0, 6)}`, name: 'C' })
+      .returning({ id: schema.intent.id });
+    const intentC = intents[0]?.id ?? '';
+    const day = (n: number) => new Date(Date.UTC(2026, 1, n));
+    await golden(intentC, 'mine', 'en', day(1));
+    await golden(intentC, 'theirs private', 'en', day(2), { org: other });
+    await golden(intentC, 'theirs shared', 'en', day(3), { org: other, shareable: true });
+
+    const texts = async (forOrg: string | null) =>
+      (await goldenExamplesFor(env.database.db, intentC, 'en', forOrg)).map((i) => i.text);
+    expect(await texts(orgId)).toEqual(['theirs shared', 'mine']);
+    expect(await texts(other)).toEqual(['theirs shared', 'theirs private']);
+    // A ticket without an organization sees only what is shareable.
+    expect(await texts(null)).toEqual(['theirs shared']);
   });
 
   it('never returns a deleted answer', async () => {
@@ -96,7 +118,9 @@ describe('goldenExamplesFor', () => {
       .update(schema.goldenAnswer)
       .set({ deletedAt: new Date(), deletedBy: userId })
       .where(eq(schema.goldenAnswer.id, id));
-    const texts = (await goldenExamplesFor(env.database.db, intentB, 'en')).map((i) => i.text);
+    const texts = (await goldenExamplesFor(env.database.db, intentB, 'en', orgId)).map(
+      (i) => i.text,
+    );
     expect(texts).not.toContain('to be removed');
   });
 });

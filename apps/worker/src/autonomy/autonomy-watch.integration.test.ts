@@ -167,10 +167,16 @@ async function stage3Intent(): Promise<{ id: string; key: string }> {
   const key = `intent_${randomUUID().slice(0, 8).replace(/-/g, '')}`;
   const [intent] = await owner()
     .insert(schema.intent)
-    .values({ key, name: 'Reset a password', autonomyStage: 2 })
+    // Old enough for a 30 day report window (a window cannot start before the intent, migration 0108).
+    .values({
+      key,
+      name: 'Reset a password',
+      autonomyStage: 2,
+      createdAt: new Date(Date.now() - 90 * 86_400_000),
+    })
     .returning();
   const id = intent?.id ?? '';
-  const [report] = await database.db
+  const [report] = await owner()
     .insert(schema.autonomyGateReport)
     .values({
       intentId: id,
@@ -448,13 +454,15 @@ describe('the autonomy watch (ADR-025 section 7)', () => {
 
   it('rolls back when the latest gate report since the promotion is red', async () => {
     const intent = await stage3Intent();
-    await database.db.insert(schema.autonomyGateReport).values({
-      intentId: intent.id,
-      status: 'red',
-      triggerKind: 'weekly',
-      windowStart: new Date(Date.now() - 7 * 86_400_000),
-      windowEnd: new Date(),
-    });
+    await owner()
+      .insert(schema.autonomyGateReport)
+      .values({
+        intentId: intent.id,
+        status: 'red',
+        triggerKind: 'weekly',
+        windowStart: new Date(Date.now() - 7 * 86_400_000),
+        windowEnd: new Date(),
+      });
     expect((await runAutonomyWatch(deps(), intent.id)).rolledBack).toEqual([
       { intent: intent.key, rule: 'gate_red' },
     ]);
@@ -627,7 +635,9 @@ describe('the gate report reads the replay and shows the reviewers (T-306e C-4b,
       intentId,
       trigger: 'on_demand',
       generatedBy: headId,
-      now: new Date(Date.now() + 3_600_000),
+      // A little ahead (the database refuses a window that ends more than a minute ahead of it, 0108): rows made by
+      // `now()` in the database may be stamped after this host's clock.
+      now: new Date(Date.now() + 30_000),
     });
     const [report] = await readGateReports(database.db, intentId);
     return report;
@@ -635,7 +645,13 @@ describe('the gate report reads the replay and shows the reviewers (T-306e C-4b,
   const newIntent = async () => {
     const [intent] = await owner()
       .insert(schema.intent)
-      .values({ key: `i_${randomUUID().slice(0, 8)}`, name: 'x', autonomyStage: 2 })
+      // Old enough for a 30 day report window (a window cannot start before the intent, migration 0108).
+      .values({
+        key: `i_${randomUUID().slice(0, 8)}`,
+        name: 'x',
+        autonomyStage: 2,
+        createdAt: new Date(Date.now() - 90 * 86_400_000),
+      })
       .returning();
     return intent?.id ?? '';
   };
@@ -682,17 +698,19 @@ describe('the gate report reads the replay and shows the reviewers (T-306e C-4b,
   it('a failed replay suspends auto-send; it does not roll the intent back', async () => {
     const intent = await stage3Intent();
     await recordReplayResult(database.db, headId, { ...base(intent.id), violations: 2 });
-    await database.db.insert(schema.autonomyGateReport).values({
-      intentId: intent.id,
-      status: 'red',
-      triggerKind: 'weekly',
-      windowStart: new Date(Date.now() - 7 * 86_400_000),
-      windowEnd: new Date(),
-      criteria: [
-        { key: 'eval_replay_violations', pass: false, value: 2, threshold: 0 },
-        { key: 'verified_resolution', pass: true, value: 1, threshold: 0.5 },
-      ],
-    });
+    await owner()
+      .insert(schema.autonomyGateReport)
+      .values({
+        intentId: intent.id,
+        status: 'red',
+        triggerKind: 'weekly',
+        windowStart: new Date(Date.now() - 7 * 86_400_000),
+        windowEnd: new Date(),
+        criteria: [
+          { key: 'eval_replay_violations', pass: false, value: 2, threshold: 0 },
+          { key: 'verified_resolution', pass: true, value: 1, threshold: 0.5 },
+        ],
+      });
     expect((await runAutonomyWatch(deps(), intent.id)).rolledBack).toEqual([]);
     expect(await stageOf(intent.id)).toBe(3);
   });

@@ -5,7 +5,7 @@
  */
 import { z } from 'zod';
 
-import { stepIdSchema } from './procedure.js';
+import { stepIdSchema, type ProcedureSteps } from './procedure.js';
 
 /** The tag a `require_human` step puts on a ticket (the queue shows it; T-304 and the auto-send gate read the event). */
 export const PROCEDURE_REQUIRE_HUMAN_TAG = 'procedure:require-human';
@@ -146,4 +146,22 @@ export function judgeSimulation(
     reasons.push('too_many_failed');
   }
   return reasons;
+}
+
+/**
+ * The stages a simulation must run at (T-306a C-7). It always runs at the stage the intent is at (never above 2
+ * while auto-send is off); a step that applies at stage 2 and not at 3, or the other way round, would otherwise
+ * never be simulated at the stage where it matters. So every stage of 2 and 3 where the set of steps in force
+ * differs from the base stage is added, and the pass rule has to hold for all of them. A procedure whose steps are
+ * the same at 2 and 3 (the usual case) runs once, as before.
+ */
+export function simulationStages(steps: ProcedureSteps, baseStage: number): number[] {
+  const inForce = (stage: number): string =>
+    steps.steps
+      .filter((step) => step.stages === undefined || step.stages.includes(stage))
+      .map((step) => step.id)
+      .join(',');
+  const base = inForce(baseStage);
+  const extra = [2, 3].filter((stage) => stage !== baseStage && inForce(stage) !== base);
+  return [baseStage, ...extra];
 }

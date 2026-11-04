@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { DevMockLlmProvider, type LlmProvider, type LlmRequest } from '@watchtower/ai';
 import { createDatabase, schema, type Database } from '@watchtower/db';
 import { createTestDatabase, type TestDatabase } from '@watchtower/db/testing';
-import { createDomain, recordProcedureSimulation, type Domain } from '@watchtower/domain';
+import { createDomain, type Domain } from '@watchtower/domain';
 import {
   PROCEDURE_REQUIRE_HUMAN_TAG,
   PROCEDURE_TICKET_EVENTS,
@@ -215,8 +215,10 @@ beforeAll(async () => {
   await appDatabase.db.transaction((tx) =>
     domain.procedures.confirm(tx, lead, { intentId, versionId: liveVersionId }),
   );
-  await recordProcedureSimulation(appDatabase.db, {
-    versionId: liveVersionId,
+  // The schema owner writes this fixture (the application role goes through record_procedure_simulation(), which
+  // wants the drafter runs of the version in ai_run: migration 0108).
+  await owner().insert(schema.procedureSimulation).values({
+    procedureVersionId: liveVersionId,
     passed: true,
     seedOnly: false,
     caseCount: 1,
@@ -500,5 +502,48 @@ describe('simulation job (T-303d)', () => {
       .from(schema.message)
       .where(eq(schema.message.direction, 'outbound'));
     expect(outbound).toHaveLength(2);
+  });
+
+  it('also replays at stage 3 when a step applies only there, and the verdict covers both (C-7)', async () => {
+    const lead = domain.context({ actor: { type: 'user', id: leadId } });
+    const next = await appDatabase.db.transaction((tx) =>
+      domain.procedures.createDraft(tx, lead, {
+        intentId,
+        sourceMd: 'Be brief; at stage 3 say more about the refund.',
+        steps: {
+          schemaVersion: 1,
+          autosend: 'never',
+          steps: [
+            { kind: 'tool', id: 'kb', tool: 'kb_search' },
+            { kind: 'reply_guideline', id: 'g1', text: 'Be brief.' },
+            { kind: 'reply_guideline', id: 'g3', text: 'Mention the refund policy.', stages: [3] },
+          ],
+        },
+      }),
+    );
+    const versionId = next.value.id;
+    await appDatabase.db.transaction((tx) =>
+      domain.procedures.confirm(tx, lead, { intentId, versionId }),
+    );
+    const connection = parseRedisUrl(config.REDIS_URL);
+    const queue = new Queue(QUEUE_NAMES.procedureSimulate, { connection, prefix });
+    try {
+      await queue.add('simulate', { versionId, requestedBy: leadId });
+    } finally {
+      await queue.close();
+    }
+    const simulation = await waitFor('the simulation', async () => {
+      const [found] = await owner()
+        .select()
+        .from(schema.procedureSimulation)
+        .where(eq(schema.procedureSimulation.procedureVersionId, versionId));
+      return found;
+    });
+    // The same two resolved tickets, once at stage 2 and once at stage 3 (a procedure that is the same at both
+    // stages, like the one above, is replayed once).
+    const metrics = simulation.metrics as ProcedureSimulationMetrics;
+    expect(metrics.caseCount).toBe(4);
+    expect(metrics.candidate.drafted).toBe(4);
+    expect(simulation.caseCount).toBe(4);
   });
 });

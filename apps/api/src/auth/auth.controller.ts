@@ -58,7 +58,7 @@ import {
   setSessionCookies,
 } from './cookies.js';
 import { Audited, CurrentPrincipal, Public, RequirePermission } from './decorators.js';
-import { GoogleOidcService, OidcError } from './google-oidc.service.js';
+import { GoogleOidcService, OidcError, sanitizeReturnTo } from './google-oidc.service.js';
 import { RateLimitedError, invalidLink, invalidRefreshToken, notFound } from './http-errors.js';
 import { MagicLinkService } from './magic-link.service.js';
 import type { Principal } from './principal.js';
@@ -138,6 +138,15 @@ export class AuthController {
     });
   }
 
+  private stepUpRedirect(
+    returnTo: string,
+    result: 'ok' | 'failed',
+  ): { url: string; statusCode: number } {
+    const url = new URL(returnTo, this.config.APP_URL);
+    url.searchParams.set('stepup', result);
+    return { url: url.toString(), statusCode: 302 };
+  }
+
   private loginRedirect(error: string): { url: string; statusCode: number } {
     const url = new URL('/login', this.config.APP_URL);
     url.searchParams.set('error', error);
@@ -190,6 +199,41 @@ export class AuthController {
     }
   }
 
+  @Get('google/step-up')
+  @RequirePermission('auth.session.self')
+  @Redirect()
+  @ApiOperation({
+    summary: 'Prove who you are again at Google (step-up of the signed-in session)',
+    description:
+      'Navigate the browser here from a signed-in session (T-306a C-5). Redirects to Google with `prompt=login` and ' +
+      '`max_age=300`; the callback checks the `auth_time` of the ID token and, if it is within 5 minutes, records the ' +
+      'step-up on THIS session (no new session is made), then returns to `returnTo` with `stepup=ok` (or `stepup=failed`). ' +
+      'Approving a stage 3 promotion needs such a step-up. 404 in mock mode.',
+  })
+  @ApiResponse({ status: 302, description: 'Redirect to Google' })
+  @ApiNotFoundResponse({ description: 'Google sign-in is not configured (mock mode)' })
+  async googleStepUp(
+    @Query({ schema: googleStartQuerySchema }) query: z.infer<typeof googleStartQuerySchema>,
+    @CurrentPrincipal() principal: Principal,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    if (!this.oidc.live) throw notFound('Google sign-in is not configured');
+    try {
+      const { url, cookie } = await this.oidc.start(query.returnTo, {
+        sessionId: principal.sessionId,
+        userId: principal.userId,
+        email: principal.email,
+      });
+      response.cookie(cookieNames(this.config).oidc, cookie, oidcCookieOptions(this.config));
+      return { url, statusCode: 302 };
+    } catch (error) {
+      if (error instanceof OidcError) {
+        return this.stepUpRedirect(sanitizeReturnTo(query.returnTo), 'failed');
+      }
+      throw error;
+    }
+  }
+
   @Get('google/callback')
   @Public()
   @Redirect()
@@ -226,11 +270,47 @@ export class AuthController {
         readCookie(request, cookieNames(this.config).oidc),
       );
       const { user, via } = await this.auth.resolveGoogleUser(identity);
+      if (identity.stepUp !== undefined) {
+        // A step-up, not a sign-in: the session that asked for it keeps its identity and gets the proof (C-5).
+        const stepped =
+          user.id === identity.stepUp.userId && identity.authTime !== undefined
+            ? await this.sessions.recordStepUp(
+                identity.stepUp.sessionId,
+                user.id,
+                new Date(identity.authTime * 1000),
+                'google_oidc',
+              )
+            : false;
+        clearOidcCookie(response, this.config);
+        AuditScope.set({
+          actor: { type: 'user', id: user.id },
+          action: stepped ? AUDIT_ACTIONS.stepUpGoogle : AUDIT_ACTIONS.stepUpFailed,
+          outcome: stepped ? 'success' : 'failure',
+          targetType: 'session',
+          targetId: identity.stepUp.sessionId,
+          metadata: {
+            authMethod: 'google_oidc',
+            ...(stepped ? {} : { reason: 'session_or_account_mismatch' }),
+          },
+        });
+        return this.stepUpRedirect(identity.returnTo, stepped ? 'ok' : 'failed');
+      }
       await this.signIn(request, response, user, 'google', { via });
       clearOidcCookie(response, this.config);
       return { url: new URL(identity.returnTo, this.config.APP_URL).toString(), statusCode: 302 };
     } catch (error) {
-      if (error instanceof OidcError) return fail(error.failure);
+      if (error instanceof OidcError) {
+        if (error.failure === 'reauth_stale') {
+          AuditScope.set({
+            action: AUDIT_ACTIONS.stepUpFailed,
+            outcome: 'failure',
+            metadata: { reason: 'auth_time_stale' },
+          });
+          clearOidcCookie(response, this.config);
+          return this.loginRedirect('reauth_stale');
+        }
+        return fail(error.failure);
+      }
       if (error instanceof GoogleLoginRejected) return fail(error.failure);
       throw error;
     }

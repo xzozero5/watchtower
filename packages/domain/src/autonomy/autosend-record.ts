@@ -28,47 +28,34 @@ export interface NewPreSendGrade {
   readonly ticketId: string;
   /** What the grader read: the draft plus the notice, exactly as it would be sent. The database hashes it. */
   readonly text: string;
-  readonly graderAiRunId: string | null;
-  readonly graderProvider: string;
-  readonly graderModel: string;
-  readonly drafterProvider: string;
-  readonly drafterModel: string;
+  /** The grader's ai_run row. The database reads the grader's and the drafter's provider and model from ai_run. */
+  readonly graderAiRunId: string;
   readonly score: number;
   readonly passed: boolean;
   readonly violations: readonly { readonly code: string; readonly text: string }[];
   readonly promptVersion: number;
-  readonly mock: boolean;
   /** `sampled`: a second look at a reply that was already sent (T-306e C-4c). Default `pre_send`. */
   readonly phase?: 'pre_send' | 'sampled' | undefined;
 }
 
-/** Stores the grade of one exact text (`phase = 'pre_send'`). Append-only; the hash is the database's. */
+/**
+ * Stores the grade of one exact text (`phase = 'pre_send'`) through `record_ai_grade()` (migration 0108, C-9): the
+ * application role cannot insert into `ai_grade`, and the function takes the models from the ai_run rows, not
+ * from the caller. Append-only; the hash is the database's.
+ */
 export async function recordPreSendGrade(
-  db: Pick<Db, 'insert'>,
+  db: Pick<Database['db'], 'execute'>,
   grade: NewPreSendGrade,
 ): Promise<string> {
-  const [row] = await db
-    .insert(schema.aiGrade)
-    .values({
-      aiDraftId: grade.aiDraftId,
-      ticketId: grade.ticketId,
-      phase: grade.phase ?? 'pre_send',
-      gradedText: grade.text,
-      graderAiRunId: grade.graderAiRunId,
-      graderProvider: grade.graderProvider,
-      graderModel: grade.graderModel,
-      drafterProvider: grade.drafterProvider,
-      drafterModel: grade.drafterModel,
-      // numeric(4,3): a string keeps 0.9 exactly 0.9.
-      score: grade.score.toFixed(3),
-      passed: grade.passed,
-      violations: grade.violations.map((violation) => ({ ...violation })),
-      violationCount: grade.violations.length,
-      promptVersion: grade.promptVersion,
-      mock: grade.mock,
-    })
-    .returning({ id: schema.aiGrade.id });
-  if (row === undefined) throw new Error('ai_grade insert returned no row');
+  const result = await db.execute<{ id: string } & Record<string, unknown>>(sql`
+    SELECT public.record_ai_grade(
+      ${grade.aiDraftId}::uuid, ${grade.ticketId}::uuid, ${grade.phase ?? 'pre_send'}, ${grade.text}, ${grade.graderAiRunId}::uuid,
+      ${grade.score.toFixed(3)}::numeric, ${grade.passed}::boolean,
+      ${JSON.stringify(grade.violations.map((violation) => ({ ...violation })))}::jsonb,
+      ${grade.promptVersion}::integer
+    ) AS id`);
+  const row = result.rows[0];
+  if (row === undefined) throw new Error('record_ai_grade returned no row');
   return row.id;
 }
 

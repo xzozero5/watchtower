@@ -120,6 +120,41 @@ describe('POST /v1/tickets/:id/golden', () => {
     expect(again.status).toBe(409);
   });
 
+  it("takes the organization's name, contract numbers and amounts out too, and keeps the shareable tick (C-8)", async () => {
+    const reply = await pool().query<{ id: string }>(
+      `INSERT INTO message (ticket_id, direction, visibility, body_text, delivery_status)
+       VALUES ($1, 'outbound', 'public', $2, 'delivered') RETURNING id`,
+      [
+        ticketId,
+        'Dear Golden Org, under contract no. CT-2024-0091 the refund of 12,500 baht is approved.',
+      ],
+    );
+    const marked = await lead.client.post<GoldenAnswer>(`/v1/tickets/${ticketKey}/golden`, {
+      messageId: reply.rows[0]?.id,
+      shareable: true,
+    });
+    expect(marked.status).toBe(201);
+    expect(marked.body.text).not.toMatch(/Golden Org|CT-2024|0091|12,500/);
+    expect(marked.body.text).toContain('[CONTRACT_ID]');
+    expect(marked.body.text).toContain('[AMOUNT]');
+    const stored = await pool().query<{ shareable: boolean }>(
+      `SELECT shareable FROM golden_answer WHERE id = $1`,
+      [marked.body.id],
+    );
+    expect(stored.rows[0]?.shareable).toBe(true);
+    // The first one, marked without the tick, stays private to its organization.
+    const plain = await pool().query<{ shareable: boolean }>(
+      `SELECT shareable FROM golden_answer WHERE message_id = $1`,
+      [sentId],
+    );
+    expect(plain.rows[0]?.shareable).toBe(false);
+    // Taken away again: the list tests below count the golden answers of this ticket.
+    await pool().query(
+      `UPDATE golden_answer SET deleted_at = now(), deleted_by = $2 WHERE id = $1`,
+      [marked.body.id, lead.userId],
+    );
+  });
+
   it('says 409 for a ticket with no intent', async () => {
     const bare = await fileTicket(lead, orgId);
     const reply = await pool().query<{ id: string }>(

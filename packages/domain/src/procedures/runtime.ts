@@ -344,18 +344,15 @@ export async function recordProcedureSimulation(
 ): Promise<{ id: string }> {
   const metrics = procedureSimulationMetricsSchema.parse(input.metrics);
   return db.transaction(async (tx) => {
-    const [row] = await tx
-      .insert(schema.procedureSimulation)
-      .values({
-        procedureVersionId: input.versionId,
-        passed: input.passed,
-        seedOnly: input.seedOnly,
-        caseCount: input.caseCount,
-        metrics,
-        ranBy: input.ranBy,
-      })
-      .returning({ id: schema.procedureSimulation.id });
-    if (row === undefined) throw new Error('procedure_simulation insert returned no row');
+    // Through record_procedure_simulation() (migration 0108, C-9): the application role cannot insert a result,
+    // and the database recomputes `passed` and `seed_only` from the metrics and wants the drafter runs of this version.
+    const written = await tx.execute<{ id: string } & Record<string, unknown>>(sql`
+      SELECT public.record_procedure_simulation(
+        ${input.versionId}::uuid, ${input.passed}::boolean, ${input.seedOnly}::boolean, ${input.caseCount}::integer,
+        ${JSON.stringify(metrics)}::jsonb, ${input.ranBy}::uuid
+      ) AS id`);
+    const row = written.rows[0];
+    if (row === undefined) throw new Error('record_procedure_simulation returned no row');
     await recordAuditInTx(
       tx,
       { actor: { type: 'system', id: null }, auditMeta: { ip: null, requestId: null } },

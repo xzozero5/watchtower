@@ -36,6 +36,7 @@ import { and, desc, eq } from 'drizzle-orm';
 
 import { ApiHttpError, notFound } from '../auth/http-errors.js';
 import { beforeCursor, decodeCursor, preciseTimestamp, toPage } from '../common/keyset.js';
+import { APP_CONFIG, type ApiConfig } from '../config/config.js';
 import { DATABASE } from '../database/database.module.js';
 import { domainContext, settle } from '../domain/domain-context.js';
 import { translating } from '../domain/domain-errors.js';
@@ -52,6 +53,7 @@ export class AutonomyService {
   constructor(
     @Inject(DOMAIN) private readonly domain: Domain,
     @Inject(DATABASE) private readonly database: Database,
+    @Inject(APP_CONFIG) private readonly config: ApiConfig,
   ) {}
 
   /** `AI_AUTOSEND_ENABLED` of this process, read once at boot. Never from the database. */
@@ -190,27 +192,48 @@ export class AutonomyService {
   }
 
   /**
-   * When the person last signed in (ADR-025 section 6): the creation time of the session behind this request.
-   * A refresh does not move it, so it is a sign-in and not an activity time. Anything older than five minutes
-   * is refused with `reauth_required`: the person signs in again (Google or whatever they use) and tries once more.
+   * When the owner last proved who they are (ADR-025 section 6, T-306a C-5). A new session is not a proof: a stolen
+   * cookie, a magic link or a break-glass sign-in would be as good as the person. The proof is a step-up through
+   * Google OIDC (`prompt=login`, `max_age=300`, `auth_time` checked) stored on THIS session, no older than five
+   * minutes: `GET /v1/auth/google/step-up`. Anything else is refused with `reauth_required`.
+   *
+   * The one exception is a development or test stack (`devLoginEnabled`: mock Google mode, not production), which has
+   * no Google to ask: there the age of the session counts, as before. It cannot be reached in production.
    */
-  private async reauthAt(sessionId: string): Promise<Date> {
+  private async reauthAt(sessionId: string): Promise<{ at: Date; method: string }> {
     const [session] = await this.database.db
-      .select({ createdAt: schema.sessions.createdAt, revokedAt: schema.sessions.revokedAt })
+      .select({
+        createdAt: schema.sessions.createdAt,
+        revokedAt: schema.sessions.revokedAt,
+        authMethod: schema.sessions.authMethod,
+        stepUpAt: schema.sessions.stepUpAt,
+        stepUpMethod: schema.sessions.stepUpMethod,
+      })
       .from(schema.sessions)
       .where(eq(schema.sessions.id, sessionId))
       .limit(1);
     if (session === undefined || session.revokedAt !== null) {
       throw new ApiHttpError(403, 'reauth_required', 'Sign in again to approve a promotion');
     }
-    if (Date.now() - session.createdAt.getTime() > PROMOTION_REAUTH_SECONDS * 1000) {
-      throw new ApiHttpError(
-        403,
-        'reauth_required',
-        'Approving a promotion needs a sign-in within the last 5 minutes: sign in again, then approve',
-      );
+    const fresh = (at: Date): boolean => {
+      const age = Date.now() - at.getTime();
+      return age <= PROMOTION_REAUTH_SECONDS * 1000 && age >= -30_000;
+    };
+    if (
+      session.stepUpAt !== null &&
+      session.stepUpMethod === 'google_oidc' &&
+      fresh(session.stepUpAt)
+    ) {
+      return { at: session.stepUpAt, method: 'google_oidc' };
     }
-    return session.createdAt;
+    if (this.config.devLoginEnabled && fresh(session.createdAt)) {
+      return { at: session.createdAt, method: `${session.authMethod}_test_stack` };
+    }
+    throw new ApiHttpError(
+      403,
+      'reauth_required',
+      'Approving a promotion needs a fresh sign-in at Google (within the last 5 minutes): open /v1/auth/google/step-up, then approve',
+    );
   }
 
   async decidePromotion(
@@ -226,7 +249,8 @@ export class AutonomyService {
         throw new ApiHttpError(403, 'owner_only', 'Only the owner can approve a promotion');
       this.requireFlag();
     }
-    const reauthAt = input.approve ? await this.reauthAt(sessionId) : undefined;
+    const reauth = input.approve ? await this.reauthAt(sessionId) : undefined;
+    const reauthAt = reauth?.at;
     return translating(async () =>
       settle(
         uow,
@@ -234,7 +258,9 @@ export class AutonomyService {
           promotionId,
           approve: input.approve,
           reason: input.reason,
-          ...(input.approve ? { reauthAt, confirmKey: input.confirmKey } : {}),
+          ...(input.approve
+            ? { reauthAt, reauthMethod: reauth?.method, confirmKey: input.confirmKey }
+            : {}),
         }),
       ),
     );

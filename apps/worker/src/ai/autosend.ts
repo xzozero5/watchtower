@@ -215,7 +215,7 @@ export async function runAutoSendStep(
     );
     // T-306e C-11: no `ai_run` row of the drafter or the grader, no grade: the models cannot be vouched for. (The
     // settings are no stand-in: they say what should have run, not what did.)
-    if (graderRun === undefined || draftRun === undefined) {
+    if (graded.runId === null || graderRun === undefined || draftRun === undefined) {
       await record(['ai_run_missing'], null, {
         reason: 'run_missing',
         graderRun: graderRun !== undefined,
@@ -228,15 +228,10 @@ export async function runAutoSendStep(
       ticketId: input.ticket.id,
       text,
       graderAiRunId: graded.runId,
-      graderProvider: graderRun.provider,
-      graderModel: graderRun.model,
-      drafterProvider: draftRun.provider,
-      drafterModel: draftRun.model,
       score: graded.value.score,
       passed: graded.value.passed,
       violations: graded.value.violations,
       promptVersion: graded.value.promptVersion,
-      mock: graded.value.mock,
     });
 
     const evaluation = await gate.evaluateAutoSend(request(gradeId), mode);
