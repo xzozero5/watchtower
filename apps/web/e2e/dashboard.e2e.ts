@@ -79,7 +79,7 @@ for (const scheme of ['light', 'dark'] as const) {
         // N5: a missing figure gives its reason, never a 0.
         const quality = page.getByRole('region', { name: 'Quality' });
         await expect(quality.locator('[data-state="unavailable"]')).toContainText('Not built yet');
-        const ai = page.getByRole('region', { name: 'AI' });
+        const ai = page.getByRole('region', { name: 'AI', exact: true });
         await expect(ai.locator('[data-state="unavailable"]').first()).toContainText(
           'Waits for the AI grader',
         );
@@ -135,7 +135,7 @@ test.describe('Ops dashboard: roles and states', () => {
     await page.emulateMedia({ colorScheme: 'light', reducedMotion: 'reduce' });
     await mockDashboard(page, { role: 'agent' });
     await open(page, '/dashboard');
-    const ai = page.getByRole('region', { name: 'AI' });
+    const ai = page.getByRole('region', { name: 'AI', exact: true });
     await expect(ai).toContainText('Not visible to your role');
     await expect(
       page.getByRole('region', { name: 'Quality' }).locator('[data-state="restricted"]'),
