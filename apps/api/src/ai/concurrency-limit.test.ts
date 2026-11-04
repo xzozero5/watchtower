@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { isAssistantRequest, limitConcurrency } from './concurrency-limit.js';
 
 const asRequest = (promptId: string, abortSignal?: AbortSignal): LlmRequest =>
+  // eslint-disable-next-line watchtower/no-redacted-text-cast -- fixture carries only prompt metadata and a signal, no text reaches a model
   ({
     prompt: { id: promptId, version: 1, hash: '0'.repeat(64) },
     abortSignal,
