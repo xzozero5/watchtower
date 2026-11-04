@@ -172,7 +172,8 @@ export function EmailMessageCard({
           <button
             type="button"
             aria-expanded={details}
-            aria-label={details ? t('email.message.hideDetails') : t('email.message.showDetails')}
+            // The name starts with the words on the button (WCAG 2.5.3, label in name), then says what it does.
+            aria-label={`${toLine}: ${details ? t('email.message.hideDetails') : t('email.message.showDetails')}`}
             onClick={() => {
               setDetails((open) => !open);
             }}

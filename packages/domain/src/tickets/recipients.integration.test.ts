@@ -67,7 +67,7 @@ function reply(
         reply: {
           body: 'We are on it.',
           email: { cc: [], bcc: [], inline: [], ...email },
-        } as never,
+        },
       },
     ),
   );
@@ -133,7 +133,7 @@ describe('email reply recipients (T-171 C-2)', () => {
   });
 
   it('does not ask when no recipient was typed (the default is the requester)', async () => {
-    const { ticket, staff, domain } = await emailTicket();
+    const { ticket, staff } = await emailTicket();
     await reply(staff, ticket.id, {});
   });
 });
