@@ -48,6 +48,28 @@ export const aiBudgetSchema = z.object({
 });
 export type AiBudget = z.infer<typeof aiBudgetSchema>;
 
+/**
+ * Which model each AI agent uses (T-301c), read-only. `source` says where the choice came from:
+ * `default` (the agent's default tier), `tier` (`AI_AGENT_MODEL_<AGENT>` named a tier) or `alias`
+ * (it named a model directly). `model` is null when the tier has no model configured (calls are
+ * refused). `grader` is flagged when it runs on the same model as the drafter, because an
+ * independent grader needs a different model (ADR-025 condition 7).
+ */
+export const aiModelMappingSchema = z.object({
+  provider: z.string(),
+  agents: z.array(
+    z.object({
+      agent: z.string(),
+      tier: z.enum(['deep', 'standard', 'light']),
+      model: z.string().nullable(),
+      source: z.enum(['default', 'tier', 'alias']),
+      priced: z.boolean(),
+    }),
+  ),
+  graderIndependent: z.boolean(),
+});
+export type AiModelMapping = z.infer<typeof aiModelMappingSchema>;
+
 /** Redis key the worker writes and the api reads. */
 export const AI_STATUS_REDIS_KEY = 'watchtower:ai:status';
 /** How often the worker probes (ms), and how long a report stays valid (ms): a missed report or two means offline. */

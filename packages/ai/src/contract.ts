@@ -163,6 +163,11 @@ export const aiSettingsSchema = z.object({
   }),
   /** Overrides `DEFAULT_AGENT_TIERS`, e.g. a grader on a different vendor. */
   agentTiers: z.partialRecord(agentNameSchema, modelTierSchema).default({}),
+  /**
+   * A model id (or CLI alias) for one agent, on the provider of that agent's tier. Wins over the
+   * tier's model; the agent keeps its tier label in `ai_run`. Never a literal in code (T-301c).
+   */
+  agentModels: z.partialRecord(agentNameSchema, z.string().min(1)).default({}),
   embedding: z.object({
     provider: providerKindSchema,
     model: z.string().min(1),

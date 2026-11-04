@@ -223,6 +223,17 @@ export const phase1EnvShape = {
   AI_MODEL_DEEP: optionalString,
   AI_MODEL_STANDARD: optionalString,
   AI_MODEL_LIGHT: optionalString,
+  // Model per agent (T-301c): a tier name (deep / standard / light) or a model alias of the selected
+  // provider. Empty = the agent's default tier. Lets the grader run on a different model than the
+  // drafter (ADR-025 condition 7).
+  AI_AGENT_MODEL_CLASSIFIER: optionalString,
+  AI_AGENT_MODEL_INVESTIGATOR: optionalString,
+  AI_AGENT_MODEL_DRAFTER: optionalString,
+  AI_AGENT_MODEL_SUMMARIZER: optionalString,
+  AI_AGENT_MODEL_GRADER: optionalString,
+  AI_AGENT_MODEL_KB_AUTHOR: optionalString,
+  AI_AGENT_MODEL_ROSTER_PLANNER: optionalString,
+  AI_AGENT_MODEL_PERSONAL_ASSISTANT: optionalString,
   // JSON object keyed by model id: {"<model id>":{"inputUsdPerMTok":0,"outputUsdPerMTok":0}}. A real
   // provider needs a price for every tier's model, otherwise the daily cost cap could not count.
   AI_MODEL_PRICES: optionalString,

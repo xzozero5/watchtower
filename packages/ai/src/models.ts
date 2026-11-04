@@ -25,6 +25,8 @@ export function resolveModel(
 ): ResolvedModel {
   const tier = tierOverride ?? settings.agentTiers[agent] ?? DEFAULT_AGENT_TIERS[agent];
   const ref = settings.tiers[tier];
+  const direct = tierOverride === undefined ? settings.agentModels[agent] : undefined;
+  if (direct !== undefined) return { tier, provider: ref.provider, model: direct };
   return { tier, provider: ref.provider, model: ref.model };
 }
 
@@ -49,6 +51,7 @@ export function mockSettings(): AiSettings {
       light: { provider: 'mock', model: 'mock-light' },
     },
     agentTiers: {},
+    agentModels: {},
     // Fixed on purpose: the mock provider holds no real data. Real settings carry a server-side
     // value from the environment or the credential store.
     inputHashKey: 'mock-only-input-hash-value-0000000000',

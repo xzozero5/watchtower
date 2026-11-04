@@ -47,6 +47,18 @@ describe('model selection by tier', () => {
     expect(resolveModel(split, 'drafter').provider).toBe('anthropic');
   });
 
+  it('lets settings give one agent its own model id, keeping its tier label (T-301c)', () => {
+    const split = aiSettingsSchema.parse({ ...settings, agentModels: { grader: 'fixture-alias' } });
+    expect(resolveModel(split, 'grader')).toEqual({
+      tier: 'standard',
+      provider: 'vertex',
+      model: 'fixture-alias',
+    });
+    expect(resolveModel(split, 'drafter').model).toBe('fixture-deep');
+    // an explicit tier on the call still wins
+    expect(resolveModel(split, 'grader', 'deep').model).toBe('fixture-deep');
+  });
+
   it('gives every agent a default tier', () => {
     for (const tier of Object.values(DEFAULT_AGENT_TIERS)) expect(MODEL_TIERS).toContain(tier);
   });

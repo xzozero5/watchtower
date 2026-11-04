@@ -7,7 +7,9 @@ import {
   createRedactor,
   DevMockLlmProvider,
   loadPromptCatalog,
+  CONFIGURABLE_AGENTS,
   MockLlmProvider,
+  agentModelVariable,
   type AgentDeps,
   type AiCallGuard,
   type AiRunRecord,
@@ -126,6 +128,12 @@ export function createRig(options: RigOptions): Rig {
       AI_MODEL_STANDARD: options.env.AI_MODEL_STANDARD,
       AI_MODEL_LIGHT: options.env.AI_MODEL_LIGHT,
       AI_MODEL_PRICES: options.env.AI_MODEL_PRICES,
+      ...Object.fromEntries(
+        CONFIGURABLE_AGENTS.map((agent) => [
+          agentModelVariable(agent),
+          options.env[agentModelVariable(agent)],
+        ]),
+      ),
       APP_ENCRYPTION_KEY: options.env.APP_ENCRYPTION_KEY ?? randomBytes(32).toString('hex'),
     });
     const missing = [...built.problems];

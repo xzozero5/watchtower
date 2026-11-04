@@ -109,6 +109,19 @@ describe('AI controls', () => {
     expect(await screen.findByText('Couldn’t load the AI budget.')).toBeVisible();
   });
 
+  it('shows the model of each AI agent, read-only, and whether the grader is independent', async () => {
+    consoleApi();
+    renderConsole(<AiControlsPage />);
+    const card = await screen.findByRole('region', { name: 'Model per AI agent' });
+    expect(within(card).getByText('model-b')).toBeVisible();
+    expect(within(card).getByText('Not set')).toBeVisible();
+    expect(
+      within(card).getByText('The grader runs on a different model than the drafter.'),
+    ).toBeVisible();
+    expect(within(card).getAllByText('No price: calls are refused')).toHaveLength(1);
+    expect(within(card).queryByRole('button')).toBeNull();
+  });
+
   it('explains the stages in plain words', async () => {
     consoleApi();
     renderConsole(<AiControlsPage />);

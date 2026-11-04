@@ -60,6 +60,18 @@ export function useAutonomy(enabled = true) {
   });
 }
 
+/** Which model each AI agent uses (T-301c). Read-only; it only changes with the environment. */
+export function useAiModels(enabled = true) {
+  const api = useApi();
+  const userId = useUserId();
+  return useQuery({
+    queryKey: [...adminKeys(userId).all, 'ai-models'] as const,
+    queryFn: ({ signal }) => api.aiModels(signal),
+    enabled,
+    staleTime: 5 * 60_000,
+  });
+}
+
 /** Today's AI spend against the caps (T-142). Lead and head; refreshed every minute. */
 export function useAiBudget(enabled = true) {
   const api = useApi();

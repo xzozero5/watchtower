@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 
 import { TicketsModule } from '../tickets/tickets.module.js';
 import { AiBudgetService } from './ai-budget.service.js';
+import { AiModelsService } from './ai-models.service.js';
 import { AiGradesController } from './ai-grades.controller.js';
 import { AiGradesService } from './ai-grades.service.js';
 import { AiStatusController } from './ai-status.controller.js';
@@ -18,7 +19,7 @@ import { TicketAiService } from './ticket-ai.service.js';
 @Module({
   imports: [TicketsModule],
   controllers: [TicketAiController, AiStatusController, AiGradesController],
-  providers: [TicketAiService, AiStatusService, AiBudgetService, AiGradesService],
+  providers: [TicketAiService, AiStatusService, AiBudgetService, AiGradesService, AiModelsService],
   // The assistant (T-134) asks for a draft through the same service as the button does.
   exports: [TicketAiService, AiStatusService],
 })

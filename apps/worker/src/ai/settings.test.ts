@@ -75,4 +75,43 @@ describe('buildAiSettings', () => {
     expect(settings.inputHashKey).toMatch(/^[0-9a-f]{64}$/);
     expect(settings.inputHashKey).not.toContain(config.APP_ENCRYPTION_KEY);
   });
+
+  describe('per-agent model (T-301c)', () => {
+    const base = { AI_PROVIDER: 'anthropic', ...MODELS } as const;
+    const prices = JSON.stringify({
+      ...(JSON.parse(PRICES) as object),
+      'label-alias': { inputUsdPerMTok: 0, outputUsdPerMTok: 0 },
+    });
+
+    it('treats a tier name as a move to that tier', () => {
+      const { settings, problems } = buildAiSettings(
+        testConfig({ ...base, AI_MODEL_PRICES: PRICES, AI_AGENT_MODEL_GRADER: 'deep' }),
+      );
+      expect(problems).toEqual([]);
+      expect(settings.agentTiers).toEqual({ grader: 'deep' });
+      expect(settings.agentModels).toEqual({});
+    });
+
+    it('treats anything else as a model alias that needs a price', () => {
+      const ok = buildAiSettings(
+        testConfig({ ...base, AI_MODEL_PRICES: prices, AI_AGENT_MODEL_GRADER: ' label-alias ' }),
+      );
+      expect(ok.problems).toEqual([]);
+      expect(ok.settings.agentModels).toEqual({ grader: 'label-alias' });
+
+      const unpriced = buildAiSettings(
+        testConfig({ ...base, AI_MODEL_PRICES: PRICES, AI_AGENT_MODEL_GRADER: 'label-alias' }),
+      );
+      expect(unpriced.problems).toEqual(['AI_MODEL_PRICES has no price for AI_AGENT_MODEL_GRADER']);
+    });
+
+    it('ignores empty values and the mock provider', () => {
+      const empty = buildAiSettings(
+        testConfig({ ...base, AI_MODEL_PRICES: PRICES, AI_AGENT_MODEL_GRADER: '' }),
+      );
+      expect(empty.settings.agentModels).toEqual({});
+      const mock = buildAiSettings(testConfig({ AI_AGENT_MODEL_GRADER: 'deep' }));
+      expect(mock.settings.agentTiers).toEqual({});
+    });
+  });
 });

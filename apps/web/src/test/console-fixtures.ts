@@ -1,6 +1,7 @@
 import type {
   AuditLogEntry,
   AiBudget,
+  AiModelMapping,
   AutonomyState,
   BusinessCalendarRecord,
   TicketStats,
@@ -113,6 +114,19 @@ export function dueTicket(
     org: { id: uuid(500), name: 'Acme Logistics' },
     ...overrides,
   });
+}
+
+export function makeAiModels(overrides: Partial<AiModelMapping> = {}): AiModelMapping {
+  return {
+    provider: 'claude-cli',
+    agents: [
+      { agent: 'drafter', tier: 'deep', model: 'model-a', source: 'default', priced: true },
+      { agent: 'grader', tier: 'standard', model: 'model-b', source: 'alias', priced: false },
+      { agent: 'summarizer', tier: 'light', model: null, source: 'default', priced: false },
+    ],
+    graderIndependent: true,
+    ...overrides,
+  };
 }
 
 export function makeAiBudget(overrides: Partial<AiBudget> = {}): AiBudget {
