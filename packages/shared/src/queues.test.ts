@@ -57,6 +57,23 @@ describe('email jobs and their secret fields', () => {
     );
   });
 
+  it('seals the link of the "my requests" email and keeps it free of any ticket (T-152)', () => {
+    const { clear, secret } = splitEmailSecrets({
+      kind: 'portal_my_requests',
+      to: 'a@example.com',
+      locale: 'th',
+      trackingUrl: tracking,
+      expiresInMinutes: 30,
+    });
+    expect(secret).toEqual({ trackingUrl: tracking });
+    expect(clear).toEqual({
+      kind: 'portal_my_requests',
+      to: 'a@example.com',
+      locale: 'th',
+      expiresInMinutes: 30,
+    });
+  });
+
   it('splits a job into clear fields and the sealed ones', () => {
     const { clear, secret } = splitEmailSecrets({
       kind: 'portal_link',

@@ -36,3 +36,29 @@ export const portalAccessToken = pgTable(
       .where(sql`${table.revokedAt} IS NOT NULL`),
   ],
 );
+
+/**
+ * One-time "my requests" links (T-152, migration 0104). Only the SHA-256 of a token is stored; the row
+ * is bound to a contact and to a keyed tag of the address it was mailed to, never the address.
+ */
+export const portalListLink = pgTable(
+  'portal_list_link',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    contactId: uuid('contact_id')
+      .notNull()
+      .references(() => contact.id, { onDelete: 'cascade' }),
+    emailTag: text('email_tag').notNull(),
+    tokenHash: text('token_hash').notNull(),
+    expiresAt: timestamptz('expires_at').notNull(),
+    consumedAt: timestamptz('consumed_at'),
+    createdAt: timestamptz('created_at').notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('portal_list_link_hash_key').on(table.tokenHash),
+    index('portal_list_link_contact_idx')
+      .on(table.contactId)
+      .where(sql`${table.consumedAt} IS NULL`),
+    index('portal_list_link_expiry_idx').on(table.expiresAt),
+  ],
+);

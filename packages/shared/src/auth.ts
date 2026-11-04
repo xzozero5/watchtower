@@ -365,6 +365,12 @@ export const CORE_AUDIT_ACTIONS = {
   portalLinkResend: 'portal.tracking_link.resend',
   portalLinkIssued: 'portal.tracking_link.issued',
   portalLinksRevoke: 'portal.tracking_links.revoke',
+  /** Someone asked for an emailed link to "my requests" (T-152); the address is only a keyed tag. */
+  portalMyRequestsRequest: 'portal.my_requests.request',
+  /** A "my requests" link was written to the outbox for a known contact (T-152). */
+  portalMyRequestsIssued: 'portal.my_requests.issued',
+  /** The link was used, once, and the list was shown (T-152). */
+  portalMyRequestsOpened: 'portal.my_requests.opened',
   portalVerificationFailed: 'portal.verification_failed',
   portalRateLimited: 'portal.rate_limited',
   portalAccessDenied: 'portal.access_denied',

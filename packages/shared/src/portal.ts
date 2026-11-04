@@ -21,6 +21,15 @@ export function portalTrackingPath(ticketKey: string): string {
   return `/portal/tickets/${encodeURIComponent(ticketKey)}`;
 }
 
+/**
+ * The "my requests" link (T-152): `<APP_URL>/portal/my-requests#token=<token>`. Like the tracking link
+ * the token stays in the fragment; the page sends it in `X-Portal-Token` to open the list once.
+ */
+export const PORTAL_MY_REQUESTS_PATH = '/portal/my-requests';
+/** How long that link works, and how many of the contact's tickets it lists. `[ASSUMED]` */
+export const PORTAL_MY_REQUESTS_LINK_MINUTES = 30;
+export const PORTAL_MY_REQUESTS_LIMIT = 50;
+
 export const PORTAL_LOCALES = ['en', 'th'] as const;
 export type PortalLocale = (typeof PORTAL_LOCALES)[number];
 export const portalLocaleSchema = z.enum(PORTAL_LOCALES);
@@ -388,6 +397,44 @@ export const portalResendSchema = z.strictObject({
   email: emailSchema,
 });
 export type PortalResend = z.infer<typeof portalResendSchema>;
+
+/**
+ * "Email me a link to my requests" (T-152). The address is typed, never proven here: the answer is
+ * always 202 `accepted`, whether or not the address belongs to a contact, so the form cannot be used
+ * to find out who our customers are. Same proof-of-work and honeypot as the submit form.
+ */
+export const portalMyRequestsRequestSchema = z.strictObject({
+  email: emailSchema,
+  locale: portalLocaleSchema.optional(),
+  /** Honeypot. Hidden from people; a bot that fills it gets the same 202 and no email. */
+  website: z.string().max(500).optional(),
+  verification: humanProofSchema,
+});
+export type PortalMyRequestsRequest = z.infer<typeof portalMyRequestsRequestSchema>;
+
+/** One row of the list: what the customer already sees on the tracking page, no more. */
+export const portalMyRequestItemSchema = z.object({
+  key: z.string(),
+  subject: z.string(),
+  status: customerStatusSchema,
+  statusLabel: z.string(),
+  createdAt: z.iso.datetime(),
+  updatedAt: z.iso.datetime(),
+  /**
+   * Tracking token of this ticket so the row opens its page. Null for a closed ticket (its links
+   * are revoked on purpose): the page there offers "send me a link".
+   */
+  trackingToken: z.string().nullable(),
+});
+export type PortalMyRequestItem = z.infer<typeof portalMyRequestItemSchema>;
+
+export const portalMyRequestsViewSchema = z.object({
+  maskedEmail: z.string(),
+  items: z.array(portalMyRequestItemSchema),
+  /** True when the contact has more than `PORTAL_MY_REQUESTS_LIMIT` requests (newest shown). */
+  truncated: z.boolean(),
+});
+export type PortalMyRequestsView = z.infer<typeof portalMyRequestsViewSchema>;
 
 /** The same answer whether or not the ticket and address exist. */
 export const portalAcceptedSchema = z.object({ status: z.literal('accepted') });

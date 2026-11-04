@@ -101,6 +101,14 @@ function portalEmailVariants() {
       kind: z.literal('portal_link'),
       ...portalEmailBase,
     }),
+    z.object({
+      /** "Your requests" link (T-152): not about one ticket, so no `ticketKey`; `trackingUrl` is sealed. */
+      kind: z.literal('portal_my_requests'),
+      to: portalEmailBase.to,
+      locale: portalEmailBase.locale,
+      trackingUrl: portalEmailBase.trackingUrl,
+      expiresInMinutes: z.number().int().min(1).max(1440),
+    }),
   ] as const;
 }
 
