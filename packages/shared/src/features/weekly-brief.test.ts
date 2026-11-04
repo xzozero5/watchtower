@@ -84,32 +84,54 @@ describe('evidenceOutsideDraft', () => {
 });
 
 describe('weeklyBriefEmailParts', () => {
-  it('names the evidence on each line and says when there is none', () => {
-    const parts = weeklyBriefEmailParts({
-      ...DRAFT,
-      summary: [cited('SLA fell.', metric, ticket), humanClaim('A person wrote this.')],
-      decisions: [cited('Decide.', ticket)],
+  const intent = { kind: 'data', label: 'intent: Password reset', href: '/dashboard/ceo' } as const;
+  const person = { kind: 'person', label: 'Somchai Jaidee' } as const;
+  const content: WeeklyBriefContent = {
+    summary: [cited('Somchai Jaidee of Acme Co wrote about the invoice.', person, ticket)],
+    rootCauses: [
+      {
+        title: 'Acme Co cannot sign in',
+        claims: [cited('Somchai Jaidee: login loop.', intent, ticket, person)],
+        ask: 'Call Somchai Jaidee',
+      },
+    ],
+    decisions: [cited('Decide for Acme Co.', ticket), humanClaim('Ask Somchai Jaidee')],
+  };
+
+  it('carries only figures, keys and intent names, never the words of a claim (T-305f)', () => {
+    const parts = weeklyBriefEmailParts(content, 'en', [
+      'SLA compliance: 90% (period before 85%).',
+    ]);
+    expect(parts).toEqual({
+      summary: ['SLA compliance: 90% (period before 85%).'],
+      rootCauses: [{ title: 'Password reset', text: '[OPS-12]', ask: null }],
+      decisions: ['Needs a decision: [OPS-12]', 'A decision is open, see the app'],
     });
-    expect(parts.summary).toEqual([
-      'SLA fell. [SLA, OPS-12]',
-      'A person wrote this. (no evidence)',
-    ]);
-    expect(parts.rootCauses).toEqual([
-      { title: 'Sign-in', text: 'Nine tickets. [OPS-12]', ask: null },
-    ]);
-    expect(parts.decisions).toEqual(['Decide. [OPS-12]']);
+    const wire = JSON.stringify(parts);
+    for (const leak of ['Somchai', 'Acme', 'invoice', 'login loop']) {
+      expect(wire).not.toContain(leak);
+    }
   });
 
-  it('stays inside the limits of an email job, however long a sentence is', () => {
-    const long = cited(
-      'x'.repeat(600),
-      ...Array.from({ length: 8 }, () => ({ ...ticket, label: 'L'.repeat(100) })),
+  it('is Thai when the brief is Thai and names a cause with no intent by its number', () => {
+    const parts = weeklyBriefEmailParts(DRAFT, 'th', []);
+    expect(parts.rootCauses[0]).toEqual({ title: 'สาเหตุที่ 1', text: '[OPS-12]', ask: null });
+  });
+
+  it('stays inside the limits of an email job', () => {
+    const many = cited(
+      'x',
+      ...Array.from({ length: 8 }, (_, n) => ({ ...ticket, label: 'K'.repeat(30) + String(n) })),
     );
-    const parts = weeklyBriefEmailParts({
-      summary: [long],
-      rootCauses: [{ title: 'T'.repeat(160), claims: [long, long, long], ask: 'a'.repeat(300) }],
-      decisions: [long],
-    });
+    const parts = weeklyBriefEmailParts(
+      {
+        summary: [],
+        rootCauses: Array.from({ length: 5 }, () => ({ title: 'T', claims: [many], ask: null })),
+        decisions: Array.from({ length: 5 }, () => many),
+      },
+      'en',
+      Array.from({ length: 12 }, () => 'F'.repeat(2000)),
+    );
     const job = {
       kind: 'weekly_brief',
       to: 'ceo@example.test',

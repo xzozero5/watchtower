@@ -141,15 +141,27 @@ export const humanClaim = (text: string): Claim => ({ text, evidence: [], uncite
 
 export { claimEvidenceSchema };
 
-/** The text of one claim for an email: the sentence and the names of what it rests on. */
-const claimLine = (claim: Claim): string => {
-  const names = claim.evidence.map((item) => item.label);
-  const text = claim.text.slice(0, 600);
-  return (names.length === 0 ? `${text} (no evidence)` : `${text} [${names.join(', ')}]`).slice(
-    0,
-    880,
-  );
-};
+/** Evidence that is a key the instance itself made (never a person, an article or free text). */
+const EMAIL_KEY_KINDS: ReadonlySet<string> = new Set(['ticket', 'incident']);
+const INTENT_PREFIX = 'intent: ';
+
+const uniq = (items: readonly string[]): string[] => [...new Set(items)];
+const keysOf = (claims: readonly Claim[]): string[] =>
+  uniq(
+    claims.flatMap((claim) =>
+      claim.evidence
+        .filter((item) => EMAIL_KEY_KINDS.has(item.kind))
+        .map((item) => item.label.slice(0, 40)),
+    ),
+  ).slice(0, 12);
+const intentsOf = (claims: readonly Claim[]): string[] =>
+  uniq(
+    claims.flatMap((claim) =>
+      claim.evidence
+        .filter((item) => item.kind === 'data' && item.label.startsWith(INTENT_PREFIX))
+        .map((item) => item.label.slice(INTENT_PREFIX.length, 120)),
+    ),
+  ).slice(0, 4);
 
 /** What the weekly brief email carries (plain strings: an email job holds no objects of the app). */
 export interface WeeklyBriefEmailParts {
@@ -158,14 +170,38 @@ export interface WeeklyBriefEmailParts {
   readonly decisions: string[];
 }
 
-export function weeklyBriefEmailParts(content: WeeklyBriefContent): WeeklyBriefEmailParts {
+/**
+ * The email carries no free text (T-305f, owner 2026-11-04 "In-app yes, email no"): the claims of a brief are
+ * restored for the app (names of customers and colleagues, ticket subjects) and an email leaves the instance.
+ * So it is built from what cannot hold a name: `figures` (lines of the figures, numbers only), the ticket and
+ * incident keys and intent names the claims rest on, and the link back to the app.
+ */
+export function weeklyBriefEmailParts(
+  content: WeeklyBriefContent,
+  locale: WeeklyBriefLocale,
+  figures: readonly string[],
+): WeeklyBriefEmailParts {
+  const th = locale === 'th';
   return {
-    summary: content.summary.map(claimLine),
-    rootCauses: content.rootCauses.map((cause) => ({
-      title: cause.title,
-      text: cause.claims.map(claimLine).join(' ').slice(0, 1500),
-      ask: cause.ask,
-    })),
-    decisions: content.decisions.map(claimLine),
+    summary: figures.slice(0, 8).map((line) => line.slice(0, 880)),
+    rootCauses: content.rootCauses.map((cause, index) => {
+      const intents = intentsOf(cause.claims);
+      const keys = keysOf(cause.claims);
+      const title =
+        intents.length > 0
+          ? intents.join(', ')
+          : `${th ? 'สาเหตุที่ ' : 'Root cause '}${String(index + 1)}`;
+      const none = th ? 'ดูรายละเอียดในแอป' : 'See the app';
+      return {
+        title: title.slice(0, 200),
+        text: keys.length > 0 ? `[${keys.join(', ')}]` : none,
+        ask: null,
+      };
+    }),
+    decisions: content.decisions.map((claim) => {
+      const keys = keysOf([claim]);
+      if (keys.length > 0) return `${th ? 'รอตัดสินใจ' : 'Needs a decision'}: [${keys.join(', ')}]`;
+      return th ? 'มีเรื่องรอตัดสินใจ ดูในแอป' : 'A decision is open, see the app';
+    }),
   };
 }

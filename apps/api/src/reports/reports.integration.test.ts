@@ -6,6 +6,8 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { startHarness, type Harness } from '../testing/harness.js';
 import { apiOrg, signIn, type ApiErrorBody, type Persona } from '../testing/ticketing.js';
+import { AiCostService } from './ai-cost.service.js';
+import { CeoViewService } from './ceo-view.service.js';
 import { SeedFilter } from './seed-filter.js';
 
 // T-305a/b on the real application module and Postgres: who may read, that a KPI without data says so instead
@@ -21,6 +23,15 @@ let orgId: string;
 const owner = () => h.db.owner.pool;
 const run = (text: string, values: unknown[] = []) => owner().query(text, values);
 const hex = () => randomBytes(32).toString('hex');
+
+// One clock (B-009, T-183). The rows below are stamped with the database's `now()` (and the columns that
+// default to it), but a report window ends at the clock of the application. A container clock that runs a
+// fraction of a second ahead of the host (found at +0.33 s on Docker for Windows) put every row after the end
+// of the window, so the numbers read zero. The report itself cuts days in UTC from the instant it is given,
+// so the process TZ does not matter. The application clock of these tests is therefore the database clock:
+// the offset is measured once and added to `Date.now()`.
+let skewMs = 0;
+const dbClock = () => new Date(Date.now() + skewMs);
 
 const getCeo = async (who: Persona, days = 7) => {
   const response = await who.client.request<CeoView>(
@@ -39,6 +50,13 @@ const getCost = async (who: Persona, query = 'days=7') => {
 
 beforeAll(async () => {
   h = await startHarness();
+  const before = Date.now();
+  const { rows: clock } = await run(
+    'SELECT (extract(epoch FROM clock_timestamp()) * 1000)::float8 AS ms',
+  );
+  skewMs = Math.round((clock[0] as { ms: number }).ms - (before + Date.now()) / 2);
+  h.app.get(CeoViewService).now = dbClock;
+  h.app.get(AiCostService).now = dbClock;
   head = await signIn(h, 'head');
   lead = await signIn(h, 'lead');
   agent = await signIn(h, 'agent');
@@ -252,7 +270,11 @@ describe('the numbers', () => {
     expect(view.formula.hours).toBeCloseTo(20 / 60, 6);
     expect(view.formula.aiCostUsd).toBeCloseTo(1.75, 6);
     expect(view.formula.aiCostPerResolvedTicketUsd).toBeCloseTo(0.875, 6);
-    expect(view.seedExcluded).toBe(false);
+    // True exactly when the column of migration 0096 exists (it does on a migrated database).
+    const { rows: column } = await run(
+      `SELECT 1 FROM information_schema.columns WHERE table_name = 'ticket' AND column_name = 'seed_batch_id'`,
+    );
+    expect(view.seedExcluded).toBe(column.length > 0);
   });
 
   it('AI cost: per agent, intent, ticket and day, unpriced calls counted apart', async () => {
@@ -302,8 +324,14 @@ describe('the numbers', () => {
     if (!had) await run(`ALTER TABLE ticket ADD COLUMN seed_batch_id uuid`);
     try {
       const filter = h.app.get(SeedFilter);
-      filter.now = () => Date.now() + 10 * 60_000;
-      await run(`UPDATE ticket SET seed_batch_id = gen_random_uuid() WHERE id = $1`, [b]);
+      filter.now = () => dbClock().getTime() + 10 * 60_000;
+      // Migration 0096 wants a batch row, and the ticket in an organization of the same batch.
+      const { rows: batch } = await run(
+        `INSERT INTO seed_batch (kind) VALUES ('e2e') RETURNING id`,
+      );
+      const batchId = (batch[0] as { id: string }).id;
+      await run(`UPDATE organization SET seed_batch_id = $1 WHERE id = $2`, [batchId, orgId]);
+      await run(`UPDATE ticket SET seed_batch_id = $1 WHERE id = $2`, [batchId, b]);
       const view = await getCeo(head, 7);
       expect(view.seedExcluded).toBe(true);
       expect(view.kpis.volume).toMatchObject({ data: { value: 2 } });
@@ -313,6 +341,9 @@ describe('the numbers', () => {
       expect(view.formula.aiCostUsd).toBeCloseTo(1.75, 6);
     } finally {
       await run(`UPDATE ticket SET seed_batch_id = NULL WHERE id = $1`, [b]).catch(() => undefined);
+      await run(`UPDATE organization SET seed_batch_id = NULL WHERE id = $1`, [orgId]).catch(
+        () => undefined,
+      );
       if (!had) await run(`ALTER TABLE ticket DROP COLUMN seed_batch_id`);
       h.app.get(SeedFilter).forget();
     }
