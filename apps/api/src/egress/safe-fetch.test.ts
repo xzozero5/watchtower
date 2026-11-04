@@ -340,6 +340,68 @@ describe('SafeImageFetcher: what the answer may be', () => {
   });
 });
 
+describe('SafeImageFetcher: header timeout and proxies (T-175a)', () => {
+  it('cuts off a server that accepts and then says nothing after the header timeout, not the whole-fetch one', async () => {
+    handler = () => {
+      // never respond
+    };
+    const { fetcher } = setup(
+      { 'img.example.test': [PUBLIC] },
+      { timeoutMs: 10_000, headerTimeoutMs: 150 },
+    );
+    const started = Date.now();
+    expect(await reason(fetcher.fetchImage('http://img.example.test/a.png'))).toBe('timeout');
+    expect(Date.now() - started).toBeLessThan(2000);
+  });
+
+  it('does not apply the header timeout to a body that arrives slowly after the headers', async () => {
+    handler = (_request, response) => {
+      response.writeHead(200, { 'Content-Type': 'image/png' });
+      response.write(PNG.subarray(0, 10));
+      setTimeout(() => {
+        response.end(PNG.subarray(10));
+      }, 300);
+    };
+    const { fetcher } = setup(
+      { 'img.example.test': [PUBLIC] },
+      { timeoutMs: 5_000, headerTimeoutMs: 150 },
+    );
+    expect((await fetcher.fetchImage('http://img.example.test/a.png')).bytes.equals(PNG)).toBe(
+      true,
+    );
+  });
+
+  it('defaults to 3 seconds for the headers', () => {
+    const fetcher = new SafeImageFetcher({ allowHttp: false });
+    expect(
+      (fetcher as unknown as { options: { headerTimeoutMs: number } }).options.headerTimeoutMs,
+    ).toBe(3000);
+  });
+
+  it('ignores proxy settings in the environment: the connection still goes to the checked address', async () => {
+    const saved = { ...process.env };
+    // A proxy that nobody listens on: if it were used the fetch would fail.
+    for (const name of ['HTTP_PROXY', 'HTTPS_PROXY', 'http_proxy', 'https_proxy', 'ALL_PROXY']) {
+      process.env[name] = 'http://127.0.0.1:9';
+    }
+    process.env.NODE_USE_ENV_PROXY = '1';
+    delete process.env.NO_PROXY;
+    delete process.env.no_proxy;
+    try {
+      const { fetcher, dialed } = setup({ 'img.example.test': [PUBLIC] });
+      const image = await fetcher.fetchImage('http://img.example.test/a.png');
+      expect(image.bytes.equals(PNG)).toBe(true);
+      expect(dialed).toEqual([PUBLIC]);
+      expect(hits).toHaveLength(1);
+    } finally {
+      for (const name of Object.keys(process.env)) {
+        if (!(name in saved)) delete process.env[name];
+      }
+      Object.assign(process.env, saved);
+    }
+  });
+});
+
 describe('sniffImage', () => {
   it('knows PNG, JPEG, GIF and WebP and nothing else', () => {
     expect(sniffImage(PNG)).toBe('image/png');

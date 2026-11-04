@@ -6,9 +6,16 @@ import { BlockList, isIP } from 'node:net';
  * link-local (cloud metadata lives at 169.254.169.254 and fd00:ec2::254), documentation, benchmarking,
  * multicast, reserved, and the IPv6 forms that wrap an IPv4 address (mapped, NAT64, 6to4, Teredo),
  * because those can smuggle a private IPv4 past a check that only reads the text.
+ *
+ * IPv6 is an allow-list first: only global unicast `2000::/3` can pass at all (so `::ffff:0:0:0/96`,
+ * `5f00::/16`, `fc00::/7` and everything else outside it is refused without being listed), then the
+ * special-purpose ranges inside it are subtracted.
  */
 const blocked4 = new BlockList();
 const blocked6 = new BlockList(); // separate: a BlockList maps IPv4 onto ::ffff:0:0/96, which would block every IPv4 address
+
+const allowed6 = new BlockList(); // used as an allow-list: an IPv6 address must be inside it
+allowed6.addSubnet('2000::', 3, 'ipv6');
 
 const IPV4: readonly (readonly [string, number])[] = [
   ['0.0.0.0', 8], // "this network"
@@ -36,6 +43,7 @@ const IPV6: readonly (readonly [string, number])[] = [
   ['2001::', 23], // Teredo and IETF assignments
   ['2001:db8::', 32],
   ['2002::', 16], // 6to4
+  ['3fff::', 20], // documentation (RFC 9637)
   ['fc00::', 7], // unique local (includes fd00:ec2::254)
   ['fe80::', 10], // link-local
   ['fec0::', 10], // site-local (deprecated)
@@ -56,7 +64,8 @@ export function isBlockedAddress(address: string): boolean {
   const text = strip(address);
   const family = isIP(text);
   if (family === 0) return true;
-  return family === 4 ? blocked4.check(text, 'ipv4') : blocked6.check(text, 'ipv6');
+  if (family === 4) return blocked4.check(text, 'ipv4');
+  return !allowed6.check(text, 'ipv6') || blocked6.check(text, 'ipv6');
 }
 
 /** Host names that mean "this machine / the internal network" whatever DNS says. */
