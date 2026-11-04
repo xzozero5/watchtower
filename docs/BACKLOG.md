@@ -156,7 +156,7 @@
 - [x] T-304d `ai-engineer` grader ตรวจก่อนส่งใน dispatcher + ข้อความแจ้งว่าเป็นคำตอบอัตโนมัติ — **ปิด 2026-11-04**
 - [x] T-304e `backend-dev` auto-rollback (violation/reopen/CSAT/grader fail) → stage 2 + audit + แจ้ง head — **ปิด 2026-11-04**
 - [x] T-304f `backend-dev` รายงาน ready for promotion รายสัปดาห์ (§6.4) **ไม่นับข้อมูล seed** — **ปิด 2026-11-04**
-- [ ] T-304g `frontend-dev` admin intents: ปุ่ม stage 3 ปิดจน flag + รายงานเขียว · แสดง shadow
+- [x] T-304g `frontend-dev` admin intents: ปุ่ม stage 3 ปิดจน flag + รายงานเขียว · แสดง shadow — **ปิด 2026-11-05**
 - [x] T-305a `backend-dev`+`frontend-dev` cost dashboard ต่อ agent/intent/ticket (รวม T-142) — **ปิด 2026-11-04** (ยังไม่มี e2e/axe ของหน้าใหม่)
 - [x] T-305b `backend-dev`+`frontend-dev` CEO view §9.2 + tile plug-in (API/CSV) — **ปิด 2026-11-04** (0099, §9.2 ข้อ 2,3,5,6 ยังไม่ทำ)
 - [x] T-305c `ai-engineer` weekly brief (claim + หลักฐาน T-135, root cause top 5) head แก้ได้ + ตั้งเวลาส่ง — **ปิด 2026-11-04** (0101; ตั้งเวลาใน admin ยังไม่ทำ)
