@@ -332,6 +332,32 @@ describe('ingestInbound: new mail', () => {
   });
 });
 
+describe('ingestInbound: survey links (T-171 review C-8)', () => {
+  it('does not store a quoted survey link token', async () => {
+    const token =
+      'wtc1.0123456789abcdef0123456789abcdef.lxyz12.ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopq';
+    const result = await ingest(
+      mail({
+        subject: 'Re: how did we do?',
+        body: `ขอบคุณครับ https://help.example.test/csat#token=${token}&score=5 ที่ช่วย`,
+        html: `<p>link <a href="https://help.example.test/csat#token=${token}">https://help.example.test/csat#token=${token}</a></p>`,
+      }),
+    );
+    const [saved] = await env.db.owner.db
+      .select()
+      .from(schema.message)
+      .where(eq(schema.message.id, result.value.messageId ?? ''));
+    expect(saved?.bodyText).toContain('[survey-link-removed]');
+    expect(saved?.bodyText).not.toContain('wtc1.');
+    expect(saved?.bodyHtml).not.toContain('wtc1.');
+    const [record] = await env.db.owner.db
+      .select()
+      .from(schema.inboundMessage)
+      .where(eq(schema.inboundMessage.id, result.value.inboundMessageId));
+    expect(record?.bodyText).not.toContain('wtc1.');
+  });
+});
+
 describe('ingestInbound: duplicates and redelivery', () => {
   it('does nothing the second time the same provider message arrives', async () => {
     const message = mail();

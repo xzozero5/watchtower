@@ -7,6 +7,8 @@
  * groups; emails are found by walking out from each `@` with hard length caps; names use
  * Aho-Corasick (plus the cue detector near the end: literal cues, bounded reads); the few regular expressions left are anchored literals or have bounded repeats.
  */
+import { CSAT_LINK_TOKEN_SOURCE } from '@watchtower/shared';
+
 import { buildMatcher, MatchLimitError } from './aho-corasick.js';
 import { foldForMatching, type NormalizedView } from './normalize.js';
 import { isLuhnValid, isValidThaiNationalId } from './validators.js';
@@ -19,6 +21,7 @@ export const REDACTION_KINDS = [
   'BANK',
   'NAME',
   'LITERAL',
+  'LINK',
 ] as const;
 export type RedactionKind = (typeof REDACTION_KINDS)[number];
 
@@ -36,6 +39,7 @@ export const TOKEN_PATTERN = new RegExp(`\\[(?:${REDACTION_KINDS.join('|')})_[0-
 
 const PRIORITY = {
   LITERAL: 200,
+  LINK: 150,
   THAI_ID: 100,
   CARD: 90,
   EMAIL: 80,
@@ -51,6 +55,23 @@ const span = (start: number, end: number, kind: RedactionKind, priority: number)
   kind,
   priority,
 });
+
+/**
+ * A survey link token (T-171 review C-8): a bearer secret a customer may quote back. Fixed-length
+ * pattern, found by `indexOf` on its prefix, so it is linear.
+ */
+const SURVEY_TOKEN = new RegExp(CSAT_LINK_TOKEN_SOURCE, 'y');
+export function detectSurveyLinks(text: string): Span[] {
+  const spans: Span[] = [];
+  let at = text.indexOf('wtc1.');
+  while (at !== -1) {
+    SURVEY_TOKEN.lastIndex = at;
+    const match = SURVEY_TOKEN.exec(text);
+    if (match) spans.push(span(at, at + match[0].length, 'LINK', PRIORITY.LINK));
+    at = text.indexOf('wtc1.', at + 5);
+  }
+  return spans;
+}
 
 /** Token-shaped text already in the input. It is escaped so a restore never expands it. */
 export function detectTokenShapes(text: string): Span[] {

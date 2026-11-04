@@ -3,6 +3,7 @@ import {
   detectNameCues,
   detectEmails,
   detectNumbers,
+  detectSurveyLinks,
   detectTokenShapes,
   resolveOverlaps,
   TOKEN_PATTERN,
@@ -204,6 +205,7 @@ export function createRedactor(options: RedactorOptions = {}): Redactor {
         const view = buildView(text);
         const spans: Span[] = [
           ...detectTokenShapes(view.text),
+          ...detectSurveyLinks(view.text),
           ...detectNumbers(view.text),
           ...detectEmails(view.text),
           ...detectNames(view),

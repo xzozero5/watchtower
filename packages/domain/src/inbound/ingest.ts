@@ -5,6 +5,7 @@ import {
   AUDIT_ACTIONS,
   CHANNEL_TYPES,
   INBOUND_TICKET_EVENTS,
+  stripCsatLinkTokens,
   type ChannelType,
   type InboundClassification,
 } from '@watchtower/shared';
@@ -186,7 +187,13 @@ export async function ingestInbound(
   input: IngestInboundInput,
 ): Promise<DomainResult<IngestOutcome>> {
   const fx = new Effects();
-  const message = input.message;
+  // A customer may quote our survey link back; it is a bearer token, so it is not stored (T-171 review C-8).
+  const message: NormalisedInboundMessage = {
+    ...input.message,
+    subject: stripCsatLinkTokens(input.message.subject),
+    bodyText: stripCsatLinkTokens(input.message.bodyText),
+    bodyHtml: input.message.bodyHtml === null ? null : stripCsatLinkTokens(input.message.bodyHtml),
+  };
 
   // 1. Record the message (once) and lock its row for the rest of the transaction.
   // The id is chosen here so the reply token can be sealed bound to the row it will live in.
