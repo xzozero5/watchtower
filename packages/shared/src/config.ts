@@ -167,6 +167,12 @@ export const baseEnvShape = {
   CLAUDE_CLI_BRIDGE_TOKEN: optionalString,
   // ADR-021: opt-in per instance to run claude-cli in production / off a loopback APP_URL. Off by default.
   CLAUDE_CLI_ALLOW_REMOTE: z.preprocess(emptyToUndefined, z.stringbool().default(false)),
+  // ADR-022: malware scan of uploaded files. `off` (default): no scan, files are served as before and
+  // an admin sees a notice. `clamav`: the worker scans every file through clamd and the api serves and
+  // forwards only files that are clean. Needs the compose profile `scan` (service `clamav`).
+  UPLOAD_SCAN: z.preprocess(emptyToUndefined, z.enum(['off', 'clamav']).default('off')),
+  CLAMAV_HOST: z.preprocess(emptyToUndefined, z.string().min(1).default('clamav')),
+  CLAMAV_PORT: z.preprocess(emptyToUndefined, portSchema.default(3310)),
   VERTEX_PROJECT_ID: optionalString,
   VERTEX_LOCATION: optionalString,
   WEB_PUSH_VAPID_PUBLIC: optionalString,

@@ -8,7 +8,7 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { schema, type Database } from '@watchtower/db';
-import { ObjectStoreError, type ObjectStore } from '@watchtower/channels';
+import { ObjectStoreError, type ObjectStore, type ObjectStream } from '@watchtower/channels';
 import { AUDIT_ACTIONS, ticketAttachmentParamSchema } from '@watchtower/shared';
 import { and, eq } from 'drizzle-orm';
 import type { Response } from 'express';
@@ -25,6 +25,7 @@ import { ApiHttpError, notFound } from '../auth/http-errors.js';
 import { DATABASE } from '../database/database.module.js';
 import { sanitizeFileName } from '../portal/portal-attachment-check.js';
 import { OBJECT_STORE } from '../storage/storage.module.js';
+import { UploadScanGate } from '../storage/upload-scan-gate.js';
 import { TicketReader, isClient } from './ticket-reader.js';
 
 type AttachmentParam = z.infer<typeof ticketAttachmentParamSchema>;
@@ -77,6 +78,7 @@ export class TicketAttachmentsController {
     @Inject(DATABASE) private readonly database: Database,
     @Inject(TicketReader) private readonly reader: TicketReader,
     @Inject(OBJECT_STORE) private readonly store: ObjectStore,
+    @Inject(UploadScanGate) private readonly scan: UploadScanGate,
   ) {}
 
   @Get(':id/messages/:messageId/attachments/:index')
@@ -126,9 +128,13 @@ export class TicketAttachmentsController {
     }
     const meta = record as { filename?: unknown; contentType?: unknown };
 
-    let bytes: Uint8Array | null;
+    // ADR-022: with the malware scan on, a file that is not `clean` is not handed out (409 while it is
+    // being checked, 410 once it was found infected).
+    await this.scan.assertServable(objectKey);
+
+    let opened: ObjectStream | null;
     try {
-      bytes = await this.store.get(objectKey);
+      opened = await this.store.getStream(objectKey);
     } catch (error) {
       if (error instanceof ObjectStoreError) {
         throw new ApiHttpError(
@@ -139,7 +145,7 @@ export class TicketAttachmentsController {
       }
       throw error;
     }
-    if (bytes === null) throw notFound('No such attachment');
+    if (opened === null) throw notFound('No such attachment');
 
     const declared = typeof meta.contentType === 'string' ? meta.contentType.toLowerCase() : '';
     const baseType = declared.split(';')[0]?.trim() ?? '';
@@ -155,12 +161,12 @@ export class TicketAttachmentsController {
           ? meta.filename
           : `attachment-${String(params.index + 1)}`,
       ),
-      'Content-Length': String(bytes.length),
+      ...(opened.size === null ? {} : { 'Content-Length': String(opened.size) }),
       'X-Content-Type-Options': 'nosniff',
       'Content-Security-Policy': "default-src 'none'; sandbox",
       'Cache-Control': 'private, no-store',
     });
     AuditScope.set({ metadata: { messageId: params.messageId, index: params.index } });
-    return new StreamableFile(bytes);
+    return new StreamableFile(opened.stream);
   }
 }

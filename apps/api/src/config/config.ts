@@ -117,6 +117,12 @@ const apiEnvSchema = createEnvSchema({
   PORTAL_UPLOAD_MAX_PER_ADDRESS: z.coerce.number().int().min(1).max(10).default(1),
   /** A portal upload that sends nothing for this long is cut off (and all of it must arrive in 4 times as long). */
   PORTAL_UPLOAD_IDLE_SECONDS: seconds(30, 1, 300),
+  /**
+   * Most bytes of files customers may upload through the portal in any 24 hours, for the whole instance
+   * (megabytes; 0 = no cap). Past it the portal answers 429 `upload_quota` until the day rolls over, so a
+   * flood of large files cannot fill the bucket (T-155). `[ASSUMED]` 2048.
+   */
+  PORTAL_UPLOAD_DAILY_MB: z.coerce.number().int().min(0).max(1_000_000).default(2048),
   /** Portal submissions per hour: per client IP, per email address, per organization. */
   PORTAL_RATE_IP_PER_HOUR: z.coerce.number().int().min(1).max(10_000).default(20),
   PORTAL_RATE_EMAIL_PER_HOUR: z.coerce.number().int().min(1).max(1000).default(5),

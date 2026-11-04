@@ -28,6 +28,7 @@ import {
 import { eq } from 'drizzle-orm';
 
 import type { WorkerLogger } from '../logger.js';
+import { readScanVerdict } from '../scan/verdict.js';
 import type { RealtimeSink } from '../realtime.js';
 import type { GmailSender, OutboundChannels } from './channels.js';
 
@@ -72,6 +73,8 @@ export interface DispatcherDeps {
   readonly lineRouter?: Partial<line.LineRouterConfig>;
   /** Where attachment bytes live; without it an email goes out without its files (the body still goes). */
   readonly objects?: ObjectStore;
+  /** `UPLOAD_SCAN` (ADR-022). With `clamav`, only files whose scan says `clean` are attached to mail. */
+  readonly uploadScan?: 'off' | 'clamav';
 }
 
 const SYSTEM_ACTOR = { type: 'system', id: null } as const;
@@ -151,6 +154,12 @@ export async function loadMailAttachments(
   objects: ObjectStore | undefined,
   attachments: unknown,
   logger: WorkerLogger,
+  /**
+   * The malware scan verdict of a stored file (ADR-022), given only when the scan is on. A file that is
+   * not `clean` is not sent: `pending` waits (the mail is retried, like a store that is down), `infected`
+   * gives up.
+   */
+  scanStatus?: (objectKey: string) => Promise<'clean' | 'pending' | 'infected'>,
 ): Promise<MailFile[]> {
   if (!Array.isArray(attachments)) return [];
   const files: MailFile[] = [];
@@ -158,6 +167,11 @@ export async function loadMailAttachments(
     const { objectKey, filename, contentType, contentId, disposition } = item;
     if (typeof objectKey !== 'string' || typeof filename !== 'string') continue;
     if (objects === undefined) throw new AttachmentUnreadable(filename, false);
+    if (scanStatus !== undefined) {
+      const verdict = await scanStatus(objectKey);
+      if (verdict === 'infected') throw new AttachmentUnreadable(filename, false);
+      if (verdict === 'pending') throw new AttachmentUnreadable(filename, true);
+    }
     let data: Uint8Array | null;
     try {
       data = await objects.get(objectKey);
@@ -424,7 +438,14 @@ export function createOutboundDispatcher(deps: DispatcherDeps) {
     const email = emailRecipientsOf(message.emailMeta);
     let files: MailFile[];
     try {
-      files = await loadMailAttachments(deps.objects, message.attachments, logger);
+      files = await loadMailAttachments(
+        deps.objects,
+        message.attachments,
+        logger,
+        deps.uploadScan === 'clamav'
+          ? (objectKey) => readScanVerdict(deps.database, objectKey)
+          : undefined,
+      );
     } catch (error) {
       if (!(error instanceof AttachmentUnreadable)) throw error;
       // Nothing was dispatched, so this is a certain non-delivery: retry while the store is down,

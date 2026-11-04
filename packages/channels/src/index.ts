@@ -15,6 +15,7 @@ export {
   createS3ObjectStore,
   ObjectStoreError,
   type ObjectStore,
+  type ObjectStream,
   type S3Options,
   type S3Settings,
 } from './storage/object-store.js';

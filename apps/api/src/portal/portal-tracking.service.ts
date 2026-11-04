@@ -182,6 +182,7 @@ export class PortalTrackingService implements OnApplicationShutdown {
     const prepared = this.attachments.prepare(files);
     await this.limits.enforce('reply-ip', ip ?? 'unknown');
     await this.limits.enforce('reply-ticket', access.ticket.id);
+    await this.attachments.assertQuota(prepared);
     const stored = await this.attachments.put(prepared);
 
     let result;

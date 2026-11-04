@@ -112,6 +112,16 @@ const workerEnvSchema = createEnvSchema({
         return z.NEVER;
       }
     }),
+  /**
+   * Days to keep the files of a ticket that has been closed that long before the files themselves are
+   * deleted from the object store (T-155). The messages and the audit log stay; a download of a deleted
+   * file answers 404. 0 (default) keeps files for ever: deleting a customer's files is a decision for the
+   * instance owner (retention policy), not a default.
+   */
+  UPLOAD_RETENTION_DAYS: z.preprocess(
+    emptyToUndefined,
+    z.coerce.number().int().min(0).max(36_500).default(0),
+  ),
   /** Days to keep a break-glass lockout counter after its last failed sign-in (still locked ones stay). `[ASSUMED]` 30. */
   CLEANUP_BREAK_GLASS_RETENTION_DAYS: z.coerce.number().int().min(1).max(365).default(30),
   /**

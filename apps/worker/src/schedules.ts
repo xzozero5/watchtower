@@ -8,6 +8,8 @@ import {
   LINE_JOBS,
   MAINTENANCE_JOBS,
   USAGE_JOBS,
+  SCAN_JOBS,
+  SCAN_TICK_SECONDS,
   OUTBOUND_JOBS,
   QUEUE_NAMES,
   type QueueName,
@@ -201,6 +203,31 @@ export const SCHEDULES: readonly ScheduleRegistration[] = [
     repeat: { pattern: '30 2 * * *', tz: 'UTC' },
     job: {
       name: USAGE_JOBS.health,
+      opts: { removeOnComplete: true, removeOnFail: { age: 7 * 24 * 3600 } },
+    },
+    runAtBoot: true,
+  },
+
+  // --- uploads: malware scan, orphans, retention (T-155) ---
+  {
+    queue: QUEUE_NAMES.scan,
+    id: SCAN_JOBS.tick,
+    // New files are enrolled and the due ones scanned every few seconds, so a fresh upload is
+    // openable soon after it arrives. Does nothing while neither the scan nor retention is on.
+    repeat: { every: SCAN_TICK_SECONDS * 1000 },
+    job: {
+      name: SCAN_JOBS.tick,
+      opts: { removeOnComplete: true, removeOnFail: { age: 24 * 3600 } },
+    },
+  },
+  {
+    queue: QUEUE_NAMES.scan,
+    id: SCAN_JOBS.housekeeping,
+    // Daily at 04:00 UTC, and once at start: the one-off scan of files stored before the mode was
+    // switched on (ADR-022), unattached staff uploads, and the retention.
+    repeat: { pattern: '0 4 * * *', tz: 'UTC' },
+    job: {
+      name: SCAN_JOBS.housekeeping,
       opts: { removeOnComplete: true, removeOnFail: { age: 7 * 24 * 3600 } },
     },
     runAtBoot: true,

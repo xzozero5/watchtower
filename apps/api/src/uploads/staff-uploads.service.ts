@@ -1,7 +1,8 @@
 import { createHash, randomUUID } from 'node:crypto';
+import type { Readable } from 'node:stream';
 
 import { HttpStatus, Inject, Injectable } from '@nestjs/common';
-import { ObjectStoreError, type ObjectStore } from '@watchtower/channels';
+import { ObjectStoreError, type ObjectStore, type ObjectStream } from '@watchtower/channels';
 import { schema, type Database } from '@watchtower/db';
 import { STAFF_ATTACHMENTS_MAX, type StaffAttachment } from '@watchtower/shared';
 import { and, eq, inArray } from 'drizzle-orm';
@@ -16,12 +17,15 @@ import {
 } from '../portal/portal-attachment-check.js';
 import { attachmentRejected, type UploadedFile } from '../portal/portal-attachments.service.js';
 import { OBJECT_STORE } from '../storage/storage.module.js';
+import { UploadScanGate } from '../storage/upload-scan-gate.js';
 import { MetadataStripError, stripMetadata } from './strip-metadata.js';
 
 export interface StoredFile {
   readonly filename: string;
   readonly contentType: string;
-  readonly bytes: Uint8Array;
+  /** The file as a stream, so a download does not hold it all in memory (T-155). */
+  readonly stream: Readable;
+  readonly size: number;
 }
 
 type UploadRow = typeof schema.staffUpload.$inferSelect;
@@ -41,6 +45,7 @@ export class StaffUploadsService {
     @Inject(DATABASE) private readonly database: Database,
     @Inject(OBJECT_STORE) private readonly store: ObjectStore,
     @Inject(LOGGER) private readonly logger: AppLogger,
+    @Inject(UploadScanGate) private readonly scan: UploadScanGate,
   ) {}
 
   async upload(
@@ -145,9 +150,11 @@ export class StaffUploadsService {
       .where(eq(schema.staffUpload.id, id))
       .limit(1);
     if (row === undefined) throw notFound('No such file');
-    let bytes: Uint8Array | null;
+    // ADR-022: not handed out until the malware scan says clean (409 while checking, 410 if infected).
+    await this.scan.assertServable(row.objectKey);
+    let opened: ObjectStream | null;
     try {
-      bytes = await this.store.get(row.objectKey);
+      opened = await this.store.getStream(row.objectKey);
     } catch (error) {
       if (error instanceof ObjectStoreError) {
         throw new ApiHttpError(
@@ -158,8 +165,13 @@ export class StaffUploadsService {
       }
       throw error;
     }
-    if (bytes === null) throw notFound('No such file');
-    return { filename: row.filename, contentType: row.contentType, bytes };
+    if (opened === null) throw notFound('No such file');
+    return {
+      filename: row.filename,
+      contentType: row.contentType,
+      stream: opened.stream,
+      size: opened.size ?? row.size,
+    };
   }
 
   private async rows(userId: string, ids: readonly string[] | undefined): Promise<UploadRow[]> {

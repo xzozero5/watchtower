@@ -1,4 +1,6 @@
 import { createHash, createHmac } from 'node:crypto';
+import { Readable } from 'node:stream';
+import type { ReadableStream as WebReadableStream } from 'node:stream/web';
 
 /**
  * Object storage for raw inbound payloads and attachments (ADR-009 step 2). MinIO locally, GCS
@@ -16,8 +18,18 @@ export interface ObjectStore {
   put(key: string, body: Uint8Array, contentType: string): Promise<void>;
   /** Reads an object; null when it does not exist. */
   get(key: string): Promise<Uint8Array | null>;
+  /**
+   * Reads an object as a stream, so a download does not hold the whole file in memory (T-155); null when
+   * it does not exist. `size` is the byte length when the store says it. Destroy the stream if you stop early.
+   */
+  getStream(key: string): Promise<ObjectStream | null>;
   /** Deletes an object; deleting one that does not exist is not an error (retention, test cleanup). */
   delete(key: string): Promise<void>;
+}
+
+export interface ObjectStream {
+  readonly stream: Readable;
+  readonly size: number | null;
 }
 
 export class ObjectStoreError extends Error {
@@ -45,6 +57,14 @@ export function createMemoryObjectStore(): ObjectStore & {
     get(key) {
       const found = objects.get(key);
       return Promise.resolve(found === undefined ? null : Uint8Array.from(found.body));
+    },
+    getStream(key) {
+      const found = objects.get(key);
+      return Promise.resolve(
+        found === undefined
+          ? null
+          : { stream: Readable.from([Buffer.from(found.body)]), size: found.body.length },
+      );
     },
     delete(key) {
       objects.delete(key);
@@ -161,6 +181,26 @@ export function createS3ObjectStore(settings: S3Settings, options: S3Options = {
       }
       if (!response.ok) throw new ObjectStoreError('get', response.status);
       return new Uint8Array(await response.arrayBuffer());
+    },
+    async getStream(key) {
+      let response: Response;
+      try {
+        response = await request('GET', key, undefined, undefined);
+      } catch {
+        throw new ObjectStoreError('get');
+      }
+      if (response.status === 404) {
+        await response.arrayBuffer();
+        return null;
+      }
+      if (!response.ok) {
+        await response.arrayBuffer().catch(() => undefined);
+        throw new ObjectStoreError('get', response.status);
+      }
+      const length = Number(response.headers.get('content-length'));
+      const size = Number.isSafeInteger(length) && length >= 0 ? length : null;
+      if (response.body === null) return { stream: Readable.from([]), size: 0 };
+      return { stream: Readable.fromWeb(response.body as WebReadableStream<Uint8Array>), size };
     },
     async delete(key) {
       let response: Response;
