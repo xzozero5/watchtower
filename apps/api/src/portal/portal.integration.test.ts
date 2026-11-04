@@ -1121,6 +1121,32 @@ describe('rate limits', () => {
     expect(row.rows[0]?.ip).toBe(client.ip);
   });
 
+  it('a replayed proof is turned away before it spends the email or organization bucket (T-125 C-17)', async () => {
+    const domain = `replay-${randomBytes(4).toString('hex')}.example`;
+    const email = uniqueEmail('replay', domain);
+    const solved = await proof(strict.client(), strict);
+    const first = await strict.client().post<PortalSubmitted & ApiErrorBody>('/v1/portal/tickets', {
+      ...(await form(strict.client(), { email }, strict)),
+      verification: solved,
+    });
+    expect(first.status).toBe(201);
+    const before = await count('submit-email');
+    // Three replays from three addresses: each is a 400, none is a 429, none spends the bucket
+    // (limit 2 an hour: before the fix the second replay already tipped it over).
+    for (let i = 0; i < 3; i += 1) {
+      const client = strict.client();
+      const replay = await client.post<ApiErrorBody>('/v1/portal/tickets', {
+        ...(await form(client, { email }, strict)),
+        verification: solved,
+      });
+      expect(replay.status).toBe(400);
+      expect(replay.body.code).toBe('verification_failed');
+    }
+    expect(await count('submit-email')).toBe(before);
+    // The person's own second request, with a fresh proof, still fits in the hour's allowance.
+    expect((await submit(strict.client(), { email }, strict)).status).toBe(201);
+  });
+
   it('limits each IP address', async () => {
     // The counters live in Redis for an hour and outlive a test run: a domain of its own per run.
     const domain = `ip-${randomBytes(4).toString('hex')}.example`;

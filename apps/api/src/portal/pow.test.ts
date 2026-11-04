@@ -76,6 +76,9 @@ class MemoryReplay implements ReplayStore {
     this.used.set(id, ttlSeconds);
     return Promise.resolve(true);
   }
+  isUsed(id: string): Promise<boolean> {
+    return Promise.resolve(this.used.has(id));
+  }
 }
 
 function provider(overrides: Partial<SelfHostedSettings> = {}, now: () => Date = () => t0) {
@@ -141,8 +144,13 @@ describe('SelfHostedHumanVerification', () => {
       challengeId: checked.challengeId,
     });
     expect(replay.used.size).toBe(1);
-    // Still passes the stateless check; only the claim notices the replay.
-    expect((await verification.check({ proof, honeypot: undefined })).ok).toBe(true);
+    // The check now sees the replay with one read-only look (C-17), before any limit is spent; it
+    // writes nothing, and the claim still refuses on its own if two requests raced past the check.
+    expect(await verification.check({ proof, honeypot: undefined })).toEqual({
+      ok: false,
+      reason: 'replayed',
+    });
+    expect(replay.used.size).toBe(1);
     expect(await verification.claim(checked)).toEqual({ ok: false, reason: 'replayed' });
   });
 
