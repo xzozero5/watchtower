@@ -1,6 +1,11 @@
 import { randomUUID } from 'node:crypto';
 
-import type { GoldenAnswer, GoldenAnswerList, TicketGradeResponse } from '@watchtower/shared';
+import type {
+  GoldenAnswer,
+  GoldenAnswerList,
+  GoldenPreview,
+  TicketGradeResponse,
+} from '@watchtower/shared';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { startHarness, type Harness } from '../testing/harness.js';
@@ -137,6 +142,7 @@ describe('POST /v1/tickets/:id/golden', () => {
     expect(marked.body.text).not.toMatch(/Golden Org|CT-2024|0091|12,500/);
     expect(marked.body.text).toContain('[CONTRACT_ID]');
     expect(marked.body.text).toContain('[AMOUNT]');
+    expect(marked.body.shareable).toBe(true);
     const stored = await pool().query<{ shareable: boolean }>(
       `SELECT shareable FROM golden_answer WHERE id = $1`,
       [marked.body.id],
@@ -169,16 +175,63 @@ describe('POST /v1/tickets/:id/golden', () => {
   });
 });
 
+describe('GET /v1/tickets/:id/golden/preview', () => {
+  it('is for lead and head only', async () => {
+    const path = `/v1/tickets/${ticketKey}/golden/preview?messageId=${sentId}`;
+    expect((await h.client().get(path)).status).toBe(401);
+    expect((await client.client.get(path)).status).toBe(403);
+    expect((await agent.client.get(path)).status).toBe(403);
+    expect((await dev.client.get(path)).status).toBe(403);
+    expect((await lead.client.get(path)).status).toBe(200);
+  });
+
+  it('shows the scrubbed text of a reply, stores nothing and writes no mark audit row', async () => {
+    const reply = await pool().query<{ id: string }>(
+      `INSERT INTO message (ticket_id, direction, visibility, body_text, delivery_status)
+       VALUES ($1, 'outbound', 'public', $2, 'delivered') RETURNING id`,
+      [
+        ticketId,
+        'Dear Golden Org, under contract no. CT-2024-0091 the refund of 12,500 baht is approved.',
+      ],
+    );
+    const messageId = reply.rows[0]?.id ?? '';
+    const before = await pool().query<{ n: string }>(`SELECT count(*) AS n FROM golden_answer`);
+    const response = await lead.client.get<GoldenPreview>(
+      `/v1/tickets/${ticketKey}/golden/preview?messageId=${messageId}`,
+    );
+    expect(response.status).toBe(200);
+    expect(response.body.messageId).toBe(messageId);
+    expect(response.body.text).not.toMatch(/Golden Org|CT-2024|0091|12,500/);
+    expect(response.body.text).toContain('[CONTRACT_ID]');
+    expect(response.body.text).toContain('[AMOUNT]');
+    const after = await pool().query<{ n: string }>(`SELECT count(*) AS n FROM golden_answer`);
+    expect(after.rows[0]?.n).toBe(before.rows[0]?.n);
+  });
+
+  it('keeps PII redaction and refuses what mark would refuse', async () => {
+    const base = `/v1/tickets/${ticketKey}/golden/preview?messageId=`;
+    const redacted = await lead.client.get<GoldenPreview>(`${base}${sentId}`);
+    expect(redacted.body.text).not.toContain(requesterEmail);
+    expect(redacted.body.text).toMatch(/\[EMAIL_\d+\]/);
+    expect((await lead.client.get(`${base}${inboundId}`)).status).toBe(400);
+    expect((await lead.client.get(`${base}${internalId}`)).status).toBe(400);
+    expect((await lead.client.get(`${base}${randomUUID()}`)).status).toBe(404);
+    expect((await lead.client.get(`/v1/tickets/${ticketKey}/golden/preview`)).status).toBe(400);
+  });
+});
+
 describe('golden answers: list and remove', () => {
   it('lists them for a lead, filtered by intent, and shows the mark on the ticket', async () => {
     const all = await lead.client.get<GoldenAnswerList>(`/v1/ai/golden?intent=${intentKey}`);
     expect(all.status).toBe(200);
     expect(all.body.items).toHaveLength(1);
     expect(all.body.items[0]?.ticketKey).toBe(ticketKey);
+    expect(all.body.items[0]?.shareable).toBe(false);
     const none = await lead.client.get<GoldenAnswerList>('/v1/ai/golden?intent=nothing_here');
     expect(none.body.items).toEqual([]);
     const ofTicket = await lead.client.get<GoldenAnswerList>(`/v1/tickets/${ticketKey}/golden`);
     expect(ofTicket.body.items.map((item) => item.messageId)).toEqual([sentId]);
+    expect(ofTicket.body.items[0]?.shareable).toBe(false);
     expect((await agent.client.get('/v1/ai/golden')).status).toBe(403);
     expect((await client.client.get('/v1/ai/golden')).status).toBe(403);
   });

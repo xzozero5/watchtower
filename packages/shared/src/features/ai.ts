@@ -566,10 +566,24 @@ export const goldenAnswerSchema = z.object({
   /** Redacted text: placeholders such as `[EMAIL_1]` stand where a person's details were. */
   text: z.string(),
   language: z.enum(['th', 'en']).nullable(),
+  /** A lead confirmed it holds nothing specific to the customer, so another organization's drafter may read it (C-8). */
+  shareable: z.boolean(),
   createdBy: z.object({ id: z.uuid(), name: z.string() }).nullable(),
   createdAt: z.iso.datetime(),
 });
 export type GoldenAnswer = z.infer<typeof goldenAnswerSchema>;
+
+/** Query of `GET /v1/tickets/:id/golden/preview` (T-306i). */
+export const goldenPreviewQuerySchema = z.object({ messageId: z.uuid() });
+export type GoldenPreviewQuery = z.infer<typeof goldenPreviewQuerySchema>;
+
+/** What a reply would be kept as: PII redacted, then organization name, contract ids and amounts replaced. */
+export const goldenPreviewSchema = z.object({
+  messageId: z.uuid(),
+  text: z.string(),
+  language: z.enum(['th', 'en']).nullable(),
+});
+export type GoldenPreview = z.infer<typeof goldenPreviewSchema>;
 
 export const goldenAnswerListSchema = z.object({ items: z.array(goldenAnswerSchema) });
 export type GoldenAnswerList = z.infer<typeof goldenAnswerListSchema>;

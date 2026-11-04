@@ -60,6 +60,11 @@ export const gradeTh: Widen<typeof gradeEn> = {
     shareable: 'แชร์ให้องค์กรอื่นได้',
     shareableHelp:
       'ปิดไว้เป็นค่าเริ่มต้น ถ้าเปิด AI ขององค์กรอื่นอาจอ่านข้อความนี้เป็นตัวอย่างได้ด้วย ชื่อองค์กร เลขสัญญา และจำนวนเงินจะถูกแทนด้วยตัวแทน (เช่น [ORG], [CONTRACT_ID], [AMOUNT]) ก่อนเก็บ เปิดเฉพาะเมื่อข้อความไม่มีเรื่องเฉพาะของลูกค้ารายนี้',
+    previewTitle: 'ข้อความที่จะถูกเก็บ',
+    previewLoading: 'กำลังเตรียมตัวอย่าง…',
+    previewError: 'โหลดตัวอย่างไม่ได้ ยังเก็บคำตอบได้ ระบบจะลบข้อมูลเฉพาะแบบเดียวกัน',
+    previewHelp:
+      'ชื่อองค์กร เลขสัญญา และยอดเงินถูกแทนด้วยตัวแทนแล้ว อ่านอีกรอบ ถ้ายังมีอะไรที่ชี้ถึงลูกค้ารายนี้ ให้ปิดช่องนี้ไว้',
     done: 'เก็บเป็นคำตอบ golden แล้ว',
     errors: {
       noIntent: 'ตั้ง intent ของ ticket ก่อน แล้วค่อยทำเครื่องหมายข้อความ',
@@ -86,6 +91,7 @@ export const gradeTh: Widen<typeof gradeEn> = {
       actions: 'การทำงาน',
     },
     unknownPerson: 'ไม่ทราบ',
+    shareableBadge: 'แชร์ข้ามองค์กรได้',
     remove: 'ลบ',
     removeFor: 'ลบคำตอบ golden ของ {ticket}',
     confirmTitle: 'ลบคำตอบ golden นี้?',

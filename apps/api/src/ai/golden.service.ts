@@ -7,6 +7,7 @@ import {
   ticketGradeViolationSchema,
   type Claim,
   type GoldenAnswer,
+  type GoldenPreview,
   type TicketGrade,
   type TicketGradeViolation,
 } from '@watchtower/shared';
@@ -112,6 +113,38 @@ export class GoldenService {
     if (ticket.t.intentId === null) {
       throw conflict('Set the intent of the ticket before marking a reply as golden');
     }
+    const { message, redacted, language } = await this.redactedReply(ticket, messageId);
+    const [existing] = await this.database.db
+      .select({ id: schema.goldenAnswer.id })
+      .from(schema.goldenAnswer)
+      .where(
+        and(eq(schema.goldenAnswer.messageId, message.id), isNull(schema.goldenAnswer.deletedAt)),
+      )
+      .limit(1);
+    if (existing !== undefined) throw conflict('This reply is already a golden answer');
+    const [row] = await this.database.db
+      .insert(schema.goldenAnswer)
+      .values({
+        ticketId: ticket.t.id,
+        messageId: message.id,
+        intentId: ticket.t.intentId,
+        bodyRedacted: redacted,
+        language,
+        shareable,
+        createdBy: principal.userId,
+      })
+      .returning({ id: schema.goldenAnswer.id });
+    if (row === undefined) throw conflict('Could not keep this reply');
+    const [golden] = await this.list({ ids: [row.id] });
+    if (golden === undefined) throw conflict('Could not keep this reply');
+    return { ticketId: ticket.t.id, golden };
+  }
+
+  /** A sent reply of the ticket as it would be kept: the shared body of `mark` and `preview`. */
+  private async redactedReply(
+    ticket: Awaited<ReturnType<TicketReader['viewRow']>>,
+    messageId: string,
+  ): Promise<{ message: { id: string }; redacted: string; language: 'th' | 'en' | null }> {
     const [message] = await this.database.db
       .select({
         id: schema.message.id,
@@ -139,30 +172,18 @@ export class GoldenService {
       throw badRequest('This reply cannot be redacted safely, so it cannot be kept');
     }
     const language = detectLanguage(message.text);
-    const [existing] = await this.database.db
-      .select({ id: schema.goldenAnswer.id })
-      .from(schema.goldenAnswer)
-      .where(
-        and(eq(schema.goldenAnswer.messageId, message.id), isNull(schema.goldenAnswer.deletedAt)),
-      )
-      .limit(1);
-    if (existing !== undefined) throw conflict('This reply is already a golden answer');
-    const [row] = await this.database.db
-      .insert(schema.goldenAnswer)
-      .values({
-        ticketId: ticket.t.id,
-        messageId: message.id,
-        intentId: ticket.t.intentId,
-        bodyRedacted: redacted,
-        language,
-        shareable,
-        createdBy: principal.userId,
-      })
-      .returning({ id: schema.goldenAnswer.id });
-    if (row === undefined) throw conflict('Could not keep this reply');
-    const [golden] = await this.list({ ids: [row.id] });
-    if (golden === undefined) throw conflict('Could not keep this reply');
-    return { ticketId: ticket.t.id, golden };
+    return { message, redacted, language };
+  }
+
+  /** What `mark` would keep, without keeping it (T-306i): so a lead sees the scrub before ticking shareable. */
+  async preview(
+    ref: string,
+    messageId: string,
+    principal: Principal,
+  ): Promise<{ ticketId: string; preview: GoldenPreview }> {
+    const ticket = await this.tickets.viewRow(ref, principal);
+    const { message, redacted, language } = await this.redactedReply(ticket, messageId);
+    return { ticketId: ticket.t.id, preview: { messageId: message.id, text: redacted, language } };
   }
 
   /** The names an organization is known by (its name and its mail domains), for the scrub of a golden answer. */
@@ -201,6 +222,7 @@ export class GoldenService {
         intentName: schema.intent.name,
         text: schema.goldenAnswer.bodyRedacted,
         language: schema.goldenAnswer.language,
+        shareable: schema.goldenAnswer.shareable,
         createdById: schema.goldenAnswer.createdBy,
         createdByName: schema.users.name,
         createdAt: schema.goldenAnswer.createdAt,
@@ -229,6 +251,7 @@ export class GoldenService {
       intent: { key: row.intentKey, name: row.intentName },
       text: row.text,
       language: row.language === 'th' || row.language === 'en' ? row.language : null,
+      shareable: row.shareable,
       createdBy:
         row.createdByName === null ? null : { id: row.createdById, name: row.createdByName },
       createdAt: row.createdAt.toISOString(),

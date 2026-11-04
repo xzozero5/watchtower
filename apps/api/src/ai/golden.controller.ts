@@ -25,10 +25,13 @@ import {
   goldenAnswerSchema,
   goldenIdParamSchema,
   goldenListQuerySchema,
+  goldenPreviewQuerySchema,
+  goldenPreviewSchema,
   markGoldenSchema,
   ticketGradeResponseSchema,
   ticketRefParamSchema,
   type GoldenListQuery,
+  type GoldenPreviewQuery,
   type MarkGolden,
 } from '@watchtower/shared';
 import { z } from 'zod';
@@ -98,6 +101,26 @@ export class GoldenController {
   ) {
     const { items } = await this.golden.ofTicket(params.id, principal);
     return parseResponse(goldenAnswerListSchema, { items });
+  }
+
+  @Get('tickets/:id/golden/preview')
+  @RequirePermission('ai.golden.manage')
+  @ApiOperation({
+    summary: 'Preview what marking a reply as golden would keep (lead and head)',
+    description:
+      'Read-only. The reply after PII redaction and after the organization name, contract ids and amounts ' +
+      'are replaced by placeholders, so a lead can judge the shareable box. Nothing is stored.',
+  })
+  @ApiOkResponse({ standardSchema: goldenPreviewSchema })
+  @ApiBadRequestResponse({ description: 'Not a sent reply, or it cannot be redacted safely' })
+  @ApiNotFoundResponse({ description: 'No such ticket or message' })
+  async preview(
+    @Param({ schema: ticketRefParamSchema }) params: RefParam,
+    @Query({ schema: goldenPreviewQuerySchema }) query: GoldenPreviewQuery,
+    @CurrentPrincipal() principal: Principal,
+  ) {
+    const { preview } = await this.golden.preview(params.id, query.messageId, principal);
+    return parseResponse(goldenPreviewSchema, preview);
   }
 
   @Post('tickets/:id/golden')

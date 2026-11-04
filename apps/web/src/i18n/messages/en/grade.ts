@@ -62,6 +62,12 @@ export const gradeEn = {
     shareable: 'Shareable with other organizations',
     shareableHelp:
       'Off by default. If on, the AI of other organizations may also read this reply as an example. Names of organizations, contract numbers and amounts are replaced by placeholders (such as [ORG], [CONTRACT_ID], [AMOUNT]) before it is kept. Turn it on only if the reply says nothing specific to this customer.',
+    previewTitle: 'What will be kept',
+    previewLoading: 'Preparing the preview…',
+    previewError:
+      'Could not load the preview. You can still keep the reply; the same scrub is applied.',
+    previewHelp:
+      'Names of organizations, contract numbers and amounts are already replaced. Read it once more: if anything still points to this customer, leave the box off.',
     done: 'Kept as a golden answer',
     errors: {
       noIntent: 'Set the intent of the ticket first, then mark the reply.',
@@ -88,6 +94,7 @@ export const gradeEn = {
       actions: 'Actions',
     },
     unknownPerson: 'Unknown',
+    shareableBadge: 'Shareable',
     remove: 'Remove',
     removeFor: 'Remove the golden answer of {ticket}',
     confirmTitle: 'Remove this golden answer?',

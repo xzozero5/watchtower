@@ -7,7 +7,7 @@ import { useState } from 'react';
 
 import { useI18n } from '@/i18n/provider';
 import { canMarkGolden, goldenErrorKey } from '@/lib/ai/golden';
-import { useMarkGolden, useTicketGolden } from '@/lib/ai/grade-queries';
+import { useGoldenPreview, useMarkGolden, useTicketGolden } from '@/lib/ai/grade-queries';
 import { useSession } from '@/lib/auth/session';
 
 /**
@@ -24,6 +24,7 @@ export function GoldenMarkButton({ message, className }: { message: Message; cla
   const mark = useMarkGolden(message.ticketKey);
   const [open, setOpen] = useState(false);
   const [shareable, setShareable] = useState(false);
+  const preview = useGoldenPreview(message.ticketKey, message.id, allowed && open && shareable);
   if (!allowed) return null;
 
   const marked =
@@ -116,6 +117,28 @@ export function GoldenMarkButton({ message, className }: { message: Message; cla
                 <span className="text-muted-foreground">{t('grade.golden.shareableHelp')}</span>
               </span>
             </label>
+            {shareable ? (
+              <section
+                aria-label={t('grade.golden.previewTitle')}
+                className="mt-3 flex flex-col gap-1 text-sm"
+              >
+                <h3 className="font-medium">{t('grade.golden.previewTitle')}</h3>
+                {preview.isPending ? (
+                  <p className="text-muted-foreground">{t('grade.golden.previewLoading')}</p>
+                ) : preview.isError ? (
+                  <p role="alert" className="text-muted-foreground">
+                    {t('grade.golden.previewError')}
+                  </p>
+                ) : (
+                  <>
+                    <p className="max-h-48 overflow-auto rounded-md border border-border p-2 break-words whitespace-pre-wrap">
+                      {preview.data.text}
+                    </p>
+                    <p className="text-xs text-muted-foreground">{t('grade.golden.previewHelp')}</p>
+                  </>
+                )}
+              </section>
+            ) : null}
           </DialogContent>
         </Dialog>
       ) : null}

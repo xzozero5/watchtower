@@ -43,6 +43,7 @@ const GOLDEN: GoldenAnswer = {
   intent: { key: 'password_reset', name: 'Password reset' },
   text: 'We reset your password.',
   language: 'en',
+  shareable: false,
   createdBy: { id: uuid(900), name: 'Alex Agent' },
   createdAt: AT,
 };
@@ -59,6 +60,9 @@ function open(
     role: options.role ?? 'lead',
     overrides: {
       'GET /v1/tickets/:id/golden': { json: { items: options.golden ?? [] } },
+      'GET /v1/tickets/:id/golden/preview': {
+        json: { messageId: REPLY.id, text: 'We reset your password for [ORG].', language: 'en' },
+      },
       'POST /v1/tickets/:id/golden': options.mark ?? { status: 201, json: GOLDEN },
     },
   });
@@ -121,6 +125,22 @@ describe('GoldenMarkButton', () => {
     open(REPLY, { golden: [GOLDEN] });
     expect(await screen.findByRole('button', { name: 'Golden answer' })).toBeVisible();
     expect(screen.queryByRole('button', { name: 'Mark as golden answer' })).toBeNull();
+  });
+
+  it('shows the scrubbed text only while the shareable box is ticked', async () => {
+    const user = userEvent.setup();
+    const api = open(REPLY);
+    await user.click(await screen.findByRole('button', { name: 'Mark as golden answer' }));
+    const dialog = await screen.findByRole('dialog', {
+      name: 'Keep this reply as a golden answer',
+    });
+    expect(within(dialog).queryByText('What will be kept')).not.toBeInTheDocument();
+    expect(api.callsTo('/v1/tickets/OPS-7/golden/preview', 'GET')).toHaveLength(0);
+    await user.click(within(dialog).getByRole('checkbox', { name: /Shareable/ }));
+    expect(await within(dialog).findByText('We reset your password for [ORG].')).toBeVisible();
+    expect(api.callsTo('/v1/tickets/OPS-7/golden/preview', 'GET')).toHaveLength(1);
+    await user.click(within(dialog).getByRole('checkbox', { name: /Shareable/ }));
+    expect(within(dialog).queryByText('We reset your password for [ORG].')).not.toBeInTheDocument();
   });
 
   it('says why a ticket without an intent cannot keep it', async () => {
