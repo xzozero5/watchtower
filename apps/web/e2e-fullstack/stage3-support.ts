@@ -51,7 +51,10 @@ const { Client } = req('pg');
 })().catch((e) => { process.stderr.write(String(e && e.message ? e.message : e)); process.exit(1); });`;
 
 /** Runs statements in order on one connection; returns the rows of each. A failure throws with the database's message. */
-export function sqlMany(role: Role, statements: [string, unknown[]?][]): Record<string, unknown>[][] {
+export function sqlMany(
+  role: Role,
+  statements: [string, unknown[]?][],
+): Record<string, unknown>[][] {
   const result = spawnSync(process.execPath, ['-e', RUNNER], {
     env: {
       NODE_ENV: 'test',
@@ -137,7 +140,9 @@ export function fakeGmailAuthenticated(input: {
   const headers =
     input.auth === 'none'
       ? {}
-      : { 'Authentication-Results': `mx.example.test; dkim=pass header.d=${domain} header.i=@${domain}` };
+      : {
+          'Authentication-Results': `mx.example.test; dkim=pass header.d=${domain} header.i=@${domain}`,
+        };
   const script = `
     import { pathToFileURL } from 'node:url';
     const { createDatabase } = await import('@watchtower/db');

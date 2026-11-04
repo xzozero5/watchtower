@@ -133,17 +133,33 @@ if (fakeLiveFile) {
         // A line is "[ev-1] kb (customer-safe) (mock data): title snippet": the flags come in any number of brackets.
         const cards = [...raw.matchAll(/^\[(ev-\d+)\] kb((?: \([^)]*\))*): (.*)$/gm)];
         const card = cards.find(
-          (match) => (match[2] ?? '').includes('customer-safe') && /reset a password/i.test(match[3] ?? ''),
+          (match) =>
+            (match[2] ?? '').includes('customer-safe') && /reset a password/i.test(match[3] ?? ''),
         );
         if (card) {
-          const sentence = (text, kind, evidenceIds, newParagraph) => ({ text, kind, evidenceIds, newParagraph });
+          const sentence = (text, kind, evidenceIds, newParagraph) => ({
+            text,
+            kind,
+            evidenceIds,
+            newParagraph,
+          });
           return {
             text: JSON.stringify({
               language: 'en',
               sentences: [
                 sentence('Hello, thank you for contacting us.', 'courtesy', [], false),
-                sentence('You can reset your password with the Forgot password link on the sign in page.', 'fact', [card[1]], true),
-                sentence('If you have any questions, just reply to this message.', 'courtesy', [], true),
+                sentence(
+                  'You can reset your password with the Forgot password link on the sign in page.',
+                  'fact',
+                  [card[1]],
+                  true,
+                ),
+                sentence(
+                  'If you have any questions, just reply to this message.',
+                  'courtesy',
+                  [],
+                  true,
+                ),
               ],
             }),
             finishReason: 'stop',
