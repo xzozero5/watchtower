@@ -4,6 +4,7 @@ import {
   leadingZeroBits,
   powInput,
   type HumanChallenge,
+  type PortalMyRequestsView,
   type PortalSubmitted,
   type PortalTicketView,
 } from '@watchtower/shared';
@@ -38,6 +39,10 @@ export interface PortalOptions {
   submit?: () => { status: number; json: unknown; headers?: Record<string, string> };
   /** Answers `POST /v1/portal/tickets/:key/replies`. */
   reply?: () => { status: number; json: unknown };
+  /** The one-time "my requests" link value the api accepts (once). Default `LIST_VALUE`. */
+  listToken?: string;
+  /** What `POST /v1/portal/my-requests/open` returns. Default `MY_REQUESTS`. */
+  myRequests?: PortalMyRequestsView;
   /** Answers `POST /v1/portal/track/resend`. */
   resend?: () => { status: number; json: unknown; headers?: Record<string, string> };
 }
@@ -50,6 +55,33 @@ export const SUBMITTED: PortalSubmitted = {
 };
 
 export const SAMPLE_VALUE = 'c2FtcGxlLXZhbHVlLWZvci1lMmU';
+/** The one-time "my requests" link value the stand-in accepts, once (T-152). Not a credential. */
+export const LIST_VALUE = 'wtl1.c2FtcGxlLWxpc3QtdmFsdWUtZm9yLWUyZS0wMTIzNDU2Nzg';
+
+export const MY_REQUESTS: PortalMyRequestsView = {
+  maskedEmail: 'a***@example.com',
+  truncated: false,
+  items: [
+    {
+      key: 'OPS-12',
+      subject: 'Cannot log in',
+      status: 'in_progress',
+      statusLabel: 'In progress',
+      createdAt: '2026-11-05T03:00:00.000Z',
+      updatedAt: '2026-11-05T04:30:00.000Z',
+      trackingToken: SAMPLE_VALUE,
+    },
+    {
+      key: 'OPS-7',
+      subject: 'Old invoice question',
+      status: 'closed',
+      statusLabel: 'Closed',
+      createdAt: '2026-10-01T03:00:00.000Z',
+      updatedAt: '2026-10-02T04:30:00.000Z',
+      trackingToken: null,
+    },
+  ],
+};
 
 const CORS = {
   'access-control-allow-origin': APP_ORIGIN,
@@ -74,6 +106,7 @@ export async function mockPortal(page: Page, options: PortalOptions = {}) {
   const used = new Set<string>();
   let counter = 0;
   let view = options.view ?? makeView();
+  let listSpent = false;
 
   const fulfill = (
     route: Route,
@@ -138,6 +171,36 @@ export async function mockPortal(page: Page, options: PortalOptions = {}) {
       if (!valid) return fulfill(route, 400, errorBody(400, 'verification_failed'));
       used.add(proof.challenge);
       return fulfill(route, 201, SUBMITTED);
+    }
+
+    // "My requests" (T-152): the proof is checked like a submit's; the one-time link works once.
+    if (key === 'POST /v1/portal/my-requests') {
+      const form = body as {
+        website?: string;
+        verification?: { challenge: string; nonce: string };
+      };
+      if ((form.website ?? '') !== '') return fulfill(route, 202, { status: 'accepted' });
+      const proof = form.verification;
+      const digest = proof
+        ? createHash('sha256').update(powInput(proof.challenge, proof.nonce), 'utf8').digest()
+        : null;
+      const valid =
+        proof !== undefined &&
+        issued.has(proof.challenge) &&
+        !used.has(proof.challenge) &&
+        digest !== null &&
+        leadingZeroBits(digest) >= bits;
+      if (!valid) return fulfill(route, 400, errorBody(400, 'verification_failed'));
+      used.add(proof.challenge);
+      return fulfill(route, 202, { status: 'accepted' });
+    }
+    if (key === 'POST /v1/portal/my-requests/open') {
+      const presented = request.headers()['x-portal-token'];
+      if (presented !== (options.listToken ?? LIST_VALUE) || listSpent) {
+        return fulfill(route, 401, errorBody(401, 'invalid_or_expired_link'));
+      }
+      listSpent = true;
+      return fulfill(route, 200, options.myRequests ?? MY_REQUESTS);
     }
 
     const ticket = /^\/v1\/portal\/tickets\/([^/]+)(\/replies)?$/.exec(url.pathname);

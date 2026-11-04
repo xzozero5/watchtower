@@ -64,6 +64,25 @@ export function claimTrackingToken(ticketKey: string, win: BrowserWindow = windo
   }
 }
 
+/**
+ * Keeps a token for `ticketKey` in this tab's storage without putting it in the address bar: the
+ * "my requests" list hands over one per open request, and the ticket page then finds it where it
+ * looks for a token that is not in the fragment (T-152).
+ */
+export function rememberTrackingToken(
+  ticketKey: string,
+  token: string,
+  win: BrowserWindow = window,
+): void {
+  try {
+    safeStorage(win)?.setItem(storageKey(ticketKey), token);
+  } catch {
+    // Quota or policy: the ticket page then asks for a link, as it does for an expired one.
+  }
+  // A ticket page opened earlier in this tab may have remembered "no token": ask storage again.
+  claimed.delete(ticketKey);
+}
+
 /** Forgets the token of a ticket, for example after the api said it no longer works. */
 export function forgetTrackingToken(ticketKey: string, win: BrowserWindow = window): void {
   try {

@@ -13,6 +13,7 @@ import { formatWait } from '@/lib/portal/portal-format';
 import { usePortalApi } from '@/lib/portal/use-portal';
 
 import { describedBy, FormField } from './form-field';
+import { MyRequestsLink } from './my-requests-link';
 
 type Errors = Partial<Record<'ticket' | 'email', MessageKey>>;
 
@@ -155,6 +156,7 @@ export function ExpiredLink({ ticketKey }: { ticketKey: string }) {
       >
         {t('portal.expired.newRequest')}
       </Link>
+      <MyRequestsLink />
     </>
   );
 }

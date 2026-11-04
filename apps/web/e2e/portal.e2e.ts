@@ -5,7 +5,13 @@ import { makeView } from '../src/test/portal-fixtures';
 
 import { APP_ORIGIN } from './backend';
 import { E2E_API_URL } from './constants';
-import { errorBody, mockPortal, SAMPLE_VALUE, type PortalOptions } from './portal-backend';
+import {
+  errorBody,
+  LIST_VALUE,
+  mockPortal,
+  SAMPLE_VALUE,
+  type PortalOptions,
+} from './portal-backend';
 
 const WCAG_TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'];
 
@@ -433,6 +439,78 @@ test.describe('expired link', () => {
       await expect(
         page.getByRole('heading', { name: 'This link has expired', level: 1 }),
       ).toBeVisible();
+      expect((await axe(page)).violations).toEqual([]);
+    });
+  }
+});
+
+test.describe('my requests (T-152)', () => {
+  test('asks for the address with a valid proof and answers the same whatever it is', async ({
+    page,
+  }) => {
+    const portal = await mockPortal(page, { difficultyBits: 8 });
+    await page.goto('/portal');
+    await page
+      .getByRole('link', { name: 'Already contacted us? Email me a link to my requests' })
+      .click();
+    await expect(page.getByRole('heading', { name: 'My requests', level: 1 })).toBeVisible();
+    await expect(page.getByText('Verified. You can submit your request.')).toBeVisible();
+    await page.getByLabel('Email address').fill('someone@example.com');
+    await page.getByRole('button', { name: 'Email me the link' }).click();
+    await expect(
+      page.getByText("If this matches our records, we've sent a link to your requests."),
+    ).toBeVisible();
+    const [post] = portal.to('POST', '/v1/portal/my-requests');
+    expect(post?.body).toMatchObject({ email: 'someone@example.com', locale: 'en' });
+  });
+
+  test('opens the one-time link, hides it, lists the requests and opens a ticket from the list', async ({
+    page,
+  }) => {
+    const portal = await mockPortal(page);
+    await page.goto(`/portal/my-requests#token=${LIST_VALUE}`);
+    await expect(page.getByText('Old invoice question')).toBeVisible();
+    await expect(page.getByRole('link', { name: 'Open OPS-12' })).toBeVisible();
+    expect(new URL(page.url()).hash).toBe('');
+    const [open] = portal.to('POST', '/v1/portal/my-requests/open');
+    expect(open?.headers['x-portal-token']).toBe(LIST_VALUE);
+    expect(page.url()).not.toContain(LIST_VALUE);
+
+    await page.getByRole('link', { name: 'Open OPS-12' }).click();
+    await expect(page.getByRole('heading', { name: 'OPS-12', level: 1 })).toBeVisible();
+    const [view] = portal.to('GET', '/v1/portal/tickets/OPS-12');
+    expect(view?.headers['x-portal-token']).toBe(SAMPLE_VALUE);
+
+    // A reload of the list does not spend the link again, and the second use of the link is refused.
+    await page.goBack();
+    await expect(page.getByText('Old invoice question')).toBeVisible();
+    await page.goto('about:blank');
+    await page.goto(`/portal/my-requests#token=${LIST_VALUE}`);
+    await expect(
+      page.getByRole('heading', { name: 'This link has expired or was already used', level: 1 }),
+    ).toBeVisible();
+  });
+
+  test('reads in Thai', async ({ browser }) => {
+    const context = await browser.newContext({ locale: 'th-TH' });
+    const page = await context.newPage();
+    await mockPortal(page);
+    await page.goto(`/portal/my-requests#token=${LIST_VALUE}`);
+    await expect(page.getByRole('heading', { name: 'คำขอของฉัน', level: 1 })).toBeVisible();
+    await context.close();
+  });
+
+  for (const scheme of ['light', 'dark'] as const) {
+    test(`form and list have no axe violations in ${scheme} mode`, async ({ page }) => {
+      await page.emulateMedia({ colorScheme: scheme });
+      await mockPortal(page);
+      await page.goto('/portal/my-requests');
+      await expect(page.getByRole('heading', { name: 'My requests', level: 1 })).toBeVisible();
+      expect((await axe(page)).violations).toEqual([]);
+      // A new page load, as when the email link is clicked (a fragment-only change would not reload).
+      await page.goto('about:blank');
+      await page.goto(`/portal/my-requests#token=${LIST_VALUE}`);
+      await expect(page.getByText('Old invoice question')).toBeVisible();
       expect((await axe(page)).violations).toEqual([]);
     });
   }
