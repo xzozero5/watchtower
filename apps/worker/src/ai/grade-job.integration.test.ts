@@ -193,9 +193,11 @@ describe('runGrader', () => {
       promptVersion: 1,
     });
     expect(row?.draftQuality).toBe(1);
-    expect(row?.reasoning).toEqual([
-      expect.objectContaining({ uncited: false, evidence: expect.arrayContaining([]) }),
-    ]);
+    const reasoning = row?.reasoning as
+      readonly { uncited: boolean; evidence: unknown }[] | undefined;
+    expect(reasoning).toHaveLength(1);
+    expect(reasoning?.[0]?.uncited).toBe(false);
+    expect(Array.isArray(reasoning?.[0]?.evidence)).toBe(true);
 
     // N4: the address never reached the model; the audit row exists and points at the grade.
     const sent = requests.map((r) => r.messages.map((m) => m.content).join('')).join('');
