@@ -23,11 +23,13 @@ import { MockLlmProvider } from './providers/mock.js';
 import { ProviderError } from './providers/sdk.js';
 import { createRedactor } from './redaction/redactor.js';
 import { TEST_PROMPT } from './testing/requests.js';
+import { ALLOW_ALL_GUARD } from './test-guard.js';
 
 function setup(options: { settings?: AiSettings; sinkFails?: boolean } = {}) {
   const records: AiRunRecord[] = [];
   let clock = 1_000;
   const llm = createAuditedLlm({
+    guard: ALLOW_ALL_GUARD,
     settings: { load: () => Promise.resolve(options.settings ?? mockSettings()) },
     providers: {
       mock: new MockLlmProvider({ rules: [{ promptId: 'classifier', text: 'ok [EMAIL_1]' }] }),
@@ -125,6 +127,7 @@ describe('createAuditedLlm', () => {
     const records: AiRunRecord[] = [];
     const failure = new ProviderError('anthropic', 'APICallError', 529, true);
     const llm = createAuditedLlm({
+      guard: ALLOW_ALL_GUARD,
       settings: {
         load: () =>
           Promise.resolve({
@@ -190,6 +193,7 @@ describe('createAuditedLlm: one audit row per provider call, on every path', () 
       },
     };
     const llm = createAuditedLlm({
+      guard: ALLOW_ALL_GUARD,
       settings: { load: () => Promise.resolve(mockSettings()) },
       providers: { mock: provider },
       sink: {
@@ -368,6 +372,7 @@ describe('createAuditedLlm: one audit row per provider call, on every path', () 
     const rows: AiRunRecord[] = [];
     let providerCalls = 0;
     const llm = createAuditedLlm({
+      guard: ALLOW_ALL_GUARD,
       settings: { load: () => Promise.resolve(mockSettings()) },
       providers: {
         mock: {
@@ -453,6 +458,7 @@ describe('createAuditedLlm: input hash is an HMAC with the server key', () => {
     const hashWith = async (key: string): Promise<string> => {
       const { call } = setup();
       const llm = createAuditedLlm({
+        guard: ALLOW_ALL_GUARD,
         settings: { load: () => Promise.resolve({ ...mockSettings(), inputHashKey: key }) },
         providers: { mock: new MockLlmProvider() },
         sink: { record: () => Promise.resolve() },
@@ -516,6 +522,7 @@ describe('what the record takes from the caller (SR106-R9)', () => {
   it('returns the id the sink gave the row, or null when it gives none', async () => {
     const make = (receipt: { id: string } | undefined) =>
       createAuditedLlm({
+        guard: ALLOW_ALL_GUARD,
         settings: { load: () => Promise.resolve(mockSettings()) },
         providers: { mock: new MockLlmProvider() },
         sink: { record: () => Promise.resolve(receipt) },

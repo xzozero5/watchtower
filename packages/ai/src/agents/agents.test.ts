@@ -15,6 +15,7 @@ import { createRedactor, type Redactor } from '../redaction/redactor.js';
 import { classifyRedacted, classifyTicket, renderIntentList } from './classify.js';
 import type { AgentDeps, AiCallGuard } from './common.js';
 import { summarizeTicket } from './summarize.js';
+import { ALLOW_ALL_GUARD } from '../test-guard.js';
 
 const INTENTS = [
   { key: 'access_issue', name: 'Cannot sign in or reset a password' },
@@ -51,6 +52,7 @@ function rig(
   };
   state.deps = {
     llm: createAuditedLlm({
+      guard: ALLOW_ALL_GUARD,
       settings: { load: () => Promise.resolve(mockSettings()) },
       providers: { mock: provider },
       sink: {

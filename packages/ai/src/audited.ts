@@ -12,6 +12,7 @@ import {
   type SettingsSource,
   type ToolCallRecord,
 } from './contract.js';
+import { AiCallDeniedError, type AiCallGuard } from './guard.js';
 import { hmacInputHash } from './hash.js';
 import { estimateCostUsd, resolveModel } from './models.js';
 import type { RedactedText } from './redaction/redacted-text.js';
@@ -49,6 +50,8 @@ export interface AgentCall {
    */
   redaction: RedactionReportSource;
   tier?: ModelTier;
+  /** Label for the guard's audit row of a denial, for example `classify`. Default: `<agent>.generate`. */
+  action?: string;
   intent?: string | null;
   ticketId?: string | null;
   maxOutputTokens?: number;
@@ -64,6 +67,12 @@ export interface AuditedLlmDeps {
   settings: SettingsSource;
   providers: Partial<Record<ProviderKind, LlmProvider>>;
   sink: AiRunSink;
+  /**
+   * The kill switch and the daily budget (N2, N3). Required: every model call asks it first, here,
+   * so an agent that forgot its own check still cannot reach a provider (T-114a C-6). A guard that
+   * throws is a refusal.
+   */
+  guard: AiCallGuard;
   /** Milliseconds clock; injectable for tests. */
   now?: () => number;
 }
@@ -107,8 +116,8 @@ function clampConfidence(value: unknown): number | null {
 export function createAuditedLlm(deps: AuditedLlmDeps) {
   const now = deps.now ?? Date.now;
 
-  return {
-    async generate(call: AgentCall): Promise<AuditedResult> {
+  async function generateGuarded(call: AgentCall): Promise<AuditedResult> {
+    {
       const settings = await deps.settings.load();
       const resolved = resolveModel(settings, call.agent, call.tier);
       const startedAt = now();
@@ -268,6 +277,35 @@ export function createAuditedLlm(deps: AuditedLlmDeps) {
       if (degraded)
         throw new AuditRecordError('The ai_run record was invalid; an error row was written');
       return { response, run, runId };
+    }
+  }
+
+  return {
+    async generate(call: AgentCall): Promise<AuditedResult> {
+      let release: (() => void) | undefined;
+      try {
+        let decision: Awaited<ReturnType<AiCallGuard['check']>>;
+        try {
+          decision = await deps.guard.check({
+            agent: call.agent,
+            ticketId: call.ticketId ?? null,
+            action: call.action ?? `${call.agent}.generate`,
+            reserve: true,
+          });
+        } catch {
+          // Fail closed: a guard that cannot answer is a refusal.
+          throw new AiCallDeniedError('policy_denied');
+        }
+        if (!decision.allowed) throw new AiCallDeniedError(decision.reason);
+        release = decision.release;
+        return await generateGuarded(call);
+      } finally {
+        try {
+          release?.();
+        } catch {
+          // releasing a reservation must never mask the result
+        }
+      }
     },
   };
 }

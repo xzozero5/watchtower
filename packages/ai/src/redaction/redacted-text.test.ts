@@ -12,6 +12,7 @@ import { createRedactor } from './redactor.js';
 import { loadPromptCatalog } from '../prompt-files.js';
 import { parsePromptFile, PromptFileError, registerCatalogPrompt } from '../prompts.js';
 import { joinRedacted, renderTrustedPrompt, type RedactedText } from './redacted-text.js';
+import { ALLOW_ALL_GUARD } from '../test-guard.js';
 
 const prompt: PromptRef = { id: 'classifier', version: 1, hash: 'b'.repeat(64) };
 const redactor = createRedactor();
@@ -43,6 +44,7 @@ describe('RedactedText (N4 enforced by the compiler)', () => {
 
   it('rejects plain strings at the audited entry point', () => {
     const llm = createAuditedLlm({
+      guard: ALLOW_ALL_GUARD,
       settings: { load: () => Promise.resolve(mockSettings()) },
       providers: {},
       sink: { record: () => Promise.resolve() },
