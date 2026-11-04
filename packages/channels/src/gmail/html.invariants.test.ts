@@ -30,6 +30,10 @@ const fragments = [
   '<a href=" data:text/html,<script>1</script>">x</a>',
   '<a href="https://ok.example.com/?q=<b>">ok</a>',
   '<div style="background:url(javascript:1)" class="c" id="i" onclick="1">',
+  '<p style="color:red;background:u\\72l(x);width:expression(alert(1))">',
+  '<span style="color:red}</style><script>1</script>">',
+  '<td bgcolor="red;x:url(y)" align="left"><font color="url(z)" face="a;b">',
+  '<img src="https://evil.example.net/p.gif" alt="a">',
   '<svg><use href="#x"/></svg>',
   '<iframe srcdoc="<script>1</script>">',
   '<style>@import url(//evil.example.net/)</style>',
@@ -80,6 +84,13 @@ const ALLOWED_ATTRIBUTES = [
   'rowspan',
   'start',
   'dir',
+  'style',
+  'align',
+  'valign',
+  'border',
+  'cellpadding',
+  'cellspacing',
+  'data-remote-src',
 ];
 
 function randomInput(random: () => number, maxFragments: number): string {
@@ -95,7 +106,7 @@ describe('sanitizeHtml: invariants on random tag soup', () => {
   it('never emits active content, unknown tags or unknown attributes', () => {
     const random = prng(20251031);
     for (let run = 0; run < 400; run += 1) {
-      const { html } = sanitizeHtml(randomInput(random, 12));
+      const { html } = sanitizeHtml(randomInput(random, 12), { keepRemoteImages: run % 2 === 0 });
 
       for (const match of html.matchAll(/<(\/?)([a-zA-Z][a-zA-Z0-9]*)([^>]*)>/g)) {
         expect(ALLOWED_TAGS.has((match[2] ?? '').toLowerCase()), `tag in ${html}`).toBe(true);
@@ -107,7 +118,7 @@ describe('sanitizeHtml: invariants on random tag soup', () => {
       // Every "<" left is a real tag that was just validated; a "<" in text is escaped.
       expect(html.replace(/<\/?[a-zA-Z][^>]*>/g, '')).not.toContain('<');
       expect(html.toLowerCase()).not.toMatch(
-        /javascript:|data:|vbscript:|<script|onerror|onload|onclick/,
+        /javascript:|data:|vbscript:|<script|onerror|onload|onclick|url\(|expression|\ssrc="(https?:|\/\/)/,
       );
       // eslint-disable-next-line no-control-regex -- asserting control characters are gone
       expect(html).not.toMatch(/[\u0000-\u0008‮]/);

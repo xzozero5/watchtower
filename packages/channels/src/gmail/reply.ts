@@ -203,12 +203,21 @@ function isInline(file: ReplyAttachment): boolean {
   return file.inline && file.contentId !== undefined;
 }
 
+/**
+ * RFC 8187 `ext-value` text: percent-encoded UTF-8 where only `attr-char` stays literal. `encodeURIComponent`
+ * leaves `' ( ) *` alone, which `attr-char` does not allow (T-171 C-7), and `%` must always be encoded.
+ */
+export function encodeRfc8187(value: string): string {
+  return encodeURIComponent(value).replace(
+    /['()*]/g,
+    (char) => `%${char.charCodeAt(0).toString(16).toUpperCase()}`,
+  );
+}
+
 function filePart(file: ReplyAttachment): string[] {
   assertSingleLine('attachment name', file.filename);
   const quoted = file.filename.replace(/[^\x20-\x7e]/g, '_').replace(/(["\\])/g, '\\$1');
-  const star = isAscii(file.filename)
-    ? ''
-    : `; filename*=UTF-8''${encodeURIComponent(file.filename)}`;
+  const star = isAscii(file.filename) ? '' : `; filename*=UTF-8''${encodeRfc8187(file.filename)}`;
   const encoded = Buffer.from(file.data).toString('base64');
   return [
     `Content-Type: ${file.contentType}; name="${quoted}"`,
@@ -311,11 +320,28 @@ export function buildReply(rawInput: ReplyInput): BuiltReply {
   const date = (input.date ?? new Date()).toUTCString().replace('GMT', '+0000');
   const boundary = `wt-${createHash('sha256').update(messageId).digest('hex').slice(0, 24)}`;
 
+  // Each address appears once, in the most visible place it was given (To, then Cc, then Bcc): a blind
+  // copy to someone who is already on the visible list is no secret, and Gmail would deliver twice.
+  const seenAddresses = new Set(recipients.map((entry) => entry.address.toLowerCase()));
+  const uniqueOnly = (list: typeof input.cc): typeof input.cc =>
+    list.filter((entry) => {
+      const key = entry.address.toLowerCase();
+      if (seenAddresses.has(key)) return false;
+      seenAddresses.add(key);
+      return true;
+    });
+  const cc = uniqueOnly(input.cc);
+  const bcc = uniqueOnly(input.bcc);
+
+  // `Bcc` is written to the raw message on purpose: `users.messages.send` has no envelope parameter,
+  // so the header is the only way to name a blind copy. Gmail delivers to it and does not show it to
+  // the other recipients `[UNVERIFIED 80%]` (T-171 C-4: confirm once with a real mailbox). Nothing else
+  // in this module or the returned `headers` repeats these addresses.
   const headerLines = [
     foldHeader('From', formatAddress(input.from)),
     foldHeader('To', recipients.map(formatAddress).join(', ')),
-    ...(input.cc.length > 0 ? [foldHeader('Cc', input.cc.map(formatAddress).join(', '))] : []),
-    ...(input.bcc.length > 0 ? [foldHeader('Bcc', input.bcc.map(formatAddress).join(', '))] : []),
+    ...(cc.length > 0 ? [foldHeader('Cc', cc.map(formatAddress).join(', '))] : []),
+    ...(bcc.length > 0 ? [foldHeader('Bcc', bcc.map(formatAddress).join(', '))] : []),
     `Subject: ${encodeHeaderText(subject)}`,
     `Date: ${date}`,
     `Message-ID: <${messageId}>`,

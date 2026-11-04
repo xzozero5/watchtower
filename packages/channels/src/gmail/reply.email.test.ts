@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { normalizeMime } from './normalize.js';
-import { buildReply, makeMessageId } from './reply.js';
+import { buildReply, encodeRfc8187, makeMessageId } from './reply.js';
 
 const PNG = Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3]);
 
@@ -52,6 +52,56 @@ describe('buildReply for an email composer', () => {
     expect(text).toContain('Bcc: hidden@example.org');
     expect(parsed.email.subject).toBe('Re: Printer is down (follow-up)');
     expect(parsed.email.cc.map((c) => c.address)).toEqual(['b@example.org']);
+  });
+
+  it('keeps a blind copy in the Bcc header only (Gmail has no envelope), never in To, Cc or the reported recipients', () => {
+    const built = build({
+      to: [{ address: 'a@example.org' }],
+      cc: [{ address: 'b@example.org' }],
+      bcc: [{ address: 'hidden@example.org', name: 'Hidden' }],
+    });
+    const { text } = mime(built.raw);
+    const headerBlock = text.split('\r\n\r\n')[0] ?? '';
+    const holders = headerBlock.split('\r\n').filter((line) => line.includes('hidden@example.org'));
+    expect(holders).toHaveLength(1);
+    expect(holders[0]).toMatch(/^Bcc: |^ /);
+    expect(headerBlock).toMatch(/^Bcc: Hidden <hidden@example\.org>$/m);
+    // Not in the body either, and not in what the caller records as the recipients.
+    expect(text.slice(headerBlock.length)).not.toContain('hidden@example.org');
+    expect(built.headers.to).toEqual(['a@example.org']);
+    expect(JSON.stringify(built.headers)).not.toContain('hidden@example.org');
+  });
+
+  it('lists an address once: a Cc or Bcc of someone already in To (or Cc) is dropped, with no empty header left', () => {
+    const built = build({
+      to: [{ address: 'A@example.org' }],
+      cc: [{ address: 'a@example.org' }, { address: 'b@example.org' }],
+      bcc: [{ address: 'b@example.org' }, { address: 'A@example.org' }],
+    });
+    const { text } = mime(built.raw);
+    expect(text).toContain('Cc: b@example.org');
+    expect(text).not.toMatch(/^Bcc:/m);
+    expect(text.match(/b@example\.org/gi)).toHaveLength(1);
+    expect(text.match(/a@example\.org/gi)).toHaveLength(1);
+  });
+
+  it('refuses a line break in a blind-copy address or name', () => {
+    expect(() =>
+      build({ bcc: [{ address: 'x@example.org', name: 'X\r\nTo: evil@example.org' }] }),
+    ).toThrow(/header_injection/);
+  });
+
+  it('encodes the file name as RFC 8187 (no quote, parentheses or asterisk left raw in filename*)', () => {
+    expect(encodeRfc8187("a(1)*'b.txt")).toBe('a%281%29%2A%27b.txt');
+    const built = build({
+      attachments: [
+        { filename: "รายงาน (1)'.txt", contentType: 'text/plain', data: Buffer.from('x') },
+      ],
+    });
+    const { text } = mime(built.raw);
+    const star = /filename\*=UTF-8''([^\r\n;]+)/.exec(text)?.[1] ?? '';
+    expect(star).not.toMatch(/['()*]/);
+    expect(decodeURIComponent(star)).toBe("รายงาน (1)'.txt");
   });
 
   it('puts inline images in multipart/related and files in multipart/mixed', () => {

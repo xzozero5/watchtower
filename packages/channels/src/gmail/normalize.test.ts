@@ -99,8 +99,11 @@ describe('normalizeMime: inline images and attachments', () => {
     expect(Array.from(bytes?.subarray(0, 4) ?? [])).toEqual([0x89, 0x50, 0x4e, 0x47]);
   });
 
-  it('blocks the remote tracking pixel and counts it', () => {
-    expect(result.email.safeHtml).not.toContain('tracker.example.net');
+  it('blocks the remote tracking pixel (no src, nothing loads) and counts it', () => {
+    expect(result.email.safeHtml).not.toMatch(/\ssrc="https?:/);
+    expect(result.email.safeHtml).toContain(
+      'data-remote-src="https://tracker.example.net/pixel.gif"',
+    );
     expect(result.email.remoteImagesBlocked).toBe(1);
   });
 
@@ -143,14 +146,16 @@ describe('normalizeMime: hostile HTML', () => {
       'onload',
       'onclick',
       'onerror',
-      'style=',
       'steal',
       'evil.example.net',
-      'tracker.example.net',
       'comment()',
+      'background:url',
+      'c.css',
     ]) {
       expect(html.toLowerCase()).not.toContain(forbidden.toLowerCase());
     }
+    // The remote image is held back: its address is inert data, not a src.
+    expect(html).not.toMatch(/\ssrc="https?:/);
   });
 
   it('drops javascript: links, including obfuscated ones, and keeps safe links hardened', () => {
@@ -161,7 +166,7 @@ describe('normalizeMime: hostile HTML', () => {
   });
 
   it('keeps the visible text', () => {
-    expect(html).toContain('<p>Hello <b>world</b></p>');
+    expect(html).toContain('<p style="color:red">Hello <b>world</b></p>');
     expect(email.textBody).toContain('Hello world');
     expect(email.textBody).toContain('docs (https://docs.example.com/page?a=1&b=2)');
     expect(email.textSource).toBe('html');
