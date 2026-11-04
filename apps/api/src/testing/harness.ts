@@ -156,6 +156,8 @@ export interface RequestOptions {
   /** Send an Origin header like a browser would. Default: the web app. `null` sends none. */
   readonly origin?: string | null;
   readonly redirect?: 'follow' | 'manual';
+  /** Abort the request, like a browser tab that is closed. */
+  readonly signal?: AbortSignal;
 }
 
 export interface TestResponse<T = unknown> {
@@ -212,6 +214,7 @@ export class TestClient {
       method,
       headers,
       redirect: options.redirect ?? 'manual',
+      ...(options.signal === undefined ? {} : { signal: options.signal }),
       ...(options.body === undefined
         ? {}
         : { body: options.body instanceof FormData ? options.body : JSON.stringify(options.body) }),

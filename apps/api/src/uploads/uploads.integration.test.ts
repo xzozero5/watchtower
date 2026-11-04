@@ -9,6 +9,7 @@ import type {
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { startHarness, uniqueEmail, type Harness, type TestClient } from '../testing/harness.js';
+import { StaffUploadsService } from './staff-uploads.service.js';
 import { apiOrg, signIn, type ApiErrorBody, type Persona } from '../testing/ticketing.js';
 
 // Staff uploads against the real application, Postgres, Redis and the MinIO of the compose stack.
@@ -248,5 +249,41 @@ describe('what the references attach to', () => {
     const messageId = rows.rows[0]?.id ?? '';
     const file = await agent.client.get(`/v1/tickets/${key}/messages/${messageId}/attachments/0`);
     expect(file.status).toBe(200);
+  });
+});
+
+describe('claiming a file inside the transaction that saves the note (T-155a C-9)', () => {
+  it('holds a lock the worker orphan sweep respects, and releases it when the transaction ends', async () => {
+    const uploaded = await agent.client.post<StaffAttachment>('/v1/uploads', form('shot.png', PNG));
+    expect(uploaded.status).toBe(201);
+    const id = uploaded.body.id;
+    const service = h.app.get(StaffUploadsService);
+    const row = await h.db.owner.pool.query<{ uploader_id: string }>(
+      `SELECT uploader_id FROM staff_upload WHERE id = $1`,
+      [id],
+    );
+    const userId = row.rows[0]?.uploader_id ?? '';
+    const sweepCanLock = async (): Promise<boolean> => {
+      // What the sweep does for each candidate: try the exclusive lock of the same name.
+      const conn = await h.db.owner.pool.connect();
+      try {
+        await conn.query('BEGIN');
+        const got = await conn.query<{ ok: boolean }>(
+          `SELECT pg_try_advisory_xact_lock(hashtextextended('staff_upload:' || $1::text, 0)) AS ok`,
+          [id],
+        );
+        await conn.query('ROLLBACK');
+        return got.rows[0]?.ok === true;
+      } finally {
+        conn.release();
+      }
+    };
+    expect(await sweepCanLock()).toBe(true);
+    await h.db.owner.db.transaction(async (tx) => {
+      const claimed = await service.claim(userId, [id], tx);
+      expect(claimed.map((file) => file.id)).toEqual([id]);
+      expect(await sweepCanLock()).toBe(false);
+    });
+    expect(await sweepCanLock()).toBe(true);
   });
 });

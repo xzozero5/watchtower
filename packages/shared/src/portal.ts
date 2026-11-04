@@ -153,6 +153,31 @@ export const humanProofSchema = z.discriminatedUnion('provider', [
 ]);
 export type HumanProof = z.infer<typeof humanProofSchema>;
 
+/**
+ * Header that carries the proof of work of a submit with files, as base64url of the JSON of the
+ * `verification` field (T-154). The api checks it before it reserves an upload slot, so a script that
+ * cannot do the proof never holds memory; the form still sends the same proof in `payload`.
+ */
+export const PORTAL_PROOF_HEADER = 'x-portal-proof';
+
+/** The value for `PORTAL_PROOF_HEADER`. */
+export function encodePortalProof(proof: HumanProof): string {
+  return btoa(JSON.stringify(proof)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+/** The proof in a header value, or null when it is not one. Never throws. */
+export function decodePortalProof(value: string): HumanProof | null {
+  if (value.length === 0 || value.length > 1024 || !/^[A-Za-z0-9_-]+$/.test(value)) return null;
+  try {
+    const padded = value.replace(/-/g, '+').replace(/_/g, '/');
+    const json = atob(padded + '='.repeat((4 - (padded.length % 4)) % 4));
+    const parsed = humanProofSchema.safeParse(JSON.parse(json));
+    return parsed.success ? parsed.data : null;
+  } catch {
+    return null;
+  }
+}
+
 /** The exact text that is hashed for a proof-of-work solution. */
 export function powInput(challenge: string, nonce: string): string {
   return `${challenge}:${nonce}`;

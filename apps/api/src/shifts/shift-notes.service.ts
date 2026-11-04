@@ -106,8 +106,9 @@ export class ShiftNotes {
   }
 
   async create(principal: Principal, input: CreateShiftNote): Promise<ShiftNote> {
-    const attachments = await this.uploads.claim(principal.userId, input.attachmentIds);
     return this.uow.run(async (uow) => {
+      // In the transaction, so the files stay locked until the note is saved (T-155a C-9).
+      const attachments = await this.uploads.claim(principal.userId, input.attachmentIds, uow.tx);
       if (input.toUserId !== undefined) {
         await translating(() => assertAssignableStaff(uow.tx, [input.toUserId as string]));
       }

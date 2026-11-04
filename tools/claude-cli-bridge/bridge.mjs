@@ -220,8 +220,13 @@ function childEnv(env, maxOutputTokens) {
   return next;
 }
 
-/** Runs one `claude -p`. stderr is read and dropped: it can echo the prompt. */
-async function runCli({ bin, request, spawn, timeoutMs, env, makeTempDir, removeDir }) {
+/**
+ * Runs one `claude -p`. stderr is read and dropped: it can echo the prompt. `clientGone` is aborted when
+ * the caller closed the connection before the answer (the api gave up: the person closed the page, or
+ * the api's own timeout): the child is killed at once, so an abandoned request does not keep a model
+ * call and a slot busy until the timeout (T-155a C-7).
+ */
+async function runCli({ bin, request, spawn, timeoutMs, env, makeTempDir, removeDir, clientGone }) {
   const cwd = await makeTempDir();
   try {
     return await new Promise((resolve, reject) => {
@@ -239,8 +244,18 @@ async function runCli({ bin, request, spawn, timeoutMs, env, makeTempDir, remove
         if (settled) return;
         settled = true;
         clearTimeout(timer);
+        clientGone?.removeEventListener('abort', onClientGone);
         fn(value);
       };
+      const onClientGone = () => {
+        child.kill('SIGKILL');
+        finish(reject, new BridgeHttpError(499, 'client_closed'));
+      };
+      if (clientGone?.aborted === true) {
+        queueMicrotask(onClientGone);
+      } else {
+        clientGone?.addEventListener('abort', onClientGone, { once: true });
+      }
       const timer = setTimeout(() => {
         child.kill('SIGKILL');
         finish(reject, new BridgeHttpError(504, 'timeout'));
@@ -306,6 +321,8 @@ export function createBridge({
   }
   let active = 0;
   const send = (res, status, body) => {
+    // The caller is gone (or the answer is already out): nothing to write to.
+    if (res.destroyed || res.headersSent) return;
     res.writeHead(status, { 'content-type': 'application/json' });
     res.end(JSON.stringify(body));
   };
@@ -313,6 +330,11 @@ export function createBridge({
   return createServer((req, res) => {
     const started = Date.now();
     const done = (status, extra = {}) => log({ status, ms: Date.now() - started, ...extra });
+    // `close` on the response without a finished answer = the caller dropped the connection.
+    const clientGone = new AbortController();
+    res.once('close', () => {
+      if (!res.writableFinished) clientGone.abort();
+    });
     void (async () => {
       try {
         if (req.method === 'GET' && req.url === '/healthz') {
@@ -342,6 +364,7 @@ export function createBridge({
             env,
             makeTempDir,
             removeDir,
+            clientGone: clientGone.signal,
           });
           send(res, 200, result);
           done(200, {

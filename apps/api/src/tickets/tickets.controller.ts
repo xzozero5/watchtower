@@ -221,9 +221,14 @@ export class TicketsController {
       MANUAL_TICKET_LIMITS.perUserPerHour,
       3600,
     );
-    const attachments = await this.uploads.messageRecords(principal.userId, body.attachmentIds);
-    const created = await this.uow.run((uow) =>
-      this.tickets.createManual(uow, body, actorOf(principal), attachments),
+    const created = await this.uow.run(async (uow) =>
+      this.tickets.createManual(
+        uow,
+        body,
+        actorOf(principal),
+        // In the transaction: the files stay locked until the ticket is saved (T-155a C-9).
+        await this.uploads.messageRecords(principal.userId, body.attachmentIds, uow.tx),
+      ),
     );
     AuditScope.set({ metadata: { channel: body.channel, confirmation: created.confirmation } });
     return parseResponse(manualTicketResultSchema, {
@@ -489,22 +494,22 @@ export class TicketsController {
           }
         : { kind: 'staff', userId: principal.userId };
     if (sender.kind !== 'staff' && body.attachmentIds !== undefined) throw forbidden();
-    const files =
-      sender.kind === 'staff' && body.attachmentIds !== undefined && body.attachmentIds.length > 0
-        ? markInlineImages(
-            await this.uploads.messageRecords(principal.userId, body.attachmentIds),
-            body.attachmentIds,
-            body.email?.inline ?? [],
-          )
-        : undefined;
-    const result = await this.uow.run((uow) =>
+    const attachmentIds = body.attachmentIds;
+    const result = await this.uow.run(async (uow) =>
       this.tickets.reply(
         uow,
         params.id,
         sender.kind === 'staff' ? prepareEmailReply(body) : body,
         sender,
         actorOf(principal),
-        files,
+        // In the transaction: the files stay locked until the reply is saved (T-155a C-9).
+        sender.kind === 'staff' && attachmentIds !== undefined && attachmentIds.length > 0
+          ? markInlineImages(
+              await this.uploads.messageRecords(principal.userId, attachmentIds, uow.tx),
+              attachmentIds,
+              body.email?.inline ?? [],
+            )
+          : undefined,
       ),
     );
     return parseResponse(replyResultSchema, {
@@ -539,18 +544,18 @@ export class TicketsController {
     @Body({ schema: noteSchema }) body: Note,
     @CurrentPrincipal() principal: Principal,
   ) {
-    const files =
-      body.attachmentIds !== undefined && body.attachmentIds.length > 0
-        ? await this.uploads.messageRecords(principal.userId, body.attachmentIds)
-        : undefined;
-    const result = await this.uow.run((uow) =>
+    const attachmentIds = body.attachmentIds;
+    const result = await this.uow.run(async (uow) =>
       this.tickets.note(
         uow,
         params.id,
         body,
         { userId: principal.userId },
         actorOf(principal),
-        files,
+        // In the transaction: the files stay locked until the note is saved (T-155a C-9).
+        attachmentIds !== undefined && attachmentIds.length > 0
+          ? await this.uploads.messageRecords(principal.userId, attachmentIds, uow.tx)
+          : undefined,
       ),
     );
     const message = toMessage(result.message, {

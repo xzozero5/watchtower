@@ -43,6 +43,8 @@ export const AUTH_ERROR_CODES = [
   // Uploads (T-155, ADR-022): the daily cap on customer files is used up (429); a file is still being
   // scanned for malware (409); a file was found infected and removed (410).
   'upload_quota',
+  // The assistant (T-155a C-4): a second message while the first is still being answered (429).
+  'assistant_busy',
   'scan_pending',
   'file_infected',
   // Autonomy (T-112a): asking for stage 3 or above, which only the owner may decide (N3).

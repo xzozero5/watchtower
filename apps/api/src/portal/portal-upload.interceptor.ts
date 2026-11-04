@@ -11,20 +11,27 @@ import {
 import { FilesInterceptor } from '@nestjs/platform-express';
 import {
   PORTAL_ATTACHMENT_MAX_BYTES,
+  AUDIT_ACTIONS,
   PORTAL_ATTACHMENT_MAX_FILES,
   PORTAL_ATTACHMENT_MAX_TOTAL_BYTES,
   PORTAL_MULTIPART_FILES_FIELD,
+  PORTAL_PROOF_HEADER,
   PORTAL_TOKEN_HEADER,
+  decodePortalProof,
 } from '@watchtower/shared';
 import type { Request, Response } from 'express';
 import type { Observable } from 'rxjs';
 
-import { ApiHttpError, badRequest } from '../auth/http-errors.js';
+import { ApiHttpError, badRequest, verificationFailed } from '../auth/http-errors.js';
 import { APP_CONFIG, type ApiConfig } from '../config/config.js';
+import { AuditScope } from '../audit/audit-scope.js';
+import { TelemetryService } from '../telemetry/telemetry.service.js';
+import { HUMAN_VERIFICATION, type HumanVerificationProvider } from './human-verification.js';
 import { attachmentRejected } from './portal-attachments.service.js';
 import { PortalLimits } from './portal-limits.js';
 import { PortalTrackingService } from './portal-tracking.service.js';
 import { UploadSlots } from './upload-slots.js';
+import { ThroughputGuard } from './upload-throughput.js';
 
 /** Room for the multipart framing and the `payload` field on top of the files. */
 const OVERHEAD_BYTES = 512 * 1024;
@@ -39,12 +46,17 @@ const DEADLINE_IDLE_PERIODS = 4;
  * handler's own checks, so everything that can be decided without reading it is decided first, in
  * this order:
  *   1. the declared length against the total limit (no `Content-Length`: refused);
- *   2. an upload slot (`UploadSlots`: a few in flight per process, one per client address), else
- *      503 + Retry-After; the slot is given back when the response ends or the connection closes;
- *   3. the upload rate limit of the client address;
- *   4. on a reply, the tracking token for this ticket (401 before a byte of the body is read);
- *   5. an inactivity timeout and an overall deadline on the connection while the body is read, so
- *      a slow sender cannot pin memory and a slot.
+ *   2. the upload rate limit of the client address;
+ *   3. a proof that the sender is not a bare script, before any slot is taken (T-154): on a reply the
+ *      tracking token for this ticket (401 before a byte of the body is read); on a submit the proof
+ *      of work in the `x-portal-proof` header (400 `verification_failed`; optional or required by
+ *      `PORTAL_UPLOAD_PROOF_HEADER`). A request with neither never occupies a slot when required;
+ *   4. an upload slot (`UploadSlots`: a few in flight per process, one per client address), else
+ *      503 + Retry-After and the `portal_upload_busy_total` counter an alert watches; the slot is
+ *      given back when the response ends or the connection closes;
+ *   5. an inactivity timeout and a minimum speed while the body is read (`ThroughputGuard`,
+ *      `PORTAL_UPLOAD_MIN_KB_PER_SECOND`; a fixed deadline when that is 0), so a slow sender cannot
+ *      pin memory and a slot by trickling.
  * While the body is read, multer stops at the per-file size, the file count and the number of
  * fields. Multer's own errors become the api's `attachment_rejected` answers.
  *
@@ -69,10 +81,14 @@ export class PortalUploadInterceptor implements NestInterceptor {
   ))();
   private readonly slots: UploadSlots;
   private readonly idleMs: number;
+  private readonly minBytesPerSecond: number;
+  private readonly proofRequired: boolean;
 
   constructor(
     @Inject(PortalLimits) private readonly limits: PortalLimits,
     @Inject(PortalTrackingService) private readonly tracking: PortalTrackingService,
+    @Inject(HUMAN_VERIFICATION) private readonly verification: HumanVerificationProvider,
+    @Inject(TelemetryService) private readonly telemetry: TelemetryService,
     @Inject(APP_CONFIG) config: ApiConfig,
   ) {
     this.slots = new UploadSlots(
@@ -80,6 +96,8 @@ export class PortalUploadInterceptor implements NestInterceptor {
       config.PORTAL_UPLOAD_MAX_PER_ADDRESS,
     );
     this.idleMs = config.PORTAL_UPLOAD_IDLE_SECONDS * 1000;
+    this.minBytesPerSecond = config.PORTAL_UPLOAD_MIN_KB_PER_SECOND * 1024;
+    this.proofRequired = config.PORTAL_UPLOAD_PROOF_HEADER === 'required';
   }
 
   async intercept(context: ExecutionContext, next: CallHandler): Promise<Observable<unknown>> {
@@ -97,8 +115,20 @@ export class PortalUploadInterceptor implements NestInterceptor {
       throw attachmentRejected('total_too_large', null);
     }
 
+    // Everything below is decided from the headers, before a slot is taken and before a byte of the
+    // body is read (T-154): a sender that cannot pass it never holds memory or a slot.
+    await this.limits.enforce('upload-ip', address);
+    const key = (request.params as Record<string, string | undefined>).key;
+    if (key !== undefined) {
+      const token = request.headers[PORTAL_TOKEN_HEADER];
+      await this.tracking.authorize(typeof token === 'string' ? token : undefined, key, address);
+    } else {
+      await this.checkProofHeader(request);
+    }
+
     const release = this.slots.acquire(address);
     if (release === null) {
+      this.telemetry.count('upload_busy');
       response.setHeader('Retry-After', String(BUSY_RETRY_AFTER_SECONDS));
       throw new ApiHttpError(
         HttpStatus.SERVICE_UNAVAILABLE,
@@ -112,15 +142,21 @@ export class PortalUploadInterceptor implements NestInterceptor {
     const onIdle = (): void => {
       request.destroy();
     };
-    const deadline = setTimeout(onIdle, this.idleMs * DEADLINE_IDLE_PERIODS);
+    // Cut a sender that is too slow. With the minimum speed off, the old fixed deadline applies.
+    const windowMs = Math.max(this.idleMs, 1000);
+    let monitor: NodeJS.Timeout | undefined;
+    if (this.minBytesPerSecond > 0) {
+      const guard = new ThroughputGuard(this.minBytesPerSecond, socket.bytesRead, Date.now());
+      monitor = setInterval(() => {
+        if (!guard.keepsUp(socket.bytesRead, Date.now())) {
+          this.telemetry.count('upload_too_slow');
+          onIdle();
+        }
+      }, windowMs);
+    } else {
+      monitor = setTimeout(onIdle, this.idleMs * DEADLINE_IDLE_PERIODS);
+    }
     try {
-      await this.limits.enforce('upload-ip', address);
-      const key = (request.params as Record<string, string | undefined>).key;
-      if (key !== undefined) {
-        const token = request.headers[PORTAL_TOKEN_HEADER];
-        await this.tracking.authorize(typeof token === 'string' ? token : undefined, key, address);
-      }
-
       socket.setTimeout(this.idleMs);
       socket.once('timeout', onIdle);
       return await this.multipart.intercept(context, next);
@@ -137,9 +173,37 @@ export class PortalUploadInterceptor implements NestInterceptor {
       }
       throw error;
     } finally {
-      clearTimeout(deadline);
+      clearInterval(monitor);
+      clearTimeout(monitor);
       socket.off('timeout', onIdle);
       socket.setTimeout(0);
     }
+  }
+
+  /**
+   * The proof of work of a submit, from the `x-portal-proof` header, checked statelessly (nothing is
+   * used up: the form's own `payload` carries the same proof and the single-use claim happens there).
+   * A header that is there and wrong is refused; one that is missing is refused only when
+   * `PORTAL_UPLOAD_PROOF_HEADER=required`.
+   */
+  private async checkProofHeader(request: Request): Promise<void> {
+    const value = request.headers[PORTAL_PROOF_HEADER];
+    if (typeof value !== 'string') {
+      if (this.proofRequired) throw this.proofRefused('missing');
+      return;
+    }
+    const proof = decodePortalProof(value);
+    if (proof === null) throw this.proofRefused('malformed');
+    const checked = await this.verification.check({ proof, honeypot: undefined });
+    if (!checked.ok) throw this.proofRefused(checked.reason);
+  }
+
+  private proofRefused(reason: string): ApiHttpError {
+    AuditScope.set({
+      action: AUDIT_ACTIONS.portalVerificationFailed,
+      outcome: 'denied',
+      metadata: { reason, provider: this.verification.name, via: 'proof_header' },
+    });
+    return verificationFailed();
   }
 }

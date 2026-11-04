@@ -186,24 +186,10 @@ describe('UPLOAD_SCAN=off: as before, with a notice for the admin', () => {
   });
 });
 
+const BIG_PNG = Buffer.concat([PNG, randomBytes(700 * 1024)]);
+
 describe('PORTAL_UPLOAD_DAILY_MB', () => {
   it('refuses files with 429 upload_quota once the last 24 hours hold the cap, and still takes a message without files', async () => {
-    const pool = on.db.owner.pool;
-    const ticket = await pool.query<{ id: string }>(
-      `INSERT INTO ticket (subject, org_id) VALUES ('quota', $1) RETURNING id`,
-      [orgId],
-    );
-    // A portal file of 1 MiB already stored today: the whole cap.
-    await pool.query(
-      `INSERT INTO message (ticket_id, direction, body_text, visibility, attachments)
-       VALUES ($1, 'inbound', 'x', 'public', $2::jsonb)`,
-      [
-        ticket.rows[0]?.id,
-        JSON.stringify([
-          { partId: 'portal-1', filename: 'big.pdf', size: 1024 * 1024, objectKey: 'k/q' },
-        ]),
-      ],
-    );
     const attempt = async (withFile: boolean) => {
       const client = on.client();
       const challenge = await client.get<{ challenge: string; difficultyBits: number }>(
@@ -222,9 +208,12 @@ describe('PORTAL_UPLOAD_DAILY_MB', () => {
       };
       const data = new FormData();
       data.append('payload', JSON.stringify(payload));
-      if (withFile) data.append('files', new Blob([PNG]), 'shot.png');
+      if (withFile) data.append('files', new Blob([BIG_PNG]), 'shot.png');
       return client.post<PortalSubmitted & ApiErrorBody>('/v1/portal/tickets', data);
     };
+    // The cap is 1 MB for the instance (the backstop; T-155a C-1 counts it in Redis): a first file of
+    // 700 KB fits, a second one does not.
+    expect((await attempt(true)).status).toBe(201);
     const refused = await attempt(true);
     expect(refused.status, JSON.stringify(refused.body)).toBe(429);
     expect(refused.body.code).toBe('upload_quota');

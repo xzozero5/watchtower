@@ -8,6 +8,7 @@ import {
   Param,
   Post,
   Query,
+  Res,
 } from '@nestjs/common';
 import {
   ApiConflictResponse,
@@ -41,6 +42,8 @@ import {
   RequireAnyPermission,
   type Principal,
 } from '../auth/decorators.js';
+import type { Response } from 'express';
+
 import { parseResponse } from '../common/zod-openapi.js';
 import { AssistantProposals } from './assistant-proposals.js';
 import { AssistantService } from './assistant.service.js';
@@ -100,8 +103,17 @@ export class AssistantController {
   async message(
     @Body({ schema: assistantMessageRequestSchema }) body: AssistantMessageRequest,
     @CurrentPrincipal() principal: Principal,
+    @Res({ passthrough: true }) response: Response,
   ) {
-    return parseResponse(assistantReplySchema, await this.assistant.message(principal, body));
+    // The person closed the page or cancelled: stop the model call (and free its bridge slot).
+    const aborted = new AbortController();
+    response.once('close', () => {
+      if (!response.writableFinished) aborted.abort();
+    });
+    return parseResponse(
+      assistantReplySchema,
+      await this.assistant.message(principal, body, aborted.signal),
+    );
   }
 
   @Post('proposals/:id/confirm')

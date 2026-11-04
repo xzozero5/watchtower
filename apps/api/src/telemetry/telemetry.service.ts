@@ -2,6 +2,7 @@ import { Inject, Injectable, Optional, type OnApplicationShutdown } from '@nestj
 import {
   SpanKind,
   SpanStatusCode,
+  type Counter,
   type Histogram,
   type Span,
   type Tracer,
@@ -25,6 +26,9 @@ export const SPAN_EXPORTER = Symbol('SPAN_EXPORTER');
 
 const SECONDS_BUCKETS = [0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10];
 
+/** Events counted with `TelemetryService.count`; each is a Prometheus counter an alert can watch. */
+export type TelemetryEvent = 'upload_busy' | 'upload_too_slow' | 'upload_quota_global';
+
 export interface RequestObservation {
   readonly method: string;
   /** Matched route pattern such as `/health/ready`, never the raw path (keeps labels bounded). */
@@ -47,6 +51,7 @@ export class TelemetryService implements OnApplicationShutdown {
   private readonly tracerProvider: TracerProvider;
   private readonly tracer: Tracer;
   private readonly httpDuration: Histogram;
+  private readonly events: Readonly<Record<TelemetryEvent, Counter>>;
 
   constructor(
     @Inject(APP_CONFIG) config: ApiConfig,
@@ -72,6 +77,18 @@ export class TelemetryService implements OnApplicationShutdown {
       unit: 's',
       advice: { explicitBucketBoundaries: SECONDS_BUCKETS },
     });
+    this.events = {
+      upload_busy: meter.createCounter('portal.upload_busy', {
+        description: 'Portal uploads turned away (503) because every upload slot was taken',
+      }),
+      upload_too_slow: meter.createCounter('portal.upload_too_slow', {
+        description: 'Portal uploads cut off for sending slower than the minimum speed',
+      }),
+      upload_quota_global: meter.createCounter('portal.upload_quota_global', {
+        description:
+          'Portal uploads refused because the instance-wide daily upload cap was reached',
+      }),
+    };
     meter
       .createObservableGauge('process.resident_memory', {
         description: 'Resident set size',
@@ -92,6 +109,11 @@ export class TelemetryService implements OnApplicationShutdown {
     if (spanExporter) spanProcessors.push(new BatchSpanProcessor({ exporter: spanExporter }));
     this.tracerProvider = new TracerProvider({ resource, spanProcessors });
     this.tracer = this.tracerProvider.getTracer('watchtower-api');
+  }
+
+  /** Counts one occurrence of a named event (`GET /metrics`: `portal_upload_busy_total`, ...). */
+  count(event: TelemetryEvent): void {
+    this.events[event].add(1);
   }
 
   /** Starts the server span for a request. Pass the result to `finishRequest`. */

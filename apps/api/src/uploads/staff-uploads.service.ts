@@ -5,7 +5,7 @@ import { HttpStatus, Inject, Injectable } from '@nestjs/common';
 import { ObjectStoreError, type ObjectStore, type ObjectStream } from '@watchtower/channels';
 import { schema, type Database } from '@watchtower/db';
 import { STAFF_ATTACHMENTS_MAX, type StaffAttachment } from '@watchtower/shared';
-import { and, eq, inArray } from 'drizzle-orm';
+import { and, eq, inArray, sql } from 'drizzle-orm';
 
 import { ApiHttpError, badRequest, notFound } from '../auth/http-errors.js';
 import { DATABASE } from '../database/database.module.js';
@@ -16,6 +16,7 @@ import {
   detectKind,
 } from '../portal/portal-attachment-check.js';
 import { attachmentRejected, type UploadedFile } from '../portal/portal-attachments.service.js';
+import type { DbTransaction } from '../realtime/unit-of-work.js';
 import { OBJECT_STORE } from '../storage/storage.module.js';
 import { UploadScanGate } from '../storage/upload-scan-gate.js';
 import { MetadataStripError, stripMetadata } from './strip-metadata.js';
@@ -119,17 +120,27 @@ export class StaffUploadsService {
    * The references for the ids a person sends along with their text. Only files they uploaded
    * themselves can be attached (an id of someone else's file answers 400, as an id that does not exist
    * does), so an id seen in one note cannot be used to copy a file into another. Order is kept.
+   *
+   * Pass the transaction that saves the note: each file is then held with a shared advisory lock until
+   * it ends, and the worker's orphan sweep skips a file it cannot try-lock, so it cannot delete a file
+   * that is being attached right now (T-155a C-9). The lock name must match the sweep's
+   * (`apps/worker/src/scan/scanner.ts`).
    */
-  async claim(userId: string, ids: readonly string[] | undefined): Promise<StaffAttachment[]> {
-    return (await this.rows(userId, ids)).map(toAttachment);
+  async claim(
+    userId: string,
+    ids: readonly string[] | undefined,
+    tx?: DbTransaction,
+  ): Promise<StaffAttachment[]> {
+    return (await this.rows(userId, ids, tx)).map(toAttachment);
   }
 
   /** Same files as `claim`, in the shape of `message.attachments` so the ticket download route serves them. */
   async messageRecords(
     userId: string,
     ids: readonly string[] | undefined,
+    tx?: DbTransaction,
   ): Promise<Record<string, unknown>[]> {
-    return (await this.rows(userId, ids)).map((row, index) => ({
+    return (await this.rows(userId, ids, tx)).map((row, index) => ({
       partId: `staff-${String(index + 1)}`,
       filename: row.filename,
       contentType: row.contentType,
@@ -174,11 +185,23 @@ export class StaffUploadsService {
     };
   }
 
-  private async rows(userId: string, ids: readonly string[] | undefined): Promise<UploadRow[]> {
+  private async rows(
+    userId: string,
+    ids: readonly string[] | undefined,
+    tx?: DbTransaction,
+  ): Promise<UploadRow[]> {
     const wanted = [...new Set(ids ?? [])];
     if (wanted.length === 0) return [];
     if (wanted.length > STAFF_ATTACHMENTS_MAX) throw badRequest('Too many attachments');
-    const found = await this.database.db
+    if (tx !== undefined) {
+      // Sorted, so two requests that share files take the locks in the same order.
+      for (const id of wanted.map((value) => value.toLowerCase()).sort()) {
+        await tx.execute(
+          sql`SELECT pg_advisory_xact_lock_shared(hashtextextended(${`staff_upload:${id}`}, 0))`,
+        );
+      }
+    }
+    const found = await (tx ?? this.database.db)
       .select()
       .from(schema.staffUpload)
       .where(

@@ -258,11 +258,12 @@ export class HandoffService {
   /** Saves the draft: the whole item list, the incoming person, the free text and the message for the next shift. */
   async save(principal: Principal, handoffId: string, input: SaveHandoff): Promise<Handoff> {
     const actor = { type: 'user' as const, id: principal.userId };
-    const attachments =
-      input.attachmentIds === undefined
-        ? undefined
-        : await this.uploads.claim(principal.userId, input.attachmentIds);
     return this.uow.run(async (uow) => {
+      // In the transaction, so the files stay locked until the handoff is saved (T-155a C-9).
+      const attachments =
+        input.attachmentIds === undefined
+          ? undefined
+          : await this.uploads.claim(principal.userId, input.attachmentIds, uow.tx);
       await this.ownDraft(uow.tx, principal, handoffId);
       if (input.toUserId !== undefined && input.toUserId !== null) {
         if (input.toUserId === principal.userId)
