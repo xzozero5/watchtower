@@ -9,6 +9,11 @@ for f in $files; do
   esac
   if [ -f "$f" ] && [ $(wc -c <"$f") -gt 10485760 ]; then echo "BLOCKED: $f > 10 MB"; fail=1; fi
 done
+# N7: a change to the grader's golden data must carry a review entry in the same commit.
+golden=$(git diff --cached --name-only -- 'evals/golden/' | cat || true)
+if [ -n "$golden" ] && ! git diff --cached --name-only -- 'evals/GOLDEN-REVIEW.md' | grep -q .; then
+  echo "BLOCKED (N7): evals/golden/ changed without a review entry in evals/GOLDEN-REVIEW.md"; fail=1
+fi
 # secret patterns (เพิ่มได้) — ตรวจเฉพาะ diff ที่เพิ่มเข้ามา
 # Match against a captured string, not a pipe: with pipefail an early `grep -q` exit can SIGPIPE the writer and hide a hit.
 # Exit codes: 0 = hit, 1 = clean, anything else = the check itself failed, which also blocks (fail closed).

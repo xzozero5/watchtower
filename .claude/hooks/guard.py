@@ -51,6 +51,12 @@ if tool in ("Write", "Edit", "MultiEdit", "NotebookEdit") and path:
         block("BLOCKED (N7): evals/golden/** is the grader's data. Propose additions to the main thread/owner instead.")
     if not is_main and re.search(r"(^|/)(HANDOFF\.md|docs/STATUS\.md|docs/BACKLOG\.md)$", p):
         block("BLOCKED: HANDOFF.md / docs/STATUS.md / docs/BACKLOG.md are written by the main thread only. Report your result instead.")
+# 4b. golden data through the shell (2026-11-04: a script wrote evals/golden/*.json around the Write rule).
+# Read-only git commands are fine; anything else that names the path is refused. A script that builds the path
+# itself cannot be seen here, so tools/githooks/pre-commit also requires a review entry in evals/GOLDEN-REVIEW.md.
+if cmd and re.search(r"evals[\\/]+golden", cmd) and not re.match(r"\s*git\s+(log|diff|show|status|blame)\b", cmd) \
+        and not re.match(r"\s*(cat|ls|head|grep|rg|wc)\b", cmd):
+    block("BLOCKED (N7): evals/golden/** is changed only by the main thread with the owner's approval. Propose cases in evals/proposals/ instead.")
 
 # 5. external writes
 if os.environ.get("WT_ALLOW_EXTERNAL_WRITES") != "1":
