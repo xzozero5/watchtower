@@ -2,7 +2,15 @@
 
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import type { GateReport, Promotion } from '@watchtower/shared';
-import { Button, buttonVariants, Dialog, DialogContent, Input, Textarea, toast } from '@watchtower/ui';
+import {
+  Button,
+  buttonVariants,
+  Dialog,
+  DialogContent,
+  Input,
+  Textarea,
+  toast,
+} from '@watchtower/ui';
 import { CircleX, ShieldAlert } from 'lucide-react';
 import { useId, useState } from 'react';
 
@@ -12,7 +20,7 @@ import { adminKeys, stage3Keys } from '@/lib/admin/queries';
 import { approveReturnPath } from '@/lib/admin/stage3';
 import { useApi } from '@/lib/api/api-context';
 import { isApiError } from '@/lib/api/errors';
-import { stepUpUrl } from '@/lib/auth/providers';
+import { SSO_PROVIDER, stepUpUrl } from '@/lib/auth/providers';
 import { useUserId } from '@/lib/auth/session';
 import { useRuntimeConfig } from '@/lib/runtime-config-context';
 
@@ -250,7 +258,7 @@ export function PromotionDialog({
           {needsStepUp ? (
             <p role="alert" className="flex items-start gap-1.5 text-sm font-medium">
               <ShieldAlert aria-hidden className="mt-0.5 size-4 shrink-0" />
-              <span>{t('stage3.promo.reauthNeeded')}</span>
+              <span>{t('stage3.promo.reauthNeeded', { provider: SSO_PROVIDER.displayName })}</span>
             </p>
           ) : null}
           {error ? (

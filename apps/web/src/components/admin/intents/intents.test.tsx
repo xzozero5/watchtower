@@ -151,8 +151,63 @@ describe('Intents list', () => {
   });
 });
 
+describe('An intent at stage 3', () => {
+  const stage3 = (shadow: boolean, effectiveStage: 2 | 3 = 3) =>
+    makeAutonomy({
+      autosendFlag: effectiveStage === 3,
+      intents: [
+        {
+          id: LOGIN,
+          key: 'login_issue',
+          name: 'login issue',
+          isActive: true,
+          stage: 3,
+          effectiveStage,
+          pinned: false,
+          autosend: {
+            shadow,
+            minScore: 0.9,
+            dailyCap: 20,
+            policy: { channels: [], action: 'reply', maxChars: 1200 },
+          },
+          updatedAt: '2026-11-02T03:00:00.000Z',
+        },
+      ],
+    });
+
+  it('shows as Stage 3 with its shadow state in the list, never as Stage 2', async () => {
+    consoleApi({ autonomy: stage3(true) });
+    renderConsole(<IntentsPage />);
+    const table = await screen.findByRole('table', { name: 'Intents' });
+    const login = within(table)
+      .getAllByRole('row')
+      .find((r) => within(r).queryByText('login_issue')) as HTMLElement;
+    expect(within(login).getByText('Stage 3 · Sends on its own')).toBeVisible();
+    expect(within(login).getByText('Shadow: grades drafts, sends nothing')).toBeVisible();
+    expect(within(login).queryByText(/Stage 2/)).toBeNull();
+  });
+
+  it('shows as Stage 3 and live in the Autonomy tab', async () => {
+    const user = userEvent.setup();
+    consoleApi({ autonomy: stage3(false) });
+    renderConsole(<IntentDetailPage intentId={LOGIN} />);
+    await openAutonomy(user);
+    const group = await screen.findByRole('radiogroup', { name: 'Stage' });
+    expect(within(group).getByRole('radio', { name: /Stage 3/ })).toBeChecked();
+    expect(screen.getByText('Live: sends on its own')).toBeVisible();
+  });
+
+  it('says it acts as Stage 2 for now when auto-send is off for the instance', async () => {
+    const user = userEvent.setup();
+    consoleApi({ autonomy: stage3(false, 2) });
+    renderConsole(<IntentDetailPage intentId={LOGIN} />);
+    await openAutonomy(user);
+    expect(await screen.findByText(/Acting as Stage 2 now/)).toBeVisible();
+  });
+});
+
 describe('Intent autonomy control', () => {
-  it('offers stages 0, 1 and 2 and never anything above', async () => {
+  it('offers stages 0, 1 and 2 to pick, shows stage 3 as never pickable, and nothing above', async () => {
     const user = userEvent.setup();
     consoleApi();
     renderConsole(<IntentDetailPage intentId={LOGIN} />);
@@ -163,8 +218,10 @@ describe('Intent autonomy control', () => {
       'Stage 0 · Observe',
       'Stage 1 · Suggest',
       'Stage 2 · Draft for approval',
+      'Stage 3 · Sends on its own',
     ]);
-    expect(screen.queryByRole('radio', { name: /Stage 3/ })).not.toBeInTheDocument();
+    expect(within(group).getByRole('radio', { name: /Stage 3/ })).toBeDisabled();
+    expect(screen.queryByRole('radio', { name: /Stage 4/ })).not.toBeInTheDocument();
     expect(screen.queryByRole('slider')).not.toBeInTheDocument();
     expect(screen.getByText(/Stage 3 and above is the owner’s decision/)).toBeVisible();
   });

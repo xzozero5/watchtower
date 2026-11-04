@@ -188,7 +188,9 @@ describe('Home', () => {
     expect(
       within(stages).getByText('Stage 2 · Draft for approval').closest('li'),
     ).toHaveTextContent('2');
-    expect(within(stages).queryByText(/Stage 3/)).not.toBeInTheDocument();
+    expect(within(stages).getByText('Stage 3 · Sends on its own').closest('li')).toHaveTextContent(
+      '0',
+    );
     expect(within(ai).getByText('1 pinned')).toBeVisible();
     // The AI insight contract does not exist yet: a dash, not an invented number.
     expect(within(ai).getByText('Draft ready').closest('div')).toHaveTextContent('—');

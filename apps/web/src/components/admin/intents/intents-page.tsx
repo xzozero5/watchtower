@@ -30,7 +30,7 @@ import { FormField } from '@/components/portal/form-field';
 import { useT } from '@/i18n/provider';
 import { describeError } from '@/lib/admin/errors';
 import { adminKeys, useAutonomy, useSlaPolicies } from '@/lib/admin/queries';
-import { asStage, STAGE_LABEL_KEYS } from '@/lib/admin/stages';
+import { asStage, STAGE_LABEL_KEYS, STAGE3_MODE_KEYS, stage3Mode } from '@/lib/admin/stages';
 import { useApi } from '@/lib/api/api-context';
 import { useUserId } from '@/lib/auth/session';
 import { usePreferences } from '@/lib/preferences';
@@ -124,9 +124,11 @@ function IntentsBody() {
       cell: (row) => {
         const state = stageById.get(row.id);
         const stage = asStage(state?.stage ?? row.autonomyStage);
+        const mode = state ? stage3Mode(state) : null;
         return (
           <span className="flex flex-wrap items-center gap-1.5">
             <StageBadge stage={stage} label={t(STAGE_LABEL_KEYS[stage])} />
+            {mode ? <span className="text-xs">{t(STAGE3_MODE_KEYS[mode])}</span> : null}
             {state?.pinned ? (
               <span className="inline-flex items-center gap-1 text-xs">
                 <Lock aria-hidden className="size-3" />

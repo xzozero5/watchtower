@@ -61,6 +61,14 @@ export const adminEn = {
     hint0: 'The AI watches and does not suggest anything.',
     hint1: 'The AI suggests when asked.',
     hint2: 'A person approves every reply for this intent.',
+    label3: 'Stage 3 · Sends on its own',
+    hint3:
+      'The AI may send replies for this intent without a person, within the limits set in the Stage 3 tab.',
+    mode: {
+      shadow: 'Shadow: grades drafts, sends nothing',
+      live: 'Live: sends on its own',
+      held: 'Acting as Stage 2 now (auto-send is off for this instance)',
+    },
   },
   users: {
     invite: 'Invite',
@@ -273,7 +281,8 @@ export const adminEn = {
     legend0: 'Stage 0 · Observe: the AI only watches.',
     legend1: 'Stage 1 · Suggest: the AI suggests when asked.',
     legend2: 'Stage 2 · Draft for approval: the AI drafts, a person sends.',
-    legend3: 'Stage 3 · Sends on its own: not available.',
+    legend3:
+      'Stage 3 · Sends on its own: the AI sends without a person. Only after the owner approves a promotion.',
     headOnly: 'Only the head can change these.',
     loadError: 'Couldn’t load AI status. The switches keep their last state.',
     budget: {

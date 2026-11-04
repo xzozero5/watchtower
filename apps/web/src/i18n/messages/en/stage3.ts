@@ -147,10 +147,12 @@ export const stage3En = {
     withdrawTitle: 'Withdraw this request',
     withdrawBody: 'Nothing changes for the intent.',
     withdrawSubmit: 'Withdraw request',
-    reauth: 'For safety, you will be asked to sign in again before approving. You will come back to this dialog.',
-    reauthNeeded: 'Your sign-in is not recent enough to approve. Sign in again with Google (it takes a moment). You come back here, then press Approve again. Nothing has been approved yet.',
+    reauth:
+      'For safety, you will be asked to sign in again before approving. You will come back to this dialog.',
+    reauthNeeded:
+      'Your sign-in is not recent enough to approve. Sign in again with {provider} (it takes a moment). You come back here, then press Approve again. Nothing has been approved yet.',
     stepUpOk: 'Signed in again. Press Approve to continue.',
-    stepUpFailed: 'The fresh sign-in did not work. Try again, with the same Google account.',
+    stepUpFailed: 'The fresh sign-in did not work. Try again, with the same account.',
     reauthAction: 'Sign in again',
     ownerOnly: 'Only the owner can approve a request.',
     ownerWaiting: 'Waiting for the owner. Only the owner can approve.',

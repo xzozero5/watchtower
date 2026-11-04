@@ -106,8 +106,13 @@ describe('Breadcrumb', () => {
 });
 
 describe('StageBadge', () => {
-  it('shows an icon and words for each stage, and there is no stage 3', () => {
-    const labels = ['Stage 0 · Observe', 'Stage 1 · Suggest', 'Stage 2 · Draft for approval'];
+  it('shows an icon and words for each stage, and nothing above stage 3', () => {
+    const labels = [
+      'Stage 0 · Observe',
+      'Stage 1 · Suggest',
+      'Stage 2 · Draft for approval',
+      'Stage 3 · Sends on its own',
+    ];
     const { container } = render(
       <>
         {AUTONOMY_STAGES.map((stage) => (
@@ -116,8 +121,8 @@ describe('StageBadge', () => {
       </>,
     );
     for (const label of labels) expect(screen.getByText(label)).toBeVisible();
-    expect(container.querySelectorAll('svg[aria-hidden="true"]')).toHaveLength(3);
-    expect(AUTONOMY_STAGES).toEqual([0, 1, 2]);
+    expect(container.querySelectorAll('svg[aria-hidden="true"]')).toHaveLength(4);
+    expect(AUTONOMY_STAGES).toEqual([0, 1, 2, 3]);
   });
 });
 

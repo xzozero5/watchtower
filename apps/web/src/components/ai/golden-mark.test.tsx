@@ -71,7 +71,9 @@ describe('GoldenMarkButton', () => {
     const user = userEvent.setup();
     const api = open(REPLY);
     await user.click(await screen.findByRole('button', { name: 'Mark as golden answer' }));
-    const dialog = await screen.findByRole('dialog', { name: 'Keep this reply as a golden answer' });
+    const dialog = await screen.findByRole('dialog', {
+      name: 'Keep this reply as a golden answer',
+    });
     const shareable = within(dialog).getByRole('checkbox', {
       name: /Shareable with other organizations/,
     });

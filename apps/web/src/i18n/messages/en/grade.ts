@@ -56,10 +56,12 @@ export const gradeEn = {
     markedTip: 'Kept as an example for the AI. Personal details were removed before it was stored.',
     markTip: 'Keep this reply as an example for the AI. Personal details are removed first.',
     dialogTitle: 'Keep this reply as a golden answer',
-    dialogBody: 'Personal details are removed first. The AI of this organization reads it as an example of tone when it drafts.',
+    dialogBody:
+      'Personal details are removed first. The AI of this organization reads it as an example of tone when it drafts.',
     confirm: 'Keep as golden answer',
     shareable: 'Shareable with other organizations',
-    shareableHelp: 'Off by default. If on, the AI of other organizations may also read this reply as an example. Names of organizations, contract numbers and amounts are replaced by placeholders (such as [ORG], [CONTRACT_ID], [AMOUNT]) before it is kept. Turn it on only if the reply says nothing specific to this customer.',
+    shareableHelp:
+      'Off by default. If on, the AI of other organizations may also read this reply as an example. Names of organizations, contract numbers and amounts are replaced by placeholders (such as [ORG], [CONTRACT_ID], [AMOUNT]) before it is kept. Turn it on only if the reply says nothing specific to this customer.',
     done: 'Kept as a golden answer',
     errors: {
       noIntent: 'Set the intent of the ticket first, then mark the reply.',
