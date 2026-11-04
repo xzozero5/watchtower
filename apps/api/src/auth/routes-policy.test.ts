@@ -315,6 +315,7 @@ describe('every route states who may call it', () => {
         'GET /v1/intents/:id/procedure/versions',
         'GET /v1/intents/:id/procedure/versions/:versionId',
         'GET /v1/intents/:id/procedure/versions/:versionId/validation',
+        'GET /v1/intents/:id/procedure/versions/:versionId/simulation',
         'POST /v1/tickets/:id/notes',
         'POST /v1/tickets/:id/status',
         'POST /v1/tickets/:id/dev-owner',

@@ -226,6 +226,8 @@ export const aiRunRecordSchema = z.object({
   /** Correlation, filled by the caller. */
   intent: z.string().nullable(),
   ticketId: z.string().nullable(),
+  /** The procedure version the run followed (T-303c, `ai_run.procedure_version_id`). Absent: none. */
+  procedureVersionId: z.uuid().nullable().optional(),
   startedAt: z.iso.datetime(),
 });
 export type AiRunRecord = z.infer<typeof aiRunRecordSchema>;

@@ -19,6 +19,12 @@ import {
 import { exportReplay } from './replay.js';
 import { buildReport, compareReports, formatReport, parseBaseline } from './report.js';
 import { createRig, EvalSetupError, type EvalProviderKind } from './rig.js';
+import {
+  formatSimulation,
+  parseStepsFile,
+  simulateFixture,
+  simulationFixtureSchema,
+} from './simulate.js';
 
 const ROOT = fileURLToPath(new URL('../../../', import.meta.url));
 const EVALS = join(ROOT, 'evals');
@@ -49,6 +55,10 @@ Options
 
   pnpm --filter @watchtower/eval-runner redaction [--ner off|local] [--json] [--min-recall 1] [--max-false-positive 0.02]
     deterministic recall / false-positive eval of the redactor on evals/runner/redaction/corpus.json (no model, no network, T-302e)
+
+  pnpm --filter @watchtower/eval-runner simulate -- --steps steps.json [--baseline other.json] [--cases cases.json] [--provider mock]
+    runs the steps of a procedure version on made-up cases and tools (default evals/runner/simulation/smoke.json): the same
+    engine the worker runs on resolved tickets before a publish (T-303d, ADR-026 section 6). Exit 1 unless it passes.
 
   pnpm --filter @watchtower/eval-runner replay -- --days 30 --limit 50
     reads resolved tickets from DATABASE_URL, redacts them and writes evals/.replay/replay.json (git-ignored)
@@ -223,10 +233,52 @@ async function replay(argv: string[]): Promise<number> {
   return 0;
 }
 
+/** A procedure version on made-up cases and tools, the engine the worker runs on real tickets (T-303d). */
+async function simulate(argv: string[]): Promise<number> {
+  const { values } = parseArgs({
+    args: argv.filter((arg) => arg !== '--'),
+    options: {
+      steps: { type: 'string' },
+      baseline: { type: 'string' },
+      cases: { type: 'string', default: join(EVALS, 'runner', 'simulation', 'smoke.json') },
+      provider: { type: 'string', default: process.env.EVAL_PROVIDER ?? 'mock' },
+      'max-calls': { type: 'string', default: '200' },
+      json: { type: 'boolean', default: false },
+    },
+  });
+  if (values.steps === undefined) throw new EvalSetupError('--steps wants the file of the steps');
+  const provider = values.provider;
+  if (provider !== 'mock' && provider !== 'claude-cli') {
+    throw new EvalSetupError(`unknown provider: ${provider} (mock or claude-cli)`);
+  }
+  const maxCalls = Number(values['max-calls']);
+  if (!Number.isInteger(maxCalls) || maxCalls < 1)
+    throw new EvalSetupError('--max-calls wants a whole number');
+  const fixture = simulationFixtureSchema.parse(JSON.parse(readFileSync(values.cases, 'utf8')));
+  const rig = createRig({
+    provider,
+    maxCalls,
+    env: process.env,
+    fetch: (input, init) => globalThis.fetch(input, init),
+  });
+  const outcome = await simulateFixture({
+    rig,
+    cases: fixture.cases,
+    steps: parseStepsFile(JSON.parse(readFileSync(values.steps, 'utf8'))),
+    baselineSteps:
+      values.baseline === undefined
+        ? undefined
+        : parseStepsFile(JSON.parse(readFileSync(values.baseline, 'utf8'))),
+  });
+  console.log(values.json ? JSON.stringify(outcome, null, 2) : formatSimulation(outcome));
+  return outcome.status === 'ok' && outcome.passed ? 0 : 1;
+}
+
 async function main(): Promise<number> {
   const [command, ...rest] = process.argv.slice(2);
   try {
     if (command === undefined || command === 'run') return await run(command === 'run' ? rest : []);
+    if (command === 'simulate') return await simulate(rest);
     if (command === 'redaction') return redaction(rest);
     if (command === 'replay') return await replay(rest);
     console.log(USAGE);

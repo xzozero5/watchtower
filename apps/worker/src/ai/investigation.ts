@@ -6,6 +6,8 @@ import {
   draftReply,
   investigationTools,
   investigateTicket,
+  selectDisclosureRules,
+  selectGuidelines,
   withToolBudget,
   type AutonomyStage,
   type InvestigationEvidence,
@@ -18,6 +20,8 @@ import {
   createDbToolLedger,
   effectiveStage,
   goldenExamplesFor,
+  readPublishedProcedure,
+  recordProcedureOutcome,
   saveAiDraft,
   TicketKeys,
   writeAiInvestigation,
@@ -30,6 +34,7 @@ import {
   detectLanguage,
   type AiInsightReason,
   type AiProgress,
+  type ConditionFacts,
 } from '@watchtower/shared';
 import { and, asc, eq, sql } from 'drizzle-orm';
 import { z } from 'zod';
@@ -140,6 +145,19 @@ export async function resolveToolScope(
   return { intent: null, basis: 'none' };
 }
 
+/** The tier slug of the ticket's organization (a `when` of a procedure may read it); undefined when unknown. */
+async function orgTier(
+  db: Pick<Database['db'], 'select'>,
+  orgId: string,
+): Promise<string | undefined> {
+  const [row] = await db
+    .select({ tier: schema.organization.tier })
+    .from(schema.organization)
+    .where(eq(schema.organization.id, orgId))
+    .limit(1);
+  return row?.tier ?? undefined;
+}
+
 /** Every inbound email message came from a sender the receiving server authenticated (`pass`). */
 export function senderAuthenticated(
   messages: readonly { direction: string; emailMeta: unknown }[],
@@ -203,6 +221,7 @@ export async function runInvestigation(
       requesterContactId: schema.ticket.requesterContactId,
       status: schema.ticket.status,
       priority: schema.ticket.priority,
+      reopenCount: schema.ticket.reopenCount,
     })
     .from(schema.ticket)
     .where(eq(schema.ticket.id, job.ticketId))
@@ -350,6 +369,25 @@ export async function runInvestigation(
   const replyBlocked =
     (await replyBlockReason(db, ticket.channel, ticket.channelAccountId)) ?? undefined;
 
+  // --- the published procedure of the intent (T-303c, ADR-026): none means the default runbook, as before ---
+  // Only for an intent we trust: a ticket cannot pick a procedure by talking the classifier into an intent.
+  const published =
+    ticketIntent !== undefined && intentTrusted
+      ? await readPublishedProcedure(db, ticketIntent.id)
+      : null;
+  const procedureFacts: ConditionFacts =
+    published === null
+      ? {}
+      : {
+          'classifier.confidence': insightRow?.intentConfidence ?? undefined,
+          'ticket.priority': ticket.priority,
+          'ticket.channel': ticket.channel,
+          'org.tier': await orgTier(db, ticket.orgId),
+          'contact.verified':
+            disclosureFor(ticket.channel, requester, senderAuthenticated(messages)) === 'verified',
+          'ticket.reopenCount': ticket.reopenCount,
+        };
+
   // --- evidence: collect it now, or reuse what the last investigation stored (a draft on request) ---
   let evidence: InvestigationEvidence[];
   let investigated = false;
@@ -405,6 +443,10 @@ export async function runInvestigation(
       scopeBasis: scope.basis,
       stage: scopeStage,
       replyBlocked,
+      procedure:
+        published === null
+          ? undefined
+          : { versionId: published.versionId, steps: published.steps, facts: procedureFacts },
       tools,
       onProgress: progress,
       abortSignal: signal,
@@ -420,6 +462,17 @@ export async function runInvestigation(
     }
     evidence = [...outcome.value.evidence];
     investigated = true;
+    // What the procedure asked for stays with the ticket: a proposal a person accepts with one click, and a
+    // call for a person that the auto-send gate reads (ADR-026 section 7, ADR-025 condition 11).
+    const asked = outcome.value.report.procedure;
+    if (asked !== undefined) {
+      await recordProcedureOutcome(db, {
+        ticketId: ticket.id,
+        versionId: asked.versionId,
+        escalations: asked.escalations,
+        requireHuman: asked.requireHuman,
+      });
+    }
     await write({
       state: 'classified',
       reasonCode: null,
@@ -462,6 +515,14 @@ export async function runInvestigation(
     evidence,
     note: job.note,
     examples: golden.map((example) => example.text),
+    procedure:
+      published === null
+        ? undefined
+        : {
+            versionId: published.versionId,
+            guidelines: selectGuidelines(published.steps, { stage, facts: procedureFacts }),
+            disclosure: selectDisclosureRules(published.steps, { stage, facts: procedureFacts }),
+          },
     abortSignal: signal,
   });
   if (drafted.status === 'skipped') return needsHuman(drafted.reason, stage);

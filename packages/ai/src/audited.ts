@@ -54,6 +54,8 @@ export interface AgentCall {
   action?: string;
   intent?: string | null;
   ticketId?: string | null;
+  /** The published procedure version this call follows (T-303c): recorded in `ai_run`. */
+  procedureVersionId?: string | null;
   maxOutputTokens?: number;
   temperature?: number;
   abortSignal?: AbortSignal;
@@ -145,6 +147,9 @@ export function createAuditedLlm(deps: AuditedLlmDeps) {
         },
         intent: call.intent ?? null,
         ticketId: call.ticketId ?? null,
+        ...(call.procedureVersionId === undefined || call.procedureVersionId === null
+          ? {}
+          : { procedureVersionId: call.procedureVersionId }),
         startedAt: new Date(startedAt).toISOString(),
       };
       const empty = {

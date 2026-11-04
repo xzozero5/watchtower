@@ -98,7 +98,7 @@ describe('runEval on the mock provider', () => {
     const report = buildReport('mock', results);
     expect(report.summary.map((row) => [row.agent, row.promptVersion, row.passRate])).toEqual([
       ['classifier', 1, 1],
-      ['drafter', 1, 1],
+      ['drafter', 2, 1],
       ['grader', 1, 1],
       ['kb_author', 1, 1],
     ]);

@@ -41,6 +41,11 @@ verdict and quality, policy violations, KB gap; `{{language}}` slot). The class 
 by what the facts support (`capResolutionClass`), so a prompt change cannot make `verified` easier to reach. The eval
 runner (`evals/runner`) can run any case at every version of a prompt (`--all-versions`).
 
+T-303c adds `investigator.v3.md` (v2 plus a `{{procedure_checks}}` slot: the questions of the published procedure, and the extra
+`checkAnswers` key of the answer; empty without a procedure) and `drafter.v2.md` (v1 plus a `{{guidelines}}` slot: the team's reply
+guidelines and the topics it must not mention, placed after every rule and saying they rank below the rules, the disclosure level and
+the evidence; empty without a procedure). The slot text goes through the redaction session like every other slot value (N4).
+
 T-303b adds `procedure_compiler.v1.md` (the plain-language procedure of an intent in, the strict step list of ADR-026 out, plus what
 the model had to guess). The text is redacted first; the steps are checked by the Zod schema in `@watchtower/shared` and by the domain,
 and a person confirms them: the agent only drafts.

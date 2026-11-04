@@ -759,12 +759,12 @@ describe('priority suggestion and blocked reply (T-147)', () => {
   });
   const suggestion = { priority: 'P2', reason: 'Errors in the logs', confidence: 0.6 };
 
-  it('uses investigator prompt v2 and keeps the suggestion in the report, never changing a ticket', async () => {
+  it('uses the investigator prompt and keeps the suggestion in the report, never changing a ticket', async () => {
     const r = rig({ provider: pinned({ suggestedPriority: suggestion }) });
     const outcome = await investigateTicket(r.deps, r.input());
     if (outcome.status !== 'ok') throw new Error('expected ok');
     expect(outcome.value.report.suggestedPriority).toEqual(suggestion);
-    expect(outcome.value.report.promptVersion).toBe('v2');
+    expect(outcome.value.report.promptVersion).toBe('v3');
     expect(outcome.value.report.replyBlocked).toBeUndefined();
     expect(outcome.value.nextStep.kind).toBe('reply');
   });

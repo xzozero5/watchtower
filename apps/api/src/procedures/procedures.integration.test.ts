@@ -2,6 +2,7 @@ import { DevMockLlmProvider, type LlmProvider, type LlmRequest } from '@watchtow
 import type {
   CompileProcedureResult,
   Intent,
+  ProcedureSimulationAnswer,
   ProcedureValidation,
   ProcedureVersion,
   ProcedureVersionList,
@@ -406,5 +407,137 @@ describe('publish needs a passing simulation', () => {
     expect(
       (await head.client.get<Intent>(`/v1/intents/${intent.id}`)).body.procedureVersionId,
     ).toBeNull();
+  });
+});
+
+describe('simulate (T-303d)', () => {
+  async function confirmedVersion(intent: Intent): Promise<ProcedureVersion> {
+    const version = await draft(intent, { sourceMd: 'KB then check.', steps: COMPILED.steps });
+    const response = await lead.client.post<ProcedureVersionResult>(
+      `${base(intent)}/${version.id}/confirm`,
+    );
+    expect(response.status).toBe(200);
+    return response.body.version;
+  }
+
+  const outboxFor = async (versionId: string) =>
+    (
+      await owner().query<{ payload: { versionId: string; requestedBy: string } }>(
+        `SELECT payload FROM outbox WHERE queue = 'procedure-simulate' AND payload->>'versionId' = $1`,
+        [versionId],
+      )
+    ).rows;
+
+  it('is for lead and head only (procedure.publish); everyone with procedure.read may read the result', async () => {
+    const intent = await newIntent();
+    const version = await confirmedVersion(intent);
+    for (const who of [agent, dev, client]) {
+      expect((await who.client.post(`${base(intent)}/${version.id}/simulate`)).status).toBe(403);
+    }
+    expect((await h.client().post(`${base(intent)}/${version.id}/simulate`)).status).toBe(401);
+    for (const who of [agent, dev, lead, head]) {
+      const read = await who.client.get<ProcedureSimulationAnswer>(
+        `${base(intent)}/${version.id}/simulation`,
+      );
+      expect(read.status, who.session.user.role).toBe(200);
+      expect(read.body).toEqual({ versionId: version.id, simulation: null });
+    }
+    expect((await client.client.get(`${base(intent)}/${version.id}/simulation`)).status).toBe(403);
+    expect(await outboxFor(version.id)).toHaveLength(0);
+  });
+
+  it('queues one job for a confirmed version, once per minute, and records the request', async () => {
+    const intent = await newIntent();
+    const version = await confirmedVersion(intent);
+    const first = await head.client.post<{ versionId: string; queued: boolean }>(
+      `${base(intent)}/${version.id}/simulate`,
+    );
+    expect(first.status).toBe(202);
+    expect(first.body).toEqual({ versionId: version.id, queued: true });
+    // A double click does not queue it twice.
+    expect((await head.client.post(`${base(intent)}/${version.id}/simulate`)).status).toBe(202);
+    expect(await outboxFor(version.id)).toEqual([
+      { payload: { versionId: version.id, requestedBy: head.userId } },
+    ]);
+    expect(await actionsFor(version.id)).toContain('procedure.simulation_requested');
+  });
+
+  it('refuses a draft and a missing version, and says 503 while the kill switch is on', async () => {
+    const intent = await newIntent();
+    const plain = await draft(intent);
+    const refused = await lead.client.post<ApiErrorBody>(`${base(intent)}/${plain.id}/simulate`);
+    expect(refused.status).toBe(409);
+    expect(
+      (await lead.client.post(`${base(intent)}/00000000-0000-4000-8000-000000000000/simulate`))
+        .status,
+    ).toBe(404);
+
+    const other = await newIntent();
+    const version = await confirmedVersion(other);
+    await owner().query(`UPDATE ai_switch SET is_on = true WHERE key = 'ai_kill_switch'`);
+    try {
+      const off = await lead.client.post<ApiErrorBody>(`${base(other)}/${version.id}/simulate`);
+      expect(off.status).toBe(503);
+      expect(off.body.code).toBe('ai_unavailable');
+    } finally {
+      await owner().query(`UPDATE ai_switch SET is_on = false WHERE key = 'ai_kill_switch'`);
+    }
+    expect(await outboxFor(version.id)).toHaveLength(0);
+  });
+
+  it('shows the latest result with its numbers and no ticket text', async () => {
+    const intent = await newIntent();
+    const version = await confirmedVersion(intent);
+    const metrics = {
+      mode: 'instance',
+      caseCount: 3,
+      failedCases: 0,
+      seededCases: 1,
+      candidate: {
+        editDistance: 21.5,
+        uncitedClaims: 1,
+        drafted: 3,
+        violations: 0,
+        disclosureLeaks: 0,
+      },
+      baseline: { editDistance: 20, uncitedClaims: 1, drafted: 3 },
+      baselineVersionId: null,
+      deadSteps: [],
+      toolCalls: 12,
+      failReasons: [],
+      cases: [
+        {
+          ticketId: '00000000-0000-4000-8000-000000000001',
+          seeded: true,
+          ok: true,
+          editDistance: 21.5,
+          baselineEditDistance: 20,
+          uncitedClaims: 1,
+          violations: 0,
+          disclosureLeaks: 0,
+        },
+      ],
+    };
+    await owner().query(
+      `INSERT INTO procedure_simulation (procedure_version_id, passed, seed_only, case_count, metrics)
+       VALUES ($1, true, true, 3, $2::jsonb)`,
+      [version.id, JSON.stringify(metrics)],
+    );
+    const read = await agent.client.get<ProcedureSimulationAnswer>(
+      `${base(intent)}/${version.id}/simulation`,
+    );
+    expect(read.status).toBe(200);
+    expect(read.body.simulation).toMatchObject({
+      versionId: version.id,
+      passed: true,
+      seedOnly: true,
+      caseCount: 3,
+      metrics: { candidate: { editDistance: 21.5 }, deadSteps: [] },
+    });
+    const listed = await agent.client.get<ProcedureVersionList>(base(intent));
+    expect(listed.body.items[0]?.status).toBe('simulated');
+    // Another intent's version is a 404, not an empty answer.
+    const elsewhere = await newIntent();
+    expect((await lead.client.get(`${base(elsewhere)}/${version.id}/simulation`)).status).toBe(404);
   });
 });

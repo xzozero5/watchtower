@@ -14,7 +14,8 @@
     "typecheck": "tsc --noEmit",
     "eval": "tsc -p tsconfig.build.json && node dist/cli.js run",
     "redaction": "tsc -p tsconfig.build.json && node dist/cli.js redaction",
-    "replay": "tsc -p tsconfig.build.json && node dist/cli.js replay"
+    "replay": "tsc -p tsconfig.build.json && node dist/cli.js replay",
+    "simulate": "tsc -p tsconfig.build.json && node dist/cli.js simulate"
   },
   "dependencies": {
     "@watchtower/ai": "workspace:*",
