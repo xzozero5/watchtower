@@ -501,7 +501,8 @@ describe('retire_procedure_version()', () => {
 
 describe('stage 3 intents (rules that wait for the owner to open stage 3)', () => {
   it('needs a second person and a simulation on real tickets', async () => {
-    // The stage CHECKs of the day are lifted in this throwaway database only, to exercise the rule.
+    // The stage CHECKs and the 0096 promotion trigger (stage 3 only through an approved promotion) are
+    // lifted in this throwaway database only, to exercise the procedure rule without a promotion.
     const checks = await owner().query<{ conname: string }>(
       `SELECT conname FROM pg_constraint WHERE conrelid = 'public.intent'::regclass AND contype = 'c'
         AND pg_get_constraintdef(oid) LIKE '%autonomy_stage%'`,
@@ -510,7 +511,12 @@ describe('stage 3 intents (rules that wait for the owner to open stage 3)', () =
       await owner().query(`ALTER TABLE intent DROP CONSTRAINT ${conname}`);
     }
     const intentId = await newIntent('stage3');
-    await owner().query(`UPDATE intent SET autonomy_stage = 3 WHERE id = $1`, [intentId]);
+    await owner().query(`ALTER TABLE intent DISABLE TRIGGER intent_require_promotion`);
+    try {
+      await owner().query(`UPDATE intent SET autonomy_stage = 3 WHERE id = $1`, [intentId]);
+    } finally {
+      await owner().query(`ALTER TABLE intent ENABLE TRIGGER intent_require_promotion`);
+    }
     const procedureId = await newProcedure(intentId);
     const id = await newVersion(procedureId);
     const confirmer = person();
