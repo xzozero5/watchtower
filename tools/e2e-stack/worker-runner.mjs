@@ -101,9 +101,98 @@ if (discordLog) {
   }
   discordBot = new RecordingBot();
 }
+// Stage 3 e2e (T-306b): with E2E_AI_FAKE_LIVE_FILE the AI layer gets a provider of kind `anthropic` that is the dev
+// mock inside (no network; the loopback-only guard stays on), because a grade made by kind `mock` can never clear an
+// automatic send (decide.ts `grade_mock`). The file is read on every call so a test can change the grader's model and
+// answer between tickets: { drafterModel, graderModel, score, violations: [...] }.
+let aiOverrides;
+const fakeLiveFile = process.env.E2E_AI_FAKE_LIVE_FILE;
+if (fakeLiveFile) {
+  const { readFileSync } = await import('node:fs');
+  const aiPkg = await import(pathToFileURL(join(root, 'packages', 'ai', 'dist', 'index.js')).href);
+  const dev = new aiPkg.DevMockLlmProvider();
+  const knobs = () => JSON.parse(readFileSync(fakeLiveFile, 'utf8'));
+  const provider = {
+    kind: 'anthropic',
+    async generate(request) {
+      if (request.prompt.id === 'grader_pre_send') {
+        const k = knobs();
+        return {
+          text: JSON.stringify({ score: k.score ?? 0.95, violations: k.violations ?? [] }),
+          finishReason: 'stop',
+          usage: { inputTokens: 10, outputTokens: 5 },
+          model: request.model,
+        };
+      }
+      // The dev mock's drafter cites the first two cards it is shown, whatever they say. For a ticket whose evidence has
+      // the customer-facing article of the scenario (titled "Reset a ...") the stack's drafter answers from
+      // that card alone and cites it: the kind of reply an automatic send can be about (ADR-025 condition 9). Without
+      // such a card it is the dev mock as it is.
+      if (request.prompt.id === 'drafter') {
+        const raw = request.messages[0]?.content ?? '';
+        // A line is "[ev-1] kb (customer-safe) (mock data): title snippet": the flags come in any number of brackets.
+        const cards = [...raw.matchAll(/^\[(ev-\d+)\] kb((?: \([^)]*\))*): (.*)$/gm)];
+        const card = cards.find(
+          (match) => (match[2] ?? '').includes('customer-safe') && /reset a password/i.test(match[3] ?? ''),
+        );
+        if (card) {
+          const sentence = (text, kind, evidenceIds, newParagraph) => ({ text, kind, evidenceIds, newParagraph });
+          return {
+            text: JSON.stringify({
+              language: 'en',
+              sentences: [
+                sentence('Hello, thank you for contacting us.', 'courtesy', [], false),
+                sentence('You can reset your password with the Forgot password link on the sign in page.', 'fact', [card[1]], true),
+                sentence('If you have any questions, just reply to this message.', 'courtesy', [], true),
+              ],
+            }),
+            finishReason: 'stop',
+            usage: { inputTokens: 10, outputTokens: 5 },
+            model: request.model,
+          };
+        }
+      }
+      const answer = await dev.generate(request);
+      if (request.prompt.id === 'classifier') {
+        // The dev mock's confidence is a hash of the input between 0.62 and 0.93; the tools and the draft only trust an
+        // intent above AI_INTENT_SCOPE_MIN_CONFIDENCE, so a run would pass or not by chance. A confident classifier
+        // makes the scenario deterministic; what is under test is the gate, not the classifier.
+        try {
+          const parsed = JSON.parse(answer.text);
+          if (parsed.intentKey) parsed.confidence = Math.max(Number(parsed.confidence) || 0, 0.95);
+          return { ...answer, text: JSON.stringify(parsed), model: request.model };
+        } catch {
+          return { ...answer, model: request.model };
+        }
+      }
+      return { ...answer, model: request.model };
+    },
+  };
+  const base = aiPkg.mockSettings();
+  aiOverrides = {
+    providers: { anthropic: provider },
+    settings: {
+      load: async () => {
+        const k = knobs();
+        const prices = {
+          [k.drafterModel]: { inputUsdPerMTok: 0, outputUsdPerMTok: 0 },
+          [k.graderModel]: { inputUsdPerMTok: 0, outputUsdPerMTok: 0 },
+        };
+        const tier = { provider: 'anthropic', model: k.drafterModel };
+        return {
+          ...base,
+          tiers: { deep: tier, standard: tier, light: tier },
+          agentModels: { grader: k.graderModel },
+          prices: { ...base.prices, ...prices },
+        };
+      },
+    },
+  };
+}
 const worker = await startWorker(config, logger, {
   ...(prefix ? { queuePrefix: prefix } : {}),
   overrides: {
+    ...(aiOverrides ? { ai: aiOverrides } : {}),
     gmail: { runtime: gmailRuntime },
     ingest: { store: createMemoryObjectStore() },
     ...(discordBot ? { alerts: { bot: discordBot }, incidents: { bot: discordBot } } : {}),

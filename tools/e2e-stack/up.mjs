@@ -255,6 +255,9 @@ async function main() {
     DISCORD_APPLICATION_ID: '100000000000000001',
     AI_PROVIDER: 'mock',
     EMBEDDING_PROVIDER: 'mock',
+    // Stage 3 e2e (T-306b) only: E2E_AUTOSEND_FLAG=on turns AI_AUTOSEND_ENABLED on for this throwaway stack's api and
+    // worker. Without it the flag is not set at all (off), exactly as in a default install.
+    ...(env.E2E_AUTOSEND_FLAG === 'on' ? { AI_AUTOSEND_ENABLED: 'true' } : {}),
     AI_TOOL_FIXTURES_DIR: join(root, 'examples', 'tools'),
     AI_TOOLS_WITHOUT_READONLY_LOGIN: 'true',
     // The status page is open in this stack. The worker needs it as much as the api: with it closed the worker
@@ -264,6 +267,11 @@ async function main() {
   };
   start('worker', [join(import.meta.dirname, 'worker-runner.mjs')], {
     ...shared,
+    // Stage 3 e2e (T-306b): the mock answers the prompts but is wrapped as a provider that is not `mock` (a grade made
+    // by the mock can never clear an automatic send), and the models/grader answers come from this JSON file.
+    ...(env.E2E_AI_FAKE_LIVE_FILE
+      ? { AI_PROVIDER: 'anthropic', E2E_AI_FAKE_LIVE_FILE: env.E2E_AI_FAKE_LIVE_FILE }
+      : {}),
     WORKER_PORT: String(WORKER_PORT),
     E2E_LINE_LOG: lineLog,
     E2E_GMAIL_LOG: gmailLog,
