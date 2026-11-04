@@ -1,4 +1,13 @@
 import {
+  applyPromotionResultSchema,
+  autonomyPromotionStateSchema,
+  autosendDisclosureSchema,
+  decidePromotionResultSchema,
+  gateReportListSchema,
+  gateReportSchema,
+  intentAutosendSchema,
+  promotionListSchema,
+  promotionSchema,
   autonomyHistoryPageSchema,
   csatSettingsSchema,
   uploadScanSummarySchema,
@@ -49,6 +58,10 @@ import {
   type OrganizationListQuery,
   type PutCredentials,
   type SetAiSwitch,
+  type DecidePromotion,
+  type RequestPromotion,
+  type SetAutosendDisclosure,
+  type SetIntentAutosend,
   type SetIntentAutonomy,
   type TestConnection,
   type UpdateBusinessCalendar,
@@ -59,6 +72,8 @@ import {
   type UpdateTeamQueue,
   type UpdateUser,
 } from '@watchtower/shared';
+import { z } from 'zod';
+
 import { readinessViewSchema } from '@/lib/admin/contracts';
 
 import type { ApiClient, QueryParams } from './client';
@@ -119,6 +134,75 @@ export function createAdminEndpoints(client: ApiClient) {
         query: { limit: 50 },
         schema: autonomyHistoryPageSchema,
         ...withSignal(signal),
+      }),
+
+    // --- Stage 3 (ADR-025, T-304g) ---
+    promotionState: (intentId: string, signal?: AbortSignal) =>
+      client.request({
+        path: `/v1/intents/${id(intentId)}/autonomy/promotion`,
+        schema: autonomyPromotionStateSchema,
+        ...withSignal(signal),
+      }),
+    gateReports: (intentId: string, signal?: AbortSignal) =>
+      client.request({
+        path: `/v1/intents/${id(intentId)}/autonomy/gate-reports`,
+        query: { limit: 5 },
+        schema: gateReportListSchema,
+        ...withSignal(signal),
+      }),
+    createGateReport: (intentId: string) =>
+      client.request({
+        method: 'POST',
+        path: `/v1/intents/${id(intentId)}/autonomy/gate-reports`,
+        body: {},
+        schema: gateReportSchema,
+      }),
+    promotions: (intentId: string, signal?: AbortSignal) =>
+      client.request({
+        path: `/v1/intents/${id(intentId)}/autonomy/promotions`,
+        schema: promotionListSchema,
+        ...withSignal(signal),
+      }),
+    requestPromotion: (intentId: string, body: RequestPromotion) =>
+      client.request({
+        method: 'POST',
+        path: `/v1/intents/${id(intentId)}/autonomy/promotions`,
+        body,
+        schema: promotionSchema,
+      }),
+    decidePromotion: (promotionId: string, body: DecidePromotion) =>
+      client.request({
+        method: 'POST',
+        path: `/v1/autonomy/promotions/${id(promotionId)}/decide`,
+        body,
+        schema: decidePromotionResultSchema,
+      }),
+    applyPromotion: (promotionId: string) =>
+      client.request({
+        method: 'POST',
+        path: `/v1/autonomy/promotions/${id(promotionId)}/apply`,
+        body: {},
+        schema: applyPromotionResultSchema,
+      }),
+    setIntentAutosend: (intentId: string, body: SetIntentAutosend) =>
+      client.request({
+        method: 'PUT',
+        path: `/v1/intents/${id(intentId)}/autonomy/autosend`,
+        body,
+        schema: z.object({ changed: z.boolean(), autosend: intentAutosendSchema }),
+      }),
+    autosendDisclosure: (signal?: AbortSignal) =>
+      client.request({
+        path: '/v1/autonomy/disclosure',
+        schema: autosendDisclosureSchema,
+        ...withSignal(signal),
+      }),
+    setAutosendDisclosure: (body: SetAutosendDisclosure) =>
+      client.request({
+        method: 'PUT',
+        path: '/v1/autonomy/disclosure',
+        body,
+        schema: autosendDisclosureSchema,
       }),
 
     // --- the outbox, as the head sees it (T-121a) ---

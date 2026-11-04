@@ -1,4 +1,4 @@
-import type { Role, TicketDetail } from '@watchtower/shared';
+import { AUTOSEND_DISCLOSURE_DEFAULT, type Role, type TicketDetail } from '@watchtower/shared';
 import type { AutonomyState, TicketStats } from '@watchtower/shared';
 
 import {
@@ -64,6 +64,7 @@ export function consoleApi({
           }),
     'GET /v1/tickets': { json: { items: tickets, nextCursor: null } },
     'GET /v1/autonomy': { json: autonomy },
+    'GET /v1/autonomy/disclosure': { json: AUTOSEND_DISCLOSURE_DEFAULT },
     'GET /v1/ai/budget': { json: makeAiBudget() },
     'GET /v1/ai/models': { json: makeAiModels() },
     'GET /v1/ai/grades/metrics': {

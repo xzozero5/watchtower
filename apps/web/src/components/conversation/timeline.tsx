@@ -1,6 +1,7 @@
 'use client';
 
 import {
+  AUTONOMY_TICKET_EVENTS,
   INCIDENTS_TICKET_EVENTS,
   UPLOADS_TICKET_EVENTS,
   TICKET_EVENT_TYPES,
@@ -29,6 +30,7 @@ import {
 import { AppLink } from '@/components/app-link';
 import { ChannelIcon } from '@/components/ticket/channel-icon';
 import { useI18n } from '@/i18n/provider';
+import { heldReasonCode, heldReasonKey } from '@/lib/admin/stage3';
 import { formatAge, formatDateTime } from '@/lib/format';
 import { GoldenMarkButton } from '@/components/ai/golden-mark';
 import { useSendUndo } from '@/lib/outbound/queries';
@@ -157,6 +159,17 @@ function EventText({ entry }: { entry: EventEntry }) {
       return <>{t('timeline.events.sendCancelled')}</>;
     case TICKET_EVENT_TYPES.messageDeliveryFailed:
       return <>{t('timeline.events.deliveryFailed')}</>;
+    case AUTONOMY_TICKET_EVENTS.autosendHeld: {
+      // The payload carries a reason code, never text (ADR-025 section 4): say it in plain words.
+      const code = heldReasonCode(payload);
+      const key = code ? heldReasonKey(code) : null;
+      const reason = key
+        ? t(key)
+        : code
+          ? t('stage3.heldUnknown', { code })
+          : t('stage3.heldNoReason');
+      return <>{t('stage3.heldLine', { reason })}</>;
+    }
     case UPLOADS_TICKET_EVENTS.attachmentInfected: {
       const name = str(payload.filename);
       return (
@@ -264,6 +277,16 @@ function DeliveryNote({ message }: { message: Message }) {
         </>
       ) : null}
       {confirmation ? <span>{t('outbound.delivery.confirmation')}</span> : null}
+      {delivery?.origin === 'ai_auto' ? (
+        <span
+          data-origin="ai_auto"
+          title={t('stage3.autoBadgeHint')}
+          className="inline-flex items-center gap-1 rounded-sm border border-border px-1.5 py-0.5 font-medium text-foreground"
+        >
+          <Bot aria-hidden className="size-3.5 text-ai-accent" />
+          {t('stage3.autoBadge')}
+        </span>
+      ) : null}
       <span className="inline-flex items-center gap-1">
         <StateIcon aria-hidden className="size-3.5" />
         {text}

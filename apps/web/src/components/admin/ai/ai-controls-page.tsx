@@ -28,6 +28,7 @@ import { useSession } from '@/lib/auth/session';
 
 import { AiBudgetCard } from './ai-budget-card';
 import { AiModelsCard } from './ai-models-card';
+import { AutosendDisclosureCard } from './autosend-disclosure-card';
 import { SwitchConfirmDialog, type SwitchTarget } from './switch-confirm-dialog';
 
 const ROWS: readonly {
@@ -115,6 +116,7 @@ function AiControlsBody() {
             </ul>
             <AiBudgetCard />
             <AiModelsCard />
+            <AutosendDisclosureCard />
             <StageSummary intents={autonomy.data.intents} />
             <StageLegend />
           </>
