@@ -42,7 +42,7 @@ async function newIntent(): Promise<{ id: string; key: string }> {
   const key = unique('intent');
   const id = await scalar<string>(
     app,
-    `INSERT INTO intent (key, name) VALUES ($1, 'Probe') RETURNING id AS value`,
+    `INSERT INTO intent (key, name, created_at) VALUES ($1, 'Probe', now() - interval '90 days') RETURNING id AS value`,
     [key],
   );
   return { id, key };
@@ -55,8 +55,9 @@ async function newReport(
   const status = overrides.status ?? 'green';
   const windowDays = overrides.windowDays ?? 30;
   const generatedDaysAgo = overrides.generatedDaysAgo ?? 0;
+  // Fixtures go in as the schema owner: the application role no longer inserts a report (migration 0108).
   return scalar<string>(
-    app,
+    owner(),
     `INSERT INTO autonomy_gate_report (intent_id, status, trigger_kind, window_start, window_end, generated_at)
      VALUES ($1, $2, 'on_demand', now() - make_interval(days => $3), now(), now() - make_interval(days => $4))
      RETURNING id AS value`,
@@ -820,6 +821,13 @@ describe('an ai_auto delivery', () => {
     );
   });
 
+  /** The English notice that the instance adds to an automatic reply. */
+  const notice = (): Promise<string> =>
+    scalar<string>(
+      owner(),
+      `SELECT value #>> '{text,en}' AS value FROM instance_setting WHERE key = 'autosend.disclosure'`,
+    );
+
   interface Fixture {
     intent: { id: string; key: string };
     ticketId: string;
@@ -844,7 +852,9 @@ describe('an ai_auto delivery', () => {
        VALUES ('auto', $1, $2, 'gmail', $3, $4) RETURNING id AS value`,
       [orgId, intent.id, accountId, options.priority ?? 'P3'],
     );
-    const text = options.text ?? `Hello, we reset it for you. (${unique('t')})`;
+    // The message of an automatic reply is the draft plus the notice of the instance (migration 0108).
+    const draftBody = `Hello, we reset it for you. (${unique('t')})`;
+    const text = options.text ?? `${draftBody}\n\n${await notice()}`;
     const messageId = await scalar<string>(
       owner(),
       `INSERT INTO message (ticket_id, channel_account_id, direction, body_text, visibility, sender_user_id, attachments)
@@ -854,7 +864,7 @@ describe('an ai_auto delivery', () => {
     const draftId = await scalar<string>(
       app,
       `INSERT INTO ai_draft (ticket_id, body_text) VALUES ($1, $2) RETURNING id AS value`,
-      [ticketId, 'Hello, we reset it for you.'],
+      [ticketId, draftBody],
     );
     return { intent, ticketId, draftId, messageId, text };
   }
@@ -874,7 +884,7 @@ describe('an ai_auto delivery', () => {
   ): Promise<string> {
     const violations = options.passed === false ? '[{"code":"uncited"}]' : '[]';
     return scalar<string>(
-      app,
+      owner(),
       `INSERT INTO ai_grade (ai_draft_id, ticket_id, phase, graded_text, content_hash, grader_provider, grader_model,
                              drafter_provider, drafter_model, score, passed, violations, violation_count, prompt_version, mock, graded_at)
        VALUES ($1, $2, $3, $4, 'ffff', 'claude-cli', $5, 'claude-cli', $6, $7, $8, $9::jsonb, $10, 1, $11,
@@ -1158,10 +1168,10 @@ describe('0096 goes down and up again', () => {
       );
       const intentId = await scalar<string>(
         appPool,
-        `INSERT INTO intent (key, name) VALUES ('down_probe', 'P') RETURNING id AS value`,
+        `INSERT INTO intent (key, name, created_at) VALUES ('down_probe', 'P', now() - interval '90 days') RETURNING id AS value`,
       );
       const report = await scalar<string>(
-        appPool,
+        pool,
         `INSERT INTO autonomy_gate_report (intent_id, status, trigger_kind, window_start, window_end)
          VALUES ($1, 'green', 'on_demand', now() - interval '30 days', now()) RETURNING id AS value`,
         [intentId],
@@ -1227,10 +1237,10 @@ describe('0096 goes down and up again', () => {
       );
       const intentId = await scalar<string>(
         appPool,
-        `INSERT INTO intent (key, name) VALUES ('down_auto', 'P') RETURNING id AS value`,
+        `INSERT INTO intent (key, name, created_at) VALUES ('down_auto', 'P', now() - interval '90 days') RETURNING id AS value`,
       );
       const report = await scalar<string>(
-        appPool,
+        pool,
         `INSERT INTO autonomy_gate_report (intent_id, status, trigger_kind, window_start, window_end)
          VALUES ($1, 'green', 'on_demand', now() - interval '30 days', now()) RETURNING id AS value`,
         [intentId],
@@ -1258,7 +1268,8 @@ describe('0096 goes down and up again', () => {
         `INSERT INTO ticket (subject, org_id, intent_id, channel, channel_account_id) VALUES ('d', $1, $2, 'gmail', $3) RETURNING id AS value`,
         [org, intentId, account],
       );
-      const text = 'Down test reply';
+      const draftBody = 'Down test reply';
+      const text = `${draftBody}\n\n${await scalar<string>(pool, `SELECT value #>> '{text,en}' AS value FROM instance_setting WHERE key = 'autosend.disclosure'`)}`;
       const message = await scalar<string>(
         pool,
         `INSERT INTO message (ticket_id, channel_account_id, direction, body_text, visibility)
@@ -1268,10 +1279,10 @@ describe('0096 goes down and up again', () => {
       const draft = await scalar<string>(
         appPool,
         `INSERT INTO ai_draft (ticket_id, body_text) VALUES ($1, $2) RETURNING id AS value`,
-        [ticket, text],
+        [ticket, draftBody],
       );
       const grade = await scalar<string>(
-        appPool,
+        pool,
         `INSERT INTO ai_grade (ai_draft_id, ticket_id, phase, graded_text, grader_provider, grader_model, drafter_provider,
                                drafter_model, score, passed, prompt_version)
          VALUES ($1, $2, 'pre_send', $3, 'p', 'opus', 'p', 'sonnet', 0.95, true, 1) RETURNING id AS value`,

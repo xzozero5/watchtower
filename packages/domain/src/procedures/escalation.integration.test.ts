@@ -58,6 +58,26 @@ const METRICS: ProcedureSimulationMetrics = {
   cases: [],
 };
 
+/** The drafter runs that a passing simulation has behind it (migration 0108), written by the schema owner. */
+async function draftRuns(versionId: string, count = 3): Promise<void> {
+  await env.db.owner.db.insert(schema.aiRun).values(
+    Array.from({ length: count }, () => ({
+      startedAt: new Date(),
+      agent: 'drafter',
+      provider: 'mock',
+      model: 'fixture',
+      tier: 'standard',
+      promptId: 'drafter',
+      promptVersion: 1,
+      promptHash: 'a'.repeat(64),
+      inputHmac: 'a'.repeat(64),
+      redaction: { total: 0, byKind: {} },
+      status: 'ok',
+      procedureVersionId: versionId,
+    })),
+  );
+}
+
 /** An intent with a published version, and an open ticket of it holding one escalation card. */
 async function cardOn(
   to: { queueKey: string } | { role: 'lead' | 'head' },
@@ -77,6 +97,7 @@ async function cardOn(
   await env.tx((tx) =>
     env.domain.procedures.confirm(tx, ctx, { intentId: intent.id, versionId: draft.id }),
   );
+  await draftRuns(draft.id);
   await recordProcedureSimulation(env.database.db, {
     versionId: draft.id,
     passed: true,

@@ -165,15 +165,10 @@ async function gradeOne(
     ticketId: ticket.id,
     text: candidate.text,
     graderAiRunId: graded.runId,
-    graderProvider: graderRun.provider,
-    graderModel: graderRun.model,
-    drafterProvider: draftRun.provider,
-    drafterModel: draftRun.model,
     score: graded.value.score,
     passed: graded.value.passed,
     violations: graded.value.violations,
     promptVersion: graded.value.promptVersion,
-    mock: graded.value.mock,
   });
   return graded.value.violations.length;
 }

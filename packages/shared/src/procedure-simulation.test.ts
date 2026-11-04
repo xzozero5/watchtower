@@ -5,6 +5,7 @@ import {
   judgeSimulation,
   procedureSimulateJobSchema,
   procedureSimulationMetricsSchema,
+  simulationStages,
 } from './procedure-simulation.js';
 
 const metrics = {
@@ -86,5 +87,37 @@ describe('simulation schemas', () => {
       procedureSimulateJobSchema.safeParse({ versionId: 'x', requestedBy: ids.requestedBy })
         .success,
     ).toBe(false);
+  });
+});
+
+describe('simulationStages (T-306a C-7)', () => {
+  const steps = (...list: { id: string; stages?: number[] }[]) =>
+    ({
+      schemaVersion: 1,
+      autosend: 'never',
+      steps: list.map((item) => ({
+        kind: 'reply_guideline',
+        id: item.id,
+        text: 'Be brief.',
+        ...(item.stages === undefined ? {} : { stages: item.stages }),
+      })),
+    }) as Parameters<typeof simulationStages>[0];
+
+  it('runs once when the steps are the same at stage 2 and 3', () => {
+    expect(simulationStages(steps({ id: 'a' }, { id: 'b', stages: [2, 3] }), 2)).toEqual([2]);
+    expect(simulationStages(steps(), 2)).toEqual([2]);
+  });
+
+  it('adds stage 3 when a step applies only there (it was never simulated before)', () => {
+    expect(simulationStages(steps({ id: 'a' }, { id: 'only3', stages: [3] }), 2)).toEqual([2, 3]);
+  });
+
+  it('adds stage 3 when a step applies at 2 and not at 3', () => {
+    expect(simulationStages(steps({ id: 'only2', stages: [2] }), 2)).toEqual([2, 3]);
+  });
+
+  it('starts from the stage of the intent and adds the stages of 2 and 3 that differ from it', () => {
+    expect(simulationStages(steps({ id: 'a', stages: [2, 3] }), 1)).toEqual([1, 2, 3]);
+    expect(simulationStages(steps({ id: 'a', stages: [2] }), 3)).toEqual([3, 2]);
   });
 });

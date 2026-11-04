@@ -5,7 +5,7 @@ import {
   type InvestigationEvidence,
   type SettingsSource,
 } from '@watchtower/ai';
-import { schema, type Database } from '@watchtower/db';
+import type { Database } from '@watchtower/db';
 import {
   DomainError,
   composeAutoSendText,
@@ -18,7 +18,6 @@ import {
   type Domain,
 } from '@watchtower/domain';
 import type { RealtimeEvent } from '@watchtower/shared';
-import { inArray } from 'drizzle-orm';
 
 import type { WorkerLogger } from '../logger.js';
 import type { RealtimeSink } from '../realtime.js';
@@ -228,15 +227,10 @@ export async function runAutoSendStep(
       ticketId: input.ticket.id,
       text,
       graderAiRunId: graded.runId,
-      graderProvider: graderRun.provider,
-      graderModel: graderRun.model,
-      drafterProvider: draftRun.provider,
-      drafterModel: draftRun.model,
       score: graded.value.score,
       passed: graded.value.passed,
       violations: graded.value.violations,
       promptVersion: graded.value.promptVersion,
-      mock: graded.value.mock,
     });
 
     const evaluation = await gate.evaluateAutoSend(request(gradeId), mode);

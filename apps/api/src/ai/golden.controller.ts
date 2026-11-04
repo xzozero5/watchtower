@@ -121,10 +121,20 @@ export class GoldenController {
     @Body({ schema: markGoldenSchema }) body: MarkGolden,
     @CurrentPrincipal() principal: Principal,
   ) {
-    const { ticketId, golden } = await this.golden.mark(params.id, body.messageId, principal);
+    const { ticketId, golden } = await this.golden.mark(
+      params.id,
+      body.messageId,
+      principal,
+      body.shareable === true,
+    );
     AuditScope.set({
       targetId: ticketId,
-      metadata: { goldenId: golden.id, messageId: golden.messageId, intent: golden.intent.key },
+      metadata: {
+        goldenId: golden.id,
+        messageId: golden.messageId,
+        intent: golden.intent.key,
+        shareable: body.shareable === true,
+      },
     });
     return parseResponse(goldenAnswerSchema, golden);
   }

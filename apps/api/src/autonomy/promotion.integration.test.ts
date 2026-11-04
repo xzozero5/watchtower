@@ -48,6 +48,11 @@ const newIntent = (lead: Persona): Promise<Intent> =>
   apiIntent(lead, { key: `promo_${String(++counter)}`, name: `Promotion ${String(counter)}` });
 
 async function greenReport(h: Harness, intentId: string): Promise<string> {
+  // A window cannot start before the intent existed (migration 0108): make the intent old enough for 30 days.
+  await h.db.owner.pool.query(
+    `UPDATE intent SET created_at = now() - interval '90 days' WHERE id = $1`,
+    [intentId],
+  );
   const result = await h.db.owner.pool.query<{ id: string }>(
     `INSERT INTO autonomy_gate_report (intent_id, status, trigger_kind, window_start, window_end)
      VALUES ($1, 'green', 'on_demand', now() - interval '30 days', now()) RETURNING id`,

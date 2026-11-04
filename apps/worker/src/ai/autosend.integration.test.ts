@@ -198,6 +198,33 @@ beforeEach(() => {
 
 // --- fixtures -------------------------------------------------------------------------------------
 
+/** One ai_run row (the model of a grade or a draft is read from it, migration 0108), written by the schema owner. */
+async function aiRunOf(
+  ticketId: string,
+  agent: 'drafter' | 'grader',
+  model: string,
+  provider = 'anthropic',
+): Promise<string> {
+  const [row] = await owner()
+    .insert(schema.aiRun)
+    .values({
+      startedAt: new Date(),
+      agent,
+      ticketId,
+      provider,
+      model,
+      tier: 'standard',
+      promptId: agent === 'grader' ? 'grader_pre_send' : 'drafter',
+      promptVersion: 1,
+      promptHash: 'a'.repeat(64),
+      inputHmac: 'a'.repeat(64),
+      redaction: { total: 0, byKind: {} },
+      status: 'ok',
+    })
+    .returning({ id: schema.aiRun.id });
+  return row?.id ?? '';
+}
+
 async function publishProcedure(intentId: string, autosend: 'allowed' | 'never'): Promise<void> {
   const person = randomUUID();
   const procedure = await testDb.owner.pool.query<{ id: string }>(
@@ -221,13 +248,13 @@ async function publishProcedure(intentId: string, autosend: 'allowed' | 'never')
   );
   await testDb.owner.pool.query(`SELECT public.publish_procedure_version($1::uuid, $2::uuid)`, [
     id,
-    person,
+    headId,
   ]);
 }
 
 /** The promotion door, end to end: report, request, owner approval with re-auth and key, apply. */
 async function promote(intentId: string, key: string): Promise<void> {
-  const [report] = await database.db
+  const [report] = await owner()
     .insert(schema.autonomyGateReport)
     .values({
       intentId,
@@ -392,6 +419,8 @@ async function scenario(
     .values({
       key,
       name: 'Reset a password',
+      // Old enough for a 30 day report window (a window cannot start before the intent, migration 0108).
+      createdAt: new Date(Date.now() - 60 * 86_400_000),
       autonomyStage: 2,
       autosendShadow: options.shadow ?? false,
     })
@@ -926,15 +955,10 @@ describe('the pre-send grade is bound to the exact text', () => {
       aiDraftId: s.draftId,
       ticketId: s.ticketId,
       graderAiRunId: await insertGraderRun(s.ticketId),
-      graderProvider: 'anthropic',
-      graderModel: 'grader-fixture',
-      drafterProvider: 'anthropic',
-      drafterModel: 'drafter-fixture',
       score: 0.95,
       passed: true,
       violations: [],
       promptVersion: 1,
-      mock: false,
     };
     const gradeId = await recordPreSendGrade(database.db, { ...base, text });
     const ctx = gateOn.context({ actor: { type: 'ai', id: null } });
@@ -961,10 +985,14 @@ describe('the pre-send grade is bound to the exact text', () => {
     const same = await recordPreSendGrade(database.db, {
       ...base,
       text,
-      graderModel: 'drafter-fixture',
+      graderAiRunId: await aiRunOf(s.ticketId, 'grader', 'drafter-fixture'),
     });
     expect((await ask(same, text))?.failed).toEqual(['grader_not_independent']);
-    const mock = await recordPreSendGrade(database.db, { ...base, text, mock: true });
+    const mock = await recordPreSendGrade(database.db, {
+      ...base,
+      text,
+      graderAiRunId: await aiRunOf(s.ticketId, 'grader', 'grader-fixture', 'mock'),
+    });
     expect((await ask(mock, text))?.failed).toEqual(['grade_mock']);
   });
 });

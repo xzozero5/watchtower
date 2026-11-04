@@ -167,10 +167,16 @@ async function stage3Intent(): Promise<{ id: string; key: string }> {
   const key = `intent_${randomUUID().slice(0, 8).replace(/-/g, '')}`;
   const [intent] = await owner()
     .insert(schema.intent)
-    .values({ key, name: 'Reset a password', autonomyStage: 2 })
+    // Old enough for a 30 day report window (a window cannot start before the intent, migration 0108).
+    .values({
+      key,
+      name: 'Reset a password',
+      autonomyStage: 2,
+      createdAt: new Date(Date.now() - 90 * 86_400_000),
+    })
     .returning();
   const id = intent?.id ?? '';
-  const [report] = await database.db
+  const [report] = await owner()
     .insert(schema.autonomyGateReport)
     .values({
       intentId: id,
@@ -448,13 +454,15 @@ describe('the autonomy watch (ADR-025 section 7)', () => {
 
   it('rolls back when the latest gate report since the promotion is red', async () => {
     const intent = await stage3Intent();
-    await database.db.insert(schema.autonomyGateReport).values({
-      intentId: intent.id,
-      status: 'red',
-      triggerKind: 'weekly',
-      windowStart: new Date(Date.now() - 7 * 86_400_000),
-      windowEnd: new Date(),
-    });
+    await owner()
+      .insert(schema.autonomyGateReport)
+      .values({
+        intentId: intent.id,
+        status: 'red',
+        triggerKind: 'weekly',
+        windowStart: new Date(Date.now() - 7 * 86_400_000),
+        windowEnd: new Date(),
+      });
     expect((await runAutonomyWatch(deps(), intent.id)).rolledBack).toEqual([
       { intent: intent.key, rule: 'gate_red' },
     ]);

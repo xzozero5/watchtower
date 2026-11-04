@@ -64,6 +64,26 @@ const METRICS: ProcedureSimulationMetrics = {
   cases: [],
 };
 
+/** The drafter runs that a passing simulation has behind it (migration 0108), written by the schema owner. */
+async function draftRuns(versionId: string, count = 3): Promise<void> {
+  await env.db.owner.db.insert(schema.aiRun).values(
+    Array.from({ length: count }, () => ({
+      startedAt: new Date(),
+      agent: 'drafter',
+      provider: 'mock',
+      model: 'fixture',
+      tier: 'standard',
+      promptId: 'drafter',
+      promptVersion: 1,
+      promptHash: 'a'.repeat(64),
+      inputHmac: 'a'.repeat(64),
+      redaction: { total: 0, byKind: {} },
+      status: 'ok',
+      procedureVersionId: versionId,
+    })),
+  );
+}
+
 /** An intent with a confirmed version of STEPS. */
 async function confirmedVersion() {
   const intent = await addIntent(env, { allowedTools: [] });
@@ -129,6 +149,7 @@ describe('readPublishedProcedure', () => {
   it('is null until a version is published, then the steps of that version', async () => {
     const { intent, version } = await confirmedVersion();
     expect(await readPublishedProcedure(env.database.db, intent.id)).toBeNull();
+    await draftRuns(version.id);
     await recordProcedureSimulation(env.database.db, {
       versionId: version.id,
       passed: true,
@@ -166,6 +187,7 @@ describe('simulation (T-303d)', () => {
     expect(afterFail.status).toBe('confirmed');
     expect(afterFail.simulation?.id).toBe(failed.id);
 
+    await draftRuns(version.id);
     const passed = await recordProcedureSimulation(env.database.db, {
       versionId: version.id,
       passed: true,
