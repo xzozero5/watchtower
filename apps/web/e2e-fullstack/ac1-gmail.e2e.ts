@@ -36,7 +36,13 @@ interface AiBrief {
   state: string;
   intent: { key: string } | null;
   evidence: { id: string; kind: string; title: string; snippet: string }[];
-  draft?: { id: string; body: string; citations: string[]; uncitedClaims: number };
+  draft?: {
+    id: string;
+    body: string;
+    citations: string[];
+    uncitedClaims: number;
+    disclosure?: { level: string };
+  };
   report?: { tools: { name: string; status: string }[] };
 }
 
@@ -193,9 +199,19 @@ test.describe.serial('AC-1 (Gmail) / 5.1: an email arrives', () => {
     expect(brief?.draft, 'a draft').toBeDefined();
     const draft = brief?.draft;
     const ids = new Set(brief?.evidence.map((card) => card.id));
-    expect(draft?.citations.length).toBeGreaterThan(0);
     expect(draft?.citations.every((cited) => ids.has(cited))).toBe(true);
     expect(draft?.uncitedClaims).toBe(0);
+    if (draft?.disclosure?.level === 'restricted') {
+      // Disclosure policy (PRD 6.6, po decision 26): the sender is a contact nobody has verified, so
+      // the drafter sees only customer-safe evidence. The seeded KB sections are internal, so the
+      // draft states no fact and cites nothing: it must not carry any internal evidence text.
+      expect(draft.citations).toEqual([]);
+      for (const card of brief?.evidence ?? []) {
+        expect(draft.body).not.toContain(card.snippet.slice(0, 40));
+      }
+    } else {
+      expect(draft?.citations.length).toBeGreaterThan(0);
+    }
   });
 
   test('the agent approves the draft in the browser: the reply lands in the customer thread, in order', async () => {
