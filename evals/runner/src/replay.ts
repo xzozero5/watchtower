@@ -25,6 +25,8 @@ export interface ReplayOptions {
   /** Only tickets resolved in the last N days. */
   readonly days: number;
   readonly limit: number;
+  /** Only the tickets of this intent (by key), and never a seeded ticket (`seed_batch_id`): the recorder's input (T-306g). */
+  readonly intentKey?: string;
 }
 
 export interface ReplayExport {
@@ -47,6 +49,10 @@ const MAX_TURNS = 30;
 export async function exportReplay(options: ReplayOptions): Promise<ReplayExport> {
   const db = options.database.db;
   const since = new Date(Date.now() - options.days * 86_400_000);
+  const intentFilter =
+    options.intentKey === undefined
+      ? undefined
+      : sql`${schema.ticket.intentId} = (SELECT id FROM intent WHERE key = ${options.intentKey}) AND ${schema.ticket.seedBatchId} IS NULL`;
   const tickets = await db
     .select({
       id: schema.ticket.id,
@@ -62,6 +68,7 @@ export async function exportReplay(options: ReplayOptions): Promise<ReplayExport
       and(
         inArray(schema.ticket.status, ['resolved', 'closed']),
         isNotNull(schema.ticket.intentId),
+        intentFilter,
         sql`${schema.ticket.updatedAt} >= ${since.toISOString()}::timestamptz`,
       ),
     )

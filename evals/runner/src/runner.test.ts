@@ -333,6 +333,14 @@ describe('a real provider', () => {
   });
 });
 
+describe('rig.modelOf (T-306g)', () => {
+  it('gives the alias the settings assign to the agent, the one ai_run.model holds', () => {
+    const rig = createRig({ provider: 'mock', maxCalls: 1, env: {} });
+    expect(rig.modelOf('drafter')).toBe('mock-deep');
+    expect(rig.modelOf('grader')).toBe('mock-standard');
+  });
+});
+
 describe('scrub (replay export)', () => {
   it('leaves no address, phone or known name, and no placeholder an agent would escape', () => {
     const session = createRedactor({ names: () => ['Somchai Jaidee'] }).session({ scope: 't' });

@@ -11,12 +11,15 @@ import {
   MockLlmProvider,
   agentModelVariable,
   type AgentDeps,
+  type AgentName,
   type AiCallGuard,
+  type AiSettings,
   type AiRunRecord,
   type FetchLike,
   type LlmProvider,
   type PromptCatalog,
   type SettingsSource,
+  resolveModel,
 } from '@watchtower/ai';
 
 import type { EvalCase } from './case.js';
@@ -75,6 +78,11 @@ export interface RigOptions {
   readonly env: Readonly<Record<string, string | undefined>>;
   readonly fetch?: FetchLike;
   readonly prompts?: PromptCatalog;
+  /**
+   * Tests only: a provider that stands in for the bridge of `claude-cli` (no token, no socket), so a run can be
+   * a non-mock run on a fake. Never set by the CLI.
+   */
+  readonly providerImpl?: LlmProvider;
 }
 
 export interface Rig {
@@ -87,6 +95,8 @@ export interface Rig {
   depsFor(item: EvalCase, pins: Readonly<Record<string, number>>): AgentDeps;
   /** The same, for a run that has no `EvalCase` (the procedure simulation, T-303d): only the names the redactor must know. */
   depsForNames(names: readonly string[], pins: Readonly<Record<string, number>>): AgentDeps;
+  /** The model alias the settings give an agent: what `ai_run.model` will hold (the gate's replay set). */
+  modelOf(agent: AgentName): string;
   /** The `ai_run` records written since the last call. */
   drainRuns(): AiRunRecord[];
 }
@@ -105,6 +115,7 @@ export function createRig(options: RigOptions): Rig {
 
   let provider: LlmProvider;
   let settings: SettingsSource;
+  let loaded: AiSettings;
   if (options.provider === 'mock') {
     const dev = new DevMockLlmProvider();
     provider = {
@@ -123,6 +134,7 @@ export function createRig(options: RigOptions): Rig {
       AI_PROVIDER: 'mock',
       APP_ENCRYPTION_KEY: randomBytes(32).toString('hex'),
     });
+    loaded = built.settings;
     settings = { load: () => Promise.resolve(built.settings) };
   } else {
     const token = options.env.CLAUDE_CLI_BRIDGE_TOKEN ?? '';
@@ -142,15 +154,20 @@ export function createRig(options: RigOptions): Rig {
       APP_ENCRYPTION_KEY: options.env.APP_ENCRYPTION_KEY ?? randomBytes(32).toString('hex'),
     });
     const missing = [...built.problems];
-    if (token.trim() === '') missing.push('CLAUDE_CLI_BRIDGE_TOKEN is not set');
+    if (options.providerImpl === undefined && token.trim() === '')
+      missing.push('CLAUDE_CLI_BRIDGE_TOKEN is not set');
     const fetchImpl = options.fetch;
-    if (fetchImpl === undefined) missing.push('no fetch was given to the runner');
-    if (missing.length > 0 || fetchImpl === undefined) {
+    if (options.providerImpl === undefined && fetchImpl === undefined)
+      missing.push('no fetch was given to the runner');
+    if (missing.length > 0 || (options.providerImpl === undefined && fetchImpl === undefined)) {
       throw new EvalSetupError(
         `cannot run with claude-cli [ASK-HUMAN]:\n  - ${missing.join('\n  - ')}`,
       );
     }
-    provider = createCliBridgeProvider({ bridgeUrl, token, fetch: fetchImpl });
+    provider =
+      options.providerImpl ??
+      createCliBridgeProvider({ bridgeUrl, token, fetch: fetchImpl as FetchLike });
+    loaded = built.settings;
     settings = { load: () => Promise.resolve(built.settings) };
   }
 
@@ -182,6 +199,7 @@ export function createRig(options: RigOptions): Rig {
       return depsForNames(item.names ?? [], pins);
     },
     depsForNames,
+    modelOf: (agent) => resolveModel(loaded, agent).model,
     drainRuns() {
       return runs.splice(0, runs.length);
     },

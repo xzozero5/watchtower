@@ -25,6 +25,40 @@ export interface ReplaySet {
 }
 
 /**
+ * The combination in force for an intent when the caller names the models and prompt versions (the settings
+ * and the catalog): adds the published procedure version the gate reads (same rule as `autosend-facts`: the one
+ * published version of the intent's procedure). Used by the replay recorder (T-306g).
+ */
+export async function replaySetFor(
+  db: ReadExecutor,
+  base: Pick<
+    ReplaySet,
+    'intentId' | 'drafterModel' | 'graderModel' | 'drafterPromptVersion' | 'graderPromptVersion'
+  >,
+): Promise<ReplaySet> {
+  const [published] = await db
+    .select({
+      versionId: schema.procedureVersion.id,
+      stepsHash: schema.procedureVersion.stepsHash,
+    })
+    .from(schema.procedure)
+    .innerJoin(
+      schema.procedureVersion,
+      and(
+        eq(schema.procedureVersion.procedureId, schema.procedure.id),
+        eq(schema.procedureVersion.status, 'published'),
+      ),
+    )
+    .where(eq(schema.procedure.intentId, base.intentId))
+    .limit(1);
+  return {
+    ...base,
+    procedureVersionId: published?.versionId ?? null,
+    procedureStepsHash: published?.stepsHash ?? null,
+  };
+}
+
+/**
  * True when the latest replay of exactly this combination passed and, when the intent has a published procedure,
  * the latest simulation of that version passed on the same steps. Anything else (no row, a later failed row, a
  * different combination) is false.

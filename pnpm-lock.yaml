@@ -353,6 +353,9 @@ importers:
       '@watchtower/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@watchtower/domain':
+        specifier: workspace:*
+        version: link:../../packages/domain
       '@watchtower/shared':
         specifier: workspace:*
         version: link:../../packages/shared
