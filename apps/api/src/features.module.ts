@@ -21,6 +21,7 @@ import { ToolsModule } from './tools/tools.module.js';
 import { StatusPageModule } from './statuspage/statuspage.module.js';
 import { UsageModule } from './usage/usage.module.js';
 import { DashboardModule } from './dashboard/dashboard.module.js';
+import { ReportsModule } from './reports/reports.module.js';
 import { UploadsModule } from './uploads/uploads.module.js';
 
 /**
@@ -50,6 +51,7 @@ import { UploadsModule } from './uploads/uploads.module.js';
     StatusPageModule,
     UsageModule,
     DashboardModule,
+    ReportsModule,
     UploadsModule,
   ],
 })

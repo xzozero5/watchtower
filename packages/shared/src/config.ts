@@ -247,6 +247,14 @@ export const phase1EnvShape = {
     emptyToUndefined,
     z.coerce.number().int().min(1).max(100).default(80),
   ),
+  // CEO view (T-305b): the automation savings formula `[ASSUMED]`, printed on the page. Minutes a person
+  // would have spent on one AI-assisted ticket; the hourly cost is empty until the owner sets it (then the
+  // view shows hours only, never a made-up currency figure).
+  CEO_MINUTES_SAVED_PER_AI_TICKET: z.preprocess(
+    emptyToUndefined,
+    z.coerce.number().min(0).max(600).default(10),
+  ),
+  CEO_STAFF_COST_USD_PER_HOUR: optionalPositiveNumber,
 } satisfies z.ZodRawShape;
 
 /**
