@@ -143,7 +143,7 @@
 - [ ] T-302b `qa-engineer` golden สังเคราะห์ใน `evals/golden/` (ai-engineer ห้ามแก้ N7)
 - [ ] T-302c `ai-engineer` `pnpm eval` replay ต่อ intent (accuracy, edit distance, violations) CI ใช้ mock *(กำลังทำ)*
 - [ ] T-302d `backend-dev` แก้ prompt/procedure/model → replay อัตโนมัติ, regression บล็อก
-- [ ] T-302e `ai-engineer` eval redaction (T-157) recall/FP ไทย · T-153 NER รอเจ้าของ
+- [ ] T-302e `ai-engineer` eval redaction (T-157) recall/FP ไทย + **T-153 NER local** (เจ้าของอนุมัติ dependency 2026-11-04 — ADR เลือก model/library ไม่มี network, วัดก่อน/หลัง)
 - [ ] T-303a `architect` ADR procedures (schema steps Zod, NL→steps, versioning, intent/stage, ความสัมพันธ์ ADR-013)
 - [ ] T-303b `backend-dev` migration + CRUD + compile (AI ร่าง คนยืนยัน) + audit
 - [ ] T-303c `ai-engineer` investigator/drafter ใช้ procedure ที่ publish · `ai_run` เก็บ version
@@ -159,10 +159,11 @@
 - [ ] T-305a `backend-dev`+`frontend-dev` cost dashboard ต่อ agent/intent/ticket (รวม T-142)
 - [ ] T-305b `backend-dev`+`frontend-dev` CEO view §9.2 + tile plug-in (API/CSV)
 - [ ] T-305c `ai-engineer` weekly brief (claim + หลักฐาน T-135, root cause top 5) head แก้ได้ + ตั้งเวลาส่ง
-- [ ] T-305d `backend-dev` export PDF (dependency ใหม่ [ASK-HUMAN]) · Google Docs mock
+- [ ] T-305d `backend-dev` export PDF (เจ้าของอนุมัติ dependency 2026-11-04 — ADR เลือก library ก่อน, ไม่มี network) · Google Docs mock
 - [ ] T-305e `backend-dev`+`ai-engineer`+`frontend-dev` roster planner (R-7.2) solver deterministic + AI อธิบาย · apply ต้องคนกด
 - [ ] T-306a `security-reviewer` ตรวจ autonomy (bypass gate, injection → auto-send, เปิดเผยให้ unverified)
 - [ ] T-306b `qa-engineer` e2e shadow, flag ON ใน stack ทิ้ง (mock), rollback, eval gate
+- [ ] T-306d `backend-dev` + `architect` runbook deploy instance ใหม่สำหรับ pilot (DB สะอาด, seed reference เท่านั้น, env/secret checklist, backup/restore ซ้อม) — เจ้าของจะ deploy เองตอนเริ่ม pilot
 - [ ] T-306c `po` review + เสนอ 2–3 intent → [ASK-HUMAN] เลื่อน stage
 - [ ] T-301 Grader + verified/contained/assumed resolution (§6.2, §6.4)
 - [ ] T-302 Eval set + replay runner + golden answers + KB author (§6.5, R-4.4–4.6)
