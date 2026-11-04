@@ -264,6 +264,15 @@ export const KEYMAP: readonly KeymapEntry[] = [
     singleKey: false,
   },
   {
+    id: 'assistant',
+    keys: ['Ctrl', 'J'],
+    labelKey: 'keymap.assistant',
+    group: 'general',
+    available: true,
+    singleKey: false,
+    requires: ['ticket.read', 'ticket.read.masked'],
+  },
+  {
     id: 'rail',
     keys: ['Ctrl', 'B'],
     labelKey: 'keymap.rail',

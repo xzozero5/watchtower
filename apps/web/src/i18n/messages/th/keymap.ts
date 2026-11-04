@@ -43,6 +43,7 @@ export const keymapTh: Widen<typeof keymapEn> = {
   send: 'ส่งข้อความ',
   leave: 'ออกจากช่องกรอกและกลับไปที่คิวงาน',
   palette: 'เปิดแผงคำสั่ง',
+  assistant: 'เปิดหรือปิดผู้ช่วย AI',
   help: 'แสดงรายการนี้',
   approve: 'อนุมัติร่างคำตอบจาก AI (เปิดตัวอย่างก่อน)',
   edit: 'แก้ไขร่างคำตอบจาก AI',

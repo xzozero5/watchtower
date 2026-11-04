@@ -98,3 +98,11 @@
 - ลิงก์: เว็บมีหน้า ticket เพียงทาง `/?ticket=KEY` · ยังไม่มีหน้า KB/incident/alert จึงไม่ออก `href` ให้ evidence ชนิดนั้น (ชิปบอกว่าไม่มีลิงก์) · worker เคยออก `/tickets/KEY` และ `/kb/slug` ซึ่งไม่มีหน้า — แก้ ticket เป็น `/?ticket=KEY` แล้ว, `/kb/slug` ยังอยู่ใน card เดิมแต่ claim ตัดทิ้ง
 - ชื่อบุคคลที่ไม่อยู่ใน dictionary ของ redactor อาจหลุดไป model ได้ (ช่องว่างเดิมของ ADR-013) `[UNVERIFIED 70%]`
 - ทบทวนเมื่อ: เปิด live provider, เพิ่ม auto-run ของ write ใด ๆ, เปิด bubble ให้ `client`, เพิ่ม tool ที่เขียนได้
+
+## ฝั่งเว็บ (T-134 web, 2026-11-04)
+- `AssistantBubble` mount ครั้งเดียวใน `ConsoleLayout` (ไม่อยู่ใน portal/status/csat) · เห็นเฉพาะผู้ถือ `ticket.read` หรือ `ticket.read.masked` (ตรงกับ guard ของ route) · `Ctrl/⌘ J` เปิด-ปิด, `Esc` พับแล้วคืน focus ที่ปุ่ม, ข้อความที่พิมพ์ค้างอยู่
+- context chip = หน้า (`context.page`) + ticket ที่เปิดในคิว (`?ticket=`) · เอาออกแล้วไม่ส่ง · ไม่ส่งอะไรที่ไม่เห็นเป็นชิป
+- คำตอบเรนเดอร์ด้วย `ClaimLine` (`components/claims/`) ตัวเดียวสำหรับทุก claim: ลิงก์เฉพาะ href ที่ผ่าน `evidenceHref/safeHref` (https เปิดแท็บใหม่ `noopener`), claim ไม่มีหลักฐาน = ไอคอน + คำว่า "ไม่มีหลักฐาน" และข้อความเป็นตัวเอียงจาง, `mock` = ป้าย "ตัวอย่าง"
+- `proposal` เป็นการ์ดจากค่าของ server · ปุ่มยืนยันครั้งเดียว ไม่ย้าย focus มาที่ปุ่ม · `stale` บอกว่าไม่ได้ทำอะไร · `reply_draft` ไม่มีปุ่มส่ง
+- สถานะ `paused/budget/unavailable` ปิดช่องพิมพ์พร้อมข้อความ · ไอคอนปุ่มเป็น `CirclePause` เมื่อ `ai_kill_switch` เปิด
+- ยังไม่ทำ `[ASK-HUMAN]`: สวิตช์ซ่อน bubble ใน user menu, command ใน palette, sheet/ปรับตำแหน่งเมื่อมี sticky footer และการซ่อนเมื่อมี modal ตาม design §2.1, ปุ่ม Stop เป็นแค่ยกเลิก request ฝั่ง client (server อาจยังคิดต้นทุนของ call นั้น)
