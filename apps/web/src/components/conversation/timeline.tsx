@@ -1,7 +1,9 @@
 'use client';
 
 import {
+  INCIDENTS_TICKET_EVENTS,
   TICKET_EVENT_TYPES,
+  ticketPrioritySchema,
   ticketStatusSchema,
   type Message,
   type TimelineEntry,
@@ -9,8 +11,21 @@ import {
 import { Avatar, cn, toast, Tooltip } from '@watchtower/ui';
 import { Fragment, useState } from 'react';
 
-import { AlertTriangle, Bot, Clock, Copy, Lock, Quote, Settings2, Undo2 } from 'lucide-react';
+import {
+  AlertTriangle,
+  Bot,
+  CheckCircle2,
+  Clock,
+  Copy,
+  Lock,
+  Mail,
+  Quote,
+  Settings2,
+  StickyNote,
+  Undo2,
+} from 'lucide-react';
 
+import { AppLink } from '@/components/app-link';
 import { ChannelIcon } from '@/components/ticket/channel-icon';
 import { useI18n } from '@/i18n/provider';
 import { formatAge, formatDateTime } from '@/lib/format';
@@ -54,8 +69,64 @@ function EventText({ entry }: { entry: EventEntry }) {
       }
       return <>{t('timeline.events.updated')}</>;
     }
-    case TICKET_EVENT_TYPES.assigned:
-      return <>{t('timeline.events.assigned')}</>;
+    case TICKET_EVENT_TYPES.assigned: {
+      // The API names the people (T-144). Without a name, or for a person who was removed, say so plainly.
+      const from = str(payload.fromName);
+      const to = str(payload.toName);
+      const hadFrom = str(payload.from) !== null;
+      const hasTo = str(payload.to) !== null;
+      if (!hadFrom && !hasTo) return <>{t('timeline.events.assigned')}</>;
+      const label = (name: string | null, present: boolean) =>
+        name ?? (present ? t('timeline.events.unknownPerson') : t('timeline.events.unassigned'));
+      return (
+        <>
+          {t('timeline.events.assignedFromTo', {
+            from: label(from, hadFrom),
+            to: label(to, hasTo),
+          })}
+        </>
+      );
+    }
+    case TICKET_EVENT_TYPES.updated: {
+      const change = payload.priority;
+      if (typeof change === 'object' && change !== null) {
+        const record = change as Record<string, unknown>;
+        const from = ticketPrioritySchema.safeParse(record.from);
+        const to = ticketPrioritySchema.safeParse(record.to);
+        if (from.success && to.success) {
+          return <>{t('timeline.events.priorityChanged', { from: from.data, to: to.data })}</>;
+        }
+      }
+      return <>{t('timeline.events.updated')}</>;
+    }
+    case INCIDENTS_TICKET_EVENTS.incidentLinked:
+    case INCIDENTS_TICKET_EVENTS.incidentUnlinked: {
+      const linked = entry.type === INCIDENTS_TICKET_EVENTS.incidentLinked;
+      const id = str(payload.incidentId);
+      const key = str(payload.incidentKey);
+      const sentence = (name: string) =>
+        t(linked ? 'timeline.events.incidentLinked' : 'timeline.events.incidentUnlinked', {
+          key: name,
+        });
+      if (id === null || key === null) {
+        return (
+          <>
+            {t(
+              linked ? 'timeline.events.incidentLinkedAny' : 'timeline.events.incidentUnlinkedAny',
+            )}
+          </>
+        );
+      }
+      return (
+        <AppLink
+          href={`/incidents?incident=${encodeURIComponent(id)}`}
+          title={str(payload.incidentTitle) ?? undefined}
+          className="rounded-sm text-link underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+        >
+          {sentence(key)}
+        </AppLink>
+      );
+    }
     case TICKET_EVENT_TYPES.merged: {
       const into = str(payload.intoKey);
       return (
@@ -118,37 +189,78 @@ function messageKind(message: Message): 'internal' | 'reply' | 'customer' {
 }
 
 /**
- * Where a staff reply is (ADR-010): waiting out the undo window (with Undo while the server still
- * allows it), undone, or not delivered. Delivered and not-applicable say nothing.
+ * Where a staff reply or a confirmation email is (ADR-010, T-139): waiting out the undo window (with
+ * Undo while the server still allows it), sent (and when), undone, or not delivered. The channel is an
+ * icon and a word, the state is an icon and a word, never colour alone. A reply with no delivery
+ * behind it (the portal, an internal note) says nothing once it is delivered.
  */
 function DeliveryNote({ message }: { message: Message }) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const { undo } = useSendUndo(message.ticketKey);
-  if (message.deliveryStatus === 'not_applicable' || message.deliveryStatus === 'delivered') {
+  const delivery = message.delivery;
+  if (
+    delivery === null &&
+    (message.deliveryStatus === 'not_applicable' || message.deliveryStatus === 'delivered')
+  ) {
     return null;
   }
-  const failed = message.deliveryStatus === 'failed';
-  const cancelled = message.deliveryStatus === 'cancelled';
-  const scheduled = message.deliveryStatus === 'scheduled';
-  const Icon = failed ? AlertTriangle : cancelled ? Undo2 : Clock;
-  const cancellable = scheduled && message.delivery?.cancellable === true;
+  // The delivery is the truth when there is one; the message's own status is the summary otherwise.
+  const state =
+    delivery?.state ??
+    (message.deliveryStatus === 'failed'
+      ? 'failed'
+      : message.deliveryStatus === 'cancelled'
+        ? 'cancelled'
+        : message.deliveryStatus === 'scheduled'
+          ? 'scheduled'
+          : 'sending');
+  const failed = state === 'failed';
+  const cancellable = state === 'scheduled' && delivery?.cancellable === true;
+  const StateIcon = failed
+    ? AlertTriangle
+    : state === 'cancelled'
+      ? Undo2
+      : state === 'sent'
+        ? CheckCircle2
+        : Clock;
+  const channel = delivery ? t(`channel.${delivery.channel}`) : null;
+  const confirmation = delivery?.origin === 'system_template';
+  const text =
+    state === 'failed'
+      ? t('timeline.delivery.failed')
+      : state === 'cancelled'
+        ? t('outbound.delivery.cancelled')
+        : state === 'scheduled'
+          ? t('outbound.delivery.scheduled')
+          : state === 'sent'
+            ? t('outbound.delivery.sent', {
+                time: delivery?.sentAt ? formatDateTime(delivery.sentAt, locale) : '',
+              })
+            : t('timeline.delivery.pending');
   return (
     <p
-      className={cn('mt-2 flex items-center gap-1 text-xs', failed && 'font-semibold text-danger')}
+      data-delivery-state={state}
+      className={cn(
+        'mt-2 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-xs text-muted-foreground',
+        failed && 'font-semibold text-danger',
+      )}
     >
-      <Icon aria-hidden className="size-3.5" />
-      {failed
-        ? t('timeline.delivery.failed')
-        : cancelled
-          ? t('outbound.delivery.cancelled')
-          : scheduled
-            ? t('outbound.delivery.scheduled')
-            : t('timeline.delivery.pending')}
-      {cancellable && message.delivery ? (
+      {delivery?.channel === 'gmail' ? (
+        <>
+          <Mail aria-hidden className="size-3.5" />
+          <span className="sr-only">{channel}</span>
+        </>
+      ) : null}
+      {confirmation ? <span>{t('outbound.delivery.confirmation')}</span> : null}
+      <span className="inline-flex items-center gap-1">
+        <StateIcon aria-hidden className="size-3.5" />
+        {text}
+      </span>
+      {cancellable ? (
         <button
           type="button"
           onClick={() => {
-            void undo(message.delivery?.id ?? '');
+            void undo(delivery.id);
           }}
           className="ml-1 rounded-sm font-medium text-link underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
         >
@@ -230,7 +342,8 @@ function MessageRow({
           <Avatar name={author} id={message.sender.id ?? author} size={20} />
           <span className="text-sm font-medium text-foreground">{author}</span>
           {kind === 'internal' ? (
-            <span className="inline-flex items-center text-muted-foreground">
+            <span className="inline-flex items-center gap-1 text-muted-foreground">
+              <StickyNote aria-hidden className="size-3.5" />
               <Lock aria-hidden className="size-3.5" />
               <span className="sr-only">{t('timeline.kinds.internal')}</span>
             </span>

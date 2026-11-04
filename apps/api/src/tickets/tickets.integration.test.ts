@@ -806,6 +806,12 @@ describe('assignment', () => {
       [agent2.userId, null],
     ]);
     expect(assigned.every((entry) => entry.actor.id === lead.userId)).toBe(true);
+    // The history names the people, so the timeline can say "Agent One to Agent Two" (T-144).
+    expect(assigned.map((entry) => [entry.payload.fromName, entry.payload.toName])).toEqual([
+      [undefined, 'Agent One'],
+      ['Agent One', 'Agent Two'],
+      ['Agent Two', undefined],
+    ]);
   });
 
   it('refuses to assign to a client, a disabled user, or someone who does not exist', async () => {

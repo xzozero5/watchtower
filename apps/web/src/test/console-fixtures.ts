@@ -86,6 +86,17 @@ export const STATS: TicketStats = {
   ],
 };
 
+/** The same counts asked for `assignee=unassigned`: 3 open tickets nobody holds (`STATS.byAssignee`), 2 in Support. */
+export const UNASSIGNED_STATS: TicketStats = {
+  ...STATS,
+  total: bucket(3),
+  byQueue: [
+    { queueId: uuid(800), ...bucket(2) },
+    { queueId: null, ...bucket(1) },
+  ],
+  byAssignee: [{ assigneeId: null, ...bucket(3) }],
+};
+
 /** A ticket whose first response was due `minutes` ago (negative: still to come). */
 export function dueTicket(
   n: number,

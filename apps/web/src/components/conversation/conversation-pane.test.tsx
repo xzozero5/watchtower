@@ -102,7 +102,7 @@ describe('timeline', () => {
     expect(
       await within(conversation).findByText('Could not be delivered to the customer'),
     ).toBeVisible();
-    expect(within(conversation).getByText(/Status changed from Open to Resolved/)).toBeVisible();
+    expect(within(conversation).getByText(/Status: Open → Resolved/)).toBeVisible();
     expect(within(conversation).getByText(/by Alex Agent/)).toBeVisible();
   });
 

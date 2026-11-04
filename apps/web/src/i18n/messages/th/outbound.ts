@@ -12,6 +12,8 @@ export const outboundTh: Widen<typeof outboundEn> = {
   via: 'ทาง {channel}',
   viaTip: 'คำตอบจะส่งทางช่องทางที่ลูกค้าติดต่อเข้ามา',
   delivery: {
+    sent: 'ส่งแล้ว {time}',
+    confirmation: 'อีเมลยืนยัน ·',
     scheduled: 'รอส่ง',
     cancelled: 'ยกเลิกแล้ว ไม่ได้ส่ง',
     failed: 'ส่งไม่สำเร็จ',

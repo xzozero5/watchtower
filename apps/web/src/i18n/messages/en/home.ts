@@ -56,6 +56,18 @@ export const homeEn = {
     intents: 'Intents',
     controls: 'AI controls',
   },
+  team: {
+    title: 'Team now',
+    onShift: 'On shift',
+    onShiftEmpty: 'Nobody is clocked in.',
+    notClockedIn: 'Not clocked in',
+    notClockedInEmpty: 'Everyone rostered has clocked in.',
+    expected: '{shift} · started {time}',
+    leadView: 'Lead view',
+    unavailable: 'The shift information is not available.',
+    unclaimed: 'Waiting for an owner',
+    unclaimedEmpty: 'Every open ticket has an owner.',
+  },
   empty: {
     slaRisk: 'No tickets at risk.',
     open: 'No open tickets.',

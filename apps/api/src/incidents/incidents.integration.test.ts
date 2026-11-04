@@ -20,6 +20,7 @@ import {
   apiOrg,
   fileTicket,
   signIn,
+  timelineOf,
   type ApiErrorBody,
   type Persona,
 } from '../testing/ticketing.js';
@@ -232,6 +233,14 @@ describe('opening and changing an incident', () => {
       (await call<{ changed: boolean }>(agent, 'POST', `${base}/tickets`, { ticketId: ticket.id }))
         .body,
     ).toEqual({ changed: false });
+    // The ticket's own timeline names the incident, so the UI can link to it (T-144).
+    const linkedEvent = (await timelineOf(agent, ticket.id)).entries.find(
+      (entry) => entry.kind === 'event' && entry.type === 'incident.linked',
+    );
+    expect(linkedEvent?.kind === 'event' ? linkedEvent.payload : null).toMatchObject({
+      incidentId: created.id,
+      incidentKey: created.key,
+    });
     expect(
       (await call<{ changed: boolean }>(agent, 'POST', `${base}/alerts`, { alertId })).body,
     ).toEqual({ changed: true });

@@ -3,7 +3,7 @@ import type { TimelineEntry } from '@watchtower/shared';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { renderApp } from '@/test-utils';
-import { makeMessage, makeTicket, uuid } from '@/test/fixtures';
+import { makeMessage, makeScheduledReply, makeTicket, uuid } from '@/test/fixtures';
 
 import { GROUP_WINDOW_MS, Timeline } from './timeline';
 
@@ -27,6 +27,11 @@ const inbound = (n: number, minutes: number) =>
     bodyText: `Question ${String(n)}`,
     createdAt: at(minutes),
   });
+
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({ push: vi.fn(), replace: vi.fn(), refresh: vi.fn() }),
+  usePathname: () => '/',
+}));
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -138,7 +143,7 @@ describe('timeline: events', () => {
     );
     expect(screen.queryByRole('article')).not.toBeInTheDocument();
     expect(screen.getByText('Ticket created')).toBeVisible();
-    expect(screen.getByText(/Status changed from New to Triage/)).toHaveTextContent('by AI');
+    expect(screen.getByText(/Status: New → Triage/)).toHaveTextContent('by AI');
     const lines = screen.getAllByRole('listitem');
     expect(lines).toHaveLength(2);
     // The AI is marked with the accent colour on its glyph, not with a sparkle.
@@ -194,5 +199,152 @@ describe('timeline: time and actions', () => {
 
     renderApp(<Timeline entries={[inbound(1, 0)]} canQuote={false} onQuote={onQuote} />);
     expect(screen.queryByRole('button', { name: 'Quote in reply' })).not.toBeInTheDocument();
+  });
+});
+
+describe('timeline: what changed (T-144)', () => {
+  const base = {
+    kind: 'event' as const,
+    ticketId: ticket.id,
+    ticketKey: ticket.key,
+    visibility: 'internal' as const,
+    actor: { type: 'user' as const, id: uuid(900), name: 'Lee Lead' },
+  };
+  const event = (n: number, minutes: number, type: string, payload: Record<string, unknown>) => ({
+    ...base,
+    id: uuid(3100 + n),
+    type,
+    payload,
+    createdAt: at(minutes),
+  });
+
+  it('says who the ticket moved from and to, and what the priority was and became', () => {
+    renderApp(
+      <Timeline
+        entries={[
+          event(1, 0, 'ticket.assigned', {
+            from: uuid(901),
+            to: uuid(902),
+            fromName: 'Sam Support',
+            toName: 'Pim S.',
+          }),
+          event(2, 1, 'ticket.assigned', { from: null, to: uuid(902), toName: 'Pim S.' }),
+          event(3, 2, 'ticket.assigned', { from: uuid(902), to: null, fromName: 'Pim S.' }),
+          event(4, 3, 'ticket.updated', {
+            changed: ['priority'],
+            priority: { from: 'P3', to: 'P1' },
+          }),
+          event(5, 4, 'ticket.status_changed', { from: 'open', to: 'waiting_on_customer' }),
+        ]}
+      />,
+    );
+    expect(screen.getByText(/Assignee: Sam Support → Pim S\./)).toBeVisible();
+    expect(screen.getByText(/Assignee: Unassigned → Pim S\./)).toBeVisible();
+    expect(screen.getByText(/Assignee: Pim S\. → Unassigned/)).toBeVisible();
+    expect(screen.getByText(/Priority: P3 → P1/)).toBeVisible();
+    expect(screen.getByText(/Status: Open → Waiting on customer/)).toBeVisible();
+  });
+
+  it('keeps events and messages in the order the server sent them', () => {
+    renderApp(
+      <Timeline
+        entries={[
+          inbound(1, 0),
+          event(1, 1, 'ticket.assigned', { from: null, to: uuid(902), toName: 'Pim S.' }),
+          reply(2, 2),
+        ]}
+      />,
+    );
+    const items = screen.getAllByRole('listitem').map((item) => item.textContent);
+    expect(items[0]).toContain('Question 1');
+    expect(items[1]).toContain('Pim S.');
+    expect(items[2]).toContain('Reply 2');
+  });
+
+  it('links an incident the ticket was linked to', () => {
+    const incidentId = uuid(4000);
+    renderApp(
+      <Timeline
+        entries={[
+          event(1, 0, 'incident.linked', {
+            incidentId,
+            incidentKey: 'INC-12',
+            incidentTitle: 'Checkout down',
+          }),
+          event(2, 1, 'incident.linked', { incidentId }),
+        ]}
+      />,
+    );
+    const link = screen.getByRole('link', { name: 'Linked to incident INC-12' });
+    expect(link).toHaveAttribute('href', `/incidents?incident=${incidentId}`);
+    expect(screen.getByText('Linked to an incident')).toBeVisible();
+  });
+
+  it('marks an internal note with a note icon as well as the lock and the words', () => {
+    const note = makeMessage(7, ticket, {
+      direction: 'internal',
+      visibility: 'internal',
+      sender: sam,
+      bodyText: 'Team only',
+      createdAt: at(0),
+    });
+    renderApp(<Timeline entries={[note]} />);
+    const article = screen.getByRole('article', { name: 'Internal note' });
+    expect(article.querySelector('svg.lucide-sticky-note')).not.toBeNull();
+    expect(article.querySelector('svg.lucide-lock')).not.toBeNull();
+  });
+});
+
+describe('timeline: delivery of a reply or a confirmation email (T-139)', () => {
+  const sent = (overrides: Record<string, unknown> = {}) =>
+    makeScheduledReply(20, ticket, 0, {
+      deliveryStatus: 'delivered',
+      delivery: {
+        id: uuid(5000),
+        state: 'sent',
+        origin: 'system_template',
+        channel: 'gmail',
+        sendAt: at(0),
+        cancellable: false,
+        attempts: 1,
+        errorCode: null,
+        outcomeUnknown: false,
+        sentAt: at(0),
+        ...overrides,
+      },
+    });
+
+  it('says a confirmation email was sent, with its time, an email icon and the word', () => {
+    renderApp(<Timeline entries={[sent()]} />);
+    const note = document.querySelector('[data-delivery-state="sent"]');
+    expect(note).not.toBeNull();
+    expect(note).toHaveTextContent('Confirmation email');
+    expect(note).toHaveTextContent(/Sent /);
+    expect(note?.querySelector('svg.lucide-mail')).not.toBeNull();
+    expect(note).toHaveTextContent('Email');
+  });
+
+  it('says in words that a confirmation email did not arrive', () => {
+    renderApp(
+      <Timeline entries={[sent({ state: 'failed', sentAt: null, errorCode: 'channel_auth' })]} />,
+    );
+    const note = document.querySelector('[data-delivery-state="failed"]');
+    expect(note).toHaveTextContent('Could not be delivered to the customer');
+  });
+
+  it('says nothing for a delivered portal reply that has no delivery behind it', () => {
+    renderApp(
+      <Timeline
+        entries={[
+          makeMessage(21, ticket, {
+            direction: 'outbound',
+            deliveryStatus: 'delivered',
+            delivery: null,
+            createdAt: at(0),
+          }),
+        ]}
+      />,
+    );
+    expect(document.querySelector('[data-delivery-state]')).toBeNull();
   });
 });

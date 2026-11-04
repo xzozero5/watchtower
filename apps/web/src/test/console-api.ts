@@ -14,9 +14,11 @@ import {
   QUEUE,
   QUEUE_BILLING,
   STATS,
+  UNASSIGNED_STATS,
   USERS,
 } from './console-fixtures';
 import { makeSession, uuid } from './fixtures';
+import { shiftOverview } from './shift-fixtures';
 import { type MockHandler, mockApi } from './mock-api';
 
 const AT = '2026-11-02T03:00:00.000Z';
@@ -49,9 +51,15 @@ export function consoleApi({
       },
     },
     'GET /v1/auth/session': { json: makeSession(role) },
-    'GET /v1/tickets/stats': typeof stats === 'function' ? stats : { json: stats },
+    'GET /v1/tickets/stats':
+      typeof stats === 'function'
+        ? stats
+        : ({ url }) => ({
+            json: url.searchParams.get('assignee') === 'unassigned' ? UNASSIGNED_STATS : stats,
+          }),
     'GET /v1/tickets': { json: { items: tickets, nextCursor: null } },
     'GET /v1/autonomy': { json: autonomy },
+    'GET /v1/shifts/overview': { json: shiftOverview() },
     'GET /v1/users': { json: { users: USERS } },
     'GET /v1/queues': { json: { queues: [QUEUE, QUEUE_BILLING] } },
     'GET /v1/org-tiers': {

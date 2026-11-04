@@ -54,6 +54,18 @@ export const homeTh: Widen<typeof homeEn> = {
     intents: 'intent',
     controls: 'การควบคุม AI',
   },
+  team: {
+    title: 'ทีมตอนนี้',
+    onShift: 'อยู่ในกะ',
+    onShiftEmpty: 'ยังไม่มีใครเข้ากะ',
+    notClockedIn: 'ยังไม่เข้ากะ',
+    notClockedInEmpty: 'ทุกคนในตารางเวรเข้ากะแล้ว',
+    expected: '{shift} · เริ่ม {time}',
+    leadView: 'มุมมองหัวหน้ากะ',
+    unavailable: 'ไม่มีข้อมูลกะในขณะนี้',
+    unclaimed: 'รอผู้รับงาน',
+    unclaimedEmpty: 'ทุก ticket ที่เปิดอยู่มีผู้รับแล้ว',
+  },
   empty: {
     slaRisk: 'ไม่มี ticket ที่ใกล้หลุด SLA',
     open: 'ไม่มี ticket ที่เปิดอยู่',
