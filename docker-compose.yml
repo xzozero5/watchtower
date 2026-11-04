@@ -533,8 +533,10 @@ services:
       # AlertEncrypted*/AlertExceedsMax = yes (T-155a C-2); the image default would call such files clean.
       - ./config/clamav/clamd.conf:/etc/clamav/clamd.conf:ro
     healthcheck:
-      # clamdcheck.sh ships in the official image (PING to clamd) `[VERIFY]`.
-      test: ['CMD', 'clamdcheck.sh']
+      # Not the image's own `clamdcheck.sh`: it pings `localhost`, which resolves to ::1 first in this image,
+      # and clamd listens on IPv4 only (TCPAddr 0.0.0.0), so it answers "Unable to contact server" forever
+      # and the container never turns healthy (T-180, run on the real image 2026-11-04). Same PING, on 127.0.0.1.
+      test: ['CMD-SHELL', '[ "$$(echo PING | nc -w 3 127.0.0.1 3310)" = "PONG" ]']
       interval: 30s
       timeout: 10s
       retries: 10
