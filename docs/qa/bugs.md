@@ -39,7 +39,8 @@ P3 cosmetic or rare, P4 polish. Developers fix; QA verifies. Do not edit an entr
 ### B-004 (P3) a11y: `label-content-name-mismatch` on a link of the P1 critical banner
 
 - **Found:** 2026-11-02, T-113, axe on `/shift/overview` with a real open P1 ticket (WCAG 2.5.3). Element: link with `aria-label="Open OPS-n"` styled as `BUTTON` in `apps/web/src/components/notifications/critical-banner.tsx` (`notifications.banner.openNamed`); the visible text is not contained in the name.
-- **Status:** open, `[UNVERIFIED 70%]` that this is the only element. The test that found it (`ac7-shifts.e2e.ts`) is not committed (unfinished).
+- **Update 2026-11-04 (AC-7 spec finished):** the element axe reports is the notification bell in the rail (`components/notifications/notification-center.tsx`, `data-testid="notification-bell"`), and also the banner link (`Open OPS-n`, as first suspected), in the same run. The bell: `aria-label="Notifications, 1 unread"` while the visible text reads "1" (the badge, placed before the title in the DOM) then "Notifications". It shows whenever the user has an unread notification, on any page. `[UNVERIFIED 70%]` for the cause (the order of badge and title); `ac7-shifts.e2e.ts` excludes both from the scan with a comment pointing here; remove the two `exclude` lines when fixed.
+- **Status:** open.
 
 ## Observations that are not bugs (recorded so nobody re-investigates them)
 
