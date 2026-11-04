@@ -38,12 +38,22 @@ if (!stateFile) {
 const WEB_PORT = Number(env.E2E_WEB_PORT ?? 3310);
 const API_PORT = Number(env.E2E_API_PORT ?? 4310);
 const WORKER_PORT = Number(env.E2E_WORKER_PORT ?? 4410);
-const ADMIN_URL =
-  env.E2E_ADMIN_DATABASE_URL ??
-  env.TEST_DATABASE_URL ??
-  'postgres://watchtower:watchtower@localhost:5432/watchtower';
+// No fallback to the default local ports outside CI: on the owner's machine they are the running
+// stack (2026-11-04). Point these at disposable services (docs/runbooks/local-poc.md §6).
+function required(value, name, ciDefault) {
+  if (value) return value;
+  if (env.CI) return ciDefault;
+  throw new Error(
+    `${name} is not set: point it at a disposable service (docs/runbooks/local-poc.md §6)`,
+  );
+}
+const ADMIN_URL = required(
+  env.E2E_ADMIN_DATABASE_URL ?? env.TEST_DATABASE_URL,
+  'E2E_ADMIN_DATABASE_URL',
+  'postgres://watchtower:watchtower@localhost:5432/watchtower',
+);
 // A Redis database index of its own keeps rate-limit counters apart from a dev stack on index 0.
-const REDIS_URL = env.E2E_REDIS_URL ?? 'redis://127.0.0.1:6379/9';
+const REDIS_URL = required(env.E2E_REDIS_URL, 'E2E_REDIS_URL', 'redis://127.0.0.1:6379/9');
 const MAILPIT_URL = (env.E2E_MAILPIT_URL ?? 'http://127.0.0.1:8025').replace(/\/+$/, '');
 const SMTP_HOST = env.E2E_SMTP_HOST ?? '127.0.0.1';
 const SMTP_PORT = env.E2E_SMTP_PORT ?? '1025';
