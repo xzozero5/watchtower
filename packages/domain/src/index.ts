@@ -581,6 +581,36 @@ export {
   type SwitchState,
 } from './autonomy/decide.js';
 export {
+  GATE_CSAT_TOLERANCE,
+  GATE_EDIT_TOLERANCE,
+  GATE_MIN_CSAT,
+  GATE_MIN_GRADED,
+  GATE_MIN_SHADOW,
+  GATE_SHADOW_PRECISION,
+  GATE_WINDOW_DAYS,
+  buildReport,
+  generateGateReport,
+  readGateReports,
+  readReportInputs,
+  toGateReport,
+  type GenerateReportInput,
+  type GroupStats,
+  type ReportInputs,
+} from './autonomy/gate-report.js';
+export {
+  ROLLBACK_RULES,
+  WATCH_CSAT_LOW,
+  WATCH_LAST_N,
+  WATCH_PRE_SEND_FAIL_MIN,
+  WATCH_REOPEN_OR_CSAT_MIN,
+  enqueueAutonomyWatch,
+  findRollbackReason,
+  intentsAtStage3,
+  notifyAutonomyRollback,
+  type RollbackFinding,
+  type RollbackRule,
+} from './autonomy/watch.js';
+export {
   composeAutoSendText,
   countPlaceholders,
   customerWantsHuman,

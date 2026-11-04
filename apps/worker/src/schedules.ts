@@ -1,5 +1,7 @@
 import {
   ALERTS_JOBS,
+  AUTONOMY_JOBS,
+  AUTONOMY_WATCH_EVERY_MS,
   CLEANUP_JOBS,
   CSAT_JOBS,
   GMAIL_JOBS,
@@ -164,7 +166,28 @@ export const SCHEDULES: readonly ScheduleRegistration[] = [
 
   // --- shifts (T-111) ---
 
-  // --- autonomy (T-112) ---
+  // --- autonomy (T-112, T-304e/f) ---
+  {
+    queue: QUEUE_NAMES.autonomy,
+    id: AUTONOMY_JOBS.watch,
+    // The intents at stage 3 against the rollback rules (ADR-025 section 7), every 15 minutes. Events (a grade, a
+    // reopen, a CSAT answer) enqueue an earlier run; this one covers a missed event. A no-op with nothing at stage 3.
+    repeat: { every: AUTONOMY_WATCH_EVERY_MS },
+    job: {
+      name: AUTONOMY_JOBS.watch,
+      opts: { removeOnComplete: true, removeOnFail: { age: 24 * 3600 } },
+    },
+  },
+  {
+    queue: QUEUE_NAMES.autonomy,
+    id: AUTONOMY_JOBS.weeklyReports,
+    // The gate report of every intent at stage 2 or 3, Monday 02:00 UTC (09:00 Bangkok).
+    repeat: { pattern: '0 2 * * 1', tz: 'UTC' },
+    job: {
+      name: AUTONOMY_JOBS.weeklyReports,
+      opts: { removeOnComplete: true, removeOnFail: { age: 7 * 24 * 3600 } },
+    },
+  },
 
   // --- credentials (T-116) ---
 

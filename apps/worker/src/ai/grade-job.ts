@@ -1,6 +1,7 @@
 import { buildGradeFacts, gradeResolution, type TicketTurn } from '@watchtower/ai';
 import { schema, type Database } from '@watchtower/db';
 import {
+  enqueueAutonomyWatch,
   TicketKeys,
   type NewResolutionGrade,
   readResolutionGradeCsat,
@@ -9,6 +10,8 @@ import {
 } from '@watchtower/domain';
 import { detectLanguage, type AiInsightReason } from '@watchtower/shared';
 import { and, asc, desc, eq, sql } from 'drizzle-orm';
+
+import type { Domain } from '@watchtower/domain';
 
 import type { WorkerLogger } from '../logger.js';
 import { ticketPeopleNames, warnIfIncomplete } from './people-names.js';
@@ -21,6 +24,8 @@ export interface GradeDeps {
   readonly ai: AiRuntime | undefined;
   readonly logger: WorkerLogger;
   readonly ticketKeyPrefix: string;
+  /** When given, a recorded grade nudges the stage 3 watch (T-304e). Absent in tests that leave it out. */
+  readonly domain?: Domain | undefined;
 }
 
 export interface GradeResult {
@@ -218,6 +223,18 @@ export async function runGrader(
     await regradeResolution(db, verdict);
   } else {
     await recordResolutionGrade(db, verdict);
+  }
+  if (deps.domain !== undefined && ticket.intentId !== null) {
+    const intentId = ticket.intentId;
+    const domain = deps.domain;
+    // An event for the watch (ADR-025 section 7): a violation in this grade is a reason to roll back at once.
+    await db
+      .transaction((tx) =>
+        enqueueAutonomyWatch(tx, domain.context({ actor: { type: 'system', id: null } }), intentId, 'grade_recorded'),
+      )
+      .catch((error: unknown) => {
+        deps.logger.warn({ err: error, ticketId: ticket.id }, 'could not nudge the autonomy watch');
+      });
   }
   return { status: 'graded' };
 }

@@ -12,6 +12,7 @@ import type { GmailRuntime } from '../gmail/runtime.js';
 import { createDiscordRegistration, type DiscordOverrides } from '../discord/index.js';
 import { createAlertsRegistration, type AlertsOverrides } from '../alerts/index.js';
 import { createIncidentsRegistration, type IncidentsOverrides } from '../incidents/index.js';
+import { createAutonomyRegistration } from '../autonomy/index.js';
 import { createCsatRegistration } from '../csat/index.js';
 import { createStatusPageRegistration } from '../statuspage/index.js';
 import { createUsageRegistration, type UsageOverrides } from '../usage/index.js';
@@ -149,7 +150,9 @@ export const PROCESSORS: readonly ProcessorRegistration[] = [
 
   // --- shifts (T-111) ---
 
-  // --- autonomy (T-112) ---
+  // --- autonomy (T-112, T-304e) ---
+  // One at a time: two watches would only read the same rows.
+  { queue: QUEUE_NAMES.autonomy, create: createAutonomyRegistration, concurrency: 1 },
 
   // --- credentials (T-116) ---
 

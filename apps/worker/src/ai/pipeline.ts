@@ -176,7 +176,7 @@ export function createAiPipelineProcessor(context: ProcessorContext): Processor 
         const parsed = aiGradeJobSchema.safeParse(job.data);
         if (!parsed.success) throw new UnrecoverableError('ai job payload is invalid');
         const result = await runGrader(
-          { database, ai, logger, ticketKeyPrefix: config.TICKET_KEY_PREFIX },
+          { database, ai, logger, ticketKeyPrefix: config.TICKET_KEY_PREFIX, domain },
           {
             ticketId: parsed.data.ticketId,
             reopenCount: parsed.data.reopenCount,
