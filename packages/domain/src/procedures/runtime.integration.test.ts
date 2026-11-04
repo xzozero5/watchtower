@@ -243,33 +243,40 @@ describe('simulation (T-303d)', () => {
   });
 
   it('leaves out a seed batch while the column exists, and fills up with it (marked) only when real tickets are too few', async () => {
+    // ticket.seed_batch_id exists since 0096 and only the schema owner writes it (a seed ticket lives in an
+    // organization of the same batch). The seed_batch row stays behind: the table is append-only.
     const owner = env.db.owner.db;
-    await owner.execute(sql`ALTER TABLE ticket ADD COLUMN IF NOT EXISTS seed_batch_id uuid`);
-    try {
-      const intent = await addIntent(env, { allowedTools: [] });
-      const real = await resolvedTicket(intent.id);
-      const seeded = await resolvedTicket(intent.id);
-      await owner.execute(
-        sql`UPDATE ticket SET seed_batch_id = gen_random_uuid() WHERE id = ${seeded}`,
-      );
-      const enough = await readSimulationTickets(env.database.db, {
-        intentId: intent.id,
-        limit: 1,
-      });
-      expect(enough.map((ticket) => [ticket.id, ticket.seeded])).toEqual([[real, false]]);
-      const filled = await readSimulationTickets(env.database.db, {
-        intentId: intent.id,
-        limit: 5,
-      });
-      expect(filled.map((ticket) => [ticket.id, ticket.seeded]).sort()).toEqual(
-        [
-          [real, false],
-          [seeded, true],
-        ].sort(),
-      );
-    } finally {
-      await owner.execute(sql`ALTER TABLE ticket DROP COLUMN IF EXISTS seed_batch_id`);
-    }
+    const intent = await addIntent(env, { allowedTools: [] });
+    const real = await resolvedTicket(intent.id);
+    const seeded = await resolvedTicket(intent.id);
+    const batch = await owner.execute<{ id: string }>(
+      sql`INSERT INTO seed_batch (kind, note) VALUES ('demo', 'T-303d simulation test') RETURNING id`,
+    );
+    const batchId = batch.rows[0]?.id;
+    if (batchId === undefined) throw new Error('seed_batch insert returned no row');
+    const seedOrg = await owner.execute<{ id: string }>(
+      sql`INSERT INTO organization (name, seed_batch_id) VALUES ('Seed org', ${batchId}::uuid) RETURNING id`,
+    );
+    const seedOrgId = seedOrg.rows[0]?.id;
+    if (seedOrgId === undefined) throw new Error('organization insert returned no row');
+    await owner.execute(
+      sql`UPDATE ticket SET org_id = ${seedOrgId}::uuid, seed_batch_id = ${batchId}::uuid WHERE id = ${seeded}`,
+    );
+    const enough = await readSimulationTickets(env.database.db, {
+      intentId: intent.id,
+      limit: 1,
+    });
+    expect(enough.map((ticket) => [ticket.id, ticket.seeded])).toEqual([[real, false]]);
+    const filled = await readSimulationTickets(env.database.db, {
+      intentId: intent.id,
+      limit: 5,
+    });
+    expect(filled.map((ticket) => [ticket.id, ticket.seeded]).sort()).toEqual(
+      [
+        [real, false],
+        [seeded, true],
+      ].sort(),
+    );
   });
 });
 

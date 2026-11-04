@@ -1130,6 +1130,14 @@ describe('0096 goes down and up again', () => {
   let db: TestDatabase;
   let pool: Pool;
 
+  // Each migration goes down in its own transaction, so a refusal by 0096 comes after the newer ones
+  // were already reverted. Revert those first, expect 0096 alone to refuse, then bring them all back.
+  async function expectDownRefused(later: string[], message: RegExp): Promise<void> {
+    if (later.length > 0) await migrateDown(pool, { steps: later.length });
+    await expect(migrateDown(pool, { steps: 1 })).rejects.toThrow(message);
+    await migrateUp(pool);
+  }
+
   beforeAll(async () => {
     db = await createTestDatabase(adminUrl);
     pool = db.owner.pool;
@@ -1169,8 +1177,8 @@ describe('0096 goes down and up again', () => {
       );
       await appPool.query('SELECT apply_stage_promotion($1::uuid, $2::uuid)', [promotion, person]);
 
-      await expect(migrateDown(pool, { steps })).rejects.toThrow(/stage 3/);
-      // Nothing was reverted: the migration ran in one transaction.
+      await expectDownRefused(later, /stage 3/);
+      // 0096 itself was not reverted: it ran in one transaction.
       expect(
         await scalar<string | null>(pool, `SELECT to_regclass('public.ai_grade')::text AS value`),
       ).toBe('ai_grade');
@@ -1211,7 +1219,6 @@ describe('0096 goes down and up again', () => {
 
   it('refuses to go down while an ai_auto delivery is scheduled', async () => {
     const later = await migrationsAfter('0096_stage3_autosend');
-    const steps = 1 + later.length;
     const appPool = new Pool({ connectionString: db.appUrl, max: 2 });
     try {
       const person = await scalar<string>(
@@ -1284,15 +1291,13 @@ describe('0096 goes down and up again', () => {
       await appPool.query(`SELECT rollback_intent_autonomy($1::uuid, 'back to two', NULL)`, [
         intentId,
       ]);
-      await expect(migrateDown(pool, { steps })).rejects.toThrow(
-        /ai_auto delivery is still scheduled/,
-      );
+      await expectDownRefused(later, /ai_auto delivery is still scheduled/);
       await pool.query(
         `UPDATE outbound_delivery SET state = 'cancelled', cancelled_at = now() WHERE ai_grade_id = $1`,
         [grade],
       );
       // Even a cancelled one is a record that cannot be converted.
-      await expect(migrateDown(pool, { steps })).rejects.toThrow(/ai_auto deliveries exist/);
+      await expectDownRefused(later, /ai_auto deliveries exist/);
     } finally {
       await appPool.end();
     }

@@ -374,7 +374,8 @@ describe('procedure versions: what is refused', () => {
 
   it('stage 3 rules answer policy_denied (a second person; real tickets)', async () => {
     const intent = await addIntent(env);
-    // Stage 3 cannot be set yet (the Phase 1 CHECK): lift it in this throwaway database only.
+    // Stage 3 only opens through an approved promotion (0096): lift the stage CHECKs and the promotion
+    // trigger in this throwaway database only.
     const checks = await env.db.owner.pool.query<{ conname: string }>(
       `SELECT conname FROM pg_constraint WHERE conrelid = 'public.intent'::regclass AND contype = 'c'
         AND pg_get_constraintdef(oid) LIKE '%autonomy_stage%'`,
@@ -382,9 +383,14 @@ describe('procedure versions: what is refused', () => {
     for (const { conname } of checks.rows) {
       await env.db.owner.pool.query(`ALTER TABLE intent DROP CONSTRAINT ${conname}`);
     }
-    await env.db.owner.pool.query(`UPDATE intent SET autonomy_stage = 3 WHERE id = $1`, [
-      intent.id,
-    ]);
+    await env.db.owner.pool.query(`ALTER TABLE intent DISABLE TRIGGER intent_require_promotion`);
+    try {
+      await env.db.owner.pool.query(`UPDATE intent SET autonomy_stage = 3 WHERE id = $1`, [
+        intent.id,
+      ]);
+    } finally {
+      await env.db.owner.pool.query(`ALTER TABLE intent ENABLE TRIGGER intent_require_promotion`);
+    }
     const lead = await author();
     const head = await author('head');
     const ctx = env.ctx(lead.actor);
