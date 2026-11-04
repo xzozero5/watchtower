@@ -310,6 +310,35 @@ describe('portal emails (T-007)', () => {
     expect(message.text).toContain('you can ignore it');
   });
 
+  it('renders the "my requests" link in English and Thai without any ticket or typed text (T-152)', () => {
+    const url = 'http://localhost:3000/portal/my-requests#token=wtl1.abc';
+    for (const locale of ['en', 'th'] as const) {
+      const message = renderEmail({
+        kind: 'portal_my_requests',
+        to: 'a@example.com',
+        locale,
+        trackingUrl: url,
+        expiresInMinutes: 30,
+      });
+      expect(message.text).toContain(url);
+      expect(message.text).toContain('30');
+      expect(message.html).toContain(
+        'href="http://localhost:3000/portal/my-requests#token=wtl1.abc"',
+      );
+      expect(message.html.match(/href="/g)).toHaveLength(1);
+      expect(`${message.subject}${message.text}`).not.toMatch(/OPS-/);
+    }
+    expect(
+      renderEmail({
+        kind: 'portal_my_requests',
+        to: 'a@example.com',
+        locale: 'th',
+        trackingUrl: url,
+        expiresInMinutes: 30,
+      }).subject,
+    ).toBe('ลิงก์สำหรับดูคำขอของคุณ');
+  });
+
   it('processes a portal job and ends an invalid one at once', async () => {
     const mailer = fakeMailer();
     const process = processorFor(mailer);

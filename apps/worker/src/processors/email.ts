@@ -52,6 +52,7 @@ export function renderEmail(job: EmailJob): OutboundMessage {
     case 'portal_update':
     case 'portal_merged':
     case 'portal_link':
+    case 'portal_my_requests':
       return renderPortalEmail(job);
     case 'csat_survey':
       return renderCsatEmail(job);

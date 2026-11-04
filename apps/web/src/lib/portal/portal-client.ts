@@ -8,6 +8,7 @@ import {
   PORTAL_MULTIPART_PAYLOAD_FIELD,
   PORTAL_TOKEN_HEADER,
   portalAcceptedSchema,
+  portalMyRequestsViewSchema,
   portalReplyResultSchema,
   portalSubmittedSchema,
   portalTicketViewSchema,
@@ -15,6 +16,8 @@ import {
   type CsatResponseResult,
   type CsatSurveyView,
   type HumanChallenge,
+  type PortalMyRequestsRequest,
+  type PortalMyRequestsView,
   type PortalReply,
   type PortalReplyResult,
   type PortalResend,
@@ -214,6 +217,28 @@ export class PortalClient {
       path: '/v1/portal/track/resend',
       body,
       schema: portalAcceptedSchema,
+    });
+  }
+
+  /** "Email me a link to my requests" (T-152). Always 202 `accepted`, whether or not the address is known. */
+  async requestMyRequests(body: PortalMyRequestsRequest, signal?: AbortSignal): Promise<void> {
+    await this.call({
+      method: 'POST',
+      path: '/v1/portal/my-requests',
+      body,
+      schema: portalAcceptedSchema,
+      ...(signal ? { signal } : {}),
+    });
+  }
+
+  /** Spends the one-time link and returns the list. 401: unknown, used, expired or replaced link. */
+  openMyRequests(token: string, signal?: AbortSignal): Promise<PortalMyRequestsView> {
+    return this.call({
+      method: 'POST',
+      path: '/v1/portal/my-requests/open',
+      schema: portalMyRequestsViewSchema,
+      token,
+      ...(signal ? { signal } : {}),
     });
   }
 

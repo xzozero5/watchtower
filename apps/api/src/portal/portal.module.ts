@@ -6,6 +6,7 @@ import { HUMAN_VERIFICATION } from './human-verification.js';
 import { PortalController } from './portal.controller.js';
 import { PortalAttachmentsService } from './portal-attachments.service.js';
 import { PortalLimits } from './portal-limits.js';
+import { PortalMyRequestsService } from './portal-my-requests.service.js';
 import { PortalUploadInterceptor } from './portal-upload.interceptor.js';
 import { PortalUploadQuota } from './portal-upload-quota.js';
 import { PortalNotificationsModule } from './portal-notifications.module.js';
@@ -30,6 +31,7 @@ import { SelfHostedHumanVerificationProvider } from './self-hosted-verification.
     PortalUploadInterceptor,
     PortalSubmissionService,
     PortalTrackingService,
+    PortalMyRequestsService,
     { provide: HUMAN_VERIFICATION, useClass: SelfHostedHumanVerificationProvider },
   ],
 })
