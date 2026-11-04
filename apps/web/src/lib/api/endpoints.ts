@@ -88,6 +88,13 @@ export function createEndpoints(client: ApiClient) {
         signal,
       ),
 
+    /** The `index`-th remote picture of an inbound mail, fetched by the api (T-175); the page's CSP allows no remote host. */
+    downloadRemoteImage: (ref: string, messageId: string, index: number, signal?: AbortSignal) =>
+      client.download(
+        `${refPath(ref)}/messages/${encodeURIComponent(messageId)}/remote-image?u=${String(index)}`,
+        signal,
+      ),
+
     // --- auth (public) ---
     authConfig: (signal?: AbortSignal) =>
       client.request({

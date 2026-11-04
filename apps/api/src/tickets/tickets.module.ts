@@ -11,7 +11,15 @@ import { TICKET_KEYS, TicketKeys } from './ticket-keys.js';
 import { SlaRemaining } from './sla-remaining.js';
 import { TicketSlaStates } from './sla-states.js';
 import { TicketAttachmentsController } from './ticket-attachments.controller.js';
+import { SafeImageFetcher } from '../egress/safe-fetch.js';
+import {
+  DEFAULT_REMOTE_IMAGE_LIMITS,
+  REMOTE_IMAGE_FETCHER,
+  REMOTE_IMAGE_LIMITS,
+  RemoteImageService,
+} from './remote-image.service.js';
 import { TicketReader } from './ticket-reader.js';
+import { TicketRemoteImagesController } from './ticket-remote-images.controller.js';
 import { TicketsController } from './tickets.controller.js';
 import { TicketsService } from './tickets.service.js';
 import { TimelineService } from './timeline.service.js';
@@ -31,8 +39,21 @@ import { WorkflowController, WorkflowService } from './workflow.service.js';
     PortalNotificationsModule,
     UploadsModule,
   ],
-  controllers: [TicketsController, TicketAttachmentsController, WorkflowController],
+  controllers: [
+    TicketsController,
+    TicketAttachmentsController,
+    TicketRemoteImagesController,
+    WorkflowController,
+  ],
   providers: [
+    {
+      provide: REMOTE_IMAGE_FETCHER,
+      inject: [APP_CONFIG],
+      useFactory: (config: ApiConfig) =>
+        new SafeImageFetcher({ allowHttp: config.REMOTE_IMAGES_ALLOW_HTTP }),
+    },
+    { provide: REMOTE_IMAGE_LIMITS, useValue: DEFAULT_REMOTE_IMAGE_LIMITS },
+    RemoteImageService,
     {
       provide: TICKET_KEYS,
       inject: [APP_CONFIG],

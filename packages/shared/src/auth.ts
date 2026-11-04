@@ -38,6 +38,7 @@ export const AUTH_ERROR_CODES = [
   'attachment_rejected',
   // Object storage did not take or give a file (503).
   'storage_unavailable',
+  'remote_image_unavailable',
   // Too many uploads are being read at once (503 + Retry-After); try again shortly.
   'upload_busy',
   // Uploads (T-155, ADR-022): the daily cap on customer files is used up (429); a file is still being
@@ -368,6 +369,8 @@ export const CORE_AUDIT_ACTIONS = {
   portalAttachmentRejected: 'portal.attachment_rejected',
   /** A person downloaded a ticket attachment (T-140). */
   ticketAttachmentDownload: 'ticket.attachment_download',
+  /** A staff member had the api fetch a remote image of an inbound mail for them (T-175). */
+  ticketRemoteImageFetch: 'ticket.remote_image_fetch',
   /** A person uploaded an image or file for a note, handoff, incident note or ticket. */
   uploadCreate: 'upload.create',
   /** A person opened an uploaded file. */
