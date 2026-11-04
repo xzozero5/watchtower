@@ -18,8 +18,7 @@
     "dev": "tsc -p tsconfig.build.json --watch --preserveWatchOutput",
     "lint": "eslint .",
     "test": "vitest run",
-    "typecheck": "tsc --noEmit",
-    "eval": "node -e \"console.error('eval is not implemented yet (T-302)');process.exit(1)\""
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "4.0.94",

@@ -116,6 +116,13 @@ export const WORKSPACES = {
     allow: [SHARED],
     forbid: ['persistence'],
   },
+  // The eval runner (T-302): runs the agents on cases and reads past tickets for the replay export. A
+  // tool for people, not part of the running system; nothing imports it.
+  'evals/runner': {
+    name: '@watchtower/eval-runner',
+    allow: ['@watchtower/ai', '@watchtower/db', SHARED],
+    forbid: ['http'],
+  },
   'packages/ui': { name: '@watchtower/ui', allow: [SHARED], forbid: ['persistence'] },
 };
 

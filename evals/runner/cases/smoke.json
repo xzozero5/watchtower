@@ -1,0 +1,145 @@
+{
+  "cases": [
+    {
+      "id": "smoke-classifier-intent",
+      "agent": "classifier",
+      "description": "Harness check: the answer the mock gives is parsed and compared with the intent key.",
+      "intent": "reset_password",
+      "mockAnswer": { "type": "new_customer_issue", "intentKey": "reset_password", "confidence": 0.93, "reason": "asks to reset a password" },
+      "input": {
+        "channel": "email",
+        "subject": "Cannot sign in",
+        "body": "I forgot my password and the reset link does not arrive.",
+        "intents": [
+          { "key": "reset_password", "name": "Reset password" },
+          { "key": "billing_question", "name": "Billing question" }
+        ]
+      },
+      "expect": { "intentKey": "reset_password", "minConfidence": 0.8 }
+    },
+    {
+      "id": "smoke-classifier-unknown-intent",
+      "agent": "classifier",
+      "description": "Harness check: an intent the model invents is dropped to null by the agent.",
+      "mockAnswer": { "type": "new_customer_issue", "intentKey": "made_up_intent", "confidence": 0.9, "reason": "invented" },
+      "input": {
+        "channel": "portal",
+        "subject": "Question",
+        "body": "Do you have an office in Chiang Mai?",
+        "intents": [{ "key": "reset_password", "name": "Reset password" }]
+      },
+      "expect": { "intentKey": null }
+    },
+    {
+      "id": "smoke-drafter-cited-reply",
+      "agent": "drafter",
+      "description": "Harness check: a sentence that cites a customer-safe article is kept and counted as cited.",
+      "intent": "reset_password",
+      "mockAnswer": {
+        "language": "en",
+        "sentences": [
+          { "text": "You can reset your password from the sign in page.", "kind": "instruction", "evidenceIds": ["ev-1"], "newParagraph": false },
+          { "text": "Reply here if the email does not arrive.", "kind": "courtesy", "evidenceIds": [], "newParagraph": true }
+        ]
+      },
+      "input": {
+        "subject": "Cannot sign in",
+        "turns": [{ "from": "customer", "text": "I forgot my password." }],
+        "intentKey": "reset_password",
+        "customerLanguage": "en",
+        "disclosure": "restricted",
+        "evidence": [
+          { "id": "ev-1", "kind": "kb", "title": "Reset your password", "snippet": "Use Forgot password on the sign in page.", "customerSafe": true, "tool": "kb_search" }
+        ]
+      },
+      "expect": { "language": "en", "mustContain": ["reset your password"], "mustNotContain": ["internal"], "maxUncitedClaims": 0 }
+    },
+    {
+      "id": "smoke-drafter-uncited-fact",
+      "agent": "drafter",
+      "description": "Harness check: for a verified contact a factual sentence with no evidence is kept and counted as uncited (a restricted contact would lose it).",
+      "mockAnswer": {
+        "language": "en",
+        "sentences": [{ "text": "The outage was caused by a certificate.", "kind": "fact", "evidenceIds": [], "newParagraph": false }]
+      },
+      "input": {
+        "subject": "Outage",
+        "turns": [{ "from": "customer", "text": "Why was the service down?" }],
+        "customerLanguage": "en",
+        "disclosure": "verified",
+        "evidence": []
+      },
+      "expect": { "maxUncitedClaims": 1, "mustContain": ["certificate"] }
+    },
+    {
+      "id": "smoke-grader-model-overclaims",
+      "agent": "grader",
+      "description": "Harness check: the model says verified with no confirmation; the cap makes it contained.",
+      "intent": "reset_password",
+      "mockAnswer": {
+        "resolutionClass": "verified",
+        "draftVerdict": "no_draft",
+        "reasons": [{ "text": "The staff reply looks complete.", "factIds": ["f2"] }]
+      },
+      "input": {
+        "turns": [
+          { "from": "customer", "text": "I cannot sign in." },
+          { "from": "staff", "text": "Please reset your password with the link on the sign in page." }
+        ]
+      },
+      "expect": { "resolutionClass": "contained", "draftVerdictIn": ["no_draft"] }
+    },
+    {
+      "id": "smoke-grader-survey-confirms",
+      "agent": "grader",
+      "description": "Harness check: a survey that says resolved allows verified, and a close draft scores high.",
+      "mockAnswer": {
+        "resolutionClass": "verified",
+        "draftVerdict": "matches",
+        "draftQuality": 0.9,
+        "reasons": [{ "text": "The customer confirmed it worked.", "factIds": ["f4"] }]
+      },
+      "input": {
+        "turns": [
+          { "from": "customer", "text": "I cannot sign in." },
+          { "from": "staff", "text": "Please reset your password with the link on the sign in page." }
+        ],
+        "draftText": "Please use the reset link on the sign in page to set a new password.",
+        "csat": { "score": 5, "resolved": true }
+      },
+      "expect": { "resolutionClass": "verified", "minDraftQuality": 0.8, "maxViolations": 0 }
+    },
+    {
+      "id": "smoke-kb-author-article",
+      "agent": "kb_author",
+      "description": "Harness check: an article is written, tagged with a known intent, and holds no placeholder.",
+      "mockAnswer": {
+        "title": "Reset a forgotten password",
+        "bodyMd": "## Symptoms\n\nA user cannot sign in.\n\n## Resolution\n\n1. Use Forgot password on the sign in page.",
+        "intentTags": ["reset_password"],
+        "kind": "article"
+      },
+      "input": {
+        "subject": "Cannot sign in",
+        "turns": [
+          { "from": "customer", "text": "I forgot my password." },
+          { "from": "staff", "text": "Use Forgot password on the sign in page and follow the link." }
+        ],
+        "intentKey": "reset_password",
+        "knownIntents": ["reset_password", "billing_question"]
+      },
+      "expect": { "drafted": true, "titleContains": ["password"], "tagsInclude": ["reset_password"] }
+    },
+    {
+      "id": "smoke-kb-author-too-little",
+      "agent": "kb_author",
+      "description": "Harness check: an empty answer means the ticket held too little to write from.",
+      "mockAnswer": { "title": "", "bodyMd": "", "intentTags": [], "kind": "article" },
+      "input": {
+        "subject": "Hi",
+        "turns": [{ "from": "customer", "text": "Hello?" }]
+      },
+      "expect": { "drafted": false }
+    }
+  ]
+}

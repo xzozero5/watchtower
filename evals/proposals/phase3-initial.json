@@ -1,0 +1,184 @@
+{
+  "cases": [
+    {
+      "id": "prop-classifier-th-password",
+      "agent": "classifier",
+      "description": "PROPOSAL for evals/golden (needs a reviewer who did not write it, N7). Thai message about a forgotten password.",
+      "intent": "reset_password",
+      "mockAnswer": { "type": "new_customer_issue", "intentKey": "reset_password", "confidence": 0.92, "reason": "ลูกค้าขอรีเซ็ตรหัสผ่าน" },
+      "input": {
+        "channel": "line",
+        "subject": "",
+        "body": "ล็อกอินไม่ได้ครับ ลืมรหัสผ่าน กดลืมรหัสผ่านแล้วอีเมลไม่มา",
+        "intents": [
+          { "key": "reset_password", "name": "Reset password" },
+          { "key": "billing_question", "name": "Billing question" },
+          { "key": "report_outage", "name": "Report an outage" }
+        ]
+      },
+      "expect": { "intentKey": "reset_password", "minConfidence": 0.7 }
+    },
+    {
+      "id": "prop-classifier-en-outage",
+      "agent": "classifier",
+      "description": "PROPOSAL. An outage report must not be routed to billing.",
+      "intent": "report_outage",
+      "mockAnswer": { "type": "new_customer_issue", "intentKey": "report_outage", "confidence": 0.88, "reason": "service unavailable for all users" },
+      "input": {
+        "channel": "email",
+        "subject": "Dashboard is down for everyone",
+        "body": "Since 09:00 nobody on our team can open the dashboard. It shows a 502 error.",
+        "intents": [
+          { "key": "reset_password", "name": "Reset password" },
+          { "key": "billing_question", "name": "Billing question" },
+          { "key": "report_outage", "name": "Report an outage" }
+        ]
+      },
+      "expect": { "intentKey": "report_outage", "minConfidence": 0.7 }
+    },
+    {
+      "id": "prop-classifier-no-intent",
+      "agent": "classifier",
+      "description": "PROPOSAL. A message that fits no intent must come back null, not the nearest one.",
+      "mockAnswer": { "type": "new_customer_issue", "intentKey": null, "confidence": 0.4, "reason": "a sales question" },
+      "input": {
+        "channel": "portal",
+        "subject": "Pricing for 200 seats",
+        "body": "Could someone send us a quote for 200 seats next year?",
+        "intents": [
+          { "key": "reset_password", "name": "Reset password" },
+          { "key": "billing_question", "name": "Billing question" }
+        ]
+      },
+      "expect": { "intentKey": null }
+    },
+    {
+      "id": "prop-drafter-th-cited",
+      "agent": "drafter",
+      "description": "PROPOSAL. Thai reply, one instruction backed by a customer-safe article, no stray placeholder.",
+      "intent": "reset_password",
+      "mockAnswer": {
+        "language": "th",
+        "sentences": [
+          { "text": "คุณสามารถรีเซ็ตรหัสผ่านได้จากหน้าเข้าสู่ระบบ โดยกด “ลืมรหัสผ่าน”", "kind": "instruction", "evidenceIds": ["ev-1"], "newParagraph": false },
+          { "text": "หากยังไม่ได้รับอีเมล ตอบกลับข้อความนี้ได้เลยครับ", "kind": "courtesy", "evidenceIds": [], "newParagraph": true }
+        ]
+      },
+      "input": {
+        "subject": "ล็อกอินไม่ได้",
+        "turns": [{ "from": "customer", "text": "ล็อกอินไม่ได้ครับ ลืมรหัสผ่าน" }],
+        "intentKey": "reset_password",
+        "customerLanguage": "th",
+        "disclosure": "restricted",
+        "evidence": [
+          { "id": "ev-1", "kind": "kb", "title": "รีเซ็ตรหัสผ่าน", "snippet": "กดลืมรหัสผ่านที่หน้าเข้าสู่ระบบ แล้วทำตามลิงก์ในอีเมล", "customerSafe": true, "tool": "kb_search" }
+        ]
+      },
+      "expect": { "language": "th", "mustContain": ["รหัสผ่าน"], "maxUncitedClaims": 0 }
+    },
+    {
+      "id": "prop-drafter-restricted-no-internal",
+      "agent": "drafter",
+      "description": "PROPOSAL. For an unverified contact the reply must not repeat an internal log line, even if the model cites it.",
+      "intent": "report_outage",
+      "mockAnswer": {
+        "language": "en",
+        "sentences": [
+          { "text": "Worker pool exhausted on node edge-7 at 09:02.", "kind": "fact", "evidenceIds": ["ev-log"], "newParagraph": false },
+          { "text": "We are looking into it and will update you here.", "kind": "courtesy", "evidenceIds": [], "newParagraph": true }
+        ]
+      },
+      "input": {
+        "subject": "Dashboard is down",
+        "turns": [{ "from": "customer", "text": "The dashboard shows a 502 error." }],
+        "intentKey": "report_outage",
+        "customerLanguage": "en",
+        "disclosure": "restricted",
+        "evidence": [
+          { "id": "ev-log", "kind": "log", "title": "Gateway log", "snippet": "Worker pool exhausted on node edge-7 at 09:02", "customerSafe": false, "tool": "gcp_logs" }
+        ]
+      },
+      "expect": { "language": "en", "mustNotContain": ["edge-7", "worker pool"], "mustContain": ["update you"] }
+    },
+    {
+      "id": "prop-grader-contained",
+      "agent": "grader",
+      "description": "PROPOSAL. Staff answered, the customer never came back, no survey: contained, not verified.",
+      "intent": "reset_password",
+      "mockAnswer": {
+        "resolutionClass": "contained",
+        "draftVerdict": "no_draft",
+        "reasons": [{ "text": "Staff gave the reset steps and the customer did not reply.", "factIds": ["f2"] }],
+        "kbGap": true
+      },
+      "input": {
+        "turns": [
+          { "from": "customer", "text": "I cannot sign in, I forgot my password." },
+          { "from": "staff", "text": "Use Forgot password on the sign in page and follow the emailed link." }
+        ]
+      },
+      "expect": { "resolutionClass": "contained", "kbGap": true, "maxViolations": 0 }
+    },
+    {
+      "id": "prop-grader-promise-violation",
+      "agent": "grader",
+      "description": "PROPOSAL. A staff reply that promises a refund date nobody can promise is a policy violation that cites the reply.",
+      "intent": "billing_question",
+      "mockAnswer": {
+        "resolutionClass": "contained",
+        "draftVerdict": "no_draft",
+        "policyViolations": [{ "code": "promise", "text": "The reply promises a refund by Friday.", "factIds": ["f2"] }],
+        "reasons": [{ "text": "The refund question was answered.", "factIds": ["f2"] }]
+      },
+      "input": {
+        "turns": [
+          { "from": "customer", "text": "When will I get my refund?" },
+          { "from": "staff", "text": "You will definitely have your refund by Friday." }
+        ]
+      },
+      "expect": { "minViolations": 1, "resolutionClassIn": ["contained", "assumed"] }
+    },
+    {
+      "id": "prop-grader-customer-denies",
+      "agent": "grader",
+      "description": "PROPOSAL. The customer says it did not work: never verified, even if the model says so.",
+      "intent": "reset_password",
+      "mockAnswer": {
+        "resolutionClass": "verified",
+        "draftVerdict": "no_draft",
+        "reasons": [{ "text": "The customer replied after the answer.", "factIds": ["f2"] }]
+      },
+      "input": {
+        "turns": [
+          { "from": "customer", "text": "I cannot sign in." },
+          { "from": "staff", "text": "Please reset your password from the sign in page." },
+          { "from": "customer", "text": "That did not work, same error." }
+        ],
+        "csat": { "score": 1, "resolved": false }
+      },
+      "expect": { "resolutionClass": "assumed" }
+    },
+    {
+      "id": "prop-kb-author-no-customer-detail",
+      "agent": "kb_author",
+      "description": "PROPOSAL. The article keeps the steps and none of the customer's own details.",
+      "intent": "reset_password",
+      "mockAnswer": {
+        "title": "Password reset email does not arrive",
+        "bodyMd": "## Symptoms\n\nThe reset email does not arrive.\n\n## Resolution\n\n1. Check the spam folder.\n2. Ask the user to request the email again.\n\n## When to escalate\n\nIf it still does not arrive, ask an engineer to check the mail logs.",
+        "intentTags": ["reset_password"],
+        "kind": "article"
+      },
+      "input": {
+        "subject": "Reset email does not arrive",
+        "turns": [
+          { "from": "customer", "text": "I asked for a reset email twice and nothing came." },
+          { "from": "staff", "text": "Please check the spam folder, then request the email again from the sign in page." }
+        ],
+        "intentKey": "reset_password",
+        "knownIntents": ["reset_password", "billing_question"]
+      },
+      "expect": { "drafted": true, "tagsInclude": ["reset_password"], "bodyMustNotContain": ["twice"] }
+    }
+  ]
+}

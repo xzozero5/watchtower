@@ -1,6 +1,7 @@
 packages:
   - 'apps/*'
   - 'packages/*'
+  - 'evals/*'
 
 # One version of each shared dev tool across the workspace. Reference with "catalog:".
 catalog:

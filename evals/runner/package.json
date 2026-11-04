@@ -1,0 +1,31 @@
+{
+  "name": "@watchtower/eval-runner",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "dist/cli.js",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "eval": "tsc -p tsconfig.build.json && node dist/cli.js run",
+    "replay": "tsc -p tsconfig.build.json && node dist/cli.js replay"
+  },
+  "dependencies": {
+    "@watchtower/ai": "workspace:*",
+    "@watchtower/db": "workspace:*",
+    "@watchtower/shared": "workspace:*",
+    "drizzle-orm": "^0.45.4",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "eslint": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}
