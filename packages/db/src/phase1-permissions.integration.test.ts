@@ -41,6 +41,10 @@ const ADDED_LATER = [
   'ticket.read.masked',
   'ticket.dev.work',
   'ticket.dev.release.any',
+  // 0097 (T-303b)
+  'procedure.read',
+  'procedure.author',
+  'procedure.publish',
 ] as const;
 
 let testDb: TestDatabase;
