@@ -54,6 +54,7 @@ import { shiftEn } from './shift';
 import { rosterPlanEn } from './rosterPlan';
 import { slaEn } from './sla';
 import { statesEn } from './states';
+import { stage3En } from './stage3';
 import { statusEn } from './status';
 import { timelineEn } from './timeline';
 import { toastEn } from './toast';
@@ -112,6 +113,7 @@ export const en = {
   dashboard: dashboardEn,
   reports: reportsEn,
   procedure: procedureEn,
+  stage3: stage3En,
   outboxAdmin: outboxAdminEn,
   investigate: investigateEn,
 } as const;

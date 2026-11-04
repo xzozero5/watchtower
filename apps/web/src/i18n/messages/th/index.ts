@@ -18,6 +18,7 @@ import { customerTh } from './customer';
 import { dashboardTh } from './dashboard';
 import { reportsTh } from './reports';
 import { procedureTh } from './procedure';
+import { stage3Th } from './stage3';
 import { detailsTh } from './details';
 import { devHomeTh } from './devHome';
 import { errorsTh } from './errors';
@@ -106,6 +107,7 @@ export const th: Messages = {
   dashboard: dashboardTh,
   reports: reportsTh,
   procedure: procedureTh,
+  stage3: stage3Th,
   outboxAdmin: outboxAdminTh,
   investigate: investigateTh,
 };

@@ -1,4 +1,4 @@
-import type { Role } from '@watchtower/shared';
+import { AUTOSEND_DISCLOSURE_DEFAULT, type Role } from '@watchtower/shared';
 import type { Page } from '@playwright/test';
 
 import {
@@ -94,6 +94,7 @@ export async function mockConsole(page: Page, role: Role = 'head', overrides: Ro
       'GET /v1/tickets/stats': () => ({ json: STATS }),
       'GET /v1/autonomy': () => ({ json: autonomy() }),
       'GET /v1/ai/budget': () => ({ json: makeAiBudget() }),
+      'GET /v1/autonomy/disclosure': () => ({ json: AUTOSEND_DISCLOSURE_DEFAULT }),
       'POST /v1/autonomy/switches': (request) => {
         const body = request.body as { switch: string; on: boolean; reason: string };
         if (body.switch === 'ai_kill_switch') {

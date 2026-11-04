@@ -34,6 +34,7 @@ import { referenceKeys, useIntents } from '@/lib/tickets/queries';
 import { isFullIntent } from './intents-page';
 import { IntentAutonomyControl } from './intent-autonomy-control';
 import { ProcedureTab } from './procedure/procedure-tab';
+import { Stage3Tab } from './stage3/stage3-tab';
 
 export function IntentDetailPage({ intentId }: { intentId: string }) {
   return (
@@ -53,6 +54,16 @@ function IntentDetailBody({ intentId }: { intentId: string }) {
   const capOn = autonomy.data?.switches.find((s) => s.key === 'ai_stage_cap_pinned')?.on ?? false;
   const canHistory = can('ai.autonomy.set');
   const history = useIntentHistory(intentId, canHistory);
+
+  // After a fresh sign-in the owner comes back to `?tab=stage3&approve=<id>`: open that tab and that dialog.
+  // Read from the address on the client (not `useSearchParams`, which would need a Suspense boundary).
+  // This body only renders after the session loaded in the browser, so reading the address here is safe.
+  const [tab, setTab] = useState(() =>
+    new URLSearchParams(window.location.search).get('tab') === 'stage3' ? 'stage3' : 'details',
+  );
+  const [approveId, setApproveId] = useState<string | null>(() =>
+    new URLSearchParams(window.location.search).get('approve'),
+  );
 
   const pinEntry = history.data?.items.find((entry) => entry.change === 'pin');
   const pinnedBy =
@@ -78,10 +89,11 @@ function IntentDetailBody({ intentId }: { intentId: string }) {
         ) : !intent ? (
           <EmptyState icon={<SearchX />} title={t('admin.intents.notFound')} />
         ) : (
-          <Tabs defaultValue="details" className="flex flex-col">
+          <Tabs value={tab} onValueChange={setTab} className="flex flex-col">
             <TabsList className="border-b border-border px-4 pt-1.5 pb-2">
               <TabsTrigger value="details">{t('admin.intents.tabs.details')}</TabsTrigger>
               <TabsTrigger value="autonomy">{t('admin.intents.tabs.autonomy')}</TabsTrigger>
+              <TabsTrigger value="stage3">{t('stage3.tab')}</TabsTrigger>
               {can('procedure.read') ? (
                 <TabsTrigger value="procedure">{t('procedure.tab')}</TabsTrigger>
               ) : null}
@@ -105,6 +117,26 @@ function IntentDetailBody({ intentId }: { intentId: string }) {
                   canChange={can('ai.autonomy.set')}
                   canPin={can('ai.autonomy.set.any')}
                   pinnedBy={pinnedBy}
+                />
+              )}
+            </TabsContent>
+            <TabsContent value="stage3" className="p-4">
+              {autonomy.isPending ? (
+                <Skeleton className="h-24 max-w-xl" />
+              ) : autonomy.isError || !state ? (
+                <LoadError
+                  message={t('admin.ai.loadError')}
+                  onRetry={() => void autonomy.refetch()}
+                />
+              ) : (
+                <Stage3Tab
+                  intent={state}
+                  autosendFlag={autonomy.data.autosendFlag}
+                  approveId={approveId}
+                  onApproveHandled={() => {
+                    setApproveId(null);
+                    window.history.replaceState(null, '', window.location.pathname);
+                  }}
                 />
               )}
             </TabsContent>

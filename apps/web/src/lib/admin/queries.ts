@@ -294,6 +294,55 @@ export function useIntentHistory(intentId: string, enabled: boolean) {
   });
 }
 
+/** Stage 3 of one intent (T-304g): the promotion door, the gate reports, the promotions. */
+export const stage3Keys = (userId: string, intentId: string) =>
+  [...adminKeys(userId).all, 'stage3', intentId] as const;
+
+export function usePromotionState(intentId: string, enabled: boolean) {
+  const api = useApi();
+  const userId = useUserId();
+  return useQuery({
+    queryKey: [...stage3Keys(userId, intentId), 'state'] as const,
+    queryFn: ({ signal }) => api.promotionState(intentId, signal),
+    enabled,
+    staleTime: 10_000,
+  });
+}
+
+export function useGateReports(intentId: string, enabled: boolean) {
+  const api = useApi();
+  const userId = useUserId();
+  return useQuery({
+    queryKey: [...stage3Keys(userId, intentId), 'reports'] as const,
+    queryFn: ({ signal }) => api.gateReports(intentId, signal),
+    enabled,
+    staleTime: 10_000,
+  });
+}
+
+export function usePromotions(intentId: string, enabled: boolean) {
+  const api = useApi();
+  const userId = useUserId();
+  return useQuery({
+    queryKey: [...stage3Keys(userId, intentId), 'promotions'] as const,
+    queryFn: ({ signal }) => api.promotions(intentId, signal),
+    enabled,
+    staleTime: 10_000,
+  });
+}
+
+/** The footer of automatic replies. Any staff member may read it. */
+export function useAutosendDisclosure(enabled: boolean) {
+  const api = useApi();
+  const userId = useUserId();
+  return useQuery({
+    queryKey: [...adminKeys(userId).all, 'autosend-disclosure'] as const,
+    queryFn: ({ signal }) => api.autosendDisclosure(signal),
+    enabled,
+    staleTime: 30_000,
+  });
+}
+
 export type AuditFilters = Pick<
   AuditLogQuery,
   'actorId' | 'actorType' | 'action' | 'outcome' | 'targetType' | 'targetId' | 'from' | 'to'

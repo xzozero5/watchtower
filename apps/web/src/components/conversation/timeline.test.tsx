@@ -112,6 +112,72 @@ describe('timeline: infected attachment event', () => {
   });
 });
 
+describe('timeline: automatic replies (Stage 3)', () => {
+  it('marks a reply the AI sent on its own', () => {
+    const sent = makeScheduledReply(1, ticket, 0, {
+      sender: { type: 'system', id: null, name: null },
+      deliveryStatus: 'delivered',
+      delivery: {
+        id: uuid(4000),
+        state: 'sent',
+        origin: 'ai_auto',
+        channel: 'portal',
+        sendAt: at(0),
+        cancellable: false,
+        attempts: 1,
+        errorCode: null,
+        outcomeUnknown: false,
+        sentAt: at(0),
+      },
+    });
+    renderApp(<Timeline entries={[sent]} />);
+    expect(screen.getByText('Sent automatically by AI')).toBeVisible();
+  });
+
+  it('does not mark a reply a person approved', () => {
+    renderApp(<Timeline entries={[makeScheduledReply(1, ticket, 5000)]} />);
+    expect(screen.queryByText('Sent automatically by AI')).toBeNull();
+  });
+
+  it('says in plain words why the AI was held back', () => {
+    const event: TimelineEntry = {
+      kind: 'event',
+      id: uuid(3002),
+      ticketId: ticket.id,
+      ticketKey: ticket.key,
+      type: 'autonomy.autosend_held',
+      actor: { type: 'ai', id: null, name: null },
+      visibility: 'internal',
+      payload: {
+        aiDraftId: uuid(4001),
+        reason: 'customer_wants_human',
+        failed: ['customer_wants_human'],
+      },
+      createdAt: at(1),
+    };
+    renderApp(<Timeline entries={[event]} />);
+    expect(
+      screen.getByText(/AI meant to send but was held: the customer asked for a person/),
+    ).toBeVisible();
+  });
+
+  it('names a code it does not know instead of hiding it', () => {
+    const event: TimelineEntry = {
+      kind: 'event',
+      id: uuid(3003),
+      ticketId: ticket.id,
+      ticketKey: ticket.key,
+      type: 'autonomy.autosend_held',
+      actor: { type: 'ai', id: null, name: null },
+      visibility: 'internal',
+      payload: { reason: 'some_new_rule' },
+      createdAt: at(1),
+    };
+    renderApp(<Timeline entries={[event]} />);
+    expect(screen.getByText(/the check "some_new_rule" did not pass/)).toBeVisible();
+  });
+});
+
 describe('timeline: sides and surfaces', () => {
   it('puts the customer on the left on a raised surface and the team on the right on a navy tint', () => {
     renderApp(<Timeline entries={[inbound(1, 0), reply(2, 1)]} />);
