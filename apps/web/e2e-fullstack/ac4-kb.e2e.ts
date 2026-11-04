@@ -132,7 +132,11 @@ test.describe.serial('AC-4: KB search with a section citation; a gap becomes a d
 
   test('searching "webhook retry" returns the article with a section-level citation', async () => {
     // Indexing is the worker's job after the publish; poll for the hit, not for a fixed time.
-    let hit: Hit | undefined;
+    // The search returns up to two chunks of one article. "webhook retry" matches both the opening
+    // chunk (under the title) and the "Backoff schedule" chunk equally in the keyword list, and ties
+    // are broken by chunk id (a random uuid), so which comes first is not defined. Look at the
+    // article's hits as a set, not at whichever one happens to be first.
+    let hits: Hit[] = [];
     await expect
       .poll(
         async () => {
@@ -140,15 +144,16 @@ test.describe.serial('AC-4: KB search with a section citation; a gap becomes a d
             `/v1/kb/search?q=${encodeURIComponent('webhook retry')}`,
           );
           expect(found.status).toBe(200);
-          hit = found.json.hits.find((candidate) => candidate.articleId === article.id);
-          return hit !== undefined;
+          hits = found.json.hits.filter((candidate) => candidate.articleId === article.id);
+          return hits.length > 0;
         },
         { message: 'the published article reaches the search index' },
       )
       .toBe(true);
-    expect(hit?.title).toBe(title);
-    expect(hit?.section, 'a citation down to the section').toContain(sectionHeading);
-    expect(hit?.snippet).toContain('1, 5 and 30 minutes');
+    expect(hits.every((hit) => hit.title === title)).toBe(true);
+    const cited = hits.find((hit) => hit.section.includes(sectionHeading));
+    expect(cited, 'a citation down to the section').toBeDefined();
+    expect(cited?.snippet).toContain('1, 5 and 30 minutes');
   });
 
   test('a ticket is answered and resolved in the workspace without citing any article', async () => {

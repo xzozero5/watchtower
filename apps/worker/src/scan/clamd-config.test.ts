@@ -32,6 +32,11 @@ describe('config/clamav/clamd.conf', () => {
     expect(setting('StreamMaxLength')).toBe('25M');
   });
 
+  it('does not log to /dev/stdout: clamd refuses a symlink and exits before it listens (T-180, real image)', () => {
+    expect(setting('LogFile')).toBeUndefined();
+    expect(setting('Foreground')).toBe('yes');
+  });
+
   it('is mounted read-only into the clamav container', () => {
     expect(service('clamav')).toContain('./config/clamav/clamd.conf:/etc/clamav/clamd.conf:ro');
   });
@@ -47,6 +52,12 @@ describe('the clamav container (C-5, C-6)', () => {
       expect(service(name)).not.toMatch(/- scan\b/);
     }
     expect(compose).toMatch(/\nnetworks:[\s\S]*\n {2}scan: \{\}/);
+  });
+
+  it('is healthy only when clamd answers PING on 127.0.0.1 (the image script asks ::1 and never succeeds)', () => {
+    const clamav = service('clamav');
+    expect(clamav).toContain('nc -w 3 127.0.0.1 3310');
+    expect(clamav).not.toMatch(/test: \[[^\]]*clamdcheck/);
   });
 
   it('is hardened: no new privileges, capabilities dropped, a process limit', () => {

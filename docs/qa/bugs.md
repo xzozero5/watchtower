@@ -42,6 +42,28 @@ P3 cosmetic or rare, P4 polish. Developers fix; QA verifies. Do not edit an entr
 - **Update 2026-11-04 (AC-7 spec finished):** the element axe reports is the notification bell in the rail (`components/notifications/notification-center.tsx`, `data-testid="notification-bell"`), and also the banner link (`Open OPS-n`, as first suspected), in the same run. The bell: `aria-label="Notifications, 1 unread"` while the visible text reads "1" (the badge, placed before the title in the DOM) then "Notifications". It shows whenever the user has an unread notification, on any page. `[UNVERIFIED 70%]` for the cause (the order of badge and title); `ac7-shifts.e2e.ts` excludes both from the scan with a comment pointing here; remove the two `exclude` lines when fixed.
 - **Status:** fixed 2026-11-04 (T-178) `[TESTED]` at component level; the fullstack e2e (`ac7-shifts.e2e.ts`) no longer excludes either element, but it was not run on this branch `[UNVERIFIED]`. Banner link name is now `Open ticket OPS-n` (visible text `Open ticket`); the bell renders its title before the badge in the DOM (CSS `order` keeps the icon first) so the visible text `Notifications 1` is contained in `Notifications, 1 unread`; the Thai unread label was reworded to start with the visible title and put the count right after it.
 
+- **Update 2026-11-04 (T-207 pass, QA):** the T-178 fix was **not enough**: full-stack `ac7-shifts.e2e.ts` still failed on `label-content-name-mismatch` for the bell (`aria-label="Notifications 1 unread"`). Cause `[TESTED]`: the title and the badge are two adjacent `<span>`s with nothing between them, and axe joins their text as `Notifications1`, which is not contained in `Notifications 1 unread` (reproduced on a bare HTML page: no space fails, a space passes). Fixed by a `{' '}` between the two spans (rendered nothing in a flex row). Full-stack ac7 passes with it `[TESTED]`.
+
+### B-005 (P2) ClamAV container never starts clamd: `LogFile /dev/stdout` (T-180)
+
+- **Found:** 2026-11-04, first run of `clamav/clamav:1.5.3` with `config/clamav/clamd.conf` and the compose caps.
+- **Actual:** `ERROR: Failed to open log file /dev/stdout: Symbolic link loop`, then the entrypoint waits for a socket that never comes (1800 s). clamd refuses to open a symlink as its log file, so it exits before it listens; the `scan` profile would sit unhealthy and every upload would stay `pending`.
+- **Fix applied:** no `LogFile` line; with `Foreground yes` clamd logs to the console (`docker logs`). `clamd-config.test.ts` pins it. `[TESTED]` on the real image with `cap_drop ALL` + CHOWN/SETUID/SETGID/DAC_OVERRIDE/FOWNER and `no-new-privileges`.
+
+### B-006 (P2) ClamAV healthcheck can never pass (T-180)
+
+- **Found:** 2026-11-04. `clamdcheck.sh` of the image pings `localhost`, which resolves to `::1` first; clamd listens on IPv4 only (`TCPAddr 0.0.0.0`) so it prints "Unable to contact server" forever and the container stays `starting`/`unhealthy`.
+- **Fix applied:** compose healthcheck is the same PING against `127.0.0.1` (`nc -w 3`). `[TESTED]` healthy after ~30 s with signatures already in the volume.
+
+### B-007 (P2, open, risk) ClamAV answers OK for an archive whose member is larger than `MaxFileSize` / `MaxScanSize` (T-180)
+
+- **Found:** 2026-11-04. With `AlertExceedsMax yes`, `MaxFileSize 25M`, `MaxScanSize 100M`: a zip holding a 30 MB member and one holding a 150 MB member (both a few hundred KB on the wire) are answered `OK` by INSTREAM and by `clamdscan`; `clamscan --debug` shows only ~27 MiB of the 150 MB scanned and no `Heuristics.Limits.Exceeded`. A password-protected zip is caught (`Heuristics.Encrypted.Zip FOUND`), a top-level stream over `StreamMaxLength` is an `ERROR` (never served).
+- **Impact:** the part of a large archive member beyond ~25 MB is never looked at, yet the file is marked `clean`. Not fixable by `clamd.conf` as far as tested; options for the owner: reject archive types (or archives whose declared uncompressed size is large) at upload, or accept the risk for staff-only downloads. Recorded in `docs/runbooks/local-poc.md` 5c. `[ASK-HUMAN]` for the decision.
+
+### B-008 (P3, test, fixed) `ac4-kb.e2e.ts` failed about half the runs
+
+- **Found:** 2026-11-04 (main regression). The test read the first hit of the article for "webhook retry" and expected section "Backoff schedule". The title chunk and that section score the same in the keyword list (`word_similarity` 1 for both words) and ties are broken by chunk id (a random uuid), so either can come first. Not an app bug (up to two chunks of one article are returned by design); the test now looks at the article's hits as a set. Passed in the 3 full runs after the change. Related, not fixed: `ac1-gmail` "5.1 step 4" (a KB card with a section citation) failed once in 3 runs with the same kind of tie in the brief's KB retrieval; it needs the owner of the retrieval ordering.
+
 ## Observations that are not bugs (recorded so nobody re-investigates them)
 
 - A reply to a LINE ticket within ~50 s of the customer's last message uses the free reply token (not a push, quota unchanged). Correct per R-2.10; a push only follows after the token window.
