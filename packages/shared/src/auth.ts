@@ -54,6 +54,8 @@ export const AUTH_ERROR_CODES = [
   // Investigation tools (T-203d): the system a button reaches is not connected here (503), or it did not answer (502/504).
   'tool_not_connected',
   'tool_failed',
+  // Email reply (T-171 C-2): a recipient is on a domain the customer is not linked to; the body carries `domains`.
+  'external_recipients',
 ] as const;
 export type AuthErrorCode = (typeof AUTH_ERROR_CODES)[number];
 

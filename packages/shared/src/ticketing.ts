@@ -572,6 +572,11 @@ export const emailReplySchema = z.object({
       'subject is one line',
     )
     .optional(),
+  /**
+   * The person confirmed that the reply may go to domains the customer is not linked to (the api
+   * answers 409 `external_recipients` with the domains until this is true). Audited with the domains.
+   */
+  confirmExternalRecipients: z.boolean().optional(),
   /** The composed HTML. Sanitised on the server before it is stored or sent. */
   bodyHtml: z.string().max(400_000).optional(),
   /** Uploaded images (`attachmentIds`) that the HTML shows with `cid:<contentId>`; sent inline, not as files. */

@@ -1,7 +1,7 @@
 import { createMemoryObjectStore } from '@watchtower/channels';
 import { describe, expect, it, vi } from 'vitest';
 
-import { emailRecipientsOf, loadMailAttachments } from './dispatcher.js';
+import { AttachmentUnreadable, emailRecipientsOf, loadMailAttachments } from './dispatcher.js';
 
 const logger = { warn: vi.fn(), info: vi.fn(), error: vi.fn(), debug: vi.fn() } as never;
 
@@ -25,7 +25,7 @@ describe('emailRecipientsOf', () => {
 });
 
 describe('loadMailAttachments', () => {
-  it('loads files, marks cid images inline and skips what is missing', async () => {
+  it('loads files and marks cid images inline', async () => {
     const store = createMemoryObjectStore();
     await store.put('k/logo', Uint8Array.from([1, 2]), 'image/png');
     const files = await loadMailAttachments(
@@ -38,7 +38,6 @@ describe('loadMailAttachments', () => {
           contentId: '<l@wt>',
           disposition: 'inline',
         },
-        { objectKey: 'k/gone', filename: 'gone.txt', contentType: 'text/plain' },
       ],
       logger,
     );
@@ -46,9 +45,40 @@ describe('loadMailAttachments', () => {
     expect(files[0]).toMatchObject({ filename: 'logo.png', contentId: 'l@wt', inline: true });
   });
 
-  it('sends no files without an object store', async () => {
-    expect(
-      await loadMailAttachments(undefined, [{ objectKey: 'k', filename: 'a' }], logger),
-    ).toEqual([]);
+  it('refuses to send when a file is missing from the store (C-8: no mail without its files)', async () => {
+    const store = createMemoryObjectStore();
+    await store.put('k/ok', Uint8Array.from([1]), 'text/plain');
+    await expect(
+      loadMailAttachments(
+        store,
+        [
+          { objectKey: 'k/ok', filename: 'ok.txt', contentType: 'text/plain' },
+          { objectKey: 'k/gone', filename: 'gone.txt', contentType: 'text/plain' },
+        ],
+        logger,
+      ),
+    ).rejects.toMatchObject({
+      name: 'AttachmentUnreadable',
+      filename: 'gone.txt',
+      transient: false,
+    });
+  });
+
+  it('marks a store that fails to answer as transient, so the delivery is retried', async () => {
+    const store = {
+      ...createMemoryObjectStore(),
+      get: () => Promise.reject(new Error('connection reset')),
+    };
+    await expect(
+      loadMailAttachments(store, [{ objectKey: 'k', filename: 'a.txt' }], logger),
+    ).rejects.toMatchObject({ name: 'AttachmentUnreadable', transient: true });
+  });
+
+  it('refuses when files are listed but no object store is configured, and has nothing to do without files', async () => {
+    await expect(
+      loadMailAttachments(undefined, [{ objectKey: 'k', filename: 'a' }], logger),
+    ).rejects.toBeInstanceOf(AttachmentUnreadable);
+    expect(await loadMailAttachments(undefined, [], logger)).toEqual([]);
+    expect(await loadMailAttachments(undefined, undefined, logger)).toEqual([]);
   });
 });

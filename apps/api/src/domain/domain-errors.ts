@@ -1,3 +1,4 @@
+import { HttpException, HttpStatus } from '@nestjs/common';
 import { isDomainError, type DomainErrorCode } from '@watchtower/domain';
 
 import {
@@ -26,11 +27,39 @@ const HTTP_ERRORS: Readonly<Record<DomainErrorCode, (message: string) => ApiHttp
   bad_request: badRequest,
   policy_denied: forbidden,
   forbidden,
+  // Built with its domains in `toHttpError`; this entry is only the fallback without them.
+  external_recipients: conflict,
 };
+
+/** 409 `external_recipients`: the body also carries the `domains` the person has to confirm (T-171 C-2). */
+export class ExternalRecipientsError extends HttpException {
+  readonly code = 'external_recipients';
+
+  constructor(message: string, readonly domains: readonly string[]) {
+    super(
+      {
+        statusCode: HttpStatus.CONFLICT,
+        error: 'Conflict',
+        code: 'external_recipients',
+        message,
+        domains,
+      },
+      HttpStatus.CONFLICT,
+    );
+  }
+}
 
 /** A `DomainError` becomes its HTTP error; anything else passes through untouched. */
 export function toHttpError(error: unknown): unknown {
-  return isDomainError(error) ? HTTP_ERRORS[error.code](error.message) : error;
+  if (!isDomainError(error)) return error;
+  if (error.code === 'external_recipients') {
+    const domains = error.details?.domains;
+    return new ExternalRecipientsError(
+      error.message,
+      Array.isArray(domains) ? (domains as string[]) : [],
+    );
+  }
+  return HTTP_ERRORS[error.code](error.message);
 }
 
 /** Runs domain work and answers its refusals with the api's HTTP errors. */

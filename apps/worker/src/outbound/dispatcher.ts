@@ -125,32 +125,59 @@ export function emailRecipientsOf(meta: unknown): {
   };
 }
 
-/** Files of a message read from object storage; one that cannot be read is left out, not fatal. */
+/**
+ * A file the person attached cannot be read. The mail is NOT sent without it (T-171 C-8): a reply that
+ * says "see the attached" and arrives empty is worse than a reply that waits. `transient` is true when
+ * the store failed to answer (try again), false when the file is simply not there (give up and say so).
+ */
+export class AttachmentUnreadable extends Error {
+  readonly transient: boolean;
+  readonly filename: string;
+
+  constructor(filename: string, transient: boolean) {
+    super(`attachment cannot be read: ${transient ? 'storage unavailable' : 'not found'}`);
+    this.name = 'AttachmentUnreadable';
+    this.filename = filename;
+    this.transient = transient;
+  }
+}
+
+/**
+ * Files of a message read from object storage. Every listed file must be readable; if one is not,
+ * `AttachmentUnreadable` is thrown and nothing is sent. A record without a key (nothing to read) is
+ * skipped, as before.
+ */
 export async function loadMailAttachments(
   objects: ObjectStore | undefined,
   attachments: unknown,
   logger: WorkerLogger,
 ): Promise<MailFile[]> {
-  if (objects === undefined || !Array.isArray(attachments)) return [];
+  if (!Array.isArray(attachments)) return [];
   const files: MailFile[] = [];
   for (const item of attachments as Record<string, unknown>[]) {
     const { objectKey, filename, contentType, contentId, disposition } = item;
     if (typeof objectKey !== 'string' || typeof filename !== 'string') continue;
+    if (objects === undefined) throw new AttachmentUnreadable(filename, false);
+    let data: Uint8Array | null;
     try {
-      const data = await objects.get(objectKey);
-      if (data === null) continue;
-      files.push({
-        filename,
-        contentType: typeof contentType === 'string' ? contentType : 'application/octet-stream',
-        data,
-        ...(typeof contentId === 'string' && contentId !== ''
-          ? { contentId: contentId.replace(/^<|>$/g, '') }
-          : {}),
-        inline: disposition === 'inline' && typeof contentId === 'string' && contentId !== '',
-      });
+      data = await objects.get(objectKey);
     } catch (error) {
       logger.warn({ err: error, filename }, 'attachment could not be read for the email');
+      throw new AttachmentUnreadable(filename, true);
     }
+    if (data === null) {
+      logger.warn({ filename }, 'attachment is missing from the object store');
+      throw new AttachmentUnreadable(filename, false);
+    }
+    files.push({
+      filename,
+      contentType: typeof contentType === 'string' ? contentType : 'application/octet-stream',
+      data,
+      ...(typeof contentId === 'string' && contentId !== ''
+        ? { contentId: contentId.replace(/^<|>$/g, '') }
+        : {}),
+      inline: disposition === 'inline' && typeof contentId === 'string' && contentId !== '',
+    });
   }
   return files;
 }
@@ -385,6 +412,22 @@ export function createOutboundDispatcher(deps: DispatcherDeps) {
     const recipient = parent?.fromAddress ?? requester?.emails[0] ?? null;
     if (recipient === null) return failNow(delivery, 'no_recipient');
     const email = emailRecipientsOf(message.emailMeta);
+    let files: MailFile[];
+    try {
+      files = await loadMailAttachments(deps.objects, message.attachments, logger);
+    } catch (error) {
+      if (!(error instanceof AttachmentUnreadable)) throw error;
+      // Nothing was dispatched, so this is a certain non-delivery: retry while the store is down,
+      // fail where the agent sees it (`attachment_unreadable`) when the file is gone.
+      if (!error.transient) return failNow(delivery, 'attachment_unreadable');
+      return conclude(
+        delivery,
+        decideFailure(
+          { kind: 'attachment_unavailable', retryable: true, outcomeUnknown: false },
+          { route: null, attempts: delivery.attempts },
+        ),
+      );
+    }
     const threadId = context.gmailThreadId ?? undefined;
     // The route is written once (T-122f F-3): a retry keeps the label of the attempt that set it.
     const route: DeliveryRoute =
@@ -415,7 +458,7 @@ export function createOutboundDispatcher(deps: DispatcherDeps) {
       ...(email.subject === null ? {} : { subject: email.subject }),
       textBody: message.bodyText,
       ...(message.bodyHtml === null ? {} : { htmlBody: message.bodyHtml }),
-      attachments: await loadMailAttachments(deps.objects, message.attachments, logger),
+      attachments: files,
       messageId,
       ...(threadId === undefined ? {} : { threadId }),
       ticketKey: ticketKeys.format(ticket.number),
