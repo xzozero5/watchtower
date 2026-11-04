@@ -56,6 +56,8 @@ export const AI_JOBS = {
   draft: 'draft',
   /** Write a draft article for review from a resolved ticket that cited nothing (T-108e, AC-4). */
   kbAuthor: 'kb_author',
+  /** Grade one resolved ticket: resolution class, draft quality, policy violations, KB gap (T-301, PRD 6.2). */
+  grade: 'grade',
 } as const;
 
 /** Payload of an `ai` `investigate` job. `requestedBy` is the person who asked, or null when the system did. */
@@ -90,6 +92,89 @@ export type AiKbAuthorJob = z.infer<typeof aiKbAuthorJobSchema>;
  * status). AC-4 wants the draft article within 5 minutes; the job itself takes seconds.
  */
 export const KB_AUTHOR_DELAY_MS = 30_000;
+
+/**
+ * T-301. How a resolved ticket ended (PRD 6.2, 6.4). The grader proposes a class and the code caps it
+ * by what the facts support (a model's word is not enough for `verified`):
+ *  - `verified`: the customer said it worked (a CSAT answer "resolved", or a customer message after the
+ *    last staff reply that confirms it) and the ticket was not reopened;
+ *  - `contained`: staff answered and the customer did not come back, but nobody confirmed;
+ *  - `assumed`: the ticket was closed with no answer to learn from, or the customer said it did not work.
+ */
+export const RESOLUTION_CLASSES = ['verified', 'contained', 'assumed'] as const;
+export const resolutionClassSchema = z.enum(RESOLUTION_CLASSES);
+export type ResolutionClass = z.infer<typeof resolutionClassSchema>;
+
+/** How the AI draft compares with the reply that was sent (T-301). `no_draft`: there was none to compare. */
+export const DRAFT_VERDICTS = ['matches', 'partial', 'differs', 'no_draft'] as const;
+export const draftVerdictSchema = z.enum(DRAFT_VERDICTS);
+export type DraftVerdict = z.infer<typeof draftVerdictSchema>;
+
+export const POLICY_VIOLATION_CODES = [
+  'disclosure',
+  'promise',
+  'unsupported_claim',
+  'tone',
+  'other',
+] as const;
+
+/** Payload of an `ai` `grade` job. `reopenCount` names the resolution it is about (a reopen starts a new one). */
+export const aiGradeJobSchema = z.object({
+  ticketId: z.uuid(),
+  reopenCount: z.number().int().min(0).default(0),
+});
+export type AiGradeJob = z.infer<typeof aiGradeJobSchema>;
+
+/**
+ * [ASSUMED] The grader waits this long after a resolve, so a quick reopen cancels it (the job checks the
+ * status and the reopen count) and a fast "thank you" can be read.
+ */
+export const GRADE_DELAY_MS = 30 * 60_000;
+
+/** One intent's numbers over a window: what the promotion report (T-304) reads. No verdict here. */
+export const intentGradeMetricsSchema = z.object({
+  intentKey: z.string().nullable(),
+  graded: z.number().int().min(0),
+  verified: z.number().int().min(0),
+  contained: z.number().int().min(0),
+  assumed: z.number().int().min(0),
+  /** Share of graded tickets (0..1); 0 when none were graded. */
+  verifiedRate: z.number().min(0).max(1),
+  containedRate: z.number().min(0).max(1),
+  assumedRate: z.number().min(0).max(1),
+  /** Mean draft quality (0..1) over graded tickets that had a draft; null when none had. */
+  avgDraftQuality: z.number().min(0).max(1).nullable(),
+  draftsCompared: z.number().int().min(0),
+  policyViolations: z.number().int().min(0),
+  kbGaps: z.number().int().min(0),
+  /** Graded tickets that were reopened after that resolution. */
+  reopened: z.number().int().min(0),
+  reopenRate: z.number().min(0).max(1),
+  csatAnswered: z.number().int().min(0),
+  csatAvg: z.number().min(0).max(5).nullable(),
+  /** The drafts people acted on in the window: what the stage-2 gate counts. */
+  draftsApproved: z.number().int().min(0),
+  draftsEdited: z.number().int().min(0),
+  draftsRejected: z.number().int().min(0),
+  avgEditDistance: z.number().min(0).nullable(),
+  /** At least one graded row came from the mock provider: the numbers are a demo. */
+  mock: z.boolean(),
+});
+export type IntentGradeMetrics = z.infer<typeof intentGradeMetricsSchema>;
+
+export const intentGradeMetricsQuerySchema = z.object({
+  /** Window length in days, ending now. */
+  days: z.coerce.number().int().min(1).max(365).default(28),
+});
+export type IntentGradeMetricsQuery = z.infer<typeof intentGradeMetricsQuerySchema>;
+
+export const intentGradeMetricsResponseSchema = z.object({
+  windowDays: z.number().int().min(1),
+  from: z.iso.datetime(),
+  to: z.iso.datetime(),
+  intents: z.array(intentGradeMetricsSchema),
+});
+export type IntentGradeMetricsResponse = z.infer<typeof intentGradeMetricsResponseSchema>;
 
 /**
  * Budgets of the tools (N2, PRD R-5.1). Counted from `tool_execution`, outside any run's handle.

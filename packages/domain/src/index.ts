@@ -269,6 +269,12 @@ export {
   type RejectAiDraftInput,
 } from './ai/drafts.js';
 export {
+  hasResolutionGrade,
+  intentGradeMetrics,
+  recordResolutionGrade,
+  type NewResolutionGrade,
+} from './ai/grades.js';
+export {
   createAiKbDraft,
   ticketKbGap,
   type AiKbDraftInput,

@@ -35,3 +35,8 @@ Current prompts (T-106e): `classifier.v1.md` (type of message + intent + confide
 the highest version through `loadPromptCatalog()`; `package.json` lists `prompts` in `files`, so a
 deployed copy carries them. The `{{intents}}` slot of the classifier is filled from the instance's
 own intent list at run time, so the file holds nothing organisation-specific.
+
+T-301 adds `grader.v1.md` (a resolved ticket's facts in, a cited verdict out: `verified|contained|assumed`, draft
+verdict and quality, policy violations, KB gap; `{{language}}` slot). The class the model proposes is capped in code
+by what the facts support (`capResolutionClass`), so a prompt change cannot make `verified` easier to reach. The eval
+runner (`evals/runner`) can run any case at every version of a prompt (`--all-versions`).

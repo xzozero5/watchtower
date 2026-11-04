@@ -305,6 +305,78 @@ function authorArticle(request: LlmRequest): string {
   return JSON.stringify({ title: subject.slice(0, 100), bodyMd, intentTags: [], kind: 'article' });
 }
 
+/**
+ * Grader: the class follows the facts (a survey that says resolved is `verified`, a staff reply with no
+ * confirmation is `contained`, no reply is `assumed`); the draft is compared with the reply by the share
+ * of words they have in common. Not a judgement of quality: a stand-in so the pipeline can be exercised.
+ */
+function gradeResolution(request: LlmRequest): string {
+  const raw = request.messages[0]?.content ?? '';
+  const thai = /Write in Thai/.test(request.system);
+  const facts = [...raw.matchAll(/^\[f(\d+)\] (\w+): (.*)$/gm)].map((match) => ({
+    id: `f${match[1] ?? ''}`,
+    role: match[2] ?? '',
+    text: match[3] ?? '',
+  }));
+  const find = (role: string) => facts.find((fact) => fact.role === role);
+  const reply = facts.find((fact) => fact.role === 'staff_reply');
+  const draftFact = find('ai_draft');
+  const csat = find('csat');
+  const kb = find('kb');
+  let resolutionClass = 'contained';
+  const cites: string[] = [];
+  if (reply === undefined) resolutionClass = 'assumed';
+  else cites.push(reply.id);
+  if (csat !== undefined && /Resolved: yes/.test(csat.text)) {
+    resolutionClass = 'verified';
+    cites.push(csat.id);
+  } else if (csat !== undefined && /Resolved: no/.test(csat.text)) {
+    resolutionClass = 'assumed';
+    cites.push(csat.id);
+  }
+  const wordsOf = (text: string): Set<string> =>
+    new Set(
+      text
+        .toLowerCase()
+        .split(/[^\p{L}\p{N}]+/u)
+        .filter((word) => word.length > 2),
+    );
+  let draftVerdict = 'no_draft';
+  let draftQuality = 0;
+  if (draftFact !== undefined && reply !== undefined) {
+    const a = wordsOf(draftFact.text);
+    const b = wordsOf(reply.text);
+    const shared = [...a].filter((word) => b.has(word)).length;
+    const overlap = a.size + b.size - shared === 0 ? 0 : shared / (a.size + b.size - shared);
+    draftQuality = Math.round(overlap * 100) / 100;
+    draftVerdict = overlap >= 0.6 ? 'matches' : overlap >= 0.25 ? 'partial' : 'differs';
+    cites.push(draftFact.id);
+  } else if (draftFact !== undefined) {
+    draftVerdict = 'differs';
+  }
+  const kbGap = reply !== undefined && kb !== undefined && /No knowledge base/.test(kb.text);
+  const text =
+    resolutionClass === 'verified'
+      ? thai
+        ? 'ลูกค้ายืนยันว่าแก้ไขได้แล้ว'
+        : 'The customer confirmed the problem was solved.'
+      : resolutionClass === 'contained'
+        ? thai
+          ? 'ทีมตอบแล้วและลูกค้าไม่ติดต่อกลับ แต่ยังไม่มีใครยืนยัน'
+          : 'Staff answered and the customer did not come back, but nobody confirmed it.'
+        : thai
+          ? 'ยังไม่มีคำตอบจากทีมให้เรียนรู้'
+          : 'There is no staff answer to learn from.';
+  return JSON.stringify({
+    resolutionClass,
+    draftVerdict,
+    draftQuality,
+    policyViolations: [],
+    kbGap,
+    reasons: [{ text, factIds: cites.slice(0, 3) }],
+  });
+}
+
 export class DevMockLlmProvider implements LlmProvider {
   readonly kind = 'mock';
   private readonly pinned: MockLlmProvider;
@@ -337,6 +409,9 @@ export class DevMockLlmProvider implements LlmProvider {
         break;
       case 'kb_author':
         text = authorArticle(request);
+        break;
+      case 'grader':
+        text = gradeResolution(request);
         break;
       case 'assistant_plan':
         text = assistantPlan(request);

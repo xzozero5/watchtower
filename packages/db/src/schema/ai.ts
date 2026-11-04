@@ -15,6 +15,7 @@ import {
   smallint,
   text,
   timestamp,
+  unique,
   uuid,
 } from 'drizzle-orm/pg-core';
 
@@ -154,3 +155,48 @@ export type NewAiRunRow = typeof aiRun.$inferInsert;
 export type ToolExecutionRow = typeof toolExecution.$inferSelect;
 export type AiTicketInsightRow = typeof aiTicketInsight.$inferSelect;
 export type NewAiTicketInsightRow = typeof aiTicketInsight.$inferInsert;
+
+/**
+ * The grader's verdict on one resolution of a ticket (T-301, migration 0094). The SQL file is the
+ * source of truth for the CHECKs. A measurement only: nothing here changes a stage or reaches a customer.
+ */
+export const aiResolutionGrade = pgTable(
+  'ai_resolution_grade',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    ticketId: uuid('ticket_id')
+      .notNull()
+      .references(() => ticket.id, { onDelete: 'restrict' }),
+    cycle: integer('cycle').notNull().default(0),
+    intentKey: text('intent_key'),
+    /** `verified`, `contained` or `assumed`, after the code capped what the model said. */
+    resolutionClass: text('resolution_class').notNull(),
+    modelClass: text('model_class'),
+    draftId: uuid('draft_id'),
+    /** `matches`, `partial`, `differs` or `no_draft`. */
+    draftVerdict: text('draft_verdict').notNull().default('no_draft'),
+    draftQuality: real('draft_quality'),
+    policyViolations: jsonb('policy_violations')
+      .notNull()
+      .default(sql`'[]'::jsonb`),
+    violationCount: integer('violation_count').notNull().default(0),
+    kbGap: boolean('kb_gap').notNull().default(false),
+    reasoning: jsonb('reasoning')
+      .notNull()
+      .default(sql`'[]'::jsonb`),
+    csatScore: smallint('csat_score'),
+    csatResolved: boolean('csat_resolved'),
+    aiRunId: uuid('ai_run_id'),
+    promptVersion: integer('prompt_version').notNull(),
+    mock: boolean('mock').notNull().default(false),
+    gradedAt: timestamptz('graded_at').notNull().defaultNow(),
+  },
+  (table) => [
+    unique('ai_resolution_grade_ticket_cycle_key').on(table.ticketId, table.cycle),
+    index('ai_resolution_grade_intent_idx').on(table.intentKey, table.gradedAt.desc()),
+    index('ai_resolution_grade_graded_idx').on(table.gradedAt.desc()),
+  ],
+);
+
+export type AiResolutionGradeRow = typeof aiResolutionGrade.$inferSelect;
+export type NewAiResolutionGradeRow = typeof aiResolutionGrade.$inferInsert;

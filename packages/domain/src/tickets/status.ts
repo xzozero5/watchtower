@@ -3,6 +3,7 @@ import {
   AI_JOBS,
   AI_OUTBOX_JOB_OPTIONS,
   AUDIT_ACTIONS,
+  GRADE_DELAY_MS,
   KB_AUTHOR_DELAY_MS,
   QUEUE_NAMES,
   SLA_PAUSED_STATUSES,
@@ -174,6 +175,16 @@ export async function applyStatus(
         requestedBy: ctx.actor.type === 'user' ? ctx.actor.id : null,
       },
       notBefore: new Date(now.getTime() + KB_AUTHOR_DELAY_MS),
+      options: AI_OUTBOX_JOB_OPTIONS,
+    });
+    // T-301: the grader reads the resolved ticket later (a reopen before then cancels it: the job checks
+    // the status and that this is still the same resolution). It measures; it sends nothing (N3).
+    await enqueueJob(tx, ctx.config, {
+      queue: QUEUE_NAMES.ai,
+      name: AI_JOBS.grade,
+      jobId: `ai-grade-${after.id}-${String(after.reopenCount)}`,
+      payload: { ticketId: after.id, reopenCount: after.reopenCount },
+      notBefore: new Date(now.getTime() + GRADE_DELAY_MS),
       options: AI_OUTBOX_JOB_OPTIONS,
     });
   }
