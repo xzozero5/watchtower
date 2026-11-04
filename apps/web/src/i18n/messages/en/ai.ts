@@ -19,7 +19,9 @@ export const aiEn = {
     '0': 'Stage 0 · Observe',
     '1': 'Stage 1 · Suggest',
     '2': 'Stage 2 · Draft for approval',
+    '3': 'Stage 3 · Sends on its own',
     tip: 'A person approves every reply for this intent.',
+    tip3: 'The AI may send replies for this intent without a person, within set limits.',
   },
   brief: {
     label: 'AI brief',

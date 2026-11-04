@@ -301,13 +301,12 @@ describe('AI controls', () => {
     await user.click(screen.getByRole('button', { name: 'Try again' }));
   });
 
-  it('shows how many intents sit at each stage and links to them, with no stage 3', async () => {
+  it('shows how many intents sit at each stage and links to them, with stage 3 counted too', async () => {
     consoleApi();
     renderConsole(<AiControlsPage />);
     const stages = await screen.findByRole('list', { name: 'Intents per stage' });
     expect(within(stages).getAllByRole('listitem').length).toBeGreaterThanOrEqual(3);
-    // The plain legend names stage 3 as unavailable; the per-stage list never draws it.
-    expect(within(stages).queryByText(/Stage 3/)).not.toBeInTheDocument();
+    expect(within(stages).getByText('Stage 3 · Sends on its own')).toBeVisible();
     expect(screen.getByRole('link', { name: 'Intents' })).toHaveAttribute('href', '/admin/intents');
     fireEvent.focus(stages);
   });

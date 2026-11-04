@@ -115,11 +115,12 @@ describe('the AI brief', () => {
     expect(within(conversation).queryByTestId('ai-draft')).toBeNull();
   });
 
-  it('draws no stage badge for a stage the first release does not have (3 and up)', async () => {
+  it('draws stage 3 as stage 3, and nothing for a stage above it', async () => {
     workspaceApi({ tickets: [ticket1], ai: { 'OPS-1': makeInsight({ stage: 3 }) } });
     const { conversation } = await openTicket();
     const brief = await within(conversation).findByRole('region', { name: 'AI brief' });
-    expect(within(brief).queryByText(/^Stage /)).toBeNull();
+    expect(within(brief).getByText('Stage 3 · Sends on its own')).toBeVisible();
+    expect(within(brief).queryByText('Stage 2 · Draft for approval')).toBeNull();
   });
 
   it('renders in Thai', async () => {

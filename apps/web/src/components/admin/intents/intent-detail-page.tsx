@@ -17,7 +17,7 @@ import {
   toast,
 } from '@watchtower/ui';
 import { SearchX } from 'lucide-react';
-import { useId, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
 
 import { AdminBody, AdminHeader } from '@/components/admin/admin-layout';
 import { LoadError, RequirePermission, TableSkeleton } from '@/components/admin/admin-page';
@@ -64,6 +64,17 @@ function IntentDetailBody({ intentId }: { intentId: string }) {
   const [approveId, setApproveId] = useState<string | null>(() =>
     new URLSearchParams(window.location.search).get('approve'),
   );
+
+  // The api step-up returns with `stepup=ok|failed` added: say what happened once, then clear it from the address.
+  // Nothing is sent again here: the approve dialog is open and the owner presses Approve again.
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    const result = url.searchParams.get('stepup');
+    if (result === null) return;
+    url.searchParams.delete('stepup');
+    window.history.replaceState(null, '', `${url.pathname}${url.search}`);
+    toast(t(result === 'ok' ? 'stage3.promo.stepUpOk' : 'stage3.promo.stepUpFailed'));
+  }, [t]);
 
   const pinEntry = history.data?.items.find((entry) => entry.change === 'pin');
   const pinnedBy =

@@ -17,7 +17,14 @@ import { useId, useState } from 'react';
 import { useI18n } from '@/i18n/provider';
 import { describeError } from '@/lib/admin/errors';
 import { adminKeys } from '@/lib/admin/queries';
-import { asStage, STAGE_HINT_KEYS, STAGE_LABEL_KEYS } from '@/lib/admin/stages';
+import {
+  asStage,
+  MANUAL_STAGES,
+  STAGE_HINT_KEYS,
+  STAGE_LABEL_KEYS,
+  STAGE3_MODE_KEYS,
+  stage3Mode,
+} from '@/lib/admin/stages';
 import { isApiError } from '@/lib/api/errors';
 import { useApi } from '@/lib/api/api-context';
 import { useUserId } from '@/lib/auth/session';
@@ -32,8 +39,9 @@ export interface PinnedBy {
 }
 
 /**
- * Stage and pin of one intent (docs/06-UI-SPEC.md section 18.3.1). Exactly three stages are
- * offered; stage 3 and above is never drawn, not even disabled (N3). Nothing is saved until a
+ * Stage and pin of one intent (docs/06-UI-SPEC.md section 18.3.1). Stages 0 to 2 can be picked; stage 3 is
+ * drawn but never pickable (it is reached only by a promotion the owner approves, N3, ADR-025), and an intent
+ * at stage 3 shows as stage 3 with its shadow or live state. Nothing is saved until a
  * reason of 3 to 500 characters is given and the button is pressed. A pinned intent, or a stage
  * limit that only allows going down, shows why as text.
  */
@@ -65,6 +73,7 @@ export function IntentAutonomyControl({
   const [error, setError] = useState<string | null>(null);
   const [ownerOnly, setOwnerOnly] = useState(false);
 
+  const mode = stage3Mode(intent);
   const stageChanged = selected !== current;
   const pinChanged = pinWanted !== intent.pinned;
   const locked = !canChange || intent.pinned;
@@ -108,7 +117,7 @@ export function IntentAutonomyControl({
     value: String(stage),
     label: t(STAGE_LABEL_KEYS[stage]),
     // The limit switch only lets a stage go down.
-    disabled: locked || (capOn && stage > current),
+    disabled: locked || !MANUAL_STAGES.includes(stage) || (capOn && stage > current),
   }));
 
   return (
@@ -119,6 +128,7 @@ export function IntentAutonomyControl({
           label={t(STAGE_LABEL_KEYS[current])}
           title={t(STAGE_HINT_KEYS[current])}
         />
+        {mode ? <span className="text-sm">{t(STAGE3_MODE_KEYS[mode])}</span> : null}
         {intent.pinned ? (
           <span className="inline-flex items-center gap-1 text-sm">
             <Lock aria-hidden className="size-3.5" />

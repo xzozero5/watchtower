@@ -15,7 +15,7 @@ import {
 import { openInStatus } from './contracts';
 import { describeError } from './errors';
 import { adminSectionsFor, canFlipSwitches, HOME_PERMISSION } from './sections';
-import { asStage } from './stages';
+import { asStage, stage3Mode } from './stages';
 
 const AT = '2026-11-02T03:00:00.000Z';
 const holds =
@@ -150,7 +150,8 @@ describe('admin sections', () => {
   });
 
   it('shows no stage above 2, whatever number arrives', () => {
-    expect([0, 1, 2, 3, 4].map(asStage)).toEqual([0, 1, 2, 2, 2]);
+    expect([0, 1, 2, 3, 4].map(asStage)).toEqual([0, 1, 2, 3, 3]);
+    expect([-1].map(asStage)).toEqual([0]);
   });
 });
 
@@ -209,5 +210,18 @@ describe('links from Home into the queue', () => {
     );
     expect(dirty).toMatchObject({ status: [], sort: DEFAULT_FILTERS.sort, assignee: 'any' });
     expect(dirty?.queueId).toBeUndefined();
+  });
+});
+
+describe('stage3Mode', () => {
+  it('is null below stage 3', () => {
+    expect(stage3Mode({ stage: 2, effectiveStage: 2, autosend: { shadow: true } })).toBeNull();
+  });
+
+  it('says shadow, live, or held for an intent at stage 3', () => {
+    expect(stage3Mode({ stage: 3, effectiveStage: 3, autosend: { shadow: true } })).toBe('shadow');
+    expect(stage3Mode({ stage: 3, effectiveStage: 3, autosend: { shadow: false } })).toBe('live');
+    expect(stage3Mode({ stage: 3, effectiveStage: 2, autosend: { shadow: false } })).toBe('held');
+    expect(stage3Mode({ stage: 3, effectiveStage: 3 })).toBeNull();
   });
 });

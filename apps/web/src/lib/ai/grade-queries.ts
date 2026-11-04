@@ -65,7 +65,8 @@ export function useMarkGolden(ticketKey: string) {
   const userId = useUserId();
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (messageId: string) => api.markGolden(ticketKey, messageId),
+    mutationFn: (input: { messageId: string; shareable: boolean }) =>
+      api.markGolden(ticketKey, input.messageId, input.shareable),
     onSettled: () => {
       void queryClient.invalidateQueries({ queryKey: gradeKeys(userId).goldenOfTicket(ticketKey) });
       void queryClient.invalidateQueries({ queryKey: gradeKeys(userId).golden });

@@ -48,18 +48,22 @@ import { ConfidenceMeter } from './confidence-meter';
 import { EVIDENCE_ICONS } from './evidence-icons';
 import { ProcedureProposals } from './procedure-proposals';
 
-const STAGE_KEYS = { 0: 'ai.stage.0', 1: 'ai.stage.1', 2: 'ai.stage.2' } as const;
+const STAGE_KEYS = {
+  0: 'ai.stage.0',
+  1: 'ai.stage.1',
+  2: 'ai.stage.2',
+  3: 'ai.stage.3',
+} as const;
 
 /**
- * The autonomy stage in force (PRD section 6.4), with its tooltip. Phase 1 renders stages 0 to 2
- * only: a higher number from the api draws nothing (`StageBadge` in `packages/ui` has no value
- * for it).
+ * The autonomy stage in force (PRD section 6.4), with its tooltip. A number above 3 from the api draws
+ * nothing (`StageBadge` in `packages/ui` has no value for it).
  */
 export function AiStageBadge({ stage }: { stage: number }) {
   const { t } = useI18n();
-  if (stage !== 0 && stage !== 1 && stage !== 2) return null;
+  if (stage !== 0 && stage !== 1 && stage !== 2 && stage !== 3) return null;
   return (
-    <Tooltip content={t('ai.stage.tip')}>
+    <Tooltip content={t(stage === 3 ? 'ai.stage.tip3' : 'ai.stage.tip')}>
       <StageBadge stage={stage} label={t(STAGE_KEYS[stage])} />
     </Tooltip>
   );

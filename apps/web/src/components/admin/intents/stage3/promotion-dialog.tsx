@@ -2,8 +2,16 @@
 
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import type { GateReport, Promotion } from '@watchtower/shared';
-import { Button, Dialog, DialogContent, Input, Textarea, toast } from '@watchtower/ui';
-import { CircleX } from 'lucide-react';
+import {
+  Button,
+  buttonVariants,
+  Dialog,
+  DialogContent,
+  Input,
+  Textarea,
+  toast,
+} from '@watchtower/ui';
+import { CircleX, ShieldAlert } from 'lucide-react';
 import { useId, useState } from 'react';
 
 import { useI18n } from '@/i18n/provider';
@@ -12,7 +20,9 @@ import { adminKeys, stage3Keys } from '@/lib/admin/queries';
 import { approveReturnPath } from '@/lib/admin/stage3';
 import { useApi } from '@/lib/api/api-context';
 import { isApiError } from '@/lib/api/errors';
-import { useSession, useUserId } from '@/lib/auth/session';
+import { SSO_PROVIDER, stepUpUrl } from '@/lib/auth/providers';
+import { useUserId } from '@/lib/auth/session';
+import { useRuntimeConfig } from '@/lib/runtime-config-context';
 
 const REASON_MIN = 3;
 const REASON_MAX = 500;
@@ -26,8 +36,8 @@ export type PromotionDialogMode =
 /**
  * The four steps of a promotion that need words: the head asks, the owner approves (typing the key of the
  * intent, after a fresh sign-in), the owner or a head rejects, the requester withdraws (ADR-025 section 6).
- * When the api answers `reauth_required` the dialog says so and sends the person through sign-in; the
- * return address brings them back to this same dialog (`?approve=<id>`).
+ * When the api answers `reauth_required` the dialog says a fresh sign-in is needed and links to the api
+ * step-up route; the return address brings them back to this dialog (`?approve=<id>`) to press Approve again.
  */
 export function PromotionDialog({
   intentId,
@@ -45,13 +55,13 @@ export function PromotionDialog({
   const { t } = useI18n();
   const api = useApi();
   const userId = useUserId();
-  const { signOut } = useSession();
+  const { apiUrl } = useRuntimeConfig();
   const queryClient = useQueryClient();
   const baseId = useId();
   const [reason, setReason] = useState('');
   const [typedKey, setTypedKey] = useState('');
   const [error, setError] = useState<string | null>(null);
-  const [reauthing, setReauthing] = useState(false);
+  const [needsStepUp, setNeedsStepUp] = useState(false);
 
   const approving = mode.kind === 'approve';
   const reasonOk = reason.trim().length >= REASON_MIN && reason.trim().length <= REASON_MAX;
@@ -99,11 +109,9 @@ export function PromotionDialog({
     },
     onError: (failure) => {
       if (isApiError(failure) && failure.code === 'reauth_required' && mode.kind === 'approve') {
-        // Put the way back into the address, then end this session: the auth gate sends the person to
-        // sign in with this address as the destination, and the page opens this dialog again.
-        setReauthing(true);
-        window.history.replaceState(null, '', approveReturnPath(intentId, mode.promotion.id));
-        void signOut();
+        // Say a fresh sign-in is needed and offer the way (a link to the api step-up route that comes back to
+        // this dialog). The write is never repeated by itself: the person presses Approve again.
+        setNeedsStepUp(true);
         return;
       }
       if (isApiError(failure) && failure.code === 'owner_only') {
@@ -152,7 +160,10 @@ export function PromotionDialog({
   const formId = `${baseId}-form`;
   const reasonId = `${baseId}-reason`;
   const keyId = `${baseId}-key`;
-  const busy = run.isPending || reauthing;
+  const busy = run.isPending;
+  const stepUpHref = approving
+    ? stepUpUrl(apiUrl, approveReturnPath(intentId, mode.promotion.id))
+    : null;
 
   return (
     <Dialog
@@ -170,14 +181,20 @@ export function PromotionDialog({
             <Button onClick={onClose} disabled={busy}>
               {t('admin.common.cancel')}
             </Button>
-            <Button
-              variant="primary"
-              type="submit"
-              form={formId}
-              disabled={busy || !reasonOk || !keyOk}
-            >
-              {run.isPending ? copy.pending : copy.submit}
-            </Button>
+            {needsStepUp && stepUpHref !== null ? (
+              <a href={stepUpHref} className={buttonVariants({ variant: 'primary' })}>
+                {t('stage3.promo.reauthAction')}
+              </a>
+            ) : (
+              <Button
+                variant="primary"
+                type="submit"
+                form={formId}
+                disabled={busy || !reasonOk || !keyOk}
+              >
+                {run.isPending ? copy.pending : copy.submit}
+              </Button>
+            )}
           </>
         }
       >
@@ -235,12 +252,13 @@ export function PromotionDialog({
               className="w-full resize-y"
             />
           </div>
-          {approving ? (
+          {approving && !needsStepUp ? (
             <p className="text-sm text-muted-foreground">{t('stage3.promo.reauth')}</p>
           ) : null}
-          {reauthing ? (
-            <p role="status" className="text-sm font-medium">
-              {t('stage3.promo.reauthRedirect')}
+          {needsStepUp ? (
+            <p role="alert" className="flex items-start gap-1.5 text-sm font-medium">
+              <ShieldAlert aria-hidden className="mt-0.5 size-4 shrink-0" />
+              <span>{t('stage3.promo.reauthNeeded', { provider: SSO_PROVIDER.displayName })}</span>
             </p>
           ) : null}
           {error ? (
