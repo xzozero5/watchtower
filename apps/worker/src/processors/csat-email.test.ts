@@ -45,8 +45,49 @@ describe('the CSAT survey email', () => {
     );
   });
 
-  it('is plain: no image, no script, no tracking pixel', () => {
+  it('is plain: no image, no script, no tracking pixel, no style block', () => {
     const { html } = renderEmail(job());
-    expect(html).not.toMatch(/<img|<script|<iframe|<link|<style/i);
+    expect(html).not.toMatch(/<img|<script|<iframe|<link|<style|<video|<form|url\(/i);
+    // The only addresses in it are the five rating links and the fallback link: nothing is fetched.
+    const urls = [...html.matchAll(/(?:href|src)="([^"]+)"/g)].map((m) => m[1] ?? '');
+    expect(urls).toHaveLength(6);
+    expect(urls.every((url) => url.startsWith('https://desk.example.test/csat#token='))).toBe(true);
+  });
+
+  it('is an HTML email in the brand colors with inline CSS only', () => {
+    const { html } = renderEmail(job());
+    expect(html.startsWith('<!doctype html>')).toBe(true);
+    expect(html).toContain('<html lang="en">');
+    expect(html).toContain('width=device-width');
+    // Midnight Navy buttons, Warm Ivory text on them, Golden Beacon accent, Canvas Warm Cream background.
+    for (const color of ['#0F172A', '#F7F0D4', '#F59E0B', '#F7F7ED']) expect(html).toContain(color);
+    // The coral of the logo never colors a button (docs/brand/README.md, alert discipline).
+    expect(html).not.toMatch(/#E5594A|#F67963/i);
+    expect(html).toContain('Watchtower</td>');
+    // One button per score, each a link with its number and word.
+    for (const score of [1, 2, 3, 4, 5]) {
+      expect(html).toContain(`;color:#FFFFFF;">${String(score)}</td>`);
+    }
+    for (const word of ['Very unhappy', 'Unhappy', 'Okay', 'Happy', 'Very happy']) {
+      expect(html).toContain(`>${word}</span>`);
+    }
+  });
+
+  it('has a plain-text part with the same links, in both languages', () => {
+    for (const locale of ['en', 'th'] as const) {
+      const message = renderEmail(job({ locale }));
+      expect(message.text).not.toMatch(/<[a-z]/i);
+      for (const score of [1, 2, 3, 4, 5]) {
+        expect(message.text).toContain(`${URL_WITH_TOKEN}&score=${String(score)}`);
+      }
+    }
+  });
+
+  it('the Thai email is Thai in the HTML too, and escapes what it is given', () => {
+    const { html } = renderEmail(job({ locale: 'th', ticketKey: 'OPS-<1>' }));
+    expect(html).toContain('<html lang="th">');
+    expect(html).toContain('พอใจมาก</span>');
+    expect(html).toContain('OPS-&lt;1&gt;');
+    expect(html).not.toContain('OPS-<1>');
   });
 });

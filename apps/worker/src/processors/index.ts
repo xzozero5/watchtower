@@ -19,7 +19,11 @@ import { createIngestRegistration, type IngestOverrides } from '../ingest/index.
 import type { WorkerLogger } from '../logger.js';
 import { createLineRegistration } from '../line/index.js';
 import type { LineOverrides } from '../line/transports.js';
-import { createOutboundRegistration, type OutboundOverrides } from '../outbound/index.js';
+import {
+  createOutboundRegistration,
+  outboundChannelsFor,
+  type OutboundOverrides,
+} from '../outbound/index.js';
 import type { Mailer } from '../mailer.js';
 import type { RealtimeSink } from '../realtime.js';
 import { createEmailProcessor } from './email.js';
@@ -78,9 +82,17 @@ export const PROCESSORS: readonly ProcessorRegistration[] = [
   { queue: QUEUE_NAMES.system, create: () => processSystemJob },
   {
     queue: QUEUE_NAMES.email,
-    create: ({ config, mailer }) =>
-      createEmailProcessor(mailer, {
-        sealKey: deriveSubkey(config.APP_ENCRYPTION_KEY, KEY_LABELS.outboxSecret),
+    create: (context) =>
+      createEmailProcessor(context.mailer, {
+        sealKey: deriveSubkey(context.config.APP_ENCRYPTION_KEY, KEY_LABELS.outboxSecret),
+        // A CSAT survey of a Gmail ticket leaves from that support mailbox (T-174).
+        csatGmail: {
+          database: context.database,
+          domain: context.domain,
+          channels: outboundChannelsFor(context),
+          logger: context.logger,
+          appHost: new URL(context.config.APP_URL).hostname,
+        },
       }),
   },
   {

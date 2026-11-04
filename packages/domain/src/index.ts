@@ -16,11 +16,14 @@ import { ingestAlert } from './alerts/ingest.js';
 import { endExpiredSnoozes, snoozeAlert, unsnoozeAlert } from './alerts/snooze.js';
 import { readAutonomyState, setAiSwitch, setIntentAutonomy } from './autonomy/state.js';
 import { findOrCreateContactByEmail } from './contacts.js';
+import { claimCsatEmail, finishCsatEmail, releaseCsatEmail } from './csat/dispatch.js';
 import { decideCsatReopen } from './csat/reopen.js';
 import {
   answerSurvey,
   findSurveyForLink,
   readCsatDelayMinutes,
+  readCsatSettings,
+  updateCsatSettings,
   scheduleSurvey,
   setCsatDelayMinutes,
   setCsatOptOut,
@@ -819,6 +822,12 @@ export interface Domain {
     readonly answer: typeof answerSurvey;
     readonly readDelayMinutes: typeof readCsatDelayMinutes;
     readonly setDelayMinutes: typeof setCsatDelayMinutes;
+    readonly readSettings: typeof readCsatSettings;
+    readonly updateSettings: typeof updateCsatSettings;
+    /** At-most-once ledger for a survey sent through a Gmail mailbox (T-174). */
+    readonly claimEmail: typeof claimCsatEmail;
+    readonly finishEmail: typeof finishCsatEmail;
+    readonly releaseEmail: typeof releaseCsatEmail;
     readonly setOptOut: typeof setCsatOptOut;
     readonly mintToken: typeof mintCsatToken;
     readonly verifyToken: typeof verifyCsatToken;
@@ -972,6 +981,11 @@ export function createDomain(options: DomainOptions): Domain {
       answer: answerSurvey,
       readDelayMinutes: readCsatDelayMinutes,
       setDelayMinutes: setCsatDelayMinutes,
+      readSettings: readCsatSettings,
+      updateSettings: updateCsatSettings,
+      claimEmail: claimCsatEmail,
+      finishEmail: finishCsatEmail,
+      releaseEmail: releaseCsatEmail,
       setOptOut: setCsatOptOut,
       mintToken: mintCsatToken,
       verifyToken: verifyCsatToken,

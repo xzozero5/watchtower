@@ -4,7 +4,9 @@ import { sql } from 'drizzle-orm';
 import {
   boolean,
   index,
+  integer,
   pgTable,
+  primaryKey,
   smallint,
   text,
   timestamp,
@@ -12,7 +14,7 @@ import {
   uuid,
 } from 'drizzle-orm/pg-core';
 
-import { contact, organization, ticket } from './ticketing.js';
+import { channelAccount, contact, organization, ticket } from './ticketing.js';
 
 const timestamptz = (name: string) => timestamp(name, { withTimezone: true, mode: 'date' });
 
@@ -87,3 +89,33 @@ export const csatOrgOptOut = pgTable('csat_org_opt_out', {
   createdBy: uuid('created_by'),
   createdAt: timestamptz('created_at').notNull().defaultNow(),
 });
+
+/**
+ * The at-most-once ledger of a survey (or its reminder) sent through a Gmail mailbox (T-174, migration
+ * 0084). `claimed` before the send, `sent` after, `released` when the send certainly did not leave and
+ * may be tried again. A row left `claimed` is an unknown outcome and is never repeated.
+ */
+export const csatEmailDispatch = pgTable(
+  'csat_email_dispatch',
+  {
+    surveyId: uuid('survey_id')
+      .notNull()
+      .references(() => csatSurvey.id, { onDelete: 'restrict' }),
+    kind: text('kind').notNull(),
+    state: text('state').notNull().default('claimed'),
+    attempts: integer('attempts').notNull().default(1),
+    channelAccountId: uuid('channel_account_id').references(() => channelAccount.id, {
+      onDelete: 'set null',
+    }),
+    providerMessageId: text('provider_message_id'),
+    errorCode: text('error_code'),
+    claimedAt: timestamptz('claimed_at').notNull().defaultNow(),
+    finishedAt: timestamptz('finished_at'),
+  },
+  (table) => [
+    primaryKey({ columns: [table.surveyId, table.kind] }),
+    index('csat_email_dispatch_account_idx')
+      .on(table.channelAccountId)
+      .where(sql`${table.channelAccountId} IS NOT NULL`),
+  ],
+);

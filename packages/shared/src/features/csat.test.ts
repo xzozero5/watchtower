@@ -7,6 +7,7 @@ import {
   CSAT_TOKEN_HEADER,
   csatResponseInputSchema,
   csatSettingsSchema,
+  csatSettingsUpdateSchema,
   csatSurveyUrl,
 } from './csat.js';
 
@@ -47,13 +48,38 @@ describe('the survey answer', () => {
 });
 
 describe('settings', () => {
+  const full = { enabled: true, delayMinutes: 60, reminderHours: 48, cooldownDays: 7 };
+
   it('accepts 0 to 10080 whole minutes only', () => {
     for (const delayMinutes of [0, 60, 10_080]) {
-      expect(csatSettingsSchema.safeParse({ delayMinutes }).success).toBe(true);
+      expect(csatSettingsSchema.safeParse({ ...full, delayMinutes }).success).toBe(true);
     }
     for (const delayMinutes of [-1, 10_081, 1.5, '60']) {
-      expect(csatSettingsSchema.safeParse({ delayMinutes }).success).toBe(false);
+      expect(csatSettingsSchema.safeParse({ ...full, delayMinutes }).success).toBe(false);
     }
+  });
+
+  it('bounds the reminder (0 = none, up to 720 h) and the cooldown (0 = none, up to 90 days)', () => {
+    for (const reminderHours of [0, 48, 720]) {
+      expect(csatSettingsSchema.safeParse({ ...full, reminderHours }).success).toBe(true);
+    }
+    for (const reminderHours of [-1, 721, 1.5]) {
+      expect(csatSettingsSchema.safeParse({ ...full, reminderHours }).success).toBe(false);
+    }
+    for (const cooldownDays of [0, 7, 90]) {
+      expect(csatSettingsSchema.safeParse({ ...full, cooldownDays }).success).toBe(true);
+    }
+    for (const cooldownDays of [-1, 91]) {
+      expect(csatSettingsSchema.safeParse({ ...full, cooldownDays }).success).toBe(false);
+    }
+  });
+
+  it('an update names the settings to change, at least one, nothing unknown', () => {
+    expect(csatSettingsUpdateSchema.safeParse({ delayMinutes: 5 }).success).toBe(true);
+    expect(csatSettingsUpdateSchema.safeParse({ enabled: false }).success).toBe(true);
+    expect(csatSettingsUpdateSchema.safeParse({}).success).toBe(false);
+    expect(csatSettingsUpdateSchema.safeParse({ enabled: 'no' }).success).toBe(false);
+    expect(csatSettingsUpdateSchema.safeParse({ other: 1 }).success).toBe(false);
   });
 });
 

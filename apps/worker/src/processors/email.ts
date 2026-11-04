@@ -4,6 +4,7 @@ import { UnrecoverableError, type Job } from 'bullmq';
 
 import type { Mailer, OutboundMessage } from '../mailer.js';
 import { renderCsatEmail } from './csat-email.js';
+import { isGmailCsatJob, sendCsatViaGmail, type CsatGmailDeps } from './csat-gmail.js';
 import { escapeHtml } from './html.js';
 import { renderPortalEmail } from './portal-email.js';
 
@@ -61,9 +62,16 @@ export interface EmailProcessorOptions {
   readonly sealKey: Buffer;
   /** Clock in epoch milliseconds. Tests pass a fixed one. */
   readonly now?: () => number;
+  /**
+   * How a CSAT survey of a Gmail ticket leaves from the support mailbox (T-174). Without it every
+   * email goes over SMTP, as before.
+   */
+  readonly csatGmail?: CsatGmailDeps;
 }
 
-export type EmailResult = { sent: true } | { sent: false; dropped: 'expired' };
+export type EmailResult =
+  | { sent: true; via?: 'gmail' }
+  | { sent: false; dropped: 'expired' | 'already_claimed' | 'unknown_outcome' };
 
 /**
  * Processor for the `email` queue. The job holds the message parameters in the clear and its links
@@ -93,7 +101,16 @@ export function createEmailProcessor(mailer: Mailer, options: EmailProcessorOpti
     }
     const parsed = emailJobSchema.safeParse({ ...clear, ...links });
     if (!parsed.success) throw new UnrecoverableError('email job payload is invalid');
-    await mailer.send(renderEmail(parsed.data));
+    const message = renderEmail(parsed.data);
+    if (options.csatGmail !== undefined && isGmailCsatJob(parsed.data)) {
+      const result = await sendCsatViaGmail(options.csatGmail, parsed.data, message);
+      if (result.outcome === 'sent') return { sent: true, via: 'gmail' };
+      if (result.outcome === 'already_claimed') return { sent: false, dropped: 'already_claimed' };
+      if (result.outcome === 'unknown') return { sent: false, dropped: 'unknown_outcome' };
+      // The mailbox was removed since the survey was queued: the customer still gets it, over SMTP.
+      options.csatGmail.logger.warn('csat survey mailbox is gone; sending over SMTP');
+    }
+    await mailer.send(message);
     return { sent: true };
   };
 }

@@ -130,6 +130,12 @@ export const emailJobSchema = z.discriminatedUnion('kind', [
     ticketKey: z.string().min(3).max(32),
     surveyUrl: z.url().max(1000),
     reminder: z.boolean(),
+    /**
+     * Set for a ticket that came in through a Gmail mailbox: the survey goes out from that support
+     * mailbox through the Gmail adapter (T-174, ADR-010 section 6), not over SMTP. `surveyId` is the
+     * at-most-once key (a Gmail send has no idempotency key). Absent: SMTP, as for the portal.
+     */
+    gmail: z.object({ accountId: z.uuid(), surveyId: z.uuid() }).optional(),
   }),
 ]);
 export type EmailJob = z.infer<typeof emailJobSchema>;

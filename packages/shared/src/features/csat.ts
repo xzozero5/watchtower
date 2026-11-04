@@ -54,10 +54,18 @@ export const CSAT_DELAY_SETTING_KEY = 'csat.delay_minutes';
 /** `[ASSUMED]` R-10.1 says one hour by default. */
 export const CSAT_DELAY_DEFAULT_MINUTES = 60;
 export const CSAT_DELAY_MAX_MINUTES = 10_080;
-/** One reminder, this long after the survey went out, if unanswered (R-10.4). */
+/** Instance setting: surveys on or off for the whole instance (T-174). Default on. */
+export const CSAT_ENABLED_SETTING_KEY = 'csat.enabled';
+/** Instance setting: hours between the survey and its one reminder; 0 sends no reminder (T-174). */
+export const CSAT_REMINDER_SETTING_KEY = 'csat.reminder_hours';
+/** Instance setting: days during which a contact is not surveyed again; 0 turns the rule off (T-174). */
+export const CSAT_COOLDOWN_SETTING_KEY = 'csat.cooldown_days';
+/** One reminder, this long after the survey went out, if unanswered (R-10.4). The default. */
 export const CSAT_REMINDER_AFTER_HOURS = 48;
-/** At most one survey per contact in this many days (R-10.4). */
+export const CSAT_REMINDER_MAX_HOURS = 720;
+/** At most one survey per contact in this many days (R-10.4). The default. */
 export const CSAT_CONTACT_COOLDOWN_DAYS = 7;
+export const CSAT_COOLDOWN_MAX_DAYS = 90;
 /** `[ASSUMED]` how long a survey link works. The PRD does not say; the reminder is at 48 h, the reopen window is 7 days. */
 export const CSAT_LINK_TTL_DAYS = 14;
 /** A score below this reopens the ticket (R-1.10: "CSAT < 3"; R-10.5: "score <= 2"). */
@@ -82,6 +90,7 @@ export const CSAT_REASONS = [
   'ticket_reopened',
   'not_resolved',
   'no_contact_email',
+  'csat_disabled',
 ] as const;
 export type CsatReason = (typeof CSAT_REASONS)[number];
 
@@ -171,11 +180,33 @@ export const csatSummarySchema = z.object({
 });
 export type CsatSummary = z.infer<typeof csatSummarySchema>;
 
-export const csatSettingsSchema = z.strictObject({
+const csatSettingFields = {
+  /** Surveys on or off for the instance. Default on. */
+  enabled: z.boolean(),
   /** Minutes between "resolved" and the survey; 0 sends at the next sweep. Default 60. */
   delayMinutes: z.number().int().min(0).max(CSAT_DELAY_MAX_MINUTES),
-});
+  /** Hours from the survey to its one reminder; 0 = no reminder. Default 48. */
+  reminderHours: z.number().int().min(0).max(CSAT_REMINDER_MAX_HOURS),
+  /** A contact is surveyed at most once in this many days; 0 = no limit. Default 7. */
+  cooldownDays: z.number().int().min(0).max(CSAT_COOLDOWN_MAX_DAYS),
+};
+
+/** What `GET /v1/csat/settings` returns: every setting. */
+export const csatSettingsSchema = z.strictObject(csatSettingFields);
 export type CsatSettings = z.infer<typeof csatSettingsSchema>;
+
+/** `PUT /v1/csat/settings`: send the ones to change (an older client sending only `delayMinutes` still works). */
+export const csatSettingsUpdateSchema = z
+  .strictObject({
+    enabled: csatSettingFields.enabled.optional(),
+    delayMinutes: csatSettingFields.delayMinutes.optional(),
+    reminderHours: csatSettingFields.reminderHours.optional(),
+    cooldownDays: csatSettingFields.cooldownDays.optional(),
+  })
+  .refine((value) => Object.keys(value).length > 0, {
+    message: 'Send at least one setting',
+  });
+export type CsatSettingsUpdate = z.infer<typeof csatSettingsUpdateSchema>;
 
 export const csatOptOutParamSchema = z.object({ orgId: z.uuid() });
 export const csatOptOutSchema = z.strictObject({ optedOut: z.boolean() });
