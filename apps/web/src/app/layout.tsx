@@ -22,6 +22,11 @@ import { readRuntimeConfig } from '@/lib/runtime-config';
 // rendered once at build time. This is what keeps API_URL a runtime setting (ADR-001).
 export const dynamic = 'force-dynamic';
 
+/** The nonce `src/proxy.ts` made for this response; the inline theme script needs it under the CSP. */
+async function currentNonce() {
+  return (await headers()).get('x-nonce') ?? undefined;
+}
+
 async function currentLocale() {
   const [cookieStore, headerStore] = await Promise.all([cookies(), headers()]);
   return negotiateLocale(cookieStore.get(LOCALE_COOKIE)?.value, headerStore.get('accept-language'));
@@ -48,13 +53,18 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 export default async function RootLayout({ children }: { children: ReactNode }) {
-  const locale = await currentLocale();
+  const [locale, nonce] = await Promise.all([currentLocale(), currentNonce()]);
   return (
     // suppressHydrationWarning: the inline script below sets data-theme before React hydrates.
     <html lang={locale} suppressHydrationWarning>
       <head>
         <meta name="color-scheme" content="light dark" />
-        <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
+        {/* suppressHydrationWarning: the browser hides a script's nonce from the DOM, React sees none. */}
+        <script
+          nonce={nonce}
+          suppressHydrationWarning
+          dangerouslySetInnerHTML={{ __html: themeInitScript }}
+        />
       </head>
       <body>
         <Providers locale={locale} messages={getMessages(locale)} config={readRuntimeConfig()}>
