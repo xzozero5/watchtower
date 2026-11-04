@@ -32,7 +32,7 @@
 ## ค้าง / ติดอะไร
 - T-170: แถบ "AI offline" ทั้งระบบ, investigation/draft เลื่อนเมื่อ offline, kb:sync ลบไฟล์ → deprecate, ยืนยันชื่อ `CLAUDE_CODE_OAUTH_TOKEN` `[VERIFY]` + build image bridge (เจ้าของ build แล้วใช้งานอยู่ — ยังไม่ได้ตรวจผลใน `ai_run`)
 - T-171: draft AI ลง rich editor, style อีเมลลูกค้าหายตอน ingest, audit ผู้รับ/allow-list domain, Gmail ตัด Bcc `[UNVERIFIED 80%]`, EXIF WebP/GIF, Playwright email/upload
-- **T-172 (ADR-020) รันจริงแล้ว 2026-11-03:** IAM ใน `watchtower-513514` ครบ (custom role get/update, SA `watchtower-pubsub-admin`), key อยู่โฟลเดอร์ secret, env audience คงที่ `watchtower-gmail-push` · `gmail-tunnel` healthy, subscribe สำเร็จ, self-check 401 · **ยังไม่ได้ทดสอบอีเมลจริงจากบัญชีภายนอก**
+- **T-172 (ADR-020) รันจริงแล้ว 2026-11-03:** IAM ใน `<project-id>` ครบ (custom role get/update, SA `watchtower-pubsub-admin`), key อยู่โฟลเดอร์ secret, env audience คงที่ `watchtower-gmail-push` · `gmail-tunnel` healthy, subscribe สำเร็จ, self-check 401 · **ยังไม่ได้ทดสอบอีเมลจริงจากบัญชีภายนอก**
 - **AI บน POC:** worker image เก่ายอมแค่ `host.docker.internal` → bridge publish `127.0.0.1:4317` (ชั่วคราว) แล้ว `claude -p` ผ่าน bridge ตอบจริง `[TESTED]` · เจ้าของตั้ง sonnet ทุก tier เอง · หลัง rebuild POC + migrate 0082/0083 ให้เปลี่ยนเป็น `http://claude-bridge:4317` แล้วเอา port ออก
 - ของเดิม: T-154/T-155, T-158 rail counts, T-159, T-141…147, B-002/B-003/B-004, T-113/T-114/T-207, T-115, T-161 flaky
 - ไม่แก้/commit `.agents/` และ `.codex/`

@@ -20,7 +20,7 @@
 ## Consequences
 - dependency ใหม่ที่มี network: `cloudflared` (ออกไป Cloudflare edge) และ container เรียก `oauth2.googleapis.com` / `pubsub.googleapis.com` — เจ้าของสั่งเองในข้อความ 2026-11-03 · ปลายทาง ingress สาธารณะเปิดเฉพาะเมื่อเจ้าของรัน profile นี้ และผ่าน filter path เดียว
 - ใช้ได้เฉพาะ dev/POC; production ใช้ ingress จริง (ADR-014) ไม่ใช่ quick tunnel
-- **รันจริง 2026-11-03 `[TESTED]`:** custom role `watchtowerPushEndpointUpdater` + SA `watchtower-pubsub-admin` (binding บน `gmail-push-sub` + actAs `watchtower-pubsub-push`) ใน `watchtower-513514` → container subscribe สำเร็จ, self-check ผ่าน tunnel ถึง api ได้ 401 · image ต้องมี CA bundle (คัดจาก image cloudflared) ไม่งั้น cloudflared ล้มด้วย x509 · `[UNVERIFIED]` push ของอีเมลจริง + audience ที่ไม่ใช่ URL ฝั่ง Google (รอส่งอีเมลทดสอบ)
+- **รันจริง 2026-11-03 `[TESTED]`:** custom role `watchtowerPushEndpointUpdater` + SA `watchtower-pubsub-admin` (binding บน `gmail-push-sub` + actAs `watchtower-pubsub-push`) ใน `<project-id>` → container subscribe สำเร็จ, self-check ผ่าน tunnel ถึง api ได้ 401 · image ต้องมี CA bundle (คัดจาก image cloudflared) ไม่งั้น cloudflared ล้มด้วย x509 · `[UNVERIFIED]` push ของอีเมลจริง + audience ที่ไม่ใช่ URL ฝั่ง Google (รอส่งอีเมลทดสอบ)
 - ตรวจซ้ำ: เมื่อ bump `cloudflared` (รูปแบบ log ของ URL), เมื่อ Pub/Sub API เปลี่ยน
 
 ## Links
