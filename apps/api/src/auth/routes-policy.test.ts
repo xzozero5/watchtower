@@ -310,6 +310,10 @@ describe('every route states who may call it', () => {
         'GET /v1/tickets/:id/ai',
         // Whether the AI can be reached (T-170): the console banner, no ticket data.
         'GET /v1/ai/status',
+        // The procedure of an intent (T-303b, `procedure.read`): internal text and steps, no ticket or customer data.
+        'GET /v1/intents/:id/procedure/versions',
+        'GET /v1/intents/:id/procedure/versions/:versionId',
+        'GET /v1/intents/:id/procedure/versions/:versionId/validation',
         'POST /v1/tickets/:id/notes',
         'POST /v1/tickets/:id/status',
         'POST /v1/tickets/:id/dev-owner',
