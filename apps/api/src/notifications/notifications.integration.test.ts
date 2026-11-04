@@ -277,6 +277,10 @@ describe('preferences', () => {
       ['shift.no_show', true, false],
       ['alert.fired', true, false],
       ['alert.escalated', true, false],
+      // T-176: kinds about the system (sent to heads only), listed for everyone and off-able.
+      ['ops.smtp_auth_failed', true, false],
+      ['ops.upload_quota_global', true, false],
+      ['ops.outbox_dead', true, false],
     ]);
   });
 
