@@ -6,6 +6,7 @@ import { consoleApi } from '@/test/console-api';
 import { dueTicket, makeAutonomy, makeUser, STATS, USERS } from '@/test/console-fixtures';
 import { dashboardOps } from '@/test/dashboard-fixtures';
 import { uuid } from '@/test/fixtures';
+import { DAY_SHIFT_ID, shiftOverview, shiftSession, WHO } from '@/test/shift-fixtures';
 import { renderConsole } from '@/test/render-console';
 
 import { HomePage } from './home-page';
@@ -142,8 +143,9 @@ describe('Home', () => {
       'href',
       expect.stringContaining('queueId='),
     );
-    expect(screen.getByText('No queue').parentElement).toHaveTextContent('3');
-    expect(screen.queryByRole('link', { name: /^No queue/ })).toBeNull();
+    const byQueue = screen.getByRole('region', { name: 'By queue' });
+    expect(within(byQueue).getByText('No queue').parentElement).toHaveTextContent('3');
+    expect(within(byQueue).queryByRole('link', { name: /^No queue/ })).toBeNull();
     const load = screen.getByRole('region', { name: 'Open per person' });
     expect(within(load).getByText('Mana K.')).toBeVisible();
     expect(within(load).getByText('Pim S.')).toBeVisible();
@@ -284,5 +286,104 @@ describe('Home', () => {
     renderConsole(<HomePage />);
     await screen.findByRole('link', { name: /^SLA at risk\s*7/ });
     expect(screen.queryByRole('region', { name: 'Drafts accepted' })).toBeNull();
+  });
+});
+
+describe('Home: the team now (T-141)', () => {
+  it('shows who is on shift and who was rostered but has not clocked in', async () => {
+    consoleApi({
+      overrides: {
+        'GET /v1/shifts/overview': () => ({
+          json: shiftOverview({
+            onShift: [
+              shiftSession({ id: uuid(2001), userId: WHO.mana.id, userName: WHO.mana.name }),
+              shiftSession({
+                id: uuid(2002),
+                userId: WHO.pim.id,
+                userName: WHO.pim.name,
+                late: true,
+                lateMinutes: 12,
+              }),
+            ],
+            noShows: [
+              {
+                id: uuid(2300),
+                shiftId: DAY_SHIFT_ID,
+                shiftName: 'Day',
+                onCall: false,
+                userId: WHO.dao.id,
+                userName: WHO.dao.name,
+                workDate: '2026-11-02',
+                startsAt: '2026-11-02T01:00:00.000Z',
+                endsAt: '2026-11-02T10:00:00.000Z',
+              },
+            ],
+          }),
+        }),
+      },
+    });
+    renderConsole(<HomePage />);
+    const team = await screen.findByRole('region', { name: 'Team now' });
+    expect(await within(team).findByText('Mana K.')).toBeVisible();
+    expect(within(team).getByText('Pim S.')).toBeVisible();
+    // Late is a word with an icon, not only a colour.
+    expect(within(team).getByText('late 12m')).toBeVisible();
+    // The person who did not come is named, with the shift they were expected on.
+    expect(within(team).getByText('Dao N.')).toBeVisible();
+    expect(within(team).getByText(/Day · started/)).toBeVisible();
+    expect(within(team).getByRole('link', { name: 'Lead view' })).toHaveAttribute(
+      'href',
+      '/shift/overview',
+    );
+  });
+
+  it('says so when nobody is clocked in and everyone rostered came', async () => {
+    consoleApi();
+    renderConsole(<HomePage />);
+    const team = await screen.findByRole('region', { name: 'Team now' });
+    expect(await within(team).findByText('Nobody is clocked in.')).toBeVisible();
+    expect(within(team).getByText('Everyone rostered has clocked in.')).toBeVisible();
+  });
+
+  it('keeps the rest of Home when the shift information cannot be read', async () => {
+    consoleApi({ overrides: { 'GET /v1/shifts/overview': () => apiError(500, 'internal') } });
+    renderConsole(<HomePage />);
+    const team = await screen.findByRole('region', { name: 'Team now' });
+    expect(await within(team).findByRole('alert')).toHaveTextContent(
+      'The shift information is not available.',
+    );
+    expect(screen.getByRole('link', { name: /^SLA at risk\s*7/ })).toBeVisible();
+  });
+
+  it('counts open work nobody holds per team queue, each a link to that queue', async () => {
+    const api = consoleApi();
+    renderConsole(<HomePage />);
+    const waiting = await screen.findByRole('region', { name: 'Waiting for an owner' });
+    const support = await within(waiting).findByRole('link', { name: /^Support\s*2/ });
+    const params = new URL(support.getAttribute('href') ?? '', 'http://localhost').searchParams;
+    expect(params.get('assignee')).toBe('unassigned');
+    expect(params.get('queueId')).toBe(uuid(800));
+    expect(params.get('status')).toBe('new,triage,open,waiting_on_customer,waiting_on_dev');
+    // Tickets in no queue are counted, not linked: there is no queue-less filter.
+    expect(within(waiting).getByText('No queue').parentElement).toHaveTextContent('1');
+    // The same open statuses as every other number on the page.
+    const asked = api
+      .callsTo('/v1/tickets/stats', 'GET')
+      .map((call) => new URLSearchParams(call.search))
+      .find((query) => query.get('assignee') === 'unassigned');
+    expect(asked?.get('status')).toBe(params.get('status'));
+  });
+
+  it('says every open ticket has an owner when none is waiting', async () => {
+    consoleApi({
+      overrides: {
+        'GET /v1/tickets/stats': ({ url }) => ({
+          json:
+            url.searchParams.get('assignee') === 'unassigned' ? { ...STATS, byQueue: [] } : STATS,
+        }),
+      },
+    });
+    renderConsole(<HomePage />);
+    expect(await screen.findByText('Every open ticket has an owner.')).toBeVisible();
   });
 });

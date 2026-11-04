@@ -27,6 +27,7 @@ import {
   useSlaRiskTickets,
   useTicketStats,
   useOldestUnassigned,
+  useUnassignedByQueue,
   useUsers,
 } from '@/lib/admin/queries';
 import { openInStatus } from '@/lib/admin/contracts';
@@ -34,10 +35,12 @@ import { HOME_PERMISSION } from '@/lib/admin/sections';
 import { useSession, useUserId } from '@/lib/auth/session';
 import { queueHref } from '@/lib/tickets/filters';
 import { isStaffTicket } from '@/lib/tickets/model';
+import { useShiftOverview } from '@/lib/shifts/queries';
 import { useQueues } from '@/lib/tickets/queries';
 import { useNow } from '@/lib/use-now';
 
 import { AiStatus, BotMark, SystemHealth } from './home-status';
+import { TeamNow, UnclaimedByQueue } from './home-team';
 import { AiDraftsHighlight, VolumeCard } from './home-volume';
 import {
   CountsUnavailable,
@@ -73,6 +76,8 @@ function HomeBody() {
   const { t, locale } = useI18n();
   const { can } = useSession();
   const showVolume = can('dashboard.ops.read');
+  // The Lead view's source; the same permissions that page asks for.
+  const showTeam = can('roster.manage') || can('performance.read.all');
   const queryClient = useQueryClient();
   const userId = useUserId();
   const now = useNow();
@@ -82,6 +87,8 @@ function HomeBody() {
   const oldestUnassigned = useOldestUnassigned(true);
   const ready = useReadiness(true);
   const users = useUsers(true);
+  const unclaimed = useUnassignedByQueue(true);
+  const team = useShiftOverview(showTeam);
   const queues = useQueues(true);
   const autonomy = useAutonomy(true);
   const fetching = useIsFetching({ queryKey: adminKeys(userId).all }) > 0;
@@ -246,6 +253,22 @@ function HomeBody() {
             </>
           )}
         </HomeSection>
+
+        <div className="grid gap-4 lg:grid-cols-2 lg:gap-5">
+          {showTeam ? (
+            <HomeSection id="home-team" title={t('home.team.title')} tone="green" icon={Users}>
+              <TeamNow query={team} />
+            </HomeSection>
+          ) : null}
+          <HomeSection
+            id="home-unclaimed"
+            title={t('home.team.unclaimed')}
+            tone="sky"
+            icon={UserRoundX}
+          >
+            <UnclaimedByQueue query={unclaimed} names={queueNames} />
+          </HomeSection>
+        </div>
 
         <div className="grid gap-4 lg:grid-cols-2 lg:gap-5">
           <HomeSection

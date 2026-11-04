@@ -21,6 +21,7 @@ export const adminKeys = (userId: string) => {
     stats: [...all, 'stats'] as const,
     slaList: [...all, 'home-sla'] as const,
     unassignedList: [...all, 'home-unassigned'] as const,
+    unassignedStats: [...all, 'home-unassigned-by-queue'] as const,
     ready: [...all, 'ready'] as const,
     users: [...all, 'users'] as const,
     orgs: [...all, 'orgs'] as const,
@@ -64,6 +65,24 @@ export function useTicketStats(enabled: boolean) {
   return useQuery({
     queryKey: adminKeys(userId).stats,
     queryFn: ({ signal }) => api.ticketStats({ status: OPEN_WORK_STATUSES }, signal),
+    enabled,
+    refetchInterval: HOME_REFRESH_MS,
+    staleTime: HOME_REFRESH_MS / 2,
+  });
+}
+
+/**
+ * Open work nobody holds, counted per team queue (T-141): the same counts endpoint and the same open
+ * statuses as the rest of Home, filtered to `assignee=unassigned`, so its queue numbers add up to the
+ * Unassigned tile.
+ */
+export function useUnassignedByQueue(enabled: boolean) {
+  const api = useApi();
+  const userId = useUserId();
+  return useQuery({
+    queryKey: adminKeys(userId).unassignedStats,
+    queryFn: ({ signal }) =>
+      api.ticketStats({ status: OPEN_WORK_STATUSES, assignee: 'unassigned' }, signal),
     enabled,
     refetchInterval: HOME_REFRESH_MS,
     staleTime: HOME_REFRESH_MS / 2,

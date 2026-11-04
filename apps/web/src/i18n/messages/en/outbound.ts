@@ -12,6 +12,8 @@ export const outboundEn = {
   via: 'Via {channel}',
   viaTip: 'The reply goes out through the channel the customer wrote on.',
   delivery: {
+    sent: 'Sent {time}',
+    confirmation: 'Confirmation email ·',
     scheduled: 'Waiting to send',
     cancelled: 'Undone, not sent',
     failed: 'Not delivered',
