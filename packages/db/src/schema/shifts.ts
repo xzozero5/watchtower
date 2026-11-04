@@ -215,3 +215,34 @@ export const shiftNoteRead = pgTable(
     index('shift_note_read_user_idx').on(table.userId, table.readAt.desc()),
   ],
 );
+
+/**
+ * Mirrors migrations/0102_roster_plan.sql (T-305e): a draft of next week's roster made by the planner solver.
+ * `inputs` and `entries` are JSON whose shape is `rosterPlanInputsSchema` / `rosterAssignmentSchema` of
+ * `@watchtower/shared`; the API parses them on the way out.
+ */
+export const rosterPlan = pgTable(
+  'roster_plan',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    weekStart: date('week_start', { mode: 'string' }).notNull(),
+    status: text('status').notNull().default('draft'),
+    inputs: jsonb('inputs').notNull(),
+    entries: jsonb('entries')
+      .notNull()
+      .default(sql`'[]'::jsonb`),
+    solverStatus: text('solver_status').notNull(),
+    solverNodes: integer('solver_nodes').notNull().default(0),
+    explanation: text('explanation'),
+    explanationLocale: text('explanation_locale'),
+    explanationPromptVersion: integer('explanation_prompt_version'),
+    explanationRunId: uuid('explanation_run_id'),
+    explanationAt: timestamptz('explanation_at'),
+    createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
+    appliedBy: uuid('applied_by').references(() => users.id, { onDelete: 'set null' }),
+    appliedAt: timestamptz('applied_at'),
+    createdAt: timestamptz('created_at').notNull().defaultNow(),
+    updatedAt: timestamptz('updated_at').notNull().defaultNow(),
+  },
+  (table) => [index('roster_plan_week_idx').on(table.weekStart.desc(), table.createdAt.desc())],
+);

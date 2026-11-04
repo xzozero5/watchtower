@@ -49,3 +49,7 @@ the evidence; empty without a procedure). The slot text goes through the redacti
 T-303b adds `procedure_compiler.v1.md` (the plain-language procedure of an intent in, the strict step list of ADR-026 out, plus what
 the model had to guess). The text is redacted first; the steps are checked by the Zod schema in `@watchtower/shared` and by the domain,
 and a person confirms them: the agent only drafts.
+
+T-305e adds `roster_planner.v1.md` (the facts of a weekly shift plan that the deterministic solver already made, with people as labels, in; a
+short explanation out, in the language of the lead). The agent only explains: it cannot change the plan, and the constraint report beside it is
+the program's own result.

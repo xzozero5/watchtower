@@ -36,7 +36,7 @@ import { badRequest, conflict, forbidden, notFound } from '../auth/http-errors.j
 import type { Principal } from '../auth/principal.js';
 import { PG, isPgError } from '../common/db-errors.js';
 import { DATABASE } from '../database/database.module.js';
-import { UnitOfWorkService } from '../realtime/unit-of-work.js';
+import { UnitOfWorkService, type UnitOfWork } from '../realtime/unit-of-work.js';
 import { TICKET_KEYS, type TicketKeys } from '../tickets/ticket-keys.js';
 import { HandoffReader } from './handoff-reader.js';
 import {
@@ -197,8 +197,18 @@ export class ShiftsService {
     return { timezone, entries: rows.map((row) => toRosterEntry(row, timezone)) };
   }
 
-  async assignRoster(principal: Principal, input: CreateRosterEntry): Promise<RosterEntry> {
-    return this.uow.run(async (uow) => {
+  /**
+   * Puts a person on a shift. `within` is the transaction of a caller that writes many entries at once (the
+   * roster planner's apply); without it the entry is written in its own transaction.
+   */
+  async assignRoster(
+    principal: Principal,
+    input: CreateRosterEntry,
+    within?: UnitOfWork,
+  ): Promise<RosterEntry> {
+    const run = <T>(work: (uow: UnitOfWork) => Promise<T>): Promise<T> =>
+      within === undefined ? this.uow.run(work) : work(within);
+    return run(async (uow) => {
       const [person] = await uow.tx
         .select({ id: schema.users.id, role: schema.users.role, status: schema.users.status })
         .from(schema.users)
@@ -248,8 +258,10 @@ export class ShiftsService {
     });
   }
 
-  async removeRoster(principal: Principal, id: string): Promise<void> {
-    await this.uow.run(async (uow) => {
+  async removeRoster(principal: Principal, id: string, within?: UnitOfWork): Promise<void> {
+    const run = <T>(work: (uow: UnitOfWork) => Promise<T>): Promise<T> =>
+      within === undefined ? this.uow.run(work) : work(within);
+    await run(async (uow) => {
       const [row] = await uow.tx
         .delete(schema.rosterEntry)
         .where(eq(schema.rosterEntry.id, id))

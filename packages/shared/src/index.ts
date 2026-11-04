@@ -30,6 +30,7 @@ export * from './rbac.js';
 export * from './seed-data.js';
 export * from './realtime.js';
 export * from './redis-url.js';
+export * from './roster-solver.js';
 export * from './sla.js';
 export * from './text-metrics.js';
 export * from './ticket-manual.js';

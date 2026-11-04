@@ -20,6 +20,7 @@ export * from './agents/procedure-simulation.js';
 export * from './agents/kb-author.js';
 export * from './agents/grade.js';
 export * from './agents/procedure-compiler.js';
+export * from './agents/roster-planner.js';
 export * from './agents/assistant.js';
 export * from './agents/summary.js';
 export * from './toolkit/ports.js';

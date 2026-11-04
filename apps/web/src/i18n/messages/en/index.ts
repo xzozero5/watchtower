@@ -51,6 +51,7 @@ import { railEn } from './rail';
 import { rolesEn } from './roles';
 import { severityEn } from './severity';
 import { shiftEn } from './shift';
+import { rosterPlanEn } from './rosterPlan';
 import { slaEn } from './sla';
 import { statesEn } from './states';
 import { statusEn } from './status';
@@ -105,6 +106,7 @@ export const en = {
   bulk: bulkEn,
   otherMail: otherMailEn,
   shift: shiftEn,
+  rosterPlan: rosterPlanEn,
   outbound: outboundEn,
   ops: opsEn,
   dashboard: dashboardEn,

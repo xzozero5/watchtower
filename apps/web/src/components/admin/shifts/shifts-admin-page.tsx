@@ -23,6 +23,7 @@ import { LoadError, RequirePermission, TableSkeleton } from '@/components/admin/
 import { EntitySheet } from '@/components/admin/entity-sheet';
 import { FormField } from '@/components/portal/form-field';
 import { useShiftFormat } from '@/components/shift/shift-bits';
+import { RosterPlannerTab } from './roster-planner';
 import { useI18n } from '@/i18n/provider';
 import { describeError } from '@/lib/admin/errors';
 import { useApi } from '@/lib/api/api-context';
@@ -61,6 +62,7 @@ function ShiftsAdminBody() {
             <TabsList aria-label={t('shift.admin.tabsLabel')}>
               <TabsTrigger value="roster">{t('shift.admin.roster')}</TabsTrigger>
               <TabsTrigger value="definitions">{t('shift.admin.definitions')}</TabsTrigger>
+              <TabsTrigger value="planner">{t('rosterPlan.tab')}</TabsTrigger>
             </TabsList>
             <p className="text-xs text-muted-foreground">
               {t('shift.admin.zone', { zone: definitions.data.timezone })}
@@ -73,6 +75,12 @@ function ShiftsAdminBody() {
             </TabsContent>
             <TabsContent value="definitions">
               <DefinitionsTab definitions={definitions.data.definitions} />
+            </TabsContent>
+            <TabsContent value="planner">
+              <RosterPlannerTab
+                timezone={definitions.data.timezone}
+                definitions={definitions.data.definitions}
+              />
             </TabsContent>
           </Tabs>
         )}
