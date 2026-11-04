@@ -32,6 +32,8 @@ const EXPECTED_FEATURES = [
   'uploads',
   // T-305a/b: the AI cost dashboard and the CEO view.
   'reports',
+  // T-303b: procedures per intent.
+  'procedure',
 ];
 
 describe('feature records', () => {

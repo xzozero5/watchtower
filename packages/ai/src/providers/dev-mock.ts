@@ -284,6 +284,30 @@ function draft(request: LlmRequest, hash: string): string {
 }
 
 /** KB author: title from the subject, body from what staff wrote last; placeholders are left out. */
+/**
+ * The offline stand-in for the procedure compiler: a fixed, harmless example (two read-only tools and a
+ * reply guideline). It does not read the text, and says so (N5), so nobody mistakes it for a compile.
+ */
+function compileProcedureExample(): string {
+  return JSON.stringify({
+    steps: {
+      schemaVersion: 1,
+      autosend: 'never',
+      steps: [
+        { kind: 'tool', id: 'kb', tool: 'kb_search' },
+        { kind: 'tool', id: 'similar', tool: 'similar_tickets' },
+        {
+          kind: 'reply_guideline',
+          id: 'tone',
+          text: 'State what was checked and what is still unknown.',
+          lang: 'en',
+        },
+      ],
+    },
+    assumptions: ['The offline mock provider wrote a fixed example; it did not read the text.'],
+  });
+}
+
 function authorArticle(request: LlmRequest): string {
   const raw = request.messages[0]?.content ?? '';
   const thai = THAI.test(raw);
@@ -419,6 +443,9 @@ export class DevMockLlmProvider implements LlmProvider {
         break;
       case 'grader':
         text = gradeResolution(request);
+        break;
+      case 'procedure_compiler':
+        text = compileProcedureExample();
         break;
       case 'assistant_plan':
         text = assistantPlan(request);

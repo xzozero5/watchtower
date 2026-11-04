@@ -422,6 +422,10 @@ describe('SECURITY DEFINER functions cannot be fooled with TEMP objects (securit
     );
     expect(rows.rows.map((row) => row.proname)).toEqual([
       'ensure_monthly_partitions',
+      // 0097 (T-303b)
+      'procedure_simulation_apply',
+      'publish_procedure_version',
+      'retire_procedure_version',
       'set_ai_switch',
       'set_intent_autonomy',
     ]);

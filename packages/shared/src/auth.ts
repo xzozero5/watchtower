@@ -64,6 +64,8 @@ export const AUTH_ERROR_CODES = [
   'tool_failed',
   // Email reply (T-171 C-2): a recipient is on a domain the customer is not linked to; the body carries `domains`.
   'external_recipients',
+  // Procedures (T-303b): the compiler could not run (kill switch, budget, no provider: 503) or answered with steps that do not fit the schema (502).
+  'ai_unavailable',
 ] as const;
 export type AuthErrorCode = (typeof AUTH_ERROR_CODES)[number];
 

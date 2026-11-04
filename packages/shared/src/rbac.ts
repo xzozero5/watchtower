@@ -102,6 +102,11 @@ export const PERMISSIONS = {
   'ticket.dev.work':
     'Developer work on a ticket: internal notes, open and waiting_on_dev, pick up as dev owner, link an incident or deploy',
   'ticket.dev.release.any': 'Let go of the dev owner of any ticket (a developer who is away)',
+  // T-303b (migration 0097_procedures, ADR-026). `[ASSUMED]`: read for everyone who works inside the workspace,
+  // write and publish for lead and head.
+  'procedure.read': 'Read the procedure of an intent and its versions',
+  'procedure.author': 'Write, compile and confirm the procedure of an intent',
+  'procedure.publish': 'Publish or retire a procedure version',
 } as const satisfies Record<string, string>;
 
 export type Permission = keyof typeof PERMISSIONS;
@@ -143,6 +148,7 @@ const AGENT: readonly Permission[] = [
   'inbound.read',
   'shift.note.write',
   'handoff.ack',
+  'procedure.read',
   'alert.read',
   'alert.ack',
   'dashboard.ops.read',
@@ -173,6 +179,8 @@ const LEAD: readonly Permission[] = [
   'investigate.adhoc',
   'metric.read',
   'org.health.read',
+  'procedure.author',
+  'procedure.publish',
 ];
 
 const HEAD: readonly Permission[] = [
@@ -205,6 +213,7 @@ const DEV: readonly Permission[] = [
   'ticket.dev.work',
   'investigate.run',
   'auth.session.self',
+  'procedure.read',
 ];
 
 const CLIENT: readonly Permission[] = [

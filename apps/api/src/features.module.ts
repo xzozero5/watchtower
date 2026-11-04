@@ -23,6 +23,7 @@ import { UsageModule } from './usage/usage.module.js';
 import { DashboardModule } from './dashboard/dashboard.module.js';
 import { ReportsModule } from './reports/reports.module.js';
 import { UploadsModule } from './uploads/uploads.module.js';
+import { ProceduresModule } from './procedures/procedures.module.js';
 
 /**
  * The feature modules (Phase 1: T-123a; Phase 2 appends below), imported once so that parallel tasks add files inside
@@ -53,6 +54,7 @@ import { UploadsModule } from './uploads/uploads.module.js';
     DashboardModule,
     ReportsModule,
     UploadsModule,
+    ProceduresModule,
   ],
 })
 export class FeaturesModule {}

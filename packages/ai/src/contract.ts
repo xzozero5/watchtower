@@ -38,6 +38,8 @@ export const AGENT_NAMES = [
   'kb_author',
   'roster_planner',
   'personal_assistant',
+  // Drafts the steps of an intent's procedure from the text a lead wrote; a person confirms (T-303b, ADR-026).
+  'procedure_compiler',
   // Knowledge base indexing and query embedding (T-107b): no prompt, one embedding call per batch.
   'embedder',
 ] as const;
@@ -54,6 +56,7 @@ export const DEFAULT_AGENT_TIERS: Readonly<Record<AgentName, ModelTier>> = {
   kb_author: 'standard',
   roster_planner: 'standard',
   personal_assistant: 'standard',
+  procedure_compiler: 'standard',
   embedder: 'light',
 };
 
