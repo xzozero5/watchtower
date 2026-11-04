@@ -10,6 +10,7 @@ import { Redis } from 'ioredis';
 import { z } from 'zod';
 
 import { createAiRuntime } from './ai/runtime.js';
+import { probeAiStatus, startAiStatusReporter } from './ai/status-reporter.js';
 import type { WorkerConfig } from './config.js';
 import { defaultGmailRuntime } from './gmail/index.js';
 import { createHealthServer } from './health.js';
@@ -129,6 +130,18 @@ export async function startWorker(
     );
   }
 
+  // The api cannot reach the claude-bridge (ADR-019), so the worker leaves the AI status in Redis (T-170).
+  const aiStatus = startAiStatusReporter({
+    probe: () =>
+      probeAiStatus({
+        provider: config.AI_PROVIDER,
+        bridgeUrl: config.CLAUDE_CLI_BRIDGE_URL,
+        fetch: (input, init) => globalThis.fetch(input, init),
+      }),
+    store: realtimeRedis,
+    logger,
+  });
+
   // How Gmail mailboxes are reached (T-102): the in-memory fake unless the `gmail` credential is complete.
   const gmailRuntime =
     overrides.gmail?.runtime ?? defaultGmailRuntime(config, database, logger, domain);
@@ -236,6 +249,7 @@ export async function startWorker(
   return {
     healthPort,
     async close() {
+      aiStatus.stop();
       await outboxRelay.stop();
       await publisher.close();
       await Promise.all(consumers.map((consumer) => consumer.close()));

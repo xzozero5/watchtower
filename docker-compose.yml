@@ -157,9 +157,12 @@ x-app-env: &app-env
   KB_CHUNK_OVERLAP_CHARS: ${KB_CHUNK_OVERLAP_CHARS:-}
   KB_MIN_VECTOR_SIMILARITY: ${KB_MIN_VECTOR_SIMILARITY:-}
   ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
-  # claude-cli (dev/POC only, ADR-017): the host-side bridge to the local Claude Code CLI.
-  CLAUDE_CLI_BRIDGE_URL: ${CLAUDE_CLI_BRIDGE_URL:-http://host.docker.internal:4317}
+  # claude-cli (ADR-017, ADR-019): the bridge to Claude Code. The default is the `claude-bridge` compose
+  # service (profile `ai`); a bridge run on the host instead needs CLAUDE_CLI_BRIDGE_URL=http://host.docker.internal:4317.
+  CLAUDE_CLI_BRIDGE_URL: ${CLAUDE_CLI_BRIDGE_URL:-http://claude-bridge:4317}
   CLAUDE_CLI_BRIDGE_TOKEN: ${CLAUDE_CLI_BRIDGE_TOKEN:-}
+  # ADR-021: opt-in to claude-cli in production / off a loopback APP_URL. Off unless you set true.
+  CLAUDE_CLI_ALLOW_REMOTE: ${CLAUDE_CLI_ALLOW_REMOTE:-false}
   VERTEX_PROJECT_ID: ${VERTEX_PROJECT_ID:-}
   VERTEX_LOCATION: ${VERTEX_LOCATION:-asia-southeast1}
   AI_MODEL_DEEP: ${AI_MODEL_DEEP:-}
@@ -439,11 +442,8 @@ services:
     # Only the worker shares this network (web, caddy, minio cannot reach it); egress to Anthropic stays.
     networks:
       - ai
-    # Also on this machine's loopback, for a worker that reaches it as http://host.docker.internal:4317
-    # (an image built before ADR-019 accepts only that host). Never on another interface; the bearer
-    # token is still required. Drop it once every worker uses http://claude-bridge:4317.
-    ports:
-      - '127.0.0.1:${CLAUDE_CLI_BRIDGE_PORT:-4317}:4317'
+    # No `ports:` on purpose (ADR-021): the worker reaches it as http://claude-bridge:4317 on the `ai`
+    # network. To reach it from this machine for debugging, use `docker compose exec claude-bridge ...`.
     read_only: true
     tmpfs:
       - /tmp

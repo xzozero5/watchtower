@@ -379,6 +379,10 @@ export async function runInvestigation(
       abortSignal: signal,
     });
     if (outcome.status === 'skipped') return needsHuman(outcome.reason, stage);
+    // Offline (ADR-019) is a wait, not a failure: the processor puts the job back (T-170).
+    if (outcome.status === 'failed' && outcome.reason === 'provider_offline') {
+      return needsHuman('provider_offline', stage);
+    }
     if (outcome.status === 'failed') {
       await write({ state: 'failed', reasonCode: outcome.reason, progress: null, stage });
       throw new InvestigationFailedError(outcome.reason);
@@ -423,6 +427,9 @@ export async function runInvestigation(
     abortSignal: signal,
   });
   if (drafted.status === 'skipped') return needsHuman(drafted.reason, stage);
+  if (drafted.status === 'failed' && drafted.reason === 'provider_offline') {
+    return needsHuman('provider_offline', stage);
+  }
   if (drafted.status === 'failed') {
     await write({ state: 'failed', reasonCode: drafted.reason, progress: null, stage });
     throw new InvestigationFailedError(drafted.reason);

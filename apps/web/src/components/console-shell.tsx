@@ -16,6 +16,7 @@ import {
   type SwitchTarget,
 } from '@/components/admin/ai/switch-confirm-dialog';
 import { AiPausedBanner } from '@/components/admin/ai/ai-paused-banner';
+import { AiOfflineBanner } from '@/components/ai-offline-banner';
 import { CommandPalette } from '@/components/command-palette/command-palette';
 import { buildCommands } from '@/components/command-palette/commands';
 import { usePaletteShortcut } from '@/components/command-palette/use-palette-shortcut';
@@ -228,6 +229,7 @@ export function ConsoleShell({ destination, skipTo, children }: ConsoleShellProp
       <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-background">
         <CriticalBanner />
         <AiPausedBanner />
+        <AiOfflineBanner />
         {children}
       </div>
       <CommandPalette

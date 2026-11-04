@@ -14,7 +14,7 @@ import { createDatabase, createProductDbExecutor, type Database } from '@watchto
 import { UnrecoverableError, type Job, type Processor } from 'bullmq';
 
 import type { ProcessorContext } from '../processors/index.js';
-import { makeAiBrief } from './brief.js';
+import { delayWhileOffline, makeAiBrief } from './brief.js';
 import { runInvestigation } from './investigation.js';
 import { runKbAuthor } from './kb-author-job.js';
 import { createSystemToolPorts } from './system-tool-ports.js';
@@ -81,7 +81,7 @@ export function createAiPipelineProcessor(context: ProcessorContext): Processor 
     logger,
   });
 
-  return async (job: Job): Promise<unknown> => {
+  return async (job: Job, token?: string): Promise<unknown> => {
     switch (job.name) {
       case AI_JOBS.summarize: {
         const parsed = aiSummarizeJobSchema.safeParse(job.data);
@@ -91,6 +91,8 @@ export function createAiPipelineProcessor(context: ProcessorContext): Processor 
           { ticketId: parsed.data.ticketId, status: result.status, reason: result.reason },
           'ai brief',
         );
+        // Offline (ADR-019, T-170): wait for the AI host without using an attempt.
+        if (result.reason === 'provider_offline') await delayWhileOffline(job, token);
         if (result.status === 'classified') {
           // Same transaction-free outbox write as the api uses: the job exists once per ticket.
           await domain.outbox.enqueue(database.db, domain.config, {
@@ -114,6 +116,7 @@ export function createAiPipelineProcessor(context: ProcessorContext): Processor 
           noDraft: parsed.data.noDraft,
         });
         logger.info({ ticketId: parsed.data.ticketId, ...result }, 'ai investigation');
+        if (result.reason === 'provider_offline') await delayWhileOffline(job, token);
         return result;
       }
 
@@ -127,6 +130,7 @@ export function createAiPipelineProcessor(context: ProcessorContext): Processor 
           note: parsed.data.note,
         });
         logger.info({ ticketId: parsed.data.ticketId, ...result }, 'ai draft');
+        if (result.reason === 'provider_offline') await delayWhileOffline(job, token);
         return result;
       }
 

@@ -2,6 +2,7 @@ import type { Messages } from '../en';
 import { adminTh } from './admin';
 import { attachmentsTh } from './attachments';
 import { aiTh } from './ai';
+import { aiOfflineTh } from './aiOffline';
 import { apiStatusTh } from './apiStatus';
 import { appTh } from './app';
 import { authTh } from './auth';
@@ -65,6 +66,7 @@ export const th: Messages = {
   sla: slaTh,
   workspace: workspaceTh,
   ai: aiTh,
+  aiOffline: aiOfflineTh,
   live: liveTh,
   keymap: keymapTh,
   auth: authTh,

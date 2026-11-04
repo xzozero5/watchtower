@@ -100,6 +100,43 @@ describe('syncKbArticles', () => {
     expect(rows[0]?.visibility).toBe('internal');
   });
 
+  it('deprecates the article of a file that is gone, only ones the import created (T-170)', async () => {
+    const keep = file('gone-keep', 'visibility: internal', 'stays');
+    const gone = file('gone-go', 'visibility: internal', 'leaves');
+    await syncKbArticles(app, [keep, gone]);
+    // An article written in the app, not by the import, is never touched.
+    await pool().query(
+      `INSERT INTO kb_article (id, slug, kind, lang, status, visibility)
+       VALUES (gen_random_uuid(), 'gone-app', 'howto', 'en', 'published', 'internal')`,
+    );
+    const before = await jobs();
+    const result = await syncKbArticles(app, [keep]);
+    expect(result.entries.map((e) => `${e.slug}:${e.outcome}`)).toEqual([
+      'gone-keep:unchanged',
+      'gone-go:deprecated',
+    ]);
+    const { rows } = await pool().query(
+      `SELECT slug, status, published_version_id IS NOT NULL AS live
+         FROM kb_article WHERE slug LIKE 'gone-%' ORDER BY slug`,
+    );
+    expect(rows).toEqual([
+      { slug: 'gone-app', status: 'published', live: false },
+      { slug: 'gone-go', status: 'deprecated', live: false },
+      { slug: 'gone-keep', status: 'published', live: true },
+    ]);
+    // The worker is asked to drop the chunks of the live article it took down.
+    expect(await jobs()).toBe((before ?? 0) + 1);
+    // Idempotent, and an empty folder deprecates nothing.
+    expect((await syncKbArticles(app, [keep])).entries.map((e) => e.outcome)).toEqual([
+      'unchanged',
+    ]);
+    expect((await syncKbArticles(app, [])).entries).toEqual([]);
+    const { rows: still } = await pool().query(
+      `SELECT status FROM kb_article WHERE slug = 'gone-keep'`,
+    );
+    expect(still).toEqual([{ status: 'published' }]);
+  });
+
   it('rolls everything back when one file names an unknown organization', async () => {
     await expect(
       syncKbArticles(app, [
