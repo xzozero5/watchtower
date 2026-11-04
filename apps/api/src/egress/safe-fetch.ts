@@ -4,7 +4,7 @@ import https from 'node:https';
 import { isIP } from 'node:net';
 import type { LookupAddress } from 'node:dns';
 
-import { isBlockedAddress, isInternalHostname } from './ip-guard.js';
+import { isBlockedAddress, isInternalHostname } from '@watchtower/channels';
 
 /**
  * Why a fetch for a user-supplied URL was refused or failed. The caller turns every one of these into the

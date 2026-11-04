@@ -116,7 +116,8 @@ export async function startHarness(options: StartOptions = {}): Promise<Harness>
         if (
           row.queue === QUEUE_NAMES.ai ||
           row.queue === QUEUE_NAMES.discord ||
-          row.queue === QUEUE_NAMES.kb
+          row.queue === QUEUE_NAMES.kb ||
+          row.queue === QUEUE_NAMES.webPush
         ) {
           return;
         }

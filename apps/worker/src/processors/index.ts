@@ -14,6 +14,7 @@ import { createAlertsRegistration, type AlertsOverrides } from '../alerts/index.
 import { createIncidentsRegistration, type IncidentsOverrides } from '../incidents/index.js';
 import { createCsatRegistration } from '../csat/index.js';
 import { createStatusPageRegistration } from '../statuspage/index.js';
+import { createWebPushRegistration, type WebPushOverrides } from '../webpush/index.js';
 import { createUsageRegistration, type UsageOverrides } from '../usage/index.js';
 import { createScanRegistration, type ScanOverrides } from '../scan/index.js';
 import { createIngestRegistration, type IngestOverrides } from '../ingest/index.js';
@@ -62,6 +63,7 @@ export interface ProcessorOverrides {
   readonly incidents?: IncidentsOverrides;
   readonly usage?: UsageOverrides;
   readonly scan?: ScanOverrides;
+  readonly webPush?: WebPushOverrides;
 }
 
 export interface ProcessorRegistration {
@@ -130,6 +132,7 @@ export const PROCESSORS: readonly ProcessorRegistration[] = [
   { queue: QUEUE_NAMES.discord, create: createDiscordRegistration },
 
   // --- notifications (T-105) ---
+  { queue: QUEUE_NAMES.webPush, create: createWebPushRegistration },
 
   // --- ai (T-106, T-108) ---
   {

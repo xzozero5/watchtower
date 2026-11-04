@@ -11,6 +11,7 @@ export * from './common/index.js';
 export * as discord from './discord/index.js';
 export * as gmail from './gmail/index.js';
 export * as line from './line/index.js';
+export * as webpush from './webpush/index.js';
 export {
   createMemoryObjectStore,
   createS3ObjectStore,

@@ -39,6 +39,8 @@ import {
 } from '@/lib/notifications/queries';
 import { useNow } from '@/lib/use-now';
 
+import { WebPushSetting } from './web-push-setting';
+
 /** The badge stops counting here: "99+" is as much as anyone can act on. */
 const BADGE_MAX = 99;
 
@@ -155,6 +157,7 @@ function Preferences() {
           {t('notifications.center.saveError')}
         </p>
       ) : null}
+      <WebPushSetting />
     </section>
   );
 }

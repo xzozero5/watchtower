@@ -1,8 +1,8 @@
 /**
  * English copy of the notification center and the P1 banner (T-105, docs/06-UI-SPEC.md section 8).
  * Kept in its own file, like the AI and portal copy, and merged into the catalogue by one line in
- * en/index.ts. ../th/notifications.ts must have the same keys. Phase 1 has no sound and no Web Push, so no
- * copy for them.
+ * en/index.ts. ../th/notifications.ts must have the same keys. There is no sound yet, so no
+ * copy for it.
  */
 export const notificationsEn = {
   center: {
@@ -21,9 +21,19 @@ export const notificationsEn = {
     earlier: 'Earlier',
     settings: 'Settings',
     settingsTitle: 'Tell me about',
-    settingsHint: 'Only in the app. A P1 ticket is always shown.',
+    settingsHint: 'In the app and on your devices. A P1 ticket is always shown.',
     alwaysOn: 'Always on',
     saveError: 'The setting was not saved.',
+  },
+  push: {
+    title: 'Alerts on this device',
+    hint: 'Get a system notification when something needs you, even if the app is closed. It shows the kind of alert and opens the app; it never shows customer messages.',
+    turnOn: 'Turn on for this device',
+    turnOff: 'Turn off for this device',
+    blocked:
+      'Notifications are blocked for this site in the browser settings. Allow them there to turn this on.',
+    denied: 'Permission was not given, so nothing was turned on.',
+    failed: 'Could not change this. Try again.',
   },
   kind: {
     ticketP1: 'P1 ticket {key}',

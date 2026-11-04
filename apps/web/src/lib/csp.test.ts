@@ -95,6 +95,14 @@ describe('contentSecurityPolicy with a nonce (T-125 C-5)', () => {
     expect(withNonce.get('script-src')).not.toContain("'unsafe-inline'");
   });
 
+  it('needs no change for Web Push: the service worker is same-origin and no push host is allowed to the page', () => {
+    // The browser talks to the push service itself, outside the page's CSP; the page only calls the api.
+    expect(withNonce.get('worker-src')).toContain("'self'");
+    expect(withNonce.get('connect-src')?.join(' ')).not.toMatch(
+      /googleapis|mozilla|apple\.com|windows\.com/,
+    );
+  });
+
   it('keeps unsafe-eval out of a production policy and in only for the dev server', () => {
     const dev = directives(contentSecurityPolicy({ nonce: 'n', development: true }));
     expect(dev.get('script-src')).toContain("'unsafe-eval'");

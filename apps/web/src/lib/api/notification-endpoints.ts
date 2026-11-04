@@ -2,7 +2,9 @@ import {
   notificationPageSchema,
   notificationPreferencesSchema,
   notificationReadAllResultSchema,
+  webPushStatusSchema,
   type SetNotificationPreferences,
+  type WebPushSubscribe,
 } from '@watchtower/shared';
 
 import type { ApiClient } from './client';
@@ -42,6 +44,29 @@ export function createNotificationEndpoints(client: ApiClient) {
         path: '/v1/notifications/preferences',
         schema: notificationPreferencesSchema,
         ...withSignal(signal),
+      }),
+
+    webPushStatus: (signal?: AbortSignal) =>
+      client.request({
+        path: '/v1/notifications/push',
+        schema: webPushStatusSchema,
+        ...withSignal(signal),
+      }),
+
+    webPushSubscribe: (body: WebPushSubscribe) =>
+      client.request({
+        method: 'POST',
+        path: '/v1/notifications/push/subscriptions',
+        body,
+        schema: webPushStatusSchema,
+      }),
+
+    webPushUnsubscribe: (endpoint: string) =>
+      client.request({
+        method: 'DELETE',
+        path: '/v1/notifications/push/subscriptions',
+        body: { endpoint },
+        schema: webPushStatusSchema,
       }),
 
     setNotificationPreferences: (body: SetNotificationPreferences) =>
