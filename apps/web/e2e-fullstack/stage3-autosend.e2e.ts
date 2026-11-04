@@ -621,12 +621,10 @@ test.describe.serial('Stage 3 / flag ON: the gate, the send, rollback, the eval 
     const line = page.getByText(/AI meant to send but was held/);
     await expect(line).toBeVisible();
     // B-009: the line has no words for this reason yet (it says `the check "replay_missing" did not pass`); recorded, not asserted.
-    test
-      .info()
-      .annotations.push({
-        type: 'held line (B-009)',
-        description: (await line.textContent()) ?? '',
-      });
+    test.info().annotations.push({
+      type: 'held line (B-009)',
+      description: (await line.textContent()) ?? '',
+    });
   });
 
   test('every condition met: an ai_auto reply is held 120 s, then sent with the AI footer in the customer thread', async () => {
@@ -885,17 +883,20 @@ test.describe.serial('Stage 3 / flag ON: the gate, the send, rollback, the eval 
     expect(await rollbackNotice(intent.key)).toMatchObject({ data: { rule: 'reopen_or_csat' } });
   });
 
-  // Slow (about 20 minutes), so off unless E2E_STAGE3_SLOW=1: the finding B-010 in docs/qa/bugs.md. The watch job of an
-  // intent has a jobId made of the minute, so a second bad reply in the same minute as an earlier one enqueues nothing;
-  // the rollback then waits for the run every 15 minutes. ADR-025 section 7 says "event + every 15 minutes", which reads
-  // as: the event is what makes it prompt. Expected here: rolled back within 3 minutes of the second reopen.
-  test('rollback timing: two reopened replies in the same minute are rolled back promptly (B-010)', async () => {
+  // Slow (up to 20 minutes), so off unless E2E_STAGE3_SLOW=1: the finding B-010 in docs/qa/bugs.md. The watch job of an
+  // intent has a jobId made of the minute, so a bad reply in the same minute as an earlier one, whose job has already
+  // run and found only one, enqueues nothing; the rollback then waits for the run every 15 minutes. ADR-025 section 7
+  // says "event + every 15 minutes", which reads as: the event is what makes it prompt. Expected here: rolled back
+  // within 3 minutes of the second reopen.
+  test('rollback timing: a second reopened reply in the same minute is rolled back promptly (B-010)', async () => {
     test.skip(process.env.E2E_STAGE3_SLOW !== '1', 'slow: set E2E_STAGE3_SLOW=1');
     test.setTimeout(30 * 60_000);
     const { intent, tickets } = await sentReplies('sameminute', 2);
-    await new Promise((resolve) => setTimeout(resolve, 62_000 - (Date.now() % 60_000))); // start of a minute
+    await new Promise((resolve) => setTimeout(resolve, 61_000 - (Date.now() % 60_000))); // 1 s into a minute
     await reopen(tickets[0] as TicketRow);
-    await reopen(tickets[1] as TicketRow);
+    await new Promise((resolve) => setTimeout(resolve, 15_000)); // the job of the first event looks and finds one bad reply
+    expect(stageOf(intent.id)).toBe(3);
+    await reopen(tickets[1] as TicketRow); // still the same minute
     const startedAt = Date.now();
     await until(
       'the rollback',
@@ -904,12 +905,10 @@ test.describe.serial('Stage 3 / flag ON: the gate, the send, rollback, the eval 
       5_000,
     );
     const waitedS = Math.round((Date.now() - startedAt) / 1000);
-    test
-      .info()
-      .annotations.push({
-        type: 'seconds from the second reopen to the rollback',
-        description: String(waitedS),
-      });
+    test.info().annotations.push({
+      type: 'seconds from the second reopen to the rollback',
+      description: String(waitedS),
+    });
     expect(waitedS).toBeLessThan(180);
   });
 
@@ -938,12 +937,10 @@ test.describe.serial('Stage 3 / flag ON: the gate, the send, rollback, the eval 
     });
     expect(refused.status).toBe(403);
     // B-011: the OpenAPI text promises a `reason` code (`report_not_green`); the body carries only the message.
-    test
-      .info()
-      .annotations.push({
-        type: 'refusal body (B-011)',
-        description: JSON.stringify(refused.json),
-      });
+    test.info().annotations.push({
+      type: 'refusal body (B-011)',
+      description: JSON.stringify(refused.json),
+    });
     expect(stageOf(intent.id)).toBe(2);
     expect(
       sql('admin', `SELECT 1 FROM intent_autonomy_promotion WHERE intent_id = $1`, [intent.id]),

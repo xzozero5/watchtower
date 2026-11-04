@@ -83,6 +83,18 @@ P3 cosmetic or rare, P4 polish. Developers fix; QA verifies. Do not edit an entr
 - **Suggested fix (not applied, app code):** carry `details.reason` into the body for `policy_denied` (like `domains` for `external_recipients`), or change the OpenAPI text.
 - **Status:** open, reported to main thread.
 
+### B-010 (P2) A bad reply in the same minute as an earlier one does not wake the autonomy watch: the rollback waits for the 15-minute run (T-304e)
+
+- **Found:** 2026-11-05, T-306b (`stage3-autosend.e2e.ts`, test "rollback timing ... (B-010)", needs `E2E_STAGE3_SLOW=1`). Measured `[TESTED]` once in a throwaway stack: **688 s** from the second reopen to the rollback.
+- **Area:** `packages/domain/src/autonomy/watch.ts` `enqueueAutonomyWatch` (jobId `autonomy-watch-<intent>-<minute>`), `apps/worker/src/autonomy/index.ts`.
+- **Steps (flag ON, an intent at stage 3, two automatic replies sent)**
+  1. Reopen the first ticket (resolved, then open). The event enqueues job `autonomy-watch-<intent>-<minute>`; the watch runs and finds 1 bad reply of the last 20: no rollback (correct).
+  2. 15 s later, in the same wall-clock minute, reopen the second ticket (2 bad replies now: the rule of the owner's decision 4).
+- **Expected:** rolled back within seconds to a minute or two (ADR-025 section 7: "worker `autonomy-watch` (event + every 15 minutes)"; the decision says 2 of the last 20 "rolls it back").
+- **Actual:** the second event enqueues nothing (same jobId as the first, already queued or retained; the delay is `[TESTED]`, the jobId cause is from reading the code, the queue was not inspected `[UNVERIFIED 80%]`), so nothing looks at the intent until the periodic run (`AUTONOMY_WATCH_EVERY_MS`, 15 minutes). The intent stayed at stage 3 for 688 s here and could for nearly 15 minutes, which is time in which it keeps sending automatic replies. When the second reopen falls in another minute (the test "2 reopened replies among the last 20", with the second reopen 62 s later) the rollback comes within a minute, and when both fall within the same second the one job sees both: the loss needs the first job to have already run. The same applies to a CSAT answer and to the "violation" rule (`violation` fired promptly in the test because the sampled grade runs in the same job that found it).
+- **Suggested fix (not applied, app code):** do not let an event be dropped by a job that has already started: use a jobId per minute only while the job is still waiting (`delay` + dedupe by jobId, or `removeOnComplete: true` so a finished job frees its id), or let the 15-minute run be shorter for intents at stage 3.
+- **Status:** open, reported to main thread. The test is gated by `E2E_STAGE3_SLOW=1` because it takes up to 20 minutes; it goes green when this is fixed.
+
 ## Observations that are not bugs (recorded so nobody re-investigates them)
 
 - A reply to a LINE ticket within ~50 s of the customer's last message uses the free reply token (not a push, quota unchanged). Correct per R-2.10; a push only follows after the token window.
