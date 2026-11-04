@@ -94,6 +94,24 @@ describe('timeline: grouping', () => {
   });
 });
 
+describe('timeline: infected attachment event', () => {
+  it('says which file was blocked', () => {
+    const event: TimelineEntry = {
+      kind: 'event',
+      id: uuid(3001),
+      ticketId: ticket.id,
+      ticketKey: ticket.key,
+      type: 'ticket.attachment_infected',
+      actor: { type: 'system', id: null, name: null },
+      visibility: 'internal',
+      payload: { filename: 'invoice.pdf', signature: 'Eicar-Test' },
+      createdAt: at(1),
+    };
+    renderApp(<Timeline entries={[event]} />);
+    expect(screen.getByText('File "invoice.pdf" was blocked and removed (malware)')).toBeVisible();
+  });
+});
+
 describe('timeline: sides and surfaces', () => {
   it('puts the customer on the left on a raised surface and the team on the right on a navy tint', () => {
     renderApp(<Timeline entries={[inbound(1, 0), reply(2, 1)]} />);

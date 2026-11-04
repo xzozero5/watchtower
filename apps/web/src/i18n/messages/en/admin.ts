@@ -359,6 +359,20 @@ export const adminEn = {
     loadError: 'Could not load the integrations.',
     accountsHeading: 'Channel accounts',
     accountsHint: 'The LINE Official Account and the Gmail mailboxes that tickets come from.',
+    uploadScan: {
+      heading: 'Malware scan of uploaded files',
+      hint: 'Files customers and the team upload are checked for malware before anyone can open them. A file that is infected is removed and its ticket gets a note.',
+      loadError: 'Could not load the malware scan status.',
+      modeOn: 'Scan on',
+      scanOff: 'Malware scan is not turned on',
+      scanOffHint:
+        'Uploaded files are served without being checked. Turn the scan on in the server settings (see the deployment guide).',
+      counts: 'Files by scan state',
+      pending: 'Being checked: {count}',
+      clean: 'Clean: {count}',
+      infected: 'Infected (removed): {count}',
+      error: 'Check failed (retrying): {count}',
+    },
     csat: {
       heading: 'Satisfaction survey',
       hint: 'After a ticket is resolved, the requester gets one survey email from the support mailbox. A change applies to surveys scheduled or sent after you save it.',

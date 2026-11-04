@@ -10,6 +10,7 @@ import { ChannelAccountsSection } from '@/components/admin/integrations/channel-
 import { CsatSettingsSection } from '@/components/admin/integrations/csat-settings-section';
 import { GmailConnection } from '@/components/admin/integrations/gmail-connection';
 import { IntegrationCard } from '@/components/admin/integrations/integration-card';
+import { UploadScanSection } from '@/components/admin/integrations/upload-scan-section';
 import { useT } from '@/i18n/provider';
 import { GMAIL_RESULT_KEY, parseGmailOauthResult } from '@/lib/admin/integrations';
 import { useIntegrations } from '@/lib/admin/queries';
@@ -78,6 +79,8 @@ function IntegrationsBody() {
           <GmailOauthResultBanner />
 
           <ChannelAccountsSection />
+
+          <UploadScanSection />
 
           <CsatSettingsSection />
 

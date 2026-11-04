@@ -234,7 +234,7 @@ describe('the P1 banner', () => {
     await waitFor(() => {
       expect(document.title).toBe('(P1) Watchtower');
     });
-    expect(within(banner).getByRole('link', { name: 'Open OPS-1' })).toHaveAttribute(
+    expect(within(banner).getByRole('link', { name: 'Open ticket OPS-1' })).toHaveAttribute(
       'href',
       '/?ticket=OPS-1',
     );
@@ -259,7 +259,7 @@ describe('the P1 banner', () => {
     const user = userEvent.setup();
     const { items } = setup([makeNotification(1)]);
     const banner = await screen.findByTestId('critical-banner');
-    await user.click(within(banner).getByRole('link', { name: 'Open OPS-1' }));
+    await user.click(within(banner).getByRole('link', { name: 'Open ticket OPS-1' }));
     await waitFor(() => {
       expect(items[0]?.readAt).not.toBeNull();
     });

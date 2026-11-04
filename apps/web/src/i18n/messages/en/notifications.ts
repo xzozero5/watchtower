@@ -51,7 +51,7 @@ export const notificationsEn = {
     showAll: 'Show all',
     hideAll: 'Show less',
     list: 'Unacknowledged P1 tickets',
-    openNamed: 'Open {key}',
+    openNamed: 'Open ticket {key}',
     acknowledgeNamed: 'Acknowledge {key}',
     tabPrefix: '(P1)',
   },

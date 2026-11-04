@@ -42,6 +42,13 @@ const READS = {
   'GET /v1/admin/integrations': { json: makeIntegrationList() },
   'GET /v1/admin/channel-accounts': { json: { items: [LINE_ACCOUNT, GMAIL_ACCOUNT] } },
   'GET /v1/admin/integrations/gmail/oauth/status': { json: makeGmailStatus() },
+  'GET /v1/admin/upload-scan': {
+    json: {
+      mode: 'off',
+      notice: 'scan_off',
+      counts: { pending: 0, clean: 0, infected: 0, error: 0 },
+    },
+  },
   'GET /v1/csat/settings': {
     json: { enabled: true, delayMinutes: 60, reminderHours: 48, cooldownDays: 7 },
   },
@@ -52,6 +59,33 @@ function setup(overrides: Record<string, MockHandler> = {}, role: 'head' | 'lead
   renderConsole(<IntegrationsPage />);
   return api;
 }
+
+describe('Integrations: malware scan', () => {
+  it('says the scan is off', async () => {
+    setup();
+    const section = await screen.findByRole('region', { name: 'Malware scan of uploaded files' });
+    expect(await within(section).findByText('Malware scan is not turned on')).toBeVisible();
+  });
+
+  it('shows the count per state when the scan is on', async () => {
+    setup({
+      'GET /v1/admin/upload-scan': {
+        json: {
+          mode: 'clamav',
+          notice: null,
+          counts: { pending: 2, clean: 40, infected: 1, error: 3 },
+        },
+      },
+    });
+    const section = await screen.findByRole('region', { name: 'Malware scan of uploaded files' });
+    expect(await within(section).findByText('Scan on')).toBeVisible();
+    expect(within(section).queryByText('Malware scan is not turned on')).toBeNull();
+    expect(within(section).getByText('Being checked: 2')).toBeVisible();
+    expect(within(section).getByText('Clean: 40')).toBeVisible();
+    expect(within(section).getByText('Infected (removed): 1')).toBeVisible();
+    expect(within(section).getByText('Check failed (retrying): 3')).toBeVisible();
+  });
+});
 
 describe('Integrations: credentials', () => {
   it('shows where each value comes from and never a value', async () => {

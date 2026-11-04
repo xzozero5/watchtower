@@ -219,7 +219,14 @@ export function NotificationCenter({ expanded }: { expanded: boolean }) {
                 : 'text-muted-foreground hover:bg-surface-muted hover:text-foreground',
             )}
           >
-            <span className="relative shrink-0">
+            {/* DOM order: title, then badge, so the visible text "Notifications 1" is contained in the name (WCAG 2.5.3, B-004); `order` keeps the icon first on screen. */}
+            <span
+              aria-hidden
+              className={cn('order-2 truncate', !expanded && 'sr-only', 'max-md:sr-only')}
+            >
+              {t('notifications.center.title')}
+            </span>
+            <span className="relative order-1 shrink-0">
               <Bell aria-hidden className={cn('size-4', unread > 0 && TINT_CLASSES.pink.icon)} />
               {unread > 0 ? (
                 <span
@@ -230,9 +237,6 @@ export function NotificationCenter({ expanded }: { expanded: boolean }) {
                   {badge}
                 </span>
               ) : null}
-            </span>
-            <span aria-hidden className={cn('truncate', !expanded && 'sr-only', 'max-md:sr-only')}>
-              {t('notifications.center.title')}
             </span>
           </button>
         </PopoverTrigger>

@@ -1,6 +1,7 @@
 import {
   autonomyHistoryPageSchema,
   csatSettingsSchema,
+  uploadScanSummarySchema,
   type CsatSettingsUpdate,
   channelAccountListSchema,
   channelAccountSchema,
@@ -387,6 +388,14 @@ export function createAdminEndpoints(client: ApiClient) {
         path: '/v1/csat/settings',
         body,
         schema: csatSettingsSchema,
+      }),
+
+    // --- malware scan of uploaded files (T-155, ADR-022): head ---
+    uploadScan: (signal?: AbortSignal) =>
+      client.request({
+        path: '/v1/admin/upload-scan',
+        schema: uploadScanSummarySchema,
+        ...withSignal(signal),
       }),
 
     // --- audit log (head) ---

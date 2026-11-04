@@ -18,6 +18,13 @@ export const timelineTh: Widen<typeof timelineEn> = {
     failed: 'ดาวน์โหลดไฟล์ไม่สำเร็จ กรุณาลองอีกครั้ง',
     forbidden: 'คุณไม่มีสิทธิ์เข้าถึงไฟล์นี้แล้ว',
     missing: 'ไฟล์นี้ไม่พร้อมให้ดาวน์โหลดแล้ว',
+    scanPending: 'ไฟล์นี้ยังอยู่ระหว่างตรวจมัลแวร์ ลองใหม่อีกสักครู่',
+    infected: 'ไฟล์นี้ถูกบล็อกและลบออกแล้ว เพราะพบมัลแวร์',
+    scan: {
+      pending: 'กำลังตรวจไฟล์',
+      infected: 'ไฟล์ถูกบล็อก (มัลแวร์)',
+      error: 'ตรวจไม่สำเร็จ ระบบจะลองใหม่',
+    },
   },
   kinds: {
     customer: 'ข้อความจากลูกค้า',
@@ -51,6 +58,8 @@ export const timelineTh: Widen<typeof timelineEn> = {
     slaRecalculated: 'คำนวณเวลา SLA ใหม่',
     sendCancelled: 'ยกเลิกคำตอบก่อนส่ง',
     deliveryFailed: 'ส่งคำตอบไม่สำเร็จ',
+    attachmentInfected: 'ไฟล์ถูกบล็อกและลบออก (มัลแวร์)',
+    attachmentInfectedNamed: 'ไฟล์ "{name}" ถูกบล็อกและลบออก (มัลแวร์)',
   },
   copy: 'คัดลอกข้อความ',
   copied: 'คัดลอกข้อความแล้ว',
