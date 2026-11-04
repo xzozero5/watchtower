@@ -148,6 +148,8 @@ export function useRemoteImages(
             controller.signal,
           );
           const type = await imageTypeOf(bytes);
+          // The signal can abort while the awaits above run; TypeScript keeps the earlier narrowing.
+          // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
           if (controller.signal.aborted || type === null) continue;
           const url = URL.createObjectURL(new Blob([bytes], { type }));
           made.current.set(key, url);
