@@ -105,9 +105,16 @@ describe('syncKbArticles', () => {
     const gone = file('gone-go', 'visibility: internal', 'leaves');
     await syncKbArticles(app, [keep, gone]);
     // An article written in the app, not by the import, is never touched.
+    // current_version_id is NOT NULL, so the article and its first version go in one statement
+    // (the version pointer is deferred, the version's article reference is checked at statement end).
     await pool().query(
-      `INSERT INTO kb_article (id, slug, kind, lang, status, visibility)
-       VALUES (gen_random_uuid(), 'gone-app', 'howto', 'en', 'published', 'internal')`,
+      `WITH ids AS (SELECT gen_random_uuid() AS aid, gen_random_uuid() AS vid),
+            art AS (
+              INSERT INTO kb_article (id, slug, kind, lang, status, visibility, current_version_id)
+              SELECT aid, 'gone-app', 'article', 'en', 'draft', 'internal', vid FROM ids
+            )
+       INSERT INTO kb_article_version (id, article_id, version, title, body_md, content_hash)
+       SELECT vid, aid, 1, 'Written in the app', 'stays', repeat('0', 64) FROM ids`,
     );
     const before = await jobs();
     const result = await syncKbArticles(app, [keep]);
@@ -120,7 +127,7 @@ describe('syncKbArticles', () => {
          FROM kb_article WHERE slug LIKE 'gone-%' ORDER BY slug`,
     );
     expect(rows).toEqual([
-      { slug: 'gone-app', status: 'published', live: false },
+      { slug: 'gone-app', status: 'draft', live: false },
       { slug: 'gone-go', status: 'deprecated', live: false },
       { slug: 'gone-keep', status: 'published', live: true },
     ]);
