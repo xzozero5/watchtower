@@ -1,8 +1,11 @@
 import { randomUUID } from 'node:crypto';
 
-import { schema, type Database } from '@watchtower/db';
+import { enqueueOutbox, schema, type Database } from '@watchtower/db';
 import {
+  NOTIFICATIONS_JOBS,
   OPS_NOTIFICATION_EVERY_SECONDS,
+  QUEUE_NAMES,
+  WEB_PUSH_JOB_OPTIONS,
   STAFF_ROLES,
   isMandatoryNotification,
   type NotificationKind,
@@ -67,6 +70,38 @@ async function deliverableRecipients(
 }
 
 /**
+ * One Web Push job per browser subscription of each person who just got a notification, written in the
+ * same transaction (outbox, ADR-006) so it exists if and only if the notification does. Nobody with no
+ * subscription costs a job. The job holds ids only; the worker builds the (small, customer-free) message.
+ * Whether Web Push is switched on at all is the worker's call: with no VAPID credential it drops the job.
+ */
+async function enqueueWebPush(
+  tx: DbTransaction,
+  ctx: DomainContext,
+  created: readonly { readonly id: string; readonly userId: string }[],
+): Promise<void> {
+  if (created.length === 0) return;
+  const byUser = new Map(created.map((row) => [row.userId, row.id]));
+  const subscriptions = await tx
+    .select({ id: schema.webPushSubscription.id, userId: schema.webPushSubscription.userId })
+    .from(schema.webPushSubscription)
+    .where(inArray(schema.webPushSubscription.userId, [...byUser.keys()]));
+  for (const subscription of subscriptions) {
+    const notificationId = byUser.get(subscription.userId);
+    if (notificationId === undefined) continue;
+    await enqueueOutbox(tx, {
+      queue: QUEUE_NAMES.webPush,
+      jobName: NOTIFICATIONS_JOBS.webPush,
+      jobId: `push-${notificationId}-${subscription.id}`,
+      payload: { notificationId, subscriptionId: subscription.id },
+      options: { ...WEB_PUSH_JOB_OPTIONS },
+      // A push for something that happened more than the longest TTL ago is not worth sending.
+      expiresAt: new Date(ctx.now().getTime() + 4 * 3600 * 1000),
+    });
+  }
+}
+
+/**
  * Makes a notification for each deliverable recipient and queues a realtime event for each one that
  * is new (after the commit, with the rest of `fx`). Returns how many were made; a repeat of the same
  * `dedupeKey` for the same person makes none.
@@ -102,6 +137,7 @@ export async function notifyIn(
     })
     .returning({ id: schema.notification.id, userId: schema.notification.userId });
   const ticketKey = ticket === undefined ? null : ticketKeysOf(ctx).format(ticket.number);
+  await enqueueWebPush(tx, ctx, created);
   for (const row of created) {
     fx.emit({
       id: randomUUID(),

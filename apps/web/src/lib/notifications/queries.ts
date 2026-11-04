@@ -1,7 +1,12 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { Notification, SetNotificationPreferences } from '@watchtower/shared';
+import type {
+  Notification,
+  SetNotificationPreferences,
+  WebPushStatus,
+  WebPushSubscribe,
+} from '@watchtower/shared';
 
 import { useApi } from '@/lib/api/api-context';
 import { useUserId } from '@/lib/auth/session';
@@ -67,6 +72,35 @@ export function useNotificationPreferences(enabled: boolean) {
     queryFn: ({ signal }) => api.notificationPreferences(signal),
     enabled,
   });
+}
+
+/** Is Web Push on for this server, the public key, and how many of my browsers are subscribed. */
+export function useWebPushStatus(enabled: boolean) {
+  const api = useApi();
+  const userId = useUserId();
+  return useQuery({
+    queryKey: notificationKeys(userId).webPush,
+    queryFn: ({ signal }) => api.webPushStatus(signal),
+    enabled,
+  });
+}
+
+export function useWebPushMutations() {
+  const api = useApi();
+  const userId = useUserId();
+  const queryClient = useQueryClient();
+  const keep = (status: WebPushStatus) => {
+    queryClient.setQueryData(notificationKeys(userId).webPush, status);
+  };
+  const subscribe = useMutation({
+    mutationFn: (body: WebPushSubscribe) => api.webPushSubscribe(body),
+    onSuccess: keep,
+  });
+  const unsubscribe = useMutation({
+    mutationFn: (endpoint: string) => api.webPushUnsubscribe(endpoint),
+    onSuccess: keep,
+  });
+  return { subscribe, unsubscribe };
 }
 
 export function useSetNotificationPreferences() {

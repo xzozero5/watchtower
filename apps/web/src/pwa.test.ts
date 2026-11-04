@@ -58,7 +58,13 @@ describe('web app manifest', () => {
 });
 
 /** Loads sw.js in a fake worker scope and returns the handlers it registered. */
-function loadWorker(options: { origin?: string; caches: unknown; fetch: unknown }) {
+function loadWorker(options: {
+  origin?: string;
+  caches: unknown;
+  fetch: unknown;
+  /** Replaces or adds members of the fake worker scope (`registration`, `navigator`, `clients`). */
+  extra?: Record<string, unknown>;
+}) {
   const listeners: Record<string, (event: unknown) => void> = {};
   const self = {
     location: { origin: options.origin ?? 'https://app.test' },
@@ -67,6 +73,7 @@ function loadWorker(options: { origin?: string; caches: unknown; fetch: unknown 
     },
     skipWaiting: vi.fn(() => Promise.resolve()),
     clients: { claim: vi.fn(() => Promise.resolve()) },
+    ...options.extra,
   };
   runInNewContext(workerSource, {
     self,
@@ -123,15 +130,147 @@ const fetchEvent = (url: string, init?: RequestInit, mode?: string): FetchEventL
 };
 
 describe('service worker', () => {
-  it('registers only install, activate and fetch: no push, no background sync', () => {
+  it('registers install, activate, fetch, push and notificationclick: no background sync', () => {
     const { listeners } = loadWorker({ caches: fakeCaches(), fetch: vi.fn() });
-    expect(Object.keys(listeners).sort()).toEqual(['activate', 'fetch', 'install']);
+    expect(Object.keys(listeners).sort()).toEqual([
+      'activate',
+      'fetch',
+      'install',
+      'notificationclick',
+      'push',
+    ]);
   });
 
   it('contains no absolute URL, so it can never call a host of its own', () => {
     expect(workerSource).not.toMatch(/https?:\/\//);
     expect(workerSource).not.toMatch(/\bimportScripts\b/);
-    expect(workerSource).not.toMatch(/\bpush\b.*addEventListener|addEventListener\(\s*'push'/);
+    expect(workerSource).not.toMatch(/\bsync\b.*addEventListener|addEventListener\(\s*'sync'/);
+  });
+
+  describe('web push (T-105)', () => {
+    function pushWorker(language = 'en') {
+      const shown: { title: string; options: Record<string, unknown> }[] = [];
+      const opened: string[] = [];
+      const navigated: string[] = [];
+      const windows: unknown[] = [];
+      const { listeners } = loadWorker({
+        caches: fakeCaches(),
+        fetch: vi.fn(),
+        extra: {
+          navigator: { language },
+          registration: {
+            showNotification: (title: string, options: Record<string, unknown>) => {
+              shown.push({ title, options });
+              return Promise.resolve();
+            },
+          },
+          clients: {
+            claim: vi.fn(() => Promise.resolve()),
+            matchAll: () => Promise.resolve(windows),
+            openWindow: (url: string) => {
+              opened.push(url);
+              return Promise.resolve();
+            },
+          },
+        },
+      });
+      return { listeners, shown, opened, navigated, windows };
+    }
+    const pushEvent = (data: unknown) => {
+      const waits: Promise<unknown>[] = [];
+      return {
+        event: {
+          data: { json: () => (typeof data === 'function' ? (data as () => never)() : data) },
+          waitUntil: (promise: Promise<unknown>) => waits.push(promise),
+        },
+        done: () => Promise.all(waits),
+      };
+    };
+
+    it('always shows one notification, with our own words picked by kind, never the message text', async () => {
+      const { listeners, shown } = pushWorker();
+      const { event, done } = pushEvent({
+        v: 1,
+        kind: 'ticket.p1',
+        severity: 'critical',
+        notificationId: 'n-1',
+        url: '/?ticket=OPS-12',
+        body: 'customer said something private',
+        title: 'injected',
+      });
+      listeners.push?.(event);
+      await done();
+      expect(shown).toHaveLength(1);
+      expect(shown[0]?.title).toBe('Watchtower');
+      expect(shown[0]?.options).toMatchObject({
+        body: 'A P1 ticket needs attention',
+        tag: 'n-1',
+        requireInteraction: true,
+        data: { url: '/?ticket=OPS-12' },
+      });
+      expect(JSON.stringify(shown)).not.toContain('private');
+      expect(JSON.stringify(shown)).not.toContain('injected');
+    });
+
+    it('speaks Thai for a Thai browser, and shows a generic one when the message is unreadable', async () => {
+      const { listeners, shown } = pushWorker('th-TH');
+      const first = pushEvent({ kind: 'ticket.assigned', notificationId: 'n-2', url: '/' });
+      listeners.push?.(first.event);
+      await first.done();
+      expect(shown[0]?.options.body).toBe('มีตั๋วมอบหมายให้คุณ');
+      const broken = pushEvent(() => {
+        throw new Error('not json');
+      });
+      listeners.push?.(broken.event);
+      await broken.done();
+      expect(shown).toHaveLength(2);
+      expect(shown[1]?.options.body).toBe('มีเรื่องที่ต้องดู');
+      expect(shown[1]?.options.data).toEqual({ url: '/' });
+    });
+
+    it.each([
+      ['https://evil.example/phish', '/'],
+      ['//evil.example/x', '/'],
+      ['javascript:alert(1)', '/'],
+      ['/\\evil.example', '/'],
+      ['/?ticket=OPS-1', '/?ticket=OPS-1'],
+    ])('a message that points at %s opens %s', async (url, expected) => {
+      const { listeners, shown } = pushWorker();
+      const { event, done } = pushEvent({ kind: 'alert.fired', notificationId: 'n', url });
+      listeners.push?.(event);
+      await done();
+      expect((shown[0]?.options.data as { url: string }).url).toBe(expected);
+    });
+
+    it('opens the link in a new window when none is open, and only on this origin', async () => {
+      const { listeners, opened } = pushWorker();
+      const close = vi.fn();
+      const waits: Promise<unknown>[] = [];
+      listeners.notificationclick?.({
+        notification: { close, data: { url: 'https://evil.example/x' } },
+        waitUntil: (promise: Promise<unknown>) => waits.push(promise),
+      });
+      await Promise.all(waits);
+      expect(close).toHaveBeenCalled();
+      expect(opened).toEqual(['https://app.test/']);
+    });
+
+    it('focuses and navigates a window of this app that is already open', async () => {
+      const { listeners, opened, windows } = pushWorker();
+      const navigate = vi.fn(() => Promise.resolve());
+      windows.push(
+        { url: 'https://other.test/', focus: vi.fn(), navigate: vi.fn() },
+        { url: 'https://app.test/home', focus: () => Promise.resolve(), navigate },
+      );
+      const waits: Promise<unknown>[] = [];
+      listeners.notificationclick?.({
+        notification: { close: vi.fn(), data: { url: '/?ticket=OPS-7' } },
+        waitUntil: (promise: Promise<unknown>) => waits.push(promise),
+      });
+      await Promise.all(waits);
+      expect(navigate).toHaveBeenCalledWith('https://app.test/?ticket=OPS-7');
+      expect(opened).toEqual([]);
+    });
   });
 
   it('caches the offline page on install and removes old caches on activate', async () => {

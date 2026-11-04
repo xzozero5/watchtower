@@ -9,5 +9,6 @@ export const notificationKeys = (userId: string) => {
     /** Unread critical ones: what the sticky banner shows. */
     critical: [...all, 'critical'] as const,
     preferences: [...all, 'preferences'] as const,
+    webPush: [...all, 'web-push'] as const,
   };
 };

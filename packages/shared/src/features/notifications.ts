@@ -18,13 +18,22 @@ export const NOTIFICATIONS_AUDIT_ACTIONS = {
   notificationRead: 'notification.read',
   notificationReadAll: 'notification.read_all',
   notificationPreferencesSet: 'notification.preferences.set',
+  webPushSubscribed: 'notification.web_push.subscribed',
+  webPushUnsubscribed: 'notification.web_push.unsubscribed',
 } as const satisfies Record<string, string>;
 
 /** `ticket_event.type` strings written by this feature. */
 export const NOTIFICATIONS_TICKET_EVENTS = {} as const satisfies Record<string, string>;
 
-/** BullMQ queue names owned by this feature (producer: api, consumer: worker). */
-export const NOTIFICATIONS_QUEUES = {} as const satisfies Record<string, string>;
+/** BullMQ queue names owned by this feature (producer: the outbox, consumer: worker). */
+export const NOTIFICATIONS_QUEUES = {
+  /** One job per (notification, browser subscription): the worker encrypts and sends one Web Push message. */
+  webPush: 'notifications-web-push',
+} as const satisfies Record<string, string>;
+
+export const NOTIFICATIONS_JOBS = {
+  webPush: 'send',
+} as const;
 
 /**
  * What a notification is about.
@@ -158,3 +167,79 @@ export const setNotificationPreferencesSchema = z
     { message: 'ticket.p1 cannot be turned off', path: ['preferences'] },
   );
 export type SetNotificationPreferences = z.infer<typeof setNotificationPreferencesSchema>;
+
+/**
+ * Web Push (T-105, live; RFC 8030, VAPID RFC 8292, message encryption RFC 8291).
+ *
+ * The message carries a kind, a severity and an in-app link only (ids, no customer text, no subject): the
+ * content is fetched after the app opens. `url` is a path on the app's own origin, never a full URL.
+ */
+export const webPushPayloadSchema = z.object({
+  v: z.literal(1),
+  kind: notificationKindSchema,
+  severity: notificationSeveritySchema,
+  /** Which notification: lets the service worker and the app find it. */
+  notificationId: z.uuid(),
+  /** In-app path starting with a single `/`, same origin only. */
+  url: z
+    .string()
+    .max(200)
+    .regex(/^\/(?!\/)[A-Za-z0-9/_\-.?=&%]*$/),
+});
+export type WebPushPayload = z.infer<typeof webPushPayloadSchema>;
+
+/** The job on `QUEUE_NAMES.webPush`: ids only. */
+export const webPushJobSchema = z.object({
+  notificationId: z.uuid(),
+  subscriptionId: z.uuid(),
+});
+export type WebPushJob = z.infer<typeof webPushJobSchema>;
+
+/** A browser's `PushSubscription.toJSON()`: what `POST /v1/notifications/push/subscriptions` takes. */
+export const webPushSubscribeSchema = z.object({
+  endpoint: z.string().max(2048),
+  keys: z.object({
+    p256dh: z.string().regex(/^[A-Za-z0-9_-]{80,100}$/),
+    auth: z.string().regex(/^[A-Za-z0-9_-]{20,30}$/),
+  }),
+  userAgent: z.string().max(300).optional(),
+});
+export type WebPushSubscribe = z.infer<typeof webPushSubscribeSchema>;
+
+export const webPushUnsubscribeSchema = z.object({ endpoint: z.string().max(2048) });
+export type WebPushUnsubscribe = z.infer<typeof webPushUnsubscribeSchema>;
+
+/**
+ * Whether Web Push is on for this instance and the public key to subscribe with. `publicKey` is null when it
+ * is off (no complete VAPID credential). `subscribed` counts the caller's own browsers; endpoints are never returned.
+ */
+export const webPushStatusSchema = z.object({
+  enabled: z.boolean(),
+  publicKey: z.string().nullable(),
+  subscribed: z.number().int().min(0),
+});
+export type WebPushStatus = z.infer<typeof webPushStatusSchema>;
+
+/** TTL, urgency and topic of a push message by severity (RFC 8030): a critical alert is worth waking a phone for. */
+export function webPushDelivery(
+  kind: NotificationKind,
+  severity: NotificationSeverity,
+): { readonly ttlSeconds: number; readonly urgency: 'high' | 'normal'; readonly topic: string } {
+  return {
+    ttlSeconds: severity === 'critical' ? 4 * 3600 : severity === 'high' ? 3600 : 900,
+    urgency: severity === 'normal' ? 'normal' : 'high',
+    // A newer alert of the same kind replaces one still waiting for an offline browser.
+    topic: `wt-${kind.replace(/[^A-Za-z0-9]/g, '_')}`.slice(0, 32),
+  };
+}
+
+/**
+ * Options of a Web Push job: retry with a growing wait (429, 5xx, a push service that is down), give up
+ * after 6 tries. A finished job is removed at once: the message is kept nowhere but the push service.
+ */
+export const WEB_PUSH_JOB_OPTIONS = {
+  attempts: 6,
+  backoff: { type: 'exponential', delay: 5000 },
+  removeOnComplete: true,
+  removeOnFail: { age: 24 * 3600 },
+} as const;

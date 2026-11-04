@@ -120,7 +120,7 @@ Build ของ package: ESM, `tsc` ออกที่ `dist/`, `exports` ชี
 | Gmail | `GMAIL_OAUTH_CLIENT_ID`, `GMAIL_OAUTH_CLIENT_SECRET`, `GMAIL_OAUTH_REFRESH_TOKEN`, `GMAIL_OAUTH_MAILBOX` (OAuth, ค่าเริ่มต้น) หรือ `GMAIL_SERVICE_ACCOUNT_JSON_PATH`, `GMAIL_IMPERSONATE_USER` (delegation, ทางเลือก) | recorded fixtures + Pub/Sub emulator | T-102 |
 | LINE | `LINE_CHANNEL_ID` และ credential ของ channel | webhook จำลอง, บันทึกการส่งแทนการยิงจริง | T-103 |
 | Discord | `DISCORD_BOT_TOKEN`, `DISCORD_ALERT_CHANNEL_ID` | บันทึกข้อความลง log | T-104 |
-| Web Push | `WEB_PUSH_VAPID_PUBLIC`, `WEB_PUSH_VAPID_PRIVATE` | แจ้งเตือนใน app อย่างเดียว | T-105 |
+| Web Push | `WEB_PUSH_VAPID_PUBLIC`, `WEB_PUSH_VAPID_PRIVATE`, `WEB_PUSH_SUBJECT` | แจ้งเตือนใน app อย่างเดียว (live เมื่อครบทั้งสาม; `pnpm push:vapid --out <path>` สร้าง key; docs/09-SECURITY.md §12) | T-105 |
 | AI provider | `AI_PROVIDER=mock` | คำตอบ deterministic ไม่ใช้ key | T-106 |
 | GCP Logs, BigQuery, Monitoring | `GCP_PROJECT_ID`, `GOOGLE_APPLICATION_CREDENTIALS` | read-only stub (N2) | T-108, T-201 |
 | GitHub App | `GITHUB_APP_ID`, `GITHUB_APP_PRIVATE_KEY_PATH` | read-only stub | T-108 |
