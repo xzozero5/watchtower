@@ -7,6 +7,7 @@ import { PortalController } from './portal.controller.js';
 import { PortalAttachmentsService } from './portal-attachments.service.js';
 import { PortalLimits } from './portal-limits.js';
 import { PortalUploadInterceptor } from './portal-upload.interceptor.js';
+import { PortalUploadQuota } from './portal-upload-quota.js';
 import { PortalNotificationsModule } from './portal-notifications.module.js';
 import { PortalStaffController } from './portal-staff.controller.js';
 import { PortalSubmissionService } from './portal-submission.service.js';
@@ -25,6 +26,7 @@ import { SelfHostedHumanVerificationProvider } from './self-hosted-verification.
   providers: [
     PortalLimits,
     PortalAttachmentsService,
+    PortalUploadQuota,
     PortalUploadInterceptor,
     PortalSubmissionService,
     PortalTrackingService,

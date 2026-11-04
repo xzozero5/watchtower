@@ -24,13 +24,19 @@ export class ScanUnavailable extends Error {
 export interface ClamdOptions {
   readonly host: string;
   readonly port: number;
-  /** Whole-scan deadline. `[ASSUMED]` 60 s: a 25 MB file scans in seconds; a cold clamd needs time to answer. */
+  /** Idle timeout: how long the connection may be silent. `[ASSUMED]` 60 s: a cold clamd needs time to answer. */
   readonly timeoutMs?: number;
+  /**
+   * Deadline for the whole exchange, however steadily bytes trickle in (T-155a C-10): an idle timeout alone
+   * never fires on a peer that sends one byte now and then. `[ASSUMED]` 180 s.
+   */
+  readonly deadlineMs?: number;
   /** Bytes per chunk. clamd's `StreamMaxLength` (default 25 MB) caps the total, not the chunk. */
   readonly chunkBytes?: number;
 }
 
 const DEFAULT_TIMEOUT_MS = 60_000;
+const DEFAULT_DEADLINE_MS = 180_000;
 const DEFAULT_CHUNK_BYTES = 64 * 1024;
 /** A reply is one short line; anything bigger is not clamd. */
 const MAX_REPLY_BYTES = 4096;
@@ -58,6 +64,7 @@ export interface Clamd {
 
 export function createClamd(options: ClamdOptions): Clamd {
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+  const deadlineMs = options.deadlineMs ?? DEFAULT_DEADLINE_MS;
   const chunkBytes = options.chunkBytes ?? DEFAULT_CHUNK_BYTES;
 
   /** Opens a connection, hands it to `send`, and resolves with the first NUL-terminated reply. */
@@ -66,9 +73,13 @@ export function createClamd(options: ClamdOptions): Clamd {
       const socket = createConnection({ host: options.host, port: options.port });
       let received = Buffer.alloc(0);
       let done = false;
+      const deadline = setTimeout(() => {
+        finish(new ScanUnavailable('deadline exceeded'));
+      }, deadlineMs);
       const finish = (error: Error | null, reply?: string): void => {
         if (done) return;
         done = true;
+        clearTimeout(deadline);
         socket.destroy();
         if (error !== null) reject(error);
         else resolve(reply ?? '');

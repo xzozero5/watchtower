@@ -23,7 +23,7 @@ import {
 
 import type { ApiConfig } from '../config/config.js';
 import type { AppLogger } from '../logging/logger.js';
-import { limitConcurrency } from './concurrency-limit.js';
+import { isAssistantRequest, limitConcurrency } from './concurrency-limit.js';
 
 /** DI token of the AI layer as the api uses it (T-134, ADR-023). */
 export const AI_RUNTIME = Symbol('AI_RUNTIME');
@@ -132,7 +132,12 @@ export function createApiAiRuntime(options: AiRuntimeOptions): AiRuntime {
         logger,
         now: () => now().getTime(),
       }),
-      { maxConcurrent: config.AI_API_MAX_CONCURRENCY },
+      {
+        maxConcurrent: config.AI_API_MAX_CONCURRENCY,
+        // One slot is always left for the AI summaries of the screens: the assistant cannot use it (T-155a C-4).
+        reservedSlots: 1,
+        isLowPriority: isAssistantRequest,
+      },
     );
   }
   if (kind !== 'mock' && problems.length > 0) {

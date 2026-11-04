@@ -16,6 +16,7 @@ import {
   retryRemovals,
   scanDue,
   sweepOrphanStaffUploads,
+  tidy,
   type ScannerDeps,
 } from './scanner.js';
 import { readScanVerdict } from './verdict.js';
@@ -115,7 +116,57 @@ beforeAll(async () => {
 afterEach(async () => {
   await owner().query('DELETE FROM object_scan');
   await owner().query('DELETE FROM message');
+  await owner().query('DELETE FROM inbound_message');
+  await owner().query('DELETE FROM inbound_event');
 });
+
+/** A mail that came in: the raw payload, one attachment, the event and the message rows. */
+async function inboundMail(
+  attachmentBytes: Uint8Array,
+  options: { closedDaysAgo?: number } = {},
+): Promise<{ attachmentKey: string; rawKey: string; eventRawKey: string }> {
+  const attachmentKey = await stored(attachmentBytes);
+  const rawKey = await stored(Buffer.from('From: x\r\n\r\nraw message with the attachment inside'));
+  const eventRawKey = await stored(Buffer.from('raw event payload'));
+  const account = await owner().query<{ id: string }>(
+    `INSERT INTO channel_account (type, name) VALUES ('gmail', $1) RETURNING id`,
+    [`Support ${randomUUID()}`],
+  );
+  const accountId = account.rows[0]?.id;
+  const event = await owner().query<{ id: string }>(
+    `INSERT INTO inbound_event (channel_account_id, provider_event_id, raw_object_key)
+     VALUES ($1, $2, $3) RETURNING id`,
+    [accountId, randomUUID(), eventRawKey],
+  );
+  await owner().query(
+    `INSERT INTO inbound_message
+       (channel_account_id, inbound_event_id, provider_message_id, received_at, raw_object_key, ticket_id, attachments, disposition)
+     VALUES ($1, $2, $3, now(), $4, $5, $6::jsonb, 'ticket')`,
+    [
+      accountId,
+      event.rows[0]?.id,
+      randomUUID(),
+      rawKey,
+      ticketId,
+      JSON.stringify([
+        {
+          partId: '1',
+          filename: 'a.zip',
+          contentType: 'application/zip',
+          size: 10,
+          objectKey: attachmentKey,
+        },
+      ]),
+    ],
+  );
+  if (options.closedDaysAgo !== undefined) {
+    await owner().query(
+      `UPDATE ticket SET status = 'closed', closed_at = now() - ($2::int * interval '1 day') WHERE id = $1`,
+      [ticketId, options.closedDaysAgo],
+    );
+  }
+  return { attachmentKey, rawKey, eventRawKey };
+}
 
 afterAll(async () => {
   await clamd.close();
@@ -346,5 +397,155 @@ describe('orphans and retention', () => {
     await owner().query(`UPDATE ticket SET status = 'new', closed_at = NULL WHERE id = $1`, [
       ticketId,
     ]);
+  });
+});
+
+describe('raw mail of an infected attachment (T-155a C-3)', () => {
+  it('deletes the raw message and the raw event along with the infected file, and forgets their keys', async () => {
+    const mail = await inboundMail(infectedBytes());
+    await enrol(deps, 'recent');
+    expect(await scanDue(deps)).toMatchObject({ infected: 1 });
+    expect(await store.get(mail.attachmentKey)).toBeNull();
+    expect(await store.get(mail.rawKey)).toBeNull();
+    expect(await store.get(mail.eventRawKey)).toBeNull();
+    const rows = await owner().query<{ raw_object_key: string | null }>(
+      `SELECT raw_object_key FROM inbound_message UNION ALL SELECT raw_object_key FROM inbound_event`,
+    );
+    expect(rows.rows.map((row) => row.raw_object_key)).toEqual([null, null]);
+    expect((await scanRow(mail.attachmentKey))?.removed_at).not.toBeNull();
+  });
+
+  it('keeps the raw message of a clean attachment', async () => {
+    const mail = await inboundMail(harmless());
+    await enrol(deps, 'recent');
+    expect(await scanDue(deps)).toMatchObject({ clean: 1, infected: 0 });
+    expect(await store.get(mail.rawKey)).not.toBeNull();
+  });
+
+  it('does not call the file removed while the raw message is still there (it is tried again)', async () => {
+    const mail = await inboundMail(infectedBytes());
+    await enrol(deps, 'recent');
+    const failing = {
+      get: (key: string) => store.get(key),
+      put: (...args: Parameters<ObjectStore['put']>) => store.put(...args),
+      delete: (key: string) =>
+        key === mail.rawKey ? Promise.reject(new Error('storage down')) : store.delete(key),
+    } as unknown as ObjectStore;
+    await scanDue({ ...deps, store: failing });
+    const first = await scanRow(mail.attachmentKey);
+    expect(first?.scan_status).toBe('infected');
+    expect(first?.removed_at).toBeNull();
+    expect(await retryRemovals(deps)).toBe(1);
+    expect(await store.get(mail.rawKey)).toBeNull();
+    expect(await store.get(mail.attachmentKey)).toBeNull();
+  });
+
+  it('retention covers the raw message and the raw event of a ticket closed long enough', async () => {
+    const mail = await inboundMail(harmless(), { closedDaysAgo: 45 });
+    try {
+      expect(await expireByRetention(deps, 60)).toBe(0);
+      expect(await store.get(mail.rawKey)).not.toBeNull();
+      await enrol(deps, 'recent');
+      // the attachment, the raw message and the raw event
+      expect(await expireByRetention(deps, 30)).toBe(3);
+      expect(await store.get(mail.rawKey)).toBeNull();
+      expect(await store.get(mail.eventRawKey)).toBeNull();
+      expect(await expireByRetention(deps, 30)).toBe(0);
+    } finally {
+      await owner().query(`UPDATE ticket SET status = 'new', closed_at = NULL WHERE id = $1`, [
+        ticketId,
+      ]);
+    }
+  });
+});
+
+describe('text that goes into an audit row (T-155a C-8)', () => {
+  it('drops bidi overrides, zero-width and line-separator characters as well as control characters', () => {
+    const name = 'invoice‮gpj.exe​ ﻿\u0007x';
+    expect(tidy(name, 120)).not.toMatch(/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u);
+    expect(tidy(name, 120)).toContain('invoice');
+    expect(tidy(null, 10)).toBe('');
+  });
+});
+
+describe('the orphan sweep and a file being attached (T-155a C-9)', () => {
+  it('skips a staff upload that a transaction is attaching (shared advisory lock), and takes it once that has ended', async () => {
+    const key = await stored(harmless());
+    const row = await owner().query<{ id: string }>(
+      `INSERT INTO staff_upload (uploader_id, object_key, filename, content_type, size, sha256, created_at)
+       VALUES ($1, $2, 'a.txt', 'text/plain', 29, 'abc', now() - interval '30 hours') RETURNING id`,
+      [userId, key],
+    );
+    const id = row.rows[0]?.id;
+    const claimer = await owner().connect();
+    try {
+      await claimer.query('BEGIN');
+      // What StaffUploadsService.claim does inside the transaction that saves the note.
+      await claimer.query(
+        `SELECT pg_advisory_xact_lock_shared(hashtextextended('staff_upload:' || $1::text, 0))`,
+        [id],
+      );
+      // Without the lock check the sweep would delete a file that is being attached.
+      expect(await sweepOrphanStaffUploads(deps)).toBe(0);
+      expect(await store.get(key)).not.toBeNull();
+      await claimer.query('COMMIT');
+    } finally {
+      claimer.release();
+    }
+    expect(await sweepOrphanStaffUploads(deps)).toBe(1);
+    expect(await store.get(key)).toBeNull();
+  });
+
+  it('keeps a file a message already carries', async () => {
+    const key = await stored(harmless());
+    await owner().query(
+      `INSERT INTO staff_upload (uploader_id, object_key, filename, content_type, size, sha256, created_at)
+       VALUES ($1, $2, 'a.txt', 'text/plain', 29, 'abc', now() - interval '30 hours')`,
+      [userId, key],
+    );
+    await messageWith([key]);
+    expect(await sweepOrphanStaffUploads(deps)).toBe(0);
+    expect(await store.get(key)).not.toBeNull();
+    await owner().query(`DELETE FROM staff_upload`);
+  });
+});
+
+describe('an encrypted archive (T-155a C-2)', () => {
+  it('is infected, removed and recorded as the clamd heuristic, not clean', async () => {
+    const zip = Buffer.concat([
+      Buffer.from([0x50, 0x4b, 0x03, 0x04, 0x14, 0x00, 0x01, 0x00]),
+      Buffer.from('password protected'),
+    ]);
+    const key = await stored(zip);
+    await messageWith([key]);
+    await enrol(deps, 'recent');
+    expect(await scanDue(deps)).toMatchObject({ infected: 1, clean: 0 });
+    const row = await scanRow(key);
+    expect(row?.scan_status).toBe('infected');
+    expect(row?.signature).toBe('Heuristics.Encrypted.Zip');
+    expect(await store.get(key)).toBeNull();
+  });
+});
+
+describe('two scans of the same file at once (queue concurrency is 1 per worker process)', () => {
+  it('writes one audit row and one ticket note, not two', async () => {
+    const key = await stored(infectedBytes());
+    await messageWith([key]);
+    await enrol(deps, 'recent');
+    const before = await owner().query<{ n: string }>(
+      `SELECT count(*)::text AS n FROM ticket_event WHERE ticket_id = $1 AND type = 'ticket.attachment_infected'`,
+      [ticketId],
+    );
+    await Promise.all([scanDue(deps), scanDue(deps)]);
+    const audit = await owner().query(
+      `SELECT 1 FROM audit_log WHERE action = 'upload.scan_infected' AND target_id = $1`,
+      [key],
+    );
+    expect(audit.rowCount).toBe(1);
+    const notes = await owner().query(
+      `SELECT 1 FROM ticket_event WHERE ticket_id = $1 AND type = 'ticket.attachment_infected'`,
+      [ticketId],
+    );
+    expect(notes.rowCount).toBe(Number(before.rows[0]?.n) + 1);
   });
 });

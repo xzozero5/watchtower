@@ -83,7 +83,12 @@ x-app-env: &app-env
   PORTAL_UPLOAD_MAX_CONCURRENT: ${PORTAL_UPLOAD_MAX_CONCURRENT:-3}
   PORTAL_UPLOAD_MAX_PER_ADDRESS: ${PORTAL_UPLOAD_MAX_PER_ADDRESS:-1}
   PORTAL_UPLOAD_IDLE_SECONDS: ${PORTAL_UPLOAD_IDLE_SECONDS:-30}
+  PORTAL_UPLOAD_MIN_KB_PER_SECOND: ${PORTAL_UPLOAD_MIN_KB_PER_SECOND:-32}
+  PORTAL_UPLOAD_PROOF_HEADER: ${PORTAL_UPLOAD_PROOF_HEADER:-optional}
   PORTAL_UPLOAD_DAILY_MB: ${PORTAL_UPLOAD_DAILY_MB:-2048}
+  PORTAL_UPLOAD_IP_DAILY_MB: ${PORTAL_UPLOAD_IP_DAILY_MB:-100}
+  PORTAL_UPLOAD_EMAIL_DAILY_MB: ${PORTAL_UPLOAD_EMAIL_DAILY_MB:-50}
+  PORTAL_UPLOAD_ORG_DAILY_MB: ${PORTAL_UPLOAD_ORG_DAILY_MB:-512}
   # Malware scan of uploaded files (ADR-022, T-155): off unless you set clamav AND start the `scan` profile.
   UPLOAD_SCAN: ${UPLOAD_SCAN:-off}
   CLAMAV_HOST: ${CLAMAV_HOST:-clamav}
@@ -410,9 +415,11 @@ services:
     extra_hosts:
       - 'host.docker.internal:host-gateway'
     # Only the worker and the api are on the `ai` network, so only they reach the bridge (ADR-023).
+    # `scan`: clamd (3310, no authentication) is reachable from the worker only (T-155a C-5).
     networks:
       - default
       - ai
+      - scan
     ports:
       - '127.0.0.1:${WORKER_PORT:-4100}:4100'
     depends_on:
@@ -503,8 +510,28 @@ services:
     image: ${CLAMAV_IMAGE:-clamav/clamav:1.5.3@sha256:d06c1d6a451d616e1dd79b42f44c8c8c291bba9cf4e75ebc4d0e43c1c6dd87bb}
     restart: unless-stopped
     mem_limit: 1536m
+    # Only the worker shares this network: clamd has no authentication (SHUTDOWN, RELOAD work for
+    # anyone who can connect), so not `default` where api, web and caddy are (T-155a C-5). Egress to
+    # database.clamav.net stays (freshclam).
+    networks:
+      - scan
+    # Hardening (T-155a C-6). The entrypoint starts as root and drops to `clamav`, so it keeps the few
+    # capabilities below and nothing else `[VERIFY]` (start the real image once after changing this).
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETUID
+      - SETGID
+      - DAC_OVERRIDE
+      - FOWNER
+    pids_limit: 200
     volumes:
       - clamavdb:/var/lib/clamav
+      # AlertEncrypted*/AlertExceedsMax = yes (T-155a C-2); the image default would call such files clean.
+      - ./config/clamav/clamd.conf:/etc/clamav/clamd.conf:ro
     healthcheck:
       # clamdcheck.sh ships in the official image (PING to clamd) `[VERIFY]`.
       test: ['CMD', 'clamdcheck.sh']
@@ -613,6 +640,8 @@ networks:
   ai: {}
   # api <-> gmail-tunnel only (ADR-020).
   push: {}
+  # worker <-> clamav only (ADR-022, T-155a C-5).
+  scan: {}
 
 volumes:
   pgdata:

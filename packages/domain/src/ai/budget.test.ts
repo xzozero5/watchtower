@@ -15,6 +15,17 @@ import {
 const caps = { dailyCostUsd: 10, dailyTokens: 1000, alertPercent: 80 };
 
 describe('evaluateBudget', () => {
+  it('stops a provider that costs nothing (claude-cli priced 0) on tokens, with AI_DAILY_TOKEN_CAP empty (T-155a)', () => {
+    // Empty variables arrive as undefined, so the default token cap of config/budgets.yaml applies.
+    const defaults = resolveAiCaps({});
+    expect(defaults.dailyTokens).toBe(500_000);
+    expect(evaluateBudget(defaults, { costUsd: 0, tokens: 499_999 }).level).toBe('alert');
+    expect(evaluateBudget(defaults, { costUsd: 0, tokens: 500_000 })).toMatchObject({
+      level: 'stop',
+      findings: [{ dimension: 'tokens', level: 'stop' }],
+    });
+  });
+
   it('is ok below the alert level', () => {
     expect(evaluateBudget(caps, { costUsd: 7.99, tokens: 799 })).toMatchObject({
       level: 'ok',

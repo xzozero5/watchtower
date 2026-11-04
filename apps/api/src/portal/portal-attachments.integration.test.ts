@@ -519,16 +519,15 @@ function stalledUpload(
 
 const settle = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
-/** A request from `ip` that the api turns away at the token, so it never needs the body. */
+/**
+ * A submit from `ip` that is not valid (its form is not a ticket). It gets as far as the upload slot:
+ * 503 when no slot is free, 400 once its body was read and refused. So it tells busy from free.
+ */
 async function probe(ip: string): Promise<number> {
-  const response = await fetch(`${h.base}/v1/portal/tickets/OPS-1/replies`, {
+  const response = await fetch(`${h.base}/v1/portal/tickets`, {
     method: 'POST',
-    headers: {
-      'x-forwarded-for': ip,
-      origin: new URL(h.config.APP_URL).origin,
-      'x-portal-token': 'wtp1.x.y',
-    },
-    body: multipart({ body: 'hi' }, [{ name: 'a.png', bytes: PNG }]),
+    headers: { 'x-forwarded-for': ip, origin: new URL(h.config.APP_URL).origin },
+    body: multipart({ nothing: true }, [{ name: 'a.png', bytes: PNG }]),
   });
   await response.arrayBuffer();
   return response.status;
@@ -547,13 +546,13 @@ describe('uploads are bounded before their body is read', () => {
     expect(second.headers.get('retry-after')).toBe('5');
     expect(((await second.json()) as ApiErrorBody).code).toBe('upload_busy');
     // Another address is not held up by it.
-    expect(await probe('10.20.0.2')).toBe(401);
+    expect(await probe('10.20.0.2')).toBe(400);
 
     // When the first goes away its slot comes back.
     first.request.destroy();
     await first.closed;
     await settle(300);
-    expect(await probe('10.20.0.1')).toBe(401);
+    expect(await probe('10.20.0.1')).toBe(400);
   });
 
   it('limits uploads in flight in total, whatever the addresses', async () => {
@@ -563,7 +562,7 @@ describe('uploads are bounded before their body is read', () => {
     for (const upload of held) upload.request.destroy();
     await Promise.all(held.map((upload) => upload.closed));
     await settle(300);
-    expect(await probe('10.21.0.4')).toBe(401);
+    expect(await probe('10.21.0.4')).toBe(400);
   });
 
   it('cuts off a sender that goes quiet and frees its slot', async () => {
@@ -573,7 +572,7 @@ describe('uploads are bounded before their body is read', () => {
     // PORTAL_UPLOAD_IDLE_SECONDS is 2 in this test run.
     await Promise.race([quiet.closed, settle(8000)]);
     await settle(300);
-    expect(await probe('10.22.0.1')).toBe(401);
+    expect(await probe('10.22.0.1')).toBe(400);
   });
 
   it('checks the tracking token before it reads any of the body', async () => {

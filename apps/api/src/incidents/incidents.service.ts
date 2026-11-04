@@ -309,7 +309,7 @@ export class IncidentsService {
     // Only a person writes notes; `claim` keeps to the files that person uploaded.
     const attachments =
       actor.type === 'user' && actor.id !== null
-        ? await this.uploads.claim(actor.id, input.attachmentIds)
+        ? await this.uploads.claim(actor.id, input.attachmentIds, uow.tx)
         : [];
     return translating(async () =>
       settle(

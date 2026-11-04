@@ -250,6 +250,34 @@ describe('http bridge', () => {
     expect(killedChild.killed).toBe(true);
   });
 
+  it('kills the child and frees the slot when the caller closes the connection before the answer (C-7)', async () => {
+    const children = [];
+    const { spawn } = fakeSpawn((started) => {
+      children.push(started); // never closes by itself
+    });
+    const { url, post, logs } = await start({ spawn, maxConcurrency: 1 });
+    const controller = new AbortController();
+    const abandoned = fetch(url, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${TOKEN}` },
+      body: JSON.stringify(goodBody),
+      signal: controller.signal,
+    }).catch(() => 'aborted');
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(children[0].killed).toBe(false);
+    controller.abort();
+    expect(await abandoned).toBe('aborted');
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(children[0].killed).toBe(true);
+    expect(logs.at(-1)).toMatchObject({ status: 499, error: 'client_closed' });
+    // The slot (maxConcurrency 1) is free again: the next request is not answered 429.
+    const next = post(goodBody);
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    children[1].stdout.write(cliJson());
+    children[1].emit('close', 0);
+    expect((await next).status).toBe(200);
+  });
+
   it('answers 502 without echoing stderr or stdout when the CLI fails', async () => {
     const { spawn } = fakeSpawn((child) => {
       child.stderr.write(SECRET_PROMPT);

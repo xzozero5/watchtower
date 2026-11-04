@@ -118,11 +118,34 @@ const apiEnvSchema = createEnvSchema({
   /** A portal upload that sends nothing for this long is cut off (and all of it must arrive in 4 times as long). */
   PORTAL_UPLOAD_IDLE_SECONDS: seconds(30, 1, 300),
   /**
+   * The slowest a portal upload may be, in kilobytes per second, measured over each stretch of
+   * PORTAL_UPLOAD_IDLE_SECONDS (T-154). A sender below it is cut off and its slot freed, however
+   * steadily it trickles: one byte a second used to hold a slot for the whole deadline. 0 = off.
+   * `[ASSUMED]` 32: the largest body (25 MB) takes about 13 minutes at this speed; a phone on a poor link manages more.
+   */
+  PORTAL_UPLOAD_MIN_KB_PER_SECOND: z.coerce.number().int().min(0).max(10_000).default(32),
+  /**
+   * Whether the portal's submit with files must carry its proof of work in the `x-portal-proof`
+   * header (T-154). `required`: checked before an upload slot is taken, so a script that cannot do
+   * the proof holds no slot. `optional` (default until the web form sends the header): checked when
+   * present, and a request without it is checked only after its body was read.
+   */
+  PORTAL_UPLOAD_PROOF_HEADER: z.enum(['optional', 'required']).default('optional'),
+  /**
    * Most bytes of files customers may upload through the portal in any 24 hours, for the whole instance
    * (megabytes; 0 = no cap). Past it the portal answers 429 `upload_quota` until the day rolls over, so a
    * flood of large files cannot fill the bucket (T-155). `[ASSUMED]` 2048.
    */
   PORTAL_UPLOAD_DAILY_MB: z.coerce.number().int().min(0).max(1_000_000).default(2048),
+  /**
+   * The same cap per client address, per email address and per organization (megabytes in 24 hours;
+   * 0 = no cap for that scope) (T-155a C-1). The instance-wide cap above is only the backstop: a
+   * single outsider reaches their own cap long before it, so cannot lock every customer out of
+   * attaching files. `[ASSUMED]` values: a few screenshots a day per person.
+   */
+  PORTAL_UPLOAD_IP_DAILY_MB: z.coerce.number().int().min(0).max(1_000_000).default(100),
+  PORTAL_UPLOAD_EMAIL_DAILY_MB: z.coerce.number().int().min(0).max(1_000_000).default(50),
+  PORTAL_UPLOAD_ORG_DAILY_MB: z.coerce.number().int().min(0).max(1_000_000).default(512),
   /** Portal submissions per hour: per client IP, per email address, per organization. */
   PORTAL_RATE_IP_PER_HOUR: z.coerce.number().int().min(1).max(10_000).default(20),
   PORTAL_RATE_EMAIL_PER_HOUR: z.coerce.number().int().min(1).max(1000).default(5),

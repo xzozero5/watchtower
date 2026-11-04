@@ -9,6 +9,8 @@ import {
   PORTAL_URGENCIES,
   PORTAL_URGENCY_PRIORITY,
   customerStatus,
+  decodePortalProof,
+  encodePortalProof,
   emailJobSchema,
   humanChallengeSchema,
   leadingZeroBits,
@@ -151,5 +153,28 @@ describe('shared helpers', () => {
         minFillSeconds: 3,
       }).success,
     ).toBe(true);
+  });
+});
+
+describe('the proof header (T-154)', () => {
+  const proof = { provider: 'pow-sha256' as const, challenge: 'a.b/c+d==', nonce: '12345' };
+
+  it('round-trips through a header-safe value', () => {
+    const header = encodePortalProof(proof);
+    expect(header).toMatch(/^[A-Za-z0-9_-]+$/);
+    expect(decodePortalProof(header)).toEqual(proof);
+  });
+
+  it('refuses anything that is not a proof, without throwing', () => {
+    for (const bad of [
+      '',
+      'not a proof',
+      '!!!',
+      'e30',
+      'x'.repeat(2000),
+      btoa('{"provider":"x"}'),
+    ]) {
+      expect(decodePortalProof(bad)).toBeNull();
+    }
   });
 });

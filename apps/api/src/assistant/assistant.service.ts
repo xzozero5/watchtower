@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 
-import { Inject, Injectable } from '@nestjs/common';
+import { HttpStatus, Inject, Injectable } from '@nestjs/common';
 import { runAssistantTurn } from '@watchtower/ai';
 import { schema, type Database } from '@watchtower/db';
 import { evaluateBudget, readAiUsage, readSwitchState, resolveAiCaps } from '@watchtower/domain';
@@ -25,7 +25,7 @@ import { AiStatusService } from '../ai/ai-status.service.js';
 import { StaffNames } from '../ai/staff-names.service.js';
 import { AuditScope } from '../audit/audit-scope.js';
 import { AuditService } from '../audit/audit.service.js';
-import { notFound } from '../auth/http-errors.js';
+import { ApiHttpError, notFound } from '../auth/http-errors.js';
 import { orgPeopleNames } from '../masking/org-names.js';
 import type { Principal } from '../auth/principal.js';
 import { RateLimiter } from '../auth/rate-limiter.js';
@@ -78,6 +78,12 @@ interface Standing {
  */
 @Injectable()
 export class AssistantService {
+  /**
+   * People whose message is being answered right now (T-155a C-4): one at a time each, so one person
+   * cannot hold every model slot with several tabs or a script. Per api process, like the slot limit.
+   */
+  private readonly inFlight = new Set<string>();
+
   constructor(
     @Inject(DATABASE) private readonly database: Database,
     @Inject(AI_RUNTIME) private readonly runtime: AiRuntime,
@@ -218,7 +224,35 @@ export class AssistantService {
 
   // --- one message ------------------------------------------------------------------------------
 
-  async message(principal: Principal, body: AssistantMessageRequest): Promise<AssistantReply> {
+  /**
+   * One message. A second one from the same person while the first is unanswered is 429 `assistant_busy`
+   * (before anything is counted or sent). `signal` aborts the model calls when the person goes away.
+   */
+  async message(
+    principal: Principal,
+    body: AssistantMessageRequest,
+    signal?: AbortSignal,
+  ): Promise<AssistantReply> {
+    if (this.inFlight.has(principal.userId)) {
+      throw new ApiHttpError(
+        HttpStatus.TOO_MANY_REQUESTS,
+        'assistant_busy',
+        'The assistant is still answering your last message; wait for it to finish',
+      );
+    }
+    this.inFlight.add(principal.userId);
+    try {
+      return await this.answer(principal, body, signal);
+    } finally {
+      this.inFlight.delete(principal.userId);
+    }
+  }
+
+  private async answer(
+    principal: Principal,
+    body: AssistantMessageRequest,
+    signal: AbortSignal | undefined,
+  ): Promise<AssistantReply> {
     const locale = localeOf(body.locale, body.text);
     await this.limiter.enforce(
       'assistant-message',
@@ -316,6 +350,7 @@ export class AssistantService {
             maxProposals: ASSISTANT_LIMITS.maxProposals,
           },
           masked: isMasked(principal),
+          ...(signal === undefined ? {} : { abortSignal: signal }),
         });
         if (outcome.status === 'ok') {
           claims = outcome.claims;

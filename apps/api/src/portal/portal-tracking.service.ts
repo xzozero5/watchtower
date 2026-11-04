@@ -24,7 +24,11 @@ import { UnitOfWorkService } from '../realtime/unit-of-work.js';
 import { TICKET_KEYS, type TicketKeys } from '../tickets/ticket-keys.js';
 import type { TicketRow } from '../tickets/ticket-reader.js';
 import { TicketsService } from '../tickets/tickets.service.js';
-import { PortalAttachmentsService, type UploadedFile } from './portal-attachments.service.js';
+import {
+  PortalAttachmentsService,
+  type StoredAttachments,
+  type UploadedFile,
+} from './portal-attachments.service.js';
 import { PortalLimits } from './portal-limits.js';
 import { PortalNotifier } from './portal-notifier.js';
 import { PortalTokensService } from './portal-tokens.service.js';
@@ -182,8 +186,18 @@ export class PortalTrackingService implements OnApplicationShutdown {
     const prepared = this.attachments.prepare(files);
     await this.limits.enforce('reply-ip', ip ?? 'unknown');
     await this.limits.enforce('reply-ticket', access.ticket.id);
-    await this.attachments.assertQuota(prepared);
-    const stored = await this.attachments.put(prepared);
+    const reservation = await this.attachments.reserve(prepared, {
+      ip,
+      email: `contact:${access.contactId}`,
+      org: `org:${access.ticket.orgId}`,
+    });
+    let stored: StoredAttachments;
+    try {
+      stored = await this.attachments.put(prepared);
+    } catch (error) {
+      await reservation.refund();
+      throw error;
+    }
 
     let result;
     try {
@@ -212,6 +226,7 @@ export class PortalTrackingService implements OnApplicationShutdown {
     } catch (error) {
       // Nothing points at the stored objects unless the reply was saved.
       await this.attachments.discard(stored.keys);
+      await reservation.refund();
       throw error;
     }
     if (stored.records.length > 0) {

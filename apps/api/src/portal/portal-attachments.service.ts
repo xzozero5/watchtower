@@ -2,13 +2,10 @@ import { createHash, randomUUID } from 'node:crypto';
 
 import { HttpStatus, Inject, Injectable } from '@nestjs/common';
 import { ObjectStoreError, type ObjectStore } from '@watchtower/channels';
-import type { Database } from '@watchtower/db';
 import { AUDIT_ACTIONS, type PortalAttachment } from '@watchtower/shared';
 
 import { AuditScope } from '../audit/audit-scope.js';
 import { ApiHttpError } from '../auth/http-errors.js';
-import { APP_CONFIG, type ApiConfig } from '../config/config.js';
-import { DATABASE } from '../database/database.module.js';
 import { LOGGER, type AppLogger } from '../logging/logger.js';
 import { OBJECT_STORE } from '../storage/storage.module.js';
 import {
@@ -17,6 +14,11 @@ import {
   type AttachmentRefusal,
   type CheckedAttachment,
 } from './portal-attachment-check.js';
+import {
+  PortalUploadQuota,
+  type QuotaReservation,
+  type QuotaSubjects,
+} from './portal-upload-quota.js';
 
 /** One uploaded file as multer (memory storage) hands it over. */
 export interface UploadedFile {
@@ -76,8 +78,7 @@ export class PortalAttachmentsService {
   constructor(
     @Inject(OBJECT_STORE) private readonly store: ObjectStore,
     @Inject(LOGGER) private readonly logger: AppLogger,
-    @Inject(DATABASE) private readonly database: Database,
-    @Inject(APP_CONFIG) private readonly config: Pick<ApiConfig, 'PORTAL_UPLOAD_DAILY_MB'>,
+    @Inject(PortalUploadQuota) private readonly quota: PortalUploadQuota,
   ) {}
 
   /** Checks the files; a refusal is audited and answered 400/413 before anything is stored. */
@@ -95,37 +96,13 @@ export class PortalAttachmentsService {
   }
 
   /**
-   * The instance-wide cap on what customers may upload in 24 hours (`PORTAL_UPLOAD_DAILY_MB`, T-155):
-   * 429 `upload_quota` when these files would go past it. Counted from the portal files already on
-   * messages in the last day, so there is no counter to drift. 0 = no cap.
+   * Holds these files' bytes against the daily caps of the sender (address, email, organization) and of
+   * the instance (`PortalUploadQuota`, T-155a C-1): 429 `upload_quota` when one is full. The caller gives
+   * the reservation back (`refund`) if the files are not saved.
    */
-  async assertQuota(prepared: PreparedAttachments): Promise<void> {
+  async reserve(prepared: PreparedAttachments, subjects: QuotaSubjects): Promise<QuotaReservation> {
     const incoming = prepared.files.reduce((sum, file) => sum + file.size, 0);
-    const capBytes = this.config.PORTAL_UPLOAD_DAILY_MB * 1024 * 1024;
-    if (capBytes === 0 || incoming === 0) return;
-    const result = await this.database.pool.query<{ used: string }>(
-      `SELECT COALESCE(SUM((a ->> 'size')::bigint), 0)::text AS used
-         FROM message m
-         CROSS JOIN LATERAL jsonb_array_elements(
-           CASE WHEN jsonb_typeof(m.attachments) = 'array' THEN m.attachments ELSE '[]'::jsonb END
-         ) AS a
-        WHERE m.created_at > now() - interval '24 hours'
-          AND a ->> 'partId' LIKE 'portal-%'
-          AND (a ->> 'size') ~ '^[0-9]+$'`,
-    );
-    const used = Number(result.rows[0]?.used ?? '0');
-    if (used + incoming > capBytes) {
-      AuditScope.set({
-        action: AUDIT_ACTIONS.portalAttachmentRejected,
-        outcome: 'denied',
-        metadata: { reason: 'upload_quota' },
-      });
-      throw new ApiHttpError(
-        HttpStatus.TOO_MANY_REQUESTS,
-        'upload_quota',
-        'File uploads are paused for today; send your message without files or try again tomorrow',
-      );
-    }
+    return this.quota.reserve(incoming, subjects);
   }
 
   /**

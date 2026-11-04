@@ -136,17 +136,26 @@ export class PortalSubmissionService {
     const verified = await this.verification.claim(checked);
     if (!verified.ok) this.refuse(input.email, verified.reason);
 
-    await this.attachments.assertQuota(prepared);
-    const stored = await this.attachments.put(prepared);
+    const reservation = await this.attachments.reserve(prepared, {
+      ip: context.ip,
+      email: input.email,
+      org: placement.limitSubject,
+    });
+    let stored: StoredAttachments | undefined;
     let created: { ticket: TicketRow; ticketKey: string; duplicate: boolean };
     try {
+      stored = await this.attachments.put(prepared);
       created = await this.createTicket(input, placement, verified.challengeId, stored);
     } catch (error) {
-      await this.attachments.discard(stored.keys);
+      if (stored !== undefined) await this.attachments.discard(stored.keys);
+      await reservation.refund();
       throw error;
     }
     // The same submission again (the proof is its idempotency key): the first one's files are the ones kept.
-    if (created.duplicate) await this.attachments.discard(stored.keys);
+    if (created.duplicate) {
+      await this.attachments.discard(stored.keys);
+      await reservation.refund();
+    }
 
     return {
       ticketKey: created.ticketKey,
