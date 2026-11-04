@@ -16,6 +16,8 @@ export const PROCEDURE_AUDIT_ACTIONS = {
   procedureCompiled: 'procedure.compiled',
   /** A person confirmed the steps of a draft. */
   procedureConfirmed: 'procedure.confirmed',
+  /** A person asked for a simulation of a version (the request, T-303d). Metadata: version id and hash digest. */
+  procedureSimulationRequested: 'procedure.simulation_requested',
   /** A simulation of a version finished (written by the simulation runner, T-303d). */
   procedureSimulated: 'procedure.simulated',
   /** A version went live for its intent. Metadata: version, hash, simulation id, the version it replaced. */

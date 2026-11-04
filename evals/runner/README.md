@@ -10,6 +10,12 @@ pnpm --filter @watchtower/eval-runner eval -- --all-versions --baseline evals/re
 pnpm --filter @watchtower/eval-runner replay -- --days 30 --limit 50   # needs DATABASE_URL
 ```
 
+- **Procedure simulation (T-303d).** `pnpm --filter @watchtower/eval-runner simulate -- --steps evals/runner/simulation/smoke-steps.json`
+  runs the steps of a procedure version on made-up cases and tools (`evals/runner/simulation/smoke.json`, runner-owned, not golden)
+  with the same engine the worker runs on resolved tickets (`runProcedureSimulation` of `@watchtower/ai`): investigator and drafter
+  with the steps and with `--baseline` (default: the default runbook), edit distance to the reply of a person, uncited claims, the
+  grader's policy violations, disclosure leaks and steps that never worked. Exit 1 unless it passes (ADR-026 section 6). On the mock
+  provider it checks the plumbing and the rules, not the quality of a real model `[UNVERIFIED]`.
 - **Providers.** `mock` (default) never opens a socket. `claude-cli` needs `CLAUDE_CLI_BRIDGE_TOKEN`,
   `AI_MODEL_DEEP/STANDARD/LIGHT` and `AI_MODEL_PRICES` in the environment (`[ASK-HUMAN]`), is limited by
   `--max-calls` (default 100) and goes through the same `createAuditedLlm` (redaction, `ai_run` record) as the apps.

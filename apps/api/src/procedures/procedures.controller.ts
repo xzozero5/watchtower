@@ -1,5 +1,6 @@
 import { Body, Controller, Get, HttpCode, Inject, Param, Patch, Post } from '@nestjs/common';
 import {
+  ApiAcceptedResponse,
   ApiBadRequestResponse,
   ApiConflictResponse,
   ApiCreatedResponse,
@@ -15,6 +16,8 @@ import {
   compileProcedureResultSchema,
   createProcedureVersionSchema,
   intentProcedureParamsSchema,
+  procedureSimulateQueuedSchema,
+  procedureSimulationAnswerSchema,
   procedureValidationSchema,
   procedureVersionListSchema,
   procedureVersionParamsSchema,
@@ -196,6 +199,55 @@ export class ProceduresController {
     return parseResponse(
       procedureVersionResultSchema,
       await this.procedures.confirm(actorOf(principal), params.id, params.versionId),
+    );
+  }
+
+  @Post(':versionId/simulate')
+  @HttpCode(202)
+  @RequirePermission('procedure.publish')
+  @Audited({
+    action: AUDIT_ACTIONS.procedureSimulationRequested,
+    targetType: 'procedure_version',
+  })
+  @ApiOperation({
+    summary: 'Simulate a confirmed version on resolved tickets before publishing',
+    description:
+      'Queues a run: the investigator and the drafter work the newest resolved tickets of the intent (30, seeded ' +
+      'tickets only to fill up) with these steps and with the version live now, with read-only tools on their own ' +
+      'budget. The result (edit distance to the reply a person sent, uncited claims, policy violations, disclosure ' +
+      'leaks, steps that never worked) comes with `GET .../simulation`; publishing needs a pass. Refused with 409 ' +
+      'unless the version is confirmed or simulated, and 503 `ai_unavailable` while the AI cannot run.',
+  })
+  @ApiAcceptedResponse({ standardSchema: procedureSimulateQueuedSchema })
+  @ApiForbiddenResponse({ description: 'Needs `procedure.publish`' })
+  @ApiNotFoundResponse({ description: 'No such version of this intent' })
+  @ApiConflictResponse({ description: 'The version is not confirmed or simulated' })
+  @ApiResponse({ status: 503, description: 'The AI is not available (`ai_unavailable`)' })
+  async simulate(
+    @Param({ schema: procedureVersionParamsSchema }) params: VersionParams,
+    @CurrentPrincipal() principal: Principal,
+  ) {
+    return parseResponse(
+      procedureSimulateQueuedSchema,
+      await this.procedures.simulate(actorOf(principal), params.id, params.versionId),
+    );
+  }
+
+  @Get(':versionId/simulation')
+  @RequirePermission('procedure.read')
+  @ApiOperation({
+    summary: 'The latest simulation of a version',
+    description:
+      '`simulation` is null while none has finished. It carries the numbers and the cases (ticket id and ' +
+      'distances only, never ticket text) and whether it passed.',
+  })
+  @ApiOkResponse({ standardSchema: procedureSimulationAnswerSchema })
+  @ApiForbiddenResponse({ description: 'Needs `procedure.read`' })
+  @ApiNotFoundResponse({ description: 'No such version of this intent' })
+  async simulation(@Param({ schema: procedureVersionParamsSchema }) params: VersionParams) {
+    return parseResponse(
+      procedureSimulationAnswerSchema,
+      await this.procedures.simulation(params.id, params.versionId),
     );
   }
 

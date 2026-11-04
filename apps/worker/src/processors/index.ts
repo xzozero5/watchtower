@@ -6,6 +6,7 @@ import type { Processor } from 'bullmq';
 
 import type { WorkerConfig } from '../config.js';
 import { createAiPipelineProcessor } from '../ai/pipeline.js';
+import { createProcedureSimulateProcessor } from '../ai/procedure-simulate-processor.js';
 import type { AiOverrides, AiRuntime } from '../ai/runtime.js';
 import { createGmailRegistration, type GmailOverrides } from '../gmail/index.js';
 import type { GmailRuntime } from '../gmail/runtime.js';
@@ -170,6 +171,14 @@ export const PROCESSORS: readonly ProcessorRegistration[] = [
   // --- usage (T-205b) ---
   // One at a time: two ticks would only contend for the same metrics (each is claimed under a row lock).
   { queue: QUEUE_NAMES.usage, create: createUsageRegistration, concurrency: 1 },
+
+  // --- procedure (T-303d) ---
+  // One at a time: a simulation is up to 150 model calls and a few hundred tool calls on one intent.
+  {
+    queue: QUEUE_NAMES.procedureSimulate,
+    create: createProcedureSimulateProcessor,
+    concurrency: 1,
+  },
 
   // --- uploads (T-155) ---
   // One at a time: two ticks would scan the same files twice.

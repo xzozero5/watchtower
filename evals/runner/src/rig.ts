@@ -85,6 +85,8 @@ export interface Rig {
   select(item: EvalCase): void;
   /** `AgentDeps` for one case, with the prompt versions pinned. */
   depsFor(item: EvalCase, pins: Readonly<Record<string, number>>): AgentDeps;
+  /** The same, for a run that has no `EvalCase` (the procedure simulation, T-303d): only the names the redactor must know. */
+  depsForNames(names: readonly string[], pins: Readonly<Record<string, number>>): AgentDeps;
   /** The `ai_run` records written since the last call. */
   drainRuns(): AiRunRecord[];
 }
@@ -163,6 +165,12 @@ export function createRig(options: RigOptions): Rig {
       },
     },
   });
+  const depsForNames = (names: readonly string[], pins: Readonly<Record<string, number>>) => ({
+    llm,
+    redactor: createRedactor({ names: () => names }),
+    prompts: pinCatalog(prompts, pins),
+    guard,
+  });
   return {
     provider: options.provider,
     guard,
@@ -171,13 +179,9 @@ export function createRig(options: RigOptions): Rig {
       current = item;
     },
     depsFor(item, pins) {
-      return {
-        llm,
-        redactor: createRedactor({ names: () => item.names ?? [] }),
-        prompts: pinCatalog(prompts, pins),
-        guard,
-      };
+      return depsForNames(item.names ?? [], pins);
     },
+    depsForNames,
     drainRuns() {
       return runs.splice(0, runs.length);
     },

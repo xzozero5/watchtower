@@ -1,0 +1,37 @@
+{
+  "cases": [
+    {
+      "id": "sim-webhook-timeout",
+      "subject": "Webhook not received",
+      "channel": "email",
+      "language": "en",
+      "disclosure": "verified",
+      "intent": "fixture_intent",
+      "stage": 2,
+      "turns": [
+        {
+          "from": "customer",
+          "text": "Our webhook is not received since this morning. Can you check?"
+        }
+      ],
+      "humanReply": "Thanks for writing to us. Please make sure the endpoint answers with a success status within ten seconds."
+    },
+    {
+      "id": "sim-webhook-restricted",
+      "subject": "Deliveries missing",
+      "channel": "portal",
+      "language": "en",
+      "disclosure": "restricted",
+      "intent": "fixture_intent",
+      "stage": 2,
+      "facts": { "ticket.priority": "P2" },
+      "turns": [
+        {
+          "from": "customer",
+          "text": "Some deliveries are missing on our side, what should we do?"
+        }
+      ],
+      "humanReply": "Thanks for reaching out. Please confirm that your endpoint answers with a success status within ten seconds."
+    }
+  ]
+}

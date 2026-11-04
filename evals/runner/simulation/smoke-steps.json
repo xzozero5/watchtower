@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "autosend": "never",
+  "steps": [
+    { "kind": "tool", "id": "kb", "tool": "kb_search" },
+    { "kind": "tool", "id": "org", "tool": "org_context" },
+    {
+      "kind": "check",
+      "id": "q1",
+      "question": "Does the article describe a timeout?",
+      "evidenceFrom": ["kb"]
+    },
+    {
+      "kind": "reply_guideline",
+      "id": "tone",
+      "text": "Keep the reply short and polite.",
+      "lang": "en"
+    },
+    {
+      "kind": "disclosure",
+      "id": "no_roadmap",
+      "rule": "never_mention",
+      "topic": "internal roadmap"
+    }
+  ]
+}
