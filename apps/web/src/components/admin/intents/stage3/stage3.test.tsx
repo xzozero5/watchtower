@@ -314,7 +314,7 @@ describe('Stage 3 tab: the owner decides', () => {
     });
   });
 
-  it('sends the person to sign in again on reauth_required and keeps the way back', async () => {
+  it('explains a fresh sign-in on reauth_required, links to step-up with a safe return path, and sends nothing twice', async () => {
     const user = userEvent.setup();
     const api = setup({
       session: OWNER,
@@ -325,7 +325,6 @@ describe('Stage 3 tab: the owner decides', () => {
           'reauth_required',
           'Sign in again to approve a promotion',
         ),
-        'POST /v1/auth/logout': { status: 204 },
       },
     });
     await openStage3(user);
@@ -334,12 +333,32 @@ describe('Stage 3 tab: the owner decides', () => {
     await user.type(within(dialog).getByLabelText(/Reason/), 'Reviewed the report');
     await user.type(within(dialog).getByLabelText(/Type the key of the intent/), 'billing');
     await user.click(within(dialog).getByRole('button', { name: 'Approve' }));
-    await waitFor(() => {
-      expect(api.callsTo('/v1/auth/logout', 'POST')).toHaveLength(1);
-    });
-    expect(window.location.pathname + window.location.search).toBe(
+    expect(await within(dialog).findByText(/not recent enough to approve/)).toBeVisible();
+    const link = within(dialog).getByRole('link', { name: 'Sign in again' });
+    const href = new URL(link.getAttribute('href') ?? '');
+    expect(href.origin + href.pathname).toBe('http://api.test/v1/auth/google/step-up');
+    expect(href.searchParams.get('returnTo')).toBe(
       `/admin/intents/${STAGE3_INTENT_ID}?tab=stage3&approve=${requested.id}`,
     );
+    expect(api.callsTo('/v1/auth/logout', 'POST')).toHaveLength(0);
+    expect(api.callsTo(`/v1/autonomy/promotions/${requested.id}/decide`, 'POST')).toHaveLength(1);
+  });
+
+  it('says how the fresh sign-in went when the owner comes back, and clears it from the address', async () => {
+    window.history.replaceState(
+      null,
+      '',
+      `/admin/intents/${STAGE3_INTENT_ID}?tab=stage3&approve=${requested.id}&stepup=ok`,
+    );
+    const api = setup({ session: OWNER, open: requested });
+    renderConsole(<IntentDetailPage intentId={STAGE3_INTENT_ID} />);
+    expect(
+      await screen.findByRole('dialog', { name: 'Approve Stage 3 for billing' }),
+    ).toBeVisible();
+    await waitFor(() => {
+      expect(window.location.search).not.toContain('stepup');
+    });
+    expect(api.callsTo(`/v1/autonomy/promotions/${requested.id}/decide`, 'POST')).toHaveLength(0);
   });
 
   it('opens the same dialog again when the owner comes back from signing in', async () => {
