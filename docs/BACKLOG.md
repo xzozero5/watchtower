@@ -117,7 +117,7 @@
 - [ ] T-176 `backend-dev` + `frontend-dev` แจ้ง head ในแอป: SMTP 535, ชน quota upload global (ตอนนี้แค่ log/audit/metric)
 - [ ] T-179 `frontend-dev` portal ส่ง header `x-portal-proof` แล้วเปลี่ยน `PORTAL_UPLOAD_PROOF_HEADER=required` · ตั้ง `TRUST_PROXY_HOPS` ให้ตรง deploy หลัง Caddy `[VERIFY]`
 - [ ] T-180 `qa-engineer` รัน ClamAV image จริงกับ `config/clamav/clamd.conf` (path, cap, AlertEncrypted*) ก่อนเปิด `UPLOAD_SCAN=clamav` บน POC
-- [ ] T-181 `ai-engineer` C-9: redact เลขพาสปอร์ต (เจ้าของตัดสิน 2026-11-04: ชื่อพนักงาน/IP/ที่อยู่/LINE userId ไม่ต้อง redact)
+- [x] T-181 `ai-engineer` C-9: redact เลขพาสปอร์ต (เจ้าของตัดสิน 2026-11-04: ชื่อพนักงาน/IP/ที่อยู่/LINE userId ไม่ต้อง redact) — **ปิด 2026-11-04**
 - [x] 5 เรื่องที่ต้องตัดสิน (QA-30, 02/03, 08, 20, 23): **po ตัดสินแทนเจ้าของ 2026-11-02** ตามที่เจ้าของมอบ — ดูไฟล์ triage §คำตัดสิน · QA-30 แก้ ADR-008 แล้ว
 
 > **`v0.1.0` (MVP) release 2026-11-02** ที่ `ae380db` · งานที่ยังเปิดด้านล่างไม่อยู่ใน release
