@@ -40,3 +40,7 @@ T-301 adds `grader.v1.md` (a resolved ticket's facts in, a cited verdict out: `v
 verdict and quality, policy violations, KB gap; `{{language}}` slot). The class the model proposes is capped in code
 by what the facts support (`capResolutionClass`), so a prompt change cannot make `verified` easier to reach. The eval
 runner (`evals/runner`) can run any case at every version of a prompt (`--all-versions`).
+
+T-303b adds `procedure_compiler.v1.md` (the plain-language procedure of an intent in, the strict step list of ADR-026 out, plus what
+the model had to guess). The text is redacted first; the steps are checked by the Zod schema in `@watchtower/shared` and by the domain,
+and a person confirms them: the agent only drafts.
