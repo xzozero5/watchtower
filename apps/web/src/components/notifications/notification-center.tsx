@@ -226,6 +226,7 @@ export function NotificationCenter({ expanded }: { expanded: boolean }) {
             >
               {t('notifications.center.title')}
             </span>
+            {/* The space matters: axe joins the two spans as "Notifications1" without it, which is not contained in "Notifications 1 unread" (label-content-name-mismatch). A whitespace text node between flex items is not rendered. */}{' '}
             <span className="relative order-1 shrink-0">
               <Bell aria-hidden className={cn('size-4', unread > 0 && TINT_CLASSES.pink.icon)} />
               {unread > 0 ? (
