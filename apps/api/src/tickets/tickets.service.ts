@@ -74,9 +74,13 @@ export class TicketsService {
     ref: string,
     patch: UpdateTicket,
     actor: Actor,
+    origin?: { readonly source: string; readonly aiRunId?: string | undefined },
   ): Promise<TicketRow> {
     return translating(async () =>
-      settle(uow, await this.domain.tickets.update(uow.tx, this.context(actor), { ref, patch })),
+      settle(
+        uow,
+        await this.domain.tickets.update(uow.tx, this.context(actor), { ref, patch, origin }),
+      ),
     );
   }
 

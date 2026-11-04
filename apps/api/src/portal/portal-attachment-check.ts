@@ -1,3 +1,4 @@
+import { detectArchive } from '@watchtower/channels';
 import {
   PORTAL_ATTACHMENT_MAX_BYTES,
   PORTAL_ATTACHMENT_MAX_FILES,
@@ -47,6 +48,7 @@ export type AttachmentRefusal =
   | 'file_too_large'
   | 'total_too_large'
   | 'extension_not_allowed'
+  | 'archive_not_allowed'
   | 'content_not_allowed'
   | 'content_mismatch'
   | 'active_content';
@@ -177,6 +179,10 @@ export function checkAttachments(
     if (total > PORTAL_ATTACHMENT_MAX_TOTAL_BYTES)
       throw new AttachmentRefused('total_too_large', null);
 
+    // T-182: archives (zip, rar, 7z, gzip ...) are not accepted here at all; mail attachments are handled in the worker.
+    if (detectKind(bytes) === null && detectArchive(bytes) !== null) {
+      throw new AttachmentRefused('archive_not_allowed', index);
+    }
     const fileName = sanitizeFileName(repairFileNameEncoding(file.originalName));
     const extension = portalAttachmentExtension(fileName);
     if (extension === null) throw new AttachmentRefused('extension_not_allowed', index);

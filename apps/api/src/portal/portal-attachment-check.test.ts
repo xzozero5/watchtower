@@ -112,9 +112,29 @@ describe('checkAttachments', () => {
 
   it('refuses binary content under a text name', () => {
     expect(
-      refusal([{ originalName: 'a.txt', bytes: Uint8Array.from([0x50, 0x4b, 0x03, 0x04, 0, 1]) }])
+      refusal([{ originalName: 'a.txt', bytes: Uint8Array.from([0x80, 0x81, 0x82, 0, 1]) }])
         ?.reason,
     ).toBe('content_not_allowed');
+  });
+
+  it('refuses an archive by its bytes, with its own reason, whatever the name says (T-182)', () => {
+    const signatures: Record<string, number[]> = {
+      zip: [0x50, 0x4b, 0x03, 0x04, 0, 1],
+      rar: [0x52, 0x61, 0x72, 0x21, 0x1a, 0x07, 0x00],
+      '7z': [0x37, 0x7a, 0xbc, 0xaf, 0x27, 0x1c, 0],
+      gzip: [0x1f, 0x8b, 0x08, 0, 0],
+    };
+    for (const [kind, signature] of Object.entries(signatures)) {
+      for (const name of ['a.txt', 'a.zip', 'a.pdf']) {
+        expect(
+          refusal([{ originalName: name, bytes: Uint8Array.from(signature) }]),
+          `${kind} ${name}`,
+        ).toEqual({
+          reason: 'archive_not_allowed',
+          index: 0,
+        });
+      }
+    }
   });
 
   it('refuses web page and SVG content even with a text name', () => {

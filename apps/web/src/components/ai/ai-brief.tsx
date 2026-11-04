@@ -426,6 +426,7 @@ export function AiBrief({
             ticketKey={ticket.key}
             current={ticket.priority}
             suggestion={report.suggestedPriority}
+            aiRunId={insight.aiRunId}
             canAccept={canRequest}
           />
         ) : null}

@@ -567,6 +567,50 @@ describe('the SLA clock', () => {
     expect(audit.rows.at(-1)?.metadata.changed).toEqual(['priority', 'sla']);
   });
 
+  it('records where a priority change came from when it is an AI suggestion (T-175a)', async () => {
+    const ticket = await fileTicket(agent, orgId, { priority: 'P3' });
+    const runId = '0a1b2c3d-0000-4000-8000-0000000000aa';
+    const raised = await agent.client.patch<TicketDetail>(`/v1/tickets/${ticket.id}`, {
+      priority: 'P1',
+      source: 'ai_suggestion',
+      aiRunId: runId,
+    });
+    expect(raised.status).toBe(200);
+    expect(raised.body.priority).toBe('P1');
+    const audit = await pool().query<{ metadata: Record<string, unknown> }>(
+      `SELECT metadata FROM audit_log WHERE action = 'ticket.update' AND target_id = $1 ORDER BY created_at`,
+      [ticket.id],
+    );
+    expect(audit.rows.at(-1)?.metadata).toMatchObject({
+      source: 'ai_suggestion',
+      aiRunId: runId,
+      changed: expect.arrayContaining(['priority']) as unknown,
+    });
+    // An ordinary edit carries no source.
+    await agent.client.patch(`/v1/tickets/${ticket.id}`, { priority: 'P2' });
+    const after = await pool().query<{ metadata: Record<string, unknown> }>(
+      `SELECT metadata FROM audit_log WHERE action = 'ticket.update' AND target_id = $1 ORDER BY created_at`,
+      [ticket.id],
+    );
+    expect(after.rows.at(-1)?.metadata).not.toHaveProperty('source');
+    // The audit fields are not a way to edit nothing, nor to name a run without a source.
+    expect(
+      (await agent.client.patch(`/v1/tickets/${ticket.id}`, { source: 'ai_suggestion' })).status,
+    ).toBe(400);
+    expect(
+      (await agent.client.patch(`/v1/tickets/${ticket.id}`, { priority: 'P1', aiRunId: runId }))
+        .status,
+    ).toBe(400);
+    expect(
+      (
+        await agent.client.patch(`/v1/tickets/${ticket.id}`, {
+          subject: 'x',
+          source: 'ai_suggestion',
+        })
+      ).status,
+    ).toBe(400);
+  });
+
   it('recalculates when a new intent brings another SLA policy, and says why', async () => {
     const fast = await apiPolicy(head, {
       name: `Intent policy ${uniqueEmail('p')}`,

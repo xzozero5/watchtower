@@ -26,6 +26,8 @@ export interface UpdateTicketInput {
   /** A ticket id or key (`OPS-12`). */
   readonly ref: string;
   readonly patch: UpdateTicket;
+  /** Set when the edit is a suggestion of the AI that a person accepted (T-175a): kept in the audit row, not on the ticket. */
+  readonly origin?: { readonly source: string; readonly aiRunId?: string | undefined } | undefined;
 }
 
 /**
@@ -150,7 +152,15 @@ export async function updateTicket(
     targetId: after.id,
     before: ticketSnapshot(before),
     after: ticketSnapshot(after),
-    metadata: { changed },
+    metadata: {
+      changed,
+      ...(input.origin === undefined
+        ? {}
+        : {
+            source: input.origin.source,
+            ...(input.origin.aiRunId === undefined ? {} : { aiRunId: input.origin.aiRunId }),
+          }),
+    },
   });
   fx.emit(ticketEvent(ctx, 'ticket.updated', after, changed));
   // Raised to P1 (T-105): the queue and the leads are told, once per ticket.

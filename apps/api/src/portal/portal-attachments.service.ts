@@ -46,6 +46,8 @@ const MESSAGES: Readonly<Record<AttachmentRefusal, string>> = {
   file_too_large: 'A file is larger than the limit',
   total_too_large: 'The files together are larger than the limit',
   extension_not_allowed: 'This type of file is not accepted',
+  archive_not_allowed:
+    'Archives (zip, rar, 7z, gzip) are not accepted; attach the files one by one',
   content_not_allowed: 'The content of a file is not an accepted type',
   content_mismatch: 'The content of a file does not match its name',
   active_content: 'A file contains web page or script content',
@@ -63,7 +65,7 @@ export function attachmentRejected(reason: AttachmentRefusal, index: number | nu
   });
   return new ApiHttpError(
     tooBig ? HttpStatus.PAYLOAD_TOO_LARGE : HttpStatus.BAD_REQUEST,
-    'attachment_rejected',
+    reason === 'archive_not_allowed' ? 'archive_not_accepted' : 'attachment_rejected',
     `${MESSAGES[reason]}${where}`,
   );
 }

@@ -46,6 +46,7 @@ export const PERMISSIONS = {
     'Ask the owner to promote one intent to stage 3 (auto-send) with a green gate report',
   'ai.autonomy.owner_approve':
     'Owner only: approve a stage 3 promotion (granted per user from the command line, never to a role)',
+  'ai.budget.read': 'Read the AI spend against its caps and which model each AI agent uses',
   'investigate.run': 'Run read-only investigation tools',
   'incident.create': 'Create an incident',
   'incident.manage': 'Close incidents and publish status page posts',
@@ -161,6 +162,7 @@ const AGENT: readonly Permission[] = [
 const LEAD: readonly Permission[] = [
   ...AGENT,
   'ai.autonomy.set',
+  'ai.budget.read',
   'incident.manage',
   'roster.manage',
   'performance.read.all',

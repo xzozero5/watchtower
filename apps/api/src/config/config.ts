@@ -143,15 +143,15 @@ const apiEnvSchema = createEnvSchema({
    */
   PORTAL_UPLOAD_PROOF_HEADER: z.enum(['optional', 'required']).default('optional'),
   /**
-   * Most bytes of files customers may upload through the portal in any 24 hours, for the whole instance
-   * (megabytes; 0 = no cap). Past it the portal answers 429 `upload_quota` until the day rolls over, so a
-   * flood of large files cannot fill the bucket (T-155). `[ASSUMED]` 2048.
-   */
-  /**
    * The remote-image proxy of the mail reader (T-175) fetches `https:` pictures only. Set true to allow
    * plain `http:` too (many newsletters still link them); every other SSRF check stays on.
    */
   REMOTE_IMAGES_ALLOW_HTTP: z.preprocess(emptyToUndefined, z.stringbool().default(false)),
+  /**
+   * Most bytes of files customers may upload through the portal in any 24 hours, for the whole instance
+   * (megabytes; 0 = no cap). Past it the portal answers 429 `upload_quota` until the day rolls over, so a
+   * flood of large files cannot fill the bucket (T-155). `[ASSUMED]` 2048.
+   */
   PORTAL_UPLOAD_DAILY_MB: z.coerce.number().int().min(0).max(1_000_000).default(2048),
   /**
    * The same cap per client address, per email address and per organization (megabytes in 24 hours;

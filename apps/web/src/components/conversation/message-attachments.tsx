@@ -16,6 +16,23 @@ function scanStateOf(file: Message['attachments'][number]): UploadScanState | nu
   return UPLOAD_SCAN_STATES.find((state) => state === value) ?? null;
 }
 
+const BLOCKED_REASONS = [
+  'archive_member_too_large',
+  'archive_total_too_large',
+  'archive_too_many_members',
+  'archive_nested',
+  'archive_path_traversal',
+  'archive_unreadable',
+  'archive_unsupported',
+] as const;
+
+function blockedLabelKey(reason: string) {
+  const known = BLOCKED_REASONS.find((candidate) => candidate === reason);
+  return known === undefined
+    ? ('timeline.attachments.blocked.other' as const)
+    : (`timeline.attachments.blocked.${known}` as const);
+}
+
 type Failure = 'failed' | 'forbidden' | 'missing' | 'scanPending' | 'infected';
 
 /** Metadata is displayed as text only. Storage keys never become links or DOM attributes. */
@@ -52,6 +69,9 @@ function Attachment({
     typeof file.filename === 'string' && file.filename.trim()
       ? file.filename
       : t('timeline.attachments.unnamed', { number: index + 1 });
+  // T-182: an archive the worker refused at ingest has no object, only its metadata and the reason.
+  const blockedReason =
+    typeof file.blocked === 'string' && file.blocked !== '' ? file.blocked : null;
   const scanState = scanStateOf(file);
   // pending, error and infected files are not handed out (the api answers 409/410); do not offer the button.
   const blocked = scanState === 'pending' || scanState === 'error' || scanState === 'infected';
@@ -140,6 +160,15 @@ function Attachment({
               <Download aria-hidden className="size-4" />
             )}
           </button>
+        ) : blockedReason !== null ? (
+          <span
+            data-testid="attachment-blocked"
+            data-blocked-reason={blockedReason}
+            className="ml-auto inline-flex items-center gap-1 text-danger"
+          >
+            <ShieldAlert aria-hidden className="size-3.5" />
+            {t(blockedLabelKey(blockedReason))}
+          </span>
         ) : blocked ? (
           <span
             data-testid="attachment-scan-state"

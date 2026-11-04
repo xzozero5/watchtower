@@ -6,6 +6,7 @@ export function isChannelType(value: string): value is ChannelType {
   return (CHANNEL_TYPES as readonly string[]).includes(value);
 }
 
+export * from './archive/index.js';
 export * from './common/index.js';
 export * as discord from './discord/index.js';
 export * as gmail from './gmail/index.js';

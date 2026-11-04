@@ -36,8 +36,8 @@ export const aiBudgetSchema = z.object({
   assistant: z.object({
     userDailyTokens: z.number(),
     users: z.array(
+      // No user id: the card shows a name and numbers, so nothing else about a person leaves the api (T-175a).
       z.object({
-        userId: z.string(),
         name: z.string(),
         tokens: z.number(),
         messages: z.number(),

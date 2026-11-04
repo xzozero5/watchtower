@@ -69,7 +69,11 @@ export function classifyPortalError(error: unknown): PortalFailure {
   if (error.code === 'verification_failed')
     return { kind: 'verification', retryAfterSeconds: none };
   // A file the api would not take (type, content, size, count): the person removes it and retries.
-  if (error.code === 'attachment_rejected' || error.status === 413) {
+  if (
+    error.code === 'attachment_rejected' ||
+    error.code === 'archive_not_accepted' ||
+    error.status === 413
+  ) {
     return { kind: 'attachment', retryAfterSeconds: none };
   }
   if (error.status === 401 || error.code === 'invalid_or_expired_link') {

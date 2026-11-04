@@ -119,7 +119,7 @@ export class TicketRemoteImagesController {
     );
 
     try {
-      const { image, fromCache } = await this.images.load(url);
+      const { image, fromCache } = await this.images.load(url, principal.userId);
       AuditScope.set({ metadata: { bytes: image.bytes.length, fromCache } });
       response.set({
         'Content-Type': image.contentType,

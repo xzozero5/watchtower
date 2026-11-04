@@ -48,6 +48,8 @@ export interface SafeFetchOptions {
   readonly maxRedirects?: number;
   /** Whole fetch, redirects included. */
   readonly timeoutMs?: number;
+  /** From the request being sent to the response headers arriving, per hop: a server that accepts and then says nothing is cut off early. */
+  readonly headerTimeoutMs?: number;
   readonly userAgent?: string;
   /** Ports a request may go to. Default 80 and 443; `'any'` is for tests with a local fake server. */
   readonly allowedPorts?: 'any' | readonly number[];
@@ -67,6 +69,7 @@ const DEFAULTS = {
   maxBytes: 5 * 1024 * 1024,
   maxRedirects: 3,
   timeoutMs: 10_000,
+  headerTimeoutMs: 3_000,
   userAgent: 'Watchtower-ImageProxy/1.0',
 } as const;
 
@@ -111,13 +114,18 @@ interface Response {
  *   checked address (the socket's `lookup` returns it), so a second DNS answer cannot swap in a private one
  *   (DNS rebinding); the same is done for each redirect, which is followed by us, at most `maxRedirects` times;
  * - a literal IP in the URL is checked the same way, `localhost`/`.local`/`.internal` names are refused outright;
+ * - no proxy: each request uses `agent: false` and an own `lookup`, so `HTTP(S)_PROXY` / `NODE_USE_ENV_PROXY`
+ *   (which only configure the global agent) are never applied, and the connection always goes to the checked address;
  * - no cookies, no `Authorization`, no `Referer`, a fixed User-Agent, `Accept-Encoding: identity`;
  * - one deadline for the whole fetch, at most `maxBytes` of body, `Content-Type: image/*` and the first bytes
  *   must be PNG, JPEG, GIF or WebP (SVG is refused: it can carry script).
  */
 export class SafeImageFetcher {
   private readonly options: Required<
-    Pick<SafeFetchOptions, 'maxBytes' | 'maxRedirects' | 'timeoutMs' | 'userAgent'>
+    Pick<
+      SafeFetchOptions,
+      'maxBytes' | 'maxRedirects' | 'timeoutMs' | 'headerTimeoutMs' | 'userAgent'
+    >
   > &
     SafeFetchOptions;
 
@@ -181,20 +189,26 @@ export class SafeImageFetcher {
       if (isBlockedAddress(host)) throw new EgressError('blocked_address');
       return host;
     }
+    // The deadline may already be over (an earlier hop used it up): do not start a lookup for nothing.
+    if (deadline.aborted) throw new EgressError('timeout');
     const resolve = this.options.resolve ?? systemResolve;
     let addresses: readonly string[];
+    let onAbort: (() => void) | undefined;
     try {
       addresses = await Promise.race([
         resolve(host),
         new Promise<never>((_resolve, reject) => {
-          deadline.addEventListener('abort', () => {
+          onAbort = () => {
             reject(new EgressError('timeout'));
-          });
+          };
+          deadline.addEventListener('abort', onAbort, { once: true });
         }),
       ]);
     } catch (error) {
       if (error instanceof EgressError) throw error;
       throw new EgressError('dns');
+    } finally {
+      if (onAbort !== undefined) deadline.removeEventListener('abort', onAbort);
     }
     const first = addresses[0];
     if (first === undefined) throw new EgressError('dns');
@@ -211,13 +225,15 @@ export class SafeImageFetcher {
     const host = url.hostname.startsWith('[') ? url.hostname.slice(1, -1) : url.hostname;
     const target = this.options.dial?.(address, port) ?? { address, port };
     const family = isIP(target.address) === 6 ? 6 : 4;
-    const { maxBytes } = this.options;
+    const { maxBytes, headerTimeoutMs } = this.options;
 
     return new Promise<Response>((resolve, reject) => {
       let settled = false;
+      const timers: { header?: NodeJS.Timeout } = {};
       const done = (action: () => void): void => {
         if (settled) return;
         settled = true;
+        clearTimeout(timers.header);
         deadline.removeEventListener('abort', onAbort);
         action();
       };
@@ -259,6 +275,12 @@ export class SafeImageFetcher {
         return;
       }
       deadline.addEventListener('abort', onAbort);
+      timers.header = setTimeout(() => {
+        request.destroy();
+        done(() => {
+          reject(new EgressError('timeout'));
+        });
+      }, headerTimeoutMs);
 
       request.on('error', () => {
         done(() => {
@@ -266,6 +288,7 @@ export class SafeImageFetcher {
         });
       });
       request.on('response', (incoming) => {
+        clearTimeout(timers.header);
         const status = incoming.statusCode ?? 0;
         const header = (name: string): string => {
           const value = incoming.headers[name];

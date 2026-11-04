@@ -34,6 +34,9 @@ describe('uploadErrorKey', () => {
     const answer = (status: number) => new ApiRequestError(status, 'unknown', 'x');
     expect(uploadErrorKey(answer(413))).toBe('attachments.errors.tooLarge');
     expect(uploadErrorKey(answer(400))).toBe('attachments.errors.rejected');
+    expect(uploadErrorKey(new ApiRequestError(400, 'archive_not_accepted', 'x'))).toBe(
+      'attachments.errors.archive',
+    );
     expect(uploadErrorKey(answer(429))).toBe('attachments.errors.rateLimited');
     expect(uploadErrorKey(answer(503))).toBe('attachments.errors.unavailable');
     expect(uploadErrorKey(new Error('boom'))).toBe('attachments.errors.generic');

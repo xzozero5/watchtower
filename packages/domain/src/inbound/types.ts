@@ -30,6 +30,8 @@ export interface InboundAttachment {
   readonly size: number;
   readonly sha256: string | null;
   readonly objectKey: string | null;
+  /** Set when the file was not stored because of what it is (T-182: an archive clamd cannot scan in full). */
+  readonly blocked?: string | null | undefined;
   readonly disposition: 'attachment' | 'inline';
   readonly contentId: string | null;
   readonly referencedByHtml: boolean;

@@ -29,6 +29,8 @@ describe('isBlockedAddress', () => {
     'fd00:ec2::254',
     'fec0::1',
     'ff02::1',
+    '::ffff:0:0',
+    '::ffff:0:0:0', // IPv4-translated (SIIT), outside 2000::/3
     '::ffff:127.0.0.1',
     '::ffff:7f00:1',
     '::ffff:10.0.0.1',
@@ -37,6 +39,12 @@ describe('isBlockedAddress', () => {
     '64:ff9b::7f00:1',
     '2002:7f00:1::',
     '2001:db8::1',
+    '3fff::1', // documentation, inside 2000::/3
+    '3fff:fff:ffff::1',
+    '5f00::1', // SRv6 SIDs
+    '1000::1', // not global unicast
+    '4000::1',
+    'e000::1',
     '0000:0000:0000:0000:0000:0000:0000:0001',
     'not-an-ip',
     '',
@@ -52,6 +60,8 @@ describe('isBlockedAddress', () => {
     '172.32.0.1',
     '2606:4700:4700::1111',
     '2a00:1450:4001:81b::200e',
+    '3ffe::1', // just outside 3fff::/20
+    '2400:cb00::1',
   ])('allows the public address %s', (address) => {
     expect(isBlockedAddress(address)).toBe(false);
   });

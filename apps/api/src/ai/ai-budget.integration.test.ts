@@ -64,6 +64,34 @@ describe('GET /v1/ai/budget', () => {
     expect(stop.body.cost.spentUsd).toBeCloseTo(1.1, 5);
   });
 
+  it('needs ai.budget.read, not ai.autonomy.set (T-175a)', async () => {
+    const pool = h.db.owner.pool;
+    await pool.query(
+      `DELETE FROM role_permissions WHERE role = 'lead' AND permission = 'ai.budget.read'`,
+    );
+    try {
+      // Still holds ai.autonomy.set, but not the read permission: refused on both routes.
+      expect((await lead.client.get('/v1/ai/budget')).status).toBe(403);
+      expect((await lead.client.get('/v1/ai/models')).status).toBe(403);
+    } finally {
+      await pool.query(
+        `INSERT INTO role_permissions (role, permission) VALUES ('lead', 'ai.budget.read')`,
+      );
+    }
+    await pool.query(
+      `DELETE FROM role_permissions WHERE role = 'lead' AND permission = 'ai.autonomy.set'`,
+    );
+    try {
+      // The other way round: the read permission alone is enough.
+      expect((await lead.client.get('/v1/ai/budget')).status).toBe(200);
+      expect((await lead.client.get('/v1/ai/models')).status).toBe(200);
+    } finally {
+      await pool.query(
+        `INSERT INTO role_permissions (role, permission) VALUES ('lead', 'ai.autonomy.set')`,
+      );
+    }
+  });
+
   it('lists today’s assistant users, heaviest first, with the per-user cap', async () => {
     await h.db.owner.pool.query(
       `INSERT INTO assistant_usage (user_id, day, messages, input_tokens, output_tokens, cost_usd)
@@ -72,10 +100,9 @@ describe('GET /v1/ai/budget', () => {
     );
     const { body } = await lead.client.get<AiBudget>('/v1/ai/budget');
     expect(body.assistant.userDailyTokens).toBeGreaterThan(0);
-    expect(body.assistant.users.map((user) => [user.userId, user.tokens])).toEqual([
-      [lead.session.user.id, 10_000],
-      [agent.session.user.id, 1_500],
-    ]);
+    expect(body.assistant.users.map((user) => user.tokens)).toEqual([10_000, 1_500]);
     expect(body.assistant.users[0]).toMatchObject({ messages: 9, costUsd: null });
+    // T-175a: a name and numbers only, no user id.
+    for (const user of body.assistant.users) expect(Object.keys(user)).not.toContain('userId');
   });
 });
