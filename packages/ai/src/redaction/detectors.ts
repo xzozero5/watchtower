@@ -393,6 +393,61 @@ function isBankFormattedShape(lengths: readonly number[]): boolean {
   return shape === '3-1-5-1' || shape === '3-6-1';
 }
 
+const MAX_SINGLE_GROUPS = 19;
+
+/**
+ * A number typed one digit at a time ("0 8 1 2 3 4 5 6 7 8", "4.1.1.1...", up to 19 groups for a
+ * card). Tested as the digits joined: a phone of 9 to 11 digits that matches a Thai shape, or a
+ * Luhn-valid card of 13 to 19 digits. A separate pass so the general window above stays at 13 groups
+ * and the cost stays linear (19 steps per start, with the separator kinds computed once).
+ * T-114a C-2.
+ */
+function detectSingleDigits(text: string, cluster: Cluster, spans: Span[]): void {
+  const { groups, separators } = cluster;
+  if (groups.length < 9) return;
+  const kinds = separators.map((separator) => separatorKind(separator));
+  for (let from = 0; from + 8 < groups.length; from += 1) {
+    const firstGroup = groups[from];
+    if (firstGroup === undefined || firstGroup.end - firstGroup.start !== 1) continue;
+    const phoneStart =
+      from === 0 && (cluster.plus || cluster.openParen) ? firstGroup.start - 1 : firstGroup.start;
+    // A Thai phone starts with 0; a card (Visa, Mastercard, Amex, JCB, UnionPay, Discover) with 2 to 6.
+    // Starts that can be neither are skipped, which keeps the pass cheap on a long run of digits.
+    const lead = text.charAt(firstGroup.start);
+    const maybePhone = lead === '0';
+    const maybeCard = lead >= '2' && lead <= '6';
+    if (!maybePhone && !maybeCard) continue;
+    let digits = '';
+    let kind: string | null | undefined;
+    const last = Math.min(groups.length, from + (maybeCard ? MAX_SINGLE_GROUPS : 11));
+    for (let to = from; to < last; to += 1) {
+      const group = groups[to];
+      if (group === undefined || group.end - group.start !== 1) break;
+      if (to > from) {
+        const current = kinds[to - 1] ?? ' ';
+        if (current !== null) {
+          kind ??= current;
+          if (current !== kind) break;
+        }
+      }
+      digits += text.charAt(group.start);
+      const total = digits.length;
+      if (maybePhone && total >= 9 && total <= 11) {
+        if (
+          MOBILE.test(digits) ||
+          BANGKOK.test(digits) ||
+          PROVINCIAL.test(digits) ||
+          INTERNATIONAL_00.test(digits)
+        ) {
+          spans.push(span(phoneStart, group.end, 'PHONE', PRIORITY.PHONE));
+        }
+      } else if (maybeCard && total >= 13 && isLuhnValid(digits)) {
+        spans.push(span(firstGroup.start, group.end, 'CARD', PRIORITY.CARD));
+      }
+    }
+  }
+}
+
 function detectInCluster(
   text: string,
   cluster: Cluster,
@@ -522,7 +577,10 @@ export function detectNumbers(text: string): Span[] {
   const spans: Span[] = [];
   const clusters = findClusters(text);
   const safe = safeSpans(text);
-  for (const cluster of clusters) detectInCluster(text, cluster, spans, safe);
+  for (const cluster of clusters) {
+    detectInCluster(text, cluster, spans, safe);
+    detectSingleDigits(text, cluster, spans);
+  }
   detectBankAfterKeyword(text, clusters, spans);
   return spans;
 }
