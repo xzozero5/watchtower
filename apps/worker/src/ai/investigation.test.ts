@@ -3,7 +3,7 @@ import { createDbToolLedger, type DbToolLedger } from '@watchtower/domain';
 import { describe, expect, it } from 'vitest';
 
 import { testConfig } from '../testing/support.js';
-import { disclosureFor } from './investigation.js';
+import { disclosureFor, senderAuthenticated } from './investigation.js';
 import { systemToolsAllowed } from './tool-ports.js';
 
 describe('disclosureFor (PRD section 6.6, po decision 26)', () => {
@@ -19,6 +19,26 @@ describe('disclosureFor (PRD section 6.6, po decision 26)', () => {
       expect(disclosureFor(channel, { verifiedAt: now, lineVerifiedAt: null })).toBe('verified');
       expect(disclosureFor(channel, { verifiedAt: null, lineVerifiedAt: now })).toBe('restricted');
     }
+  });
+
+  it('restricts an email ticket whose sender was not authenticated (T-114a C-3)', () => {
+    const verified = { verifiedAt: now, lineVerifiedAt: null };
+    expect(disclosureFor('gmail', verified, false)).toBe('restricted');
+    expect(disclosureFor('gmail', verified, true)).toBe('verified');
+    expect(disclosureFor('portal', verified, false)).toBe('verified');
+  });
+
+  it('senderAuthenticated needs every inbound message to carry senderAuth pass', () => {
+    const pass = { direction: 'inbound', emailMeta: { senderAuth: 'pass' } };
+    expect(senderAuthenticated([pass, { direction: 'outbound', emailMeta: null }])).toBe(true);
+    expect(
+      senderAuthenticated([pass, { direction: 'inbound', emailMeta: { senderAuth: 'fail' } }]),
+    ).toBe(false);
+    expect(senderAuthenticated([{ direction: 'inbound', emailMeta: { senderAuth: 'none' } }])).toBe(
+      false,
+    );
+    expect(senderAuthenticated([{ direction: 'inbound', emailMeta: null }])).toBe(false);
+    expect(senderAuthenticated([{ direction: 'inbound', emailMeta: {} }])).toBe(false);
   });
 
   it('restricts a ticket with no requester', () => {

@@ -551,6 +551,8 @@ export const emailMetaSchema = z.object({
   cc: z.array(emailAddressSchema).max(50).default([]),
   bcc: z.array(emailAddressSchema).max(50).default([]),
   subject: z.string().max(998).nullable().optional(),
+  /** Inbound only: did the receiving server authenticate the sender's domain (T-114a C-3)? */
+  senderAuth: z.enum(['pass', 'fail', 'none']).optional(),
 });
 export type EmailMeta = z.infer<typeof emailMetaSchema>;
 

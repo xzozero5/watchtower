@@ -22,6 +22,9 @@ export const emailTh: Widen<typeof emailEn> = {
     date: 'วันที่',
     subject: 'หัวเรื่อง',
     unknownSender: 'ไม่ทราบผู้ส่ง',
+    unauthenticated: 'ผู้ส่งยังไม่ผ่านการยืนยัน',
+    unauthenticatedHint:
+      'เซิร์ฟเวอร์อีเมลยืนยันไม่ได้ว่าข้อความนี้มาจากที่อยู่ที่แสดง AI จึงเปิดเผยรายละเอียดในตั๋วนี้น้อยลง',
     noText: '(ไม่มีข้อความ)',
     body: 'อีเมลจาก {name}',
   },

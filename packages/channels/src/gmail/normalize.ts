@@ -1,5 +1,6 @@
 import { z } from 'zod';
 
+import { senderAuthFrom } from './auth-results.js';
 import { sanitizeHtml } from './html.js';
 import {
   decodeEncodedWords,
@@ -46,6 +47,8 @@ export const normalizedEmailSchema = z.object({
   references: z.array(z.string()),
   subject: z.string(),
   from: mailAddressSchema.nullable(),
+  /** Did the receiving server authenticate the `From` domain (DMARC or aligned DKIM)? T-114a C-3. */
+  senderAuth: z.enum(['pass', 'fail', 'none']),
   replyTo: z.array(mailAddressSchema),
   to: z.array(mailAddressSchema),
   cc: z.array(mailAddressSchema),
@@ -190,12 +193,14 @@ export function normalizeMime(raw: Uint8Array, limits: Partial<MimeLimits> = {})
   const inReplyTo = parseMessageIds(headers.get('in-reply-to'))[0] ?? null;
   const sentAtMs = Date.parse((headers.get('date') ?? '').replace(/\([^)]*\)/g, '').trim());
 
+  const from = parseAddressList(headers.get('from')).map(addressToSchema)[0] ?? null;
   const email: NormalizedEmail = {
     messageId: ids[0] ?? null,
     inReplyTo,
     references: parseMessageIds(headers.get('references')),
     subject: decodeEncodedWords(headers.get('subject') ?? '').trim(),
-    from: parseAddressList(headers.get('from')).map(addressToSchema)[0] ?? null,
+    from,
+    senderAuth: senderAuthFrom(headers, from?.address ?? null),
     replyTo: parseAddressList(headers.get('reply-to')).map(addressToSchema),
     to: parseAddressList(headers.get('to')).map(addressToSchema),
     cc: parseAddressList(headers.get('cc')).map(addressToSchema),
