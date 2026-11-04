@@ -2,13 +2,13 @@ import { Inject, Injectable } from '@nestjs/common';
 import { orgScopeCondition, schema, type Database } from '@watchtower/db';
 import { billingPeriod } from '@watchtower/domain';
 import {
-  DASHBOARD_AT_RISK_MINUTES,
   DASHBOARD_CFR_ATTRIBUTION_HOURS,
   DASHBOARD_KB_STALE_DAYS,
   DASHBOARD_MAX_AGENTS,
   DASHBOARD_TOP_N,
   HEALTH_FORMULA_VERSION,
   OPEN_STATUSES,
+  SLA_AT_RISK_MINUTES,
   TICKET_EVENT_TYPES,
   type DashboardOps,
   type OrgScope,
@@ -20,6 +20,7 @@ import { z } from 'zod';
 import { forbidden } from '../auth/http-errors.js';
 import type { Principal } from '../auth/principal.js';
 import { DATABASE } from '../database/database.module.js';
+import { TicketSlaStates } from '../tickets/sla-states.js';
 
 type Value<Data> =
   | { readonly status: 'ok'; readonly data: Data }
@@ -72,7 +73,10 @@ interface CacheEntry {
 export class DashboardService {
   private readonly cache = new Map<number, CacheEntry>();
 
-  constructor(@Inject(DATABASE) private readonly database: Database) {}
+  constructor(
+    @Inject(DATABASE) private readonly database: Database,
+    @Inject(TicketSlaStates) private readonly slaStates: TicketSlaStates,
+  ) {}
 
   async ops(days: number, principal: Principal): Promise<DashboardOps> {
     if (principal.orgScope.kind !== 'all') throw forbidden();
@@ -115,8 +119,10 @@ export class DashboardService {
 
     const [
       queue,
+      slaStats,
       queueGroups,
       volume,
+      previousVolume,
       sla,
       quality,
       csat,
@@ -143,9 +149,6 @@ export class DashboardService {
           since: z.coerce.date(),
           open: count,
           unassigned: count,
-          paused: count,
-          breached: count,
-          at_risk: count,
           lt_4h: count,
           h4_24: count,
           d1_3: count,
@@ -154,20 +157,17 @@ export class DashboardService {
         sql`SELECT now() AS now, ${since} AS since,
           count(*)::int AS open,
           count(*) FILTER (WHERE assignee_id IS NULL)::int AS unassigned,
-          count(*) FILTER (WHERE sla_paused_at IS NOT NULL)::int AS paused,
-          count(*) FILTER (WHERE sla_paused_at IS NULL AND due < now())::int AS breached,
-          count(*) FILTER (WHERE sla_paused_at IS NULL AND due >= now()
-            AND due < now() + make_interval(mins => ${DASHBOARD_AT_RISK_MINUTES}::int))::int AS at_risk,
           count(*) FILTER (WHERE age < interval '4 hours')::int AS lt_4h,
           count(*) FILTER (WHERE age >= interval '4 hours' AND age < interval '1 day')::int AS h4_24,
           count(*) FILTER (WHERE age >= interval '1 day' AND age < interval '3 days')::int AS d1_3,
           count(*) FILTER (WHERE age >= interval '3 days')::int AS gt_3d
         FROM (
-          SELECT assignee_id, sla_paused_at, now() - created_at AS age,
-            CASE WHEN first_responded_at IS NULL THEN first_response_due_at ELSE resolution_due_at END AS due
+          SELECT assignee_id, now() - created_at AS age
           FROM ticket WHERE ${and_(openStatus, ticketScope)}
         ) open_tickets`,
       ),
+      // One at-risk rule for every screen (T-177): the ticket stats count it.
+      this.slaStates.stats([openStatus, ticketScope], new Date()),
       this.rows(
         z.object({ status: z.string(), priority: z.string(), n: count }),
         sql`SELECT status, priority, count(*)::int AS n FROM ticket
@@ -177,6 +177,16 @@ export class DashboardService {
         z.object({ channel: z.string(), day: z.string(), n: count }),
         sql`SELECT channel, to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD') AS day, count(*)::int AS n
           FROM ticket WHERE ${and_(sql`created_at >= ${since}`, ticketScope)} GROUP BY 1, 2`,
+      ),
+      // The same number of whole days right before the window (the trend chip, T-159).
+      this.one(
+        z.object({ n: count }),
+        sql`SELECT count(*)::int AS n FROM ticket
+          WHERE ${and_(
+            sql`created_at >= ${since} - make_interval(days => ${days}::int)`,
+            sql`created_at < ${since}`,
+            ticketScope,
+          )}`,
       ),
       this.one(
         z.object({
@@ -438,14 +448,16 @@ export class DashboardService {
 
     const byChannel: Record<string, number> = {};
     const perDay = new Map<string, number>();
+    const perDayChannel = new Map<string, Record<string, number>>();
     for (const row of volume) {
       byChannel[row.channel] = (byChannel[row.channel] ?? 0) + row.n;
       perDay.set(row.day, (perDay.get(row.day) ?? 0) + row.n);
+      perDayChannel.set(row.day, { ...perDayChannel.get(row.day), [row.channel]: row.n });
     }
-    const byDay: { day: string; created: number }[] = [];
+    const byDay: { day: string; created: number; byChannel: Record<string, number> }[] = [];
     for (let offset = 0; offset < days; offset += 1) {
       const day = iso(new Date(queue.since.getTime() + offset * 86_400_000)).slice(0, 10);
-      byDay.push({ day, created: perDay.get(day) ?? 0 });
+      byDay.push({ day, created: perDay.get(day) ?? 0, byChannel: perDayChannel.get(day) ?? {} });
     }
 
     const duration = (n: number, median: number | null, p90: number | null) =>
@@ -476,16 +488,21 @@ export class DashboardService {
         unassigned: queue.unassigned,
         byStatus,
         byPriority,
-        paused: queue.paused,
-        breachedNow: queue.breached,
-        atRiskNow: queue.at_risk,
-        atRiskMinutes: DASHBOARD_AT_RISK_MINUTES,
+        paused: slaStats.total.sla.paused,
+        breachedNow: slaStats.total.sla.breached,
+        atRiskNow: slaStats.total.sla.at_risk,
+        atRiskMinutes: SLA_AT_RISK_MINUTES,
         aging: { lt_4h: queue.lt_4h, h4_24: queue.h4_24, d1_3: queue.d1_3, gt_3d: queue.gt_3d },
       },
       volume: {
         created: [...perDay.values()].reduce((sum, n) => sum + n, 0),
         byChannel,
         byDay,
+        previous: {
+          from: iso(new Date(queue.since.getTime() - days * 86_400_000)),
+          to: iso(queue.since),
+          created: previousVolume.n,
+        },
       },
       sla: {
         basis: 'wall_clock',

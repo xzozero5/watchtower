@@ -114,7 +114,12 @@ export {
   type LanguageFlagsProps,
 } from './components/language-flags.js';
 export { ThemeSwitch, type ThemeSwitchProps } from './components/theme-switch.js';
-export { BarChart, type BarChartDatum, type BarChartProps } from './components/bar-chart.js';
+export {
+  BarChart,
+  type BarChartDatum,
+  type BarChartProps,
+  type BarChartSegment,
+} from './components/bar-chart.js';
 export { BarList, type BarListDatum, type BarListProps } from './components/bar-list.js';
 export {
   ChartFrame,

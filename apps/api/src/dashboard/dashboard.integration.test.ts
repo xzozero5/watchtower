@@ -184,10 +184,10 @@ describe('the figures', () => {
       resDue: `now() + interval '3 hours'`,
       assignee: true,
     });
-    // Unanswered, deadline in 30 minutes: at risk.
+    // Unanswered, deadline in 10 minutes: at risk (well inside the 30 minute floor, no edge to flake on).
     await ticket(orgId, {
       created: interval('1 hour'),
-      frDue: `now() + interval '30 minutes'`,
+      frDue: `now() + interval '10 minutes'`,
     });
     // Unanswered, deadline passed 10 minutes ago, assigned: breached; it also waited on the developers.
     const breached = await ticket(orgId, {
@@ -196,12 +196,12 @@ describe('the figures', () => {
       resDue: `now() + interval '5 hours'`,
       assignee: true,
     });
-    // Old, answered, not due for two days: queue only.
+    // Old, answered, due in 20 days (more than a quarter of its 50 day target left): queue only.
     await ticket(orgId, {
       channel: 'gmail',
       created: interval('30 days'),
       responded: interval('29 days'),
-      resDue: `now() + interval '2 days'`,
+      resDue: `now() + interval '20 days'`,
     });
     // Waiting on the customer: the clock is stopped, so it is neither at risk nor breached.
     await ticket(otherOrgId, {
@@ -339,6 +339,17 @@ describe('the figures', () => {
     expect(ops.volume.byDay).toHaveLength(7);
     expect(ops.volume.byDay.reduce((sum, day) => sum + day.created, 0)).toBe(5);
     expect(ops.window.days).toBe(7);
+    // T-159: each day splits by channel and the parts add up; the 7 days before had no tickets (a real zero).
+    const channelSum: Record<string, number> = {};
+    for (const day of ops.volume.byDay) {
+      expect(Object.values(day.byChannel).reduce((sum, n) => sum + n, 0)).toBe(day.created);
+      for (const [channel, n] of Object.entries(day.byChannel)) {
+        channelSum[channel] = (channelSum[channel] ?? 0) + n;
+      }
+    }
+    expect(channelSum).toEqual(ops.volume.byChannel);
+    expect(ops.volume.previous.created).toBe(0);
+    expect(Date.parse(ops.volume.previous.to)).toBe(Date.parse(ops.window.from));
   });
 
   it('computes response and resolution times and the breach rates from the tickets', async () => {

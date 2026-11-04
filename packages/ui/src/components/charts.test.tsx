@@ -139,6 +139,40 @@ describe('BarChart', () => {
   });
 });
 
+describe('BarChart stacked by series (T-159)', () => {
+  const stacked: BarChartDatum[] = [
+    {
+      key: 'a',
+      label: 'Mon',
+      axisLabel: 'M',
+      value: 5,
+      segments: [
+        { key: 'x', label: 'Email', value: 3, fillClass: 'fill-chart-email' },
+        { key: 'y', label: 'LINE', value: 2, fillClass: 'fill-chart-line' },
+      ],
+    },
+    { key: 'b', label: 'Tue', axisLabel: 'T', value: 0 },
+  ];
+
+  it('names every series in a legend and draws one part per series', () => {
+    const { container } = chart(stacked);
+    expect(screen.getAllByText('Email').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('LINE').length).toBeGreaterThan(0);
+    expect(container.querySelectorAll('path.fill-chart-email')).toHaveLength(1);
+    expect(container.querySelectorAll('path.fill-chart-line')).toHaveLength(1);
+  });
+
+  it('puts the parts in the table and the tooltip, not colour alone', () => {
+    chart(stacked);
+    fireEvent.focus(plot());
+    fireEvent.keyDown(plot(), { key: 'Home' });
+    const tooltip = screen.getByTestId('chart-tooltip');
+    expect(within(tooltip).getByText('Email')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Show as a table' }));
+    expect(screen.getByRole('columnheader', { name: 'Email' })).toBeInTheDocument();
+  });
+});
+
 describe('BarList', () => {
   const data = [
     { key: 'a', label: <span>Under 4 h</span>, name: 'Under 4 h', value: 4, color: 'var(--x)' },

@@ -32,12 +32,17 @@ import { adminSectionsFor, HOME_PERMISSION } from '@/lib/admin/sections';
 import { useSession } from '@/lib/auth/session';
 import { roleHomePath } from '@/lib/role-home';
 import { opsSectionsFor } from '@/lib/ops/sections';
+import { useRailCounts } from '@/lib/ops/rail-counts';
 import { shiftSectionsFor } from '@/lib/shifts/sections';
 
 import { QUEUE_LISTBOX_ID } from '@/components/queue/queue-row';
 
 /** Colour on the rail means state: the current page, or something waiting. Otherwise icons are neutral. */
 export const railLit = (current: boolean, count: number): boolean => current || count > 0;
+
+/** Tooltip text: the name, and how many wait when it is more than none. */
+export const countHint = (label: string, count: number, more: boolean): string =>
+  count > 0 ? `${label} · ${String(count)}${more ? '+' : ''}` : label;
 
 /** One icon (plus its words when the rail is expanded) with a tooltip while it is narrow. */
 function RailButton({
@@ -205,6 +210,10 @@ export function NavRail({
   const showAdmin = adminSectionsFor(can).length > 0;
   const shiftIds = new Set(shiftSectionsFor(can).map((section) => section.id));
   const opsIds = new Set(opsSectionsFor(can).map((section) => section.id));
+  const railCounts = useRailCounts({
+    alerts: opsIds.has('alerts'),
+    incidents: opsIds.has('incidents'),
+  });
   const adminHref = adminSectionsFor(can)[0]?.href ?? '/admin';
   // Words are only shown from 768px up; on a phone the bar is icons.
   const expanded = railExpanded;
@@ -328,6 +337,8 @@ export function NavRail({
                 tone="red"
                 label={t('ops.rail.alerts')}
                 expanded={expanded}
+                count={railCounts.alerts}
+                hint={countHint(t('ops.rail.alerts'), railCounts.alerts, railCounts.alertsMore)}
                 current={destination === 'alerts'}
                 href="/alerts"
               />
@@ -338,6 +349,12 @@ export function NavRail({
                 tone="amber"
                 label={t('ops.rail.incidents')}
                 expanded={expanded}
+                count={railCounts.incidents}
+                hint={countHint(
+                  t('ops.rail.incidents'),
+                  railCounts.incidents,
+                  railCounts.incidentsMore,
+                )}
                 current={destination === 'incidents'}
                 href="/incidents"
               />

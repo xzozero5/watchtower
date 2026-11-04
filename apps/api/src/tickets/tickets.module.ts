@@ -50,6 +50,7 @@ import { WorkflowController, WorkflowService } from './workflow.service.js';
     TicketsService,
     TicketReader,
     SlaRemaining,
+    TicketSlaStates,
     TimelineService,
     WorkflowService,
   ],

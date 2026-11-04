@@ -64,8 +64,14 @@ export function columnLayout(count: number, plotWidth: number): ColumnLayout {
 const n = (value: number) => String(Math.round(value * 100) / 100);
 
 /** A vertical bar from the baseline up to `y`: 4 px rounded at the top, square on the baseline. */
-export function columnPath(x: number, y: number, width: number, height: number): string {
-  const r = Math.max(0, Math.min(BAR_RADIUS, width / 2, height));
+export function columnPath(
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  rounded = true,
+): string {
+  const r = rounded ? Math.max(0, Math.min(BAR_RADIUS, width / 2, height)) : 0;
   if (r === 0) return `M${n(x)} ${n(y + height)}H${n(x + width)}V${n(y)}H${n(x)}Z`;
   return [
     `M${n(x)} ${n(y + height)}`,

@@ -155,7 +155,21 @@ describe('Ops dashboard: Now, Volume, SLA', () => {
 
   it('draws 90 days without a horizontal scroll container of its own', async () => {
     open((days) =>
-      dashboardOps({ volume: { created: 90, byChannel: {}, byDay: byDay(90) } }, days),
+      dashboardOps(
+        {
+          volume: {
+            created: 90,
+            byChannel: {},
+            byDay: byDay(90),
+            previous: {
+              from: '2026-05-05T00:00:00.000Z',
+              to: '2026-08-03T00:00:00.000Z',
+              created: 0,
+            },
+          },
+        },
+        days,
+      ),
     );
     const volume = await screen.findByRole('region', { name: 'Volume' });
     expect(within(volume).getByText('No tickets in this window.')).toBeVisible();

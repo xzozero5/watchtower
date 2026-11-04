@@ -11,6 +11,20 @@ export interface BarChartDatum {
   /** Short name for the x axis ("2"). */
   axisLabel: string;
   value: number;
+  /**
+   * Splits the column into stacked parts, bottom first (T-159, volume by channel). The parts add up
+   * to `value`. Each part has its name (the legend, the tooltip and the table carry it, so colour
+   * is never the only signal) and a literal `fill-*` class from a chart token.
+   */
+  segments?: readonly BarChartSegment[];
+}
+
+export interface BarChartSegment {
+  key: string;
+  label: string;
+  value: number;
+  /** A literal Tailwind fill class such as `fill-chart-email` (literal so the class is generated). */
+  fillClass: string;
 }
 
 export interface BarChartProps {
@@ -76,6 +90,9 @@ export function BarChart({
   const { slot, thickness } = columnLayout(count, plotWidth);
   const y = (value: number) => TOP + height - (value / top) * height;
   const activeDatum = active === null ? undefined : data[active];
+  // The stacked parts in the order they first appear, for the legend and the table columns.
+  const series = new Map<string, BarChartSegment>();
+  for (const datum of data) for (const part of datum.segments ?? []) series.set(part.key, part);
 
   const move = (event: KeyboardEvent<HTMLDivElement>) => {
     if (count === 0) return;
@@ -108,10 +125,16 @@ export function BarChart({
       refreshing={refreshing}
       className={className}
       table={{
-        columns: [categoryLabel, valueLabel],
+        columns: [categoryLabel, valueLabel, ...[...series.values()].map((part) => part.label)],
         rows: data.map((datum) => ({
           key: datum.key,
-          cells: [datum.label, formatValue(datum.value)],
+          cells: [
+            datum.label,
+            formatValue(datum.value),
+            ...[...series.keys()].map((key) =>
+              formatValue(datum.segments?.find((part) => part.key === key)?.value ?? 0),
+            ),
+          ],
         })),
       }}
     >
@@ -181,6 +204,26 @@ export function BarChart({
                 if (datum.value <= 0) return null;
                 const barHeight = Math.max(2, (datum.value / top) * height);
                 const x = LEFT + index * slot + (slot - thickness) / 2;
+                const parts = (datum.segments ?? []).filter((part) => part.value > 0);
+                if (parts.length > 0) {
+                  let floor = TOP + height;
+                  return (
+                    <g key={datum.key}>
+                      {parts.map((part, order) => {
+                        const partHeight = Math.max(2, (part.value / top) * height);
+                        const y0 = floor - partHeight;
+                        floor = y0;
+                        return (
+                          <path
+                            key={part.key}
+                            d={columnPath(x, y0, thickness, partHeight, order === parts.length - 1)}
+                            className={part.fillClass}
+                          />
+                        );
+                      })}
+                    </g>
+                  );
+                }
                 return (
                   <path
                     key={datum.key}
@@ -240,11 +283,43 @@ export function BarChart({
                 </strong>
                 <span className="text-muted-foreground">{valueLabel}</span>
               </div>
+              {(activeDatum.segments ?? [])
+                .filter((part) => part.value > 0)
+                .map((part) => (
+                  <div key={part.key} className="flex items-center gap-1.5">
+                    <svg aria-hidden width="8" height="8" className="shrink-0">
+                      <rect width="8" height="8" rx="2" className={part.fillClass} />
+                    </svg>
+                    <span className="text-muted-foreground">{part.label}</span>
+                    <span className="tabular ml-auto font-medium text-foreground">
+                      {formatValue(part.value)}
+                    </span>
+                  </div>
+                ))}
               <div className="text-muted-foreground">{activeDatum.label}</div>
             </div>
           ) : null}
+          {series.size > 0 ? (
+            <ul className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+              {[...series.values()].map((part) => (
+                <li key={part.key} className="flex items-center gap-1.5">
+                  <svg aria-hidden width="8" height="8" className="shrink-0">
+                    <rect width="8" height="8" rx="2" className={part.fillClass} />
+                  </svg>
+                  {part.label}
+                </li>
+              ))}
+            </ul>
+          ) : null}
           <span role="status" className="sr-only">
-            {activeDatum ? `${activeDatum.label}: ${formatValue(activeDatum.value)}` : ''}
+            {activeDatum
+              ? [
+                  `${activeDatum.label}: ${formatValue(activeDatum.value)}`,
+                  ...(activeDatum.segments ?? [])
+                    .filter((part) => part.value > 0)
+                    .map((part) => `${part.label} ${formatValue(part.value)}`),
+                ].join(', ')
+              : ''}
           </span>
         </div>
       )}

@@ -10,6 +10,8 @@
  */
 import { z } from 'zod';
 
+import { SLA_AT_RISK_MINUTES } from '../sla.js';
+
 /** Audit `action` strings written by this feature (none: the dashboard does not change anything). */
 export const DASHBOARD_AUDIT_ACTIONS = {} as const satisfies Record<string, string>;
 
@@ -21,8 +23,11 @@ export const DASHBOARD_QUEUES = {} as const satisfies Record<string, string>;
 
 // --- the rules (every number is an assumption of the owner's to confirm) ------------------------------
 
-/** A ticket whose pending SLA deadline falls within this many minutes is "at risk now" `[ASSUMED]`. */
-export const DASHBOARD_AT_RISK_MINUTES = 60;
+/**
+ * "At risk" has one definition (T-177): the one the queue, Home and ticket stats use (`isSlaAtRisk`, shared),
+ * counted by the same server code. This is only its wall-clock floor, shown as a hint `[ASSUMED]`.
+ */
+export const DASHBOARD_AT_RISK_MINUTES = SLA_AT_RISK_MINUTES;
 /** A deploy is "followed by an incident" when an incident on the same service starts within this many hours `[ASSUMED]`. */
 export const DASHBOARD_CFR_ATTRIBUTION_HOURS = 2;
 /** A published KB article not verified for this many days is stale `[ASSUMED]`. */
@@ -99,7 +104,7 @@ export const dashboardOpsSchema = z.strictObject({
     paused: count,
     /** Pending deadline already passed. */
     breachedNow: count,
-    /** Pending deadline within `atRiskMinutes`. */
+    /** Same rule as the ticket stats (`isSlaAtRisk`): 25 % of the target or `atRiskMinutes` left. */
     atRiskNow: count,
     atRiskMinutes: count,
     aging: z.strictObject({
@@ -112,8 +117,18 @@ export const dashboardOpsSchema = z.strictObject({
   volume: z.strictObject({
     created: count,
     byChannel: z.record(z.string(), count),
-    /** One entry per UTC day of the window, oldest first, zeros included (those are real). */
-    byDay: z.array(z.strictObject({ day: z.string(), created: count })),
+    /**
+     * One entry per UTC day of the window, oldest first, zeros included (those are real). `byChannel`
+     * splits the day by channel (only channels with tickets that day), for the stacked bar (T-159).
+     */
+    byDay: z.array(
+      z.strictObject({ day: z.string(), created: count, byChannel: z.record(z.string(), count) }),
+    ),
+    /**
+     * The window right before this one, same number of days, for the trend chip (T-159). `created` is a
+     * real count (zero is a real zero); the chip is the caller's to hide when it is zero (no base).
+     */
+    previous: z.strictObject({ from: z.iso.datetime(), to: z.iso.datetime(), created: count }),
   }),
   sla: z.strictObject({
     basis: z.literal('wall_clock'),
