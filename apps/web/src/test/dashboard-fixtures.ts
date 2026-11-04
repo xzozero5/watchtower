@@ -16,6 +16,7 @@ export function byDay(
   return Array.from({ length: days }, (_, index) => ({
     day: new Date(end - (days - 1 - index) * DAY_MS).toISOString().slice(0, 10),
     created: valueOf(index),
+    byChannel: { gmail: valueOf(index) },
   }));
 }
 
@@ -52,6 +53,11 @@ export function dashboardOps(overrides: Partial<DashboardOps> = {}, days = 7): D
       created: 41,
       byChannel: { gmail: 22, line: 12, portal: 7 },
       byDay: byDay(days),
+      previous: {
+        from: new Date(Date.parse(GENERATED_AT) - 2 * days * DAY_MS).toISOString(),
+        to: new Date(Date.parse(GENERATED_AT) - days * DAY_MS).toISOString(),
+        created: 33,
+      },
     },
     sla: {
       basis: 'wall_clock',

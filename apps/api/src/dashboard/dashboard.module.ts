@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 
+import { TicketsModule } from '../tickets/tickets.module.js';
 import { DashboardController } from './dashboard.controller.js';
 import { DashboardService } from './dashboard.service.js';
 
@@ -8,6 +9,7 @@ import { DashboardService } from './dashboard.service.js';
  * public.
  */
 @Module({
+  imports: [TicketsModule],
   controllers: [DashboardController],
   providers: [DashboardService],
 })

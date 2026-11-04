@@ -1,18 +1,19 @@
 'use client';
 
-import { BarChart, type BarChartDatum, HighlightCard } from '@watchtower/ui';
+import { BarChart, type BarChartDatum, HighlightCard, TrendChip } from '@watchtower/ui';
 import { Bot } from 'lucide-react';
 
 import { useI18n } from '@/i18n/provider';
 import { formatCount, formatDay, formatRate } from '@/lib/dashboard/format';
 import { useDashboardOps } from '@/lib/dashboard/queries';
+import { channelSegments, legendChannel, volumeTrend } from '@/lib/dashboard/volume';
 
 const VOLUME_DAYS = 7;
 
 /**
- * Tickets created per day over the last week, from the ops dashboard read model (the same figures as
- * the Dashboard's Volume section). The comparison with the week before waits for a history API, so
- * no trend chip yet (owner, 2026-11-03). Only for people who may read the dashboard.
+ * Tickets created per day over the last week, stacked by channel, from the ops dashboard read model
+ * (the same figures as the Dashboard's Volume section), with a chip against the 7 days before (T-159).
+ * Only for people who may read the dashboard.
  */
 export function VolumeCard() {
   const { t, locale } = useI18n();
@@ -23,20 +24,35 @@ export function VolumeCard() {
     label: formatDay(entry.day, locale, 'long'),
     axisLabel: formatDay(entry.day, locale, 'short'),
     value: entry.created,
+    segments: channelSegments(entry.byChannel, (channel) => t(`channel.${legendChannel(channel)}`)),
   }));
+  const trend = volume ? volumeTrend(volume.created, volume.previous.created) : null;
+  const trendLabel =
+    trend === null
+      ? null
+      : trend.direction === 'flat'
+        ? t('home.trendFlat')
+        : t(trend.direction === 'up' ? 'home.trendUp' : 'home.trendDown', {
+            percent: formatRate(trend.percent / 100, locale),
+          });
   return (
     <section
       aria-labelledby="home-volume"
       className="flex min-w-0 flex-col gap-3 rounded-card bg-surface p-5 shadow-card lg:p-6"
     >
-      <div>
-        <h2 id="home-volume" className="text-title font-medium text-foreground-strong">
-          {t('home.volume')}
-        </h2>
-        {volume ? (
-          <p className="tabular text-sm text-muted-foreground">
-            {t('home.volumeCreated', { count: formatCount(volume.created, locale) })}
-          </p>
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div>
+          <h2 id="home-volume" className="text-title font-medium text-foreground-strong">
+            {t('home.volume')}
+          </h2>
+          {volume ? (
+            <p className="tabular text-sm text-muted-foreground">
+              {t('home.volumeCreated', { count: formatCount(volume.created, locale) })}
+            </p>
+          ) : null}
+        </div>
+        {trend && trendLabel ? (
+          <TrendChip direction={trend.direction} meaning="neutral" label={trendLabel} />
         ) : null}
       </div>
       {query.isError ? (
