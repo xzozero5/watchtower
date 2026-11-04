@@ -1,7 +1,7 @@
 'use client';
 
-import type { Message } from '@watchtower/shared';
-import { Download, FileText, LoaderCircle } from 'lucide-react';
+import { UPLOAD_SCAN_STATES, type Message, type UploadScanState } from '@watchtower/shared';
+import { Download, FileText, LoaderCircle, ShieldAlert } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 
 import { useI18n } from '@/i18n/provider';
@@ -9,6 +9,14 @@ import { useApi } from '@/lib/api/api-context';
 import { isApiError } from '@/lib/api/errors';
 import { useSession } from '@/lib/auth/session';
 import { formatBytes } from '@/lib/portal/attachments';
+
+/** The scan state the api attached to a file (ADR-022); anything unrecognised counts as no state (served as before). */
+function scanStateOf(file: Message['attachments'][number]): UploadScanState | null {
+  const value = file.scanState;
+  return UPLOAD_SCAN_STATES.find((state) => state === value) ?? null;
+}
+
+type Failure = 'failed' | 'forbidden' | 'missing' | 'scanPending' | 'infected';
 
 /** Metadata is displayed as text only. Storage keys never become links or DOM attributes. */
 export function MessageAttachments({ message }: { message: Message }) {
@@ -37,14 +45,17 @@ function Attachment({
   const { t } = useI18n();
   const api = useApi();
   const [pending, setPending] = useState(false);
-  const [failure, setFailure] = useState<'failed' | 'forbidden' | 'missing' | null>(null);
+  const [failure, setFailure] = useState<Failure | null>(null);
   const active = useRef<AbortController | null>(null);
   const objectUrls = useRef(new Set<string>());
   const name =
     typeof file.filename === 'string' && file.filename.trim()
       ? file.filename
       : t('timeline.attachments.unnamed', { number: index + 1 });
-  const available = typeof file.objectKey === 'string' && file.objectKey.length > 0;
+  const scanState = scanStateOf(file);
+  // pending, error and infected files are not handed out (the api answers 409/410); do not offer the button.
+  const blocked = scanState === 'pending' || scanState === 'error' || scanState === 'infected';
+  const available = typeof file.objectKey === 'string' && file.objectKey.length > 0 && !blocked;
   const size = typeof file.size === 'number' && Number.isFinite(file.size) && file.size >= 0;
 
   useEffect(() => {
@@ -90,7 +101,11 @@ function Attachment({
             ? 'forbidden'
             : isApiError(error) && error.status === 404
               ? 'missing'
-              : 'failed',
+              : isApiError(error) && error.status === 409 && error.code === 'scan_pending'
+                ? 'scanPending'
+                : isApiError(error) && error.status === 410 && error.code === 'file_infected'
+                  ? 'infected'
+                  : 'failed',
         );
       }
     } finally {
@@ -125,12 +140,32 @@ function Attachment({
               <Download aria-hidden className="size-4" />
             )}
           </button>
+        ) : blocked ? (
+          <span
+            data-testid="attachment-scan-state"
+            data-scan-state={scanState}
+            className={
+              scanState === 'infected'
+                ? 'ml-auto inline-flex items-center gap-1 text-danger'
+                : 'ml-auto inline-flex items-center gap-1 text-muted-foreground'
+            }
+          >
+            {scanState === 'pending' ? (
+              <LoaderCircle aria-hidden className="size-3.5 motion-safe:animate-spin" />
+            ) : (
+              <ShieldAlert aria-hidden className="size-3.5" />
+            )}
+            {t(`timeline.attachments.scan.${scanState}`)}
+          </span>
         ) : (
           <span className="text-muted-foreground">{t('timeline.attachments.unavailable')}</span>
         )}
       </div>
       {failure ? (
-        <p role="alert" className="mt-1 text-danger">
+        <p
+          role="alert"
+          className={failure === 'scanPending' ? 'mt-1 text-muted-foreground' : 'mt-1 text-danger'}
+        >
           {t(`timeline.attachments.${failure}`)}
         </p>
       ) : null}

@@ -8,7 +8,9 @@ import { renderWorkspace } from '@/test-utils';
 import { makeInsight } from '@/test/ai-fixtures';
 import { workspaceApi } from '@/test/scenarios';
 
-vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: vi.fn(), replace: vi.fn() }) }));
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({ refresh: vi.fn(), replace: vi.fn(), push: vi.fn() }),
+}));
 
 beforeEach(() => {
   localStorage.clear();

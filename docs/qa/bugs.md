@@ -40,7 +40,7 @@ P3 cosmetic or rare, P4 polish. Developers fix; QA verifies. Do not edit an entr
 
 - **Found:** 2026-11-02, T-113, axe on `/shift/overview` with a real open P1 ticket (WCAG 2.5.3). Element: link with `aria-label="Open OPS-n"` styled as `BUTTON` in `apps/web/src/components/notifications/critical-banner.tsx` (`notifications.banner.openNamed`); the visible text is not contained in the name.
 - **Update 2026-11-04 (AC-7 spec finished):** the element axe reports is the notification bell in the rail (`components/notifications/notification-center.tsx`, `data-testid="notification-bell"`), and also the banner link (`Open OPS-n`, as first suspected), in the same run. The bell: `aria-label="Notifications, 1 unread"` while the visible text reads "1" (the badge, placed before the title in the DOM) then "Notifications". It shows whenever the user has an unread notification, on any page. `[UNVERIFIED 70%]` for the cause (the order of badge and title); `ac7-shifts.e2e.ts` excludes both from the scan with a comment pointing here; remove the two `exclude` lines when fixed.
-- **Status:** open.
+- **Status:** fixed 2026-11-04 (T-178) `[TESTED]` at component level; the fullstack e2e (`ac7-shifts.e2e.ts`) no longer excludes either element, but it was not run on this branch `[UNVERIFIED]`. Banner link name is now `Open ticket OPS-n` (visible text `Open ticket`); the bell renders its title before the badge in the DOM (CSS `order` keeps the icon first) so the visible text `Notifications 1` is contained in `Notifications, 1 unread`; the Thai unread label was reworded to start with the visible title and put the count right after it.
 
 ## Observations that are not bugs (recorded so nobody re-investigates them)
 

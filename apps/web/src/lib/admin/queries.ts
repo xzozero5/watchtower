@@ -35,6 +35,7 @@ export const adminKeys = (userId: string) => {
     gmailStatus: [...all, 'gmail-status'] as const,
     channelAccounts: [...all, 'channel-accounts'] as const,
     csatSettings: [...all, 'csat-settings'] as const,
+    uploadScan: [...all, 'upload-scan'] as const,
     orgTiers: [...all, 'org-tiers'] as const,
     outboxHealth: [...all, 'outbox-health'] as const,
     outboxDead: [...all, 'outbox-dead'] as const,
@@ -315,6 +316,17 @@ export function useChannelAccounts(enabled = true) {
   return useQuery({
     queryKey: adminKeys(userId).channelAccounts,
     queryFn: ({ signal }) => api.channelAccounts(signal),
+    enabled,
+    staleTime: 10_000,
+  });
+}
+
+export function useUploadScan(enabled = true) {
+  const api = useApi();
+  const userId = useUserId();
+  return useQuery({
+    queryKey: adminKeys(userId).uploadScan,
+    queryFn: ({ signal }) => api.uploadScan(signal),
     enabled,
     staleTime: 10_000,
   });

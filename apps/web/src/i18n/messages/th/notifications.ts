@@ -6,7 +6,7 @@ export const notificationsTh: Widen<typeof notificationsEn> = {
   center: {
     title: 'กล่องแจ้งเตือน',
     openLabel: 'กล่องแจ้งเตือน',
-    openLabelUnread: 'กล่องแจ้งเตือน ยังไม่ได้อ่าน {count} รายการ',
+    openLabelUnread: 'กล่องแจ้งเตือน {count} รายการที่ยังไม่ได้อ่าน',
     unreadBadge: 'ยังไม่ได้อ่าน {count}',
     markAllRead: 'อ่านทั้งหมดแล้ว',
     markRead: 'ทำเครื่องหมายว่าอ่านแล้ว',
@@ -49,7 +49,7 @@ export const notificationsTh: Widen<typeof notificationsEn> = {
     showAll: 'ดูทั้งหมด',
     hideAll: 'ย่อรายการ',
     list: 'ตั๋ว P1 ที่ยังไม่รับทราบ',
-    openNamed: 'เปิด {key}',
+    openNamed: 'เปิดตั๋ว {key}',
     acknowledgeNamed: 'รับทราบ {key}',
     tabPrefix: '(P1)',
   },

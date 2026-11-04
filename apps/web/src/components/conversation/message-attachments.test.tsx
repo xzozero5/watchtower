@@ -125,6 +125,60 @@ describe('staff message attachments', () => {
     expect(createObjectURL).not.toHaveBeenCalled();
   });
 
+  it.each([
+    [409, 'scan_pending', 'This file is still being checked for malware. Try again in a moment.'],
+    [410, 'file_infected', 'This file was blocked and removed because it contained malware.'],
+  ] as const)('explains a %s %s answer in words', async (status, code, text) => {
+    setup(
+      () =>
+        new Response(JSON.stringify({ statusCode: status, error: 'Error', code, message: code }), {
+          status,
+          headers: { 'content-type': 'application/json' },
+        }),
+    );
+    renderApp(<MessageAttachments message={message} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Download trace.log' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent(text);
+    expect(createObjectURL).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['pending', 'Checking file'],
+    ['infected', 'File blocked (malware)'],
+    ['error', 'Check failed, the system will retry'],
+  ] as const)('shows scan state %s and offers no download', async (scanState, text) => {
+    const download = setup(() => new Response('unexpected'));
+    renderApp(
+      <MessageAttachments
+        message={{
+          ...message,
+          attachments: [{ ...message.attachments[0], scanState }],
+        }}
+      />,
+    );
+    expect(await screen.findByTestId('attachment-scan-state')).toHaveTextContent(text);
+    expect(screen.queryByRole('button')).toBeNull();
+    expect(download).not.toHaveBeenCalled();
+  });
+
+  it('keeps the download for a clean file and shows the Thai wording for pending', async () => {
+    setup(() => new Response('ok'));
+    const { unmount } = renderApp(
+      <MessageAttachments
+        message={{ ...message, attachments: [{ ...message.attachments[0], scanState: 'clean' }] }}
+      />,
+    );
+    expect(await screen.findByRole('button', { name: 'Download trace.log' })).toBeVisible();
+    unmount();
+    renderApp(
+      <MessageAttachments
+        message={{ ...message, attachments: [{ ...message.attachments[0], scanState: 'pending' }] }}
+      />,
+      { locale: 'th' },
+    );
+    expect(await screen.findByText('กำลังตรวจไฟล์')).toBeVisible();
+  });
+
   it('does not offer unmasked filenames or downloads to a developer', async () => {
     const download = setup(() => new Response('secret'), 'dev');
     renderApp(

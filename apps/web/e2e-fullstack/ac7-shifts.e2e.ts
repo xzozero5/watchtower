@@ -34,11 +34,6 @@ async function expectNoViolations(page: Page): Promise<void> {
   const results = await new AxeBuilder({ page })
     .withTags(WCAG_TAGS)
     .exclude('[data-sonner-toaster]')
-    // B-004: with an unread notification the bell's name "Notifications, 1 unread" does not contain
-    // its visible text ("1" comes before "Notifications"). Open bug; everything else is still scanned.
-    .exclude('[data-testid="notification-bell"]')
-    // B-004: the link of the P1 banner is named "Open OPS-n" and shows other text.
-    .exclude('a[aria-label^="Open "][href^="/?ticket="]')
     .analyze();
   expect(results.violations.map((v) => `${v.id}: ${v.nodes[0]?.html ?? ''}`)).toEqual([]);
 }

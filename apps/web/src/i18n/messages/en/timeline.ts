@@ -15,6 +15,13 @@ export const timelineEn = {
     failed: 'Could not download this file. Try again.',
     forbidden: 'You no longer have access to this file.',
     missing: 'This file is no longer available.',
+    scanPending: 'This file is still being checked for malware. Try again in a moment.',
+    infected: 'This file was blocked and removed because it contained malware.',
+    scan: {
+      pending: 'Checking file',
+      infected: 'File blocked (malware)',
+      error: 'Check failed, the system will retry',
+    },
   },
   kinds: {
     customer: 'Customer message',
@@ -48,6 +55,8 @@ export const timelineEn = {
     slaRecalculated: 'SLA due times recalculated',
     sendCancelled: 'A reply was undone before it was sent',
     deliveryFailed: 'A reply could not be delivered',
+    attachmentInfected: 'A file was blocked and removed (malware)',
+    attachmentInfectedNamed: 'File "{name}" was blocked and removed (malware)',
   },
   copy: 'Copy message',
   copied: 'Message copied',

@@ -2,6 +2,7 @@
 
 import {
   INCIDENTS_TICKET_EVENTS,
+  UPLOADS_TICKET_EVENTS,
   TICKET_EVENT_TYPES,
   ticketPrioritySchema,
   ticketStatusSchema,
@@ -155,6 +156,16 @@ function EventText({ entry }: { entry: EventEntry }) {
       return <>{t('timeline.events.sendCancelled')}</>;
     case TICKET_EVENT_TYPES.messageDeliveryFailed:
       return <>{t('timeline.events.deliveryFailed')}</>;
+    case UPLOADS_TICKET_EVENTS.attachmentInfected: {
+      const name = str(payload.filename);
+      return (
+        <>
+          {name
+            ? t('timeline.events.attachmentInfectedNamed', { name })
+            : t('timeline.events.attachmentInfected')}
+        </>
+      );
+    }
     default:
       return <>{t('timeline.events.updated')}</>;
   }
