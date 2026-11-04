@@ -4,7 +4,12 @@ import { hmacJson } from '@watchtower/ai';
 import { assembleToolClients, type ToolClients } from '@watchtower/connectors';
 import { createProductDbExecutor, schema, type Database } from '@watchtower/db';
 import { createHumanToolLedger, type UsageDataPort } from '@watchtower/domain';
-import { DATA_COLUMN_ALLOW_LIST, RATE_TOOL_NAMES, budgetProjectFor } from '@watchtower/shared';
+import {
+  DATA_COLUMN_ALLOW_LIST,
+  RATE_TOOL_NAMES,
+  budgetProjectFor,
+  usageDimProblem,
+} from '@watchtower/shared';
 import { KEY_LABELS, deriveSubkey } from '@watchtower/shared/secret-box';
 import { eq } from 'drizzle-orm';
 
@@ -42,9 +47,13 @@ export function createUsageDataPort(options: {
         .from(schema.usageMetricDef)
         .where(eq(schema.usageMetricDef.key, request.metricKey))
         .limit(1);
-      const columns = ['ts', 'value', ...(definition?.dims ?? [])].map((name) =>
-        name.toLowerCase(),
-      );
+      // A dimension that is on the allow-list or does not look personal is shown; anything else (a metric saved
+      // before the check existed) stays masked, so a person's name cannot reach usage rows or alerts (T-207a C-5).
+      const columns = [
+        'ts',
+        'value',
+        ...(definition?.dims ?? []).filter((name) => usageDimProblem(name) === null),
+      ].map((name) => name.toLowerCase());
       const [from, to] = request.params;
       const decision = await ledger.begin({
         runKey: randomUUID(),

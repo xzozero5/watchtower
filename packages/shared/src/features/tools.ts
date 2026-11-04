@@ -70,8 +70,41 @@ export const DATA_COLUMN_ALLOW_LIST: readonly string[] = [
   'value',
 ];
 
+/**
+ * A column name that says it holds a person (a name, an address, a phone, an account, a secret). The data
+ * tool never unmasks such a column on a metric's say-so (T-207a C-5): a usage metric's dimensions are shown
+ * to the AI and in alerts, so a dimension called `display_name` would put a customer's staff names there.
+ * Matched on whole words between underscores. A heuristic on names, in front of the column grants of the
+ * product login, which are what actually keep personal columns unreadable (R-5.2).
+ */
+const PII_COLUMN_NAME =
+  /(?:^|_)(?:name|names|fullname|email|mail|phone|mobile|tel|contact|person|people|user|username|display|submitted_by|address|addr|customer|first|last|surname|ip|ssn|passport|card|account|token|password|secret|dob|birth|line_id)(?:_|$)/;
+
+export function isPiiColumnName(name: string): boolean {
+  return PII_COLUMN_NAME.test(name.toLowerCase());
+}
+
+/**
+ * A usage metric's dimension may be a column of the global allow-list, or any other column whose name does not
+ * look personal (`flow`, `step`, `org`). Never one that does.
+ */
+export function usageDimProblem(name: string): string | null {
+  const lower = name.toLowerCase();
+  if (DATA_COLUMN_ALLOW_LIST.includes(lower)) return null;
+  if (isPiiColumnName(lower)) {
+    return 'This dimension looks like a personal column (a name, address, phone, account or secret); use an id or a category';
+  }
+  return null;
+}
+
 /** A data query returns at most this many rows to a person (the connector's hard cap is 500). */
 export const DATA_RUN_MAX_ROWS = 100;
+/**
+ * A person's own data statement (ad-hoc) is held tighter than a saved template (T-207a C-1): at most this many
+ * a minute for one person (counted in the same personal window as every other data run), and at most
+ * `DATA_RUN_MAX_ROWS` rows back. `[ASSUMED]`
+ */
+export const ADHOC_DATA_PERSON_PER_MINUTE = 5;
 /** The longest a data query may run for a person. */
 export const DATA_RUN_TIMEOUT_MS = 5000;
 
@@ -330,7 +363,7 @@ export const adhocDataSchema = z
       .array(z.union([z.string().max(200), z.number()]))
       .max(10)
       .default([]),
-    maxRows: z.number().int().min(1).max(500).default(100),
+    maxRows: z.number().int().min(1).max(DATA_RUN_MAX_ROWS).default(50),
     ...pin,
   })
   .refine((value) => (value.ticketId === undefined) !== (value.incidentId === undefined), {

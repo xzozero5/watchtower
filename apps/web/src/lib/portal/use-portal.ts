@@ -17,7 +17,10 @@ export function usePortalApi(): PortalClient {
  * Starts the human check when the form opens and ends it when the form goes away. `check` stays the
  * same object for the life of the page; `state` drives the "Checking you're human…" line.
  */
-export function useHumanCheck(api: PortalClient): { check: HumanCheck; state: CheckState } {
+export function useHumanCheck(api: Pick<PortalClient, 'challenge'>): {
+  check: HumanCheck;
+  state: CheckState;
+} {
   const [state, setState] = useState<CheckState>({ phase: 'loading' });
   const [check] = useState(() => new HumanCheck({ api, onChange: setState }));
 

@@ -16,7 +16,7 @@ import {
 } from '@watchtower/connectors';
 import { schema, type Database } from '@watchtower/db';
 import { templateForAi } from '@watchtower/domain';
-import { DATA_RUN_TIMEOUT_MS } from '@watchtower/shared';
+import { DATA_RUN_TIMEOUT_MS, safeDeployUrl } from '@watchtower/shared';
 import { and, desc, eq, gte, sql } from 'drizzle-orm';
 
 /**
@@ -220,7 +220,9 @@ export function createRepoToolPort(
           ref: deploy.version.slice(0, 100),
           title: `Deploy ${deploy.version} to ${deploy.env}`.slice(0, 300),
           at: deploy.at.toISOString(),
-          ...(deploy.url === null ? {} : { url: deploy.url.slice(0, 500) }),
+          ...(safeDeployUrl(deploy.url) === null
+            ? {}
+            : { url: (safeDeployUrl(deploy.url) ?? '').slice(0, 500) }),
         });
       }
       return {

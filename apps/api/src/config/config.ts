@@ -109,6 +109,17 @@ const apiEnvSchema = createEnvSchema({
    */
   ALERT_INGEST_RATE_PER_MINUTE: z.coerce.number().int().min(1).max(100_000).default(600),
   /**
+   * Discord interactions (button presses, `/ack`, `/incident`) accepted per minute per client IP, before the
+   * signature is checked (T-207a C-8). Its own number: during an incident the alert ingest and the buttons
+   * are busy at the same time, and one shared limit would answer the buttons with 429. `[ASSUMED]`
+   */
+  DISCORD_INTERACTIONS_RATE_PER_MINUTE: z.coerce.number().int().min(1).max(100_000).default(600),
+  /**
+   * Interactions one Discord user may make per minute, counted after the signature checked out (T-207a C-8):
+   * Discord delivers from shared addresses, so the per-IP limit says little about who is pressing. `[ASSUMED]`
+   */
+  DISCORD_USER_RATE_PER_MINUTE: z.coerce.number().int().min(1).max(10_000).default(60),
+  /**
    * Portal uploads (T-140) are buffered in memory before they are checked, so the number read at the
    * same time is bounded: in this process, and per client address. More than that: 503 + Retry-After.
    * `[ASSUMED]` values; raise them only together with the api container's memory limit.

@@ -1,5 +1,7 @@
 import { Module } from '@nestjs/common';
 
+import { HUMAN_VERIFICATION } from '../portal/human-verification.js';
+import { SelfHostedHumanVerificationProvider } from '../portal/self-hosted-verification.js';
 import { StatusAdminController } from './status-admin.controller.js';
 import { StatusAdminService } from './status-admin.service.js';
 import { StatusPagePublicGuard } from './status-page.guard.js';
@@ -19,6 +21,13 @@ import { StatusPublicService } from './status-public.service.js';
  */
 @Module({
   controllers: [StatusPublicController, StatusSubscriptionsController, StatusAdminController],
-  providers: [StatusPagePublicGuard, StatusLimits, StatusPublicService, StatusAdminService],
+  providers: [
+    StatusPagePublicGuard,
+    StatusLimits,
+    StatusPublicService,
+    StatusAdminService,
+    // The same proof of work as the portal (ADR-007, T-207a C-3): the page mails an address a stranger typed.
+    { provide: HUMAN_VERIFICATION, useClass: SelfHostedHumanVerificationProvider },
+  ],
 })
 export class StatusPageModule {}

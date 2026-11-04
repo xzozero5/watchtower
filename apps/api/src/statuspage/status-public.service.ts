@@ -1,9 +1,11 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { schema, type Database } from '@watchtower/db';
 import {
+  STATUSPAGE_AUDIT_ACTIONS,
   STATUS_HISTORY_DAYS,
   statusEmailLimitKey,
   overallStatus,
+  type HumanChallenge,
   type PublicHistory,
   type PublicMaintenance,
   type PublicPost,
@@ -15,12 +17,17 @@ import { KEY_LABELS, deriveSubkey } from '@watchtower/shared/secret-box';
 import { and, desc, eq, inArray, ne, sql } from 'drizzle-orm';
 
 import { AuditScope } from '../audit/audit-scope.js';
-import { ApiHttpError } from '../auth/http-errors.js';
+import { ApiHttpError, verificationFailed } from '../auth/http-errors.js';
 import { APP_CONFIG, type ApiConfig } from '../config/config.js';
 import { DATABASE } from '../database/database.module.js';
 import { domainContext, settle } from '../domain/domain-context.js';
 import { translating } from '../domain/domain-errors.js';
 import { DOMAIN, type Domain } from '../domain/domain.module.js';
+import {
+  HUMAN_VERIFICATION,
+  type HumanVerificationProvider,
+  type VerificationFailure,
+} from '../portal/human-verification.js';
 import { UnitOfWorkService } from '../realtime/unit-of-work.js';
 import { StatusLimits } from './status-limits.js';
 
@@ -42,6 +49,7 @@ export class StatusPublicService {
     @Inject(DOMAIN) private readonly domain: Domain,
     @Inject(UnitOfWorkService) private readonly uow: UnitOfWorkService,
     @Inject(StatusLimits) private readonly limits: StatusLimits,
+    @Inject(HUMAN_VERIFICATION) private readonly verification: HumanVerificationProvider,
     @Inject(APP_CONFIG) config: Pick<ApiConfig, 'APP_ENCRYPTION_KEY'>,
   ) {
     // Its own subkey: a status link can never be a survey link, or the other way round.
@@ -156,13 +164,35 @@ export class StatusPublicService {
     };
   }
 
+  /** The proof-of-work challenge a subscribe request must carry (ADR-007, the same provider as the portal). */
+  async challenge(ip: string | null): Promise<HumanChallenge> {
+    await this.limits.enforce('challenge-ip', ip ?? 'unknown');
+    return this.verification.challenge();
+  }
+
   /**
-   * Asks to subscribe. Limited per caller and per address, and the answer is the same whether or not the
-   * address was known, confirmed, or throttled by the domain.
+   * Asks to subscribe. The page mails whatever address it is given, so the order is the portal's (ADR-007, C-3):
+   * the caller's own limit, then the stateless proof of work (free for us, not for the caller), then the limits
+   * that belong to someone else (the address, its domain, the whole page) which only a caller who did the work
+   * can spend, and last the single-use claim of the challenge. The answer is the same whether or not the address
+   * was known, confirmed, or throttled by the domain.
    */
   async subscribe(input: Subscribe, ip: string | null): Promise<void> {
     await this.limits.enforce('subscribe-ip', ip ?? 'unknown');
+    const checked = await this.verification.check({
+      proof: input.verification,
+      honeypot: input.website,
+    });
+    if (!checked.ok) this.refuse(checked.reason);
     await this.limits.enforce('subscribe-email', statusEmailLimitKey(input.email));
+    await this.limits.enforce(
+      'subscribe-domain',
+      input.email.slice(input.email.lastIndexOf('@') + 1).toLowerCase(),
+    );
+    await this.limits.enforce('subscribe-global-hour', 'all');
+    await this.limits.enforce('subscribe-global-day', 'all');
+    const claimed = await this.verification.claim(checked);
+    if (!claimed.ok) this.refuse(claimed.reason);
     await translating(() =>
       this.uow.run(async (uow) =>
         settle(
@@ -215,6 +245,16 @@ export class StatusPublicService {
     );
     AuditScope.set({ targetType: 'status_subscription' });
     if (result.outcome !== 'unsubscribed') throw this.invalidLink();
+  }
+
+  /** Audits why a proof was refused (no address in it) and answers 400 `verification_failed`. */
+  private refuse(reason: VerificationFailure): never {
+    AuditScope.set({
+      action: STATUSPAGE_AUDIT_ACTIONS.subscriptionVerificationFailed,
+      outcome: 'denied',
+      metadata: { reason, provider: this.verification.name },
+    });
+    throw verificationFailed();
   }
 
   private signingKey(): Buffer {

@@ -109,7 +109,7 @@ export class DiscordInteractionsService {
     const hit = await this.limiter.hit(
       'discord-interactions-ip',
       input.ip ?? 'unknown',
-      this.config.ALERT_INGEST_RATE_PER_MINUTE,
+      this.config.DISCORD_INTERACTIONS_RATE_PER_MINUTE,
       MINUTE,
     );
     if (!hit.allowed) {
@@ -150,6 +150,22 @@ export class DiscordInteractionsService {
     if (!parsed.success) throw badRequest('The body is not an interaction');
     const interaction = parsed.data;
     if (interaction.type === INTERACTION_TYPES.ping) return PONG;
+    // Genuine now, so the sender is known: one person pressing in a loop is held, a colleague is not (T-207a C-8).
+    const pressedBy = interactionUserId(interaction);
+    if (pressedBy !== null) {
+      const user = await this.limiter.hit(
+        'discord-interactions-user',
+        pressedBy,
+        this.config.DISCORD_USER_RATE_PER_MINUTE,
+        MINUTE,
+      );
+      if (!user.allowed) {
+        throw new HttpException(
+          { statusCode: 429, error: 'Too Many Requests' },
+          HttpStatus.TOO_MANY_REQUESTS,
+        );
+      }
+    }
 
     const response = await this.uow.run((uow) => this.handleOnce(uow, interaction));
     const elapsed = Date.now() - started;

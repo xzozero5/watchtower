@@ -6,12 +6,14 @@
  *
  * The page itself needs nothing but the owner having opened it (`STATUS_PAGE_PUBLIC`; closed = 404 on every
  * route here); the three subscription routes authenticate with a signed token in the body, or, to ask for a
- * new one, are limited per caller and per address.
+ * new one, need a proof of work (ADR-007) and are limited per caller, per address, per domain and overall.
  */
 export const STATUSPAGE_PUBLIC_ROUTES: readonly string[] = [
   'GET /v1/status',
   'GET /v1/status/history',
+  'GET /v1/status/subscriptions/challenge',
   'POST /v1/status/subscriptions',
   'POST /v1/status/subscriptions/confirm',
   'POST /v1/status/subscriptions/unsubscribe',
+  'POST /v1/status/subscriptions/unsubscribe/one-click',
 ];

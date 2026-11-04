@@ -51,6 +51,19 @@ describe('createLogger', () => {
     expect(raw).toContain('text/html');
   });
 
+  it('censors the bearer token of a Pub/Sub push wherever the header shows up (T-207a C-10)', () => {
+    const { capture, logger } = loggerWithCapture();
+    const token = 'eyJhbGciOiJSUzI1NiJ9.PUBSUB-OIDC-TOKEN.signature';
+    logger.info({ req: { headers: { authorization: `Bearer ${token}` } } }, 'push');
+    logger.info({ req: { headers: { Authorization: `Bearer ${token}` } } }, 'push, capitalised');
+    logger.info({ req: { headers: { 'proxy-authorization': `Bearer ${token}` } } }, 'proxy');
+    logger.error({ err: { config: { headers: { Authorization: `Bearer ${token}` } } } }, 'client');
+    logger.error({ res: { request: { headers: { authorization: `Bearer ${token}` } } } }, 'deep');
+    const raw = capture.raw();
+    expect(raw).not.toContain('PUBSUB-OIDC-TOKEN');
+    expect(raw).toContain('[Redacted]');
+  });
+
   it('never serialises the cause of an error: a provider error keeps the prompt there (SR106-R10)', () => {
     const { capture, logger } = loggerWithCapture();
     const cause = Object.assign(

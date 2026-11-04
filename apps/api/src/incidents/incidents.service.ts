@@ -3,6 +3,7 @@ import { schema, type Database } from '@watchtower/db';
 import type { Actor } from '@watchtower/domain';
 import {
   formatIncidentKey,
+  safeDeployUrl,
   type CreateIncident,
   type Deploy,
   type DeployListQuery,
@@ -159,7 +160,7 @@ export class IncidentsService {
         source: row.source as Deploy['source'],
         startedAt: row.startedAt?.toISOString() ?? null,
         finishedAt: row.finishedAt?.toISOString() ?? null,
-        url: row.url,
+        url: safeDeployUrl(row.url),
         occurredAt: (row.occurredAt ?? row.receivedAt).toISOString(),
       })),
       repoSource: this.repo.source,
@@ -343,7 +344,7 @@ export class IncidentsService {
       source: row.source as Deploy['source'],
       startedAt: row.startedAt?.toISOString() ?? null,
       finishedAt: row.finishedAt?.toISOString() ?? null,
-      url: row.url,
+      url: safeDeployUrl(row.url),
       occurredAt: (row.occurredAt ?? row.receivedAt).toISOString(),
     }));
   }

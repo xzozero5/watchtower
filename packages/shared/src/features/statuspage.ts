@@ -9,6 +9,8 @@
  */
 import { z } from 'zod';
 
+import { humanProofSchema } from '../human-proof.js';
+
 /** Audit `action` strings written by this feature. Metadata holds ids and counts, never a body or an address. */
 export const STATUSPAGE_AUDIT_ACTIONS = {
   componentCreate: 'status_component.create',
@@ -29,7 +31,16 @@ export const STATUSPAGE_AUDIT_ACTIONS = {
   subscriptionConfirm: 'status_subscription.confirm',
   subscriptionUnsubscribe: 'status_subscription.unsubscribe',
   subscriptionRateLimited: 'status_subscription.rate_limited',
+  /** A subscribe request whose proof of work (ADR-007) was missing, wrong, spent or too quick. */
+  subscriptionVerificationFailed: 'status_subscription.verification_failed',
 } as const satisfies Record<string, string>;
+
+/**
+ * Hard bounces in a row after which an address stops getting status mail (T-207a C-7). A hard bounce is a
+ * permanent 5xx for the mailbox itself; an address that keeps refusing is not read by anyone, and mailing it
+ * only damages the sender's reputation. `[ASSUMED]`
+ */
+export const STATUS_BOUNCE_LIMIT = 3;
 
 /** `ticket_event.type` strings written by this feature. */
 export const STATUSPAGE_TICKET_EVENTS = {} as const satisfies Record<string, string>;
@@ -255,6 +266,10 @@ export function statusEmailLimitKey(email: string): string {
 export const subscribeSchema = z.strictObject({
   email: statusEmailSchema,
   locale: statusLocaleSchema.default('en'),
+  /** The solved challenge of `GET /v1/status/subscriptions/challenge` (proof of work, ADR-007, T-207a C-3). */
+  verification: humanProofSchema,
+  /** Honeypot: a person never sees this field; anything but empty is a script. */
+  website: z.string().max(200).optional(),
 });
 export type Subscribe = z.infer<typeof subscribeSchema>;
 

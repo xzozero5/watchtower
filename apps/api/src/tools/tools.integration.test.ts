@@ -77,6 +77,7 @@ beforeAll(async () => {
       }),
     dataMock: executor.sandbox,
     dataHardening: () => executor.hardeningProblems(),
+    dataAdhocEnabled: true,
     close: () => executor.close(),
   };
   h = await startHarness({ overrides: [{ token: TOOL_CLIENTS, value: toolClients }] });
@@ -807,6 +808,103 @@ describe('ad-hoc runs (lead, head)', () => {
         })
       ).status,
     ).toBe(201);
+  });
+
+  it('T-207a C-1: ad-hoc data is off unless the deployment turned it on, and saved templates still run', async () => {
+    await clearBudget();
+    const enabled = toolClients.dataAdhocEnabled;
+    toolClients.dataAdhocEnabled = false;
+    try {
+      const refused = await call<ApiErrorBody>(head, 'POST', '/v1/investigate/adhoc/data', {
+        sql: 'SELECT 1 AS n',
+        ticketId: ticketRef,
+      });
+      expect(refused.status).toBe(503);
+      expect(refused.body.message).toContain('PRODUCT_DB_ADHOC_ENABLED');
+      const template = await newTemplate({
+        kind: 'data',
+        name: `adhoc-off-${randomBytes(2).toString('hex')}`,
+        title: 'Runs with adhoc off',
+        body: 'SELECT 1 AS n',
+      });
+      expect(
+        (
+          await call(agent, 'POST', `/v1/tickets/${ticketRef}/tools/run`, {
+            templateId: template.id,
+          })
+        ).status,
+      ).toBe(201);
+    } finally {
+      toolClients.dataAdhocEnabled = enabled;
+    }
+  });
+
+  it('T-207a C-1: a statement of your own cannot use the forms that build a huge value, and asks for at most 100 rows', async () => {
+    await clearBudget();
+    for (const sql of [
+      "SELECT array_agg(repeat('x', 100000000)) AS n",
+      "SELECT string_agg(plan, ',') AS n FROM tenants",
+      'WITH RECURSIVE t(n) AS (SELECT 1 UNION ALL SELECT n + 1 FROM t) SELECT n FROM t',
+    ]) {
+      const response = await call<ApiErrorBody>(head, 'POST', '/v1/investigate/adhoc/data', {
+        sql,
+        ticketId: ticketRef,
+      });
+      expect(response.status, sql).toBe(400);
+    }
+    expect(
+      (
+        await call(head, 'POST', '/v1/investigate/adhoc/data', {
+          sql: 'SELECT 1 AS n',
+          maxRows: 500,
+          ticketId: ticketRef,
+        })
+      ).status,
+    ).toBe(400);
+  });
+
+  it('T-207a C-9: a run that reaches another organization redacts the people of every organization in the result', async () => {
+    await clearBudget();
+    await owner().query(
+      `INSERT INTO contact (org_id, name, emails) VALUES ($1, 'Zebulon Quixote', ARRAY['zq@example.test'])`,
+      [otherOrgId],
+    );
+    const response = await call<EvidenceCard & ApiErrorBody>(
+      head,
+      'POST',
+      '/v1/investigate/adhoc/data',
+      {
+        // `status` is a column the allow-list shows, so the text reaches the excerpt; the id is the other org's.
+        sql: `SELECT $1::text AS org_id, 'Zebulon Quixote reported the outage' AS status`,
+        params: [otherOrgId],
+        ticketId: ticketRef,
+      },
+    );
+    expect(response.status, JSON.stringify(response.body)).toBe(201);
+    expect(response.body.excerpt).not.toContain('Zebulon');
+    expect(response.body.excerpt).not.toContain('Quixote');
+    expect(response.body.excerpt).toMatch(/\[[A-Z_]*\d*\]/);
+  });
+
+  it('T-207a C-1: one person gets five ad-hoc data statements a minute', async () => {
+    await clearBudget();
+    const run = () =>
+      call<ApiErrorBody>(lead, 'POST', '/v1/investigate/adhoc/data', {
+        sql: 'SELECT 1 AS n',
+        ticketId: ticketRef,
+      });
+    for (let i = 0; i < 5; i += 1) expect((await run()).status).toBe(201);
+    expect((await run()).status).toBe(429);
+    // Another person is not held by it.
+    expect(
+      (
+        await call(head, 'POST', '/v1/investigate/adhoc/data', {
+          sql: 'SELECT 1 AS n',
+          ticketId: ticketRef,
+        })
+      ).status,
+    ).toBe(201);
+    await clearBudget();
   });
 
   it('runs a log filter of your own on an incident', async () => {

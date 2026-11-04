@@ -258,6 +258,10 @@ export const phase2EnvShape = {
   // ones. Empty = the data tool has no database. In compose the local `product_mock` database is
   // `postgres://product_mock_ro:product_mock_ro@postgres:5432/product_mock`. A secret: environment only.
   PRODUCT_DB_URL: optionalString,
+  // Ad-hoc data statements (a lead's own SELECT, T-207a C-1) are off unless the owner turns them on, and
+  // should be on only when PRODUCT_DB_URL points at a sandbox or a replica of its own: a statement can still
+  // make the Postgres server that answers it run out of memory. Saved templates are not affected.
+  PRODUCT_DB_ADHOC_ENABLED: z.preprocess(emptyToUndefined, z.stringbool().default(false)),
   // Mock mode for the GCP Logs, metrics and repository clients (T-203): a directory with
   // `fixtures.json`, for example examples/tools. The worker (AI tools) and the api (the buttons a
   // person presses) both read it. Empty = those clients are not connected.

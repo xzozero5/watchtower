@@ -5,6 +5,7 @@ import {
   QUEUE_NAMES,
   STATUSPAGE_AUDIT_ACTIONS,
   STATUSPAGE_JOBS,
+  type HumanChallenge,
   type IncidentDetail,
   type PublicHistory,
   type PublicStatus,
@@ -16,6 +17,7 @@ import { KEY_LABELS, deriveSubkey } from '@watchtower/shared/secret-box';
 import { disableNetConnect } from '@watchtower/shared/testing';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
+import { solveChallenge } from '../portal/pow.js';
 import { startHarness, uniqueEmail, type Harness } from '../testing/harness.js';
 import { apiOrg, signIn, type ApiErrorBody, type Persona } from '../testing/ticketing.js';
 
@@ -38,7 +40,13 @@ const post = <T>(path: string, body: unknown, who = anonymous()) =>
 const linkKey = () => deriveSubkey(h.config.APP_ENCRYPTION_KEY, KEY_LABELS.statusLink);
 
 beforeAll(async () => {
-  h = await startHarness({ env: { STATUS_PAGE_PUBLIC: 'true' } });
+  h = await startHarness({
+    env: {
+      STATUS_PAGE_PUBLIC: 'true',
+      PORTAL_POW_DIFFICULTY_BITS: '8',
+      PORTAL_MIN_FILL_SECONDS: '0',
+    },
+  });
   closed = await startHarness();
   head = await signIn(h, 'head');
   lead = await signIn(h, 'lead');
@@ -324,9 +332,24 @@ describe('the public page is an allow-list', () => {
   });
 });
 
+/** A solved challenge for the subscribe form (ADR-007): the caller's own, as a browser would. */
+async function proof(who: ReturnType<typeof anonymous>) {
+  const response = await who.request<HumanChallenge>('GET', '/v1/status/subscriptions/challenge');
+  expect(response.status, JSON.stringify(response.body)).toBe(200);
+  return {
+    provider: 'pow-sha256' as const,
+    challenge: response.body.challenge,
+    nonce: solveChallenge(response.body.challenge, response.body.difficultyBits),
+  };
+}
+
 describe('email subscriptions (double opt-in)', () => {
-  const subscribe = (email: string, who = anonymous()) =>
-    post<{ status: string }>('/v1/status/subscriptions', { email, locale: 'en' }, who);
+  const subscribe = async (email: string, who = anonymous()) =>
+    post<{ status: string }>(
+      '/v1/status/subscriptions',
+      { email, locale: 'en', verification: await proof(who) },
+      who,
+    );
   const rowOf = async (email: string) =>
     (
       await owner().query<{
@@ -361,6 +384,72 @@ describe('email subscriptions (double opt-in)', () => {
       [STATUSPAGE_AUDIT_ACTIONS.subscriptionRequest],
     );
     expect(audit.rows.map((r) => r.m).join('')).not.toContain(email);
+  });
+
+  it('T-207a C-3: needs a proof of work, once, and a honeypot nobody fills; nothing is recorded or mailed without it', async () => {
+    const email = uniqueEmail('nopow');
+    const who = anonymous();
+    const none = await post<ApiErrorBody>('/v1/status/subscriptions', { email }, who);
+    expect(none.status).toBe(400);
+    const wrong = await post<ApiErrorBody>(
+      '/v1/status/subscriptions',
+      {
+        email,
+        verification: { provider: 'pow-sha256', challenge: 'x'.repeat(60), nonce: '1' },
+      },
+      who,
+    );
+    expect(wrong.status).toBe(400);
+    expect(wrong.body.code).toBe('verification_failed');
+    const good = await proof(who);
+    const honey = await post<ApiErrorBody>(
+      '/v1/status/subscriptions',
+      { email: uniqueEmail('honey'), verification: good, website: 'http://spam.example' },
+      who,
+    );
+    expect(honey.status).toBe(400);
+    expect(honey.body.code).toBe('verification_failed');
+    expect(
+      (await owner().query('SELECT 1 FROM status_subscription WHERE email = $1', [email])).rowCount,
+    ).toBe(0);
+    // A challenge works once.
+    const used = await proof(who);
+    const first = await post(
+      '/v1/status/subscriptions',
+      { email: uniqueEmail('once'), verification: used },
+      who,
+    );
+    expect(first.status).toBe(202);
+    const again = await post<ApiErrorBody>(
+      '/v1/status/subscriptions',
+      { email: uniqueEmail('twice'), verification: used },
+      who,
+    );
+    expect(again.status).toBe(400);
+    expect(again.body.code).toBe('verification_failed');
+    const reasons = await owner().query<{ metadata: { reason: string } }>(
+      `SELECT metadata FROM audit_log WHERE action = $1 AND outcome = 'denied'`,
+      [STATUSPAGE_AUDIT_ACTIONS.subscriptionVerificationFailed],
+    );
+    expect(reasons.rows.map((r) => r.metadata.reason)).toEqual(
+      expect.arrayContaining(['honeypot', 'replayed']),
+    );
+  });
+
+  it('T-207a C-3: one receiving domain gets at most 30 confirmations an hour whoever asks', async () => {
+    const domain = `bulk-${randomUUID().slice(0, 8)}.example.test`;
+    for (let i = 0; i < 30; i += 1) {
+      const response = await subscribe(`person${String(i)}@${domain}`, h.client());
+      expect(response.status, String(i)).toBe(202);
+    }
+    const over = await subscribe(`one-too-many@${domain}`, h.client());
+    expect(over.status).toBe(429);
+    expect(Number(over.headers.get('retry-after'))).toBeGreaterThan(0);
+    const denied = await owner().query<{ metadata: { scope: string } }>(
+      `SELECT metadata FROM audit_log WHERE action = $1 AND outcome = 'denied'`,
+      [STATUSPAGE_AUDIT_ACTIONS.subscriptionRateLimited],
+    );
+    expect(denied.rows.map((r) => r.metadata.scope)).toContain('subscribe-domain');
   });
 
   it('rejects a body that is not an address or has other fields', async () => {
@@ -429,6 +518,55 @@ describe('email subscriptions (double opt-in)', () => {
     const token = mintStatusLink(linkKey(), 'unsubscribe', row.id, row.unsubscribe_nonce);
     expect((await post('/v1/status/subscriptions/unsubscribe', { token })).status).toBe(200);
     expect((await post('/v1/status/subscriptions/unsubscribe', { token })).status).toBe(200);
+    expect((await rowOf(email))?.state).toBe('unsubscribed');
+  });
+
+  it('T-207a C-7: unsubscribes in one click the way a mail client does (RFC 8058): form post, no cookie, token in the link', async () => {
+    const email = uniqueEmail('oneclick');
+    await subscribe(email);
+    const row = await rowOf(email);
+    if (row === undefined) throw new Error('no row');
+    await post('/v1/status/subscriptions/confirm', {
+      token: mintStatusLink(linkKey(), 'confirm', row.id, row.confirm_nonce),
+    });
+    const token = mintStatusLink(linkKey(), 'unsubscribe', row.id, row.unsubscribe_nonce);
+    const click = (query: string, body: string) =>
+      fetch(`${h.base}/v1/status/subscriptions/unsubscribe/one-click${query}`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/x-www-form-urlencoded' },
+        body,
+      });
+    // Not a one-click post, or a confirm link: refused, nothing changes.
+    expect((await click(`?token=${encodeURIComponent(token)}`, 'hello=world')).status).toBe(400);
+    const confirmToken = mintStatusLink(linkKey(), 'confirm', row.id, row.confirm_nonce);
+    expect(
+      (await click(`?token=${encodeURIComponent(confirmToken)}`, 'List-Unsubscribe=One-Click'))
+        .status,
+    ).toBe(400);
+    expect((await rowOf(email))?.state).toBe('confirmed');
+    const done = await click(`?token=${encodeURIComponent(token)}`, 'List-Unsubscribe=One-Click');
+    expect(done.status).toBe(200);
+    expect((await rowOf(email))?.state).toBe('unsubscribed');
+  });
+
+  it('T-207a C-7: an address the worker suppressed after repeated hard bounces gets no new confirmation', async () => {
+    const email = uniqueEmail('suppressed');
+    await subscribe(email);
+    const row = await rowOf(email);
+    if (row === undefined) throw new Error('no row');
+    await owner().query(
+      `UPDATE status_subscription SET state = 'unsubscribed', unsubscribed_at = now(), suppressed_at = now(), bounce_count = 3 WHERE id = $1`,
+      [row.id],
+    );
+    const before = await owner().query(`SELECT 1 FROM outbox WHERE job_id LIKE $1`, [
+      `%${row.id}%`,
+    ]);
+    const again = await subscribe(email);
+    // The caller sees the same answer, and nothing is sent.
+    expect(again.status).toBe(202);
+    expect(again.body).toEqual({ status: 'check_your_email' });
+    const after = await owner().query(`SELECT 1 FROM outbox WHERE job_id LIKE $1`, [`%${row.id}%`]);
+    expect(after.rowCount).toBe(before.rowCount);
     expect((await rowOf(email))?.state).toBe('unsubscribed');
   });
 

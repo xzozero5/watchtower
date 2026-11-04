@@ -6,6 +6,7 @@ import {
   HttpCode,
   Inject,
   Post,
+  Query,
   Req,
   UseGuards,
   UseInterceptors,
@@ -20,6 +21,7 @@ import {
 } from '@nestjs/swagger';
 import {
   STATUSPAGE_AUDIT_ACTIONS,
+  humanChallengeSchema,
   publicHistorySchema,
   publicStatusSchema,
   subscribeResultSchema,
@@ -30,8 +32,10 @@ import {
   type SubscriptionToken,
 } from '@watchtower/shared';
 import type { Request } from 'express';
+import { z } from 'zod';
 
 import { Audited, Public } from '../auth/decorators.js';
+import { ApiHttpError } from '../auth/http-errors.js';
 import { parseResponse } from '../common/zod-openapi.js';
 import { PortalHeadersInterceptor } from '../portal/portal-headers.interceptor.js';
 import { StatusPagePublicGuard } from './status-page.guard.js';
@@ -86,6 +90,9 @@ export class StatusPublicController {
   }
 }
 
+/** RFC 8058: the body a mail client sends to a `List-Unsubscribe` URL. */
+const oneClickBodySchema = z.object({ 'List-Unsubscribe': z.literal('One-Click') });
+
 /** The subscription routes, no-store like the other public pages that take a link. */
 @ApiTags('status page')
 @Controller('v1/status/subscriptions')
@@ -93,6 +100,23 @@ export class StatusPublicController {
 @UseInterceptors(PortalHeadersInterceptor)
 export class StatusSubscriptionsController {
   constructor(@Inject(StatusPublicService) private readonly service: StatusPublicService) {}
+
+  @Get('challenge')
+  @Public()
+  @ApiOperation({
+    summary: 'Human-verification challenge for the subscribe form',
+    description:
+      'Public. The same signed proof-of-work challenge as the portal (ADR-007): find a decimal `nonce` so that ' +
+      'SHA-256 of the UTF-8 text `<challenge>:<nonce>` has at least `difficultyBits` leading zero bits, and send ' +
+      'it as `verification` with the subscribe request, not sooner than `minFillSeconds` after `issuedAt`. ' +
+      'A solved challenge works once. Limited per IP (IPv6 by /64).',
+  })
+  @ApiOkResponse({ standardSchema: humanChallengeSchema })
+  @ApiNotFoundResponse({ description: 'The status page is closed' })
+  @ApiTooManyRequestsResponse({ description: 'Too many challenges from this IP address' })
+  async challenge(@Req() request: Request) {
+    return parseResponse(humanChallengeSchema, await this.service.challenge(request.ip ?? null));
+  }
 
   @Post()
   @Public()
@@ -106,10 +130,13 @@ export class StatusSubscriptionsController {
     description:
       'Sends a confirmation email to the address (double opt-in): nothing is sent to anyone else and ' +
       'nobody is subscribed until the owner of the address follows the link. The answer is the same ' +
-      'whether or not the address is known. Limited per IP (5 an hour) and per address (3 an hour).',
+      'whether or not the address is known. Needs a solved proof-of-work challenge (`verification`, from ' +
+      '`GET /v1/status/subscriptions/challenge`; a failure is 400 `verification_failed`). Limited per IP ' +
+      '(5 an hour; IPv6 by /64), per address (3 an hour), per receiving domain, and for the whole page ' +
+      '(per hour and per day; reaching those is logged as an error).',
   })
   @ApiOkResponse({ standardSchema: subscribeResultSchema })
-  @ApiBadRequestResponse({ description: 'Not an email address' })
+  @ApiBadRequestResponse({ description: 'Not an email address, or verification_failed' })
   @ApiNotFoundResponse({ description: 'The status page is closed' })
   @ApiTooManyRequestsResponse({
     description: 'Rate limit (status_subscription.rate_limited is audited)',
@@ -142,6 +169,38 @@ export class StatusSubscriptionsController {
   ) {
     await this.service.confirm(body.token, request.ip ?? null);
     return parseResponse(subscriptionResultSchema, { status: 'confirmed' });
+  }
+
+  @Post('unsubscribe/one-click')
+  @Public()
+  @HttpCode(200)
+  @Audited({
+    action: STATUSPAGE_AUDIT_ACTIONS.subscriptionUnsubscribe,
+    targetType: 'status_subscription',
+  })
+  @ApiOperation({
+    summary: 'Unsubscribe in one click (RFC 8058)',
+    description:
+      'The URL of the `List-Unsubscribe` header of every notice. A mail client POSTs ' +
+      '`List-Unsubscribe=One-Click` (form encoded) to it; the signed unsubscribe token is in the query because ' +
+      'the protocol allows nothing else. The token only ever unsubscribes (a confirm token is refused). ' +
+      'Idempotent.',
+  })
+  @ApiOkResponse({ standardSchema: subscriptionResultSchema })
+  @ApiBadRequestResponse({ description: 'invalid_or_expired_link, or not a one-click post' })
+  @ApiNotFoundResponse({ description: 'The status page is closed' })
+  @ApiTooManyRequestsResponse({ description: 'Too many requests from this IP address' })
+  async unsubscribeOneClick(
+    @Query('token') token: string | undefined,
+    @Body() body: unknown,
+    @Req() request: Request,
+  ) {
+    const parsed = subscriptionTokenSchema.safeParse({ token });
+    if (!parsed.success || !oneClickBodySchema.safeParse(body).success) {
+      throw new ApiHttpError(400, 'invalid_or_expired_link', 'This link is invalid or has expired');
+    }
+    await this.service.unsubscribe(parsed.data.token, request.ip ?? null);
+    return parseResponse(subscriptionResultSchema, { status: 'unsubscribed' });
   }
 
   @Post('unsubscribe')

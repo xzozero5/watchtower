@@ -13,8 +13,10 @@ import {
   StatusPhaseChip,
 } from '@/components/ops/status/status-bits';
 import { FormField } from '@/components/portal/form-field';
+import { HumanCheckStatus } from '@/components/portal/human-check-status';
 import { useI18n } from '@/i18n/provider';
 import { formatPortalTime, formatWait } from '@/lib/portal/portal-format';
+import { useHumanCheck } from '@/lib/portal/use-portal';
 import { classifyStatusError } from '@/lib/status/status-client';
 import { useStatusApi } from '@/lib/status/use-status';
 
@@ -245,9 +247,21 @@ function SubscribeForm() {
   const base = useId();
   const [email, setEmail] = useState('');
   const [error, setError] = useState<string | null>(null);
+  // Honeypot: invisible and unreachable for people (T-207a C-3).
+  const [website, setWebsite] = useState('');
+  // The page mails whatever address it is given, so the request carries a proof of work (ADR-007).
+  const { check, state: checkState } = useHumanCheck(api);
   const subscribe = useMutation({
-    mutationFn: () => api.subscribe({ email: email.trim().toLowerCase(), locale }),
+    mutationFn: async () =>
+      api.subscribe({
+        email: email.trim().toLowerCase(),
+        locale,
+        verification: await check.getProof(),
+        ...(website === '' ? {} : { website }),
+      }),
     onError: (e) => {
+      // A challenge works once: after any failure the next try needs a new one.
+      check.restart();
       const failure = classifyStatusError(e);
       if (failure.kind === 'rateLimited') {
         setError(
@@ -302,6 +316,27 @@ function SubscribeForm() {
               }}
             />
           </FormField>
+          <div aria-hidden="true" className="sr-only" data-testid="status-honeypot">
+            <label>
+              Website
+              <input
+                type="text"
+                name="website"
+                tabIndex={-1}
+                autoComplete="off"
+                value={website}
+                onChange={(event) => {
+                  setWebsite(event.target.value);
+                }}
+              />
+            </label>
+          </div>
+          <HumanCheckStatus
+            state={checkState}
+            onRetry={() => {
+              check.restart();
+            }}
+          />
           <div>
             <Button type="submit" variant="primary" disabled={subscribe.isPending}>
               {subscribe.isPending ? t('ops.common.saving') : t('ops.status.subscribe.submit')}

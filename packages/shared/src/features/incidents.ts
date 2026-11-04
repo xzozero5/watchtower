@@ -222,6 +222,27 @@ export const DEPLOY_SOURCES = ['ci', 'github'] as const;
 export type DeploySource = (typeof DEPLOY_SOURCES)[number];
 
 /**
+ * The link to a deploy run as it may be stored and shown (T-207a C-6). A CI link can carry a secret in
+ * the userinfo (`https://user:token@ci.example`) or in the query (`?token=...`), and this link is shown in
+ * the console and handed to the AI, so the userinfo is refused on the way in, and the query and fragment
+ * are cut. Null when the text is not an http(s) URL or carries userinfo (a row saved before the check).
+ */
+export function safeDeployUrl(value: string | null): string | null {
+  if (value === null) return null;
+  let parsed: URL;
+  try {
+    parsed = new URL(value);
+  } catch {
+    return null;
+  }
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return null;
+  if (parsed.username !== '' || parsed.password !== '') return null;
+  parsed.search = '';
+  parsed.hash = '';
+  return parsed.toString();
+}
+
+/**
  * What CI posts. `id` is the sender's own id for the deploy (a run id): the same `(source, id)` is one
  * deploy however often it is delivered. `service` is a catalog slug. Times are the sender's; they are
  * shown and used to line deploys up against an incident, never to decide anything.
@@ -243,6 +264,11 @@ export const deployEventSchema = z
     url: z
       .url({ protocol: /^https?$/ })
       .max(1000)
+      .refine((value) => safeDeployUrl(value) !== null, {
+        message: 'The link must not carry a user name or password',
+      })
+      // The query and the fragment are cut: a CI link often carries a token there.
+      .transform((value) => safeDeployUrl(value) ?? value)
       .nullable()
       .default(null),
   })

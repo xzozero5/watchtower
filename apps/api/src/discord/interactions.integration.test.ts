@@ -384,3 +384,81 @@ describe('incident buttons and commands (R-3.13)', () => {
     ).toBe('Give the incident as INC-12.');
   });
 });
+
+describe('rate limits (T-207a C-8)', () => {
+  /** A signed interaction sent to another harness, from one address. */
+  async function sendTo(
+    harness: Harness,
+    body: unknown,
+    ip = '198.51.100.7',
+  ): Promise<{ status: number }> {
+    const raw = JSON.stringify(body);
+    const timestamp = String(Math.floor(Date.now() / 1000));
+    const response = await fetch(`${harness.base}${URL_PATH}`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-forwarded-for': ip,
+        'x-signature-ed25519': keys.sign(timestamp, raw),
+        'x-signature-timestamp': timestamp,
+      },
+      body: raw,
+    });
+    return { status: response.status };
+  }
+  const pressAs = (discordId: string) => ({
+    id: nextId(),
+    type: 3,
+    member: { user: { id: discordId } },
+    data: { custom_id: 'ack:00000000-0000-4000-8000-000000000000', component_type: 2 },
+  });
+
+  it('has a limit of its own per IP: a flood of alerts does not make the buttons answer 429', async () => {
+    const busy = await startHarness({
+      env: {
+        DISCORD_PUBLIC_KEY: keys.publicKeyHex,
+        ALERT_INGEST_RATE_PER_MINUTE: '1',
+        DISCORD_INTERACTIONS_RATE_PER_MINUTE: '3',
+      },
+    });
+    try {
+      for (let i = 0; i < 3; i += 1) {
+        expect((await sendTo(busy, { id: nextId(), type: 1 })).status, String(i)).toBe(200);
+      }
+      expect((await sendTo(busy, { id: nextId(), type: 1 })).status).toBe(429);
+    } finally {
+      await busy.close();
+    }
+  });
+
+  it('limits one Discord user after the signature checks out, and not their colleague', async () => {
+    const strict = await startHarness({
+      env: { DISCORD_PUBLIC_KEY: keys.publicKeyHex, DISCORD_USER_RATE_PER_MINUTE: '2' },
+    });
+    try {
+      const a = nextId();
+      const b = nextId();
+      expect((await sendTo(strict, pressAs(a))).status).toBe(200);
+      expect((await sendTo(strict, pressAs(a))).status).toBe(200);
+      expect((await sendTo(strict, pressAs(a))).status).toBe(429);
+      // The same address, another person: not held. A PING has no user and is never counted.
+      expect((await sendTo(strict, pressAs(b))).status).toBe(200);
+      expect((await sendTo(strict, { id: nextId(), type: 1 })).status).toBe(200);
+      // A forged request costs the IP limit only: it must not spend the real user's allowance.
+      const forged = await fetch(`${strict.base}${URL_PATH}`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-forwarded-for': '198.51.100.9',
+          'x-signature-ed25519': 'ab'.repeat(64),
+          'x-signature-timestamp': String(Math.floor(Date.now() / 1000)),
+        },
+        body: JSON.stringify(pressAs(b)),
+      });
+      expect(forged.status).toBe(401);
+      expect((await sendTo(strict, pressAs(b))).status).toBe(200);
+    } finally {
+      await strict.close();
+    }
+  });
+});

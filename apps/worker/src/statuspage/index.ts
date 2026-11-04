@@ -2,6 +2,7 @@ import { schema } from '@watchtower/db';
 import { mintStatusLink } from '@watchtower/domain';
 import {
   STATUSPAGE_JOBS,
+  STATUS_BOUNCE_LIMIT,
   statusConfirmJobSchema,
   statusNotifyJobSchema,
   type StatusLocale,
@@ -42,6 +43,12 @@ export function createStatusPageRegistration(context: ProcessorContext) {
     url.hash = `token=${token}`;
     return url.toString();
   };
+  /** RFC 8058: a mail client POSTs here to unsubscribe in one click. The link carries the unsubscribe-purpose token. */
+  const oneClickUrl = (token: string): string => {
+    const url = new URL('/v1/status/subscriptions/unsubscribe/one-click', config.API_URL);
+    url.searchParams.set('token', token);
+    return url.toString();
+  };
   // Its own subkey (the api derives the same one): a status link can never be a survey link.
   const signingKey = deriveSubkey(config.APP_ENCRYPTION_KEY, KEY_LABELS.statusLink);
 
@@ -68,6 +75,55 @@ export function createStatusPageRegistration(context: ProcessorContext) {
       ...(typeof code === 'string' ? { code } : {}),
     });
     throw new UnrecoverableError('smtp_auth_failed');
+  }
+
+  /**
+   * A mailbox that refused mail for good. Counts it, and at STATUS_BOUNCE_LIMIT in a row stops mailing the
+   * address (`unsubscribed` + `suppressed_at`): a new request for it sends nothing until a person clears it.
+   */
+  async function recordHardBounce(subscriptionId: string): Promise<void> {
+    await db
+      .update(schema.statusSubscription)
+      .set({
+        bounceCount: sql`${schema.statusSubscription.bounceCount} + 1`,
+        updatedAt: sql`clock_timestamp()`,
+      })
+      .where(eq(schema.statusSubscription.id, subscriptionId));
+    const suppressed = await db
+      .update(schema.statusSubscription)
+      .set({
+        state: 'unsubscribed',
+        unsubscribedAt: sql`clock_timestamp()`,
+        suppressedAt: sql`clock_timestamp()`,
+        updatedAt: sql`clock_timestamp()`,
+      })
+      .where(
+        and(
+          eq(schema.statusSubscription.id, subscriptionId),
+          sql`${schema.statusSubscription.bounceCount} >= ${STATUS_BOUNCE_LIMIT}`,
+          sql`${schema.statusSubscription.suppressedAt} IS NULL`,
+        ),
+      )
+      .returning({ id: schema.statusSubscription.id });
+    if (suppressed.length > 0) {
+      logger.warn(
+        { subscriptionId, bounces: STATUS_BOUNCE_LIMIT },
+        'status page address suppressed after repeated hard bounces',
+      );
+    }
+  }
+
+  /** The address accepted a mail: it works, so the run of bounces starts again. */
+  async function recordDelivery(subscriptionId: string): Promise<void> {
+    await db
+      .update(schema.statusSubscription)
+      .set({ bounceCount: 0 })
+      .where(
+        and(
+          eq(schema.statusSubscription.id, subscriptionId),
+          sql`${schema.statusSubscription.bounceCount} > 0`,
+        ),
+      );
   }
 
   async function confirm(subscriptionId: string): Promise<{ sent: boolean; reason?: string }> {
@@ -103,9 +159,13 @@ export function createStatusPageRegistration(context: ProcessorContext) {
       const failure = classifySmtpError(error);
       if (failure === 'auth') await failOnSmtpAuth(error, 'confirm');
       // The mailbox refuses for good: nothing to retry. A 4xx (451) is thrown: the job retries with backoff.
-      if (failure === 'permanent') return { sent: false, reason: 'rejected' };
+      if (failure === 'permanent') {
+        await recordHardBounce(subscriptionId);
+        return { sent: false, reason: 'rejected' };
+      }
       throw error;
     }
+    await recordDelivery(subscriptionId);
     return { sent: true };
   }
 
@@ -243,9 +303,13 @@ export function createStatusPageRegistration(context: ProcessorContext) {
                 '/status/unsubscribe',
                 mintStatusLink(signingKey, 'unsubscribe', subscriber.id, subscriber.nonce),
               ),
+              oneClickUnsubscribeUrl: oneClickUrl(
+                mintStatusLink(signingKey, 'unsubscribe', subscriber.id, subscriber.nonce),
+              ),
             }),
           );
           sent += 1;
+          await recordDelivery(subscriber.id);
         } catch (error) {
           const failure = classifySmtpError(error);
           if (failure === 'auth') {
@@ -258,6 +322,7 @@ export function createStatusPageRegistration(context: ProcessorContext) {
             // The server refused this mailbox for good: the claim stays, so no retry mails it again.
             bounced += 1;
             logger.warn({ subscriptionId: subscriber.id }, 'status notice rejected for good');
+            await recordHardBounce(subscriber.id);
           } else {
             // Not told, and it may pass: release the claim so a retry of this job tries this person again.
             await releaseClaim(subscriber.id);
