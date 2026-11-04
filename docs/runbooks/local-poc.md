@@ -20,7 +20,7 @@ docker compose --env-file D:\Works\secret\watchtower.env up -d --wait --build
 - Postgres volume เดิมที่ถูก init ด้วยรหัสอื่น: เปลี่ยน `POSTGRES_PASSWORD` แล้วต้อง `ALTER ROLE` ใน container (ใช้ค่าจาก env ของ container เอง ไม่พิมพ์) ไม่ต้องลบ volume
 
 ## 3. AI ผ่าน `claude -p` (bridge ใน Docker เปิดค้าง) — ADR-019
-> `claude -p` (sonnet) ใช้ ~5–10 s ต่อครั้ง `[TESTED 2026-11-03]` ซึ่งนานกว่า `INGEST_CLASSIFIER_TIMEOUT_MS` default 3000 → ตั้ง `INGEST_CLASSIFIER_TIMEOUT_MS=15000` ใน env file ไม่งั้นตอนรับเมลเข้าจะใช้ rules แทน AI (classify ตามหลังยังทำงาน)
+> `claude -p` (sonnet) ใช้ ~5–10 s ต่อครั้ง `[TESTED 2026-11-03]` ซึ่งนานกว่า `INGEST_CLASSIFIER_TIMEOUT_MS` default 3000 → เมื่อ `AI_PROVIDER=claude-cli` ค่าเริ่ม `INGEST_CLASSIFIER_TIMEOUT_MS` เป็น 15000 อัตโนมัติ (T-170; ตั้งเองได้และค่าที่ตั้งชนะ) ไม่งั้นตอนรับเมลเข้าจะใช้ rules แทน AI (classify ตามหลังยังทำงาน)
 
 AI ใช้ได้ **เมื่อเครื่อง host online เท่านั้น**: bridge เช็คการเข้าถึง `api.anthropic.com:443` (cache 15 s) ตอน offline จะตอบ `503 offline` โดยไม่เรียก CLI → งาน AI ถูกบันทึก (`ai_run` error) ไม่ fallback เป็น mock → ticket แสดง "AI ออฟไลน์ … ระบบจะลองใหม่เอง" → งาน brief ถูกเลื่อนลองใหม่ทุก 5 นาที (นานสุด 24 ชม.) · ต่อเน็ตกลับมาแล้วไม่ต้องทำอะไร
 1. **ขอ token (ครั้งเดียว, เจ้าของทำเอง):** ใน terminal ที่ login Claude Code แล้วรัน `claude setup-token` (ต้องมี Claude subscription) นำ token ที่ได้ไปใส่ในไฟล์ env นอก repo เป็น `CLAUDE_CODE_OAUTH_TOKEN` (ชื่อตัวแปร `[VERIFY]` กับเอกสาร Claude Code ปัจจุบัน) · **ห้ามพิมพ์/แปะ token ในแชตหรือ log**
@@ -46,12 +46,15 @@ AI ใช้ได้ **เมื่อเครื่อง host online เท�
    `ps` ต้อง healthy · healthz ตอบ `{"status":"ok","online":true,"checkedAt":"…"}` · `online:false` = host ออก internet/Anthropic ไม่ได้ (AI จะ offline ตามที่อธิบายด้านบน) · log worker ต้องมี `AI provider is ready` + `"provider":"claude-cli"`
 5. **ถ้า login ไม่ผ่าน:** `docker compose --profile ai logs claude-bridge` (มีแต่สถานะ ไม่มีข้อความ prompt) · `cli_failed` 502 ซ้ำแม้ online = token ผิด/หมดอายุ → ทำข้อ 1 ใหม่ แล้ว `up -d claude-bridge`
 6. **ทางเดิม (bridge บน host ไม่ใช้ Docker):** ตั้ง `CLAUDE_CLI_BRIDGE_URL=http://host.docker.internal:4317` แล้วรัน `node --env-file=D:\Works\secret\watchtower.env tools/claude-cli-bridge/server.mjs` (ฟัง `127.0.0.1:4317` ใช้ login ของ `claude` บนเครื่อง ไม่ต้องมี `CLAUDE_CODE_OAUTH_TOKEN`)
-7. **ต้นทุน/ข้อห้าม:** subscription ของเจ้าของ (`ai_run.cost_usd` = 0, daily token cap ยังบังคับ) · ห้ามใช้ใน production (ระบบไม่ยอม boot ถ้า `NODE_ENV=production` หรือ `APP_URL` ไม่ใช่ loopback) · `[ASK-HUMAN]` เงื่อนไขบริการของ Anthropic กับการใช้อัตโนมัติ และนโยบายข้อมูลลูกค้า (ADR-019)
+7. **ต้นทุน/ข้อห้าม:** subscription ของเจ้าของ (`ai_run.cost_usd` = 0, daily token cap ยังบังคับ) · ค่าเริ่มต้นระบบไม่ยอม boot ถ้า `AI_PROVIDER=claude-cli` แต่ `NODE_ENV=production` หรือ `APP_URL` ไม่ใช่ loopback · **เปิด opt-in (ADR-021):** ตั้ง `CLAUDE_CLI_ALLOW_REMOTE=true` ใน env file แล้ว `up -d --no-deps api worker` → config ยอมทั้งสองกรณี และ api/worker log คำเตือนหนึ่งบรรทัด `claude-cli remote opt-in enabled (ADR-021)` ตอน boot (ไม่มีค่า secret) · ค่า `false`/ว่าง = พฤติกรรมเดิม · เจ้าของรับผิดชอบเงื่อนไขบริการ Anthropic และ PDPA ของ instance (ADR-021)
+8. **bridge ไม่ publish port ออก host (ADR-021):** worker เรียก `http://claude-bridge:4317` ผ่าน network `ai` (worker เป็นตัวเดียวที่อยู่ทั้ง `default` และ `ai`) · ตรวจสุขภาพใช้ `docker compose --profile ai exec claude-bridge ...` ตามข้อ 4 · **ต้องทำบน POC หลังอัปเดต:** ลบ/แก้ `CLAUDE_CLI_BRIDGE_URL=http://host.docker.internal:4317` ใน env file ที่ยังเป็นค่าเก่า (ใช้ `http://claude-bridge:4317` หรือไม่ตั้งเลย) แล้ว `docker compose --profile ai up -d claude-bridge` + `up -d --no-deps worker` (port `127.0.0.1:4317` ที่เคย publish จะหายไป)
+9. **สถานะ AI ในแอป (T-170):** worker เช็ค `/healthz` ของ bridge ทุก 15 วินาทีแล้วเก็บผลไว้ใน Redis · api เปิด `GET /v1/ai/status` (`online`/`offline`/`disabled`) · เมื่อ `offline` ทุกหน้า console แสดงแถบ "AI ออฟไลน์" และงาน brief/investigate/draft ถูกเลื่อนลองใหม่ทุก 5 นาทีโดยไม่เผา attempt (นานสุด 24 ชม.) · ไม่มี report จาก worker เกิน ~50 วินาที = `offline`
+10. **ตั้ง `INGEST_CLASSIFIER_TIMEOUT_MS` เองไม่จำเป็นอีก:** ไม่ตั้ง = 3000 ms (provider อื่น) หรือ 15000 ms เมื่อ `AI_PROVIDER=claude-cli` · ตั้งค่าเองเมื่อไรค่านั้นชนะเสมอ
 
 ## 3b. Knowledge base folder (`D:\Works\watchtower-kb`)
 - นอก repo มี `README.md` อธิบายรูปแบบ (front-matter: `title, slug, lang, kind, visibility, tags, intent, orgs`) และตัวอย่างสมมติ 2 ไฟล์ใน `examples/` (ลบก่อน sync ได้)
 - นำเข้า: shell ต้องมี `WATCHTOWER_KB_DIR` และ `MIGRATION_DATABASE_URL` (ชี้ Postgres ที่เครื่องนี้เข้าถึง เช่น host `localhost` ไม่ใช่ `postgres`) แล้ว `pnpm kb:sync --dry-run` (อ่าน/ตรวจไฟล์อย่างเดียว) → `pnpm kb:sync` (idempotent) · `pnpm kb:sync` อ่านเฉพาะ `.env` ใน repo root จึง export สองตัวแปรนี้ใน shell เอง ไม่พิมพ์ค่า
-- `internal` → published + embedding ผ่าน worker · `customer`/`orgs` → **draft** ให้คน publish ในแอป · แก้ไฟล์ = เพิ่ม version · ลบไฟล์ไม่ทำอะไร
+- `internal` → published + embedding ผ่าน worker · `customer`/`orgs` → **draft** ให้คน publish ในแอป · แก้ไฟล์ = เพิ่ม version · ลบไฟล์ = บทความที่ sync สร้างไว้ถูก deprecate (ออกจากการค้นหา; ไม่แตะบทความที่เขียนในแอป; โฟลเดอร์ว่างไม่ deprecate อะไรเลย) (T-170)
 
 ## 4. Gmail push (เฉพาะตอนอยากให้เมลใหม่ไหลเข้าเอง) — container `gmail-tunnel` (ADR-020)
 Pub/Sub ต้องยิง HTTPS เข้ามาหา api จาก internet → container `gmail-tunnel` ทำครบในตัว: ตัวกรอง push-only (ปล่อยแค่ `POST /v1/inbound/gmail/push`) + Cloudflare quick tunnel (URL สุ่มใหม่ทุกครั้งที่ขึ้น) + เรียก Pub/Sub `modifyPushConfig` ชี้ subscription ไปที่ URL ใหม่เอง · audience ของ OIDC เป็นค่าคงที่ `GMAIL_PUSH_AUDIENCE` จึง**ไม่ต้อง restart api** เมื่อ URL เปลี่ยน · **ห้ามชี้ tunnel ไปที่ api ตรง ๆ**
@@ -69,6 +72,13 @@ Pub/Sub ต้องยิง HTTPS เข้ามาหา api จาก inter
 7. ปิด: `docker compose --profile gmail-tunnel stop gmail-tunnel` — subscription ยังชี้ URL ที่ตายแล้ว Pub/Sub จะ retry แล้วทิ้งตาม retention; เมลที่ตกหล่นดึงด้วยปุ่ม Sync/งาน sync ของ worker · container ล่ม/restart = URL ใหม่ + subscribe ใหม่อัตโนมัติ
 
 - ทางเดิมแบบมือยังใช้ได้: `pnpm push-filter` + `cloudflared tunnel --url http://localhost:4318` แล้วแก้ Endpoint ใน console เอง (audience คงเดิม)
+
+## 4b. หมุน key ของ SA `watchtower-pubsub-admin` ทุก 90 วัน
+เจ้าของทำเอง (ไม่พิมพ์/แปะเนื้อ key ที่ไหน) · ตั้งเตือนในปฏิทินทุก 90 วัน:
+1. GCP Console → IAM & Admin → Service accounts → `watchtower-pubsub-admin` → **Keys → Add key → Create new key (JSON)** บันทึกทับไฟล์ที่ `GMAIL_TUNNEL_SA_KEY_PATH` ชี้ (นอก repo; ชื่อไฟล์ใหม่ก็ได้ แล้วแก้ path ใน env file)
+2. `docker compose --env-file D:\Works\secret\watchtower.env --profile gmail-tunnel up -d --force-recreate gmail-tunnel` แล้วดู log ว่า subscribe สำเร็จ (self-check ผ่าน)
+3. กลับหน้า Keys **ลบ key เก่า** (ดูจากวันที่สร้าง) หลังยืนยันว่า tunnel ทำงานด้วย key ใหม่แล้ว · ลบไฟล์ key เก่าในเครื่อง
+4. ถ้า key รั่วหรือสงสัย: ลบ key ทันที (ข้อ 3) ก่อน แล้วค่อยสร้างใหม่
 
 ## 5. ล็อกอินและผู้ใช้
 - คนใหม่: head สร้าง user ที่ Admin → Users (ระบบไม่สร้างให้อัตโนมัติ) **และ** เพิ่มอีเมลใน `GOOGLE_ALLOWED_EMAILS` (รับเฉพาะ `@gmail.com`/`@googlemail.com`) **และ** เพิ่มเป็น test user ใน GCP → Google Auth Platform → Audience (แอปอยู่สถานะ Testing)

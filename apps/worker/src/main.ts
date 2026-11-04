@@ -1,4 +1,4 @@
-import { ConfigError } from '@watchtower/shared';
+import { ConfigError, claudeCliRemoteWarning } from '@watchtower/shared';
 
 import { loadConfig } from './config.js';
 import { createLogger } from './logger.js';
@@ -8,6 +8,8 @@ async function main(): Promise<void> {
   // Validate the environment first; a ConfigError names variables, never values.
   const config = loadConfig(process.env);
   const logger = createLogger(config);
+  const remoteWarning = claudeCliRemoteWarning(config);
+  if (remoteWarning !== undefined) logger.warn(remoteWarning);
   const worker = await startWorker(config, logger);
 
   let stopping = false;

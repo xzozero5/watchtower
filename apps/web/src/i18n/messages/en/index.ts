@@ -9,6 +9,7 @@ import type { Widen } from '../types';
 import { adminEn } from './admin';
 import { attachmentsEn } from './attachments';
 import { aiEn } from './ai';
+import { aiOfflineEn } from './aiOffline';
 import { apiStatusEn } from './apiStatus';
 import { appEn } from './app';
 import { authEn } from './auth';
@@ -71,6 +72,7 @@ export const en = {
   sla: slaEn,
   workspace: workspaceEn,
   ai: aiEn,
+  aiOffline: aiOfflineEn,
   live: liveEn,
   keymap: keymapEn,
   auth: authEn,

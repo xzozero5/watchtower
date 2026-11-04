@@ -1,4 +1,5 @@
 import {
+  aiStatusSchema,
   authConfigSchema,
   bulkResultSchema,
   cancelSendResultSchema,
@@ -325,6 +326,14 @@ export function createEndpoints(client: ApiClient) {
       client.request({
         path: `${refPath(ref)}/ai`,
         schema: ticketAiInsightSchema,
+        ...(signal ? { signal } : {}),
+      }),
+
+    /** Whether the AI can be reached (online / offline / disabled), for the console banner (T-170). */
+    aiStatus: (signal?: AbortSignal) =>
+      client.request({
+        path: '/v1/ai/status',
+        schema: aiStatusSchema,
         ...(signal ? { signal } : {}),
       }),
 

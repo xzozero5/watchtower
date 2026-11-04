@@ -1,7 +1,12 @@
 import { randomBytes, randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 
-import { DevMockLlmProvider, type LlmProvider, type LlmRequest } from '@watchtower/ai';
+import {
+  DevMockLlmProvider,
+  ProviderError,
+  type LlmProvider,
+  type LlmRequest,
+} from '@watchtower/ai';
 import { createDatabase, enqueueOutbox, schema, type Database } from '@watchtower/db';
 import { createTestDatabase, type TestDatabase } from '@watchtower/db/testing';
 import { createDomain, type Domain } from '@watchtower/domain';
@@ -46,6 +51,8 @@ const requests: LlmRequest[] = [];
 /** Confidence the classifier answers with; a test sets it before it creates a ticket. */
 let classifierConfidence = 0.9;
 let classifierIntent: string | null = 'webhook_not_received';
+/** When set, calls of this prompt fail as the claude-cli bridge does while its host is offline. */
+let offlineFor: string | undefined;
 /** When set, the drafter answers with these sentences instead of the dev mock's. */
 let drafterAnswer: { text: string; kind: string; evidenceIds: string[] }[] | undefined;
 
@@ -58,6 +65,9 @@ function provider(): LlmProvider {
     kind: 'mock',
     generate(request) {
       requests.push(request);
+      if (offlineFor !== undefined && request.prompt.id === offlineFor) {
+        return Promise.reject(new ProviderError('claude-cli', 'offline', 503, true));
+      }
       if (request.prompt.id === 'classifier') {
         return Promise.resolve({
           text: JSON.stringify({
@@ -742,5 +752,40 @@ describe('an investigation a developer asked for (T-137)', () => {
     await waitFor('a draft on a staff request', async () =>
       (await countOf('drafter')) > draftersBefore ? true : undefined,
     );
+  });
+});
+
+describe('the AI host is offline (ADR-019, T-170)', () => {
+  it('an investigation job waits in the delayed set without using an attempt, and the brief says why', async () => {
+    classifierIntent = 'webhook_not_received';
+    const ticketId = await createTicket('Webhook not received', 'webhook is not received', {
+      intentKey: 'webhook_not_received',
+    });
+    await settled(ticketId, 'draft_ready');
+    offlineFor = 'investigator';
+    try {
+      await enqueueAi(AI_JOBS.investigate, { ticketId, requestedBy: null });
+      const row = await waitFor('needs_human', async () => {
+        const current = await insightRow(ticketId);
+        return current?.state === 'needs_human' ? current : undefined;
+      });
+      expect(row.reasonCode).toBe('provider_offline');
+      const queue = new Queue(QUEUE_NAMES.ai, {
+        connection: parseRedisUrl(config.REDIS_URL),
+        prefix,
+      });
+      try {
+        const delayed = await waitFor('a delayed investigate job', async () => {
+          const jobs = await queue.getDelayed();
+          return jobs.find((job) => (job.data as { ticketId?: string }).ticketId === ticketId);
+        });
+        expect(delayed.name).toBe(AI_JOBS.investigate);
+        expect(delayed.attemptsMade).toBe(0);
+      } finally {
+        await queue.close();
+      }
+    } finally {
+      offlineFor = undefined;
+    }
   });
 });

@@ -13,6 +13,7 @@ const AI_VARIABLES = [
   'ANTHROPIC_API_KEY',
   'CLAUDE_CLI_BRIDGE_URL',
   'CLAUDE_CLI_BRIDGE_TOKEN',
+  'CLAUDE_CLI_ALLOW_REMOTE',
   'VERTEX_PROJECT_ID',
   'VERTEX_LOCATION',
   'AI_MODEL_DEEP',
@@ -32,6 +33,18 @@ describe('AI settings reach the containers (T-132)', () => {
       expect(compose).toMatch(new RegExp(`^\\s+${name}: \\$\\{${name}:-`, 'm'));
     },
   );
+
+  it('the worker reaches claude-bridge on the compose network and the bridge publishes no port (ADR-021)', () => {
+    expect(compose).toMatch(
+      /CLAUDE_CLI_BRIDGE_URL: \$\{CLAUDE_CLI_BRIDGE_URL:-http:\/\/claude-bridge:4317\}/,
+    );
+    expect(envExample).toMatch(/^CLAUDE_CLI_BRIDGE_URL=http:\/\/claude-bridge:4317$/m);
+    expect(compose).not.toMatch(/CLAUDE_CLI_BRIDGE_PORT/);
+    const bridge = /\n {2}claude-bridge:\n([\s\S]*?)\n {2}\S/.exec(compose)?.[1] ?? '';
+    expect(bridge).toContain('read_only: true');
+    expect(bridge).not.toMatch(/^ {4}ports:/m);
+    expect(envExample).toMatch(/^CLAUDE_CLI_ALLOW_REMOTE=false$/m);
+  });
 
   it('.env.example keeps the provider on mock and holds no model name', () => {
     expect(envExample).toMatch(/^AI_PROVIDER=mock$/m);

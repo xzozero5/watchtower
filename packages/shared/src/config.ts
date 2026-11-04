@@ -91,7 +91,7 @@ const redisUrl = z
 
 export const LOG_LEVELS = ['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent'] as const;
 export const NODE_ENVS = ['development', 'test', 'production'] as const;
-/** `claude-cli` is dev/POC only (ADR-017): refused in production and off a loopback APP_URL. */
+/** `claude-cli` is refused in production and off a loopback APP_URL unless CLAUDE_CLI_ALLOW_REMOTE=true (ADR-017, ADR-021). */
 export const AI_PROVIDERS = ['mock', 'anthropic', 'vertex', 'claude-cli'] as const;
 /**
  * Where knowledge base embeddings come from. `[ASSUMED]` mock (deterministic, offline) or Vertex;
@@ -165,6 +165,8 @@ export const baseEnvShape = {
   // claude-cli only (ADR-017): the host-side bridge to the local Claude Code CLI.
   CLAUDE_CLI_BRIDGE_URL: optionalString,
   CLAUDE_CLI_BRIDGE_TOKEN: optionalString,
+  // ADR-021: opt-in per instance to run claude-cli in production / off a loopback APP_URL. Off by default.
+  CLAUDE_CLI_ALLOW_REMOTE: z.preprocess(emptyToUndefined, z.stringbool().default(false)),
   VERTEX_PROJECT_ID: optionalString,
   VERTEX_LOCATION: optionalString,
   WEB_PUSH_VAPID_PUBLIC: optionalString,
@@ -509,8 +511,9 @@ function applyGuards(env: Readonly<Record<string, unknown>>, ctx: z.RefinementCt
     }
   }
   // The CLI provider routes redacted prompts through one person's Claude subscription (ADR-017).
-  // It exists for a laptop: never in production, never on a deployment others can reach.
-  if (env.AI_PROVIDER === 'claude-cli') {
+  // It exists for a laptop: never in production, never on a deployment others can reach, unless the
+  // instance owner opts in with CLAUDE_CLI_ALLOW_REMOTE=true (ADR-021).
+  if (env.AI_PROVIDER === 'claude-cli' && env.CLAUDE_CLI_ALLOW_REMOTE !== true) {
     if (env.NODE_ENV === 'production') {
       fail('AI_PROVIDER', 'claude-cli is a dev/POC provider and must not be used in production');
     }
@@ -576,4 +579,15 @@ export function parseEnv<Schema extends z.ZodType>(
       message: issue.message,
     })),
   );
+}
+
+/** The boot warning when claude-cli runs off the laptop defaults (ADR-021). No values in it. */
+export const CLAUDE_CLI_REMOTE_WARNING = 'claude-cli remote opt-in enabled (ADR-021)';
+export function claudeCliRemoteWarning(config: {
+  readonly AI_PROVIDER: string;
+  readonly CLAUDE_CLI_ALLOW_REMOTE: boolean;
+}): string | undefined {
+  return config.AI_PROVIDER === 'claude-cli' && config.CLAUDE_CLI_ALLOW_REMOTE
+    ? CLAUDE_CLI_REMOTE_WARNING
+    : undefined;
 }

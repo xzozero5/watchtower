@@ -1,6 +1,6 @@
 import 'reflect-metadata';
 
-import { ConfigError } from '@watchtower/shared';
+import { ConfigError, claudeCliRemoteWarning } from '@watchtower/shared';
 
 import { createApp } from './bootstrap.js';
 import { loadConfig } from './config/config.js';
@@ -10,6 +10,8 @@ async function main(): Promise<void> {
   // Validate the environment before anything else; a ConfigError names variables, never values.
   const config = loadConfig(process.env);
   const logger = createLogger(config);
+  const remoteWarning = claudeCliRemoteWarning(config);
+  if (remoteWarning !== undefined) logger.warn(remoteWarning);
   const app = await createApp(config, logger);
   await app.listen(config.listenPort, config.HOST);
   logger.info(

@@ -308,6 +308,8 @@ describe('every route states who may call it', () => {
         'GET /v1/tickets/:id/duplicates',
         'GET /v1/tickets/:id/timeline',
         'GET /v1/tickets/:id/ai',
+        // Whether the AI can be reached (T-170): the console banner, no ticket data.
+        'GET /v1/ai/status',
         'POST /v1/tickets/:id/notes',
         'POST /v1/tickets/:id/status',
         'POST /v1/tickets/:id/dev-owner',

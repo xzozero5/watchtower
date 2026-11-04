@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 
 import { KB_JOBS, KB_OUTBOX_JOB_OPTIONS, KB_QUEUES } from '@watchtower/shared';
-import { desc, eq, inArray } from 'drizzle-orm';
+import { and, desc, eq, inArray, like, ne } from 'drizzle-orm';
 
 import type { Database } from '../client.js';
 import { enqueueOutbox } from '../outbox.js';
@@ -21,10 +21,10 @@ import { KbSyncError, contentHashOf, type KbFolderArticle } from './parse.js';
  *   `internal` article that is published; for any other it waits for a person to publish it.
  * - Visibility is never widened on an existing article (internal to customer or orgs): it is
  *   reported as `skipped` and has to be changed in the app. Narrowing is applied.
- * - A file that disappears does nothing; deprecate the article in the app.
+ * - A file that disappears deprecates the article it created (T-170); an empty folder deprecates nothing.
  */
 
-export type KbSyncOutcome = 'created' | 'updated' | 'unchanged' | 'skipped';
+export type KbSyncOutcome = 'created' | 'updated' | 'unchanged' | 'skipped' | 'deprecated';
 
 export interface KbSyncEntry {
   readonly slug: string;
@@ -74,7 +74,7 @@ async function syncOne(tx: Tx, article: KbFolderArticle): Promise<KbSyncEntry> {
     .from(kbArticle)
     .where(eq(kbArticle.slug, article.slug))
     .limit(1);
-  const changeNote = `Imported from the knowledge base folder (${article.file})`;
+  const changeNote = `${IMPORT_NOTE_PREFIX}${article.file})`;
   const embed = (articleId: string, versionId: string) =>
     enqueueOutbox(tx, {
       queue: KB_QUEUES.kb,
@@ -209,7 +209,66 @@ async function syncOne(tx: Tx, article: KbFolderArticle): Promise<KbSyncEntry> {
   };
 }
 
-/** Runs the whole import in one transaction: a bad file leaves the database as it was. */
+/** The change note every version written by this import starts with; also how a folder article is recognised. */
+const IMPORT_NOTE_PREFIX = 'Imported from the knowledge base folder (';
+
+/**
+ * A file that disappeared from the folder deprecates its article (T-170): the folder is the source of
+ * the articles it created, so removing the file takes the text out of search. Only articles this
+ * import created (their version 1 carries the import note) are touched, never one written in the app.
+ * A live article asks the worker to drop its chunks, like deprecating it in the app does.
+ */
+async function deprecateRemoved(tx: Tx, keep: ReadonlySet<string>): Promise<KbSyncEntry[]> {
+  const imported = await tx
+    .select({
+      id: kbArticle.id,
+      slug: kbArticle.slug,
+      status: kbArticle.status,
+      currentVersionId: kbArticle.currentVersionId,
+    })
+    .from(kbArticle)
+    .innerJoin(kbArticleVersion, eq(kbArticleVersion.articleId, kbArticle.id))
+    .where(
+      and(
+        eq(kbArticleVersion.version, 1),
+        like(kbArticleVersion.changeNote, `${IMPORT_NOTE_PREFIX}%`),
+        ne(kbArticle.status, 'deprecated'),
+      ),
+    );
+  const entries: KbSyncEntry[] = [];
+  for (const row of imported) {
+    if (keep.has(row.slug)) continue;
+    await tx
+      .update(kbArticle)
+      .set({
+        status: 'deprecated',
+        reviewVersionId: null,
+        publishedVersionId: null,
+        updatedAt: new Date(),
+      })
+      .where(eq(kbArticle.id, row.id));
+    if (row.status === 'published') {
+      await enqueueOutbox(tx, {
+        queue: KB_QUEUES.kb,
+        jobName: KB_JOBS.embedArticle,
+        jobId: `kb-embed-${row.currentVersionId}-deprecated-${String(Date.now())}`,
+        payload: { articleId: row.id, versionId: row.currentVersionId },
+        options: { ...KB_OUTBOX_JOB_OPTIONS },
+      });
+    }
+    entries.push({
+      slug: row.slug,
+      outcome: 'deprecated',
+      note: 'file is gone from the folder',
+    });
+  }
+  return entries;
+}
+
+/**
+ * Runs the whole import in one transaction: a bad file leaves the database as it was.
+ * An empty folder deprecates nothing (a wrong or unmounted path must not wipe the knowledge base).
+ */
 export async function syncKbArticles(
   database: Pick<Database, 'db'>,
   articles: readonly KbFolderArticle[],
@@ -217,6 +276,9 @@ export async function syncKbArticles(
   return database.db.transaction(async (tx) => {
     const entries: KbSyncEntry[] = [];
     for (const article of articles) entries.push(await syncOne(tx, article));
+    if (articles.length > 0) {
+      entries.push(...(await deprecateRemoved(tx, new Set(articles.map((a) => a.slug)))));
+    }
     return { entries };
   });
 }

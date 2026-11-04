@@ -43,9 +43,13 @@ const workerEnvSchema = createEnvSchema({
   ),
   /**
    * How long ingestion waits for the AI classifier before it uses the header rules (ADR-009
-   * step 4, milliseconds). `[ASSUMED]` 3 s: PRD AC-1 wants a ticket within 10 s.
+   * step 4, milliseconds). `[ASSUMED]` 3 s: PRD AC-1 wants a ticket within 10 s. Unset: 3000, or
+   * 15000 when AI_PROVIDER=claude-cli (`claude -p` takes 5-10 s, T-170); an explicit value always wins.
    */
-  INGEST_CLASSIFIER_TIMEOUT_MS: z.coerce.number().int().min(100).max(30_000).default(3000),
+  INGEST_CLASSIFIER_TIMEOUT_MS: z.preprocess(
+    emptyToUndefined,
+    z.coerce.number().int().min(100).max(30_000).optional(),
+  ),
   /**
    * Gmail heartbeat (R-2.8): a mailbox that has had no push for this many minutes of business time
    * (the default business calendar) is marked unhealthy. `[ASSUMED]` 120: a support mailbox that is
@@ -133,7 +137,16 @@ const workerEnvSchema = createEnvSchema({
   ),
 });
 
-export type WorkerConfig = z.output<typeof workerEnvSchema> & {
+/** Default classifier wait per provider (T-170): `claude -p` needs 5-10 s, an API call far less. */
+export const DEFAULT_CLASSIFIER_TIMEOUT_MS = 3000;
+export const CLAUDE_CLI_CLASSIFIER_TIMEOUT_MS = 15_000;
+
+export type WorkerConfig = Omit<
+  z.output<typeof workerEnvSchema>,
+  'INGEST_CLASSIFIER_TIMEOUT_MS'
+> & {
+  /** Resolved classifier wait (see the schema comment). */
+  readonly INGEST_CLASSIFIER_TIMEOUT_MS: number;
   /** Resolved health port: PORT, else WORKER_PORT. */
   readonly listenPort: number;
 };
@@ -153,5 +166,13 @@ export function loadConfig(
     production: parsed.NODE_ENV === 'production',
   });
   if (smtpIssues.length > 0) throw new ConfigError(smtpIssues);
-  return { ...parsed, listenPort: parsed.PORT ?? parsed.WORKER_PORT };
+  return {
+    ...parsed,
+    INGEST_CLASSIFIER_TIMEOUT_MS:
+      parsed.INGEST_CLASSIFIER_TIMEOUT_MS ??
+      (parsed.AI_PROVIDER === 'claude-cli'
+        ? CLAUDE_CLI_CLASSIFIER_TIMEOUT_MS
+        : DEFAULT_CLASSIFIER_TIMEOUT_MS),
+    listenPort: parsed.PORT ?? parsed.WORKER_PORT,
+  };
 }

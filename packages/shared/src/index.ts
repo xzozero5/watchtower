@@ -12,6 +12,7 @@ export function resolveIntegrationMode(
   return complete ? 'live' : 'mock';
 }
 
+export * from './ai-status.js';
 export * from './audit-redact.js';
 export * from './auth.js';
 export * from './channels.js';

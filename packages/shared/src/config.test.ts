@@ -4,7 +4,14 @@ import { parseEnv as parseDotenv } from 'node:util';
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 
-import { ConfigError, createEnvSchema, isLoopbackUrl, parseEnv } from './config.js';
+import {
+  CLAUDE_CLI_REMOTE_WARNING,
+  ConfigError,
+  claudeCliRemoteWarning,
+  createEnvSchema,
+  isLoopbackUrl,
+  parseEnv,
+} from './config.js';
 
 const schema = createEnvSchema({ API_PORT: z.coerce.number().int().default(4000) });
 
@@ -438,6 +445,36 @@ describe('AI_PROVIDER=claude-cli (ADR-017, dev/POC only)', () => {
     expect(issues.get('AI_PROVIDER')).toContain('loopback');
   });
 
+  it('CLAUDE_CLI_ALLOW_REMOTE=true accepts production and a non-loopback APP_URL (ADR-021)', () => {
+    expect(
+      issuesFor({
+        ...productionEnv,
+        AI_PROVIDER: 'claude-cli',
+        CLAUDE_CLI_ALLOW_REMOTE: 'true',
+      }).has('AI_PROVIDER'),
+    ).toBe(false);
+    expect(
+      issuesFor({
+        ...validEnv,
+        AI_PROVIDER: 'claude-cli',
+        APP_URL: 'https://support.example.com',
+        CLAUDE_CLI_ALLOW_REMOTE: 'true',
+      }).has('AI_PROVIDER'),
+    ).toBe(false);
+  });
+
+  it('CLAUDE_CLI_ALLOW_REMOTE=false (or empty) keeps the refusal', () => {
+    for (const value of ['false', '']) {
+      expect(
+        issuesFor({
+          ...productionEnv,
+          AI_PROVIDER: 'claude-cli',
+          CLAUDE_CLI_ALLOW_REMOTE: value,
+        }).get('AI_PROVIDER'),
+      ).toContain('production');
+    }
+  });
+
   it('leaves the other providers alone in production', () => {
     expect(issuesFor({ ...productionEnv, AI_PROVIDER: 'anthropic' }).has('AI_PROVIDER')).toBe(
       false,
@@ -541,5 +578,19 @@ describe('PRODUCT_DB_URL (T-203c)', () => {
     const message =
       issuesFor({ ...productionEnv, PRODUCT_DB_URL: mock }).get('PRODUCT_DB_URL') ?? '';
     expect(message).not.toContain('product_mock_ro');
+  });
+});
+
+describe('claudeCliRemoteWarning (ADR-021)', () => {
+  it('warns only for claude-cli with the opt-in on', () => {
+    expect(
+      claudeCliRemoteWarning({ AI_PROVIDER: 'claude-cli', CLAUDE_CLI_ALLOW_REMOTE: true }),
+    ).toBe(CLAUDE_CLI_REMOTE_WARNING);
+    expect(
+      claudeCliRemoteWarning({ AI_PROVIDER: 'claude-cli', CLAUDE_CLI_ALLOW_REMOTE: false }),
+    ).toBeUndefined();
+    expect(
+      claudeCliRemoteWarning({ AI_PROVIDER: 'mock', CLAUDE_CLI_ALLOW_REMOTE: true }),
+    ).toBeUndefined();
   });
 });

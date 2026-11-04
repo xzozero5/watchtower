@@ -1,6 +1,8 @@
 import { Module } from '@nestjs/common';
 
 import { TicketsModule } from '../tickets/tickets.module.js';
+import { AiStatusController } from './ai-status.controller.js';
+import { AiStatusService } from './ai-status.service.js';
 import { TicketAiController } from './ticket-ai.controller.js';
 import { TicketAiService } from './ticket-ai.service.js';
 
@@ -12,7 +14,7 @@ import { TicketAiService } from './ticket-ai.service.js';
  */
 @Module({
   imports: [TicketsModule],
-  controllers: [TicketAiController],
-  providers: [TicketAiService],
+  controllers: [TicketAiController, AiStatusController],
+  providers: [TicketAiService, AiStatusService],
 })
 export class AiModule {}

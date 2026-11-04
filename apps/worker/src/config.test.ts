@@ -49,6 +49,22 @@ describe('loadConfig', () => {
     );
   });
 
+  it('defaults the classifier wait to 15 s for claude-cli, and an explicit value still wins (T-170)', () => {
+    const cli = { AI_PROVIDER: 'claude-cli', CLAUDE_CLI_BRIDGE_TOKEN: 'x'.repeat(24) };
+    expect(loadConfig(testEnv(cli)).INGEST_CLASSIFIER_TIMEOUT_MS).toBe(15_000);
+    expect(
+      loadConfig(testEnv({ ...cli, INGEST_CLASSIFIER_TIMEOUT_MS: '4000' }))
+        .INGEST_CLASSIFIER_TIMEOUT_MS,
+    ).toBe(4000);
+    expect(
+      loadConfig(testEnv({ ...cli, INGEST_CLASSIFIER_TIMEOUT_MS: '' }))
+        .INGEST_CLASSIFIER_TIMEOUT_MS,
+    ).toBe(15_000);
+    expect(loadConfig(testEnv({ AI_PROVIDER: 'anthropic' })).INGEST_CLASSIFIER_TIMEOUT_MS).toBe(
+      3000,
+    );
+  });
+
   it('lets PORT (Cloud Run) win over WORKER_PORT', () => {
     expect(loadConfig(testEnv({ WORKER_PORT: '4101', PORT: '8080' })).listenPort).toBe(8080);
   });
