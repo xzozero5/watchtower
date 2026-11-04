@@ -7,6 +7,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { AdminBody, AdminHeader } from '@/components/admin/admin-layout';
 import { LoadError, RequirePermission, TableSkeleton } from '@/components/admin/admin-page';
 import { ChannelAccountsSection } from '@/components/admin/integrations/channel-accounts-section';
+import { CsatSettingsSection } from '@/components/admin/integrations/csat-settings-section';
 import { GmailConnection } from '@/components/admin/integrations/gmail-connection';
 import { IntegrationCard } from '@/components/admin/integrations/integration-card';
 import { useT } from '@/i18n/provider';
@@ -77,6 +78,8 @@ function IntegrationsBody() {
           <GmailOauthResultBanner />
 
           <ChannelAccountsSection />
+
+          <CsatSettingsSection />
 
           <section aria-labelledby="credentials-heading" className="flex flex-col gap-3">
             <div className="flex items-center gap-1">
