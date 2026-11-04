@@ -10,7 +10,14 @@ import { and, eq, sql } from 'drizzle-orm';
 
 import { recordAuditInTx } from '../audit.js';
 import { recordTicketEvent } from '../tickets/support.js';
-import { Effects, type Actor, type DbTransaction, type DomainContext, type DomainResult, type ReadExecutor } from '../types.js';
+import {
+  Effects,
+  type Actor,
+  type DbTransaction,
+  type DomainContext,
+  type DomainResult,
+  type ReadExecutor,
+} from '../types.js';
 
 /** The writes of the stage 3 runtime that are not a send: the pre-send grade, the evaluation, the "held" note. */
 
@@ -34,7 +41,10 @@ export interface NewPreSendGrade {
 }
 
 /** Stores the grade of one exact text (`phase = 'pre_send'`). Append-only; the hash is the database's. */
-export async function recordPreSendGrade(db: Pick<Db, 'insert'>, grade: NewPreSendGrade): Promise<string> {
+export async function recordPreSendGrade(
+  db: Pick<Db, 'insert'>,
+  grade: NewPreSendGrade,
+): Promise<string> {
   const [row] = await db
     .insert(schema.aiGrade)
     .values({
@@ -123,10 +133,17 @@ export async function recordAutosendFlagBoot(
 export async function noteAutoSendHeld(
   db: Pick<Db, 'transaction'>,
   actor: Actor,
-  input: { readonly ticketId: string; readonly aiDraftId: string; readonly reason: string; readonly failed: readonly string[] },
+  input: {
+    readonly ticketId: string;
+    readonly aiDraftId: string;
+    readonly reason: string;
+    readonly failed: readonly string[];
+  },
 ): Promise<boolean> {
   return db.transaction(async (tx) => {
-    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${`held:${input.aiDraftId}`}, 2))`);
+    await tx.execute(
+      sql`SELECT pg_advisory_xact_lock(hashtextextended(${`held:${input.aiDraftId}`}, 2))`,
+    );
     const [seen] = await tx
       .select({ id: schema.ticketEvent.id })
       .from(schema.ticketEvent)
@@ -139,11 +156,18 @@ export async function noteAutoSendHeld(
       )
       .limit(1);
     if (seen !== undefined) return false;
-    await recordTicketEvent(tx, input.ticketId, AUTONOMY_TICKET_EVENTS.autosendHeld, actor, 'internal', {
-      aiDraftId: input.aiDraftId,
-      reason: input.reason,
-      failed: [...input.failed],
-    });
+    await recordTicketEvent(
+      tx,
+      input.ticketId,
+      AUTONOMY_TICKET_EVENTS.autosendHeld,
+      actor,
+      'internal',
+      {
+        aiDraftId: input.aiDraftId,
+        reason: input.reason,
+        failed: [...input.failed],
+      },
+    );
     await recordAuditInTx(
       tx,
       { actor, auditMeta: { ip: null, requestId: null } },
@@ -153,7 +177,12 @@ export async function noteAutoSendHeld(
         outcome: 'denied',
         targetType: 'ticket',
         targetId: input.ticketId,
-        metadata: { stage: 'schedule', aiDraftId: input.aiDraftId, reason: input.reason, failed: [...input.failed] },
+        metadata: {
+          stage: 'schedule',
+          aiDraftId: input.aiDraftId,
+          reason: input.reason,
+          failed: [...input.failed],
+        },
       },
     );
     return true;
@@ -161,7 +190,9 @@ export async function noteAutoSendHeld(
 }
 
 /** The notice added to an automatic reply (ADR-025 section 8); undefined when the row is missing or unreadable (the default applies). */
-export async function readAutosendDisclosure(db: ReadExecutor): Promise<AutosendDisclosure | undefined> {
+export async function readAutosendDisclosure(
+  db: ReadExecutor,
+): Promise<AutosendDisclosure | undefined> {
   const [row] = await db
     .select({ value: schema.instanceSetting.value })
     .from(schema.instanceSetting)
@@ -182,7 +213,10 @@ export async function setAutosendDisclosure(
     throw new Error('Only a signed-in person changes the notice of automatic replies');
   }
   const before = await readAutosendDisclosure(tx);
-  const next: AutosendDisclosure = { enabled: input.enabled, text: { th: input.text.th.trim(), en: input.text.en.trim() } };
+  const next: AutosendDisclosure = {
+    enabled: input.enabled,
+    text: { th: input.text.th.trim(), en: input.text.en.trim() },
+  };
   const changed = JSON.stringify(before) !== JSON.stringify(next);
   if (changed) {
     await tx

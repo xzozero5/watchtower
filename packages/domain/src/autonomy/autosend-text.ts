@@ -96,7 +96,7 @@ export function instanceOrigins(...urls: readonly (string | undefined | null)[])
 }
 
 const WANTS_HUMAN_EN =
-  /\b(?:(?:speak|talk|chat|connect(?:ed)?|escalate)\s+(?:me\s+)?(?:to|with)\s+(?:a\s+|an\s+|the\s+|your\s+)?(?:human|person|agent|someone|representative|manager|supervisor|staff|engineer)|(?:real|live)\s+(?:person|human|agent)|human\s+(?:agent|being|support)|not\s+(?:a\s+)?(?:bot|ai|robot))\b/i;
+  /\b(?:(?:speak|talk|chat|connect(?:ed)?|escalate)\s+(?:me\s+)?(?:to|with)\s+(?:a\s+|an\s+|the\s+|your\s+)?(?:human|person|agent|someone|representative|manager|supervisor|staff|engineer)|(?:real|live)\s+(?:person|human|agent)|human\s+(?:agent|being|support)|not\s+(?:a\s+)?(?:bot|ai|robot)|are\s+you\s+(?:a\s+)?(?:bot|ai|robot)|(?:not|no)\s+(?:talk|talking|speak|speaking|chat|chatting)\s+(?:to|with)\s+(?:a\s+)?(?:bot|ai|robot))\b/i;
 const WANTS_HUMAN_TH =
   /(?:คุย|พูด|ติดต่อ|ขอ|โทร)\s*(?:กับ|หา)?\s*(?:คน(?:จริง)?|เจ้าหน้าที่|พนักงาน|ผู้จัดการ|แอดมิน|วิศวกร)|ไม่ใช่\s*(?:บอท|เอไอ|ai)/i;
 

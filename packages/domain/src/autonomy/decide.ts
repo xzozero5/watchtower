@@ -1,4 +1,8 @@
-import { MANUAL_MAX_AUTONOMY_STAGE, PHASE_MAX_AUTONOMY_STAGE, type AuditActorType } from '@watchtower/shared';
+import {
+  MANUAL_MAX_AUTONOMY_STAGE,
+  PHASE_MAX_AUTONOMY_STAGE,
+  type AuditActorType,
+} from '@watchtower/shared';
 
 import type { PolicyDecision, SendOrigin } from '../policy.js';
 
@@ -249,7 +253,8 @@ export function evaluateAutoSend(
   // 3
   if (input.switches.killSwitch) failed.push(GATE_REASONS.killSwitchOn);
   // 4
-  if (input.switches.stageCapPinned && !waive.has('stage_cap')) failed.push(GATE_REASONS.stageCapOn);
+  if (input.switches.stageCapPinned && !waive.has('stage_cap'))
+    failed.push(GATE_REASONS.stageCapOn);
   // 5
   if (input.intent.kind === 'none') failed.push(GATE_REASONS.intentUnknown);
   else if (input.intent.kind === 'missing') failed.push(GATE_REASONS.intentNotFound);
@@ -291,13 +296,15 @@ export function evaluateAutoSend(
     if (!content.linksAllowed) failed.push(GATE_REASONS.linkNotAllowed);
     if (content.attachments !== 0) failed.push(GATE_REASONS.hasAttachment);
     if (content.placeholders !== 0) failed.push(GATE_REASONS.hasPlaceholder);
-    if (!(content.length >= 1 && content.length <= content.maxChars)) failed.push(GATE_REASONS.tooLong);
+    if (!(content.length >= 1 && content.length <= content.maxChars))
+      failed.push(GATE_REASONS.tooLong);
   }
   // 10
   const ticket = facts.ticket;
   if (ticket === null) failed.push(GATE_REASONS.ticketFactsMissing);
   else {
-    if (ticket.priority === 'P1' || ticket.priority === 'P2') failed.push(GATE_REASONS.priorityBlocked);
+    if (ticket.priority === 'P1' || ticket.priority === 'P2')
+      failed.push(GATE_REASONS.priorityBlocked);
     if (ticket.openIncident) failed.push(GATE_REASONS.incidentOpen);
     if (ticket.customerWantsHuman) failed.push(GATE_REASONS.customerWantsHuman);
     if (ticket.autoStreak >= AUTOSEND_MAX_STREAK) failed.push(GATE_REASONS.autoStreakLimit);

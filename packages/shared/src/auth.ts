@@ -51,6 +51,10 @@ export const AUTH_ERROR_CODES = [
   'file_infected',
   // Autonomy (T-112a): asking for stage 3 or above, which only the owner may decide (N3).
   'autonomy_stage_requires_owner',
+  // Stage 3 (ADR-025): the instance flag is off; the sign-in is older than 5 minutes; only the owner approves.
+  'autosend_flag_off',
+  'reauth_required',
+  'owner_only',
   // Credential store (T-116a): a field that an environment variable sets cannot be saved.
   'credential_env_locked',
   // Knowledge base (T-107): a search that ran past its time limit and was stopped (503).

@@ -230,7 +230,12 @@ export async function runGrader(
     // An event for the watch (ADR-025 section 7): a violation in this grade is a reason to roll back at once.
     await db
       .transaction((tx) =>
-        enqueueAutonomyWatch(tx, domain.context({ actor: { type: 'system', id: null } }), intentId, 'grade_recorded'),
+        enqueueAutonomyWatch(
+          tx,
+          domain.context({ actor: { type: 'system', id: null } }),
+          intentId,
+          'grade_recorded',
+        ),
       )
       .catch((error: unknown) => {
         deps.logger.warn({ err: error, ticketId: ticket.id }, 'could not nudge the autonomy watch');

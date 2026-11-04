@@ -91,6 +91,12 @@ async function modelsOf(
   return found;
 }
 
+/** The reason code a refusal carries (the gate puts it in the details), else the error code. */
+function reasonOf(error: DomainError): string {
+  const reason = error.details?.reason;
+  return typeof reason === 'string' ? reason : error.code;
+}
+
 export async function runAutoSendStep(
   deps: AutoSendStepDeps,
   input: AutoSendStepInput,
@@ -166,7 +172,7 @@ export async function runAutoSendStep(
     // both the same model there is no point in calling it: the answer could never be used.
     if (graderRef.provider === drafterRef.provider && graderRef.model === drafterRef.model) {
       await record(['grader_not_independent', 'grade_missing'], null, { reason: 'same_model' });
-      return held('grader_not_independent', ['grader_not_independent', 'grade_missing']);
+      return await held('grader_not_independent', ['grader_not_independent', 'grade_missing']);
     }
 
     const cited = new Set(input.draft.citedEvidenceIds);
@@ -184,11 +190,13 @@ export async function runAutoSendStep(
     if (graded.status !== 'ok') {
       // No grade: nothing can clear the send. Record it and leave the draft to a person.
       await record(['grade_missing'], null, { grader: graded.status, reason: graded.reason });
-      return held('grade_missing', ['grade_missing']);
+      return await held('grade_missing', ['grade_missing']);
     }
     const runs = await modelsOf(db, [graded.runId]);
     const graderRun = graded.runId === null ? undefined : runs.get(graded.runId);
-    const draftRun = (await modelsOf(db, [input.draft.aiRunId ?? null])).get(input.draft.aiRunId ?? '');
+    const draftRun = (await modelsOf(db, [input.draft.aiRunId ?? null])).get(
+      input.draft.aiRunId ?? '',
+    );
     const gradeId = await recordPreSendGrade(db, {
       aiDraftId: input.draft.id,
       ticketId: input.ticket.id,
@@ -209,7 +217,7 @@ export async function runAutoSendStep(
     await record(evaluation.failed, gradeId, { ...evaluation.summary });
     if (mode === 'shadow') return 'shadow';
     if (evaluation.failed.length > 0) {
-      return held(evaluation.failed[0] ?? 'policy_denied', evaluation.failed);
+      return await held(evaluation.failed[0] ?? 'policy_denied', evaluation.failed);
     }
 
     try {
@@ -230,14 +238,14 @@ export async function runAutoSendStep(
       }
       return 'scheduled';
     } catch (error) {
-      const reason =
-        error instanceof DomainError
-          ? String((error.details as { reason?: unknown } | undefined)?.reason ?? error.code)
-          : 'schedule_failed';
+      const reason = error instanceof DomainError ? reasonOf(error) : 'schedule_failed';
       if (!(error instanceof DomainError)) {
-        deps.logger.error({ err: error, ticketId: input.ticket.id }, 'automatic send could not be scheduled');
+        deps.logger.error(
+          { err: error, ticketId: input.ticket.id },
+          'automatic send could not be scheduled',
+        );
       }
-      return held(reason, [reason]);
+      return await held(reason, [reason]);
     }
   } catch (error) {
     deps.logger.error({ err: error, ticketId: input.ticket.id }, 'auto-send step failed');

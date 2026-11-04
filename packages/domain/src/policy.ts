@@ -85,7 +85,10 @@ export interface PolicyGate {
    * the way if the intent were promoted (the flag, the cap switch and the stage are taken as given), and
    * is never a permission. Absent on a gate that cannot do it: the caller then records nothing.
    */
-  evaluateAutoSend?(request: CustomerSendRequest, mode: 'live' | 'shadow'): Promise<AutoSendEvaluation>;
+  evaluateAutoSend?(
+    request: CustomerSendRequest,
+    mode: 'live' | 'shadow',
+  ): Promise<AutoSendEvaluation>;
 }
 
 /** The answer of `evaluateAutoSend`. Counts and codes only; never customer text. */

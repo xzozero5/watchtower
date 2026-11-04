@@ -22,7 +22,6 @@ import {
   decideAutoSend,
   effectiveStage,
   evaluateAutoSend,
-  type AutoSendFacts,
   type IntentStanding,
   type SwitchState,
 } from './decide.js';
@@ -213,7 +212,7 @@ function buildPolicyGate(
         actorType: request.actor.type,
         intent: loaded?.intent ?? ({ kind: 'none' } as const),
         switches,
-        autosend: loaded?.facts as AutoSendFacts | undefined,
+        autosend: loaded?.facts,
       };
       const failed = evaluateAutoSend(input, mode === 'shadow' ? SHADOW_WAIVERS : undefined);
       const decision: PolicyDecision =
@@ -227,7 +226,12 @@ function buildPolicyGate(
         failed,
         effectiveStage: stage < 0 ? 0 : effectiveStage(stage, flagOn),
         intentId: loaded?.intentId ?? null,
-        summary: { ...loaded?.summary, flagOn, stageCapPinned: switches.stageCapPinned, killSwitch: switches.killSwitch },
+        summary: {
+          ...loaded?.summary,
+          flagOn,
+          stageCapPinned: switches.stageCapPinned,
+          killSwitch: switches.killSwitch,
+        },
       };
     },
 

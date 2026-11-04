@@ -65,7 +65,8 @@ export function toAutonomyIntent(row: IntentRow, autosendEnabled = false): Auton
       minScore: Number(row.autosendMinScore),
       dailyCap: row.autosendDailyCap,
       // A stored policy that does not parse shows as the empty one (no channel): the gate denies it the same way.
-      policy: parseAutosendPolicy(row.autosendPolicy) ?? parseAutosendPolicy({}) ?? { channels: [], action: 'reply', maxChars: 1200 },
+      policy: parseAutosendPolicy(row.autosendPolicy) ??
+        parseAutosendPolicy({}) ?? { channels: [], action: 'reply', maxChars: 1200 },
     },
     updatedAt: row.updatedAt.toISOString(),
   };

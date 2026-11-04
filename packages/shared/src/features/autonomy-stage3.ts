@@ -75,7 +75,9 @@ export const autosendDisclosureSchema = z.strictObject({
   }),
 });
 export type AutosendDisclosure = z.infer<typeof autosendDisclosureSchema>;
-export const setAutosendDisclosureSchema = autosendDisclosureSchema.extend({ reason: reasonSchema });
+export const setAutosendDisclosureSchema = autosendDisclosureSchema.extend({
+  reason: reasonSchema,
+});
 export type SetAutosendDisclosure = z.infer<typeof setAutosendDisclosureSchema>;
 
 export const GATE_REPORT_STATUSES = ['green', 'red', 'insufficient_data'] as const;

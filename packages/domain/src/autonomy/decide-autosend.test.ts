@@ -36,6 +36,12 @@ const INTENTS: readonly IntentStanding[] = [
   ...[-1, 0, 1, 2, 3, 4, 5, 1.5].map((stage) => ({ kind: 'found' as const, stage })),
 ];
 
+/** A group of facts a test breaks one field of: it is there by construction. */
+function need<T>(value: T | null): T {
+  if (value === null) throw new Error('the fact is missing from the fixture');
+  return value;
+}
+
 /** Every condition satisfied. */
 const GOOD: AutoSendFacts = {
   flagOn: true,
@@ -75,53 +81,61 @@ const OPEN: SwitchState = { stageCapPinned: false, killSwitch: false };
 const STAGE3: IntentStanding = { kind: 'found', stage: 3 };
 
 /** One way to break one condition, and the reason it must give. */
-const BREAKS: readonly { name: string; reason: GateReason; facts: (f: AutoSendFacts) => AutoSendFacts }[] = [
-  { name: '1 flag off', reason: GATE_REASONS.autosendFlagOff, facts: (f) => ({ ...f, flagOn: false }) },
+const BREAKS: readonly {
+  name: string;
+  reason: GateReason;
+  facts: (f: AutoSendFacts) => AutoSendFacts;
+}[] = [
+  {
+    name: '1 flag off',
+    reason: GATE_REASONS.autosendFlagOff,
+    facts: (f) => ({ ...f, flagOn: false }),
+  },
   { name: '6 no grade', reason: GATE_REASONS.gradeMissing, facts: (f) => ({ ...f, grade: null }) },
   {
     name: '6 hash differs',
     reason: GATE_REASONS.gradeHashMismatch,
-    facts: (f) => ({ ...f, grade: { ...f.grade!, hashMatches: false } }),
+    facts: (f) => ({ ...f, grade: { ...need(f.grade), hashMatches: false } }),
   },
   {
     name: '6 older than 10 minutes',
     reason: GATE_REASONS.gradeStale,
-    facts: (f) => ({ ...f, grade: { ...f.grade!, ageSeconds: 601 } }),
+    facts: (f) => ({ ...f, grade: { ...need(f.grade), ageSeconds: 601 } }),
   },
   {
     name: '6 from the future',
     reason: GATE_REASONS.gradeStale,
-    facts: (f) => ({ ...f, grade: { ...f.grade!, ageSeconds: -60 } }),
+    facts: (f) => ({ ...f, grade: { ...need(f.grade), ageSeconds: -60 } }),
   },
   {
     name: '6 not passed',
     reason: GATE_REASONS.gradeFailed,
-    facts: (f) => ({ ...f, grade: { ...f.grade!, passed: false } }),
+    facts: (f) => ({ ...f, grade: { ...need(f.grade), passed: false } }),
   },
   {
     name: '6 violations',
     reason: GATE_REASONS.gradeViolations,
-    facts: (f) => ({ ...f, grade: { ...f.grade!, violationCount: 1 } }),
+    facts: (f) => ({ ...f, grade: { ...need(f.grade), violationCount: 1 } }),
   },
   {
     name: '6 score below the minimum',
     reason: GATE_REASONS.gradeScoreLow,
-    facts: (f) => ({ ...f, grade: { ...f.grade!, score: 0.849 } }),
+    facts: (f) => ({ ...f, grade: { ...need(f.grade), score: 0.849 } }),
   },
   {
     name: '6 score is not a number',
     reason: GATE_REASONS.gradeScoreLow,
-    facts: (f) => ({ ...f, grade: { ...f.grade!, score: Number.NaN } }),
+    facts: (f) => ({ ...f, grade: { ...need(f.grade), score: Number.NaN } }),
   },
   {
     name: '6 mock grade',
     reason: GATE_REASONS.gradeMock,
-    facts: (f) => ({ ...f, grade: { ...f.grade!, mock: true } }),
+    facts: (f) => ({ ...f, grade: { ...need(f.grade), mock: true } }),
   },
   {
     name: '7 grader is the drafter',
     reason: GATE_REASONS.graderNotIndependent,
-    facts: (f) => ({ ...f, grade: { ...f.grade!, independent: false } }),
+    facts: (f) => ({ ...f, grade: { ...need(f.grade), independent: false } }),
   },
   {
     name: '8 disclosure unknown',
@@ -138,89 +152,101 @@ const BREAKS: readonly { name: string; reason: GateReason; facts: (f: AutoSendFa
     reason: GATE_REASONS.senderUnauthenticated,
     facts: (f) => ({ ...f, disclosure: { contactVerified: true, senderAuthenticated: false } }),
   },
-  { name: '9 no content facts', reason: GATE_REASONS.policyInvalid, facts: (f) => ({ ...f, content: null }) },
+  {
+    name: '9 no content facts',
+    reason: GATE_REASONS.policyInvalid,
+    facts: (f) => ({ ...f, content: null }),
+  },
   {
     name: '9 policy does not parse',
     reason: GATE_REASONS.policyInvalid,
-    facts: (f) => ({ ...f, content: { ...f.content!, allowedChannels: null } }),
+    facts: (f) => ({ ...f, content: { ...need(f.content), allowedChannels: null } }),
   },
   {
     name: '9 channel not on the list',
     reason: GATE_REASONS.channelNotAllowed,
-    facts: (f) => ({ ...f, content: { ...f.content!, channel: 'line' } }),
+    facts: (f) => ({ ...f, content: { ...need(f.content), channel: 'line' } }),
   },
   {
     name: '9 empty channel list',
     reason: GATE_REASONS.channelNotAllowed,
-    facts: (f) => ({ ...f, content: { ...f.content!, allowedChannels: [] } }),
+    facts: (f) => ({ ...f, content: { ...need(f.content), allowedChannels: [] } }),
   },
   {
     name: '9 no customer KB citation',
     reason: GATE_REASONS.noCustomerKbCitation,
-    facts: (f) => ({ ...f, content: { ...f.content!, customerKbCitations: 0 } }),
+    facts: (f) => ({ ...f, content: { ...need(f.content), customerKbCitations: 0 } }),
   },
   {
     name: '9 uncited sentence',
     reason: GATE_REASONS.uncitedClaims,
-    facts: (f) => ({ ...f, content: { ...f.content!, uncitedClaims: 1 } }),
+    facts: (f) => ({ ...f, content: { ...need(f.content), uncitedClaims: 1 } }),
   },
   {
     name: '9 foreign link',
     reason: GATE_REASONS.linkNotAllowed,
-    facts: (f) => ({ ...f, content: { ...f.content!, linksAllowed: false } }),
+    facts: (f) => ({ ...f, content: { ...need(f.content), linksAllowed: false } }),
   },
   {
     name: '9 attachment',
     reason: GATE_REASONS.hasAttachment,
-    facts: (f) => ({ ...f, content: { ...f.content!, attachments: 1 } }),
+    facts: (f) => ({ ...f, content: { ...need(f.content), attachments: 1 } }),
   },
   {
     name: '9 placeholder',
     reason: GATE_REASONS.hasPlaceholder,
-    facts: (f) => ({ ...f, content: { ...f.content!, placeholders: 1 } }),
+    facts: (f) => ({ ...f, content: { ...need(f.content), placeholders: 1 } }),
   },
   {
     name: '9 too long',
     reason: GATE_REASONS.tooLong,
-    facts: (f) => ({ ...f, content: { ...f.content!, length: 1201 } }),
+    facts: (f) => ({ ...f, content: { ...need(f.content), length: 1201 } }),
   },
   {
     name: '9 empty',
     reason: GATE_REASONS.tooLong,
-    facts: (f) => ({ ...f, content: { ...f.content!, length: 0 } }),
+    facts: (f) => ({ ...f, content: { ...need(f.content), length: 0 } }),
   },
-  { name: '10 no ticket facts', reason: GATE_REASONS.ticketFactsMissing, facts: (f) => ({ ...f, ticket: null }) },
+  {
+    name: '10 no ticket facts',
+    reason: GATE_REASONS.ticketFactsMissing,
+    facts: (f) => ({ ...f, ticket: null }),
+  },
   {
     name: '10 P1',
     reason: GATE_REASONS.priorityBlocked,
-    facts: (f) => ({ ...f, ticket: { ...f.ticket!, priority: 'P1' } }),
+    facts: (f) => ({ ...f, ticket: { ...need(f.ticket), priority: 'P1' } }),
   },
   {
     name: '10 P2',
     reason: GATE_REASONS.priorityBlocked,
-    facts: (f) => ({ ...f, ticket: { ...f.ticket!, priority: 'P2' } }),
+    facts: (f) => ({ ...f, ticket: { ...need(f.ticket), priority: 'P2' } }),
   },
   {
     name: '10 open incident',
     reason: GATE_REASONS.incidentOpen,
-    facts: (f) => ({ ...f, ticket: { ...f.ticket!, openIncident: true } }),
+    facts: (f) => ({ ...f, ticket: { ...need(f.ticket), openIncident: true } }),
   },
   {
     name: '10 customer asked for a person',
     reason: GATE_REASONS.customerWantsHuman,
-    facts: (f) => ({ ...f, ticket: { ...f.ticket!, customerWantsHuman: true } }),
+    facts: (f) => ({ ...f, ticket: { ...need(f.ticket), customerWantsHuman: true } }),
   },
   {
     name: '10 third automatic reply',
     reason: GATE_REASONS.autoStreakLimit,
-    facts: (f) => ({ ...f, ticket: { ...f.ticket!, autoStreak: AUTOSEND_MAX_STREAK } }),
+    facts: (f) => ({ ...f, ticket: { ...need(f.ticket), autoStreak: AUTOSEND_MAX_STREAK } }),
   },
   {
     name: '10 reopened after an automatic reply',
     reason: GATE_REASONS.reopenedAfterAuto,
-    facts: (f) => ({ ...f, ticket: { ...f.ticket!, reopenedAfterAuto: true } }),
+    facts: (f) => ({ ...f, ticket: { ...need(f.ticket), reopenedAfterAuto: true } }),
   },
-  { name: '11 no procedure facts', reason: GATE_REASONS.procedureUnknown, facts: (f) => ({ ...f, procedure: null }) },
+  {
+    name: '11 no procedure facts',
+    reason: GATE_REASONS.procedureUnknown,
+    facts: (f) => ({ ...f, procedure: null }),
+  },
   {
     name: '11 procedure says never',
     reason: GATE_REASONS.procedureNotAutosend,
@@ -231,21 +257,25 @@ const BREAKS: readonly { name: string; reason: GateReason; facts: (f: AutoSendFa
     reason: GATE_REASONS.procedureStale,
     facts: (f) => ({ ...f, procedure: { autosendAllowed: true, stale: true } }),
   },
-  { name: '12 no budget facts', reason: GATE_REASONS.budgetUnknown, facts: (f) => ({ ...f, budget: null }) },
+  {
+    name: '12 no budget facts',
+    reason: GATE_REASONS.budgetUnknown,
+    facts: (f) => ({ ...f, budget: null }),
+  },
   {
     name: '12 daily cap reached',
     reason: GATE_REASONS.dailyCapReached,
-    facts: (f) => ({ ...f, budget: { ...f.budget!, autoSentToday: 20 } }),
+    facts: (f) => ({ ...f, budget: { ...need(f.budget), autoSentToday: 20 } }),
   },
   {
     name: '12 cap of zero',
     reason: GATE_REASONS.dailyCapReached,
-    facts: (f) => ({ ...f, budget: { ...f.budget!, dailyCap: 0, autoSentToday: 0 } }),
+    facts: (f) => ({ ...f, budget: { ...need(f.budget), dailyCap: 0, autoSentToday: 0 } }),
   },
   {
     name: '12 AI budget spent',
     reason: GATE_REASONS.aiBudgetExceeded,
-    facts: (f) => ({ ...f, budget: { ...f.budget!, aiBudgetExceeded: true } }),
+    facts: (f) => ({ ...f, budget: { ...need(f.budget), aiBudgetExceeded: true } }),
   },
 ];
 
@@ -285,7 +315,9 @@ describe('the automatic send (ADR-025 section 4)', () => {
   it('walks a large space (so the properties below are not vacuous)', () => {
     expect(all.length).toBeGreaterThan(30_000);
     expect(
-      all.some((input) => input.origin === 'ai_auto' && decide(input, SAFE_AUTO_ACK_TEMPLATES).allowed),
+      all.some(
+        (input) => input.origin === 'ai_auto' && decide(input, SAFE_AUTO_ACK_TEMPLATES).allowed,
+      ),
     ).toBe(true);
   });
 
@@ -371,37 +403,57 @@ describe('the automatic send (ADR-025 section 4)', () => {
 
   it('checks the conditions in the order of the ADR: the flag, then the actor, the switches, the stage, the rest', () => {
     const decision = (input: Partial<Parameters<typeof decideAutoSend>[0]>) =>
-      decideAutoSend({ actorType: 'ai', intent: STAGE3, switches: OPEN, autosend: GOOD, ...input }).reason;
+      decideAutoSend({ actorType: 'ai', intent: STAGE3, switches: OPEN, autosend: GOOD, ...input })
+        .reason;
     // Everything wrong at once: the flag is named first.
     const worst: AutoSendFacts = { ...GOOD, flagOn: false, grade: null, budget: null };
     expect(
-      decision({ actorType: 'user', switches: { stageCapPinned: true, killSwitch: true }, intent: { kind: 'found', stage: 2 }, autosend: worst }),
+      decision({
+        actorType: 'user',
+        switches: { stageCapPinned: true, killSwitch: true },
+        intent: { kind: 'found', stage: 2 },
+        autosend: worst,
+      }),
     ).toBe(GATE_REASONS.autosendFlagOff);
-    expect(decision({ actorType: 'user', switches: { stageCapPinned: true, killSwitch: true }, intent: { kind: 'found', stage: 2 } })).toBe(
-      GATE_REASONS.actorOriginMismatch,
+    expect(
+      decision({
+        actorType: 'user',
+        switches: { stageCapPinned: true, killSwitch: true },
+        intent: { kind: 'found', stage: 2 },
+      }),
+    ).toBe(GATE_REASONS.actorOriginMismatch);
+    expect(
+      decision({
+        switches: { stageCapPinned: true, killSwitch: true },
+        intent: { kind: 'found', stage: 2 },
+      }),
+    ).toBe(GATE_REASONS.killSwitchOn);
+    expect(
+      decision({
+        switches: { stageCapPinned: true, killSwitch: false },
+        intent: { kind: 'found', stage: 2 },
+      }),
+    ).toBe(GATE_REASONS.stageCapOn);
+    expect(
+      decision({ intent: { kind: 'found', stage: 2 }, autosend: { ...GOOD, grade: null } }),
+    ).toBe(GATE_REASONS.stageBelow3);
+    expect(decision({ autosend: { ...GOOD, grade: null, budget: null } })).toBe(
+      GATE_REASONS.gradeMissing,
     );
-    expect(decision({ switches: { stageCapPinned: true, killSwitch: true }, intent: { kind: 'found', stage: 2 } })).toBe(
-      GATE_REASONS.killSwitchOn,
-    );
-    expect(decision({ switches: { stageCapPinned: true, killSwitch: false }, intent: { kind: 'found', stage: 2 } })).toBe(
-      GATE_REASONS.stageCapOn,
-    );
-    expect(decision({ intent: { kind: 'found', stage: 2 }, autosend: { ...GOOD, grade: null } })).toBe(
-      GATE_REASONS.stageBelow3,
-    );
-    expect(decision({ autosend: { ...GOOD, grade: null, budget: null } })).toBe(GATE_REASONS.gradeMissing);
   });
 
   it('lists every condition that fails, in order, and nothing when none does', () => {
-    expect(evaluateAutoSend({ actorType: 'ai', intent: STAGE3, switches: OPEN, autosend: GOOD })).toEqual([]);
+    expect(
+      evaluateAutoSend({ actorType: 'ai', intent: STAGE3, switches: OPEN, autosend: GOOD }),
+    ).toEqual([]);
     const failed = evaluateAutoSend({
       actorType: 'ai',
       intent: STAGE3,
       switches: OPEN,
       autosend: {
         ...GOOD,
-        grade: { ...GOOD.grade!, passed: false, violationCount: 2, independent: false },
-        budget: { ...GOOD.budget!, aiBudgetExceeded: true },
+        grade: { ...need(GOOD.grade), passed: false, violationCount: 2, independent: false },
+        budget: { ...need(GOOD.budget), aiBudgetExceeded: true },
       },
     });
     expect(failed).toEqual([
@@ -413,7 +465,10 @@ describe('the automatic send (ADR-025 section 4)', () => {
   });
 
   it('a shadow evaluation takes only the flag, the cap switch and the stage as given', () => {
-    const base = { actorType: 'ai' as const, switches: { stageCapPinned: true, killSwitch: false } };
+    const base = {
+      actorType: 'ai' as const,
+      switches: { stageCapPinned: true, killSwitch: false },
+    };
     // Stage 2, flag off, cap on: everything a promotion changes. All good otherwise: nothing in the way.
     expect(
       evaluateAutoSend(
@@ -423,7 +478,11 @@ describe('the automatic send (ADR-025 section 4)', () => {
     ).toEqual([]);
     // The same without the waiver is three reasons.
     expect(
-      evaluateAutoSend({ ...base, intent: { kind: 'found', stage: 2 }, autosend: { ...GOOD, flagOn: false } }),
+      evaluateAutoSend({
+        ...base,
+        intent: { kind: 'found', stage: 2 },
+        autosend: { ...GOOD, flagOn: false },
+      }),
     ).toEqual([GATE_REASONS.autosendFlagOff, GATE_REASONS.stageCapOn, GATE_REASONS.stageBelow3]);
     // The kill switch and everything else still count in a shadow.
     expect(
@@ -432,14 +491,17 @@ describe('the automatic send (ADR-025 section 4)', () => {
           actorType: 'ai',
           switches: { stageCapPinned: false, killSwitch: true },
           intent: { kind: 'found', stage: 2 },
-          autosend: { ...GOOD, grade: { ...GOOD.grade!, mock: true } },
+          autosend: { ...GOOD, grade: { ...need(GOOD.grade), mock: true } },
         },
         SHADOW_WAIVERS,
       ),
     ).toEqual([GATE_REASONS.killSwitchOn, GATE_REASONS.gradeMock]);
     // An unknown intent is not waived.
     expect(
-      evaluateAutoSend({ actorType: 'ai', switches: OPEN, intent: { kind: 'missing' }, autosend: GOOD }, SHADOW_WAIVERS),
+      evaluateAutoSend(
+        { actorType: 'ai', switches: OPEN, intent: { kind: 'missing' }, autosend: GOOD },
+        SHADOW_WAIVERS,
+      ),
     ).toEqual([GATE_REASONS.intentNotFound]);
   });
 

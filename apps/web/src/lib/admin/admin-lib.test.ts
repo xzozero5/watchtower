@@ -39,19 +39,28 @@ describe('contracts from @watchtower/shared', () => {
     expect(openInStatus(stats, 'new')).toBe(0);
   });
 
-  it('refuses a stage above 2 in the autonomy state (N3)', () => {
+  it('reads stage 3 (reached only by a promotion, ADR-025) and refuses a stage above it (N3)', () => {
     const intent = {
       id: uuid(1),
       key: 'k',
       name: 'n',
       isActive: true,
       stage: 3,
-      effectiveStage: 3,
+      effectiveStage: 2,
       pinned: false,
       updatedAt: AT,
     };
+    const read = (over: object) =>
+      autonomyStateSchema.safeParse({
+        stageCeiling: 2,
+        switches: [],
+        intents: [{ ...intent, ...over }],
+      }).success;
+    expect(read({})).toBe(true);
+    expect(read({ stage: 4, effectiveStage: 4 })).toBe(false);
+    // The ceiling of a hand-set stage stays 2.
     expect(
-      autonomyStateSchema.safeParse({ stageCeiling: 2, switches: [], intents: [intent] }).success,
+      autonomyStateSchema.safeParse({ stageCeiling: 3, switches: [], intents: [] }).success,
     ).toBe(false);
   });
 

@@ -123,7 +123,10 @@ export async function gradePreSend(
     const lines: RedactedText[] = [];
     input.customerTurns.slice(-MAX_TURNS).forEach((turn, index) => {
       lines.push(
-        clipRedacted(session.redact(`[f${String(index + 1)}] customer: ${safe(turn)}`), MAX_TURN_CHARS + 40),
+        clipRedacted(
+          session.redact(`[f${String(index + 1)}] customer: ${safe(turn)}`),
+          MAX_TURN_CHARS + 40,
+        ),
       );
     });
     const offset = Math.min(input.customerTurns.length, MAX_TURNS);

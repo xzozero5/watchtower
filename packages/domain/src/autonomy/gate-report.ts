@@ -97,7 +97,10 @@ export function buildReport(input: ReportInputs): {
     },
     {
       key: 'verified_resolution',
-      pass: !enough || aiVerified === null || humanVerified === null ? null : aiVerified >= humanVerified,
+      pass:
+        !enough || aiVerified === null || humanVerified === null
+          ? null
+          : aiVerified >= humanVerified,
       value: round(aiVerified),
       threshold: round(humanVerified),
       basis: 'PRD',
@@ -118,7 +121,8 @@ export function buildReport(input: ReportInputs): {
         ? input.ai.csatAvg >= input.human.csatAvg - GATE_CSAT_TOLERANCE
         : null,
     value: round(input.ai.csatAvg, 2),
-    threshold: input.human.csatAvg === null ? null : round(input.human.csatAvg - GATE_CSAT_TOLERANCE, 2),
+    threshold:
+      input.human.csatAvg === null ? null : round(input.human.csatAvg - GATE_CSAT_TOLERANCE, 2),
     basis: 'ASSUMED',
   });
   criteria.push({
@@ -149,11 +153,25 @@ export function buildReport(input: ReportInputs): {
   );
   // Outside the database: listed so a person reads them, never decide the status.
   criteria.push(
-    { key: 'eval_replay_violations', pass: null, value: 'not_measured', threshold: 0, basis: 'ASSUMED' },
-    { key: 'redaction_eval', pass: null, value: 'not_measured', threshold: 'pass', basis: 'ASSUMED' },
+    {
+      key: 'eval_replay_violations',
+      pass: null,
+      value: 'not_measured',
+      threshold: 0,
+      basis: 'ASSUMED',
+    },
+    {
+      key: 'redaction_eval',
+      pass: null,
+      value: 'not_measured',
+      threshold: 'pass',
+      basis: 'ASSUMED',
+    },
   );
 
-  const deciding = criteria.filter((criterion) => !criterion.key.startsWith('eval_') && criterion.key !== 'redaction_eval');
+  const deciding = criteria.filter(
+    (criterion) => !criterion.key.startsWith('eval_') && criterion.key !== 'redaction_eval',
+  );
   const status: GateReport['status'] = deciding.some((criterion) => criterion.pass === false)
     ? 'red'
     : deciding.every((criterion) => criterion.pass === true)
@@ -189,7 +207,14 @@ interface GroupRow extends Record<string, unknown> {
   csat_avg: string | null;
 }
 
-const empty: GroupStats = { graded: 0, verified: 0, reopened: 0, violations: 0, csatN: 0, csatAvg: null };
+const empty: GroupStats = {
+  graded: 0,
+  verified: 0,
+  reopened: 0,
+  violations: 0,
+  csatN: 0,
+  csatAvg: null,
+};
 
 type ReportDb = Pick<Database['db'], 'select' | 'execute' | 'insert'>;
 
@@ -224,7 +249,9 @@ export async function readReportInputs(
   // The window is the stretch spent at this stage, at most the last 28 days (a long stay is not a reason to
   // count old tickets); never empty.
   const earliest = new Date(now.getTime() - GATE_WINDOW_DAYS * 86_400_000);
-  const windowStart = new Date(Math.min(Math.max(since.getTime(), earliest.getTime()), now.getTime() - 1000));
+  const windowStart = new Date(
+    Math.min(Math.max(since.getTime(), earliest.getTime()), now.getTime() - 1000),
+  );
   const from = windowStart.toISOString();
   const to = now.toISOString();
   const accepted = sql`(d.disposition = 'approved' OR (d.disposition = 'edited' AND d.edit_distance <= ${GATE_EDIT_TOLERANCE}))`;
@@ -244,7 +271,7 @@ export async function readReportInputs(
      GROUP BY 1
   `);
   const stat = (ai: boolean): GroupStats => {
-    const row = groups.rows.find((candidate) => Boolean(candidate.ai) === ai);
+    const row = groups.rows.find((candidate) => candidate.ai === ai);
     return row === undefined
       ? empty
       : {
@@ -256,7 +283,9 @@ export async function readReportInputs(
           csatAvg: row.csat_avg === null ? null : Number(row.csat_avg),
         };
   };
-  const shadow = await db.execute<{ total: string; decided: string; accepted: string } & Record<string, unknown>>(sql`
+  const shadow = await db.execute<
+    { total: string; decided: string; accepted: string } & Record<string, unknown>
+  >(sql`
     SELECT count(*) AS total,
            count(*) FILTER (WHERE e.would_auto_send AND d.disposition IS NOT NULL) AS decided,
            count(*) FILTER (WHERE e.would_auto_send AND ${accepted}) AS accepted
@@ -291,7 +320,9 @@ export async function generateGateReport(
   input: GenerateReportInput,
 ): Promise<{ readonly id: string; readonly status: GateReport['status'] }> {
   // The window is cut by the database clock: the rows it counts were stamped by it.
-  const clock = await db.execute<{ now: Date } & Record<string, unknown>>(sql`SELECT clock_timestamp() AS now`);
+  const clock = await db.execute<{ now: Date } & Record<string, unknown>>(
+    sql`SELECT clock_timestamp() AS now`,
+  );
   const now = input.now ?? new Date(clock.rows[0]?.now ?? ctx.now());
   const { inputs, windowStart } = await readReportInputs(db, input.intentId, now);
   const built = buildReport(inputs);
@@ -320,12 +351,17 @@ export async function generateGateReport(
       .returning({ id: schema.autonomyGateReport.id });
     if (row === undefined) throw new DomainError('conflict', 'The report was not written');
     const actor: Actor = ctx.actor;
-    await recordAuditInTx(tx, { actor, auditMeta: ctx.auditMeta }, { audited: false }, {
-      action: AUDIT_ACTIONS.autonomyGateReportGenerated,
-      targetType: 'intent',
-      targetId: input.intentId,
-      metadata: { reportId: row.id, status, trigger: input.trigger },
-    });
+    await recordAuditInTx(
+      tx,
+      { actor, auditMeta: ctx.auditMeta },
+      { audited: false },
+      {
+        action: AUDIT_ACTIONS.autonomyGateReportGenerated,
+        targetType: 'intent',
+        targetId: input.intentId,
+        metadata: { reportId: row.id, status, trigger: input.trigger },
+      },
+    );
     return { id: row.id, status };
   });
 }

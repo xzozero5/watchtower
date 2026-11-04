@@ -39,7 +39,10 @@ export interface WatchResult {
 
 const SYSTEM = { type: 'system', id: null } as const;
 
-export async function runAutonomyWatch(deps: AutonomyDeps, onlyIntentId?: string): Promise<WatchResult> {
+export async function runAutonomyWatch(
+  deps: AutonomyDeps,
+  onlyIntentId?: string,
+): Promise<WatchResult> {
   const { database, domain, logger } = deps;
   const db = database.db;
   const intents =
@@ -66,7 +69,10 @@ export async function runAutonomyWatch(deps: AutonomyDeps, onlyIntentId?: string
       if (!result.value.rolledBack) continue;
       for (const event of result.events) await deps.realtime.publish(event).catch(() => undefined);
       rolledBack.push({ intent: intent.key, rule: finding.rule });
-      logger.warn({ intent: intent.key, rule: finding.rule }, 'intent rolled back from stage 3 to 2');
+      logger.warn(
+        { intent: intent.key, rule: finding.rule },
+        'intent rolled back from stage 3 to 2',
+      );
       const notice = await notifyAutonomyRollback(db, ctx, {
         intentId: intent.id,
         intentKey: intent.key,
@@ -86,7 +92,9 @@ export async function runAutonomyWatch(deps: AutonomyDeps, onlyIntentId?: string
 }
 
 /** A weekly report for every active intent at stage 2 or 3, then the watch (a red report is a rollback rule). */
-export async function runWeeklyReports(deps: AutonomyDeps): Promise<{ readonly reports: number } & WatchResult> {
+export async function runWeeklyReports(
+  deps: AutonomyDeps,
+): Promise<{ readonly reports: number } & WatchResult> {
   const db = deps.database.db;
   const intents = await db
     .select({ id: schema.intent.id, key: schema.intent.key })
@@ -103,7 +111,10 @@ export async function runWeeklyReports(deps: AutonomyDeps): Promise<{ readonly r
       });
       reports += 1;
     } catch (error) {
-      deps.logger.error({ err: error, intent: intent.key }, 'weekly gate report failed for an intent');
+      deps.logger.error(
+        { err: error, intent: intent.key },
+        'weekly gate report failed for an intent',
+      );
     }
   }
   return { reports, ...(await runAutonomyWatch(deps)) };

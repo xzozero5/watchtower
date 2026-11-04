@@ -70,7 +70,10 @@ beforeAll(async () => {
     .values({ type: 'gmail', name: 'Support mailbox' })
     .returning();
   gmailId = mailbox?.id ?? '';
-  const [org] = await owner().insert(schema.organization).values({ name: 'Customer Co' }).returning();
+  const [org] = await owner()
+    .insert(schema.organization)
+    .values({ name: 'Customer Co' })
+    .returning();
   orgId = org?.id ?? '';
   const batch = await testDb.owner.pool.query<{ id: string }>(
     `INSERT INTO seed_batch (kind, note) VALUES ('demo', 'test') RETURNING id`,
@@ -83,7 +86,12 @@ beforeAll(async () => {
   seedOrgId = seedOrg?.id ?? '';
   const [contact] = await owner()
     .insert(schema.contact)
-    .values({ orgId, name: 'Somchai', emails: [`${randomUUID()}@customer.example.test`], verifiedAt: new Date() })
+    .values({
+      orgId,
+      name: 'Somchai',
+      emails: [`${randomUUID()}@customer.example.test`],
+      verifiedAt: new Date(),
+    })
     .returning();
   contactId = contact?.id ?? '';
 });
@@ -96,7 +104,9 @@ afterAll(async () => {
 });
 
 /** Runs statements with every trigger off, as a superuser session. Test data only. */
-async function untriggered(work: (query: (sql: string, params?: unknown[]) => Promise<unknown>) => Promise<void>) {
+async function untriggered(
+  work: (query: (sql: string, params?: unknown[]) => Promise<unknown>) => Promise<void>,
+) {
   const client = await testDb.owner.pool.connect();
   try {
     await client.query('SET session_replication_role = replica');
@@ -166,7 +176,10 @@ async function ticketFor(intentId: string, options: { seed?: boolean; aiHandled?
 const hash = () => randomBytes(32).toString('hex');
 
 /** A draft, its pre-send grade and (optionally) an automatic reply that was sent, as a real send would leave them. */
-async function autoReply(ticketId: string, options: { grade?: { passed: boolean; violations?: number }; sent?: boolean } = {}) {
+async function autoReply(
+  ticketId: string,
+  options: { grade?: { passed: boolean; violations?: number }; sent?: boolean } = {},
+) {
   const draftId = randomUUID();
   const gradeId = randomUUID();
   const messageId = randomUUID();
@@ -210,14 +223,22 @@ async function autoReply(ticketId: string, options: { grade?: { passed: boolean;
 }
 
 async function stageOf(intentId: string): Promise<number> {
-  const [row] = await owner().select({ stage: schema.intent.autonomyStage }).from(schema.intent).where(eq(schema.intent.id, intentId));
+  const [row] = await owner()
+    .select({ stage: schema.intent.autonomyStage })
+    .from(schema.intent)
+    .where(eq(schema.intent.id, intentId));
   return row?.stage ?? -1;
 }
 const rollbacks = (intentId: string) =>
   owner()
     .select()
     .from(schema.intentAutonomyHistory)
-    .where(and(eq(schema.intentAutonomyHistory.intentId, intentId), eq(schema.intentAutonomyHistory.change, 'auto_rollback')));
+    .where(
+      and(
+        eq(schema.intentAutonomyHistory.intentId, intentId),
+        eq(schema.intentAutonomyHistory.change, 'auto_rollback'),
+      ),
+    );
 const notices = (intentKey: string) =>
   owner()
     .select()
@@ -228,7 +249,8 @@ const notices = (intentKey: string) =>
 describe('the autonomy watch (ADR-025 section 7)', () => {
   it('leaves a healthy intent at stage 3', async () => {
     const intent = await stage3Intent();
-    for (let i = 0; i < 5; i += 1) await autoReply(await ticketFor(intent.id), { grade: { passed: true }, sent: true });
+    for (let i = 0; i < 5; i += 1)
+      await autoReply(await ticketFor(intent.id), { grade: { passed: true }, sent: true });
     expect(await runAutonomyWatch(deps())).toMatchObject({ rolledBack: [] });
     expect(await stageOf(intent.id)).toBe(3);
     expect(await rollbacks(intent.id)).toHaveLength(0);
@@ -238,26 +260,33 @@ describe('the autonomy watch (ADR-025 section 7)', () => {
     const intent = await stage3Intent();
     const ticketId = await ticketFor(intent.id);
     await autoReply(ticketId, { grade: { passed: true }, sent: true });
-    await owner().insert(schema.aiResolutionGrade).values({
-      ticketId,
-      cycle: 0,
-      intentKey: intent.key,
-      resolutionClass: 'verified',
-      policyViolations: [{ code: 'disclosure', text: 'x' }],
-      violationCount: 1,
-      promptVersion: 1,
-    });
+    await owner()
+      .insert(schema.aiResolutionGrade)
+      .values({
+        ticketId,
+        cycle: 0,
+        intentKey: intent.key,
+        resolutionClass: 'verified',
+        policyViolations: [{ code: 'disclosure', text: 'x' }],
+        violationCount: 1,
+        promptVersion: 1,
+      });
     const first = await runAutonomyWatch(deps(), intent.id);
     expect(first.rolledBack).toEqual([{ intent: intent.key, rule: 'violation' }]);
     expect(await stageOf(intent.id)).toBe(2);
     const [row] = await rollbacks(intent.id);
     expect(row).toMatchObject({ fromStage: 3, toStage: 2, changedBy: null });
     expect(row?.evidence).toMatchObject({ rule: 'violation', violations: 1 });
-    const audit = await owner().select().from(schema.auditLog).where(eq(schema.auditLog.action, AUDIT_ACTIONS.autonomyAutoRollback));
+    const audit = await owner()
+      .select()
+      .from(schema.auditLog)
+      .where(eq(schema.auditLog.action, AUDIT_ACTIONS.autonomyAutoRollback));
     expect(audit.some((entry) => entry.targetId === intent.id)).toBe(true);
     const told = await notices(intent.key);
     expect(told.length).toBeGreaterThanOrEqual(1);
-    expect(told.every((notice) => notice.userId === headId || notice.userId === ownerPersonId)).toBe(true);
+    expect(
+      told.every((notice) => notice.userId === headId || notice.userId === ownerPersonId),
+    ).toBe(true);
     expect(told[0]?.data).toEqual({ intent: intent.key, rule: 'violation' });
     // Again: nothing more is written.
     expect((await runAutonomyWatch(deps(), intent.id)).checked).toBe(0);
@@ -269,15 +298,17 @@ describe('the autonomy watch (ADR-025 section 7)', () => {
     const intent = await stage3Intent();
     const ticketId = await ticketFor(intent.id, { seed: true });
     await autoReply(ticketId, { grade: { passed: false }, sent: true });
-    await owner().insert(schema.aiResolutionGrade).values({
-      ticketId,
-      cycle: 0,
-      intentKey: intent.key,
-      resolutionClass: 'assumed',
-      policyViolations: [{ code: 'promise', text: 'x' }],
-      violationCount: 1,
-      promptVersion: 1,
-    });
+    await owner()
+      .insert(schema.aiResolutionGrade)
+      .values({
+        ticketId,
+        cycle: 0,
+        intentKey: intent.key,
+        resolutionClass: 'assumed',
+        policyViolations: [{ code: 'promise', text: 'x' }],
+        violationCount: 1,
+        promptVersion: 1,
+      });
     expect(await runAutonomyWatch(deps(), intent.id)).toMatchObject({ rolledBack: [] });
     expect(await stageOf(intent.id)).toBe(3);
   });
@@ -290,21 +321,30 @@ describe('the autonomy watch (ADR-025 section 7)', () => {
     await autoReply(two, { sent: true });
     for (let i = 0; i < 3; i += 1) await autoReply(await ticketFor(intent.id), { sent: true });
     // One reopen alone is not enough.
-    await owner().insert(schema.ticketEvent).values({ ticketId: one, type: 'ticket.reopened', actorType: 'user', createdAt: new Date(Date.now() + 5000) });
+    await owner()
+      .insert(schema.ticketEvent)
+      .values({
+        ticketId: one,
+        type: 'ticket.reopened',
+        actorType: 'user',
+        createdAt: new Date(Date.now() + 5000),
+      });
     expect(await runAutonomyWatch(deps(), intent.id)).toMatchObject({ rolledBack: [] });
     expect(await stageOf(intent.id)).toBe(3);
     // A CSAT of 2 on another one makes two.
-    await owner().insert(schema.csatSurvey).values({
-      ticketId: two,
-      contactId,
-      orgId,
-      status: 'answered',
-      sendAfter: new Date(),
-      sentAt: new Date(),
-      tokenExpiresAt: new Date(Date.now() + 86_400_000),
-      answeredAt: new Date(),
-      score: 2,
-    });
+    await owner()
+      .insert(schema.csatSurvey)
+      .values({
+        ticketId: two,
+        contactId,
+        orgId,
+        status: 'answered',
+        sendAfter: new Date(),
+        sentAt: new Date(),
+        tokenExpiresAt: new Date(Date.now() + 86_400_000),
+        answeredAt: new Date(),
+        score: 2,
+      });
     const result = await runAutonomyWatch(deps(), intent.id);
     expect(result.rolledBack).toEqual([{ intent: intent.key, rule: 'reopen_or_csat' }]);
     expect(await stageOf(intent.id)).toBe(2);
@@ -315,18 +355,34 @@ describe('the autonomy watch (ADR-025 section 7)', () => {
     for (let i = 0; i < 3; i += 1) {
       const ticketId = await ticketFor(intent.id);
       await autoReply(ticketId, { sent: true });
-      await owner().insert(schema.csatSurvey).values({ ticketId, contactId, orgId, status: 'answered', sendAfter: new Date(), sentAt: new Date(), tokenExpiresAt: new Date(Date.now() + 86_400_000), answeredAt: new Date(), score: 3 });
+      await owner()
+        .insert(schema.csatSurvey)
+        .values({
+          ticketId,
+          contactId,
+          orgId,
+          status: 'answered',
+          sendAfter: new Date(),
+          sentAt: new Date(),
+          tokenExpiresAt: new Date(Date.now() + 86_400_000),
+          answeredAt: new Date(),
+          score: 3,
+        });
     }
     expect(await runAutonomyWatch(deps(), intent.id)).toMatchObject({ rolledBack: [] });
   });
 
   it('rolls back when 3 of the last 20 pre-send grades did not pass', async () => {
     const intent = await stage3Intent();
-    for (let i = 0; i < 2; i += 1) await autoReply(await ticketFor(intent.id), { grade: { passed: false } });
-    for (let i = 0; i < 4; i += 1) await autoReply(await ticketFor(intent.id), { grade: { passed: true } });
+    for (let i = 0; i < 2; i += 1)
+      await autoReply(await ticketFor(intent.id), { grade: { passed: false } });
+    for (let i = 0; i < 4; i += 1)
+      await autoReply(await ticketFor(intent.id), { grade: { passed: true } });
     expect(await runAutonomyWatch(deps(), intent.id)).toMatchObject({ rolledBack: [] });
     await autoReply(await ticketFor(intent.id), { grade: { passed: false } });
-    expect((await runAutonomyWatch(deps(), intent.id)).rolledBack).toEqual([{ intent: intent.key, rule: 'pre_send_fail' }]);
+    expect((await runAutonomyWatch(deps(), intent.id)).rolledBack).toEqual([
+      { intent: intent.key, rule: 'pre_send_fail' },
+    ]);
     expect(await stageOf(intent.id)).toBe(2);
   });
 
@@ -339,46 +395,85 @@ describe('the autonomy watch (ADR-025 section 7)', () => {
       windowStart: new Date(Date.now() - 7 * 86_400_000),
       windowEnd: new Date(),
     });
-    expect((await runAutonomyWatch(deps(), intent.id)).rolledBack).toEqual([{ intent: intent.key, rule: 'gate_red' }]);
+    expect((await runAutonomyWatch(deps(), intent.id)).rolledBack).toEqual([
+      { intent: intent.key, rule: 'gate_red' },
+    ]);
   });
 
   it('only ever lowers a stage: an intent at stage 2 is not looked at', async () => {
-    const [intent] = await owner().insert(schema.intent).values({ key: `i_${randomUUID().slice(0, 8)}`, name: 'x', autonomyStage: 2 }).returning();
-    expect(await runAutonomyWatch(deps(), intent?.id)).toMatchObject({ checked: 0, rolledBack: [] });
+    const [intent] = await owner()
+      .insert(schema.intent)
+      .values({ key: `i_${randomUUID().slice(0, 8)}`, name: 'x', autonomyStage: 2 })
+      .returning();
+    expect(await runAutonomyWatch(deps(), intent?.id)).toMatchObject({
+      checked: 0,
+      rolledBack: [],
+    });
   });
 });
 
 describe('the gate report (ADR-025 section 6)', () => {
   it('is insufficient_data for an intent with too little history, and never green', async () => {
-    const [intent] = await owner().insert(schema.intent).values({ key: `i_${randomUUID().slice(0, 8)}`, name: 'x', autonomyStage: 2 }).returning();
-    const made = await generateGateReport(database.db, domain.context({ actor: { type: 'user', id: headId } }), {
-      intentId: intent?.id ?? '',
-      trigger: 'on_demand',
-      generatedBy: headId,
-    });
+    const [intent] = await owner()
+      .insert(schema.intent)
+      .values({ key: `i_${randomUUID().slice(0, 8)}`, name: 'x', autonomyStage: 2 })
+      .returning();
+    const made = await generateGateReport(
+      database.db,
+      domain.context({ actor: { type: 'user', id: headId } }),
+      {
+        intentId: intent?.id ?? '',
+        trigger: 'on_demand',
+        generatedBy: headId,
+      },
+    );
     expect(made.status).toBe('insufficient_data');
     const [report] = await readGateReports(database.db, intent?.id ?? '');
-    expect(report).toMatchObject({ status: 'insufficient_data', seedExcluded: true, triggerKind: 'on_demand' });
-    expect(report?.criteria.find((criterion) => criterion.key === 'days_at_stage_2')?.pass).toBeNull();
+    expect(report).toMatchObject({
+      status: 'insufficient_data',
+      seedExcluded: true,
+      triggerKind: 'on_demand',
+    });
+    expect(
+      report?.criteria.find((criterion) => criterion.key === 'days_at_stage_2')?.pass,
+    ).toBeNull();
     expect(report?.criteria.map((criterion) => criterion.key)).toEqual(
-      expect.arrayContaining(['verified_resolution', 'reopen_rate', 'csat_parity', 'shadow_precision', 'eval_replay_violations']),
+      expect.arrayContaining([
+        'verified_resolution',
+        'reopen_rate',
+        'csat_parity',
+        'shadow_precision',
+        'eval_replay_violations',
+      ]),
     );
   });
 
   it('counts only real tickets: seed tickets are left out of every number', async () => {
-    const [intent] = await owner().insert(schema.intent).values({ key: `i_${randomUUID().slice(0, 8)}`, name: 'x', autonomyStage: 2 }).returning();
+    const [intent] = await owner()
+      .insert(schema.intent)
+      .values({ key: `i_${randomUUID().slice(0, 8)}`, name: 'x', autonomyStage: 2 })
+      .returning();
     const intentId = intent?.id ?? '';
     for (const seed of [true, true, false]) {
       const ticketId = await ticketFor(intentId, { seed, aiHandled: false });
-      await owner().insert(schema.aiResolutionGrade).values({ ticketId, cycle: 0, resolutionClass: 'verified', promptVersion: 1 });
+      await owner()
+        .insert(schema.aiResolutionGrade)
+        .values({ ticketId, cycle: 0, resolutionClass: 'verified', promptVersion: 1 });
     }
-    await generateGateReport(database.db, domain.context({ actor: { type: 'user', id: headId } }), { intentId, trigger: 'on_demand', generatedBy: headId });
+    await generateGateReport(database.db, domain.context({ actor: { type: 'user', id: headId } }), {
+      intentId,
+      trigger: 'on_demand',
+      generatedBy: headId,
+    });
     const [report] = await readGateReports(database.db, intentId);
     expect(report?.metrics).toMatchObject({ human: { graded: 1, verified: 1 }, ai: { graded: 0 } });
   });
 
   it('the weekly run writes a report for each intent at stage 2 or 3 and then watches', async () => {
-    const before = await owner().select().from(schema.autonomyGateReport).orderBy(desc(schema.autonomyGateReport.generatedAt));
+    const before = await owner()
+      .select()
+      .from(schema.autonomyGateReport)
+      .orderBy(desc(schema.autonomyGateReport.generatedAt));
     const result = await runWeeklyReports(deps());
     expect(result.reports).toBeGreaterThan(0);
     const after = await owner().select().from(schema.autonomyGateReport);

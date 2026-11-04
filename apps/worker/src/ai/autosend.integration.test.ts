@@ -218,7 +218,10 @@ async function publishProcedure(intentId: string, autosend: 'allowed' | 'never')
      VALUES ($1, true, false, 5, '{"violations":0}'::jsonb)`,
     [id],
   );
-  await testDb.owner.pool.query(`SELECT public.publish_procedure_version($1::uuid, $2::uuid)`, [id, person]);
+  await testDb.owner.pool.query(`SELECT public.publish_procedure_version($1::uuid, $2::uuid)`, [
+    id,
+    person,
+  ]);
 }
 
 /** The promotion door, end to end: report, request, owner approval with re-auth and key, apply. */
@@ -279,7 +282,12 @@ async function scenario(
   const key = `intent_${randomUUID().slice(0, 8).replace(/-/g, '')}`;
   const [intent] = await owner()
     .insert(schema.intent)
-    .values({ key, name: 'Reset a password', autonomyStage: 2, autosendShadow: options.shadow ?? false })
+    .values({
+      key,
+      name: 'Reset a password',
+      autonomyStage: 2,
+      autosendShadow: options.shadow ?? false,
+    })
     .returning();
   const intentId = intent?.id ?? '';
   await owner()
@@ -354,7 +362,15 @@ async function scenario(
       ticketId,
       state: 'draft_ready',
       generatedAt: new Date(),
-      evidence: [{ id: 'kb1', kind: 'kb', customerSafe: true, title: 'Reset a password', snippet: 'Use the reset link.' }],
+      evidence: [
+        {
+          id: 'kb1',
+          kind: 'kb',
+          customerSafe: true,
+          title: 'Reset a password',
+          snippet: 'Use the reset link.',
+        },
+      ],
     });
   const [draft] = await owner()
     .insert(schema.aiDraft)
@@ -376,10 +392,23 @@ async function scenario(
     body,
     input: {
       ticket: { id: ticketId, channel: options.channel ?? 'gmail' },
-      intent: { id: intentId, key, stage: options.stage ?? 2, autosendShadow: options.shadow ?? false },
+      intent: {
+        id: intentId,
+        key,
+        stage: options.stage ?? 2,
+        autosendShadow: options.shadow ?? false,
+      },
       draft: { id: draftId, body, aiRunId: null, language: 'en', citedEvidenceIds: ['kb1'] },
       evidence: [
-        { id: 'kb1', kind: 'kb', tool: 'kb_search', title: 'Reset a password', snippet: 'Use the reset link.', customerSafe: true, mock: false },
+        {
+          id: 'kb1',
+          kind: 'kb',
+          tool: 'kb_search',
+          title: 'Reset a password',
+          snippet: 'Use the reset link.',
+          customerSafe: true,
+          mock: false,
+        },
       ] as unknown as AutoSendStepInput['evidence'],
       customerTurns: ['How do I reset my password?'],
       agents: runtime.agentDeps([]),
@@ -403,11 +432,17 @@ function step(s: Scenario, domain: Domain = gateOn, rt: AiRuntime = runtime, fla
 }
 
 const evaluations = (draftId: string) =>
-  owner().select().from(schema.aiAutosendEvaluation).where(eq(schema.aiAutosendEvaluation.aiDraftId, draftId));
+  owner()
+    .select()
+    .from(schema.aiAutosendEvaluation)
+    .where(eq(schema.aiAutosendEvaluation.aiDraftId, draftId));
 const draftRow = async (id: string) =>
   (await owner().select().from(schema.aiDraft).where(eq(schema.aiDraft.id, id)))[0];
 const deliveriesOf = (ticketId: string) =>
-  owner().select().from(schema.outboundDelivery).where(eq(schema.outboundDelivery.ticketId, ticketId));
+  owner()
+    .select()
+    .from(schema.outboundDelivery)
+    .where(eq(schema.outboundDelivery.ticketId, ticketId));
 const heldNotes = (ticketId: string) =>
   owner()
     .select()
@@ -438,7 +473,10 @@ describe('shadow mode (ADR-025 section 3)', () => {
     expect((await draftRow(s.draftId))?.status).toBe('draft');
     expect(await deliveriesOf(s.ticketId)).toHaveLength(0);
     // The grade is of the composed text: the draft and the notice that it is automatic.
-    const [grade] = await owner().select().from(schema.aiGrade).where(eq(schema.aiGrade.aiDraftId, s.draftId));
+    const [grade] = await owner()
+      .select()
+      .from(schema.aiGrade)
+      .where(eq(schema.aiGrade.aiDraftId, s.draftId));
     expect(grade?.phase).toBe('pre_send');
     expect(grade?.gradedText).toBe(composeAutoSendText(s.body, undefined, 'en'));
     expect(grade?.gradedText).toContain('sent automatically');
@@ -470,11 +508,16 @@ describe('shadow mode (ADR-025 section 3)', () => {
   });
 
   it('a grader that finds a violation keeps the draft for a person (score capped, not passed)', async () => {
-    graderAnswer = { score: 0.99, violations: [{ code: 'promise', text: 'It promises a refund.' }] };
+    graderAnswer = {
+      score: 0.99,
+      violations: [{ code: 'promise', text: 'It promises a refund.' }],
+    };
     const s = await scenario({ shadow: true });
     await step(s);
     const [row] = await evaluations(s.draftId);
-    expect(row?.failedConditions).toEqual(expect.arrayContaining(['grade_failed', 'grade_violations', 'grade_score_low']));
+    expect(row?.failedConditions).toEqual(
+      expect.arrayContaining(['grade_failed', 'grade_violations', 'grade_score_low']),
+    );
   });
 });
 
@@ -492,11 +535,18 @@ describe('the live path (stage 3, flag on)', () => {
       channel: 'gmail',
     });
     expect(delivery?.aiGradeId).not.toBeNull();
-    const [message] = await owner().select().from(schema.message).where(eq(schema.message.id, delivery?.messageId ?? ''));
+    const [message] = await owner()
+      .select()
+      .from(schema.message)
+      .where(eq(schema.message.id, delivery?.messageId ?? ''));
     expect(message?.senderUserId).toBeNull();
     expect(message?.bodyText).toBe(composeAutoSendText(s.body, undefined, 'en'));
     expect((await draftRow(s.draftId))?.status).toBe('auto_approved');
-    expect((await evaluations(s.draftId))[0]).toMatchObject({ mode: 'live', wouldAutoSend: true, effectiveStage: 3 });
+    expect((await evaluations(s.draftId))[0]).toMatchObject({
+      mode: 'live',
+      wouldAutoSend: true,
+      effectiveStage: 3,
+    });
 
     const dispatcher = dispatcherFor(gateOn);
     // Too early: the hold has not ended.
@@ -506,9 +556,15 @@ describe('the live path (stage 3, flag on)', () => {
     const [sent] = await deliveriesOf(s.ticketId);
     expect(sent?.state).toBe('sent');
     expect((await draftRow(s.draftId))?.status).toBe('sent');
-    const [ticket] = await owner().select({ aiHandled: schema.ticket.aiHandled }).from(schema.ticket).where(eq(schema.ticket.id, s.ticketId));
+    const [ticket] = await owner()
+      .select({ aiHandled: schema.ticket.aiHandled })
+      .from(schema.ticket)
+      .where(eq(schema.ticket.id, s.ticketId));
     expect(ticket?.aiHandled).toBe(true);
-    const scheduled = await owner().select().from(schema.auditLog).where(eq(schema.auditLog.action, AUDIT_ACTIONS.autonomyAutosendScheduled));
+    const scheduled = await owner()
+      .select()
+      .from(schema.auditLog)
+      .where(eq(schema.auditLog.action, AUDIT_ACTIONS.autonomyAutosendScheduled));
     expect(scheduled.some((row) => row.targetId === delivery?.id)).toBe(true);
   });
 
@@ -518,8 +574,14 @@ describe('the live path (stage 3, flag on)', () => {
     const [delivery] = await deliveriesOf(s.ticketId);
     expect(delivery).toMatchObject({ origin: 'ai_auto', channel: 'portal' });
     clock.now = new Date(T0.getTime() + 121_000);
-    expect(await dispatcherFor(gateOn).dispatch(delivery?.id ?? '')).toMatchObject({ status: 'sent', route: null });
-    const [message] = await owner().select().from(schema.message).where(eq(schema.message.id, delivery?.messageId ?? ''));
+    expect(await dispatcherFor(gateOn).dispatch(delivery?.id ?? '')).toMatchObject({
+      status: 'sent',
+      route: null,
+    });
+    const [message] = await owner()
+      .select()
+      .from(schema.message)
+      .where(eq(schema.message.id, delivery?.messageId ?? ''));
     expect(message?.deliveryStatus).toBe('delivered');
   });
 
@@ -547,7 +609,7 @@ describe('the live path (stage 3, flag on)', () => {
     const s = await scenario({ stage: 3, ...options });
     expect(await step(s)).toBe('held');
     expect(await deliveriesOf(s.ticketId)).toHaveLength(0);
-    expect((await heldNotes(s.ticketId))[0]?.payload).toMatchObject({ reason: expect.any(String) });
+    expect((await heldNotes(s.ticketId))[0]?.payload).toHaveProperty('reason');
     const [row] = await evaluations(s.draftId);
     expect(row?.failedConditions).toContain(reason);
   });
@@ -566,11 +628,15 @@ describe('the live path (stage 3, flag on)', () => {
 
   it('the stage cap switch turns a live intent into a shadow one', async () => {
     const s = await scenario({ stage: 3, shadow: true });
-    await testDb.owner.pool.query(`UPDATE ai_switch SET is_on = true WHERE key = 'ai_stage_cap_pinned'`);
+    await testDb.owner.pool.query(
+      `UPDATE ai_switch SET is_on = true WHERE key = 'ai_stage_cap_pinned'`,
+    );
     try {
       expect(await step(s)).toBe('shadow');
     } finally {
-      await testDb.owner.pool.query(`UPDATE ai_switch SET is_on = false WHERE key = 'ai_stage_cap_pinned'`);
+      await testDb.owner.pool.query(
+        `UPDATE ai_switch SET is_on = false WHERE key = 'ai_stage_cap_pinned'`,
+      );
     }
     expect(await deliveriesOf(s.ticketId)).toHaveLength(0);
   });
@@ -581,7 +647,9 @@ describe('the live path (stage 3, flag on)', () => {
     try {
       expect(await step(s)).toBe('off');
     } finally {
-      await testDb.owner.pool.query(`UPDATE ai_switch SET is_on = false WHERE key = 'ai_kill_switch'`);
+      await testDb.owner.pool.query(
+        `UPDATE ai_switch SET is_on = false WHERE key = 'ai_kill_switch'`,
+      );
     }
     expect(graderCalls).toBe(0);
   });
@@ -598,48 +666,75 @@ describe('the dispatcher at claim time', () => {
 
   async function expectHeld(s: Scenario, deliveryId: string, reason: string): Promise<void> {
     const [delivery] = await deliveriesOf(s.ticketId);
-    expect(delivery).toMatchObject({ id: deliveryId, state: 'cancelled', errorCode: 'policy_denied' });
+    expect(delivery).toMatchObject({
+      id: deliveryId,
+      state: 'cancelled',
+      errorCode: 'policy_denied',
+    });
     // The draft is a draft again, the message says it never went out, and the ticket says why.
     expect((await draftRow(s.draftId))?.status).toBe('draft');
     expect((await draftRow(s.draftId))?.autoApprovedAt).toBeNull();
-    const [message] = await owner().select().from(schema.message).where(eq(schema.message.id, delivery?.messageId ?? ''));
+    const [message] = await owner()
+      .select()
+      .from(schema.message)
+      .where(eq(schema.message.id, delivery?.messageId ?? ''));
     expect(message?.deliveryStatus).toBe('cancelled');
-    expect((await heldNotes(s.ticketId)).some((note) => (note.payload as { reason?: string }).reason === reason)).toBe(true);
+    expect(
+      (await heldNotes(s.ticketId)).some(
+        (note) => (note.payload as { reason?: string }).reason === reason,
+      ),
+    ).toBe(true);
   }
 
   it('the worker checks its own flag: an api with it on and a worker with it off sends nothing', async () => {
     const { s, deliveryId } = await scheduled();
-    expect(await dispatcherFor(gateOff).dispatch(deliveryId)).toEqual({ status: 'denied', reason: 'autosend_flag_off' });
+    expect(await dispatcherFor(gateOff).dispatch(deliveryId)).toEqual({
+      status: 'denied',
+      reason: 'autosend_flag_off',
+    });
     await expectHeld(s, deliveryId, 'autosend_flag_off');
   });
 
   it('a person who replied during the hold ends it: nothing is sent', async () => {
     const { s, deliveryId } = await scheduled();
-    const [staff] = await owner().insert(schema.users).values({ email: `${randomUUID()}@example.test`, name: 'Staff', role: 'agent' }).returning({ id: schema.users.id });
-    await owner().insert(schema.message).values({
-      ticketId: s.ticketId,
-      direction: 'outbound',
-      senderUserId: staff?.id ?? null,
-      bodyText: 'I will take this one.',
-      visibility: 'public',
-      deliveryStatus: 'delivered',
-      // The test clock is the domain's clock (the delivery was made at T0), not the machine's.
-      createdAt: new Date(T0.getTime() + 5_000),
+    const [staff] = await owner()
+      .insert(schema.users)
+      .values({ email: `${randomUUID()}@example.test`, name: 'Staff', role: 'agent' })
+      .returning({ id: schema.users.id });
+    await owner()
+      .insert(schema.message)
+      .values({
+        ticketId: s.ticketId,
+        direction: 'outbound',
+        senderUserId: staff?.id ?? null,
+        bodyText: 'I will take this one.',
+        visibility: 'public',
+        deliveryStatus: 'delivered',
+        // The test clock is the domain's clock (the delivery was made at T0), not the machine's.
+        createdAt: new Date(T0.getTime() + 5_000),
+      });
+    expect(await dispatcherFor(gateOn).dispatch(deliveryId)).toEqual({
+      status: 'denied',
+      reason: 'human_stepped_in',
     });
-    expect(await dispatcherFor(gateOn).dispatch(deliveryId)).toEqual({ status: 'denied', reason: 'human_stepped_in' });
     await expectHeld(s, deliveryId, 'human_stepped_in');
   });
 
   it('an assignment during the hold ends it too', async () => {
     const { s, deliveryId } = await scheduled();
-    await owner().insert(schema.ticketEvent).values({
-      ticketId: s.ticketId,
-      type: 'ticket.assigned',
-      actorType: 'user',
-      actorId: headId,
-      createdAt: new Date(T0.getTime() + 5_000),
+    await owner()
+      .insert(schema.ticketEvent)
+      .values({
+        ticketId: s.ticketId,
+        type: 'ticket.assigned',
+        actorType: 'user',
+        actorId: headId,
+        createdAt: new Date(T0.getTime() + 5_000),
+      });
+    expect(await dispatcherFor(gateOn).dispatch(deliveryId)).toEqual({
+      status: 'denied',
+      reason: 'human_stepped_in',
     });
-    expect(await dispatcherFor(gateOn).dispatch(deliveryId)).toEqual({ status: 'denied', reason: 'human_stepped_in' });
     await expectHeld(s, deliveryId, 'human_stepped_in');
   });
 
@@ -647,9 +742,14 @@ describe('the dispatcher at claim time', () => {
     const { s, deliveryId } = await scheduled();
     await testDb.owner.pool.query(`UPDATE ai_switch SET is_on = true WHERE key = 'ai_kill_switch'`);
     try {
-      expect(await dispatcherFor(gateOn).dispatch(deliveryId)).toEqual({ status: 'denied', reason: 'kill_switch_on' });
+      expect(await dispatcherFor(gateOn).dispatch(deliveryId)).toEqual({
+        status: 'denied',
+        reason: 'kill_switch_on',
+      });
     } finally {
-      await testDb.owner.pool.query(`UPDATE ai_switch SET is_on = false WHERE key = 'ai_kill_switch'`);
+      await testDb.owner.pool.query(
+        `UPDATE ai_switch SET is_on = false WHERE key = 'ai_kill_switch'`,
+      );
     }
     await expectHeld(s, deliveryId, 'kill_switch_on');
   });
@@ -662,7 +762,10 @@ describe('the dispatcher at claim time', () => {
         reason: 'test rollback',
       }),
     );
-    expect(await dispatcherFor(gateOn).dispatch(deliveryId)).toEqual({ status: 'denied', reason: 'stage_below_3' });
+    expect(await dispatcherFor(gateOn).dispatch(deliveryId)).toEqual({
+      status: 'denied',
+      reason: 'stage_below_3',
+    });
     await expectHeld(s, deliveryId, 'stage_below_3');
   });
 
@@ -715,12 +818,18 @@ describe('the pre-send grade is bound to the exact text', () => {
         'live',
       );
     expect((await ask(gradeId, text))?.failed).toEqual([]);
-    expect((await ask(gradeId, `${text} Also, a refund is on its way.`))?.failed).toEqual(['grade_hash_mismatch']);
+    expect((await ask(gradeId, `${text} Also, a refund is on its way.`))?.failed).toEqual([
+      'grade_hash_mismatch',
+    ]);
     // A grade that belongs to another draft is no grade.
     const other = await scenario({ stage: 3 });
     expect((await ask(gradeId, text, other.draftId))?.failed).toContain('grade_missing');
     // A grader that is the drafter, or a mock grade, never clears.
-    const same = await recordPreSendGrade(database.db, { ...base, text, graderModel: 'drafter-fixture' });
+    const same = await recordPreSendGrade(database.db, {
+      ...base,
+      text,
+      graderModel: 'drafter-fixture',
+    });
     expect((await ask(same, text))?.failed).toEqual(['grader_not_independent']);
     const mock = await recordPreSendGrade(database.db, { ...base, text, mock: true });
     expect((await ask(mock, text))?.failed).toEqual(['grade_mock']);

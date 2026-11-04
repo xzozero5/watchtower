@@ -8,11 +8,7 @@ import { DevMockLlmProvider } from '../providers/dev-mock.js';
 import { createRedactor } from '../redaction/redactor.js';
 import { ALLOW_ALL_GUARD } from '../test-guard.js';
 import type { AgentDeps } from './common.js';
-import {
-  VIOLATION_SCORE_CEILING,
-  gradePreSend,
-  type PreSendGradeInput,
-} from './grade-presend.js';
+import { VIOLATION_SCORE_CEILING, gradePreSend, type PreSendGradeInput } from './grade-presend.js';
 
 const TICKET = '00000000-0000-4000-8000-0000000000aa';
 
@@ -59,8 +55,11 @@ const input: PreSendGradeInput = {
   intentKey: 'access',
   locale: 'en',
   customerTurns: ['I cannot sign in, my email is jane@customer.example'],
-  reply: 'Please reset your password on the sign in page. Write to jane@customer.example if it fails.',
-  sources: [{ id: 'k1', title: 'Reset a password', snippet: 'Use the reset link on the sign in page.' }],
+  reply:
+    'Please reset your password on the sign in page. Write to jane@customer.example if it fails.',
+  sources: [
+    { id: 'k1', title: 'Reset a password', snippet: 'Use the reset link on the sign in page.' },
+  ],
 };
 
 describe('gradePreSend', () => {
@@ -72,7 +71,10 @@ describe('gradePreSend', () => {
       value: { score: 0.93, passed: true, violations: [], promptVersion: 1, mock: true },
     });
     expect(runs).toHaveLength(1);
-    expect(runs[0]).toMatchObject({ agent: 'grader', prompt: { id: 'grader_pre_send', version: 1 } });
+    expect(runs[0]).toMatchObject({
+      agent: 'grader',
+      prompt: { id: 'grader_pre_send', version: 1 },
+    });
   });
 
   it('caps the score of a reply with a violation, whatever the model claimed', async () => {
@@ -87,7 +89,9 @@ describe('gradePreSend', () => {
     if (out.status !== 'ok') return;
     expect(out.value.passed).toBe(false);
     expect(out.value.score).toBeLessThanOrEqual(VIOLATION_SCORE_CEILING);
-    expect(out.value.violations).toEqual([{ code: 'promise', text: 'It promises a refund by Friday.' }]);
+    expect(out.value.violations).toEqual([
+      { code: 'promise', text: 'It promises a refund by Friday.' },
+    ]);
   });
 
   it('keeps an unknown violation code as "other" instead of dropping the violation', async () => {

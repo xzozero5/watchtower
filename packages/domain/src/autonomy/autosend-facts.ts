@@ -60,7 +60,11 @@ function customerKbCardIds(evidence: unknown): Set<string> {
   if (!Array.isArray(evidence)) return ids;
   for (const card of evidence as unknown[]) {
     if (typeof card !== 'object' || card === null) continue;
-    const { id, kind, customerSafe } = card as { id?: unknown; kind?: unknown; customerSafe?: unknown };
+    const { id, kind, customerSafe } = card as {
+      id?: unknown;
+      kind?: unknown;
+      customerSafe?: unknown;
+    };
     if (typeof id === 'string' && kind === 'kb' && customerSafe === true) ids.add(id);
   }
   return ids;
@@ -138,7 +142,7 @@ export async function loadAutoSendFacts(
       ticketId: schema.aiGrade.ticketId,
       phase: schema.aiGrade.phase,
       hash: schema.aiGrade.contentHash,
-      ageSeconds: sql<number>`extract(epoch from (clock_timestamp() - ${schema.aiGrade.gradedAt}))`,
+      ageSeconds: sql<string>`extract(epoch from (clock_timestamp() - ${schema.aiGrade.gradedAt}))`,
       passed: schema.aiGrade.passed,
       violationCount: schema.aiGrade.violationCount,
       score: schema.aiGrade.score,
@@ -203,7 +207,9 @@ export async function loadAutoSendFacts(
   const safeKb = customerKbCardIds(insight?.evidence);
   const cited = new Set(
     draftOk
-      ? draft.citations.filter((citation) => safeKb.has(citation.evidenceId)).map((c) => c.evidenceId)
+      ? draft.citations
+          .filter((citation) => safeKb.has(citation.evidenceId))
+          .map((c) => c.evidenceId)
       : [],
   );
   const policy = parseAutosendPolicy(intent.policy);
@@ -216,7 +222,7 @@ export async function loadAutoSendFacts(
     linksAllowed: linksAllowed(request.text, options.linkOrigins),
     attachments: request.attachmentCount + (request.hasHtml ? 1 : 0),
     placeholders: countPlaceholders(request.text),
-    length: [...request.text].length,
+    length: Array.from(request.text).length,
     maxChars: policy?.maxChars ?? 0,
   };
 
@@ -268,7 +274,7 @@ export async function loadAutoSendFacts(
     customerWantsHuman: customerWantsHuman(
       inbound.filter((message) => message.visibility === 'public').map((message) => message.text),
     ),
-    autoStreak: Number(streak?.n ?? 0),
+    autoStreak: streak?.n ?? 0,
     reopenedAfterAuto: reopened !== undefined,
   };
 
@@ -293,7 +299,7 @@ export async function loadAutoSendFacts(
   const stepsAutosend =
     published === undefined
       ? null
-      : (published.steps as { autosend?: unknown } | null)?.autosend ?? null;
+      : ((published.steps as { autosend?: unknown } | null)?.autosend ?? null);
   const procedure: AutoSendProcedureFacts = {
     autosendAllowed: stepsAutosend === 'allowed',
     stale:
@@ -322,7 +328,7 @@ export async function loadAutoSendFacts(
     exceeded === null
       ? null
       : {
-          autoSentToday: Number(today?.n ?? 0),
+          autoSentToday: today?.n ?? 0,
           dailyCap: intent.dailyCap,
           aiBudgetExceeded: exceeded,
         };
@@ -358,7 +364,7 @@ export async function loadAutoSendFacts(
       dailyCap: intent.dailyCap,
       contactVerified: disclosure.contactVerified,
       senderAuthenticated: disclosure.senderAuthenticated,
-      procedureAutosend: stepsAutosend === null ? null : String(stepsAutosend),
+      procedureAutosend: typeof stepsAutosend === 'string' ? stepsAutosend : null,
       procedureStale: procedure.stale,
     },
   };
