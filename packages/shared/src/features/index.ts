@@ -44,6 +44,7 @@ import {
 } from './statuspage.js';
 import { USAGE_AUDIT_ACTIONS, USAGE_QUEUES, USAGE_TICKET_EVENTS } from './usage.js';
 import { DASHBOARD_AUDIT_ACTIONS, DASHBOARD_QUEUES, DASHBOARD_TICKET_EVENTS } from './dashboard.js';
+import { REPORTS_AUDIT_ACTIONS, REPORTS_QUEUES, REPORTS_TICKET_EVENTS } from './reports.js';
 import { UPLOADS_AUDIT_ACTIONS, UPLOADS_QUEUES, UPLOADS_TICKET_EVENTS } from './uploads.js';
 
 export * from './inbound.js';
@@ -69,6 +70,7 @@ export * from './tools.js';
 export * from './statuspage.js';
 export * from './usage.js';
 export * from './dashboard.js';
+export * from './reports.js';
 export * from './uploads.js';
 export { assertDisjoint } from './compose.js';
 
@@ -195,6 +197,12 @@ export const FEATURES = [
     ticketEvents: UPLOADS_TICKET_EVENTS,
     queues: UPLOADS_QUEUES,
   },
+  {
+    name: 'reports',
+    auditActions: REPORTS_AUDIT_ACTIONS,
+    ticketEvents: REPORTS_TICKET_EVENTS,
+    queues: REPORTS_QUEUES,
+  },
 ] as const;
 
 export type FeatureName = (typeof FEATURES)[number]['name'];
@@ -222,6 +230,7 @@ export const FEATURE_AUDIT_ACTIONS = {
   ...STATUSPAGE_AUDIT_ACTIONS,
   ...USAGE_AUDIT_ACTIONS,
   ...DASHBOARD_AUDIT_ACTIONS,
+  ...REPORTS_AUDIT_ACTIONS,
   ...UPLOADS_AUDIT_ACTIONS,
 } as const;
 
@@ -248,6 +257,7 @@ export const FEATURE_TICKET_EVENTS = {
   ...STATUSPAGE_TICKET_EVENTS,
   ...USAGE_TICKET_EVENTS,
   ...DASHBOARD_TICKET_EVENTS,
+  ...REPORTS_TICKET_EVENTS,
   ...UPLOADS_TICKET_EVENTS,
 } as const;
 
@@ -274,5 +284,6 @@ export const FEATURE_QUEUES = {
   ...STATUSPAGE_QUEUES,
   ...USAGE_QUEUES,
   ...DASHBOARD_QUEUES,
+  ...REPORTS_QUEUES,
   ...UPLOADS_QUEUES,
 } as const;

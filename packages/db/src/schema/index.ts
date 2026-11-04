@@ -24,6 +24,7 @@ export * from './incident.js';
 export * from './tools.js';
 export * from './statuspage.js';
 export * from './usage.js';
+export * from './reports.js';
 export * from './uploads.js';
 // Malware scan state of uploaded files (T-155, migration 0091).
 export * from './object-scan.js';
