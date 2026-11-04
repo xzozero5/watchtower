@@ -42,6 +42,12 @@ step มี `stages` · stage 0 ไม่ส่ง guideline · **`autosend: 'ne
 ### 9. Boundary
 shared: Zod + `evaluateCondition()` · ai: `procedure_compiler`, `planRunbook(…, procedure)`, guideline เข้า drafter · domain: validation, CRUD, publish · api: `/v1/intents/:id/procedure/versions…` · worker: queue `procedure-simulate`
 
+### 10. ความหมายของ `escalate` (main thread ตัดสิน 2026-11-04 หลัง T-303c)
+- `to: { queueKey }` → proposal "ย้ายไปคิว X" (+ priority ถ้าระบุ) · กดแล้วเรียก service update ticket เดิม เปลี่ยนคิว **คง assignee เดิม** (คนในคิวใหม่ re-assign เอง) · audit `via=procedure`
+- `to: { role: 'lead'|'head' }` → proposal "ขอ lead/head ดู" · กดแล้วส่ง notification severity high ถึงผู้มี role นั้นที่อยู่กะ (ไม่มีใครอยู่กะ = ทุกคนใน role) + internal note ที่มี `note` ของ step · **ไม่ assign อัตโนมัติ** · ใส่ priority ถ้าระบุ
+- ผู้กดต้องมี `ticket.handle` · proposal หมดอายุเมื่อ version ของ procedure เปลี่ยนหรือ ticket ปิด
+- `check` ที่ไม่มี tool step ที่รันจริงจะไม่ถูกถาม · procedure ที่ไม่มี tool step ใช้ default runbook (ตามที่ T-303c ทำ)
+
 ## Options considered
 A procedure แทน runbook — intent ที่ไม่มี procedure ไม่มี investigation · ตัด · B agentic tool loop — ทำลายการกัน injection ของ ADR-013, ขัด N2 · ตัด · C DSL expression string (CEL/JSONLogic) — dependency + parser attack surface · ตัด · **D (เลือก)**
 
