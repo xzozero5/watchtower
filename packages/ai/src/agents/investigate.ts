@@ -180,6 +180,14 @@ export function planRunbook(
     if (params?.windowHours !== undefined && 'windowHours' in input) {
       input.windowHours = params.windowHours;
     }
+    // The template the step names (T-303f): a name the domain checked is the intent's own and `run_by_ai`; the port
+    // checks it again. Only the tools that run a template take one.
+    if (
+      step.template !== undefined &&
+      (step.tool === TOOL_NAMES.gcpLogs || step.tool === TOOL_NAMES.bigquery)
+    ) {
+      input.template = step.template;
+    }
     return [{ tool: base.tool, input, stepId: step.id }];
   });
 }

@@ -23,6 +23,7 @@ import {
 } from './autonomy/promotion.js';
 import { readAutonomyState, setAiSwitch, setIntentAutonomy } from './autonomy/state.js';
 import { findOrCreateContactByEmail } from './contacts.js';
+import { applyProcedureEscalation, readProcedureProposals } from './procedures/escalation.js';
 import {
   confirmProcedureVersion,
   createProcedureDraft,
@@ -619,6 +620,11 @@ export {
   type SimulationTicket,
 } from './procedures/runtime.js';
 export {
+  applyProcedureEscalation,
+  readProcedureProposals,
+  type ApplyEscalationInput,
+} from './procedures/escalation.js';
+export {
   readAutonomyState,
   readSwitches,
   setAiSwitch,
@@ -795,6 +801,9 @@ export interface Domain {
     readonly confirm: typeof confirmProcedureVersion;
     readonly publish: typeof publishProcedureVersion;
     readonly retire: typeof retireProcedureVersion;
+    /** The escalation cards of a ticket and what pressing one does (T-303f, ADR-026 section 10). */
+    readonly proposals: typeof readProcedureProposals;
+    readonly applyEscalation: typeof applyProcedureEscalation;
   };
   /** Knowledge base articles (T-107): create, edit, move between statuses, publish. */
   readonly kb: {
@@ -1003,6 +1012,8 @@ export function createDomain(options: DomainOptions): Domain {
       confirm: confirmProcedureVersion,
       publish: publishProcedureVersion,
       retire: retireProcedureVersion,
+      proposals: readProcedureProposals,
+      applyEscalation: applyProcedureEscalation,
     },
     kb: {
       create: createKbArticle,

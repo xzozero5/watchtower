@@ -39,6 +39,7 @@ export const NOTIFICATIONS_QUEUES = {} as const satisfies Record<string, string>
 export const NOTIFICATION_KINDS = [
   'ticket.p1',
   'ticket.assigned',
+  'ticket.escalation_requested',
   'shift.handoff_overdue',
   'shift.no_show',
   'alert.fired',
