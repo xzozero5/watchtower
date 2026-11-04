@@ -33,6 +33,7 @@ export const adminKeys = (userId: string) => {
     integrations: [...all, 'integrations'] as const,
     gmailStatus: [...all, 'gmail-status'] as const,
     channelAccounts: [...all, 'channel-accounts'] as const,
+    csatSettings: [...all, 'csat-settings'] as const,
     orgTiers: [...all, 'org-tiers'] as const,
     outboxHealth: [...all, 'outbox-health'] as const,
     outboxDead: [...all, 'outbox-dead'] as const,
@@ -295,6 +296,17 @@ export function useChannelAccounts(enabled = true) {
   return useQuery({
     queryKey: adminKeys(userId).channelAccounts,
     queryFn: ({ signal }) => api.channelAccounts(signal),
+    enabled,
+    staleTime: 10_000,
+  });
+}
+
+export function useCsatSettings(enabled = true) {
+  const api = useApi();
+  const userId = useUserId();
+  return useQuery({
+    queryKey: adminKeys(userId).csatSettings,
+    queryFn: ({ signal }) => api.csatSettings(signal),
     enabled,
     staleTime: 10_000,
   });

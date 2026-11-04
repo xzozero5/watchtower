@@ -1,10 +1,15 @@
-import { fireEvent, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { AssistantReply, AssistantStarters, Role } from '@watchtower/shared';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { AssistantBubble } from '@/components/assistant/assistant-bubble';
 import { AuthGate } from '@/components/auth-gate';
+import {
+  requestAssistantOpen,
+  resetAssistantHiddenCache,
+  setAssistantHidden,
+} from '@/lib/assistant/assistant-ui';
 import { consoleApi } from '@/test/console-api';
 import { makeAutonomy } from '@/test/console-fixtures';
 import { apiError, type MockHandler } from '@/test/mock-api';
@@ -82,6 +87,8 @@ function setup(
 const bubble = () => screen.findByTestId('assistant-bubble');
 
 beforeEach(() => {
+  localStorage.clear();
+  resetAssistantHiddenCache();
   pathname = '/';
   window.history.replaceState(null, '', '/');
 });
@@ -94,7 +101,7 @@ describe('AssistantBubble', () => {
     setup();
     const button = await bubble();
     expect(button).toHaveAttribute('aria-expanded', 'false');
-    expect(button).toHaveAttribute('aria-keyshortcuts', 'Control+J Meta+J');
+    expect(button).toHaveAttribute('aria-keyshortcuts', 'Control+/ Meta+/');
     expect(screen.queryByTestId('assistant-panel')).not.toBeInTheDocument();
     await userEvent.click(button);
     expect(await screen.findByRole('dialog', { name: 'AI assistant' })).toBeVisible();
@@ -113,19 +120,19 @@ describe('AssistantBubble', () => {
     expect(screen.queryByTestId('assistant-bubble')).not.toBeInTheDocument();
   });
 
-  it('Ctrl+J opens and closes it, also from a text field; Esc closes and returns focus', async () => {
+  it('Ctrl+/ opens and closes it, also from a text field; Esc closes and returns focus', async () => {
     setup();
     const button = await bubble();
-    fireEvent.keyDown(document, { key: 'j', code: 'KeyJ', ctrlKey: true });
+    fireEvent.keyDown(document, { key: '/', code: 'Slash', ctrlKey: true });
     const input = await screen.findByRole('textbox', { name: 'Ask the AI assistant' });
     await waitFor(() => {
       expect(input).toHaveFocus();
     });
-    fireEvent.keyDown(input, { key: 'j', code: 'KeyJ', metaKey: true });
+    fireEvent.keyDown(input, { key: '/', code: 'Slash', metaKey: true });
     await waitFor(() => {
       expect(screen.queryByTestId('assistant-panel')).not.toBeVisible();
     });
-    fireEvent.keyDown(document, { key: 'j', code: 'KeyJ', ctrlKey: true });
+    fireEvent.keyDown(document, { key: '/', code: 'Slash', ctrlKey: true });
     await waitFor(() => {
       expect(screen.getByTestId('assistant-panel')).toBeVisible();
     });
@@ -347,5 +354,140 @@ describe('AssistantBubble', () => {
         'The ticket changed after this card was made. Nothing was done.',
       ),
     ).toBeInTheDocument();
+  });
+});
+
+describe('AssistantBubble: staying out of the way', () => {
+  it('opens from the palette request, also when the button is hidden', async () => {
+    setup();
+    await bubble();
+    requestAssistantOpen();
+    expect(await screen.findByRole('dialog', { name: 'AI assistant' })).toBeVisible();
+  });
+
+  it('hides the button by choice, and the shortcut still opens it and Esc gives focus back', async () => {
+    setAssistantHidden(true);
+    setup();
+    await screen.findByText('Page');
+    expect(screen.queryByTestId('assistant-bubble')).not.toBeInTheDocument();
+
+    const origin = document.createElement('button');
+    origin.textContent = 'Where I was';
+    document.body.append(origin);
+    origin.focus();
+    fireEvent.keyDown(document, { key: '/', code: 'Slash', ctrlKey: true });
+    const input = await screen.findByRole('textbox', { name: 'Ask the AI assistant' });
+    await waitFor(() => {
+      expect(input).toHaveFocus();
+    });
+    await userEvent.keyboard('{Escape}');
+    await waitFor(() => {
+      expect(screen.getByTestId('assistant-panel')).not.toBeVisible();
+    });
+    expect(origin).toHaveFocus();
+    origin.remove();
+  });
+
+  it('brings the button back when the choice is undone', async () => {
+    setAssistantHidden(true);
+    setup();
+    await screen.findByText('Page');
+    expect(screen.queryByTestId('assistant-bubble')).not.toBeInTheDocument();
+    act(() => {
+      setAssistantHidden(false);
+    });
+    expect(await bubble()).toBeVisible();
+  });
+
+  it('steps aside while another dialog is open, and not for its own sheet', async () => {
+    setup();
+    await bubble();
+    const dialog = document.createElement('div');
+    dialog.setAttribute('role', 'dialog');
+    dialog.setAttribute('data-state', 'open');
+    document.body.append(dialog);
+    await waitFor(() => {
+      expect(screen.queryByTestId('assistant-bubble')).not.toBeInTheDocument();
+    });
+    dialog.remove();
+    expect(await bubble()).toBeVisible();
+  });
+
+  it('lifts above a bar at the foot of the window and settles back when it goes', async () => {
+    setup();
+    await bubble();
+    const bar = document.createElement('form');
+    bar.setAttribute('data-sticky-footer', '');
+    bar.getBoundingClientRect = () =>
+      ({
+        top: window.innerHeight - 60,
+        right: window.innerWidth,
+        bottom: window.innerHeight,
+        height: 60,
+      }) as DOMRect;
+    document.body.append(bar);
+    await waitFor(async () => {
+      expect((await bubble()).style.marginBottom).toBe('68px');
+    });
+    bar.remove();
+    await waitFor(async () => {
+      expect((await bubble()).style.marginBottom).toBe('');
+    });
+  });
+});
+
+describe('AssistantBubble: below 768 px', () => {
+  const phone = () => {
+    vi.stubGlobal('matchMedia', (query: string) => ({
+      matches: false,
+      media: query,
+      addEventListener: () => undefined,
+      removeEventListener: () => undefined,
+    }));
+  };
+
+  it('is a modal sheet that takes focus, keeps the thread when closed, and returns focus', async () => {
+    phone();
+    setup();
+    const button = await bubble();
+    await userEvent.click(button);
+    const sheet = await screen.findByRole('dialog', { name: 'AI assistant' });
+    expect(sheet).toHaveAttribute('data-assistant-surface');
+    const input = within(sheet).getByRole('textbox', { name: 'Ask the AI assistant' });
+    await waitFor(() => {
+      expect(input).toHaveFocus();
+    });
+    // Modal: the page behind is hidden from assistive technology and focus cannot leave the sheet.
+    expect(screen.getByText('Page', { selector: '[aria-hidden]' })).toHaveAttribute(
+      'aria-hidden',
+      'true',
+    );
+    await userEvent.type(input, 'half a thought');
+    await userEvent.tab({ shift: true });
+    await userEvent.tab({ shift: true });
+    await userEvent.tab({ shift: true });
+    await userEvent.tab({ shift: true });
+    await userEvent.tab({ shift: true });
+    expect(sheet).toContainElement(document.activeElement as HTMLElement);
+
+    await userEvent.keyboard('{Escape}');
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    });
+    expect(button).toHaveFocus();
+
+    await userEvent.click(button);
+    expect(await screen.findByRole('textbox', { name: 'Ask the AI assistant' })).toHaveValue(
+      'half a thought',
+    );
+  });
+
+  it('does not count its own sheet as "another dialog" (the button stays for its Close)', async () => {
+    phone();
+    setup();
+    await userEvent.click(await bubble());
+    await screen.findByRole('dialog', { name: 'AI assistant' });
+    // On a phone the button is hidden by CSS while the sheet covers the page, but it is not removed.
+    expect(screen.getByTestId('assistant-bubble')).toBeInTheDocument();
   });
 });

@@ -42,6 +42,9 @@ const READS = {
   'GET /v1/admin/integrations': { json: makeIntegrationList() },
   'GET /v1/admin/channel-accounts': { json: { items: [LINE_ACCOUNT, GMAIL_ACCOUNT] } },
   'GET /v1/admin/integrations/gmail/oauth/status': { json: makeGmailStatus() },
+  'GET /v1/csat/settings': {
+    json: { enabled: true, delayMinutes: 60, reminderHours: 48, cooldownDays: 7 },
+  },
 } satisfies Record<string, MockHandler>;
 
 function setup(overrides: Record<string, MockHandler> = {}, role: 'head' | 'lead' = 'head') {

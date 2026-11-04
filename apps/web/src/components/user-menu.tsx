@@ -19,13 +19,14 @@ import {
   TINT_CLASSES,
   Tooltip,
 } from '@watchtower/ui';
-import { Keyboard, LogOut, Moon, Rows2, Rows4, SunMoon } from 'lucide-react';
+import { Bot, Keyboard, LogOut, Moon, Rows2, Rows4, SunMoon } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import type { ReactNode } from 'react';
 
 import { isLocale, LOCALE_FLAGS, LOCALE_LABELS, LOCALES } from '@/i18n';
 import { useI18n } from '@/i18n/provider';
 import { useDarkInEffect } from '@/components/display-controls';
+import { setAssistantHidden, useAssistantHidden } from '@/lib/assistant/assistant-ui';
 import { useSession } from '@/lib/auth/session';
 import { saveLocale } from '@/lib/locale-cookie';
 import { SIDE_BY_SIDE_QUERY, useMediaQuery } from '@/lib/use-media-query';
@@ -49,7 +50,8 @@ export function UserMenu({
 }) {
   const { t, locale } = useI18n();
   const router = useRouter();
-  const { session, signOut } = useSession();
+  const { session, signOut, can } = useSession();
+  const assistantHidden = useAssistantHidden();
   const { theme, density } = usePreferences();
   const dark = useDarkInEffect();
   const sideBySide = useMediaQuery(SIDE_BY_SIDE_QUERY);
@@ -104,6 +106,9 @@ export function UserMenu({
           theme={theme}
           dark={dark}
           density={density}
+          assistant={
+            can('ticket.read') || can('ticket.read.masked') ? { hidden: assistantHidden } : null
+          }
           locale={locale}
           onShowShortcuts={onShowShortcuts}
           onLocale={(next) => {
@@ -130,6 +135,7 @@ function MenuBody({
   theme,
   dark,
   density,
+  assistant,
   locale,
   onShowShortcuts,
   onLocale,
@@ -140,6 +146,8 @@ function MenuBody({
   theme: ReturnType<typeof usePreferences>['theme'];
   dark: boolean;
   density: ReturnType<typeof usePreferences>['density'];
+  /** Null when this person has no assistant (a customer). */
+  assistant: { hidden: boolean } | null;
   locale: string;
   onShowShortcuts: () => void;
   onLocale: (locale: (typeof LOCALES)[number]) => void;
@@ -223,6 +231,17 @@ function MenuBody({
           <SunMoon aria-hidden className={`size-4 ${TINT_CLASSES.slate.icon}`} />
           {t('prefs.theme.followSystem')}
         </DropdownMenuItem>
+      ) : null}
+      {assistant ? (
+        <DropdownMenuCheckboxItem
+          checked={!assistant.hidden}
+          onCheckedChange={(checked) => {
+            setAssistantHidden(!checked);
+          }}
+        >
+          <Bot aria-hidden className={`size-4 ${TINT_CLASSES.violet.icon}`} />
+          {t('prefs.assistantButton')}
+        </DropdownMenuCheckboxItem>
       ) : null}
 
       <DropdownMenuSeparator />

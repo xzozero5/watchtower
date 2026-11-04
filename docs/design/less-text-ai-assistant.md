@@ -57,7 +57,7 @@
 ### 2.2 Keyboard
 | Key | ผล |
 |---|---|
-| `Ctrl/⌘ J` | เปิด + focus ช่องพิมพ์ / ปิด (ทำงานใน text field ด้วย; ทับ Downloads ของ browser `[VERIFY]` Chrome/Edge/Firefox) + palette command |
+| `Ctrl/⌘ /` | เปิด + focus ช่องพิมพ์ / ปิด (ทำงานใน text field ด้วย) + palette command "Ask AI" · เดิมเสนอ `Ctrl/⌘ J` แต่ชน Downloads ของ browser จึงเปลี่ยน (ADR-023, UI-SPEC §14) |
 | `Enter` / `Shift Enter` | ส่ง / ขึ้นบรรทัด — `Enter` ไม่เคยยืนยัน action card |
 | `Tab` | วนใน panel (soft trap) · มือถือเป็น modal trap จริง |
 | `F6` | ออกจาก panel ไป pane ถัดไปโดยไม่ปิด (ทำให้ desktop ไม่เป็น keyboard trap; WCAG 2.1.2 และกดลิงก์หลักฐานแล้วอ่านคู่กันได้) |

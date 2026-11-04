@@ -9,6 +9,7 @@ export const prefsEn = {
   },
   density: { label: 'Density', comfortable: 'Comfortable', compact: 'Compact' },
   language: { label: 'Language' },
+  assistantButton: 'AI assistant button',
   singleKey: {
     label: 'Single-key shortcuts',
     hint: 'Letter and symbol keys such as J, K and ?. Turn off if they trigger by accident, for example with speech input.',

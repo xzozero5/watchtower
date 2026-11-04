@@ -30,6 +30,8 @@ export interface CommandActions {
   goAdmin?: (href: string) => void;
   /** Shift screens (T-111f): My shift, Daily brief, Handoff, Notes, Lead view. */
   goTo?: (href: string) => void;
+  /** Opens the AI assistant panel ("Ask AI"). Only offered to people who can read tickets. */
+  askAssistant?: () => void;
   /** Opens the confirm dialog for a switch; it never flips the switch itself. */
   openSwitchDialog?: (switchKey: AiSwitchKey, on: boolean) => void;
 }
@@ -250,7 +252,21 @@ export function buildCommands(
       run(actions);
     },
   }));
-  return access ? [...adminCommands(t, actions, access), ...base] : base;
+  if (!access) return base;
+  const ask = actions.askAssistant;
+  const assistant: Command[] =
+    ask && (access.can('ticket.read') || access.can('ticket.read.masked'))
+      ? [
+          {
+            id: 'ai.ask',
+            label: t('commands.askAssistant'),
+            group: 'general',
+            keywords: ['ai', 'assistant', 'ask', 'chat', 'help', 'ผู้ช่วย', 'ถาม', 'แชท'],
+            run: ask,
+          },
+        ]
+      : [];
+  return [...adminCommands(t, actions, access), ...assistant, ...base];
 }
 
 /** Case-insensitive match on the label and the keywords. Every word of the query must match. */

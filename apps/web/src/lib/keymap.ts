@@ -265,7 +265,7 @@ export const KEYMAP: readonly KeymapEntry[] = [
   },
   {
     id: 'assistant',
-    keys: ['Ctrl', 'J'],
+    keys: ['Ctrl', '/'],
     labelKey: 'keymap.assistant',
     group: 'general',
     available: true,

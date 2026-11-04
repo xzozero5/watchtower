@@ -1,5 +1,7 @@
 import {
   autonomyHistoryPageSchema,
+  csatSettingsSchema,
+  type CsatSettingsUpdate,
   channelAccountListSchema,
   channelAccountSchema,
   gmailConnectionStatusSchema,
@@ -370,6 +372,21 @@ export function createAdminEndpoints(client: ApiClient) {
         method: 'POST',
         path: `/v1/admin/channel-accounts/${id(accountId)}/disable`,
         schema: channelAccountSchema,
+      }),
+
+    // --- CSAT survey settings (T-174): read needs csat.read, change needs integration.manage ---
+    csatSettings: (signal?: AbortSignal) =>
+      client.request({
+        path: '/v1/csat/settings',
+        schema: csatSettingsSchema,
+        ...withSignal(signal),
+      }),
+    setCsatSettings: (body: CsatSettingsUpdate) =>
+      client.request({
+        method: 'PUT',
+        path: '/v1/csat/settings',
+        body,
+        schema: csatSettingsSchema,
       }),
 
     // --- audit log (head) ---

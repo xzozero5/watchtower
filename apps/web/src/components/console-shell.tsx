@@ -25,6 +25,7 @@ import { NavRail, type RailDestination } from '@/components/nav-rail';
 import { CriticalBanner } from '@/components/notifications/critical-banner';
 import { useT } from '@/i18n/provider';
 import { useAutonomy } from '@/lib/admin/queries';
+import { requestAssistantOpen } from '@/lib/assistant/assistant-ui';
 import { adminSectionsFor, HOME_PERMISSION } from '@/lib/admin/sections';
 import { useSession } from '@/lib/auth/session';
 import { getRailExpanded, setRailExpanded, useRailExpanded } from '@/lib/rail-preference';
@@ -192,6 +193,10 @@ export function ConsoleShell({ destination, skipTo, children }: ConsoleShellProp
           },
           signOut: () => {
             void signOut();
+          },
+          // After the palette has closed and given focus back, so the box keeps the focus.
+          askAssistant: () => {
+            setTimeout(requestAssistantOpen, 50);
           },
           goHome,
           goAdmin,

@@ -285,6 +285,7 @@ export function AiDraftCard({
       <div
         role="group"
         aria-label={t('ai.draft.actions')}
+        data-sticky-footer=""
         className={cn(
           'flex flex-wrap items-center gap-2',
           'max-md:sticky max-md:bottom-0 max-md:-mx-5 max-md:-mb-4 max-md:rounded-b-lg max-md:border-t max-md:border-border/60 max-md:bg-surface max-md:px-5 max-md:py-2.5',
