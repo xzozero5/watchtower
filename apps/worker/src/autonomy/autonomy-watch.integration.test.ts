@@ -10,6 +10,7 @@ import { createDatabase, schema, type Database } from '@watchtower/db';
 import { createTestDatabase, type TestDatabase } from '@watchtower/db/testing';
 import {
   createDomain,
+  enqueueAutonomyWatch,
   createPolicyGate,
   findSampleCandidates,
   generateGateReport,
@@ -466,6 +467,47 @@ describe('the autonomy watch (ADR-025 section 7)', () => {
     expect((await runAutonomyWatch(deps(), intent.id)).rolledBack).toEqual([
       { intent: intent.key, rule: 'gate_red' },
     ]);
+  });
+
+  it('every event of the same minute enqueues its own watch job, and two runs at once roll back once (B-010)', async () => {
+    const intent = await stage3Intent();
+    const ctx = domain.context({ actor: { type: 'system', id: null } });
+    for (let i = 0; i < 2; i += 1) {
+      await database.db.transaction((tx) =>
+        enqueueAutonomyWatch(tx, ctx, intent.id, 'ticket_reopened'),
+      );
+    }
+    const rows = await testDb.owner.pool.query<{ job_id: string }>(
+      `SELECT job_id FROM outbox WHERE queue = 'autonomy' AND job_id LIKE $1`,
+      [`autonomy-watch-${intent.id}-%`],
+    );
+    expect(rows.rows).toHaveLength(2);
+    expect(new Set(rows.rows.map((row) => row.job_id)).size).toBe(2);
+
+    // Two bad replies, then two evaluations at the same time: one rollback, one history row.
+    for (let i = 0; i < 2; i += 1) {
+      const id = await ticketFor(intent.id);
+      await autoReply(id, { sent: true });
+      await owner()
+        .insert(schema.ticketEvent)
+        .values({
+          ticketId: id,
+          type: 'ticket.reopened',
+          actorType: 'user',
+          createdAt: new Date(Date.now() + 5000),
+        });
+    }
+    const [a, b] = await Promise.all([
+      runAutonomyWatch(deps(), intent.id),
+      runAutonomyWatch(deps(), intent.id),
+    ]);
+    expect(a.rolledBack.length + b.rolledBack.length).toBe(1);
+    expect(await stageOf(intent.id)).toBe(2);
+    const history = await testDb.owner.pool.query(
+      `SELECT 1 FROM intent_autonomy_history WHERE intent_id = $1 AND change = 'auto_rollback'`,
+      [intent.id],
+    );
+    expect(history.rowCount).toBe(1);
   });
 
   it('only ever lowers a stage: an intent at stage 2 is not looked at', async () => {

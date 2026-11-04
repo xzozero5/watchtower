@@ -217,6 +217,7 @@ describe('the promotion door with the flag on', () => {
     });
     expect(wrongKey.status).toBeGreaterThanOrEqual(400);
     expect(wrongKey.status).toBeLessThan(500);
+    if (wrongKey.status === 403) expect(wrongKey.body.reason).toBe('confirm_key_mismatch');
     expect(await stageOf(on, intent.id)).toBe(2);
 
     // A sign-in older than five minutes is not a re-authentication.
@@ -329,7 +330,15 @@ describe('the promotion door with the flag on', () => {
       `/v1/intents/${intent.id}/autonomy/promotions`,
       { gateReportId: made.body.id, reason: 'try' },
     );
-    expect(notGreen.status).toBeGreaterThanOrEqual(400);
+    expect(notGreen.status).toBe(403);
+    expect(notGreen.body).toMatchObject({
+      code: 'forbidden',
+      reason: 'report_not_green',
+    });
+    // Only the reason code travels: no SQL text, no internals.
+    expect(Object.keys(notGreen.body).sort()).toEqual(
+      ['code', 'error', 'message', 'reason', 'statusCode'].sort(),
+    );
     const other = await newIntent(lead);
     const theirs = await greenReport(on, other.id);
     const wrong = await head.client.post<ApiErrorBody>(

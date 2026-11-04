@@ -5,6 +5,8 @@ import {
   QUEUE_NAMES,
   type RealtimeEvent,
 } from '@watchtower/shared';
+import { randomUUID } from 'node:crypto';
+
 import { and, desc, eq, sql } from 'drizzle-orm';
 
 import { enqueueJob } from '../outbox.js';
@@ -227,12 +229,15 @@ export async function notifyAutonomyRollback(
 
 /**
  * Asks the worker to look at an intent now (an event: a grade was recorded, a ticket was reopened, a CSAT
- * answer came). Only for an intent at stage 3, and at most one job per intent per minute; the periodic run
- * every 15 minutes covers a trigger that was missed.
+ * answer came). Only for an intent at stage 3. One job per event (B-010): the outbox keeps the job id of a
+ * relayed row, so an id per minute dropped a second bad event of the same minute after the first job had already
+ * run, and the rollback waited for the 15-minute run. The run is idempotent (`rollback_intent_autonomy` locks the
+ * intent row and the notice follows only a real rollback), so extra jobs cost a few reads. The periodic run every
+ * 15 minutes covers a trigger that was missed.
  */
 export async function enqueueAutonomyWatch(
   tx: DbTransaction,
-  ctx: Pick<DomainContext, 'config' | 'now'>,
+  ctx: Pick<DomainContext, 'config'>,
   intentId: string | null,
   reason: 'grade_recorded' | 'ticket_reopened' | 'csat_responded',
 ): Promise<void> {
@@ -243,11 +248,10 @@ export async function enqueueAutonomyWatch(
     .where(eq(schema.intent.id, intentId))
     .limit(1);
   if (intent === undefined || intent.stage < 3) return;
-  const minute = Math.floor(ctx.now().getTime() / 60_000);
   await enqueueJob(tx, ctx.config, {
     queue: QUEUE_NAMES.autonomy,
     name: AUTONOMY_JOBS.watch,
-    jobId: `autonomy-watch-${intentId}-${String(minute)}`,
+    jobId: `autonomy-watch-${intentId}-${randomUUID()}`,
     payload: { intentId, reason },
     options: AI_OUTBOX_JOB_OPTIONS,
   });

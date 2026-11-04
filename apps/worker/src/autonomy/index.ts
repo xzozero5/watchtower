@@ -23,7 +23,7 @@ import { sampleSentReplies } from './sampled-grades.js';
  * `autonomy-watch` (T-304e, ADR-025 section 7) and the weekly gate reports (T-304f). The watch looks at the
  * intents at stage 3 for the rollback conditions of the owner's decision 4 and, when one holds, moves the
  * intent back to stage 2 (`rollback_intent_autonomy()`, idempotent) and tells the heads. It runs on an event
- * (a grade was recorded, a ticket was reopened, a CSAT answer came: one job per intent per minute) and every
+ * (a grade was recorded, a ticket was reopened, a CSAT answer came: one job per event, B-010) and every
  * 15 minutes, which also covers an event that was missed. It only ever lowers a stage.
  */
 
