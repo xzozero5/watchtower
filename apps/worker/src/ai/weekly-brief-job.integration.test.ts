@@ -320,25 +320,32 @@ describe('runWeeklyBrief', () => {
   });
 
   it('counts no ticket of a seed batch, in the figures or in the facts', async () => {
-    await owner().execute(sql`ALTER TABLE ticket ADD COLUMN IF NOT EXISTS seed_batch_id uuid`);
-    try {
-      await owner().execute(
-        sql`UPDATE ticket SET seed_batch_id = gen_random_uuid() WHERE subject = 'Invoice question'`,
-      );
-      await runWeeklyBrief(deps());
-      const [row] = await briefs();
-      const figures = row?.figures as {
-        seedExcluded: boolean;
-        kpis: { volume: { data: { value: number } } };
-      };
-      expect(figures.seedExcluded).toBe(true);
-      expect(figures.kpis.volume.data.value).toBe(3);
-      const sent = requests
-        .map((request) => request.messages.map((m) => m.content).join(''))
-        .join('\n');
-      expect(sent).not.toContain('billing_question');
-    } finally {
-      await owner().execute(sql`ALTER TABLE ticket DROP COLUMN IF EXISTS seed_batch_id`);
-    }
+    // ticket.seed_batch_id exists since 0096 and only the schema owner writes it; a seed ticket must live in
+    // an organization of the same batch (trigger seed_batch_guard). The seed_batch row stays: append-only.
+    const batch = await owner().execute<{ id: string }>(
+      sql`INSERT INTO seed_batch (kind, note) VALUES ('demo', 'T-305c weekly brief test') RETURNING id`,
+    );
+    const batchId = batch.rows[0]?.id;
+    if (batchId === undefined) throw new Error('seed_batch insert returned no row');
+    const seedOrg = await owner().execute<{ id: string }>(
+      sql`INSERT INTO organization (name, seed_batch_id) VALUES ('Seed org', ${batchId}::uuid) RETURNING id`,
+    );
+    const seedOrgId = seedOrg.rows[0]?.id;
+    if (seedOrgId === undefined) throw new Error('organization insert returned no row');
+    await owner().execute(
+      sql`UPDATE ticket SET org_id = ${seedOrgId}::uuid, seed_batch_id = ${batchId}::uuid WHERE subject = 'Invoice question'`,
+    );
+    await runWeeklyBrief(deps());
+    const [row] = await briefs();
+    const figures = row?.figures as {
+      seedExcluded: boolean;
+      kpis: { volume: { data: { value: number } } };
+    };
+    expect(figures.seedExcluded).toBe(true);
+    expect(figures.kpis.volume.data.value).toBe(3);
+    const sent = requests
+      .map((request) => request.messages.map((m) => m.content).join(''))
+      .join('\n');
+    expect(sent).not.toContain('billing_question');
   });
 });
