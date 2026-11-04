@@ -163,7 +163,7 @@
 - [x] T-305d `backend-dev` export PDF (เจ้าของอนุมัติ dependency 2026-11-04 — ADR เลือก library ก่อน, ไม่มี network) · Google Docs mock — **ปิด 2026-11-04** (ADR-028)
 - [x] T-305e `backend-dev`+`ai-engineer`+`frontend-dev` roster planner (R-7.2) solver deterministic + AI อธิบาย · apply ต้องคนกด — **ปิด 2026-11-04** (0102; วันลาไม่มีตารางถาวร)
 - [x] T-306a `security-reviewer` ตรวจ autonomy (bypass gate, injection → auto-send, เปิดเผยให้ unverified)
-- [ ] T-306b `qa-engineer` e2e shadow, flag ON ใน stack ทิ้ง (mock), rollback, eval gate
+- [x] T-306b `qa-engineer` e2e shadow, flag ON ใน stack ทิ้ง (mock), rollback, eval gate
 - [x] T-306d `backend-dev` + `architect` runbook deploy instance ใหม่สำหรับ pilot (DB สะอาด, seed reference เท่านั้น, env/secret checklist, backup/restore ซ้อม) — เจ้าของจะ deploy เองตอนเริ่ม pilot — **ปิด 2026-11-04** (docs/runbooks/pilot-instance.md + tools/restore-drill)
 - [ ] T-301e `backend-dev` re-grade เมื่อ CSAT มาถึงหลัง grade (ไม่งั้น verified ต่ำกว่าจริง) — ก่อน T-304f *(กำลังทำใน T-304b)* · + `capResolutionClass` ต้องดูข้อความลูกค้าที่ปฏิเสธ ("ยังไม่หาย") ไม่ใช่แค่ CSAT (qa T-302b)
 - [x] T-175a `backend-dev` P3 จาก review T-175/T-142/T-147: concurrency ต่อคน/host + negative cache, IPv6 allow 2000::/3 ก่อน blocklist, deadline ก่อน DNS, proxy env, permission `ai.budget.read`, PATCH priority จาก AI ลง audit `source` + ยืนยันก่อนขึ้น P1, reply-block ผูก channelAccountId — **ปิด 2026-11-04**
