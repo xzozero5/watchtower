@@ -234,6 +234,31 @@ export class PortalNotifier {
   }
 
   /**
+   * The one-time "my requests" link (T-152). Not tied to a ticket: the caller (`PortalMyRequestsService`)
+   * minted the link and checked the limits. The email names nothing the requester typed.
+   */
+  async myRequestsLink(
+    tx: DbTransaction,
+    to: { readonly email: string; readonly locale: PortalLocale },
+    url: string,
+    expiresInMinutes: number,
+  ): Promise<void> {
+    await this.outbox.send(
+      {
+        kind: 'portal_my_requests',
+        to: to.email,
+        locale: to.locale,
+        trackingUrl: url,
+        expiresInMinutes,
+      },
+      `portal-my-requests-${randomUUID()}`,
+      tx,
+      // A link that sat in the queue past its own lifetime is useless.
+      expiresInMinutes * 60,
+    );
+  }
+
+  /**
    * A ticket was closed: every tracking link it has stops working (C-13). A closed ticket is
    * final, so a link that leaks later (a forwarded email, a shared screen) must not stay a key to
    * its conversation. The requester can still ask for a fresh link by email, which proves they

@@ -113,6 +113,9 @@ const EXPECTED_PUBLIC_ROUTES = [
   'GET /v1/portal/tickets/:key',
   'POST /v1/portal/tickets/:key/replies',
   'POST /v1/portal/track/resend',
+  // "Email me a link to my requests" (T-152): proof of work, one-time link, always 202.
+  'POST /v1/portal/my-requests',
+  'POST /v1/portal/my-requests/open',
   // Phase 1 feature modules list theirs in their own public-routes.ts (T-123a).
   ...FEATURE_PUBLIC_ROUTES,
 ].sort();

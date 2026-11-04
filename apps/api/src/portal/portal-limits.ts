@@ -5,6 +5,7 @@ import { AuditScope } from '../audit/audit-scope.js';
 import { RateLimitedError } from '../auth/http-errors.js';
 import { RateLimiter, type RateLimitResult } from '../auth/rate-limiter.js';
 import { APP_CONFIG, type ApiConfig } from '../config/config.js';
+import { rateLimitClientKey } from '../http/client-ip.js';
 
 const HOUR = 3600;
 const TEN_MINUTES = 600;
@@ -30,7 +31,17 @@ export type PortalLimitScope =
   | 'reply-ticket'
   | 'reply-confirm'
   | 'resend-ip'
-  | 'resend-email';
+  | 'resend-email'
+  // "Email me a link to my requests" (T-152). `mine-ip` and `mine-open-ip` count the /64 of an IPv6
+  // address as one client; the email, domain and global limits are answered silently (always 202).
+  | 'mine-ip'
+  | 'mine-email'
+  | 'mine-domain'
+  | 'mine-global'
+  | 'mine-open-ip';
+
+/** Scopes whose subject is a client address: counted per IPv4 address or IPv6 /64 (T-207a C-3). */
+const CLIENT_ADDRESS_SCOPES: ReadonlySet<PortalLimitScope> = new Set(['mine-ip', 'mine-open-ip']);
 
 /** What each scope allows, per window. The three submit limits come from the environment. */
 export function portalLimitPolicy(
@@ -54,6 +65,14 @@ export function portalLimitPolicy(
     'reply-confirm': { limit: 1, windowSeconds: TEN_MINUTES },
     'resend-ip': { limit: 10, windowSeconds: HOUR },
     'resend-email': { limit: 3, windowSeconds: HOUR },
+    // `[ASSUMED]` numbers. A person asks once or twice an hour; the domain limit is loose because a
+    // free-mail domain is shared by everyone who uses it; the global ceiling is the most "my requests"
+    // emails this instance sends per hour whoever asks, so it can never become a mail flood.
+    'mine-ip': { limit: 10, windowSeconds: HOUR },
+    'mine-email': { limit: 3, windowSeconds: HOUR },
+    'mine-domain': { limit: 60, windowSeconds: HOUR },
+    'mine-global': { limit: 300, windowSeconds: HOUR },
+    'mine-open-ip': { limit: 30, windowSeconds: HOUR },
   };
 }
 
@@ -90,6 +109,7 @@ export class PortalLimits {
   /** Counts one hit and reports instead of throwing (for work that must stay silent). */
   hit(scope: PortalLimitScope, subject: string): Promise<RateLimitResult> {
     const { limit, windowSeconds } = this.policy[scope];
-    return this.counter.hit(`portal-${scope}`, subject, limit, windowSeconds);
+    const key = CLIENT_ADDRESS_SCOPES.has(scope) ? rateLimitClientKey(subject) : subject;
+    return this.counter.hit(`portal-${scope}`, key, limit, windowSeconds);
   }
 }

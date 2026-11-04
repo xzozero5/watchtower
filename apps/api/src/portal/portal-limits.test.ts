@@ -86,6 +86,31 @@ describe('PortalLimits', () => {
     expect(JSON.stringify(details)).not.toContain('org:1');
   });
 
+  it('has the "my requests" limits of T-152: address, domain and a global ceiling', () => {
+    const policy = portalLimitPolicy(config);
+    expect(policy['mine-ip']).toEqual({ limit: 10, windowSeconds: 3600 });
+    expect(policy['mine-email']).toEqual({ limit: 3, windowSeconds: 3600 });
+    expect(policy['mine-domain'].limit).toBeGreaterThan(policy['mine-email'].limit);
+    expect(policy['mine-global'].limit).toBeGreaterThan(policy['mine-domain'].limit);
+    expect(policy['mine-open-ip'].limit).toBeGreaterThan(0);
+  });
+
+  it('counts an IPv6 client by its /64 for the "my requests" address scopes, and leaves other subjects alone', async () => {
+    const counter = new FakeCounter();
+    const limits = new PortalLimits(config, counter);
+    await limits.enforce('mine-ip', '2001:db8:1:2:aaaa:bbbb:cccc:dddd');
+    await limits.enforce('mine-ip', '2001:db8:1:2:1111:2222:3333:4444');
+    await limits.enforce('mine-open-ip', '::ffff:203.0.113.9');
+    await limits.hit('mine-email', 'a@example.com');
+    expect(counter.calls.map((call) => call.subject)).toEqual([
+      '2001:db8:1:2::/64',
+      '2001:db8:1:2::/64',
+      '203.0.113.9',
+      'a@example.com',
+    ]);
+    expect(counter.counts.get('portal-mine-ip:2001:db8:1:2::/64')).toBe(2);
+  });
+
   it('prefixes the scope so portal counters never collide with the auth ones', async () => {
     const counter = new FakeCounter();
     const limits = new PortalLimits(config, counter);

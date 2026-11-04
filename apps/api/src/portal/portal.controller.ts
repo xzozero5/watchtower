@@ -34,6 +34,8 @@ import {
   PORTAL_TOKEN_HEADER,
   humanChallengeSchema,
   portalAcceptedSchema,
+  portalMyRequestsRequestSchema,
+  portalMyRequestsViewSchema,
   portalReplyRequestSchema,
   portalReplyResultSchema,
   portalReplySchema,
@@ -43,6 +45,7 @@ import {
   portalSubmittedSchema,
   portalTicketKeyParamSchema,
   portalTicketViewSchema,
+  type PortalMyRequestsRequest,
   type PortalReplyRequest,
   type PortalResend,
   type PortalSubmitRequest,
@@ -50,12 +53,16 @@ import {
 import type { Request } from 'express';
 import type { z } from 'zod';
 
+import { AuditScope } from '../audit/audit-scope.js';
+import { EmailTagService } from '../audit/email-tag.service.js';
 import { Audited, Public } from '../auth/decorators.js';
+import { invalidTrackingLink, verificationFailed } from '../auth/http-errors.js';
 import { parseResponse } from '../common/zod-openapi.js';
 import { HUMAN_VERIFICATION, type HumanVerificationProvider } from './human-verification.js';
 import type { UploadedFile } from './portal-attachments.service.js';
 import { PortalHeadersInterceptor } from './portal-headers.interceptor.js';
 import { PortalLimits } from './portal-limits.js';
+import { PortalMyRequestsService } from './portal-my-requests.service.js';
 import { resolvePortalBody } from './portal-request.js';
 import { PortalUploadInterceptor } from './portal-upload.interceptor.js';
 import { PortalSubmissionService } from './portal-submission.service.js';
@@ -98,6 +105,8 @@ export class PortalController {
     @Inject(PortalLimits) private readonly limits: PortalLimits,
     @Inject(PortalSubmissionService) private readonly submissions: PortalSubmissionService,
     @Inject(PortalTrackingService) private readonly tracking: PortalTrackingService,
+    @Inject(PortalMyRequestsService) private readonly myRequests: PortalMyRequestsService,
+    @Inject(EmailTagService) private readonly tags: EmailTagService,
   ) {}
 
   @Get('challenge')
@@ -223,6 +232,99 @@ export class PortalController {
         files ?? [],
       ),
     );
+  }
+
+  @Post('my-requests')
+  @Public()
+  @HttpCode(202)
+  @Audited({ action: AUDIT_ACTIONS.portalMyRequestsRequest, targetType: 'email' })
+  @ApiOperation({
+    summary: 'Email me a link to my requests',
+    description:
+      'For a customer who lost their tracking links (T-152). Needs the proof of work of the submit ' +
+      'form and an empty honeypot. Answers 202 with the same body and the same timing whatever the ' +
+      'address is: a contact, a stranger, or limited per address, per domain or by the instance ' +
+      'ceiling. When the address belongs to a contact, an email with a one-time link (30 minutes) ' +
+      'is queued after the response. No account is ever created. A bad proof is 400 ' +
+      '`verification_failed`; per IP (the /64 of an IPv6 address) 429.',
+  })
+  @ApiAcceptedResponse({ standardSchema: portalAcceptedSchema })
+  @ApiBadRequestResponse({ description: 'verification_failed or an invalid body' })
+  @ApiTooManyRequestsResponse({ description: 'Too many requests from this IP address' })
+  async requestMyRequests(
+    @Body({ schema: portalMyRequestsRequestSchema }) body: PortalMyRequestsRequest,
+    @Req() request: Request,
+  ) {
+    const ip = request.ip ?? null;
+    await this.limits.enforce('mine-ip', ip ?? 'unknown');
+    const emailTag = this.tags.tag(body.email);
+    AuditScope.set({ targetType: 'email', targetId: emailTag });
+    // Stateless checks first, then the single-use claim; nothing below depends on the address.
+    const checked = await this.verification.check({
+      proof: body.verification,
+      honeypot: body.website,
+    });
+    if (!checked.ok) {
+      AuditScope.set({
+        action: AUDIT_ACTIONS.portalVerificationFailed,
+        outcome: 'denied',
+        metadata: { reason: checked.reason, provider: this.verification.name, flow: 'my_requests' },
+      });
+      // A bot that filled the trap gets the answer a person gets, and no email.
+      if (checked.reason === 'honeypot') {
+        return parseResponse(portalAcceptedSchema, { status: 'accepted' });
+      }
+      throw verificationFailed();
+    }
+    const claimed = await this.verification.claim(checked);
+    if (!claimed.ok) {
+      AuditScope.set({
+        action: AUDIT_ACTIONS.portalVerificationFailed,
+        outcome: 'denied',
+        metadata: { reason: claimed.reason, provider: this.verification.name, flow: 'my_requests' },
+      });
+      throw verificationFailed();
+    }
+    this.myRequests.request(body.email, body.locale, ip);
+    return parseResponse(portalAcceptedSchema, { status: 'accepted' });
+  }
+
+  @Post('my-requests/open')
+  @Public()
+  @HttpCode(200)
+  @tokenHeader
+  @Audited({ action: AUDIT_ACTIONS.portalMyRequestsOpened, targetType: 'contact' })
+  @ApiOperation({
+    summary: 'Open the one-time "my requests" link',
+    description:
+      'The page sends the token from the emailed link (`#token=...`) in `X-Portal-Token`. It works ' +
+      'once: the first call spends it and returns the read-only list of the requests of the contact ' +
+      'that owns the address (status in the customer words, no internal notes, no AI, no ' +
+      'organization-wide view), each open request with its own tracking token. Unknown, used, ' +
+      'expired and replaced links all answer the same 401.',
+  })
+  @ApiOkResponse({ standardSchema: portalMyRequestsViewSchema })
+  @ApiUnauthorizedResponse({ description: 'invalid_or_expired_link' })
+  @ApiTooManyRequestsResponse({ description: 'Too many requests from this IP address' })
+  async openMyRequests(
+    @Headers(PORTAL_TOKEN_HEADER) token: string | undefined,
+    @Req() request: Request,
+  ) {
+    await this.limits.enforce('mine-open-ip', request.ip ?? 'unknown');
+    const opened = await this.myRequests.open(token);
+    if (opened === null) {
+      AuditScope.set({ action: AUDIT_ACTIONS.portalAccessDenied, outcome: 'denied' });
+      throw invalidTrackingLink();
+    }
+    AuditScope.set({
+      targetId: opened.contactId,
+      metadata: {
+        emailTag: opened.emailTag,
+        ticketCount: opened.view.items.length,
+        truncated: opened.view.truncated,
+      },
+    });
+    return parseResponse(portalMyRequestsViewSchema, opened.view);
   }
 
   @Post('track/resend')

@@ -17,7 +17,8 @@ type PortalJob = Extract<
       | 'portal_reply_received'
       | 'portal_update'
       | 'portal_merged'
-      | 'portal_link';
+      | 'portal_link'
+      | 'portal_my_requests';
   }
 >;
 
@@ -142,6 +143,21 @@ function recap(
 }
 
 function english(job: PortalJob): Copy {
+  // Not about one ticket, and it names nothing the requester typed (T-152, same rule as C-11).
+  if (job.kind === 'portal_my_requests') {
+    return {
+      subject: 'Your link to see your requests',
+      lead: [
+        'You asked for a link to see your support requests.',
+        `The link works once and expires in ${String(job.expiresInMinutes)} minutes.`,
+      ],
+      linkText: 'See my requests',
+      tail: [
+        'Anyone who has this link can see the list of your requests, so please do not forward it.',
+        'If you did not ask for this email, you can ignore it. Nothing happens unless the link is opened.',
+      ],
+    };
+  }
   const key = job.ticketKey;
   switch (job.kind) {
     case 'portal_confirmation':
@@ -223,6 +239,20 @@ function english(job: PortalJob): Copy {
 }
 
 function thai(job: PortalJob): Copy {
+  if (job.kind === 'portal_my_requests') {
+    return {
+      subject: 'ลิงก์สำหรับดูคำขอของคุณ',
+      lead: [
+        'คุณขอลิงก์สำหรับดูคำขอซัพพอร์ตของคุณ',
+        `ลิงก์ใช้ได้ครั้งเดียวและหมดอายุใน ${String(job.expiresInMinutes)} นาที`,
+      ],
+      linkText: 'ดูคำขอของฉัน',
+      tail: [
+        'ผู้ที่มีลิงก์นี้จะเห็นรายการคำขอของคุณ โปรดอย่าส่งต่อ',
+        'หากคุณไม่ได้ขออีเมลนี้ ไม่ต้องทำอะไร หากไม่เปิดลิงก์ จะไม่มีอะไรเกิดขึ้น',
+      ],
+    };
+  }
   const key = job.ticketKey;
   switch (job.kind) {
     case 'portal_confirmation':
