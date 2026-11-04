@@ -145,7 +145,10 @@ export { claimEvidenceSchema };
 const claimLine = (claim: Claim): string => {
   const names = claim.evidence.map((item) => item.label);
   const text = claim.text.slice(0, 600);
-  return (names.length === 0 ? `${text} (no evidence)` : `${text} [${names.join(', ')}]`).slice(0, 880);
+  return (names.length === 0 ? `${text} (no evidence)` : `${text} [${names.join(', ')}]`).slice(
+    0,
+    880,
+  );
 };
 
 /** What the weekly brief email carries (plain strings: an email job holds no objects of the app). */

@@ -30,10 +30,7 @@ const ticketChip = { kind: 'ticket', label: 'OPS-12', href: '/?ticket=OPS-12' } 
 const incidentChip = { kind: 'incident', label: 'INC-3', href: '/incidents?incident=abc' } as const;
 const metricChip = { kind: 'data', label: 'SLA compliance', href: '/dashboard/ceo' } as const;
 
-const claim = (
-  text: string,
-  ...evidence: ClaimEvidence[]
-) => ({
+const claim = (text: string, ...evidence: ClaimEvidence[]) => ({
   text,
   evidence,
   uncited: evidence.length === 0,
