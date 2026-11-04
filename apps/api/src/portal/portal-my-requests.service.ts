@@ -1,6 +1,7 @@
 import { randomBytes } from 'node:crypto';
 
 import { Inject, Injectable, type OnApplicationShutdown } from '@nestjs/common';
+import { markPortalRequesterVerified } from '@watchtower/domain';
 import { schema, type Database } from '@watchtower/db';
 import {
   AUDIT_ACTIONS,
@@ -231,6 +232,28 @@ export class PortalMyRequestsService implements OnApplicationShutdown {
         (candidate) => this.tags.tag(candidate) === link.emailTag,
       );
       if (!contact || contact.mergedIntoContactId !== null || address === undefined) return null;
+
+      // The link was delivered to this mailbox and the customer opened it: that proves the mailbox for the
+      // portal tickets that exist right now (T-306h). Tickets filed later from the same address stay unverified.
+      const verifiedTicketIds = await markPortalRequesterVerified(tx, {
+        contactId: link.contactId,
+      });
+      if (verifiedTicketIds.length > 0) {
+        await this.audit.record(
+          {
+            actor: { type: 'anonymous', id: link.contactId },
+            action: AUDIT_ACTIONS.portalRequesterVerified,
+            targetType: 'contact',
+            targetId: link.contactId,
+            metadata: {
+              via: 'my_requests',
+              ticketCount: verifiedTicketIds.length,
+              ticketIds: verifiedTicketIds,
+            },
+          },
+          tx,
+        );
+      }
 
       const rows = await tx
         .select({
