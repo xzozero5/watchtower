@@ -524,3 +524,165 @@ describe('answering (R-10.2, R-10.5, R-1.10)', () => {
     ]);
   });
 });
+
+describe('the admin settings (T-174, R-10.1, R-10.4)', () => {
+  const update = (patch: Parameters<typeof env.domain.csat.updateSettings>[2]) =>
+    env.tx((tx) => env.domain.csat.updateSettings(tx, env.ctx(), patch));
+  const restore = () =>
+    update({ enabled: true, delayMinutes: 60, reminderHours: 48, cooldownDays: 7 });
+
+  it('reads the defaults of the PRD: on, 1 h, reminder at 48 h, one survey per contact per 7 days', async () => {
+    expect(await env.domain.csat.readSettings(env.database.db)).toEqual({
+      enabled: true,
+      delayMinutes: 60,
+      reminderHours: 48,
+      cooldownDays: 7,
+    });
+  });
+
+  it('changes only what is named and audits the old and new values', async () => {
+    const before = (await auditRows(env, 'csat.setting_set')).length;
+    try {
+      const { value } = await update({ reminderHours: 24 });
+      expect(value).toEqual({
+        enabled: true,
+        delayMinutes: 60,
+        reminderHours: 24,
+        cooldownDays: 7,
+      });
+      const entries = await auditRows(env, 'csat.setting_set');
+      expect(entries.length).toBe(before + 1);
+    } finally {
+      await restore();
+    }
+  });
+
+  it('switched off: no survey is owed for a ticket resolved meanwhile', async () => {
+    try {
+      await update({ enabled: false });
+      const made = await resolvedTicket();
+      expect(await survey(made.ticketId)).toHaveLength(0);
+    } finally {
+      await restore();
+    }
+  });
+
+  it('switched off after the survey was owed: it is skipped, not sent', async () => {
+    const made = await resolvedTicket({ resolvedAfter: 2 });
+    const id = (await only(made.ticketId)).id;
+    try {
+      await update({ enabled: false });
+      expect(await sweep(after(2 + HOUR + 1))).toMatchObject({ sent: 0, skipped: 1 });
+      expect(await only(made.ticketId)).toMatchObject({
+        status: 'skipped',
+        reason: 'csat_disabled',
+      });
+      expect(await emailJobs('csat-survey', id)).toHaveLength(0);
+    } finally {
+      await restore();
+    }
+  });
+
+  it('the reminder wait is configurable, and 0 means no reminder', async () => {
+    try {
+      await update({ reminderHours: 12 });
+      const a = await resolvedTicket({ resolvedAfter: 2 });
+      await sweep(after(2 + HOUR + 1));
+      expect((await only(a.ticketId)).reminderDueAt?.toISOString()).toBe(
+        after(2 + HOUR + 1 + 12 * HOUR).toISOString(),
+      );
+
+      await update({ reminderHours: 0 });
+      const b = await resolvedTicket({ resolvedAfter: 2 });
+      await sweep(after(2 + HOUR + 1));
+      const row = await only(b.ticketId);
+      expect(row.status).toBe('sent');
+      expect(row.reminderDueAt).toBeNull();
+    } finally {
+      await restore();
+    }
+  });
+
+  it('the cooldown is configurable, and 0 turns the rule off', async () => {
+    try {
+      await update({ cooldownDays: 0 });
+      const email = `${randomUUID()}@customer.test`;
+      const first = await resolvedTicket({ email, resolvedAfter: 2 });
+      const same = { orgId: first.orgId, email };
+      await sweep(after(2 + HOUR + 1));
+      expect((await only(first.ticketId)).status).toBe('sent');
+      const second = await resolvedTicket({ ...same, resolvedAfter: 3 });
+      expect((await only(second.ticketId)).status).toBe('scheduled');
+
+      await update({ cooldownDays: 14 });
+      const third = await resolvedTicket({ ...same, resolvedAfter: 4 });
+      expect((await only(third.ticketId)).reason).toBe('contact_cooldown');
+    } finally {
+      await restore();
+    }
+  });
+
+  it('a Gmail ticket carries its mailbox in the email job, so the worker sends it from there', async () => {
+    const [account] = await env.db.owner.db
+      .insert(schema.channelAccount)
+      .values({ type: 'gmail', name: 'Support mailbox' })
+      .returning({ id: schema.channelAccount.id });
+    const org = await addOrg(env);
+    const { value } = await env.tx((tx) =>
+      env.domain.tickets.create(tx, env.ctx(undefined, { now: () => T0 }), {
+        orgId: org.id,
+        subject: 'Via Gmail',
+        body: 'Hello',
+        requester: { email: `${randomUUID()}@customer.test`, name: 'G' },
+        channel: 'gmail',
+        channelAccountId: account?.id ?? '',
+      }),
+    );
+    await move(value.ticket.id, 'open', after(1));
+    await move(value.ticket.id, 'resolved', after(2));
+    const id = (await only(value.ticket.id)).id;
+    await sweep(after(2 + HOUR + 1));
+    const [row] = await emailJobs('csat-survey', id);
+    const payload = row?.payload as { gmail?: { accountId: string; surveyId: string } };
+    expect(payload.gmail).toEqual({ accountId: account?.id, surveyId: id });
+    // A portal ticket has none: it goes over SMTP.
+    const portal = await resolvedTicket({ resolvedAfter: 2 });
+    const portalId = (await only(portal.ticketId)).id;
+    await sweep(after(2 + HOUR + 1));
+    const [portalRow] = await emailJobs('csat-survey', portalId);
+    expect((portalRow?.payload as { gmail?: unknown }).gmail).toBeUndefined();
+  });
+
+  it('claims a Gmail survey email once; only a released claim can be taken again', async () => {
+    const [account] = await env.db.owner.db
+      .insert(schema.channelAccount)
+      .values({ type: 'gmail', name: 'Mailbox 2' })
+      .returning({ id: schema.channelAccount.id });
+    const made = await resolvedTicket({ resolvedAfter: 2 });
+    const surveyId = (await only(made.ticketId)).id;
+    const accountId = account?.id ?? '';
+    const db = env.database.db;
+    const key = { surveyId, kind: 'survey' } as const;
+    expect(await env.domain.csat.claimEmail(db, { ...key, accountId })).toBe(true);
+    expect(await env.domain.csat.claimEmail(db, { ...key, accountId })).toBe(false);
+    await env.domain.csat.releaseEmail(db, { ...key, errorCode: 'rate_limited' });
+    expect(await env.domain.csat.claimEmail(db, { ...key, accountId })).toBe(true);
+    await env.domain.csat.finishEmail(db, { ...key, providerMessageId: 'm-1' });
+    // Sent is final: a repeat of the job claims nothing.
+    expect(await env.domain.csat.claimEmail(db, { ...key, accountId })).toBe(false);
+    // The reminder is its own claim.
+    expect(await env.domain.csat.claimEmail(db, { surveyId, kind: 'reminder', accountId })).toBe(
+      true,
+    );
+    const [ledger] = await env.db.owner.db
+      .select()
+      .from(schema.csatEmailDispatch)
+      .where(
+        and(
+          eq(schema.csatEmailDispatch.surveyId, surveyId),
+          eq(schema.csatEmailDispatch.kind, 'survey'),
+        ),
+      );
+    expect(ledger).toMatchObject({ state: 'sent', attempts: 2, providerMessageId: 'm-1' });
+  });
+});

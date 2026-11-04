@@ -9,11 +9,12 @@ import {
   csatResponsesPageSchema,
   csatResponsesQuerySchema,
   csatSettingsSchema,
+  csatSettingsUpdateSchema,
   csatSummaryQuerySchema,
   csatSummarySchema,
   type CsatOptOut,
   type CsatResponsesQuery,
-  type CsatSettings,
+  type CsatSettingsUpdate,
   type CsatSummaryQuery,
 } from '@watchtower/shared';
 import type { z } from 'zod';
@@ -83,8 +84,7 @@ export class CsatStaffController {
   @ApiOperation({ summary: 'CSAT settings of this instance' })
   @ApiOkResponse({ standardSchema: csatSettingsSchema })
   async readSettings() {
-    const delayMinutes = await this.domain.csat.readDelayMinutes(this.database.db);
-    return parseResponse(csatSettingsSchema, { delayMinutes });
+    return parseResponse(csatSettingsSchema, await this.domain.csat.readSettings(this.database.db));
   }
 
   @Put('settings')
@@ -93,22 +93,25 @@ export class CsatStaffController {
   @ApiOperation({
     summary: 'Change the CSAT settings (head)',
     description:
-      '`delayMinutes` (0-10080, default 60) is how long after "resolved" the survey is sent. ' +
-      'Applies to surveys scheduled after the change.',
+      'Send the settings to change. `enabled` turns surveys on or off for the instance (default on); ' +
+      '`delayMinutes` (0-10080, default 60) is how long after "resolved" the survey is sent; ' +
+      '`reminderHours` (0-720, default 48, 0 = no reminder) is the wait for the one reminder; ' +
+      '`cooldownDays` (0-90, default 7, 0 = no limit) is the quiet period per contact (R-10.4). ' +
+      'Applies to surveys scheduled or sent after the change.',
   })
   @ApiOkResponse({ standardSchema: csatSettingsSchema })
   async writeSettings(
-    @Body({ schema: csatSettingsSchema }) body: CsatSettings,
+    @Body({ schema: csatSettingsUpdateSchema }) body: CsatSettingsUpdate,
     @CurrentPrincipal() principal: Principal,
   ) {
     const result = await translating(() =>
       this.uow.run(async (uow) =>
         settle(
           uow,
-          await this.domain.csat.setDelayMinutes(
+          await this.domain.csat.updateSettings(
             uow.tx,
             domainContext(this.domain, { type: 'user', id: principal.userId }),
-            body.delayMinutes,
+            body,
           ),
         ),
       ),

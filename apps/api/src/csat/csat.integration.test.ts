@@ -426,19 +426,52 @@ describe('results for staff (R-10.5)', () => {
     expect(empty.body).toMatchObject({ responses: 0, average: null, responseRate: null });
   });
 
-  it('only a head changes the delay, and the change is audited', async () => {
+  it('only a head changes the settings, partially, and each change is audited', async () => {
     expect((await lead.client.put('/v1/csat/settings', { delayMinutes: 5 })).status).toBe(403);
     const set = await head.client.put<CsatSettings>('/v1/csat/settings', { delayMinutes: 5 });
     expect(set.status).toBe(200);
-    expect(set.body).toEqual({ delayMinutes: 5 });
-    expect((await lead.client.get<CsatSettings>('/v1/csat/settings')).body).toEqual({
+    expect(set.body).toEqual({
+      enabled: true,
       delayMinutes: 5,
+      reminderHours: 48,
+      cooldownDays: 7,
     });
+    expect((await lead.client.get<CsatSettings>('/v1/csat/settings')).body).toEqual(set.body);
     expect(await auditCount('csat.setting_set')).toBe(1);
-    for (const bad of [{ delayMinutes: -1 }, { delayMinutes: 10_081 }, { delayMinutes: 1.5 }, {}]) {
+
+    // The new settings (T-174): on/off, the reminder wait (0 = none) and the per-contact quiet period.
+    const more = await head.client.put<CsatSettings>('/v1/csat/settings', {
+      enabled: false,
+      reminderHours: 0,
+      cooldownDays: 14,
+    });
+    expect(more.body).toEqual({
+      enabled: false,
+      delayMinutes: 5,
+      reminderHours: 0,
+      cooldownDays: 14,
+    });
+    expect(await auditCount('csat.setting_set')).toBe(2);
+
+    const bads = [
+      { delayMinutes: -1 },
+      { delayMinutes: 10_081 },
+      { delayMinutes: 1.5 },
+      { reminderHours: 721 },
+      { cooldownDays: 91 },
+      { enabled: 'yes' },
+      { unknown: 1 },
+      {},
+    ];
+    for (const bad of bads) {
       expect((await head.client.put('/v1/csat/settings', bad)).status).toBe(400);
     }
-    await head.client.put('/v1/csat/settings', { delayMinutes: 60 });
+    await head.client.put('/v1/csat/settings', {
+      enabled: true,
+      delayMinutes: 60,
+      reminderHours: 48,
+      cooldownDays: 7,
+    });
   });
 
   it('opts an organization out, so its next resolve is skipped, and back in', async () => {

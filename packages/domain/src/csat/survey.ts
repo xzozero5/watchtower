@@ -2,11 +2,16 @@ import { schema, type Database } from '@watchtower/db';
 import {
   AUDIT_ACTIONS,
   CSAT_CONTACT_COOLDOWN_DAYS,
+  CSAT_COOLDOWN_MAX_DAYS,
+  CSAT_COOLDOWN_SETTING_KEY,
   CSAT_DELAY_DEFAULT_MINUTES,
   CSAT_DELAY_MAX_MINUTES,
   CSAT_DELAY_SETTING_KEY,
+  CSAT_ENABLED_SETTING_KEY,
   CSAT_LINK_TTL_DAYS,
   CSAT_REMINDER_AFTER_HOURS,
+  CSAT_REMINDER_MAX_HOURS,
+  CSAT_REMINDER_SETTING_KEY,
   DEFAULT_PORTAL_LOCALE,
   EMAIL_JOBS,
   EMAIL_OUTBOX_JOB_OPTIONS,
@@ -17,6 +22,8 @@ import {
   portalLocaleSchema,
   splitEmailSecrets,
   type CsatReason,
+  type CsatSettings,
+  type CsatSettingsUpdate,
   type PortalLocale,
 } from '@watchtower/shared';
 import { and, asc, eq, gt, inArray, lte, ne, sql } from 'drizzle-orm';
@@ -95,6 +102,88 @@ export async function setCsatDelayMinutes(
   return fx.result({ delayMinutes: minutes });
 }
 
+async function readSettingValue(db: ReadExecutor, key: string): Promise<unknown> {
+  const [row] = await db
+    .select({ value: schema.instanceSetting.value })
+    .from(schema.instanceSetting)
+    .where(eq(schema.instanceSetting.key, key))
+    .limit(1);
+  return row?.value;
+}
+
+const wholeBetween = (value: unknown, max: number): value is number =>
+  typeof value === 'number' && Number.isInteger(value) && value >= 0 && value <= max;
+
+/**
+ * Every CSAT setting (T-174). A missing or damaged row reads as its default (survey on, one hour,
+ * a reminder after 48 hours, one survey per contact per 7 days: R-10.1, R-10.4).
+ */
+export async function readCsatSettings(db: ReadExecutor): Promise<CsatSettings> {
+  const [enabled, reminder, cooldown] = await Promise.all([
+    readSettingValue(db, CSAT_ENABLED_SETTING_KEY),
+    readSettingValue(db, CSAT_REMINDER_SETTING_KEY),
+    readSettingValue(db, CSAT_COOLDOWN_SETTING_KEY),
+  ]);
+  return {
+    enabled: typeof enabled === 'boolean' ? enabled : true,
+    delayMinutes: await readCsatDelayMinutes(db),
+    reminderHours: wholeBetween(reminder, CSAT_REMINDER_MAX_HOURS)
+      ? reminder
+      : CSAT_REMINDER_AFTER_HOURS,
+    cooldownDays: wholeBetween(cooldown, CSAT_COOLDOWN_MAX_DAYS)
+      ? cooldown
+      : CSAT_CONTACT_COOLDOWN_DAYS,
+  };
+}
+
+/**
+ * Changes the settings named in `patch` (T-174); the rest stay. Applies to surveys scheduled or sent
+ * after the change. One audit entry with the old and new values of what changed.
+ */
+export async function updateCsatSettings(
+  tx: DbTransaction,
+  ctx: DomainContext,
+  patch: CsatSettingsUpdate,
+): Promise<DomainResult<CsatSettings>> {
+  const fx = new Effects();
+  const before = await readCsatSettings(tx);
+  const next: CsatSettings = {
+    enabled: patch.enabled ?? before.enabled,
+    delayMinutes: patch.delayMinutes ?? before.delayMinutes,
+    reminderHours: patch.reminderHours ?? before.reminderHours,
+    cooldownDays: patch.cooldownDays ?? before.cooldownDays,
+  };
+  const keys: Readonly<Record<keyof CsatSettings, string>> = {
+    enabled: CSAT_ENABLED_SETTING_KEY,
+    delayMinutes: CSAT_DELAY_SETTING_KEY,
+    reminderHours: CSAT_REMINDER_SETTING_KEY,
+    cooldownDays: CSAT_COOLDOWN_SETTING_KEY,
+  };
+  const was: Record<string, unknown> = {};
+  const now: Record<string, unknown> = {};
+  for (const name of Object.keys(keys) as (keyof CsatSettings)[]) {
+    if (next[name] === before[name]) continue;
+    const value = next[name];
+    // The rows come with migration 0084 (the application role may update them, not insert).
+    const updated = await tx
+      .update(schema.instanceSetting)
+      .set({ value, updatedBy: ctx.actor.id, updatedAt: ctx.now() })
+      .where(eq(schema.instanceSetting.key, keys[name]))
+      .returning({ key: schema.instanceSetting.key });
+    if (updated.length === 0) throw new Error(`instance_setting row ${keys[name]} is missing`);
+    was[name] = before[name];
+    now[name] = value;
+  }
+  await recordAuditInTx(tx, ctx, fx, {
+    action: AUDIT_ACTIONS.csatSettingSet,
+    targetType: 'instance_setting',
+    targetId: null,
+    before: was,
+    after: now,
+  });
+  return fx.result(next);
+}
+
 /** Opts an organization out of (or back into) surveys (R-10.4); audited. */
 export async function setCsatOptOut(
   tx: DbTransaction,
@@ -144,8 +233,10 @@ async function surveyedRecently(
   contactId: string,
   now: Date,
   exceptSurveyId: string | null,
+  cooldownDays: number,
 ): Promise<boolean> {
-  const since = new Date(now.getTime() - CSAT_CONTACT_COOLDOWN_DAYS * DAY_MS);
+  if (cooldownDays === 0) return false;
+  const since = new Date(now.getTime() - cooldownDays * DAY_MS);
   const [row] = await db
     .select({ id: schema.csatSurvey.id })
     .from(schema.csatSurvey)
@@ -189,6 +280,9 @@ export async function scheduleSurvey(
   ticket: TicketRow,
 ): Promise<void> {
   if (!EMAIL_SURVEY_CHANNELS.includes(ticket.channel) || ticket.requesterContactId === null) return;
+  const settings = await readCsatSettings(tx);
+  // Switched off by an admin (T-174): no survey is owed, and no row says so for every ticket.
+  if (!settings.enabled) return;
   const [contact] = await tx
     .select()
     .from(schema.contact)
@@ -211,8 +305,10 @@ export async function scheduleSurvey(
   };
   if (contact.emails[0] === undefined) return skip('no_contact_email');
   if (await isOptedOut(tx, ticket.orgId)) return skip('org_opt_out');
-  if (await surveyedRecently(tx, contact.id, now, null)) return skip('contact_cooldown');
-  const delayMinutes = await readCsatDelayMinutes(tx);
+  if (await surveyedRecently(tx, contact.id, now, null, settings.cooldownDays)) {
+    return skip('contact_cooldown');
+  }
+  const delayMinutes = settings.delayMinutes;
   await tx
     .insert(schema.csatSurvey)
     .values({
@@ -290,6 +386,10 @@ async function queueEmail(
     ticketKey: ticketKeysOf(ctx).format(ticket.number),
     surveyUrl: csatSurveyUrl(landingUrl, mintCsatToken(signingKey, survey.id, tokenExpiresAt)),
     reminder,
+    // A ticket that came in through a Gmail mailbox is answered from that mailbox, not from SMTP.
+    ...(ticket.channel === 'gmail' && ticket.channelAccountId !== null
+      ? { gmail: { accountId: ticket.channelAccountId, surveyId: survey.id } }
+      : {}),
   });
   await enqueueJob(tx, ctx.config, {
     queue: QUEUE_NAMES.email,
@@ -350,9 +450,11 @@ async function sendOne(tx: Executor, ctx: DomainContext, id: string): Promise<Se
   if (ticket.status !== 'resolved' && ticket.status !== 'closed') {
     return finish('voided', 'ticket_reopened');
   }
+  const settings = await readCsatSettings(tx);
+  if (!settings.enabled) return finish('skipped', 'csat_disabled');
   if (contact.emails[0] === undefined) return finish('skipped', 'no_contact_email');
   if (await isOptedOut(tx, ticket.orgId)) return finish('skipped', 'org_opt_out');
-  if (await surveyedRecently(tx, contact.id, now, survey.id)) {
+  if (await surveyedRecently(tx, contact.id, now, survey.id, settings.cooldownDays)) {
     return finish('skipped', 'contact_cooldown');
   }
   const tokenExpiresAt = wholeSeconds(new Date(now.getTime() + CSAT_LINK_TTL_DAYS * DAY_MS));
@@ -363,7 +465,11 @@ async function sendOne(tx: Executor, ctx: DomainContext, id: string): Promise<Se
       status: 'sent',
       sentAt: now,
       tokenExpiresAt,
-      reminderDueAt: new Date(now.getTime() + CSAT_REMINDER_AFTER_HOURS * HOUR_MS),
+      // 0 hours = no reminder: the column stays empty, so the sweep never finds it.
+      reminderDueAt:
+        settings.reminderHours === 0
+          ? null
+          : new Date(now.getTime() + settings.reminderHours * HOUR_MS),
       updatedAt: now,
     })
     .where(eq(schema.csatSurvey.id, survey.id));
@@ -458,19 +564,23 @@ export async function sweepSurveys(
     else if (outcome === 'voided') voided += 1;
   }
 
-  const remindersDue = await db
-    .select({ id: schema.csatSurvey.id })
-    .from(schema.csatSurvey)
-    .where(
-      and(
-        eq(schema.csatSurvey.status, 'sent'),
-        sql`${schema.csatSurvey.reminderSentAt} IS NULL`,
-        lte(schema.csatSurvey.reminderDueAt, now),
-        gt(schema.csatSurvey.tokenExpiresAt, now),
-      ),
-    )
-    .orderBy(asc(schema.csatSurvey.reminderDueAt))
-    .limit(limit);
+  // While surveys are switched off nothing more goes to a customer, a reminder included.
+  const remindersEnabled = (await readCsatSettings(db)).enabled;
+  const remindersDue = remindersEnabled
+    ? await db
+        .select({ id: schema.csatSurvey.id })
+        .from(schema.csatSurvey)
+        .where(
+          and(
+            eq(schema.csatSurvey.status, 'sent'),
+            sql`${schema.csatSurvey.reminderSentAt} IS NULL`,
+            lte(schema.csatSurvey.reminderDueAt, now),
+            gt(schema.csatSurvey.tokenExpiresAt, now),
+          ),
+        )
+        .orderBy(asc(schema.csatSurvey.reminderDueAt))
+        .limit(limit)
+    : [];
   for (const { id } of remindersDue) {
     const outcome = await db.transaction((tx) => remindOne(tx, ctx, id));
     if (outcome === 'reminded') reminded += 1;
