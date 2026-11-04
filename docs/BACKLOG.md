@@ -175,7 +175,7 @@
 - [x] T-306f `backend-dev` แก้ T-306a C-5, C-6, C-7, C-8, C-9, C-12, C-13 (migration 0108, api auth/portal/brief, golden, simulation)
 - [x] T-306g `ai-engineer` เขียน `ai_replay_result` จาก eval runner: CLI `pnpm eval:record` ที่รัน replay + simulation ของชุด (drafter, grader, prompt, procedure) ปัจจุบันแล้วเรียก `record_replay_result()` ด้วยผู้ถือ `ai.autonomy.promote` (main thread ตัดสิน 2026-11-05) — จนกว่าจะมี ทุก intent ติด `replay_missing` (ปลอดภัย) — **ปิด 2026-11-05** (`pnpm --filter @watchtower/eval-runner record`)
 - [x] T-306h `backend-dev` portal: เปิดลิงก์ "คำขอของฉัน" (T-152) หรือยืนยันอีเมลจากลิงก์ tracking = พิสูจน์กล่องอีเมล → ตั้ง `customFields.portal.requesterVerified=true` ให้ ticket ของ contact นั้น (main thread ตัดสิน) · drafter stage 2 คง `contact.verifiedAt` เดิมเพราะมีคนอนุมัติ
-- [ ] T-306i `backend-dev` golden: `goldenAnswerSchema` คืน `shareable` (ป้ายในหน้า admin golden) + endpoint preview ผล scrub ก่อนติ๊ก shareable (ช่องว่างจาก web follow-up 2026-11-05)
+- [x] T-306i `backend-dev` golden: `goldenAnswerSchema` คืน `shareable` (ป้ายในหน้า admin golden) + endpoint preview ผล scrub ก่อนติ๊ก shareable (ช่องว่างจาก web follow-up 2026-11-05)
 - [ ] T-306c `po` review + เสนอ 2–3 intent → [ASK-HUMAN] เลื่อน stage
 - [ ] T-301 Grader + verified/contained/assumed resolution (§6.2, §6.4)
 - [ ] T-302 Eval set + replay runner + golden answers + KB author (§6.5, R-4.4–4.6)
