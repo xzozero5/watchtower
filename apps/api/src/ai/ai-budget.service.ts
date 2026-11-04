@@ -37,7 +37,6 @@ export class AiBudgetService {
     const usage = schema.assistantUsage;
     const rows = await db
       .select({
-        userId: usage.userId,
         name: schema.users.name,
         tokens: sql<string>`(${usage.inputTokens} + ${usage.outputTokens})::text`,
         messages: usage.messages,
@@ -58,7 +57,6 @@ export class AiBudgetService {
       assistant: {
         userDailyTokens: this.config.ASSISTANT_USER_DAILY_TOKENS,
         users: rows.map((row) => ({
-          userId: row.userId,
           name: row.name,
           tokens: Number(row.tokens),
           messages: row.messages,

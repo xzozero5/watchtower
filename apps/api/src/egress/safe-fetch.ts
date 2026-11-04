@@ -229,11 +229,11 @@ export class SafeImageFetcher {
 
     return new Promise<Response>((resolve, reject) => {
       let settled = false;
-      let headerTimer: NodeJS.Timeout | undefined;
+      const timers: { header?: NodeJS.Timeout } = {};
       const done = (action: () => void): void => {
         if (settled) return;
         settled = true;
-        clearTimeout(headerTimer);
+        clearTimeout(timers.header);
         deadline.removeEventListener('abort', onAbort);
         action();
       };
@@ -275,7 +275,7 @@ export class SafeImageFetcher {
         return;
       }
       deadline.addEventListener('abort', onAbort);
-      headerTimer = setTimeout(() => {
+      timers.header = setTimeout(() => {
         request.destroy();
         done(() => {
           reject(new EgressError('timeout'));
@@ -288,7 +288,7 @@ export class SafeImageFetcher {
         });
       });
       request.on('response', (incoming) => {
-        clearTimeout(headerTimer);
+        clearTimeout(timers.header);
         const status = incoming.statusCode ?? 0;
         const header = (name: string): string => {
           const value = incoming.headers[name];

@@ -41,6 +41,8 @@ const ADDED_LATER = [
   'ticket.read.masked',
   'ticket.dev.work',
   'ticket.dev.release.any',
+  // 0096 (T-175a)
+  'ai.budget.read',
 ] as const;
 
 let testDb: TestDatabase;

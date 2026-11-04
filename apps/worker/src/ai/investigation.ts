@@ -196,6 +196,7 @@ export async function runInvestigation(
       number: schema.ticket.number,
       subject: schema.ticket.subject,
       channel: schema.ticket.channel,
+      channelAccountId: schema.ticket.channelAccountId,
       orgId: schema.ticket.orgId,
       intentId: schema.ticket.intentId,
       requesterContactId: schema.ticket.requesterContactId,
@@ -345,7 +346,8 @@ export async function runInvestigation(
   // person can still ask for one (SR108-1).
   const intentTrusted = ticketIntent !== undefined && scope.intent === ticketIntent.key;
   // T-147: no draft and no `reply` step on a ticket nothing can be sent on.
-  const replyBlocked = (await replyBlockReason(db, ticket.channel)) ?? undefined;
+  const replyBlocked =
+    (await replyBlockReason(db, ticket.channel, ticket.channelAccountId)) ?? undefined;
 
   // --- evidence: collect it now, or reuse what the last investigation stored (a draft on request) ---
   let evidence: InvestigationEvidence[];

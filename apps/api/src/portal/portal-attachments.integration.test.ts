@@ -296,13 +296,27 @@ describe('POST /v1/portal/tickets with files', () => {
   });
 
   it.each([
+    ['a zip', 'bundle.zip', Buffer.from([0x50, 0x4b, 0x03, 0x04, 0, 0])],
+    ['a zip named .txt', 'notes.txt', Buffer.from([0x50, 0x4b, 0x03, 0x04, 0, 0])],
+    ['a rar', 'a.rar', Buffer.from([0x52, 0x61, 0x72, 0x21, 0x1a, 0x07, 0x00])],
+    ['a gzip named .log', 'a.log', Buffer.from([0x1f, 0x8b, 0x08, 0x00, 0x00])],
+  ])(
+    'refuses %s with 400 archive_not_accepted and files no ticket (T-182)',
+    async (_label, name, bytes) => {
+      const { response, payload } = await submitWith([{ name, bytes }]);
+      expect(response.status, JSON.stringify(response.body)).toBe(400);
+      expect(response.body.code).toBe('archive_not_accepted');
+      expect(await ticketCount(payload.email)).toBe(0);
+    },
+  );
+
+  it.each([
     ['a PDF named .png', 'shot.png', PDF],
     ['an executable named .txt', 'notes.txt', Buffer.from([0x4d, 0x5a, 0x90, 0x00, 0x03, 0x00])],
     ['an SVG file', 'logo.svg', Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"/>')],
     ['an SVG named .png', 'logo.png', Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"/>')],
     ['an HTML page named .txt', 'page.txt', Buffer.from('<!DOCTYPE html><script>1</script>')],
     ['an HTML file', 'page.html', Buffer.from('<html></html>')],
-    ['a zip', 'bundle.zip', Buffer.from([0x50, 0x4b, 0x03, 0x04, 0, 0])],
     ['an empty file', 'empty.txt', Buffer.alloc(0)],
   ])('refuses %s with 400 and files no ticket', async (_label, name, bytes) => {
     const { response, payload } = await submitWith([{ name, bytes }]);

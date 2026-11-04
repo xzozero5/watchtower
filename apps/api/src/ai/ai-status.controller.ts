@@ -18,7 +18,7 @@ export class AiStatusController {
   ) {}
 
   @Get('budget')
-  @RequirePermission('ai.autonomy.set')
+  @RequirePermission('ai.budget.read')
   @ApiOperation({
     summary: 'Today’s AI spend against the daily caps (lead, head)',
     description:
@@ -28,13 +28,13 @@ export class AiStatusController {
       'The mock provider is free and not counted.',
   })
   @ApiOkResponse({ standardSchema: aiBudgetSchema })
-  @ApiForbiddenResponse({ description: 'Needs ai.autonomy.set' })
+  @ApiForbiddenResponse({ description: 'Needs ai.budget.read' })
   async getBudget() {
     return parseResponse(aiBudgetSchema, await this.budget.read());
   }
 
   @Get('models')
-  @RequirePermission('ai.autonomy.set')
+  @RequirePermission('ai.budget.read')
   @ApiOperation({
     summary: 'Which model each AI agent uses, read-only (lead, head)',
     description:
@@ -43,7 +43,7 @@ export class AiStatusController {
       'model than the drafter (ADR-025 condition 7). Changed in the environment, never here.',
   })
   @ApiOkResponse({ standardSchema: aiModelMappingSchema })
-  @ApiForbiddenResponse({ description: 'Needs ai.autonomy.set' })
+  @ApiForbiddenResponse({ description: 'Needs ai.budget.read' })
   getModels() {
     return parseResponse(aiModelMappingSchema, this.models.read());
   }

@@ -134,9 +134,9 @@ function BudgetBody({ budget }: { budget: AiBudget }) {
         <p className="mt-2 text-sm text-muted-foreground">{t('admin.ai.budget.assistantNone')}</p>
       ) : (
         <ul className="mt-2 flex flex-col divide-y divide-border/60 text-sm">
-          {budget.assistant.users.map((user) => (
+          {budget.assistant.users.map((user, index) => (
             <li
-              key={user.userId}
+              key={`${String(index)}-${user.name}`}
               className="flex flex-wrap items-center justify-between gap-2 py-1.5"
             >
               <span className="font-medium">{user.name}</span>

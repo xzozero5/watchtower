@@ -358,8 +358,11 @@ export class TicketsController {
     @Body({ schema: updateTicketSchema }) body: UpdateTicket,
     @CurrentPrincipal() principal: Principal,
   ) {
+    // `source` and `aiRunId` say where the edit came from: the domain keeps them in the audit row, not on the ticket.
+    const { source, aiRunId, ...patch } = body;
+    const origin = source === undefined ? undefined : { source, aiRunId };
     const row = await this.uow.run((uow) =>
-      this.tickets.update(uow, params.id, body, actorOf(principal)),
+      this.tickets.update(uow, params.id, patch, actorOf(principal), origin),
     );
     return parseResponse(ticketDetailResponseSchema, await this.reader.detail(row.id, principal));
   }

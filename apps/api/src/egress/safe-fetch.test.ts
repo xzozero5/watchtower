@@ -395,7 +395,7 @@ describe('SafeImageFetcher: header timeout and proxies (T-175a)', () => {
       expect(hits).toHaveLength(1);
     } finally {
       for (const name of Object.keys(process.env)) {
-        if (!(name in saved)) delete process.env[name];
+        if (!(name in saved)) Reflect.deleteProperty(process.env, name);
       }
       Object.assign(process.env, saved);
     }

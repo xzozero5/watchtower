@@ -418,6 +418,12 @@ export const ticketAiInsightSchema = z.object({
   draft: aiDraftSchema.optional(),
   report: aiReportSchema.optional(),
   progress: aiProgressSchema.optional(),
+  /**
+   * The latest AI run recorded for this brief (summary, else classification), so an edit the person makes
+   * from a suggestion can be tied to it in the audit log (T-175a). `[UNVERIFIED]` it is not the
+   * investigation run itself (the insight row does not keep that id).
+   */
+  aiRunId: z.uuid().optional(),
   stage: aiStageSchema,
   generatedAt: z.iso.datetime(),
 });

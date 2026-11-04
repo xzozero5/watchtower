@@ -140,8 +140,8 @@ export function makeAiBudget(overrides: Partial<AiBudget> = {}): AiBudget {
     assistant: {
       userDailyTokens: 200_000,
       users: [
-        { userId: uuid(1), name: 'Mana K.', tokens: 12_000, messages: 5, costUsd: 0.02 },
-        { userId: uuid(2), name: 'Nok P.', tokens: 200_000, messages: 40, costUsd: null },
+        { name: 'Mana K.', tokens: 12_000, messages: 5, costUsd: 0.02 },
+        { name: 'Nok P.', tokens: 200_000, messages: 40, costUsd: null },
       ],
     },
     ...overrides,

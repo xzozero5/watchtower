@@ -507,6 +507,9 @@ export const createTicketSchema = z.object({
 });
 export type CreateTicket = z.infer<typeof createTicketSchema>;
 
+/** Where an edit came from, when it is not a person's own idea: the AI proposed it (T-175a). Audit only; never stored on the ticket. */
+export const TICKET_UPDATE_SOURCES = ['ai_suggestion'] as const;
+
 export const updateTicketSchema = z
   .object({
     subject: z.string().trim().min(1).max(300).optional(),
@@ -515,8 +518,22 @@ export const updateTicketSchema = z
     queueId: z.uuid().nullable().optional(),
     tags: ticketTagsSchema.optional(),
     customFields: jsonRecordSchema.optional(),
+    /** `ai_suggestion`: the person accepted a priority the AI proposed. Goes to the audit log with `aiRunId`. */
+    source: z.enum(TICKET_UPDATE_SOURCES).optional(),
+    /** The AI run behind the suggestion, for the audit log. Only with `source`. */
+    aiRunId: z.uuid().optional(),
   })
-  .refine((value) => Object.keys(value).length > 0, { message: 'nothing to update' });
+  .refine((value) => Object.keys(value).some((key) => key !== 'source' && key !== 'aiRunId'), {
+    message: 'nothing to update',
+  })
+  .refine((value) => value.aiRunId === undefined || value.source !== undefined, {
+    path: ['aiRunId'],
+    message: 'aiRunId needs source',
+  })
+  .refine((value) => value.source === undefined || value.priority !== undefined, {
+    path: ['source'],
+    message: 'source applies to a priority change',
+  });
 export type UpdateTicket = z.infer<typeof updateTicketSchema>;
 
 export const changeStatusSchema = z.object({

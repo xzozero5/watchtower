@@ -41,6 +41,7 @@ export const PERMISSIONS = {
   'ai.autonomy.set':
     'Change AI autonomy stage per intent (0-2 in Phase 1; stage 3 and above is the owner decision)',
   'ai.autonomy.set.any': 'Change AI autonomy stage per intent to any stage',
+  'ai.budget.read': 'Read the AI spend against its caps and which model each AI agent uses',
   'investigate.run': 'Run read-only investigation tools',
   'incident.create': 'Create an incident',
   'incident.manage': 'Close incidents and publish status page posts',
@@ -150,6 +151,7 @@ const AGENT: readonly Permission[] = [
 const LEAD: readonly Permission[] = [
   ...AGENT,
   'ai.autonomy.set',
+  'ai.budget.read',
   'incident.manage',
   'roster.manage',
   'performance.read.all',

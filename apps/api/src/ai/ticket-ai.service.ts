@@ -126,6 +126,9 @@ export function toTicketAiInsight(
         }
       : {}),
     ...(progress.success && state === 'investigating' ? { progress: progress.data } : {}),
+    ...((row.summarizerRunId ?? row.classifierRunId)
+      ? { aiRunId: (row.summarizerRunId ?? row.classifierRunId) as string }
+      : {}),
     stage: currentStage ?? row.stage,
     generatedAt: row.generatedAt.toISOString(),
   };

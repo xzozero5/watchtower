@@ -553,6 +553,7 @@ describe('no reply where nothing can be sent (T-147, QA-29)', () => {
 });
 
 describe('the AI suggests a priority (T-147, QA-29)', () => {
+  const RUN_ID = '0a1b2c3d-0000-4000-8000-000000000001';
   const suggested = makeReport({
     suggestedPriority: {
       priority: 'P1',
@@ -565,7 +566,7 @@ describe('the AI suggests a priority (T-147, QA-29)', () => {
     const user = userEvent.setup();
     const api = workspaceApi({
       tickets: [ticket1],
-      ai: { 'OPS-1': makeInsight({ report: suggested }) },
+      ai: { 'OPS-1': makeInsight({ aiRunId: RUN_ID, report: suggested }) },
       overrides: { 'PATCH /v1/tickets/:id': { json: { ...ticket1, priority: 'P1' } } },
     });
     const { conversation } = await openTicket();
@@ -574,11 +575,53 @@ describe('the AI suggests a priority (T-147, QA-29)', () => {
     expect(row).toHaveTextContent('Many customers cannot sign in.');
     expect(api.callsTo('/v1/tickets/OPS-1', 'PATCH')).toHaveLength(0);
 
+    // P1 pages the team: one more confirmation before anything is sent (T-175a).
     await user.click(within(row).getByRole('button', { name: 'Set to P1' }));
+    expect(api.callsTo('/v1/tickets/OPS-1', 'PATCH')).toHaveLength(0);
+    expect(
+      within(row).getByText('P1 notifies the whole team. Raise this ticket to P1?'),
+    ).toBeVisible();
+    await user.click(within(row).getByRole('button', { name: 'Cancel' }));
+    expect(api.callsTo('/v1/tickets/OPS-1', 'PATCH')).toHaveLength(0);
+
+    await user.click(within(row).getByRole('button', { name: 'Set to P1' }));
+    await user.click(within(row).getByRole('button', { name: 'Yes, set to P1' }));
     await waitFor(() => {
       expect(api.callsTo('/v1/tickets/OPS-1', 'PATCH')).toHaveLength(1);
     });
-    expect(api.callsTo('/v1/tickets/OPS-1', 'PATCH')[0]?.body).toEqual({ priority: 'P1' });
+    // The edit says it came from the AI, and which run, for the audit log.
+    expect(api.callsTo('/v1/tickets/OPS-1', 'PATCH')[0]?.body).toEqual({
+      priority: 'P1',
+      source: 'ai_suggestion',
+      aiRunId: RUN_ID,
+    });
+  });
+
+  it('sets a priority other than P1 in one click, still marked as coming from the AI', async () => {
+    const user = userEvent.setup();
+    const api = workspaceApi({
+      tickets: [ticket1],
+      ai: {
+        'OPS-1': makeInsight({
+          aiRunId: RUN_ID,
+          report: makeReport({
+            suggestedPriority: { priority: 'P3', reason: 'Cosmetic.', confidence: 0.6 },
+          }),
+        }),
+      },
+      overrides: { 'PATCH /v1/tickets/:id': { json: { ...ticket1, priority: 'P3' } } },
+    });
+    const { conversation } = await openTicket();
+    const row = await within(conversation).findByTestId('ai-priority-suggestion');
+    await user.click(within(row).getByRole('button', { name: 'Set to P3' }));
+    await waitFor(() => {
+      expect(api.callsTo('/v1/tickets/OPS-1', 'PATCH')).toHaveLength(1);
+    });
+    expect(api.callsTo('/v1/tickets/OPS-1', 'PATCH')[0]?.body).toEqual({
+      priority: 'P3',
+      source: 'ai_suggestion',
+      aiRunId: RUN_ID,
+    });
   });
 
   it('says nothing when the suggestion is the priority the ticket already has', async () => {
