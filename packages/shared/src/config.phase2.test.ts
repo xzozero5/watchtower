@@ -61,3 +61,18 @@ describe('Phase 2 variables', () => {
     expect(example.DEPLOY_WEBHOOK_SECRET).toBe('');
   });
 });
+
+describe('push audiences (T-114a C-5)', () => {
+  it('refuses a Gmail push audience equal to the alert one', () => {
+    expect(() =>
+      parse({ GMAIL_PUSH_AUDIENCE: 'same-audience', ALERT_PUSH_AUDIENCE: 'same-audience' }),
+    ).toThrow(/GMAIL_PUSH_AUDIENCE/);
+  });
+
+  it('accepts different audiences, or only one of them', () => {
+    expect(() =>
+      parse({ GMAIL_PUSH_AUDIENCE: 'gmail-audience', ALERT_PUSH_AUDIENCE: 'alert-audience' }),
+    ).not.toThrow();
+    expect(() => parse({ GMAIL_PUSH_AUDIENCE: 'gmail-audience' })).not.toThrow();
+  });
+});
