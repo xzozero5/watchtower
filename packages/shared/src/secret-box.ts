@@ -27,6 +27,8 @@ export const KEY_LABELS = {
   statusLink: 'watchtower/status/link/v1',
   /** HMAC key for `ai_run.input_hash`: an audit row can prove an input without storing it (ADR-008). */
   aiInputHash: 'watchtower/ai/input-hash/v1',
+  /** HMAC key for the subject part of rate-limit and upload-quota counter keys (T-125): Redis holds no guessable hash of an address. */
+  rateLimit: 'watchtower/rate-limit/subject/v1',
 } as const;
 
 const SALT = 'watchtower-subkeys';

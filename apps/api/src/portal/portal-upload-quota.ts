@@ -1,5 +1,3 @@
-import { createHash } from 'node:crypto';
-
 import { HttpStatus, Inject, Injectable } from '@nestjs/common';
 import type { Database } from '@watchtower/db';
 import { AUDIT_ACTIONS } from '@watchtower/shared';
@@ -11,6 +9,7 @@ import { APP_CONFIG, type ApiConfig } from '../config/config.js';
 import { DATABASE } from '../database/database.module.js';
 import { DOMAIN, type Domain } from '../domain/domain.module.js';
 import { LOGGER, type AppLogger } from '../logging/logger.js';
+import { rateLimitKey, subjectDigest } from '../auth/rate-limiter.js';
 import { RealtimePublisher } from '../realtime/realtime-publisher.js';
 import { REDIS } from '../redis/redis.module.js';
 import { TelemetryService } from '../telemetry/telemetry.service.js';
@@ -78,6 +77,7 @@ return 1
 export class PortalUploadQuota {
   private readonly caps: Readonly<Record<QuotaScope, number>>;
   private readonly namespace: string;
+  private readonly hmacKey: Buffer;
 
   constructor(
     @Inject(REDIS) private readonly redis: Redis,
@@ -85,6 +85,7 @@ export class PortalUploadQuota {
     config: Pick<
       ApiConfig,
       | 'RATE_LIMIT_NAMESPACE'
+      | 'APP_ENCRYPTION_KEY'
       | 'PORTAL_UPLOAD_DAILY_MB'
       | 'PORTAL_UPLOAD_IP_DAILY_MB'
       | 'PORTAL_UPLOAD_EMAIL_DAILY_MB'
@@ -97,6 +98,7 @@ export class PortalUploadQuota {
     @Inject(RealtimePublisher) private readonly publisher: RealtimePublisher,
   ) {
     this.namespace = config.RATE_LIMIT_NAMESPACE;
+    this.hmacKey = rateLimitKey(config);
     this.caps = {
       ip: config.PORTAL_UPLOAD_IP_DAILY_MB * MB,
       email: config.PORTAL_UPLOAD_EMAIL_DAILY_MB * MB,
@@ -106,7 +108,7 @@ export class PortalUploadQuota {
   }
 
   private key(scope: QuotaScope, subject: string): string {
-    const digest = createHash('sha256').update(subject).digest('hex').slice(0, 32);
+    const digest = subjectDigest(this.hmacKey, subject);
     return `${this.namespace}:uq:${scope}:${digest}`;
   }
 
