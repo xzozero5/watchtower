@@ -317,3 +317,24 @@ describe('reject (R)', () => {
     expect(screen.getByTestId('ai-draft')).toBeVisible();
   });
 });
+
+describe('edit on an email ticket (T-171)', () => {
+  it('opens the draft in the rich editor of the email composer instead of a text box', async () => {
+    const user = userEvent.setup();
+    const gmail = makeTicket(1, { subject: 'Cannot log in', channel: 'gmail' });
+    workspaceApi({ tickets: [gmail], ai: { 'OPS-1': makeInsight() } });
+    window.history.replaceState(null, '', '/?ticket=OPS-1');
+    renderWorkspace();
+    const draft = await screen.findByTestId('ai-draft');
+    await user.click(within(draft).getByRole('button', { name: /^Edit/ }));
+
+    const editor = await screen.findByRole('textbox', { name: 'Public reply' });
+    await waitFor(() => {
+      expect(editor).toHaveTextContent('Hello Riley, your account was locked');
+    });
+    expect(screen.getByTestId('email-composer')).toBeVisible();
+    // No plain text box inside the card: the words moved to the editor.
+    expect(within(draft).queryByRole('textbox')).toBeNull();
+    expect(screen.getByTestId('ai-draft-note')).toBeVisible();
+  });
+});

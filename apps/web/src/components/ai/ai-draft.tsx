@@ -16,6 +16,7 @@ import { Fragment, useEffect, useId, useRef, useState } from 'react';
 
 import { textToHtml } from '@/components/conversation/email/html';
 import { useI18n } from '@/i18n/provider';
+import { draftHandoff } from '@/lib/ai/draft-handoff';
 import { changedFraction } from '@/lib/ai/model';
 import { useAiDraftActions } from '@/lib/ai/queries';
 import { useShortcut } from '@/lib/keyboard';
@@ -117,7 +118,14 @@ export function AiDraftCard({
     if (editing) setEditing(false);
     onApproveOpenChange(true);
   };
+  // On an email ticket the draft is edited in the rich editor of the composer (recipients, subject,
+  // signature, formatting), not in a text box here; the send is recorded as an edit of this draft.
+  const editInComposer = 'channel' in ticket && ticket.channel === 'gmail';
   const startEdit = () => {
+    if (editInComposer) {
+      draftHandoff.send(ticket.key, { draftId: draft.id, text: edited ?? draft.body });
+      return;
+    }
     setEdited((current) => current ?? draft.body);
     setEditing(true);
   };

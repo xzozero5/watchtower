@@ -5,6 +5,8 @@ import {
   Alert,
   Button,
   Combobox,
+  Dialog,
+  DialogContent,
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuRadioGroup,
@@ -22,6 +24,7 @@ import {
   Flag,
   Lock,
   MessageCircle,
+  PenLine,
   Send,
   X,
 } from 'lucide-react';
@@ -46,6 +49,8 @@ import { ChannelIcon } from '@/components/ticket/channel-icon';
 import { QUEUE_LISTBOX_ID } from '@/components/queue/queue-row';
 import { useI18n } from '@/i18n/provider';
 import type { MessageKey } from '@/i18n';
+import { useAiDraftActions } from '@/lib/ai/queries';
+import { draftHandoff } from '@/lib/ai/draft-handoff';
 import { isApiError } from '@/lib/api/errors';
 import { useSession } from '@/lib/auth/session';
 import { useShortcut } from '@/lib/keyboard';
@@ -105,6 +110,15 @@ export function sendErrorText(error: unknown, t: (key: MessageKey) => string): s
     return error.message;
   }
   return t(errorKey(error));
+}
+
+/** The domains of a 409 `external_recipients` (T-171 C-2), or null for any other answer. */
+export function externalDomainsOf(error: unknown): string[] | null {
+  if (!isApiError(error) || error.code !== 'external_recipients') return null;
+  const domains = (error.details as { domains?: unknown } | undefined)?.domains;
+  return Array.isArray(domains)
+    ? domains.filter((domain): domain is string => typeof domain === 'string')
+    : [];
 }
 
 function errorKey(error: unknown): MessageKey {
@@ -172,6 +186,12 @@ export function Composer({
   const [emailDraft, setEmailDraft] = useState<EmailDraft | null>(null);
   const [emailResetKey, setEmailResetKey] = useState(0);
   const upload = useAttachmentUpload();
+  const draftActions = useAiDraftActions(ticket.key);
+  // The AI draft whose words are in the email editor (set by the draft card's Edit), if any.
+  const fromDraftId = useRef<string | null>(null);
+  const [fromDraft, setFromDraft] = useState(false);
+  // Domains the person has to confirm before the mail goes (409 external_recipients).
+  const [externalDomains, setExternalDomains] = useState<string[] | null>(null);
   // Uploads the email editor put into the text as pictures: they travel inline, not as files.
   const pictured = useRef(new Map<string, string>());
   const expectPictures = useRef(0);
@@ -234,6 +254,30 @@ export function Composer({
       emailEditorRef.current?.focus();
     }
   }, [focusTick]);
+
+  // An AI draft handed over by the draft card's Edit: its words go into the email editor (after what is
+  // already there), and the send is recorded as an edit of that draft.
+  useEffect(() => {
+    const receive = () => {
+      if (!isStaff || ticketChannel !== 'gmail') return;
+      const handoff = draftHandoff.take(ticket.key);
+      if (!handoff) return;
+      fromDraftId.current = handoff.draftId;
+      setFromDraft(true);
+      setMode('reply');
+      emailDraftStore.set(
+        ticket.key,
+        `${emailDraftStore.get(ticket.key)}${textToHtml(handoff.text)}`,
+      );
+      setEmailResetKey((key) => key + 1);
+      setSent(null);
+      setFocusTick((tick) => tick + 1);
+    };
+    receive();
+    return draftHandoff.subscribe((key) => {
+      if (key === ticket.key) receive();
+    });
+  }, [ticket.key, isStaff, ticketChannel]);
 
   const body = emailMode ? (emailDraft?.text ?? '') : bodies[mode];
 
@@ -360,7 +404,7 @@ export function Composer({
     !upload.busy &&
     !mutation.isPending;
 
-  const submit = () => {
+  const submit = (confirmExternal = false) => {
     if (!canSend) return;
     const text = body.trim();
     const inlineIds = new Set(
@@ -375,6 +419,8 @@ export function Composer({
       pictured.current.clear();
       setPictureUrls(new Map());
       if (emailMode) {
+        fromDraftId.current = null;
+        setFromDraft(false);
         emailDraftStore.set(ticket.key, '');
         setEmailDraft(null);
         setEmailResetKey((key) => key + 1);
@@ -390,9 +436,11 @@ export function Composer({
           body: text,
           ...files,
           ...(nextStatus ? { setStatus: nextStatus } : {}),
+          ...(emailMode && fromDraftId.current ? { editedFromDraftId: fromDraftId.current } : {}),
           ...(emailMode && emailDraft
             ? {
                 email: {
+                  ...(confirmExternal ? { confirmExternalRecipients: true } : {}),
                   to: emailDraft.to,
                   cc: emailDraft.cc,
                   bcc: emailDraft.bcc,
@@ -407,7 +455,14 @@ export function Composer({
           onSuccess: (result) => {
             // The server holds a Gmail or LINE reply for its undo window; Undo cancels it there.
             offer(result.message);
+            if (emailMode && fromDraftId.current) draftActions.sent(fromDraftId.current);
+            setExternalDomains(null);
             done();
+          },
+          onError: (error) => {
+            // A recipient outside the customer's own domains: ask once, then send with the confirmation.
+            const domains = externalDomainsOf(error);
+            if (domains !== null) setExternalDomains(domains);
           },
         },
       );
@@ -582,6 +637,16 @@ export function Composer({
           </AttachmentDropZone>
         )}
 
+        {emailMode && fromDraft ? (
+          <p
+            data-testid="ai-draft-note"
+            className="flex items-center gap-1.5 px-3 pb-1 text-xs text-muted-foreground"
+          >
+            <PenLine aria-hidden className="size-3.5 text-ai-accent" />
+            {t('email.compose.fromAiDraft')}
+          </p>
+        ) : null}
+
         <div
           role="group"
           aria-label={t('composer.toolbar.label')}
@@ -714,11 +779,53 @@ export function Composer({
         </Alert>
       ) : null}
 
-      {mutation.isError ? (
+      {mutation.isError && externalDomainsOf(mutation.error) === null ? (
         <Alert tone="error" title={t('composer.errors.title')} className="mt-2">
           {sendErrorText(mutation.error, t)}
         </Alert>
       ) : null}
+
+      <Dialog
+        open={externalDomains !== null}
+        onOpenChange={(open) => {
+          if (!open) setExternalDomains(null);
+        }}
+      >
+        <DialogContent
+          title={t('email.external.title')}
+          description={t('email.external.body', {
+            count: externalDomains?.length ?? 0,
+            domains: (externalDomains ?? []).join(', '),
+          })}
+          closeLabel={t('email.external.close')}
+          footer={
+            <>
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => {
+                  setExternalDomains(null);
+                }}
+              >
+                {t('email.external.cancel')}
+              </Button>
+              <Button
+                type="button"
+                variant="primary"
+                data-testid="confirm-external"
+                onClick={() => {
+                  setExternalDomains(null);
+                  submit(true);
+                }}
+              >
+                {t('email.external.send')}
+              </Button>
+            </>
+          }
+        >
+          <p className="text-xs text-muted-foreground">{t('email.external.note')}</p>
+        </DialogContent>
+      </Dialog>
 
       <div role="status" className="px-1 text-xs text-muted-foreground">
         {sent ? (sent === 'reply' ? t('composer.sent.reply') : t('composer.sent.note')) : null}

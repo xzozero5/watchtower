@@ -5,10 +5,13 @@
  *
  * Nothing from the input is copied through: the output is built from allow-listed elements and
  * attributes only, so an unknown construct can disappear but never become active content. Scripts,
- * styles, frames, forms, `style` attributes and event handlers never survive; links open in a new
- * tab with `noopener`; images are `cid:` (resolved by the caller), `data:image/*`, or remote only
- * when the reader asked for images (Gmail's "Display images below").
+ * `<style>` blocks, frames, forms and event handlers never survive. The `style` attribute is rebuilt
+ * through the shared CSS allow-list (colours, fonts, spacing; no `url()`, no positioning) so a mail
+ * looks like it does in Gmail (T-171). Links open in a new tab with `noopener`; images are `cid:`
+ * (resolved by the caller), `data:image/*`, or remote only when the reader asked for images (Gmail's
+ * "Display images below"): the server keeps a remote address as the inert `data-remote-src`.
  */
+import { safeColor, sanitizeInlineStyle } from '@watchtower/shared';
 
 const ALLOWED = new Set([
   'a',
@@ -92,12 +95,12 @@ const DROPPED_WITH_CONTENT = new Set([
   'plaintext',
 ]);
 
-const GLOBAL_ATTRIBUTES = ['title', 'dir', 'lang'] as const;
+const GLOBAL_ATTRIBUTES = ['title', 'dir', 'lang', 'style'] as const;
 const ELEMENT_ATTRIBUTES: Readonly<Record<string, readonly string[]>> = {
   a: ['href'],
-  td: ['colspan', 'rowspan', 'align', 'valign'],
-  th: ['colspan', 'rowspan', 'align', 'valign'],
-  table: ['width', 'align', 'border', 'cellpadding', 'cellspacing'],
+  td: ['colspan', 'rowspan', 'align', 'valign', 'width', 'bgcolor'],
+  th: ['colspan', 'rowspan', 'align', 'valign', 'width', 'bgcolor'],
+  table: ['width', 'align', 'border', 'cellpadding', 'cellspacing', 'bgcolor'],
   tr: ['align', 'valign'],
   p: ['align'],
   div: ['align'],
@@ -111,6 +114,11 @@ const MAX_DEPTH = 80;
 export interface SanitizeEmailOptions {
   /** Load remote (`http(s)`) images. Off by default: they tell the sender that, and when, you read it. */
   readonly allowRemoteImages?: boolean;
+  /**
+   * Keep the safe subset of `style` attributes. Default true; the editor turns it off for pasted
+   * text so a paste brings the words and the structure, not another page's fonts and colours.
+   */
+  readonly styles?: boolean;
   /** Turns a `cid:` content id (no scheme, lower-case) into a URL the page may load, or null. */
   readonly resolveCid?: (contentId: string) => string | null;
 }
@@ -166,18 +174,36 @@ export function sanitizeEmailHtml(
       image.setAttribute('src', src.replace(/\s+/g, ''));
       return image;
     }
-    if (/^https?:\/\//i.test(src)) {
+    // The server keeps a remote address as `data-remote-src` (no `src`); an image whose `src` is already
+    // remote (older stored mail) is treated the same.
+    const remote = /^https?:\/\//i.test(src)
+      ? src
+      : (element.getAttribute('data-remote-src') ?? '').trim();
+    if (/^https?:\/\//i.test(remote)) {
       if (options.allowRemoteImages !== true) {
         blocked += 1;
         image.setAttribute('data-blocked', '1');
         return image;
       }
-      image.setAttribute('src', src);
+      image.setAttribute('src', remote);
       image.setAttribute('referrerpolicy', 'no-referrer');
       image.setAttribute('loading', 'lazy');
       return image;
     }
     return null; // relative, javascript:, file:, ...: nothing to show
+  };
+
+  const styleOfElement = (element: Element, name: string): string => {
+    const parts: string[] = [];
+    if (name === 'table' || name === 'td' || name === 'th') {
+      const background = safeColor(element.getAttribute('bgcolor') ?? '');
+      if (background !== null) parts.push(`background-color:${background}`);
+    }
+    if (options.styles !== false) {
+      const own = sanitizeInlineStyle(element.getAttribute('style') ?? '');
+      if (own !== '') parts.push(own);
+    }
+    return parts.join(';');
   };
 
   const copyChildren = (from: Node, to: Node, depth: number): void => {
@@ -206,6 +232,8 @@ export function sanitizeEmailHtml(
     for (const attribute of [...GLOBAL_ATTRIBUTES, ...(ELEMENT_ATTRIBUTES[name] ?? [])]) {
       const value = element.getAttribute(attribute);
       if (value === null) continue;
+      if (attribute === 'bgcolor') continue; // folded into `style` below
+      if (attribute === 'style') continue;
       if (attribute === 'href') {
         if (!isSafeLink(value)) continue;
         clone.setAttribute('href', value.trim());
@@ -215,6 +243,8 @@ export function sanitizeEmailHtml(
         clone.setAttribute(attribute, value);
       }
     }
+    const style = styleOfElement(element, name);
+    if (style !== '') clone.setAttribute('style', style);
     copyChildren(element, clone, depth + 1);
     to.appendChild(clone);
   };

@@ -3,12 +3,29 @@ import { describe, expect, it } from 'vitest';
 import { buildSrcDoc, htmlToText, sanitizeEmailHtml, textToHtml } from './html';
 
 describe('sanitizeEmailHtml', () => {
-  it('drops scripts, styles, frames, forms, handlers and style attributes', () => {
+  it('drops scripts, style blocks, frames, forms and handlers', () => {
     const out = sanitizeEmailHtml(
-      '<p style="color:red" onclick="x()">Hi</p><script>alert(1)</script><style>p{}</style>' +
+      '<p onclick="x()">Hi</p><script>alert(1)</script><style>p{}</style>' +
         '<iframe src="https://evil.example"></iframe><form action="/x"><input></form><svg onload="x()"></svg>',
     );
     expect(out.html).toBe('<p>Hi</p>');
+  });
+
+  it('keeps the safe part of a style attribute, so a mail looks as it does in Gmail', () => {
+    const out = sanitizeEmailHtml(
+      '<p style="color:#123456;font-weight:bold;background:url(https://t.example/x.gif);position:fixed">Hi</p>' +
+        '<table bgcolor="#eeeeee" width="600"><tr><td bgcolor="url(x)" width="50%">c</td></tr></table>',
+    );
+    expect(out.html).toContain('<p style="color:#123456;font-weight:bold">Hi</p>');
+    expect(out.html).toContain('<table width="600" style="background-color:#eeeeee">');
+    expect(out.html).not.toMatch(/url\(|position|t\.example/);
+    expect(out.html).toContain('<td width="50%">c</td>');
+  });
+
+  it('leaves styles out when asked (pasted text keeps words and structure only)', () => {
+    expect(sanitizeEmailHtml('<p style="color:red">Hi</p>', { styles: false }).html).toBe(
+      '<p>Hi</p>',
+    );
   });
 
   it('keeps only safe link schemes and opens links in a new tab without opener', () => {
@@ -30,6 +47,22 @@ describe('sanitizeEmailHtml', () => {
     const shown = sanitizeEmailHtml(html, { allowRemoteImages: true });
     expect(shown.html).toContain('src="https://t.example/pixel.gif"');
     expect(shown.html).toContain('referrerpolicy="no-referrer"');
+  });
+
+  it('holds back the inert remote address from the server until the reader allows it', () => {
+    const html = '<img data-remote-src="https://t.example/pixel.png" alt="logo" width="40">';
+    const held = sanitizeEmailHtml(html);
+    expect(held.blockedImages).toBe(1);
+    expect(held.html).not.toMatch(/src="https|t\.example/);
+    const shown = sanitizeEmailHtml(html, { allowRemoteImages: true });
+    expect(shown.blockedImages).toBe(0);
+    expect(shown.html).toContain('src="https://t.example/pixel.png"');
+    expect(shown.html).not.toContain('data-remote-src');
+    // Only http(s) counts: a javascript: address in the inert attribute shows nothing.
+    expect(
+      sanitizeEmailHtml('<img data-remote-src="javascript:alert(1)">', { allowRemoteImages: true })
+        .html,
+    ).toBe('');
   });
 
   it('resolves cid images through the caller and refuses other schemes', () => {

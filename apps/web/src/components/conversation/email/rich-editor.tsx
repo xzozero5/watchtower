@@ -90,7 +90,7 @@ export function RichEditor({
 
   const insertHtml = (html: string) => {
     ref.current?.focus();
-    command('insertHTML', sanitizeEmailHtml(html).html);
+    command('insertHTML', sanitizeEmailHtml(html, { styles: false }).html);
     emit();
   };
 

@@ -35,7 +35,10 @@ const HTTP_ERRORS: Readonly<Record<DomainErrorCode, (message: string) => ApiHttp
 export class ExternalRecipientsError extends HttpException {
   readonly code = 'external_recipients';
 
-  constructor(message: string, readonly domains: readonly string[]) {
+  constructor(
+    message: string,
+    readonly domains: readonly string[],
+  ) {
     super(
       {
         statusCode: HttpStatus.CONFLICT,
