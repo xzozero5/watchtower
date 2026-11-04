@@ -149,9 +149,9 @@
 - [x] T-303b `backend-dev` migration + CRUD + compile (AI ร่าง คนยืนยัน) + audit — **ปิด 2026-11-04** (0097)
 - [ ] T-303c `ai-engineer` investigator/drafter ใช้ procedure ที่ publish · `ai_run` เก็บ version
 - [ ] T-303d `ai-engineer` simulation กับ ticket เก่า (runner 302c) ต้องผ่านก่อน publish
-- [ ] T-303e `frontend-dev` editor NL → preview → simulate → publish + `examples/procedures/`
+- [x] T-303e `frontend-dev` editor NL → preview → simulate → publish + `examples/procedures/` — **ปิด 2026-11-04** (แท็บ Procedure ใน admin intents; Simulate รอ T-303d)
 - [ ] T-304a `architect` (+`security-reviewer`) ADR stage 3: flag env `AI_AUTOSEND_ENABLED` (ปิด, env เท่านั้น), shadow mode, เงื่อนไข §6.4/§6.6, promotion ต้อง head + gate report + เจ้าของ, auto-rollback, A-9/A-10/A-11 จาก T-125
-- [ ] T-304b `backend-dev` CHECK ≤ 3 + trigger ต้องมีแถว promotion + shadow · down migration
+- [x] T-304b `backend-dev` CHECK ≤ 3 + trigger ต้องมีแถว promotion + shadow · down migration — **ปิด 2026-11-04** (0096)
 - [ ] T-304c `ai-engineer` gate ใน `decide.ts` + shadow (`would_auto_send`) · property test: flag OFF = ไม่มี ai_auto
 - [ ] T-304d `ai-engineer` grader ตรวจก่อนส่งใน dispatcher + ข้อความแจ้งว่าเป็นคำตอบอัตโนมัติ
 - [ ] T-304e `backend-dev` auto-rollback (violation/reopen/CSAT/grader fail) → stage 2 + audit + แจ้ง head
@@ -160,14 +160,15 @@
 - [x] T-305a `backend-dev`+`frontend-dev` cost dashboard ต่อ agent/intent/ticket (รวม T-142) — **ปิด 2026-11-04** (ยังไม่มี e2e/axe ของหน้าใหม่)
 - [x] T-305b `backend-dev`+`frontend-dev` CEO view §9.2 + tile plug-in (API/CSV) — **ปิด 2026-11-04** (0099, §9.2 ข้อ 2,3,5,6 ยังไม่ทำ)
 - [ ] T-305c `ai-engineer` weekly brief (claim + หลักฐาน T-135, root cause top 5) head แก้ได้ + ตั้งเวลาส่ง
-- [ ] T-305d `backend-dev` export PDF (เจ้าของอนุมัติ dependency 2026-11-04 — ADR เลือก library ก่อน, ไม่มี network) · Google Docs mock
+- [x] T-305d `backend-dev` export PDF (เจ้าของอนุมัติ dependency 2026-11-04 — ADR เลือก library ก่อน, ไม่มี network) · Google Docs mock — **ปิด 2026-11-04** (ADR-028)
 - [ ] T-305e `backend-dev`+`ai-engineer`+`frontend-dev` roster planner (R-7.2) solver deterministic + AI อธิบาย · apply ต้องคนกด
 - [ ] T-306a `security-reviewer` ตรวจ autonomy (bypass gate, injection → auto-send, เปิดเผยให้ unverified)
 - [ ] T-306b `qa-engineer` e2e shadow, flag ON ใน stack ทิ้ง (mock), rollback, eval gate
-- [ ] T-306d `backend-dev` + `architect` runbook deploy instance ใหม่สำหรับ pilot (DB สะอาด, seed reference เท่านั้น, env/secret checklist, backup/restore ซ้อม) — เจ้าของจะ deploy เองตอนเริ่ม pilot
+- [x] T-306d `backend-dev` + `architect` runbook deploy instance ใหม่สำหรับ pilot (DB สะอาด, seed reference เท่านั้น, env/secret checklist, backup/restore ซ้อม) — เจ้าของจะ deploy เองตอนเริ่ม pilot — **ปิด 2026-11-04** (docs/runbooks/pilot-instance.md + tools/restore-drill)
 - [ ] T-301e `backend-dev` re-grade เมื่อ CSAT มาถึงหลัง grade (ไม่งั้น verified ต่ำกว่าจริง) — ก่อน T-304f *(กำลังทำใน T-304b)* · + `capResolutionClass` ต้องดูข้อความลูกค้าที่ปฏิเสธ ("ยังไม่หาย") ไม่ใช่แค่ CSAT (qa T-302b)
-- [ ] T-175a `backend-dev` P3 จาก review T-175/T-142/T-147: concurrency ต่อคน/host + negative cache, IPv6 allow 2000::/3 ก่อน blocklist, deadline ก่อน DNS, proxy env, permission `ai.budget.read`, PATCH priority จาก AI ลง audit `source` + ยืนยันก่อนขึ้น P1, reply-block ผูก channelAccountId
-- [ ] T-182 `backend-dev` B-007 (เจ้าของ 2026-11-04 "Reject at upload"): อ่าน central directory ของ zip (และ archive ที่รับ) ตอนอัปโหลด ถ้า member ใด uncompressed > เพดานสแกน (MaxFileSize) หรือรวม > MaxScanSize หรือ nested ลึกเกิน → ปฏิเสธพร้อมข้อความชัด · ไฟล์แนบปกติไม่กระทบ
+- [x] T-175a `backend-dev` P3 จาก review T-175/T-142/T-147: concurrency ต่อคน/host + negative cache, IPv6 allow 2000::/3 ก่อน blocklist, deadline ก่อน DNS, proxy env, permission `ai.budget.read`, PATCH priority จาก AI ลง audit `source` + ยืนยันก่อนขึ้น P1, reply-block ผูก channelAccountId — **ปิด 2026-11-04**
+- [x] T-182 `backend-dev` B-007 (เจ้าของ 2026-11-04 "Reject at upload"): อ่าน central directory ของ zip (และ archive ที่รับ) ตอนอัปโหลด ถ้า member ใด uncompressed > เพดานสแกน (MaxFileSize) หรือรวม > MaxScanSize หรือ nested ลึกเกิน → ปฏิเสธพร้อมข้อความชัด · ไฟล์แนบปกติไม่กระทบ — **ปิด 2026-11-04** (archive guard)
+- [ ] T-183 `qa-engineer` B-009: `apps/api/src/reports/reports.integration.test.ts` 4 test ตกเมื่อ process TZ = Asia/Bangkok (ผ่านเมื่อ TZ=UTC) — หาว่าเป็นบั๊กของรายงาน (ช่วงวันคิดด้วย TZ ของ Node) หรือ test
 - [ ] T-306c `po` review + เสนอ 2–3 intent → [ASK-HUMAN] เลื่อน stage
 - [ ] T-301 Grader + verified/contained/assumed resolution (§6.2, §6.4)
 - [ ] T-302 Eval set + replay runner + golden answers + KB author (§6.5, R-4.4–4.6)

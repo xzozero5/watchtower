@@ -27,5 +27,6 @@
 - [ADR-025](ADR-025-stage3-autosend.md) — Stage 3 auto-send: env `AI_AUTOSEND_ENABLED` (ปิด, env เท่านั้น), shadow mode, เงื่อนไข 12 ข้อใน `decide()`, DB trigger + promotion head+เจ้าของ, auto-rollback, footer แจ้งลูกค้า, `seed_batch` แยกข้อมูล seed (T-304a) · Proposed 2026-11-04 (รอเจ้าของ 5 ข้อ + security review)
 - [ADR-026](ADR-026-procedures.md) — Procedures ต่อ intent: steps Zod แบบปิด (จำกัดสิทธิ์ได้อย่างเดียว), NL→steps AI ร่างคนยืนยัน, version immutable + publish ผ่าน SECURITY DEFINER, simulation ก่อน publish, escalate เป็น proposal card (T-303a) · Proposed 2026-11-04
 - [ADR-027](ADR-027-local-ner.md) — ตัวหาชื่อไม่มี cue แบบ local: ขั้น 1 `REDACTION_NER=local` (compromise, อังกฤษ, default off), ขั้น 2 model ไทย ONNX รอเจ้าของอนุมัติดาวน์โหลด, เกณฑ์ recall ≥ 80% (T-153) · Accepted ขั้น 1 2026-11-04
+- [ADR-028](ADR-028-pdf-export.md) — PDF export ของ CEO view ด้วย pdfkit + IBM Plex Sans Thai (fontsource) ไม่มี network ไม่ใช้ headless browser (T-305d) · Accepted 2026-11-04
 - ADR ใหม่: `ADR-00x-<slug>.md` ตาม `docs/templates/adr.template.md` แล้วเพิ่มบรรทัดที่นี่
 - Review records (security/po) เก็บเป็น `T-xxx-review.md` ในโฟลเดอร์นี้
