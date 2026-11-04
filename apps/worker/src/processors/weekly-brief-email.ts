@@ -31,7 +31,7 @@ const COPY: Readonly<Record<PortalLocale, Copy>> = {
     ask: 'Suggested ask',
     decisions: 'Decisions needed',
     open: 'Open the brief with its evidence links:',
-    tail: 'Figures are as of the time the brief was made. A line marked "no evidence" was written by a person.',
+    tail: 'Figures are as of the time the brief was made. This email holds numbers and ticket keys only; the words of the brief are in the app.',
   },
   th: {
     subject: (from, to) => `สรุปรายสัปดาห์ ${from} ถึง ${to}`,
@@ -41,7 +41,7 @@ const COPY: Readonly<Record<PortalLocale, Copy>> = {
     ask: 'ข้อเสนอที่แนะนำ',
     decisions: 'เรื่องที่ต้องตัดสินใจ',
     open: 'เปิดสรุปพร้อมลิงก์หลักฐาน:',
-    tail: 'ตัวเลขเป็น ณ เวลาที่ทำสรุป บรรทัดที่ระบุว่า "no evidence" คนเป็นผู้เขียน',
+    tail: 'ตัวเลขเป็น ณ เวลาที่ทำสรุป อีเมลนี้มีเฉพาะตัวเลขและ ticket key ข้อความของสรุปอยู่ในแอป',
   },
 };
 

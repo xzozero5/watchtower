@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import { Inject, Injectable } from '@nestjs/common';
 import { schema, type Database } from '@watchtower/db';
 import {
+  figureFacts,
   latestDraftWeeklyBrief,
   latestPublishedWeeklyBrief,
   toWeeklyBrief,
@@ -126,7 +127,12 @@ export class WeeklyBriefService {
         .returning();
       if (published === undefined) throw conflict('This brief is already published');
       const brief = toWeeklyBrief(published, { includeAi: false });
-      const parts = weeklyBriefEmailParts(brief.content);
+      // T-305f: the email holds numbers, keys and intent names, never the restored words of the brief.
+      const parts = weeklyBriefEmailParts(
+        brief.content,
+        brief.locale,
+        figureFacts(brief.figures, brief.locale).map((fact) => fact.text),
+      );
       for (const to of list) {
         await this.email.send(
           {

@@ -248,7 +248,9 @@ describe('publishing', () => {
       expect(typeof row.payload.secret).toBe('string');
       expect(JSON.stringify(row.payload)).not.toContain('/dashboard/ceo');
       expect(row.payload).not.toHaveProperty('pageUrl');
-      expect(row.payload.summary).toEqual(['SLA compliance fell to 90%. [SLA compliance]']);
+      // T-305f: the email carries the figures, not the words the head published.
+      expect(JSON.stringify(row.payload)).not.toContain('fell to 90%');
+      expect(row.payload.summary).toEqual(expect.arrayContaining([expect.stringContaining(':')]));
     }
     const audit = await run(
       `SELECT metadata FROM audit_log WHERE action = 'ceo.brief.publish' AND target_id = $1`,
@@ -344,8 +346,7 @@ describe('publishing', () => {
     expect(result.brief.source).toBe('data_only');
     expect(result.brief.content.summary[0]).toMatchObject({ uncited: true });
     const { rows } = await run(`SELECT payload FROM outbox WHERE queue = 'email'`);
-    expect((rows[0] as { payload: { summary: string[] } }).payload.summary).toEqual([
-      'Quiet week, nothing to report. (no evidence)',
-    ]);
+    // A sentence a person wrote never leaves in an email (T-305f).
+    expect(JSON.stringify((rows[0] as { payload: unknown }).payload)).not.toContain('Quiet week');
   });
 });
