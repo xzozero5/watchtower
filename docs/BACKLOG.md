@@ -162,7 +162,7 @@
 - [x] T-305c `ai-engineer` weekly brief (claim + หลักฐาน T-135, root cause top 5) head แก้ได้ + ตั้งเวลาส่ง — **ปิด 2026-11-04** (0101; ตั้งเวลาใน admin ยังไม่ทำ)
 - [x] T-305d `backend-dev` export PDF (เจ้าของอนุมัติ dependency 2026-11-04 — ADR เลือก library ก่อน, ไม่มี network) · Google Docs mock — **ปิด 2026-11-04** (ADR-028)
 - [x] T-305e `backend-dev`+`ai-engineer`+`frontend-dev` roster planner (R-7.2) solver deterministic + AI อธิบาย · apply ต้องคนกด — **ปิด 2026-11-04** (0102; วันลาไม่มีตารางถาวร)
-- [ ] T-306a `security-reviewer` ตรวจ autonomy (bypass gate, injection → auto-send, เปิดเผยให้ unverified)
+- [x] T-306a `security-reviewer` ตรวจ autonomy (bypass gate, injection → auto-send, เปิดเผยให้ unverified)
 - [ ] T-306b `qa-engineer` e2e shadow, flag ON ใน stack ทิ้ง (mock), rollback, eval gate
 - [x] T-306d `backend-dev` + `architect` runbook deploy instance ใหม่สำหรับ pilot (DB สะอาด, seed reference เท่านั้น, env/secret checklist, backup/restore ซ้อม) — เจ้าของจะ deploy เองตอนเริ่ม pilot — **ปิด 2026-11-04** (docs/runbooks/pilot-instance.md + tools/restore-drill)
 - [ ] T-301e `backend-dev` re-grade เมื่อ CSAT มาถึงหลัง grade (ไม่งั้น verified ต่ำกว่าจริง) — ก่อน T-304f *(กำลังทำใน T-304b)* · + `capResolutionClass` ต้องดูข้อความลูกค้าที่ปฏิเสธ ("ยังไม่หาย") ไม่ใช่แค่ CSAT (qa T-302b)
@@ -171,6 +171,8 @@
 - [x] T-183 `qa-engineer` B-009: `apps/api/src/reports/reports.integration.test.ts` 4 test ตกเมื่อ process TZ = Asia/Bangkok (ผ่านเมื่อ TZ=UTC) — หาว่าเป็นบั๊กของรายงาน (ช่วงวันคิดด้วย TZ ของ Node) หรือ test — **ปิด 2026-11-04** (บั๊ก test: นาฬิกา DB เร็วกว่า Node)
 - [x] T-303f `frontend-dev`+`backend-dev` proposal card ของ `escalate` ใน AI sidebar + endpoint apply ตาม ADR-026 §10 · ส่ง `template` ของ tool step ต่อไปที่ port · ต่อปุ่ม Simulate ใน editor (T-303e) กับ endpoint T-303d — **ปิด 2026-11-04** (migration 0107)
 - [x] T-305f `backend-dev` (เจ้าของ 2026-11-04 "In-app yes, email no"): อีเมล weekly brief ไม่ restore ชื่อลูกค้า/หัวเรื่อง ticket — ส่งแค่ตัวเลข, ticket key (OPS-n) และลิงก์กลับเข้าแอป · ในแอปคงเดิม — **ปิด 2026-11-04**
+- [ ] T-306e `ai-engineer` แก้ T-306a C-1 (P1), C-2, C-3, C-4, C-10, C-11, C-14 (gate/facts/text/report/watch)
+- [ ] T-306f `backend-dev` แก้ T-306a C-5, C-6, C-7, C-8, C-9, C-12, C-13 (migration 0108, api auth/portal/brief, golden, simulation)
 - [ ] T-306c `po` review + เสนอ 2–3 intent → [ASK-HUMAN] เลื่อน stage
 - [ ] T-301 Grader + verified/contained/assumed resolution (§6.2, §6.4)
 - [ ] T-302 Eval set + replay runner + golden answers + KB author (§6.5, R-4.4–4.6)
