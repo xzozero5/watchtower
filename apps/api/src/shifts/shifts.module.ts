@@ -7,6 +7,8 @@ import { BriefService } from './brief.service.js';
 import { HandoffController } from './handoff.controller.js';
 import { HandoffReader } from './handoff-reader.js';
 import { HandoffService } from './handoff.service.js';
+import { RosterPlanController } from './roster-plan.controller.js';
+import { RosterPlanService } from './roster-plan.service.js';
 import { RosterController } from './roster.controller.js';
 import { SHIFT_NOW } from './shift-core.js';
 import { ShiftNotesController } from './shift-notes.controller.js';
@@ -22,7 +24,13 @@ import { ShiftsService } from './shifts.service.js';
  */
 @Module({
   imports: [TicketsModule, UploadsModule, AiRuntimeModule],
-  controllers: [RosterController, ShiftsController, HandoffController, ShiftNotesController],
+  controllers: [
+    RosterController,
+    RosterPlanController,
+    ShiftsController,
+    HandoffController,
+    ShiftNotesController,
+  ],
   providers: [
     { provide: SHIFT_NOW, useValue: () => new Date() },
     ShiftsService,
@@ -30,6 +38,7 @@ import { ShiftsService } from './shifts.service.js';
     HandoffReader,
     ShiftNotes,
     BriefService,
+    RosterPlanService,
   ],
   // The assistant (T-134) reads who is on shift through the same service as the assignee list.
   exports: [BriefService],

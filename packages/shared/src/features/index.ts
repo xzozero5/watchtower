@@ -47,6 +47,11 @@ import { DASHBOARD_AUDIT_ACTIONS, DASHBOARD_QUEUES, DASHBOARD_TICKET_EVENTS } fr
 import { REPORTS_AUDIT_ACTIONS, REPORTS_QUEUES, REPORTS_TICKET_EVENTS } from './reports.js';
 import { UPLOADS_AUDIT_ACTIONS, UPLOADS_QUEUES, UPLOADS_TICKET_EVENTS } from './uploads.js';
 import { PROCEDURE_AUDIT_ACTIONS, PROCEDURE_QUEUES, PROCEDURE_TICKET_EVENTS } from './procedure.js';
+import {
+  ROSTER_PLAN_AUDIT_ACTIONS,
+  ROSTER_PLAN_QUEUES,
+  ROSTER_PLAN_TICKET_EVENTS,
+} from './roster-plan.js';
 
 export * from './inbound.js';
 export * from './outbound.js';
@@ -74,6 +79,7 @@ export * from './dashboard.js';
 export * from './reports.js';
 export * from './uploads.js';
 export * from './procedure.js';
+export * from './roster-plan.js';
 export { assertDisjoint } from './compose.js';
 
 export const FEATURES = [
@@ -211,6 +217,12 @@ export const FEATURES = [
     ticketEvents: PROCEDURE_TICKET_EVENTS,
     queues: PROCEDURE_QUEUES,
   },
+  {
+    name: 'roster-plan',
+    auditActions: ROSTER_PLAN_AUDIT_ACTIONS,
+    ticketEvents: ROSTER_PLAN_TICKET_EVENTS,
+    queues: ROSTER_PLAN_QUEUES,
+  },
 ] as const;
 
 export type FeatureName = (typeof FEATURES)[number]['name'];
@@ -241,6 +253,7 @@ export const FEATURE_AUDIT_ACTIONS = {
   ...REPORTS_AUDIT_ACTIONS,
   ...UPLOADS_AUDIT_ACTIONS,
   ...PROCEDURE_AUDIT_ACTIONS,
+  ...ROSTER_PLAN_AUDIT_ACTIONS,
 } as const;
 
 /** Every feature's ticket event types in one record. Composed into `TICKET_EVENT_TYPES`. */
@@ -269,6 +282,7 @@ export const FEATURE_TICKET_EVENTS = {
   ...REPORTS_TICKET_EVENTS,
   ...UPLOADS_TICKET_EVENTS,
   ...PROCEDURE_TICKET_EVENTS,
+  ...ROSTER_PLAN_TICKET_EVENTS,
 } as const;
 
 /** Every feature's queue names in one record. Composed into `QUEUE_NAMES`. */
@@ -297,4 +311,5 @@ export const FEATURE_QUEUES = {
   ...REPORTS_QUEUES,
   ...UPLOADS_QUEUES,
   ...PROCEDURE_QUEUES,
+  ...ROSTER_PLAN_QUEUES,
 } as const;

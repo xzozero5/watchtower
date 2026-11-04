@@ -34,6 +34,8 @@ const EXPECTED_FEATURES = [
   'reports',
   // T-303b: procedures per intent.
   'procedure',
+  // T-305e: roster planner (R-7.2).
+  'roster-plan',
 ];
 
 describe('feature records', () => {

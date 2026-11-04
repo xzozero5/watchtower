@@ -43,6 +43,7 @@ import { railTh } from './rail';
 import { rolesTh } from './roles';
 import { severityTh } from './severity';
 import { shiftTh } from './shift';
+import { rosterPlanTh } from './rosterPlan';
 import { slaTh } from './sla';
 import { statesTh } from './states';
 import { statusTh } from './status';
@@ -98,6 +99,7 @@ export const th: Messages = {
   bulk: bulkTh,
   otherMail: otherMailTh,
   shift: shiftTh,
+  rosterPlan: rosterPlanTh,
   outbound: outboundTh,
   ops: opsTh,
   dashboard: dashboardTh,

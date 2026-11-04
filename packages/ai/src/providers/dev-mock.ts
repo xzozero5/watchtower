@@ -447,6 +447,13 @@ export class DevMockLlmProvider implements LlmProvider {
       case 'procedure_compiler':
         text = compileProcedureExample();
         break;
+      case 'roster_planner':
+        text = JSON.stringify({
+          explanation:
+            '[dev mock] This text does not read the plan. Check the constraint report next to it: it is the ' +
+            'program’s own result, and this explanation is only a placeholder.',
+        });
+        break;
       case 'assistant_plan':
         text = assistantPlan(request);
         break;

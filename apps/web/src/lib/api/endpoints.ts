@@ -46,6 +46,7 @@ import { createNotificationEndpoints } from './notification-endpoints';
 import { createOpsEndpoints } from './ops-endpoints';
 import { createReportEndpoints } from './report-endpoints';
 import { createShiftEndpoints } from './shift-endpoints';
+import { createRosterPlanEndpoints } from './roster-plan-endpoints';
 import { createAssistantEndpoints } from './assistant-endpoints';
 import { createGradeEndpoints } from './grade-endpoints';
 import { createToolEndpoints } from './tool-endpoints';
@@ -81,6 +82,7 @@ export function createEndpoints(client: ApiClient) {
     ...createAdminEndpoints(client),
     ...createNotificationEndpoints(client),
     ...createShiftEndpoints(client),
+    ...createRosterPlanEndpoints(client),
     ...createOpsEndpoints(client),
     ...createReportEndpoints(client),
     ...createToolEndpoints(client),
