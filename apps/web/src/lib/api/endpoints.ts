@@ -46,6 +46,7 @@ import { createNotificationEndpoints } from './notification-endpoints';
 import { createOpsEndpoints } from './ops-endpoints';
 import { createShiftEndpoints } from './shift-endpoints';
 import { createAssistantEndpoints } from './assistant-endpoints';
+import { createGradeEndpoints } from './grade-endpoints';
 import { createToolEndpoints } from './tool-endpoints';
 import { createUploadEndpoints } from './upload-endpoints';
 import type { ApiClient } from './client';
@@ -83,6 +84,7 @@ export function createEndpoints(client: ApiClient) {
     ...createToolEndpoints(client),
     ...createUploadEndpoints(client),
     ...createAssistantEndpoints(client),
+    ...createGradeEndpoints(client),
 
     downloadAttachment: (ref: string, messageId: string, index: number, signal?: AbortSignal) =>
       client.download(

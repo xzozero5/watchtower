@@ -17,6 +17,7 @@ import { schema, type Database } from '@watchtower/db';
 import {
   createDbToolLedger,
   effectiveStage,
+  goldenExamplesFor,
   saveAiDraft,
   TicketKeys,
   writeAiInvestigation,
@@ -446,15 +447,19 @@ export async function runInvestigation(
   if (ticketIntent === undefined) return finish('no_intent');
 
   await progress({ phase: 'drafting', step: 0, steps: 1 });
+  const customerLanguage = detectLanguage(customerText);
+  // Golden answers of the same intent (T-302a): stored redacted, and the drafter feeds them through its session.
+  const golden = await goldenExamplesFor(db, ticketIntent.id, customerLanguage);
   const drafted = await draftReply(agents, {
     ticketId: ticket.id,
     subject: ticket.subject,
     turns,
     intentKey: ticketIntent.key,
-    customerLanguage: detectLanguage(customerText),
+    customerLanguage,
     disclosure: disclosureFor(ticket.channel, requester, senderAuthenticated(messages)),
     evidence,
     note: job.note,
+    examples: golden.map((example) => example.text),
     abortSignal: signal,
   });
   if (drafted.status === 'skipped') return needsHuman(drafted.reason, stage);

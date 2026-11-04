@@ -268,6 +268,7 @@ export {
   type NewAiDraft,
   type RejectAiDraftInput,
 } from './ai/drafts.js';
+export { GOLDEN_EXAMPLES_MAX, goldenExamplesFor, type GoldenExample } from './ai/golden.js';
 export {
   hasResolutionGrade,
   intentGradeMetrics,

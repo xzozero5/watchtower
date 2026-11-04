@@ -26,6 +26,7 @@ import { dashboardEn } from './dashboard';
 import { detailsEn } from './details';
 import { devHomeEn } from './devHome';
 import { errorsEn } from './errors';
+import { gradeEn } from './grade';
 import { homeEn } from './home';
 import { investigateEn } from './investigate';
 import { keymapEn } from './keymap';
@@ -92,6 +93,7 @@ export const en = {
   errors: errorsEn,
   states: statesEn,
   home: homeEn,
+  grade: gradeEn,
   admin: adminEn,
   portal: portalEn,
   newTicket: newTicketEn,

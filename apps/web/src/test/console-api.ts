@@ -63,6 +63,9 @@ export function consoleApi({
     'GET /v1/autonomy': { json: autonomy },
     'GET /v1/ai/budget': { json: makeAiBudget() },
     'GET /v1/ai/models': { json: makeAiModels() },
+    'GET /v1/ai/grades/metrics': {
+      json: { windowDays: 7, from: AT, to: AT, intents: [] },
+    },
     'GET /v1/shifts/overview': { json: shiftOverview() },
     'GET /v1/users': { json: { users: USERS } },
     'GET /v1/queues': { json: { queues: [QUEUE, QUEUE_BILLING] } },

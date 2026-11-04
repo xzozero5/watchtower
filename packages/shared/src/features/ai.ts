@@ -11,7 +11,7 @@
 import { z } from 'zod';
 
 import { ticketPrioritySchema } from '../sla.js';
-import { claimSchema } from './claims.js';
+import { claimEvidenceSchema, claimSchema } from './claims.js';
 
 /** Audit `action` strings written by this feature. */
 export const AI_AUDIT_ACTIONS = {
@@ -25,6 +25,10 @@ export const AI_AUDIT_ACTIONS = {
   aiDraftEdited: 'ai.draft_edited',
   /** A person asked for a draft (stage 1) or a new investigation (T-108). */
   aiRequest: 'ai.request',
+  /** A lead or head marked a sent reply as a golden answer (T-302a). Metadata: ids and intent, never the text. */
+  aiGoldenMark: 'ai.golden_mark',
+  /** A lead or head removed a golden answer (soft delete, T-302a). */
+  aiGoldenDelete: 'ai.golden_delete',
   /** The AI wrote a draft article for review after a ticket was resolved without a citation (T-108e). */
   aiKbDraft: 'ai.kb_draft',
   /** A person sent a message to the assistant. Metadata: tool names, run ids, counts; never the text (T-134). */
@@ -456,3 +460,70 @@ export const aiRequestSchema = z.object({
   note: z.string().trim().max(500).optional(),
 });
 export type AiRequest = z.infer<typeof aiRequestSchema>;
+
+/**
+ * `GET /v1/tickets/:id/ai/grade` (T-301d): the grader's verdict on the latest resolution of a ticket.
+ * Reasons and violations use the claim shape of T-135, so the web shows them with the same `ClaimLine`
+ * and a sentence without evidence reads `Uncited`. For a masked reader (`dev`) the text is redacted again.
+ */
+export const ticketGradeViolationSchema = z.object({
+  code: z.enum(POLICY_VIOLATION_CODES),
+  text: z.string().min(1).max(600),
+  evidence: z.array(claimEvidenceSchema).max(8),
+  uncited: z.boolean(),
+});
+export type TicketGradeViolation = z.infer<typeof ticketGradeViolationSchema>;
+
+export const ticketGradeSchema = z.object({
+  resolutionClass: resolutionClassSchema,
+  /** Why the class is what it is: claims with their evidence. */
+  reasons: z.array(claimSchema).max(12),
+  draftVerdict: draftVerdictSchema,
+  /** 0..1; null when there was no draft to compare. */
+  draftQuality: z.number().min(0).max(1).nullable(),
+  violations: z.array(ticketGradeViolationSchema).max(12),
+  /** The ticket was resolved with no article that answers it: a candidate for a new or better article. */
+  kbGap: z.boolean(),
+  intentKey: z.string().nullable(),
+  csat: z
+    .object({ score: z.number().int().min(1).max(5), resolved: z.boolean().nullable() })
+    .nullable(),
+  /** The grader was the mock provider: the verdict is a demo. */
+  mock: z.boolean(),
+  gradedAt: z.iso.datetime(),
+});
+export type TicketGrade = z.infer<typeof ticketGradeSchema>;
+
+export const ticketGradeResponseSchema = z.object({ grade: ticketGradeSchema.nullable() });
+export type TicketGradeResponse = z.infer<typeof ticketGradeResponseSchema>;
+
+/** Body of `POST /v1/tickets/:id/golden` (T-302a): the sent reply to keep as a golden answer. */
+export const markGoldenSchema = z.object({ messageId: z.uuid() });
+export type MarkGolden = z.infer<typeof markGoldenSchema>;
+
+export const goldenAnswerSchema = z.object({
+  id: z.uuid(),
+  ticketId: z.uuid(),
+  /** Display key of the ticket (`OPS-12`); null when the key could not be built. */
+  ticketKey: z.string().nullable(),
+  messageId: z.uuid(),
+  intent: z.object({ key: z.string(), name: z.string() }),
+  /** Redacted text: placeholders such as `[EMAIL_1]` stand where a person's details were. */
+  text: z.string(),
+  language: z.enum(['th', 'en']).nullable(),
+  createdBy: z.object({ id: z.uuid(), name: z.string() }).nullable(),
+  createdAt: z.iso.datetime(),
+});
+export type GoldenAnswer = z.infer<typeof goldenAnswerSchema>;
+
+export const goldenAnswerListSchema = z.object({ items: z.array(goldenAnswerSchema) });
+export type GoldenAnswerList = z.infer<typeof goldenAnswerListSchema>;
+
+export const goldenListQuerySchema = z.object({
+  /** An intent key to filter on. */
+  intent: z.string().trim().min(1).max(100).optional(),
+  limit: z.coerce.number().int().min(1).max(200).default(100),
+});
+export type GoldenListQuery = z.infer<typeof goldenListQuerySchema>;
+
+export const goldenIdParamSchema = z.object({ id: z.uuid() });

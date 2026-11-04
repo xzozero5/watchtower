@@ -436,6 +436,7 @@ describe('admin layout', () => {
       'Queues',
       'Shifts and roster',
       'AI controls',
+      'Golden answers',
     ]);
     expect(within(nav).getByRole('link', { name: 'Intents' })).toHaveAttribute(
       'aria-current',
@@ -443,7 +444,7 @@ describe('admin layout', () => {
     );
   });
 
-  it('lists all ten for the head', async () => {
+  it('lists all eleven for the head', async () => {
     consoleApi({ role: 'head' });
     renderApp(
       <AuthGate>
@@ -453,7 +454,7 @@ describe('admin layout', () => {
       </AuthGate>,
     );
     const nav = await screen.findByRole('navigation', { name: 'Admin sections' });
-    expect(within(nav).getAllByRole('link')).toHaveLength(10);
+    expect(within(nav).getAllByRole('link')).toHaveLength(11);
   });
 
   it('shows the denied page when the role has no admin section', async () => {

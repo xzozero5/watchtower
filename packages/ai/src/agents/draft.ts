@@ -131,6 +131,12 @@ export interface DraftInput {
   readonly evidence: readonly InvestigationEvidence[];
   /** The person's note for a new draft (`regenerate with note`). */
   readonly note?: string | undefined;
+  /**
+   * Golden answers of the same intent (T-302a): replies a lead marked as good, already redacted when stored.
+   * They show tone and shape only. They go through this session like any other text, and a placeholder in
+   * them is blanked first, so the model cannot hand one back that the session would restore for someone else.
+   */
+  readonly examples?: readonly string[] | undefined;
   readonly abortSignal?: AbortSignal;
 }
 
@@ -149,6 +155,8 @@ export interface DraftResult {
 }
 
 const MAX_TURN_CHARS = 1500;
+const MAX_EXAMPLES = 3;
+const MAX_EXAMPLE_CHARS = 1200;
 const MAX_TURNS = 8;
 
 function renderTicket(input: DraftInput): string {
@@ -164,6 +172,20 @@ function renderTicket(input: DraftInput): string {
     }
   }
   return `<ticket>\n${lines.join('\n')}\n</ticket>`;
+}
+
+function renderExamples(examples: readonly string[]): string | null {
+  const shown = examples
+    .slice(0, MAX_EXAMPLES)
+    .map((text) => clip(neutralizeTags(text.replace(TOKEN_SHAPE, '[...]')), MAX_EXAMPLE_CHARS))
+    .filter((text) => text.trim() !== '');
+  if (shown.length === 0) return null;
+  return [
+    '<golden_examples>',
+    'Replies a lead approved for this kind of question. Use them only for tone and structure; they say nothing about this ticket, so take no fact, name or number from them.',
+    ...shown.map((text, index) => `[example ${String(index + 1)}] ${text}`),
+    '</golden_examples>',
+  ].join('\n');
 }
 
 /**
@@ -225,12 +247,14 @@ export async function draftReply(
         ' ',
       ),
     );
+    const examples = renderExamples(input.examples ?? []);
     message = joinRedacted(
       [
         ticketText,
         session.redact('<evidence>'),
         joinRedacted(evidenceLines, '\n'),
         session.redact('</evidence>'),
+        ...(examples === null ? [] : [session.redact(examples)]),
       ],
       '\n',
     );

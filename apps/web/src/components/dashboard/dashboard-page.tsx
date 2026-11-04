@@ -11,6 +11,7 @@ import { useT } from '@/i18n/provider';
 import { useSession } from '@/lib/auth/session';
 import { useDashboardOps } from '@/lib/dashboard/queries';
 
+import { IntentGradesSection } from './grades-section';
 import {
   AiSection,
   NowSection,
@@ -57,6 +58,7 @@ export function DashboardPage() {
 
 function DashboardBody() {
   const t = useT();
+  const { can } = useSession();
   const [days, setDays] = useState<DashboardWindow>(DASHBOARD_DEFAULT_DAYS as DashboardWindow);
   const query = useDashboardOps(days, true);
   const ops = query.data;
@@ -152,6 +154,7 @@ function DashboardBody() {
                 <QualitySection ops={ops} />
                 <ReliabilitySection ops={ops} />
                 <AiSection ops={ops} />
+                {can('metric.read') ? <IntentGradesSection days={days} /> : null}
                 <TeamSection ops={ops} />
                 <UsageSection ops={ops} />
                 <ServicesSection ops={ops} />

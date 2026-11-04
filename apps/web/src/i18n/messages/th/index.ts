@@ -19,6 +19,7 @@ import { dashboardTh } from './dashboard';
 import { detailsTh } from './details';
 import { devHomeTh } from './devHome';
 import { errorsTh } from './errors';
+import { gradeTh } from './grade';
 import { homeTh } from './home';
 import { investigateTh } from './investigate';
 import { keymapTh } from './keymap';
@@ -86,6 +87,7 @@ export const th: Messages = {
   errors: errorsTh,
   states: statesTh,
   home: homeTh,
+  grade: gradeTh,
   admin: adminTh,
   portal: portalTh,
   newTicket: newTicketTh,
