@@ -127,7 +127,48 @@ const HELD_REASON_KEYS: Readonly<Record<string, MessageKey>> = {
   intent_unknown: 'stage3.held.intent_unknown',
   intent_not_found: 'stage3.held.intent_not_found',
   invalid_stage: 'stage3.held.invalid_stage',
+  no_policy_gate: 'stage3.held.no_policy_gate',
+  actor_origin_mismatch: 'stage3.held.actor_origin_mismatch',
+  approval_missing: 'stage3.held.approval_missing',
+  stage_0_no_customer_draft: 'stage3.held.stage_0_no_customer_draft',
+  template_missing: 'stage3.held.template_missing',
+  template_not_allowlisted: 'stage3.held.template_not_allowlisted',
+  ai_auto_send_disabled_phase1: 'stage3.held.ai_auto_send_disabled_phase1',
+  ai_run_missing: 'stage3.held.ai_run_missing',
+  procedure_requires_human: 'stage3.held.procedure_requires_human',
+  escalation_pending: 'stage3.held.escalation_pending',
+  replay_missing: 'stage3.held.replay_missing',
 };
+
+/** Why the api refused a promotion route (403 `policy_denied`), by the `reason` code in the body. */
+const REFUSED_REASON_KEYS: Readonly<Record<string, MessageKey>> = {
+  not_eligible: 'stage3.refused.not_eligible',
+  intent_not_found: 'stage3.refused.intent_not_found',
+  not_at_stage_2: 'stage3.refused.not_at_stage_2',
+  pinned: 'stage3.refused.pinned',
+  stage_cap_on: 'stage3.refused.stage_cap_on',
+  report_not_found: 'stage3.refused.report_not_found',
+  report_not_green: 'stage3.refused.report_not_green',
+  report_counts_seed: 'stage3.refused.report_counts_seed',
+  report_too_old: 'stage3.refused.report_too_old',
+  window_too_short: 'stage3.refused.window_too_short',
+  window_not_at_stage_2: 'stage3.refused.window_not_at_stage_2',
+  confirm_key_mismatch: 'stage3.refused.confirm_key_mismatch',
+  stage_requires_promotion: 'stage3.refused.stage_requires_promotion',
+  actor_not_a_person: 'stage3.refused.actor_not_a_person',
+  stage_requires_owner: 'stage3.refused.stage_requires_owner',
+};
+
+/**
+ * The sentence for the `reason` a 403 carries in its JSON body (`details` of the error), or null when the
+ * body has none or this screen does not know it (the caller then shows the generic message).
+ */
+export function refusedReasonKey(details: unknown): MessageKey | null {
+  if (typeof details !== 'object' || details === null || !('reason' in details)) return null;
+  const { reason } = details;
+  if (typeof reason !== 'string' || !Object.hasOwn(REFUSED_REASON_KEYS, reason)) return null;
+  return REFUSED_REASON_KEYS[reason] ?? null;
+}
 
 /** The sentence for a hold reason code, or null when this screen does not know the code. */
 export function heldReasonKey(code: string): MessageKey | null {

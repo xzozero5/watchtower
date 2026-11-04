@@ -72,7 +72,7 @@ P3 cosmetic or rare, P4 polish. Developers fix; QA verifies. Do not edit an entr
 - **Expected:** the note says why in words, like the other reasons ("the reply does not cite a customer-facing article").
 - **Actual:** the reason codes `replay_missing`, `procedure_requires_human`, `escalation_pending` and `ai_run_missing` (added by T-306e, migration 0108-0110) have no entry in `stage3.held`, so the line reads `the check "replay_missing" did not pass` (the `heldUnknown` fallback). The person who picks up the draft cannot tell a missing replay from a real fault.
 - **Suggested fix (not applied, app code):** add the four codes to `stage3.held` in TH and EN (and a unit test that every `GATE_REASONS` value has copy in both languages).
-- **Status:** open, reported to main thread.
+- **Status:** fixed (web): all deny reasons of `GATE_REASONS` have TH+EN copy; `lib/admin/stage3.test.ts` reads the domain list and fails when a reason has none.
 
 ### B-011 (P3) A refused promotion request carries no `reason` code over HTTP, against its OpenAPI text (T-304d)
 
