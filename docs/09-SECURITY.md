@@ -38,6 +38,14 @@
 - [x] Unverified requesters cannot raise P1 — T-010 C-4 `[TESTED]`
 - [x] Tracking links: HMAC, hash stored, revocable, identical 401 for every failure (no enumeration) `[TESTED]`
 - [x] Tracking TTL 30 days default, revoked on close — T-010 C-13 `[TESTED]`
+- [x] Status page subscribe (T-207a C-3): the same PoW as the portal (`GET /v1/status/subscriptions/challenge` + `verification` + honeypot), checked before the per-address/domain/page buckets; limits per IP (IPv6 by /64), per address, per receiving domain (30/h), page-wide (200/h, 1000/day; reaching one is logged at error level and audited) — all `[ASSUMED]` numbers `[TESTED]`
+- [x] Status mail (T-207a C-7): `List-Unsubscribe` + `List-Unsubscribe-Post` (RFC 8058, one-click endpoint takes only an unsubscribe token); 3 hard bounces in a row suppress the address (migration 0093) `[TESTED]`
+
+## 5b. Investigation tools and the product database (ADR-016, T-207a)
+- [x] The mock product database runs in a Postgres server of its own with a memory limit (compose profile `product-mock`), not in the Watchtower cluster; ad-hoc data statements are off unless `PRODUCT_DB_ADHOC_ENABLED=true`, limited to 5 a minute and 100 rows a person, and refuse memory-hog forms (`repeat`, `array_agg`, `WITH RECURSIVE`, …) (C-1) `[TESTED]`
+- [x] `grants.sql` revokes EXECUTE on functions of every non-system schema from PUBLIC and sets default privileges; `hardeningProblems()` also refuses ad-hoc when a dangerous extension is installed, the reader is a member of a server-file/program role, or it can run a non-system function (C-4) `[TESTED]`
+- [x] A usage metric's dimensions must be allow-listed columns or names that do not look personal (C-5); a deploy feed URL carries no userinfo and no query/fragment (C-6); Discord interactions have their own per-IP and per-user limits (C-8); an evidence-card excerpt that reaches other organizations redacts their people too (C-9); `LOG_REDACT_PATHS` covers `Authorization` in every case and depth that a Pub/Sub or HTTP-client log can carry (C-10) `[TESTED]`
+- [ ] BigQuery path (C-2): guard by IAM + dry-run before T-208 `[OPEN]`
 
 ## 6. Outbox and email (ADR-006)
 - [x] Secret fields in `outbox.payload` and BullMQ jobs encrypted; rows expire with the secret's TTL — T-010 C-2 `[TESTED]`

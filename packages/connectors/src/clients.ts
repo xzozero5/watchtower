@@ -31,6 +31,12 @@ export interface ToolClients {
    * allow the revokes of `product-mock.grants.sql` is used through saved templates only (T-208, ADR-016).
    */
   readonly dataHardening?: (() => Promise<readonly string[]>) | undefined;
+  /**
+   * Whether a person may run a statement of their own (ad-hoc data). Off unless the deployment turned it on
+   * (`PRODUCT_DB_ADHOC_ENABLED`): Postgres has no per-statement memory limit, so a statement can still make
+   * the server run out of memory (T-207a C-1). Saved templates are not affected.
+   */
+  readonly dataAdhocEnabled?: boolean | undefined;
   /** Releases what the clients hold (the product database pool). */
   close?(): Promise<void>;
 }
@@ -48,6 +54,8 @@ export interface ToolClientOptions {
     | undefined;
   /** Result columns that may be shown (the global allow-list). */
   readonly allowColumns: readonly string[];
+  /** Lets a person run their own data statement (default: no). */
+  readonly adhocData?: boolean | undefined;
 }
 
 export function assembleToolClients(options: ToolClientOptions): ToolClients {
@@ -69,6 +77,7 @@ export function assembleToolClients(options: ToolClientOptions): ToolClients {
         }),
       dataMock: executor.sandbox,
       dataHardening: () => executor.hardeningProblems(),
+      dataAdhocEnabled: options.adhocData === true,
       close: () => executor.close(),
     };
   }
@@ -85,5 +94,6 @@ export function assembleToolClients(options: ToolClientOptions): ToolClients {
               ...(limits?.maxRows === undefined ? {} : { maxRows: limits.maxRows }),
             }),
     dataMock: true,
+    dataAdhocEnabled: options.adhocData === true,
   };
 }

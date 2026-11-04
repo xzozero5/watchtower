@@ -81,6 +81,8 @@ export function renderNotice(input: {
   readonly endsAt?: Date;
   readonly pageUrl: string;
   readonly unsubscribeUrl: string;
+  /** The RFC 8058 one-click endpoint of this subscription; adds `List-Unsubscribe` and `List-Unsubscribe-Post`. */
+  readonly oneClickUnsubscribeUrl?: string | undefined;
 }): OutboundMessage {
   const copy = COPY[input.locale];
   const subject =
@@ -95,6 +97,14 @@ export function renderNotice(input: {
   return {
     to: input.to,
     subject: subject.replaceAll(/[\r\n]+/g, ' '),
+    ...(input.oneClickUnsubscribeUrl === undefined
+      ? {}
+      : {
+          headers: {
+            'List-Unsubscribe': `<${input.oneClickUnsubscribeUrl}>`,
+            'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+          },
+        }),
     text: [
       ...lines,
       `${copy.pageLine} ${input.pageUrl}`,

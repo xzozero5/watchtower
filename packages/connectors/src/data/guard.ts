@@ -196,6 +196,27 @@ export function assertReadOnlySql(sql: string): void {
   }
 }
 
+/** Functions and forms that build a huge value out of a small statement (T-207a C-1). */
+const MEMORY_HOGS =
+  /\b(?:repeat|lpad|rpad|array_fill|string_agg|array_agg)\b|\bwith\s+recursive\b/i;
+
+/**
+ * A statement a person wrote on the spot (not a saved template) may not use the forms that make the
+ * server build one enormous value: `repeat`, `lpad`, `rpad`, `array_fill`, `string_agg`, `array_agg`,
+ * `WITH RECURSIVE`. A courtesy for a clear message, not a barrier: Postgres has no per-statement memory
+ * limit, so what really bounds the damage is the memory limit of the server that answers (ADR-016 5e)
+ * and the flag that keeps ad-hoc data off by default. Saved templates, which a head wrote and saved,
+ * are not held to it.
+ */
+export function assertAdhocSql(sql: string): void {
+  const code = codeOf(sql);
+  if (MEMORY_HOGS.test(code)) {
+    throw new ConnectorQueryRejectedError(
+      'The statement uses a function that can build a very large value (repeat, lpad, rpad, array_fill, string_agg, array_agg, WITH RECURSIVE); use a saved template for that',
+    );
+  }
+}
+
 /**
  * Fills `{{name}}` placeholders of a saved SQL template with bind parameters (`$1..`). The values
  * travel as parameters, never inside the text.

@@ -121,6 +121,45 @@ function socketOf(client: PoolClient): Socket | undefined {
   return (client as unknown as { connection?: { stream?: Socket } }).connection?.stream;
 }
 
+/**
+ * Extensions that reach the network, read or write files on the server or run code outside the database
+ * (T-207a C-4). One of them installed in the product database is enough to turn ad-hoc statements off,
+ * whatever the grants say: a later grant or a function we did not list would be a way out.
+ */
+export const DANGEROUS_EXTENSIONS: readonly string[] = [
+  'http',
+  'pgsql_http',
+  'pg_net',
+  'postgres_fdw',
+  'file_fdw',
+  'dblink',
+  'oracle_fdw',
+  'mysql_fdw',
+  'mongo_fdw',
+  'plpython3u',
+  'plpython2u',
+  'plpythonu',
+  'plperlu',
+  'pltclu',
+  'plsh',
+  'adminpack',
+  'pg_cron',
+  'aws_s3',
+  'azure_storage',
+];
+
+/** Roles that read or write the server's files, run programs or read every table (T-207a C-4). */
+export const DANGEROUS_ROLES: readonly string[] = [
+  'pg_read_server_files',
+  'pg_write_server_files',
+  'pg_execute_server_program',
+  'pg_read_all_data',
+  'pg_write_all_data',
+];
+
+const sqlList = (values: readonly string[]): string =>
+  values.map((value) => `'${value.replaceAll("'", "''")}'`).join(', ');
+
 /** What the reader must not be able to do. Each probe is one thing the reviews found a statement doing. */
 const HARDENING_PROBES: readonly (readonly [string, string])[] = [
   ['advisory locks', `has_function_privilege(current_user, 'pg_advisory_lock(bigint)', 'EXECUTE')`],
@@ -141,6 +180,18 @@ const HARDENING_PROBES: readonly (readonly [string, string])[] = [
   ['temporary tables', `has_database_privilege(current_user, current_database(), 'TEMPORARY')`],
   ['creating objects in public', `has_schema_privilege(current_user, 'public', 'CREATE')`],
   ['being a superuser', `(SELECT rolsuper FROM pg_roles WHERE rolname = current_user)`],
+  [
+    'an installed extension that reaches the network, the server files or other code',
+    `EXISTS (SELECT 1 FROM pg_extension WHERE extname IN (${sqlList(DANGEROUS_EXTENSIONS)}))`,
+  ],
+  [
+    'a role that reads or writes server files, runs programs or reads every table',
+    `EXISTS (SELECT 1 FROM pg_roles WHERE rolname IN (${sqlList(DANGEROUS_ROLES)}) AND (pg_has_role(current_user, oid, 'MEMBER') OR pg_has_role(session_user, oid, 'MEMBER')))`,
+  ],
+  [
+    'executing a function of a schema other than the system ones',
+    `EXISTS (SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace WHERE n.nspname NOT IN ('pg_catalog', 'information_schema') AND has_function_privilege(current_user, p.oid, 'EXECUTE'))`,
+  ],
 ];
 
 export function createProductDbExecutor(options: ProductDbOptions): ProductDbExecutor {

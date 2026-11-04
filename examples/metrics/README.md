@@ -16,11 +16,14 @@ A database of its own, never inside the Watchtower database (so a bug in a query
 tickets):
 
 - **docker compose** (behind a profile, never started by a plain `up`; no default password):
-  `PRODUCT_MOCK_RO_PASSWORD=<12+ letters and digits> docker compose --profile product-mock up product-mock-init`
-  creates `product_mock`, the login `product_mock_ro` (`NOINHERIT`) and the group `product_mock_ro_reader`
-  (which holds the column grants) on the same Postgres server, loads the files above, and exits. Point the
-  api and worker at it with `PRODUCT_DB_URL=postgres://product_mock_ro:<that password>@localhost:5432/product_mock`
-  (inside compose the host is `postgres`). Empty `PRODUCT_DB_URL` = the data tool has no database. Outside a
+  `PRODUCT_MOCK_ADMIN_PASSWORD=<letters and digits> PRODUCT_MOCK_RO_PASSWORD=<12+ letters and digits> docker compose --profile product-mock up product-mock-init`
+  starts `product-mock-db`, a Postgres server **of its own** with a memory limit (`mem_limit: 512m`; a statement
+  that eats memory takes down this container, not the Watchtower database, T-207a C-1), and in it creates
+  `product_mock`, the login `product_mock_ro` (`NOINHERIT`) and the group `product_mock_ro_reader` (which holds
+  the column grants), loads the files above, and exits. Point the api and worker at it with
+  `PRODUCT_DB_URL=postgres://product_mock_ro:<that password>@localhost:5433/product_mock`
+  (inside compose the host is `product-mock-db`, port 5432). A statement of a person's own (ad-hoc data) stays
+  off until `PRODUCT_DB_ADHOC_ENABLED=true`. Empty `PRODUCT_DB_URL` = the data tool has no database. Outside a
   local run (`APP_URL` not localhost, or production) the config refuses a `PRODUCT_DB_URL` without a real
   password (16+ characters).
 - **tests**: `createProductMockDatabase` (`@watchtower/db/testing`) makes a throwaway copy with a random

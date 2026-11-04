@@ -127,6 +127,10 @@ export const statusSubscription = pgTable(
     confirmationSentAt: timestamptz('confirmation_sent_at'),
     confirmedAt: timestamptz('confirmed_at'),
     unsubscribedAt: timestamptz('unsubscribed_at'),
+    /** Hard bounces in a row since the last mail the address accepted (migration 0093, T-207a C-7). */
+    bounceCount: integer('bounce_count').notNull().default(0),
+    /** The worker stopped mailing the address after too many hard bounces; a new request sends nothing while set. */
+    suppressedAt: timestamptz('suppressed_at'),
     createdAt: timestamptz('created_at').notNull().defaultNow(),
     updatedAt: timestamptz('updated_at').notNull().defaultNow(),
   },

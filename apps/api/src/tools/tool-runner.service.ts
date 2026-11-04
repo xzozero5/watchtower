@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { Inject, Injectable, type OnModuleDestroy } from '@nestjs/common';
 import { createRedactor, hmacJson } from '@watchtower/ai';
 import {
+  assertAdhocSql,
   ConnectorError,
   ConnectorRateLimitedError,
   formatLogLine,
@@ -24,6 +25,7 @@ import {
   type HumanToolLedger,
 } from '@watchtower/domain';
 import {
+  ADHOC_DATA_PERSON_PER_MINUTE,
   AI_TOOL_BUDGETS,
   AUDIT_ACTIONS,
   DATA_RUN_MAX_ROWS,
@@ -40,7 +42,7 @@ import {
   type TicketTools,
 } from '@watchtower/shared';
 import { KEY_LABELS, deriveSubkey } from '@watchtower/shared/secret-box';
-import { and, desc, eq, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 
 import { AuditService } from '../audit/audit.service.js';
 import {
@@ -49,6 +51,7 @@ import {
   notFound,
   RateLimitedError,
   toolFailed,
+  adhocDataOff,
   toolNotHardened,
   toolNotConnected,
 } from '../auth/http-errors.js';
@@ -144,6 +147,8 @@ interface Attempt {
   readonly mock: boolean;
   /** Organizations this run was given besides the subject's own: their people are known to the redactor. */
   readonly orgIds?: readonly string[];
+  /** A tighter personal cap than the tool's own (a person's own statement). */
+  readonly personPerMinute?: number;
   readonly run: (signal: AbortSignal) => Promise<Finding>;
 }
 
@@ -215,7 +220,7 @@ export class ToolRunner implements OnModuleDestroy {
       ticketId: view.t.id,
       orgId,
       intentKey: view.intentKey,
-      orgNames: () => orgPeopleNames(this.database.db, [orgId]),
+      orgNames: (extra = []) => orgPeopleNames(this.database.db, [...new Set([orgId, ...extra])]),
     };
   }
 
@@ -506,6 +511,14 @@ export class ToolRunner implements OnModuleDestroy {
   async runAdhocData(body: AdhocData, principal: Principal): Promise<EvidenceCard> {
     const subject = await this.adhocSubject(body, principal);
     const data = this.requireData([]);
+    // Off unless the deployment turned it on: a statement can make the server that answers it run out of memory.
+    if (this.clients.dataAdhocEnabled !== true) throw adhocDataOff();
+    try {
+      assertAdhocSql(body.sql);
+    } catch (error) {
+      // A 400 with the reason, like every other refusal of the statement.
+      translateConnectorError(error);
+    }
     // A statement of one's own is only as safe as the database role behind it. A product database whose
     // login can still take locks, write WAL or sleep (the revokes of product-mock.grants.sql are not all
     // in place) is used through saved templates only.
@@ -517,12 +530,13 @@ export class ToolRunner implements OnModuleDestroy {
       paramsForHash: { sql: body.sql, params, maxRows: body.maxRows },
       tool: RATE_TOOL_NAMES.data,
       mock: this.clients.dataMock ?? true,
+      personPerMinute: ADHOC_DATA_PERSON_PER_MINUTE,
       run: async (signal) => {
         const result = await data.query({
           label: 'adhoc',
           sql: body.sql,
           params,
-          maxRows: Math.min(body.maxRows, DATA_RUN_MAX_ROWS * 5),
+          maxRows: Math.min(body.maxRows, DATA_RUN_MAX_ROWS),
           timeoutMs: DATA_RUN_TIMEOUT_MS,
           signal,
         });
@@ -718,6 +732,23 @@ export class ToolRunner implements OnModuleDestroy {
     };
   }
 
+  /** The organizations whose id appears in a result (at most 200 ids looked at): who the rows are about. */
+  private async organizationsIn(text: string): Promise<string[]> {
+    const ids = [
+      ...new Set(
+        (text.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi) ?? []).map(
+          (id) => id.toLowerCase(),
+        ),
+      ),
+    ].slice(0, 200);
+    if (ids.length === 0) return [];
+    const rows = await this.database.db
+      .select({ id: schema.organization.id })
+      .from(schema.organization)
+      .where(inArray(schema.organization.id, ids));
+    return rows.map((row) => row.id);
+  }
+
   private async execute(
     subject: Subject,
     attempt: Attempt,
@@ -734,6 +765,7 @@ export class ToolRunner implements OnModuleDestroy {
       mock: attempt.mock,
       actor: 'human',
       personId: principal.userId,
+      personPerMinute: attempt.personPerMinute,
     });
     if (!decision.allowed) {
       throw new RateLimitedError(Math.max(1, Math.ceil(decision.retryAfterMs / 1000)));
@@ -759,7 +791,13 @@ export class ToolRunner implements OnModuleDestroy {
     });
 
     // N4: the excerpt is stored with personal data replaced by placeholders.
-    const { names, complete } = await subject.orgNames(attempt.orgIds);
+    // A run that is not limited to one organization (an ad-hoc statement, a template without {{org_id}}) can
+    // return the people of other organizations: their names are in the dictionary too (T-207a C-9).
+    const mentioned =
+      attempt.orgIds !== undefined && attempt.orgIds.length > 0
+        ? []
+        : await this.organizationsIn(`${finding.text}\n${JSON.stringify(finding.raw)}`);
+    const { names, complete } = await subject.orgNames([...(attempt.orgIds ?? []), ...mentioned]);
     const session = createRedactor({ names: () => names }).session({
       scope: subject.kind === 'ticket' ? subject.ticketId : subject.incidentId,
     });

@@ -132,6 +132,49 @@ describe('the notice job', () => {
     await owner().delete(schema.statusSubscription);
   });
 
+  it('T-207a C-7: every notice carries List-Unsubscribe and List-Unsubscribe-Post (RFC 8058) with a link that only unsubscribes', async () => {
+    await addReader('headers');
+    const messages: OutboundMessage[] = [];
+    await processor(true, (message) => {
+      messages.push(message);
+      return Promise.resolve();
+    })();
+    expect(messages).toHaveLength(1);
+    const headers = messages[0]?.headers ?? {};
+    expect(headers['List-Unsubscribe-Post']).toBe('List-Unsubscribe=One-Click');
+    const link = /^<(https?:\/\/[^>]+)>$/.exec(headers['List-Unsubscribe'] ?? '')?.[1] ?? '';
+    const url = new URL(link);
+    expect(url.pathname).toBe('/v1/status/subscriptions/unsubscribe/one-click');
+    expect(url.searchParams.get('token')?.length ?? 0).toBeGreaterThan(20);
+    await owner().delete(schema.statusSubscription);
+    await owner().delete(schema.statusNotification);
+  });
+
+  it('T-207a C-7: the third hard bounce in a row suppresses the address, and a delivery starts the count again', async () => {
+    const bouncing = await addReader('bouncing');
+    const healthy = await addReader('healthy');
+    await owner()
+      .update(schema.statusSubscription)
+      .set({ bounceCount: 2 })
+      .where(eq(schema.statusSubscription.email, bouncing));
+    await owner()
+      .update(schema.statusSubscription)
+      .set({ bounceCount: 2 })
+      .where(eq(schema.statusSubscription.email, healthy));
+    await processor(true, (message) =>
+      message.to === bouncing
+        ? Promise.reject(Object.assign(new Error('no such user'), { responseCode: 550 }))
+        : Promise.resolve(),
+    )();
+    const rows = await owner().select().from(schema.statusSubscription);
+    const row = (email: string) => rows.find((r) => r.email === email);
+    expect(row(bouncing)).toMatchObject({ bounceCount: 3, state: 'unsubscribed' });
+    expect(row(bouncing)?.suppressedAt).toBeInstanceOf(Date);
+    expect(row(healthy)).toMatchObject({ bounceCount: 0, state: 'confirmed', suppressedAt: null });
+    await owner().delete(schema.statusSubscription);
+    await owner().delete(schema.statusNotification);
+  });
+
   it('tells everyone else first when one send fails for a reason that may pass, then retries only that reader', async () => {
     const readers = [await addReader('x'), await addReader('y'), await addReader('z')];
     const flaky = readers[0] ?? '';

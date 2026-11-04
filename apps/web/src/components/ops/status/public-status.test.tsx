@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { apiError, mockApi } from '@/test/mock-api';
 import { publicStatus } from '@/test/ops-fixtures';
+import { makeChallenge } from '@/test/portal-fixtures';
 import { renderApp } from '@/test-utils';
 
 import { PublicStatusPage } from './public-status-page';
@@ -119,6 +120,7 @@ describe('Public status page', () => {
     const api = mockApi({
       'GET /v1/status': { json: publicStatus() },
       'GET /v1/status/history': HISTORY,
+      'GET /v1/status/subscriptions/challenge': () => ({ json: makeChallenge() }),
       'POST /v1/status/subscriptions': { status: 202, json: { status: 'check_your_email' } },
     });
     renderApp(<PublicStatusPage />);
@@ -126,9 +128,15 @@ describe('Public status page', () => {
     await user.type(await screen.findByLabelText('Email address'), 'Person@Example.com');
     await user.click(screen.getByRole('button', { name: 'Subscribe' }));
     expect(await screen.findByText('Check your email')).toBeVisible();
+    // The request carries a solved proof of work (T-207a C-3) and no honeypot value.
     expect(api.calls.find((c) => c.method === 'POST')?.body).toEqual({
       email: 'person@example.com',
       locale: 'en',
+      verification: {
+        provider: 'pow-sha256',
+        challenge: makeChallenge().challenge,
+        nonce: expect.stringMatching(/^\d+$/) as string,
+      },
     });
   });
 

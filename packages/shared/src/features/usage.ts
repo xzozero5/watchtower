@@ -9,6 +9,8 @@
  */
 import { z } from 'zod';
 
+import { usageDimProblem } from './tools.js';
+
 /** Audit `action` strings written by this feature. Metadata holds ids, counts and hashes, never SQL text or a value. */
 export const USAGE_AUDIT_ACTIONS = {
   metricCreate: 'usage_metric.create',
@@ -182,6 +184,10 @@ const dimNameSchema = z
   .regex(/^[a-z][a-z0-9_]{0,30}$/, 'Lower case letters, digits and underscores')
   .refine((name) => name !== 'ts' && name !== 'value', {
     message: '`ts` and `value` are reserved',
+  })
+  .superRefine((name, ctx) => {
+    const problem = usageDimProblem(name);
+    if (problem !== null) ctx.addIssue({ code: 'custom', message: problem });
   });
 
 const templateSchema = z

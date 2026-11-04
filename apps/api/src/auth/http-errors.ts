@@ -29,6 +29,14 @@ export const toolNotHardened = (): ApiHttpError =>
     'Ad-hoc statements are off: the product database login is not hardened; saved templates still run',
   );
 
+/** 503: ad-hoc data statements are off unless the deployment turned them on (T-207a C-1, ADR-016). */
+export const adhocDataOff = (): ApiHttpError =>
+  new ApiHttpError(
+    HttpStatus.SERVICE_UNAVAILABLE,
+    'tool_not_connected',
+    'Ad-hoc data statements are off (PRODUCT_DB_ADHOC_ENABLED); saved templates still run',
+  );
+
 /** 502 or 504: the system answered badly or too slowly. Says nothing about the query or the system. */
 export const toolFailed = (timeout: boolean): ApiHttpError =>
   new ApiHttpError(

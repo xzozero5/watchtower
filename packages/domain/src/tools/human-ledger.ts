@@ -23,6 +23,8 @@ export interface HumanToolEntry {
   readonly actor: Exclude<RateActor, 'ai'>;
   /** The person pressing the button: one person's share of the minute is capped. Absent for the system. */
   readonly personId?: string | undefined;
+  /** A tighter personal cap for this run than the tool's own (a person's ad-hoc statement). */
+  readonly personPerMinute?: number | undefined;
 }
 
 export type HumanToolDecision =
@@ -53,11 +55,18 @@ export function createHumanToolLedger(options: {
   return {
     async begin(entry) {
       return db.transaction(async (tx): Promise<HumanToolDecision> => {
+        const spec = rateBudgetFor(
+          entry.tool,
+          options.project === undefined ? {} : { project: options.project },
+        );
         const decision = await acquireRateBudget(tx, {
-          ...rateBudgetFor(
-            entry.tool,
-            options.project === undefined ? {} : { project: options.project },
-          ),
+          ...spec,
+          personPerMinute:
+            entry.personPerMinute === undefined
+              ? spec.personPerMinute
+              : spec.personPerMinute > 0
+                ? Math.min(spec.personPerMinute, entry.personPerMinute)
+                : entry.personPerMinute,
           actor: entry.actor,
           personId: entry.personId,
         });

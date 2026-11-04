@@ -27,7 +27,7 @@ const SEND_OPTIONS = {
 } as const;
 
 export type SubscriptionRequestOutcome =
-  'created' | 'resent' | 'reactivated' | 'throttled' | 'already_confirmed';
+  'created' | 'resent' | 'reactivated' | 'throttled' | 'already_confirmed' | 'suppressed';
 
 const dbNow = sql`clock_timestamp()`;
 
@@ -75,6 +75,7 @@ export async function requestStatusSubscription(
     .select({
       id: schema.statusSubscription.id,
       state: schema.statusSubscription.state,
+      suppressed: sql<boolean>`${schema.statusSubscription.suppressedAt} IS NOT NULL`,
       recent: sql<boolean>`${schema.statusSubscription.confirmationSentAt} IS NOT NULL
         AND ${schema.statusSubscription.confirmationSentAt}
           > clock_timestamp() - make_interval(secs => ${STATUS_RESEND_AFTER_SECONDS})`,
@@ -107,7 +108,10 @@ export async function requestStatusSubscription(
     outcome = 'created';
   } else {
     id = row.id;
-    if (row.state === 'confirmed') {
+    if (row.suppressed) {
+      // The mailbox refused mail for good several times: nothing is sent until a person clears it (T-207a C-7).
+      outcome = 'suppressed';
+    } else if (row.state === 'confirmed') {
       outcome = 'already_confirmed';
     } else if (row.state === 'pending' && row.recent) {
       outcome = 'throttled';

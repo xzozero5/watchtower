@@ -147,8 +147,11 @@ x-app-env: &app-env
   ALERT_HEARTBEAT_SECRET: ${ALERT_HEARTBEAT_SECRET:-}
   DEPLOY_WEBHOOK_SECRET: ${DEPLOY_WEBHOOK_SECRET:-}
   ALERT_INGEST_RATE_PER_MINUTE: ${ALERT_INGEST_RATE_PER_MINUTE:-600}
+  DISCORD_INTERACTIONS_RATE_PER_MINUTE: ${DISCORD_INTERACTIONS_RATE_PER_MINUTE:-600}
+  DISCORD_USER_RATE_PER_MINUTE: ${DISCORD_USER_RATE_PER_MINUTE:-60}
   STATUS_PAGE_PUBLIC: ${STATUS_PAGE_PUBLIC:-false}
   PRODUCT_DB_URL: ${PRODUCT_DB_URL:-}
+  PRODUCT_DB_ADHOC_ENABLED: ${PRODUCT_DB_ADHOC_ENABLED:-false}
   GITHUB_APP_ID: ${GITHUB_APP_ID:-}
   GITHUB_APP_PRIVATE_KEY_PATH: ${GITHUB_APP_PRIVATE_KEY_PATH:-}
   GCP_PROJECT_ID: ${GCP_PROJECT_ID:-}
@@ -227,24 +230,50 @@ services:
       retries: 20
       start_period: 10s
 
+  product-mock-db:
+    # The invented product database lives in a Postgres server of its own, behind the `product-mock`
+    # profile (T-207a C-1): a statement that eats memory (array_agg(repeat()) took a whole cluster down)
+    # must not take the Watchtower database with it. mem_limit makes the OOM kill land on this container
+    # only. Local mock only: set PRODUCT_MOCK_ADMIN_PASSWORD (letters and digits; there is no default).
+    # Published on 127.0.0.1 only.
+    image: pgvector/pgvector:0.8.7-pg16-trixie
+    profiles: ['product-mock']
+    restart: unless-stopped
+    mem_limit: 512m
+    memswap_limit: 512m
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${PRODUCT_MOCK_ADMIN_PASSWORD:-}
+      POSTGRES_DB: postgres
+    ports:
+      - '127.0.0.1:${PRODUCT_MOCK_PORT:-5433}:5432'
+    volumes:
+      - productmockdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres -d postgres']
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+
   product-mock-init:
     # One-shot, local mock only (T-203c), behind the `product-mock` profile so a plain `docker compose up`
-    # never creates it: `PRODUCT_MOCK_RO_PASSWORD=... docker compose --profile product-mock up product-mock-init`.
-    # Creates the invented product database `product_mock` and its logins on this Postgres server (the
-    # login `product_mock_ro`, NOINHERIT, and the group `product_mock_ro_reader` that holds the column
-    # grants), loads examples/metrics (schema, seed with an anomaly, grants) and exits 0. Does nothing if
-    # the database exists. It refuses to run without PRODUCT_MOCK_RO_PASSWORD: there is no default
-    # password. Postgres is published on 127.0.0.1 only; do not publish it wider with this login in it.
+    # never creates it: `PRODUCT_MOCK_ADMIN_PASSWORD=... PRODUCT_MOCK_RO_PASSWORD=... docker compose
+    # --profile product-mock up product-mock-init` (starts product-mock-db first). Creates the invented
+    # product database `product_mock` and its logins on product-mock-db (the login `product_mock_ro`,
+    # NOINHERIT, and the group `product_mock_ro_reader` that holds the column grants), loads
+    # examples/metrics (schema, seed with an anomaly, grants) and exits 0. Does nothing if the database
+    # exists. It refuses to run without PRODUCT_MOCK_RO_PASSWORD: there is no default password.
     image: pgvector/pgvector:0.8.7-pg16-trixie
     profiles: ['product-mock']
     restart: 'no'
     depends_on:
-      postgres:
+      product-mock-db:
         condition: service_healthy
     environment:
-      PGHOST: postgres
-      PGUSER: ${POSTGRES_USER:-watchtower}
-      PGPASSWORD: ${POSTGRES_PASSWORD:-watchtower}
+      PGHOST: product-mock-db
+      PGUSER: postgres
+      PGPASSWORD: ${PRODUCT_MOCK_ADMIN_PASSWORD:-}
       PRODUCT_MOCK_RO_PASSWORD: ${PRODUCT_MOCK_RO_PASSWORD:-}
     volumes:
       - ./examples/metrics:/metrics:ro
@@ -646,6 +675,7 @@ networks:
 volumes:
   pgdata:
   redisdata:
+  productmockdata:
   miniodata:
   clamavdb:
   caddy_data:

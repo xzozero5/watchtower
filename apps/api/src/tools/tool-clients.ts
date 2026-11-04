@@ -18,7 +18,7 @@ export const clientIsMock = (client: { readonly source: 'fake' | 'sandbox' | 'li
  * `PRODUCT_DB_URL` (or a fake over the same fixtures).
  */
 export function buildToolClients(
-  config: Pick<ApiConfig, 'AI_TOOL_FIXTURES_DIR' | 'PRODUCT_DB_URL'>,
+  config: Pick<ApiConfig, 'AI_TOOL_FIXTURES_DIR' | 'PRODUCT_DB_URL' | 'PRODUCT_DB_ADHOC_ENABLED'>,
 ): ToolClients {
   return assembleToolClients({
     fixturesDir: config.AI_TOOL_FIXTURES_DIR,
@@ -30,5 +30,6 @@ export function buildToolClients(
             applicationName: 'watchtower-api-tools',
           }),
     allowColumns: DATA_COLUMN_ALLOW_LIST,
+    adhocData: config.PRODUCT_DB_ADHOC_ENABLED,
   });
 }

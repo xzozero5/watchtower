@@ -20,6 +20,7 @@ import {
 import { createProductMockDatabase, type ProductMockDatabase } from '@watchtower/db/testing';
 import { DATA_COLUMN_ALLOW_LIST } from '@watchtower/shared';
 import { disableNetConnect } from '@watchtower/shared/testing';
+import { Pool } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 // T-203c on a real, invented product database (`product_mock`, a database of its own on the compose
@@ -448,6 +449,48 @@ describe('hostile statements, second group (side effects and size)', () => {
     expect(problems.length).toBeGreaterThanOrEqual(5);
     expect(problems).toContain('the reader can use advisory locks');
     expect(problems).toContain('the reader can use being a superuser');
+  });
+
+  it('T-207a C-4: a function made later is not executable by the reader, and the probe names an extension, a server-file role and a function it can run', async () => {
+    const own = await createProductMockDatabase(adminUrl);
+    const pool = new Pool({ connectionString: own.ownerUrl, max: 1 });
+    const reader = createProductDbExecutor({ url: own.readOnlyUrl });
+    const login = decodeURIComponent(new URL(own.readOnlyUrl).username);
+    try {
+      expect(await reader.hardeningProblems()).toEqual([]);
+      // Default privileges: a helper created after the grants does not run for PUBLIC.
+      await pool.query(
+        `CREATE FUNCTION public.later_helper() RETURNS int LANGUAGE sql AS 'SELECT 1'`,
+      );
+      const later = await pool.query<{ ok: boolean }>(
+        `SELECT has_function_privilege($1, 'public.later_helper()', 'EXECUTE') AS ok`,
+        [`${login}_reader`],
+      );
+      expect(later.rows[0]?.ok).toBe(false);
+      // The probe still catches a function that was granted by hand.
+      await pool.query(`GRANT EXECUTE ON FUNCTION public.later_helper() TO PUBLIC`);
+      expect((await reader.hardeningProblems()).join('|')).toContain(
+        'executing a function of a schema other than the system ones',
+      );
+      await pool.query(`REVOKE EXECUTE ON FUNCTION public.later_helper() FROM PUBLIC`);
+      expect(await reader.hardeningProblems()).toEqual([]);
+      // An extension that reads files from the server turns the probe on.
+      await pool.query('CREATE EXTENSION file_fdw');
+      expect((await reader.hardeningProblems()).join('|')).toContain('installed extension');
+      await pool.query('DROP EXTENSION file_fdw');
+      expect(await reader.hardeningProblems()).toEqual([]);
+      // So does a role that reads the server's files.
+      await pool.query(`GRANT pg_read_server_files TO "${login}_reader"`);
+      expect((await reader.hardeningProblems()).join('|')).toContain(
+        'reads or writes server files',
+      );
+      await pool.query(`REVOKE pg_read_server_files FROM "${login}_reader"`);
+      expect(await reader.hardeningProblems()).toEqual([]);
+    } finally {
+      await reader.close();
+      await pool.end();
+      await own.cleanup();
+    }
   });
 
   it('stops reading at a byte cap, drops the connection of a result that is far too big, and serves again', async () => {

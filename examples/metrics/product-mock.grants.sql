@@ -53,6 +53,29 @@ BEGIN
 END
 $$;
 
+-- Functions outside pg_catalog (T-207a C-4): the block above only knew the system ones, and an extension or a
+-- helper that lands in `public` (or any schema) is executable by PUBLIC by default. Everything the database
+-- defines itself loses EXECUTE for PUBLIC in every schema but the two system ones (revoking those would stop
+-- the operators and casts that every statement needs), and so does whatever the creating role adds later.
+-- (ALTER DEFAULT PRIVILEGES covers objects created by the role that runs this file; another creating role
+-- needs its own.) The reader has no function of its own to run, and none is granted to it below.
+DO $$
+DECLARE
+  s record;
+BEGIN
+  FOR s IN
+    SELECT nspname FROM pg_namespace
+    WHERE nspname NOT IN ('pg_catalog', 'information_schema')
+      AND nspname NOT LIKE 'pg\_toast%'
+      AND nspname NOT LIKE 'pg\_temp%'
+  LOOP
+    EXECUTE format('REVOKE EXECUTE ON ALL FUNCTIONS IN SCHEMA %I FROM PUBLIC', s.nspname);
+    EXECUTE format('ALTER DEFAULT PRIVILEGES IN SCHEMA %I REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC', s.nspname);
+  END LOOP;
+END
+$$;
+ALTER DEFAULT PRIVILEGES REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC;
+
 -- Limits that no statement can raise: the reader has no set_config, and these are set for the login
 -- by whoever created it (a superuser; temp_file_limit is superuser-only). work_mem and the temporary
 -- file cap bound what a sort or a hash can spill to disk; the executor adds a byte cap on what it reads.

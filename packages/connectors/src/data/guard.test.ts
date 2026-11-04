@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { ConnectorQueryRejectedError, ConnectorTimeoutError } from '../common/errors.js';
 import { FakeDataQueryClient } from './fake.js';
 import {
+  assertAdhocSql,
   assertReadOnlySql,
   bindSqlTemplate,
   createGuardedSqlClient,
@@ -237,5 +238,39 @@ describe('createSqlDataQueryClient', () => {
     expect(seen).toEqual([
       { sql: 'SELECT $1', params: ['v'], maxRows: 7, timeoutMs: 900, signal: undefined },
     ]);
+  });
+});
+
+describe('assertAdhocSql (T-207a C-1)', () => {
+  it.each([
+    "SELECT array_agg(repeat('x', 100000000))",
+    "SELECT lpad('x', 100000000, 'y')",
+    "select RPAD('x', 99999999)",
+    'SELECT array_fill(0, ARRAY[100000000])',
+    "SELECT string_agg(plan, ',') FROM tenants",
+    'SELECT array_agg(id) FROM tenants',
+    'WITH RECURSIVE t(n) AS (SELECT 1 UNION ALL SELECT n + 1 FROM t) SELECT n FROM t',
+    'SELECT "repeat"(\'x\', 5)',
+  ])('refuses %j', (sql) => {
+    expect(() => {
+      assertAdhocSql(sql);
+    }).toThrow(ConnectorQueryRejectedError);
+  });
+
+  it.each([
+    'SELECT tenant_id, sum(requests) FROM api_daily GROUP BY tenant_id',
+    "SELECT 'repeat me' AS note",
+    '-- array_agg in a comment\nSELECT 1',
+    'WITH x AS (SELECT 1 AS a) SELECT a FROM x',
+  ])('accepts %j', (sql) => {
+    expect(() => {
+      assertAdhocSql(sql);
+    }).not.toThrow();
+  });
+
+  it('is not part of the check that saved templates go through', () => {
+    expect(() => {
+      assertReadOnlySql("SELECT string_agg(plan, ',') FROM tenants");
+    }).not.toThrow();
   });
 });

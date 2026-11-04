@@ -5,6 +5,8 @@ export interface OutboundMessage {
   readonly subject: string;
   readonly text: string;
   readonly html: string;
+  /** Extra headers (for example `List-Unsubscribe`). Names and values are plain ASCII, no line breaks. */
+  readonly headers?: Readonly<Record<string, string>> | undefined;
 }
 
 /** The only way the worker sends email. Tests pass a fake; production uses SMTP. */
@@ -115,6 +117,7 @@ export function createSmtpMailer(settings: SmtpSettings): Mailer {
         subject: message.subject,
         text: message.text,
         html: message.html,
+        ...(message.headers === undefined ? {} : { headers: { ...message.headers } }),
       });
     },
     close() {

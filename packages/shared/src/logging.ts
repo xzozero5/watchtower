@@ -4,6 +4,15 @@
  */
 export const LOG_REDACT_PATHS: readonly string[] = [
   'req.headers.authorization',
+  // The Pub/Sub push carries an OIDC bearer token here (T-207a C-10). Also the capitalised and proxy forms, and
+  // the headers of an HTTP client error (`err.config.headers`, `response.request.headers`), which keep their case.
+  'req.headers.Authorization',
+  'req.headers["proxy-authorization"]',
+  '*.headers.authorization',
+  '*.headers.Authorization',
+  '*.headers["proxy-authorization"]',
+  '*.*.headers.authorization',
+  '*.*.headers.Authorization',
   'req.headers.cookie',
   'req.headers["x-api-key"]',
   // Bearer tokens of the public pages travel in these headers (portal tracking link, CSAT survey link).

@@ -1,9 +1,11 @@
 import {
   apiErrorSchema,
+  humanChallengeSchema,
   publicHistorySchema,
   publicStatusSchema,
   subscribeResultSchema,
   subscriptionResultSchema,
+  type HumanChallenge,
   type PublicHistory,
   type PublicStatus,
   type Subscribe,
@@ -14,7 +16,7 @@ import { parseRetryAfter } from '@/lib/portal/portal-client';
 
 /** What went wrong, in the terms the public status pages have copy for. */
 export type StatusFailureKind =
-  'closed' | 'invalidLink' | 'rateLimited' | 'validation' | 'network' | 'server';
+  'closed' | 'invalidLink' | 'rateLimited' | 'validation' | 'verification' | 'network' | 'server';
 
 export class StatusApiError extends Error {
   constructor(
@@ -46,6 +48,9 @@ export function classifyStatusError(error: unknown): StatusFailure {
   }
   if (error.code === 'invalid_or_expired_link') {
     return { kind: 'invalidLink', retryAfterSeconds: null };
+  }
+  if (error.code === 'verification_failed') {
+    return { kind: 'verification', retryAfterSeconds: null };
   }
   if (error.status === 400) return { kind: 'validation', retryAfterSeconds: null };
   return { kind: 'server', retryAfterSeconds: null };
@@ -89,6 +94,16 @@ export class StatusClient {
       method: 'GET',
       path: '/v1/status/history',
       schema: publicHistorySchema,
+      ...(signal ? { signal } : {}),
+    });
+  }
+
+  /** The proof-of-work challenge a subscribe request carries (ADR-007), the portal's provider. */
+  challenge(signal?: AbortSignal): Promise<HumanChallenge> {
+    return this.call({
+      method: 'GET',
+      path: '/v1/status/subscriptions/challenge',
+      schema: humanChallengeSchema,
       ...(signal ? { signal } : {}),
     });
   }

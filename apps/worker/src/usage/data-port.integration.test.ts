@@ -215,6 +215,34 @@ describe('the adapter', () => {
     await tools.close?.();
   });
 
+  it('T-207a C-5: a declared dimension that looks like a person stays masked, even from a definition saved before the check', async () => {
+    const tools = clients();
+    const port = createUsageDataPort({
+      db: appDb.db,
+      clients: tools,
+      hashKey: 'c'.repeat(64),
+      project: `usage-${randomBytes(3).toString('hex')}`,
+    });
+    if (port === undefined) throw new Error('no port');
+    const key = `pii_${randomBytes(3).toString('hex')}`;
+    await owner()
+      .insert(schema.usageMetricDef)
+      .values({
+        key,
+        name: key,
+        sqlTemplate: 'SELECT 1',
+        dims: ['org', 'display_name'],
+        active: false,
+      });
+    const sql = `SELECT date_trunc('hour', started_at) AS ts, count(*) AS value, org_id AS org, step AS display_name
+                 FROM product_mock.flow_run WHERE started_at >= $1 AND started_at < $2 GROUP BY 1, 3, 4`;
+    const result = await port.query({ metricKey: key, sql, params: window(), maxRows: 20 });
+    expect(result.rows.length).toBeGreaterThan(0);
+    expect(result.rows.every((row) => row.display_name === null)).toBe(true);
+    expect(result.rows.every((row) => row.org !== null)).toBe(true);
+    await tools.close?.();
+  });
+
   it('says truncated at the row cap, hides a column the definition did not declare, and is held to the data budget', async () => {
     const tools = clients();
     const project = `usage-${randomBytes(3).toString('hex')}`;

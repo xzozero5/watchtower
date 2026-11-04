@@ -42,6 +42,13 @@ describe('Phase 2 variables', () => {
     expect(parse({ STATUS_PAGE_PUBLIC: 'false' }).STATUS_PAGE_PUBLIC).toBe(false);
   });
 
+  it('ad-hoc data statements are off by default and open only on an explicit true (T-207a C-1)', () => {
+    expect(parse().PRODUCT_DB_ADHOC_ENABLED).toBe(false);
+    expect(parse({ PRODUCT_DB_ADHOC_ENABLED: '' }).PRODUCT_DB_ADHOC_ENABLED).toBe(false);
+    expect(parse({ PRODUCT_DB_ADHOC_ENABLED: 'true' }).PRODUCT_DB_ADHOC_ENABLED).toBe(true);
+    expect(() => parse({ PRODUCT_DB_ADHOC_ENABLED: 'maybe' })).toThrow();
+  });
+
   it('the status page opens only on an explicit true', () => {
     expect(parse({ STATUS_PAGE_PUBLIC: 'true' }).STATUS_PAGE_PUBLIC).toBe(true);
     expect(() => parse({ STATUS_PAGE_PUBLIC: 'maybe' })).toThrow();

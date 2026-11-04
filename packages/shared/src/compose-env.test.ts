@@ -124,6 +124,34 @@ describe('.env.example holds nothing that nothing reads', () => {
   });
 });
 
+describe('the mock product database (T-207a C-1)', () => {
+  /** The text of one service of the compose file. */
+  const service = (name: string): string => {
+    const start = compose.indexOf(`\n  ${name}:\n`);
+    expect(start, `${name} not found`).toBeGreaterThan(-1);
+    const next = compose.slice(start + 1).search(/\n {2}[a-z][a-z0-9-]*:\n|\n[a-z]/);
+    return compose.slice(start, next === -1 ? undefined : start + 1 + next);
+  };
+
+  it('runs in a Postgres server of its own with a memory limit, behind the product-mock profile', () => {
+    const db = service('product-mock-db');
+    expect(db).toMatch(/profiles: \['product-mock'\]/);
+    expect(db).toMatch(/mem_limit: \d+[mg]/);
+    expect(db).toContain('127.0.0.1:');
+    // Not the Watchtower volume, and the init job reaches that server, not `postgres`.
+    expect(db).not.toContain('pgdata:');
+    const init = service('product-mock-init');
+    expect(init).toContain('PGHOST: product-mock-db');
+    expect(init).not.toMatch(/PGHOST: postgres\b/);
+    expect(init).not.toMatch(/depends_on:\n {6}postgres:/);
+  });
+
+  it('keeps ad-hoc data statements off unless the deployment says otherwise', () => {
+    expect(compose).toContain('PRODUCT_DB_ADHOC_ENABLED: ${PRODUCT_DB_ADHOC_ENABLED:-false}');
+    expect(envExample).toMatch(/^PRODUCT_DB_ADHOC_ENABLED=false$/m);
+  });
+});
+
 describe('Gmail service account file', () => {
   it('is mounted read-only into the api and worker and points at nothing when unset', () => {
     expect(compose).toMatch(
