@@ -156,7 +156,7 @@ export function normalizeMime(raw: Uint8Array, limits: Partial<MimeLimits> = {})
   let remoteImagesBlocked = 0;
   let referenced = new Set<string>();
   if (bodies.html.length > 0) {
-    const sanitized = sanitizeHtml(bodies.html.join('\n'));
+    const sanitized = sanitizeHtml(bodies.html.join('\n'), { keepRemoteImages: true });
     safeHtml = sanitized.html;
     htmlText = sanitized.text;
     remoteImagesBlocked = sanitized.remoteImagesBlocked;

@@ -5,10 +5,15 @@
  * This is an allow-list *rebuild*, not a deny-list filter: the input is tokenised, and the output is
  * assembled only from allow-listed elements and attributes, with every text node and attribute
  * value escaped. Nothing from the input is copied through verbatim, so an unknown or malformed
- * construct can only disappear, never become active content. Scripts, styles, frames, forms,
- * `style` attributes, event handlers and remote images (tracking pixels) are all dropped. Images
- * survive only as `cid:` references, which resolve to attachment parts of the same message.
+ * construct can only disappear, never become active content. Scripts, `<style>` blocks, frames,
+ * forms and event handlers are dropped. Formatting survives the way Gmail shows it (T-171): the
+ * `style` attribute is rebuilt through the shared CSS allow-list (colours, fonts, spacing, borders; no
+ * `url()`, no positioning), and the legacy `align` / `bgcolor` / `<font>` / `<center>` become the same.
+ * Images survive as `cid:` references, which resolve to attachment parts of the same message. A remote
+ * image is never given a `src` here: with `keepRemoteImages` its address is kept as inert
+ * `data-remote-src`, which only the reader's "Display images below" turns into a request.
  */
+import { safeColor, sanitizeInlineStyle } from '@watchtower/shared';
 
 const NAMED_ENTITIES: Readonly<Record<string, string>> = {
   amp: '&',
@@ -273,9 +278,52 @@ const ALLOWED_ELEMENTS = new Set([
   'caption',
   'a',
   'img',
+  'center',
+  'font',
 ]);
 
+/** Legacy presentation attributes kept as they are (digits or keywords only). */
+const KEYWORD_ATTRIBUTES: Readonly<Record<string, readonly string[]>> = {
+  p: ['align'],
+  div: ['align'],
+  h1: ['align'],
+  h2: ['align'],
+  h3: ['align'],
+  h4: ['align'],
+  h5: ['align'],
+  h6: ['align'],
+  table: ['align'],
+  tr: ['align', 'valign'],
+  td: ['align', 'valign'],
+  th: ['align', 'valign'],
+};
+const KEYWORD_VALUE = /^(left|right|center|justify|top|middle|bottom|baseline)$/i;
+const DIGIT_ATTRIBUTES: Readonly<Record<string, readonly string[]>> = {
+  table: ['border', 'cellpadding', 'cellspacing'],
+};
+const MAX_REMOTE_IMAGES = 200;
+
+/** The `style` text of one element: its own declarations, plus what legacy attributes meant. */
+function styleOf(name: string, attrs: ReadonlyMap<string, string>): string {
+  const own = sanitizeInlineStyle(attrs.get('style') ?? '');
+  const extra: string[] = [];
+  if (name === 'center') extra.push('text-align:center');
+  if (name === 'font') {
+    const color = safeColor(attrs.get('color') ?? '');
+    if (color !== null) extra.push(`color:${color}`);
+    const face = sanitizeInlineStyle(`font-family:${attrs.get('face') ?? ''}`);
+    if (face !== '') extra.push(face);
+  }
+  if (['table', 'tr', 'td', 'th'].includes(name)) {
+    const background = safeColor(attrs.get('bgcolor') ?? '');
+    if (background !== null) extra.push(`background-color:${background}`);
+  }
+  // The element's own style comes last so it wins, as it does in a browser.
+  return [...extra, own].filter((part) => part !== '').join(';');
+}
+
 const BLOCK_ELEMENTS = new Set([
+  'center',
   'p',
   'div',
   'ul',
@@ -317,6 +365,11 @@ export interface SanitizeOptions {
   readonly maxOutputChars?: number;
   /** Elements nested deeper than this are unwrapped. Default 60. */
   readonly maxDepth?: number;
+  /**
+   * Keep the address of remote `http(s)` images as `data-remote-src` (no `src`, so nothing loads). For
+   * mail we received; mail we send never carries remote images. Default false.
+   */
+  readonly keepRemoteImages?: boolean;
 }
 
 export interface SanitizedHtml {
@@ -492,7 +545,10 @@ export function sanitizeHtml(input: string, options: SanitizeOptions = {}): Sani
     }
     if (!ALLOWED_ELEMENTS.has(token.name)) continue; // unwrap: keep the children
 
-    const { name, attrs } = token;
+    const { attrs } = token;
+    const name = token.name;
+    // `<font>` and `<center>` are written as `<span>` / `<div>` with the same look as a style.
+    const tag = name === 'font' ? 'span' : name === 'center' ? 'div' : name;
 
     if (name === 'br') {
       emit('<br>');
@@ -526,6 +582,22 @@ export function sanitizeHtml(input: string, options: SanitizeOptions = {}): Sani
       } else if (src !== '') {
         remoteImagesBlocked += 1;
         const alt = attrs.get('alt');
+        if (
+          options.keepRemoteImages === true &&
+          /^https?:\/\//i.test(src) &&
+          src.length <= 2000 &&
+          !/[\s"'<>\\]/.test(src) &&
+          remoteImagesBlocked <= MAX_REMOTE_IMAGES
+        ) {
+          const parts = [`data-remote-src="${escapeAttribute(src)}"`];
+          if (alt !== undefined)
+            parts.push(`alt="${escapeAttribute(alt.replace(UNSAFE_TEXT_CHARS, ''))}"`);
+          for (const dimension of ['width', 'height'] as const) {
+            const value = cleanDigits(attrs.get(dimension), 5000);
+            if (value !== null) parts.push(`${dimension}="${value}"`);
+          }
+          emit(`<img ${parts.join(' ')}>`);
+        }
         if (alt !== undefined && alt.trim() !== '') text.write(`[image: ${alt}]`, false);
       }
       continue;
@@ -533,7 +605,7 @@ export function sanitizeHtml(input: string, options: SanitizeOptions = {}): Sani
 
     if (stack.length >= maxDepth) continue;
 
-    let open = `<${name}`;
+    let open = `<${tag}`;
     if (name === 'a') {
       const href = (attrs.get('href') ?? '').trim();
       if (!isSafeHref(href)) {
@@ -561,6 +633,20 @@ export function sanitizeHtml(input: string, options: SanitizeOptions = {}): Sani
     }
     const dir = attrs.get('dir')?.toLowerCase();
     if (dir === 'rtl' || dir === 'ltr') open += ` dir="${dir}"`;
+    for (const attribute of KEYWORD_ATTRIBUTES[name] ?? []) {
+      const value = (attrs.get(attribute) ?? '').trim();
+      if (KEYWORD_VALUE.test(value)) open += ` ${attribute}="${value.toLowerCase()}"`;
+    }
+    for (const attribute of DIGIT_ATTRIBUTES[name] ?? []) {
+      const value = cleanDigits(attrs.get(attribute), 1000);
+      if (value !== null) open += ` ${attribute}="${value}"`;
+    }
+    if (name === 'table' || name === 'td' || name === 'th') {
+      const width = (attrs.get('width') ?? '').trim();
+      if (/^\d{1,4}%?$/.test(width)) open += ` width="${width}"`;
+    }
+    const style = styleOf(name, attrs);
+    if (style !== '') open += ` style="${escapeAttribute(style)}"`;
     open += '>';
 
     if (name === 'li') text.literal('- ', true);
@@ -573,10 +659,10 @@ export function sanitizeHtml(input: string, options: SanitizeOptions = {}): Sani
 
     emit(open);
     if (token.selfClosing) {
-      emit(`</${name}>`);
+      emit(`</${tag}>`);
       afterClose(name);
     } else {
-      stack.push({ name, closeText: `</${name}>` });
+      stack.push({ name, closeText: `</${tag}>` });
     }
   }
   while (stack.length > 0) closeTop();

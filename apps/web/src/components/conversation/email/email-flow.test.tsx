@@ -118,7 +118,7 @@ describe('an email thread in the timeline', () => {
     await user.click(screen.getByRole('button', { name: 'Show trimmed content' }));
     expect(frame()).toContain('earlier text');
 
-    await user.click(screen.getByRole('button', { name: 'Show details' }));
+    await user.click(screen.getByRole('button', { name: /: Show details$/ }));
     expect(screen.getByText('Boss <boss@example.org>')).toBeVisible();
     expect(screen.getByText('<sam@example.org>')).toBeVisible();
   });

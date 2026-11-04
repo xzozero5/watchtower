@@ -16,7 +16,7 @@ import {
 } from '../portal/portal-attachment-check.js';
 import { attachmentRejected, type UploadedFile } from '../portal/portal-attachments.service.js';
 import { OBJECT_STORE } from '../storage/storage.module.js';
-import { stripMetadata } from './strip-metadata.js';
+import { MetadataStripError, stripMetadata } from './strip-metadata.js';
 
 export interface StoredFile {
   readonly filename: string;
@@ -33,8 +33,7 @@ export function toAttachment(row: UploadRow): StaffAttachment {
 /**
  * Files that signed-in staff attach to what they write (tickets, shift notes, handoffs, incident
  * notes). The checks are the portal's (`checkAttachments`: size, extension, the type decided from the
- * bytes, no markup in text files); on top of that the EXIF/GPS metadata of a JPEG and the text chunks of
- * a PNG are dropped before the file is stored. Keys are random; nothing about a file is reachable by URL.
+ * bytes, no markup in text files); on top of that the EXIF/GPS/XMP metadata of a JPEG, PNG, WebP and GIF is dropped (an image that cannot be parsed is refused) before the file is stored. Keys are random; nothing about a file is reachable by URL.
  */
 @Injectable()
 export class StaffUploadsService {
@@ -58,7 +57,20 @@ export class StaffUploadsService {
     }
     if (checked === undefined) throw badRequest('No file');
     const kind = detectKind(checked.bytes);
-    const bytes = kind === null ? checked.bytes : stripMetadata(kind, checked.bytes);
+    // Fail closed (T-171 C-5): a picture whose structure cannot be read may hide metadata, so it is refused.
+    let bytes: Uint8Array;
+    try {
+      bytes = kind === null ? checked.bytes : stripMetadata(kind, checked.bytes);
+    } catch (error) {
+      if (error instanceof MetadataStripError) {
+        throw new ApiHttpError(
+          HttpStatus.BAD_REQUEST,
+          'attachment_rejected',
+          'This image could not be cleaned of its hidden details (location, camera); save it again or send a screenshot',
+        );
+      }
+      throw error;
+    }
 
     const month = String(now.getUTCMonth() + 1).padStart(2, '0');
     const key = `attachments/staff/${String(now.getUTCFullYear())}/${month}/${randomUUID()}`;

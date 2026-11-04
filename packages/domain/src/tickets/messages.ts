@@ -4,12 +4,19 @@ import { AUDIT_ACTIONS, hasOutboundChannel, type Note, type Reply } from '@watch
 import { recordAuditInTx } from '../audit.js';
 import { findOrCreateContactByEmailIn } from '../contacts.js';
 import { isWithinReopenWindow } from '../csat/reopen.js';
-import { badRequest, channelNoOutbound, notFound, ticketNotOpen } from '../errors.js';
+import {
+  badRequest,
+  channelNoOutbound,
+  externalRecipients,
+  notFound,
+  ticketNotOpen,
+} from '../errors.js';
 import { approveAiDraftSent, scheduleCustomerSend, usesDispatcher } from '../outbound/schedule.js';
 import { requireCustomerSend } from '../policy.js';
 import type { MessageRow, OutboundDeliveryRow, TicketRow } from '../rows.js';
 import { draftHasText, recordDraftEdited } from '../ai/drafts.js';
 import { Effects, type DbTransaction, type DomainContext, type DomainResult } from '../types.js';
+import { externalDomains, knownDomains } from './recipients.js';
 import { applyStatus } from './status.js';
 import {
   insertMessage,
@@ -122,6 +129,30 @@ export async function replyToTicket(
       throw badRequest('The email composer is for tickets that came by email');
     }
   }
+  // Who the mail goes to, checked against the domains this ticket is linked to (T-171 C-2). Only the
+  // addresses the person wrote are checked; the default (the requester) is the customer itself.
+  let externalAudit: {
+    to: string[];
+    cc: string[];
+    bcc: string[];
+    external: string[];
+    confirmed: boolean;
+  } | null = null;
+  if (email !== undefined && sender.kind === 'staff') {
+    const lower = (list: readonly { address: string }[]): string[] =>
+      list.map((entry) => entry.address.trim().toLowerCase());
+    const to = lower(email.to ?? []);
+    const cc = lower(email.cc);
+    const bcc = lower(email.bcc);
+    const external = externalDomains(
+      [...to, ...cc, ...bcc],
+      await knownDomains(tx, ticket, sender.userId),
+    );
+    if (external.length > 0 && email.confirmExternalRecipients !== true) {
+      throw externalRecipients(external);
+    }
+    externalAudit = { to, cc, bcc, external, confirmed: external.length > 0 };
+  }
   if (fromCustomer && body.aiDraftId !== undefined) {
     throw badRequest('A client cannot send an AI draft');
   }
@@ -201,6 +232,18 @@ export async function replyToTicket(
       messageId: message.id,
       direction: message.direction,
       firstResponse,
+      // Who the email went to, and the domains a person confirmed outside the customer's own.
+      ...(externalAudit === null
+        ? {}
+        : {
+            recipients: {
+              to: externalAudit.to,
+              cc: externalAudit.cc,
+              bcc: externalAudit.bcc,
+            },
+            externalDomains: externalAudit.external,
+            externalConfirmed: externalAudit.confirmed,
+          }),
     },
   });
   fx.emit(messageEvent(ctx, ticket, message));

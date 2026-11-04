@@ -18,8 +18,17 @@ describe('sanitizeHtml: allow-list rebuild', () => {
   });
 
   it('unwraps unknown elements and keeps their text', () => {
-    const { html } = sanitizeHtml('<font color="red"><center>text</center></font><o:p>x</o:p>');
-    expect(html).toBe('textx');
+    const { html } = sanitizeHtml('<o:p>x</o:p><marquee>y</marquee><blink>z</blink>');
+    expect(html).toBe('xyz');
+  });
+
+  it('writes legacy font, center and bgcolor as a safe style, like Gmail shows them', () => {
+    const { html } = sanitizeHtml(
+      '<font color="red" face="Arial"><center>text</center></font><table bgcolor="#eee" width="600" border="1"><tr><td align="center" bgcolor="url(x)">c</td></tr></table>',
+    );
+    expect(html).toBe(
+      '<span style="color:red;font-family:Arial"><div style="text-align:center">text</div></span><table border="1" width="600" style="background-color:#eee"><tr><td align="center">c</td></tr></table>',
+    );
   });
 
   it('drops dangerous elements together with their content', () => {
@@ -39,6 +48,13 @@ describe('sanitizeHtml: allow-list rebuild', () => {
       '<div style="x" class="y" id="z" onclick="e()" data-a="b" dir="rtl">t</div><td colspan="2" style="s">c</td>',
     );
     expect(html).toBe('<div dir="rtl">t</div><td colspan="2">c</td>');
+  });
+
+  it('keeps a safe style attribute and rebuilds it through the allow-list', () => {
+    const { html } = sanitizeHtml(
+      '<p style="color:#123456; font-weight:bold; background:url(https://t.example.net/x.gif); position:fixed">t</p><span style="expression(alert(1))">s</span>',
+    );
+    expect(html).toBe('<p style="color:#123456;font-weight:bold">t</p><span>s</span>');
   });
 
   it('escapes text and attribute values', () => {
@@ -125,6 +141,18 @@ describe('sanitizeHtml: images', () => {
     );
     expect(html).toBe('');
     expect(remoteImagesBlocked).toBe(3);
+  });
+
+  it('with keepRemoteImages keeps a remote address as inert data-remote-src, never as src', () => {
+    const { html, remoteImagesBlocked } = sanitizeHtml(
+      '<img src="https://t.example.net/p.gif?a=1&b=2" alt="pic" width="40" onerror="x"><img src="javascript:alert(1)"><img src="http://x.example.net/a&quot;b.gif"><img src="//cdn.example.net/x.gif"><img src="data:image/png;base64,AAAA">',
+      { keepRemoteImages: true },
+    );
+    expect(html).toBe(
+      '<img data-remote-src="https://t.example.net/p.gif?a=1&amp;b=2" alt="pic" width="40">',
+    );
+    expect(html).not.toMatch(/\ssrc=/);
+    expect(remoteImagesBlocked).toBe(5);
   });
 });
 

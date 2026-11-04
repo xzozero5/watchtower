@@ -1,6 +1,12 @@
 import { randomBytes, randomUUID } from 'node:crypto';
 
-import { ChannelError, gmail, line } from '@watchtower/channels';
+import {
+  ChannelError,
+  createMemoryObjectStore,
+  gmail,
+  line,
+  type ObjectStore,
+} from '@watchtower/channels';
 import { createDatabase, schema, type Database } from '@watchtower/db';
 import { createTestDatabase, type TestDatabase } from '@watchtower/db/testing';
 import {
@@ -61,8 +67,10 @@ function makeChannels(): OutboundChannels {
 function buildDispatcher(
   overrideChannels: OutboundChannels = channels,
   withDomain: Domain = domain,
+  objects?: ObjectStore,
 ): OutboundDispatcher {
   return createOutboundDispatcher({
+    ...(objects === undefined ? {} : { objects }),
     database,
     domain: withDomain,
     channels: overrideChannels,
@@ -450,6 +458,75 @@ describe('Gmail', () => {
       outcomeUnknown: false,
     });
     expect(fakeGmail.sent).toHaveLength(0);
+  });
+
+  describe('files that cannot be read (T-171 C-8)', () => {
+    async function withAttachment(objectKey: string) {
+      const { ticketId } = await gmailTicket();
+      const { delivery, message } = await staffReply(ticketId, 'See the attached file');
+      await owner()
+        .update(schema.message)
+        .set({
+          attachments: [
+            {
+              partId: 'staff-1',
+              filename: 'report.txt',
+              contentType: 'text/plain',
+              size: 4,
+              objectKey,
+              disposition: 'attachment',
+              contentId: null,
+            },
+          ],
+        })
+        .where(eq(schema.message.id, message.id));
+      return delivery;
+    }
+
+    it('does not send a mail whose file is gone from storage, and fails where the person sees it', async () => {
+      const delivery = await withAttachment('attachments/staff/missing');
+      clock.now = at(6);
+      const withStore = buildDispatcher(channels, domain, createMemoryObjectStore());
+      expect(await withStore.dispatch(delivery.id)).toEqual({
+        status: 'failed',
+        errorCode: 'attachment_unreadable',
+        outcomeUnknown: false,
+      });
+      expect(fakeGmail.sent).toHaveLength(0);
+      expect((await deliveryRow(delivery.id)).state).toBe('failed');
+    });
+
+    it('does not send when no object store is configured but a file is listed', async () => {
+      const delivery = await withAttachment('attachments/staff/any');
+      clock.now = at(6);
+      expect(await dispatcher.dispatch(delivery.id)).toMatchObject({
+        status: 'failed',
+        errorCode: 'attachment_unreadable',
+      });
+      expect(fakeGmail.sent).toHaveLength(0);
+    });
+
+    it('retries later when storage does not answer, then sends the mail with its file', async () => {
+      const delivery = await withAttachment('attachments/staff/ok');
+      const store = createMemoryObjectStore();
+      await store.put('attachments/staff/ok', Uint8Array.from([1, 2, 3, 4]), 'text/plain');
+      let down = true;
+      const flaky: ObjectStore = {
+        ...store,
+        get: (key) => (down ? Promise.reject(new Error('connection reset')) : store.get(key)),
+      };
+      const flakyDispatcher = buildDispatcher(channels, domain, flaky);
+      clock.now = at(6);
+      expect((await flakyDispatcher.dispatch(delivery.id)).status).toBe('retry');
+      expect(fakeGmail.sent).toHaveLength(0);
+      const waiting = await deliveryRow(delivery.id);
+      expect(waiting.state).toBe('scheduled');
+      expect(waiting.outcomeUnknown).toBe(false);
+      down = false;
+      clock.now = new Date(waiting.nextAttemptAt.getTime() + 1000);
+      expect((await flakyDispatcher.dispatch(delivery.id)).status).toBe('sent');
+      expect(fakeGmail.sent).toHaveLength(1);
+    });
   });
 
   it('refuses at claim time when the text changed or the gate says no, and sends nothing', async () => {

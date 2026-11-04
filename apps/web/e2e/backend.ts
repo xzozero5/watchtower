@@ -84,6 +84,16 @@ export function defaultTickets(): TicketDetail[] {
   ];
 }
 
+/** The JSON body of a request; a file upload (multipart) has none, and only its field names are kept. */
+function bodyOf(request: ReturnType<Route['request']>): unknown {
+  try {
+    return request.postDataJSON() as unknown;
+  } catch {
+    const raw = request.postData();
+    return raw === null ? undefined : { multipart: true, length: raw.length };
+  }
+}
+
 export async function mockBackend(page: Page, options: BackendOptions = {}) {
   const role = options.role ?? 'agent';
   const tickets = options.tickets ?? (role === 'client' ? [makeClientTicket(1)] : defaultTickets());
@@ -120,7 +130,7 @@ export async function mockBackend(page: Page, options: BackendOptions = {}) {
       method,
       path: url.pathname,
       search: url.search,
-      body: request.postDataJSON() as unknown,
+      body: bodyOf(request),
       csrf: request.headers()['x-csrf-token'],
     };
     requests.push(recorded);

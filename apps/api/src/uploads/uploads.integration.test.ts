@@ -19,10 +19,53 @@ let lead: Persona;
 let client: Persona;
 let orgId: string;
 
+/** A PNG with the chunk structure of a real file (the CRCs are not checked, only the lengths). */
+function pngChunk(type: string, data: Buffer): Buffer {
+  const length = Buffer.alloc(4);
+  length.writeUInt32BE(data.length);
+  return Buffer.concat([length, Buffer.from(type), data, Buffer.alloc(4)]);
+}
 const PNG = Buffer.concat([
   Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
-  randomBytes(48),
+  pngChunk('IHDR', Buffer.from([0, 0, 0, 1, 0, 0, 0, 1, 8, 6, 0, 0, 0])),
+  pngChunk('IDAT', randomBytes(32)),
+  pngChunk('IEND', Buffer.alloc(0)),
 ]);
+
+/** WebP with an EXIF chunk that names a GPS position. */
+function webpWithExif(): Buffer {
+  const chunk = (type: string, data: Buffer): Buffer => {
+    const size = Buffer.alloc(4);
+    size.writeUInt32LE(data.length);
+    return Buffer.concat([
+      Buffer.from(type),
+      size,
+      data,
+      data.length % 2 === 1 ? Buffer.alloc(1) : Buffer.alloc(0),
+    ]);
+  };
+  const payload = Buffer.concat([
+    Buffer.from('WEBP'),
+    chunk('VP8L', randomBytes(11)),
+    chunk('EXIF', Buffer.from('Exif--GPSLatitude-secret')),
+  ]);
+  const size = Buffer.alloc(4);
+  size.writeUInt32LE(payload.length);
+  return Buffer.concat([Buffer.from('RIFF'), size, payload]);
+}
+
+/** GIF with a comment extension that carries a location. */
+function gifWithComment(): Buffer {
+  return Buffer.concat([
+    Buffer.from('GIF89a'),
+    Buffer.from([1, 0, 1, 0, 0, 0, 0]),
+    Buffer.from([0x21, 0xfe, 11]),
+    Buffer.from('GPSLatitude!'.slice(0, 11)),
+    Buffer.from([0]),
+    Buffer.from([0x2c, 0, 0, 0, 0, 1, 0, 1, 0, 0, 2, 2, 0x44, 0x01, 0]),
+    Buffer.from([0x3b]),
+  ]);
+}
 
 /** A JPEG with an EXIF segment that names a camera and a GPS position. */
 function jpegWithExif(): Buffer {
@@ -90,6 +133,25 @@ describe('POST /v1/uploads', () => {
     expect(stored.includes(Buffer.from('GPSLatitude'))).toBe(false);
     expect(stored[0]).toBe(0xff);
     expect(stored[1]).toBe(0xd8);
+  });
+
+  it('removes metadata from WebP and GIF too, and refuses an image it cannot read (fail closed)', async () => {
+    const webp = await upload(agent, 'shot.webp', webpWithExif());
+    expect(webp.status, JSON.stringify(webp.body)).toBe(201);
+    const storedWebp = await bytesOf(agent.client, webp.body.id);
+    expect(storedWebp.includes(Buffer.from('GPSLatitude'))).toBe(false);
+    expect(storedWebp.subarray(0, 4).toString()).toBe('RIFF');
+    expect(storedWebp.readUInt32LE(4)).toBe(storedWebp.length - 8);
+
+    const gif = await upload(agent, 'loop.gif', gifWithComment());
+    expect(gif.status, JSON.stringify(gif.body)).toBe(201);
+    const storedGif = await bytesOf(agent.client, gif.body.id);
+    expect(storedGif.includes(Buffer.from('GPSLatitude'))).toBe(false);
+    expect(storedGif.at(-1)).toBe(0x3b);
+
+    const broken = await upload(agent, 'broken.png', PNG.subarray(0, PNG.length - 20));
+    expect(broken.status).toBe(400);
+    expect(broken.body.code).toBe('attachment_rejected');
   });
 
   it('refuses what the bytes say is not an accepted file, and a name that lies', async () => {

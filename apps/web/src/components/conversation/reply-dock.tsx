@@ -3,10 +3,11 @@
 import { hasOutboundChannel } from '@watchtower/shared';
 import { Button, Tooltip } from '@watchtower/ui';
 import { Lock, Send } from 'lucide-react';
-import { type Ref, useImperativeHandle, useRef, useState } from 'react';
+import { type Ref, useEffect, useImperativeHandle, useRef, useState } from 'react';
 
 import { useI18n } from '@/i18n/provider';
 import { useSession } from '@/lib/auth/session';
+import { draftHandoff } from '@/lib/ai/draft-handoff';
 import { useShortcut } from '@/lib/keyboard';
 import { usePreferences } from '@/lib/preferences';
 import type { TicketItem } from '@/lib/tickets/model';
@@ -67,6 +68,17 @@ export function ReplyDock({
       else if (canReply) setRequest({ mode: 'reply', quote: text });
     },
   }));
+
+  // An AI draft sent here by the draft card's Edit while the composer is still put away: open it, and
+  // the composer takes the draft when it appears.
+  useEffect(() => {
+    const opens = (ticketKey: string) => {
+      if (ticketKey === ticket.key && canReply && !composerRef.current) {
+        setRequest({ mode: 'reply' });
+      }
+    };
+    return draftHandoff.subscribe(opens);
+  }, [ticket.key, canReply]);
 
   useShortcut(
     'c',

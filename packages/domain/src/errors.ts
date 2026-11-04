@@ -12,6 +12,7 @@ export const DOMAIN_ERROR_CODES = [
   'bad_request',
   'policy_denied',
   'forbidden',
+  'external_recipients',
 ] as const;
 export type DomainErrorCode = (typeof DOMAIN_ERROR_CODES)[number];
 
@@ -45,3 +46,10 @@ export const ticketNotOpen = (message: string): DomainError =>
 export const channelNoOutbound = (message: string): DomainError =>
   new DomainError('channel_no_outbound', message);
 export const forbidden = (message: string): DomainError => new DomainError('forbidden', message);
+/** An email reply to addresses outside the domains the ticket is linked to, not yet confirmed (T-171 C-2). */
+export const externalRecipients = (domains: readonly string[]): DomainError =>
+  new DomainError(
+    'external_recipients',
+    `This reply goes to ${domains.length === 1 ? 'a domain' : 'domains'} that this customer is not linked to: ${domains.join(', ')}. Confirm the recipients to send it`,
+    { domains: [...domains] },
+  );

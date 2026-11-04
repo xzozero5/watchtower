@@ -73,5 +73,14 @@ export const emailEn = {
     previewEmpty: 'Nothing to preview yet.',
     previewFrom: 'From',
     sendsAs: 'Sent as HTML with a plain-text copy.',
+    fromAiDraft: 'AI draft: change it here, then send. The edit is recorded.',
+  },
+  external: {
+    title: 'Send outside this customer?',
+    body: 'These recipients are on {count} domains this customer is not linked to: {domains}. Check the addresses before you send.',
+    send: 'Send anyway',
+    cancel: 'Back to the email',
+    close: 'Close',
+    note: 'Your confirmation is recorded with the domains.',
   },
 } as const;
