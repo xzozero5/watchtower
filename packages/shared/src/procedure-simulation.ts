@@ -7,6 +7,9 @@ import { z } from 'zod';
 
 import { stepIdSchema } from './procedure.js';
 
+/** The tag a `require_human` step puts on a ticket (the queue shows it; T-304 and the auto-send gate read the event). */
+export const PROCEDURE_REQUIRE_HUMAN_TAG = 'procedure:require-human';
+
 /** `[ASSUMED]` numbers of ADR-026 section 6. */
 export const PROCEDURE_SIMULATION = {
   /** Resolved tickets of the intent, newest first. */

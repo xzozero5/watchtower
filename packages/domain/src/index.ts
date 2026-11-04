@@ -580,6 +580,20 @@ export {
 } from './procedures/versions.js';
 export { validateProcedureSteps, type ProcedureValidationContext } from './procedures/validate.js';
 export {
+  readProcedureSimulation,
+  readPublishedProcedure,
+  readSimulationTarget,
+  readSimulationTickets,
+  recordProcedureOutcome,
+  recordProcedureSimulation,
+  ticketRequiresHuman,
+  type ProcedureOutcomeInput,
+  type PublishedProcedure,
+  type RecordSimulationInput,
+  type SimulationTarget,
+  type SimulationTicket,
+} from './procedures/runtime.js';
+export {
   readAutonomyState,
   readSwitches,
   setAiSwitch,
