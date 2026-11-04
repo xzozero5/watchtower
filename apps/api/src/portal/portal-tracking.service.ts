@@ -1,5 +1,6 @@
 import { Inject, Injectable, type OnApplicationShutdown } from '@nestjs/common';
 import { schema, type Database } from '@watchtower/db';
+import { markPortalRequesterVerified } from '@watchtower/domain';
 import {
   AUDIT_ACTIONS,
   CLIENT_HIDDEN_DELIVERY_STATUSES,
@@ -81,6 +82,7 @@ export class PortalTrackingService implements OnApplicationShutdown {
   ): Promise<PortalTicketView> {
     const access = await this.access(token, ticketKey, ip);
     const { ticket } = access;
+    await this.verifyRequester(access, ip);
     const [contact] = await this.database.db
       .select({ emails: schema.contact.emails })
       .from(schema.contact)
@@ -161,6 +163,33 @@ export class PortalTrackingService implements OnApplicationShutdown {
       truncated: truncated || timeline.length > shown.length,
       accessExpiresAt: access.accessExpiresAt.toISOString(),
     };
+  }
+
+  /**
+   * A tracking link reaches a customer only inside an email sent to the ticket's requester (confirmation,
+   * reply notice, resend) or on the "my requests" page they opened from such an email; the submit response
+   * never carries it. So opening the ticket with it proves the mailbox for this ticket alone (T-306h).
+   * Idempotent: a ticket that is already verified writes nothing and no audit row.
+   */
+  private async verifyRequester(access: TrackingContext, ip: string | null): Promise<void> {
+    await this.database.db.transaction(async (tx) => {
+      const ids = await markPortalRequesterVerified(tx, {
+        contactId: access.contactId,
+        ticketId: access.ticket.id,
+      });
+      if (ids.length === 0) return;
+      await this.audit.record(
+        {
+          actor: { type: 'anonymous', id: access.contactId },
+          action: AUDIT_ACTIONS.portalRequesterVerified,
+          targetType: 'ticket',
+          targetId: access.ticket.id,
+          ip,
+          metadata: { via: 'tracking_link', ticketCount: ids.length },
+        },
+        tx,
+      );
+    });
   }
 
   /**

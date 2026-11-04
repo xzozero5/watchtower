@@ -378,6 +378,8 @@ export const CORE_AUDIT_ACTIONS = {
   portalMyRequestsIssued: 'portal.my_requests.issued',
   /** The link was used, once, and the list was shown (T-152). */
   portalMyRequestsOpened: 'portal.my_requests.opened',
+  /** Opening a link that was emailed to the mailbox proved the requester of portal tickets (T-306h); ids and counts only. */
+  portalRequesterVerified: 'portal.requester.verified',
   portalVerificationFailed: 'portal.verification_failed',
   portalRateLimited: 'portal.rate_limited',
   portalAccessDenied: 'portal.access_denied',

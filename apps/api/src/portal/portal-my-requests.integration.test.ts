@@ -428,3 +428,124 @@ describe('POST /v1/portal/my-requests/open', () => {
     expect(last?.status).toBe(429);
   });
 });
+
+describe('proof of mailbox (T-306h)', () => {
+  async function verifiedOf(key: string) {
+    const { rows } = await pool().query<{ id: string; portal: Record<string, unknown> }>(
+      `SELECT id, custom_fields->'portal' AS portal FROM ticket WHERE number = $1`,
+      [Number(key.split('-')[1])],
+    );
+    return rows[0];
+  }
+
+  async function submitAgain(email: string) {
+    const client = h.client();
+    const response = await client.post<PortalSubmitted>('/v1/portal/tickets', {
+      email,
+      name: 'Mine Customer',
+      category: 'billing',
+      description: 'Another request.',
+      verification: await proof(client),
+    });
+    expect(response.status).toBe(201);
+    return response.body.ticketKey;
+  }
+
+  it('opening the "my requests" link verifies the tickets that exist, not one filed later, and audits ids and counts only', async () => {
+    const mine = await customer();
+    const second = await submitAgain(mine.email);
+    const token = await linkFor(mine.email);
+    expect((await verifiedOf(mine.key))?.portal).toMatchObject({ requesterVerified: false });
+
+    expect((await open(h.client(), token)).status).toBe(200);
+    for (const key of [mine.key, second]) {
+      expect((await verifiedOf(key))?.portal).toMatchObject({
+        requesterVerified: true,
+      });
+      expect(typeof (await verifiedOf(key))?.portal.requesterVerifiedAt).toBe('string');
+    }
+    // Anyone can type this address later: that ticket is not verified by the earlier click.
+    const later = await submitAgain(mine.email);
+    expect((await verifiedOf(later))?.portal).toMatchObject({ requesterVerified: false });
+
+    const { rows } = await pool().query<{ metadata: { ticketCount: number } }>(
+      `SELECT metadata FROM audit_log WHERE action = 'portal.requester.verified' AND metadata->>'via' = 'my_requests'
+         AND metadata->'ticketIds' ? $1`,
+      [(await verifiedOf(mine.key))?.id],
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.metadata.ticketCount).toBe(2);
+    const leaked = await pool().query(
+      `SELECT 1 FROM audit_log WHERE action = 'portal.requester.verified' AND (target_id = $1 OR metadata::text LIKE $2)`,
+      [mine.email, `%${mine.email}%`],
+    );
+    expect(leaked.rowCount).toBe(0);
+
+    // A second link opened later: the verified ones are not touched again; only the ticket filed after the first click is new.
+    const again = await linkFor(mine.email);
+    expect((await open(h.client(), again)).status).toBe(200);
+    expect((await verifiedOf(later))?.portal).toMatchObject({ requesterVerified: true });
+    const laterAudit = await pool().query<{ metadata: { ticketCount: number } }>(
+      `SELECT metadata FROM audit_log WHERE action = 'portal.requester.verified' AND metadata->'ticketIds' ? $1`,
+      [(await verifiedOf(later))?.id],
+    );
+    expect(laterAudit.rows).toHaveLength(1);
+    expect(laterAudit.rows[0]?.metadata.ticketCount).toBe(1);
+  });
+
+  it('a failed open (used or unknown link) verifies nothing', async () => {
+    const mine = await customer();
+    const token = await linkFor(mine.email);
+    expect((await open(h.client(), token)).status).toBe(200);
+    const later = await submitAgain(mine.email);
+    expect((await open(h.client(), token)).status).toBe(401);
+    expect((await open(h.client(), 'wtl1.nope')).status).toBe(401);
+    expect((await verifiedOf(later))?.portal).toMatchObject({ requesterVerified: false });
+  });
+
+  it('opening the emailed tracking link verifies that ticket only', async () => {
+    const mine = await customer();
+    const sibling = await submitAgain(mine.email);
+    await h.relayOutbox();
+    const jobs = await h.emailQueue.getJobs([
+      'waiting',
+      'delayed',
+      'active',
+      'completed',
+      'failed',
+    ]);
+    const confirmations = jobs
+      .filter((job) => (job.data as { to?: string }).to === mine.email)
+      .sort((a, b) => a.timestamp - b.timestamp)
+      .map((job) => h.openEmail(job))
+      .filter((job) => job.kind === 'portal_confirmation');
+    expect(confirmations).toHaveLength(2);
+    const first = confirmations[0];
+    const trackingUrl = first && 'trackingUrl' in first ? first.trackingUrl : '';
+    const token = new URL(trackingUrl).hash.replace('#token=', '');
+
+    expect((await verifiedOf(mine.key))?.portal).toMatchObject({ requesterVerified: false });
+    const viewed = await h
+      .client()
+      .get<PortalTicketView>(`/v1/portal/tickets/${mine.key}`, asToken(token));
+    expect(viewed.status).toBe(200);
+    expect((await verifiedOf(mine.key))?.portal).toMatchObject({ requesterVerified: true });
+    expect((await verifiedOf(sibling))?.portal).toMatchObject({ requesterVerified: false });
+
+    // Reading again is idempotent: one audit row for the ticket.
+    expect((await h.client().get(`/v1/portal/tickets/${mine.key}`, asToken(token))).status).toBe(
+      200,
+    );
+    const audit = await pool().query(
+      `SELECT 1 FROM audit_log WHERE action = 'portal.requester.verified' AND target_id = $1`,
+      [(await verifiedOf(mine.key))?.id],
+    );
+    expect(audit.rowCount).toBe(1);
+
+    // The token of one ticket does not verify another.
+    expect((await h.client().get(`/v1/portal/tickets/${sibling}`, asToken(token))).status).toBe(
+      401,
+    );
+    expect((await verifiedOf(sibling))?.portal).toMatchObject({ requesterVerified: false });
+  });
+});

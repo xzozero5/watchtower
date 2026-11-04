@@ -381,6 +381,10 @@ export {
   type RedeemInput,
   type RedeemOutcome,
 } from './identity/line-link.js';
+export {
+  markPortalRequesterVerified,
+  type MarkRequesterVerifiedInput,
+} from './portal/requester-verification.js';
 export { DOMAIN_ERROR_CODES, DomainError, isDomainError, type DomainErrorCode } from './errors.js';
 export {
   UNIDENTIFIED_ORG_ID,
