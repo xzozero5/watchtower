@@ -404,7 +404,7 @@ export function Composer({
     !upload.busy &&
     !mutation.isPending;
 
-  const submit = (confirmExternal = false) => {
+  const submit = (confirmedDomains: readonly string[] = []) => {
     if (!canSend) return;
     const text = body.trim();
     const inlineIds = new Set(
@@ -440,7 +440,9 @@ export function Composer({
           ...(emailMode && emailDraft
             ? {
                 email: {
-                  ...(confirmExternal ? { confirmExternalRecipients: true } : {}),
+                  ...(confirmedDomains.length > 0
+                    ? { confirmedDomains: [...confirmedDomains] }
+                    : {}),
                   to: emailDraft.to,
                   cc: emailDraft.cc,
                   bcc: emailDraft.bcc,
@@ -815,8 +817,9 @@ export function Composer({
                 variant="primary"
                 data-testid="confirm-external"
                 onClick={() => {
+                  const confirmed = externalDomains ?? [];
                   setExternalDomains(null);
-                  submit(true);
+                  submit(confirmed);
                 }}
               >
                 {t('email.external.send')}

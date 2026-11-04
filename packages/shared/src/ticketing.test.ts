@@ -14,6 +14,7 @@ import {
   assignTicketSchema,
   createTicketSchema,
   defaultTransitionList,
+  emailAddressSchema,
   formatTicketKey,
   MIN_SEARCH_LENGTH,
   parseTicketKey,
@@ -232,5 +233,27 @@ describe('parseTicketSearchNumber', () => {
       expect(parseTicketSearchNumber(typed, 'OPS'), typed).toBeNull();
     }
     expect(parseTicketSearchNumber('9'.repeat(16), 'OPS')).toBeNull();
+  });
+});
+
+describe('emailAddressSchema display name (T-171a C-7)', () => {
+  it('refuses control characters and bidi overrides, accepts ordinary names', () => {
+    const parse = (name: string) =>
+      emailAddressSchema.safeParse({ address: 'a@example.com', name });
+    expect(parse('Ann Lee').success).toBe(true);
+    expect(parse('สมชาย ใจดี').success).toBe(true);
+    for (const bad of [
+      'Ann\r\nBcc: x@y.test',
+      'Ann\u0000',
+      'Ann\u007f',
+      '\u202eAnn',
+      'Ann\u2066',
+      'A\u200fB',
+    ]) {
+      expect(parse(bad).success, JSON.stringify(bad)).toBe(false);
+    }
+    expect(emailAddressSchema.safeParse({ address: 'a@example.com', name: null }).success).toBe(
+      true,
+    );
   });
 });

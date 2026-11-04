@@ -273,7 +273,43 @@ describe('approve, edit and undo (N3)', () => {
     expect((await reject(agent, ticketId, draftId, { reason: 'tone_style' })).status).toBe(409);
   });
 
-  it('refuses to name a draft twice, a draft of another ticket, and a customer naming one', async () => {
+  it('an email "edit" whose text is the draft is sent as the draft, whatever HTML came along (T-171a C-2)', async () => {
+    const ticketId = await ticketWith(stageTwoIntent);
+    const draftId = await draftReady(ticketId, 'we fixed the bug today');
+    const sent = await reply(agent, ticketId, 'we fixed the bug today', {
+      editedFromDraftId: draftId,
+      email: { cc: [], bcc: [], inline: [], bodyHtml: '<p>we <b>fixed</b> the bug today</p>' },
+    });
+    expect(sent.status).toBe(201);
+    const stored = await pool().query<{ body_html: string; body_text: string }>(
+      `SELECT body_html, body_text FROM message WHERE id = $1`,
+      [sent.body.message.id],
+    );
+    expect(stored.rows[0]?.body_html).toBe('<p>we fixed the bug today</p>');
+    expect(stored.rows[0]?.body_html).not.toContain('<b>');
+    // An approval, not an edit: nothing to measure.
+    expect(Number((await draftRow(draftId)).edit_distance ?? 0)).toBe(0);
+  });
+
+  it('an email edit is measured on the text of the HTML that goes out (T-171a C-2)', async () => {
+    const ticketId = await ticketWith(stageTwoIntent);
+    const draftId = await draftReady(ticketId, 'we fixed the bug today');
+    const sent = await reply(agent, ticketId, 'we fixed the bug today', {
+      editedFromDraftId: draftId,
+      email: { cc: [], bcc: [], inline: [], bodyHtml: '<p>we restarted the server instead</p>' },
+    });
+    expect(sent.status).toBe(201);
+    const row = await draftRow(draftId);
+    expect(row).toMatchObject({ disposition: 'edited' });
+    expect(row.edit_distance).toBeGreaterThan(0);
+    const stored = await pool().query<{ body_text: string }>(
+      `SELECT body_text FROM message WHERE id = $1`,
+      [sent.body.message.id],
+    );
+    expect(stored.rows[0]?.body_text).toContain('restarted the server');
+  });
+
+  it('refuses to name a draft twice,a draft of another ticket, and a customer naming one', async () => {
     const ticketId = await ticketWith(stageTwoIntent);
     const draftId = await draftReady(ticketId);
     const both = await reply(agent, ticketId, 'x', {

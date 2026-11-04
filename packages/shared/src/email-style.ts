@@ -53,13 +53,91 @@ function oneOf(...allowed: string[]): (value: string) => boolean {
   return (value) => set.has(value.toLowerCase());
 }
 
+/** The largest size an email's own formatting may ask for, by unit (T-171a C-9): no page-sized boxes. */
+const MAX_BY_UNIT: Readonly<Record<string, number>> = {
+  px: 2000,
+  pt: 1500,
+  em: 125,
+  rem: 125,
+  ex: 250,
+  ch: 250,
+  '%': 100,
+};
+
+function withinLimit(part: string): boolean {
+  const match = /^(\d+(?:\.\d+)?)([a-z%]*)$/i.exec(part);
+  if (match === null) return false;
+  const unit = (match[2] ?? '').toLowerCase();
+  if (unit === '') return Number(match[1]) <= 2000;
+  const max = MAX_BY_UNIT[unit];
+  return max !== undefined && Number(match[1]) <= max;
+}
+
 function lengthList(max: number, allowAuto: boolean): (value: string) => boolean {
   return (value) => {
     const parts = value.split(/\s+/);
     if (parts.length < 1 || parts.length > max) return false;
-    return parts.every((part) => LENGTH.test(part) || (allowAuto && part.toLowerCase() === 'auto'));
+    return parts.every(
+      (part) =>
+        (LENGTH.test(part) && withinLimit(part)) || (allowAuto && part.toLowerCase() === 'auto'),
+    );
   };
 }
+
+/** Text the viewer cannot see, or only just: a size under about 6px, in any unit (T-171a C-1). */
+function isTinyFontSize(value: string): boolean {
+  const match = /^(\d+(?:\.\d+)?)([a-z%]+)$/i.exec(value);
+  if (match === null) return false;
+  const amount = Number(match[1]);
+  switch ((match[2] ?? '').toLowerCase()) {
+    case 'px':
+      return amount < 6;
+    case 'pt':
+      return amount < 4.5;
+    case 'em':
+    case 'rem':
+      return amount < 0.4;
+    case 'ex':
+    case 'ch':
+      return amount < 0.7;
+    case '%':
+      return amount < 40;
+    default:
+      return false;
+  }
+}
+
+/** A colour that paints nothing: `transparent`, or an alpha of (almost) zero in any notation. */
+function isInvisibleColor(value: string): boolean {
+  const lower = value.trim().toLowerCase();
+  if (lower === 'transparent') return true;
+  const hex = /^#(?:[0-9a-f]{3}([0-9a-f])|[0-9a-f]{6}([0-9a-f]{2}))$/.exec(lower);
+  if (hex !== null) {
+    const alpha =
+      hex[1] !== undefined ? parseInt(hex[1] + hex[1], 16) : parseInt(hex[2] ?? 'ff', 16);
+    return alpha <= 12;
+  }
+  const fn = /^(?:rgb|rgba|hsl|hsla)\(([^)]*)\)$/.exec(lower);
+  if (fn === null) return false;
+  const body = fn[1] ?? '';
+  const slash = body.indexOf('/');
+  let alphaText: string | undefined;
+  if (slash !== -1) {
+    alphaText = body.slice(slash + 1).trim();
+  } else {
+    const commas = body.split(',');
+    if (commas.length === 4) alphaText = (commas[3] ?? '').trim();
+  }
+  if (alphaText === undefined || alphaText === '') return false;
+  const alpha = alphaText.endsWith('%') ? Number(alphaText.slice(0, -1)) / 100 : Number(alphaText);
+  return Number.isFinite(alpha) && alpha <= 0.05;
+}
+
+/** Declarations that make text invisible are dropped, so the AI never reads what a person cannot (C-1). */
+const HIDING: Readonly<Record<string, (value: string) => boolean>> = {
+  'font-size': isTinyFontSize,
+  color: isInvisibleColor,
+};
 
 function isBorder(value: string): boolean {
   const parts = value.split(/\s+(?![^(]*\))/);
@@ -192,9 +270,27 @@ export function sanitizeInlineStyle(input: string): string {
       continue;
     }
     if (!validate(value)) continue;
+    if (HIDING[property]?.(value) === true) continue;
     kept.set(property, value);
   }
   return [...kept].map(([property, value]) => `${property}:${value}`).join(';');
+}
+
+const HTML_ESCAPES: Readonly<Record<string, string>> = {
+  '&': '&amp;',
+  '<': '&lt;',
+  '>': '&gt;',
+  '"': '&quot;',
+  "'": '&#39;',
+};
+
+/** Text as HTML: escaped, one paragraph per blank-line block, line breaks kept. */
+export function plainTextToHtml(text: string): string {
+  const escaped = text.replace(/[&<>"']/g, (char) => HTML_ESCAPES[char] ?? char);
+  return escaped
+    .split(/\r?\n\s*\r?\n/)
+    .map((block) => `<p>${block.replace(/\r?\n/g, '<br>')}</p>`)
+    .join('');
 }
 
 /** A legacy colour attribute (`bgcolor`, `color`) as a safe colour, or null. */

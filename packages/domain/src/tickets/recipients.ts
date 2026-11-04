@@ -1,24 +1,32 @@
 import { schema } from '@watchtower/db';
-import { asc, eq } from 'drizzle-orm';
+import { FREE_MAIL_DOMAINS } from '@watchtower/shared';
+import { eq } from 'drizzle-orm';
 
 import type { TicketRow } from '../rows.js';
 import type { DbTransaction } from '../types.js';
 
 /**
- * Who an email reply may go to without asking again (T-171 C-2). A staff member can type any address
- * into To / Cc / Bcc; a typo or a wrong autocomplete would send a customer's ticket to a stranger.
- * An address is "known" when its domain is one the ticket already has a link to:
+ * Who an email reply may go to without asking again (T-171 C-2, T-171a C-3). A staff member can type any
+ * address into To / Cc / Bcc; a typo or a wrong autocomplete would send a customer's ticket to a stranger.
+ * An address is "known" when it belongs to something the customer organization owns:
  *
- * - a domain of the customer organization (`organization.domains`), or of one of its contacts,
- * - a domain seen on this ticket (the requester, and the From / To / Cc of every earlier message),
+ * - a domain of the organization (`organization.domains`), or the address of one of its contacts,
  * - the domain of the staff member's own address (colleagues copied in).
  *
- * Anything else is "external": the reply is refused until the person confirms it, and the confirmation
- * is audited with the domains.
+ * Nothing is learnt from the Cc of a mail that came in: a sender can put any address there. A free
+ * mail provider (gmail.com, outlook.com ...) is shared by everybody, so its domain proves nothing: the
+ * whole address has to match. Anything else is "external": the reply is refused until the person
+ * confirms those keys (a domain, or a whole address for a free mail provider), and the confirmation is
+ * audited.
  */
 
 const CONTACT_LIMIT = 500;
-const MESSAGE_LIMIT = 200;
+
+export interface KnownRecipients {
+  /** Keys that are known: a domain, or a whole address for a free mail provider. */
+  readonly keys: ReadonlySet<string>;
+  readonly freeMail: ReadonlySet<string>;
+}
 
 /** The lower-case part after the last `@`, or an empty string when there is none. */
 export function domainOfAddress(address: string): string {
@@ -31,36 +39,43 @@ export function domainOfAddress(address: string): string {
         .toLowerCase();
 }
 
-function addDomainsOf(into: Set<string>, value: unknown): void {
+/** The key an address is known by: its domain, or the whole address when the provider is shared. */
+export function recipientKey(address: string, freeMail: ReadonlySet<string>): string {
+  const clean = address.trim().toLowerCase();
+  const domain = domainOfAddress(clean);
+  return freeMail.has(domain) ? clean : domain;
+}
+
+function addKeysOf(into: Set<string>, freeMail: ReadonlySet<string>, value: unknown): void {
   if (typeof value === 'string') {
-    const domain = domainOfAddress(value);
-    if (domain !== '') into.add(domain);
+    const key = recipientKey(value, freeMail);
+    if (key !== '') into.add(key);
   } else if (Array.isArray(value)) {
-    for (const item of value as unknown[]) addDomainsOf(into, item);
+    for (const item of value as unknown[]) addKeysOf(into, freeMail, item);
   } else if (typeof value === 'object' && value !== null) {
-    addDomainsOf(into, (value as { address?: unknown }).address);
+    addKeysOf(into, freeMail, (value as { address?: unknown }).address);
   }
 }
 
-/** The domains (lower-case, sorted, once each) among `addresses` that are not in `known`. */
-export function externalDomains(
-  addresses: readonly string[],
-  known: ReadonlySet<string>,
-): string[] {
+/** The keys (lower-case, sorted, once each) among `addresses` that are not in `known`. */
+export function externalDomains(addresses: readonly string[], known: KnownRecipients): string[] {
   const out = new Set<string>();
   for (const address of addresses) {
-    const domain = domainOfAddress(address);
-    if (domain !== '' && !known.has(domain)) out.add(domain);
+    if (domainOfAddress(address) === '') continue;
+    const key = recipientKey(address, known.freeMail);
+    if (!known.keys.has(key)) out.add(key);
   }
   return [...out].sort();
 }
 
-/** Domains the ticket is already linked to (see the module comment). */
+/** What the ticket's customer owns (see the module comment). */
 export async function knownDomains(
   tx: DbTransaction,
   ticket: Pick<TicketRow, 'id' | 'orgId'>,
   staffUserId: string,
-): Promise<Set<string>> {
+  freeMailDomains: readonly string[] = FREE_MAIL_DOMAINS,
+): Promise<KnownRecipients> {
+  const freeMail = new Set(freeMailDomains.map((d) => d.trim().toLowerCase().replace(/^@/, '')));
   const known = new Set<string>();
 
   const [org] = await tx
@@ -70,7 +85,8 @@ export async function knownDomains(
     .limit(1);
   for (const domain of org?.domains ?? []) {
     const clean = domain.trim().toLowerCase().replace(/^@/, '');
-    if (clean !== '') known.add(clean);
+    // A free mail provider listed as an organization domain would open the door to everyone on it.
+    if (clean !== '' && !freeMail.has(clean)) known.add(clean);
   }
 
   const contacts = await tx
@@ -78,27 +94,13 @@ export async function knownDomains(
     .from(schema.contact)
     .where(eq(schema.contact.orgId, ticket.orgId))
     .limit(CONTACT_LIMIT);
-  for (const row of contacts) addDomainsOf(known, row.emails);
-
-  const messages = await tx
-    .select({ meta: schema.message.emailMeta })
-    .from(schema.message)
-    .where(eq(schema.message.ticketId, ticket.id))
-    .orderBy(asc(schema.message.createdAt))
-    .limit(MESSAGE_LIMIT);
-  for (const row of messages) {
-    const meta = row.meta as { from?: unknown; to?: unknown; cc?: unknown } | null;
-    if (meta === null || typeof meta !== 'object') continue;
-    addDomainsOf(known, meta.from);
-    addDomainsOf(known, meta.to);
-    addDomainsOf(known, meta.cc);
-  }
+  for (const row of contacts) addKeysOf(known, freeMail, row.emails);
 
   const [staff] = await tx
     .select({ email: schema.users.email })
     .from(schema.users)
     .where(eq(schema.users.id, staffUserId))
     .limit(1);
-  addDomainsOf(known, staff?.email);
-  return known;
+  addKeysOf(known, freeMail, staff?.email);
+  return { keys: known, freeMail };
 }

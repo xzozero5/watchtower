@@ -538,9 +538,18 @@ export const mergeTicketSchema = z.object({
 });
 export type MergeTicket = z.infer<typeof mergeTicketSchema>;
 
+/** Control characters and bidi overrides/isolates: a display name carrying them can split a header or spoof a name. */
+// eslint-disable-next-line no-control-regex -- refusing control characters is the purpose
+const UNSAFE_DISPLAY_NAME = /[\u0000-\u001f\u007f-\u009f؜‎‏‪-‮⁦-⁩]/;
+
 export const emailAddressSchema = z.object({
   address: z.email().max(320),
-  name: z.string().max(200).nullable().optional(),
+  name: z
+    .string()
+    .max(200)
+    .refine((value) => !UNSAFE_DISPLAY_NAME.test(value), 'name has control characters')
+    .nullable()
+    .optional(),
 });
 export type EmailAddress = z.infer<typeof emailAddressSchema>;
 
@@ -573,10 +582,11 @@ export const emailReplySchema = z.object({
     )
     .optional(),
   /**
-   * The person confirmed that the reply may go to domains the customer is not linked to (the api
-   * answers 409 `external_recipients` with the domains until this is true). Audited with the domains.
+   * The domains the person confirmed (the api answers 409 `external_recipients` with the domains the
+   * customer is not linked to, and refuses until every one of them is listed here; a free mail provider
+   * is listed as the whole address). Anything listed that is not external is ignored. Audited.
    */
-  confirmExternalRecipients: z.boolean().optional(),
+  confirmedDomains: z.array(z.string().trim().toLowerCase().min(1).max(320)).max(100).optional(),
   /** The composed HTML. Sanitised on the server before it is stored or sent. */
   bodyHtml: z.string().max(400_000).optional(),
   /** Uploaded images (`attachmentIds`) that the HTML shows with `cid:<contentId>`; sent inline, not as files. */

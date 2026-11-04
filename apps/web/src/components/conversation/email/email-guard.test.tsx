@@ -88,7 +88,7 @@ describe('sending to another company (C-2)', () => {
     let first = api.callsTo('/v1/tickets/OPS-1/replies', 'POST')[0]?.body as {
       email: Record<string, unknown>;
     };
-    expect(first.email.confirmExternalRecipients).toBeUndefined();
+    expect(first.email.confirmedDomains).toBeUndefined();
 
     await user.click(screen.getByTestId('confirm-external'));
     await waitFor(() => {
@@ -97,7 +97,7 @@ describe('sending to another company (C-2)', () => {
     first = api.callsTo('/v1/tickets/OPS-1/replies', 'POST')[1]?.body as {
       email: Record<string, unknown>;
     };
-    expect(first.email.confirmExternalRecipients).toBe(true);
+    expect(first.email.confirmedDomains).toEqual(['stranger.test']);
     await waitFor(() => {
       expect(screen.queryByRole('dialog')).toBeNull();
     });

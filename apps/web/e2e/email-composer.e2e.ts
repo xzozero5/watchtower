@@ -133,9 +133,9 @@ test.describe('writing the reply', () => {
 
     await expect.poll(() => replies(backend.requests).length).toBe(2);
     const body = replies(backend.requests)[1]?.body as {
-      email: { bcc: { address: string }[]; confirmExternalRecipients?: boolean };
+      email: { bcc: { address: string }[]; confirmedDomains?: string[] };
     };
-    expect(body.email.confirmExternalRecipients).toBe(true);
+    expect(body.email.confirmedDomains?.length).toBeGreaterThan(0);
     expect(body.email.bcc.map((a) => a.address)).toEqual(['someone@stranger.test']);
     await expect(dialog).toBeHidden();
   });

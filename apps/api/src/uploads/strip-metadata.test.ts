@@ -40,6 +40,41 @@ describe('stripJpegMetadata', () => {
     expect([...stripJpegMetadata(noisy)]).toEqual([0xff, 0xd8, ...scan]);
   });
 
+  it('keeps only the allow-list: other APP segments, thumbnails and bytes after EOI go (C-5)', () => {
+    const notIcc = segment(0xe2, [...Buffer.from('MPF\0'), 7, 7]);
+    const app3 = segment(0xe3, [...Buffer.from('Meta\0'), 1]);
+    const adobe = segment(0xee, [...Buffer.from('Adobe'), 0, 1]);
+    const dqt = segment(0xdb, [0, 1, 2, 3]);
+    const input = Uint8Array.from([
+      0xff,
+      0xd8,
+      ...jfif,
+      ...notIcc,
+      ...app3,
+      ...adobe,
+      ...dqt,
+      ...scan,
+      ...Buffer.from('SECRET'),
+    ]);
+    const output = stripJpegMetadata(input);
+    expect([...output]).toEqual([0xff, 0xd8, ...jfif, ...adobe, ...dqt, ...scan]);
+    expect(Buffer.from(output).includes(Buffer.from('SECRET'))).toBe(false);
+    expect(Buffer.from(output).includes(Buffer.from('MPF'))).toBe(false);
+  });
+
+  it('keeps stuffed bytes and restart markers inside the scan, and a second scan', () => {
+    const data = [0x11, 0xff, 0x00, 0x22, 0xff, 0xd0, 0x33];
+    const progressive = [0xff, 0xd8, ...jfif, 0xff, 0xda, 0x00, 0x02, ...data, ...scan];
+    const input = Uint8Array.from(progressive);
+    expect(stripJpegMetadata(input)).toBe(input);
+  });
+
+  it('refuses a JPEG without an end-of-image marker', () => {
+    expect(() =>
+      stripJpegMetadata(Uint8Array.from([0xff, 0xd8, 0xff, 0xda, 0x00, 0x02, 1, 2])),
+    ).toThrow(MetadataStripError);
+  });
+
   it('refuses (fails closed) when the structure is broken', () => {
     const broken = Uint8Array.from([0xff, 0xd8, 0xff, 0xe1, 0xff, 0xff, 1, 2]);
     expect(() => stripJpegMetadata(broken)).toThrow(MetadataStripError);
@@ -79,6 +114,36 @@ describe('stripPngMetadata', () => {
       ...iend,
     ]);
     expect([...stripPngMetadata(input)]).toEqual([...signature, ...ihdr, ...idat, ...iend]);
+  });
+
+  it('keeps colour, density, transparency and animation chunks, drops tIME and unknown ones (C-5)', () => {
+    const keep = [
+      ...chunk('gAMA', [0, 0, 1, 1]),
+      ...chunk('cHRM', [1]),
+      ...chunk('sRGB', [0]),
+      ...chunk('iCCP', [1]),
+      ...chunk('pHYs', [1]),
+      ...chunk('tRNS', [1]),
+      ...chunk('bKGD', [1]),
+      ...chunk('acTL', [1]),
+    ];
+    const input = Uint8Array.from([
+      ...signature,
+      ...ihdr,
+      ...keep,
+      ...chunk('tIME', [1, 2, 3]),
+      ...chunk('prVt', [65, 66]),
+      ...chunk('sPLT', [67]),
+      ...idat,
+      ...iend,
+    ]);
+    expect([...stripPngMetadata(input)]).toEqual([
+      ...signature,
+      ...ihdr,
+      ...keep,
+      ...idat,
+      ...iend,
+    ]);
   });
 
   it('cuts off bytes after IEND and refuses a PNG without IEND or with a cut chunk', () => {
@@ -131,6 +196,23 @@ describe('stripWebpMetadata', () => {
     expect(new DataView(output.buffer).getUint32(4, true)).toBe(output.length - 8);
   });
 
+  it('drops unknown chunks, and unknown sub-chunks inside an animation frame (C-5)', () => {
+    const header16 = new Array<number>(16).fill(0);
+    const frame = (...inner: number[][]) => chunk('ANMF', [...header16, ...inner.flat()]);
+    const input = riff([
+      vp8x(0x12),
+      chunk('ANIM', [0, 0, 0, 0, 0, 0]),
+      chunk('JUNK', fourcc('hidden-data')),
+      frame(chunk('VP8L', [1, 2, 3]), chunk('SECR', fourcc('top-secret'))),
+    ]);
+    const output = stripWebpMetadata(input);
+    expect([...output]).toEqual([
+      ...riff([vp8x(0x12), chunk('ANIM', [0, 0, 0, 0, 0, 0]), frame(chunk('VP8L', [1, 2, 3]))]),
+    ]);
+    expect(Buffer.from(output).includes(Buffer.from('secret'))).toBe(false);
+    expect(Buffer.from(output).includes(Buffer.from('hidden'))).toBe(false);
+  });
+
   it('returns the same bytes when there is nothing to drop', () => {
     const clean = riff([vp8x(0x10), picture]);
     expect(stripWebpMetadata(clean)).toBe(clean);
@@ -171,6 +253,28 @@ describe('stripGifMetadata', () => {
     expect([...output]).toEqual([...header, ...netscape, ...graphicControl, ...frame, ...trailer]);
     expect(Buffer.from(output).includes(Buffer.from('GPS'))).toBe(false);
     expect(Buffer.from(output).includes(Buffer.from('XMP'))).toBe(false);
+  });
+
+  it('keeps only the loop count of NETSCAPE2.0 and drops other application extensions (C-5)', () => {
+    const buffering = [0x21, 0xff, 11, ...Buffer.from('NETSCAPE2.0'), 3, 1, 0, 0, 4, 2, 9, 9, 9, 0];
+    const input = Uint8Array.from([
+      ...header,
+      ...buffering,
+      ...graphicControl,
+      ...frame,
+      ...trailer,
+    ]);
+    // The loop sub-block stays (with its terminator), the buffering / extra data goes.
+    expect([...stripGifMetadata(input)]).toEqual([
+      ...header,
+      ...netscape,
+      ...graphicControl,
+      ...frame,
+      ...trailer,
+    ]);
+    const custom = [0x21, 0xff, 11, ...Buffer.from('MYAPP1.0abc'), 2, 1, 2, 0];
+    const dropped = stripGifMetadata(Uint8Array.from([...header, ...custom, ...frame, ...trailer]));
+    expect([...dropped]).toEqual([...header, ...frame, ...trailer]);
   });
 
   it('returns the same bytes when there is nothing to drop, and cuts off bytes after the trailer', () => {

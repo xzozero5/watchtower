@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
+import { FREE_MAIL_DOMAINS } from '@watchtower/shared';
 import { domainOfAddress, externalDomains } from './recipients.js';
+
+const freeMail: ReadonlySet<string> = new Set(FREE_MAIL_DOMAINS);
 
 describe('domainOfAddress', () => {
   it('takes the part after the last @, lower-case', () => {
@@ -11,7 +14,7 @@ describe('domainOfAddress', () => {
 });
 
 describe('externalDomains', () => {
-  const known = new Set(['customer.example', 'ops.example']);
+  const known = { keys: new Set(['customer.example', 'ops.example', 'ann@gmail.com']), freeMail };
 
   it('lists each domain outside the known set once, sorted', () => {
     expect(
@@ -31,5 +34,13 @@ describe('externalDomains', () => {
     expect(
       externalDomains(['a@customer.example.evil.test', 'b@mail.customer.example'], known),
     ).toEqual(['customer.example.evil.test', 'mail.customer.example']);
+  });
+
+  it('matches a free mail provider by the whole address, not the domain (C-3)', () => {
+    expect(externalDomains(['Ann@gmail.com'], known)).toEqual([]);
+    expect(externalDomains(['mallory@gmail.com', 'x@outlook.com'], known)).toEqual([
+      'mallory@gmail.com',
+      'x@outlook.com',
+    ]);
   });
 });

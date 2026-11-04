@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { safeColor, sanitizeInlineStyle } from './email-style.js';
+import { plainTextToHtml, safeColor, sanitizeInlineStyle } from './email-style.js';
 
 describe('sanitizeInlineStyle', () => {
   it('keeps the formatting a mail client writes', () => {
@@ -78,5 +78,51 @@ describe('safeColor', () => {
     expect(safeColor('red')).toBe('red');
     expect(safeColor('url(x)')).toBeNull();
     expect(safeColor('red;x:y')).toBeNull();
+  });
+});
+
+describe('text a person cannot see (T-171a C-1)', () => {
+  it('drops tiny font sizes and invisible colours so the text stays readable', () => {
+    for (const hidden of [
+      'font-size:0px',
+      'font-size:1px',
+      'font-size:5.9px',
+      'font-size:0.1em',
+      'font-size:2pt',
+      'color:transparent',
+      'color:rgb(0 0 0 / 0)',
+      'color:rgb(0 0 0 / 0%)',
+      'color:rgba(0,0,0,0)',
+      'color:hsla(0, 0%, 0%, 0)',
+      'color:hsl(0 0% 0% / 0)',
+      'color:#0000',
+      'color:#00000000',
+    ]) {
+      expect(sanitizeInlineStyle(`${hidden};font-weight:bold`), hidden).toBe('font-weight:bold');
+    }
+  });
+
+  it('keeps ordinary sizes and colours', () => {
+    expect(sanitizeInlineStyle('font-size:12px;color:rgba(0,0,0,0.8)')).toBe(
+      'font-size:12px;color:rgba(0,0,0,0.8)',
+    );
+    expect(sanitizeInlineStyle('font-size:6px;color:#000000ff')).toBe(
+      'font-size:6px;color:#000000ff',
+    );
+  });
+});
+
+describe('size limits (T-171a C-9)', () => {
+  it('refuses boxes and margins that would cover the page', () => {
+    expect(sanitizeInlineStyle('width:99999px;height:3000px;margin:0 200em')).toBe('');
+    expect(sanitizeInlineStyle('width:600px;height:2000px;margin:0 auto')).toBe(
+      'width:600px;height:2000px;margin:0 auto',
+    );
+  });
+});
+
+describe('plainTextToHtml', () => {
+  it('escapes and wraps paragraphs', () => {
+    expect(plainTextToHtml('a <b>\n\nc\nd')).toBe('<p>a &lt;b&gt;</p><p>c<br>d</p>');
   });
 });

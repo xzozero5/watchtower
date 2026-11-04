@@ -651,6 +651,8 @@ export interface DomainOptions {
   readonly csat?: CsatConfig | undefined;
   /** Days a resolved ticket still reopens on a customer reply. Default: `REOPEN_WINDOW_DAYS`. */
   readonly reopenWindowDays?: number;
+  /** Free mail provider domains (matched by whole address when replying by email); default: the built-in list. */
+  readonly freeMailDomains?: readonly string[] | undefined;
   /** Absent means every customer-bound AI action is refused (fail closed, N3). `createPolicyGate` builds the real one. */
   readonly policyGate?: PolicyGate | undefined;
   readonly now?: () => Date;
@@ -844,6 +846,7 @@ export function createDomain(options: DomainOptions): Domain {
   const config: DomainConfig = {
     ticketKeyPrefix: options.ticketKeyPrefix,
     reopenWindowDays: options.reopenWindowDays ?? REOPEN_WINDOW_DAYS,
+    freeMailDomains: options.freeMailDomains,
     sealKey: options.sealKey,
     portalUrl: plainPortalUrl(options.portalUrl),
     retryKeyMaxAgeSeconds: options.retryKeyMaxAgeSeconds,

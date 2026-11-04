@@ -87,6 +87,8 @@ export async function sendCsatViaGmail(
       messageId: gmail.makeMessageId(`csat-${surveyId}-${kind}`, deps.appHost),
       subjectMode: 'reuse',
       automatic: true,
+      // The survey starts the exchange, it answers nobody (RFC 3834 section 5).
+      autoSubmitted: 'auto-generated',
     };
     sent = await sender.send(input);
   } catch (error) {

@@ -1,5 +1,12 @@
 import { gmail } from '@watchtower/channels';
-import type { Reply } from '@watchtower/shared';
+import { plainTextToHtml, type Reply } from '@watchtower/shared';
+
+export { plainTextToHtml };
+
+/** Text as a comparison key: whitespace runs collapsed, so layout alone is not a difference. */
+function squash(text: string): string {
+  return text.replace(/\s+/g, ' ').trim();
+}
 
 /**
  * A reply from the email composer: the HTML is rebuilt through the same allow-list the inbound mail
@@ -21,9 +28,16 @@ export function prepareEmailReply(reply: Reply): Reply {
     return { ...reply, email: rest };
   }
   const clean = gmail.sanitizeHtml(email.bodyHtml);
+  // An edit of an AI draft is measured on the text the customer reads. When the text field and the HTML
+  // disagree (beyond layout) the HTML wins, so the draft's words cannot be counted as "unchanged" while
+  // different words go out (T-171a C-2).
+  const derived =
+    reply.editedFromDraftId !== undefined && squash(clean.text) !== squash(reply.body)
+      ? clean.text
+      : null;
   return {
     ...reply,
-    body: reply.body.trim() === '' ? clean.text : reply.body,
+    body: derived ?? (reply.body.trim() === '' ? clean.text : reply.body),
     email: { ...email, bodyHtml: clean.html },
   };
 }
@@ -44,21 +58,4 @@ export function markInlineImages(
       ? record
       : { ...record, disposition: 'inline', contentId: mark.contentId, referencedByHtml: true };
   });
-}
-
-const HTML_ESCAPES: Readonly<Record<string, string>> = {
-  '&': '&amp;',
-  '<': '&lt;',
-  '>': '&gt;',
-  '"': '&quot;',
-  "'": '&#39;',
-};
-
-/** Text as HTML: escaped, one paragraph per blank-line block, line breaks kept. */
-export function plainTextToHtml(text: string): string {
-  const escaped = text.replace(/[&<>"']/g, (char) => HTML_ESCAPES[char] ?? char);
-  return escaped
-    .split(/\r?\n\s*\r?\n/)
-    .map((block) => `<p>${block.replace(/\r?\n/g, '<br>')}</p>`)
-    .join('');
 }
