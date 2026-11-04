@@ -987,7 +987,8 @@ describe('the pre-send grade is bound to the exact text', () => {
       text,
       graderAiRunId: await aiRunOf(s.ticketId, 'grader', 'drafter-fixture'),
     });
-    expect((await ask(same, text))?.failed).toEqual(['grader_not_independent']);
+    // The replay in force is of the drafter/grader pair of the scenario, not of this one: that is missing too (C-4).
+    expect((await ask(same, text))?.failed).toEqual(['grader_not_independent', 'replay_missing']);
     const mock = await recordPreSendGrade(database.db, {
       ...base,
       text,
