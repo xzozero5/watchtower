@@ -36,7 +36,7 @@ export const AI_COST_MAX_TOP = 50;
  */
 export const CEO_DEFAULT_MINUTES_SAVED_PER_AI_TICKET = 10;
 
-export const CEO_EXPORT_FORMATS = ['csv', 'html'] as const;
+export const CEO_EXPORT_FORMATS = ['csv', 'html', 'pdf'] as const;
 export const CEO_METRIC_KEY_PATTERN = /^[a-z0-9][a-z0-9_.-]{0,62}$/;
 export const CEO_MAX_IMPORT_ROWS = 500;
 export const CEO_MAX_IMPORT_CHARS = 200_000;

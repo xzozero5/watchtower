@@ -51,6 +51,7 @@ import { badRequest } from '../auth/http-errors.js';
 import { parseResponse } from '../common/zod-openapi.js';
 import { AiCostService } from './ai-cost.service.js';
 import { ceoCsv, ceoHtml, CeoCsvError, parseCeoPointsCsv } from './ceo-files.js';
+import { ceoPdf } from './ceo-pdf.js';
 import { CeoViewService } from './ceo-view.service.js';
 
 /** Reports for heads and leads: the AI cost dashboard (T-305a) and the CEO view (T-305b). */
@@ -107,16 +108,18 @@ export class ReportsController {
   @Audited({ action: REPORTS_AUDIT_ACTIONS.ceoExport, targetType: 'report', always: true })
   @Header('Cache-Control', 'no-store')
   @ApiOperation({
-    summary: 'Export the CEO view as CSV or a self-contained HTML page (lead and up)',
+    summary: 'Export the CEO view as CSV, a self-contained HTML page or a PDF (lead and up)',
     description:
       'Same figures as `GET /v1/reports/ceo`. CSV cells a spreadsheet could run as a formula are defused. ' +
-      'HTML has no script and makes no outside request. PDF is a later task. Every export is audited.',
+      'HTML has no script and makes no outside request. PDF is built in-process (embedded Thai-capable ' +
+      'font, no browser, no network). Every export is audited.',
   })
   @ApiOkResponse({
-    description: 'CSV or HTML',
+    description: 'CSV, HTML or PDF',
     content: {
       'text/csv': { schema: { type: 'string' } },
       'text/html': { schema: { type: 'string' } },
+      'application/pdf': { schema: { type: 'string', format: 'binary' } },
     },
   })
   async export(
@@ -126,10 +129,14 @@ export class ReportsController {
     AuditScope.set({ metadata: { format: query.format, days: query.days } });
     const view = parseResponse(ceoViewSchema, await this.ceo.read(query.days, principal));
     const day = view.generatedAt.slice(0, 10);
+    const disposition = `attachment; filename="ceo-view-${day}.${query.format}"`;
+    if (query.format === 'pdf') {
+      return new StreamableFile(await ceoPdf(view), { type: 'application/pdf', disposition });
+    }
     const csv = query.format === 'csv';
     return new StreamableFile(Buffer.from(csv ? ceoCsv(view) : ceoHtml(view), 'utf8'), {
       type: csv ? 'text/csv; charset=utf-8' : 'text/html; charset=utf-8',
-      disposition: `attachment; filename="ceo-view-${day}.${query.format}"`,
+      disposition,
     });
   }
 
