@@ -4,13 +4,13 @@
 snapshot สั้นสำหรับ cold start อยู่ที่ `HANDOFF.md` — ไฟล์นี้คือ log ต่อ task + open questions
 
 ## สถานะปัจจุบัน
-| Phase | สถานะ (2026-11-04) | ค้าง |
+| Phase | สถานะ (2026-11-05) | ค้าง |
 |---|---|---|
 | 0 Foundation | ✅ | — |
 | 1 Inbox + AI 0–2 + Shifts | 🟡 ฟีเจอร์ครบ gate ค้าง · **POC ต่อ Gmail จริง + AI จริง (`claude -p`) แล้ว 2026-11-03** · LINE/Discord/SMTP ยัง mock | T-113 ส่วนที่เหลือ, T-114, T-115 pilot (เจ้าของ), T-125, T-103e/f, T-110c |
 | 2 Reliability + Usage | 🟡 ฟีเจอร์ครบด้วย mock/fixture, gate ค้าง | T-207 |
 | คำขอเจ้าของ 2026-11-02 | T-136, T-137 ✅ · T-133 บางส่วน | T-134/T-135 บน `wip/t-134` (ยังไม่ re-review, ไม่มีเว็บ), T-133 ที่เหลือ |
-| 3 Autonomy + Learning | ⬜ | — |
+| 3 Autonomy + Learning | 🟡 code + e2e ครบบน local `main` (ยังไม่ push) · flag `AI_AUTOSEND_ENABLED` ปิด · PO T-306c: ยังไม่ "done pending live gate" | T-306j security ตรวจซ้ำ, T-301f, roster-plan flake, HANDOFF · หลังนั้น [ASK-HUMAN] push/deploy + เลือก intent แรก |
 | 4 Mobile + Scale | ⬜ | — |
 
 - **Release `v0.1.0` (MVP)** = `main` @ `ae380db` · CI: เขียวทั้ง 4 job · gate บนเครื่องผ่านทุก merge `[TESTED]`
@@ -45,6 +45,13 @@ snapshot สั้นสำหรับ cold start อยู่ที่ `HANDOF
 - (2026-11-01) cloud session: `dockerd` ต้องสั่งเอง · Docker Hub 429 → pull ซ้ำทีละ image · build image ไม่ได้ (corepack ไม่เชื่อ CA ของ proxy) · Playwright ใช้ `PW_EXECUTABLE_PATH=/opt/pw-browsers/chromium` · หลาย worktree รัน e2e พร้อมกันต้องตั้ง `E2E_PORT` ต่างกัน · Redis counter ข้ามรอบ test → `RATE_LIMIT_NAMESPACE`
 
 ## Log
+
+## 2026-11-05 07:30 (Asia/Bangkok) — Claude Code main thread — Phase 3: T-306b/f/g/h/i, B-009…B-011 merge, PO review T-306c
+- **ทำอะไร:** merge บน local `main` (ยังไม่ push): T-306f (0108 review hardening + 0110 `record_ai_grade` อ่าน `response_model`), T-306g (CLI `eval-runner record`), T-306h (portal `requesterVerified` จากลิงก์ที่ส่งทางอีเมล), T-306i (golden `shareable` + preview scrub), web (step-up dialog, checkbox shareable, stage 3 ไม่ถูก clamp), T-306b (e2e full-stack stage 3: shadow, flag ON ด้วย fake-live provider ใน stack ทิ้ง, rollback, eval gate), B-009 (ข้อความ held ครบ), B-010 (outbox ทิ้ง event ที่สองในนาทีเดียว → jobId ต่อ event), B-011 (403 ส่ง `reason`)
+- **ตัดสินโดย main thread:** ADR-002 แก้ไข (evals/runner ใช้ domain ได้) · T-306h ใช้ลิงก์ my-requests/tracking พิสูจน์กล่องอีเมล, drafter stage 2 คง `contact.verifiedAt` `[ASK-HUMAN: เจ้าของรับรอง]`
+- **Test (main thread รันเอง บน container ทิ้ง):** typecheck 18/18, lint ผ่าน, unit ทั้ง repo ผ่าน · integration db 509/509, worker 361/361, domain 506/508 → 2 ตกจาก clock skew ใน test (แก้แล้ว 23b6778, 7/7), api 1389/1391 → roster-plan ตก (ผ่านเดี่ยว) กำลังหาสาเหตุ
+- **PO review T-306c:** ยังไม่ผ่าน "done pending live gate" — ค้าง STATUS/HANDOFF (ทำแล้วบางส่วน), api เขียวไม่ครบ, security ตรวจซ้ำ (T-306j), `capResolutionClass` (T-301f) · intent ที่ po เสนอให้ stage 3 ก่อน: `feature_question`, `incident_inquiry`, `workspace_config` `[ASK-HUMAN]`
+- **ไม่ยืนยัน:** step-up กับ Google จริง, grader จริงต่อ prompt injection, claude-cli คืน `response_model` จริง `[UNVERIFIED 50%]`, migration 0100 ไม่มี (ข้ามเลข — ไม่กระทบ migrator, ทุก suite ผ่าน)
 
 ## 2026-11-03 15:50 (Asia/Bangkok) — Claude Code main thread — คำขอเจ้าของ 6 ข้อ: T-165…T-169 ปิด, T-170/T-171 เปิด
 - **ทำอะไร:** rail ไฮไลต์ brief/handoff + ไม่ล้น (main) · agent ขนาน 4 ตัว: Gmail view + email composer + MIME (frontend-dev), แนบรูปทุกที่ `/v1/uploads` (backend-dev), ADR-019 claude-bridge docker + KB folder + offline (ai-engineer), seed 1 ปี (backend-dev) · main ต่อ object store เข้า dispatcher, แก้ lint/format, แก้ตาม security review C-1/C-3/C-6/C-9 + ตัด dev จาก uploads (T-137)

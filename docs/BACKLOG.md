@@ -137,15 +137,15 @@
 
 > **แตกงานโดย po 2026-11-04** (เจ้าของสั่ง "ปิด phase 1-3 … เร็วและคุณภาพที่สุด") · migration เลขกำหนดโดย main thread ตอน merge · **N3: stage 3 ทำ code + test + shadow ได้ แต่ห้ามตั้ง `AI_AUTOSEND_ENABLED` บน POC/production จนกว่าเจ้าของสั่ง**
 - [x] T-301a `ai-engineer` grader agent + prompt + Zod (verified/contained/assumed, violations, score, KB gap, citation) — **ปิด 2026-11-04** (grader + ai_resolution_grade 0094 + job grade + metrics API (รวม T-301b บางส่วน))
-- [ ] T-301b `backend-dev` `ai_grade` append-only + domain writer + worker queue `grade` (resolve + สุ่มที่ stage ≥ 3)
+- [x] T-301b `backend-dev` `ai_grade` append-only + domain writer + worker queue `grade` (resolve + สุ่มที่ stage ≥ 3) — **ปิด 2026-11-05** (0108 `record_ai_grade()` + phase `sampled`, T-306e/f)
 - [x] T-301c `ai-engineer` provider/model ต่อ agent ผ่าน config (รวม T-106f) grader แยกจาก drafter · admin/ai อ่านอย่างเดียว — **ปิด 2026-11-04** (AI_AGENT_MODEL_* + GET /v1/ai/models + การ์ด Admin›AI)
 - [x] T-301d `frontend-dev` grade + KB gap ใน AI sidebar, dashboard verified vs assumed — **ปิด 2026-11-04** (ลิงก์ KB gap รอหน้า KB ในเว็บ)
 - [x] T-302a `backend-dev`+`frontend-dev` mark golden (lead/head) + ตาราง golden redact + drafter ใช้เป็นตัวอย่าง — **ปิด 2026-11-04** (0098, permission ai.golden.manage)
 - [x] T-302b `qa-engineer` golden สังเคราะห์ใน `evals/golden/` (ai-engineer ห้ามแก้ N7) — **ปิด 2026-11-04** (53 เคส golden, เจ้าของรับ; guard/pre-commit ใหม่)
 - [x] T-302c `ai-engineer` `pnpm eval` replay ต่อ intent (accuracy, edit distance, violations) CI ใช้ mock — **ปิด 2026-11-04** (evals/runner + replay, mock 100%)
-- [ ] T-302d `backend-dev` แก้ prompt/procedure/model → replay อัตโนมัติ, regression บล็อก
+- [ ] T-302d `backend-dev` แก้ prompt/procedure/model → replay อัตโนมัติ, regression บล็อก — *ส่วนบล็อกปิดแล้ว (`replay_missing`, T-306e/g); ที่ค้าง: replay ยังสั่งมือผ่าน `eval-runner record` ไม่ทำเองเมื่อเปลี่ยนของ (ต้องมี AI key จริง — หลัง pilot)*
 - [x] T-302e `ai-engineer` eval redaction (T-157) recall/FP ไทย + **T-153 NER local** (เจ้าของอนุมัติ dependency 2026-11-04 — ADR เลือก model/library ไม่มี network, วัดก่อน/หลัง) — **ปิด 2026-11-04** (redaction eval 92 เคส + T-153 ขั้น 1 ADR-027)
-- [ ] T-303a `architect` ADR procedures (schema steps Zod, NL→steps, versioning, intent/stage, ความสัมพันธ์ ADR-013)
+- [x] T-303a `architect` ADR procedures (schema steps Zod, NL→steps, versioning, intent/stage, ความสัมพันธ์ ADR-013) — **ปิด** ADR-026 (ผ่าน security review T-306a, C-7 แก้ใน T-306f)
 - [x] T-303b `backend-dev` migration + CRUD + compile (AI ร่าง คนยืนยัน) + audit — **ปิด 2026-11-04** (0097)
 - [x] T-303c `ai-engineer` investigator/drafter ใช้ procedure ที่ publish · `ai_run` เก็บ version — **ปิด 2026-11-04** (proposal card ของ escalate → T-303f)
 - [x] T-303d `ai-engineer` simulation กับ ticket เก่า (runner 302c) ต้องผ่านก่อน publish — **ปิด 2026-11-04**
@@ -165,7 +165,7 @@
 - [x] T-306a `security-reviewer` ตรวจ autonomy (bypass gate, injection → auto-send, เปิดเผยให้ unverified)
 - [x] T-306b `qa-engineer` e2e shadow, flag ON ใน stack ทิ้ง (mock), rollback, eval gate
 - [x] T-306d `backend-dev` + `architect` runbook deploy instance ใหม่สำหรับ pilot (DB สะอาด, seed reference เท่านั้น, env/secret checklist, backup/restore ซ้อม) — เจ้าของจะ deploy เองตอนเริ่ม pilot — **ปิด 2026-11-04** (docs/runbooks/pilot-instance.md + tools/restore-drill)
-- [ ] T-301e `backend-dev` re-grade เมื่อ CSAT มาถึงหลัง grade (ไม่งั้น verified ต่ำกว่าจริง) — ก่อน T-304f *(กำลังทำใน T-304b)* · + `capResolutionClass` ต้องดูข้อความลูกค้าที่ปฏิเสธ ("ยังไม่หาย") ไม่ใช่แค่ CSAT (qa T-302b)
+- [x] T-301e `backend-dev` re-grade เมื่อ CSAT มาถึงหลัง grade (ไม่งั้น verified ต่ำกว่าจริง) — ก่อน T-304f *(กำลังทำใน T-304b)* · + `capResolutionClass` ต้องดูข้อความลูกค้าที่ปฏิเสธ ("ยังไม่หาย") ไม่ใช่แค่ CSAT (qa T-302b) — **ปิดส่วน re-grade** (`grade-job.integration.test.ts`), ส่วน `capResolutionClass` → T-301f
 - [x] T-175a `backend-dev` P3 จาก review T-175/T-142/T-147: concurrency ต่อคน/host + negative cache, IPv6 allow 2000::/3 ก่อน blocklist, deadline ก่อน DNS, proxy env, permission `ai.budget.read`, PATCH priority จาก AI ลง audit `source` + ยืนยันก่อนขึ้น P1, reply-block ผูก channelAccountId — **ปิด 2026-11-04**
 - [x] T-182 `backend-dev` B-007 (เจ้าของ 2026-11-04 "Reject at upload"): อ่าน central directory ของ zip (และ archive ที่รับ) ตอนอัปโหลด ถ้า member ใด uncompressed > เพดานสแกน (MaxFileSize) หรือรวม > MaxScanSize หรือ nested ลึกเกิน → ปฏิเสธพร้อมข้อความชัด · ไฟล์แนบปกติไม่กระทบ — **ปิด 2026-11-04** (archive guard)
 - [x] T-183 `qa-engineer` B-009: `apps/api/src/reports/reports.integration.test.ts` 4 test ตกเมื่อ process TZ = Asia/Bangkok (ผ่านเมื่อ TZ=UTC) — หาว่าเป็นบั๊กของรายงาน (ช่วงวันคิดด้วย TZ ของ Node) หรือ test — **ปิด 2026-11-04** (บั๊ก test: นาฬิกา DB เร็วกว่า Node)
@@ -176,6 +176,8 @@
 - [x] T-306g `ai-engineer` เขียน `ai_replay_result` จาก eval runner: CLI `pnpm eval:record` ที่รัน replay + simulation ของชุด (drafter, grader, prompt, procedure) ปัจจุบันแล้วเรียก `record_replay_result()` ด้วยผู้ถือ `ai.autonomy.promote` (main thread ตัดสิน 2026-11-05) — จนกว่าจะมี ทุก intent ติด `replay_missing` (ปลอดภัย) — **ปิด 2026-11-05** (`pnpm --filter @watchtower/eval-runner record`)
 - [x] T-306h `backend-dev` portal: เปิดลิงก์ "คำขอของฉัน" (T-152) หรือยืนยันอีเมลจากลิงก์ tracking = พิสูจน์กล่องอีเมล → ตั้ง `customFields.portal.requesterVerified=true` ให้ ticket ของ contact นั้น (main thread ตัดสิน) · drafter stage 2 คง `contact.verifiedAt` เดิมเพราะมีคนอนุมัติ
 - [x] T-306i `backend-dev` golden: `goldenAnswerSchema` คืน `shareable` (ป้ายในหน้า admin golden) + endpoint preview ผล scrub ก่อนติ๊ก shareable (ช่องว่างจาก web follow-up 2026-11-05)
+- [ ] T-306j `security-reviewer` ตรวจซ้ำผลแก้ T-306a C-1…C-14 + ผิวโจมตีใหม่ (preview, requesterVerified, reason 403, returnTo, watch job ต่อ event) — ก่อน ADR-025 Accepted (N7, PO T-306c)
+- [ ] T-301f `ai-engineer` `capResolutionClass`: ข้อความลูกค้าที่ปฏิเสธ ("ยังไม่หาย") ไม่นับ verified, คลุมเครือไม่นับยืนยัน (PO T-306c)
 - [ ] T-306c `po` review + เสนอ 2–3 intent → [ASK-HUMAN] เลื่อน stage
 - [ ] T-301 Grader + verified/contained/assumed resolution (§6.2, §6.4)
 - [ ] T-302 Eval set + replay runner + golden answers + KB author (§6.5, R-4.4–4.6)
