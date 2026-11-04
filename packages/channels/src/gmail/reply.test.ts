@@ -164,6 +164,12 @@ describe('buildReply: other behaviours', () => {
     );
   });
 
+  it('marks a message the system starts itself with Auto-Submitted: auto-generated', () => {
+    expect(
+      decode(build({ automatic: true, autoSubmitted: 'auto-generated' }).raw).headers,
+    ).toContain('Auto-Submitted: auto-generated');
+  });
+
   it('sends multipart/alternative when HTML is given', () => {
     const { headers, text } = decode(build({ htmlBody: '<p>Hello</p>' }).raw);
     expect(headers).toMatch(/Content-Type: multipart\/alternative; boundary="wt-[0-9a-f]{24}"/);

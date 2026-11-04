@@ -21,6 +21,8 @@ export interface DomainConfig {
   readonly ticketKeyPrefix: string;
   /** A customer reply reopens a ticket resolved within this many days (R-1.10). */
   readonly reopenWindowDays: number;
+  /** Mail providers shared by everybody: an email recipient there is matched by the whole address (T-171a C-3). Unset: the built-in list. */
+  readonly freeMailDomains?: readonly string[] | undefined;
   /** Subkey that seals the secret part of outbox jobs (`KEY_LABELS.outboxSecret`). */
   readonly sealKey: Buffer;
   /**

@@ -195,7 +195,7 @@ describe('the CSAT survey of a Gmail ticket', () => {
     expect(mail.headers).toContain('From: Support <support@desk.example.test>');
     expect(mail.headers).toContain(`To: ${s.email}`);
     expect(mail.headers).toContain(`Subject: How did we do on OPS-${String(s.ticketNumber)}?`);
-    expect(mail.headers).toContain('Auto-Submitted: auto-replied');
+    expect(mail.headers).toContain('Auto-Submitted: auto-generated');
     expect(mail.headers).toContain(`Message-ID: <wt.csat-${s.surveyId}-survey@`);
     // A new thread: nothing to reply to, no References, no [OPS-n] token that would route a reply back.
     expect(mail.headers).not.toMatch(/^(In-Reply-To|References):/m);

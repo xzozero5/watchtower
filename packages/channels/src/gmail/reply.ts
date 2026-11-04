@@ -81,6 +81,12 @@ export const replyInputSchema = z.object({
   subjectMode: z.enum(['reuse', 'prefix_re']).default('reuse'),
   /** Automatic response: marks it `Auto-Submitted: auto-replied` (RFC 3834 section 5) to stop loops. */
   automatic: z.boolean().default(false),
+  /**
+   * Which `Auto-Submitted` value an automatic message carries. A response to a message is `auto-replied`
+   * (the default); a message the system starts itself, such as a satisfaction survey, is `auto-generated`
+   * (RFC 3834 section 5). Only used when `automatic` is true.
+   */
+  autoSubmitted: z.enum(['auto-replied', 'auto-generated']).default('auto-replied'),
   date: z.date().optional(),
 });
 
@@ -349,7 +355,7 @@ export function buildReply(rawInput: ReplyInput): BuiltReply {
     ...(references.length > 0
       ? [foldHeader('References', references.map((id) => `<${id}>`).join(' '))]
       : []),
-    ...(input.automatic ? ['Auto-Submitted: auto-replied'] : []),
+    ...(input.automatic ? [`Auto-Submitted: ${input.autoSubmitted}`] : []),
     'MIME-Version: 1.0',
   ];
 

@@ -87,14 +87,14 @@ describe('email reply recipients (T-171 C-2)', () => {
     });
     const [row] = (await auditRows(env, 'ticket.reply')).slice(-1);
     expect(row?.metadata).toMatchObject({
-      recipients: {
-        to: [`ann@${domain}`],
-        cc: [`bob@${domain}`, colleague.toLowerCase()],
-        bcc: [],
-      },
+      // Counts and domains, never the addresses (T-171a C-4).
+      recipients: { to: 1, cc: 2, bcc: 0 },
       externalDomains: [],
       externalConfirmed: false,
     });
+    expect(JSON.stringify(row?.metadata)).not.toContain('ann@');
+    expect(JSON.stringify(row?.metadata)).not.toContain('bob@');
+    expect(row?.metadata).toHaveProperty('messageId');
   });
 
   it('refuses a domain the customer is not linked to until it is confirmed, and says which', async () => {
@@ -121,15 +121,74 @@ describe('email reply recipients (T-171 C-2)', () => {
     await reply(staff, ticket.id, {
       to: [{ address: `ann@${domain}` }],
       cc: [{ address: 'partner@vendor.test' }],
-      confirmExternalRecipients: true,
+      confirmedDomains: ['vendor.test'],
     });
     const [row] = (await auditRows(env, 'ticket.reply')).slice(-1);
     expect(row?.metadata).toMatchObject({
       externalDomains: ['vendor.test'],
       externalConfirmed: true,
     });
-    // The confirmed domain is now part of this ticket's conversation: no second question.
-    await reply(staff, ticket.id, { to: [{ address: 'partner@vendor.test' }] });
+  });
+
+  it('wants every external domain named, not a blanket yes (T-171a C-6)', async () => {
+    const { ticket, staff, domain } = await emailTicket();
+    const attempt = reply(staff, ticket.id, {
+      to: [{ address: `ann@${domain}` }],
+      cc: [{ address: 'a@vendor.test' }, { address: 'b@other.test' }],
+      confirmedDomains: ['VENDOR.test'],
+    });
+    await expect(attempt).rejects.toMatchObject({
+      code: 'external_recipients',
+      details: { domains: ['other.test'] },
+    });
+  });
+
+  it('matches a free mail provider by the whole address, and audits only its domain (T-171a C-3, C-4)', async () => {
+    const { ticket, staff } = await emailTicket();
+    await env.db.owner.db
+      .update(schema.contact)
+      .set({ emails: [`pat@gmail.com`] })
+      .where(eq(schema.contact.orgId, ticket.orgId));
+    // The contact's own address is known; any other gmail.com address is a stranger.
+    await reply(staff, ticket.id, { to: [{ address: 'Pat@gmail.com' }] });
+    const attempt = reply(staff, ticket.id, { to: [{ address: 'mallory@gmail.com' }] });
+    await expect(attempt).rejects.toMatchObject({
+      code: 'external_recipients',
+      details: { domains: ['mallory@gmail.com'] },
+    });
+    await reply(staff, ticket.id, {
+      to: [{ address: 'mallory@gmail.com' }],
+      confirmedDomains: ['mallory@gmail.com'],
+    });
+    const [row] = (await auditRows(env, 'ticket.reply')).slice(-1);
+    expect(row?.metadata).toMatchObject({
+      externalDomains: ['gmail.com'],
+      externalConfirmed: true,
+    });
+    expect(JSON.stringify(row?.metadata)).not.toContain('mallory');
+  });
+
+  it('does not learn a domain from the Cc of a mail that came in (T-171a C-3)', async () => {
+    const { ticket, staff, domain } = await emailTicket();
+    await env.db.owner.db.insert(schema.message).values({
+      ticketId: ticket.id,
+      direction: 'inbound',
+      bodyText: 'please cc my friend',
+      visibility: 'public',
+      deliveryStatus: 'delivered',
+      emailMeta: {
+        from: { address: `ann@${domain}` },
+        to: [],
+        cc: [{ address: 'friend@stranger.test' }],
+        bcc: [],
+      },
+    });
+    await expect(
+      reply(staff, ticket.id, { to: [{ address: 'friend@stranger.test' }] }),
+    ).rejects.toMatchObject({
+      code: 'external_recipients',
+      details: { domains: ['stranger.test'] },
+    });
   });
 
   it('does not ask when no recipient was typed (the default is the requester)', async () => {

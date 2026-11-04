@@ -1,5 +1,11 @@
 import type { schema } from '@watchtower/db';
-import { AUDIT_ACTIONS, hasOutboundChannel, type Note, type Reply } from '@watchtower/shared';
+import {
+  AUDIT_ACTIONS,
+  hasOutboundChannel,
+  plainTextToHtml,
+  type Note,
+  type Reply,
+} from '@watchtower/shared';
 
 import { recordAuditInTx } from '../audit.js';
 import { findOrCreateContactByEmailIn } from '../contacts.js';
@@ -16,7 +22,7 @@ import { requireCustomerSend } from '../policy.js';
 import type { MessageRow, OutboundDeliveryRow, TicketRow } from '../rows.js';
 import { draftHasText, recordDraftEdited } from '../ai/drafts.js';
 import { Effects, type DbTransaction, type DomainContext, type DomainResult } from '../types.js';
-import { externalDomains, knownDomains } from './recipients.js';
+import { domainOfAddress, externalDomains, knownDomains } from './recipients.js';
 import { applyStatus } from './status.js';
 import {
   insertMessage,
@@ -27,6 +33,11 @@ import {
   ticketKeysOf,
   type Sender,
 } from './support.js';
+
+/** `a@b.test` -> `b.test`; a domain stays as it is. */
+function auditDomain(key: string): string {
+  return key.includes('@') ? domainOfAddress(key) : key;
+}
 
 export interface ReplyInput {
   /** A ticket id or key (`OPS-12`). */
@@ -82,6 +93,11 @@ export async function replyToTicket(
   ) {
     body = { ...body, aiDraftId: body.editedFromDraftId };
     delete body.editedFromDraftId;
+    // It is now an approval, so what the customer reads must be the draft's words, not whatever HTML came
+    // with the request (T-171a C-2).
+    if (body.email !== undefined) {
+      body = { ...body, email: { ...body.email, bodyHtml: plainTextToHtml(body.body) } };
+    }
   }
   const fromCustomer = sender.kind !== 'staff';
   if (sender.kind !== 'staff' && ticket.orgId !== sender.orgId) throw notFound('No such ticket');
@@ -149,11 +165,12 @@ export async function replyToTicket(
     const bcc = lower(email.bcc);
     const external = externalDomains(
       [...to, ...cc, ...bcc],
-      await knownDomains(tx, ticket, sender.userId),
+      await knownDomains(tx, ticket, sender.userId, ctx.config.freeMailDomains),
     );
-    if (external.length > 0 && email.confirmExternalRecipients !== true) {
-      throw externalRecipients(external);
-    }
+    // Every external domain has to be confirmed by name (T-171a C-6); "confirm all" is not enough.
+    const confirmed = new Set((email.confirmedDomains ?? []).map((d) => d.trim().toLowerCase()));
+    const unconfirmed = external.filter((domain) => !confirmed.has(domain));
+    if (unconfirmed.length > 0) throw externalRecipients(unconfirmed);
     externalAudit = { to, cc, bcc, external, confirmed: external.length > 0 };
   }
   if (fromCustomer && body.aiDraftId !== undefined) {
@@ -239,12 +256,21 @@ export async function replyToTicket(
       ...(externalAudit === null
         ? {}
         : {
+            // Counts and domains only; the addresses are in `message.emailMeta`, which can be erased (C-4).
             recipients: {
-              to: externalAudit.to,
-              cc: externalAudit.cc,
-              bcc: externalAudit.bcc,
+              to: externalAudit.to.length,
+              cc: externalAudit.cc.length,
+              bcc: externalAudit.bcc.length,
+              domains: [
+                ...new Set(
+                  [...externalAudit.to, ...externalAudit.cc, ...externalAudit.bcc].map(
+                    domainOfAddress,
+                  ),
+                ),
+              ].sort(),
             },
-            externalDomains: externalAudit.external,
+            // A free mail provider is listed by its domain here, not by the whole address.
+            externalDomains: [...new Set(externalAudit.external.map(auditDomain))].sort(),
             externalConfirmed: externalAudit.confirmed,
           }),
     },
