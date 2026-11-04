@@ -7,10 +7,15 @@ import {
   resolveClaudeBinary,
 } from './bridge.mjs';
 
-if (process.env.NODE_ENV === 'production') {
-  console.error('claude-cli-bridge: refusing to run with NODE_ENV=production');
+// ADR-021: production is refused unless the instance owner opts in with CLAUDE_CLI_ALLOW_REMOTE=true.
+const allowRemote = (process.env.CLAUDE_CLI_ALLOW_REMOTE ?? '').trim().toLowerCase() === 'true';
+if (process.env.NODE_ENV === 'production' && !allowRemote) {
+  console.error(
+    'claude-cli-bridge: refusing to run with NODE_ENV=production (set CLAUDE_CLI_ALLOW_REMOTE=true to opt in, ADR-021)',
+  );
   process.exit(1);
 }
+if (allowRemote) console.warn('claude-cli-bridge: claude-cli remote opt-in enabled (ADR-021)');
 const token = process.env.CLAUDE_CLI_BRIDGE_TOKEN ?? '';
 const port = Number(process.env.CLAUDE_CLI_BRIDGE_PORT ?? DEFAULT_PORT);
 // 127.0.0.1 by default. Docker Desktop reaches it through host.docker.internal; set
