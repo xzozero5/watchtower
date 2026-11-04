@@ -99,6 +99,7 @@ export function createApiAiRuntime(options: AiRuntimeOptions): AiRuntime {
     policyGate: createPolicyGate({ db: database.db }),
     db: database.db,
     budget,
+    caps,
   });
 
   const kind = config.AI_PROVIDER;
@@ -141,6 +142,7 @@ export function createApiAiRuntime(options: AiRuntimeOptions): AiRuntime {
     );
   }
   const llm = createAuditedLlm({
+    guard,
     settings: { load: () => Promise.resolve(settings) },
     providers: provider === null ? {} : { [kind]: provider },
     sink: createAiRunRecorder({ db: database.db }),

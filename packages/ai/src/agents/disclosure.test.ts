@@ -9,6 +9,7 @@ import { TOOL_NAMES } from '../toolkit/tools.js';
 import type { AgentDeps } from './common.js';
 import { applyDisclosure, draftReply, hasLink, type DraftSentence } from './draft.js';
 import type { InvestigationEvidence } from './evidence.js';
+import { ALLOW_ALL_GUARD } from '../test-guard.js';
 
 // SR108-3: the disclosure policy is enforced on the text of the draft, not on what the model says
 // it cited, and the drafter is only shown what the customer may be told.
@@ -128,6 +129,7 @@ function rig(answer: unknown) {
   const requests: LlmRequest[] = [];
   const deps: AgentDeps = {
     llm: createAuditedLlm({
+      guard: ALLOW_ALL_GUARD,
       settings: { load: () => Promise.resolve(mockSettings()) },
       providers: {
         mock: {

@@ -168,6 +168,17 @@ export function EmailMessageCard({
                 {t('timeline.kinds.reply')}
               </span>
             ) : null}
+            {message.direction === 'inbound' &&
+            message.emailMeta?.senderAuth !== undefined &&
+            message.emailMeta.senderAuth !== 'pass' ? (
+              <span
+                data-testid="unauthenticated-sender"
+                title={t('email.message.unauthenticatedHint')}
+                className="rounded-sm bg-surface-muted px-1.5 text-xs text-muted-foreground"
+              >
+                {t('email.message.unauthenticated')}
+              </span>
+            ) : null}
           </div>
           <button
             type="button"

@@ -173,6 +173,7 @@ describe('LINE webhook (T-103b)', () => {
   it('counts an event that does not fit the schema without failing the others', async () => {
     const good = event();
     const raw = JSON.stringify({
+      destination: 'Ubot',
       events: [{ type: 'message', timestamp: 'yesterday' }, good, { nothing: true }],
     });
     expect((await postWebhook(raw)).body).toEqual({ accepted: 1, duplicates: 0, rejected: 2 });
@@ -181,12 +182,12 @@ describe('LINE webhook (T-103b)', () => {
   it('verifies the exact bytes received, not a re-serialisation of them', async () => {
     const original = event();
     // Valid JSON that no JSON.stringify would produce: extra spaces and a newline.
-    const spaced = `{ "events" : [ ${JSON.stringify(original)} ]\n}`;
+    const spaced = `{ "destination": "Ubot", "events" : [ ${JSON.stringify(original)} ]\n}`;
     expect((await postWebhook(spaced)).status).toBe(200);
     // A signature computed over the compact form does not cover the spaced bytes.
     const other = event();
-    const compact = JSON.stringify({ events: [other] });
-    const respaced = `{ "events" : [ ${JSON.stringify(other)} ]\n}`;
+    const compact = JSON.stringify({ destination: 'Ubot', events: [other] });
+    const respaced = `{ "destination": "Ubot", "events" : [ ${JSON.stringify(other)} ]\n}`;
     const before = await counts();
     expect((await postWebhook(respaced, { signature: sign(compact) })).status).toBe(401);
     expect(await counts()).toEqual(before);
@@ -199,7 +200,7 @@ describe('LINE webhook (T-103b)', () => {
     ['an empty signature', () => ''],
     ['no signature header', () => null],
   ])('refuses %s with 401 and writes nothing', async (_name, makeSignature) => {
-    const raw = JSON.stringify({ events: [event()] });
+    const raw = JSON.stringify({ destination: 'Ubot', events: [event()] });
     const before = await counts();
     const result = await postWebhook(raw, { signature: makeSignature(raw) });
     expect(result.status).toBe(401);
@@ -207,7 +208,7 @@ describe('LINE webhook (T-103b)', () => {
   });
 
   it('gives an unknown or non-LINE account the same 401 as a wrong signature', async () => {
-    const raw = JSON.stringify({ events: [event()] });
+    const raw = JSON.stringify({ destination: 'Ubot', events: [event()] });
     const unknown = await postWebhook(raw, { accountId: randomUUID() });
     const gmail = await pool().query<{ id: string }>(
       `INSERT INTO channel_account (type, name) VALUES ('gmail', 'Mailbox') RETURNING id`,
@@ -223,13 +224,16 @@ describe('LINE webhook (T-103b)', () => {
   it('answers 400 to a signed body that is not a webhook payload', async () => {
     expect((await postWebhook('not json at all')).status).toBe(400);
     expect((await postWebhook('{"hello":"world"}')).status).toBe(400);
-    const tooMany = JSON.stringify({ events: Array.from({ length: 101 }, () => event()) });
+    const tooMany = JSON.stringify({
+      destination: 'Ubot',
+      events: Array.from({ length: 101 }, () => event()),
+    });
     expect((await postWebhook(tooMany)).status).toBe(400);
   });
 
   it('refuses an address that keeps failing the signature before any work, but never valid traffic', async () => {
     const ip = freshIp();
-    const raw = JSON.stringify({ events: [] });
+    const raw = JSON.stringify({ destination: 'Ubot', events: [] });
     const statuses: number[] = [];
     for (let attempt = 0; attempt < 32; attempt += 1) {
       statuses.push((await postWebhook(raw, { signature: sign(raw, 'bad'), ip })).status);
@@ -269,7 +273,7 @@ describe('LINE webhook: the secret from the environment', () => {
       const account = await envHarness.db.owner.pool.query<{ id: string }>(
         `INSERT INTO channel_account (type, name) VALUES ('line', 'OA') RETURNING id`,
       );
-      const raw = JSON.stringify({ events: [event()] });
+      const raw = JSON.stringify({ destination: 'Ubot', events: [event()] });
       const send = (secret: string) =>
         fetch(`${envHarness.base}/v1/inbound/line/${account.rows[0]?.id ?? ''}`, {
           method: 'POST',
@@ -583,5 +587,42 @@ describe('contacts API and the LINE link facts (C-8, C-11)', () => {
       `/v1/contacts/${id}`,
     );
     expect(shown.body).toMatchObject({ lineLinkedVia: 'staff_code', lineVerified: false });
+  });
+});
+
+describe('LINE webhook destination (T-114a C-8)', () => {
+  beforeAll(putSecret);
+
+  async function newAccount(): Promise<string> {
+    const account = await pool().query<{ id: string }>(
+      `INSERT INTO channel_account (type, name) VALUES ('line', 'Second OA') RETURNING id`,
+    );
+    return account.rows[0]?.id ?? '';
+  }
+  const stored = async (id: string): Promise<string | null> =>
+    (
+      await pool().query<{ line_bot_user_id: string | null }>(
+        'SELECT line_bot_user_id FROM channel_account WHERE id = $1',
+        [id],
+      )
+    ).rows[0]?.line_bot_user_id ?? null;
+
+  it('records the bot user id of the first verified webhook and refuses a different one', async () => {
+    const accountId = await newAccount();
+    const body = (destination: string | undefined) =>
+      JSON.stringify({ ...(destination === undefined ? {} : { destination }), events: [event()] });
+
+    expect((await postWebhook(body('Ufirstbot'), { accountId })).status).toBe(200);
+    expect(await stored(accountId)).toBe('Ufirstbot');
+
+    const before = await counts();
+    // The signature is valid (same secret) but the webhook is for another bot: nothing is stored.
+    expect((await postWebhook(body('Uotherbot'), { accountId })).status).toBe(401);
+    expect((await postWebhook(body(undefined), { accountId })).status).toBe(401);
+    expect(await counts()).toEqual(before);
+    expect(await stored(accountId)).toBe('Ufirstbot');
+
+    // The right bot still works.
+    expect((await postWebhook(body('Ufirstbot'), { accountId })).status).toBe(200);
   });
 });

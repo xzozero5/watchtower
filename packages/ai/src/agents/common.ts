@@ -8,7 +8,12 @@ import {
   type AgentCall,
   type AuditedResult,
 } from '../audited.js';
-import type { AgentName } from '../contract.js';
+import {
+  AiCallDeniedError,
+  type AiCallGuard,
+  type GuardDecision,
+  type GuardRequest,
+} from '../guard.js';
 import type { PromptCatalog } from '../prompt-files.js';
 import { NameMatchLimitError } from '../redaction/detectors.js';
 import type { Redactor, RedactionSession } from '../redaction/redactor.js';
@@ -19,24 +24,7 @@ export interface AuditedGenerator {
   generate(call: AgentCall): Promise<AuditedResult>;
 }
 
-export interface GuardRequest {
-  readonly agent: AgentName;
-  readonly ticketId: string | null;
-  /** Free label for the audit row of a denial, for example `classify`. */
-  readonly action: string;
-}
-
-export type GuardDecision =
-  { readonly allowed: true } | { readonly allowed: false; readonly reason: AiInsightReason };
-
-/**
- * Asked before every model call (N2, N3, PRD section 6.4): the kill switch through the policy gate
- * (`checkAiAction`, T-112) and the daily budget. The composition root builds it from the domain; a
- * guard that throws counts as a refusal. There is no default: an agent without a guard does not run.
- */
-export interface AiCallGuard {
-  check(request: GuardRequest): Promise<GuardDecision>;
-}
+export type { AiCallGuard, GuardDecision, GuardRequest } from '../guard.js';
 
 export interface AgentDeps {
   readonly llm: AuditedGenerator;
@@ -81,6 +69,8 @@ export function skippedFor(error: unknown): AiInsightReason | null {
  */
 export function failedFor(error: unknown): AgentOutcome<never> {
   if (error instanceof AuditWriteError || error instanceof AuditInputError) throw error;
+  // The guard refused inside the model call (a switch or budget changed since the early check).
+  if (error instanceof AiCallDeniedError) return { status: 'failed', reason: error.reason };
   if (error instanceof AuditRecordError) return { status: 'failed', reason: 'audit_failed' };
   if (error instanceof ProviderUnavailableError) {
     return { status: 'failed', reason: 'provider_unavailable' };

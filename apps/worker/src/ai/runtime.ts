@@ -147,6 +147,7 @@ export function createAiRuntime(
     policyGate: createPolicyGate({ db: database.db }),
     db: database.db,
     budget,
+    caps,
   });
 
   const built = buildAiSettings(config);
@@ -178,6 +179,7 @@ export function createAiRuntime(
         });
   const sink = createAiRunRecorder({ db: database.db });
   const llm = createAuditedLlm({
+    guard,
     settings,
     providers,
     sink,

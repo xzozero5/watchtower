@@ -75,7 +75,7 @@ export class LineWebhookService {
     );
     if (standing.blocked) throw new RateLimitedError(standing.retryAfterSeconds);
     const [account] = await this.database.db
-      .select({ id: schema.channelAccount.id })
+      .select({ id: schema.channelAccount.id, botUserId: schema.channelAccount.lineBotUserId })
       .from(schema.channelAccount)
       .where(
         and(
@@ -113,7 +113,9 @@ export class LineWebhookService {
       throw unauthenticated('The request signature is missing or does not match');
     }
 
-    const events = this.parse(input.rawBody);
+    const parsed = this.parse(input.rawBody);
+    await this.checkDestination(account, parsed.destination);
+    const events = parsed.events;
     const tracked: { providerEventId: string; payload: Record<string, unknown> }[] = [];
     let rejected = 0;
     for (const raw of events) {
@@ -156,8 +158,52 @@ export class LineWebhookService {
     return { accepted, duplicates: tracked.length - accepted, rejected };
   }
 
-  /** The `events` array of a body whose signature was already verified. */
-  private parse(rawBody: Buffer): unknown[] {
+  /**
+   * The webhook's `destination` is the bot's own user id (T-114a C-8). The first verified webhook of
+   * an account records it; afterwards a webhook whose `destination` differs, or has none, is refused
+   * like a bad signature, so another Official Account that shares the channel secret cannot write into
+   * this inbox. The signature already proved the sender holds the secret, so recording the first value
+   * is safe; the update only fills an empty column, so two first webhooks cannot disagree.
+   */
+  private async checkDestination(
+    account: { readonly id: string; readonly botUserId: string | null },
+    destination: unknown,
+  ): Promise<void> {
+    const given =
+      typeof destination === 'string' && destination.length >= 1 && destination.length <= 64
+        ? destination
+        : null;
+    let known = account.botUserId;
+    if (known === null && given !== null) {
+      const [filled] = await this.database.db
+        .update(schema.channelAccount)
+        .set({ lineBotUserId: given })
+        .where(
+          and(
+            eq(schema.channelAccount.id, account.id),
+            isNull(schema.channelAccount.lineBotUserId),
+          ),
+        )
+        .returning({ id: schema.channelAccount.id });
+      if (filled !== undefined) return;
+      const [current] = await this.database.db
+        .select({ botUserId: schema.channelAccount.lineBotUserId })
+        .from(schema.channelAccount)
+        .where(eq(schema.channelAccount.id, account.id))
+        .limit(1);
+      known = current?.botUserId ?? null;
+    }
+    if (known !== null && known !== given) {
+      this.logger.warn(
+        { channelAccountId: account.id },
+        'LINE webhook destination does not match this account: refused',
+      );
+      throw unauthenticated('The request signature is missing or does not match');
+    }
+  }
+
+  /** The `events` array (and the `destination`) of a body whose signature was already verified. */
+  private parse(rawBody: Buffer): { events: unknown[]; destination: unknown } {
     let json: unknown;
     try {
       json = JSON.parse(rawBody.toString('utf8'));
@@ -168,6 +214,6 @@ export class LineWebhookService {
       throw badRequest('The body has no events array');
     }
     if (json.events.length > MAX_EVENTS_PER_REQUEST) throw badRequest('Too many events');
-    return json.events as unknown[];
+    return { events: json.events as unknown[], destination: json.destination };
   }
 }

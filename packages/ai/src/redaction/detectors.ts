@@ -7,6 +7,8 @@
  * groups; emails are found by walking out from each `@` with hard length caps; names use
  * Aho-Corasick (plus the cue detector near the end: literal cues, bounded reads); the few regular expressions left are anchored literals or have bounded repeats.
  */
+import { CSAT_LINK_TOKEN_SOURCE } from '@watchtower/shared';
+
 import { buildMatcher, MatchLimitError } from './aho-corasick.js';
 import { foldForMatching, type NormalizedView } from './normalize.js';
 import { isLuhnValid, isValidThaiNationalId } from './validators.js';
@@ -19,6 +21,7 @@ export const REDACTION_KINDS = [
   'BANK',
   'NAME',
   'LITERAL',
+  'LINK',
 ] as const;
 export type RedactionKind = (typeof REDACTION_KINDS)[number];
 
@@ -36,6 +39,7 @@ export const TOKEN_PATTERN = new RegExp(`\\[(?:${REDACTION_KINDS.join('|')})_[0-
 
 const PRIORITY = {
   LITERAL: 200,
+  LINK: 150,
   THAI_ID: 100,
   CARD: 90,
   EMAIL: 80,
@@ -51,6 +55,23 @@ const span = (start: number, end: number, kind: RedactionKind, priority: number)
   kind,
   priority,
 });
+
+/**
+ * A survey link token (T-171 review C-8): a bearer secret a customer may quote back. Fixed-length
+ * pattern, found by `indexOf` on its prefix, so it is linear.
+ */
+const SURVEY_TOKEN = new RegExp(CSAT_LINK_TOKEN_SOURCE, 'y');
+export function detectSurveyLinks(text: string): Span[] {
+  const spans: Span[] = [];
+  let at = text.indexOf('wtc1.');
+  while (at !== -1) {
+    SURVEY_TOKEN.lastIndex = at;
+    const match = SURVEY_TOKEN.exec(text);
+    if (match) spans.push(span(at, at + match[0].length, 'LINK', PRIORITY.LINK));
+    at = text.indexOf('wtc1.', at + 5);
+  }
+  return spans;
+}
 
 /** Token-shaped text already in the input. It is escaped so a restore never expands it. */
 export function detectTokenShapes(text: string): Span[] {
@@ -393,6 +414,62 @@ function isBankFormattedShape(lengths: readonly number[]): boolean {
   return shape === '3-1-5-1' || shape === '3-6-1';
 }
 
+const MAX_SINGLE_GROUPS = 19;
+
+/**
+ * A number typed one digit at a time ("0 8 1 2 3 4 5 6 7 8", "4.1.1.1...", up to 19 groups for a
+ * card). Tested as the digits joined: a phone of 9 to 11 digits that matches a Thai shape, or a
+ * Luhn-valid card of 13 to 19 digits. A separate pass so the general window above stays at 13 groups
+ * and the cost stays linear (19 steps per start, with the separator kinds computed once).
+ * T-114a C-2.
+ */
+function detectSingleDigits(text: string, cluster: Cluster, spans: Span[]): void {
+  const { groups, separators } = cluster;
+  if (groups.length < 9) return;
+  const kinds = separators.map((separator) => separatorKind(separator));
+  for (let from = 0; from + 8 < groups.length; from += 1) {
+    const firstGroup = groups[from];
+    if (firstGroup === undefined || firstGroup.end - firstGroup.start !== 1) continue;
+    const phoneStart =
+      from === 0 && (cluster.plus || cluster.openParen) ? firstGroup.start - 1 : firstGroup.start;
+    // A Thai phone starts with 0; a card (Visa, Mastercard, Amex, JCB, UnionPay, Discover) with 2 to 6.
+    // Starts that can be neither are skipped, which keeps the pass cheap on a long run of digits.
+    const lead = text.charAt(firstGroup.start);
+    const maybePhone = lead === '0';
+    const maybeCard = lead >= '2' && lead <= '6';
+    if (!maybePhone && !maybeCard) continue;
+    let digits = '';
+    let kind: string | null | undefined;
+    const last = Math.min(groups.length, from + (maybeCard ? MAX_SINGLE_GROUPS : 11));
+    for (let to = from; to < last; to += 1) {
+      const group = groups[to];
+      if (group === undefined || group.end - group.start !== 1) break;
+      if (to > from) {
+        // `null` is a neutral separator (a parenthesis); it must not be turned into a space.
+        const current = kinds[to - 1];
+        if (current !== undefined && current !== null) {
+          if (kind === undefined) kind = current;
+          else if (current !== kind) break;
+        }
+      }
+      digits += text.charAt(group.start);
+      const total = digits.length;
+      if (maybePhone && total >= 9 && total <= 11) {
+        if (
+          MOBILE.test(digits) ||
+          BANGKOK.test(digits) ||
+          PROVINCIAL.test(digits) ||
+          INTERNATIONAL_00.test(digits)
+        ) {
+          spans.push(span(phoneStart, group.end, 'PHONE', PRIORITY.PHONE));
+        }
+      } else if (maybeCard && total >= 13 && isLuhnValid(digits)) {
+        spans.push(span(firstGroup.start, group.end, 'CARD', PRIORITY.CARD));
+      }
+    }
+  }
+}
+
 function detectInCluster(
   text: string,
   cluster: Cluster,
@@ -522,7 +599,10 @@ export function detectNumbers(text: string): Span[] {
   const spans: Span[] = [];
   const clusters = findClusters(text);
   const safe = safeSpans(text);
-  for (const cluster of clusters) detectInCluster(text, cluster, spans, safe);
+  for (const cluster of clusters) {
+    detectInCluster(text, cluster, spans, safe);
+    detectSingleDigits(text, cluster, spans);
+  }
   detectBankAfterKeyword(text, clusters, spans);
   return spans;
 }

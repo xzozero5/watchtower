@@ -182,6 +182,7 @@ export function createGmailIngestor(options: GmailIngestorOptions): ChannelInges
             to: email.to,
             cc: email.cc,
             subject: email.subject,
+            senderAuth: email.senderAuth,
           },
           attachments: email.attachments.map((attachment) => ({
             partId: attachment.partId,

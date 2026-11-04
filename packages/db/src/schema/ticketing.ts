@@ -192,6 +192,8 @@ export const channelAccount = pgTable('channel_account', {
   quotaLimit: integer('quota_limit'),
   /** Null while in use; set when an administrator switched the account off (migration 0030). */
   disabledAt: timestamptz('disabled_at'),
+  /** LINE only: the `destination` of its webhook, recorded by the first verified one (migration 0092, T-114a C-8). */
+  lineBotUserId: text('line_bot_user_id'),
   createdAt: timestamptz('created_at').notNull().defaultNow(),
   updatedAt: timestamptz('updated_at').notNull().defaultNow(),
 });

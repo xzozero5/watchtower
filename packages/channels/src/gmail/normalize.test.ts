@@ -201,3 +201,25 @@ describe('normalizeMime: bounce', () => {
     ]);
   });
 });
+
+describe('normalizeMime: sender authentication (T-114a C-3)', () => {
+  const mail = (extra: string): Uint8Array =>
+    new TextEncoder().encode(
+      `${extra}From: Ann <ann@customer.example>\r\nTo: s@example.com\r\nSubject: hi\r\nMessage-ID: <a@customer.example>\r\nContent-Type: text/plain\r\n\r\nhello\r\n`,
+    );
+
+  it('reads dmarc=pass from the receiving server header', () => {
+    const raw = mail(
+      'Authentication-Results: mx.google.com; dmarc=pass header.from=customer.example\r\n',
+    );
+    expect(normalizeMime(raw).email.senderAuth).toBe('pass');
+  });
+
+  it('is none without the header and fail on dmarc=fail', () => {
+    expect(normalizeMime(mail('')).email.senderAuth).toBe('none');
+    const failed = mail(
+      'Authentication-Results: mx.google.com; dmarc=fail header.from=customer.example\r\n',
+    );
+    expect(normalizeMime(failed).email.senderAuth).toBe('fail');
+  });
+});

@@ -4,23 +4,35 @@ import { eq } from 'drizzle-orm';
 
 import { GATE_REASONS } from '../autonomy/decide.js';
 import type { PolicyGate } from '../policy.js';
-import type { BudgetMonitor } from './budget.js';
+import { evaluateBudget, type AiCaps, type BudgetMonitor } from './budget.js';
 
 /** What an agent asks before it calls a model. Same shape as `AiCallGuard` in `@watchtower/ai`. */
 export interface AiGuardRequest {
   readonly agent: string;
   readonly ticketId: string | null;
   readonly action: string;
+  /** The model call itself: count it as in flight until `release` runs (T-114a C-6). */
+  readonly reserve?: boolean;
 }
 
+/** Tokens counted for one call in flight. [ASSUMED] a typical ticket call; a cap check, not a bill. */
+export const IN_FLIGHT_TOKEN_RESERVE = 4000;
+
 export type AiGuardDecision =
-  { readonly allowed: true } | { readonly allowed: false; readonly reason: AiInsightReason };
+  | { readonly allowed: true; readonly release?: () => void }
+  | { readonly allowed: false; readonly reason: AiInsightReason };
 
 export interface AiGuardOptions {
   /** The policy gate (T-112). Absent: every AI call is refused (fail closed). */
   readonly policyGate: PolicyGate | undefined;
   readonly db: Pick<Database['db'], 'select'>;
   readonly budget: BudgetMonitor;
+  /**
+   * The caps behind `budget`. With them, calls that reserve count `IN_FLIGHT_TOKEN_RESERVE` tokens
+   * each while they run, so concurrent calls cannot all pass a nearly full budget. Without them the
+   * check is the plain read of the day's usage.
+   */
+  readonly caps?: AiCaps | undefined;
 }
 
 /**
@@ -32,6 +44,8 @@ export interface AiGuardOptions {
  * Any error is a refusal. The caller then does no model call and falls back to rules or a person.
  */
 export function createAiGuard(options: AiGuardOptions) {
+  // Calls past the check and not yet finished, in this process.
+  let inFlight = 0;
   return {
     async check(request: AiGuardRequest): Promise<AiGuardDecision> {
       try {
@@ -63,7 +77,24 @@ export function createAiGuard(options: AiGuardOptions) {
 
         const budget = await options.budget.check();
         if (budget.level === 'stop') return { allowed: false, reason: 'budget_stop' };
-        return { allowed: true };
+        if (request.reserve !== true) return { allowed: true };
+        if (options.caps !== undefined) {
+          const withReserve = evaluateBudget(options.caps, {
+            costUsd: budget.usage.costUsd,
+            tokens: budget.usage.tokens + (inFlight + 1) * IN_FLIGHT_TOKEN_RESERVE,
+          });
+          if (withReserve.level === 'stop') return { allowed: false, reason: 'budget_stop' };
+        }
+        inFlight += 1;
+        let released = false;
+        return {
+          allowed: true,
+          release: () => {
+            if (released) return;
+            released = true;
+            inFlight -= 1;
+          },
+        };
       } catch {
         return { allowed: false, reason: 'policy_denied' };
       }

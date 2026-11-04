@@ -320,6 +320,16 @@ function applyGuards(env: Readonly<Record<string, unknown>>, ctx: z.RefinementCt
     ctx.addIssue({ code: 'custom', path: [key], message });
   };
 
+  // Two Pub/Sub push endpoints with one audience would accept each other's token (T-114a C-5): a token
+  // minted for the alert route could be replayed at the Gmail route. Each audience must be its own.
+  const gmailAudience = text(env, 'GMAIL_PUSH_AUDIENCE');
+  if (gmailAudience !== undefined && gmailAudience === text(env, 'ALERT_PUSH_AUDIENCE')) {
+    fail(
+      'GMAIL_PUSH_AUDIENCE',
+      'must differ from ALERT_PUSH_AUDIENCE: a token for one push endpoint must not work on the other',
+    );
+  }
+
   // The example secrets are fine on a laptop. On any deployment reachable from outside this machine
   // a placeholder or short secret would let anyone forge sessions and read what is encrypted at
   // rest, so the boot is refused.

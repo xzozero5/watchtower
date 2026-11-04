@@ -108,7 +108,7 @@ const cell = (value: string | number | boolean | null): ToolDataCell => {
 
 export function createDataToolPort(
   db: Reader,
-  clients: Pick<ToolClients, 'data' | 'dataMock'>,
+  clients: Pick<ToolClients, 'data' | 'dataMock' | 'dataHardening'>,
 ): DataToolPort | undefined {
   const data = clients.data;
   if (data === undefined) return undefined;
@@ -117,6 +117,18 @@ export function createDataToolPort(
     async run(input) {
       if (input.intentKey === null || input.ticketId === null) {
         return { columns: [], items: [], note: 'No intent in scope.' };
+      }
+      // N2 (T-114a C-4): the same check the api runs before a person's data query. A source whose
+      // reader can do more than read, or a check that cannot run, switches the tool off (fail closed).
+      if (clients.dataHardening !== undefined) {
+        const problems = await clients.dataHardening().catch(() => ['the hardening check failed']);
+        if (problems.length > 0) {
+          return {
+            columns: [],
+            items: [],
+            note: 'The data source is not read-only; the tool is off.',
+          };
+        }
       }
       const template = await templateForAi(db, input.intentKey, 'data');
       if (template === null) {

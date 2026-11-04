@@ -11,6 +11,14 @@ export const MAX_BODY_BYTES = 64 * 1024;
 // Google's addresses, so someone flooding the URL from elsewhere uses up only their own allowance,
 // not the api's per-IP limit that every request through the tunnel would otherwise share.
 export const PER_CLIENT_PER_MINUTE = 120;
+// Requests per minute in total that may go on to the api (T-114a C-7). The api counts every push that
+// comes through this filter as ONE client (the filter's own address; it does not trust a forwarded
+// address, since TRUST_PROXY_HOPS is global to the api), against GMAIL_PUSH_RATE_PER_MINUTE (default
+// 600). Several callers at 120 each could fill that shared allowance and lock Pub/Sub out. Keeping the
+// total below the api's limit means a flood through the tunnel is stopped here and can never exhaust
+// the api's bucket. It must stay under GMAIL_PUSH_RATE_PER_MINUTE. Only requests that carry a bearer
+// token count, because only those reach the api.
+export const TOTAL_PER_MINUTE = 300;
 // Only these request headers go to the api: no hop-by-hop, upgrade or forwarding headers.
 const FORWARDED_HEADERS = ['authorization', 'content-type', 'content-length', 'user-agent'];
 const UPSTREAM_TIMEOUT_MS = 10_000;
@@ -50,9 +58,15 @@ export function createLimiter(limit, now = () => Date.now()) {
   };
 }
 
-export function createPushFilter({ upstream, log = () => {}, limit = PER_CLIENT_PER_MINUTE }) {
+export function createPushFilter({
+  upstream,
+  log = () => {},
+  limit = PER_CLIENT_PER_MINUTE,
+  totalLimit = TOTAL_PER_MINUTE,
+}) {
   assertUpstream(upstream);
   const allow = createLimiter(limit);
+  const allowTotal = createLimiter(totalLimit);
   const server = createServer((req, res) => {
     const path = (req.url ?? '').split('?')[0];
     const answer = (status, why) => {
@@ -68,6 +82,7 @@ export function createPushFilter({ upstream, log = () => {}, limit = PER_CLIENT_
     if (typeof authorization !== 'string' || !/^Bearer \S+$/.test(authorization)) {
       return answer(401, 'unsigned');
     }
+    if (!allowTotal('all')) return answer(429, 'limited (total)');
     const declared = Number(req.headers['content-length'] ?? '0');
     if (!Number.isFinite(declared) || declared > MAX_BODY_BYTES) return answer(413, 'too large');
 

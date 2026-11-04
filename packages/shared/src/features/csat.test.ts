@@ -9,6 +9,7 @@ import {
   csatSettingsSchema,
   csatSettingsUpdateSchema,
   csatSurveyUrl,
+  stripCsatLinkTokens,
 } from './csat.js';
 
 describe('csatSurveyUrl', () => {
@@ -114,5 +115,26 @@ describe('logging', () => {
     expect(CSAT_TOKEN_HEADER).toBe('x-csat-token');
     expect(LOG_REDACT_PATHS).toContain(`req.headers["${CSAT_TOKEN_HEADER}"]`);
     expect(LOG_REDACT_PATHS).toContain('req.headers["x-portal-token"]');
+  });
+});
+
+describe('stripCsatLinkTokens (T-171 review C-8)', () => {
+  const token =
+    'wtc1.0123456789abcdef0123456789abcdef.lxyz12.ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopq';
+
+  it('removes a survey link token wherever it appears, and nothing else', () => {
+    const text = `see https://x.test/csat#token=${token}&score=3 and ${token}!`;
+    expect(stripCsatLinkTokens(text)).toBe(
+      'see https://x.test/csat#token=[survey-link-removed]&score=3 and [survey-link-removed]!',
+    );
+    expect(stripCsatLinkTokens('plain wtc1.notatoken text')).toBe('plain wtc1.notatoken text');
+    // the dots are dots, not "any character"
+    expect(stripCsatLinkTokens(token.replaceAll('.', '-'))).toBe(token.replaceAll('.', '-'));
+  });
+
+  it('stays linear on a long run of the prefix', () => {
+    const started = Date.now();
+    stripCsatLinkTokens('wtc1.'.repeat(100_000));
+    expect(Date.now() - started).toBeLessThan(1000);
   });
 });

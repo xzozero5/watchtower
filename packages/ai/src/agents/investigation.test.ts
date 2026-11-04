@@ -22,6 +22,7 @@ import type { InvestigationEvidence } from './evidence.js';
 import { investigateTicket, planRunbook, type InvestigateInput } from './investigate.js';
 import { authorKbDraft } from './kb-author.js';
 import type { TicketTurn } from './summarize.js';
+import { ALLOW_ALL_GUARD } from '../test-guard.js';
 
 const TICKET = '11111111-1111-4111-8111-111111111111';
 const HASH_KEY = 'unit-test-hash-key-0123456789abcdef';
@@ -106,6 +107,7 @@ function rig(
   };
   const deps: AgentDeps = {
     llm: createAuditedLlm({
+      guard: ALLOW_ALL_GUARD,
       settings: { load: () => Promise.resolve(mockSettings()) },
       providers: { mock: provider },
       sink: {

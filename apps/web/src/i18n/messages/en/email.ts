@@ -19,6 +19,9 @@ export const emailEn = {
     date: 'Date',
     subject: 'Subject',
     unknownSender: 'Unknown sender',
+    unauthenticated: 'Unauthenticated sender',
+    unauthenticatedHint:
+      'The mail server could not confirm this message came from the address shown. The AI shares less detail on this ticket.',
     noText: '(no message text)',
     body: 'Email from {name}',
   },

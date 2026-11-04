@@ -15,6 +15,7 @@ import {
   type AssistantToolHost,
   type AssistantTurnInput,
 } from './assistant.js';
+import { ALLOW_ALL_GUARD } from '../test-guard.js';
 
 const RAW_EMAIL = 'jane.doe@customer.example';
 
@@ -45,6 +46,7 @@ function rig(
   };
   state.deps = {
     llm: createAuditedLlm({
+      guard: ALLOW_ALL_GUARD,
       settings: { load: () => Promise.resolve(mockSettings()) },
       providers: { mock: provider },
       sink: {

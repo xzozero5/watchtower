@@ -1,4 +1,5 @@
 export * from './adapter.js';
+export * from './auth-results.js';
 export * from './classify.js';
 export * from './fake.js';
 export * from './fake-mime.js';

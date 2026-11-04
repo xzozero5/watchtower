@@ -8,12 +8,14 @@ import { DevMockLlmProvider } from '../providers/dev-mock.js';
 import { createRedactor } from '../redaction/redactor.js';
 import type { AgentDeps } from './common.js';
 import { summarizeClaims, type ClaimFact } from './summary.js';
+import { ALLOW_ALL_GUARD } from '../test-guard.js';
 
 function rig(provider: LlmProvider = new DevMockLlmProvider(), allowed = true) {
   const runs: AiRunRecord[] = [];
   const requests: LlmRequest[] = [];
   const deps: AgentDeps = {
     llm: createAuditedLlm({
+      guard: ALLOW_ALL_GUARD,
       settings: { load: () => Promise.resolve(mockSettings()) },
       providers: {
         mock: {

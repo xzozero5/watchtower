@@ -138,12 +138,35 @@ export async function resolveToolScope(
   return { intent: null, basis: 'none' };
 }
 
+/** Every inbound email message came from a sender the receiving server authenticated (`pass`). */
+export function senderAuthenticated(
+  messages: readonly { direction: string; emailMeta: unknown }[],
+): boolean {
+  return messages
+    .filter((message) => message.direction === 'inbound')
+    .every((message) => {
+      const meta = message.emailMeta;
+      return (
+        typeof meta === 'object' &&
+        meta !== null &&
+        (meta as { senderAuth?: unknown }).senderAuth === 'pass'
+      );
+    });
+}
+
 /** Verified for the disclosure policy (po #26): LINE tickets need the LINE identity verified, others the contact. */
 export function disclosureFor(
   channel: string,
   contact: { verifiedAt: Date | null; lineVerifiedAt: Date | null } | undefined,
+  /**
+   * Email only (T-114a C-3): did the receiving server authenticate every inbound message's sender?
+   * `From` is typed by the sender, so a verified contact's address alone proves nothing.
+   * Undefined means the question does not apply (not an email ticket).
+   */
+  senderAuthenticated?: boolean,
 ): 'verified' | 'restricted' {
   if (contact === undefined) return 'restricted';
+  if (channel === 'gmail' && senderAuthenticated === false) return 'restricted';
   const verified = channel === 'line' ? contact.lineVerifiedAt : contact.verifiedAt;
   return verified === null ? 'restricted' : 'verified';
 }
@@ -252,6 +275,7 @@ export async function runInvestigation(
         direction: schema.message.direction,
         visibility: schema.message.visibility,
         text: schema.message.bodyText,
+        emailMeta: schema.message.emailMeta,
       })
       .from(schema.message)
       .where(eq(schema.message.ticketId, ticket.id))
@@ -421,7 +445,7 @@ export async function runInvestigation(
     turns,
     intentKey: ticketIntent.key,
     customerLanguage: detectLanguage(customerText),
-    disclosure: disclosureFor(ticket.channel, requester),
+    disclosure: disclosureFor(ticket.channel, requester, senderAuthenticated(messages)),
     evidence,
     note: job.note,
     abortSignal: signal,
