@@ -52,7 +52,7 @@ export const CSAT_SCORE_FRAGMENT_KEY = 'score';
  * who quotes the survey link in a reply sends a bearer token back to us (T-171 review C-8): it is
  * taken out of inbound text before the text is stored or sent to a model.
  */
-export const CSAT_LINK_TOKEN_SOURCE = 'wtc1\.[0-9a-f]{32}\.[0-9a-z]{1,10}\.[A-Za-z0-9_-]{43}';
+export const CSAT_LINK_TOKEN_SOURCE = String.raw`wtc1\.[0-9a-f]{32}\.[0-9a-z]{1,10}\.[A-Za-z0-9_-]{43}`;
 export const CSAT_LINK_REMOVED = '[survey-link-removed]';
 
 /** `text` with every survey link token replaced by `CSAT_LINK_REMOVED`. */

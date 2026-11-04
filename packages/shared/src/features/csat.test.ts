@@ -128,6 +128,8 @@ describe('stripCsatLinkTokens (T-171 review C-8)', () => {
       'see https://x.test/csat#token=[survey-link-removed]&score=3 and [survey-link-removed]!',
     );
     expect(stripCsatLinkTokens('plain wtc1.notatoken text')).toBe('plain wtc1.notatoken text');
+    // the dots are dots, not "any character"
+    expect(stripCsatLinkTokens(token.replaceAll('.', '-'))).toBe(token.replaceAll('.', '-'));
   });
 
   it('stays linear on a long run of the prefix', () => {

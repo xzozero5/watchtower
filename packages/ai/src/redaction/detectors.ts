@@ -445,10 +445,11 @@ function detectSingleDigits(text: string, cluster: Cluster, spans: Span[]): void
       const group = groups[to];
       if (group === undefined || group.end - group.start !== 1) break;
       if (to > from) {
-        const current = kinds[to - 1] ?? ' ';
-        if (current !== null) {
-          kind ??= current;
-          if (current !== kind) break;
+        // `null` is a neutral separator (a parenthesis); it must not be turned into a space.
+        const current = kinds[to - 1];
+        if (current !== undefined && current !== null) {
+          if (kind === undefined) kind = current;
+          else if (current !== kind) break;
         }
       }
       digits += text.charAt(group.start);
