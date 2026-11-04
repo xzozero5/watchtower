@@ -282,6 +282,7 @@ describe('preferences', () => {
       ['ops.smtp_auth_failed', true, false],
       ['ops.upload_quota_global', true, false],
       ['ops.outbox_dead', true, false],
+      ['autonomy.rollback', true, false],
     ]);
   });
 
