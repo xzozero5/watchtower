@@ -1,6 +1,6 @@
 import { hashLlmInput } from '../hash.js';
 import type { LlmProvider, LlmRequest, LlmResponse } from '../contract.js';
-import { assistantAnswer, assistantPlan, claimSummary } from './dev-mock-assistant.js';
+import { assistantAnswer, assistantPlan, claimSummary, weeklyBrief } from './dev-mock-assistant.js';
 import { MockLlmProvider, type MockRule } from './mock.js';
 
 /**
@@ -455,6 +455,9 @@ export class DevMockLlmProvider implements LlmProvider {
         break;
       case 'claim_summary':
         text = claimSummary(request);
+        break;
+      case 'weekly_brief':
+        text = weeklyBrief(request);
         break;
       default:
         text = `[mock:${request.prompt.id}:${hash.slice(0, 8)}]`;

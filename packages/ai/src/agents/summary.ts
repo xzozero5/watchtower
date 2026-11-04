@@ -1,18 +1,11 @@
-import {
-  claimSchema,
-  makeClaim,
-  type AiInsightReason,
-  type Claim,
-  type ClaimEvidence,
-} from '@watchtower/shared';
+import { claimSchema, makeClaim, type AiInsightReason, type Claim } from '@watchtower/shared';
 import { z } from 'zod';
 
 import type { AuditedResult } from '../audited.js';
-import { clipRedacted, joinRedacted } from '../redaction/redacted-text.js';
 import { renderPrompt } from '../prompts.js';
-import { neutralizeTags } from './leak-check.js';
 import type { Redactor } from '../redaction/redactor.js';
 import { stripLinks, type AssistantFact } from './assistant.js';
+import { evidenceFor, factBlock } from './fact-block.js';
 import { askGuard, extractJsonObject, failureFor, skippedFor, type AgentDeps } from './common.js';
 
 export const CLAIM_SUMMARY_PROMPT_ID = 'claim_summary';
@@ -57,7 +50,6 @@ export type ClaimSummaryOutcome =
   | { readonly status: 'failed'; readonly reason: AiInsightReason };
 
 const MAX_FACTS = 40;
-const MAX_FACT_CHARS = 400;
 
 /**
  * Turns facts the host already read (with the viewer's own access) into claims that cite them by id
@@ -95,22 +87,7 @@ export async function summarizeClaims(
         maxClaims: String(input.maxClaims),
       }),
     );
-    const lines = facts
-      .map(
-        (fact, index) =>
-          session.redactToolOutput(
-            'summary',
-            `[f${String(index + 1)}] ${fact.kind}${fact.mock === true ? ' (mock data)' : ''}: ${neutralizeTags(
-              fact.text,
-            ).replaceAll(/<(\/?\s*facts\b)/gi, '‹$1')}`,
-          ),
-        // Cut after redacting: a cut address or number is no longer recognized (N4).
-      )
-      .map((line) => clipRedacted(line, MAX_FACT_CHARS + 40));
-    const user = joinRedacted(
-      [session.redact('<facts>'), ...lines, session.redact('</facts>')],
-      '\n',
-    );
+    const user = factBlock(session, facts);
     result = await deps.llm.generate({
       agent: 'summarizer',
       prompt: prompt.ref,
@@ -133,18 +110,7 @@ export async function summarizeClaims(
 
   const claims: Claim[] = [];
   for (const item of parsed.data.claims) {
-    const evidence: ClaimEvidence[] = [];
-    for (const id of new Set(item.factIds)) {
-      const index = /^f(\d{1,3})$/.exec(id)?.[1];
-      const fact = index === undefined ? undefined : facts[Number(index) - 1];
-      if (fact === undefined) continue;
-      evidence.push({
-        kind: fact.kind,
-        label: fact.label,
-        ...(fact.href === undefined ? {} : { href: fact.href }),
-        ...(fact.mock === true ? { mock: true } : {}),
-      });
-    }
+    const evidence = evidenceFor(facts, item.factIds);
     if (evidence.length === 0 && input.keepUncited !== true) continue;
     const claim = makeClaim(
       stripLinks(session.restore(item.text, 'internal').text).slice(0, 600),

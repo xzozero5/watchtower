@@ -20,6 +20,8 @@ export * from './agents/grade.js';
 export * from './agents/procedure-compiler.js';
 export * from './agents/assistant.js';
 export * from './agents/summary.js';
+export * from './agents/fact-block.js';
+export * from './agents/weekly-brief.js';
 export * from './toolkit/ports.js';
 export * from './toolkit/tools.js';
 export * from './toolkit/budget.js';
