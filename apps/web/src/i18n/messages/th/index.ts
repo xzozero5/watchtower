@@ -16,6 +16,7 @@ import { conversationTh } from './conversation';
 import { csatTh } from './csat';
 import { customerTh } from './customer';
 import { dashboardTh } from './dashboard';
+import { reportsTh } from './reports';
 import { detailsTh } from './details';
 import { devHomeTh } from './devHome';
 import { errorsTh } from './errors';
@@ -98,6 +99,7 @@ export const th: Messages = {
   outbound: outboundTh,
   ops: opsTh,
   dashboard: dashboardTh,
+  reports: reportsTh,
   outboxAdmin: outboxAdminTh,
   investigate: investigateTh,
 };

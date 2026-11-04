@@ -1,11 +1,12 @@
 'use client';
 
 import { DASHBOARD_DEFAULT_DAYS } from '@watchtower/shared';
-import { cn, IconButton, SegmentedControl, Skeleton } from '@watchtower/ui';
-import { RefreshCw } from 'lucide-react';
+import { Button, cn, IconButton, SegmentedControl, Skeleton } from '@watchtower/ui';
+import { Crown, RefreshCw, Wallet } from 'lucide-react';
 import { useState } from 'react';
 
 import { AccessDenied, LoadError, PageHeader } from '@/components/admin/admin-page';
+import { AppLink } from '@/components/app-link';
 import { RelativeTime } from '@/components/relative-time';
 import { useT } from '@/i18n/provider';
 import { useSession } from '@/lib/auth/session';
@@ -57,6 +58,7 @@ export function DashboardPage() {
 
 function DashboardBody() {
   const t = useT();
+  const { can } = useSession();
   const [days, setDays] = useState<DashboardWindow>(DASHBOARD_DEFAULT_DAYS as DashboardWindow);
   const query = useDashboardOps(days, true);
   const ops = query.data;
@@ -69,6 +71,22 @@ function DashboardBody() {
         title={t('dashboard.title')}
         actions={
           <>
+            {can('ai.run.read') ? (
+              <Button asChild size="sm">
+                <AppLink href="/dashboard/cost">
+                  <Wallet aria-hidden className="size-4" />
+                  {t('reports.links.cost')}
+                </AppLink>
+              </Button>
+            ) : null}
+            {can('ceo.view') ? (
+              <Button asChild size="sm">
+                <AppLink href="/dashboard/ceo">
+                  <Crown aria-hidden className="size-4" />
+                  {t('reports.links.ceo')}
+                </AppLink>
+              </Button>
+            ) : null}
             {ops ? (
               <span className="text-xs text-muted-foreground">
                 <span className="sr-only">{t('dashboard.updated', { time: '' })}</span>

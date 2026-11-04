@@ -43,6 +43,7 @@ import {
 import { createAdminEndpoints } from './admin-endpoints';
 import { createNotificationEndpoints } from './notification-endpoints';
 import { createOpsEndpoints } from './ops-endpoints';
+import { createReportEndpoints } from './report-endpoints';
 import { createShiftEndpoints } from './shift-endpoints';
 import { createAssistantEndpoints } from './assistant-endpoints';
 import { createToolEndpoints } from './tool-endpoints';
@@ -79,6 +80,7 @@ export function createEndpoints(client: ApiClient) {
     ...createNotificationEndpoints(client),
     ...createShiftEndpoints(client),
     ...createOpsEndpoints(client),
+    ...createReportEndpoints(client),
     ...createToolEndpoints(client),
     ...createUploadEndpoints(client),
     ...createAssistantEndpoints(client),

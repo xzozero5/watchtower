@@ -38,6 +38,15 @@ function open(
   return api;
 }
 
+/** The page opened as `role`, returning the render handle so a test can open it again as someone else. */
+function renderOpen(role: Role) {
+  consoleApi({
+    role,
+    overrides: { 'GET /v1/dashboard/ops': () => ({ json: dashboardOps({}, 7) }) },
+  });
+  return renderConsole(<DashboardPage />);
+}
+
 const section = (name: string) => screen.getByRole('region', { name });
 const tile = (scope: HTMLElement, label: string | RegExp) =>
   within(scope).getByText(label).closest('[data-state]') as HTMLElement;
@@ -309,6 +318,23 @@ describe('Ops dashboard: what a role does not see', () => {
     open(undefined, 'client');
     expect(await screen.findByText(/don.t have access/i)).toBeVisible();
     expect(screen.queryByRole('region', { name: 'Now' })).toBeNull();
+  });
+
+  it('links the AI cost page and the CEO view to those who may read them, and to nobody else', async () => {
+    const { unmount } = renderOpen('lead');
+    expect(await screen.findByRole('link', { name: 'AI cost' })).toHaveAttribute(
+      'href',
+      '/dashboard/cost',
+    );
+    expect(screen.getByRole('link', { name: 'CEO view' })).toHaveAttribute(
+      'href',
+      '/dashboard/ceo',
+    );
+    unmount();
+    renderOpen('agent');
+    await screen.findByRole('region', { name: 'Now' });
+    expect(screen.queryByRole('link', { name: 'AI cost' })).toBeNull();
+    expect(screen.queryByRole('link', { name: 'CEO view' })).toBeNull();
   });
 });
 
