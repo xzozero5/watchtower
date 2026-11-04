@@ -26,3 +26,7 @@ logs/*
 playwright-report*/
 test-results*/
 .cache/
+
+# eval runner output (T-302): redacted replay of past tickets and run reports stay local
+evals/.replay/
+evals/reports/
