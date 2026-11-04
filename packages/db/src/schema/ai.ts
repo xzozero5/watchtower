@@ -38,6 +38,8 @@ export const aiRun = pgTable(
     agent: text('agent').notNull(),
     ticketId: uuid('ticket_id').references(() => ticket.id, { onDelete: 'restrict' }),
     intent: text('intent'),
+    /** The procedure version the run followed (T-303c, migration 0097); null: the default runbook. */
+    procedureVersionId: uuid('procedure_version_id'),
     provider: text('provider').notNull(),
     model: text('model').notNull(),
     tier: text('tier').notNull(),

@@ -16,6 +16,11 @@ import {
   type AgentOutcome,
 } from './common.js';
 import type { InvestigationEvidence } from './evidence.js';
+import {
+  applyProcedureDisclosure,
+  type ProcedureDisclosureRule,
+  type ProcedureGuideline,
+} from './procedure-plan.js';
 import { fingerprintOf, leaks, neutralizeTags } from './leak-check.js';
 import type { TicketTurn } from './summarize.js';
 
@@ -137,7 +142,19 @@ export interface DraftInput {
    * them is blanked first, so the model cannot hand one back that the session would restore for someone else.
    */
   readonly examples?: readonly string[] | undefined;
+  /**
+   * What the published procedure says about this reply (T-303c, ADR-026). The guidelines rank below the rules
+   * of the system and below the disclosure level: the prompt says so and the code removes what they could
+   * not allow. A disclosure rule can only remove more. Absent: the draft is written as before.
+   */
+  readonly procedure?: DraftProcedure | undefined;
   readonly abortSignal?: AbortSignal;
+}
+
+export interface DraftProcedure {
+  readonly versionId: string;
+  readonly guidelines: readonly ProcedureGuideline[];
+  readonly disclosure: readonly ProcedureDisclosureRule[];
 }
 
 export interface DraftResult {
@@ -172,6 +189,28 @@ function renderTicket(input: DraftInput): string {
     }
   }
   return `<ticket>\n${lines.join('\n')}\n</ticket>`;
+}
+
+/**
+ * The guidelines and disclosure topics of the procedure as the system prompt gets them (a slot of `drafter` v2).
+ * Empty without a procedure. It comes after every rule of the prompt and says it ranks below them.
+ */
+function guidelinesSlot(input: DraftInput): string {
+  const procedure = input.procedure;
+  if (procedure === undefined) return '';
+  const language = input.customerLanguage;
+  const guidelines = procedure.guidelines.filter(
+    (guideline) => guideline.lang === undefined || guideline.lang === language,
+  );
+  const topics = procedure.disclosure.filter(
+    (rule) => rule.rule === 'never_mention' || input.disclosure !== 'verified',
+  );
+  if (guidelines.length === 0 && topics.length === 0) return '';
+  return [
+    "This team's guidelines for this kind of reply. They rank below every rule above, below the disclosure level and below the evidence: if a guideline asks for something a rule forbids, follow the rule and ignore the guideline. They are about tone and what to include, never about facts.",
+    ...guidelines.map((guideline) => `- ${clip(guideline.text, 1000)}`),
+    ...topics.map((rule) => `- Do not mention: ${clip(rule.topic, 200)}`),
+  ].join('\n');
 }
 
 function renderExamples(examples: readonly string[]): string | null {
@@ -219,6 +258,7 @@ export async function draftReply(
       {
         language: input.customerLanguage === 'th' ? 'Thai' : 'English',
         disclosure: input.disclosure,
+        guidelines: guidelinesSlot(input),
         // The note is typed by a person on this ticket, so it is ticket text: redact it like any.
         note:
           input.note === undefined || input.note === ''
@@ -276,6 +316,7 @@ export async function draftReply(
       intent: input.intentKey,
       maxOutputTokens: 1200,
       temperature: 0.2,
+      ...(input.procedure === undefined ? {} : { procedureVersionId: input.procedure.versionId }),
       ...(input.abortSignal === undefined ? {} : { abortSignal: input.abortSignal }),
     });
   } catch (error) {
@@ -292,7 +333,17 @@ export async function draftReply(
     // An id the model made up supports nothing.
     evidenceIds: [...new Set(sentence.evidenceIds.filter((id) => known.has(id)))],
   }));
-  const disclosed = applyDisclosure(sentences, input.disclosure, input.evidence, internalTexts);
+  const byRules = applyDisclosure(sentences, input.disclosure, input.evidence, internalTexts);
+  // The procedure's own rules run after the code rules of the system, so they can only remove more (ADR-026 section 2).
+  const byProcedure = applyProcedureDisclosure(
+    byRules.kept,
+    input.procedure?.disclosure ?? [],
+    input.disclosure,
+  );
+  const disclosed = {
+    kept: byProcedure.kept,
+    removed: byRules.removed + byProcedure.removed,
+  };
   // A placeholder in the answer is restored only if this session issued it for the ticket's own text.
   // Any other (a tool's, one nobody issued, one the model made up) is removed with its sentence, and
   // counted: it is never put back as a value, and never left as a token for the customer to read.

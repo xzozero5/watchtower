@@ -30,6 +30,8 @@ export interface AiRunInput {
   readonly errorCode: string | null;
   readonly intent: string | null;
   readonly ticketId: string | null;
+  /** The procedure version the run followed (T-303c); absent or null: none. */
+  readonly procedureVersionId?: string | null | undefined;
   readonly startedAt: string;
 }
 
@@ -70,6 +72,7 @@ export function createAiRunRecorder(options: { readonly db: AiRunDatabase }): Ai
             agent: run.agent,
             ticketId: run.ticketId,
             intent: run.intent,
+            procedureVersionId: run.procedureVersionId ?? null,
             provider: run.provider,
             model: run.model,
             tier: run.tier,

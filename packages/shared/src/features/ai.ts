@@ -10,6 +10,7 @@
  */
 import { z } from 'zod';
 
+import { escalateTargetSchema, stepIdSchema } from '../procedure.js';
 import { ticketPrioritySchema } from '../sla.js';
 import { claimEvidenceSchema, claimSchema } from './claims.js';
 
@@ -352,6 +353,38 @@ export const aiPrioritySuggestionSchema = z.object({
 });
 export type AiPrioritySuggestion = z.infer<typeof aiPrioritySuggestionSchema>;
 
+/**
+ * What the procedure of the intent asked of this investigation (T-303c, ADR-026). Internal: the customer never
+ * reads it. `checks` answer the questions of the `check` steps from the evidence; `escalations` are proposals a
+ * person accepts with one click; `requireHuman` says nothing of this ticket goes out by itself.
+ */
+export const aiProcedureReportSchema = z.object({
+  versionId: z.uuid(),
+  autosend: z.enum(['allowed', 'never']),
+  checks: z
+    .array(
+      z.object({
+        stepId: stepIdSchema,
+        question: z.string().max(300),
+        answer: z.string().max(600),
+        evidenceIds: z.array(z.string().max(100)).max(10),
+      }),
+    )
+    .max(20),
+  escalations: z
+    .array(
+      z.object({
+        stepId: stepIdSchema,
+        to: escalateTargetSchema,
+        priority: ticketPrioritySchema.optional(),
+        note: z.string().max(300),
+      }),
+    )
+    .max(20),
+  requireHuman: z.array(z.object({ stepId: stepIdSchema, reason: z.string().max(200) })).max(20),
+});
+export type AiProcedureReport = z.infer<typeof aiProcedureReportSchema>;
+
 /** The investigation report (T-108b): what the tools found, and what they could not. */
 export const aiReportSchema = z.object({
   /** One claim, and the evidence cards it rests on. A finding with no evidence is shown as `Uncited`. */
@@ -391,6 +424,8 @@ export const aiReportSchema = z.object({
   suggestedPriority: aiPrioritySuggestionSchema.optional(),
   /** Set when no customer reply is offered on this ticket, and why (T-147). */
   replyBlocked: aiReplyBlockReasonSchema.optional(),
+  /** Present when the intent runs a published procedure (T-303c). */
+  procedure: aiProcedureReportSchema.optional(),
 });
 export type AiReport = z.infer<typeof aiReportSchema>;
 

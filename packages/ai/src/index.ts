@@ -15,6 +15,8 @@ export * from './agents/summarize.js';
 export * from './agents/evidence.js';
 export * from './agents/investigate.js';
 export * from './agents/draft.js';
+export * from './agents/procedure-plan.js';
+export * from './agents/procedure-simulation.js';
 export * from './agents/kb-author.js';
 export * from './agents/grade.js';
 export * from './agents/procedure-compiler.js';
