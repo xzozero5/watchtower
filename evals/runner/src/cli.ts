@@ -3,11 +3,19 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 
+import { createRedactor } from '@watchtower/ai';
 import { createDatabase } from '@watchtower/db';
 
 import { EVAL_AGENTS, EVAL_SOURCES, type EvalAgent, type EvalSource } from './case.js';
 import { runEval } from './eval.js';
 import { loadCases, type CaseDir } from './load.js';
+import {
+  evaluateRedaction,
+  formatRedactionReport,
+  redactionCorpusSchema,
+  redactionGate,
+  type RedactFn,
+} from './redaction-eval.js';
 import { exportReplay } from './replay.js';
 import { buildReport, compareReports, formatReport, parseBaseline } from './report.js';
 import { createRig, EvalSetupError, type EvalProviderKind } from './rig.js';
@@ -39,11 +47,18 @@ Options
   --min-pass-rate 1              exit 1 when any prompt version passes less often (default 1)
   --max-calls 100                stop after this many model calls (the budget guard of the run)
 
+  pnpm --filter @watchtower/eval-runner redaction [--json] [--min-recall 1] [--max-false-positive 0.02]
+    deterministic recall / false-positive eval of the redactor on evals/runner/redaction/corpus.json (no model, no network, T-302e)
+
   pnpm --filter @watchtower/eval-runner replay -- --days 30 --limit 50
     reads resolved tickets from DATABASE_URL, redacts them and writes evals/.replay/replay.json (git-ignored)
 `;
 
-function list<T extends string>(value: string | undefined, allowed: readonly T[], what: string): T[] {
+function list<T extends string>(
+  value: string | undefined,
+  allowed: readonly T[],
+  what: string,
+): T[] {
   if (value === undefined || value === '') return [];
   return value.split(',').map((item) => {
     const found = allowed.find((candidate) => candidate === item.trim());
@@ -76,7 +91,11 @@ async function run(argv: string[]): Promise<number> {
   const kind: EvalProviderKind = provider;
   const sources = list(values.source, EVAL_SOURCES, 'source');
   const wantedSources: EvalSource[] =
-    sources.length > 0 ? sources : kind === 'mock' ? ['golden', 'replay', 'smoke'] : ['golden', 'replay'];
+    sources.length > 0
+      ? sources
+      : kind === 'mock'
+        ? ['golden', 'replay', 'smoke']
+        : ['golden', 'replay'];
   // The smoke cases pin the answer of the mock provider; a real model has no such answer to check.
   const usable = kind === 'mock' ? wantedSources : wantedSources.filter((s) => s !== 'smoke');
   const dirs: CaseDir[] = usable.map((source) => ({ dir: SOURCE_DIRS[source], source }));
@@ -100,7 +119,8 @@ async function run(argv: string[]): Promise<number> {
   }
 
   const maxCalls = Number(values['max-calls']);
-  if (!Number.isInteger(maxCalls) || maxCalls < 1) throw new EvalSetupError('--max-calls wants a whole number');
+  if (!Number.isInteger(maxCalls) || maxCalls < 1)
+    throw new EvalSetupError('--max-calls wants a whole number');
   const rig = createRig({
     provider: kind,
     maxCalls,
@@ -132,11 +152,39 @@ async function run(argv: string[]): Promise<number> {
   const minRate = Number(values['min-pass-rate']);
   const below = report.summary.filter((row) => row.passRate < minRate);
   if (below.length > 0) {
-    console.error(`eval: ${String(below.length)} prompt version(s) under the pass rate ${String(minRate)}`);
+    console.error(
+      `eval: ${String(below.length)} prompt version(s) under the pass rate ${String(minRate)}`,
+    );
     return 1;
   }
   if (comparison !== undefined && comparison.regressions.length > 0) return 1;
   return 0;
+}
+
+/** Recall and false positives of the redactor on made-up text (T-302e). Needs no key and no network. */
+function redaction(argv: string[]): number {
+  const { values } = parseArgs({
+    args: argv,
+    options: {
+      json: { type: 'boolean', default: false },
+      corpus: { type: 'string', default: join(EVALS, 'runner', 'redaction', 'corpus.json') },
+      'min-recall': { type: 'string', default: '1' },
+      'max-false-positive': { type: 'string', default: '0.02' },
+    },
+  });
+  const corpus = redactionCorpusSchema.parse(JSON.parse(readFileSync(values.corpus, 'utf8')));
+  const redactor: RedactFn = (text, names) =>
+    createRedactor({ names: () => names })
+      .session({ scope: 'eval:redaction' })
+      .redact(text);
+  const report = evaluateRedaction('createRedactor()', corpus.cases, redactor);
+  console.log(values.json ? JSON.stringify(report, null, 2) : formatRedactionReport(report));
+  const problems = redactionGate(report, {
+    minRecall: Number(values['min-recall']),
+    maxFalsePositive: Number(values['max-false-positive']),
+  });
+  for (const problem of problems) console.error(`redaction eval: ${problem}`);
+  return problems.length > 0 ? 1 : 0;
 }
 
 async function replay(argv: string[]): Promise<number> {
@@ -163,7 +211,9 @@ async function replay(argv: string[]): Promise<number> {
   console.log(
     `replay: ${String(exported.cases.length)} case(s) from ${String(exported.tickets)} ticket(s) (${String(exported.skipped)} skipped) -> ${values.out}`,
   );
-  console.log('The file is redacted but is ticket text: it stays in the git-ignored evals/.replay.');
+  console.log(
+    'The file is redacted but is ticket text: it stays in the git-ignored evals/.replay.',
+  );
   await database.close();
   return 0;
 }
@@ -172,6 +222,7 @@ async function main(): Promise<number> {
   const [command, ...rest] = process.argv.slice(2);
   try {
     if (command === undefined || command === 'run') return await run(command === 'run' ? rest : []);
+    if (command === 'redaction') return redaction(rest);
     if (command === 'replay') return await replay(rest);
     console.log(USAGE);
     return command === 'help' || command === '--help' ? 0 : 1;

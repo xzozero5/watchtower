@@ -184,7 +184,9 @@ export function formatReport(report: EvalReport, comparison?: Comparison): strin
     for (const result of failed) {
       const why = result.checks
         .filter((check) => !check.pass)
-        .map((check) => (check.detail === undefined ? check.name : `${check.name} (${check.detail})`))
+        .map((check) =>
+          check.detail === undefined ? check.name : `${check.name} (${check.detail})`,
+        )
         .join('; ');
       lines.push(`  ${result.agent}@v${String(result.promptVersion)} ${result.id}: ${why}`);
     }

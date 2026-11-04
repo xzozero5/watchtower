@@ -19,13 +19,7 @@ import {
   type GraderCase,
   type KbAuthorCase,
 } from './case.js';
-import {
-  checkClassifier,
-  checkDrafter,
-  checkGrader,
-  checkKbAuthor,
-  type Check,
-} from './checks.js';
+import { checkClassifier, checkDrafter, checkGrader, checkKbAuthor, type Check } from './checks.js';
 import { caseTicketId, type Rig } from './rig.js';
 
 export interface CaseResult {
@@ -135,7 +129,9 @@ async function kbAuthor(deps: AgentDeps, item: KbAuthorCase) {
   };
 }
 
-function sum(runs: readonly AiRunRecord[]): Pick<CaseResult, 'inputTokens' | 'outputTokens' | 'costUsd' | 'latencyMs'> {
+function sum(
+  runs: readonly AiRunRecord[],
+): Pick<CaseResult, 'inputTokens' | 'outputTokens' | 'costUsd' | 'latencyMs'> {
   const priced = runs.filter((run) => run.costUsd !== null);
   return {
     inputTokens: runs.reduce((n, run) => n + run.inputTokens, 0),

@@ -13,6 +13,7 @@
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "eval": "tsc -p tsconfig.build.json && node dist/cli.js run",
+    "redaction": "tsc -p tsconfig.build.json && node dist/cli.js redaction",
     "replay": "tsc -p tsconfig.build.json && node dist/cli.js replay"
   },
   "dependencies": {

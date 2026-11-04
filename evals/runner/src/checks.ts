@@ -143,7 +143,11 @@ export function checkGrader(got: ResolutionGrade, expect: GraderCase['expect']):
 
 export function checkKbAuthor(got: KbAuthorDraft | null, expect: KbAuthorCase['expect']): Check[] {
   const checks: Check[] = [
-    { name: 'drafted', pass: (got !== null) === expect.drafted, detail: `got ${got === null ? 'nothing' : 'an article'}` },
+    {
+      name: 'drafted',
+      pass: (got !== null) === expect.drafted,
+      detail: `got ${got === null ? 'nothing' : 'an article'}`,
+    },
   ];
   if (got === null) return checks;
   for (const needle of expect.titleContains ?? []) {

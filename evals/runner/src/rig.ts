@@ -50,7 +50,10 @@ export function createEvalGuard(maxCalls: number): AiCallGuard & { readonly call
 }
 
 /** The pin: `grader` at version 2 makes every `latest('grader')` of an agent answer version 2. */
-export function pinCatalog(base: PromptCatalog, pins: Readonly<Record<string, number>>): PromptCatalog {
+export function pinCatalog(
+  base: PromptCatalog,
+  pins: Readonly<Record<string, number>>,
+): PromptCatalog {
   return {
     ...base,
     latest(id) {
