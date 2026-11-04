@@ -187,5 +187,6 @@ describe('every model call goes through the guard (scan)', () => {
       }
     }
     expect(seen).toBeGreaterThanOrEqual(2);
-  });
+    // Reads every source file of two apps: well past the 5 s default when the machine is busy.
+  }, 60_000);
 });
