@@ -317,6 +317,36 @@ describe('attacks on the flow', () => {
     expect(attacker.cookie(ACCESS_COOKIE)).toBeUndefined();
   });
 
+  it('audits a callback that has no session or state cookie at all, with the address and the reason (T-125 QA-32)', async () => {
+    const stranger = h.client();
+    for (const path of [
+      '/v1/auth/google/callback',
+      '/v1/auth/google/callback?code=abc&state=xyz',
+      '/v1/auth/google/callback?error=access_denied',
+    ]) {
+      const callback = await stranger.get(path);
+      expect(landed(callback).searchParams.get('error'), path).toBe('state_invalid');
+    }
+    const rows = await pool().query<{
+      outcome: string;
+      actor_type: string;
+      ip: string | null;
+      metadata: { reason: string; status: number };
+    }>(
+      `SELECT outcome, actor_type, ip, metadata FROM audit_log
+        WHERE action = 'auth.login.google_failed' AND ip = $1`,
+      [stranger.ip],
+    );
+    expect(rows.rows).toHaveLength(3);
+    for (const row of rows.rows) {
+      expect(row).toMatchObject({
+        outcome: 'failure',
+        actor_type: 'anonymous',
+        metadata: { reason: 'state_invalid' },
+      });
+    }
+  });
+
   it('rejects a forged or foreign state cookie', async () => {
     const staff = await createStaff();
     const client = h.client();
