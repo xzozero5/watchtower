@@ -146,7 +146,7 @@
 - [ ] T-302d `backend-dev` แก้ prompt/procedure/model → replay อัตโนมัติ, regression บล็อก
 - [x] T-302e `ai-engineer` eval redaction (T-157) recall/FP ไทย + **T-153 NER local** (เจ้าของอนุมัติ dependency 2026-11-04 — ADR เลือก model/library ไม่มี network, วัดก่อน/หลัง) — **ปิด 2026-11-04** (redaction eval 92 เคส + T-153 ขั้น 1 ADR-027)
 - [ ] T-303a `architect` ADR procedures (schema steps Zod, NL→steps, versioning, intent/stage, ความสัมพันธ์ ADR-013)
-- [ ] T-303b `backend-dev` migration + CRUD + compile (AI ร่าง คนยืนยัน) + audit
+- [x] T-303b `backend-dev` migration + CRUD + compile (AI ร่าง คนยืนยัน) + audit — **ปิด 2026-11-04** (0097)
 - [ ] T-303c `ai-engineer` investigator/drafter ใช้ procedure ที่ publish · `ai_run` เก็บ version
 - [ ] T-303d `ai-engineer` simulation กับ ticket เก่า (runner 302c) ต้องผ่านก่อน publish
 - [ ] T-303e `frontend-dev` editor NL → preview → simulate → publish + `examples/procedures/`
@@ -157,8 +157,8 @@
 - [ ] T-304e `backend-dev` auto-rollback (violation/reopen/CSAT/grader fail) → stage 2 + audit + แจ้ง head
 - [ ] T-304f `backend-dev` รายงาน ready for promotion รายสัปดาห์ (§6.4) **ไม่นับข้อมูล seed**
 - [ ] T-304g `frontend-dev` admin intents: ปุ่ม stage 3 ปิดจน flag + รายงานเขียว · แสดง shadow
-- [ ] T-305a `backend-dev`+`frontend-dev` cost dashboard ต่อ agent/intent/ticket (รวม T-142)
-- [ ] T-305b `backend-dev`+`frontend-dev` CEO view §9.2 + tile plug-in (API/CSV)
+- [x] T-305a `backend-dev`+`frontend-dev` cost dashboard ต่อ agent/intent/ticket (รวม T-142) — **ปิด 2026-11-04** (ยังไม่มี e2e/axe ของหน้าใหม่)
+- [x] T-305b `backend-dev`+`frontend-dev` CEO view §9.2 + tile plug-in (API/CSV) — **ปิด 2026-11-04** (0099, §9.2 ข้อ 2,3,5,6 ยังไม่ทำ)
 - [ ] T-305c `ai-engineer` weekly brief (claim + หลักฐาน T-135, root cause top 5) head แก้ได้ + ตั้งเวลาส่ง
 - [ ] T-305d `backend-dev` export PDF (เจ้าของอนุมัติ dependency 2026-11-04 — ADR เลือก library ก่อน, ไม่มี network) · Google Docs mock
 - [ ] T-305e `backend-dev`+`ai-engineer`+`frontend-dev` roster planner (R-7.2) solver deterministic + AI อธิบาย · apply ต้องคนกด
