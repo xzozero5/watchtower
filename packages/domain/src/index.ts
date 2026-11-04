@@ -634,6 +634,7 @@ export {
 export {
   recordReplayResult,
   replayPassedForSet,
+  replaySetFor,
   type NewReplayResult,
   type ReplaySet,
 } from './autonomy/replay.js';

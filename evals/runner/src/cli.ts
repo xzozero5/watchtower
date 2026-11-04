@@ -16,6 +16,7 @@ import {
   redactionGate,
   type RedactFn,
 } from './redaction-eval.js';
+import { formatRecord, recordReplay } from './record.js';
 import { exportReplay } from './replay.js';
 import { buildReport, compareReports, formatReport, parseBaseline } from './report.js';
 import { createRig, EvalSetupError, type EvalProviderKind } from './rig.js';
@@ -59,6 +60,12 @@ Options
   pnpm --filter @watchtower/eval-runner simulate -- --steps steps.json [--baseline other.json] [--cases cases.json] [--provider mock]
     runs the steps of a procedure version on made-up cases and tools (default evals/runner/simulation/smoke.json): the same
     engine the worker runs on resolved tickets before a publish (T-303d, ADR-026 section 6). Exit 1 unless it passes.
+
+  pnpm --filter @watchtower/eval-runner record -- --intent <key> --as <email> [--dry-run] [--max-calls 100] [--days 90] [--limit 30]
+    runs the replay of the combination the gate reads (drafter/grader model, prompt versions, published procedure) on the
+    latest resolved, non-seed tickets of the intent plus the redaction eval, then calls record_replay_result() as that
+    person (needs ai.autonomy.promote; the database checks). Provider from AI_PROVIDER (mock by default: stored, never passed).
+    Prints numbers only, no ticket text. (T-306g)
 
   pnpm --filter @watchtower/eval-runner replay -- --days 30 --limit 50
     reads resolved tickets from DATABASE_URL, redacts them and writes evals/.replay/replay.json (git-ignored)
@@ -274,12 +281,68 @@ async function simulate(argv: string[]): Promise<number> {
   return outcome.status === 'ok' && outcome.passed ? 0 : 1;
 }
 
+/** Replays the set in force for an intent and records the result for the gate (T-306g). */
+async function record(argv: string[]): Promise<number> {
+  const { values } = parseArgs({
+    args: argv.filter((arg) => arg !== '--'),
+    options: {
+      intent: { type: 'string' },
+      as: { type: 'string' },
+      'dry-run': { type: 'boolean', default: false },
+      provider: { type: 'string', default: process.env.AI_PROVIDER ?? 'mock' },
+      'max-calls': { type: 'string', default: '100' },
+      days: { type: 'string', default: '90' },
+      limit: { type: 'string', default: '30' },
+      corpus: { type: 'string', default: join(EVALS, 'runner', 'redaction', 'corpus.json') },
+    },
+  });
+  if (values.intent === undefined || values.as === undefined) {
+    throw new EvalSetupError('record wants --intent <key> and --as <email>');
+  }
+  const provider = values.provider;
+  if (provider !== 'mock' && provider !== 'claude-cli') {
+    throw new EvalSetupError(`unknown provider: ${provider} (mock or claude-cli)`);
+  }
+  const maxCalls = Number(values['max-calls']);
+  if (!Number.isInteger(maxCalls) || maxCalls < 1)
+    throw new EvalSetupError('--max-calls wants a whole number');
+  const url = process.env.DATABASE_URL;
+  if (url === undefined || url === '') {
+    throw new EvalSetupError('DATABASE_URL is not set (the application login) [ASK-HUMAN]');
+  }
+  const corpus = redactionCorpusSchema.parse(JSON.parse(readFileSync(values.corpus, 'utf8')));
+  const rig = createRig({
+    provider,
+    maxCalls,
+    env: process.env,
+    fetch: (input, init) => globalThis.fetch(input, init),
+  });
+  const database = createDatabase({ url, max: 2, applicationName: 'watchtower-eval-record' });
+  try {
+    const outcome = await recordReplay({
+      database,
+      rig,
+      intentKey: values.intent,
+      actorEmail: values.as,
+      days: Number(values.days),
+      limit: Number(values.limit),
+      dryRun: values['dry-run'],
+      redactionCorpus: corpus.cases,
+    });
+    console.log(formatRecord(outcome));
+    return 0;
+  } finally {
+    await database.close();
+  }
+}
+
 async function main(): Promise<number> {
   const [command, ...rest] = process.argv.slice(2);
   try {
     if (command === undefined || command === 'run') return await run(command === 'run' ? rest : []);
     if (command === 'simulate') return await simulate(rest);
     if (command === 'redaction') return redaction(rest);
+    if (command === 'record') return await record(rest);
     if (command === 'replay') return await replay(rest);
     console.log(USAGE);
     return command === 'help' || command === '--help' ? 0 : 1;

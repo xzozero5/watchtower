@@ -11,15 +11,18 @@
     "build": "tsc -p tsconfig.build.json",
     "lint": "eslint .",
     "test": "vitest run",
+    "test:integration": "vitest run -c vitest.integration.config.ts",
     "typecheck": "tsc --noEmit",
     "eval": "tsc -p tsconfig.build.json && node dist/cli.js run",
     "redaction": "tsc -p tsconfig.build.json && node dist/cli.js redaction",
     "replay": "tsc -p tsconfig.build.json && node dist/cli.js replay",
+    "record": "tsc -p tsconfig.build.json && node dist/cli.js record",
     "simulate": "tsc -p tsconfig.build.json && node dist/cli.js simulate"
   },
   "dependencies": {
     "@watchtower/ai": "workspace:*",
     "@watchtower/db": "workspace:*",
+    "@watchtower/domain": "workspace:*",
     "@watchtower/shared": "workspace:*",
     "drizzle-orm": "^0.45.4",
     "zod": "^4.6.7"

@@ -277,6 +277,24 @@ DC exec postgres sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -t -A -c \
 
 หรือ `GET /v1/autonomy` (staff) · ฐานข้อมูลบังคับเพดานด้วย CHECK + ฟังก์ชัน promotion เท่านั้น (migration 0007 (stage 3 จะมาพร้อม T-304b, ตรวจซ้ำเมื่อ merge)) · เมื่อ restore จาก backup ให้ `restore-drill.sh` ตรวจข้อนี้ให้ · เงื่อนไขอื่นที่ต้องเป็นจริง: `AI_AUTOSEND_ENABLED` ไม่ตั้ง/`false` (ADR-025) → ไม่มี `ai_auto` ส่งหาลูกค้า · stage 3 เปิดได้ต่อเมื่อเจ้าของอนุมัติ (นับ 4 สัปดาห์ตาม STATUS) ไม่ใช่ใน runbook นี้
 
+### 9b. บันทึกผล replay ก่อนเลื่อน intent เป็น stage 3 (T-306g)
+
+gate ของ auto-send อ่าน `ai_replay_result` แถวล่าสุดของ "ชุดปัจจุบัน" (drafter model + grader model + prompt version ของสองตัว + procedure version ที่ publish) — ไม่มีแถวที่ผ่านของชุดนั้น = `replay_missing` (ระงับ ไม่ rollback) · เปลี่ยน model, prompt หรือ publish procedure ใหม่ทุกครั้งต้องบันทึกใหม่ · แถวเขียนได้ทางเดียวคือ `record_replay_result()` โดยผู้ถือ `ai.autonomy.promote` (ฐานข้อมูลตรวจ) และ **`passed` เป็นจริงไม่ได้ถ้าเป็น mock / ไม่มีเคส / มี violation / redaction eval ไม่ผ่าน**
+
+```bash
+# ใช้ DATABASE_URL ของ login แอป (ไม่ใช่ owner) และ AI_PROVIDER=claude-cli + env ของ provider ครบ (§4.3, §6.2) [ASK-HUMAN: เปิดใช้ provider จริง]
+# ซ้อมก่อน: แสดงผลโดยไม่บันทึก (ใช้ AI call จริงตาม --max-calls)
+pnpm --filter @watchtower/eval-runner record -- --intent <key> --as <อีเมลของ head> --dry-run --max-calls 60
+# บันทึกจริง (ซ้ำคำสั่งเดิมโดยตัด --dry-run)
+pnpm --filter @watchtower/eval-runner record -- --intent <key> --as <อีเมลของ head> --max-calls 60
+```
+
+- คำสั่งอ่าน ticket ที่ resolve/closed ล่าสุดของ intent (ไม่นับ ticket seed, ค่าเริ่ม 90 วัน / 30 ใบ ปรับด้วย `--days` `--limit`), redact แล้วรัน drafter + grader + redaction eval · พิมพ์เฉพาะตัวเลข (ชุด model/version, จำนวน ticket/เคส/violation, ผล redaction, จำนวน call) ไม่พิมพ์ข้อความ ticket
+- `--max-calls` คือ budget guard ของรอบนี้: ถ้าหยุดกลางทางจะ **ไม่บันทึก** (exit 2) ให้เพิ่มค่าแล้วรันใหม่
+- `passed yes` ต้องเห็นพร้อม `violations 0`, `redaction eval passed`, `provider real` · `provider mock` บันทึกได้แต่ไม่มีทางผ่าน (ใช้ตรวจ plumbing)
+- ถ้า intent มี procedure ที่ publish: ต้องมี `procedure_simulation` ที่ผ่านบน steps เดียวกันด้วย (T-303d) ไม่เช่นนั้น gate ยังเห็น `replay_missing`
+- ข้อจำกัด: violation = เคส drafter/grader ที่ตก check (ภาษา, review flag, invariant ของ grader) ส่วน classifier ไม่นับ (label คือสิ่งที่ ticket จบด้วย ไม่ใช่การตัดสิน) · ยังไม่เคยรันกับ provider จริง `[ยังไม่ยืนยัน]`
+
 ## 10. ปิด pilot / ถอย
 
 หยุดรับเมล: ปิด subscription Pub/Sub หรือ `DC stop worker` · สำรองสุดท้าย (§7.1) · เก็บ/ลบข้อมูลตามนโยบายที่เจ้าของกำหนด `[ASK-HUMAN]` (ลบข้อมูลย้อนกลับไม่ได้) · ถอน Google OAuth client / SA key ที่ใช้ (`credentials.md` §4)

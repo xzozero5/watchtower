@@ -25,5 +25,13 @@ pnpm --filter @watchtower/eval-runner replay -- --days 30 --limit 50   # needs D
   for a reviewer who did not write them to move.
 - **Replay.** `replay` reads resolved tickets, redacts them and writes `evals/.replay/replay.json` (git-ignored). Its
   labels are what the ticket ended with, not an independent judgement `[UNVERIFIED]`.
+- **Record (T-306g).** `pnpm --filter @watchtower/eval-runner record -- --intent <key> --as <email> [--dry-run] [--max-calls 100] [--days 90] [--limit 30]`
+  replays the combination the gate reads (drafter and grader model aliases from the settings, latest versions of the two prompts, the
+  intent's published procedure version via `replaySetFor` of `@watchtower/domain`) on the latest resolved non-seed tickets of the intent
+  (redacted by the replay export), runs the redaction eval, and stores the result with `record_replay_result()` as the person of `--as`
+  (the database requires `ai.autonomy.promote`). The provider is `AI_PROVIDER` (mock by default): a mock run is stored but can never be
+  `passed`. A violation is a drafter or grader case that fails its checks. It prints numbers only, never ticket text. When the call
+  budget (`--max-calls`) stops the run nothing is stored (exit 2). Needs `DATABASE_URL` (the application login). Integration test:
+  `TEST_DATABASE_URL=... pnpm --filter @watchtower/eval-runner test:integration`. Runbook: `docs/runbooks/pilot-instance.md` 9b.
 - **Regression.** `--baseline file.json` compares with an earlier report of the same prompt version; a case that
   passed and now fails exits 1, as does a pass rate under `--min-pass-rate` (default 1).
