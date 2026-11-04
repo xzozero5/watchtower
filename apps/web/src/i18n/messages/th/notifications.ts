@@ -26,6 +26,7 @@ export const notificationsTh: Widen<typeof notificationsEn> = {
   kind: {
     ticketP1: 'ตั๋ว P1 {key}',
     ticketAssigned: '{key} ถูกมอบหมายให้คุณ',
+    ticketEscalationRequested: '{key}: procedure ขอให้คุณช่วยดูตั๋วใบนี้',
     shiftHandoffOverdue: 'รายการส่งต่องาน {count} รายการยังไม่มีคนรับทราบตามเวลา',
     shiftNoShow: 'มีคนยังไม่ลงเวลาเข้ากะ',
     alertFired: 'มี alert ที่ต้องการคุณ',
@@ -37,6 +38,7 @@ export const notificationsTh: Widen<typeof notificationsEn> = {
   kindName: {
     ticketP1: 'ตั๋ว P1',
     ticketAssigned: 'ตั๋วที่มอบหมายให้ฉัน',
+    ticketEscalationRequested: 'ตั๋วที่ procedure ขอให้ lead หรือ head ช่วยดู',
     shiftHandoffOverdue: 'รายการส่งต่องานที่ยังไม่รับทราบ (หัวหน้ากะ)',
     shiftNoShow: 'คนไม่มาเข้ากะ (หัวหน้ากะ)',
     alertFired: 'alert ที่ต้องการฉัน (ขณะอยู่ในกะ)',

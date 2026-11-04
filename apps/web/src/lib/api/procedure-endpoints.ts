@@ -1,5 +1,9 @@
 import {
   compileProcedureResultSchema,
+  procedureProposalAppliedSchema,
+  procedureProposalListSchema,
+  procedureSimulateQueuedSchema,
+  procedureSimulationAnswerSchema,
   procedureValidationSchema,
   procedureVersionListSchema,
   procedureVersionResultSchema,
@@ -71,6 +75,38 @@ export function createProcedureEndpoints(client: ApiClient) {
         path: `${one(intentId, versionId)}/publish`,
         body: {},
         schema: procedureVersionSchema,
+      }),
+
+    /** Queues a simulation (202); the result comes with `procedureSimulation` (T-303d). */
+    simulateProcedureVersion: (intentId: string, versionId: string) =>
+      client.request({
+        method: 'POST',
+        path: `${one(intentId, versionId)}/simulate`,
+        body: {},
+        schema: procedureSimulateQueuedSchema,
+      }),
+
+    procedureSimulation: (intentId: string, versionId: string, signal?: AbortSignal) =>
+      client.request({
+        path: `${one(intentId, versionId)}/simulation`,
+        schema: procedureSimulationAnswerSchema,
+        ...withSignal(signal),
+      }),
+
+    /** The escalation cards of a ticket (T-303f). */
+    procedureProposals: (ticketKey: string, signal?: AbortSignal) =>
+      client.request({
+        path: `/v1/tickets/${id(ticketKey)}/procedure-proposals`,
+        schema: procedureProposalListSchema,
+        ...withSignal(signal),
+      }),
+
+    applyProcedureProposal: (ticketKey: string, proposalId: string) =>
+      client.request({
+        method: 'POST',
+        path: `/v1/tickets/${id(ticketKey)}/procedure-proposals/${id(proposalId)}/apply`,
+        body: {},
+        schema: procedureProposalAppliedSchema,
       }),
 
     retireProcedureVersion: (intentId: string, versionId: string) =>

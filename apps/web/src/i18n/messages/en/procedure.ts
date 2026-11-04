@@ -189,8 +189,40 @@ export const procedureEn = {
     failed: 'Did not pass on {count} tickets',
     seedOnly: 'Seeded tickets only: it does not count for an intent at Stage 3 or higher.',
     at: 'Run on {date}',
-    unavailable:
-      'Simulation is not available on this server yet. A version cannot be published before it has passed a simulation.',
+    run: 'Run simulation',
+    running: 'Simulating on resolved tickets… this can take a few minutes.',
+    slow: 'The simulation is taking longer than expected. Check again in a moment.',
+    conflict:
+      'This version cannot be simulated in its current state. Reload the page and try again.',
+    aiOff:
+      'The AI cannot run right now (switched off, over its budget, or no provider is set up), so a simulation cannot start.',
+    needPublish: 'Needs permission to publish procedures to run a simulation.',
+    readFailed: 'The result could not be read. Check again in a moment.',
+    fixture: 'Made-up test cases, not tickets of this instance.',
+    stat: {
+      cases: 'Tickets replayed',
+      failedCases: 'Cases the models could not answer',
+      seededCases: 'Seeded tickets among them',
+      editDistance: 'Distance from the reply a person sent (0 is the same, lower is better)',
+      uncited: 'Claims without a source',
+      violations: 'Policy violations',
+      leaks: 'Disclosure leaks',
+      toolCalls: 'Tool calls',
+      deadSteps: 'Steps that never worked',
+      thisVersion: 'This version',
+      liveVersion: 'Live now',
+      defaultRunbook: 'Default investigation',
+    },
+    reason: {
+      policy_violation: 'A reply broke a policy rule.',
+      disclosure_leak: 'A reply told what a disclosure step forbids.',
+      more_uncited: 'More claims without a source than the version live now.',
+      edit_distance_worse:
+        'The replies are further from what people sent than the version live now.',
+      step_never_worked: 'A tool step never worked on any ticket.',
+      too_many_failed: 'The models could not answer too many cases.',
+      no_cases: 'There are no resolved tickets of this intent to replay yet.',
+    },
   },
   action: {
     save: 'Save draft',

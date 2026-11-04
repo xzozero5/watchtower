@@ -273,10 +273,14 @@ describe('preferences', () => {
     ).toEqual([
       ['ticket.p1', true, true],
       ['ticket.assigned', true, false],
+      ['ticket.escalation_requested', true, false],
       ['shift.handoff_overdue', true, false],
       ['shift.no_show', true, false],
       ['alert.fired', true, false],
       ['alert.escalated', true, false],
+      ['ops.smtp_auth_failed', true, false],
+      ['ops.upload_quota_global', true, false],
+      ['ops.outbox_dead', true, false],
     ]);
   });
 

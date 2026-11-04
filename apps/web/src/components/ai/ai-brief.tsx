@@ -46,6 +46,7 @@ import { AiReportDetails } from './ai-report';
 import { AiProse } from './ai-prose';
 import { ConfidenceMeter } from './confidence-meter';
 import { EVIDENCE_ICONS } from './evidence-icons';
+import { ProcedureProposals } from './procedure-proposals';
 
 const STAGE_KEYS = { 0: 'ai.stage.0', 1: 'ai.stage.1', 2: 'ai.stage.2' } as const;
 
@@ -430,6 +431,12 @@ export function AiBrief({
             canAccept={canRequest}
           />
         ) : null}
+
+        <ProcedureProposals
+          ticketKey={ticket.key}
+          enabled={(report?.procedure?.escalations.length ?? 0) > 0}
+          canApply={canRequest}
+        />
 
         {nextStep || canWrite ? (
           <div role="group" aria-label={t('ai.brief.nextStep')} className="flex flex-wrap gap-2">
