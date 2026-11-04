@@ -231,6 +231,7 @@ export class HandoffReader {
           inArray(schema.ticketEvent.type, [
             TICKET_EVENT_TYPES.assigned,
             TICKET_EVENT_TYPES.updated,
+            TICKET_EVENT_TYPES.merged,
           ]),
         ),
       )
@@ -241,9 +242,16 @@ export class HandoffReader {
         ? (value as TicketPriority)
         : null;
     const changes: OwnTicketChange[] = [];
+    const mergedAway = new Map<string, string>();
     for (const event of events) {
       const payload = event.payload as Record<string, unknown>;
-      if (event.type === TICKET_EVENT_TYPES.assigned) {
+      if (event.type === TICKET_EVENT_TYPES.merged) {
+        // Merging a ticket into another takes it off the plate (it becomes `merged`, which is not
+        // open): where the conversation went is what the gate must watch (T-125a).
+        if (typeof payload.intoTicketId === 'string') {
+          mergedAway.set(event.ticketId, payload.intoTicketId);
+        }
+      } else if (event.type === TICKET_EVENT_TYPES.assigned) {
         if (payload.from === userId && payload.to !== userId) {
           changes.push({ ticketId: event.ticketId, kind: 'moved_away', fromPriority: null });
         }
@@ -257,6 +265,32 @@ export class HandoffReader {
           (to === null || !isHandoffRequiredPriority(to))
         ) {
           changes.push({ ticketId: event.ticketId, kind: 'downgraded', fromPriority: from });
+        }
+      }
+    }
+    if (mergedAway.size > 0) {
+      // Only a merge of a ticket that was the person's own P1/P2 counts; one that never was does not
+      // burden them with the target.
+      const sources = await executor
+        .select({
+          id: schema.ticket.id,
+          assigneeId: schema.ticket.assigneeId,
+          priority: schema.ticket.priority,
+        })
+        .from(schema.ticket)
+        .where(inArray(schema.ticket.id, [...mergedAway.keys()]));
+      for (const source of sources) {
+        const target = mergedAway.get(source.id);
+        if (
+          target !== undefined &&
+          source.assigneeId === userId &&
+          isHandoffRequiredPriority(source.priority)
+        ) {
+          changes.push({
+            ticketId: target,
+            kind: 'moved_away',
+            fromPriority: source.priority as TicketPriority,
+          });
         }
       }
     }

@@ -256,6 +256,46 @@ describe('tickets.reply by the customer (append a message)', () => {
     expect(contacts).toHaveLength(1);
     expect(contacts[0]?.orgId).toBe(org.id);
   });
+
+  it('answers "no such ticket" to a client or contact writing on an internal ticket, and writes nothing (T-125a)', async () => {
+    const { org, ticket, contactId } = await ticketWithRequester();
+    await setStatus(ticket.id, { channel: 'internal' });
+    const before = await env.db.owner.db
+      .select()
+      .from(schema.message)
+      .where(eq(schema.message.ticketId, ticket.id));
+    const asContact = await refusal(
+      env.tx((tx) =>
+        env.domain.tickets.reply(tx, env.ctx({ type: 'anonymous', id: contactId }), {
+          ref: ticket.id,
+          reply: { body: 'hello?' },
+          sender: portalSender(org.id, contactId),
+        }),
+      ),
+    );
+    expect(asContact.code).toBe('not_found');
+    const asClient = await refusal(
+      env.tx((tx) =>
+        env.domain.tickets.reply(tx, env.ctx({ type: 'user', id: null }), {
+          ref: ticket.id,
+          reply: { body: 'hello?' },
+          sender: {
+            kind: 'client',
+            userId: crypto.randomUUID(),
+            orgId: org.id,
+            email: 'someone@example.test',
+            name: 'Someone',
+          },
+        }),
+      ),
+    );
+    expect(asClient.code).toBe('not_found');
+    const after = await env.db.owner.db
+      .select()
+      .from(schema.message)
+      .where(eq(schema.message.ticketId, ticket.id));
+    expect(after).toHaveLength(before.length);
+  });
 });
 
 describe('tickets.reply written by the AI (policy gate)', () => {

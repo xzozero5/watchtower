@@ -104,6 +104,25 @@ describe('retry or give up', () => {
     ).toEqual({ action: 'retry', delaySeconds: 90, errorCode: 'channel_rate_limited' });
   });
 
+  it('a clean refusal after an earlier push stays unknown; with no earlier push it is a certain failure (T-125a)', () => {
+    const refused = { kind: 'auth', retryable: false, outcomeUnknown: false } as const;
+    expect(decideFailure(refused, { route: 'line_push', attempts: 2 })).toMatchObject({
+      action: 'fail',
+      outcomeUnknown: false,
+    });
+    expect(
+      decideFailure(refused, { route: 'line_push', attempts: 2, earlierPush: true }),
+    ).toMatchObject({ action: 'fail', outcomeUnknown: true });
+    // A temporary error is still retried, earlier push or not; the last attempt gives up as unknown.
+    const limited = { kind: 'rate_limited', retryable: true, outcomeUnknown: false } as const;
+    expect(
+      decideFailure(limited, { route: 'line_push', attempts: 2, earlierPush: true }).action,
+    ).toBe('retry');
+    expect(
+      decideFailure(limited, { route: 'line_push', attempts: 99, earlierPush: true }),
+    ).toMatchObject({ action: 'fail', outcomeUnknown: true });
+  });
+
   it('never waits longer than the ceiling for a Retry-After, whatever the provider sends (T-122f)', () => {
     const limited = { kind: 'rate_limited', retryable: true, outcomeUnknown: false } as const;
     const wait = (retryAfterMs: number): number => {

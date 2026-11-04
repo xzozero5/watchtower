@@ -5,7 +5,7 @@ import { createTestDatabase, type TestDatabase } from '@watchtower/db/testing';
 import { createDomain, newStatusNonce, type Domain } from '@watchtower/domain';
 import { CSAT_LANDING_PATH, STATUSPAGE_JOBS } from '@watchtower/shared';
 import { KEY_LABELS, deriveSubkey } from '@watchtower/shared/secret-box';
-import type { Job } from 'bullmq';
+import { UnrecoverableError, type Job } from 'bullmq';
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
@@ -156,5 +156,57 @@ describe('the notice job', () => {
       .from(schema.statusSubscription)
       .where(eq(schema.statusSubscription.email, flaky));
     expect(row[0]?.state).toBe('confirmed');
+  });
+
+  it('535 (our login refused) ends the job at once without retrying, marks nobody rejected and keeps no claim (T-125a)', async () => {
+    await owner().delete(schema.statusSubscription);
+    await owner().delete(schema.statusNotification);
+    const readers = [await addReader('au1'), await addReader('au2'), await addReader('au3')];
+    let attempts = 0;
+    const run = processor(true, () => {
+      attempts += 1;
+      return Promise.reject(
+        Object.assign(new Error('Invalid login'), { code: 'EAUTH', responseCode: 535 }),
+      );
+    });
+    const error: unknown = await run().catch((caught: unknown) => caught);
+    expect(error).toBeInstanceOf(UnrecoverableError);
+    // It did not hammer the server once per reader, and nobody was written off as a bounce.
+    expect(attempts).toBe(1);
+    expect(await claims()).toHaveLength(0);
+    // After the credentials are fixed, the next run reaches everyone.
+    const sent: string[] = [];
+    const fixed = processor(true, (message) => {
+      sent.push(message.to);
+      return Promise.resolve();
+    });
+    expect(await fixed()).toMatchObject({ sent: 3 });
+    expect(sent.toSorted()).toEqual(readers.toSorted());
+    await owner().delete(schema.statusSubscription);
+  });
+
+  it('451 is temporary even when the transport calls it an envelope error: not a bounce, the job retries (T-125a)', async () => {
+    await owner().delete(schema.statusNotification);
+    const readers = [await addReader('tm1'), await addReader('tm2')];
+    const later = readers[0] ?? '';
+    const sent: string[] = [];
+    let greylisted = true;
+    const run = processor(true, (message) => {
+      if (message.to === later && greylisted) {
+        return Promise.reject(
+          Object.assign(new Error('Try again later'), { code: 'EENVELOPE', responseCode: 451 }),
+        );
+      }
+      sent.push(message.to);
+      return Promise.resolve();
+    });
+    const error: unknown = await run().catch((caught: unknown) => caught);
+    expect(error).toBeInstanceOf(Error);
+    expect(error).not.toBeInstanceOf(UnrecoverableError);
+    expect(sent).toEqual(readers.filter((email) => email !== later));
+    greylisted = false;
+    expect(await run()).toMatchObject({ sent: 1 });
+    expect(sent.at(-1)).toBe(later);
+    await owner().delete(schema.statusSubscription);
   });
 });

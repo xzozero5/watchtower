@@ -81,6 +81,9 @@ export async function replyToTicket(
   if (sender.kind === 'contact' && ticket.requesterContactId !== sender.contactId) {
     throw notFound('No such ticket');
   }
+  // An internal ticket is staff-only work: a client must not learn it exists, let alone write on it
+  // (T-125a; the same answer as a ticket of another organization).
+  if (fromCustomer && ticket.channel === 'internal') throw notFound('No such ticket');
   if (fromCustomer && body.setStatus !== undefined) {
     throw badRequest('A client cannot set the status');
   }

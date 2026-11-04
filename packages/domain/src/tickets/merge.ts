@@ -1,10 +1,19 @@
 import { PG, isPgError, schema } from '@watchtower/db';
-import { AUDIT_ACTIONS, TICKET_EVENT_TYPES, type MergeTicket } from '@watchtower/shared';
+import {
+  AUDIT_ACTIONS,
+  TICKET_EVENT_TYPES,
+  TICKET_PRIORITIES,
+  isHandoffRequiredPriority,
+  type MergeTicket,
+  type TicketPriority,
+} from '@watchtower/shared';
 import { asc, eq, inArray } from 'drizzle-orm';
 
 import { recordAuditInTx } from '../audit.js';
 import { mergeNotAllowed, notFound } from '../errors.js';
 import type { TicketRow } from '../rows.js';
+import { applyStatus } from './status.js';
+import { updateTicket } from './update.js';
 import { Effects, type DbTransaction, type DomainContext, type DomainResult } from '../types.js';
 import {
   recordTicketEvent,
@@ -129,5 +138,27 @@ export async function mergeTickets(
   await ctx.notifier.merged(tx, updatedSource, keys.format(source.number), targetKey);
   fx.emit(ticketEvent(ctx, 'ticket.updated', updatedSource, ['status']));
   fx.emit(ticketEvent(ctx, 'ticket.updated', updatedTarget, ['merge']));
-  return fx.result({ source: updatedSource, target: updatedTarget });
+
+  // A live P1/P2 must not vanish into a ticket that is finished or less urgent: that would take it off
+  // the AC-7 handoff gate and off the P1/P2 SLA without anyone deciding so (T-125a). The target takes
+  // the more urgent priority and a resolved target is reopened.
+  let finalTarget = updatedTarget;
+  const sourceLive = !['resolved', 'closed'].includes(source.status);
+  if (sourceLive && isHandoffRequiredPriority(source.priority)) {
+    const rank = (priority: string): number =>
+      TICKET_PRIORITIES.indexOf(priority as TicketPriority);
+    if (rank(source.priority) < rank(finalTarget.priority)) {
+      const raised = await updateTicket(tx, ctx, {
+        ref: finalTarget.id,
+        patch: { priority: source.priority as TicketPriority },
+      });
+      fx.events.push(...raised.events);
+      fx.audited = fx.audited || raised.audited;
+      finalTarget = raised.value;
+    }
+    if (finalTarget.status === 'resolved') {
+      finalTarget = await applyStatus(tx, ctx, fx, finalTarget, 'open', { automatic: true });
+    }
+  }
+  return fx.result({ source: updatedSource, target: finalTarget });
 }

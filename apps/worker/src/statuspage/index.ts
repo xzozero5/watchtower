@@ -12,18 +12,9 @@ import { and, asc, eq, notInArray, sql } from 'drizzle-orm';
 
 import type { ProcessorContext } from '../processors/index.js';
 import { renderConfirmation, renderNotice } from './email.js';
+import { classifySmtpError } from './smtp-error.js';
 
 const BATCH = 100;
-
-/** An SMTP answer in the 5xx class (or an envelope the transport refused): this mailbox will not take it. */
-function isPermanentRejection(error: unknown): boolean {
-  if (typeof error !== 'object' || error === null) return false;
-  const { responseCode, code } = error as { responseCode?: unknown; code?: unknown };
-  return (
-    (typeof responseCode === 'number' && responseCode >= 500 && responseCode < 600) ||
-    code === 'EENVELOPE'
-  );
-}
 
 const localeOf = (value: string): StatusLocale => (value === 'th' ? 'th' : 'en');
 
@@ -52,6 +43,27 @@ export function createStatusPageRegistration(context: ProcessorContext) {
   };
   // Its own subkey (the api derives the same one): a status link can never be a survey link.
   const signingKey = deriveSubkey(config.APP_ENCRYPTION_KEY, KEY_LABELS.statusLink);
+
+  /**
+   * The mail server refused OUR login (535 and kin). Retrying cannot help and it is not the reader's fault:
+   * the job ends here (no retry loop, no reader marked rejected) and the alert below is what the head
+   * of the team acts on until in-app delivery of system alerts exists. Ids and codes only, never the
+   * credentials or the server's text.
+   */
+  function failOnSmtpAuth(error: unknown, jobKind: 'confirm' | 'notify'): never {
+    const { responseCode, code } = error as { responseCode?: unknown; code?: unknown };
+    logger.error(
+      {
+        alert: 'smtp_auth_failed',
+        notify: 'head',
+        jobKind,
+        responseCode: typeof responseCode === 'number' ? responseCode : null,
+        code: typeof code === 'string' ? code : null,
+      },
+      'status page email: the SMTP server refused our login; fix SMTP_USER / SMTP_PASSWORD, then publish again',
+    );
+    throw new UnrecoverableError('smtp_auth_failed');
+  }
 
   async function confirm(subscriptionId: string): Promise<{ sent: boolean; reason?: string }> {
     // The page is closed (STATUS_PAGE_PUBLIC=false): nobody is mailed about, or invited to, a page that
@@ -83,8 +95,10 @@ export function createStatusPageRegistration(context: ProcessorContext) {
         }),
       );
     } catch (error) {
-      // The mailbox refuses for good: nothing to retry.
-      if (isPermanentRejection(error)) return { sent: false, reason: 'rejected' };
+      const failure = classifySmtpError(error);
+      if (failure === 'auth') failOnSmtpAuth(error, 'confirm');
+      // The mailbox refuses for good: nothing to retry. A 4xx (451) is thrown: the job retries with backoff.
+      if (failure === 'permanent') return { sent: false, reason: 'rejected' };
       throw error;
     }
     return { sent: true };
@@ -162,6 +176,17 @@ export function createStatusPageRegistration(context: ProcessorContext) {
     if (!config.STATUS_PAGE_PUBLIC) return { sent: 0, skipped: 'page_closed' };
     const content = await contentOf(kind, refId);
     if (content === null) return { sent: 0, skipped: 'not_published' };
+    const releaseClaim = async (subscriptionId: string): Promise<void> => {
+      await db
+        .delete(schema.statusNotification)
+        .where(
+          and(
+            eq(schema.statusNotification.subscriptionId, subscriptionId),
+            eq(schema.statusNotification.refKind, kind),
+            eq(schema.statusNotification.refId, refId),
+          ),
+        );
+    };
     let sent = 0;
     let bounced = 0;
     // Readers whose send failed for a reason that may pass: tried again by the retry of this job, not again now.
@@ -217,22 +242,20 @@ export function createStatusPageRegistration(context: ProcessorContext) {
           );
           sent += 1;
         } catch (error) {
+          const failure = classifySmtpError(error);
+          if (failure === 'auth') {
+            // Our login, not this reader: free the claim so nobody is skipped later, and stop at once.
+            await releaseClaim(subscriber.id);
+            failOnSmtpAuth(error, 'notify');
+          }
           // One reader's failure never stops the others.
-          if (isPermanentRejection(error)) {
+          if (failure === 'permanent') {
             // The server refused this mailbox for good: the claim stays, so no retry mails it again.
             bounced += 1;
             logger.warn({ subscriptionId: subscriber.id }, 'status notice rejected for good');
           } else {
             // Not told, and it may pass: release the claim so a retry of this job tries this person again.
-            await db
-              .delete(schema.statusNotification)
-              .where(
-                and(
-                  eq(schema.statusNotification.subscriptionId, subscriber.id),
-                  eq(schema.statusNotification.refKind, kind),
-                  eq(schema.statusNotification.refId, refId),
-                ),
-              );
+            await releaseClaim(subscriber.id);
             failed.push(subscriber.id);
             lastError = error;
           }

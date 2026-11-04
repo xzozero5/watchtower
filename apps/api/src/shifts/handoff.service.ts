@@ -525,6 +525,13 @@ export class HandoffService {
         if (input.decision === 'reassign' && input.assigneeId !== undefined) {
           // P1 and P2 must go to someone who is on shift; a P3 or P4 may wait for an off-shift
           // colleague, and the answer says so.
+          // Not back to the person who just handed it over, even if they clocked in again: the
+          // handoff exists because the ticket is leaving their hands (T-125a).
+          if (input.assigneeId === handoff.fromUserId) {
+            throw badRequest(
+              `${ticketKey} was handed over by that person: reassign it to someone else`,
+            );
+          }
           await translating(() => assertAssignableStaff(uow.tx, [input.assigneeId as string]));
           if (!(await this.reader.isOnShift(uow.tx, input.assigneeId))) {
             if (isHandoffRequiredPriority(ticket.priority)) {

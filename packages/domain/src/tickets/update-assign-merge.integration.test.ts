@@ -319,6 +319,49 @@ describe('tickets.merge', () => {
     expect(actions).toEqual(expect.arrayContaining(['ticket.merge', 'ticket.reparent']));
   });
 
+  it('a live P1 merged into a resolved, less urgent ticket makes the target a live P1 (it cannot vanish from the handoff gate, T-125a)', async () => {
+    const org = await addOrg(env);
+    const source = await openTicket(org.id, { priority: 'P1' });
+    const target = await openTicket(org.id);
+    await env.db.owner.db
+      .update(schema.ticket)
+      .set({ status: 'resolved', resolvedAt: T0 })
+      .where(eq(schema.ticket.id, target.id));
+    const result = await env.tx((tx) =>
+      env.domain.tickets.merge(tx, env.ctx(), {
+        ref: source.id,
+        merge: { intoTicketId: target.id },
+      }),
+    );
+    expect(result.value.source.status).toBe('merged');
+    expect(result.value.target).toMatchObject({ priority: 'P1', status: 'open', resolvedAt: null });
+    const [stored] = await env.db.owner.db
+      .select()
+      .from(schema.ticket)
+      .where(eq(schema.ticket.id, target.id));
+    expect(stored).toMatchObject({ priority: 'P1', status: 'open' });
+    expect(await eventTypes(env, target.id)).toEqual(
+      expect.arrayContaining(['ticket.updated', 'ticket.status_changed']),
+    );
+  });
+
+  it('a P3 merged into a resolved P4 changes neither priority nor status', async () => {
+    const org = await addOrg(env);
+    const source = await openTicket(org.id);
+    const target = await openTicket(org.id);
+    await env.db.owner.db
+      .update(schema.ticket)
+      .set({ status: 'resolved', resolvedAt: T0, priority: 'P4' })
+      .where(eq(schema.ticket.id, target.id));
+    const result = await env.tx((tx) =>
+      env.domain.tickets.merge(tx, env.ctx(), {
+        ref: source.id,
+        merge: { intoTicketId: target.id },
+      }),
+    );
+    expect(result.value.target).toMatchObject({ priority: 'P4', status: 'resolved' });
+  });
+
   it('refuses itself, another organization, a merged source or target, and a closed target', async () => {
     const org = await addOrg(env);
     const a = await openTicket(org.id);
