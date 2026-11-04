@@ -77,14 +77,15 @@ async function aiRun(
   model: string,
   provider = 'anthropic',
   procedureVersionId: string | null = null,
+  responseModel: string | null = null,
 ): Promise<string> {
   return scalar<string>(
     owner(),
     `INSERT INTO ai_run (started_at, agent, ticket_id, provider, model, tier, prompt_id, prompt_version, prompt_hash,
-                         input_hmac, redaction, status, procedure_version_id)
-     VALUES (now(), $2, $1, $3, $4, 'standard', 'p', 1, repeat('a', 64), repeat('a', 64), '{"total":0,"byKind":{}}'::jsonb, 'ok', $5)
+                         input_hmac, redaction, status, procedure_version_id, response_model)
+     VALUES (now(), $2, $1, $3, $4, 'standard', 'p', 1, repeat('a', 64), repeat('a', 64), '{"total":0,"byKind":{}}'::jsonb, 'ok', $5, $6)
      RETURNING id AS value`,
-    [ticketId, agentName, provider, model, procedureVersionId],
+    [ticketId, agentName, provider, model, procedureVersionId, responseModel],
   );
 }
 
@@ -261,6 +262,19 @@ describe('record_ai_grade (C-9)', () => {
     expect(
       await scalar<boolean>(owner(), `SELECT mock AS value FROM ai_grade WHERE id = $1`, [mockId]),
     ).toBe(true);
+
+    // 0110: the model that answered (ai_run.response_model, 0109) wins over the alias, so `sonnet` and a dated id
+    // of the same model are told apart only by what the provider reported.
+    const reportedRun = await aiRun(ticket, 'grader', 'opus', 'anthropic', null, 'sonnet');
+    const reportedId = (await recordGrade(draft, ticket, reportedRun)).rows[0]?.value ?? '';
+    expect(
+      (
+        await owner().query<{ grader_model: string; independent: boolean }>(
+          `SELECT grader_model, independent FROM ai_grade WHERE id = $1`,
+          [reportedId],
+        )
+      ).rows[0],
+    ).toMatchObject({ grader_model: 'sonnet', independent: false });
 
     // No run, a run that is not a grader run, a run of another ticket: nothing is written.
     await expect(recordGrade(draft, ticket, null)).rejects.toMatchObject({ code: INTEGRITY });
@@ -504,7 +518,12 @@ describe('0108 goes down and up again', () => {
             `SELECT has_table_privilege(current_user, 'autonomy_gate_report', 'INSERT') AS value`,
           );
         expect(await canInsert()).toBe(false);
-        expect(await migrateDown(pool, { steps: 1 })).toEqual(['0108_review_hardening']);
+        // 0109 (T-306e) and 0110 (record_ai_grade reads response_model) sit on top of it.
+        expect(await migrateDown(pool, { steps: 3 })).toEqual([
+          '0110_ai_grade_response_model',
+          '0109_replay_result_run_model',
+          '0108_review_hardening',
+        ]);
         expect(await canInsert()).toBe(true);
         expect(
           await scalar<string | null>(
@@ -512,7 +531,11 @@ describe('0108 goes down and up again', () => {
             `SELECT to_regprocedure('public.record_ai_grade(uuid,uuid,text,text,uuid,numeric,boolean,jsonb,integer)')::text AS value`,
           ),
         ).toBeNull();
-        expect(await migrateUp(pool)).toEqual(['0108_review_hardening']);
+        expect(await migrateUp(pool)).toEqual([
+          '0108_review_hardening',
+          '0109_replay_result_run_model',
+          '0110_ai_grade_response_model',
+        ]);
         expect(await canInsert()).toBe(false);
       } finally {
         await login.end();

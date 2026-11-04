@@ -43,12 +43,12 @@ BEGIN
   IF p_grader_ai_run_id IS NULL OR draft_run IS NULL THEN
     RAISE EXCEPTION 'ai_grade: the grader run and the drafter run must both exist' USING ERRCODE = 'integrity_constraint_violation';
   END IF;
-  SELECT r.agent, r.provider, pg_catalog.coalesce(r.response_model, r.model), r.ticket_id INTO g_agent, g_provider, g_model, g_ticket
+  SELECT r.agent, r.provider, coalesce(r.response_model, r.model), r.ticket_id INTO g_agent, g_provider, g_model, g_ticket
     FROM public.ai_run AS r WHERE r.id = p_grader_ai_run_id LIMIT 1;
   IF NOT FOUND OR g_agent <> 'grader' OR (g_ticket IS NOT NULL AND g_ticket <> p_ticket_id) THEN
     RAISE EXCEPTION 'ai_grade: the grader run is not a grader run of this ticket' USING ERRCODE = 'integrity_constraint_violation';
   END IF;
-  SELECT r.agent, r.provider, pg_catalog.coalesce(r.response_model, r.model), r.ticket_id INTO d_agent, d_provider, d_model, d_ticket
+  SELECT r.agent, r.provider, coalesce(r.response_model, r.model), r.ticket_id INTO d_agent, d_provider, d_model, d_ticket
     FROM public.ai_run AS r WHERE r.id = draft_run LIMIT 1;
   IF NOT FOUND OR d_agent <> 'drafter' OR (d_ticket IS NOT NULL AND d_ticket <> p_ticket_id) THEN
     RAISE EXCEPTION 'ai_grade: the draft was not written by a drafter run of this ticket' USING ERRCODE = 'integrity_constraint_violation';
