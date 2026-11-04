@@ -99,13 +99,15 @@ function PaletteBody({
   };
 
   const groupLabel = (group: CommandGroup) =>
-    group === 'display'
-      ? t('palette.groups.display')
-      : group === 'language'
-        ? t('palette.groups.language')
-        : group === 'admin'
-          ? t('palette.groups.admin')
-          : t('palette.groups.general');
+    group === 'ticket'
+      ? t('palette.groups.ticket')
+      : group === 'display'
+        ? t('palette.groups.display')
+        : group === 'language'
+          ? t('palette.groups.language')
+          : group === 'admin'
+            ? t('palette.groups.admin')
+            : t('palette.groups.general');
 
   return (
     <Dialog.Content className="fixed top-[12vh] left-1/2 z-50 w-[min(36rem,calc(100vw-2rem))] -translate-x-1/2 overflow-hidden rounded-xl border border-border bg-surface text-foreground shadow-overlay">

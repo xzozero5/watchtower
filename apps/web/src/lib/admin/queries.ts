@@ -60,6 +60,19 @@ export function useAutonomy(enabled = true) {
   });
 }
 
+/** Today's AI spend against the caps (T-142). Lead and head; refreshed every minute. */
+export function useAiBudget(enabled = true) {
+  const api = useApi();
+  const userId = useUserId();
+  return useQuery({
+    queryKey: [...adminKeys(userId).all, 'ai-budget'] as const,
+    queryFn: ({ signal }) => api.aiBudget(signal),
+    enabled,
+    refetchInterval: 60_000,
+    staleTime: 30_000,
+  });
+}
+
 /** The counts for Home. Same filter vocabulary as the ticket list. */
 export function useTicketStats(enabled: boolean) {
   const api = useApi();

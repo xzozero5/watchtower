@@ -3,9 +3,10 @@ import type { Density, ThemePreference } from '@watchtower/ui';
 
 import type { Locale, MessageKey, Translate } from '@/i18n';
 import { adminSectionsFor, canFlipSwitches, HOME_PERMISSION } from '@/lib/admin/sections';
+import type { TicketField } from '@/lib/tickets/field-focus';
 import { shiftSectionsFor } from '@/lib/shifts/sections';
 
-export type CommandGroup = 'general' | 'display' | 'language' | 'admin';
+export type CommandGroup = 'ticket' | 'general' | 'display' | 'language' | 'admin';
 
 export interface Command {
   id: string;
@@ -32,6 +33,8 @@ export interface CommandActions {
   goTo?: (href: string) => void;
   /** Opens the AI assistant panel ("Ask AI"). Only offered to people who can read tickets. */
   askAssistant?: () => void;
+  /** Jumps to a field of the open ticket (UI-SPEC section 14: S / P / I). Only for people who can handle tickets. */
+  focusTicketField?: (field: TicketField) => void;
   /** Opens the confirm dialog for a switch; it never flips the switch itself. */
   openSwitchDialog?: (switchKey: AiSwitchKey, on: boolean) => void;
 }
@@ -234,6 +237,43 @@ function adminCommands(t: Translate, actions: CommandActions, access: CommandAcc
   return commands;
 }
 
+const TICKET_COMMANDS: readonly {
+  field: TicketField;
+  labelKey: MessageKey;
+  keywords: readonly string[];
+}[] = [
+  {
+    field: 'status',
+    labelKey: 'commands.ticketStatus',
+    keywords: ['ticket', 'status', 'resolve', 'close', 'สถานะ', 'ปิดงาน'],
+  },
+  {
+    field: 'priority',
+    labelKey: 'commands.ticketPriority',
+    keywords: ['ticket', 'priority', 'severity', 'p1', 'ความสำคัญ', 'ด่วน'],
+  },
+  {
+    field: 'assignee',
+    labelKey: 'commands.ticketAssign',
+    keywords: ['ticket', 'assign', 'assignee', 'owner', 'me', 'มอบหมาย', 'ผู้รับผิดชอบ'],
+  },
+];
+
+/** Status, priority and assignee of the open ticket (UI-SPEC section 14). Needs `ticket.handle`. */
+function ticketCommands(t: Translate, actions: CommandActions, access: CommandAccess): Command[] {
+  const focus = actions.focusTicketField;
+  if (!focus || !access.can('ticket.handle')) return [];
+  return TICKET_COMMANDS.map(({ field, labelKey, keywords }) => ({
+    id: `ticket.${field}`,
+    label: t(labelKey),
+    group: 'ticket' as const,
+    keywords,
+    run: () => {
+      focus(field);
+    },
+  }));
+}
+
 /**
  * The commands available now. Ticket-level commands (assign, set status, ...) come with the AI
  * sidebar. With `access`, the admin group is added for a head or lead.
@@ -266,7 +306,12 @@ export function buildCommands(
           },
         ]
       : [];
-  return [...adminCommands(t, actions, access), ...assistant, ...base];
+  return [
+    ...ticketCommands(t, actions, access),
+    ...adminCommands(t, actions, access),
+    ...assistant,
+    ...base,
+  ];
 }
 
 /** Case-insensitive match on the label and the keywords. Every word of the query must match. */

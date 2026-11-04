@@ -37,6 +37,8 @@ export const keymapEn = {
   select: 'Select or deselect the open ticket for a bulk action',
   note: 'Write an internal note',
   details: 'Change the status of the open ticket',
+  priority: 'Change the priority of the open ticket',
+  assign: 'Assign the open ticket (assign to me: I, then choose your name)',
   send: 'Send the message',
   leave: 'Leave the field and go back to the queue',
   palette: 'Open the command palette',

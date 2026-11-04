@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { uuid } from '@/test/fixtures';
 import { mockApi, apiError } from '@/test/mock-api';
-import { healthSnapshot, policy, service, statusPost } from '@/test/ops-fixtures';
+import { healthSnapshot, incidentDetail, policy, service, statusPost } from '@/test/ops-fixtures';
 import { opsApi } from '@/test/ops-api';
 import { renderConsole } from '@/test/render-console';
 import { makeSession } from '@/test/fixtures';
@@ -51,6 +51,58 @@ describe('Status page admin: publishing is a person pressing a button (N3)', () 
     await waitFor(() => {
       expect(api.calls.some((c) => c.method === 'POST' && c.path.endsWith('/publish'))).toBe(true);
     });
+  });
+
+  it('says when a draft names no component or incident, and warns before publishing it', async () => {
+    const linked = incidentDetail();
+    opsApi({
+      overrides: {
+        'GET /v1/status-page/posts': {
+          json: {
+            items: [
+              statusPost(1, { componentIds: [] }),
+              statusPost(2, { incidentId: linked.id, title: 'Linked draft' }),
+            ],
+            nextCursor: null,
+          },
+        },
+      },
+    });
+    renderConsole(<StatusAdminPage />);
+    const user = userEvent.setup();
+    await screen.findByText('Linked draft');
+    expect(screen.getByText(/No component named · Not linked to an incident/)).toBeVisible();
+    expect(await screen.findByText(new RegExp(`Incident ${linked.key}`))).toBeVisible();
+
+    await user.click(screen.getAllByRole('button', { name: 'Publish' })[0] as HTMLElement);
+    const dialog = await screen.findByRole('dialog', { name: 'Publish this post?' });
+    expect(within(dialog).getByText(/names no component/)).toBeVisible();
+  });
+
+  it('links a new draft to the incident picked, and to none by default', async () => {
+    const linked = incidentDetail();
+    const api = opsApi({
+      overrides: {
+        'POST /v1/status-page/posts': () => ({ json: statusPost(3) }),
+      },
+    });
+    renderConsole(<StatusAdminPage />);
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('button', { name: 'New post' }));
+    const dialog = await screen.findByRole('dialog');
+    await user.type(within(dialog).getByRole('textbox', { name: /Title/ }), 'Heads up');
+    await user.type(within(dialog).getByRole('textbox', { name: /Text/ }), 'Slow responses');
+    expect(within(dialog).getByText(/No component picked/)).toBeVisible();
+    await user.selectOptions(
+      within(dialog).getByRole('combobox', { name: /Incident/ }),
+      linked.id,
+    );
+    await user.click(within(dialog).getByRole('button', { name: /^Save/ }));
+    await waitFor(() => {
+      expect(api.calls.some((c) => c.method === 'POST' && c.path.endsWith('/posts'))).toBe(true);
+    });
+    const call = api.calls.find((c) => c.method === 'POST' && c.path.endsWith('/posts'));
+    expect(call?.body).toMatchObject({ title: 'Heads up', incidentId: linked.id });
   });
 
   it('lets an agent draft but not publish, and says who publishes', async () => {

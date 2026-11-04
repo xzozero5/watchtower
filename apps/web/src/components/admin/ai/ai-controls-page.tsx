@@ -26,6 +26,7 @@ import { canFlipSwitches } from '@/lib/admin/sections';
 import { asStage, STAGE_LABEL_KEYS } from '@/lib/admin/stages';
 import { useSession } from '@/lib/auth/session';
 
+import { AiBudgetCard } from './ai-budget-card';
 import { SwitchConfirmDialog, type SwitchTarget } from './switch-confirm-dialog';
 
 const ROWS: readonly {
@@ -111,6 +112,7 @@ function AiControlsBody() {
                 />
               ))}
             </ul>
+            <AiBudgetCard />
             <StageSummary intents={autonomy.data.intents} />
             <StageLegend />
           </>

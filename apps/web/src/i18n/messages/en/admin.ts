@@ -271,6 +271,30 @@ export const adminEn = {
     legend3: 'Stage 3 · Sends on its own: not available.',
     headOnly: 'Only the head can change these.',
     loadError: 'Couldn’t load AI status. The switches keep their last state.',
+    budget: {
+      title: 'AI budget today',
+      loadError: 'Couldn’t load the AI budget.',
+      cost: 'Cost',
+      tokens: 'Tokens',
+      used: '{spent} of {cap}',
+      percent: '{percent}% used',
+      level: {
+        ok: 'Within budget',
+        alert: 'Near the limit',
+        stop: 'Limit reached — AI stopped',
+      },
+      alertAt: 'A warning shows at {percent}% of a limit.',
+      whenReached:
+        'At the limit the AI stops: new tickets are not classified or drafted and show that the daily budget is used up, and the assistant says the budget is used up. They are not queued for later. Safe automatic acknowledgments continue.',
+      resets: 'Counts per day in UTC. Resets {time}.',
+      mockNote: 'The mock provider is free and is not counted.',
+      assistantTitle: 'Assistant, per person',
+      assistantCap:
+        'Each person can use {cap} tokens a day. After that the assistant stops for that person only.',
+      assistantNone: 'No one has used the assistant today.',
+      assistantRow: '{tokens} tokens · {messages} messages',
+      assistantFull: 'At the limit',
+    },
     capTitle: 'Never let AI send on its own (cap at Stage 2)',
     capBody:
       'Keeps every intent at its stage or lower and blocks raising. Never raises Stage 0 or 1.',

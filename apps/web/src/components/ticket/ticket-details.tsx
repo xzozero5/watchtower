@@ -15,6 +15,7 @@ import { isApiError } from '@/lib/api/errors';
 import { formatDateTime } from '@/lib/format';
 import { useSession } from '@/lib/auth/session';
 import { useAssignees } from '@/lib/shifts/queries';
+import { TICKET_FIELD_ID } from '@/lib/tickets/field-focus';
 import { isStaffTicket, isDetail, severityOf, type TicketItem } from '@/lib/tickets/model';
 import { useSlaPolicies } from '@/lib/admin/queries';
 import { dueNote, type DueNote } from '@/lib/tickets/sla';
@@ -29,7 +30,7 @@ import { WaitingCustomerConfirm } from './waiting-customer-confirm';
 import { useOptimisticEdit } from './use-optimistic-edit';
 
 /** The id of the status field, so the S shortcut can move focus to it. */
-export const STATUS_FIELD_ID = 'ticket-field-status';
+export const STATUS_FIELD_ID = TICKET_FIELD_ID.status;
 
 const UNASSIGNED = '';
 const NO_INTENT = '';
@@ -341,6 +342,7 @@ export function TicketDetails({ ticket }: { ticket: TicketItem }) {
               options={priorityOptions}
               value={ticket.priority}
               onValueChange={changePriority}
+              id={TICKET_FIELD_ID.priority}
             >
               <SeverityBadge
                 severity={severityOf(ticket.priority)}
@@ -365,6 +367,7 @@ export function TicketDetails({ ticket }: { ticket: TicketItem }) {
                 options={assigneeOptions}
                 value={summary.assignee?.id ?? UNASSIGNED}
                 onValueChange={changeAssignee}
+                id={TICKET_FIELD_ID.assignee}
               >
                 {summary.assignee ? (
                   <>

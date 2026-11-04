@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { consoleApi } from '@/test/console-api';
-import { makeAutonomy } from '@/test/console-fixtures';
+import { makeAiBudget, makeAutonomy } from '@/test/console-fixtures';
 import { apiError } from '@/test/mock-api';
 import { renderConsole } from '@/test/render-console';
 
@@ -58,6 +58,55 @@ describe('AI controls', () => {
     expect(cap).toHaveAttribute('data-on', 'false');
     expect(within(cap).getByText('Off')).toBeVisible();
     expect(within(cap).getByRole('button', { name: /Turn on/ })).toBeVisible();
+  });
+
+  it('shows today’s AI budget: used of the cap, what happens at the cap, assistant per person', async () => {
+    consoleApi();
+    renderConsole(<AiControlsPage />);
+    const card = await screen.findByRole('region', { name: 'AI budget today' });
+    expect(within(card).getByText('Within budget')).toBeVisible();
+    expect(within(card).getByRole('progressbar', { name: 'Cost' })).toHaveAttribute(
+      'aria-valuenow',
+      '25',
+    );
+    expect(within(card).getByRole('progressbar', { name: 'Tokens' })).toHaveAttribute(
+      'aria-valuenow',
+      '20',
+    );
+    expect(within(card).getByText(/\$0\.25 of \$1\.00/)).toBeVisible();
+    expect(within(card).getByText(/100,000 of 500,000/)).toBeVisible();
+    expect(within(card).getByText(/At the limit the AI stops/)).toBeVisible();
+    expect(within(card).getByText(/Each person can use 200,000 tokens a day/)).toBeVisible();
+    expect(within(card).getByText('Mana K.')).toBeVisible();
+    // Only the person who reached their cap carries the chip.
+    expect(within(card).getAllByText('At the limit')).toHaveLength(1);
+  });
+
+  it('says in words when the daily limit is reached, and when the budget cannot be loaded', async () => {
+    consoleApi({
+      overrides: {
+        'GET /v1/ai/budget': {
+          json: makeAiBudget({
+            level: 'stop',
+            cost: { spentUsd: 1.1, capUsd: 1 },
+            assistant: { userDailyTokens: 200_000, users: [] },
+          }),
+        },
+      },
+    });
+    const view = renderConsole(<AiControlsPage />);
+    const card = await screen.findByRole('region', { name: 'AI budget today' });
+    expect(within(card).getByText('Limit reached — AI stopped')).toBeVisible();
+    expect(within(card).getByRole('progressbar', { name: 'Cost' })).toHaveAttribute(
+      'aria-valuenow',
+      '100',
+    );
+    expect(within(card).getByText('No one has used the assistant today.')).toBeVisible();
+    view.unmount();
+
+    consoleApi({ overrides: { 'GET /v1/ai/budget': apiError(500, 'internal') } });
+    renderConsole(<AiControlsPage />);
+    expect(await screen.findByText('Couldn’t load the AI budget.')).toBeVisible();
   });
 
   it('explains the stages in plain words', async () => {

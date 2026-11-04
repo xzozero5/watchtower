@@ -1,5 +1,6 @@
 import type {
   AuditLogEntry,
+  AiBudget,
   AutonomyState,
   BusinessCalendarRecord,
   TicketStats,
@@ -112,6 +113,25 @@ export function dueTicket(
     org: { id: uuid(500), name: 'Acme Logistics' },
     ...overrides,
   });
+}
+
+export function makeAiBudget(overrides: Partial<AiBudget> = {}): AiBudget {
+  return {
+    day: '2026-11-04',
+    resetsAt: '2026-11-05T00:00:00.000Z',
+    level: 'ok',
+    alertPercent: 80,
+    cost: { spentUsd: 0.25, capUsd: 1 },
+    tokens: { spent: 100_000, cap: 500_000 },
+    assistant: {
+      userDailyTokens: 200_000,
+      users: [
+        { userId: uuid(1), name: 'Mana K.', tokens: 12_000, messages: 5, costUsd: 0.02 },
+        { userId: uuid(2), name: 'Nok P.', tokens: 200_000, messages: 40, costUsd: null },
+      ],
+    },
+    ...overrides,
+  };
 }
 
 export function makeAutonomy(overrides: Partial<AutonomyState> = {}): AutonomyState {
