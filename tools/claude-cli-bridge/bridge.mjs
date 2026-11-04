@@ -11,7 +11,7 @@ import { delimiter, join } from 'node:path';
 
 export const DEFAULT_PORT = 4317;
 export const DEFAULT_TIMEOUT_MS = 180_000;
-export const DEFAULT_MAX_CONCURRENCY = 2;
+export const DEFAULT_MAX_CONCURRENCY = 4;
 /** "Online" means the Anthropic API host accepts a TCP connection (ADR-019). */
 export const ONLINE_CHECK_HOST = 'api.anthropic.com';
 export const ONLINE_CHECK_PORT = 443;

@@ -143,6 +143,7 @@ x-app-env: &app-env
   GCP_PROJECT_ID: ${GCP_PROJECT_ID:-}
   GOOGLE_APPLICATION_CREDENTIALS: ${GOOGLE_APPLICATION_CREDENTIALS:-}
   AI_PROVIDER: ${AI_PROVIDER:-mock}
+  AI_API_MAX_CONCURRENCY: ${AI_API_MAX_CONCURRENCY:-2}
   AI_DAILY_COST_CAP_USD: ${AI_DAILY_COST_CAP_USD:-}
   AI_DAILY_TOKEN_CAP: ${AI_DAILY_TOKEN_CAP:-}
   AI_BUDGET_ALERT_PERCENT: ${AI_BUDGET_ALERT_PERCENT:-80}
@@ -354,9 +355,11 @@ services:
     # runaway process is restarted instead of taking the host down.
     mem_limit: 1g
     # `push` is shared with the gmail-tunnel container only (ADR-020): from there it reaches the api, nothing else.
+    # `ai` (ADR-019 §3, amended by ADR-023 "Live provider"): the api calls the claude-bridge for the assistant.
     networks:
       - default
       - push
+      - ai
     environment:
       <<: *app-env
       HOST: 0.0.0.0
@@ -400,7 +403,7 @@ services:
     # So AI_PROVIDER=claude-cli can reach the bridge on the host (ADR-017); harmless otherwise.
     extra_hosts:
       - 'host.docker.internal:host-gateway'
-    # The worker is the only service on the `ai` network, so it is the only one that reaches the bridge.
+    # Only the worker and the api are on the `ai` network, so only they reach the bridge (ADR-023).
     networks:
       - default
       - ai
@@ -442,7 +445,7 @@ services:
         CLAUDE_CODE_VERSION: ${CLAUDE_CODE_VERSION:-2.1.316}
     image: watchtower/claude-bridge:local
     restart: unless-stopped
-    # Only the worker shares this network (web, caddy, minio cannot reach it); egress to Anthropic stays.
+    # Only the worker and the api share this network (web, caddy, minio cannot reach it); egress to Anthropic stays.
     networks:
       - ai
     # No `ports:` on purpose (ADR-021): the worker reaches it as http://claude-bridge:4317 on the `ai`
@@ -461,7 +464,7 @@ services:
       CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN:-}
       CLAUDE_CLI_BRIDGE_HOST: 0.0.0.0
       CLAUDE_CLI_ALLOW_REMOTE: ${CLAUDE_CLI_ALLOW_REMOTE:-false}
-      CLAUDE_CLI_BRIDGE_MAX_CONCURRENCY: ${CLAUDE_CLI_BRIDGE_MAX_CONCURRENCY:-2}
+      CLAUDE_CLI_BRIDGE_MAX_CONCURRENCY: ${CLAUDE_CLI_BRIDGE_MAX_CONCURRENCY:-4}
       CLAUDE_CLI_BRIDGE_TIMEOUT_MS: ${CLAUDE_CLI_BRIDGE_TIMEOUT_MS:-180000}
     volumes:
       # The knowledge base folder, read-only, for grounded answers later (nothing reads it yet).
@@ -577,7 +580,7 @@ services:
       retries: 10
 
 networks:
-  # Worker <-> claude-bridge only (ADR-019).
+  # worker + api <-> claude-bridge only (ADR-019 §3, ADR-023).
   ai: {}
   # api <-> gmail-tunnel only (ADR-020).
   push: {}

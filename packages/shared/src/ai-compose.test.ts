@@ -46,6 +46,19 @@ describe('AI settings reach the containers (T-132)', () => {
     expect(envExample).toMatch(/^CLAUDE_CLI_ALLOW_REMOTE=false$/m);
   });
 
+  it('the api and the worker are the only members of the ai network, and the api cap is below the bridge slots (ADR-023)', () => {
+    const service = (name: string) =>
+      new RegExp(`\\n {2}${name}:\\n([\\s\\S]*?)\\n {2}\\S`).exec(compose)?.[1] ?? '';
+    expect(service('api')).toMatch(/networks:[\s\S]*- ai\b/);
+    expect(service('worker')).toMatch(/networks:[\s\S]*- ai\b/);
+    for (const name of ['web', 'caddy', 'minio']) {
+      expect(service(name)).not.toMatch(/- ai\b/);
+    }
+    expect(compose).toMatch(/AI_API_MAX_CONCURRENCY: \$\{AI_API_MAX_CONCURRENCY:-2\}/);
+    expect(compose).toMatch(/CLAUDE_CLI_BRIDGE_MAX_CONCURRENCY:-4\}/);
+    expect(envExample).toMatch(/^AI_API_MAX_CONCURRENCY=2$/m);
+  });
+
   it('.env.example keeps the provider on mock and holds no model name', () => {
     expect(envExample).toMatch(/^AI_PROVIDER=mock$/m);
     for (const name of [

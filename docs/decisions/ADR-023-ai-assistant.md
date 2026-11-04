@@ -91,13 +91,23 @@
 | `audit_log` | id, ชื่อ tool, จำนวน; ไม่มีข้อความ | ตาม audit | ไม่ (บันทึกการกระทำ) |
 
 ## Consequences / ยังไม่ยืนยัน
-- live provider ใน api ยังไม่ wire (credentials reader อยู่ใน worker) `[ASK-HUMAN]` · คุณภาพ plan/answer จาก model จริงยังไม่เคยวัด (ไม่มี eval ของ assistant: `evals/golden/` แก้ไม่ได้โดย agent ผู้ผลิต → เสนอเคสให้ main thread) `[UNVERIFIED]`
+- live provider ใน api wire แล้ว ดูหัวข้อ "Live provider (2026-11-04)" · คุณภาพ plan/answer จาก model จริงยังไม่เคยวัด (ไม่มี eval ของ assistant: `evals/golden/` แก้ไม่ได้โดย agent ผู้ผลิต → เสนอเคสให้ main thread) `[UNVERIFIED]`
 - `dev` role ตามตาราง allow-list เป็นสมมติฐานจนกว่า T-137 merge · เมื่อ `Role` มี `dev` ต้องอัปเดต `ASSISTANT_ROLE_TOOLS` และ test
 - `ai_summary` (cache ของ brief/handoff) เก็บ claim ที่ restore แล้ว (มีชื่อ/หัวข้อ ticket ได้) ต่อผู้ใช้ 1 แถวต่อหน้าจอ · ถูกแทนเมื่อ facts เปลี่ยน, ลบตาม retention และเมื่อผู้ใช้ถูกลบ · ถ้าต้องการไม่เก็บ PII ที่ rest เลยต้องเก็บแบบ redacted + token map (ยังไม่ทำ) `[ASSUMED]`
 - `GET /v1/tickets/stats` ที่ไม่มี filter เลยเคย 500 (SQL `WHERE` ว่าง) — พบตอนทำ `team_load` แก้ใน `sla-states.ts` พร้อม test
 - ลิงก์: เว็บมีหน้า ticket เพียงทาง `/?ticket=KEY` · ยังไม่มีหน้า KB/incident/alert จึงไม่ออก `href` ให้ evidence ชนิดนั้น (ชิปบอกว่าไม่มีลิงก์) · worker เคยออก `/tickets/KEY` และ `/kb/slug` ซึ่งไม่มีหน้า — แก้ ticket เป็น `/?ticket=KEY` แล้ว, `/kb/slug` ยังอยู่ใน card เดิมแต่ claim ตัดทิ้ง
 - ชื่อบุคคลที่ไม่อยู่ใน dictionary ของ redactor อาจหลุดไป model ได้ (ช่องว่างเดิมของ ADR-013) `[UNVERIFIED 70%]`
 - ทบทวนเมื่อ: เปิด live provider, เพิ่ม auto-run ของ write ใด ๆ, เปิด bubble ให้ `client`, เพิ่ม tool ที่เขียนได้
+
+## Live provider (2026-11-04)
+- **สถานะ:** ผู้ผลิต `ai-engineer` · รอ `architect` + `security-reviewer` ตรวจ (N7) · พิสูจน์ด้วย fake bridge บน loopback เท่านั้น (ไม่เรียก provider จริง) `[TESTED]` · เจ้าของอนุมัติใช้ `claude-cli` กับข้อมูลลูกค้าแล้ว (ADR-021)
+- **เส้นทางที่เลือก: (A) api เรียก `claude-bridge` ตรง** ผ่าน network `ai` ด้วย `CLAUDE_CLI_BRIDGE_URL` + `CLAUDE_CLI_BRIDGE_TOKEN` (env เดียวกับ worker) · เหตุผล: (1) คำตอบของ assistant เป็น request/response ที่ผู้ใช้รออยู่ — queue ผ่าน worker เพิ่ม hop, ต้องมี job state + polling/WebSocket ซึ่ง UI ที่ส่งไปแล้วไม่มี; (2) redaction, `ai_run`, guard, งบ ทำใน process ของ api อยู่แล้ว (`createAuditedLlm`) จึงไม่มี path ที่ข้าม audit; (3) latency ต่ำสุด · ราคาที่จ่าย: เพิ่มสมาชิก network `ai` อีกหนึ่ง (api) ซึ่งเป็น service ที่เปิดสู่ผู้ใช้ — ลดด้วยข้อจำกัดด้านล่าง · (B) worker queue ปฏิเสธ
+- **ADR-019 §3 แก้:** สมาชิก network `ai` = `worker` + `api` + `claude-bridge` (เดิม worker เท่านั้น) · web/caddy/minio/อื่น ๆ ยังเข้า bridge ไม่ได้ · bridge ยังไม่ publish port และยังต้อง bearer token · api ไม่ได้ `CLAUDE_CODE_OAUTH_TOKEN` (มีแค่ bridge) · compose test (`packages/shared/src/ai-compose.test.ts`) ตรวจสมาชิกนี้
+- **โค้ดเดียวกับ worker:** `createLiveProvider` + `buildAiSettings` ย้ายไป `packages/ai/src/live/` (worker re-export จากไฟล์เดิม) · api ใช้ผ่าน `createApiAiRuntime` (`apps/api/src/ai/ai-runtime.ts`) → `createAuditedLlm` (redaction ผ่าน `RedactedText`, `ai_run`, daily cap, kill switch) · ไม่ fallback mock: provider ที่ตั้งไม่ครบ (ไม่มี model/ราคา/bridge token) ⇒ `ready=false` ⇒ `state: 'unavailable'` และ log หนึ่งบรรทัดตอน boot ที่ระบุว่าขาดอะไร (ไม่มีค่า) · `anthropic` อ่าน key จาก credential store (env ชนะ, ADR-012) · `vertex` ยังไม่มี access-token source ใน api (เหมือน worker) ⇒ unavailable
+- **offline (T-170):** `AI_PROVIDER` ≠ `mock` และ `AiStatusService` (Redis, worker เป็นผู้เช็ค) ตอบ `offline` ⇒ assistant ตอบ `unavailable` (`reason: provider_offline`) ทันทีโดยไม่เรียก bridge · ถ้า bridge ตอบ error (`503 offline`, `429 busy`, timeout) ระหว่างทาง ⇒ `provider_*` ⇒ `unavailable` เช่นกัน · web แสดง "AI is offline" ตามที่มีอยู่ · ผลข้างเคียง: ถ้า worker ไม่ทำงาน ไม่มี report ⇒ offline ⇒ assistant ใช้ไม่ได้ (ตั้งใจ: ไม่มีใครเช็ค AI)
+- **timeout:** adapter 190 s ต่อ call > bridge 180 s (ค่าเดิม; ≥ 60 s ตามโจทย์) · 1 ข้อความ = 2 call (plan + answer) ⇒ คำตอบแรกจาก `claude -p` อาจใช้ 10–40 s `[ASSUMED]` ยังไม่วัดบน POC
+- **concurrency:** bridge default 2 → **4** (`CLAUDE_CLI_BRIDGE_MAX_CONCURRENCY`) · api จำกัดตัวเองด้วย `AI_API_MAX_CONCURRENCY` (default 2, `apps/api/src/ai/concurrency-limit.ts`): เกินจะรอคิว ≤ 8 รายการ ≤ 60 s แล้วตอบ unavailable ⇒ ใน 4 slot เหลือ ≥ 2 ให้ worker เสมอ · เพดานนี้ต่อ process (api หลาย replica ต้องหารเอง) `[ASSUMED]`
+- **ยังไม่ยืนยัน:** คุณภาพ plan/answer จาก model จริง (ไม่มี eval ของ assistant; เสนอเคสให้ main thread) `[UNVERIFIED]` · ความเสี่ยงที่เหลือใน "แก้ไขรอบที่ 3" (ชื่อลูกค้าที่พิมพ์ลอย ๆ ถึง model ขั้น plan) ยัง `[ASK-HUMAN]` และเกิดจริงเมื่อเปิด live
 
 ## ฝั่งเว็บ (T-134 web, 2026-11-04)
 - `AssistantBubble` mount ครั้งเดียวใน `ConsoleLayout` (ไม่อยู่ใน portal/status/csat) · เห็นเฉพาะผู้ถือ `ticket.read` หรือ `ticket.read.masked` (ตรงกับ guard ของ route) · `Ctrl/⌘ J` เปิด-ปิด, `Esc` พับแล้วคืน focus ที่ปุ่ม, ข้อความที่พิมพ์ค้างอยู่
