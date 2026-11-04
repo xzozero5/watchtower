@@ -54,6 +54,7 @@ const GOOD: AutoSendFacts = {
     minScore: 0.85,
     mock: false,
     independent: true,
+    runsKnown: true,
   },
   disclosure: { contactVerified: true, senderAuthenticated: true },
   content: {
@@ -74,7 +75,13 @@ const GOOD: AutoSendFacts = {
     autoStreak: 0,
     reopenedAfterAuto: false,
   },
-  procedure: { autosendAllowed: true, stale: false },
+  procedure: {
+    autosendAllowed: true,
+    stale: false,
+    requiresHuman: false,
+    escalationPending: false,
+    replayPassed: true,
+  },
   budget: { autoSentToday: 3, dailyCap: 20, aiBudgetExceeded: false },
 };
 const OPEN: SwitchState = { stageCapPinned: false, killSwitch: false };
@@ -136,6 +143,11 @@ const BREAKS: readonly {
     name: '7 grader is the drafter',
     reason: GATE_REASONS.graderNotIndependent,
     facts: (f) => ({ ...f, grade: { ...need(f.grade), independent: false } }),
+  },
+  {
+    name: '7 no ai_run row of the drafter or grader (C-11)',
+    reason: GATE_REASONS.aiRunMissing,
+    facts: (f) => ({ ...f, grade: { ...need(f.grade), runsKnown: false } }),
   },
   {
     name: '8 disclosure unknown',
@@ -250,12 +262,27 @@ const BREAKS: readonly {
   {
     name: '11 procedure says never',
     reason: GATE_REASONS.procedureNotAutosend,
-    facts: (f) => ({ ...f, procedure: { autosendAllowed: false, stale: false } }),
+    facts: (f) => ({ ...f, procedure: { ...need(f.procedure), autosendAllowed: false } }),
   },
   {
     name: '11 draft from an old version',
     reason: GATE_REASONS.procedureStale,
-    facts: (f) => ({ ...f, procedure: { autosendAllowed: true, stale: true } }),
+    facts: (f) => ({ ...f, procedure: { ...need(f.procedure), stale: true } }),
+  },
+  {
+    name: '11 a require_human step matched (C-1)',
+    reason: GATE_REASONS.procedureRequiresHuman,
+    facts: (f) => ({ ...f, procedure: { ...need(f.procedure), requiresHuman: true } }),
+  },
+  {
+    name: '11 an escalation card is pending (C-1)',
+    reason: GATE_REASONS.escalationPending,
+    facts: (f) => ({ ...f, procedure: { ...need(f.procedure), escalationPending: true } }),
+  },
+  {
+    name: '11 no passing replay of the current set (C-4)',
+    reason: GATE_REASONS.replayMissing,
+    facts: (f) => ({ ...f, procedure: { ...need(f.procedure), replayPassed: false } }),
   },
   {
     name: '12 no budget facts',
@@ -535,5 +562,75 @@ describe('the automatic send (ADR-025 section 4)', () => {
       expect(effectiveStage(stage, false)).toBe(Math.min(stage, 2));
       expect(effectiveStage(stage, true)).toBe(Math.min(stage, 3));
     }
+  });
+});
+
+describe('T-306e C-1 and C-4: the procedure and replay facts', () => {
+  const decideWith = (procedure: unknown) =>
+    decideAutoSend({
+      actorType: 'ai',
+      intent: STAGE3,
+      switches: OPEN,
+      autosend: { ...GOOD, procedure } as AutoSendFacts,
+    });
+  const base = need(GOOD.procedure);
+
+  it('a require_human step, a pending escalation or no replay => never ai_auto, across the whole input space', () => {
+    for (const input of all) {
+      if (input.origin !== 'ai_auto') continue;
+      const procedure = input.autosend?.procedure;
+      if (
+        procedure !== null &&
+        procedure !== undefined &&
+        (procedure.requiresHuman || procedure.escalationPending || !procedure.replayPassed)
+      ) {
+        expect(decide(input, SAFE_AUTO_ACK_TEMPLATES).allowed, JSON.stringify(input)).toBe(false);
+      }
+    }
+  });
+
+  it('a fact that did not load (undefined, null, a truthy string) denies', () => {
+    for (const bad of [undefined, null, 'no', 0]) {
+      expect(
+        decideWith({ ...base, requiresHuman: bad }).reason,
+        `requiresHuman ${String(bad)}`,
+      ).toBe(GATE_REASONS.procedureRequiresHuman);
+      expect(
+        decideWith({ ...base, escalationPending: bad }).reason,
+        `escalationPending ${String(bad)}`,
+      ).toBe(GATE_REASONS.escalationPending);
+    }
+    for (const bad of [undefined, null, 'yes', 1]) {
+      expect(decideWith({ ...base, replayPassed: bad }).reason, `replayPassed ${String(bad)}`).toBe(
+        GATE_REASONS.replayMissing,
+      );
+    }
+  });
+
+  it('is checked after condition 11 and before the budget', () => {
+    const failed = evaluateAutoSend({
+      actorType: 'ai',
+      intent: STAGE3,
+      switches: OPEN,
+      autosend: {
+        ...GOOD,
+        procedure: {
+          autosendAllowed: false,
+          stale: true,
+          requiresHuman: true,
+          escalationPending: true,
+          replayPassed: false,
+        },
+        budget: { ...need(GOOD.budget), aiBudgetExceeded: true },
+      },
+    });
+    expect(failed).toEqual([
+      GATE_REASONS.procedureNotAutosend,
+      GATE_REASONS.procedureStale,
+      GATE_REASONS.procedureRequiresHuman,
+      GATE_REASONS.escalationPending,
+      GATE_REASONS.replayMissing,
+      GATE_REASONS.aiBudgetExceeded,
+    ]);
   });
 });

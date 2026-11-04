@@ -38,6 +38,8 @@ export interface NewPreSendGrade {
   readonly violations: readonly { readonly code: string; readonly text: string }[];
   readonly promptVersion: number;
   readonly mock: boolean;
+  /** `sampled`: a second look at a reply that was already sent (T-306e C-4c). Default `pre_send`. */
+  readonly phase?: 'pre_send' | 'sampled' | undefined;
 }
 
 /** Stores the grade of one exact text (`phase = 'pre_send'`). Append-only; the hash is the database's. */
@@ -50,7 +52,7 @@ export async function recordPreSendGrade(
     .values({
       aiDraftId: grade.aiDraftId,
       ticketId: grade.ticketId,
-      phase: 'pre_send',
+      phase: grade.phase ?? 'pre_send',
       gradedText: grade.text,
       graderAiRunId: grade.graderAiRunId,
       graderProvider: grade.graderProvider,

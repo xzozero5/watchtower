@@ -1,16 +1,18 @@
 import { schema } from '@watchtower/db';
 import { parseAutosendPolicy } from '@watchtower/shared';
-import { and, asc, eq, ne, sql } from 'drizzle-orm';
+import { and, desc, eq, ne, sql } from 'drizzle-orm';
 
+import { readProcedureProposals } from '../procedures/escalation.js';
+import { ticketRequiresHuman } from '../procedures/runtime.js';
 import { contentHash } from '../outbound/state.js';
 import type { ReadExecutor } from '../types.js';
 import {
   countPlaceholders,
+  autosendContactVerified,
   customerWantsHuman,
-  disclosureFor,
   linksAllowed,
-  senderAuthenticated,
 } from './autosend-text.js';
+import { replayPassedForSet } from './replay.js';
 import type {
   AutoSendBudgetFacts,
   AutoSendContentFacts,
@@ -21,6 +23,9 @@ import type {
   AutoSendTicketFacts,
   IntentStanding,
 } from './decide.js';
+
+/** The newest public inbound messages read for the "wants a person" check; more than this and the answer is yes. */
+const MAX_INBOUND_TEXTS = 1000;
 
 /** What the caller names; everything else is read from the tables, never taken from the caller. */
 export interface AutoSendRequest {
@@ -54,20 +59,53 @@ export interface LoadedAutoSend {
   readonly summary: Readonly<Record<string, unknown>>;
 }
 
-/** The stored evidence cards the investigator wrote (`ai_ticket_insight.evidence`); anything else is ignored. */
-function customerKbCardIds(evidence: unknown): Set<string> {
-  const ids = new Set<string>();
+/**
+ * The customer-safe knowledge base cards the investigator stored (`ai_ticket_insight.evidence`), by id, with the
+ * passage each shows; anything else is ignored.
+ */
+function customerKbCards(evidence: unknown): Map<string, string> {
+  const ids = new Map<string, string>();
   if (!Array.isArray(evidence)) return ids;
   for (const card of evidence as unknown[]) {
     if (typeof card !== 'object' || card === null) continue;
-    const { id, kind, customerSafe } = card as {
+    const { id, kind, customerSafe, title, snippet } = card as {
       id?: unknown;
       kind?: unknown;
       customerSafe?: unknown;
+      title?: unknown;
+      snippet?: unknown;
     };
-    if (typeof id === 'string' && kind === 'kb' && customerSafe === true) ids.add(id);
+    if (typeof id === 'string' && kind === 'kb' && customerSafe === true) {
+      ids.set(
+        id,
+        [typeof title === 'string' ? title : '', typeof snippet === 'string' ? snippet : ''].join(
+          '\n',
+        ),
+      );
+    }
   }
   return ids;
+}
+
+/** The `ai_run` row a call wrote: which agent, for which ticket, with which model alias and prompt version. */
+async function runOf(
+  db: ReadExecutor,
+  id: string | null,
+): Promise<
+  { agent: string; ticketId: string | null; model: string; promptVersion: number } | undefined
+> {
+  if (id === null) return undefined;
+  const [row] = await db
+    .select({
+      agent: schema.aiRun.agent,
+      ticketId: schema.aiRun.ticketId,
+      model: schema.aiRun.model,
+      promptVersion: schema.aiRun.promptVersion,
+    })
+    .from(schema.aiRun)
+    .where(eq(schema.aiRun.id, id))
+    .limit(1);
+  return row;
 }
 
 /**
@@ -89,6 +127,7 @@ export async function loadAutoSendFacts(
       intentId: schema.ticket.intentId,
       incidentId: schema.ticket.incidentId,
       requesterContactId: schema.ticket.requesterContactId,
+      portalRequesterVerified: sql<unknown>`${schema.ticket.customFields}->'portal'->'requesterVerified'`,
     })
     .from(schema.ticket)
     .where(eq(schema.ticket.id, request.ticketId))
@@ -126,6 +165,7 @@ export async function loadAutoSendFacts(
   const [draft] = await db
     .select({
       ticketId: schema.aiDraft.ticketId,
+      aiRunId: schema.aiDraft.aiRunId,
       citations: schema.aiDraft.citations,
       uncitedClaims: schema.aiDraft.uncitedClaims,
       createdAt: schema.aiDraft.createdAt,
@@ -148,10 +188,22 @@ export async function loadAutoSendFacts(
       score: schema.aiGrade.score,
       mock: schema.aiGrade.mock,
       independent: schema.aiGrade.independent,
+      graderAiRunId: schema.aiGrade.graderAiRunId,
+      graderPromptVersion: schema.aiGrade.promptVersion,
     })
     .from(schema.aiGrade)
     .where(eq(schema.aiGrade.id, request.aiGradeId))
     .limit(1);
+  // T-306e C-11: the runs of the drafter and the grader. No row = the models cannot be vouched for = deny.
+  const drafterRun = draftOk ? await runOf(db, draft.aiRunId) : undefined;
+  const graderRun = gradeRow === undefined ? undefined : await runOf(db, gradeRow.graderAiRunId);
+  const runsKnown =
+    drafterRun !== undefined &&
+    drafterRun.agent === 'drafter' &&
+    drafterRun.ticketId === ticket.id &&
+    graderRun !== undefined &&
+    graderRun.agent === 'grader' &&
+    graderRun.ticketId === ticket.id;
   const grade: AutoSendGradeFacts | null =
     gradeRow === undefined ||
     gradeRow.draftId !== request.aiDraftId ||
@@ -168,6 +220,7 @@ export async function loadAutoSendFacts(
           mock: gradeRow.mock,
           // A generated column: null would be unknown, and unknown is "not independent".
           independent: gradeRow.independent === true,
+          runsKnown,
         };
 
   // Condition 8.
@@ -182,20 +235,33 @@ export async function loadAutoSendFacts(
           .from(schema.contact)
           .where(eq(schema.contact.id, ticket.requesterContactId))
           .limit(1);
-  const inbound = await db
+  // T-306e C-10: aggregated in SQL over every inbound message (the old read took the first 200 and so never saw
+  // the latest). The sender check covers all of them; the texts come newest first.
+  const inboundOfTicket = and(
+    eq(schema.message.ticketId, ticket.id),
+    eq(schema.message.direction, 'inbound'),
+  );
+  const [inboundAgg] = await db
     .select({
-      direction: schema.message.direction,
-      emailMeta: schema.message.emailMeta,
-      visibility: schema.message.visibility,
-      text: schema.message.bodyText,
+      publicCount: sql<number>`(count(*) FILTER (WHERE ${schema.message.visibility} = 'public'))::int`,
+      allAuthenticated: sql<boolean>`coalesce(bool_and(coalesce(${schema.message.emailMeta}->>'senderAuth', '') = 'pass'), true)`,
     })
     .from(schema.message)
-    .where(and(eq(schema.message.ticketId, ticket.id), eq(schema.message.direction, 'inbound')))
-    .orderBy(asc(schema.message.createdAt))
-    .limit(200);
+    .where(inboundOfTicket);
+  const recentPublic = await db
+    .select({ text: sql<string>`left(${schema.message.bodyText}, 4000)` })
+    .from(schema.message)
+    .where(and(inboundOfTicket, eq(schema.message.visibility, 'public')))
+    .orderBy(desc(schema.message.createdAt), desc(schema.message.id))
+    .limit(MAX_INBOUND_TEXTS);
   const disclosure: AutoSendDisclosureFacts = {
-    contactVerified: disclosureFor(ticket.channel, contact) === 'verified',
-    senderAuthenticated: ticket.channel === 'gmail' ? senderAuthenticated(inbound) : null,
+    // T-306e C-3: a portal ticket is verified only by the portal's own `requesterVerified`, never by the contact.
+    contactVerified: autosendContactVerified(
+      ticket.channel,
+      contact,
+      ticket.portalRequesterVerified,
+    ),
+    senderAuthenticated: ticket.channel === 'gmail' ? inboundAgg?.allAuthenticated === true : null,
   };
 
   // Condition 9: customer-facing knowledge base citations of the draft.
@@ -204,14 +270,13 @@ export async function loadAutoSendFacts(
     .from(schema.aiTicketInsight)
     .where(eq(schema.aiTicketInsight.ticketId, ticket.id))
     .limit(1);
-  const safeKb = customerKbCardIds(insight?.evidence);
-  const cited = new Set(
-    draftOk
-      ? draft.citations
-          .filter((citation) => safeKb.has(citation.evidenceId))
-          .map((c) => c.evidenceId)
-      : [],
-  );
+  const safeKb = customerKbCards(insight?.evidence);
+  const citedCards = draftOk
+    ? draft.citations.filter((citation) => safeKb.has(citation.evidenceId))
+    : [];
+  const cited = new Set(citedCards.map((c) => c.evidenceId));
+  // T-306e C-2: the passages the reply cites are the only place a contact or host outside the instance may come from.
+  const citedSnippets = [...cited].map((id) => safeKb.get(id) ?? '');
   const policy = parseAutosendPolicy(intent.policy);
   const content: AutoSendContentFacts = {
     channel: ticket.channel,
@@ -219,7 +284,7 @@ export async function loadAutoSendFacts(
     customerKbCitations: cited.size,
     // A draft we cannot read has claims we cannot vouch for.
     uncitedClaims: draftOk ? draft.uncitedClaims : 1,
-    linksAllowed: linksAllowed(request.text, options.linkOrigins),
+    linksAllowed: linksAllowed(request.text, options.linkOrigins, citedSnippets),
     attachments: request.attachmentCount + (request.hasHtml ? 1 : 0),
     placeholders: countPlaceholders(request.text),
     length: Array.from(request.text).length,
@@ -268,12 +333,36 @@ export async function loadAutoSendFacts(
             ),
           )
           .limit(1);
+  // T-306e C-2: once an automatic reply has gone out on the ticket, every later inbound message counts as a request
+  // for a person until a person has answered it. A customer who writes back to a bot is not asked twice.
+  const [unanswered] =
+    firstAuto === null
+      ? []
+      : await db
+          .select({ id: schema.message.id })
+          .from(schema.message)
+          .where(
+            and(
+              inboundOfTicket,
+              eq(schema.message.visibility, 'public'),
+              sql`${schema.message.createdAt} > ${firstAuto}::timestamptz`,
+              sql`NOT EXISTS (
+                SELECT 1 FROM message AS h
+                 WHERE h.ticket_id = ${schema.message.ticketId} AND h.direction = 'outbound'
+                   AND h.visibility = 'public' AND h.sender_user_id IS NOT NULL
+                   AND h.created_at > ${schema.message.createdAt})`,
+            ),
+          )
+          .limit(1);
+  const inboundTruncated = (inboundAgg?.publicCount ?? 0) > recentPublic.length;
   const ticketFacts: AutoSendTicketFacts = {
     priority: ticket.priority,
     openIncident: incident !== undefined && incident.status !== 'resolved',
-    customerWantsHuman: customerWantsHuman(
-      inbound.filter((message) => message.visibility === 'public').map((message) => message.text),
-    ),
+    customerWantsHuman:
+      // More messages than were read: the rest cannot be vouched for.
+      inboundTruncated ||
+      unanswered !== undefined ||
+      customerWantsHuman(recentPublic.map((message) => message.text)),
     autoStreak: streak?.n ?? 0,
     reopenedAfterAuto: reopened !== undefined,
   };
@@ -283,6 +372,8 @@ export async function loadAutoSendFacts(
   // published version when that version was published before the draft was written `[ASSUMED]`.
   const [published] = await db
     .select({
+      versionId: schema.procedureVersion.id,
+      stepsHash: schema.procedureVersion.stepsHash,
       steps: schema.procedureVersion.steps,
       publishedAt: schema.procedureVersion.publishedAt,
     })
@@ -307,6 +398,24 @@ export async function loadAutoSendFacts(
       published.publishedAt === null ||
       !draftOk ||
       published.publishedAt.getTime() > draft.createdAt.getTime(),
+    // T-306e C-1: a require_human step matched, or an escalation card still waits for a person.
+    requiresHuman: await ticketRequiresHuman(db, ticket.id),
+    escalationPending: (await readProcedureProposals(db, ticket.id)).some(
+      (proposal) => proposal.status === 'pending',
+    ),
+    // T-306e C-4: a passing replay of the combination in force (the models and prompts of this draft and grade,
+    // the published procedure). Without the runs of the drafter and the grader the combination is unknown.
+    replayPassed: runsKnown
+      ? await replayPassedForSet(db, {
+          intentId,
+          drafterModel: drafterRun.model,
+          graderModel: graderRun.model,
+          drafterPromptVersion: drafterRun.promptVersion,
+          graderPromptVersion: graderRun.promptVersion,
+          procedureVersionId: published?.versionId ?? null,
+          procedureStepsHash: published?.stepsHash ?? null,
+        })
+      : false,
   };
 
   // Condition 12.
@@ -366,6 +475,10 @@ export async function loadAutoSendFacts(
       senderAuthenticated: disclosure.senderAuthenticated,
       procedureAutosend: typeof stepsAutosend === 'string' ? stepsAutosend : null,
       procedureStale: procedure.stale,
+      procedureRequiresHuman: procedure.requiresHuman,
+      escalationPending: procedure.escalationPending,
+      replayPassed: procedure.replayPassed,
+      runsKnown,
     },
   };
 }

@@ -83,7 +83,7 @@ export class IntentPromotionController {
   @ApiOperation({
     summary: 'Gate reports of an intent, newest first',
     description:
-      'Each criterion has `pass` true, false or null (not enough data), a `value`, a `threshold` and its `basis` (`PRD` or `ASSUMED`). `status` is green only when every deciding criterion passes over a window of at least 28 days at stage 2; seed data is never counted. The replay and redaction eval criteria are listed with `not_measured`.',
+      'Each criterion has `pass` true, false or null (not enough data), a `value`, a `threshold` and its `basis` (`PRD` or `ASSUMED`). `status` is green only when every deciding criterion passes over a window of at least 28 days at stage 2; seed data is never counted. The replay and redaction eval criteria (`ai_replay_result`) decide like the rest; with no result they are `not_measured` (`pass` null, so the status cannot be green). `metrics.reviewers` shows what each person did with the AI drafts.',
   })
   @ApiOkResponse({ standardSchema: gateReportListSchema })
   async reports(

@@ -80,6 +80,24 @@ export const setAutosendDisclosureSchema = autosendDisclosureSchema.extend({
 });
 export type SetAutosendDisclosure = z.infer<typeof setAutosendDisclosureSchema>;
 
+/**
+ * `instance_setting` key of how many automatic replies are graded again after they were sent (the `sampled` grade,
+ * T-306e C-4). The first `initialCount` replies after a promotion are graded at `initialPercent`, the rest at `percent`
+ * `[ASSUMED]` (owner: 100% for the first 20, then 20%). A violation in a sampled grade rolls the intent back at once.
+ */
+export const AUTOSEND_SAMPLING_KEY = 'autosend.sampling';
+export const AUTOSEND_SAMPLING_DEFAULT = {
+  initialCount: 20,
+  initialPercent: 100,
+  percent: 20,
+} as const;
+export const autosendSamplingSchema = z.strictObject({
+  initialCount: z.number().int().min(0).max(1000),
+  initialPercent: z.number().int().min(0).max(100),
+  percent: z.number().int().min(0).max(100),
+});
+export type AutosendSampling = z.infer<typeof autosendSamplingSchema>;
+
 export const GATE_REPORT_STATUSES = ['green', 'red', 'insufficient_data'] as const;
 export const gateCriterionSchema = z.object({
   /** For example `verified_resolution`, `reopen_rate`, `csat_parity`, `shadow_precision`, `window_days`. */

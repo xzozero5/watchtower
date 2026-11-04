@@ -1,12 +1,20 @@
 import { randomBytes, randomUUID } from 'node:crypto';
 
+import {
+  DevMockLlmProvider,
+  mockSettings,
+  type LlmProvider,
+  type LlmRequest,
+} from '@watchtower/ai';
 import { createDatabase, schema, type Database } from '@watchtower/db';
 import { createTestDatabase, type TestDatabase } from '@watchtower/db/testing';
 import {
   createDomain,
   createPolicyGate,
+  findSampleCandidates,
   generateGateReport,
   readGateReports,
+  recordReplayResult,
   type Domain,
 } from '@watchtower/domain';
 import { AUDIT_ACTIONS } from '@watchtower/shared';
@@ -16,6 +24,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { createLogger } from '../logger.js';
 import { testConfig } from '../testing/support.js';
+import { createAiRuntime } from '../ai/runtime.js';
 import { runAutonomyWatch, runWeeklyReports } from './index.js';
 
 // T-304e/f (ADR-025 sections 6 and 7): the rollback rules of the owner's decision 4 and the gate report, over
@@ -40,6 +49,43 @@ const logger = createLogger(testConfig());
 const owner = () => testDb.owner.db;
 const sink = { publish: (event: unknown) => (published.push(event), Promise.resolve()) };
 const deps = () => ({ database, domain, realtime: sink as never, logger });
+
+/** A provider that answers the grader with `graderAnswer` and counts its calls (not the mock: its grades are not `mock`). */
+let graderAnswer: { score: number; violations: unknown[] } = { score: 0.95, violations: [] };
+let graderCalls = 0;
+function fakeProvider(): LlmProvider {
+  const inner = new DevMockLlmProvider();
+  return {
+    kind: 'anthropic',
+    generate(request: LlmRequest) {
+      if (request.prompt.id === 'grader_pre_send') {
+        graderCalls += 1;
+        return Promise.resolve({
+          text: JSON.stringify(graderAnswer),
+          finishReason: 'stop' as const,
+          usage: { inputTokens: 10, outputTokens: 5 },
+          model: request.model,
+        });
+      }
+      return inner.generate(request);
+    },
+  };
+}
+const aiRuntime = () =>
+  createAiRuntime(testConfig(), database, logger, {
+    providers: { anthropic: fakeProvider() },
+    settings: {
+      load: () =>
+        Promise.resolve({
+          ...mockSettings(),
+          tiers: {
+            deep: { provider: 'anthropic' as const, model: 'grader-fixture' },
+            standard: { provider: 'anthropic' as const, model: 'grader-fixture' },
+            light: { provider: 'anthropic' as const, model: 'grader-fixture' },
+          },
+        }),
+    },
+  });
 
 beforeAll(async () => {
   testDb = await createTestDatabase(adminUrl);
@@ -178,17 +224,31 @@ const hash = () => randomBytes(32).toString('hex');
 /** A draft, its pre-send grade and (optionally) an automatic reply that was sent, as a real send would leave them. */
 async function autoReply(
   ticketId: string,
-  options: { grade?: { passed: boolean; violations?: number }; sent?: boolean } = {},
+  options: {
+    grade?: { passed: boolean; violations?: number };
+    sent?: boolean;
+    /** Leave the `ai_run` row of the drafter, so a sampled grade can name the models. */
+    drafterRun?: boolean;
+  } = {},
 ) {
   const draftId = randomUUID();
+  const runId = options.drafterRun === true ? randomUUID() : null;
   const gradeId = randomUUID();
   const messageId = randomUUID();
   const violations = options.grade?.violations ?? (options.grade?.passed === false ? 1 : 0);
   await untriggered(async (q) => {
+    if (runId !== null) {
+      await q(
+        `INSERT INTO ai_run (id, started_at, agent, ticket_id, provider, model, response_model, tier, prompt_id,
+                             prompt_version, prompt_hash, input_hmac, redaction, status)
+         VALUES ($1, now(), 'drafter', $2, 'anthropic', 'sonnet', 'sonnet', 'standard', 'drafter', 2, $3, $4, '{"total":0,"byKind":{}}', 'ok')`,
+        [runId, ticketId, 'a'.repeat(64), 'b'.repeat(64)],
+      );
+    }
     await q(
-      `INSERT INTO ai_draft (id, ticket_id, body_text, content_hash, status, auto_approved_at)
-       VALUES ($1, $2, 'Reset it on the sign in page.', $3, 'sent', now())`,
-      [draftId, ticketId, hash()],
+      `INSERT INTO ai_draft (id, ticket_id, body_text, content_hash, status, auto_approved_at, ai_run_id)
+       VALUES ($1, $2, 'Reset it on the sign in page.', $3, 'sent', now(), $4)`,
+      [draftId, ticketId, hash(), runId],
     );
     await q(
       `INSERT INTO ai_grade (id, ai_draft_id, ticket_id, phase, graded_text, content_hash, grader_provider, grader_model,
@@ -479,5 +539,194 @@ describe('the gate report (ADR-025 section 6)', () => {
     const after = await owner().select().from(schema.autonomyGateReport);
     expect(after.length).toBeGreaterThan(before.length);
     expect(after.some((report) => report.triggerKind === 'weekly')).toBe(true);
+  });
+});
+
+describe('the sampled grades of sent automatic replies (T-306e C-4c)', () => {
+  const sampled = (ticketId: string) =>
+    owner()
+      .select()
+      .from(schema.aiGrade)
+      .where(and(eq(schema.aiGrade.ticketId, ticketId), eq(schema.aiGrade.phase, 'sampled')));
+
+  it('grades a sent reply once, names the models that ran, and leaves a clean intent at stage 3', async () => {
+    const intent = await stage3Intent();
+    const ticketId = await ticketFor(intent.id);
+    await autoReply(ticketId, { grade: { passed: true }, sent: true, drafterRun: true });
+    graderAnswer = { score: 0.95, violations: [] };
+    graderCalls = 0;
+    const result = await runAutonomyWatch({ ...deps(), ai: aiRuntime() }, intent.id);
+    expect(result.rolledBack).toEqual([]);
+    expect(graderCalls).toBe(1);
+    const rows = await sampled(ticketId);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      phase: 'sampled',
+      passed: true,
+      violationCount: 0,
+      graderModel: 'grader-fixture',
+      drafterModel: 'sonnet',
+      mock: false,
+    });
+    // Again: the reply already has its sampled grade, nothing more is asked of the model.
+    await runAutonomyWatch({ ...deps(), ai: aiRuntime() }, intent.id);
+    expect(graderCalls).toBe(1);
+    expect(await stageOf(intent.id)).toBe(3);
+  });
+
+  it('rolls the intent back at once when the sampled grade finds a violation', async () => {
+    const intent = await stage3Intent();
+    const ticketId = await ticketFor(intent.id);
+    await autoReply(ticketId, { grade: { passed: true }, sent: true, drafterRun: true });
+    graderAnswer = { score: 0.9, violations: [{ code: 'promise', text: 'It promised a refund.' }] };
+    const result = await runAutonomyWatch({ ...deps(), ai: aiRuntime() }, intent.id);
+    expect(result.rolledBack).toEqual([{ intent: intent.key, rule: 'violation' }]);
+    expect(await stageOf(intent.id)).toBe(2);
+    const [grade] = await sampled(ticketId);
+    expect(grade).toMatchObject({ passed: false, violationCount: 1 });
+  });
+
+  it('grades nothing when the drafter ai_run row is missing (the models cannot be vouched for), or with no AI runtime', async () => {
+    const intent = await stage3Intent();
+    const ticketId = await ticketFor(intent.id);
+    await autoReply(ticketId, { grade: { passed: true }, sent: true });
+    graderAnswer = { score: 0.95, violations: [] };
+    await runAutonomyWatch({ ...deps(), ai: aiRuntime() }, intent.id);
+    await runAutonomyWatch(deps(), intent.id);
+    expect(await sampled(ticketId)).toHaveLength(0);
+  });
+
+  it('picks the first 20 after a promotion at 100%, then a settable share; seed tickets never', async () => {
+    const intent = await stage3Intent();
+    for (let i = 0; i < 25; i += 1) {
+      await autoReply(await ticketFor(intent.id), { sent: true, drafterRun: true });
+    }
+    await autoReply(await ticketFor(intent.id, { seed: true }), { sent: true, drafterRun: true });
+    const pick = async (sampling: {
+      initialCount: number;
+      initialPercent: number;
+      percent: number;
+    }) => (await findSampleCandidates(owner(), intent.id, sampling, 100)).length;
+    const first20 = await pick({ initialCount: 20, initialPercent: 100, percent: 0 });
+    expect(first20).toBe(20);
+    expect(await pick({ initialCount: 20, initialPercent: 100, percent: 100 })).toBe(25);
+    expect(await pick({ initialCount: 0, initialPercent: 0, percent: 0 })).toBe(0);
+    // The share is a function of the delivery, so it is the same on every run.
+    const share = { initialCount: 20, initialPercent: 100, percent: 50 };
+    const a = await findSampleCandidates(owner(), intent.id, share, 100);
+    const b = await findSampleCandidates(owner(), intent.id, share, 100);
+    expect(a.map((row) => row.deliveryId)).toEqual(b.map((row) => row.deliveryId));
+    expect(a.length).toBeGreaterThanOrEqual(20);
+    expect(a.length).toBeLessThanOrEqual(25);
+  });
+});
+
+describe('the gate report reads the replay and shows the reviewers (T-306e C-4b, C-14)', () => {
+  const reportOf = async (intentId: string) => {
+    await generateGateReport(database.db, domain.context({ actor: { type: 'user', id: headId } }), {
+      intentId,
+      trigger: 'on_demand',
+      generatedBy: headId,
+      now: new Date(Date.now() + 3_600_000),
+    });
+    const [report] = await readGateReports(database.db, intentId);
+    return report;
+  };
+  const newIntent = async () => {
+    const [intent] = await owner()
+      .insert(schema.intent)
+      .values({ key: `i_${randomUUID().slice(0, 8)}`, name: 'x', autonomyStage: 2 })
+      .returning();
+    return intent?.id ?? '';
+  };
+  const base = (intentId: string) => ({
+    intentId,
+    source: 'eval' as const,
+    drafterModel: 'sonnet',
+    graderModel: 'opus',
+    drafterPromptVersion: 2,
+    graderPromptVersion: 1,
+    procedureVersionId: null,
+    caseCount: 20,
+    violations: 0,
+    redactionPassed: true,
+    mock: false,
+  });
+  const criterion = (report: Awaited<ReturnType<typeof reportOf>>, key: string) =>
+    report?.criteria.find((candidate) => candidate.key === key);
+
+  it('lists the replay as not measured when none was recorded, and as passed or failed when one was', async () => {
+    const none = await newIntent();
+    expect(criterion(await reportOf(none), 'eval_replay_violations')).toMatchObject({
+      pass: null,
+      value: 'not_measured',
+    });
+
+    const passed = await newIntent();
+    await recordReplayResult(database.db, headId, base(passed));
+    const ok = await reportOf(passed);
+    expect(criterion(ok, 'eval_replay_violations')).toMatchObject({ pass: true, value: 0 });
+    expect(criterion(ok, 'redaction_eval')).toMatchObject({ pass: true, value: 'pass' });
+
+    const failed = await newIntent();
+    await recordReplayResult(database.db, headId, { ...base(failed), violations: 3 });
+    const bad = await reportOf(failed);
+    expect(criterion(bad, 'eval_replay_violations')).toMatchObject({ pass: false, value: 3 });
+    expect(bad?.status).toBe('red');
+    // A mock replay is not a measurement.
+    const mocked = await newIntent();
+    await recordReplayResult(database.db, headId, { ...base(mocked), mock: true });
+    expect(criterion(await reportOf(mocked), 'eval_replay_violations')?.pass).toBeNull();
+  });
+
+  it('a failed replay suspends auto-send; it does not roll the intent back', async () => {
+    const intent = await stage3Intent();
+    await recordReplayResult(database.db, headId, { ...base(intent.id), violations: 2 });
+    await database.db.insert(schema.autonomyGateReport).values({
+      intentId: intent.id,
+      status: 'red',
+      triggerKind: 'weekly',
+      windowStart: new Date(Date.now() - 7 * 86_400_000),
+      windowEnd: new Date(),
+      criteria: [
+        { key: 'eval_replay_violations', pass: false, value: 2, threshold: 0 },
+        { key: 'verified_resolution', pass: true, value: 1, threshold: 0.5 },
+      ],
+    });
+    expect((await runAutonomyWatch(deps(), intent.id)).rolledBack).toEqual([]);
+    expect(await stageOf(intent.id)).toBe(3);
+  });
+
+  it('shows what each reviewer did with the AI drafts: the share approved, edited and rejected', async () => {
+    const intentId = await newIntent();
+    const second = randomUUID();
+    const dispositions: [string, string][] = [
+      [headId, 'approved'],
+      [headId, 'approved'],
+      [headId, 'edited'],
+      [second, 'rejected'],
+    ];
+    for (const [reviewer, disposition] of dispositions) {
+      const ticketId = await ticketFor(intentId, { aiHandled: false });
+      await untriggered(async (q) => {
+        await q(
+          `INSERT INTO ai_draft (ticket_id, body_text, content_hash, status, disposition, resolved_by, resolved_at, edit_distance, reject_reason)
+           VALUES ($1, 'x', $2, CASE WHEN $3 = 'rejected' THEN 'rejected' ELSE 'draft' END, $3, $4, now(), 0.05, CASE WHEN $3 = 'rejected' THEN 'wrong answer' END)`,
+          [ticketId, hash(), disposition, reviewer],
+        );
+      });
+    }
+    const report = await reportOf(intentId);
+    const reviewers = (report?.metrics as { reviewers: Record<string, unknown>[] }).reviewers;
+    expect(reviewers).toHaveLength(2);
+    expect(reviewers[0]).toMatchObject({
+      reviewer: headId,
+      total: 3,
+      approved: 2,
+      edited: 1,
+      rejected: 0,
+      approvedShare: 0.6667,
+    });
+    expect(reviewers[1]).toMatchObject({ reviewer: second, total: 1, rejectedShare: 1 });
   });
 });

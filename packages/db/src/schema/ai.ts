@@ -42,6 +42,8 @@ export const aiRun = pgTable(
     procedureVersionId: uuid('procedure_version_id'),
     provider: text('provider').notNull(),
     model: text('model').notNull(),
+    /** The model id the provider answered with (0109); null when none was reported. `model` is the alias of the settings. */
+    responseModel: text('response_model'),
     tier: text('tier').notNull(),
     promptId: text('prompt_id').notNull(),
     promptVersion: integer('prompt_version').notNull(),

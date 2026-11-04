@@ -200,6 +200,8 @@ export const aiRunRecordSchema = z.object({
   agent: agentNameSchema,
   provider: providerKindSchema,
   model: z.string().min(1),
+  /** The model id the provider answered with (`ai_run.response_model`); absent or null when none was reported. */
+  responseModel: z.string().min(1).max(200).nullable().optional(),
   tier: modelTierSchema,
   prompt: promptRefSchema,
   /** Names of the tools the run called, in order (`ToolCallRecord` carries the detail). */

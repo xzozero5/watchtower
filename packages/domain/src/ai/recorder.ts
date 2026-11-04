@@ -11,6 +11,8 @@ export interface AiRunInput {
   readonly agent: string;
   readonly provider: string;
   readonly model: string;
+  /** The model id the provider answered with (T-306e C-11); absent or null when none was reported. */
+  readonly responseModel?: string | null | undefined;
   readonly tier: string;
   readonly prompt: { readonly id: string; readonly version: number; readonly hash: string };
   readonly tools: readonly string[];
@@ -75,6 +77,7 @@ export function createAiRunRecorder(options: { readonly db: AiRunDatabase }): Ai
             procedureVersionId: run.procedureVersionId ?? null,
             provider: run.provider,
             model: run.model,
+            responseModel: run.responseModel ?? null,
             tier: run.tier,
             promptId: run.prompt.id,
             promptVersion: run.prompt.version,

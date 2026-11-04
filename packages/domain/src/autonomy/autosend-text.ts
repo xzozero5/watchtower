@@ -39,6 +39,21 @@ export function disclosureFor(
   return verified === null ? 'restricted' : 'verified';
 }
 
+/**
+ * Who the customer is for the automatic send (T-306e C-3, ADR-007 C-4). A portal submitter is never verified by
+ * the address they typed: anyone can file with the email of a verified contact. A portal ticket counts as
+ * verified only when the portal itself says so (`customFields.portal.requesterVerified === true`); the contact's
+ * `verifiedAt` is not read for it. Other channels follow `disclosureFor`.
+ */
+export function autosendContactVerified(
+  channel: string,
+  contact: { verifiedAt: Date | null; lineVerifiedAt: Date | null } | undefined,
+  portalRequesterVerified: unknown,
+): boolean {
+  if (channel === 'portal') return portalRequesterVerified === true;
+  return disclosureFor(channel, contact) === 'verified';
+}
+
 /** What a redaction placeholder looks like: `[EMAIL_1]`, `[PHONE_2]`. */
 const TOKEN_SHAPE = /\[[A-Z][A-Z_]*_\d+\]/g;
 /** A template slot that was never filled: `{{name}}`, `[[x]]`, `<name>`, `[YOUR NAME]`. */
@@ -53,32 +68,145 @@ export function countPlaceholders(text: string): number {
   return count;
 }
 
-const URL_SHAPE = /https?:\/\/[^\s<>"'`]+/gi;
-/** `www.x`, or a bare `host.tld` (also the host part of an email address: fail closed). */
-const BARE_HOST = /\bwww\.|\b[a-z0-9][a-z0-9-]*(?:\.[a-z0-9-]+)*\.[a-z]{2,}(?:[/:?#]|\b)/i;
+// --- normalization ------------------------------------------------------------------------------------------
+
+const SARA_AM = String.fromCodePoint(0x0e33);
+const SARA_AM_SPLIT = String.fromCodePoint(0x0e4d, 0x0e32);
+/** The ideographic full stop (U+3002) and its halfwidth form (U+FF61), as a dot in a host name. */
+const IDEOGRAPHIC_STOPS = new RegExp(`[${String.fromCodePoint(0x3002, 0xff61)}]`, 'g');
+const THAI_DIGITS = '๐๑๒๓๔๕๖๗๘๙';
 
 /**
- * True when every link in the text points at an address of this instance (`allowedOrigins`: the portal
- * and the knowledge base, both on the instance's own origin) and the text has no other host-like string.
- * No link at all is fine. A host with no scheme cannot be checked, so it counts as not allowed.
+ * The text as a checker should read it (T-306e C-2): Unicode NFKC (fullwidth letters, digits and punctuation
+ * become ASCII), invisible characters removed, Thai digits as ASCII, the ideographic full stop and the common
+ * "defanged" spellings (`evil[.]com`, `evil(dot)com`, `name[at]host`, `hxxp://`) put back as `.` / `@` / `http`.
+ * Used for contact and host detection, never for what is sent.
  */
-export function linksAllowed(text: string, allowedOrigins: readonly string[]): boolean {
-  const allowed = new Set(allowedOrigins.map((origin) => origin.toLowerCase()));
-  let rest = text;
-  for (const match of text.match(URL_SHAPE) ?? []) {
-    rest = rest.replace(match, ' ');
-    let origin: string;
-    try {
-      const url = new URL(match.replace(/[.,;:!?)\]}]+$/, ''));
-      if (url.protocol !== 'https:' && url.protocol !== 'http:') return false;
-      if (url.username !== '' || url.password !== '') return false;
-      origin = url.origin.toLowerCase();
-    } catch {
-      return false;
-    }
-    if (!allowed.has(origin)) return false;
+export function normalizeText(text: string): string {
+  return (
+    text
+      .normalize('NFKC')
+      // Format characters: zero-width space and joiners, bidi marks, soft hyphen, BOM.
+      .replaceAll(/\p{Cf}/gu, '')
+      .replaceAll(/[๐-๙]/g, (digit) => String(THAI_DIGITS.indexOf(digit)))
+      // NFKC splits the Thai sara am (U+0E33) into U+0E4D U+0E32; put it back so Thai words still match.
+      .replaceAll(SARA_AM_SPLIT, SARA_AM)
+      .replaceAll(IDEOGRAPHIC_STOPS, '.')
+      .replaceAll(/[[({<]\s*(?:\.|dot)\s*[\])}>]/gi, '.')
+      .replaceAll(/[[({<]\s*(?:@|at)\s*[\])}>]/gi, '@')
+      .replaceAll(/\bhxxp(s?)(?=:\/\/)/gi, 'http$1')
+  );
+}
+
+// --- contacts and hosts ------------------------------------------------------------------------------------
+
+const URL_SHAPE = /https?:\/\/[^\s<>"'`]+/gi;
+const EMAIL_SHAPE = /[\p{L}\p{N}._%+-]+@[\p{L}\p{N}-]+(?:\.[\p{L}\p{N}-]+)+/giu;
+const IPV4_SHAPE = /(?<![\d.])(?:\d{1,3}\.){3}\d{1,3}(?![\d])/g;
+/** Needs `::` or at least seven colons, so a clock time `10:30:45` is not an address. */
+const IPV6_SHAPE = /(?<![\p{L}\p{N}:])(?:[0-9a-f]{0,4}:){2,7}[0-9a-f]{0,4}(?![\p{L}\p{N}:])/giu;
+const ISO_DATE = /\b\d{4}-\d{2}-\d{2}\b/g;
+/** Seven digits or more in a run that spaces, dashes, dots and brackets may break up: a phone number (TH or international). */
+const PHONE_SHAPE = /\+?\d(?:[\s().-]?\d){6,}/g;
+/** `line id x`, `ไอดีไลน์ x`, or `line: x` (a bare word "line" or "online" is not an id). */
+const LINE_ID_SHAPE =
+  /(?<![\p{L}\p{N}])(?:(?:line\s*id|lineid|ไอดีไลน์|ไลน์ไอดี)\s*[:=]?\s*@?([\p{L}\p{N}._-]{3,})|(?:line|ไลน์)\s*[:=]\s*@?([\p{L}\p{N}._-]{3,}))/giu;
+const HANDLE_SHAPE = /(?<![\p{L}\p{N}_@])@([\p{L}\p{N}_.]{2,})/gu;
+const HOST_SHAPE = /(?:www\.|(?:[\p{L}\p{N}][\p{L}\p{N}-]*\.)+\p{L}{2,})(?![\p{L}\p{N}])/giu;
+
+/** The host as the address bar would send it (IDN as punycode, lower case), or null when it is not a valid host. */
+function asciiHost(host: string): string | null {
+  try {
+    const name = new URL(`http://${host.replace(/\.+$/, '')}`).hostname;
+    return name === '' ? null : name;
+  } catch {
+    return null;
   }
-  return !BARE_HOST.test(rest);
+}
+
+interface Found {
+  /** `kind:value` of everything that is not a link, comparable between the reply and the passages it cites. */
+  readonly keys: Set<string>;
+  /** A URL the reply holds that cannot be checked at all (other scheme, credentials, unparseable). */
+  readonly hostile: boolean;
+  /** The `http(s)` links: their origin and host. */
+  readonly urls: { readonly origin: string; readonly host: string }[];
+}
+
+/**
+ * Everything in a text that reaches a person or a machine outside the instance: URLs, email addresses, IP
+ * addresses, phone numbers, LINE ids, `@handles` and bare host names. The text is normalized first.
+ */
+function findContacts(raw: string): Found {
+  let rest = normalizeText(raw);
+  const keys = new Set<string>();
+  const urls: { origin: string; host: string }[] = [];
+  let hostile = false;
+  const take = (shape: RegExp, handle: (match: RegExpMatchArray) => void): void => {
+    for (const match of rest.matchAll(shape)) handle(match);
+    rest = rest.replaceAll(shape, ' ');
+  };
+
+  take(URL_SHAPE, (match) => {
+    try {
+      const url = new URL(match[0].replace(/[.,;:!?)\]}]+$/, ''));
+      if (url.protocol !== 'https:' && url.protocol !== 'http:') hostile = true;
+      if (url.username !== '' || url.password !== '') hostile = true;
+      urls.push({ origin: url.origin.toLowerCase(), host: url.hostname.toLowerCase() });
+    } catch {
+      hostile = true;
+    }
+  });
+  take(EMAIL_SHAPE, (match) => keys.add(`email:${match[0].toLowerCase()}`));
+  rest = rest.replaceAll(ISO_DATE, ' ');
+  take(IPV4_SHAPE, (match) => keys.add(`ip:${match[0]}`));
+  take(IPV6_SHAPE, (match) => {
+    // `::` or seven colons: a clock time like 10:30:45 has neither.
+    const colons = match[0].split(':').length - 1;
+    if (match[0].includes('::') || colons >= 7) keys.add(`ip:${match[0].toLowerCase()}`);
+  });
+  take(PHONE_SHAPE, (match) => keys.add(`phone:${match[0].replaceAll(/\D/g, '')}`));
+  take(LINE_ID_SHAPE, (match) =>
+    keys.add(`line:${(match[1] ?? match[2] ?? '').toLowerCase().replace(/[.-]+$/, '')}`),
+  );
+  take(HANDLE_SHAPE, (match) =>
+    keys.add(`handle:${(match[1] ?? '').toLowerCase().replace(/\.+$/, '')}`),
+  );
+  take(HOST_SHAPE, (match) => {
+    const host = asciiHost(match[0].toLowerCase());
+    if (host === null) hostile = true;
+    else keys.add(`host:${host}`);
+  });
+  return { keys, hostile, urls };
+}
+
+/**
+ * True when the text sends the customer nowhere the instance did not vouch for (ADR-025 condition 9, T-306e C-2).
+ * The text is normalized (NFKC, fullwidth, `[.]`, `(dot)`, `。`, IDN as punycode) and then every link, email
+ * address, phone number, `@handle`, LINE id, IP address and host name in it must either be a link to an origin
+ * of this instance (`allowedOrigins`: the portal and the knowledge base), or appear exactly (after the same
+ * normalization) in one of the customer-facing passages the reply cites (`citedSnippets`). No contact at all is
+ * fine. A bare host with no scheme is never an instance address: it passes only as a quote of a cited passage.
+ */
+export function linksAllowed(
+  text: string,
+  allowedOrigins: readonly string[],
+  citedSnippets: readonly string[] = [],
+): boolean {
+  const allowed = new Set(allowedOrigins.map((origin) => origin.toLowerCase()));
+  const found = findContacts(text);
+  if (found.hostile) return false;
+  const cited = findContacts(citedSnippets.join('\n'));
+  const known = new Set(cited.keys);
+  for (const url of cited.urls) known.add(`host:${url.host}`);
+  // A link: an origin of this instance, or a host the cited passages name.
+  for (const url of found.urls) {
+    if (!allowed.has(url.origin) && !known.has(`host:${url.host}`)) return false;
+  }
+  for (const key of found.keys) {
+    if (!known.has(key)) return false;
+  }
+  return true;
 }
 
 /** The instance's own origins from the addresses it knows (`portalUrl`, `APP_URL`); a bad value is left out. */
@@ -95,17 +223,48 @@ export function instanceOrigins(...urls: readonly (string | undefined | null)[])
   return [...out];
 }
 
-const WANTS_HUMAN_EN =
-  /\b(?:(?:speak|talk|chat|connect(?:ed)?|escalate)\s+(?:me\s+)?(?:to|with)\s+(?:a\s+|an\s+|the\s+|your\s+)?(?:human|person|agent|someone|representative|manager|supervisor|staff|engineer)|(?:real|live)\s+(?:person|human|agent)|human\s+(?:agent|being|support)|not\s+(?:a\s+)?(?:bot|ai|robot)|are\s+you\s+(?:a\s+)?(?:bot|ai|robot)|(?:not|no)\s+(?:talk|talking|speak|speaking|chat|chatting)\s+(?:to|with)\s+(?:a\s+)?(?:bot|ai|robot))\b/i;
-const WANTS_HUMAN_TH =
-  /(?:คุย|พูด|ติดต่อ|ขอ|โทร)\s*(?:กับ|หา)?\s*(?:คน(?:จริง)?|เจ้าหน้าที่|พนักงาน|ผู้จัดการ|แอดมิน|วิศวกร)|ไม่ใช่\s*(?:บอท|เอไอ|ai)/i;
+// --- "I want a person" -------------------------------------------------------------------------------------
+
+const PERSON_EN =
+  'human|real person|live person|living person|actual person|real human|real agent|live agent|human agent|person|people|manager|supervisor|representative|rep|operator|someone|somebody|employee|staff|team member|colleague|engineer|(?:a|an|the|your)\\s+agent';
+const BOT_EN = 'bot|chatbot|robot|ai|a\\.i\\.|automated|auto[- ]?repl\\w*';
+const WANTS_HUMAN_EN: readonly RegExp[] = [
+  new RegExp(
+    `\\b(?:speak|talk|chat|connect|transfer|escalat\\w*|forward|hand|pass|put|get|give|let|want|need|like|call|contact|reach|see|ask for|switch)\\b[^.?!\\n]{0,30}?\\b(?:${PERSON_EN})\\b`,
+    'i',
+  ),
+  /\b(?:real|live|actual)\s+(?:person|human|agent|people)\b/i,
+  /\bhuman\s+(?:agent|being|support|help|assistance|touch|reply|response)\b/i,
+  /\bescalat(?:e|ion|ed)\b/i,
+  new RegExp(
+    `\\b(?:no|not|stop|don'?t|do not|without|never|instead of|rather than|tired of)\\b[^.?!\\n]{0,25}\\b(?:${BOT_EN})s?(?![\\p{L}])`,
+    'iu',
+  ),
+  /\b(?:are you|is this|r u|am i (?:talking|speaking|chatting) (?:to|with))\s+(?:a\s+|an\s+|the\s+)?(?:bot|ai|robot|human|real|machine|automated|person)\b/i,
+];
+const WANTS_HUMAN_TH: readonly RegExp[] = [
+  /(?:คุย|พูด|ติดต่อ|ขอ|โทร|อยากได้|อยากคุย|อยากพูด|ต้องการ|เชื่อม|โอน|ส่งต่อ|ให้|เรียก)\s*(?:กับ|หา|สาย|ที่|เป็น|มา)?\s*(?:คน(?:จริง)?|เจ้าหน้าที่|พนักงาน|ผู้จัดการ|หัวหน้า|แอดมิน|admin|ทีมงาน|วิศวกร|มนุษย์|ซัพพอร์ต|ฝ่ายบริการ|ผู้ดูแล|operator|คนที่เป็นคน)/i,
+  /คนจริง|มนุษย์|เจ้าหน้าที่/,
+  /ไม่(?:เอา|ต้องการ|อยาก|อยากคุย|คุย|ชอบ|ใช่)\s*(?:กับ)?\s*(?:บอท|bot|ai|เอไอ|แชทบอท|ระบบอัตโนมัติ|หุ่นยนต์|โรบอท|ออโต้)/i,
+  /(?:อย่า|ห้าม|หยุด|เลิก)\s*(?:ให้)?\s*(?:บอท|bot|ai|เอไอ|ระบบอัตโนมัติ|แชทบอท|หุ่นยนต์)/i,
+  /(?:บอท|bot|ai|เอไอ|แชทบอท|ระบบอัตโนมัติ).{0,8}(?:ไม่เอา|ไม่ต้อง|เลิก|หยุด)/i,
+  /(?:เป็น|คือ)?\s*(?:บอท|ai|เอไอ|หุ่นยนต์)\s*(?:หรือ|เหรอ|ไหม|รึ|หรอ)/i,
+];
 
 /**
  * The customer asked for a person. Deterministic and deliberately wide (a false positive only costs an
- * automatic reply; a miss costs a customer who asked for a person getting a bot) `[ASSUMED]`.
+ * automatic reply; a miss costs a customer who asked for a person getting a bot) `[ASSUMED]`. The text is
+ * normalized first (fullwidth, invisible characters). T-306e C-2: manager, supervisor, real person, "no bot",
+ * "stop the bot", Thai "ขอคุยกับคน / เจ้าหน้าที่ / คนจริง / พนักงาน", "ไม่เอาบอท", "อย่าให้บอทตอบ".
  */
 export function customerWantsHuman(texts: readonly string[]): boolean {
-  return texts.some((text) => WANTS_HUMAN_EN.test(text) || WANTS_HUMAN_TH.test(text));
+  return texts.some((raw) => {
+    const text = normalizeText(raw);
+    return (
+      WANTS_HUMAN_EN.some((shape) => shape.test(text)) ||
+      WANTS_HUMAN_TH.some((shape) => shape.test(text))
+    );
+  });
 }
 
 /**

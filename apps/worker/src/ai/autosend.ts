@@ -76,18 +76,34 @@ export interface AutoSendStepInput {
 
 export type AutoSendStepResult = 'off' | 'shadow' | 'scheduled' | 'held' | 'error';
 
-async function modelsOf(
-  db: Database['db'],
+/**
+ * The provider and model of each run. `model` is the id that answered when the provider reported one (`ai_run.response_model`,
+ * T-306e C-11), otherwise the alias the settings named; `reported` says which. The independence of the grader is judged on
+ * this id, so `sonnet` and a dated id of the same model are not taken for two models once the provider says which one ran.
+ */
+export async function modelsOf(
+  db: Pick<Database['db'], 'select'>,
   runIds: readonly (string | null)[],
-): Promise<Map<string, { provider: string; model: string }>> {
+): Promise<Map<string, { provider: string; model: string; reported: boolean }>> {
   const ids = runIds.filter((id): id is string => id !== null);
-  const found = new Map<string, { provider: string; model: string }>();
+  const found = new Map<string, { provider: string; model: string; reported: boolean }>();
   if (ids.length === 0) return found;
   const rows = await db
-    .select({ id: schema.aiRun.id, provider: schema.aiRun.provider, model: schema.aiRun.model })
+    .select({
+      id: schema.aiRun.id,
+      provider: schema.aiRun.provider,
+      model: schema.aiRun.model,
+      responseModel: schema.aiRun.responseModel,
+    })
     .from(schema.aiRun)
     .where(inArray(schema.aiRun.id, [...ids]));
-  for (const row of rows) found.set(row.id, { provider: row.provider, model: row.model });
+  for (const row of rows) {
+    found.set(row.id, {
+      provider: row.provider,
+      model: row.responseModel ?? row.model,
+      reported: row.responseModel !== null,
+    });
+  }
   return found;
 }
 
@@ -197,15 +213,25 @@ export async function runAutoSendStep(
     const draftRun = (await modelsOf(db, [input.draft.aiRunId ?? null])).get(
       input.draft.aiRunId ?? '',
     );
+    // T-306e C-11: no `ai_run` row of the drafter or the grader, no grade: the models cannot be vouched for. (The
+    // settings are no stand-in: they say what should have run, not what did.)
+    if (graderRun === undefined || draftRun === undefined) {
+      await record(['ai_run_missing'], null, {
+        reason: 'run_missing',
+        graderRun: graderRun !== undefined,
+        drafterRun: draftRun !== undefined,
+      });
+      return await held('ai_run_missing', ['ai_run_missing']);
+    }
     const gradeId = await recordPreSendGrade(db, {
       aiDraftId: input.draft.id,
       ticketId: input.ticket.id,
       text,
       graderAiRunId: graded.runId,
-      graderProvider: graderRun?.provider ?? graderRef.provider,
-      graderModel: graderRun?.model ?? graderRef.model,
-      drafterProvider: draftRun?.provider ?? drafterRef.provider,
-      drafterModel: draftRun?.model ?? drafterRef.model,
+      graderProvider: graderRun.provider,
+      graderModel: graderRun.model,
+      drafterProvider: draftRun.provider,
+      drafterModel: draftRun.model,
       score: graded.value.score,
       passed: graded.value.passed,
       violations: graded.value.violations,

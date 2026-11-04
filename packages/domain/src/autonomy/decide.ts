@@ -58,6 +58,8 @@ export const GATE_REASONS = {
   gradeMock: 'grade_mock',
   /** 7. The grader's model is the drafter's model. */
   graderNotIndependent: 'grader_not_independent',
+  /** 7b. T-306e C-11: the drafter's or the grader's `ai_run` row is missing, so the models cannot be vouched for. */
+  aiRunMissing: 'ai_run_missing',
   /** 8. Who the customer is. */
   disclosureUnknown: 'disclosure_unknown',
   contactUnverified: 'contact_unverified',
@@ -82,6 +84,11 @@ export const GATE_REASONS = {
   procedureUnknown: 'procedure_unknown',
   procedureNotAutosend: 'procedure_not_autosend',
   procedureStale: 'procedure_stale',
+  /** 11b. T-306e C-1: a `require_human` step matched, or an escalation card is still waiting for a person. */
+  procedureRequiresHuman: 'procedure_requires_human',
+  escalationPending: 'escalation_pending',
+  /** 11c. T-306e C-4: no passing replay of the current drafter, grader, prompts and procedure (suspends, no rollback). */
+  replayMissing: 'replay_missing',
   /** 12. Budgets. */
   budgetUnknown: 'budget_unknown',
   dailyCapReached: 'daily_cap_reached',
@@ -118,6 +125,8 @@ export interface AutoSendGradeFacts {
   readonly mock: boolean;
   /** Grader model id differs from the drafter's (owner decision 2). */
   readonly independent: boolean;
+  /** T-306e C-11: both the drafter's and the grader's `ai_run` rows exist (so the model ids are the ones that ran). */
+  readonly runsKnown: boolean;
 }
 
 /** Condition 8: who is asking (`disclosureFor()` and the sender authentication of every inbound email). */
@@ -158,6 +167,15 @@ export interface AutoSendProcedureFacts {
   readonly autosendAllowed: boolean;
   /** The draft is from a version that is no longer the published one. */
   readonly stale: boolean;
+  /** T-306e C-1: a `require_human` step of the procedure matched this ticket (`ticketRequiresHuman`). */
+  readonly requiresHuman: boolean;
+  /** T-306e C-1: an escalation card (`procedure.escalation_proposed`) is neither applied nor expired. */
+  readonly escalationPending: boolean;
+  /**
+   * T-306e C-4: a replay (eval or simulation) that passed exists for the current set of drafter model, grader
+   * model, drafter prompt version, grader prompt version and procedure version of the intent.
+   */
+  readonly replayPassed: boolean;
 }
 
 /** Condition 12. */
@@ -275,6 +293,7 @@ export function evaluateAutoSend(
     if (!(grade.score >= grade.minScore)) failed.push(GATE_REASONS.gradeScoreLow);
     if (grade.mock) failed.push(GATE_REASONS.gradeMock);
     if (!grade.independent) failed.push(GATE_REASONS.graderNotIndependent);
+    if (!Object.is(grade.runsKnown, true)) failed.push(GATE_REASONS.aiRunMissing);
   }
   // 8
   const disclosure = facts.disclosure;
@@ -316,6 +335,11 @@ export function evaluateAutoSend(
   else {
     if (!procedure.autosendAllowed) failed.push(GATE_REASONS.procedureNotAutosend);
     if (procedure.stale) failed.push(GATE_REASONS.procedureStale);
+    // Strict comparisons: a value that is not exactly the good one (a fact that did not load) denies.
+    if (!Object.is(procedure.requiresHuman, false))
+      failed.push(GATE_REASONS.procedureRequiresHuman);
+    if (!Object.is(procedure.escalationPending, false)) failed.push(GATE_REASONS.escalationPending);
+    if (!Object.is(procedure.replayPassed, true)) failed.push(GATE_REASONS.replayMissing);
   }
   // 12
   const budget = facts.budget;

@@ -35,6 +35,8 @@ export const WATCH_LAST_N = 20;
 export const WATCH_REOPEN_OR_CSAT_MIN = 2;
 export const WATCH_PRE_SEND_FAIL_MIN = 3;
 export const WATCH_CSAT_LOW = 2;
+/** Criteria whose failure suspends auto-send but never rolls an intent back. */
+const REPLAY_CRITERIA: ReadonlySet<string> = new Set(['eval_replay_violations', 'redaction_eval']);
 
 export interface RollbackFinding {
   readonly rule: RollbackRule;
@@ -146,7 +148,11 @@ export async function findRollbackReason(
 
   // 4. The latest gate report since the promotion is red.
   const [report] = await db
-    .select({ id: schema.autonomyGateReport.id, status: schema.autonomyGateReport.status })
+    .select({
+      id: schema.autonomyGateReport.id,
+      status: schema.autonomyGateReport.status,
+      criteria: schema.autonomyGateReport.criteria,
+    })
     .from(schema.autonomyGateReport)
     .where(
       and(
@@ -156,7 +162,12 @@ export async function findRollbackReason(
     )
     .orderBy(desc(schema.autonomyGateReport.generatedAt))
     .limit(1);
-  if (report?.status === 'red') {
+  // A failed replay or redaction eval makes the report red, but it only suspends auto-send (replay_missing, ADR-025
+  // section 7, T-306e C-4): it never rolls an intent back. A red that has any other failing criterion does.
+  const failing = report?.criteria.filter((criterion) => criterion.pass === false) ?? [];
+  const replayOnly =
+    failing.length > 0 && failing.every((criterion) => REPLAY_CRITERIA.has(criterion.key));
+  if (report?.status === 'red' && !replayOnly) {
     return {
       rule: 'gate_red',
       reason: 'The latest gate report of this intent is red',
