@@ -1,4 +1,5 @@
 import {
+  AI_JOBS,
   ALERTS_JOBS,
   CLEANUP_JOBS,
   CSAT_JOBS,
@@ -135,6 +136,20 @@ export const SCHEDULES: readonly ScheduleRegistration[] = [
   // --- notifications (T-105) ---
 
   // --- ai (T-106, T-108) ---
+  {
+    queue: QUEUE_NAMES.ai,
+    id: AI_JOBS.weeklyBrief,
+    // The weekly brief of the CEO view (T-305c): every 10 minutes the job asks "is this week's slot made?"
+    // (the day and time are settings, WEEKLY_BRIEF_*) and makes it at most once. Ticking, not a fixed cron,
+    // so the day and time are an environment setting and a worker that was down at the time catches up. Also
+    // once at start, for the same reason.
+    repeat: { every: 10 * 60_000 },
+    job: {
+      name: AI_JOBS.weeklyBrief,
+      opts: { removeOnComplete: true, removeOnFail: { age: 24 * 3600 } },
+    },
+    runAtBoot: true,
+  },
 
   // --- kb (T-107) ---
   {

@@ -7,6 +7,7 @@ import { renderCsatEmail } from './csat-email.js';
 import { isGmailCsatJob, sendCsatViaGmail, type CsatGmailDeps } from './csat-gmail.js';
 import { escapeHtml } from './html.js';
 import { renderPortalEmail } from './portal-email.js';
+import { renderWeeklyBriefEmail } from './weekly-brief-email.js';
 
 type MagicLinkJob = Extract<EmailJob, { kind: 'magic_link' }>;
 
@@ -54,6 +55,8 @@ export function renderEmail(job: EmailJob): OutboundMessage {
       return renderPortalEmail(job);
     case 'csat_survey':
       return renderCsatEmail(job);
+    case 'weekly_brief':
+      return renderWeeklyBriefEmail(job);
   }
 }
 
