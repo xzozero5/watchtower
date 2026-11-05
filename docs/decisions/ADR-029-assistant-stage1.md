@@ -1,6 +1,6 @@
 # ADR-029 — Watchtower Assistant ("Jarvis") stage 1: AI ทุกจุดของผลิตภัณฑ์, รู้ทุก module ภายในสิทธิ์ของผู้ใช้, read-only, AI ฝังในทุก element (§9)
 
-- **Status:** Proposed
+- **Status:** **Accepted 2026-11-05** (main thread หลัง security review T-400 + ตรวจซ้ำ ไม่มี P0/P1, po รับแบบมีเงื่อนไขและแก้ครบ, คำตอบเจ้าของครบ) · DoD เพิ่มจากตรวจซ้ำ: C-24…C-27 (BACKLOG)
 - **Date:** 2026-11-05 (เวลากรุงเทพ) · **ผู้ตัดสิน:** เจ้าของ (scope) + main thread (การออกแบบ) · ผู้ร่าง `architect` · แก้รอบ 1 ตาม `security-reviewer` (`docs/decisions/T-400-security-review.md` C-1…C-23) + `po` (2026-11-05) · main thread mark Accepted หลังยืนยันว่า C-1…C-11 ปิดใน ADR นี้ (N7)
 - **Supersedes:** ADR-023 §1 บางข้อ (ดู §11) · **ไม่ supersede** ADR-023 §7 (kill switch — ADR นี้ทำตาม)
 - **Context:**
