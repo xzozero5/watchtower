@@ -30,6 +30,8 @@ let contactId = '';
 let userId = '';
 const requests: LlmRequest[] = [];
 let offline = false;
+/** When set, the mock grader answers with this JSON instead of its default. */
+let pinnedAnswer: unknown = null;
 
 const logger = createLogger(testConfig());
 const owner = () => testDb.owner.db;
@@ -41,6 +43,11 @@ function provider(): LlmProvider {
     generate(request) {
       requests.push(request);
       if (offline) return Promise.reject(new ProviderError('claude-cli', 'offline', 503, true));
+      if (pinnedAnswer !== null) {
+        return new DevMockLlmProvider({
+          rules: [{ promptId: 'grader', text: JSON.stringify(pinnedAnswer) }],
+        }).generate(request);
+      }
       return inner.generate(request);
     },
   };
@@ -62,6 +69,8 @@ async function resolvedTicket(
     csat?: { score: number; resolved: boolean };
     status?: string;
     kbCitation?: boolean;
+    /** A customer message that arrives after the staff reply. */
+    followUp?: string;
   } = {},
 ): Promise<Made> {
   const [intent] = await owner()
@@ -98,6 +107,15 @@ async function resolvedTicket(
     })
     .returning();
   const finalMessageId = reply?.id ?? '';
+  if (options.followUp !== undefined) {
+    await owner().insert(schema.message).values({
+      ticketId,
+      direction: 'inbound',
+      senderContactId: contactId,
+      bodyText: options.followUp,
+      visibility: 'public',
+    });
+  }
   if (options.draft !== undefined) {
     await owner()
       .insert(schema.aiDraft)
@@ -167,6 +185,7 @@ afterAll(async () => {
 beforeEach(() => {
   requests.length = 0;
   offline = false;
+  pinnedAnswer = null;
 });
 
 describe('runGrader', () => {
@@ -216,6 +235,31 @@ describe('runGrader', () => {
       .where(eq(schema.message.ticketId, made.ticketId));
     expect(messages).toHaveLength(2);
     expect(await owner().select().from(schema.outboundDelivery)).toHaveLength(0);
+  });
+
+  it('does not count a denial after the answer as verification (T-301f)', async () => {
+    // A model that claims verified and cites the customer's last message.
+    pinnedAnswer = {
+      resolutionClass: 'verified',
+      draftVerdict: 'no_draft',
+      reasons: [{ text: 'The customer wrote back.', factIds: ['f2'] }],
+    };
+    const classOf = async (followUp: string): Promise<string | undefined> => {
+      const made = await resolvedTicket({ subject: `Follow-up ${followUp}`, followUp });
+      expect(await runGrader(deps(), { ticketId: made.ticketId, reopenCount: 0 })).toEqual({
+        status: 'graded',
+      });
+      const [row] = await owner()
+        .select()
+        .from(schema.aiResolutionGrade)
+        .where(eq(schema.aiResolutionGrade.ticketId, made.ticketId));
+      return row?.resolutionClass;
+    };
+    expect(await classOf('Still not working, same error. Please reopen')).toBe('assumed');
+    expect(await classOf('ยังไม่หายครับ')).toBe('assumed');
+    expect(await classOf('Thanks')).toBe('contained');
+    // The positive control: the same path still reaches verified when the customer confirms.
+    expect(await classOf('It works now, thank you')).toBe('verified');
   });
 
   it('is idempotent: a second job for the same resolution costs no model call', async () => {
