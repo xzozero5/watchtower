@@ -1,5 +1,5 @@
 import { ACCESS_COOKIE, REFRESH_COOKIE, type SessionInfo } from '@watchtower/shared';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 
 import { startHarness, uniqueEmail, type Harness } from '../testing/harness.js';
 import { ProbeController, RogueController } from '../testing/test-controllers.js';
@@ -323,6 +323,28 @@ describe('refresh token rotation', () => {
     );
     expect((await client.get('/v1/auth/session')).status).toBe(401);
     expect((await client.post('/v1/auth/refresh')).status).toBe(401);
+  });
+
+  // Docker Desktop lets the database clock run ahead of the host's (measured: +600 ms and drifting), and a
+  // loaded run can stretch that. Refresh judged the session by the api clock while the guard uses the
+  // database clock, so a session expired by the database could still be renewed. The skew is injected here
+  // (api clock 5 s behind) so the result does not depend on how the machine happens to drift.
+  describe('with the api clock behind the database clock', () => {
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it('still refuses to renew a session the database says has ended', async () => {
+      const { client, session } = await signedIn();
+      await pool().query(
+        `UPDATE sessions SET expires_at = now() - interval '1 second' WHERE id = $1`,
+        [session.sessionId],
+      );
+      vi.useFakeTimers({ toFake: ['Date'], now: Date.now() - 5_000 });
+      const response = await client.post('/v1/auth/refresh');
+      vi.useRealTimers();
+      expect(response.status).toBe(401);
+    });
   });
 
   it('never gives a refresh token a lifetime beyond its session', async () => {
