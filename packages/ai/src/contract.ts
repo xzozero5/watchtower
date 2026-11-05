@@ -17,9 +17,10 @@ import type { RedactedText } from './redaction/redacted-text.js';
 /**
  * PRD §6.7. `mock` is the default and never touches the network. `claude-cli` is a dev/POC-only
  * kind (ADR-017): it reaches a local Claude Code CLI through a host-side bridge and is refused
- * when `NODE_ENV=production`.
+ * when `NODE_ENV=production`. `local` is an embedding-only kind (ADR-030): the Ollama `embedder`
+ * service of this deployment; it is never an LLM provider.
  */
-export const PROVIDER_KINDS = ['mock', 'anthropic', 'vertex', 'claude-cli'] as const;
+export const PROVIDER_KINDS = ['mock', 'anthropic', 'vertex', 'claude-cli', 'local'] as const;
 export const providerKindSchema = z.enum(PROVIDER_KINDS);
 export type ProviderKind = z.infer<typeof providerKindSchema>;
 

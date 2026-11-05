@@ -158,13 +158,14 @@ describe('text without NUL characters', () => {
 });
 
 describe('assertKbEmbeddingProvider', () => {
-  it('accepts the mock and refuses anything else with a clear message', () => {
+  it('accepts the mock and local and refuses anything else with a clear message', () => {
     expect(() => {
       assertKbEmbeddingProvider('mock');
+      assertKbEmbeddingProvider('local');
     }).not.toThrow();
     expect(() => {
       assertKbEmbeddingProvider('vertex');
-    }).toThrow(/EMBEDDING_PROVIDER=vertex is not wired yet.*Set EMBEDDING_PROVIDER=mock/);
+    }).toThrow(/EMBEDDING_PROVIDER=vertex is not wired yet.*mock or local/);
   });
 });
 

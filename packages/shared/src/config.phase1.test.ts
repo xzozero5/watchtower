@@ -74,6 +74,21 @@ describe('Phase 1 variables', () => {
     expect(config.EMBEDDING_PROVIDER).toBe('vertex');
   });
 
+  it('reads the local embedder settings with defaults (ADR-030)', () => {
+    const defaults = parse({ EMBEDDING_PROVIDER: 'local' });
+    expect(defaults.EMBEDDING_PROVIDER).toBe('local');
+    expect(defaults.EMBEDDING_LOCAL_URL).toBe('http://embedder:11434');
+    expect(defaults.EMBEDDING_MODEL).toBe('bge-m3');
+    expect(defaults.EMBEDDING_DIMENSIONS).toBe(1024);
+    const set = parse({
+      EMBEDDING_PROVIDER: 'local',
+      EMBEDDING_MODEL: 'other-model',
+      EMBEDDING_DIMENSIONS: '768',
+    });
+    expect(set.EMBEDDING_MODEL).toBe('other-model');
+    expect(set.EMBEDDING_DIMENSIONS).toBe(768);
+  });
+
   it.each([
     ['EMBEDDING_PROVIDER', 'openai'],
     ['AI_DAILY_COST_CAP_USD', '-1'],
@@ -107,6 +122,9 @@ describe('.env.example', () => {
       ['GMAIL_MOCK_ENABLED', 'false'],
       ['OUTBOUND_UNDO_SECONDS', '5'],
       ['EMBEDDING_PROVIDER', 'mock'],
+      ['EMBEDDING_LOCAL_URL', 'http://embedder:11434'],
+      ['EMBEDDING_MODEL', 'bge-m3'],
+      ['EMBEDDING_DIMENSIONS', '1024'],
       ['AI_BUDGET_ALERT_PERCENT', '80'],
     ]);
     for (const key of Object.keys(phase1EnvShape)) {
