@@ -54,8 +54,20 @@ if tool in ("Write", "Edit", "MultiEdit", "NotebookEdit") and path:
 # 4b. golden data through the shell (2026-11-04: a script wrote evals/golden/*.json around the Write rule).
 # Read-only git commands are fine; anything else that names the path is refused. A script that builds the path
 # itself cannot be seen here, so tools/githooks/pre-commit also requires a review entry in evals/GOLDEN-REVIEW.md.
+# Owner 2026-11-05 ("ข."): the main thread may MOVE an owner-approved proposal into golden with one plain
+# `git mv evals/proposals/<name>.json evals/golden/<name>.json` (no chaining, no content edit), and only when
+# evals/GOLDEN-REVIEW.md already names that proposal file (pre-commit still requires the review in the same commit).
+def _approved_golden_move(c):
+    m = re.fullmatch(r"\s*git\s+mv\s+evals/proposals/([\w.-]+\.json)\s+evals/golden/([\w.-]+\.json)\s*", c)
+    if not (m and is_main):
+        return False
+    try:
+        with open(os.path.join(proj, "evals", "GOLDEN-REVIEW.md"), encoding="utf-8") as fh:
+            return "evals/proposals/" + m.group(1) in fh.read()
+    except OSError:
+        return False
 if cmd and re.search(r"evals[\\/]+golden", cmd) and not re.match(r"\s*git\s+(log|diff|show|status|blame)\b", cmd) \
-        and not re.match(r"\s*(cat|ls|head|grep|rg|wc)\b", cmd):
+        and not re.match(r"\s*(cat|ls|head|grep|rg|wc)\b", cmd) and not _approved_golden_move(cmd):
     block("BLOCKED (N7): evals/golden/** is changed only by the main thread with the owner's approval. Propose cases in evals/proposals/ instead.")
 
 # 5. external writes

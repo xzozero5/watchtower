@@ -47,3 +47,28 @@ None rejected. Notes:
    broken" in the ticket with no CSAT is caught only if the model says so (a cited customer message after
    the reply counts as confirmation). `gold-grader-denial-in-text-only` guards this on a real model.
 3. A mock pass is not evidence of quality. Real-provider numbers: not run.
+
+## Review of `evals/proposals/insights.json` (31 cases, T-417) — moved to `evals/golden/insight_narrator.json`
+
+- **Approved by the owner 2026-11-05** ("อนุมัติ") · checked by the main thread, which did not write the
+  narrator (N7) · the move itself is done by the owner, because the write hook refuses `evals/golden/**`
+  for every agent.
+- Coverage: all five wave 9a narrated elements (`dashboard.ops.sla`, `dashboard.ops.volume`, `alerts.noise`,
+  `incidents.open`, `shift.overview`) with ≥ 3 cases each, "nothing changed" cases, §9.9 person-tone bait
+  (`shift.overview` 3, `dashboard.ops.team` 2, `home.my_work` 2), an invented number, injection through a
+  staff-set service name, and a two-element batch.
+- The checks are invariants (no number outside the cited facts, zero uncited claims, locale script, no
+  contact data, person tone), so a real provider is judged by the same rules. Pass on mock proves the
+  harness and the code guards only; real-provider results: not run `[UNVERIFIED]`.
+- Ids keep the `ins-` prefix (the runner does not depend on a `gold-` prefix).
+
+## Review of `evals/proposals/grader-followup.json` (7 cases, T-301f) — moved into `grader.json`'s folder as `grader-followup.json`
+
+- **Approved by the owner 2026-11-05** ("ทำได้เลย") · written by a QA agent, checked by the main thread (N7) · 7/7 pass on mock.
+- Cases 1, 2, 3, 7 give a deliberately wrong `mockAnswer` (verified) so the code cap must bring them down to `assumed`;
+  case 4 (thanks only) must stay at `contained` or below; cases 5 and 6 must be `verified`.
+- Finding: `buildGradeFacts` sends only the first and the latest customer message, so in case 6 the middle
+  "ยังไม่หาย" never reaches the grader; the case passes because the latest message wins, but it does not test a
+  denial-then-confirmation path. Same limit noted in HANDOFF (`[ASSUMED]`).
+- Case 7 checks the denial survives redaction; the runner has no "no contact data in output" assertion for the
+  grader, so that part is covered only by the redaction unit tests `[UNVERIFIED]`.
