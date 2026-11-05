@@ -64,6 +64,7 @@ export interface AiRuntimeOptions {
     | 'REDACTION_NER'
     | 'AI_DAILY_COST_CAP_USD'
     | 'AI_DAILY_TOKEN_CAP'
+    | 'EMBEDDING_DAILY_TOKEN_CAP'
     | 'AI_BUDGET_ALERT_PERCENT'
     | 'AI_MODEL_DEEP'
     | 'AI_MODEL_STANDARD'

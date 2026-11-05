@@ -7,12 +7,18 @@ import {
   DEFAULT_AI_BUDGET_ALERT_PERCENT,
   DEFAULT_AI_DAILY_COST_CAP_USD,
   DEFAULT_AI_DAILY_TOKEN_CAP,
+  DEFAULT_EMBEDDING_DAILY_TOKEN_CAP,
   evaluateBudget,
   resolveAiCaps,
   utcDayStart,
 } from './budget.js';
 
-const caps = { dailyCostUsd: 10, dailyTokens: 1000, alertPercent: 80 };
+const caps = {
+  dailyCostUsd: 10,
+  dailyTokens: 1000,
+  dailyEmbeddingTokens: 5_000_000,
+  alertPercent: 80,
+};
 
 describe('evaluateBudget', () => {
   it('stops a provider that costs nothing (claude-cli priced 0) on tokens, with AI_DAILY_TOKEN_CAP empty (T-155a)', () => {
@@ -66,6 +72,7 @@ describe('resolveAiCaps', () => {
     expect(resolveAiCaps({})).toEqual({
       dailyCostUsd: DEFAULT_AI_DAILY_COST_CAP_USD,
       dailyTokens: DEFAULT_AI_DAILY_TOKEN_CAP,
+      dailyEmbeddingTokens: DEFAULT_EMBEDDING_DAILY_TOKEN_CAP,
       alertPercent: DEFAULT_AI_BUDGET_ALERT_PERCENT,
     });
     expect(
@@ -74,7 +81,12 @@ describe('resolveAiCaps', () => {
         AI_DAILY_TOKEN_CAP: 99,
         AI_BUDGET_ALERT_PERCENT: 60,
       }),
-    ).toEqual({ dailyCostUsd: 3, dailyTokens: 99, alertPercent: 60 });
+    ).toEqual({
+      dailyCostUsd: 3,
+      dailyTokens: 99,
+      dailyEmbeddingTokens: 5_000_000,
+      alertPercent: 60,
+    });
   });
 
   it('keeps the defaults in step with config/budgets.yaml (app_ai_daily)', () => {
@@ -86,6 +98,7 @@ describe('resolveAiCaps', () => {
     const read = (key: string): number => Number(new RegExp(`${key}:\\s*(\\d+)`).exec(block)?.[1]);
     expect(read('usd')).toBe(DEFAULT_AI_DAILY_COST_CAP_USD);
     expect(read('tokens')).toBe(DEFAULT_AI_DAILY_TOKEN_CAP);
+    expect(read('embedding_tokens')).toBe(DEFAULT_EMBEDDING_DAILY_TOKEN_CAP);
     expect(read('alert_percent')).toBe(DEFAULT_AI_BUDGET_ALERT_PERCENT);
   });
 });

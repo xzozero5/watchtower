@@ -5,6 +5,7 @@ import {
   createAuditedLlm,
   createConcurrencyLimiter,
   createLocalEmbeddingProvider,
+  parseLocalEmbeddingHosts,
   createRedactor,
   embeddingSettings,
   loadPromptCatalog,
@@ -230,6 +231,7 @@ export function createAiRuntime(
         ? {
             local: createLocalEmbeddingProvider({
               url: config.EMBEDDING_LOCAL_URL,
+              allowedHosts: parseLocalEmbeddingHosts(config.EMBEDDING_LOCAL_HOSTS),
               fetch: overrides.fetch ?? ((input, init) => globalThis.fetch(input, init)),
               timeoutMs: 120_000,
             }),

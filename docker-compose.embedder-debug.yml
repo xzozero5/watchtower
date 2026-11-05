@@ -3,8 +3,15 @@
 # reach it from the host. Use it only for that step, then start the stack again without this file:
 #   docker compose -f docker-compose.yml -f docker-compose.embedder-debug.yml --profile ai up -d embedder
 #   docker compose --profile ai up -d embedder
-# The port is bound to 127.0.0.1 only. The embedder has no authentication, so never bind it wider.
+# The port is bound to 127.0.0.1 only. The embedder has no authentication (its admin API can pull,
+# push, create and delete models), so never bind it wider.
+# While this overlay is up the embedder is ALSO on the default network: Docker cannot publish a port
+# of a container that is only on an `internal` network, so the "no route out" guarantee of the `embed`
+# network (T-435 C-2) is off until you start it again without this file. Check that it is closed:
+#   docker compose --profile ai port embedder 11434     (prints nothing / an error when not published)
 services:
   embedder:
+    networks:
+      - default
     ports:
       - '127.0.0.1:${EMBEDDER_DEBUG_PORT:-11434}:11434'

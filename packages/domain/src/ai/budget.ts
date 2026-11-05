@@ -1,6 +1,6 @@
 import { schema, type Database } from '@watchtower/db';
 import { AUDIT_ACTIONS } from '@watchtower/shared';
-import { and, gte, ne, sql } from 'drizzle-orm';
+import { and, eq, gte, ne, sql } from 'drizzle-orm';
 
 import { recordAuditInTx } from '../audit.js';
 import type { Actor } from '../types.js';
@@ -12,22 +12,36 @@ import type { Actor } from '../types.js';
  */
 export const DEFAULT_AI_DAILY_COST_CAP_USD = 1;
 export const DEFAULT_AI_DAILY_TOKEN_CAP = 500_000;
+/**
+ * Embedding tokens have their own daily cap (T-435, ADR-030). The local embedder is free and sends
+ * nothing out, so its tokens must not eat the LLM's `AI_DAILY_TOKEN_CAP`: a full re-embed would
+ * otherwise stop triage, drafts and the assistant. `[ASSUMED]` 5 M: a few hundred Thai articles
+ * re-embedded once, with room for staff and customer search queries.
+ */
+export const DEFAULT_EMBEDDING_DAILY_TOKEN_CAP = 5_000_000;
+/** The `ai_run.agent` of every embedding call (`@watchtower/ai` audited embedder). */
+export const EMBEDDER_AGENT = 'embedder';
 export const DEFAULT_AI_BUDGET_ALERT_PERCENT = 80;
 
 export interface AiCaps {
   readonly dailyCostUsd: number;
+  /** LLM tokens per UTC day. Embedding tokens are not counted here. */
   readonly dailyTokens: number;
+  /** Embedding tokens per UTC day (agent `embedder`), a cap of its own. */
+  readonly dailyEmbeddingTokens: number;
   readonly alertPercent: number;
 }
 
 export function resolveAiCaps(env: {
   readonly AI_DAILY_COST_CAP_USD?: number | undefined;
   readonly AI_DAILY_TOKEN_CAP?: number | undefined;
+  readonly EMBEDDING_DAILY_TOKEN_CAP?: number | undefined;
   readonly AI_BUDGET_ALERT_PERCENT?: number | undefined;
 }): AiCaps {
   return {
     dailyCostUsd: env.AI_DAILY_COST_CAP_USD ?? DEFAULT_AI_DAILY_COST_CAP_USD,
     dailyTokens: env.AI_DAILY_TOKEN_CAP ?? DEFAULT_AI_DAILY_TOKEN_CAP,
+    dailyEmbeddingTokens: env.EMBEDDING_DAILY_TOKEN_CAP ?? DEFAULT_EMBEDDING_DAILY_TOKEN_CAP,
     alertPercent: env.AI_BUDGET_ALERT_PERCENT ?? DEFAULT_AI_BUDGET_ALERT_PERCENT,
   };
 }
@@ -85,18 +99,41 @@ export function utcDayStart(now: Date): Date {
 
 /**
  * What has been spent today (UTC) on a real provider. The mock provider is free and offline, so
- * its runs do not count against a cap that exists to bound a bill.
+ * its runs do not count against a cap that exists to bound a bill. Embedding runs (agent
+ * `embedder`) count in USD but not in tokens: their tokens have their own cap
+ * (`readEmbeddingTokens`), so a re-embed cannot stop the LLM (T-435 C-1).
  */
 export async function readAiUsage(db: Pick<Database['db'], 'select'>, now: Date): Promise<AiUsage> {
   const { aiRun } = schema;
   const [row] = await db
     .select({
       cost: sql<string>`coalesce(sum(${aiRun.costUsd}), 0)`,
-      tokens: sql<string>`coalesce(sum(${aiRun.inputTokens} + ${aiRun.outputTokens}), 0)`,
+      tokens: sql<string>`coalesce(sum(${aiRun.inputTokens} + ${aiRun.outputTokens}) filter (where ${aiRun.agent} <> ${EMBEDDER_AGENT}), 0)`,
     })
     .from(aiRun)
     .where(and(gte(aiRun.createdAt, utcDayStart(now)), ne(aiRun.provider, 'mock')));
   return { costUsd: Number(row?.cost ?? 0), tokens: Number(row?.tokens ?? 0) };
+}
+
+/** Embedding tokens spent today (UTC) by a real (non-mock) embedding provider. */
+export async function readEmbeddingTokens(
+  db: Pick<Database['db'], 'select'>,
+  now: Date,
+): Promise<number> {
+  const { aiRun } = schema;
+  const [row] = await db
+    .select({
+      tokens: sql<string>`coalesce(sum(${aiRun.inputTokens} + ${aiRun.outputTokens}), 0)`,
+    })
+    .from(aiRun)
+    .where(
+      and(
+        gte(aiRun.createdAt, utcDayStart(now)),
+        ne(aiRun.provider, 'mock'),
+        eq(aiRun.agent, EMBEDDER_AGENT),
+      ),
+    );
+  return Number(row?.tokens ?? 0);
 }
 
 export interface BudgetEventNotice extends BudgetFinding {

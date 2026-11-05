@@ -4,7 +4,11 @@ import { createAuditedEmbedder } from '../audited-embedding.js';
 import { mockSettings, embeddingSettings } from '../models.js';
 import type { AiRunRecord } from '../contract.js';
 import { createRedactor } from '../redaction/redactor.js';
-import { assertLocalEmbeddingUrl, createLocalEmbeddingProvider } from './local.js';
+import {
+  assertLocalEmbeddingUrl,
+  createLocalEmbeddingProvider,
+  parseLocalEmbeddingHosts,
+} from './local.js';
 import { ProviderConfigError, ProviderError, type FetchLike } from './sdk.js';
 
 /**
@@ -164,6 +168,12 @@ describe('host allow-list', () => {
     'http://embedder.example.com:11434',
     'http://10.0.0.5:11434',
     'http://169.254.169.254',
+    // A bare single-label name is not enough (T-435 C-3): only the configured service names pass.
+    'http://metadata/',
+    'https://intranet/',
+    'http://redis:6379',
+    'http://postgres:5432',
+    'http://claude-bridge:4317',
     'http://user:pass@embedder:11434',
     'ftp://embedder',
     'embedder:11434',
@@ -173,6 +183,83 @@ describe('host allow-list', () => {
     expect(() =>
       createLocalEmbeddingProvider({ url, fetch: () => Promise.reject(new Error('unused')) }),
     ).toThrow(ProviderConfigError);
+  });
+});
+
+describe('configured service names (EMBEDDING_LOCAL_HOSTS)', () => {
+  it('accepts exactly the names given, and still the loopback', () => {
+    expect(() =>
+      assertLocalEmbeddingUrl('http://my-embedder:11434', ['my-embedder']),
+    ).not.toThrow();
+    expect(() => assertLocalEmbeddingUrl('http://127.0.0.1:11434', ['my-embedder'])).not.toThrow();
+    // A configured list replaces the default; it does not add to it.
+    expect(() => assertLocalEmbeddingUrl('http://embedder:11434', ['my-embedder'])).toThrow(
+      ProviderConfigError,
+    );
+    expect(() =>
+      createLocalEmbeddingProvider({
+        url: 'http://my-embedder:11434',
+        fetch: fakeOllama,
+        allowedHosts: ['my-embedder'],
+      }),
+    ).not.toThrow();
+  });
+
+  it('parses the setting: empty means the default, a dotted name or an IP stops the boot', () => {
+    expect(parseLocalEmbeddingHosts(undefined)).toEqual(['embedder']);
+    expect(parseLocalEmbeddingHosts('  ')).toEqual(['embedder']);
+    expect(parseLocalEmbeddingHosts('Embedder, embedder-2')).toEqual(['embedder', 'embedder-2']);
+    expect(() => parseLocalEmbeddingHosts('embedder.example.com')).toThrow(ProviderConfigError);
+    expect(() => parseLocalEmbeddingHosts('10.0.0.5')).toThrow(ProviderConfigError);
+  });
+});
+
+describe('response size cap (T-435 C-4)', () => {
+  const streamOf = (chunks: number, chunkBytes: number, onCancel: () => void) => {
+    let sent = 0;
+    return new globalThis.Response(
+      new ReadableStream<Uint8Array>({
+        pull(controller) {
+          sent += 1;
+          if (sent > chunks) controller.close();
+          else controller.enqueue(new Uint8Array(chunkBytes).fill(32));
+        },
+        cancel() {
+          onCancel();
+        },
+      }),
+      { status: 200 },
+    );
+  };
+
+  it('aborts the read once the body passes the cap, and cancels the stream', async () => {
+    let cancelled = false;
+    let pulled = 0;
+    const endless: FetchLike = () => {
+      const response = streamOf(10_000, 1024 * 1024, () => {
+        cancelled = true;
+      });
+      pulled += 1;
+      return Promise.resolve(response);
+    };
+    await expect(
+      provider({ fetch: endless }).embed({ model: 'm', values: values('x') }),
+    ).rejects.toMatchObject({ code: 'response_too_large', retryable: false });
+    expect(cancelled).toBe(true);
+    expect(pulled).toBe(1);
+  });
+
+  it('refuses a content-length over the cap without reading', async () => {
+    const declared: FetchLike = () =>
+      Promise.resolve(
+        new globalThis.Response('{}', {
+          status: 200,
+          headers: { 'content-length': String(64 * 1024 * 1024) },
+        }),
+      );
+    await expect(
+      provider({ fetch: declared }).embed({ model: 'm', values: values('x') }),
+    ).rejects.toMatchObject({ code: 'response_too_large' });
   });
 });
 

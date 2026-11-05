@@ -14,8 +14,8 @@ import { ProviderConfigError, ProviderError, type FetchLike } from './sdk.js';
 const DEFAULT_TIMEOUT_MS = 30_000;
 const DEFAULT_RETRIES = 2;
 const DEFAULT_BATCH = 16;
-/** A body cap: a 1024-float vector is about 20 KB as JSON, so this holds a batch with room to spare. */
-const MAX_RESPONSE_CHARS = 8 * 1024 * 1024;
+/** A body cap in bytes: a 1024-float vector is about 20 KB as JSON, so this holds a batch with room to spare. */
+const MAX_RESPONSE_BYTES = 8 * 1024 * 1024;
 
 export interface LocalEmbeddingConfig {
   /** Base URL of the embedder, for example `http://embedder:11434`. */
@@ -28,17 +28,49 @@ export interface LocalEmbeddingConfig {
   readonly maxRetries?: number;
   /** Most texts per HTTP request; a larger call is split. Default 16. */
   readonly batchSize?: number;
+  /** Exact service names besides the loopback that may be called. Default `['embedder']`. */
+  readonly allowedHosts?: readonly string[];
   /** Waits between retries; tests pass a no-op. */
   readonly sleep?: (ms: number) => Promise<void>;
 }
 
 const LOOPBACK = new Set(['localhost', '127.0.0.1', '[::1]']);
 
+/** The compose service of the embedder (ADR-030). */
+export const DEFAULT_LOCAL_EMBEDDING_HOSTS: readonly string[] = ['embedder'];
+
+/** A host name in `EMBEDDING_LOCAL_HOSTS`: one label, as a compose service name is. */
+const SERVICE_NAME = /^[a-z][a-z0-9_-]*$/;
+
 /**
- * Only the loopback or a bare compose service name (no dot, so never an internet host name) may be
- * called. Any other IP literal, any dotted name and any scheme but http(s) are refused.
+ * Parses `EMBEDDING_LOCAL_HOSTS` (comma separated service names). Empty or absent gives the default.
+ * A name that is not a single plain label (a dotted name, an IP) stops the boot.
  */
-export function assertLocalEmbeddingUrl(raw: string): URL {
+export function parseLocalEmbeddingHosts(raw: string | undefined): readonly string[] {
+  const names = (raw ?? '')
+    .split(',')
+    .map((name) => name.trim().toLowerCase())
+    .filter((name) => name !== '');
+  if (names.length === 0) return DEFAULT_LOCAL_EMBEDDING_HOSTS;
+  for (const name of names) {
+    if (!SERVICE_NAME.test(name)) {
+      throw new ProviderConfigError(
+        'local embedding adapter: EMBEDDING_LOCAL_HOSTS holds a name that is not a single service name',
+      );
+    }
+  }
+  return names;
+}
+
+/**
+ * Only the loopback or one of the exact configured service names (default: `embedder`) may be
+ * called. A bare single-label name is not enough: `metadata`, `redis` or an intranet name would
+ * resolve too (T-435 C-3). Any other IP literal, any dotted name and any scheme but http(s) are refused.
+ */
+export function assertLocalEmbeddingUrl(
+  raw: string,
+  allowedHosts: readonly string[] = DEFAULT_LOCAL_EMBEDDING_HOSTS,
+): URL {
   let url: URL;
   try {
     url = new URL(raw);
@@ -52,13 +84,46 @@ export function assertLocalEmbeddingUrl(raw: string): URL {
     throw new ProviderConfigError('local embedding adapter: the URL must not carry credentials');
   }
   const host = url.hostname.toLowerCase();
-  const serviceName = /^[a-z][a-z0-9_-]*$/.test(host);
-  if (!LOOPBACK.has(host) && !serviceName) {
+  if (!LOOPBACK.has(host) && !allowedHosts.includes(host)) {
     throw new ProviderConfigError(
-      'local embedding adapter: the host must be loopback or a compose service name',
+      'local embedding adapter: the host must be loopback or a configured embedder service name',
     );
   }
   return url;
+}
+
+/**
+ * Reads the body but stops, and cancels the stream, once it passes the cap, so a peer that answers
+ * without end cannot fill memory (T-435 C-4). A `content-length` over the cap is refused unread.
+ */
+async function readCapped(response: globalThis.Response): Promise<string> {
+  const tooLarge = (): ProviderError =>
+    new ProviderError('local', 'response_too_large', null, false);
+  const declared = Number(response.headers.get('content-length'));
+  if (Number.isFinite(declared) && declared > MAX_RESPONSE_BYTES) {
+    void response.body?.cancel().catch(() => undefined);
+    throw tooLarge();
+  }
+  if (response.body === null) return '';
+  // The body type resolves loosely without the DOM lib; the shape read here is the Streams one.
+  const reader = response.body.getReader() as {
+    read(): Promise<{ done: boolean; value?: Uint8Array }>;
+    cancel(): Promise<void>;
+  };
+  const decoder = new TextDecoder();
+  let received = 0;
+  let text = '';
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done || value === undefined) break;
+    received += value.byteLength;
+    if (received > MAX_RESPONSE_BYTES) {
+      await reader.cancel().catch(() => undefined);
+      throw tooLarge();
+    }
+    text += decoder.decode(value, { stream: true });
+  }
+  return text + decoder.decode();
 }
 
 const retryableStatus = (status: number): boolean => status === 429 || status >= 500;
@@ -89,7 +154,7 @@ export function createLocalEmbeddingProvider(config: LocalEmbeddingConfig): Embe
   if (typeof config.fetch !== 'function') {
     throw new ProviderConfigError('local embedding adapter requires an injected fetch');
   }
-  const base = assertLocalEmbeddingUrl(config.url);
+  const base = assertLocalEmbeddingUrl(config.url, config.allowedHosts);
   const endpoint = new URL('/api/embed', base).toString();
   const timeoutMs = config.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const maxRetries = config.maxRetries ?? DEFAULT_RETRIES;
@@ -127,10 +192,7 @@ export function createLocalEmbeddingProvider(config: LocalEmbeddingConfig): Embe
           last = failure;
           continue;
         }
-        const text = await response.text();
-        if (text.length > MAX_RESPONSE_CHARS) {
-          throw new ProviderError('local', 'response_too_large', null, false);
-        }
+        const text = await readCapped(response);
         let body: unknown;
         try {
           body = JSON.parse(text);

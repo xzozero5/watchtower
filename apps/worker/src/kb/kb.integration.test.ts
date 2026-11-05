@@ -3,7 +3,14 @@ import { randomBytes } from 'node:crypto';
 import { mockSettings, type EmbeddingProvider, type EmbeddingRequest } from '@watchtower/ai';
 import { createDatabase, schema, type Database } from '@watchtower/db';
 import { createTestDatabase, type TestDatabase } from '@watchtower/db/testing';
-import { createDomain, searchKb, type Domain, type KbAudience } from '@watchtower/domain';
+import {
+  createDomain,
+  readAiUsage,
+  readEmbeddingTokens,
+  searchKb,
+  type Domain,
+  type KbAudience,
+} from '@watchtower/domain';
 import { QUEUE_NAMES, parseRedisUrl, type CreateKbArticle } from '@watchtower/shared';
 import { disableNetConnect } from '@watchtower/shared/testing';
 import { Queue } from 'bullmq';
@@ -438,6 +445,87 @@ describe('re-embedding into a local index (T-431, ADR-030)', () => {
     expect(runs.length).toBeGreaterThanOrEqual(1);
     expect(runs.every((row) => row.agent === 'embedder')).toBe(true);
     expect((await run()).queued).toBe(0);
+  });
+});
+
+describe('re-embedding against the embedding cap (T-435 C-1)', () => {
+  it('stops at its own cap without failing, keeps the LLM budget untouched and the old index active, then finishes after the cap is raised', async () => {
+    const made = await article({
+      title: 'Cap one',
+      bodyMd: 'Quokka capacity notes for the embedding cap test.',
+    });
+    const second = await article({
+      title: 'Cap two',
+      bodyMd: 'Numbat capacity notes for the embedding cap test.',
+    });
+    await embeddedChunks(made.articleId);
+    await embeddedChunks(second.articleId);
+    const now = new Date();
+    const llmBefore = await readAiUsage(owner(), now);
+    const usedBefore = await readEmbeddingTokens(owner(), now);
+    const activeModel = async () =>
+      (
+        await owner()
+          .select()
+          .from(schema.kbEmbeddingIndex)
+          .where(eq(schema.kbEmbeddingIndex.isActive, true))
+      )[0]?.model;
+    const modelBefore = await activeModel();
+
+    let calls = 0;
+    const local: EmbeddingProvider = {
+      kind: 'local',
+      embed(request) {
+        calls += 1;
+        return Promise.resolve({
+          embeddings: request.values.map(() => Array.from({ length: 8 }, () => 0.25)),
+          // A call that alone passes the cap: the next call must be refused.
+          usage: { tokens: 1_000 },
+          model: request.model,
+        });
+      },
+    };
+    const settings = {
+      ...mockSettings(),
+      embedding: { provider: 'local' as const, model: 'local-cap-test', dimensions: 8 },
+    };
+    const runtimeWith = (cap: number) =>
+      createAiRuntime(
+        { ...config, EMBEDDING_DAILY_TOKEN_CAP: cap },
+        appDatabase,
+        createLogger(config),
+        { settings: { load: () => Promise.resolve(settings) }, embeddingProviders: { local } },
+      );
+    const run = (cap: number) =>
+      reembedAll({
+        database: appDatabase,
+        ai: runtimeWith(cap),
+        logger: createLogger(config),
+        chunking: chunkOptionsFrom(config),
+      });
+
+    const capped = await run(usedBefore + 1);
+    expect(capped).toMatchObject({ failed: 0, activated: false, deferred: 'budget_stop' });
+    expect(capped.embedded).toBe(1);
+    expect(calls).toBe(1);
+    // The old index is still the active one and the LLM budget did not move.
+    expect(await activeModel()).toBe(modelBefore);
+    const llmAfter = await readAiUsage(owner(), new Date());
+    expect(llmAfter.tokens).toBe(llmBefore.tokens);
+    expect(llmAfter.costUsd).toBe(llmBefore.costUsd);
+    expect(await readEmbeddingTokens(owner(), new Date())).toBeGreaterThan(usedBefore);
+
+    // The run did not strip the articles it never reached: every chunk still has a vector.
+    const all = await owner().select().from(schema.kbChunk);
+    expect(all.length).toBeGreaterThan(0);
+    expect(all.every((row) => row.embedding !== null)).toBe(true);
+
+    // With room again the run finishes and the index switches.
+    const done = await run(usedBefore + 10_000_000);
+    expect(done).toMatchObject({ failed: 0, activated: true });
+    expect(done.deferred).toBeUndefined();
+    expect(await activeModel()).toBe('local-cap-test');
+    expect((await run(usedBefore + 10_000_000)).queued).toBe(0);
   });
 });
 

@@ -167,6 +167,7 @@ x-app-env: &app-env
   WORKER_REPLICAS: ${WORKER_REPLICAS:-1}
   AI_DAILY_COST_CAP_USD: ${AI_DAILY_COST_CAP_USD:-}
   AI_DAILY_TOKEN_CAP: ${AI_DAILY_TOKEN_CAP:-}
+  EMBEDDING_DAILY_TOKEN_CAP: ${EMBEDDING_DAILY_TOKEN_CAP:-}
   AI_BUDGET_ALERT_PERCENT: ${AI_BUDGET_ALERT_PERCENT:-80}
   CEO_MINUTES_SAVED_PER_AI_TICKET: ${CEO_MINUTES_SAVED_PER_AI_TICKET:-}
   CEO_STAFF_COST_USD_PER_HOUR: ${CEO_STAFF_COST_USD_PER_HOUR:-}
@@ -200,6 +201,7 @@ x-app-env: &app-env
   EMBEDDING_PROVIDER: ${EMBEDDING_PROVIDER:-mock}
   # ADR-030: the `embedder` service below (profile `ai`). Used only when EMBEDDING_PROVIDER=local.
   EMBEDDING_LOCAL_URL: ${EMBEDDING_LOCAL_URL:-http://embedder:11434}
+  EMBEDDING_LOCAL_HOSTS: ${EMBEDDING_LOCAL_HOSTS:-}
   EMBEDDING_MODEL: ${EMBEDDING_MODEL:-bge-m3}
   EMBEDDING_DIMENSIONS: ${EMBEDDING_DIMENSIONS:-1024}
   KB_CRAWL_ALLOWED_HOSTS: ${KB_CRAWL_ALLOWED_HOSTS:-}
@@ -441,10 +443,12 @@ services:
     mem_limit: 1g
     # `push` is shared with the gmail-tunnel container only (ADR-020): from there it reaches the api, nothing else.
     # `ai` (ADR-019 §3, amended by ADR-023 "Live provider"): the api calls the claude-bridge for the assistant.
+    # `embed` (ADR-030): the api embeds search queries on the embedder; nothing else shares that network.
     networks:
       - default
       - push
       - ai
+      - embed
     environment:
       <<: *app-env
       HOST: 0.0.0.0
@@ -490,9 +494,11 @@ services:
       - 'host.docker.internal:host-gateway'
     # Only the worker and the api are on the `ai` network, so only they reach the bridge (ADR-023).
     # `scan`: clamd (3310, no authentication) is reachable from the worker only (T-155a C-5).
+    # `embed` (ADR-030): the worker embeds knowledge base chunks on the embedder.
     networks:
       - default
       - ai
+      - embed
       - scan
     ports:
       - '127.0.0.1:${WORKER_PORT:-4100}:4100'
@@ -576,27 +582,42 @@ services:
     # (default bge-m3, multilingual incl. Thai, 1024 dimensions) on CPU. Profile `ai`, so a plain `up`
     # never starts it:
     #   docker compose --profile ai up -d embedder embedder-init
-    # then set EMBEDDING_PROVIDER=local (docs/runbooks/local-poc.md). On the `ai` network only (the
-    # api and the worker reach it as http://embedder:11434); no port is published. Nothing the app
-    # sends leaves the machine; the only egress is the model download by `embedder-init`
-    # (registry.ollama.ai, docs/09-SECURITY.md).
+    # then set EMBEDDING_PROVIDER=local (docs/runbooks/local-poc.md). No port is published.
+    # No internet after the model is in (ADR-030, T-435 C-2): this container is on the `embed` network
+    # only, which is `internal: true` (no route out) and shared with the api and the worker alone, so
+    # the Ollama admin API (pull, push, create, delete; it has no authentication) is reachable by
+    # them and nothing else (not claude-bridge). This container never pulls: `embedder-init` runs its
+    # own `ollama serve` on `embed-egress` and writes the model into the shared volume.
     # Pinned by tag and digest (the multi-arch index of 0.40.14; checked against Docker Hub on
-    # 2026-11-05 `[VERIFY]`). Update both together; `docker image inspect --format
+    # 2026-11-05 `[VERIFY]`). Update both services together; there is no env override on purpose
+    # (compose cannot require a digest in one): `docker image inspect --format
     # '{{index .RepoDigests 0}}' <image>` shows the digest.
     profiles: ['ai']
-    image: ${EMBEDDER_IMAGE:-ollama/ollama:0.40.14@sha256:ebaef4f4c5d93660e1f25f8ad085a112f51ccfb0e8458073e71793959dba91c9}
+    image: ollama/ollama:0.40.14@sha256:ebaef4f4c5d93660e1f25f8ad085a112f51ccfb0e8458073e71793959dba91c9
     restart: unless-stopped
     networks:
-      - ai
+      - embed
+    # Hardening (T-435 C-6) `[UNVERIFIED 60%]`: not run against the real image yet. Non-root, read-only
+    # root file system; HOME and the scratch space are tmpfs; the model volume (written by
+    # `embedder-init`, which chowns it to 1000) is the only writable path. If the image will not start
+    # like this, the first thing to relax is `user` (the logs say which path it could not write).
+    user: '1000:1000'
+    read_only: true
+    tmpfs:
+      - /tmp
     environment:
+      HOME: /tmp
+      OLLAMA_MODELS: /data/models
       OLLAMA_HOST: 0.0.0.0:11434
+      # No browser origin may call it (it is not meant to be reached from a page).
+      OLLAMA_ORIGINS: http://embedder
       # Keep the model in memory: a cold load takes longer than the 1.5 s a search query waits.
       OLLAMA_KEEP_ALIVE: ${EMBEDDER_KEEP_ALIVE:-24h}
       # One request at a time: embedding must not take every CPU from the other services.
       OLLAMA_NUM_PARALLEL: '1'
       OLLAMA_MAX_LOADED_MODELS: '1'
     volumes:
-      - embeddermodels:/root/.ollama
+      - embeddermodels:/data
     # bge-m3 is ~1.2 GB on disk and needs roughly 2 to 3 GB of RAM to serve `[ASSUMED]`; tune with EMBEDDER_MEM_LIMIT.
     mem_limit: ${EMBEDDER_MEM_LIMIT:-4g}
     pids_limit: 200
@@ -618,22 +639,57 @@ services:
     # there yet, then exits 0. This is the one-time download the owner approved (ADR-030). A later
     # start finds the model and downloads nothing. A failed pull leaves the model missing: the
     # embedder answers errors and search falls back to keyword only.
+    # It runs its OWN `ollama serve` (loopback inside this container only, so nothing else can reach
+    # it) on `embed-egress`, the one network with a route to the internet and with no other service
+    # on it (T-435 C-2): the download is done by this container, not by the long-running embedder.
+    # Same pinned image as `embedder`; keep the two lines equal (a test checks it).
     profiles: ['ai']
-    image: ${EMBEDDER_IMAGE:-ollama/ollama:0.40.14@sha256:ebaef4f4c5d93660e1f25f8ad085a112f51ccfb0e8458073e71793959dba91c9}
+    image: ollama/ollama:0.40.14@sha256:ebaef4f4c5d93660e1f25f8ad085a112f51ccfb0e8458073e71793959dba91c9
     restart: 'no'
     networks:
-      - ai
-    depends_on:
-      embedder:
-        condition: service_healthy
+      - embed-egress
     entrypoint: ['/bin/sh', '-c']
     command:
-      - 'ollama show "$$EMBEDDING_MODEL" >/dev/null 2>&1 && echo "model already present" || ollama pull "$$EMBEDDING_MODEL"'
+      - |
+        mkdir -p /data/models
+        ollama serve >/tmp/serve.log 2>&1 &
+        serve_pid=$$!
+        tries=0
+        until ollama list >/dev/null 2>&1; do
+          tries=$$((tries + 1))
+          if [ "$$tries" -gt 60 ]; then echo "ollama did not start"; cat /tmp/serve.log; exit 1; fi
+          sleep 1
+        done
+        if ollama show "$$EMBEDDING_MODEL" >/dev/null 2>&1; then
+          echo "model already present"
+          status=0
+        else
+          ollama pull "$$EMBEDDING_MODEL"
+          status=$$?
+        fi
+        kill "$$serve_pid" 2>/dev/null
+        wait "$$serve_pid" 2>/dev/null
+        # The runtime embedder runs as 1000 and only reads what was written here as root.
+        chown -R 1000:1000 /data
+        exit "$$status"
     environment:
-      OLLAMA_HOST: http://embedder:11434
+      HOME: /tmp
+      OLLAMA_MODELS: /data/models
+      OLLAMA_HOST: 127.0.0.1:11434
       EMBEDDING_MODEL: ${EMBEDDING_MODEL:-bge-m3}
+    volumes:
+      - embeddermodels:/data
+    tmpfs:
+      - /tmp
+    read_only: true
+    # Root is needed to write a fresh volume; `CHOWN` is the one capability it keeps, for the chown above.
+    mem_limit: ${EMBEDDER_INIT_MEM_LIMIT:-1g}
+    pids_limit: 200
+    cpus: ${EMBEDDER_CPUS:-2}
     cap_drop:
       - ALL
+    cap_add:
+      - CHOWN
     security_opt:
       - no-new-privileges:true
 
@@ -778,8 +834,14 @@ services:
       retries: 10
 
 networks:
-  # worker + api <-> claude-bridge and embedder only (ADR-019 §3, ADR-023, ADR-030).
+  # worker + api <-> claude-bridge only (ADR-019 §3, ADR-023).
   ai: {}
+  # worker + api <-> embedder only (ADR-030, T-435 C-2). `internal: true`: no route to the internet, so
+  # the embedder has no egress, and nothing but these three is on it (claude-bridge is not).
+  embed:
+    internal: true
+  # embedder-init alone: the one-time model download (registry.ollama.ai). No other service joins it.
+  embed-egress: {}
   # api <-> gmail-tunnel only (ADR-020).
   push: {}
   # worker <-> clamav only (ADR-022, T-155a C-5).

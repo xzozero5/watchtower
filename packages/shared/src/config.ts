@@ -236,6 +236,8 @@ export const phase1EnvShape = {
   // ADR-030: the local embedder. The URL must be loopback or a compose service name (checked by the
   // adapter); the model is pulled by `embedder-init`; bge-m3 makes 1024-dimension vectors.
   EMBEDDING_LOCAL_URL: z.preprocess(emptyToUndefined, z.url().default('http://embedder:11434')),
+  // Extra exact service names (comma separated) the adapter may call besides the loopback (T-435 C-3).
+  EMBEDDING_LOCAL_HOSTS: z.preprocess(emptyToUndefined, z.string().optional()),
   EMBEDDING_MODEL: z.preprocess(emptyToUndefined, z.string().min(1).max(100).default('bge-m3')),
   EMBEDDING_DIMENSIONS: z.preprocess(
     emptyToUndefined,
@@ -271,6 +273,11 @@ export const phase1EnvShape = {
   // AI budget (T-106d). Empty falls back to the default in config/budgets.yaml; a value overrides it.
   AI_DAILY_COST_CAP_USD: optionalPositiveNumber,
   AI_DAILY_TOKEN_CAP: z.preprocess(emptyToUndefined, z.coerce.number().int().positive().optional()),
+  // Embedding tokens have a cap of their own (T-435): a re-embed must not stop the LLM.
+  EMBEDDING_DAILY_TOKEN_CAP: z.preprocess(
+    emptyToUndefined,
+    z.coerce.number().int().positive().optional(),
+  ),
   AI_BUDGET_ALERT_PERCENT: z.preprocess(
     emptyToUndefined,
     z.coerce.number().int().min(1).max(100).default(80),

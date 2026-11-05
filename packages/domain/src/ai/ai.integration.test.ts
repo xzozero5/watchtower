@@ -255,7 +255,12 @@ describe('ai_ticket_insight', () => {
 });
 
 describe('daily caps', () => {
-  const caps = { dailyCostUsd: 10, dailyTokens: 1_000_000, alertPercent: 80 };
+  const caps = {
+    dailyCostUsd: 10,
+    dailyTokens: 1_000_000,
+    dailyEmbeddingTokens: 5_000_000,
+    alertPercent: 80,
+  };
 
   async function spend(costUsd: number, provider = 'anthropic', tokens = 10): Promise<void> {
     await createAiRunRecorder({ db: env.database.db }).record(
@@ -298,7 +303,12 @@ describe('daily caps', () => {
   });
 
   it('the token cap works on its own, and unpriced runs still count their tokens', async () => {
-    const tokenCaps = { dailyCostUsd: 1_000_000, dailyTokens: 5_000, alertPercent: 80 };
+    const tokenCaps = {
+      dailyCostUsd: 1_000_000,
+      dailyTokens: 5_000,
+      dailyEmbeddingTokens: 5_000_000,
+      alertPercent: 80,
+    };
     const monitor = createBudgetMonitor({ db: env.database.db, caps: tokenCaps });
     // Nothing from the cost test above reaches 5,000 tokens by itself.
     const before = (await monitor.check()).usage.tokens;
@@ -318,7 +328,12 @@ describe('daily caps', () => {
 });
 
 describe('the guard before a model call', () => {
-  const generous = { dailyCostUsd: 1_000_000, dailyTokens: 1_000_000_000, alertPercent: 80 };
+  const generous = {
+    dailyCostUsd: 1_000_000,
+    dailyTokens: 1_000_000_000,
+    dailyEmbeddingTokens: 5_000_000,
+    alertPercent: 80,
+  };
   const guardWith = (caps = generous, gate = createPolicyGate({ db: env.database.db })) =>
     createAiGuard({
       policyGate: gate,
@@ -352,7 +367,12 @@ describe('the guard before a model call', () => {
   it('answers budget_stop when the day is spent', async () => {
     // The previous suite spent more than 1 USD of real-provider cost today.
     const decision = await ask(
-      guardWith({ dailyCostUsd: 1, dailyTokens: 1_000_000_000, alertPercent: 80 }),
+      guardWith({
+        dailyCostUsd: 1,
+        dailyTokens: 1_000_000_000,
+        dailyEmbeddingTokens: 5_000_000,
+        alertPercent: 80,
+      }),
     );
     expect(decision).toEqual({ allowed: false, reason: 'budget_stop' });
   });

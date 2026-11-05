@@ -3,6 +3,7 @@ import {
   MockEmbeddingProvider,
   createAuditedEmbedder,
   createLocalEmbeddingProvider,
+  parseLocalEmbeddingHosts,
   createRedactor,
   embeddingSettings,
   mockSettings,
@@ -65,6 +66,7 @@ export class KbEmbeddingService {
     // being ignored in silence (N5): live embedding over the internet is the owner's decision.
     assertKbEmbeddingProvider(config.EMBEDDING_PROVIDER);
     const db = database.db;
+    const caps = resolveAiCaps(config);
     this.wanted = embeddingSettings(config);
     const wanted = this.wanted;
     this.embedder = createAuditedEmbedder({
@@ -82,6 +84,7 @@ export class KbEmbeddingService {
           ? {
               local: createLocalEmbeddingProvider({
                 url: config.EMBEDDING_LOCAL_URL,
+                allowedHosts: parseLocalEmbeddingHosts(config.EMBEDDING_LOCAL_HOSTS),
                 fetch: (input, init) => globalThis.fetch(input, init),
                 timeoutMs: QUERY_EMBED_TIMEOUT_MS,
                 maxRetries: 0,
@@ -94,9 +97,10 @@ export class KbEmbeddingService {
       guard: createAiGuard({
         policyGate: createPolicyGate({ db }),
         db,
+        caps,
         budget: createBudgetMonitor({
           db,
-          caps: resolveAiCaps(config),
+          caps,
           onEvent: (notice) => {
             this.logger.warn(
               { dimension: notice.dimension, level: notice.level },

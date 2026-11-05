@@ -98,9 +98,13 @@ describe('KbEmbeddingService with the local embedder (T-431)', () => {
     expect(fetchStub).not.toHaveBeenCalled();
   });
 
-  it('refuses at boot a URL that is not loopback or a compose service name', () => {
+  it('refuses at boot a URL that is not loopback or a configured service name', () => {
     expect(() => build({ EMBEDDING_LOCAL_URL: 'http://api.example.com:11434' })).toThrow(
-      /loopback or a compose service name/,
+      /loopback or a configured embedder service name/,
+    );
+    // A bare single-label name that is not the embedder is refused too (T-435 C-3).
+    expect(() => build({ EMBEDDING_LOCAL_URL: 'http://redis:6379' })).toThrow(
+      /loopback or a configured embedder service name/,
     );
   });
 
