@@ -34,6 +34,11 @@ import { toolsFor, type AssistantToolName } from './assistant-access.js';
 import { assigneeHref, ticketHref } from './assistant-hrefs.js';
 import { loadLine, memberLine, slaLine, ticketLine } from './assistant-text.js';
 import { inReadOnlyScope, runReadOnly, type ReadOnlyRunner } from './read-only.js';
+import { registerAlertTools, type AlertToolDeps } from './tools/alert.tools.js';
+import { registerIncidentTools, type IncidentToolDeps } from './tools/incident.tools.js';
+import type { OpsToolKit } from './tools/ops-tool-kit.js';
+import { registerShiftTools, type ShiftToolDeps } from './tools/shift.tools.js';
+import { registerStatuspageTools, type StatuspageToolDeps } from './tools/statuspage.tools.js';
 
 /** `[ASSUMED]` A person with this many open tickets, or this many past SLA, is called overloaded. */
 export const OVERLOADED_OPEN = 10;
@@ -58,6 +63,16 @@ export interface AssistantToolDeps {
   readonly readOnly?: ReadOnlyRunner;
   /** Runs a whole handler in the read-only scope. Absent: `inReadOnlyScope`. A test with a fake database passes a pass-through. */
   readonly readOnlyScope?: <T>(work: () => Promise<T>) => Promise<T>;
+  /**
+   * The readers of the modules behind the T-402/T-403 tools (`tools/*.tools.ts`). A module that is absent has its tools
+   * left unregistered, so a test that builds the host without it still works.
+   */
+  readonly incidents?: IncidentToolDeps['incidents'];
+  readonly alerts?: AlertToolDeps['alerts'];
+  readonly statusAdmin?: StatuspageToolDeps['statusAdmin'];
+  readonly handoffs?: ShiftToolDeps['handoffs'];
+  readonly shiftNotes?: ShiftToolDeps['shiftNotes'];
+  readonly shifts?: ShiftToolDeps['shifts'];
 }
 
 export interface AssistantToolEnv {
@@ -624,6 +639,39 @@ export function buildAssistantTools(
     },
   );
 
+  // --- T-402, T-403: incident, alert, status page, shift (tools/*.tools.ts) ----------------------
+  const ops: OpsToolKit = {
+    principal,
+    now: env.now,
+    readOnly,
+    remember,
+    onRead: env.onRead,
+    add,
+  };
+  if (deps.incidents !== undefined) {
+    registerIncidentTools(
+      { incidents: deps.incidents, reader: deps.reader, keys: deps.keys },
+      ops,
+      principal,
+    );
+  }
+  if (deps.alerts !== undefined) registerAlertTools({ alerts: deps.alerts }, ops);
+  if (deps.statusAdmin !== undefined)
+    registerStatuspageTools({ statusAdmin: deps.statusAdmin }, ops);
+  if (deps.handoffs !== undefined && deps.shiftNotes !== undefined && deps.shifts !== undefined) {
+    registerShiftTools(
+      {
+        handoffs: deps.handoffs,
+        shiftNotes: deps.shiftNotes,
+        shifts: deps.shifts,
+        reader: deps.reader,
+        keys: deps.keys,
+      },
+      ops,
+      principal,
+    );
+  }
+
   const scoped = registry.scope(
     { agent: 'personal_assistant', intent: null, stage: 2 },
     { maxCalls: 8 },
@@ -640,6 +688,8 @@ export function buildAssistantTools(
           label: fact.label,
           ...(fact.href === undefined ? {} : { href: fact.href }),
           ...(fact.mock === true ? { mock: true } : {}),
+          ...(fact.ref === undefined ? {} : { ref: fact.ref }),
+          trust: 'system' as const,
           text: `${fact.label}: ${locale === 'th' ? 'ข้อความถูกซ่อน เพราะรายชื่อคนของลูกค้าไม่ครบ' : 'text hidden: the list of the customer people was incomplete'}`,
         }));
       }

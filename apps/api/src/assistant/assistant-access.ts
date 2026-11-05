@@ -25,6 +25,15 @@ export const ASSISTANT_TOOLS = [
   'team_status',
   'kb_search',
   'investigate_run',
+  // T-402, T-403
+  'incident_search',
+  'incident_get',
+  'alert_search',
+  'alert_get',
+  'statuspage_status',
+  'statuspage_drafts',
+  'shift_context',
+  'roster_view',
 ] as const;
 export type AssistantToolName = (typeof ASSISTANT_TOOLS)[number];
 
@@ -35,6 +44,15 @@ const STAFF_TOOLS: readonly AssistantToolName[] = [
   'team_status',
   'kb_search',
   'investigate_run',
+  // T-402, T-403: each is still held to the rule of its GET route by `toolsFor`.
+  'incident_search',
+  'incident_get',
+  'alert_search',
+  'alert_get',
+  'statuspage_status',
+  'statuspage_drafts',
+  'shift_context',
+  'roster_view',
 ];
 
 export const ROLE_TOOLS: Readonly<Record<string, readonly AssistantToolName[]>> = {
@@ -85,6 +103,36 @@ export const TOOL_PERMISSION: Readonly<Record<AssistantToolName, ToolAccess>> = 
     route: 'GET /v1/tickets/:id/tools',
     rule: { all: ['investigate.run'] },
     piiKinds: ['ticket'],
+  },
+  // T-402: incidents and the status page need `ticket.read` whole, so the masked developer gets none (C-1).
+  incident_search: { route: 'GET /v1/incidents', rule: { all: ['ticket.read'] }, piiKinds: [] },
+  incident_get: {
+    route: 'GET /v1/incidents/:id',
+    rule: { all: ['ticket.read'] },
+    piiKinds: ['ticket', 'timeline'],
+  },
+  alert_search: { route: 'GET /v1/alerts', rule: { all: ['alert.read'] }, piiKinds: [] },
+  alert_get: { route: 'GET /v1/alerts/:id', rule: { all: ['alert.read'] }, piiKinds: [] },
+  statuspage_status: {
+    route: 'GET /v1/status-page/components',
+    rule: { all: ['ticket.read'] },
+    piiKinds: [],
+  },
+  statuspage_drafts: {
+    route: 'GET /v1/status-page/posts',
+    rule: { all: ['ticket.read'] },
+    piiKinds: [],
+  },
+  // T-403: the declared route is the handoff of the caller; the other sections check their own permission in the handler.
+  shift_context: {
+    route: 'GET /v1/handoffs/current',
+    rule: { all: ['handoff.write'] },
+    piiKinds: ['ticket'],
+  },
+  roster_view: {
+    route: 'GET /v1/roster',
+    rule: { anyOf: ['shift.clock', 'roster.manage'] },
+    piiKinds: [],
   },
 };
 

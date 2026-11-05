@@ -34,6 +34,12 @@ import { DATABASE } from '../database/database.module.js';
 import { LOGGER, type AppLogger } from '../logging/logger.js';
 import { KbService } from '../kb/kb.service.js';
 import { BriefService } from '../shifts/brief.service.js';
+import { AlertsReader } from '../alerts/alerts-reader.service.js';
+import { IncidentsService } from '../incidents/incidents.service.js';
+import { HandoffService } from '../shifts/handoff.service.js';
+import { ShiftNotes } from '../shifts/shift-notes.service.js';
+import { ShiftsService } from '../shifts/shifts.service.js';
+import { StatusAdminService } from '../statuspage/status-admin.service.js';
 import { SlaRemaining } from '../tickets/sla-remaining.js';
 import { TICKET_KEYS, type TicketKeys } from '../tickets/ticket-keys.js';
 import { TicketReader } from '../tickets/ticket-reader.js';
@@ -102,6 +108,13 @@ export class AssistantService {
     @Inject(StaffNames) private readonly staff: StaffNames,
     @Inject(AuditService) private readonly audit: AuditService,
     @Inject(AiStatusService) private readonly aiStatus: AiStatusService,
+    // T-402, T-403: the readers behind the incident, alert, status page and shift tools.
+    @Inject(IncidentsService) private readonly incidents: IncidentsService,
+    @Inject(AlertsReader) private readonly alerts: AlertsReader,
+    @Inject(StatusAdminService) private readonly statusAdmin: StatusAdminService,
+    @Inject(HandoffService) private readonly handoffs: HandoffService,
+    @Inject(ShiftNotes) private readonly shiftNotes: ShiftNotes,
+    @Inject(ShiftsService) private readonly shifts: ShiftsService,
   ) {}
 
   // --- state ------------------------------------------------------------------------------------
@@ -337,6 +350,12 @@ export class AssistantService {
           runner: this.runner,
           embeddingMock: this.config.EMBEDDING_PROVIDER === 'mock',
           aiMock: this.config.AI_PROVIDER === 'mock',
+          incidents: this.incidents,
+          alerts: this.alerts,
+          statusAdmin: this.statusAdmin,
+          handoffs: this.handoffs,
+          shiftNotes: this.shiftNotes,
+          shifts: this.shifts,
         },
         {
           principal,

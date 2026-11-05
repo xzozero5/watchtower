@@ -41,6 +41,7 @@ import { ShiftsService } from './shifts.service.js';
     RosterPlanService,
   ],
   // The assistant (T-134) reads who is on shift through the same service as the assignee list.
-  exports: [BriefService],
+  // T-403: the shift tools read the caller's handoff, notes and roster through the same services as the routes.
+  exports: [BriefService, HandoffService, ShiftNotes, ShiftsService],
 })
 export class ShiftsModule {}
