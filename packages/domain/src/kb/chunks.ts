@@ -1,12 +1,11 @@
 import { schema } from '@watchtower/db';
-import type { AI_PROVIDERS } from '@watchtower/shared';
 import { and, eq, ne, sql } from 'drizzle-orm';
 
 import type { DbTransaction, ReadExecutor } from '../types.js';
 import type { Chunk } from './chunker.js';
 
 export interface EmbeddingIndexSpec {
-  readonly provider: (typeof AI_PROVIDERS)[number];
+  readonly provider: string;
   readonly model: string;
   readonly dimensions: number;
 }
@@ -78,6 +77,93 @@ export async function ensureActiveEmbeddingIndex(
     dimensions: row.dimensions,
     activated,
   };
+}
+
+export interface WriteIndexRef extends EmbeddingIndexRef {
+  /** True when this is the index search reads; false for a new one that is still being filled. */
+  readonly active: boolean;
+}
+
+/**
+ * The index new vectors are written under (T-431, ADR-030). With no active index yet, the spec
+ * becomes active at once (nothing is searched by vector, so nothing can degrade). With the same
+ * model already active it is that one. With a different model the new index is created inactive
+ * and filled first; search keeps reading the active one (or falls back to keyword) until
+ * `activateEmbeddingIndexIfComplete` switches it in one transaction.
+ */
+export async function resolveWriteIndex(
+  tx: DbTransaction,
+  spec: EmbeddingIndexSpec,
+): Promise<WriteIndexRef> {
+  const active = await readActiveEmbeddingIndex(tx);
+  if (active === undefined) {
+    const made = await ensureActiveEmbeddingIndex(tx, spec);
+    return { ...made, active: true };
+  }
+  if (
+    active.provider === spec.provider &&
+    active.model === spec.model &&
+    active.dimensions === spec.dimensions
+  ) {
+    return { ...active, active: true };
+  }
+  await tx
+    .insert(schema.kbEmbeddingIndex)
+    .values({ provider: spec.provider, model: spec.model, dimensions: spec.dimensions })
+    .onConflictDoNothing();
+  const [row] = await tx
+    .select()
+    .from(schema.kbEmbeddingIndex)
+    .where(
+      and(
+        eq(schema.kbEmbeddingIndex.provider, spec.provider),
+        eq(schema.kbEmbeddingIndex.model, spec.model),
+        eq(schema.kbEmbeddingIndex.dimensions, spec.dimensions),
+      ),
+    )
+    .limit(1);
+  if (row === undefined) throw new Error('kb_embedding_index row vanished');
+  return {
+    id: row.id,
+    provider: row.provider,
+    model: row.model,
+    dimensions: row.dimensions,
+    active: row.isActive,
+  };
+}
+
+/**
+ * Makes `indexId` the active index, but only when every published article is embedded with it
+ * (checked inside the transaction, so an article published a moment ago still counts). Returns
+ * whether it is active afterwards. The previous index is deactivated first, so at most one index
+ * is ever active.
+ */
+export async function activateEmbeddingIndexIfComplete(
+  tx: DbTransaction,
+  indexId: string,
+): Promise<boolean> {
+  // Serialize two switches; the partial unique index would fail the second one anyway.
+  await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext('kb_embedding_index_switch'))`);
+  const [row] = await tx
+    .select({ isActive: schema.kbEmbeddingIndex.isActive })
+    .from(schema.kbEmbeddingIndex)
+    .where(eq(schema.kbEmbeddingIndex.id, indexId))
+    .limit(1);
+  if (row === undefined) return false;
+  if (row.isActive) return true;
+  const pending = await articlesNeedingEmbedding(tx, indexId);
+  if (pending.length > 0) return false;
+  await tx
+    .update(schema.kbEmbeddingIndex)
+    .set({ isActive: false })
+    .where(
+      and(eq(schema.kbEmbeddingIndex.isActive, true), ne(schema.kbEmbeddingIndex.id, indexId)),
+    );
+  await tx
+    .update(schema.kbEmbeddingIndex)
+    .set({ isActive: true, activatedAt: new Date() })
+    .where(eq(schema.kbEmbeddingIndex.id, indexId));
+  return true;
 }
 
 export interface ChunkToStore extends Chunk {

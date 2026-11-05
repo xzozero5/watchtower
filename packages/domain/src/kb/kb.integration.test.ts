@@ -12,11 +12,13 @@ import {
   type DomainTestEnv,
 } from '../testing/support.js';
 import {
+  activateEmbeddingIndexIfComplete,
   articlesNeedingEmbedding,
   dropArticleChunksIfNotLive,
   ensureActiveEmbeddingIndex,
   readActiveEmbeddingIndex,
   replaceArticleChunks,
+  resolveWriteIndex,
 } from './chunks.js';
 import {
   KbSearchTimeoutError,
@@ -1181,6 +1183,67 @@ describe('embedding index and chunks', () => {
       ensureActiveEmbeddingIndex(tx, { provider: 'mock', model: 'model-a', dimensions: 3 }),
     );
     expect(back.id).toBe(first.id);
+  });
+
+  it('writes under a new index without activating it until it is complete (T-431)', async () => {
+    const active = await env.tx((tx) =>
+      ensureActiveEmbeddingIndex(tx, { provider: 'mock', model: 'switch-old', dimensions: 3 }),
+    );
+    const same = await env.tx((tx) =>
+      resolveWriteIndex(tx, { provider: 'mock', model: 'switch-old', dimensions: 3 }),
+    );
+    expect(same).toMatchObject({ id: active.id, active: true });
+
+    const next = await env.tx((tx) =>
+      resolveWriteIndex(tx, { provider: 'local', model: 'switch-new', dimensions: 5 }),
+    );
+    expect(next.active).toBe(false);
+    expect(next.id).not.toBe(active.id);
+    // Resolving again reuses the row, and the old index is still the active one.
+    expect(
+      (
+        await env.tx((tx) =>
+          resolveWriteIndex(tx, { provider: 'local', model: 'switch-new', dimensions: 5 }),
+        )
+      ).id,
+    ).toBe(next.id);
+    expect((await env.tx((tx) => readActiveEmbeddingIndex(tx)))?.id).toBe(active.id);
+
+    // An article without chunks under the new index blocks the switch.
+    const made = await create({ bodyMd: 'switch gate' });
+    await publish(made.articleId, 1);
+    expect(await env.tx((tx) => activateEmbeddingIndexIfComplete(tx, next.id))).toBe(false);
+    expect((await env.tx((tx) => readActiveEmbeddingIndex(tx)))?.id).toBe(active.id);
+
+    // Embed every published article under the new index; now it switches, and only one is active.
+    const targets = await env.tx((tx) => articlesNeedingEmbedding(tx, next.id));
+    for (const target of targets) {
+      await env.tx((tx) =>
+        replaceArticleChunks(tx, {
+          articleId: target.articleId,
+          versionId: target.versionId,
+          chunks: [
+            {
+              ordinal: 0,
+              section: '',
+              text: 'x',
+              charStart: 0,
+              charEnd: 1,
+              embedding: [1, 0, 0, 0, 0],
+            },
+          ],
+          embeddingIndexId: next.id,
+        }),
+      );
+    }
+    expect(await env.tx((tx) => activateEmbeddingIndexIfComplete(tx, next.id))).toBe(true);
+    expect((await env.tx((tx) => readActiveEmbeddingIndex(tx)))?.id).toBe(next.id);
+    const { rows } = await pool().query(
+      'SELECT count(*)::int AS n FROM kb_embedding_index WHERE is_active',
+    );
+    expect(rows[0]).toEqual({ n: 1 });
+    // Calling it again on the active index changes nothing.
+    expect(await env.tx((tx) => activateEmbeddingIndexIfComplete(tx, next.id))).toBe(true);
   });
 
   it('stores the chunks of the live version, replacing the earlier ones, and refuses a stale version', async () => {
