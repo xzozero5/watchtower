@@ -180,12 +180,12 @@
 - [x] T-306k `backend-dev` แก้ T-306j C-15 (placeholder org ใน golden + gate), C-16, C-17, C-18, C-19, C-11, C-2 ส่วนถูก · C-4/C-6/C-9/C-14 = residual P3 ที่ยอมรับไว้ก่อน (main thread) — **ปิด 2026-11-05** (0111: unique sampled grade + backoff, gate report pass ต้องเป็น boolean, record_ai_grade เทียบ alias เมื่อขาด response_model · deny `placeholder_org` · api/domain ห้ามเขียน `customFields.portal` · returnTo normalize dot segment) · ค้าง: C-16 ไม่มี DB trigger (app role เขียน custom_fields ตรงได้)
 - [x] T-306l `backend-dev` flake api integration ใต้โหลด: `auth/session.integration` 'ends a session at its absolute lifetime' (200 แทน 401 ที่ refresh), `outbound.integration` 'queues the reply for the undo window' (hold 6087 ms > 6000) — ผ่านเมื่อรันเดี่ยว — **ปิด 2026-11-05:** (1) **บั๊กจริง** `refresh()` เทียบอายุ session ด้วยนาฬิกา process แต่ guard ใช้ `now()` ของ DB → session ที่ guard ปฏิเสธแล้วต่ออายุได้เท่า skew (Docker นำ host ~600 ms) → refresh ใช้นาฬิกา DB · (2) test undo ตรวจ hold จากแถว · api integration 1392/1392 · ค้างเล็ก: `issue()` ยังตั้ง expires_at ด้วยนาฬิกา host (คลาดเท่า skew)
 - [x] T-301f `ai-engineer` `capResolutionClass`: ข้อความลูกค้าที่ปฏิเสธ ("ยังไม่หาย") ไม่นับ verified, คลุมเครือไม่นับยืนยัน (PO T-306c) — **ปิด 2026-11-05** (`packages/ai/src/agents/follow-up.ts`; deny = assumed, confirm เท่านั้นที่ verified) · eval เคสที่ agent เสนอ 7 ข้อรอเจ้าของอนุมัติเข้า golden
-- [ ] T-306c `po` review + เสนอ 2–3 intent → [ASK-HUMAN] เลื่อน stage
-- [ ] T-301 Grader + verified/contained/assumed resolution (§6.2, §6.4)
-- [ ] T-302 Eval set + replay runner + golden answers + KB author (§6.5, R-4.4–4.6)
-- [ ] T-303 Procedures (natural-language → steps) + simulation (§6.3)
-- [ ] T-304 Stage 3 gating + auto-rollback + "ready for promotion" report
-- [ ] T-305 CEO view + AI weekly brief + exports (§9.2), cost dashboard, roster planner (R-7.2)
+- [x] T-306c `po` review + เสนอ 2–3 intent → [ASK-HUMAN] เลื่อน stage
+- [x] T-301 Grader + verified/contained/assumed resolution (§6.2, §6.4)
+- [x] T-302 Eval set + replay runner + golden answers + KB author (§6.5, R-4.4–4.6)
+- [x] T-303 Procedures (natural-language → steps) + simulation (§6.3)
+- [x] T-304 Stage 3 gating + auto-rollback + "ready for promotion" report
+- [x] T-305 CEO view + AI weekly brief + exports (§9.2), cost dashboard, roster planner (R-7.2)
 - [ ] T-306 Review + pilot stage 3 กับ 2–3 intent
 
 ## Post-MVP / Phase 4

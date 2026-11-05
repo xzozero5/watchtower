@@ -10,7 +10,7 @@ snapshot สั้นสำหรับ cold start อยู่ที่ `HANDOF
 | 1 Inbox + AI 0–2 + Shifts | 🟡 ฟีเจอร์ครบ gate ค้าง · **POC ต่อ Gmail จริง + AI จริง (`claude -p`) แล้ว 2026-11-03** · LINE/Discord/SMTP ยัง mock | T-113 ส่วนที่เหลือ, T-114, T-115 pilot (เจ้าของ), T-125, T-103e/f, T-110c |
 | 2 Reliability + Usage | 🟡 ฟีเจอร์ครบด้วย mock/fixture, gate ค้าง | T-207 |
 | คำขอเจ้าของ 2026-11-02 | T-136, T-137 ✅ · T-133 บางส่วน | T-134/T-135 บน `wip/t-134` (ยังไม่ re-review, ไม่มีเว็บ), T-133 ที่เหลือ |
-| 3 Autonomy + Learning | 🟡 code + e2e ครบบน local `main` (ยังไม่ push) · flag `AI_AUTOSEND_ENABLED` ปิด · PO T-306c: ยังไม่ "done pending live gate" | T-306j security ตรวจซ้ำ, T-301f, roster-plan flake, HANDOFF · หลังนั้น [ASK-HUMAN] push/deploy + เลือก intent แรก |
+| 3 Autonomy + Learning | ✅ done pending live gate (local `main`, ยังไม่ push) · ADR-025/026 Accepted · flag `AI_AUTOSEND_ENABLED` ปิด | e2e รอบสุดท้าย · [ASK-HUMAN] push/deploy + เลือก intent แรก · T-302d replay อัตโนมัติ (หลัง pilot) |
 | 4 Mobile + Scale | ⬜ | — |
 
 - **Release `v0.1.0` (MVP)** = `main` @ `ae380db` · CI: เขียวทั้ง 4 job · gate บนเครื่องผ่านทุก merge `[TESTED]`
@@ -45,6 +45,12 @@ snapshot สั้นสำหรับ cold start อยู่ที่ `HANDOF
 - (2026-11-01) cloud session: `dockerd` ต้องสั่งเอง · Docker Hub 429 → pull ซ้ำทีละ image · build image ไม่ได้ (corepack ไม่เชื่อ CA ของ proxy) · Playwright ใช้ `PW_EXECUTABLE_PATH=/opt/pw-browsers/chromium` · หลาย worktree รัน e2e พร้อมกันต้องตั้ง `E2E_PORT` ต่างกัน · Redis counter ข้ามรอบ test → `RATE_LIMIT_NAMESPACE`
 
 ## Log
+
+## 2026-11-05 10:30 (Asia/Bangkok) — Claude Code main thread — ปิดงานค้างของ PO T-306c: T-301f, T-306j/k/l, roster-plan, ADR-025/026 Accepted
+- **ทำอะไร:** T-301f (verified เฉพาะข้อความลูกค้าที่ยืนยัน, คำปฏิเสธ = assumed) · T-306j security ตรวจซ้ำ (ไม่มี P0/P1) · T-306k แก้ C-15 P2 (placeholder org), C-16…C-19, C-11, C-2 + migration 0111 · T-306l: **บั๊ก security เล็ก** session refresh ใช้นาฬิกา host ขณะ guard ใช้ DB → แก้, test undo window · roster-plan flake = tie ของ solver ด้วย UUID สุ่ม (test) · ADR-025, ADR-026 → Accepted · ติ๊ก T-301…T-305 umbrella, T-306c
+- **Test (main thread รันเอง, container ทิ้ง):** typecheck 18/18, lint 19/19, unit ทั้ง repo ผ่าน · integration db 511/511, domain 509/509, api 1394/1394, worker 364/364 `[TESTED]`
+- **Residual P3 ยอมรับ:** C-4, C-6, C-9, C-14 + C-16 ไม่มี DB trigger — ทบทวนก่อนเปิด flag
+- **ค้าง:** e2e web + full-stack รอบสุดท้าย (qa กำลังรัน), T-302d, push/deploy รอเจ้าของ
 
 ## 2026-11-05 07:30 (Asia/Bangkok) — Claude Code main thread — Phase 3: T-306b/f/g/h/i, B-009…B-011 merge, PO review T-306c
 - **ทำอะไร:** merge บน local `main` (ยังไม่ push): T-306f (0108 review hardening + 0110 `record_ai_grade` อ่าน `response_model`), T-306g (CLI `eval-runner record`), T-306h (portal `requesterVerified` จากลิงก์ที่ส่งทางอีเมล), T-306i (golden `shareable` + preview scrub), web (step-up dialog, checkbox shareable, stage 3 ไม่ถูก clamp), T-306b (e2e full-stack stage 3: shadow, flag ON ด้วย fake-live provider ใน stack ทิ้ง, rollback, eval gate), B-009 (ข้อความ held ครบ), B-010 (outbox ทิ้ง event ที่สองในนาทีเดียว → jobId ต่อ event), B-011 (403 ส่ง `reason`)

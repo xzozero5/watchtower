@@ -1,15 +1,15 @@
 # HANDOFF — Watchtower
 
 > สถานะล่าสุดของโปรเจกต์ session ใหม่อ่านไฟล์นี้ต่อจาก `AGENTS.md` แล้วทำงานต่อได้โดยไม่ต้องอ่านบทสนทนาเดิม
-> อัปเดตล่าสุด: 2026-11-05 08:30 (เวลากรุงเทพ) โดย Claude Code main thread — ปิด Phase 1–3 (code) ตามคำสั่งเจ้าของ 2026-11-04
+> อัปเดตล่าสุด: 2026-11-05 10:30 (เวลากรุงเทพ) โดย Claude Code main thread — ปิด Phase 1–3 (code) ตามคำสั่งเจ้าของ 2026-11-04
 > ฉบับก่อน: `docs/handoff-archive/HANDOFF-2026-11-03-1550-owner-requests.md` · บันทึกรายชั่วโมง `logs/daily/2026-11-04.md`, `logs/daily/2026-11-05.md`
 
 > ⚠️ **local `main` นำ `origin/main` (`ae3effd`) อยู่ ~280 commit และยังไม่ push** — เจ้าของสั่งให้รอ OK ก่อน push และก่อน deploy POC · POC (`watchtower`, :3000) ยังรัน image 2026-11-03 (ก่อน migration 0084+)
 
 ## สถานะปัจจุบัน
-- **Phase:** 1 = done pending pilot · 2 = done pending live (GCP/Discord จริง) · 3 = code + e2e ครบ, PO T-306c บอกยังไม่ "done pending live gate" จนปิดงานค้างด้านล่าง · LINE = feature ภายหลัง · Phase 4: ดึง T-152 (ลิงก์ "คำขอของฉัน" ทางอีเมล) + Web Push live มาทำแล้ว
-- **Build/Test บน local main `[TESTED]` (main thread รันเอง):** typecheck 18/18, lint 19/19, unit ทั้ง repo ผ่าน (web 1655, ui 809, shared 1130, ai 819, api 462, worker 193, domain 228, db 86, channels 592, connectors 146, eval-runner 25) · integration บน container ทิ้ง: db 509/509, worker 361/361, domain 506/508 → 2 ตกจาก clock skew ใน test (แก้ `23b6778`), api 1389/1391 → roster-plan (แก้ `ac79142`, 15 รอบผ่าน) · เหลือ flake api 2 ตัว → T-306l (กำลังทำ)
-- **Migration ล่าสุด:** 0110 (`record_ai_grade` อ่าน `coalesce(response_model, model)`) · ไม่มีเลข 0100 (ข้ามเลข ไม่กระทบ migrator) · T-306k อาจเพิ่ม 0111
+- **Phase:** 1 = done pending pilot · 2 = done pending live (GCP/Discord จริง) · 3 = ✅ done pending live gate (งานค้างของ PO T-306c ปิดครบ, ADR-025/026 Accepted) · LINE = feature ภายหลัง · Phase 4: ดึง T-152 (ลิงก์ "คำขอของฉัน" ทางอีเมล) + Web Push live มาทำแล้ว
+- **Build/Test บน local main `[TESTED]` (main thread รันเอง):** typecheck 18/18, lint 19/19, unit ทั้ง repo ผ่าน (web 1655, ui 809, shared 1130, ai 819, api 462, worker 193, domain 228, db 86, channels 592, connectors 146, eval-runner 25) · integration บน container ทิ้ง (หลัง merge ทุกอย่าง): db 511/511, domain 509/509, api 1394/1394, worker 364/364 · e2e web + full-stack รอบสุดท้าย: qa กำลังรัน
+- **Migration ล่าสุด:** 0111 (`t306k_hardening`) · ไม่มีเลข 0100 (ข้ามเลข ไม่กระทบ migrator)
 - **Deployment:** POC local compose `watchtower` (image 2026-11-03) · pilot = instance ใหม่ตาม `docs/runbooks/pilot-instance.md` (เจ้าของ deploy เอง)
 - **Flag:** `AI_AUTOSEND_ENABLED` **ห้ามตั้ง** บน POC/production จนเจ้าของสั่ง (ADR-025) · ตั้งได้เฉพาะ stack ทิ้งของ e2e (`E2E_AUTOSEND_FLAG=on`)
 - **Credential ที่มี (ชื่อเท่านั้น):** env ของเจ้าของ `D:\Works\secret\watchtower.env` (agent ห้ามอ่าน) · Gmail push SA `watchtower-pubsub-admin` · `claude -p` ผ่าน `claude-bridge`
@@ -27,14 +27,13 @@
 | --- | --- |
 | Phase 1/2 ค้าง | T-114a, T-125a, T-155a, T-171a, T-173…T-183, T-207a ฯลฯ ปิด (ดู BACKLOG) |
 | Phase 3 | T-301a–f, T-302a–c,e,g, T-303a–f, T-304a–g, T-305a–f, T-306a,b,e–j (grader, eval/replay/golden, procedures + simulation, stage 3 gate + shadow + rollback + report, CEO view, weekly brief, PDF, roster planner, NER) |
-| Security | T-306a (1 P1 → แก้), T-306j ตรวจซ้ำ: ไม่มี P0/P1, C-15 P2 ใหม่ → T-306k |
+| Security | T-306a (1 P1 → แก้), T-306j ตรวจซ้ำ: ไม่มี P0/P1, T-306k แก้ C-15 P2 + C-16…C-19, C-11, C-2 · T-306l บั๊ก session refresh ใช้นาฬิกา host (แก้) · T-301f verified ไม่นับคำปฏิเสธ |
 | QA | T-306b e2e full-stack stage 3 (flag OFF shadow, flag ON fake-live ส่งจริง + ระงับ 6 เหตุผล, rollback ×2, eval gate + step-up) · บั๊ก B-009/B-010/B-011 แก้แล้ว |
 | Test isolation | integration config ปฏิเสธรันนอก CI ถ้าไม่ตั้ง `TEST_*` (เคยรั่วเข้า POC — ล้างแล้วด้วยอนุญาตเจ้าของ) |
 
 ## ค้าง / ติดอะไร
-- **T-306k** (backend-dev กำลังทำ): C-15 placeholder org ใน golden + gate, C-16 staff เขียน `requesterVerified`, C-17 `/.//evil.com` ใน returnTo, C-18 sampled grade ซ้ำ, C-19 `"pass":"true"`, C-11, C-2 ส่วนถูก — ต้องปิด C-15 ก่อนเปิด flag ที่ใด
-- **T-306l** (backend-dev กำลังทำ): flake `auth/session` absolute lifetime (200 แทน 401 — ตรวจว่าเป็นบั๊ก security หรือไม่), `outbound` undo hold timing
-- **Residual P3 ยอมรับไว้ก่อน (main thread):** C-4 replay ผูก alias + เชื่อตัวเลขผู้เรียก, C-6 app role ทำ gate report เขียวผ่าน DEFINER ได้, C-9 app role INSERT `ai_run` ปลอม grade ได้, C-14 web ไม่แสดง reviewers — เหตุผล: flag ปิด + ต้องมี L0 (env) + L3 (owner approve) ก่อนส่งจริง · ทบทวนก่อนเปิด flag
+- e2e web + full-stack รอบสุดท้ายก่อน push (qa กำลังรัน) — ถ้ามีตก ดู daily log 2026-11-05
+- **Residual P3 ยอมรับไว้ก่อน (main thread):** C-4 replay ผูก alias + เชื่อตัวเลขผู้เรียก, C-6 app role ทำ gate report เขียวผ่าน DEFINER ได้, C-9 app role INSERT `ai_run` ปลอม grade ได้, C-14 web ไม่แสดง reviewers, C-16 ไม่มี DB trigger (app role เขียน `custom_fields` ตรงได้), `issue()` ของ session ตั้ง expires_at ด้วยนาฬิกา host — เหตุผล: flag ปิด + ต้องมี L0 (env) + L3 (owner approve) ก่อนส่งจริง · ทบทวนก่อนเปิด flag
 - T-302d: replay อัตโนมัติเมื่อเปลี่ยน prompt/model/procedure ยังสั่งมือ (`eval-runner record`)
 - T-305: CEO §9.2 ข้อ 2,3,5,6, ตั้งเวลา weekly brief ใน admin, e2e/axe หน้า cost ยังไม่ทำ (PO T-306c)
 - T-207 (Phase 2 QA/po review + handoff) ยังไม่ติ๊กใน BACKLOG ทั้งที่เกณฑ์ปิดถือว่าผ่าน — ให้ po ยืนยันแล้วติ๊ก
@@ -51,11 +50,10 @@
 - [ ] ทดสอบ grader จริงต่อ prompt injection · ตัดสินดาวน์โหลด model NER ขั้น 2 · ตรวจข้อความภาษาไทย
 
 ## ขั้นต่อไป (เรียงลำดับ)
-1. รับรายงาน T-306k, T-306l → ตรวจ diff + รัน typecheck/lint/unit + integration ครบ 4 ชุดเอง (script แบบ container ทิ้ง: pg/redis/minio/mailpit พอร์ต 47xxx/48xxx/49xxx/41xxx, ตั้ง `TEST_DATABASE_URL` `TEST_REDIS_URL` `REDIS_URL` `TEST_S3_ENDPOINT` `TEST_S3_ACCESS_KEY` `TEST_S3_SECRET_KEY` `TEST_SMTP_PORT` `MAILPIT_URL`) → merge
-2. ADR-025 + ADR-026 → Accepted (บันทึก residual P3), ติ๊ก T-306c/T-301–T-305 umbrella เมื่อ po ยืนยัน
-3. web e2e + full-stack e2e ครบชุดก่อน push (`apps/web/e2e-fullstack/README.md`, stage 3 ใช้ ~10 นาที)
-4. รอ OK เจ้าของ → push → CI เขียว → deploy POC ตาม `docs/runbooks/local-poc.md`
-5. หลัง pilot: T-302d replay อัตโนมัติ, T-305 ส่วนที่เหลือ, LINE
+1. ดูผล e2e รอบสุดท้าย (web + full-stack + stage 3 flag ON ใน stack ทิ้ง) แก้ที่ตกจริง
+2. ติ๊ก T-207 เมื่อ po ยืนยัน Phase 2 review
+3. รอ OK เจ้าของ → push → CI เขียว → deploy POC ตาม `docs/runbooks/local-poc.md`
+4. หลัง pilot: T-302d replay อัตโนมัติ, T-305 ส่วนที่เหลือ, LINE
 
 ## ยังไม่ยืนยัน
 - claude-cli คืน `response_model` จริงหรือไม่ (ถ้าไม่ independence เทียบ alias) `[UNVERIFIED 50%]`

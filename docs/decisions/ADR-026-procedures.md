@@ -1,6 +1,6 @@
 # ADR-026 — Procedures ต่อ intent: steps แบบ Zod, NL→steps (AI ร่าง คนยืนยัน), version + simulation ก่อน publish (T-303a)
 
-- **Status:** Proposed 2026-11-04 · ร่างโดย `architect` · รอ `security-reviewer` (N7)
+- **Status:** **Accepted 2026-11-05** (security review T-306a: C-7 simulation stage 2+3 แก้ใน T-306f, ตรวจซ้ำ T-306j ปิด) · ร่างโดย `architect` 2026-11-04
 - **Date:** 2026-11-04 (เวลากรุงเทพ) · **ผู้ตัดสิน:** main thread
 - **Context:** PRD §6.3 procedure ต่อ intent เขียน NL โดย lead/head → compile เป็น step list มี version (investigation, disclosure, reply guideline, escalate, AI ทำอะไรได้ต่อ stage) และ simulate กับ ticket เก่าก่อน publish · §6.5 replay eval เมื่อ procedure เปลี่ยน · ADR-013 §2 runbook = `planRunbook()` ที่โค้ดสร้าง model ไม่เลือก tool ไม่มี tool loop · ADR-016 template logs/data ค่า literal/bind · schema: `intent.procedure_version_id uuid` (0002, ไม่มี FK), `ai_run` ไม่มี procedure version `[TESTED: อ่าน migration]` · boundary: `packages/ai` ไม่รู้จัก DB/HTTP, `packages/shared` pure
 

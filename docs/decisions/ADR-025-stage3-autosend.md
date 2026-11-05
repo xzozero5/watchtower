@@ -1,6 +1,6 @@
 # ADR-025 — Stage 3 auto-send: env flag, shadow mode, promotion สองชั้น, auto-rollback (T-304a)
 
-- **Status:** Proposed 2026-11-04 · ร่างโดย `architect` · รอ `security-reviewer` (N7, T-306a) และคำตอบเจ้าของ 5 ข้อท้ายไฟล์ก่อน Accepted · **supersede ADR-011 §2 เฉพาะ ceiling**
+- **Status:** **Accepted 2026-11-05** (main thread หลังคำตอบเจ้าของ 2026-11-04 + security review T-306a + ตรวจซ้ำ T-306j ไม่มี P0/P1 + แก้ T-306e/f/k) · ร่างโดย `architect` 2026-11-04 · residual P3 ที่ยอมรับ: C-4, C-6, C-9, C-14 (ดู `T-306j-security-rereview.md`) ต้องทบทวนก่อนเปิด `AI_AUTOSEND_ENABLED` ที่ใด · **supersede ADR-011 §2 เฉพาะ ceiling**
 - **Date:** 2026-11-04 (เวลากรุงเทพ) · **ผู้ตัดสิน:** เจ้าของ (N3) · main thread commit
 - **Context:** PRD §6.4 stage 3 = auto-send เมื่อ grader ≥ threshold ∧ intent allow-list ∧ customer verified; gate เข้า stage 3 = verified-resolution ≥ human, CSAT parity, reopen ≤ human ต่อเนื่อง ≥ 4 สัปดาห์ · §6.6 grader อิสระ, kill switch, budget, disclosure · ADR-011 §2 ceiling สามชั้น (CHECK ≤ 2, `PHASE_MAX_AUTONOMY_STAGE = 2`, api 403) และ `decide()` ปฏิเสธ `ai_auto` เสมอ · `outbound_delivery_origin_check` ไม่มี `ai_auto` (0013) `[TESTED: อ่าน migration]` · BACKLOG Phase 3: ทำ code/test/shadow ได้ ห้ามตั้ง flag บน POC/production จนเจ้าของสั่ง · POC ใช้ `sonnet` ทุก tier (ADR-019) · disclosure ทำด้วยโค้ด `disclosureFor()` + `senderAuth` (T-114a)
 
