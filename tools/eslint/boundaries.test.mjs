@@ -15,6 +15,7 @@ const BOUNDARY_RULES = new Set([
   'no-restricted-globals',
   'watchtower/no-relative-escape',
   'watchtower/no-redacted-text-cast',
+  'watchtower/no-insight-writer',
 ]);
 
 // Linted as virtual paths: the rules look only at the specifier and the file's location, so the
@@ -221,6 +222,46 @@ describe('boundary rules', () => {
 
   it.each(ALLOWED)('%s accepts: %s', async (file, code) => {
     expect(await lintAt(code, file)).toEqual([]);
+  });
+});
+
+describe('the insight writer stays out of apps/api (C-15, ADR-029 9.2)', () => {
+  const API = 'apps/api/src/insights/a.ts';
+  const rules = async (file, code) => (await lintAt(code, file)).map((m) => m.ruleId);
+
+  it.each([
+    "import { writeElementInsight } from '@watchtower/db';",
+    "import { upsertElementInsight as put } from '@watchtower/domain';",
+    "import { writeMyWorkInsight } from '@watchtower/domain';",
+    "import { x } from '@watchtower/domain/insight-writer';",
+    "import { x } from '../insight-writer.js';",
+    "export { deleteElementInsight } from '@watchtower/db';",
+    "const m = await import('@watchtower/db/insight-writer');",
+    'await db.insert(aiElementInsight).values(row);',
+    'await tx.update(aiElementInsight).set({ claims: [] });',
+    'await tx.delete(aiElementInsight);',
+    "await pool.query('INSERT INTO ai_element_insight (element) VALUES ($1)', [a]);",
+    'await pool.query(`delete from public.ai_element_insight where id = $1`, [a]);',
+    "await pool.query('UPDATE ai_element_insight SET claims = $1', [c]);",
+  ])('rejects %s in apps/api', async (code) => {
+    expect(await rules(API, code)).toContain('watchtower/no-insight-writer');
+  });
+
+  it.each([
+    'const rows = await db.select().from(aiElementInsight);',
+    "await pool.query('SELECT claims FROM ai_element_insight WHERE element = $1', [a]);",
+    "import { aiElementInsight } from '@watchtower/db';",
+    "import { INSIGHT_ELEMENTS } from '@watchtower/shared';",
+  ])('allows reading: %s', async (code) => {
+    expect(await rules(API, code)).not.toContain('watchtower/no-insight-writer');
+  });
+
+  it('does not apply to the worker, which is the writer', async () => {
+    const code = `import { writeElementInsight } from "@watchtower/db";
+await db.insert(aiElementInsight).values(row);`;
+    expect(await rules('apps/worker/src/insights/a.ts', code)).not.toContain(
+      'watchtower/no-insight-writer',
+    );
   });
 });
 

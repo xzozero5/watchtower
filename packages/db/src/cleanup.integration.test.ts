@@ -65,6 +65,7 @@ beforeEach(async () => {
     'assistant_proposal',
     'assistant_usage',
     'ai_summary',
+    'ai_element_insight',
   ]) {
     await owner().query(`DELETE FROM ${table}`);
   }
@@ -174,6 +175,23 @@ describe('purgeExpired', () => {
     expect(result.assistant_usage).toBe(1);
     expect(result.ai_summary).toBe(1);
     expect(await count('ai_summary', `locale = 'th'`)).toBe(1);
+  });
+
+  it('deletes element narrations a day after they expired and keeps the live ones (T-414)', async () => {
+    await owner().query(
+      `INSERT INTO ai_element_insight (element, scope_key, period, locale, facts, facts_fingerprint, claims,
+                                       prompt_id, prompt_version, model, generated_at, expires_at)
+       VALUES ('alerts.noise', 'instance', 'd7', 'en', '[]', 'a', '[]', 'element_insight', 'v1', 'm',
+               now() - interval '3 days', now() - interval '2 days'),
+              ('alerts.noise', 'instance', 'd7', 'th', '[]', 'a', '[]', 'element_insight', 'v1', 'm',
+               now() - interval '3 hours', now() - interval '1 hour'),
+              ('alerts.noise', 'instance', 'd30', 'en', '[]', 'a', '[]', 'element_insight', 'v1', 'm',
+               now(), now() + interval '6 hours')`,
+    );
+    const result = await purgeExpired({ pool: app }, {});
+    expect(result.ai_element_insight).toBe(1);
+    expect(await count('ai_element_insight')).toBe(2);
+    await owner().query(`DELETE FROM ai_element_insight`);
   });
 
   it('deletes refresh tokens past their expiry even when the session lives on, and with a deleted session', async () => {
@@ -299,6 +317,7 @@ describe('purgeExpired', () => {
       assistant_proposal: 0,
       assistant_usage: 0,
       ai_summary: 0,
+      ai_element_insight: 0,
       more: false,
     });
     expect(await count('sessions')).toBe(1);

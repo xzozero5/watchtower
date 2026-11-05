@@ -79,6 +79,7 @@ export const WORKSPACES = {
       SHARED,
     ],
     forbid: [],
+    noInsightWriter: true,
   },
   'apps/worker': {
     name: '@watchtower/worker',
@@ -316,10 +317,94 @@ const noRedactedTextCast = {
   },
 };
 
+// C-15 (ADR-029 section 9.2, T-414): the narrations of screen elements (`ai_element_insight`) are written only by
+// the worker. api and worker share one database role, so a grant cannot say so; this rule does. In apps/api it
+// reports (a) an import of a module named `insight-writer` or of a writer by its name (`writeElementInsight`,
+// `upsertElementInsight`, `deleteElementInsight`, `writeMyWorkInsight`, ...), (b) a Drizzle write on the
+// `aiElementInsight` table (`insert`, `update`, `delete`), and (c) raw SQL that writes `ai_element_insight`.
+// Reading the table (select) stays allowed: the api shows what the worker wrote.
+const INSIGHT_WRITER_MODULE = /(^|[\\/.-])insight-writer([\\/.-]|$)/;
+const INSIGHT_WRITER_NAME =
+  /^(write|upsert|save|store|delete|remove|purge)(Element|MyWork)Insights?\w*$/;
+const INSIGHT_WRITE_SQL =
+  /\b(insert\s+into|update|delete\s+from|truncate(\s+table)?)\s+(only\s+)?(public\.)?"?ai_element_insight\b/i;
+
+const noInsightWriter = {
+  meta: {
+    type: 'problem',
+    docs: { description: 'Disallow the api from writing element insights (C-15)' },
+    schema: [],
+    messages: {
+      writer:
+        'apps/api must not import the insight writer ("{{name}}"): element insights are written by the worker only (ADR-029 section 9.2, C-15).',
+      write:
+        'apps/api must not write ai_element_insight: element insights are written by the worker only (ADR-029 section 9.2, C-15).',
+    },
+  },
+  create(context) {
+    const checkSource = (node) => {
+      const specifier = node?.value;
+      if (typeof specifier === 'string' && INSIGHT_WRITER_MODULE.test(specifier)) {
+        context.report({ node, messageId: 'writer', data: { name: specifier } });
+      }
+    };
+    const checkName = (node, name) => {
+      if (typeof name === 'string' && INSIGHT_WRITER_NAME.test(name)) {
+        context.report({ node, messageId: 'writer', data: { name } });
+      }
+    };
+    const checkSql = (node, text) => {
+      if (typeof text === 'string' && INSIGHT_WRITE_SQL.test(text)) {
+        context.report({ node, messageId: 'write' });
+      }
+    };
+    return {
+      ImportDeclaration(node) {
+        checkSource(node.source);
+        for (const specifier of node.specifiers) {
+          if (specifier.type === 'ImportSpecifier') {
+            checkName(specifier, specifier.imported.name ?? specifier.imported.value);
+          }
+        }
+      },
+      ExportNamedDeclaration(node) {
+        if (node.source !== null && node.source !== undefined) {
+          checkSource(node.source);
+          for (const specifier of node.specifiers) {
+            checkName(specifier, specifier.local.name ?? specifier.local.value);
+          }
+        }
+      },
+      ExportAllDeclaration: (node) => checkSource(node.source),
+      ImportExpression: (node) => checkSource(node.source),
+      TSImportType: (node) => checkSource(node.source),
+      CallExpression(node) {
+        if (node.callee.type === 'Identifier' && node.callee.name === 'require') {
+          checkSource(node.arguments[0]);
+        }
+        // db.insert(aiElementInsight) / tx.update(aiElementInsight) / db.delete(aiElementInsight)
+        const callee = node.callee;
+        if (
+          callee.type === 'MemberExpression' &&
+          callee.property.type === 'Identifier' &&
+          ['insert', 'update', 'delete'].includes(callee.property.name) &&
+          node.arguments[0]?.type === 'Identifier' &&
+          node.arguments[0].name === 'aiElementInsight'
+        ) {
+          context.report({ node, messageId: 'write' });
+        }
+      },
+      Literal: (node) => checkSql(node, node.value),
+      TemplateElement: (node) => checkSql(node, node.value.cooked),
+    };
+  },
+};
+
 const watchtowerPlugin = {
   rules: {
     'no-relative-escape': noRelativeEscape,
     'no-redacted-text-cast': noRedactedTextCast,
+    'no-insight-writer': noInsightWriter,
   },
 };
 
@@ -329,35 +414,38 @@ const watchtowerPlugin = {
  *   eslint with each package as cwd.
  */
 export function boundaryConfigs({ rootDir }) {
-  return Object.entries(WORKSPACES).map(([dir, { forbidHttpGlobals }]) => {
-    const restrictions = restrictionsFor(dir);
-    const rules = {
-      'no-restricted-imports': 'off',
-      '@typescript-eslint/no-restricted-imports': ['error', { patterns: restrictions }],
-      'no-restricted-syntax': ['error', ...syntaxRestrictions(restrictions)],
-      'watchtower/no-relative-escape': ['error', { workspaceRoot: join(rootDir, dir) }],
-      'watchtower/no-redacted-text-cast': 'error',
-    };
-    if (forbidHttpGlobals === true) {
-      rules['no-restricted-globals'] = [
-        'error',
-        ...HTTP_GLOBALS.map((name) => ({
-          name,
-          message: `${dir} must not know about HTTP. Accept a port from the caller instead.`,
-        })),
-      ];
-    }
-    return {
-      name: `watchtower/boundaries/${dir}`,
-      // The globs are relative to the repo root even when a workspace config re-spreads this
-      // array: without basePath they would resolve against that workspace and never match
-      // (SR106-N1).
-      basePath: rootDir,
-      files: [`${dir}/${SOURCE_GLOB}`],
-      // A workspace's own eslint config legitimately imports the root config.
-      ignores: [`${dir}/eslint.config.mjs`],
-      plugins: { '@typescript-eslint': tseslint.plugin, watchtower: watchtowerPlugin },
-      rules,
-    };
-  });
+  return Object.entries(WORKSPACES).map(
+    ([dir, { forbidHttpGlobals, noInsightWriter: banInsightWriter }]) => {
+      const restrictions = restrictionsFor(dir);
+      const rules = {
+        'no-restricted-imports': 'off',
+        '@typescript-eslint/no-restricted-imports': ['error', { patterns: restrictions }],
+        'no-restricted-syntax': ['error', ...syntaxRestrictions(restrictions)],
+        'watchtower/no-relative-escape': ['error', { workspaceRoot: join(rootDir, dir) }],
+        'watchtower/no-redacted-text-cast': 'error',
+      };
+      if (banInsightWriter === true) rules['watchtower/no-insight-writer'] = 'error';
+      if (forbidHttpGlobals === true) {
+        rules['no-restricted-globals'] = [
+          'error',
+          ...HTTP_GLOBALS.map((name) => ({
+            name,
+            message: `${dir} must not know about HTTP. Accept a port from the caller instead.`,
+          })),
+        ];
+      }
+      return {
+        name: `watchtower/boundaries/${dir}`,
+        // The globs are relative to the repo root even when a workspace config re-spreads this
+        // array: without basePath they would resolve against that workspace and never match
+        // (SR106-N1).
+        basePath: rootDir,
+        files: [`${dir}/${SOURCE_GLOB}`],
+        // A workspace's own eslint config legitimately imports the root config.
+        ignores: [`${dir}/eslint.config.mjs`],
+        plugins: { '@typescript-eslint': tseslint.plugin, watchtower: watchtowerPlugin },
+        rules,
+      };
+    },
+  );
 }
