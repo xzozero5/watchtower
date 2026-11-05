@@ -258,6 +258,9 @@ describe('every route states who may call it', () => {
         'POST /v1/assistant/proposals/:id/confirm',
         'POST /v1/assistant/proposals/:id/reject',
         'DELETE /v1/assistant/conversations/:id',
+        // Embedded insights (T-416, `assistant.use`): every element asks the rule of its own GET route, which a
+        // developer does not hold for the wave 9a elements, and a masked view carries no customer (insights.integration.test).
+        'GET /v1/insights',
       ].sort(),
     );
   });
@@ -270,6 +273,8 @@ describe('every route states who may call it', () => {
       /^[A-Z]+ \/v1\/(assistant|insights)(\/|$)/.test(route.key),
     );
     expect(routes.length).toBeGreaterThan(0);
+    // T-416: the insights route exists and is under the same allowlist (client, portal and magic-link sessions: 403).
+    expect(routes.map((route) => route.key)).toContain('GET /v1/insights');
     for (const route of routes) {
       expect(route.isPublic, route.key).toBe(false);
       expect(route.workspaceOnly, route.key).toBe(true);
