@@ -15,6 +15,7 @@ import {
   AlertStateChips,
   OpsSkeleton,
 } from '@/components/ops/ops-bits';
+import { AskAiButton } from '@/components/assistant/ask-ai-button';
 import { RelativeTime } from '@/components/relative-time';
 import { useI18n } from '@/i18n/provider';
 import { useShortcut } from '@/lib/keyboard';
@@ -143,7 +144,12 @@ function AlertsBody() {
             ) : (
               <ul data-alert-list className="flex flex-col gap-1.5">
                 {items.map((alert) => (
-                  <li key={alert.id}>
+                  <li key={alert.id} className="relative">
+                    <AskAiButton
+                      entity={{ kind: 'alert', ref: alert.id }}
+                      label={alert.title}
+                      className="absolute top-1.5 right-1.5 z-10"
+                    />
                     <button
                       type="button"
                       id={rowId(alert.id)}

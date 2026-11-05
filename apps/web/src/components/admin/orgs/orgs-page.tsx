@@ -14,6 +14,7 @@ import {
 } from '@/components/admin/admin-layout';
 import { LoadError, RequirePermission, TableSkeleton } from '@/components/admin/admin-page';
 import { AppLink } from '@/components/app-link';
+import { AskAiButton } from '@/components/assistant/ask-ai-button';
 import { useT } from '@/i18n/provider';
 import { useOrgs, useSlaPolicies } from '@/lib/admin/queries';
 import { usePreferences } from '@/lib/preferences';
@@ -57,12 +58,15 @@ function OrgsBody() {
       header: t('admin.common.name'),
       sortValue: (row) => row.name,
       cell: (row) => (
-        <AppLink
-          href={`/admin/orgs/${row.id}`}
-          className="font-medium underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
-        >
-          {row.name}
-        </AppLink>
+        <span className="flex items-center gap-1">
+          <AppLink
+            href={`/admin/orgs/${row.id}`}
+            className="font-medium underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+          >
+            {row.name}
+          </AppLink>
+          <AskAiButton entity={{ kind: 'org', ref: row.id }} label={row.name} />
+        </span>
       ),
     },
     {

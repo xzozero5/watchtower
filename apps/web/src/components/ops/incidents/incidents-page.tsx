@@ -7,6 +7,7 @@ import { useMemo, useState } from 'react';
 
 import { LoadError, RequirePermission } from '@/components/admin/admin-page';
 import { CreateIncidentDialog } from '@/components/ops/incidents/create-incident-dialog';
+import { AskAiButton } from '@/components/assistant/ask-ai-button';
 import { IncidentDetailView } from '@/components/ops/incidents/incident-detail';
 import { IncidentSeverityBadge, IncidentStatusChip, OpsSkeleton } from '@/components/ops/ops-bits';
 import { RelativeTime } from '@/components/relative-time';
@@ -111,7 +112,12 @@ function IncidentsBody() {
           ) : (
             <ul className="flex flex-col gap-1.5">
               {items.map((incident) => (
-                <li key={incident.id}>
+                <li key={incident.id} className="relative">
+                  <AskAiButton
+                    entity={{ kind: 'incident', ref: incident.id }}
+                    label={incident.key}
+                    className="absolute top-1.5 right-1.5 z-10"
+                  />
                   <button
                     type="button"
                     id={rowId(incident.id)}

@@ -26,6 +26,7 @@ import {
 import { LoadError, RequirePermission, TableSkeleton } from '@/components/admin/admin-page';
 import { EntitySheet } from '@/components/admin/entity-sheet';
 import { AppLink } from '@/components/app-link';
+import { AskAiButton } from '@/components/assistant/ask-ai-button';
 import { FormField } from '@/components/portal/form-field';
 import { useT } from '@/i18n/provider';
 import { describeError } from '@/lib/admin/errors';
@@ -85,14 +86,17 @@ function IntentsBody() {
       header: t('admin.intents.col.name'),
       sortValue: (row) => row.name,
       cell: (row) => (
-        <span className="flex flex-col">
-          <AppLink
-            href={`/admin/intents/${row.id}`}
-            className="font-medium underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
-          >
-            {row.name}
-          </AppLink>
-          <span className="font-mono text-xs text-muted-foreground">{row.key}</span>
+        <span className="flex items-center gap-1">
+          <span className="flex flex-col">
+            <AppLink
+              href={`/admin/intents/${row.id}`}
+              className="font-medium underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+            >
+              {row.name}
+            </AppLink>
+            <span className="font-mono text-xs text-muted-foreground">{row.key}</span>
+          </span>
+          <AskAiButton entity={{ kind: 'intent', ref: row.id }} label={row.name} />
         </span>
       ),
     },

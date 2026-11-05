@@ -32,6 +32,129 @@ export const assistantEn = {
       admin: 'Admin',
       other: 'This page',
     },
+    entity: {
+      ticket: 'Ticket',
+      conversation: 'Conversation',
+      incident: 'Incident',
+      alert: 'Alert',
+      kb_article: 'Article',
+      handoff: 'Handoff',
+      intent: 'Intent',
+      org: 'Organization',
+      service: 'Service',
+    },
+    entityChip: '{kind}: {name}',
+    selection: '{kind} x {count}',
+  },
+  askAbout: {
+    label: 'Ask AI about this',
+    named: 'Ask AI about {name}',
+  },
+  localStarters: {
+    page: {
+      queue: {
+        a: 'Which tickets in the queue need me first?',
+        b: 'Which tickets are close to breaching SLA?',
+      },
+      ticket: {
+        a: 'Summarize this ticket and what is missing',
+        b: 'What should I do next on this ticket?',
+      },
+      conversations: {
+        a: 'Summarize this conversation',
+        b: 'Did the customer ask for anything we have not answered?',
+      },
+      incident: {
+        a: 'Which incidents are open and what is the worst?',
+        b: 'What changed before the open incident started?',
+      },
+      alert: {
+        a: 'Which alerts are firing and which are unmapped?',
+        b: 'Are the firing alerts related to an incident?',
+      },
+      statuspage: {
+        a: 'What does the status page say now?',
+        b: 'Is any component out of date with our incidents?',
+      },
+      kb: {
+        a: 'Which article answers this question?',
+        b: 'What is missing from the knowledge base?',
+      },
+      shift: {
+        a: 'What happened this shift so far?',
+        b: 'What should I hand over at the end?',
+      },
+      brief: {
+        a: 'Give me the three things that matter in this brief',
+        b: 'What changed since the last brief?',
+      },
+      handoff: {
+        a: 'What is still open that the next shift must know?',
+        b: 'Which handoff items have no next action?',
+      },
+      roster: {
+        a: 'Who is on shift now and who is next?',
+        b: 'Are there gaps in the roster this week?',
+      },
+      dashboard: {
+        a: 'What stands out on this overview?',
+        b: 'Which number moved most since yesterday?',
+      },
+      reports: {
+        a: 'Summarize this report in three lines',
+        b: 'What drives the cost here?',
+      },
+      autonomy: {
+        a: 'Which intents are ready for a higher autonomy stage?',
+        b: 'Which intents had the most rejected drafts?',
+      },
+      admin: {
+        a: 'What should I check on this settings page?',
+        b: 'Who changed these settings last?',
+      },
+      other: {
+        a: 'What can you tell me about this page?',
+        b: 'Which tickets need me first?',
+      },
+    },
+    entity: {
+      ticket: {
+        a: 'Summarize this ticket',
+        b: 'What should I do next?',
+      },
+      conversation: {
+        a: 'Summarize this conversation',
+        b: 'What is the customer asking for?',
+      },
+      incident: {
+        a: 'Summarize this incident and its impact',
+        b: 'What changed before it started?',
+      },
+      alert: {
+        a: 'Why is this alert firing?',
+        b: 'Is it related to an incident?',
+      },
+      kb_article: {
+        a: 'Summarize this article',
+        b: 'Is this article out of date?',
+      },
+      handoff: {
+        a: 'Summarize this handoff',
+        b: 'What must the next shift do first?',
+      },
+      intent: {
+        a: 'How is this intent doing?',
+        b: 'Is it ready for a higher autonomy stage?',
+      },
+      org: {
+        a: 'How healthy is this organization?',
+        b: 'What are its open tickets and risks?',
+      },
+      service: {
+        a: 'How is this service doing?',
+        b: 'Which alerts touched this service recently?',
+      },
+    },
   },
   starters: {
     label: 'Try asking',

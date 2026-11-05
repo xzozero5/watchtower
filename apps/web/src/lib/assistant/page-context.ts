@@ -1,33 +1,51 @@
 'use client';
 
-import type { AssistantContext, AssistantPage } from '@watchtower/shared';
+import type {
+  AssistantContext,
+  AssistantEntity,
+  AssistantPage,
+  AssistantSelection,
+} from '@watchtower/shared';
 import { useEffect, useState } from 'react';
 
-import { readSelectedTicket } from '@/lib/tickets/selection';
-
-/** The page kind the api's `context.page` knows, from the address. Nothing is guessed beyond it. */
-export function pageOfPath(pathname: string, ticket: string | null): AssistantPage {
-  const parts = pathname.split('/').filter((part) => part !== '');
-  const first = parts[0] ?? '';
-  if (first === '') return ticket === null ? 'queue' : 'ticket';
-  if (first === 'shift') {
-    if (parts[1] === 'brief') return 'brief';
-    if (parts[1] === 'handoff') return 'handoff';
-    return 'other';
-  }
-  if (first === 'home' || first === 'dashboard') return 'dashboard';
-  if (first === 'incidents' || first === 'alerts') return 'incident';
-  return 'other';
-}
-
-/** The ticket named in the address, only on the queue page where the workspace keeps it. */
-export function ticketOfLocation(pathname: string, search: string): string | null {
-  return pathname === '/' ? readSelectedTicket(search) : null;
-}
+import { resolveLocation } from './page-registry';
 
 export interface PageContext {
   page: AssistantPage;
-  ticket: string | null;
+  /** The thing open on the page, or the one an "Ask AI about this" button pinned. */
+  entity: AssistantEntity | null;
+  /** Chips picked on a list (several things at once). Null when none. */
+  selection: AssistantSelection | null;
+  /** A name for the chip, from the button that pinned it. Display only, never sent. */
+  label: string | null;
+  /** Which press of an "Ask AI" button pinned it (0: none). */
+  pin: number;
+}
+
+/** What the person asked about from a row or a card ("Ask AI about this"). */
+export interface AskTarget {
+  entity?: AssistantEntity;
+  selection?: AssistantSelection;
+  label?: string;
+  /** Set by the bubble: a new press on the same button is a new chip, even if it was removed before. */
+  pin?: number;
+}
+
+export interface RemovedChips {
+  page: boolean;
+  entity: boolean;
+  selection: boolean;
+}
+
+export const NONE_REMOVED: RemovedChips = { page: false, entity: false, selection: false };
+
+/** A key that changes when the place or the thing changes: a chip removed stays removed only for it. */
+export function contextKey(context: PageContext): string {
+  const entity = context.entity ? `${context.entity.kind}:${context.entity.ref}` : '';
+  const selection = context.selection
+    ? `${context.selection.kind}:${context.selection.refs.join(',')}`
+    : '';
+  return `${context.page}|${entity}|${selection}|${String(context.pin)}`;
 }
 
 const POLL_MS = 600;
@@ -35,13 +53,24 @@ const POLL_MS = 600;
 /**
  * What the chips above the input say, kept up to date. The queue keeps the open ticket in the
  * address with `replaceState`, which fires no event, so while the panel is open the address is read
- * again every so often. No hidden context: the chips are exactly what is sent (the person can
- * remove either).
+ * again every so often. `pinned` is what an "Ask AI about this" button chose; it wins over the
+ * address until the person goes elsewhere. No hidden context: the chips are exactly what is sent
+ * (the person can remove each).
  */
-export function usePageContext(pathname: string, active: boolean): PageContext {
+export function usePageContext(
+  pathname: string,
+  active: boolean,
+  pinned: AskTarget | null = null,
+): PageContext {
   const read = (): PageContext => {
-    const ticket = ticketOfLocation(pathname, window.location.search);
-    return { page: pageOfPath(pathname, ticket), ticket };
+    const here = resolveLocation(pathname, window.location.search);
+    return {
+      page: here.page,
+      entity: pinned?.entity ?? here.entity,
+      selection: pinned?.selection ?? null,
+      label: pinned?.entity ? (pinned.label ?? null) : null,
+      pin: pinned?.pin ?? 0,
+    };
   };
   const [context, setContext] = useState<PageContext>(read);
 
@@ -49,7 +78,7 @@ export function usePageContext(pathname: string, active: boolean): PageContext {
     const update = () => {
       const next = read();
       setContext((current) =>
-        current.page === next.page && current.ticket === next.ticket ? current : next,
+        contextKey(current) === contextKey(next) && current.label === next.label ? current : next,
       );
     };
     update();
@@ -60,9 +89,9 @@ export function usePageContext(pathname: string, active: boolean): PageContext {
       window.clearInterval(timer);
       window.removeEventListener('popstate', update);
     };
-    // `read` closes over `pathname` only.
+    // `read` closes over `pathname` and `pinned` only.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pathname, active]);
+  }, [pathname, active, pinned]);
 
   return context;
 }
@@ -70,10 +99,15 @@ export function usePageContext(pathname: string, active: boolean): PageContext {
 /** The request context for the chips that are still on. */
 export function contextForRequest(
   context: PageContext,
-  removed: { page: boolean; ticket: boolean },
+  removed: RemovedChips,
 ): AssistantContext | undefined {
   const result: AssistantContext = {};
   if (!removed.page) result.page = context.page;
-  if (!removed.ticket && context.ticket !== null) result.ticket = context.ticket;
+  if (!removed.entity && context.entity !== null) {
+    result.entity = context.entity;
+    // The first release read `ticket`; an older server still does.
+    if (context.entity.kind === 'ticket') result.ticket = context.entity.ref;
+  }
+  if (!removed.selection && context.selection !== null) result.selection = context.selection;
   return Object.keys(result).length === 0 ? undefined : result;
 }

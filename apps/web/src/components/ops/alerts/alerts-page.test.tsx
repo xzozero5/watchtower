@@ -84,7 +84,9 @@ describe('Alerts list', () => {
     opsApi();
     renderConsole(<AlertsPage />);
     const user = userEvent.setup();
-    await user.click(await screen.findByRole('button', { name: /Checkout latency high 1/ }));
+    await user.click(
+      await screen.findByRole('button', { name: /^(?!Ask AI).*Checkout latency high 1/ }),
+    );
     expect(replace).toHaveBeenCalledWith(`/alerts?alert=${uuid(7001)}`);
   });
 

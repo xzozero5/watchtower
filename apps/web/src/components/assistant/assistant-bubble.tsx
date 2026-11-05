@@ -8,7 +8,7 @@ import { useCallback, useId, useRef, useState } from 'react';
 import { useI18n } from '@/i18n/provider';
 import { useAutonomy } from '@/lib/admin/queries';
 import { useAssistantHidden, useAssistantOpenRequests } from '@/lib/assistant/assistant-ui';
-import { usePageContext } from '@/lib/assistant/page-context';
+import { usePageContext, type AskTarget } from '@/lib/assistant/page-context';
 import { useBubbleRoom } from '@/lib/assistant/use-bubble-room';
 import { useSession } from '@/lib/auth/session';
 import { useModifierShortcut } from '@/lib/use-modifier-shortcut';
@@ -42,7 +42,9 @@ export function AssistantBubble() {
   const button = useRef<HTMLButtonElement>(null);
   // Where focus goes back to when the button is hidden (the thing that was focused before opening).
   const returnTo = useRef<HTMLElement | null>(null);
-  const context = usePageContext(pathname, open);
+  const pinCount = useRef(0);
+  const [pinned, setPinned] = useState<{ target: AskTarget; path: string } | null>(null);
+  const context = usePageContext(pathname, open, pinned?.path === pathname ? pinned.target : null);
   const autonomy = useAutonomy(can('ticket.read'));
   const paused = autonomy.data?.switches.find((item) => item.key === 'ai_kill_switch')?.on ?? false;
   const hiddenByChoice = useAssistantHidden();
@@ -76,8 +78,14 @@ export function AssistantBubble() {
   useModifierShortcut(ASSISTANT_SHORTCUT_KEY, () => {
     if (allowed) toggle();
   });
-  useAssistantOpenRequests(() => {
-    if (allowed) openPanel();
+  useAssistantOpenRequests((target) => {
+    if (!allowed) return;
+    // An "Ask AI about this" button: its entity becomes the chip, for this page only.
+    if (target !== null) {
+      pinCount.current += 1;
+      setPinned({ target: { ...target, pin: pinCount.current }, path: pathname });
+    }
+    openPanel();
   });
 
   if (!allowed) return null;

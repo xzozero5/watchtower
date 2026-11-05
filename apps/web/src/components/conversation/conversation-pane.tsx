@@ -14,6 +14,7 @@ import { CircleCheck, Copy, MessagesSquare, MousePointerClick } from 'lucide-rea
 import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 
 import { AiBrief } from '@/components/ai/ai-brief';
+import { AskAiButton } from '@/components/assistant/ask-ai-button';
 import { AiGradeCard } from '@/components/ai/ai-grade';
 import { SlaBadge } from '@/components/ticket/sla-badge';
 import { StatusLabel } from '@/components/ticket/status-label';
@@ -76,6 +77,7 @@ function TicketActions({ ticket, trailing }: { ticket: TicketItem; trailing?: Re
             .catch(() => undefined);
         }}
       />
+      <AskAiButton entity={{ kind: 'ticket', ref: ticket.key }} label={ticket.key} />
       {canResolve ? (
         <Button
           variant="secondary"
