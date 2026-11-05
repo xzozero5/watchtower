@@ -4,15 +4,21 @@ import type { Claim, ClaimEvidence, ClaimEvidenceKind } from '@watchtower/shared
 import { cn, TintChip } from '@watchtower/ui';
 import {
   AlertTriangle,
+  BarChart3,
   Bell,
+  Clock,
   Database,
   FileText,
   GitCommitHorizontal,
   HandHelping,
   type LucideIcon,
+  Mail,
+  Radio,
   Rocket,
   ScrollText,
+  Settings,
   StickyNote,
+  Tags,
   Ticket,
   TriangleAlert,
   User,
@@ -36,6 +42,13 @@ const KIND_ICONS: Record<ClaimEvidenceKind, LucideIcon> = {
   data: Database,
   repo: GitCommitHorizontal,
   person: User,
+  // ADR-029 section 5: the kinds the stage 1 module tools add.
+  conversation: Mail,
+  statuspage: Radio,
+  shift: Clock,
+  metric: BarChart3,
+  intent: Tags,
+  config: Settings,
 };
 
 const CHIP =
