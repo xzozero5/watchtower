@@ -143,7 +143,7 @@ export const aiSummary = pgTable(
   (table) => [primaryKey({ columns: [table.kind, table.userId, table.locale] })],
 );
 
-/** What a person pinned for the assistant to remember (ADR-029 section 3, migration 0112). Redacted text only. */
+/** What a person pinned for the assistant to remember (ADR-029 section 3, migration 0112). Redacted text of the answer only; expires 90 days from `createdAt`. */
 export const assistantMemory = pgTable(
   'assistant_memory',
   {
@@ -153,12 +153,15 @@ export const assistantMemory = pgTable(
       .references(() => users.id, { onDelete: 'cascade' }),
     body: text('body').notNull(),
     refs: jsonb('refs').notNull().default([]).$type<{ kind: string; id: string }[]>(),
+    sourceMessageId: uuid('source_message_id').references(() => assistantMessage.id, {
+      onDelete: 'set null',
+    }),
     createdAt: timestamptz('created_at').notNull().defaultNow(),
     lastUsedAt: timestamptz('last_used_at').notNull().defaultNow(),
     expiresAt: timestamptz('expires_at').notNull(),
   },
   (table) => [
-    index('assistant_memory_user_idx').on(table.userId, table.lastUsedAt.desc()),
+    index('assistant_memory_user_idx').on(table.userId, table.createdAt.desc()),
     index('assistant_memory_expires_idx').on(table.expiresAt),
   ],
 );

@@ -1,8 +1,10 @@
 -- T-401 (ADR-029): Watchtower assistant stage 1.
---   assistant_memory          what a person asked the assistant to remember ("pin"). Redacted text only (N4),
---                             at most 300 characters, at most five {kind, id} refs that are resolved again with the
---                             person's permissions each time they are used. Written by the person only, never by
---                             a model. Expires 90 days after it was last used; one person never reads another's.
+--   assistant_memory          what a person pinned from an answer ("remember this"). The body is chosen by the server from
+--                             the redacted text of that turn (never from the restored text on the screen, never typed:
+--                             T-400 C-7), at most 300 characters, at most five {kind, id} refs that are resolved again
+--                             with the person's permissions each time they are used. Written on the person's press only,
+--                             never by a model. Expires 90 days after it was CREATED (use does not extend it); one person
+--                             never reads another's.
 --   assistant_message.evidence the evidence of an answer as [{kind, id}] only: label and href are rebuilt with the
 --                             permissions the person has when the history is shown.
 --   assistant_message.path     how the turn was answered: facts_only | llm1 | llm2 (null for the turns before this).
@@ -17,6 +19,8 @@ CREATE TABLE assistant_memory (
   -- Redacted before it was stored (N4).
   body text NOT NULL,
   refs jsonb NOT NULL DEFAULT '[]'::jsonb,
+  -- The answer it was pinned from; the memory stays when that message is deleted.
+  source_message_id uuid REFERENCES assistant_message (id) ON DELETE SET NULL,
   created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
   last_used_at timestamptz NOT NULL DEFAULT clock_timestamp(),
   expires_at timestamptz NOT NULL,
@@ -25,7 +29,7 @@ CREATE TABLE assistant_memory (
     jsonb_typeof(refs) = 'array' AND jsonb_array_length(refs) <= 5
   )
 );
-CREATE INDEX assistant_memory_user_idx ON assistant_memory (user_id, last_used_at DESC);
+CREATE INDEX assistant_memory_user_idx ON assistant_memory (user_id, created_at DESC);
 CREATE INDEX assistant_memory_expires_idx ON assistant_memory (expires_at);
 
 ALTER TABLE assistant_message

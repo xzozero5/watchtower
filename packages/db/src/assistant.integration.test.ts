@@ -177,6 +177,129 @@ describe('the assistant tables', () => {
   });
 });
 
+describe('0112 assistant stage 1 (T-401, ADR-029)', () => {
+  const memory = (body: string, refs: unknown[] = [], sourceMessageId: string | null = null) =>
+    app.query(
+      `INSERT INTO assistant_memory (user_id, body, refs, source_message_id, expires_at)
+       VALUES ($1, $2, $3::jsonb, $4, now() + interval '90 days') RETURNING id`,
+      [userId, body, JSON.stringify(refs), sourceMessageId],
+    );
+
+  it('lets the application role keep a memory with at most 300 characters and five refs', async () => {
+    const refs = [{ kind: 'ticket', id: 'x' }];
+    expect((await memory('Prefers short answers', refs)).rowCount).toBe(1);
+    expect(await code(memory('x'.repeat(301)))).toBe(CHECK_VIOLATION);
+    expect(await code(memory(''))).toBe(CHECK_VIOLATION);
+    expect(
+      await code(
+        memory(
+          'ok',
+          Array.from({ length: 6 }, () => ({ kind: 'ticket', id: 'x' })),
+        ),
+      ),
+    ).toBe(CHECK_VIOLATION);
+    expect(
+      await code(
+        app.query(
+          `INSERT INTO assistant_memory (user_id, body, refs, expires_at) VALUES ($1, 'ok', '{}'::jsonb, now())`,
+          [userId],
+        ),
+      ),
+    ).toBe(CHECK_VIOLATION);
+  });
+
+  it('keeps the memory when its source message goes, and removes it with its person', async () => {
+    const conversationId = await conversation();
+    const message = await app.query<{ id: string }>(
+      `INSERT INTO assistant_message (conversation_id, user_id, role, body, evidence, path)
+       VALUES ($1, $2, 'assistant', 'ok', '[{"kind":"ticket","id":"t"}]', 'llm1') RETURNING id`,
+      [conversationId, userId],
+    );
+    const messageId = message.rows[0]?.id ?? '';
+    await memory('from an answer', [], messageId);
+    await app.query(`DELETE FROM assistant_message WHERE id = $1`, [messageId]);
+    const kept = await owner().query<{ source_message_id: string | null }>(
+      `SELECT source_message_id FROM assistant_memory WHERE body = 'from an answer'`,
+    );
+    expect(kept.rows).toEqual([{ source_message_id: null }]);
+
+    const other = await owner().query<{ id: string }>(
+      `INSERT INTO users (email, name, role) VALUES ('memory-owner@example.com', 'M', 'agent') RETURNING id`,
+    );
+    await app.query(
+      `INSERT INTO assistant_memory (user_id, body, expires_at) VALUES ($1, 'mine', now())`,
+      [other.rows[0]?.id],
+    );
+    await owner().query(`DELETE FROM users WHERE id = $1`, [other.rows[0]?.id]);
+    expect(
+      (await owner().query(`SELECT 1 FROM assistant_memory WHERE body = 'mine'`)).rowCount,
+    ).toBe(0);
+  });
+
+  it('gives a message an empty evidence list by default and only the three paths', async () => {
+    const conversationId = await conversation();
+    const made = await app.query<{ evidence: unknown; path: string | null }>(
+      `INSERT INTO assistant_message (conversation_id, user_id, role, body) VALUES ($1, $2, 'user', 'hi') RETURNING evidence, path`,
+      [conversationId, userId],
+    );
+    expect(made.rows[0]).toEqual({ evidence: [], path: null });
+    for (const path of ['facts_only', 'llm1', 'llm2']) {
+      expect(
+        (
+          await app.query(
+            `INSERT INTO assistant_message (conversation_id, user_id, role, body, path) VALUES ($1, $2, 'user', 'p', $3)`,
+            [conversationId, userId, path],
+          )
+        ).rowCount,
+      ).toBe(1);
+    }
+    expect(
+      await code(
+        app.query(
+          `INSERT INTO assistant_message (conversation_id, user_id, role, body, path) VALUES ($1, $2, 'user', 'p', 'llm3')`,
+          [conversationId, userId],
+        ),
+      ),
+    ).toBe(CHECK_VIOLATION);
+  });
+
+  it('grants assistant.use to agent, lead, head and dev and to nobody else', async () => {
+    const rows = await owner().query<{ role: string }>(
+      `SELECT role FROM role_permissions WHERE permission = 'assistant.use' ORDER BY role`,
+    );
+    expect(rows.rows.map((row) => row.role)).toEqual(['agent', 'dev', 'head', 'lead']);
+  });
+
+  it('goes down (taking the table, the columns and the permission) and up again', async () => {
+    const db = await createTestDatabase(adminUrl);
+    try {
+      const pool = db.owner.pool;
+      const later = await migrationsAfter('0112_assistant_stage1');
+      const reverted = await migrateDown(pool, { steps: later.length + 1 });
+      expect(reverted[reverted.length - 1]).toBe('0112_assistant_stage1');
+      expect(await code(pool.query(`SELECT 1 FROM assistant_memory`))).toBe(UNDEFINED_TABLE);
+      expect(await code(pool.query(`SELECT evidence FROM assistant_message`))).toBe('42703');
+      expect(await code(pool.query(`SELECT path FROM assistant_message`))).toBe('42703');
+      expect(
+        (await pool.query(`SELECT 1 FROM permissions WHERE key = 'assistant.use'`)).rowCount,
+      ).toBe(0);
+      expect(
+        (await pool.query(`SELECT 1 FROM role_permissions WHERE permission = 'assistant.use'`))
+          .rowCount,
+      ).toBe(0);
+
+      expect(await migrateUp(pool)).toEqual(['0112_assistant_stage1', ...later]);
+      expect((await pool.query(`SELECT 1 FROM assistant_memory`)).rowCount).toBe(0);
+      expect(
+        (await pool.query(`SELECT 1 FROM role_permissions WHERE permission = 'assistant.use'`))
+          .rowCount,
+      ).toBe(4);
+    } finally {
+      await db.cleanup();
+    }
+  });
+});
+
 describe('0090 goes down and up again', () => {
   it('drops the tables and brings them back', async () => {
     const later = await migrationsAfter('0090_assistant');

@@ -10,6 +10,8 @@ export interface CreateDatabaseOptions {
   readonly url: string;
   readonly max?: number;
   readonly applicationName?: string;
+  /** Where the read-only pool connects (a read replica). Default: `url`. */
+  readonly readOnlyUrl?: string;
   /** Called for errors on idle pooled connections, which would otherwise crash the process. */
   readonly onError?: (error: Error) => void;
 }
@@ -57,7 +59,7 @@ export function createDatabase(options: CreateDatabaseOptions): Database {
   const readOnlyPool = (): Pool => {
     if (readOnly === undefined) {
       readOnly = new Pool({
-        connectionString: options.url,
+        connectionString: options.readOnlyUrl ?? options.url,
         max: READ_ONLY_POOL_SIZE,
         connectionTimeoutMillis: 5000,
         idleTimeoutMillis: 30_000,

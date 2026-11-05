@@ -2,7 +2,7 @@ import { Pool } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { migrateDown, migrateUp } from './migrator.js';
-import { createTestDatabase, type TestDatabase } from './testing.js';
+import { createTestDatabase, migrationsAfter, type TestDatabase } from './testing.js';
 
 // Migration 0108 (T-306f, review T-306a C-5 .. C-9): what the application role can no longer write by itself
 // (gate report, ai_grade, procedure_simulation), and the doors that replace the INSERT. Every attack is made
@@ -597,7 +597,10 @@ describe('0108 goes down and up again', () => {
           );
         expect(await canInsert()).toBe(false);
         // 0109 (T-306e) and 0110 (record_ai_grade reads response_model) sit on top of it.
-        expect(await migrateDown(pool, { steps: 4 })).toEqual([
+        // Migrations added after 0111 (0112 ...) come off first and go on last.
+        const later = await migrationsAfter('0111_t306k_hardening');
+        expect(await migrateDown(pool, { steps: 4 + later.length })).toEqual([
+          ...later.toReversed(),
           '0111_t306k_hardening',
           '0110_ai_grade_response_model',
           '0109_replay_result_run_model',
@@ -615,6 +618,7 @@ describe('0108 goes down and up again', () => {
           '0109_replay_result_run_model',
           '0110_ai_grade_response_model',
           '0111_t306k_hardening',
+          ...later,
         ]);
         expect(await canInsert()).toBe(false);
       } finally {
