@@ -5,7 +5,7 @@ snapshot สั้นสำหรับ cold start อยู่ที่ `HANDOF
 
 ## สถานะปัจจุบัน
 
-- **2026-11-06 T-438:** CIของ31abb66ล้มops tests light/dark เพราะ locatorINC-12ชนAskAI. แก้testจำกัดincident-row, targeted2/2และindependentreviewผ่าน; product/Dockerเดิม. ดูCIรอบใหม่แล้วทำT419bต่อ
+- **2026-11-06 T-438:** CIของ31abb66ล้มops tests light/dark เพราะ locatorINC-12ชนAskAI. แก้testจำกัดincident-row, targeted2/2และindependentreviewผ่าน; product/Dockerเดิม. commit4bfbbf1พร้อมแล้ว แต่pushถูกremote reject commit_refs2ครั้ง; remoteยัง31abb66. รอบหน้าลองpushปกติก่อนดูCIแล้วทำT419bต่อ
 
 - **2026-11-06 T-437:** checkpoint + app heartbeat hourly, quota reset กลับมาทำต่อแล้ว 05:21. PO รับอำนาจตัดสินใจ. POC api/worker/web deploy 00:21 healthy หลัง backup; test containers 12 ตัวหยุดแล้ว (ไม่ลบ volume). Jarvis/insights ใหม่ยังค้างตาม BACKLOG; ถัดไป T-419b. Push `635914d` แล้ว 05:26; CI42121519210 queued. Checkpoint T-437 completed → T-419 ready (ทำ subtask T-419b ตาม PO). BridgeถูกglobalCLIupdateจนoffline→pinlocalCLIคืน health200จากapiแล้ว.
 
