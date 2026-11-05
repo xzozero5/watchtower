@@ -1,5 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { schema, type Database } from '@watchtower/db';
+import { readAlertNoise } from '@watchtower/domain';
 import {
   UNMAPPED_WINDOW_DAYS,
   type Alert,
@@ -225,42 +226,7 @@ export class AlertsReader {
    * clock. Actionable = acknowledged by a person or part of an incident; noise = resolved by itself with
    * neither; still-open alerts are not judged. Noisiest first.
    */
-  async noise(query: NoiseQuery): Promise<NoiseReport> {
-    const alert = schema.alert;
-    const acted = sql`(${alert.ackedAt} IS NOT NULL OR ${alert.incidentId} IS NOT NULL)`;
-    const rows = await this.database.db
-      .select({
-        source: alert.source,
-        title: alert.title,
-        alerts: sql<number>`count(*)::int`,
-        occurrences: sql<number>`coalesce(sum(${alert.count}), 0)::int`,
-        actionable: sql<number>`count(*) FILTER (WHERE ${acted})::int`,
-        noise: sql<number>`count(*) FILTER (WHERE NOT ${acted} AND ${alert.state} = 'resolved')::int`,
-        stillOpen: sql<number>`count(*) FILTER (WHERE NOT ${acted} AND ${alert.state} <> 'resolved')::int`,
-      })
-      .from(alert)
-      .where(sql`${alert.firstSeenAt} > clock_timestamp() - make_interval(days => ${query.days})`)
-      .groupBy(alert.source, alert.title)
-      .orderBy(
-        desc(sql`count(*) FILTER (WHERE NOT ${acted} AND ${alert.state} = 'resolved')`),
-        asc(alert.title),
-      )
-      .limit(query.limit);
-    return {
-      windowDays: query.days,
-      items: rows.map((row) => {
-        const judged = row.actionable + row.noise;
-        return {
-          source: row.source as AlertSource,
-          title: row.title,
-          alerts: row.alerts,
-          occurrences: row.occurrences,
-          actionable: row.actionable,
-          noise: row.noise,
-          stillOpen: row.stillOpen,
-          actionableRatio: judged === 0 ? null : row.actionable / judged,
-        };
-      }),
-    };
+  noise(query: NoiseQuery): Promise<NoiseReport> {
+    return readAlertNoise(this.database.db, query);
   }
 }

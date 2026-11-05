@@ -1,14 +1,12 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { schema, type Database } from '@watchtower/db';
-import type { Actor } from '@watchtower/domain';
+import { summarizeIncidents, type Actor } from '@watchtower/domain';
 import {
-  formatIncidentKey,
   safeDeployUrl,
   type CreateIncident,
   type Deploy,
   type DeployListQuery,
   type ChangesQuery,
-  type Incident,
   type IncidentChanges,
   type RepoChange,
   type IncidentComm,
@@ -19,12 +17,10 @@ import {
   type IncidentDetail,
   type IncidentListQuery,
   type IncidentNote,
-  type IncidentSeverity,
-  type IncidentStatus,
   type IncidentTimelineEntry,
   type UpdateIncident,
 } from '@watchtower/shared';
-import { and, asc, count, desc, eq, gte, inArray, lte, min, ne, type SQL } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, inArray, lte, min, ne, type SQL } from 'drizzle-orm';
 
 import { notFound } from '../auth/http-errors.js';
 import { beforeCursor, decodeCursor, preciseTimestamp, toPage } from '../common/keyset.js';
@@ -38,45 +34,7 @@ import { REPO_CHANGES, type RepoChangesPort } from './changes.js';
 import type { UnitOfWork } from '../realtime/unit-of-work.js';
 
 type IncidentRow = typeof schema.incident.$inferSelect;
-
-/** The bulk facts of a page of incidents, fetched with four queries rather than four per incident. */
-async function summarize(db: Database['db'], rows: readonly IncidentRow[]): Promise<Incident[]> {
-  if (rows.length === 0) return [];
-  const ids = rows.map((row) => row.id);
-  const [services, orgs, tickets, alerts] = await Promise.all([
-    db.select().from(schema.incidentService).where(inArray(schema.incidentService.incidentId, ids)),
-    db.select().from(schema.incidentOrg).where(inArray(schema.incidentOrg.incidentId, ids)),
-    db
-      .select({ id: schema.ticket.incidentId, n: count() })
-      .from(schema.ticket)
-      .where(inArray(schema.ticket.incidentId, ids))
-      .groupBy(schema.ticket.incidentId),
-    db
-      .select({ id: schema.alert.incidentId, n: count() })
-      .from(schema.alert)
-      .where(inArray(schema.alert.incidentId, ids))
-      .groupBy(schema.alert.incidentId),
-  ]);
-  return rows.map((row) => ({
-    id: row.id,
-    number: row.number,
-    key: formatIncidentKey(row.number),
-    title: row.title,
-    severity: row.severity as IncidentSeverity,
-    status: row.status as IncidentStatus,
-    commanderId: row.commanderId,
-    rootCause: row.rootCause,
-    discordThreadState: row.discordThreadState as Incident['discordThreadState'],
-    startedAt: row.startedAt.toISOString(),
-    resolvedAt: row.resolvedAt?.toISOString() ?? null,
-    serviceIds: services
-      .filter((entry) => entry.incidentId === row.id)
-      .map((entry) => entry.serviceId),
-    orgIds: orgs.filter((entry) => entry.incidentId === row.id).map((entry) => entry.orgId),
-    tickets: tickets.find((entry) => entry.id === row.id)?.n ?? 0,
-    alerts: alerts.find((entry) => entry.id === row.id)?.n ?? 0,
-  }));
-}
+const summarize = summarizeIncidents;
 
 /**
  * Incidents for staff (R-3.12): reads, and the writes that go through `@watchtower/domain`. The rules
