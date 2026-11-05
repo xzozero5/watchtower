@@ -4,7 +4,14 @@ import { eq } from 'drizzle-orm';
 
 import { GATE_REASONS } from '../autonomy/decide.js';
 import type { PolicyGate } from '../policy.js';
-import { evaluateBudget, type AiCaps, type BudgetMonitor } from './budget.js';
+import {
+  DEFAULT_EMBEDDING_DAILY_TOKEN_CAP,
+  EMBEDDER_AGENT,
+  evaluateBudget,
+  readEmbeddingTokens,
+  type AiCaps,
+  type BudgetMonitor,
+} from './budget.js';
 
 /** What an agent asks before it calls a model. Same shape as `AiCallGuard` in `@watchtower/ai`. */
 export interface AiGuardRequest {
@@ -33,6 +40,8 @@ export interface AiGuardOptions {
    * check is the plain read of the day's usage.
    */
   readonly caps?: AiCaps | undefined;
+  /** Clock for the embedding cap's UTC day. Tests pass one. */
+  readonly now?: () => Date;
 }
 
 /**
@@ -40,7 +49,9 @@ export interface AiGuardOptions {
  *  1. the policy gate's `checkAiAction` for the ticket's intent: the kill switch ("stop all AI")
  *     answers `kill_switch_on`, anything else it refuses is `policy_denied`; the gate writes an
  *     audit row for each denial;
- *  2. the daily budget: at the cap the answer is `budget_stop`.
+ *  2. the daily budget: at the cap the answer is `budget_stop`. An embedding call (agent
+ *     `embedder`) is checked against the embedding token cap only, never the LLM budget, and the
+ *     LLM budget is not charged for it (T-435 C-1).
  * Any error is a refusal. The caller then does no model call and falls back to rules or a person.
  */
 export function createAiGuard(options: AiGuardOptions) {
@@ -73,6 +84,12 @@ export function createAiGuard(options: AiGuardOptions) {
             reason:
               decision.reason === GATE_REASONS.killSwitchOn ? 'kill_switch_on' : 'policy_denied',
           };
+        }
+
+        if (request.agent === EMBEDDER_AGENT) {
+          const cap = options.caps?.dailyEmbeddingTokens ?? DEFAULT_EMBEDDING_DAILY_TOKEN_CAP;
+          const used = await readEmbeddingTokens(options.db, (options.now ?? (() => new Date()))());
+          return used >= cap ? { allowed: false, reason: 'budget_stop' } : { allowed: true };
         }
 
         const budget = await options.budget.check();

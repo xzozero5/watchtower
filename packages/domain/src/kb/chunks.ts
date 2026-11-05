@@ -88,8 +88,9 @@ export interface WriteIndexRef extends EmbeddingIndexRef {
  * The index new vectors are written under (T-431, ADR-030). With no active index yet, the spec
  * becomes active at once (nothing is searched by vector, so nothing can degrade). With the same
  * model already active it is that one. With a different model the new index is created inactive
- * and filled first; search keeps reading the active one (or falls back to keyword) until
- * `activateEmbeddingIndexIfComplete` switches it in one transaction.
+ * and filled first. A chunk holds one vector (`embedding_index_id`), so an article written under
+ * the new index is no longer found by vector under the active one: it is keyword-only until
+ * `activateEmbeddingIndexIfComplete` switches the new index in one transaction (T-435 C-8).
  */
 export async function resolveWriteIndex(
   tx: DbTransaction,

@@ -65,6 +65,7 @@ export class KbEmbeddingService {
     // being ignored in silence (N5): live embedding over the internet is the owner's decision.
     assertKbEmbeddingProvider(config.EMBEDDING_PROVIDER);
     const db = database.db;
+    const caps = resolveAiCaps(config);
     this.wanted = embeddingSettings(config);
     const wanted = this.wanted;
     this.embedder = createAuditedEmbedder({
@@ -94,9 +95,10 @@ export class KbEmbeddingService {
       guard: createAiGuard({
         policyGate: createPolicyGate({ db }),
         db,
+        caps,
         budget: createBudgetMonitor({
           db,
-          caps: resolveAiCaps(config),
+          caps,
           onEvent: (notice) => {
             this.logger.warn(
               { dimension: notice.dimension, level: notice.level },

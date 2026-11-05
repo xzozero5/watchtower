@@ -12,7 +12,7 @@ import {
   type ChunkToStore,
   type EmbeddingIndexSpec,
 } from '@watchtower/domain';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 
 import type { AiRuntime } from '../ai/runtime.js';
 import type { WorkerLogger } from '../logger.js';
@@ -62,11 +62,15 @@ export function embeddingInput(title: string, chunk: Chunk): string {
  * - If the embedder is absent, refuses (kill switch, budget) or the article has no text, the chunks
  *   stay keyword-only; `reembed_all` fills the vectors in later.
  * - A provider failure throws after the keyword-only chunks are stored, so BullMQ retries the job.
+ * - `preserveExisting` (used by `reembed_all`): when chunks of this very version already exist they
+ *   are left as they are until the new vectors are ready, so a refusal (embedding cap, kill switch)
+ *   or a failure does not strip an article of the vectors it has.
  */
 export async function embedArticle(
   deps: KbDeps,
   articleId: string,
   versionId: string,
+  options: { readonly preserveExisting?: boolean } = {},
 ): Promise<EmbedResult> {
   const db = deps.database.db;
   const [row] = await db
@@ -98,10 +102,25 @@ export async function embedArticle(
 
   const chunks = chunkMarkdown(version.bodyMd, deps.chunking);
   const keywordOnly: ChunkToStore[] = chunks.map((chunk) => ({ ...chunk, embedding: null }));
-  const stored = await db.transaction((tx) =>
-    replaceArticleChunks(tx, { articleId, versionId, chunks: keywordOnly, embeddingIndexId: null }),
-  );
-  if (!stored) return { status: 'stale', chunks: 0 };
+  let hasChunks = false;
+  if (options.preserveExisting === true && chunks.length > 0) {
+    const [existing] = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(schema.kbChunk)
+      .where(and(eq(schema.kbChunk.articleId, articleId), eq(schema.kbChunk.versionId, versionId)));
+    hasChunks = (existing?.count ?? 0) > 0;
+  }
+  if (!hasChunks) {
+    const stored = await db.transaction((tx) =>
+      replaceArticleChunks(tx, {
+        articleId,
+        versionId,
+        chunks: keywordOnly,
+        embeddingIndexId: null,
+      }),
+    );
+    if (!stored) return { status: 'stale', chunks: 0 };
+  }
   if (chunks.length === 0) return { status: 'embedded', chunks: 0 };
   if (deps.ai === undefined) {
     return { status: 'keyword_only', chunks: chunks.length, reason: 'provider_unavailable' };
@@ -149,15 +168,24 @@ export interface ReembedResult {
   readonly failed: number;
   /** True when the new index became the active one in this run (T-431). */
   readonly activated: boolean;
+  /**
+   * Set when the run stopped early because the embedder refused (the embedding cap, the kill
+   * switch). The job does not fail: a retry would hit the same refusal. The next scheduled run
+   * carries on, and the index is not switched until every article is embedded.
+   */
+  readonly deferred?: string;
 }
 
 /**
  * Brings every published article up to the embedding model in settings (ADR-030). With no active
  * index yet the model becomes active at once. With a different model than the active one, a new
- * index is filled first and search keeps reading the old one (or falls back to keyword, since a
- * query is only embedded with the active model); the new index is switched in, in one transaction,
+ * index is filled first. A chunk holds one vector, so an article moved to the new index loses its
+ * vector under the old (active) one at once and is found by keyword only until the switch (T-435
+ * C-8); articles not reached yet keep theirs. The new index is switched in, in one transaction,
  * only when every published article is embedded with it. One article's failure does not stop the
- * others; the job fails at the end if any failed, so it is retried and the switch waits.
+ * others; the job fails at the end if any failed, so it is retried and the switch waits. A refusal by
+ * the guard (embedding cap, kill switch) stops the run at once and reports `deferred` instead of a
+ * failure (T-435 C-1): no tight retry, no wiping of the vectors of articles not reached yet.
  */
 export async function reembedAll(deps: KbDeps): Promise<ReembedResult> {
   if (deps.ai === undefined) return { queued: 0, embedded: 0, failed: 0, activated: false };
@@ -166,10 +194,21 @@ export async function reembedAll(deps: KbDeps): Promise<ReembedResult> {
   const targets = await articlesNeedingEmbedding(deps.database.db, index.id);
   let embedded = 0;
   let failed = 0;
+  let deferred: string | undefined;
   for (const target of targets) {
     try {
-      const result = await embedArticle(deps, target.articleId, target.versionId);
+      const result = await embedArticle(deps, target.articleId, target.versionId, {
+        preserveExisting: true,
+      });
       if (result.status === 'embedded') embedded += 1;
+      if (
+        result.status === 'keyword_only' &&
+        result.reason !== undefined &&
+        result.reason !== 'provider_unavailable'
+      ) {
+        deferred = result.reason;
+        break;
+      }
     } catch (error) {
       // A row that could not be audited must stop everything: the metering is not optional (N4).
       if (error instanceof AuditWriteError) throw error;
@@ -178,7 +217,7 @@ export async function reembedAll(deps: KbDeps): Promise<ReembedResult> {
     }
   }
   let activated = false;
-  if (!index.active && failed === 0) {
+  if (!index.active && failed === 0 && deferred === undefined) {
     activated = await deps.database.db.transaction((tx) =>
       activateEmbeddingIndexIfComplete(tx, index.id),
     );
@@ -189,5 +228,14 @@ export async function reembedAll(deps: KbDeps): Promise<ReembedResult> {
       );
     }
   }
-  return { queued: targets.length, embedded, failed, activated };
+  if (deferred !== undefined) {
+    deps.logger.warn({ reason: deferred, embedded }, 'knowledge base re-embedding deferred');
+  }
+  return {
+    queued: targets.length,
+    embedded,
+    failed,
+    activated,
+    ...(deferred === undefined ? {} : { deferred }),
+  };
 }

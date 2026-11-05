@@ -271,6 +271,11 @@ export const phase1EnvShape = {
   // AI budget (T-106d). Empty falls back to the default in config/budgets.yaml; a value overrides it.
   AI_DAILY_COST_CAP_USD: optionalPositiveNumber,
   AI_DAILY_TOKEN_CAP: z.preprocess(emptyToUndefined, z.coerce.number().int().positive().optional()),
+  // Embedding tokens have a cap of their own (T-435): a re-embed must not stop the LLM.
+  EMBEDDING_DAILY_TOKEN_CAP: z.preprocess(
+    emptyToUndefined,
+    z.coerce.number().int().positive().optional(),
+  ),
   AI_BUDGET_ALERT_PERCENT: z.preprocess(
     emptyToUndefined,
     z.coerce.number().int().min(1).max(100).default(80),

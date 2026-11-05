@@ -17,7 +17,7 @@ describe('createAiRuntime', () => {
       createLogger(testConfig()),
     );
     expect(runtime.provider).toBe('mock');
-    expect(runtime.caps).toEqual({ dailyCostUsd: 2.5, dailyTokens: 1234, alertPercent: 80 });
+    expect(runtime.caps).toEqual({ dailyCostUsd: 2.5, dailyTokens: 1234, dailyEmbeddingTokens: 5_000_000, alertPercent: 80 });
     expect(runtime.prompts.list().map((prompt) => prompt.id)).toEqual(
       expect.arrayContaining(['classifier', 'summarizer']),
     );
