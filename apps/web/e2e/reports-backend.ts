@@ -128,6 +128,9 @@ export async function mockReports(page: Page, options: ReportsBackendOptions = {
         options.failing?.() ? down : { json: aiCostFixture(days(request.search)) },
       'GET /v1/reports/ceo': (request) =>
         options.failing?.() ? down : { json: ceoFixture(days(request.search)) },
+      // The weekly brief card on the CEO view (T-305c): nothing published, nothing waiting.
+      'GET /v1/reports/ceo/brief': () => ({ json: { brief: null } }),
+      'GET /v1/reports/ceo/brief/draft': () => ({ json: { draft: null, defaultRecipients: [] } }),
     },
   });
 }
