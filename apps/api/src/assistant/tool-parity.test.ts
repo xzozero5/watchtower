@@ -65,7 +65,13 @@ describe('tool permission parity (T-400 C-1)', () => {
   it('keeps a developer (masked read, no ticket.read) out of every tool whose route needs ticket.read', () => {
     const dev = { role: 'dev' as const, permissions: new Set(DEFAULT_ROLE_PERMISSIONS.dev) };
     const tools = toolsFor(dev);
-    expect(tools).toEqual(['search_tickets', 'summarize_ticket', 'explain_sla', 'investigate_run']);
+    expect(tools).toEqual([
+      'search_tickets',
+      'summarize_ticket',
+      'explain_sla',
+      'investigate_run',
+      'ticket_timeline',
+    ]);
     // `ticket.read.masked` stands in for `ticket.read` only where the rule lists both.
     expect(evaluatePermissionRule(dev, { all: ['ticket.read'] })).toBe(false);
     expect(evaluatePermissionRule(dev, { anyOf: ['ticket.read', 'ticket.read.masked'] })).toBe(
@@ -80,7 +86,7 @@ describe('tool permission parity (T-400 C-1)', () => {
     expect(ROLE_TOOLS.dev).not.toContain('team_load');
     expect(
       toolsFor({ role: 'lead', permissions: new Set<Permission>(['ticket.read.masked']) }),
-    ).toEqual(['search_tickets', 'summarize_ticket', 'explain_sla']);
+    ).toEqual(['search_tickets', 'summarize_ticket', 'explain_sla', 'ticket_timeline']);
   });
 
   it('catches a tool that is wider than its route (the harness itself)', () => {

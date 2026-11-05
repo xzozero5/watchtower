@@ -37,7 +37,13 @@ describe('who the assistant works for', () => {
 
   it('needs the permission of the ordinary route behind each tool, not only the role', () => {
     const tools = toolsFor(who('agent', ['ticket.read']));
-    expect(tools).toEqual(['search_tickets', 'summarize_ticket', 'explain_sla']);
+    expect(tools).toEqual([
+      'search_tickets',
+      'summarize_ticket',
+      'explain_sla',
+      'ticket_timeline',
+      'autonomy_status',
+    ]);
     expect(toolsFor(who('agent', [...AGENT]))).toContain('investigate_run');
     expect(
       toolsFor(
@@ -69,6 +75,7 @@ describe('who the assistant works for', () => {
       'summarize_ticket',
       'explain_sla',
       'investigate_run',
+      'ticket_timeline',
     ]);
     // A developer changes a status and writes a note, as a developer does, and nothing else.
     expect(proposalKindsFor(dev)).toEqual(['status', 'note']);
@@ -100,17 +107,27 @@ describe('who the assistant works for', () => {
   it('has no tool that writes: the list is searches, reads, and the template run of investigate.run', () => {
     const all = new Set(Object.values(ROLE_TOOLS).flat());
     expect([...all].sort()).toEqual([
+      'autonomy_status',
+      'ceo_metrics',
+      'config_lookup',
+      'conversation_get',
+      'conversation_search',
       'explain_sla',
       'investigate_run',
+      'kb_get',
       'kb_search',
+      'ops_metrics',
+      'performance_view',
       'search_tickets',
       'summarize_ticket',
       'team_load',
       'team_status',
+      'ticket_timeline',
     ]);
-    // No admin surface: nothing about switches, autonomy, roles, integrations or users.
+    // Nothing that sets: no switch, role, user, credential or key tool (ADR-029 section 2). `autonomy_status` and
+    // `config_lookup` only read (ADR-029 section 11), and their outputs are allow-lists (C-6).
     for (const name of all)
-      expect(name).not.toMatch(/switch|autonomy|role|integration|user|credential/);
+      expect(name).not.toMatch(/switch|_set|role|user|credential|secret|apikey|api_key|token/);
   });
 
   it('never offers a reply to a customer as a proposal kind', () => {

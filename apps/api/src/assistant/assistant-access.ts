@@ -25,6 +25,16 @@ export const ASSISTANT_TOOLS = [
   'team_status',
   'kb_search',
   'investigate_run',
+  // T-404, T-405: the read tools of the modules (ADR-029 section 2).
+  'ops_metrics',
+  'ceo_metrics',
+  'performance_view',
+  'conversation_search',
+  'conversation_get',
+  'kb_get',
+  'ticket_timeline',
+  'autonomy_status',
+  'config_lookup',
 ] as const;
 export type AssistantToolName = (typeof ASSISTANT_TOOLS)[number];
 
@@ -35,14 +45,29 @@ const STAFF_TOOLS: readonly AssistantToolName[] = [
   'team_status',
   'kb_search',
   'investigate_run',
+  'ops_metrics',
+  'performance_view',
+  'conversation_search',
+  'conversation_get',
+  'kb_get',
+  'ticket_timeline',
+  'autonomy_status',
 ];
 
 export const ROLE_TOOLS: Readonly<Record<string, readonly AssistantToolName[]>> = {
   agent: STAFF_TOOLS,
-  lead: [...STAFF_TOOLS, 'team_load'],
-  head: [...STAFF_TOOLS, 'team_load'],
+  lead: [...STAFF_TOOLS, 'team_load', 'ceo_metrics', 'config_lookup'],
+  head: [...STAFF_TOOLS, 'team_load', 'ceo_metrics', 'config_lookup'],
   // Masked reader: finds, reads and investigates, does not see the team or the roster.
-  dev: ['search_tickets', 'summarize_ticket', 'explain_sla', 'kb_search', 'investigate_run'],
+  dev: [
+    'search_tickets',
+    'summarize_ticket',
+    'explain_sla',
+    'kb_search',
+    'investigate_run',
+    'kb_get',
+    'ticket_timeline',
+  ],
 };
 
 /** What a tool writes to the audit as personal data read (`pii.read`, `metadata.via=assistant`; T-400 C-17). */
@@ -86,6 +111,40 @@ export const TOOL_PERMISSION: Readonly<Record<AssistantToolName, ToolAccess>> = 
     rule: { all: ['investigate.run'] },
     piiKinds: ['ticket'],
   },
+  // T-404 (reports). `performance_view` is served by the same dashboard route; the handler also asks for
+  // `performance.read.own` or `.all` and ignores a userId when only `.own` is held (C-16).
+  ops_metrics: {
+    route: 'GET /v1/dashboard/ops',
+    rule: { all: ['dashboard.ops.read'] },
+    piiKinds: [],
+  },
+  ceo_metrics: { route: 'GET /v1/reports/ceo', rule: { all: ['ceo.view'] }, piiKinds: [] },
+  performance_view: {
+    route: 'GET /v1/dashboard/ops',
+    rule: { all: ['dashboard.ops.read'] },
+    piiKinds: ['performance'],
+  },
+  // T-405.
+  conversation_search: {
+    route: 'GET /v1/inbound/other-mail',
+    rule: { all: ['inbound.read'] },
+    piiKinds: ['conversation'],
+  },
+  conversation_get: {
+    route: 'GET /v1/inbound/other-mail/:id',
+    rule: { all: ['inbound.read'] },
+    piiKinds: ['conversation'],
+  },
+  kb_get: { route: 'GET /v1/kb/articles/:id', rule: { all: ['kb.read'] }, piiKinds: [] },
+  ticket_timeline: {
+    route: 'GET /v1/tickets/:id/timeline',
+    rule: TICKET_READ,
+    piiKinds: ['ticket', 'timeline'],
+  },
+  autonomy_status: { route: 'GET /v1/autonomy', rule: { all: ['ticket.read'] }, piiKinds: [] },
+  // The routes of an SLA policy, a queue, an intent and the workflow are `ticket.read`; an integration is
+  // `integration.manage`, which the handler asks for itself.
+  config_lookup: { route: 'GET /v1/sla-policies', rule: { all: ['ticket.read'] }, piiKinds: [] },
 };
 
 export const ROLE_PROPOSALS: Readonly<Record<string, readonly ProposalKind[]>> = {
