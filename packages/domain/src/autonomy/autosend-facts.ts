@@ -3,6 +3,7 @@ import { parseAutosendPolicy } from '@watchtower/shared';
 import { and, desc, eq, ne, sql } from 'drizzle-orm';
 
 import { readProcedureProposals } from '../procedures/escalation.js';
+import { isPlaceholderOrg } from '../inbound/identity.js';
 import { ticketRequiresHuman } from '../procedures/runtime.js';
 import { contentHash } from '../outbound/state.js';
 import type { ReadExecutor } from '../types.js';
@@ -124,6 +125,7 @@ export async function loadAutoSendFacts(
       id: schema.ticket.id,
       channel: schema.ticket.channel,
       priority: schema.ticket.priority,
+      orgId: schema.ticket.orgId,
       intentId: schema.ticket.intentId,
       incidentId: schema.ticket.incidentId,
       requesterContactId: schema.ticket.requesterContactId,
@@ -365,6 +367,7 @@ export async function loadAutoSendFacts(
       customerWantsHuman(recentPublic.map((message) => message.text)),
     autoStreak: streak?.n ?? 0,
     reopenedAfterAuto: reopened !== undefined,
+    placeholderOrg: isPlaceholderOrg(ticket.orgId),
   };
 
   // Condition 11: the published procedure of the intent says autosend 'allowed', and the draft was written

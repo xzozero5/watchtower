@@ -1,4 +1,5 @@
 import { schema, type Database } from '@watchtower/db';
+import { isPlaceholderOrg } from '../inbound/identity.js';
 import { and, desc, eq, isNull, or, sql } from 'drizzle-orm';
 
 /**
@@ -23,6 +24,9 @@ export interface GoldenExample {
  *
  * T-306a C-8: only the golden answers of the same organization as the ticket, plus those a lead marked
  * `shareable` ("no customer-specific data"). An organization's own replies never reach another's drafter by default.
+ * T-306k C-15: a placeholder organization ("Unidentified senders", "Unmatched portal submissions") holds strangers
+ * from many companies, so it is not "the same organization": its tickets count as having no organization (only
+ * `shareable` answers are used), and so do the tickets in it.
  */
 export async function goldenExamplesFor(
   db: Pick<Database['db'], 'select'>,
@@ -43,7 +47,7 @@ export async function goldenExamplesFor(
       and(
         eq(schema.goldenAnswer.intentId, intentId),
         isNull(schema.goldenAnswer.deletedAt),
-        orgId === null
+        orgId === null || isPlaceholderOrg(orgId)
           ? eq(schema.goldenAnswer.shareable, true)
           : or(eq(schema.ticket.orgId, orgId), eq(schema.goldenAnswer.shareable, true)),
       ),

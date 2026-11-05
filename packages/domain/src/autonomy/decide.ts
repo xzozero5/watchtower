@@ -80,6 +80,8 @@ export const GATE_REASONS = {
   customerWantsHuman: 'customer_wants_human',
   autoStreakLimit: 'auto_streak_limit',
   reopenedAfterAuto: 'reopened_after_auto',
+  /** 10b. T-306k C-15: the ticket is in a placeholder organization (strangers from many companies), so no one vouched for it. */
+  placeholderOrg: 'placeholder_org',
   /** 11. The procedure. */
   procedureUnknown: 'procedure_unknown',
   procedureNotAutosend: 'procedure_not_autosend',
@@ -159,6 +161,8 @@ export interface AutoSendTicketFacts {
   /** Automatic replies already sent (or scheduled) on this ticket. */
   readonly autoStreak: number;
   readonly reopenedAfterAuto: boolean;
+  /** T-306k C-15: the ticket belongs to a placeholder organization (`isPlaceholderOrg`). Only exactly `false` passes. */
+  readonly placeholderOrg: boolean;
 }
 
 /** Condition 11. */
@@ -328,6 +332,7 @@ export function evaluateAutoSend(
     if (ticket.customerWantsHuman) failed.push(GATE_REASONS.customerWantsHuman);
     if (ticket.autoStreak >= AUTOSEND_MAX_STREAK) failed.push(GATE_REASONS.autoStreakLimit);
     if (ticket.reopenedAfterAuto) failed.push(GATE_REASONS.reopenedAfterAuto);
+    if (!Object.is(ticket.placeholderOrg, false)) failed.push(GATE_REASONS.placeholderOrg);
   }
   // 11
   const procedure = facts.procedure;

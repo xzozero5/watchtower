@@ -74,6 +74,7 @@ const GOOD: AutoSendFacts = {
     customerWantsHuman: false,
     autoStreak: 0,
     reopenedAfterAuto: false,
+    placeholderOrg: false,
   },
   procedure: {
     autosendAllowed: true,
@@ -253,6 +254,11 @@ const BREAKS: readonly {
     name: '10 reopened after an automatic reply',
     reason: GATE_REASONS.reopenedAfterAuto,
     facts: (f) => ({ ...f, ticket: { ...need(f.ticket), reopenedAfterAuto: true } }),
+  },
+  {
+    name: '10 ticket in a placeholder organization (C-15)',
+    reason: GATE_REASONS.placeholderOrg,
+    facts: (f) => ({ ...f, ticket: { ...need(f.ticket), placeholderOrg: true } }),
   },
   {
     name: '11 no procedure facts',

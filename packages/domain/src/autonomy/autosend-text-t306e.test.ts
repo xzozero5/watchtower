@@ -131,6 +131,30 @@ describe('the customer asked for a person: wider phrases (T-306e C-2)', () => {
   });
 });
 
+describe('spelled-out dots and "talk to agent" (T-306k C-2)', () => {
+  it('refuses a host whose dot is written as a word or a spaced dot', () => {
+    for (const text of [
+      'Go to evil dot com',
+      'Go to evil . com',
+      'Go to EVIL DOT COM now',
+      'Go to evil จุด com',
+    ]) {
+      expect(linksAllowed(text, ORIGINS), text).toBe(false);
+    }
+  });
+
+  it('does not refuse plain prose', () => {
+    expect(linksAllowed('Thanks. Please try again later.', ORIGINS)).toBe(true);
+    expect(linksAllowed('ขอบคุณที่จุดประสงค์ชัดเจน', ORIGINS)).toBe(true);
+  });
+
+  it('reads "talk to agent" and "talk to a person" as a request for a person', () => {
+    expect(customerWantsHuman(['I want to talk to agent'])).toBe(true);
+    expect(customerWantsHuman(['Let me talk to a person'])).toBe(true);
+    expect(customerWantsHuman(['The password reset worked, thanks'])).toBe(false);
+  });
+});
+
 describe('who the customer is for the automatic send (T-306e C-3)', () => {
   it('a portal ticket is verified only when the portal says so, never from the contact', () => {
     expect(autosendContactVerified('portal', verified, undefined)).toBe(false);
