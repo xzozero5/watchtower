@@ -1,3 +1,4 @@
+import { insightElementKeySchema, insightFactSchema } from '@watchtower/shared';
 import { z } from 'zod';
 
 /**
@@ -9,7 +10,13 @@ import { z } from 'zod';
  * the checks can be tested with no key: it is ignored by every real provider.
  */
 
-export const EVAL_AGENTS = ['classifier', 'drafter', 'grader', 'kb_author'] as const;
+export const EVAL_AGENTS = [
+  'classifier',
+  'drafter',
+  'grader',
+  'kb_author',
+  'insight_narrator',
+] as const;
 export const evalAgentSchema = z.enum(EVAL_AGENTS);
 export type EvalAgent = z.infer<typeof evalAgentSchema>;
 
@@ -19,6 +26,7 @@ export const PROMPT_OF_AGENT: Readonly<Record<EvalAgent, string>> = {
   drafter: 'drafter',
   grader: 'grader',
   kb_author: 'kb_author',
+  insight_narrator: 'element_insight',
 };
 
 export const EVAL_SOURCES = ['golden', 'replay', 'smoke', 'proposal'] as const;
@@ -146,17 +154,66 @@ const kbAuthorCase = z.object({
   }),
 });
 
+/**
+ * Embedded insights (T-417, ADR-029 section 9.8): a batch of elements of one viewer group, each with the facts
+ * its builder gave, and what the narration may and may not say. Facts are made-up figures (N1); `names` are the
+ * made-up staff the redactor must know, so a person fact reaches the model as a placeholder (N4).
+ *
+ * The checks that hold for every case, whatever `expect` says: no number that is not in a fact the claim cites,
+ * no claim without a fact id, the language of the list, no placeholder-less personal data, and for an element
+ * with people the same tone check the agent applies (read again here, so a change to the agent cannot hide it).
+ */
+const insightCase = z.object({
+  ...base,
+  agent: z.literal('insight_narrator'),
+  input: z.object({
+    elements: z
+      .array(
+        z.object({
+          key: insightElementKeySchema,
+          scopeKey: z.string().min(1).max(100).default('instance'),
+          facts: z.array(insightFactSchema).max(60),
+        }),
+      )
+      .min(1)
+      .max(4),
+    locales: z.array(z.enum(['th', 'en'])).min(1).max(2).default(['th', 'en']),
+  }),
+  expect: z.object({
+    /** Per element: what its accepted claims must satisfy (an element not listed only gets the checks above). */
+    elements: z
+      .record(
+        z.string(),
+        z.object({
+          /** Words (a driver the facts name) that must appear in at least one accepted claim of each language. */
+          mustMention: z.array(z.string().min(1)).max(10).optional(),
+          mustNotContain: z.array(z.string().min(1)).max(20).optional(),
+          /** 0 for a "nothing changed" case: silence is the right answer. */
+          maxClaims: z.number().int().min(0).max(3).optional(),
+          minClaims: z.number().int().min(0).max(3).optional(),
+        }),
+      )
+      .default({}),
+    /** At most this many claims rejected in code: a real model that keeps ranking people shows up here. */
+    maxRejected: z.number().int().min(0).optional(),
+    /** The mock case only: reasons the agent must have rejected for (proves the post-check, not the model). */
+    mustRejectFor: z.array(z.string().min(1)).max(10).optional(),
+  }),
+});
+
 export const evalCaseSchema = z.discriminatedUnion('agent', [
   classifierCase,
   drafterCase,
   graderCase,
   kbAuthorCase,
+  insightCase,
 ]);
 export type EvalCase = z.infer<typeof evalCaseSchema>;
 export type ClassifierCase = z.infer<typeof classifierCase>;
 export type DrafterCase = z.infer<typeof drafterCase>;
 export type GraderCase = z.infer<typeof graderCase>;
 export type KbAuthorCase = z.infer<typeof kbAuthorCase>;
+export type InsightCase = z.infer<typeof insightCase>;
 
 /** A file holds one case, an array of cases, or `{ "cases": [...] }`. */
 export const evalFileSchema = z.union([

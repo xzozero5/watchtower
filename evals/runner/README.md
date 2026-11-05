@@ -16,6 +16,12 @@ pnpm --filter @watchtower/eval-runner replay -- --days 30 --limit 50   # needs D
   with the steps and with `--baseline` (default: the default runbook), edit distance to the reply of a person, uncited claims, the
   grader's policy violations, disclosure leaks and steps that never worked. Exit 1 unless it passes (ADR-026 section 6). On the mock
   provider it checks the plumbing and the rules, not the quality of a real model `[UNVERIFIED]`.
+- **Embedded insights (T-417).** Agent `insight_narrator` (prompt `element_insight`): a case holds a batch of
+  elements of one viewer group with made-up facts. Whatever `expect` says, the checks re-read the accepted claims
+  against the case's facts: hallucinated numbers = 0, uncited = 0, language matches, no contact data, person tone = 0
+  (ADR-029 sections 9.5, 9.9). The proposed cases are in `evals/proposals/insights.json` (run them with `--source proposal
+  --agent insight_narrator`); on the mock provider they prove the post-checks and the plumbing, not the quality of a
+  real model `[UNVERIFIED]`.
 - **Providers.** `mock` (default) never opens a socket. `claude-cli` needs `CLAUDE_CLI_BRIDGE_TOKEN`,
   `AI_MODEL_DEEP/STANDARD/LIGHT` and `AI_MODEL_PRICES` in the environment (`[ASK-HUMAN]`), is limited by
   `--max-calls` (default 100) and goes through the same `createAuditedLlm` (redaction, `ai_run` record) as the apps.
