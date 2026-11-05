@@ -204,6 +204,8 @@ export const stage3En = {
     customer_wants_human: 'the customer asked for a person',
     auto_streak_limit: 'too many automatic replies in a row on this ticket',
     reopened_after_auto: 'the customer reopened the ticket after an automatic reply',
+    placeholder_org:
+      'the ticket is in a placeholder organization (unidentified sender), so nobody vouched for who the customer is',
     procedure_unknown: 'the procedure of this intent could not be read',
     procedure_not_autosend: 'the procedure does not allow auto-send',
     procedure_stale: 'the procedure changed since it was last reviewed',

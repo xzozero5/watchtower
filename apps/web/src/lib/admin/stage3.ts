@@ -118,6 +118,7 @@ const HELD_REASON_KEYS: Readonly<Record<string, MessageKey>> = {
   customer_wants_human: 'stage3.held.customer_wants_human',
   auto_streak_limit: 'stage3.held.auto_streak_limit',
   reopened_after_auto: 'stage3.held.reopened_after_auto',
+  placeholder_org: 'stage3.held.placeholder_org',
   procedure_unknown: 'stage3.held.procedure_unknown',
   procedure_not_autosend: 'stage3.held.procedure_not_autosend',
   procedure_stale: 'stage3.held.procedure_stale',

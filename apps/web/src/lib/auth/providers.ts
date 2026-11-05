@@ -38,7 +38,17 @@ export function safeReturnPath(value: string): string | null {
     const code = character.charCodeAt(0);
     if (code < 0x20 || code === 0x7f) return null;
   }
-  return value;
+  // T-306k C-17: the same rule as the api. Resolve dot segments, then refuse `//` and `/\` (`/.//evil.com`).
+  try {
+    const base = 'http://return-to.invalid';
+    const url = new URL(value, base);
+    if (url.origin !== base) return null;
+    const normalized = `${url.pathname}${url.search}${url.hash}`;
+    if (!normalized.startsWith('/') || normalized.startsWith('//')) return null;
+    return normalized;
+  } catch {
+    return null;
+  }
 }
 
 /**

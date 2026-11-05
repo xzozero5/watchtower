@@ -205,6 +205,8 @@ export const stage3Th: Widen<typeof stage3En> = {
     customer_wants_human: 'ลูกค้าขอคุยกับเจ้าหน้าที่',
     auto_streak_limit: 'ตอบอัตโนมัติติดกันเกินกำหนดใน ticket นี้',
     reopened_after_auto: 'ลูกค้าเปิด ticket ซ้ำหลังคำตอบอัตโนมัติ',
+    placeholder_org:
+      'ticket อยู่ในองค์กรชั่วคราว (ผู้ส่งที่ยังไม่ระบุตัวตน) จึงไม่มีใครยืนยันได้ว่าลูกค้าคือใคร',
     procedure_unknown: 'อ่านขั้นตอนงานของ intent นี้ไม่ได้',
     procedure_not_autosend: 'ขั้นตอนงานไม่อนุญาตให้ส่งอัตโนมัติ',
     procedure_stale: 'ขั้นตอนงานเปลี่ยนไปตั้งแต่ตรวจครั้งล่าสุด',
