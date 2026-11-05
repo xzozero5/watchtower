@@ -70,12 +70,17 @@ export async function updateTicket(
     set.tags = [...patch.tags];
     changed.push('tags');
   }
-  if (
-    patch.customFields !== undefined &&
-    JSON.stringify(patch.customFields) !== JSON.stringify(before.customFields)
-  ) {
-    set.customFields = patch.customFields;
-    changed.push('customFields');
+  if (patch.customFields !== undefined) {
+    // T-306k C-16: `customFields.portal` belongs to the portal (it holds `requesterVerified`, which the automatic
+    // send trusts). A person's edit replaces the other keys but never writes, changes or removes that one.
+    const next: Record<string, unknown> = { ...patch.customFields };
+    delete next.portal;
+    const kept = before.customFields as Record<string, unknown>;
+    if ('portal' in kept) next.portal = kept.portal;
+    if (JSON.stringify(next) !== JSON.stringify(before.customFields)) {
+      set.customFields = next;
+      changed.push('customFields');
+    }
   }
   const priorityChanged = patch.priority !== undefined && patch.priority !== before.priority;
   if (priorityChanged) {
