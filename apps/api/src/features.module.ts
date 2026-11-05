@@ -8,6 +8,7 @@ import { DiscordModule } from './discord/discord.module.js';
 import { NotificationsModule } from './notifications/notifications.module.js';
 import { AiModule } from './ai/ai.module.js';
 import { AssistantModule } from './assistant/assistant.module.js';
+import { InsightsModule } from './insights/insights.module.js';
 import { KbModule } from './kb/kb.module.js';
 import { CsatModule } from './csat/csat.module.js';
 import { ShiftsModule } from './shifts/shifts.module.js';
@@ -39,6 +40,7 @@ import { ProceduresModule } from './procedures/procedures.module.js';
     NotificationsModule,
     AiModule,
     AssistantModule,
+    InsightsModule,
     KbModule,
     CsatModule,
     ShiftsModule,

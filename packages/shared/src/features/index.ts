@@ -63,6 +63,7 @@ export * from './ai.js';
 export * from './claims.js';
 export * from './assistant.js';
 export * from './insights.js';
+export * from './insights-api.js';
 export * from './kb.js';
 export * from './csat.js';
 export * from './shifts.js';
