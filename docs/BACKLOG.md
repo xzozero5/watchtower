@@ -189,7 +189,7 @@
 - [ ] T-306 Review + pilot stage 3 กับ 2–3 intent
 
 ## Jarvis stage 1 — AI ทุกจุด รู้ทุกอย่างภายในสิทธิ์ อ่านอย่างเดียว (เจ้าของ 2026-11-05)
-> เจ้าของ `[CONFIRMED]`: ทำแค่ขั้น 1 · ทุกจุดต้องมี AI · ทุก role ใช้ได้ **ยกเว้น customer** · main thread ตัดสิน: คง `claude -p`, พิมพ์ก่อนไม่มีเสียง, proposal card เดิมคงไว้ไม่เพิ่มชนิด, ไม่เปิด audit ให้ AI, pinned memory 90 วัน · ออกแบบ `docs/decisions/ADR-029-assistant-stage1.md` (Proposed)
+> เจ้าของ `[CONFIRMED]`: ทำแค่ขั้น 1 · ทุกจุดต้องมี AI · ทุก role ใช้ได้ **ยกเว้น customer** · main thread ตัดสิน: คง `claude -p`, พิมพ์ก่อนไม่มีเสียง, proposal card เดิมคงไว้ไม่เพิ่มชนิด, ไม่เปิด audit ให้ AI, pinned memory 90 วัน · (เพิ่ม) ทุก element มี AI ในตัว ไม่ realtime: cache + คำนวณเบื้องหลังตาม event (§9), latency ทาง ก. · ออกแบบ `docs/decisions/ADR-029-assistant-stage1.md` (Proposed)
 > **AC (po 2026-11-05):** J1 Ctrl/⌘ K "Ask AI" + Ctrl/⌘ / + ปุ่มลอยทุก route ของ console, ไม่มีบน portal/status/csat/start/login · J2 entity awareness (ticket/incident/alert/intent/org/shift) server resolve ด้วยสิทธิ์, chip = สิ่งที่ส่งจริง, ≥ 95% eval อ้าง entity ถูก · J3 ถามข้าม ≥ 2 module ใน ≤ 4 tool call · J4 memory: สนทนา 30 วัน redacted, ดู/ลบรายอัน/ลบทั้งหมด, ไม่แชร์ข้ามคน (head ก็อ่านไม่ได้) · J5 ทุก claim มี citation หรือป้าย Uncited, href เปิดได้ด้วยสิทธิ์ผู้ดู · J6 ตาราง tool × role deny-by-default, dev masked, "หน้าจอปฏิเสธ = AI ปฏิเสธ" · J7 tool ใหม่ผ่าน redaction fail closed, ไม่คืนค่า credential (N1) · J8 audit `ai_run` + `assistant.message` + `pii.read` · J9 แสดง phase ภายใน 1 s, ปุ่ม Stop, บันทึก latency · J10 offline/kill switch/งบหมด ปิดช่องพิมพ์พร้อมเหตุผล ไม่ fallback mock · J11 30 ข้อความ/ชม., 200k token/วัน, 1 turn ต่อคน, คิวบอกตำแหน่ง · J12 TH/EN · J13 client ยิง `/v1/assistant/**` ได้ 403 ทุก endpoint (routes-policy test) · J14 ไม่มีทางที่ผลของ assistant ไหลถึงลูกค้า
 > **Metric `[ASSUMED]`:** eval ≥ 60 เคส TH/EN · citation correctness ≥ 95% · uncited ≤ 10% · RBAC/PII leak = 0 (hard gate) · 👍 ≥ 70% · latency p50 ≤ 15 s, p95 ≤ 40 s · ≥ 50% staff ใช้ ≥ 3 ครั้ง/กะ ใน 2 สัปดาห์ของ pilot
 - [ ] T-400 `architect` ADR-029 → Accepted หลัง `security-reviewer` + `po` ตรวจ (N7)
@@ -205,6 +205,15 @@
 - [ ] T-410 `qa-engineer` ตาราง RBAC tool × role (+ client 403), injection suite, axe, e2e offline/budget/คิวเต็ม · dep T-402…T-409
 - [ ] T-411 `security-reviewer` ตรวจ N1/N2/N4 ของ tool ใหม่, `pii.read`, ไม่มีทางออกถึงลูกค้า (J14), memory · dep T-402…T-409
 - [ ] T-412 `po` ตรวจ AC-J1…J14 + วัด metric ใน pilot · dep T-410, T-411
+- [ ] T-413 `po` AC ของ embedded insights: ยืนยันโหมด R/F/N ต่อ element (ADR-029 §9.1), ข้อความ TH/EN ของป้าย (AI / จากระบบ / สรุปก่อนข้อมูลล่าสุด / AI paused), เกณฑ์ 👎 · dep T-400 · ขนานกับ T-414
+- [ ] T-414 `backend-dev` contract `packages/shared/src/features/insights.ts` (registry, `InsightFact`, template TH/EN, `numbersSubsetOfFacts`) + migration `0113_element_insights` (+down) + grant + `purgeExpired` + budgets `insights.*` · dep T-401
+- [ ] T-415 `backend-dev` facts builders ใน `packages/domain/src/insights/` ของ wave 9a (`dashboard.ops.sla`, `dashboard.ops.volume`, `reports.ai_cost`, `shift.overview`, `alerts.noise`) ย้าย reader ของ route มาใช้ร่วม + delta/drivers/bucket + invariance test · dep T-414
+- [ ] T-416 `backend-dev` `GET /v1/insights` + scope resolver + viewed/dirty mark (Redis) + `context.element` ของ assistant + `routes-policy.test` + ตาราง RBAC element × role · dep T-414, T-415 · ขนานกับ T-417
+- [ ] T-417 `ai-engineer` `insight-narrate.ts` + prompt `element_insight.v1` (batch ≤ 4, TH/EN ใน call เดียว) + ตรวจตัวเลข/fact id/uncited/ภาษา + เสนอ eval `evals/proposals/insights.json` (เจ้าของอนุมัติก่อนเข้า golden, N7) · dep T-414
+- [ ] T-418 `backend-dev` worker: tick `AI_JOBS.insightTick`, debounce/max wait, materiality, queue `insights` + `tryAcquire` limiter, hook `markInsightDirty` ใน processor เดิม, budget gate, audit `insight.generated` · dep T-408, T-415, T-417
+- [ ] T-419 `frontend-dev` `<ElementInsight>` + วางตาม wave 9a + "Ask AI about this" (element chip) + 👍/👎 + สถานะ stale/paused/offline + axe · portal/status/csat ไม่ import · dep T-416, T-406
+- [ ] T-420 `backend-dev`+`frontend-dev` wave 9b: element ที่เหลือใน §9.1 (F ก่อน แล้ว N) แบ่งขนานตาม module · dep T-419
+- [ ] T-421 `qa-engineer` + `security-reviewer` (แยกกัน, N7): RBAC/scope leak, batch ไม่ผสมกลุ่มผู้ดู, injection ผ่านชื่อที่ staff ตั้ง, ไม่มี push, fake bridge 5–10 s ไม่ทำให้ queue `ai` ช้า, eval hallucinated number = 0 · dep T-418, T-419
 - ภายหลัง (ไม่ใช่ stage 1): AI ใน portal ของลูกค้า — ต้องมี ADR ใหม่ + ผูก gate stage 3 ราย intent (N3) · stage 2 proactive · stage 3 action ผ่าน policy · voice
 
 ## Post-MVP / Phase 4
