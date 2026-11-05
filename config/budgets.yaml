@@ -13,5 +13,20 @@ assistant:           # [ASSUMED] ต่อผู้ใช้ (ADR-023) · ทั
   messages_per_hour: 30
   user_daily_tokens: 200000
   retention_days: 30
+insights:            # [ASSUMED] AI ฝังในทุก element (ADR-029 §9.4) · ทับด้วย INSIGHT_<KEY ตัวใหญ่> เช่น INSIGHT_CALLS_PER_HOUR · ใช้ร่วมกับ app_ai_daily
+  calls_per_hour: 6
+  calls_per_day: 60
+  daily_tokens: 150000
+  stop_at_daily_percent: 60
+  max_batch_elements: 4
+  min_interval_minutes: 30
+  debounce_minutes: 3
+  max_wait_minutes: 15
+  viewed_within_hours: 24
+  narration_ttl_hours: 6
+  builders_per_tick: 20
+  user_scoped_calls_per_day: 30
+  user_scoped_per_user_per_day: 4
+  user_scoped_min_interval_minutes: 60
 cloud_dev_usd_per_month: 20   # GCP ระหว่าง dev (Pub/Sub emulator/local ก่อนเป็นหลัก)
 line_oa_plan: free            # 300 push/เดือน [VERIFY] — เปลี่ยนเมื่อ pilot จริง
