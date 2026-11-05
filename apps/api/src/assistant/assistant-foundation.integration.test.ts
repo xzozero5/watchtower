@@ -319,7 +319,7 @@ describe('tool output within the route output (parity, agent and masked develope
         'search_tickets',
         role === 'agent' ? { query: 'dashboard', limit: 8 } : { limit: 8 },
       );
-      const route = await who.client.get<unknown>(
+      const route = await who.client.get(
         role === 'agent' ? '/v1/tickets?q=dashboard&limit=8' : '/v1/tickets?limit=8',
       );
       expect(route.status).toBe(200);
@@ -331,7 +331,7 @@ describe('tool output within the route output (parity, agent and masked develope
       const output = (await hostFor(who, role).tools.call('summarize_ticket', {
         ticket: ticket.key,
       })) as { ticket: unknown; requester: unknown };
-      const route = await who.client.get<unknown>(`/v1/tickets/${ticket.key}`);
+      const route = await who.client.get(`/v1/tickets/${ticket.key}`);
       expect(route.status).toBe(200);
       // `recent` is raw message text that the assistant redacts and masks as a fact (ADR-023); the row and the
       // people are what the route must also show.
