@@ -29,6 +29,23 @@ export async function readAutosendSampling(db: ReadExecutor): Promise<AutosendSa
   return parsed.success ? parsed.data : { ...AUTOSEND_SAMPLING_DEFAULT };
 }
 
+/** T-306k C-18 [ASSUMED]: a sampled grade that failed is tried again after 10, 20, 40, 80 minutes, then given up. */
+export const SAMPLE_MAX_ATTEMPTS = 5;
+export const SAMPLE_BACKOFF_MINUTES = 10;
+
+/** Counts one failed try of the sampled grade of a draft (the next one waits longer; after the cap, none). */
+export async function recordSampleAttemptFailed(
+  db: Pick<Database['db'], 'execute'>,
+  aiDraftId: string,
+): Promise<void> {
+  await db.execute(sql`
+    INSERT INTO ai_grade_sample_attempt (ai_draft_id, attempts, last_attempt_at)
+    VALUES (${aiDraftId}::uuid, 1, clock_timestamp())
+    ON CONFLICT (ai_draft_id) DO UPDATE
+      SET attempts = ai_grade_sample_attempt.attempts + 1, last_attempt_at = clock_timestamp()
+  `);
+}
+
 /** A sent automatic reply that is due a sampled grade. `text` is what the customer got (the message body). */
 export interface SampleCandidate {
   readonly deliveryId: string;
@@ -86,6 +103,12 @@ export async function findSampleCandidates(
       ) AS pick
      WHERE NOT EXISTS (
              SELECT 1 FROM ai_grade sg WHERE sg.phase = 'sampled' AND sg.ai_draft_id = s.ai_draft_id)
+       AND NOT EXISTS (
+             SELECT 1 FROM ai_grade_sample_attempt a
+              WHERE a.ai_draft_id = s.ai_draft_id
+                AND (a.attempts >= ${SAMPLE_MAX_ATTEMPTS}::int
+                     OR a.last_attempt_at > clock_timestamp()
+                        - pg_catalog.make_interval(mins => ${SAMPLE_BACKOFF_MINUTES}::int * (1 << (a.attempts - 1)))))
        AND (
          pick.pct >= 100
          OR (

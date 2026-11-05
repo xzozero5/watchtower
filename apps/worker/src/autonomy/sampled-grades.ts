@@ -4,6 +4,7 @@ import {
   findSampleCandidates,
   readAutosendSampling,
   recordPreSendGrade,
+  recordSampleAttemptFailed,
   type SampleCandidate,
 } from '@watchtower/domain';
 import { detectLanguage } from '@watchtower/shared';
@@ -61,17 +62,47 @@ export async function sampleSentReplies(
   for (const candidate of candidates) {
     try {
       const outcome = await gradeOne(deps, runtime, intent, candidate);
-      if (outcome === null) continue;
+      if (outcome === null) {
+        await noteFailed(deps, candidate);
+        continue;
+      }
       graded += 1;
       violations += outcome;
     } catch (error) {
+      // Another worker already stored the sampled grade of this reply (unique index, T-306k C-18): not a failure.
+      if (isUniqueViolation(error)) continue;
       deps.logger.error(
         { err: error, intent: intent.key, ticketId: candidate.ticketId },
         'sampled grade failed',
       );
+      await noteFailed(deps, candidate);
     }
   }
   return { picked: candidates.length, graded, violations };
+}
+
+/** T-306k C-18: a try that stored nothing is counted, so the next run waits longer and then gives up. */
+async function noteFailed(deps: SampledGradeDeps, candidate: SampleCandidate): Promise<void> {
+  try {
+    await recordSampleAttemptFailed(deps.database.db, candidate.aiDraftId);
+  } catch (error) {
+    deps.logger.error(
+      { err: error, ticketId: candidate.ticketId },
+      'could not count a failed sampled grade',
+    );
+  }
+}
+
+function isUniqueViolation(error: unknown): boolean {
+  for (
+    let current: unknown = error, depth = 0;
+    current !== null && typeof current === 'object' && depth < 4;
+    depth += 1
+  ) {
+    if ((current as { code?: unknown }).code === '23505') return true;
+    current = (current as { cause?: unknown }).cause;
+  }
+  return false;
 }
 
 /** Grades one reply; returns its violation count, or null when nothing was recorded. */
