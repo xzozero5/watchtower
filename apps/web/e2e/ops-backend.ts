@@ -1,7 +1,10 @@
-import type { Role } from '@watchtower/shared';
+import { createHash } from 'node:crypto';
+
+import { leadingZeroBits, powInput, type Role } from '@watchtower/shared';
 import type { Page } from '@playwright/test';
 
 import { makeTicket, uuid } from '../src/test/fixtures';
+import { makeChallenge } from '../src/test/portal-fixtures';
 import {
   alert,
   alertDetail,
@@ -158,8 +161,28 @@ export async function mockOps(page: Page, options: OpsBackendOptions = {}) {
   routes['GET /v1/status'] = () => (open ? { json: publicStatus() } : closed());
   routes['GET /v1/status/history'] = () =>
     open ? { json: { days: 90, posts: [], maintenance: [] } } : closed();
-  routes['POST /v1/status/subscriptions'] = () =>
-    open ? { status: 202, json: { status: 'check_your_email' } } : closed();
+  // Subscribing needs a solved proof of work (T-207a C-3): the stand-in checks it like the api does.
+  routes['GET /v1/status/subscriptions/challenge'] = () =>
+    open ? { json: makeChallenge() } : closed();
+  routes['POST /v1/status/subscriptions'] = (request) => {
+    if (!open) return closed();
+    const form = request.body as {
+      website?: string;
+      verification?: { challenge: string; nonce: string };
+    };
+    const proof = form.verification;
+    const digest = proof
+      ? createHash('sha256').update(powInput(proof.challenge, proof.nonce), 'utf8').digest()
+      : null;
+    const valid =
+      proof?.challenge === makeChallenge().challenge &&
+      digest !== null &&
+      leadingZeroBits(digest) >= makeChallenge().difficultyBits &&
+      (form.website ?? '') === '';
+    return valid
+      ? { status: 202, json: { status: 'check_your_email' } }
+      : { status: 400, json: errorBody(400, 'verification_failed') };
+  };
   routes['POST /v1/status/subscriptions/confirm'] = () =>
     open ? { json: { status: 'confirmed' } } : closed();
   routes['POST /v1/status/subscriptions/unsubscribe'] = () =>

@@ -133,9 +133,11 @@ test.describe('Public status page', () => {
       await page.getByLabel('Email address').fill('person@example.com');
       await page.getByRole('button', { name: 'Subscribe' }).click();
       await expect(page.getByText('Check your email')).toBeVisible();
-      expect(backend.to('POST', '/v1/status/subscriptions')[0]?.body).toEqual({
+      // The mock refuses a wrong proof, so a shown "Check your email" already means the proof was valid.
+      expect(backend.to('POST', '/v1/status/subscriptions')[0]?.body).toMatchObject({
         email: 'person@example.com',
         locale: 'en',
+        verification: { provider: 'pow-sha256' },
       });
     });
   }
