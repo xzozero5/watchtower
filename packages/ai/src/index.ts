@@ -76,6 +76,8 @@ export { createAnthropicProvider, type AnthropicProviderConfig } from './provide
 export { createCliBridgeProvider, type CliBridgeProviderConfig } from './providers/claude-cli.js';
 export {
   assertLocalEmbeddingUrl,
+  DEFAULT_LOCAL_EMBEDDING_HOSTS,
+  parseLocalEmbeddingHosts,
   createLocalEmbeddingProvider,
   type LocalEmbeddingConfig,
 } from './providers/local.js';

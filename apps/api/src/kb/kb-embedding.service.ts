@@ -3,6 +3,7 @@ import {
   MockEmbeddingProvider,
   createAuditedEmbedder,
   createLocalEmbeddingProvider,
+  parseLocalEmbeddingHosts,
   createRedactor,
   embeddingSettings,
   mockSettings,
@@ -83,6 +84,7 @@ export class KbEmbeddingService {
           ? {
               local: createLocalEmbeddingProvider({
                 url: config.EMBEDDING_LOCAL_URL,
+                allowedHosts: parseLocalEmbeddingHosts(config.EMBEDDING_LOCAL_HOSTS),
                 fetch: (input, init) => globalThis.fetch(input, init),
                 timeoutMs: QUERY_EMBED_TIMEOUT_MS,
                 maxRetries: 0,
