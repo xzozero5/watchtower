@@ -178,6 +178,7 @@
 - [x] T-306i `backend-dev` golden: `goldenAnswerSchema` คืน `shareable` (ป้ายในหน้า admin golden) + endpoint preview ผล scrub ก่อนติ๊ก shareable (ช่องว่างจาก web follow-up 2026-11-05)
 - [x] T-306j `security-reviewer` ตรวจซ้ำผลแก้ T-306a C-1…C-14 + ผิวโจมตีใหม่ (preview, requesterVerified, reason 403, returnTo, watch job ต่อ event) — ก่อน ADR-025 Accepted (N7, PO T-306c) — **ปิด 2026-11-05** (`docs/decisions/T-306j-security-rereview.md`: ไม่มี P0/P1; ปิด 8, บางส่วน 6, ใหม่ C-15 P2 + C-16…C-19 P3)
 - [ ] T-306k `backend-dev` แก้ T-306j C-15 (placeholder org ใน golden + gate), C-16, C-17, C-18, C-19, C-11, C-2 ส่วนถูก · C-4/C-6/C-9/C-14 = residual P3 ที่ยอมรับไว้ก่อน (main thread)
+- [ ] T-306l `qa-engineer` flake api integration ใต้โหลด: `auth/session.integration` 'ends a session at its absolute lifetime' (200 แทน 401 ที่ refresh), `outbound.integration` 'queues the reply for the undo window' (hold 6087 ms > 6000) — ผ่านเมื่อรันเดี่ยว
 - [x] T-301f `ai-engineer` `capResolutionClass`: ข้อความลูกค้าที่ปฏิเสธ ("ยังไม่หาย") ไม่นับ verified, คลุมเครือไม่นับยืนยัน (PO T-306c) — **ปิด 2026-11-05** (`packages/ai/src/agents/follow-up.ts`; deny = assumed, confirm เท่านั้นที่ verified) · eval เคสที่ agent เสนอ 7 ข้อรอเจ้าของอนุมัติเข้า golden
 - [ ] T-306c `po` review + เสนอ 2–3 intent → [ASK-HUMAN] เลื่อน stage
 - [ ] T-301 Grader + verified/contained/assumed resolution (§6.2, §6.4)
