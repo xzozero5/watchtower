@@ -58,7 +58,18 @@ export function sanitizeReturnTo(value: string | undefined): string {
     const code = character.charCodeAt(0);
     if (code < 0x20 || code === 0x7f) return '/';
   }
-  return value;
+  // T-306k C-17: resolve dot segments the way a browser does. `/.//evil.com` becomes `//evil.com`, which a
+  // redirect would read as another host, so the normalized form is what is checked and what is returned.
+  try {
+    const base = 'http://return-to.invalid';
+    const url = new URL(value, base);
+    if (url.origin !== base) return '/';
+    const normalized = `${url.pathname}${url.search}${url.hash}`;
+    if (!normalized.startsWith('/') || normalized.startsWith('//')) return '/';
+    return normalized;
+  } catch {
+    return '/';
+  }
 }
 
 /**

@@ -168,6 +168,10 @@ export const aiGrade = pgTable(
     index('ai_grade_draft_idx').on(table.aiDraftId, table.gradedAt.desc()),
     index('ai_grade_ticket_idx').on(table.ticketId, table.gradedAt.desc()),
     index('ai_grade_phase_idx').on(table.phase, table.gradedAt.desc()),
+    // T-306k C-18: a sent reply has at most one sampled grade.
+    uniqueIndex('ai_grade_sampled_once_idx')
+      .on(table.aiDraftId)
+      .where(sql`${table.phase} = 'sampled'`),
   ],
 );
 
@@ -241,3 +245,10 @@ export const aiReplayResult = pgTable(
     ),
   ],
 );
+
+/** T-306k C-18: how often the sampled grade of a draft was tried and failed (backoff and cap). */
+export const aiGradeSampleAttempt = pgTable('ai_grade_sample_attempt', {
+  aiDraftId: uuid('ai_draft_id').primaryKey(),
+  attempts: integer('attempts').notNull().default(0),
+  lastAttemptAt: timestamptz('last_attempt_at').notNull().defaultNow(),
+});

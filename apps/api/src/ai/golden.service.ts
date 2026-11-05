@@ -1,5 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { schema, type Database } from '@watchtower/db';
+import { isPlaceholderOrg } from '@watchtower/domain';
 import {
   claimSchema,
   detectLanguage,
@@ -113,6 +114,13 @@ export class GoldenService {
     if (ticket.t.intentId === null) {
       throw conflict('Set the intent of the ticket before marking a reply as golden');
     }
+    // T-306k C-15: a placeholder organization holds strangers from many companies. A reply kept from there is
+    // used only when it is shareable, so keeping it as "this organization's own" would be a lie.
+    if (isPlaceholderOrg(ticket.t.orgId) && !shareable) {
+      throw conflict(
+        'This ticket is in a placeholder organization (unidentified senders). Identify the customer first, or mark the reply as shareable',
+      );
+    }
     const { message, redacted, language } = await this.redactedReply(ticket, messageId);
     const [existing] = await this.database.db
       .select({ id: schema.goldenAnswer.id })
@@ -167,6 +175,12 @@ export class GoldenService {
     const session = await this.tickets.maskingFor(ticket.t.id, [ticket]);
     // The PII redactor takes people; the name of the organization, contract numbers and amounts go here (C-8).
     const orgNames = await this.orgNames(ticket.t.orgId);
+    // A portal submitter names their company themselves (T-306k C-15); it is not in the organization row.
+    const portal = (ticket.t.customFields as { portal?: { organization?: unknown } } | null)
+      ?.portal;
+    if (typeof portal?.organization === 'string' && portal.organization.trim() !== '') {
+      orgNames.push(portal.organization.trim());
+    }
     const redacted = scrubGoldenIdentifiers(session.text(message.text), orgNames).trim();
     if (redacted === '' || redacted === MASKED_TEXT_UNAVAILABLE) {
       throw badRequest('This reply cannot be redacted safely, so it cannot be kept');

@@ -19,6 +19,19 @@ import type { NormalisedInboundMessage } from './types.js';
 export const UNIDENTIFIED_ORG_ID = '00000000-0000-4000-8000-0000000000f1';
 export const UNIDENTIFIED_ORG_NAME = 'Unidentified senders';
 
+/** The organization of portal submissions whose address belongs to no organization (triage waits here). */
+export const UNMATCHED_ORG_ID = '00000000-0000-4000-8000-00000000a001';
+
+/**
+ * Organizations that hold strangers from many companies at once (T-306k C-15). Their members have nothing in
+ * common, so nothing is shared "within" them: no golden answers across tickets, no automatic send.
+ */
+export const PLACEHOLDER_ORG_IDS: readonly string[] = [UNIDENTIFIED_ORG_ID, UNMATCHED_ORG_ID];
+
+export function isPlaceholderOrg(orgId: string | null | undefined): boolean {
+  return orgId !== null && orgId !== undefined && PLACEHOLDER_ORG_IDS.includes(orgId);
+}
+
 export type SenderVia = 'contact' | 'domain' | 'unidentified';
 
 export interface SenderLookup {

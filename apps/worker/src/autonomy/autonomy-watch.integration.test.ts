@@ -15,12 +15,13 @@ import {
   findSampleCandidates,
   generateGateReport,
   readGateReports,
+  SAMPLE_MAX_ATTEMPTS,
   recordReplayResult,
   type Domain,
 } from '@watchtower/domain';
 import { AUDIT_ACTIONS } from '@watchtower/shared';
 import { disableNetConnect } from '@watchtower/shared/testing';
-import { and, desc, eq } from 'drizzle-orm';
+import { and, desc, eq, sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { createLogger } from '../logger.js';
@@ -644,6 +645,33 @@ describe('the sampled grades of sent automatic replies (T-306e C-4c)', () => {
     await runAutonomyWatch({ ...deps(), ai: aiRuntime() }, intent.id);
     await runAutonomyWatch(deps(), intent.id);
     expect(await sampled(ticketId)).toHaveLength(0);
+  });
+
+  it('backs off a sampled grade that keeps failing, and gives up after the cap (T-306k C-18)', async () => {
+    const intent = await stage3Intent();
+    const ticketId = await ticketFor(intent.id);
+    // No drafter ai_run row: every try stores nothing.
+    await autoReply(ticketId, { grade: { passed: true }, sent: true });
+    graderAnswer = { score: 0.95, violations: [] };
+    graderCalls = 0;
+    await runAutonomyWatch({ ...deps(), ai: aiRuntime() }, intent.id);
+    await runAutonomyWatch({ ...deps(), ai: aiRuntime() }, intent.id);
+    await runAutonomyWatch({ ...deps(), ai: aiRuntime() }, intent.id);
+    // The customer cannot make the model be asked on every event: the second and third runs are inside the backoff.
+    expect(graderCalls).toBe(1);
+    const [attempt] = await owner().select().from(schema.aiGradeSampleAttempt);
+    expect(attempt?.attempts).toBe(1);
+    // Past the backoff it is tried again; past the cap it is not tried at all.
+    await owner().execute(
+      sql`UPDATE ai_grade_sample_attempt SET last_attempt_at = now() - interval '2 days'`,
+    );
+    await runAutonomyWatch({ ...deps(), ai: aiRuntime() }, intent.id);
+    expect(graderCalls).toBe(2);
+    await owner().execute(
+      sql`UPDATE ai_grade_sample_attempt SET attempts = ${SAMPLE_MAX_ATTEMPTS}, last_attempt_at = now() - interval '2 days'`,
+    );
+    await runAutonomyWatch({ ...deps(), ai: aiRuntime() }, intent.id);
+    expect(graderCalls).toBe(2);
   });
 
   it('picks the first 20 after a promotion at 100%, then a settable share; seed tickets never', async () => {

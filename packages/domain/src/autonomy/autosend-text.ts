@@ -94,6 +94,8 @@ export function normalizeText(text: string): string {
       .replaceAll(IDEOGRAPHIC_STOPS, '.')
       .replaceAll(/[[({<]\s*(?:\.|dot)\s*[\])}>]/gi, '.')
       .replaceAll(/[[({<]\s*(?:@|at)\s*[\])}>]/gi, '@')
+      // T-306k C-2: a dot spelled out between spaces: `evil dot com`, `evil . com`, Thai `evil จุด com`.
+      .replaceAll(/(?<=[\p{L}\p{N}-])\s+(?:dot|จุด|\.)\s+(?=[\p{L}\p{N}])/giu, '.')
       .replaceAll(/\bhxxp(s?)(?=:\/\/)/gi, 'http$1')
   );
 }
@@ -226,7 +228,7 @@ export function instanceOrigins(...urls: readonly (string | undefined | null)[])
 // --- "I want a person" -------------------------------------------------------------------------------------
 
 const PERSON_EN =
-  'human|real person|live person|living person|actual person|real human|real agent|live agent|human agent|person|people|manager|supervisor|representative|rep|operator|someone|somebody|employee|staff|team member|colleague|engineer|(?:a|an|the|your)\\s+agent';
+  'human|real person|live person|living person|actual person|real human|real agent|live agent|human agent|person|people|manager|supervisor|representative|rep|operator|someone|somebody|employee|staff|team member|colleague|engineer|agent|(?:a|an|the|your)\\s+agent';
 const BOT_EN = 'bot|chatbot|robot|ai|a\\.i\\.|automated|auto[- ]?repl\\w*';
 const WANTS_HUMAN_EN: readonly RegExp[] = [
   new RegExp(

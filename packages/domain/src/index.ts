@@ -388,6 +388,9 @@ export {
 export { DOMAIN_ERROR_CODES, DomainError, isDomainError, type DomainErrorCode } from './errors.js';
 export {
   UNIDENTIFIED_ORG_ID,
+  UNMATCHED_ORG_ID,
+  PLACEHOLDER_ORG_IDS,
+  isPlaceholderOrg,
   UNIDENTIFIED_ORG_NAME,
   ensureSenderContact,
   lookupSender,
@@ -633,6 +636,9 @@ export {
 export {
   findSampleCandidates,
   readAutosendSampling,
+  recordSampleAttemptFailed,
+  SAMPLE_BACKOFF_MINUTES,
+  SAMPLE_MAX_ATTEMPTS,
   type SampleCandidate,
 } from './autonomy/sampling.js';
 export {

@@ -4,6 +4,7 @@ import { schema } from '@watchtower/db';
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
+import { PLACEHOLDER_ORG_IDS } from '../inbound/identity.js';
 import { addOrg, addStaff, startDomainTest, type DomainTestEnv } from '../testing/support.js';
 import { GOLDEN_EXAMPLES_MAX, goldenExamplesFor } from './golden.js';
 
@@ -110,6 +111,46 @@ describe('goldenExamplesFor', () => {
     expect(await texts(other)).toEqual(['theirs shared', 'theirs private']);
     // A ticket without an organization sees only what is shareable.
     expect(await texts(null)).toEqual(['theirs shared']);
+  });
+
+  it('never shares within a placeholder organization: two strangers there are not one customer (T-306k C-15)', async () => {
+    const intents = await env.db.owner.db
+      .insert(schema.intent)
+      .values({ key: `golden_p_${randomUUID().slice(0, 6)}`, name: 'P' })
+      .returning({ id: schema.intent.id });
+    const intentP = intents[0]?.id ?? '';
+    for (const placeholder of PLACEHOLDER_ORG_IDS) {
+      await env.db.owner.db
+        .insert(schema.organization)
+        .values({ id: placeholder, name: `placeholder ${placeholder.slice(-4)}` })
+        .onConflictDoNothing();
+      // The reply kept from stranger A's ticket, in the placeholder organization.
+      await golden(
+        intentP,
+        `stranger A ${placeholder.slice(-4)}`,
+        'en',
+        new Date(Date.UTC(2026, 1, 1)),
+        {
+          org: placeholder,
+        },
+      );
+      await golden(
+        intentP,
+        `shared ${placeholder.slice(-4)}`,
+        'en',
+        new Date(Date.UTC(2026, 1, 2)),
+        {
+          org: placeholder,
+          shareable: true,
+        },
+      );
+      // Stranger B's ticket sits in the same placeholder organization: A's private reply must not reach it.
+      const texts = (await goldenExamplesFor(env.database.db, intentP, 'en', placeholder)).map(
+        (i) => i.text,
+      );
+      expect(texts.some((t) => t.startsWith('stranger A'))).toBe(false);
+      expect(texts).toContain(`shared ${placeholder.slice(-4)}`);
+    }
   });
 
   it('never returns a deleted answer', async () => {

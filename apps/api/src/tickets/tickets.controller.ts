@@ -93,6 +93,13 @@ import { markInlineImages, prepareEmailReply } from './email-reply.js';
 type RefParam = z.infer<typeof ticketRefParamSchema>;
 type ReferenceParam = z.infer<typeof ticketReferenceParamSchema>;
 
+/** Custom fields as a person may write them: the `portal` key (set by the portal alone, T-306k C-16) is dropped. */
+function withoutPortalKey(fields: Record<string, unknown>): Record<string, unknown> {
+  const out = { ...fields };
+  delete out.portal;
+  return out;
+}
+
 const actorOf = (principal: Principal): Actor => ({ type: 'user', id: principal.userId });
 
 /** Fields only staff may set when filing a ticket. A client who sends one is told so, not ignored. */
@@ -293,7 +300,10 @@ export class TicketsController {
         ...(body.queueId === undefined ? {} : { queueId: body.queueId }),
         ...(body.assigneeId === undefined ? {} : { assigneeId: body.assigneeId }),
         ...(body.tags === undefined ? {} : { tags: body.tags }),
-        ...(body.customFields === undefined ? {} : { customFields: body.customFields }),
+        // T-306k C-16: `portal` is written by the portal only.
+        ...(body.customFields === undefined
+          ? {}
+          : { customFields: withoutPortalKey(body.customFields) }),
       };
     }
     const created = await this.uow.run((uow) => this.tickets.create(uow, command));

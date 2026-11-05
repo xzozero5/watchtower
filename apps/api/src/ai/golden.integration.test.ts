@@ -161,6 +161,35 @@ describe('POST /v1/tickets/:id/golden', () => {
     );
   });
 
+  it('will not keep a reply of a placeholder organization as its own, only as shareable (T-306k C-15)', async () => {
+    await pool().query(
+      `INSERT INTO organization (id, name) VALUES ('00000000-0000-4000-8000-0000000000f1', 'Unidentified senders')
+       ON CONFLICT DO NOTHING`,
+    );
+    const stranger = await fileTicket(lead, '00000000-0000-4000-8000-0000000000f1');
+    const ownIntent = await apiIntent(lead, {
+      key: `golden_p_${randomUUID().slice(0, 8).replace(/-/g, '')}`,
+      name: 'Placeholder probe',
+    });
+    await pool().query(`UPDATE ticket SET intent_id = $2 WHERE id = $1`, [
+      stranger.id,
+      ownIntent.id,
+    ]);
+    const reply = await pool().query<{ id: string }>(
+      `INSERT INTO message (ticket_id, direction, visibility, body_text, delivery_status)
+       VALUES ($1, 'outbound', 'public', 'Hello', 'delivered') RETURNING id`,
+      [stranger.id],
+    );
+    const messageId = reply.rows[0]?.id;
+    const plain = await lead.client.post(`/v1/tickets/${stranger.key}/golden`, { messageId });
+    expect(plain.status).toBe(409);
+    const shared = await lead.client.post(`/v1/tickets/${stranger.key}/golden`, {
+      messageId,
+      shareable: true,
+    });
+    expect(shared.status).toBe(201);
+  });
+
   it('says 409 for a ticket with no intent', async () => {
     const bare = await fileTicket(lead, orgId);
     const reply = await pool().query<{ id: string }>(
