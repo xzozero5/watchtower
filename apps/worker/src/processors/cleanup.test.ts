@@ -23,8 +23,10 @@ describe('cleanup processor', () => {
     const calls = query.mock.calls as [string, number[]][];
     expect(calls).toHaveLength(CLEANUP_TARGETS.length);
     // The auth tables and the unconfirmed status subscriptions use the auth retention, the break-glass table
-    // its own, and the assistant's conversations (21), proposals (1) and usage (21) cached summaries (2) and element narrations (1) theirs (T-134, T-414).
-    expect(calls.map(([, params]) => params[0])).toEqual([3, 3, 3, 3, 10, 3, 21, 1, 21, 2, 1]);
+    // its own, and the assistant's conversations (21), proposals (1) and usage (21), pinned facts (0: past their own expiry) and ratings (21), cached summaries (2) and element narrations (1) theirs (T-134, T-414, T-408).
+    expect(calls.map(([, params]) => params[0])).toEqual([
+      3, 3, 3, 3, 10, 3, 21, 1, 21, 0, 21, 2, 1,
+    ]);
     expect(logger.info).not.toHaveBeenCalled();
     expect(logger.warn).not.toHaveBeenCalled();
   });

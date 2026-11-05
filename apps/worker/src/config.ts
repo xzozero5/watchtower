@@ -33,6 +33,20 @@ const workerEnvSchema = createEnvSchema({
   SMTP_ALLOW_INSECURE: z.preprocess(emptyToUndefined, z.stringbool().default(false)),
   /** Jobs processed in parallel per queue. */
   WORKER_CONCURRENCY: z.coerce.number().int().min(1).max(100).default(5),
+  /**
+   * Most model calls the worker's AI jobs have in flight at once against a live provider (ADR-029 section 4). The
+   * claude-bridge has 4 slots: api `AI_API_MAX_CONCURRENCY` (2) + this (2) = 4, so neither can starve the other.
+   * Per process (T-400 C-19): one worker process is the stage-1 assumption.
+   */
+  WORKER_AI_MAX_CONCURRENCY: z.preprocess(
+    emptyToUndefined,
+    z.coerce.number().int().min(1).max(16).default(2),
+  ),
+  /** How many worker processes run (compose: one). More than one logs a warning at boot (the AI slots are per process, C-19). */
+  WORKER_REPLICAS: z.preprocess(
+    emptyToUndefined,
+    z.coerce.number().int().min(1).max(64).default(1),
+  ),
   /** How often the outbox relay looks for pending jobs to hand to BullMQ (milliseconds, ADR-006). */
   OUTBOX_POLL_INTERVAL_MS: z.coerce.number().int().min(100).max(60_000).default(1000),
   /**
