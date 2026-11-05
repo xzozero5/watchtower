@@ -4,6 +4,7 @@ import type { HealthSnapshot } from '@watchtower/shared';
 import { Alert } from '@watchtower/ui';
 
 import { LoadError } from '@/components/admin/admin-page';
+import { AskAiButton } from '@/components/assistant/ask-ai-button';
 import { OpsSkeleton } from '@/components/ops/ops-bits';
 import { useI18n } from '@/i18n/provider';
 import { useSession } from '@/lib/auth/session';
@@ -26,9 +27,12 @@ export function OrgHealthCard({ orgId }: { orgId: string }) {
   const snapshot = health.data.snapshot;
   return (
     <section aria-labelledby="org-health" className="flex max-w-xl flex-col gap-3">
-      <h2 id="org-health" className="text-sm font-semibold">
-        {t('ops.health.title')}
-      </h2>
+      <div className="flex items-center gap-1">
+        <h2 id="org-health" className="text-sm font-semibold">
+          {t('ops.health.title')}
+        </h2>
+        <AskAiButton entity={{ kind: 'org', ref: orgId }} label={t('ops.health.title')} />
+      </div>
       {snapshot === null ? (
         <Alert tone="info" title={t('ops.health.none')}>
           {t('ops.health.noneBody')}

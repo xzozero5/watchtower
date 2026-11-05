@@ -1,6 +1,6 @@
 'use client';
 
-import type { AssistantReply, AssistantState } from '@watchtower/shared';
+import type { AssistantEntity, AssistantReply, AssistantState } from '@watchtower/shared';
 import { Button, cn, IconButton, Sheet, SheetContent, Skeleton, TintChip } from '@watchtower/ui';
 import {
   Bot,
@@ -23,7 +23,13 @@ import { useI18n } from '@/i18n/provider';
 import { useSession } from '@/lib/auth/session';
 import { ASSISTANT_SURFACE_ATTRIBUTE } from '@/lib/assistant/use-bubble-room';
 import { SIDE_BY_SIDE_QUERY, useMediaQuery } from '@/lib/use-media-query';
-import { contextForRequest, type PageContext } from '@/lib/assistant/page-context';
+import {
+  contextForRequest,
+  contextKey,
+  NONE_REMOVED,
+  type PageContext,
+} from '@/lib/assistant/page-context';
+import { entityNeedsLocalStarters, entityStarters, pageStarters } from '@/lib/assistant/starters';
 import {
   useAssistantChat,
   useAssistantStarters,
@@ -69,22 +75,24 @@ export function AssistantPanel({ id, context, open, onClose, onClosed }: Assista
   const chat = useAssistantChat();
   const phone = !useMediaQuery(SIDE_BY_SIDE_QUERY);
   const [text, setText] = useState('');
-  const here = `${context.page}|${context.ticket ?? ''}`;
-  const [removedAt, setRemovedAt] = useState({ here: '', page: false, ticket: false });
+  const here = contextKey(context);
+  const [removedAt, setRemovedAt] = useState({ here: '', ...NONE_REMOVED });
   const [copied, setCopied] = useState<string | null>(null);
   const input = useRef<HTMLTextAreaElement>(null);
   const thread = useRef<HTMLDivElement>(null);
 
   // A chip the person removed stays removed for that page and ticket only; a new place is new context.
-  const removed = removedAt.here === here ? removedAt : { page: false, ticket: false };
+  const removed = removedAt.here === here ? removedAt : NONE_REMOVED;
 
-  const ticketChip = context.ticket !== null && !removed.ticket;
+  const entity = removed.entity ? null : context.entity;
+  const selection = removed.selection ? null : context.selection;
   const pageChip = !removed.page;
+  const ticketChip = entity?.kind === 'ticket';
   const starters = useAssistantStarters({
     enabled: open,
     locale,
     page: pageChip ? context.page : undefined,
-    ticket: ticketChip ? context.ticket : null,
+    ticket: ticketChip ? entity.ref : null,
   });
   const state: AssistantState = chat.state !== 'ok' ? chat.state : (starters.data?.state ?? 'ok');
   const closed = CLOSED_STATES.includes(state);
@@ -126,6 +134,28 @@ export function AssistantPanel({ id, context, open, onClose, onClosed }: Assista
 
   const empty = chat.turns.length === 0 && !chat.pending;
   const pageName = t(`assistant.context.page.${context.page}`);
+  // The api's prompts know the page and a ticket; every other entity (and a failed call) uses the web's own.
+  const localOnly = entityNeedsLocalStarters(entity?.kind ?? null);
+  const serverStarters = localOnly ? [] : (starters.data?.starters ?? []);
+  const shownStarters =
+    entity !== null && localOnly
+      ? entityStarters(entity.kind).map((item) => ({ id: item.id, text: t(item.key) }))
+      : serverStarters.length > 0
+        ? serverStarters
+        : starters.isPending
+          ? []
+          : pageStarters(pageChip ? context.page : 'other').map((item) => ({
+              id: item.id,
+              text: t(item.key),
+            }));
+  const entityLabel = entity === null ? null : entityChipLabel(t, entity, context.label);
+  const selectionLabel =
+    selection === null
+      ? null
+      : t('assistant.context.selection', {
+          count: selection.refs.length,
+          kind: t(`assistant.context.entity.${selection.kind}`),
+        });
   const remaining = starters.data?.limits.remainingThisHour;
 
   const headerEl = (
@@ -182,7 +212,7 @@ export function AssistantPanel({ id, context, open, onClose, onClosed }: Assista
 
       {empty && !closed ? (
         <div className="flex flex-col gap-2">
-          {starters.isPending ? (
+          {starters.isPending && !localOnly ? (
             <div
               aria-label={t('assistant.starters.loading')}
               role="status"
@@ -191,13 +221,13 @@ export function AssistantPanel({ id, context, open, onClose, onClosed }: Assista
               <Skeleton className="h-8 w-3/4" />
               <Skeleton className="h-8 w-2/3" />
             </div>
-          ) : (starters.data?.starters.length ?? 0) > 0 ? (
+          ) : shownStarters.length > 0 ? (
             <>
               <p className="text-xs font-medium text-muted-foreground">
                 {t('assistant.starters.label')}
               </p>
               <ul className="flex flex-col items-start gap-2">
-                {starters.data?.starters.map((starter) => (
+                {shownStarters.map((starter) => (
                   <li key={starter.id} className="max-w-full">
                     <Button
                       variant="secondary"
@@ -356,12 +386,21 @@ export function AssistantPanel({ id, context, open, onClose, onClosed }: Assista
             }}
           />
         ) : null}
-        {ticketChip && context.ticket !== null ? (
+        {entityLabel !== null ? (
           <ContextChip
-            label={context.ticket}
-            removeLabel={t('assistant.context.remove', { name: context.ticket })}
+            label={entityLabel}
+            removeLabel={t('assistant.context.remove', { name: entityLabel })}
             onRemove={() => {
-              setRemovedAt({ ...removed, here, ticket: true });
+              setRemovedAt({ ...removed, here, entity: true });
+            }}
+          />
+        ) : null}
+        {selectionLabel !== null ? (
+          <ContextChip
+            label={selectionLabel}
+            removeLabel={t('assistant.context.remove', { name: selectionLabel })}
+            onRemove={() => {
+              setRemovedAt({ ...removed, here, selection: true });
             }}
           />
         ) : null}
@@ -483,6 +522,21 @@ function closeOnPhone(close: () => void): () => void {
       close();
     }
   };
+}
+
+/** The chip of an entity says its kind and what it is, exactly what is sent (a ticket is its key). */
+function entityChipLabel(
+  t: ReturnType<typeof useI18n>['t'],
+  entity: AssistantEntity,
+  label: string | null,
+): string {
+  const name = label ?? entity.ref;
+  return entity.kind === 'ticket'
+    ? name
+    : t('assistant.context.entityChip', {
+        kind: t(`assistant.context.entity.${entity.kind}`),
+        name,
+      });
 }
 
 function ContextChip({

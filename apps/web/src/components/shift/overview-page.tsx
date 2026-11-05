@@ -15,6 +15,7 @@ import { useState } from 'react';
 
 import { AccessDenied, LoadError } from '@/components/admin/admin-page';
 import { AppLink } from '@/components/app-link';
+import { AskAiButton } from '@/components/assistant/ask-ai-button';
 import { OverrideDialog } from '@/components/shift/clock-dialogs';
 import {
   EmptyLine,
@@ -130,6 +131,12 @@ function OverviewView({ data, onRefresh }: { data: ShiftOverview; onRefresh: () 
                 className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-inner bg-surface px-3.5 py-2.5 shadow-card text-sm"
               >
                 {item.ticketKey ? <TicketLink ticketKey={item.ticketKey} /> : null}
+                {item.ticketKey ? (
+                  <AskAiButton
+                    entity={{ kind: 'ticket', ref: item.ticketKey }}
+                    label={item.ticketKey}
+                  />
+                ) : null}
                 <span className="min-w-0 flex-1">
                   {t('shift.overview.itemLine', {
                     title: item.title,
@@ -175,6 +182,10 @@ function OverviewView({ data, onRefresh }: { data: ShiftOverview; onRefresh: () 
                 className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-inner bg-surface px-3.5 py-2.5 shadow-card text-sm"
               >
                 <TicketLink ticketKey={item.ticketKey} />
+                <AskAiButton
+                  entity={{ kind: 'ticket', ref: item.ticketKey }}
+                  label={item.ticketKey}
+                />
                 <PriorityBadge priority={item.priority} />
                 <span className="min-w-0 flex-1">
                   {item.title} ·{' '}

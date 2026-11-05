@@ -2,34 +2,59 @@ import { describe, expect, it } from 'vitest';
 
 import { answerText } from '@/components/assistant/assistant-panel';
 
-import { contextForRequest, pageOfPath, ticketOfLocation } from './page-context';
+import { contextForRequest, contextKey, NONE_REMOVED, type PageContext } from './page-context';
+
+const base: PageContext = { page: 'ticket', entity: null, selection: null, label: null, pin: 0 };
 
 describe('page context', () => {
-  it('names the page kind the api knows, and nothing it does not', () => {
-    expect(pageOfPath('/', null)).toBe('queue');
-    expect(pageOfPath('/', 'OPS-1')).toBe('ticket');
-    expect(pageOfPath('/shift/brief', null)).toBe('brief');
-    expect(pageOfPath('/shift/handoff', null)).toBe('handoff');
-    expect(pageOfPath('/shift', null)).toBe('other');
-    expect(pageOfPath('/home', null)).toBe('dashboard');
-    expect(pageOfPath('/incidents/abc', null)).toBe('incident');
-    expect(pageOfPath('/admin/users', null)).toBe('other');
-  });
-
-  it('reads the open ticket from the address only on the queue, and only a valid reference', () => {
-    expect(ticketOfLocation('/', '?ticket=OPS-12')).toBe('OPS-12');
-    expect(ticketOfLocation('/', '?ticket=not a ticket!')).toBeNull();
-    expect(ticketOfLocation('/home', '?ticket=OPS-12')).toBeNull();
-  });
-
   it('sends only the chips that were left on', () => {
-    const context = { page: 'ticket' as const, ticket: 'OPS-12' };
-    expect(contextForRequest(context, { page: false, ticket: false })).toEqual({
+    const context: PageContext = { ...base, entity: { kind: 'ticket', ref: 'OPS-12' } };
+    expect(contextForRequest(context, NONE_REMOVED)).toEqual({
       page: 'ticket',
+      entity: { kind: 'ticket', ref: 'OPS-12' },
       ticket: 'OPS-12',
     });
-    expect(contextForRequest(context, { page: true, ticket: false })).toEqual({ ticket: 'OPS-12' });
-    expect(contextForRequest(context, { page: true, ticket: true })).toBeUndefined();
+    expect(contextForRequest(context, { ...NONE_REMOVED, page: true })).toEqual({
+      entity: { kind: 'ticket', ref: 'OPS-12' },
+      ticket: 'OPS-12',
+    });
+    expect(
+      contextForRequest(context, { page: true, entity: true, selection: true }),
+    ).toBeUndefined();
+  });
+
+  it('sends the entity of another kind without the old ticket field, and never the display label', () => {
+    const context: PageContext = {
+      ...base,
+      page: 'incident',
+      entity: { kind: 'incident', ref: 'abc-1' },
+      label: 'INC-7',
+    };
+    const sent = contextForRequest(context, NONE_REMOVED);
+    expect(sent).toEqual({ page: 'incident', entity: { kind: 'incident', ref: 'abc-1' } });
+    expect(JSON.stringify(sent)).not.toContain('INC-7');
+  });
+
+  it('sends a selection only while its chip is on', () => {
+    const context: PageContext = {
+      ...base,
+      selection: { kind: 'ticket', refs: ['OPS-1', 'OPS-2'] },
+    };
+    expect(contextForRequest(context, NONE_REMOVED)?.selection).toEqual({
+      kind: 'ticket',
+      refs: ['OPS-1', 'OPS-2'],
+    });
+    expect(contextForRequest(context, { ...NONE_REMOVED, selection: true })?.selection).toBe(
+      undefined,
+    );
+  });
+
+  it('makes a new key when the place, the thing or the press changes', () => {
+    const a: PageContext = { ...base, entity: { kind: 'org', ref: 'o1' } };
+    expect(contextKey(a)).toBe(contextKey({ ...a }));
+    expect(contextKey(a)).not.toBe(contextKey({ ...a, entity: { kind: 'org', ref: 'o2' } }));
+    expect(contextKey(a)).not.toBe(contextKey({ ...a, pin: 2 }));
+    expect(contextKey(a)).not.toBe(contextKey({ ...a, page: 'admin' }));
   });
 });
 

@@ -1,6 +1,20 @@
 'use client';
 
+import { assistantEntitySchema, assistantSelectionSchema } from '@watchtower/shared';
 import { useEffect, useRef, useSyncExternalStore } from 'react';
+
+import type { AskTarget } from './page-context';
+
+/** An event can carry anything: only a target the contract accepts is used. */
+function isAskTarget(value: unknown): value is AskTarget {
+  if (typeof value !== 'object' || value === null) return false;
+  const target = value as { entity?: unknown; selection?: unknown };
+  if (target.entity === undefined && target.selection === undefined) return false;
+  return (
+    (target.entity === undefined || assistantEntitySchema.safeParse(target.entity).success) &&
+    (target.selection === undefined || assistantSelectionSchema.safeParse(target.selection).success)
+  );
+}
 
 /**
  * Where the person keeps the floating AI button (ADR-023, T-134 web). "Hidden" only removes the
@@ -61,20 +75,24 @@ export function resetAssistantHiddenCache(): void {
 
 const OPEN_EVENT = 'wt:assistant-open';
 
-/** Asks the assistant to open (the palette command). Does nothing when no bubble is mounted. */
-export function requestAssistantOpen(): void {
-  window.dispatchEvent(new Event(OPEN_EVENT));
+/**
+ * Asks the assistant to open (the palette command, or an "Ask AI about this" button, which passes
+ * what it is about so the bubble shows it as a chip). Does nothing when no bubble is mounted.
+ */
+export function requestAssistantOpen(target?: AskTarget): void {
+  window.dispatchEvent(new CustomEvent<AskTarget | undefined>(OPEN_EVENT, { detail: target }));
 }
 
-/** Calls `handler` whenever something asks the assistant to open. */
-export function useAssistantOpenRequests(handler: () => void): void {
+/** Calls `handler` whenever something asks the assistant to open, with what it was asked about. */
+export function useAssistantOpenRequests(handler: (target: AskTarget | null) => void): void {
   const latest = useRef(handler);
   useEffect(() => {
     latest.current = handler;
   });
   useEffect(() => {
-    const onRequest = () => {
-      latest.current();
+    const onRequest = (event: Event) => {
+      const detail: unknown = event instanceof CustomEvent ? event.detail : null;
+      latest.current(isAskTarget(detail) ? detail : null);
     };
     window.addEventListener(OPEN_EVENT, onRequest);
     return () => {

@@ -22,6 +22,8 @@ import {
 } from '@watchtower/ui';
 import { useId, useState } from 'react';
 
+import { AskAiButton } from '@/components/assistant/ask-ai-button';
+
 import { LoadError } from '@/components/admin/admin-page';
 import {
   AttachmentDropZone,
@@ -77,6 +79,7 @@ export function IncidentDetailView({ incidentId }: { incidentId: string }) {
           <IncidentSeverityBadge severity={incident.severity} />
           <IncidentStatusChip status={incident.status} />
           <span className="text-sm text-muted-foreground">{incident.key}</span>
+          <AskAiButton entity={{ kind: 'incident', ref: incident.id }} label={incident.key} />
         </div>
         <h2 id="incident-title" className="text-lg font-semibold break-words">
           {incident.title}

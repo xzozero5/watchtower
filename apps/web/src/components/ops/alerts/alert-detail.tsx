@@ -21,6 +21,7 @@ import { FormField } from '@/components/portal/form-field';
 import { useI18n } from '@/i18n/provider';
 import { useApi } from '@/lib/api/api-context';
 import { useSession, useUserId } from '@/lib/auth/session';
+import { AskAiButton } from '@/components/assistant/ask-ai-button';
 import { describeOpsError, isSnoozed } from '@/lib/ops/model';
 import { opsKeys, useAlert, useAlertEscalations, useServices } from '@/lib/ops/queries';
 import { useShortcut } from '@/lib/keyboard';
@@ -144,6 +145,7 @@ export function AlertDetail({
               {t('ops.alerts.unmapped')}
             </TintChip>
           ) : null}
+          <AskAiButton entity={{ kind: 'alert', ref: alert.id }} label={alert.title} />
         </div>
         <h2 id="alert-title" className="text-lg font-semibold break-words">
           {alert.title}
