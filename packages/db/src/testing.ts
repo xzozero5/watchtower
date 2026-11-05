@@ -169,3 +169,46 @@ export async function createProductMockDatabase(adminUrl: string): Promise<Produ
     throw error;
   }
 }
+
+/** What a test puts where the worker would store a narration (T-416). */
+export interface SeedElementInsight {
+  readonly element: string;
+  /** `instance` unless the test is about a row scope. */
+  readonly scopeKey?: string;
+  readonly period: string;
+  readonly locale: 'th' | 'en';
+  readonly factsFingerprint: string;
+  readonly claims: unknown;
+  /** Negative = already expired. */
+  readonly expiresInMinutes: number;
+  readonly mock?: boolean;
+}
+
+/**
+ * Stores a narration of a screen element as the worker would, for api tests of the read path. The api never writes
+ * this table (ADR-029 section 9.2, C-15), so its tests seed it through the owner pool from here. Test support only.
+ */
+export async function seedElementInsight(
+  owner: Pick<Pool, 'query'>,
+  fields: SeedElementInsight,
+): Promise<void> {
+  await owner.query(
+    `INSERT INTO ai_element_insight (element, scope_key, period, locale, facts, facts_fingerprint, claims, prompt_id,
+       prompt_version, model, mock, generated_at, expires_at)
+     VALUES ($1, $2, $3, $4, '[]'::jsonb, $5, $6::jsonb, 'element_insight', '1', 'test', $7,
+       now() - interval '5 minutes', now() + make_interval(mins => $8))
+     ON CONFLICT (element, scope_key, period, locale) DO UPDATE SET facts_fingerprint = EXCLUDED.facts_fingerprint,
+       claims = EXCLUDED.claims, generated_at = EXCLUDED.generated_at, expires_at = EXCLUDED.expires_at,
+       mock = EXCLUDED.mock`,
+    [
+      fields.element,
+      fields.scopeKey ?? 'instance',
+      fields.period,
+      fields.locale,
+      fields.factsFingerprint,
+      JSON.stringify(fields.claims),
+      fields.mock ?? true,
+      fields.expiresInMinutes,
+    ],
+  );
+}

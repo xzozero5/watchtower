@@ -246,6 +246,11 @@ const dashboard = (init: Partial<InsightElement>): InsightElement =>
     ...init,
   });
 
+/**
+ * An admin page reads a GET route that only asks for `ticket.read` and gates itself by role in the web. The element
+ * asks the route's permission AND the page's `*.manage`, so it is never wider than the route and never opens for a
+ * person who holds the page permission alone (T-416).
+ */
 const adminFacts = (
   route: string,
   rule: InsightRule,
@@ -269,9 +274,12 @@ const X_ELEMENT: InsightElement = element({ rule: null, scope: 'instance', mode:
  * route or rule the ADR marks `[UNVERIFIED]` say so in `unverified`; the parity test of T-416 settles them.
  */
 export const INSIGHT_ELEMENTS: Readonly<Record<InsightElementKey, InsightElement>> = {
+  // T-416: the Home cards read `GET /v1/tickets/stats` (assignee=me), which asks for `ticket.read` alone and refuses
+  // the masked developer. An insight shows no number the route would not, so the rule is the route's and a `dev`
+  // gets no `home.my_work` (this narrows ADR-029 section 9.3, which would have given a dev a masked view).
   'home.my_work': element({
-    route: 'GET /v1/tickets',
-    rule: { anyOf: ['ticket.read', 'ticket.read.masked'] },
+    route: 'GET /v1/tickets/stats',
+    rule: { all: ['ticket.read'] },
     scope: 'user',
     // F on read in 9a, N through `ai_summary` kind `my_work` in 9b.
     mode: 'F',
@@ -281,8 +289,9 @@ export const INSIGHT_ELEMENTS: Readonly<Record<InsightElementKey, InsightElement
     cadenceMinutes: 60,
   }),
   'home.volume': element({
+    // T-416: the card reads `GET /v1/dashboard/ops`, so its rule is that route's `dashboard.ops.read`.
     route: 'GET /v1/dashboard/ops',
-    rule: { all: ['ticket.read'] },
+    rule: DASH_RULE,
     scope: 'instance',
     mode: 'N',
     periods: [DAYS_90],
@@ -303,14 +312,15 @@ export const INSIGHT_ELEMENTS: Readonly<Record<InsightElementKey, InsightElement
     cadenceMinutes: 60,
     aliasOf: 'shift.overview',
   }),
+  // T-416: the AI status card of Home reads `GET /v1/autonomy` (`ticket.read`); readiness is the public health
+  // probe and adds no data of its own. It was filed under the dashboard route by mistake.
   'home.status': element({
-    route: 'GET /v1/dashboard/ops',
-    rule: DASH_RULE,
+    route: 'GET /v1/autonomy',
+    rule: { all: ['ticket.read'] },
     scope: 'instance',
     mode: 'F',
     wave: '9b',
-    triggers: ['incident', 'alert'],
-    unverified: ['rule dashboard.ops.read'],
+    triggers: ['autonomy'],
   }),
   'dashboard.ops.now': dashboard({
     periods: [NOW],
@@ -322,29 +332,29 @@ export const INSIGHT_ELEMENTS: Readonly<Record<InsightElementKey, InsightElement
   'dashboard.ops.reliability': dashboard({ triggers: ['incident', 'alert'], cadenceMinutes: 120 }),
   'dashboard.ops.services': dashboard({ triggers: ['alert', 'incident'], cadenceMinutes: 120 }),
   'dashboard.ops.quality': dashboard({
-    rule: { all: ['csat.read'] },
+    rule: { all: ['dashboard.ops.read', 'csat.read'] },
     triggers: ['ticket'],
     cadenceMinutes: 240,
   }),
   'dashboard.ops.ai': dashboard({
-    rule: { all: ['ai.run.read'] },
+    rule: { all: ['dashboard.ops.read', 'ai.run.read'] },
     mode: 'F',
     triggers: ['ai_run'],
   }),
   'dashboard.ops.grades': dashboard({
-    rule: { all: ['ai.run.read'] },
+    rule: { all: ['dashboard.ops.read', 'ai.run.read'] },
     mode: 'F',
     triggers: ['grade'],
   }),
   'dashboard.ops.team': dashboard({
-    rule: { all: ['performance.read.all'] },
+    rule: { all: ['dashboard.ops.read', 'performance.read.all'] },
     personRefs: 'others',
     piiKind: 'performance',
     triggers: ['ticket', 'shift'],
     cadenceMinutes: 120,
   }),
   'dashboard.ops.usage': dashboard({
-    rule: { all: ['metric.read'] },
+    rule: { all: ['dashboard.ops.read', 'metric.read'] },
     triggers: ['usage'],
     cadenceMinutes: 240,
   }),
@@ -384,7 +394,7 @@ export const INSIGHT_ELEMENTS: Readonly<Record<InsightElementKey, InsightElement
     unverified: ['route path'],
   }),
   'shift.handoff': element({
-    route: 'GET /v1/handoffs',
+    route: 'GET /v1/handoffs/current',
     rule: { all: ['handoff.write'] },
     scope: 'user',
     mode: 'R',
@@ -404,11 +414,10 @@ export const INSIGHT_ELEMENTS: Readonly<Record<InsightElementKey, InsightElement
   'shift.notes': { ...X_ELEMENT },
   'queue.list': element({
     route: 'GET /v1/tickets',
-    rule: { all: ['ticket.read'] },
+    rule: { anyOf: ['ticket.read', 'ticket.read.masked'] },
     scope: 'user',
     mode: 'F',
     wave: '9b',
-    unverified: ['rule is the queue route rule'],
   }),
   'ticket.workspace': element({
     route: 'GET /v1/tickets',
@@ -433,7 +442,7 @@ export const INSIGHT_ELEMENTS: Readonly<Record<InsightElementKey, InsightElement
     cadenceMinutes: 30,
   }),
   'incident.detail': element({
-    route: 'GET /v1/incidents',
+    route: 'GET /v1/incidents/:id',
     rule: { all: ['ticket.read'] },
     scope: 'incident',
     mode: 'N',
@@ -443,7 +452,7 @@ export const INSIGHT_ELEMENTS: Readonly<Record<InsightElementKey, InsightElement
     unverified: ['comms panel already has AI'],
   }),
   'alerts.noise': element({
-    route: 'GET /v1/alerts',
+    route: 'GET /v1/alerts/noise',
     rule: { all: ['alert.read'] },
     scope: 'instance',
     mode: 'N',
@@ -461,7 +470,7 @@ export const INSIGHT_ELEMENTS: Readonly<Record<InsightElementKey, InsightElement
     triggers: ['alert'],
   }),
   'statuspage.admin': element({
-    route: 'GET /v1/status-page',
+    route: 'GET /v1/status-page/components',
     rule: { all: ['ticket.read'] },
     scope: 'instance',
     mode: 'F',
@@ -471,7 +480,7 @@ export const INSIGHT_ELEMENTS: Readonly<Record<InsightElementKey, InsightElement
     unverified: ['rule follows the GET of each status page admin screen'],
   }),
   'org.health': element({
-    route: 'GET /v1/orgs',
+    route: 'GET /v1/orgs/:id/health',
     rule: { all: ['org.health.read'] },
     scope: 'org',
     mode: 'N',
@@ -480,12 +489,20 @@ export const INSIGHT_ELEMENTS: Readonly<Record<InsightElementKey, InsightElement
     triggers: ['ticket', 'incident'],
     unverified: ['route path'],
   }),
-  'admin.intents': adminFacts('GET /v1/intents', { all: ['intent.manage'] }, 'intent'),
-  'admin.intent.gate': adminFacts('GET /v1/intents', { all: ['intent.manage'] }, 'intent'),
-  'admin.ai': adminFacts('GET /v1/ai/status', { all: ['ai.provider.manage'] }),
+  'admin.intents': adminFacts(
+    'GET /v1/intents',
+    { all: ['ticket.read', 'intent.manage'] },
+    'intent',
+  ),
+  'admin.intent.gate': adminFacts(
+    'GET /v1/intents',
+    { all: ['ticket.read', 'intent.manage'] },
+    'intent',
+  ),
+  'admin.ai': adminFacts('GET /v1/ai/status', { all: ['ticket.read', 'ai.provider.manage'] }),
   'admin.integrations': adminFacts('GET /v1/admin/integrations', { all: ['integration.manage'] }),
   'admin.outbox': adminFacts('GET /v1/ops/outbox', { all: ['outbox.manage'] }),
-  'admin.queues': adminFacts('GET /v1/queues', { all: ['queue.manage'] }),
+  'admin.queues': adminFacts('GET /v1/queues', { all: ['ticket.read', 'queue.manage'] }),
   'roster.planner': element({
     route: 'GET /v1/roster/plans',
     rule: { all: ['roster.manage'] },
