@@ -4,7 +4,7 @@
 > อัปเดตล่าสุด: 2026-11-05 10:30 (เวลากรุงเทพ) โดย Claude Code main thread — ปิด Phase 1–3 (code) ตามคำสั่งเจ้าของ 2026-11-04
 > ฉบับก่อน: `docs/handoff-archive/HANDOFF-2026-11-03-1550-owner-requests.md` · บันทึกรายชั่วโมง `logs/daily/2026-11-04.md`, `logs/daily/2026-11-05.md`
 
-> ⚠️ **local `main` นำ `origin/main` (`ae3effd`) อยู่ ~280 commit และยังไม่ push** — เจ้าของสั่งให้รอ OK ก่อน push และก่อน deploy POC · POC (`watchtower`, :3000) ยังรัน image 2026-11-03 (ก่อน migration 0084+)
+> ✅ **push แล้ว 2026-11-05** (`origin/main` = `e325c83`, CI run 41963960467 เขียวทั้ง 4 job) · ⚠️ POC (`watchtower`, :3000) ยังรัน image 2026-11-03 — deploy รอ OK เจ้าของ (backup DB ก่อน, migrate 0084–0111)
 
 ## สถานะปัจจุบัน
 - **Phase:** 1 = done pending pilot · 2 = done pending live (GCP/Discord จริง) · 3 = ✅ done pending live gate (งานค้างของ PO T-306c ปิดครบ, ADR-025/026 Accepted) · LINE = feature ภายหลัง · Phase 4: ดึง T-152 (ลิงก์ "คำขอของฉัน" ทางอีเมล) + Web Push live มาทำแล้ว
@@ -40,7 +40,7 @@
 - ไม่แก้/commit `.agents/` และ `.codex/`
 
 ## รอเจ้าของ (`[ASK-HUMAN]`)
-- [ ] OK ให้ push `main` (~280 commit) แล้วดู CI · OK ให้ deploy POC (ต้อง backup DB ก่อน, migrate 0084–0110+)
+- [ ] OK ให้ deploy POC (ต้อง backup DB ก่อน, migrate 0084–0110+)
 - [ ] เลือก intent แรกสำหรับ stage 3 เมื่อมีข้อมูลจริง — po เสนอ `feature_question`, `incident_inquiry`, `workspace_config` (ไม่แนะนำ `account_access`, `billing_report`, `result_dispute`)
 - [ ] รับรอง: drafter stage 2 ใช้ `contact.verifiedAt` เดิม (เข้มน้อยกว่า gate stage 3 ที่ใช้ `requesterVerified`)
 - [ ] อนุมัติ eval เคส 7 ข้อของ T-301f เข้า `evals/golden/` (ลูกค้าปฏิเสธ/ยืนยัน TH+EN)
@@ -50,7 +50,7 @@
 
 ## ขั้นต่อไป (เรียงลำดับ)
 1. ติ๊ก T-207 เมื่อ po ยืนยัน Phase 2 review
-2. รอ OK เจ้าของ → push → CI เขียว → deploy POC ตาม `docs/runbooks/local-poc.md`
+2. รอ OK เจ้าของ → deploy POC ตาม `docs/runbooks/local-poc.md`
 3. หลัง pilot: T-302d replay อัตโนมัติ, T-305 ส่วนที่เหลือ, LINE
 
 ## ยังไม่ยืนยัน
