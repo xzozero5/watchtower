@@ -161,8 +161,16 @@ describe('factsFingerprint', () => {
   });
 
   it('changes when a count, a percentage step or a state moves', () => {
-    const moved = factsFingerprint([metricFact('open', 111), base[1] as InsightFact, base[2] as InsightFact]);
-    const step = factsFingerprint([base[0] as InsightFact, metricFact('trouble_pct', 30), base[2] as InsightFact]);
+    const moved = factsFingerprint([
+      metricFact('open', 111),
+      base[1] as InsightFact,
+      base[2] as InsightFact,
+    ]);
+    const step = factsFingerprint([
+      base[0] as InsightFact,
+      metricFact('trouble_pct', 30),
+      base[2] as InsightFact,
+    ]);
     const worse = factsFingerprint([
       base[0] as InsightFact,
       base[1] as InsightFact,
@@ -214,8 +222,6 @@ describe('view and contract', () => {
     expect(() => finishFacts([metricFact('a', 1), metricFact('a', 2)], new Date())).toThrow(
       /duplicate/,
     );
-    expect(() =>
-      finishFacts([{ ...metricFact('Bad Id', 1) }], new Date()),
-    ).toThrow();
+    expect(() => finishFacts([{ ...metricFact('Bad Id', 1) }], new Date())).toThrow();
   });
 });

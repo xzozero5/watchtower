@@ -25,6 +25,8 @@ import {
 } from '@watchtower/shared';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
+import type { Database } from '@watchtower/db';
+
 import { DATABASE } from '../database/database.module.js';
 import { startHarness, type Harness } from '../testing/harness.js';
 import {
@@ -49,7 +51,7 @@ let orgId: string;
 let intentA: string;
 let queueA: string;
 const owner = () => h.db.owner.pool;
-const executor = () => h.app.get(DATABASE).db;
+const executor = () => h.app.get<Database>(DATABASE).db;
 const sentinel = randomBytes(6).toString('hex');
 const SUBJECT = `Subject-${sentinel}`;
 const ORG_NAME = `Org-${sentinel}`;
@@ -310,10 +312,8 @@ describe('shift.overview (section 9.9: persons as refs and placeholders only)', 
     const asHead = shiftOverviewSchema.parse(
       (await head.client.request('GET', '/v1/shifts/overview', {})).body,
     );
-    const { generatedAt: _a, ...weakRest } = asWeak;
-    const { generatedAt: _b, ...headRest } = asHead;
-    void _a;
-    void _b;
+    const { generatedAt: _a, ...weakRest } = asWeak; // eslint-disable-line @typescript-eslint/no-unused-vars
+    const { generatedAt: _b, ...headRest } = asHead; // eslint-disable-line @typescript-eslint/no-unused-vars
     expect(weakRest).toEqual(headRest);
 
     const result = await buildShiftOverviewFacts({ executor: executor() });
