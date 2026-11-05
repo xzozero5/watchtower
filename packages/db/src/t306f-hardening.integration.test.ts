@@ -198,6 +198,15 @@ describe('record_autonomy_gate_report (C-6)', () => {
     await expect(recordReport(intent.id, { criteria: failing })).rejects.toMatchObject({
       code: CHECK_VIOLATION,
     });
+    // T-306k C-19: the string "true" is not the boolean true.
+    for (const pass of ['"true"', '1', '"yes"', 'null']) {
+      await expect(
+        recordReport(intent.id, { criteria: `[{"key":"precision","pass":${pass}}]` }),
+      ).rejects.toMatchObject({ code: CHECK_VIOLATION });
+    }
+    await expect(
+      recordReport(intent.id, { criteria: '[{"key":"precision"}]' }),
+    ).rejects.toMatchObject({ code: CHECK_VIOLATION });
     await expect(recordReport(intent.id, { criteria: '[]' })).rejects.toMatchObject({
       code: CHECK_VIOLATION,
     });
@@ -276,6 +285,39 @@ describe('record_ai_grade (C-9)', () => {
       ).rows[0],
     ).toMatchObject({ grader_model: 'sonnet', independent: false });
 
+    // T-306k C-11: one side reports a real id, the other only an alias of the same model: not independent, whichever
+    // side reports it. Two real ids that differ are independent; aliases that differ with no ids are too.
+    const drafter2 = await aiRun(ticket, 'drafter', 'sonnet');
+    const draft2 = await newDraft(ticket, drafter2);
+    const independentOf = async (graderRunId: string, draftId = draft2): Promise<boolean> => {
+      const gid = (await recordGrade(draftId, ticket, graderRunId)).rows[0]?.value ?? '';
+      return scalar<boolean>(owner(), `SELECT independent AS value FROM ai_grade WHERE id = $1`, [
+        gid,
+      ]);
+    };
+    // grader: alias sonnet + a real id; drafter: alias sonnet only (the C-11 attack)
+    expect(
+      await independentOf(
+        await aiRun(ticket, 'grader', 'sonnet', 'anthropic', null, 'claude-sonnet-x'),
+      ),
+    ).toBe(false);
+    // drafter reports the real id, grader only the alias that maps to it
+    const drafter3 = await aiRun(ticket, 'drafter', 'sonnet', 'anthropic', null, 'claude-sonnet-x');
+    const draft3 = await newDraft(ticket, drafter3);
+    expect(await independentOf(await aiRun(ticket, 'grader', 'sonnet'), draft3)).toBe(false);
+    expect(await independentOf(await aiRun(ticket, 'grader', 'claude-sonnet-x'), draft3)).toBe(
+      false,
+    );
+    // two real ids that differ
+    expect(
+      await independentOf(
+        await aiRun(ticket, 'grader', 'sonnet', 'anthropic', null, 'claude-opus-x'),
+        draft3,
+      ),
+    ).toBe(true);
+    // different aliases, no ids
+    expect(await independentOf(await aiRun(ticket, 'grader', 'opus'))).toBe(true);
+
     // No run, a run that is not a grader run, a run of another ticket: nothing is written.
     await expect(recordGrade(draft, ticket, null)).rejects.toMatchObject({ code: INTEGRITY });
     await expect(recordGrade(draft, ticket, drafterRun)).rejects.toMatchObject({ code: INTEGRITY });
@@ -289,6 +331,42 @@ describe('record_ai_grade (C-9)', () => {
     await expect(recordGrade(draft, otherTicket, graderRun)).rejects.toMatchObject({
       code: INTEGRITY,
     });
+  });
+});
+
+describe('a sent reply has one sampled grade (T-306k C-18)', () => {
+  it('refuses a second sampled grade of the same draft and keeps pre_send grades unlimited', async () => {
+    const intent = await newIntent();
+    const ticket = await newTicket(intent.id);
+    const draft = await newDraft(ticket, await aiRun(ticket, 'drafter', 'sonnet'));
+    const grader = await aiRun(ticket, 'grader', 'opus');
+    const sampled = () =>
+      app.query(
+        `SELECT public.record_ai_grade($1::uuid, $2::uuid, 'sampled', 'text', $3::uuid, 0.95, true, '[]'::jsonb, 1)`,
+        [draft, ticket, grader],
+      );
+    await sampled();
+    await expect(sampled()).rejects.toMatchObject({ code: '23505' });
+    await recordGrade(draft, ticket, grader);
+    await recordGrade(draft, ticket, grader);
+  });
+
+  it('counts failed tries per draft in ai_grade_sample_attempt, writable by the application role', async () => {
+    const intent = await newIntent();
+    const ticket = await newTicket(intent.id);
+    const draft = await newDraft(ticket, null);
+    await app.query(
+      `INSERT INTO ai_grade_sample_attempt (ai_draft_id, attempts) VALUES ($1, 1)
+       ON CONFLICT (ai_draft_id) DO UPDATE SET attempts = ai_grade_sample_attempt.attempts + 1`,
+      [draft],
+    );
+    expect(
+      await scalar<number>(
+        owner(),
+        `SELECT attempts AS value FROM ai_grade_sample_attempt WHERE ai_draft_id = $1`,
+        [draft],
+      ),
+    ).toBe(1);
   });
 });
 
@@ -519,7 +597,8 @@ describe('0108 goes down and up again', () => {
           );
         expect(await canInsert()).toBe(false);
         // 0109 (T-306e) and 0110 (record_ai_grade reads response_model) sit on top of it.
-        expect(await migrateDown(pool, { steps: 3 })).toEqual([
+        expect(await migrateDown(pool, { steps: 4 })).toEqual([
+          '0111_t306k_hardening',
           '0110_ai_grade_response_model',
           '0109_replay_result_run_model',
           '0108_review_hardening',
@@ -535,6 +614,7 @@ describe('0108 goes down and up again', () => {
           '0108_review_hardening',
           '0109_replay_result_run_model',
           '0110_ai_grade_response_model',
+          '0111_t306k_hardening',
         ]);
         expect(await canInsert()).toBe(false);
       } finally {
