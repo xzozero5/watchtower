@@ -10,7 +10,7 @@ snapshot สั้นสำหรับ cold start อยู่ที่ `HANDOF
 | 1 Inbox + AI 0–2 + Shifts | 🟡 ฟีเจอร์ครบ gate ค้าง · **POC ต่อ Gmail จริง + AI จริง (`claude -p`) แล้ว 2026-11-03** · LINE/Discord/SMTP ยัง mock | T-113 ส่วนที่เหลือ, T-114, T-115 pilot (เจ้าของ), T-125, T-103e/f, T-110c |
 | 2 Reliability + Usage | 🟡 ฟีเจอร์ครบด้วย mock/fixture, gate ค้าง | T-207 |
 | คำขอเจ้าของ 2026-11-02 | T-136, T-137 ✅ · T-133 บางส่วน | T-134/T-135 บน `wip/t-134` (ยังไม่ re-review, ไม่มีเว็บ), T-133 ที่เหลือ |
-| 3 Autonomy + Learning | ✅ done pending live gate (local `main`, ยังไม่ push) · ADR-025/026 Accepted · flag `AI_AUTOSEND_ENABLED` ปิด | e2e รอบสุดท้าย · [ASK-HUMAN] push/deploy + เลือก intent แรก · T-302d replay อัตโนมัติ (หลัง pilot) |
+| 3 Autonomy + Learning | ✅ done pending live gate (local `main`, ยังไม่ push) · ADR-025/026 Accepted · flag `AI_AUTOSEND_ENABLED` ปิด | [ASK-HUMAN] push/deploy + เลือก intent แรก · T-302d replay อัตโนมัติ (หลัง pilot) |
 | 4 Mobile + Scale | ⬜ | — |
 
 - **Release `v0.1.0` (MVP)** = `main` @ `ae380db` · CI: เขียวทั้ง 4 job · gate บนเครื่องผ่านทุก merge `[TESTED]`
