@@ -89,6 +89,33 @@ export class DashboardService {
     return restrict(full, principal);
   }
 
+  /**
+   * The per-agent figures of the ops dashboard for the assistant (T-404, ADR-029 section 2 C-16): the same cached
+   * figures as `ops`, the part a role may see. `performance.read.all` sees every agent, or the one asked for;
+   * `performance.read.own` alone sees only its own row, whatever `userId` was asked for. Neither: refused.
+   */
+  async performance(
+    days: number,
+    principal: Principal,
+    userId?: string,
+  ): Promise<{
+    readonly window: DashboardOps['window'];
+    readonly scope: 'all' | 'own';
+    readonly agents: readonly { userId: string; name: string; open: number; resolved: number }[];
+  }> {
+    if (principal.orgScope.kind !== 'all') throw forbidden();
+    const all = principal.permissions.has(GATES.perAgent);
+    if (!all && !principal.permissions.has('performance.read.own')) throw forbidden();
+    const full = await this.cached(days, principal.orgScope);
+    const rows = full.team.perAgent.status === 'ok' ? full.team.perAgent.data : [];
+    const wanted = all ? userId : principal.userId;
+    return {
+      window: full.window,
+      scope: all ? 'all' : 'own',
+      agents: wanted === undefined ? rows : rows.filter((row) => row.userId === wanted),
+    };
+  }
+
   private cached(days: number, scope: OrgScope): Promise<DashboardOps> {
     const now = Date.now();
     const hit = this.cache.get(days);

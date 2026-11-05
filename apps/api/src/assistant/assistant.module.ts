@@ -1,5 +1,12 @@
 import { Module } from '@nestjs/common';
 
+import { AutonomyModule } from '../autonomy/autonomy.module.js';
+import { CredentialsModule } from '../credentials/credentials.module.js';
+import { DashboardModule } from '../dashboard/dashboard.module.js';
+import { InboundModule } from '../inbound/inbound.module.js';
+import { ReportsModule } from '../reports/reports.module.js';
+import { SlaModule } from '../sla/sla.module.js';
+import { TeamQueuesModule } from '../team-queues/team-queues.module.js';
 import { AiModule } from '../ai/ai.module.js';
 import { AiRuntimeModule } from '../ai/ai-runtime.module.js';
 import { AlertsModule } from '../alerts/alerts.module.js';
@@ -15,6 +22,7 @@ import { AssistantController } from './assistant.controller.js';
 import { AssistantProposals } from './assistant-proposals.js';
 import { ContextResolver } from './context-resolver.js';
 import { AssistantService } from './assistant.service.js';
+import { AssistantReadServices } from './tools/read-services.js';
 
 /**
  * The AI assistant (T-134, ADR-023): routes under `/v1/assistant`. It reuses the readers and services
@@ -26,16 +34,23 @@ import { AssistantService } from './assistant.service.js';
     AiModule,
     AiRuntimeModule,
     AlertsModule,
+    AutonomyModule,
+    CredentialsModule,
+    DashboardModule,
+    InboundModule,
     IncidentsModule,
     IntentsModule,
     KbModule,
     OrgsModule,
+    ReportsModule,
     ShiftsModule,
     StatusPageModule,
+    SlaModule,
+    TeamQueuesModule,
     TicketsModule,
     ToolsModule,
   ],
   controllers: [AssistantController],
-  providers: [AssistantService, AssistantProposals, ContextResolver],
+  providers: [AssistantService, AssistantProposals, ContextResolver, AssistantReadServices],
 })
 export class AssistantModule {}

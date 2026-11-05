@@ -46,6 +46,8 @@ describe('who the assistant works for', () => {
       'incident_get',
       'statuspage_status',
       'statuspage_drafts',
+      'ticket_timeline',
+      'autonomy_status',
     ]);
     expect(toolsFor(who('agent', [...AGENT]))).toContain('investigate_run');
     expect(
@@ -78,6 +80,7 @@ describe('who the assistant works for', () => {
       'summarize_ticket',
       'explain_sla',
       'investigate_run',
+      'ticket_timeline',
     ]);
     // A developer changes a status and writes a note, as a developer does, and nothing else.
     expect(proposalKindsFor(dev)).toEqual(['status', 'note']);
@@ -111,11 +114,19 @@ describe('who the assistant works for', () => {
     expect([...all].sort()).toEqual([
       'alert_get',
       'alert_search',
+      'autonomy_status',
+      'ceo_metrics',
+      'config_lookup',
+      'conversation_get',
+      'conversation_search',
       'explain_sla',
       'incident_get',
       'incident_search',
       'investigate_run',
+      'kb_get',
       'kb_search',
+      'ops_metrics',
+      'performance_view',
       'roster_view',
       'search_tickets',
       'shift_context',
@@ -124,10 +135,12 @@ describe('who the assistant works for', () => {
       'summarize_ticket',
       'team_load',
       'team_status',
+      'ticket_timeline',
     ]);
-    // No admin surface: nothing about switches, autonomy, roles, integrations or users.
+    // Nothing that sets: no switch, role, user, credential or key tool (ADR-029 section 2). `autonomy_status` and
+    // `config_lookup` only read (ADR-029 section 11), and their outputs are allow-lists (C-6).
     for (const name of all)
-      expect(name).not.toMatch(/switch|autonomy|role|integration|user|credential/);
+      expect(name).not.toMatch(/switch|_set|role|user|credential|secret|apikey|api_key|token/);
   });
 
   it('never offers a reply to a customer as a proposal kind', () => {

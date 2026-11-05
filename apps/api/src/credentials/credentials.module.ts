@@ -33,6 +33,6 @@ import { CREDENTIAL_STORE, CredentialsService } from './credentials.service.js';
     ConnectionTesterRegistry,
     CredentialsService,
   ],
-  exports: [CREDENTIAL_STORE, ConnectionTesterRegistry],
+  exports: [CREDENTIAL_STORE, ConnectionTesterRegistry, CredentialsService],
 })
 export class CredentialsModule {}

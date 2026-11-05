@@ -48,6 +48,7 @@ import { isMasked, proposalKindsFor, startersFor } from './assistant-access.js';
 import { ContextResolver } from './context-resolver.js';
 import { AssistantProposals } from './assistant-proposals.js';
 import { buildAssistantTools } from './assistant-tools.js';
+import { AssistantReadServices } from './tools/read-services.js';
 import { NOTES } from './assistant-text.js';
 
 type Config = Pick<
@@ -115,6 +116,7 @@ export class AssistantService {
     @Inject(HandoffService) private readonly handoffs: HandoffService,
     @Inject(ShiftNotes) private readonly shiftNotes: ShiftNotes,
     @Inject(ShiftsService) private readonly shifts: ShiftsService,
+    @Inject(AssistantReadServices) private readonly modules: AssistantReadServices,
   ) {}
 
   // --- state ------------------------------------------------------------------------------------
@@ -315,6 +317,8 @@ export class AssistantService {
         base.redactorFor?.([...names, ...staffNames]) ?? base.redactor,
     };
     const read = new Map<string, string>();
+    // Other personal data the module tools read (a message of Other mail, a person's figures): `pii.read` as well (C-17).
+    const readOther = new Map<string, { readonly kind: string; readonly id: string }>();
     const history = await this.history(conversationId);
     let toolNames: string[] = [];
 
@@ -356,6 +360,7 @@ export class AssistantService {
           handoffs: this.handoffs,
           shiftNotes: this.shiftNotes,
           shifts: this.shifts,
+          modules: this.modules,
         },
         {
           principal,
@@ -364,6 +369,9 @@ export class AssistantService {
           now: new Date(),
           onRead: (ticket) => {
             read.set(ticket.id, ticket.key);
+          },
+          onReadEntity: (entity) => {
+            readOther.set(`${entity.kind}:${entity.id}`, entity);
           },
         },
       );
@@ -501,6 +509,15 @@ export class AssistantService {
         actor: { type: 'user', id: principal.userId },
         targetType: 'ticket',
         targetId: ticketId,
+        metadata: { via: 'assistant', conversationId },
+      });
+    }
+
+    for (const entity of readOther.values()) {
+      await this.audit.recordPiiRead({
+        actor: { type: 'user', id: principal.userId },
+        targetType: entity.kind === 'conversation' ? 'inbound_message' : entity.kind,
+        targetId: entity.id,
         metadata: { via: 'assistant', conversationId },
       });
     }

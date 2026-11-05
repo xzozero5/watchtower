@@ -30,7 +30,7 @@ import type { TicketKeys } from '../tickets/ticket-keys.js';
 import type { TicketReader } from '../tickets/ticket-reader.js';
 import type { ToolRunner } from '../tools/tool-runner.service.js';
 import { orgPeopleNames } from '../masking/org-names.js';
-import { toolsFor, type AssistantToolName } from './assistant-access.js';
+import { toolsFor, type AssistantToolName, type PiiKind } from './assistant-access.js';
 import { assigneeHref, ticketHref } from './assistant-hrefs.js';
 import { loadLine, memberLine, slaLine, ticketLine } from './assistant-text.js';
 import { inReadOnlyScope, runReadOnly, type ReadOnlyRunner } from './read-only.js';
@@ -39,6 +39,9 @@ import { registerIncidentTools, type IncidentToolDeps } from './tools/incident.t
 import type { OpsToolKit } from './tools/ops-tool-kit.js';
 import { registerShiftTools, type ShiftToolDeps } from './tools/shift.tools.js';
 import { registerStatuspageTools, type StatuspageToolDeps } from './tools/statuspage.tools.js';
+import type { ModuleToolContext } from './tools/fact-kit.js';
+import type { ModuleReadServices } from './tools/read-services.js';
+import { readModuleTools } from './tools/read-tools.js';
 
 /** `[ASSUMED]` A person with this many open tickets, or this many past SLA, is called overloaded. */
 export const OVERLOADED_OPEN = 10;
@@ -73,6 +76,8 @@ export interface AssistantToolDeps {
   readonly handoffs?: ShiftToolDeps['handoffs'];
   readonly shiftNotes?: ShiftToolDeps['shiftNotes'];
   readonly shifts?: ShiftToolDeps['shifts'];
+  /** The readers of the module read tools (T-404, T-405). Absent: those tools are not registered. */
+  readonly modules?: ModuleReadServices;
 }
 
 export interface AssistantToolEnv {
@@ -83,6 +88,9 @@ export interface AssistantToolEnv {
   readonly now: Date;
   /** Told of each ticket whose content a tool read, for the audit of personal data read (PRD 8.2). */
   readonly onRead?: ((ticket: { readonly id: string; readonly key: string }) => void) | undefined;
+  /** Told of each other entity of personal data a module tool read (not a ticket), for `pii.read` (C-17). */
+  readonly onReadEntity?:
+    ((read: { readonly kind: PiiKind; readonly id: string }) => void) | undefined;
 }
 
 const cut = (text: string, max: number): string =>
@@ -670,6 +678,25 @@ export function buildAssistantTools(
       ops,
       principal,
     );
+  }
+
+  // --- the module read tools (T-404, T-405): one file each in ./tools ---------------------------
+  if (deps.modules !== undefined) {
+    const context: ModuleToolContext = {
+      services: deps.modules,
+      principal,
+      locale,
+      masked,
+      now: env.now,
+      readOnly,
+      remember,
+      keyOf: (number) => deps.keys.format(number),
+      onRead: (kind, id, key) => {
+        if (kind === 'ticket' && key !== undefined) env.onRead?.({ id, key });
+        else env.onReadEntity?.({ kind, id });
+      },
+    };
+    for (const register of readModuleTools(context)) register(add);
   }
 
   const scoped = registry.scope(
