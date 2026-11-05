@@ -354,14 +354,26 @@ describe('a hand edit', () => {
 
 describe('apply', () => {
   it('is a person who decides: it writes the roster through the roster service, audited, replaces strays, and cannot run twice', async () => {
-    // A stray entry of a person in the plan that the plan does not keep: applying removes it.
+    // A stray entry of a person in the plan that the plan does not keep: applying removes it. The solver breaks
+    // ties by user id (random per run), so the stray goes to someone the plan did not put on that night (else
+    // the plan would keep it). The plan is read again after: the report is computed against the roster as it is.
+    const drafted = await makePlan();
+    const planned = new Set(
+      drafted.entries
+        .filter((entry) => entry.workDate === '2026-11-08' && entry.shiftId === night.id)
+        .map((entry) => entry.userId),
+    );
+    const idle = agents.find((agent) => !planned.has(agent.userId));
+    expect(idle).toBeDefined();
     const stray = await lead.client.post<{ id: string }>('/v1/roster', {
       shiftId: night.id,
-      userId: agents[5]?.userId,
+      userId: idle?.userId,
       workDate: '2026-11-08',
     });
     expect(stray.status).toBe(201);
-    const plan = await makePlan();
+    const fresh = await lead.client.get<RosterPlan>(`/v1/roster/plans/${drafted.id}`);
+    expect(fresh.status).toBe(200);
+    const plan = fresh.body;
     expect(plan.diff.remove).toBe(1);
     const assignsBefore = await actions('roster.assign');
 
