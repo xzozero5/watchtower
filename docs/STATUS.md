@@ -5,7 +5,7 @@ snapshot สั้นสำหรับ cold start อยู่ที่ `HANDOF
 
 ## สถานะปัจจุบัน
 
-- **2026-11-06 T-437:** checkpoint + app heartbeat hourly, quota reset กลับมาทำต่อแล้ว 05:21. PO รับอำนาจตัดสินใจ. POC api/worker/web deploy 00:21 healthy หลัง backup; test containers 12 ตัวหยุดแล้ว (ไม่ลบ volume). Jarvis/insights ใหม่ยังค้างตาม BACKLOG; ถัดไป T-419b. Push กำลังดำเนินการตามอนุมัติเจ้าของ.
+- **2026-11-06 T-437:** checkpoint + app heartbeat hourly, quota reset กลับมาทำต่อแล้ว 05:21. PO รับอำนาจตัดสินใจ. POC api/worker/web deploy 00:21 healthy หลัง backup; test containers 12 ตัวหยุดแล้ว (ไม่ลบ volume). Jarvis/insights ใหม่ยังค้างตาม BACKLOG; ถัดไป T-419b. Push `635914d` แล้ว 05:26; CI42121519210 queued. Checkpoint T-437 completed → T-419 ready (ทำ subtask T-419b ตาม PO). BridgeถูกglobalCLIupdateจนoffline→pinlocalCLIคืน health200จากapiแล้ว.
 
 - **T-436 [TESTED] 2026-11-05 23:54:** POC ใช้ AI bridge / Codex แล้ว (`ai-cli`, host runner, config คงอยู่ใน env เดิม). API/worker healthy; migration 0116; redaction/guard/audit synthetic call ผ่าน. ADR-031 + `docs/runbooks/ai-bridge.md`
 | Phase | สถานะ (2026-11-05) | ค้าง |

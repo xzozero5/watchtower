@@ -7,6 +7,8 @@
 > ✅ **push แล้ว 2026-11-05** (`origin/main` = `e325c83`, CI run 41963960467 เขียวทั้ง 4 job) · ✅ **POC deploy แล้ว 2026-11-05 11:10** (เจ้าของ OK): backup `D:\Works\watchtower-backups\poc-20261105-1105-pre-phase3.dump` (13.5 MB) → build api/worker/web/bridge/gmail-tunnel → migrate 22 ตัวถึง 0111 → ทุก service healthy · `AI_AUTOSEND_ENABLED` ไม่ได้ตั้ง
 > ✅ **AI เปลี่ยนเป็น Codex แล้ว 2026-11-05 23:53** — `AI_PROVIDER=ai-cli`, `AI_BRIDGE_MODE=codex`, host bridge `http://host.docker.internal:4317` (PID ตรวจที่ logs/ai-bridge/host.pid) · non-secret overrides ถูก append ลง env เดิมแล้ว มี local overlay logs/ai-bridge/pinned-runtime.env ชี้ CODEX_CLI_BIN แบบ pin · API/worker image ใหม่ healthy; DB ถึง 0116; web/Gmail tunnel เดิมไม่แตะ · backup `D:\Works\watchtower-backups\poc-20261105-ai-bridge-pre-0116.dump` (13,731,374 bytes) · old Claude container หยุดไว้ rollback ได้
 
+> ✅ **2026-11-06 05:26:** push `635914d` แล้ว (รวม82commitเดิม); CI run42121519210 queued ต้องดูผลรอบถัดไป. POC api/worker/web redeploy00:21 healthy, bridgeจากapihealth200หลังpinCLI. T-437 completed; checkpoint task T-419 ready หมายถึง T-419b ที่ POเลือก (schema taskIdรับเลขเท่านั้น). งานassistantยังต้องทำต่อ
+
 ## Continuation (อ่านก่อนเริ่มรอบใหม่)
 - เจ้าของอนุมัติ 2026-11-06: ทำงานต่อให้ครบ, deploy Docker, push Git, stop container ทิ้ง; มอบ PO ตัดสินใจ scope/default ขณะเข้านอน. คง LINE ภายหลังและ autosend ปิด
 - Automation `watchtower-checkpoint` เรียกแชตนี้ทุกชั่วโมง; runbook `docs/runbooks/codex-continuation.md`, ADR-032. `node tools/codex-continuation/cli.mjs status` อ่าน checkpoint ใน Git info. ตรวจ usage ก่อนงาน; window ที่ยังใช้ได้ให้ reset gate เป็น now ไม่ใช่วัน reset รอบถัดไป
