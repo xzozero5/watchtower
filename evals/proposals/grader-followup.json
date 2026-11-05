@@ -1,0 +1,142 @@
+{
+  "cases": [
+    {
+      "id": "prop-grader-fu-th-not-yet",
+      "agent": "grader",
+      "description": "Thai denial after the answer ('not gone yet'): never verified, even if the model says verified.",
+      "intent": "reset_password",
+      "mockAnswer": {
+        "resolutionClass": "verified",
+        "draftVerdict": "no_draft",
+        "reasons": [{ "text": "The customer replied after the answer.", "factIds": ["f3"] }]
+      },
+      "input": {
+        "locale": "th",
+        "turns": [
+          { "from": "customer", "text": "ผมเข้าระบบไม่ได้ครับ ลืมรหัสผ่าน" },
+          { "from": "staff", "text": "กด ลืมรหัสผ่าน ที่หน้าเข้าสู่ระบบ แล้วทำตามลิงก์ในอีเมลครับ" },
+          { "from": "customer", "text": "ยังไม่หายครับ" }
+        ]
+      },
+      "expect": { "resolutionClass": "assumed" }
+    },
+    {
+      "id": "prop-grader-fu-en-same-error",
+      "agent": "grader",
+      "description": "English denial ('still not working, same error'): never verified.",
+      "intent": "api_error",
+      "mockAnswer": {
+        "resolutionClass": "verified",
+        "draftVerdict": "no_draft",
+        "reasons": [{ "text": "The customer wrote back after the answer.", "factIds": ["f3"] }]
+      },
+      "input": {
+        "turns": [
+          { "from": "customer", "text": "Our import job fails with a timeout." },
+          { "from": "staff", "text": "Please retry the import with a smaller file." },
+          { "from": "customer", "text": "Still not working, same error." }
+        ]
+      },
+      "expect": { "resolutionClass": "assumed" }
+    },
+    {
+      "id": "prop-grader-fu-reopen",
+      "agent": "grader",
+      "description": "A reopen request in Thai and English is a denial: never verified.",
+      "intent": "workspace_config",
+      "mockAnswer": {
+        "resolutionClass": "verified",
+        "draftVerdict": "no_draft",
+        "reasons": [{ "text": "The customer replied after the answer.", "factIds": ["f3"] }]
+      },
+      "input": {
+        "turns": [
+          { "from": "customer", "text": "My report schedule is not saved." },
+          { "from": "staff", "text": "Press Save and reload the page; the schedule is kept." },
+          { "from": "customer", "text": "ขอเปิดเรื่องใหม่ / please reopen" }
+        ]
+      },
+      "expect": { "resolutionClass": "assumed" }
+    },
+    {
+      "id": "prop-grader-fu-thanks-only",
+      "agent": "grader",
+      "description": "Bare thanks is not a confirmation: at most contained (the mock claims verified on purpose; the cap lowers it).",
+      "intent": "feature_question",
+      "mockAnswer": {
+        "resolutionClass": "verified",
+        "draftVerdict": "no_draft",
+        "reasons": [{ "text": "The customer thanked the team.", "factIds": ["f3"] }]
+      },
+      "input": {
+        "locale": "th",
+        "turns": [
+          { "from": "customer", "text": "ปุ่ม export อยู่ตรงไหนครับ" },
+          { "from": "staff", "text": "ที่หน้า Results เลือก Export ครับ" },
+          { "from": "customer", "text": "ขอบคุณครับ" }
+        ]
+      },
+      "expect": { "resolutionClassIn": ["contained", "assumed"] }
+    },
+    {
+      "id": "prop-grader-fu-th-works-now",
+      "agent": "grader",
+      "description": "The customer says it works now and the model cites that message: verified stays verified.",
+      "intent": "webhook_not_received",
+      "mockAnswer": {
+        "resolutionClass": "verified",
+        "draftVerdict": "no_draft",
+        "reasons": [{ "text": "The customer confirmed it works.", "factIds": ["f2"] }]
+      },
+      "input": {
+        "locale": "th",
+        "turns": [
+          { "from": "customer", "text": "ไม่ได้รับ callback ของออเดอร์ A" },
+          { "from": "staff", "text": "กรุณาเปิดพอร์ต 443 ระบบจะส่งซ้ำให้อัตโนมัติครับ" },
+          { "from": "customer", "text": "ใช้งานได้แล้วครับ ขอบคุณ" }
+        ]
+      },
+      "expect": { "resolutionClass": "verified", "maxViolations": 0 }
+    },
+    {
+      "id": "prop-grader-fu-denial-then-confirm",
+      "agent": "grader",
+      "description": "A denial and then a later confirmation: the latest customer message wins, so verified.",
+      "intent": "processing_failure",
+      "mockAnswer": {
+        "resolutionClass": "verified",
+        "draftVerdict": "no_draft",
+        "reasons": [{ "text": "The customer first said it was not fixed and then confirmed it was.", "factIds": ["f2"] }]
+      },
+      "input": {
+        "locale": "th",
+        "turns": [
+          { "from": "customer", "text": "งานประมวลผลล้มเหลวตลอดเลย" },
+          { "from": "staff", "text": "เรารีสตาร์ตงานให้แล้ว ลองใหม่อีกครั้งครับ" },
+          { "from": "customer", "text": "ยังไม่หายครับ" },
+          { "from": "customer", "text": "ตอนนี้หายแล้วครับ" }
+        ]
+      },
+      "expect": { "resolutionClass": "verified" }
+    },
+    {
+      "id": "prop-grader-fu-denial-with-contact",
+      "agent": "grader",
+      "description": "A denial mixed with an email and a phone number is still caught after redaction (the mock claims verified on purpose).",
+      "intent": "account_access",
+      "mockAnswer": {
+        "resolutionClass": "verified",
+        "draftVerdict": "no_draft",
+        "reasons": [{ "text": "The customer replied after the answer.", "factIds": ["f3"] }]
+      },
+      "input": {
+        "turns": [
+          { "from": "customer", "text": "I cannot sign in to the console." },
+          { "from": "staff", "text": "Please reset your password from the sign in page." },
+          { "from": "customer", "text": "ไม่ทำงาน please call me 081-234-5678 or write to somchai.test@acme.example" }
+        ]
+      },
+      "expect": { "resolutionClass": "assumed" }
+    }
+  ]
+}
