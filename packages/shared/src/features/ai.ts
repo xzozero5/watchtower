@@ -42,6 +42,12 @@ export const AI_AUDIT_ACTIONS = {
   assistantProposalReject: 'assistant.proposal.reject',
   /** A person deleted a conversation with the assistant. */
   assistantConversationDelete: 'assistant.conversation.delete',
+  /** A person pinned a claim of an answer ("remember this", T-400 C-7). Metadata: ids and counts, never the text. */
+  assistantMemoryCreate: 'assistant.memory.create',
+  /** A person removed one pinned fact or all of theirs. Metadata: ids and the count. */
+  assistantMemoryDelete: 'assistant.memory.delete',
+  /** A person rated an assistant answer or an embedded insight. Metadata: target kind and id, rating, reason code. */
+  assistantFeedback: 'assistant.feedback',
 } as const satisfies Record<string, string>;
 
 /** `ticket_event.type` strings written by this feature. */

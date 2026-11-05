@@ -29,6 +29,10 @@ const SECONDS_BUCKETS = [0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10
 /** Events counted with `TelemetryService.count`; each is a Prometheus counter an alert can watch. */
 export type TelemetryEvent = 'upload_busy' | 'upload_too_slow' | 'upload_quota_global';
 
+/** Where the time of one assistant message went (T-408). `first_event` is the time to the first SSE event. */
+export type AssistantPhaseTiming =
+  'first_event' | 'queue' | 'context' | 'tools' | 'answer' | 'total';
+
 export interface RequestObservation {
   readonly method: string;
   /** Matched route pattern such as `/health/ready`, never the raw path (keeps labels bounded). */
@@ -52,6 +56,7 @@ export class TelemetryService implements OnApplicationShutdown {
   private readonly tracer: Tracer;
   private readonly httpDuration: Histogram;
   private readonly events: Readonly<Record<TelemetryEvent, Counter>>;
+  private readonly assistantPhase: Histogram;
 
   constructor(
     @Inject(APP_CONFIG) config: ApiConfig,
@@ -76,6 +81,12 @@ export class TelemetryService implements OnApplicationShutdown {
       description: 'Duration of inbound HTTP requests',
       unit: 's',
       advice: { explicitBucketBoundaries: SECONDS_BUCKETS },
+    });
+    this.assistantPhase = meter.createHistogram('assistant.message.phase.duration', {
+      description:
+        'Seconds one assistant message spent in each phase (queue, context, tools, answer, total)',
+      unit: 's',
+      advice: { explicitBucketBoundaries: [0.05, 0.1, 0.3, 1, 3, 10, 30, 60, 120] },
     });
     this.events = {
       upload_busy: meter.createCounter('portal.upload_busy', {
@@ -114,6 +125,11 @@ export class TelemetryService implements OnApplicationShutdown {
   /** Counts one occurrence of a named event (`GET /metrics`: `portal_upload_busy_total`, ...). */
   count(event: TelemetryEvent): void {
     this.events[event].add(1);
+  }
+
+  /** Records one phase of an assistant message; `state` is the reply's (`ok`, `paused`, `budget`, `unavailable`). */
+  observeAssistantPhase(phase: AssistantPhaseTiming, seconds: number, state: string): void {
+    this.assistantPhase.record(seconds, { phase, state });
   }
 
   /** Starts the server span for a request. Pass the result to `finishRequest`. */

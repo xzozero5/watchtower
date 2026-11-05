@@ -3,6 +3,9 @@ import {
   buildAiSettings,
   createAuditedLlm,
   createLiveProvider,
+  isAssistantRequest,
+  limitConcurrency,
+  warnIfSingleProcessAssumptionBroken,
   createRedactor,
   loadPromptCatalog,
   applyRedactionNer,
@@ -24,7 +27,6 @@ import {
 
 import type { ApiConfig } from '../config/config.js';
 import type { AppLogger } from '../logging/logger.js';
-import { isAssistantRequest, limitConcurrency } from './concurrency-limit.js';
 
 /** DI token of the AI layer as the api uses it (T-134, ADR-023). */
 export const AI_RUNTIME = Symbol('AI_RUNTIME');
@@ -69,6 +71,7 @@ export interface AiRuntimeOptions {
     | 'AI_MODEL_PRICES'
     | 'APP_ENCRYPTION_KEY'
     | 'AI_API_MAX_CONCURRENCY'
+    | 'API_REPLICAS'
     | 'CLAUDE_CLI_BRIDGE_URL'
     | 'CLAUDE_CLI_BRIDGE_TOKEN'
   >;
@@ -122,6 +125,10 @@ export function createApiAiRuntime(options: AiRuntimeOptions): AiRuntime {
   } else if (problems.length > 0) {
     provider = null;
   } else {
+    // C-19: the slot counters are per process; say so when the deployment is not one replica.
+    warnIfSingleProcessAssumptionBroken('api', config.API_REPLICAS, (fields, message) => {
+      logger.warn(fields, message);
+    });
     provider = limitConcurrency(
       createLiveProvider({
         kind,

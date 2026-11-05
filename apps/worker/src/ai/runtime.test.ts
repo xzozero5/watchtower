@@ -1,7 +1,7 @@
 import type { AiRunSink } from '@watchtower/ai';
 import type { Database } from '@watchtower/db';
 import { createAiRunRecorder } from '@watchtower/domain';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { createLogger } from '../logger.js';
 import { testConfig } from '../testing/support.js';
@@ -144,5 +144,54 @@ describe('createAiRuntime', () => {
   it('the domain recorder is an AiRunSink (compile-time pin of the structural match)', () => {
     const sink: AiRunSink = createAiRunRecorder({ db: {} as never });
     expect(typeof sink.record).toBe('function');
+  });
+});
+
+describe('createAiRuntime: AI slots of the worker (T-408, ADR-029 section 4)', () => {
+  const live = {
+    AI_PROVIDER: 'claude-cli',
+    AI_MODEL_DEEP: 'opus',
+    AI_MODEL_STANDARD: 'sonnet',
+    AI_MODEL_LIGHT: 'haiku',
+  };
+
+  it('caps a live provider at WORKER_AI_MAX_CONCURRENCY (default 2), so api 2 + worker 2 = bridge 4', () => {
+    const config = testConfig(live);
+    const runtime = createAiRuntime(config, database, createLogger(config));
+    expect(config.WORKER_AI_MAX_CONCURRENCY).toBe(2);
+    expect(runtime.limiter?.snapshot()).toEqual({ max: 2, active: 0, queued: 0, maxQueued: 8 });
+    const other = testConfig({ ...live, WORKER_AI_MAX_CONCURRENCY: '1' });
+    const one = createAiRuntime(other, database, createLogger(other)).limiter;
+    // Background work (the insight tick) never waits: a slot or nothing, and not past the cap.
+    const slot = one?.tryAcquire();
+    expect(slot).not.toBeNull();
+    expect(one?.tryAcquire()).toBeNull();
+    slot?.();
+    expect(one?.tryAcquire()).not.toBeNull();
+  });
+
+  it('caps nothing on the mock, where there is no bridge to protect', () => {
+    const config = testConfig();
+    expect(createAiRuntime(config, database, createLogger(config)).limiter).toBeNull();
+  });
+
+  it('refuses a cap outside 1 to 16', () => {
+    expect(() => testConfig({ WORKER_AI_MAX_CONCURRENCY: '0' })).toThrow();
+    expect(() => testConfig({ WORKER_AI_MAX_CONCURRENCY: '17' })).toThrow();
+  });
+
+  it('warns at boot when more than one worker process runs (C-19) and stays quiet for one', () => {
+    const config = testConfig({ ...live, WORKER_REPLICAS: '2' });
+    const logger = createLogger(config);
+    const warn = vi.spyOn(logger, 'warn');
+    createAiRuntime(config, database, logger);
+    expect(warn).toHaveBeenCalledWith(
+      expect.objectContaining({ who: 'worker', replicas: 2 }),
+      expect.stringContaining('per process'),
+    );
+    const quiet = createLogger(testConfig(live));
+    const none = vi.spyOn(quiet, 'warn');
+    createAiRuntime(testConfig(live), database, quiet);
+    expect(none).not.toHaveBeenCalled();
   });
 });

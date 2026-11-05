@@ -57,7 +57,10 @@ export const assistantMessage = pgTable(
       .default({})
       .$type<{ page?: string; ticket?: string; entity?: { kind: string; ref: string } }>(),
     /** The evidence of an answer as `{kind, id}` only (ADR-029 section 3); label and href are rebuilt on read. */
-    evidence: jsonb('evidence').notNull().default([]).$type<{ kind: string; id: string }[]>(),
+    evidence: jsonb('evidence')
+      .notNull()
+      .default([])
+      .$type<{ kind: string; id: string; claim?: number }[]>(),
     /** How the turn was answered; null for the turns before migration 0112. */
     path: text('path').$type<'facts_only' | 'llm1' | 'llm2'>(),
     tools: jsonb('tools')
@@ -164,4 +167,24 @@ export const assistantMemory = pgTable(
     index('assistant_memory_user_idx').on(table.userId, table.createdAt.desc()),
     index('assistant_memory_expires_idx').on(table.expiresAt),
   ],
+);
+
+/** A thumbs-up or -down on an answer of the assistant or on an embedded insight (ADR-029 section 5, migration 0115). No text. */
+export const assistantFeedback = pgTable(
+  'assistant_feedback',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    targetKind: text('target_kind').notNull().$type<'message' | 'insight'>(),
+    /** No foreign key: the target outlives (or is outlived by) the rating on purpose. */
+    targetId: uuid('target_id').notNull(),
+    element: text('element'),
+    rating: text('rating').notNull().$type<'up' | 'down'>(),
+    reason: text('reason'),
+    createdAt: timestamptz('created_at').notNull().defaultNow(),
+    updatedAt: timestamptz('updated_at').notNull().defaultNow(),
+  },
+  (table) => [index('assistant_feedback_updated_idx').on(table.updatedAt)],
 );

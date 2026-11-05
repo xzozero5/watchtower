@@ -1,15 +1,19 @@
 import { randomUUID } from 'node:crypto';
 
-import { HttpStatus, Inject, Injectable } from '@nestjs/common';
-import { runAssistantTurn } from '@watchtower/ai';
+import { HttpStatus, Inject, Injectable, Optional } from '@nestjs/common';
+import { observeQueue, runAssistantTurn, type LimitRejection } from '@watchtower/ai';
 import { schema, type Database } from '@watchtower/db';
 import { evaluateBudget, readAiUsage, readSwitchState, resolveAiCaps } from '@watchtower/domain';
 import {
+  ASSISTANT_CONVERSATION_LIST_LIMIT,
   ASSISTANT_LIMITS,
   AUDIT_ACTIONS,
   makeClaim,
+  type AssistantContextChip,
+  type AssistantConversationList,
   type AssistantLocale,
   type AssistantMessageRequest,
+  type AssistantPhaseEvent,
   type AssistantReply,
   type AssistantStarters,
   type AssistantStartersQuery,
@@ -43,8 +47,10 @@ import { StatusAdminService } from '../statuspage/status-admin.service.js';
 import { SlaRemaining } from '../tickets/sla-remaining.js';
 import { TICKET_KEYS, type TicketKeys } from '../tickets/ticket-keys.js';
 import { TicketReader } from '../tickets/ticket-reader.js';
+import { TelemetryService } from '../telemetry/telemetry.service.js';
 import { ToolRunner } from '../tools/tool-runner.service.js';
 import { isMasked, proposalKindsFor, startersFor } from './assistant-access.js';
+import { ticketHref } from './assistant-hrefs.js';
 import { ContextResolver } from './context-resolver.js';
 import { AssistantProposals } from './assistant-proposals.js';
 import { buildAssistantTools } from './assistant-tools.js';
@@ -76,6 +82,30 @@ export function localeOf(requested: AssistantLocale | undefined, text: string): 
 interface Standing {
   readonly state: AssistantState;
   readonly reason: string | null;
+}
+
+/**
+ * Where the SSE transport hooks into one message (ADR-029 section 4). `accepted` is called once, when the request is valid
+ * and the turn is about to begin: the transport opens its stream there, so everything that is a plain HTTP error (busy,
+ * rate limit, a conversation or ticket that is not yours) still is one. `phase` carries the events between; the final
+ * `reply` or `error` is sent by the transport from what `message` returns, after the audit row is written (C-4).
+ */
+export interface MessageSink {
+  accepted(): void;
+  phase(event: AssistantPhaseEvent): void;
+}
+
+/** Milliseconds of one message by phase (T-408): in the audit row and in `assistant.message.phase.duration`. */
+export interface MessageTimings {
+  /** From the request to the first event the person could see (the end of the checks, when the stream opens). */
+  firstEventMs: number;
+  queueMs: number;
+  contextMs: number;
+  /** The first model call, which picks the tools. */
+  planMs: number;
+  toolsMs: number;
+  answerMs: number;
+  totalMs: number;
 }
 
 /**
@@ -117,6 +147,7 @@ export class AssistantService {
     @Inject(ShiftNotes) private readonly shiftNotes: ShiftNotes,
     @Inject(ShiftsService) private readonly shifts: ShiftsService,
     @Inject(AssistantReadServices) private readonly modules: AssistantReadServices,
+    @Optional() @Inject(TelemetryService) private readonly telemetry?: TelemetryService,
   ) {}
 
   // --- state ------------------------------------------------------------------------------------
@@ -250,6 +281,7 @@ export class AssistantService {
     principal: Principal,
     body: AssistantMessageRequest,
     signal?: AbortSignal,
+    sink?: MessageSink,
   ): Promise<AssistantReply> {
     if (this.inFlight.has(principal.userId)) {
       throw new ApiHttpError(
@@ -260,7 +292,7 @@ export class AssistantService {
     }
     this.inFlight.add(principal.userId);
     try {
-      return await this.answer(principal, body, signal);
+      return await this.answer(principal, body, signal, sink);
     } finally {
       this.inFlight.delete(principal.userId);
     }
@@ -270,7 +302,10 @@ export class AssistantService {
     principal: Principal,
     body: AssistantMessageRequest,
     signal: AbortSignal | undefined,
+    sink: MessageSink | undefined,
   ): Promise<AssistantReply> {
+    const startedAt = performance.now();
+    const since = (from: number): number => Math.round(performance.now() - from);
     const locale = localeOf(body.locale, body.text);
     await this.limiter.enforce(
       'assistant-message',
@@ -287,13 +322,33 @@ export class AssistantService {
       ticketKey = key;
     }
 
+    const conversationId = await this.conversationFor(principal, body.conversationId, locale);
+    // Everything that is an HTTP error has passed: the stream opens now, and the person sees `queued` at once.
+    sink?.accepted();
+    sink?.phase({ phase: 'queued', position: 0 });
+    const firstEventMs = since(startedAt);
+
     // The other chips (entity, selection): each ref is read with the reader of its module under this person's access.
     // One that does not exist and one that is not theirs are dropped the same way (ADR-029 section 1).
+    const contextStarted = performance.now();
     const resolved = await this.contexts.resolve(body.context, principal);
     if (ticketKey === undefined && resolved.entity?.kind === 'ticket')
       ticketKey = resolved.entity.label;
-
-    const conversationId = await this.conversationFor(principal, body.conversationId, locale);
+    const chips: AssistantContextChip[] = [...resolved.chips];
+    if (
+      body.context?.ticket !== undefined &&
+      ticketKey !== undefined &&
+      !chips.some((chip) => chip.label === ticketKey)
+    ) {
+      chips.unshift({
+        kind: 'ticket',
+        status: 'resolved',
+        label: ticketKey,
+        href: ticketHref(ticketKey),
+      });
+    }
+    sink?.phase({ phase: 'context', chips });
+    const contextMs = since(contextStarted);
     // Every redactor of this message knows the staff of the instance, so a colleague's name in what the
     // person typed, or in a ticket, is replaced before a model sees it, and before it is stored (N4).
     const earlier = await this.ticketsOfConversation(conversationId);
@@ -342,6 +397,35 @@ export class AssistantService {
       reason = 'names_incomplete';
     }
 
+    // Where the turn spends its time (T-408), and where its call stands in the queue (SSE `queued`).
+    const turnStarted = performance.now();
+    const clock = {
+      queueMs: 0,
+      waitingSince: null as number | null,
+      lastPosition: 0,
+      rejected: null as LimitRejection | null,
+      toolsAt: null as number | null,
+      answerAt: null as number | null,
+    };
+    const stopWaiting = (): void => {
+      if (clock.waitingSince !== null) clock.queueMs += performance.now() - clock.waitingSince;
+      clock.waitingSince = null;
+    };
+    const observer = {
+      onPosition: (position: number): void => {
+        if (position > 0) clock.waitingSince ??= performance.now();
+        else stopWaiting();
+        if (position !== clock.lastPosition) {
+          clock.lastPosition = position;
+          sink?.phase({ phase: 'queued', position });
+        }
+      },
+      onRejected: (why: LimitRejection): void => {
+        stopWaiting();
+        clock.rejected = why;
+      },
+    };
+
     if (standing.state === 'ok' && listsWhole) {
       const host = buildAssistantTools(
         {
@@ -376,25 +460,40 @@ export class AssistantService {
         },
       );
       try {
-        const outcome = await runAssistantTurn(deps, {
-          scope: conversationId,
-          locale,
-          role: principal.role,
-          ...(body.context?.page === undefined ? {} : { page: body.context.page }),
-          ...(ticketKey === undefined ? {} : { ticketInView: ticketKey }),
-          today: new Date().toISOString().slice(0, 10),
-          text: body.text,
-          history,
-          host,
-          proposalKinds: proposalKindsFor(principal),
-          limits: {
-            maxToolCalls: ASSISTANT_LIMITS.maxToolCalls,
-            maxClaims: ASSISTANT_LIMITS.maxClaims,
-            maxProposals: ASSISTANT_LIMITS.maxProposals,
-          },
-          masked: isMasked(principal),
-          ...(signal === undefined ? {} : { abortSignal: signal }),
-        });
+        const outcome = await observeQueue(observer, () =>
+          runAssistantTurn(deps, {
+            scope: conversationId,
+            locale,
+            role: principal.role,
+            ...(body.context?.page === undefined ? {} : { page: body.context.page }),
+            ...(ticketKey === undefined ? {} : { ticketInView: ticketKey }),
+            today: new Date().toISOString().slice(0, 10),
+            text: body.text,
+            history,
+            host,
+            proposalKinds: proposalKindsFor(principal),
+            limits: {
+              maxToolCalls: ASSISTANT_LIMITS.maxToolCalls,
+              maxClaims: ASSISTANT_LIMITS.maxClaims,
+              maxProposals: ASSISTANT_LIMITS.maxProposals,
+            },
+            masked: isMasked(principal),
+            ...(signal === undefined ? {} : { abortSignal: signal }),
+            onPhase: (event) => {
+              if (event.phase === 'tool') {
+                if (event.status === 'running') clock.toolsAt ??= performance.now();
+                sink?.phase({
+                  phase: 'tool',
+                  name: event.name.slice(0, 64),
+                  status: event.status,
+                });
+              } else {
+                clock.answerAt = performance.now();
+                sink?.phase({ phase: 'answering' });
+              }
+            },
+          }),
+        );
         if (outcome.status === 'ok') {
           claims = outcome.claims;
           redactedAnswer = outcome.redactedText;
@@ -405,6 +504,10 @@ export class AssistantService {
           prepared.push(...outcome.proposals.map((intent) => ({ intent })));
         } else {
           ({ state, reason } = mapReason(outcome.reason));
+          // The limiter said no (the queue is full, or the wait ran out): say that, not a generic "unavailable".
+          if (outcome.reason === 'provider_unavailable' && clock.rejected !== null) {
+            reason = QUEUE_REASONS[clock.rejected] ?? reason;
+          }
           tools = [];
         }
       } catch (error) {
@@ -445,6 +548,7 @@ export class AssistantService {
         userId: principal.userId,
         role: 'assistant',
         body: answerBody,
+        evidence: evidenceOf(claims),
         tools,
         aiRunIds: runIds,
         inputTokens: usage.inputTokens,
@@ -502,16 +606,21 @@ export class AssistantService {
       claims.push(makeClaim(NOTES.couldNot[locale](miss.kind, why[locale])));
     }
 
-    // Tickets whose content the assistant read for this person are personal data read (PRD 8.2): one
-    // `pii.read` row each, like the ticket page, so the log says who looked at which ticket.
-    for (const [ticketId] of read) {
-      await this.audit.recordPiiRead({
-        actor: { type: 'user', id: principal.userId },
-        targetType: 'ticket',
-        targetId: ticketId,
-        metadata: { via: 'assistant', conversationId },
-      });
-    }
+    // The time of this message by phase, for the audit row and the metrics (T-408).
+    const turnEnded = performance.now();
+    const planEnd = clock.toolsAt ?? clock.answerAt ?? turnEnded;
+    const timings: MessageTimings = {
+      firstEventMs,
+      queueMs: Math.round(clock.queueMs),
+      contextMs,
+      planMs: Math.max(0, Math.round(planEnd - turnStarted - clock.queueMs)),
+      toolsMs:
+        clock.toolsAt !== null && clock.answerAt !== null
+          ? Math.round(clock.answerAt - clock.toolsAt)
+          : 0,
+      answerMs: clock.answerAt === null ? 0 : Math.round(turnEnded - clock.answerAt),
+      totalMs: since(startedAt),
+    };
 
     for (const entity of readOther.values()) {
       await this.audit.recordPiiRead({
@@ -522,23 +631,23 @@ export class AssistantService {
       });
     }
 
-    AuditScope.set({
-      action: AUDIT_ACTIONS.assistantMessage,
-      targetType: 'assistant_conversation',
-      targetId: conversationId,
-      metadata: {
-        state,
-        reason,
-        locale,
-        tools: tools.map((tool) => `${tool.name}:${tool.status}`),
-        runs: runIds.length,
-        proposals: cards.map((card) => card.kind),
-        masked: isMasked(principal),
-        ticketIds: [...read.keys()],
-        // `context_dropped` (T-400 C-20): how many and of which kind, never the refs that were sent.
-        contextDropped: countByKind(resolved.dropped),
-      },
+    // The audit row goes in BEFORE the reply leaves (T-400 C-4): the interceptor writes after the handler, which is too late
+    // for a stream, so the service writes it, in one transaction with the `pii.read` rows of what was read, and tells the
+    // interceptor it is done. If it cannot be written the person gets no answer (an error, never a reply without a record).
+    await this.auditBeforeReply(principal, conversationId, read, {
+      state,
+      reason,
+      locale,
+      tools: tools.map((tool) => `${tool.name}:${tool.status}`),
+      runs: runIds.length,
+      proposals: cards.map((card) => card.kind),
+      masked: isMasked(principal),
+      ticketIds: [...read.keys()],
+      // `context_dropped` (T-400 C-20): how many and of which kind, never the refs that were sent.
+      contextDropped: countByKind(resolved.dropped),
+      latencyMs: timings,
     });
+    this.observe(timings, state);
     return {
       conversationId,
       messageId,
@@ -548,6 +657,110 @@ export class AssistantService {
       claims,
       tools,
       proposals: cards,
+    };
+  }
+
+  /**
+   * `assistant.message` and the `pii.read` rows of this turn, written together before the reply is sent (C-4). Any failure
+   * is a 503 `assistant_audit_failed`: on a stream that becomes an `error` event, on JSON a plain error. The audit
+   * interceptor is told the row exists so it does not write a second one.
+   */
+  private async auditBeforeReply(
+    principal: Principal,
+    conversationId: string,
+    read: ReadonlyMap<string, string>,
+    metadata: Record<string, unknown>,
+  ): Promise<void> {
+    const scope = AuditScope.current();
+    const actor = { type: 'user' as const, id: principal.userId };
+    const request = { ip: scope?.meta.ip ?? null, requestId: scope?.meta.requestId ?? null };
+    try {
+      await this.database.db.transaction(async (tx) => {
+        // Tickets whose content the assistant read for this person are personal data read (PRD 8.2): one
+        // `pii.read` row each, like the ticket page, so the log says who looked at which ticket.
+        for (const [ticketId] of read) {
+          await this.audit.record(
+            {
+              actor,
+              action: 'pii.read',
+              targetType: 'ticket',
+              targetId: ticketId,
+              metadata: { via: 'assistant', conversationId },
+              ...request,
+            },
+            tx,
+          );
+        }
+        await this.audit.record(
+          {
+            actor,
+            action: AUDIT_ACTIONS.assistantMessage,
+            targetType: 'assistant_conversation',
+            targetId: conversationId,
+            metadata: { method: 'POST', route: '/v1/assistant/messages', status: 200, ...metadata },
+            ...request,
+          },
+          tx,
+        );
+      });
+    } catch (error) {
+      this.logger.error({ err: error }, 'assistant audit write failed: the reply is withheld');
+      throw new ApiHttpError(
+        HttpStatus.SERVICE_UNAVAILABLE,
+        'assistant_audit_failed',
+        'The answer could not be recorded, so it was not sent',
+      );
+    }
+    AuditScope.set({ persisted: true });
+  }
+
+  private observe(timings: MessageTimings, state: AssistantState): void {
+    const seconds = (ms: number): number => ms / 1000;
+    const t = this.telemetry;
+    if (t === undefined) return;
+    t.observeAssistantPhase('first_event', seconds(timings.firstEventMs), state);
+    t.observeAssistantPhase('queue', seconds(timings.queueMs), state);
+    t.observeAssistantPhase('context', seconds(timings.contextMs), state);
+    t.observeAssistantPhase('tools', seconds(timings.toolsMs), state);
+    t.observeAssistantPhase('answer', seconds(timings.answerMs), state);
+    t.observeAssistantPhase('total', seconds(timings.totalMs), state);
+  }
+
+  /** The person's own conversations, newest first (ADR-029 section 3); the messages stay in the database. */
+  async conversations(principal: Principal): Promise<AssistantConversationList> {
+    const { assistantConversation: table } = schema;
+    const rows = await this.database.db
+      .select({
+        id: table.id,
+        locale: table.locale,
+        createdAt: table.createdAt,
+        updatedAt: table.updatedAt,
+        count: sql<string>`(SELECT count(*) FROM assistant_message m WHERE m.conversation_id = assistant_conversation.id)`,
+        preview: sql<
+          string | null
+        >`(SELECT left(m.body, 120) FROM assistant_message m WHERE m.conversation_id = assistant_conversation.id AND m.role = 'user' ORDER BY m.created_at ASC LIMIT 1)`,
+      })
+      .from(table)
+      .where(
+        and(
+          eq(table.userId, principal.userId),
+          gt(
+            table.createdAt,
+            sql`now() - make_interval(days => ${this.config.ASSISTANT_RETENTION_DAYS})`,
+          ),
+        ),
+      )
+      .orderBy(desc(table.updatedAt))
+      .limit(ASSISTANT_CONVERSATION_LIST_LIMIT);
+    return {
+      items: rows.map((row) => ({
+        id: row.id,
+        locale: row.locale === 'th' ? 'th' : 'en',
+        createdAt: row.createdAt.toISOString(),
+        updatedAt: row.updatedAt.toISOString(),
+        messageCount: Number(row.count),
+        preview: row.preview,
+      })),
     };
   }
 
@@ -620,6 +833,31 @@ export class AssistantService {
       targetId: id,
     });
   }
+}
+
+/** Why the limiter turned a call away, as the stable codes the person's screen reads. */
+const QUEUE_REASONS: Readonly<Partial<Record<LimitRejection, string>>> = {
+  queue_full: 'assistant_queue_full',
+  wait_timeout: 'assistant_wait_timeout',
+};
+
+/**
+ * The refs behind each claim of an answer, `{kind, id, claim}`, stored with the message: label and href are built again
+ * on read. "Remember this" copies the refs of the one claim it pins (T-400 C-7). At most 40, one of each per claim.
+ */
+function evidenceOf(claims: readonly Claim[]): { kind: string; id: string; claim: number }[] {
+  const rows: { kind: string; id: string; claim: number }[] = [];
+  claims.forEach((claim, index) => {
+    const seen = new Set<string>();
+    for (const item of claim.evidence) {
+      if (item.ref === undefined) continue;
+      const key = `${item.ref.kind}\u0000${item.ref.id}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      rows.push({ kind: item.ref.kind, id: item.ref.id, claim: index });
+    }
+  });
+  return rows.slice(0, 40);
 }
 
 function countByKind(dropped: readonly { kind: string }[]): Record<string, number> {

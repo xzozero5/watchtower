@@ -3,13 +3,16 @@ import {
   MockEmbeddingProvider,
   createAuditedEmbedder,
   createAuditedLlm,
+  createConcurrencyLimiter,
   createLocalEmbeddingProvider,
   createRedactor,
   embeddingSettings,
   loadPromptCatalog,
+  warnIfSingleProcessAssumptionBroken,
   applyRedactionNer,
   type AgentDeps,
   type AuditedEmbedder,
+  type ConcurrencyLimiter,
   type EmbeddingProvider,
   type FetchLike,
   type LlmProvider,
@@ -86,6 +89,12 @@ export interface AiRuntime {
   readonly embedder: AuditedEmbedder;
   /** The provider and model settings in force (PRD section 6.7), for the embedding model among them. */
   readonly settings: SettingsSource;
+  /**
+   * The slots of the live provider (`WORKER_AI_MAX_CONCURRENCY`, shared limiter of `@watchtower/ai`): background
+   * work that must never wait (the insight tick, T-418) asks `tryAcquire()` before it calls. `null` on the mock and
+   * on providers a test passes in: nothing is capped there.
+   */
+  readonly limiter: ConcurrencyLimiter | null;
   /** Can the selected LLM provider be called right now? Reads the credentials; never returns a value. */
   readiness(): Promise<AiReadiness>;
 }
@@ -173,27 +182,37 @@ export function createAiRuntime(
   };
   const credentials = overrides.credentials ?? storeCredentials(config, database);
   const kind = config.AI_PROVIDER;
+  // The worker's own share of the bridge (api 2 + worker 2 = 4). No reserved slot: every job here is the same class.
+  const limiter =
+    overrides.providers === undefined && kind !== 'mock'
+      ? createConcurrencyLimiter({ maxConcurrent: config.WORKER_AI_MAX_CONCURRENCY })
+      : null;
+  if (limiter !== null) {
+    warnIfSingleProcessAssumptionBroken('worker', config.WORKER_REPLICAS, (fields, message) => {
+      logger.warn(fields, message);
+    });
+  }
+  const liveProvider = (live: Exclude<ProviderKind, 'mock' | 'local'>): LlmProvider => {
+    const adapter = createLiveProvider({
+      kind: live,
+      settings: built.settings,
+      credentials,
+      claudeCli: {
+        bridgeUrl: config.CLAUDE_CLI_BRIDGE_URL ?? DEFAULT_CLAUDE_CLI_BRIDGE_URL,
+        token: config.CLAUDE_CLI_BRIDGE_TOKEN,
+      },
+      fetch: overrides.fetch ?? ((input, init) => globalThis.fetch(input, init)),
+      ...(overrides.vertexAccessToken === undefined
+        ? {}
+        : { vertexAccessToken: overrides.vertexAccessToken }),
+      logger,
+      now: () => now().getTime(),
+    });
+    return limiter === null ? adapter : limiter.limit(adapter);
+  };
   const providers: Partial<Record<ProviderKind, LlmProvider>> =
     overrides.providers ??
-    (kind === 'mock'
-      ? { mock: new DevMockLlmProvider() }
-      : {
-          [kind]: createLiveProvider({
-            kind,
-            settings: built.settings,
-            credentials,
-            claudeCli: {
-              bridgeUrl: config.CLAUDE_CLI_BRIDGE_URL ?? DEFAULT_CLAUDE_CLI_BRIDGE_URL,
-              token: config.CLAUDE_CLI_BRIDGE_TOKEN,
-            },
-            fetch: overrides.fetch ?? ((input, init) => globalThis.fetch(input, init)),
-            ...(overrides.vertexAccessToken === undefined
-              ? {}
-              : { vertexAccessToken: overrides.vertexAccessToken }),
-            logger,
-            now: () => now().getTime(),
-          }),
-        });
+    (kind === 'mock' ? { mock: new DevMockLlmProvider() } : { [kind]: liveProvider(kind) });
   const sink = createAiRunRecorder({ db: database.db });
   const llm = createAuditedLlm({
     guard,
@@ -267,6 +286,7 @@ export function createAiRuntime(
     agentDeps,
     embedder,
     settings,
+    limiter,
     classifierFor: createAiClassifierFactory({ agentDeps, database, logger }),
     readiness,
   };

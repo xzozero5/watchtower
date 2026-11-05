@@ -64,6 +64,8 @@ beforeEach(async () => {
     'assistant_conversation',
     'assistant_proposal',
     'assistant_usage',
+    'assistant_memory',
+    'assistant_feedback',
     'ai_summary',
     'ai_element_insight',
   ]) {
@@ -175,6 +177,29 @@ describe('purgeExpired', () => {
     expect(result.assistant_usage).toBe(1);
     expect(result.ai_summary).toBe(1);
     expect(await count('ai_summary', `locale = 'th'`)).toBe(1);
+  });
+
+  it('deletes pinned facts once they passed their own expiry, and ratings after the conversation period (T-408)', async () => {
+    await owner().query(
+      `INSERT INTO assistant_memory (user_id, body, expires_at)
+       VALUES ($1, 'expired a minute ago', now() - interval '1 minute'),
+              ($1, 'expired long ago', now() - interval '60 days'),
+              ($1, 'still live', now() + interval '5 days')`,
+      [userId],
+    );
+    await owner().query(
+      `INSERT INTO assistant_feedback (user_id, target_kind, target_id, rating, updated_at)
+       VALUES ($1, 'message', gen_random_uuid(), 'up', now() - interval '45 days'),
+              ($1, 'message', gen_random_uuid(), 'down', now() - interval '2 days')`,
+      [userId],
+    );
+    const result = await purgeExpired({ pool: app }, {});
+    // No grace: a memory is gone the moment it expired (the api never returns it either).
+    expect(result.assistant_memory).toBe(2);
+    expect(await count('assistant_memory')).toBe(1);
+    expect(await count('assistant_memory', `body = 'still live'`)).toBe(1);
+    expect(result.assistant_feedback).toBe(1);
+    expect(await count('assistant_feedback')).toBe(1);
   });
 
   it('deletes element narrations a day after they expired and keeps the live ones (T-414)', async () => {
@@ -316,6 +341,8 @@ describe('purgeExpired', () => {
       assistant_conversation: 0,
       assistant_proposal: 0,
       assistant_usage: 0,
+      assistant_memory: 0,
+      assistant_feedback: 0,
       ai_summary: 0,
       ai_element_insight: 0,
       more: false,
@@ -400,6 +427,8 @@ describe('0012_expiry_indexes', () => {
       'assistant_conversation',
       'assistant_proposal',
       'assistant_usage',
+      'assistant_memory',
+      'assistant_feedback',
       'ai_summary',
     ]) {
       const privileges = await owner().query<{ del: boolean; trunc: boolean }>(
