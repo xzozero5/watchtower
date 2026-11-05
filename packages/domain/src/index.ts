@@ -1257,3 +1257,42 @@ export {
   type NewWeeklyBrief,
   type WeeklySlotConfig,
 } from './reports/weekly-brief.js';
+
+// Read-only readers shared by a GET route and an embedded insight (ADR-029 section 9, T-415).
+export {
+  AtRiskRule,
+  atInstant,
+  readTicketStats,
+  runningDueSortKey,
+  runningDueSql,
+  runningKindSql,
+  slaClassSql,
+} from './tickets/sla-stats.js';
+export {
+  readShiftOverview,
+  rosterQuery,
+  sessionQuery,
+  shiftTimezone,
+  toRosterEntry,
+  toSession,
+  type RosterViewRow,
+  type SessionViewRow,
+} from './shifts/overview.js';
+export {
+  readDashboardQueueSla,
+  readDashboardSla,
+  readDashboardVolume,
+  readDashboardWindow,
+  type DashboardQueueSla,
+  type DashboardSla,
+  type DashboardVolume,
+  type DashboardWindow,
+} from './dashboard/ops.js';
+export {
+  readAlertNoise,
+  readAlertNoiseByService,
+  readAlertNoiseTotals,
+  type NoiseTotals,
+} from './alerts/noise.js';
+export { readOpenIncidents, summarizeIncidents, type IncidentRow } from './incidents/summary.js';
+export type { SqlExecutor } from './types.js';

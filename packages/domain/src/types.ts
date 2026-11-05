@@ -10,6 +10,9 @@ export type DbTransaction = Parameters<Parameters<Database['db']['transaction']>
 /** Anything that can `select`: the database handle or a transaction. */
 export type ReadExecutor = Pick<Database['db'], 'select'>;
 
+/** A read executor that can also run a raw `sql` aggregate: the database handle, a transaction, or a read-only pool's handle. */
+export type SqlExecutor = Pick<Database['db'], 'select' | 'execute'>;
+
 /** Who does something: written to the audit log and the ticket event log. */
 export interface Actor {
   readonly type: AuditActorType;

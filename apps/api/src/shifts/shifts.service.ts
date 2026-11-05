@@ -1,13 +1,12 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { schema, type Database } from '@watchtower/db';
+import { readShiftOverview } from '@watchtower/domain';
 import {
   AUDIT_ACTIONS,
-  HANDOFF_ACK_ALERT_MINUTES,
   SHIFT_LATE_GRACE_MINUTES,
   addDaysToDateKey,
   crossesMidnight,
   isGateOpen,
-  isHandoffRequiredPriority,
   lateMinutes,
   localDateKeyOf,
   pickRosterWindow,
@@ -25,11 +24,9 @@ import {
   type ShiftOverview,
   type ShiftSession,
   type ShiftStatus,
-  type TicketPriority,
   type UpdateShiftDefinition,
 } from '@watchtower/shared';
-import { and, asc, eq, gte, inArray, isNull, sql } from 'drizzle-orm';
-import { alias } from 'drizzle-orm/pg-core';
+import { and, asc, eq, isNull, sql } from 'drizzle-orm';
 
 import { AuditService } from '../audit/audit.service.js';
 import { badRequest, conflict, forbidden, notFound } from '../auth/http-errors.js';
@@ -503,156 +500,11 @@ export class ShiftsService {
    * rostered shift whose start plus the grace period passed with nobody clocked in against it.
    * The alert to the lead itself (R-7.3, R-7.6) belongs to the notification task (T-105).
    */
-  async overview(): Promise<ShiftOverview> {
-    const db = this.database.db;
-    const now = this.now();
-    const timezone = await shiftTimezone(db);
-    const today = localDateKeyOf(now, timezone);
-
-    const open = await sessionQuery(db)
-      .where(isNull(schema.shiftSession.clockedOutAt))
-      .orderBy(asc(schema.shiftSession.clockedInAt));
-
-    const roster = await rosterQuery(db)
-      .where(
-        sql`${schema.rosterEntry.workDate} BETWEEN ${addDaysToDateKey(today, -1)}::date AND ${addDaysToDateKey(today, 0)}::date`,
-      )
-      .orderBy(asc(schema.rosterEntry.workDate), asc(schema.shiftDefinition.startsAt));
-    const clockedAgainst = new Set(
-      (
-        await db
-          .select({ id: schema.shiftSession.rosterEntryId })
-          .from(schema.shiftSession)
-          .where(
-            inArray(
-              schema.shiftSession.rosterEntryId,
-              roster.length === 0
-                ? ['00000000-0000-0000-0000-000000000000']
-                : roster.map((row) => row.entry.id),
-            ),
-          )
-      ).flatMap((row) => (row.id === null ? [] : [row.id])),
-    );
-    const noShows = roster
-      .filter((row) => {
-        const window = shiftWindow(row.shift, row.entry.workDate, timezone);
-        return (
-          !clockedAgainst.has(row.entry.id) &&
-          now.getTime() > window.start.getTime() + SHIFT_LATE_GRACE_MINUTES * 60_000 &&
-          now.getTime() < window.end.getTime()
-        );
-      })
-      .map((row) => toRosterEntry(row, timezone));
-
-    const since = new Date(now.getTime() - 7 * 24 * 3_600_000);
-    const fromUser = schema.users;
-    const pending = await db
-      .select({
-        itemId: schema.handoffItem.id,
-        handoffId: schema.handoff.id,
-        title: schema.handoffItem.title,
-        ticketNumber: schema.ticket.number,
-        fromId: schema.handoff.fromUserId,
-        fromName: fromUser.name,
-        confirmedAt: schema.handoff.confirmedAt,
-      })
-      .from(schema.handoffItem)
-      .innerJoin(schema.handoff, eq(schema.handoff.id, schema.handoffItem.handoffId))
-      .innerJoin(fromUser, eq(fromUser.id, schema.handoff.fromUserId))
-      .leftJoin(schema.ticket, eq(schema.ticket.id, schema.handoffItem.ticketId))
-      .where(
-        and(
-          eq(schema.handoff.status, 'confirmed'),
-          gte(schema.handoff.confirmedAt, since),
-          eq(schema.handoffItem.requiresAck, true),
-          eq(schema.handoffItem.ackStatus, 'pending'),
-        ),
-      )
-      .orderBy(asc(schema.handoff.confirmedAt), asc(schema.handoffItem.position));
-    const alertMs = HANDOFF_ACK_ALERT_MINUTES * 60_000;
-    const items = pending.map((row) => {
-      const confirmed = row.confirmedAt ?? now;
-      return {
-        itemId: row.itemId,
-        handoffId: row.handoffId,
-        title: row.title,
-        ticketKey: row.ticketNumber === null ? null : this.ticketKey(row.ticketNumber),
-        from: { id: row.fromId, name: row.fromName },
-        confirmedAt: confirmed.toISOString(),
-        overdue: now.getTime() - confirmed.getTime() > alertMs,
-      };
+  overview(): Promise<ShiftOverview> {
+    return readShiftOverview(this.database.db, {
+      now: this.now(),
+      ticketKey: (number) => this.ticketKey(number),
     });
-    // A question counts as acknowledged, but until it is answered (accepted or reassigned) nobody
-    // owns the item. For P1 and P2 tickets that is shown to the lead, overdue after the same 30
-    // minutes, counted from the question. Any confirmed handoff counts, named recipient or not.
-    const askers = alias(schema.users, 'asker');
-    const asked = await db
-      .select({
-        itemId: schema.handoffItem.id,
-        handoffId: schema.handoff.id,
-        title: schema.handoffItem.title,
-        ticketNumber: schema.ticket.number,
-        priority: schema.ticket.priority,
-        fromId: schema.handoff.fromUserId,
-        fromName: schema.users.name,
-        askerId: schema.handoffItem.ackBy,
-        askerName: askers.name,
-        askedAt: schema.handoffItem.ackAt,
-      })
-      .from(schema.handoffItem)
-      .innerJoin(schema.handoff, eq(schema.handoff.id, schema.handoffItem.handoffId))
-      .innerJoin(schema.users, eq(schema.users.id, schema.handoff.fromUserId))
-      .leftJoin(schema.ticket, eq(schema.ticket.id, schema.handoffItem.ticketId))
-      .leftJoin(askers, eq(askers.id, schema.handoffItem.ackBy))
-      .where(
-        and(
-          eq(schema.handoffItem.ackStatus, 'question'),
-          eq(schema.handoff.status, 'confirmed'),
-          gte(schema.handoff.confirmedAt, since),
-        ),
-      )
-      .orderBy(asc(schema.handoffItem.ackAt));
-    const questionItems = asked
-      .flatMap((row) =>
-        row.ticketNumber !== null &&
-        row.priority !== null &&
-        isHandoffRequiredPriority(row.priority)
-          ? [{ ...row, ticketNumber: row.ticketNumber, priority: row.priority }]
-          : [],
-      )
-      .map((row) => {
-        const askedAt = row.askedAt ?? now;
-        return {
-          itemId: row.itemId,
-          handoffId: row.handoffId,
-          title: row.title,
-          ticketKey: this.ticketKey(row.ticketNumber),
-          priority: row.priority as TicketPriority,
-          from: { id: row.fromId, name: row.fromName },
-          askedBy:
-            row.askerId !== null && row.askerName !== null
-              ? { id: row.askerId, name: row.askerName }
-              : null,
-          askedAt: askedAt.toISOString(),
-          overdue: now.getTime() - askedAt.getTime() > alertMs,
-        };
-      });
-    return {
-      timezone,
-      generatedAt: now.toISOString(),
-      onShift: open.map(toSession),
-      noShows,
-      unacknowledged: {
-        count: items.length,
-        overdue: items.filter((item) => item.overdue).length,
-        items,
-      },
-      openQuestions: asked.length,
-      questions: {
-        overdue: questionItems.filter((item) => item.overdue).length,
-        items: questionItems,
-      },
-    };
   }
 
   private ticketKey(number: number): string {

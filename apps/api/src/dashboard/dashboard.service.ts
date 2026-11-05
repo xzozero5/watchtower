@@ -1,6 +1,11 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { orgScopeCondition, schema, type Database } from '@watchtower/db';
-import { billingPeriod } from '@watchtower/domain';
+import {
+  billingPeriod,
+  readDashboardSla,
+  readDashboardVolume,
+  readDashboardWindow,
+} from '@watchtower/domain';
 import {
   DASHBOARD_CFR_ATTRIBUTION_HOURS,
   DASHBOARD_KB_STALE_DAYS,
@@ -116,13 +121,14 @@ export class DashboardService {
     const since = sql`((date_trunc('day', now() AT TIME ZONE 'UTC') - make_interval(days => ${days - 1}::int)) AT TIME ZONE 'UTC')`;
     const openStatus = inArray(schema.ticket.status, [...OPEN_STATUSES]);
     const db = this.database.db;
+    // One start of the window for every block that needs it, so the day buckets and the window agree.
+    const window0 = await readDashboardWindow(db, days);
 
     const [
       queue,
       slaStats,
       queueGroups,
       volume,
-      previousVolume,
       sla,
       quality,
       csat,
@@ -173,57 +179,8 @@ export class DashboardService {
         sql`SELECT status, priority, count(*)::int AS n FROM ticket
           WHERE ${and_(openStatus, ticketScope)} GROUP BY status, priority`,
       ),
-      this.rows(
-        z.object({ channel: z.string(), day: z.string(), n: count }),
-        sql`SELECT channel, to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD') AS day, count(*)::int AS n
-          FROM ticket WHERE ${and_(sql`created_at >= ${since}`, ticketScope)} GROUP BY 1, 2`,
-      ),
-      // The same number of whole days right before the window (the trend chip, T-159).
-      this.one(
-        z.object({ n: count }),
-        sql`SELECT count(*)::int AS n FROM ticket
-          WHERE ${and_(
-            sql`created_at >= ${since} - make_interval(days => ${days}::int)`,
-            sql`created_at < ${since}`,
-            ticketScope,
-          )}`,
-      ),
-      this.one(
-        z.object({
-          frt_n: count,
-          frt_p50: maybeNumber,
-          frt_p90: maybeNumber,
-          ttr_n: count,
-          ttr_p50: maybeNumber,
-          ttr_p90: maybeNumber,
-          frt_eval: count,
-          frt_breached: count,
-          ttr_eval: count,
-          ttr_breached: count,
-        }),
-        sql`SELECT
-          count(*) FILTER (WHERE first_responded_at IS NOT NULL)::int AS frt_n,
-          percentile_cont(0.5) WITHIN GROUP (ORDER BY extract(epoch FROM first_responded_at - created_at)::float8)
-            FILTER (WHERE first_responded_at IS NOT NULL) AS frt_p50,
-          percentile_cont(0.9) WITHIN GROUP (ORDER BY extract(epoch FROM first_responded_at - created_at)::float8)
-            FILTER (WHERE first_responded_at IS NOT NULL) AS frt_p90,
-          count(*) FILTER (WHERE resolved_at IS NOT NULL)::int AS ttr_n,
-          percentile_cont(0.5) WITHIN GROUP (ORDER BY extract(epoch FROM resolved_at - created_at)::float8)
-            FILTER (WHERE resolved_at IS NOT NULL) AS ttr_p50,
-          percentile_cont(0.9) WITHIN GROUP (ORDER BY extract(epoch FROM resolved_at - created_at)::float8)
-            FILTER (WHERE resolved_at IS NOT NULL) AS ttr_p90,
-          count(*) FILTER (WHERE first_response_due_at IS NOT NULL AND (first_responded_at IS NOT NULL
-            OR (first_response_due_at < now() AND sla_paused_at IS NULL)))::int AS frt_eval,
-          count(*) FILTER (WHERE first_response_due_at IS NOT NULL AND (
-            (first_responded_at IS NOT NULL AND first_responded_at > first_response_due_at)
-            OR (first_responded_at IS NULL AND first_response_due_at < now() AND sla_paused_at IS NULL)))::int AS frt_breached,
-          count(*) FILTER (WHERE resolution_due_at IS NOT NULL AND (resolved_at IS NOT NULL
-            OR (resolution_due_at < now() AND sla_paused_at IS NULL)))::int AS ttr_eval,
-          count(*) FILTER (WHERE resolution_due_at IS NOT NULL AND (
-            (resolved_at IS NOT NULL AND resolved_at > resolution_due_at)
-            OR (resolved_at IS NULL AND resolution_due_at < now() AND sla_paused_at IS NULL)))::int AS ttr_breached
-        FROM ticket WHERE ${and_(sql`created_at >= ${since}`, sql`status <> 'merged'`, ticketScope)}`,
-      ),
+      readDashboardVolume(db, { days, scope, since: window0.since }),
+      readDashboardSla(db, { days, scope, since: window0.since }),
       this.one(
         z.object({ finished: count, reopened: count, tickets: count, to_dev: count }),
         sql`SELECT
@@ -438,7 +395,7 @@ export class DashboardService {
         .orderBy(asc(schema.statusComponent.position), asc(schema.statusComponent.slug)),
     ]);
 
-    const window = { from: iso(queue.since), to: iso(queue.now) };
+    const window = { from: iso(window0.since), to: iso(queue.now) };
     const byStatus: Record<string, number> = {};
     const byPriority: Record<string, number> = {};
     for (const group of queueGroups) {
@@ -446,29 +403,10 @@ export class DashboardService {
       byPriority[group.priority] = (byPriority[group.priority] ?? 0) + group.n;
     }
 
-    const byChannel: Record<string, number> = {};
-    const perDay = new Map<string, number>();
-    const perDayChannel = new Map<string, Record<string, number>>();
-    for (const row of volume) {
-      byChannel[row.channel] = (byChannel[row.channel] ?? 0) + row.n;
-      perDay.set(row.day, (perDay.get(row.day) ?? 0) + row.n);
-      perDayChannel.set(row.day, { ...perDayChannel.get(row.day), [row.channel]: row.n });
-    }
-    const byDay: { day: string; created: number; byChannel: Record<string, number> }[] = [];
-    for (let offset = 0; offset < days; offset += 1) {
-      const day = iso(new Date(queue.since.getTime() + offset * 86_400_000)).slice(0, 10);
-      byDay.push({ day, created: perDay.get(day) ?? 0, byChannel: perDayChannel.get(day) ?? {} });
-    }
-
     const duration = (n: number, median: number | null, p90: number | null) =>
       n === 0 || median === null || p90 === null
         ? missing('no_data')
         : ok({ medianSeconds: median, p90Seconds: p90, samples: n });
-    const breach = (evaluated: number, breached: number) =>
-      evaluated === 0
-        ? missing('no_data')
-        : ok({ evaluated, breached, rate: ratio(breached, evaluated) });
-
     const decided = drafts.approved + drafts.edited + drafts.rejected;
     const openBySeverity: Record<string, number> = {};
     for (const row of alertsOpen) openBySeverity[row.severity] = row.n;
@@ -494,23 +432,8 @@ export class DashboardService {
         atRiskMinutes: SLA_AT_RISK_MINUTES,
         aging: { lt_4h: queue.lt_4h, h4_24: queue.h4_24, d1_3: queue.d1_3, gt_3d: queue.gt_3d },
       },
-      volume: {
-        created: [...perDay.values()].reduce((sum, n) => sum + n, 0),
-        byChannel,
-        byDay,
-        previous: {
-          from: iso(new Date(queue.since.getTime() - days * 86_400_000)),
-          to: iso(queue.since),
-          created: previousVolume.n,
-        },
-      },
-      sla: {
-        basis: 'wall_clock',
-        firstResponse: duration(sla.frt_n, sla.frt_p50, sla.frt_p90),
-        resolution: duration(sla.ttr_n, sla.ttr_p50, sla.ttr_p90),
-        firstResponseBreach: breach(sla.frt_eval, sla.frt_breached),
-        resolutionBreach: breach(sla.ttr_eval, sla.ttr_breached),
-      },
+      volume,
+      sla,
       quality: {
         csat:
           csat.answered === 0 || csat.average === null
