@@ -258,6 +258,13 @@ describe('every route states who may call it', () => {
         'POST /v1/assistant/proposals/:id/confirm',
         'POST /v1/assistant/proposals/:id/reject',
         'DELETE /v1/assistant/conversations/:id',
+        // T-408: the conversations, the pinned facts and the ratings are the person's own and hold only redacted text.
+        'GET /v1/assistant/conversations',
+        'GET /v1/assistant/memory',
+        'POST /v1/assistant/memory',
+        'DELETE /v1/assistant/memory',
+        'DELETE /v1/assistant/memory/:id',
+        'POST /v1/assistant/feedback',
       ].sort(),
     );
   });

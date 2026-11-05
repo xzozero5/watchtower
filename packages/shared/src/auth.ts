@@ -47,6 +47,11 @@ export const AUTH_ERROR_CODES = [
   'upload_quota',
   // The assistant (T-155a C-4): a second message while the first is still being answered (429).
   'assistant_busy',
+  // The assistant's memory (T-408, ADR-029 section 3): 20 pinned facts per person is the most (409); an answer that said nothing has nothing to pin (409).
+  'assistant_memory_full',
+  // The answer could not be written to the audit log, so it was not sent (T-400 C-4).
+  'assistant_audit_failed',
+  'assistant_nothing_to_remember',
   'scan_pending',
   'file_infected',
   // Autonomy (T-112a): asking for stage 3 or above, which only the owner may decide (N3).

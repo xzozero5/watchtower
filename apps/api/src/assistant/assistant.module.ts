@@ -11,6 +11,8 @@ import { ShiftsModule } from '../shifts/shifts.module.js';
 import { TicketsModule } from '../tickets/tickets.module.js';
 import { ToolsModule } from '../tools/tools.module.js';
 import { AssistantController } from './assistant.controller.js';
+import { AssistantFeedbackService } from './assistant-feedback.js';
+import { AssistantMemoryService } from './assistant-memory.js';
 import { AssistantProposals } from './assistant-proposals.js';
 import { ContextResolver } from './context-resolver.js';
 import { AssistantService } from './assistant.service.js';
@@ -34,6 +36,12 @@ import { AssistantService } from './assistant.service.js';
     ToolsModule,
   ],
   controllers: [AssistantController],
-  providers: [AssistantService, AssistantProposals, ContextResolver],
+  providers: [
+    AssistantService,
+    AssistantProposals,
+    AssistantMemoryService,
+    AssistantFeedbackService,
+    ContextResolver,
+  ],
 })
 export class AssistantModule {}

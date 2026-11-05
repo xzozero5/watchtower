@@ -373,3 +373,84 @@ export const assistantMemoryListSchema = z.object({
   items: z.array(assistantMemorySchema).max(ASSISTANT_MEMORY_LIMITS.maxPerUser),
 });
 export type AssistantMemoryList = z.infer<typeof assistantMemoryListSchema>;
+
+export const assistantMemoryParamSchema = z.object({ id: z.uuid() });
+export type AssistantMemoryParam = z.infer<typeof assistantMemoryParamSchema>;
+
+export const deleteAssistantMemoryResponseSchema = z.object({ deleted: z.literal(true) });
+
+/** `deleted` is how many rows of the person's own went. */
+export const clearAssistantMemoryResponseSchema = z.object({
+  deleted: z.number().int().min(0),
+});
+
+// --- conversations (own only) ------------------------------------------------------------------------------
+
+/** Newest first. */
+export const ASSISTANT_CONVERSATION_LIST_LIMIT = 50;
+
+export const assistantConversationSummarySchema = z.object({
+  id: z.uuid(),
+  locale: assistantLocaleSchema,
+  createdAt: z.iso.datetime(),
+  updatedAt: z.iso.datetime(),
+  /** Turns of the person and of the assistant. */
+  messageCount: z.number().int().min(0),
+  /**
+   * The first thing the person asked, as it is stored: redacted (N4), so a name or an address appears as a
+   * placeholder such as `[PERSON_1]`. Null when there is no message left. At most 120 characters.
+   */
+  preview: z.string().max(120).nullable(),
+});
+export type AssistantConversationSummary = z.infer<typeof assistantConversationSummarySchema>;
+
+export const assistantConversationListSchema = z.object({
+  items: z.array(assistantConversationSummarySchema).max(ASSISTANT_CONVERSATION_LIST_LIMIT),
+});
+export type AssistantConversationList = z.infer<typeof assistantConversationListSchema>;
+
+// --- feedback (ADR-029 sections 5 and 9.6) -------------------------------------------------------------------
+
+/** Why a 👎. One list for a reply of the assistant and for an embedded insight; `judges_person` feeds the section 9.9 review. */
+export const ASSISTANT_FEEDBACK_REASONS = [
+  'wrong_number',
+  'not_useful',
+  'misleading',
+  'judges_person',
+  'other',
+] as const;
+export const assistantFeedbackReasonSchema = z.enum(ASSISTANT_FEEDBACK_REASONS);
+export type AssistantFeedbackReason = z.infer<typeof assistantFeedbackReasonSchema>;
+
+/**
+ * What the feedback is about: `message` is an answer of the assistant to this person; `insight` is an
+ * `ai_element_insight` row the person can see (section 9.3; one they cannot see is a 404 like one that does not exist).
+ */
+export const assistantFeedbackTargetSchema = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('message'), id: z.uuid() }),
+  z.object({ kind: z.literal('insight'), id: z.uuid() }),
+]);
+export type AssistantFeedbackTarget = z.infer<typeof assistantFeedbackTargetSchema>;
+
+export const assistantFeedbackRequestSchema = z
+  .object({
+    target: assistantFeedbackTargetSchema,
+    rating: z.enum(['up', 'down']),
+    /** A reason goes with a 👎 only. */
+    reason: assistantFeedbackReasonSchema.optional(),
+  })
+  .refine((value) => value.reason === undefined || value.rating === 'down', {
+    message: 'a reason goes with a thumbs-down only',
+    path: ['reason'],
+  });
+export type AssistantFeedbackRequest = z.infer<typeof assistantFeedbackRequestSchema>;
+
+/** One row per person and target: pressing again replaces the earlier rating. */
+export const assistantFeedbackSchema = z.object({
+  id: z.uuid(),
+  target: assistantFeedbackTargetSchema,
+  rating: z.enum(['up', 'down']),
+  reason: assistantFeedbackReasonSchema.nullable(),
+  updatedAt: z.iso.datetime(),
+});
+export type AssistantFeedback = z.infer<typeof assistantFeedbackSchema>;
