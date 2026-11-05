@@ -18,6 +18,7 @@ import {
   recordPreSendGrade,
   recordReplayResult,
   resolveAiCaps,
+  UNMATCHED_ORG_ID,
   type Domain,
 } from '@watchtower/domain';
 import { AUDIT_ACTIONS, AUTONOMY_TICKET_EVENTS, type RealtimeEvent } from '@watchtower/shared';
@@ -392,6 +393,17 @@ interface Scenario {
   input: AutoSendStepInput;
 }
 
+let cachedRealOrg: string | null = null;
+async function realOrgId(): Promise<string> {
+  if (cachedRealOrg !== null) return cachedRealOrg;
+  const [org] = await owner()
+    .insert(schema.organization)
+    .values({ name: `Real customer ${randomUUID().slice(0, 6)}` })
+    .returning({ id: schema.organization.id });
+  cachedRealOrg = org?.id ?? '';
+  return cachedRealOrg;
+}
+
 async function scenario(
   options: {
     stage?: 2 | 3;
@@ -409,6 +421,8 @@ async function scenario(
     snippet?: string;
     /** A portal ticket the portal itself calls verified (`customFields.portal.requesterVerified`, ADR-007 C-4). */
     portalVerified?: boolean;
+    /** File the ticket in a placeholder organization ("Unmatched portal submissions", T-306k C-15). */
+    placeholderOrg?: boolean;
     /** Give the draft the `ai_run` row of its drafter (default true); false: the row is missing. */
     drafterRun?: boolean;
   } = {},
@@ -487,6 +501,9 @@ async function scenario(
     .set({
       intentId,
       priority: options.priority ?? 'P3',
+      // The inbound mail lands in the placeholder organization (nobody claimed the sender); a real customer has been
+      // linked to a real organization by a person (T-306k C-15: the gate denies a placeholder one).
+      orgId: options.placeholderOrg === true ? UNMATCHED_ORG_ID : await realOrgId(),
       ...(options.channel === 'portal' ? { channel: 'portal', channelAccountId: portalId } : {}),
       ...(options.portalVerified === undefined
         ? {}
@@ -745,6 +762,23 @@ describe('the live path (stage 3, flag on)', () => {
       const [row] = await evaluations(s.draftId);
       expect(row?.failedConditions).toContain('contact_unverified');
     }
+  });
+
+  it('holds a link-verified portal ticket of a placeholder organization (C-15)', async () => {
+    await owner()
+      .insert(schema.organization)
+      .values({ id: UNMATCHED_ORG_ID, name: 'Unmatched portal submissions' })
+      .onConflictDoNothing();
+    const s = await scenario({
+      stage: 3,
+      channel: 'portal',
+      portalVerified: true,
+      placeholderOrg: true,
+    });
+    expect(await step(s)).toBe('held');
+    expect(await deliveriesOf(s.ticketId)).toHaveLength(0);
+    const [row] = await evaluations(s.draftId);
+    expect(row?.failedConditions).toContain('placeholder_org');
   });
 
   it('holds back, with a note and the draft left for a person, when a condition fails (policy has no channel)', async () => {
