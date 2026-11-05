@@ -63,3 +63,35 @@ export function mockSettings(): AiSettings {
     },
   };
 }
+
+/** The slice of an app config that names the embedding model (ADR-030). */
+export interface EmbeddingConfig {
+  readonly EMBEDDING_PROVIDER: 'mock' | 'vertex' | 'local';
+  readonly EMBEDDING_MODEL?: string | undefined;
+  readonly EMBEDDING_DIMENSIONS?: number | undefined;
+}
+
+/**
+ * The embedding model of settings, from the environment. `mock` keeps the offline mock. `local`
+ * takes the model and size from `EMBEDDING_MODEL` / `EMBEDDING_DIMENSIONS` and is priced at zero
+ * (it runs on this machine), so its `ai_run` rows carry `cost_usd = 0`, not null. Any other provider
+ * is not wired and keeps the mock values (the boot check refuses it first).
+ */
+export function embeddingSettings(
+  config: EmbeddingConfig,
+): Pick<AiSettings, 'embedding'> & { prices: Record<string, ModelPrice> } {
+  if (config.EMBEDDING_PROVIDER !== 'local')
+    return { embedding: mockSettings().embedding, prices: {} };
+  const model = config.EMBEDDING_MODEL?.trim();
+  if (model === undefined || model === '') {
+    throw new Error('EMBEDDING_MODEL is required when EMBEDDING_PROVIDER=local');
+  }
+  const dimensions = config.EMBEDDING_DIMENSIONS;
+  if (dimensions === undefined || !Number.isInteger(dimensions) || dimensions <= 0) {
+    throw new Error('EMBEDDING_DIMENSIONS is required when EMBEDDING_PROVIDER=local');
+  }
+  return {
+    embedding: { provider: 'local', model, dimensions },
+    prices: { [model]: { inputUsdPerMTok: 0, outputUsdPerMTok: 0 } },
+  };
+}

@@ -1,0 +1,22 @@
+{
+  "queries": [
+    { "id": "pw-en-1", "lang": "en", "text": "I forgot my password and cannot sign in", "relevant": ["reset-your-password", "reset-your-password-th"] },
+    { "id": "pw-en-2", "lang": "en", "text": "the reset link says it expired", "relevant": ["reset-your-password", "reset-your-password-th"] },
+    { "id": "pw-th-1", "lang": "th", "text": "ลืมรหัสผ่านเข้าระบบไม่ได้", "relevant": ["reset-your-password-th", "reset-your-password"] },
+    { "id": "pw-th-2", "lang": "th", "text": "บัญชีถูกล็อกเพราะกรอกรหัสผิดหลายครั้ง", "relevant": ["reset-your-password-th", "reset-your-password"] },
+    { "id": "wh-en-1", "lang": "en", "text": "our server never receives your webhook events", "relevant": ["webhook-not-received"] },
+    { "id": "wh-en-2", "lang": "en", "text": "delivery log shows timeouts for our endpoint", "relevant": ["webhook-not-received"] },
+    { "id": "wh-th-1", "lang": "th", "text": "เว็บฮุคไม่เข้าระบบของเรา", "relevant": ["webhook-not-received"] },
+    { "id": "wh-th-2", "lang": "th", "text": "ระบบของเราตอบช้าเกินไปจนส่งอีเวนต์ไม่สำเร็จ", "relevant": ["webhook-not-received"] },
+    { "id": "inv-en-1", "lang": "en", "text": "why was I charged twice on my invoice", "relevant": ["invoices-and-billing"] },
+    { "id": "inv-th-1", "lang": "th", "text": "ใบแจ้งหนี้ยอดไม่ตรงกับที่คาดไว้", "relevant": ["invoices-and-billing"] },
+    { "id": "to-th-1", "lang": "th", "text": "ลูกค้าหลายรายแจ้งว่าคำขอค้างและหมดเวลา", "relevant": ["runbook-upstream-timeout-th"] },
+    { "id": "to-en-1", "lang": "en", "text": "many tickets report requests timing out upstream", "relevant": ["runbook-upstream-timeout-th"] },
+    { "id": "rot-en-1", "lang": "en", "text": "how do we rotate an organization's API credentials", "relevant": ["runbook-rotate-api-credentials"] },
+    { "id": "rot-th-1", "lang": "th", "text": "ต้องเปลี่ยนคีย์ API ของลูกค้าองค์กรทำอย่างไร", "relevant": ["runbook-rotate-api-credentials"] },
+    { "id": "off-en-1", "lang": "en", "text": "what is the best recipe for green curry", "relevant": [] },
+    { "id": "off-en-2", "lang": "en", "text": "weather forecast for tomorrow in Chiang Mai", "relevant": [] },
+    { "id": "off-th-1", "lang": "th", "text": "แนะนำร้านอาหารใกล้สนามบินสุวรรณภูมิ", "relevant": [] },
+    { "id": "off-th-2", "lang": "th", "text": "ผลบอลเมื่อคืนเป็นอย่างไรบ้าง", "relevant": [] }
+  ]
+}

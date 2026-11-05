@@ -195,6 +195,10 @@ x-app-env: &app-env
   INSIGHT_USER_SCOPED_PER_USER_PER_DAY: ${INSIGHT_USER_SCOPED_PER_USER_PER_DAY:-}
   INSIGHT_USER_SCOPED_MIN_INTERVAL_MINUTES: ${INSIGHT_USER_SCOPED_MIN_INTERVAL_MINUTES:-}
   EMBEDDING_PROVIDER: ${EMBEDDING_PROVIDER:-mock}
+  # ADR-030: the `embedder` service below (profile `ai`). Used only when EMBEDDING_PROVIDER=local.
+  EMBEDDING_LOCAL_URL: ${EMBEDDING_LOCAL_URL:-http://embedder:11434}
+  EMBEDDING_MODEL: ${EMBEDDING_MODEL:-bge-m3}
+  EMBEDDING_DIMENSIONS: ${EMBEDDING_DIMENSIONS:-1024}
   KB_CRAWL_ALLOWED_HOSTS: ${KB_CRAWL_ALLOWED_HOSTS:-}
   KB_CHUNK_TARGET_CHARS: ${KB_CHUNK_TARGET_CHARS:-}
   KB_CHUNK_MAX_CHARS: ${KB_CHUNK_MAX_CHARS:-}
@@ -564,6 +568,72 @@ services:
       retries: 5
       start_period: 10s
 
+  embedder:
+    # Local embedding model for knowledge base search (ADR-030, T-430): Ollama serving ${EMBEDDING_MODEL}
+    # (default bge-m3, multilingual incl. Thai, 1024 dimensions) on CPU. Profile `ai`, so a plain `up`
+    # never starts it:
+    #   docker compose --profile ai up -d embedder embedder-init
+    # then set EMBEDDING_PROVIDER=local (docs/runbooks/local-poc.md). On the `ai` network only (the
+    # api and the worker reach it as http://embedder:11434); no port is published. Nothing the app
+    # sends leaves the machine; the only egress is the model download by `embedder-init`
+    # (registry.ollama.ai, docs/09-SECURITY.md).
+    # Pinned by tag and digest (the multi-arch index of 0.40.14; checked against Docker Hub on
+    # 2026-11-05 `[VERIFY]`). Update both together; `docker image inspect --format
+    # '{{index .RepoDigests 0}}' <image>` shows the digest.
+    profiles: ['ai']
+    image: ${EMBEDDER_IMAGE:-ollama/ollama:0.40.14@sha256:ebaef4f4c5d93660e1f25f8ad085a112f51ccfb0e8458073e71793959dba91c9}
+    restart: unless-stopped
+    networks:
+      - ai
+    environment:
+      OLLAMA_HOST: 0.0.0.0:11434
+      # Keep the model in memory: a cold load takes longer than the 1.5 s a search query waits.
+      OLLAMA_KEEP_ALIVE: ${EMBEDDER_KEEP_ALIVE:-24h}
+      # One request at a time: embedding must not take every CPU from the other services.
+      OLLAMA_NUM_PARALLEL: '1'
+      OLLAMA_MAX_LOADED_MODELS: '1'
+    volumes:
+      - embeddermodels:/root/.ollama
+    # bge-m3 is ~1.2 GB on disk and needs roughly 2 to 3 GB of RAM to serve `[ASSUMED]`; tune with EMBEDDER_MEM_LIMIT.
+    mem_limit: ${EMBEDDER_MEM_LIMIT:-4g}
+    pids_limit: 200
+    cpus: ${EMBEDDER_CPUS:-2}
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      # `ollama list` asks the local server; it fails while the server is not up `[VERIFY]`.
+      test: ['CMD', 'ollama', 'list']
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 15s
+
+  embedder-init:
+    # One-shot, like minio-init: pulls the model into the `embeddermodels` volume when it is not
+    # there yet, then exits 0. This is the one-time download the owner approved (ADR-030). A later
+    # start finds the model and downloads nothing. A failed pull leaves the model missing: the
+    # embedder answers errors and search falls back to keyword only.
+    profiles: ['ai']
+    image: ${EMBEDDER_IMAGE:-ollama/ollama:0.40.14@sha256:ebaef4f4c5d93660e1f25f8ad085a112f51ccfb0e8458073e71793959dba91c9}
+    restart: 'no'
+    networks:
+      - ai
+    depends_on:
+      embedder:
+        condition: service_healthy
+    entrypoint: ['/bin/sh', '-c']
+    command:
+      - 'ollama show "$$EMBEDDING_MODEL" >/dev/null 2>&1 && echo "model already present" || ollama pull "$$EMBEDDING_MODEL"'
+    environment:
+      OLLAMA_HOST: http://embedder:11434
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-bge-m3}
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+
   clamav:
     # Malware scanner for uploaded files (ADR-022, T-155). Only with the profile `scan`:
     #   UPLOAD_SCAN=clamav docker compose --profile scan up -d
@@ -705,7 +775,7 @@ services:
       retries: 10
 
 networks:
-  # worker + api <-> claude-bridge only (ADR-019 §3, ADR-023).
+  # worker + api <-> claude-bridge and embedder only (ADR-019 §3, ADR-023, ADR-030).
   ai: {}
   # api <-> gmail-tunnel only (ADR-020).
   push: {}
@@ -717,6 +787,8 @@ volumes:
   redisdata:
   productmockdata:
   miniodata:
+  # Models of the local embedder (ADR-030). Delete the volume to remove the model.
+  embeddermodels:
   clamavdb:
   caddy_data:
   caddy_config:

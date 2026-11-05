@@ -447,16 +447,19 @@ export {
   type ChunkOptions,
 } from './kb/chunker.js';
 export {
+  activateEmbeddingIndexIfComplete,
   articlesNeedingEmbedding,
   dropArticleChunksIfNotLive,
   ensureActiveEmbeddingIndex,
   readActiveEmbeddingIndex,
   replaceArticleChunks,
+  resolveWriteIndex,
   type ChunkToStore,
   type EmbeddingIndexRef,
   type EmbeddingIndexSpec,
   type ReembedTarget,
   type ReplaceChunksInput,
+  type WriteIndexRef,
 } from './kb/chunks.js';
 export { RRF_K, reciprocalRankFusion, type FusedItem, type RankedList } from './kb/rrf.js';
 export {

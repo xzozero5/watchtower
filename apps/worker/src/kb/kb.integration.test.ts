@@ -365,6 +365,82 @@ describe('re-embedding with a different model', () => {
   });
 });
 
+describe('re-embedding into a local index (T-431, ADR-030)', () => {
+  it('fills the new index first and switches it in only when every article is embedded', async () => {
+    const made = await article({
+      title: 'Local switch',
+      bodyMd: 'Pangolin escalation notes for the local embedder.',
+    });
+    await embeddedChunks(made.articleId);
+    const [before] = await owner()
+      .select()
+      .from(schema.kbEmbeddingIndex)
+      .where(eq(schema.kbEmbeddingIndex.isActive, true));
+
+    let healthy = false;
+    const local: EmbeddingProvider = {
+      kind: 'local',
+      embed(request) {
+        if (!healthy) return Promise.reject(new Error('embedder is down'));
+        return Promise.resolve({
+          embeddings: request.values.map(() => Array.from({ length: 8 }, () => 0.5)),
+          usage: { tokens: 1 },
+          model: request.model,
+        });
+      },
+    };
+    const settings = {
+      ...mockSettings(),
+      embedding: { provider: 'local' as const, model: 'local-test', dimensions: 8 },
+    };
+    const runtime = createAiRuntime(config, appDatabase, createLogger(config), {
+      settings: { load: () => Promise.resolve(settings) },
+      embeddingProviders: { local },
+    });
+    const run = () =>
+      reembedAll({
+        database: appDatabase,
+        ai: runtime,
+        logger: createLogger(config),
+        chunking: chunkOptionsFrom(config),
+      });
+    const activeModel = async () =>
+      (
+        await owner()
+          .select()
+          .from(schema.kbEmbeddingIndex)
+          .where(eq(schema.kbEmbeddingIndex.isActive, true))
+      )[0]?.model;
+
+    // The embedder is down: nothing switches, the old index stays active, the failure is counted.
+    const down = await run();
+    expect(down.failed).toBeGreaterThanOrEqual(1);
+    expect(down.activated).toBe(false);
+    expect(await activeModel()).toBe(before?.model);
+
+    // It comes back: the next run embeds everything and switches in one step.
+    healthy = true;
+    const up = await run();
+    expect(up.failed).toBe(0);
+    expect(up.activated).toBe(true);
+    expect(await activeModel()).toBe('local-test');
+    const indexes = await owner().select().from(schema.kbEmbeddingIndex);
+    expect(indexes.filter((index) => index.isActive)).toHaveLength(1);
+    expect(indexes.find((index) => index.model === 'local-test')?.provider).toBe('local');
+    const after = await chunksOf(made.articleId);
+    expect(after[0]?.embedding).toHaveLength(8);
+
+    // The calls are metered as ai_run rows of provider local; nothing is left to do.
+    const runs = await owner()
+      .select()
+      .from(schema.aiRun)
+      .where(eq(schema.aiRun.provider, 'local'));
+    expect(runs.length).toBeGreaterThanOrEqual(1);
+    expect(runs.every((row) => row.agent === 'embedder')).toBe(true);
+    expect((await run()).queued).toBe(0);
+  });
+});
+
 describe('without an AI runtime (provider not wired)', () => {
   it('stores keyword-only chunks and never calls a provider', async () => {
     const made = await article({ title: 'No runtime', bodyMd: 'Quokka handling guide.' });

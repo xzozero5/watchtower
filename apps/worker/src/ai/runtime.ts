@@ -3,7 +3,9 @@ import {
   MockEmbeddingProvider,
   createAuditedEmbedder,
   createAuditedLlm,
+  createLocalEmbeddingProvider,
   createRedactor,
+  embeddingSettings,
   loadPromptCatalog,
   applyRedactionNer,
   type AgentDeps,
@@ -120,7 +122,7 @@ function storeCredentials(config: WorkerConfig, database: Database): AiCredentia
  * mock: its calls fail with `ProviderUnavailableError`, which is audited as an error row, shown on
  * the ticket's AI brief, retried by the brief job, and leaves ingestion on the header rules.
  *
- * Embeddings (T-107b) stay mock-only: `EMBEDDING_PROVIDER` other than a wired one stops the boot,
+ * Embeddings (T-107b): `mock` or `local` (ADR-030); `EMBEDDING_PROVIDER` other than a wired one stops the boot,
  * and the embedder goes through the same guard, redactor and `ai_run` recorder as the LLM.
  */
 export function createAiRuntime(
@@ -159,8 +161,15 @@ export function createAiRuntime(
   });
 
   const built = buildAiSettings(config);
+  // The embedding model comes from EMBEDDING_* (ADR-030); the LLM tiers from AI_*.
+  const embeddingModel = embeddingSettings(config);
   const settings: SettingsSource = overrides.settings ?? {
-    load: () => Promise.resolve(built.settings),
+    load: () =>
+      Promise.resolve({
+        ...built.settings,
+        embedding: embeddingModel.embedding,
+        prices: { ...built.settings.prices, ...embeddingModel.prices },
+      }),
   };
   const credentials = overrides.credentials ?? storeCredentials(config, database);
   const kind = config.AI_PROVIDER;
@@ -195,7 +204,19 @@ export function createAiRuntime(
   });
   const embedder = createAuditedEmbedder({
     settings,
-    providers: overrides.embeddingProviders ?? { mock: new MockEmbeddingProvider() },
+    providers: overrides.embeddingProviders ?? {
+      mock: new MockEmbeddingProvider(),
+      // Indexing waits longer per call than a search does: a cold model takes a while to load.
+      ...(config.EMBEDDING_PROVIDER === 'local'
+        ? {
+            local: createLocalEmbeddingProvider({
+              url: config.EMBEDDING_LOCAL_URL,
+              fetch: overrides.fetch ?? ((input, init) => globalThis.fetch(input, init)),
+              timeoutMs: 120_000,
+            }),
+          }
+        : {}),
+    },
     sink,
     // No name dictionary: knowledge base articles are written by staff, not by a ticket's people.
     redactor: createRedactor(),

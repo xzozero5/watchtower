@@ -1,11 +1,12 @@
 import { AuditWriteError } from '@watchtower/ai';
 import { schema, type Database } from '@watchtower/db';
 import {
+  activateEmbeddingIndexIfComplete,
   articlesNeedingEmbedding,
   chunkMarkdown,
   dropArticleChunksIfNotLive,
-  ensureActiveEmbeddingIndex,
   replaceArticleChunks,
+  resolveWriteIndex,
   type Chunk,
   type ChunkOptions,
   type ChunkToStore,
@@ -127,7 +128,7 @@ export async function embedArticle(
   const indexSpec = spec;
 
   const done = await db.transaction(async (tx) => {
-    const index = await ensureActiveEmbeddingIndex(tx, indexSpec);
+    const index = await resolveWriteIndex(tx, indexSpec);
     const withVectors: ChunkToStore[] = chunks.map((chunk, at) => ({
       ...chunk,
       embedding: vectors[at] ?? null,
@@ -146,26 +147,22 @@ export interface ReembedResult {
   readonly queued: number;
   readonly embedded: number;
   readonly failed: number;
+  /** True when the new index became the active one in this run (T-431). */
+  readonly activated: boolean;
 }
 
 /**
- * Brings every published article up to the embedding model in settings: makes that model the active
- * index (a different model than before switches it, in one transaction), then embeds each article
- * whose chunks are missing, have no vector or have a vector from another index. One article's
- * failure does not stop the others; the job fails at the end if any failed, so it is retried.
+ * Brings every published article up to the embedding model in settings (ADR-030). With no active
+ * index yet the model becomes active at once. With a different model than the active one, a new
+ * index is filled first and search keeps reading the old one (or falls back to keyword, since a
+ * query is only embedded with the active model); the new index is switched in, in one transaction,
+ * only when every published article is embedded with it. One article's failure does not stop the
+ * others; the job fails at the end if any failed, so it is retried and the switch waits.
  */
 export async function reembedAll(deps: KbDeps): Promise<ReembedResult> {
-  if (deps.ai === undefined) return { queued: 0, embedded: 0, failed: 0 };
+  if (deps.ai === undefined) return { queued: 0, embedded: 0, failed: 0, activated: false };
   const { embedding } = await deps.ai.settings.load();
-  const index = await deps.database.db.transaction((tx) =>
-    ensureActiveEmbeddingIndex(tx, embedding),
-  );
-  if (index.activated) {
-    deps.logger.info(
-      { model: index.model, dimensions: index.dimensions },
-      'embedding index changed',
-    );
-  }
+  const index = await deps.database.db.transaction((tx) => resolveWriteIndex(tx, embedding));
   const targets = await articlesNeedingEmbedding(deps.database.db, index.id);
   let embedded = 0;
   let failed = 0;
@@ -180,5 +177,17 @@ export async function reembedAll(deps: KbDeps): Promise<ReembedResult> {
       deps.logger.warn({ articleId: target.articleId }, 'knowledge base re-embedding failed');
     }
   }
-  return { queued: targets.length, embedded, failed };
+  let activated = false;
+  if (!index.active && failed === 0) {
+    activated = await deps.database.db.transaction((tx) =>
+      activateEmbeddingIndexIfComplete(tx, index.id),
+    );
+    if (activated) {
+      deps.logger.info(
+        { model: index.model, dimensions: index.dimensions },
+        'embedding index changed',
+      );
+    }
+  }
+  return { queued: targets.length, embedded, failed, activated };
 }

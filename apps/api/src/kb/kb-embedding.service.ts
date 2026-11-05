@@ -2,7 +2,9 @@ import { Inject, Injectable } from '@nestjs/common';
 import {
   MockEmbeddingProvider,
   createAuditedEmbedder,
+  createLocalEmbeddingProvider,
   createRedactor,
+  embeddingSettings,
   mockSettings,
   type AuditedEmbedder,
 } from '@watchtower/ai';
@@ -23,6 +25,12 @@ import { DATABASE } from '../database/database.module.js';
 import { LOGGER, type AppLogger } from '../logging/logger.js';
 import { safeErrorLabel } from './kb-errors.js';
 
+/**
+ * How long a query waits for the local embedder (ADR-030): a search that cannot get its vector in
+ * this time goes on by keyword only. One attempt, no retry.
+ */
+export const QUERY_EMBED_TIMEOUT_MS = 1500;
+
 /** A search query as a vector, with the id of the embedding index it belongs to. */
 export interface QueryEmbedding {
   readonly vector: readonly number[];
@@ -40,25 +48,47 @@ export interface QueryEmbedding {
  * only, and says so (`mode: 'keyword'`). A vector from a different model than the stored ones
  * would rank nonsense, so it is never used.
  *
- * Only `EMBEDDING_PROVIDER=mock` is wired; any other value stops the boot. Live embedding needs
- * the provider settings from the admin store (T-116) and the owner's approval (`[ASK-HUMAN]`).
+ * `EMBEDDING_PROVIDER` is `mock` or `local` (the Ollama `embedder` service, ADR-030); any other
+ * value stops the boot. The local call has a short timeout and no retry.
  */
 @Injectable()
 export class KbEmbeddingService {
   private readonly embedder: AuditedEmbedder;
+  private readonly wanted: ReturnType<typeof embeddingSettings>;
 
   constructor(
     @Inject(DATABASE) private readonly database: Database,
     @Inject(APP_CONFIG) config: ApiConfig,
     @Inject(LOGGER) private readonly logger: AppLogger,
   ) {
-    // Only the mock is wired. Anything else stops the boot with a clear message instead of being
-    // ignored in silence (N5): live embedding is the owner's decision.
+    // Only mock and local are wired. Anything else stops the boot with a clear message instead of
+    // being ignored in silence (N5): live embedding over the internet is the owner's decision.
     assertKbEmbeddingProvider(config.EMBEDDING_PROVIDER);
     const db = database.db;
+    this.wanted = embeddingSettings(config);
+    const wanted = this.wanted;
     this.embedder = createAuditedEmbedder({
-      settings: { load: () => Promise.resolve(mockSettings()) },
-      providers: { mock: new MockEmbeddingProvider() },
+      settings: {
+        load: () =>
+          Promise.resolve({
+            ...mockSettings(),
+            embedding: wanted.embedding,
+            prices: wanted.prices,
+          }),
+      },
+      providers: {
+        mock: new MockEmbeddingProvider(),
+        ...(config.EMBEDDING_PROVIDER === 'local'
+          ? {
+              local: createLocalEmbeddingProvider({
+                url: config.EMBEDDING_LOCAL_URL,
+                fetch: (input, init) => globalThis.fetch(input, init),
+                timeoutMs: QUERY_EMBED_TIMEOUT_MS,
+                maxRetries: 0,
+              }),
+            }
+          : {}),
+      },
       sink: createAiRunRecorder({ db }),
       redactor: createRedactor(),
       guard: createAiGuard({
@@ -82,7 +112,7 @@ export class KbEmbeddingService {
     try {
       const index = await readActiveEmbeddingIndex(this.database.db);
       if (index === undefined) return undefined;
-      const wanted = mockSettings().embedding;
+      const wanted = this.wanted.embedding;
       if (
         index.provider !== wanted.provider ||
         index.model !== wanted.model ||

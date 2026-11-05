@@ -100,9 +100,10 @@ export const NODE_ENVS = ['development', 'test', 'production'] as const;
 export const AI_PROVIDERS = ['mock', 'anthropic', 'vertex', 'claude-cli'] as const;
 /**
  * Where knowledge base embeddings come from. `[ASSUMED]` mock (deterministic, offline) or Vertex;
- * any other provider or a downloaded model sends data to a new destination and needs an ADR first.
+ * `local` is the Ollama `embedder` service of this deployment (ADR-030, owner decision 2026-11-05).
+ * Any other provider sends data to a new destination and needs an ADR first.
  */
-export const EMBEDDING_PROVIDERS = ['mock', 'vertex'] as const;
+export const EMBEDDING_PROVIDERS = ['mock', 'vertex', 'local'] as const;
 
 /** Variables every service needs. Required ones fail the boot when missing. */
 export const baseEnvShape = {
@@ -232,6 +233,14 @@ export const phase1EnvShape = {
   ),
   // Knowledge base (T-107): embeddings, and the only hosts the URL crawler may fetch (empty: none).
   EMBEDDING_PROVIDER: z.preprocess(emptyToUndefined, z.enum(EMBEDDING_PROVIDERS).default('mock')),
+  // ADR-030: the local embedder. The URL must be loopback or a compose service name (checked by the
+  // adapter); the model is pulled by `embedder-init`; bge-m3 makes 1024-dimension vectors.
+  EMBEDDING_LOCAL_URL: z.preprocess(emptyToUndefined, z.url().default('http://embedder:11434')),
+  EMBEDDING_MODEL: z.preprocess(emptyToUndefined, z.string().min(1).max(100).default('bge-m3')),
+  EMBEDDING_DIMENSIONS: z.preprocess(
+    emptyToUndefined,
+    z.coerce.number().int().min(8).max(4096).default(1024),
+  ),
   KB_CRAWL_ALLOWED_HOSTS: hostList,
   // AI models (T-132): the model id each tier uses on the selected provider. Model ids are
   // settings, never code (ADR-008). Empty with a real provider selected: AI calls fail visibly.

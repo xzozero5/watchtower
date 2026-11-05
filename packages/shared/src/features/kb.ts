@@ -377,14 +377,15 @@ export const KB_CHUNK_DEFAULTS = {
 } as const;
 
 /**
- * Live embedding (Vertex) needs credentials and an egress decision, which are the owner's
- * (`[ASK-HUMAN]`), so only `mock` is wired. A different `EMBEDDING_PROVIDER` stops the api and the
- * worker at boot with this message instead of being ignored and silently searching by keyword (N5).
+ * Embedding providers that are wired: `mock` and `local` (the Ollama `embedder` service, ADR-030).
+ * Vertex needs credentials and an egress decision, which are the owner's (`[ASK-HUMAN]`). A
+ * different `EMBEDDING_PROVIDER` stops the api and the worker at boot with this message instead of
+ * being ignored and silently searching by keyword (N5).
  */
 export function assertKbEmbeddingProvider(provider: string): void {
-  if (provider !== 'mock') {
+  if (provider !== 'mock' && provider !== 'local') {
     throw new Error(
-      `EMBEDDING_PROVIDER=${provider} is not wired yet: only "mock" is available until live embedding is approved by the owner. Set EMBEDDING_PROVIDER=mock.`,
+      `EMBEDDING_PROVIDER=${provider} is not wired yet: only "mock" and "local" are available. Set EMBEDDING_PROVIDER=mock or local.`,
     );
   }
 }

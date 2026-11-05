@@ -74,6 +74,11 @@ export {
 
 export { createAnthropicProvider, type AnthropicProviderConfig } from './providers/anthropic.js';
 export { createCliBridgeProvider, type CliBridgeProviderConfig } from './providers/claude-cli.js';
+export {
+  assertLocalEmbeddingUrl,
+  createLocalEmbeddingProvider,
+  type LocalEmbeddingConfig,
+} from './providers/local.js';
 export { DevMockLlmProvider, type DevMockOptions } from './providers/dev-mock.js';
 export {
   MockEmbeddingProvider,

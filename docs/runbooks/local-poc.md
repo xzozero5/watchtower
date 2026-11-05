@@ -60,6 +60,40 @@ AI ใช้ได้ **เมื่อเครื่อง host online เท�
 - นำเข้า: shell ต้องมี `WATCHTOWER_KB_DIR` และ `MIGRATION_DATABASE_URL` (ชี้ Postgres ที่เครื่องนี้เข้าถึง เช่น host `localhost` ไม่ใช่ `postgres`) แล้ว `pnpm kb:sync --dry-run` (อ่าน/ตรวจไฟล์อย่างเดียว) → `pnpm kb:sync` (idempotent) · `pnpm kb:sync` อ่านเฉพาะ `.env` ใน repo root จึง export สองตัวแปรนี้ใน shell เอง ไม่พิมพ์ค่า
 - `internal` → published + embedding ผ่าน worker · `customer`/`orgs` → **draft** ให้คน publish ในแอป · แก้ไฟล์ = เพิ่ม version · ลบไฟล์ = บทความที่ sync สร้างไว้ถูก deprecate (ออกจากการค้นหา; ไม่แตะบทความที่เขียนในแอป; โฟลเดอร์ว่างไม่ deprecate อะไรเลย) (T-170)
 
+## 3c. Semantic search ของ KB ด้วย embedding ในเครื่อง (`EMBEDDING_PROVIDER=local`) — ADR-030, T-430/T-431
+> เดิม `EMBEDDING_PROVIDER=mock` ใช้ vector ปลอมที่ไม่สื่อความหมาย → ค้นได้เฉพาะ keyword · `local` = Ollama + `bge-m3` (หลายภาษารวมไทย, 1024 มิติ, ~1.2 GB) ใน container `embedder` บน CPU, ไม่มีค่าใช้จ่าย, ข้อความไม่ออกนอกเครื่อง (ถูก redact ก่อนทุกครั้ง) · เจ้าของอนุมัติดาวน์โหลดโมเดลหนึ่งครั้งแล้ว `[เจ้าของตัดสินใจ 2026-11-05]` · ขั้นตอนนี้ยังไม่เคยรันกับโมเดลจริง `[ยังไม่ยืนยัน]`
+1. **ต้องมี migration 0114** (เพิ่ม `local` ใน CHECK ของ `kb_embedding_index` และ `ai_run`): เกิดเองตอน `up` (service `migrate`) หลัง pull โค้ดนี้ · ข้ามไม่ได้ ไม่งั้น worker เขียน index ไม่ผ่าน
+2. **env file** (`D:\Works\secret\watchtower.env`) เพิ่ม: `EMBEDDING_PROVIDER=local` (ที่เหลือใช้ default ได้: `EMBEDDING_LOCAL_URL=http://embedder:11434`, `EMBEDDING_MODEL=bge-m3`, `EMBEDDING_DIMENSIONS=1024`) · เครื่องที่ RAM น้อย ตั้ง `EMBEDDER_MEM_LIMIT` (default 4g) และ `EMBEDDER_CPUS` (default 2)
+3. **เปิด embedder + ดาวน์โหลดโมเดล (ครั้งเดียว ~1.2 GB):**
+   ```bash
+   docker compose --env-file D:\Works\secret\watchtower.env --profile ai up -d embedder embedder-init
+   docker compose --env-file D:\Works\secret\watchtower.env --profile ai logs -f embedder-init
+   ```
+   `embedder-init` จบด้วย exit 0 (`model already present` หรือ pull สำเร็จ) · โมเดลอยู่ใน volume `embeddermodels` ครั้งต่อไปไม่โหลดซ้ำ · pull ล้ม = embedder ตอบ error → ค้นถอยไป keyword อย่างเดียว (ไม่ใช่ mock) · ไม่ publish port ออก host
+4. **ตรวจ embedder ก่อนเปิดใช้:**
+   ```bash
+   docker compose --profile ai ps embedder
+   docker compose --profile ai exec embedder ollama list
+   ```
+   `ps` ต้อง healthy และ `ollama list` ต้องเห็น `bge-m3`
+5. **สลับ provider:** `docker compose --env-file D:\Works\secret\watchtower.env up -d --no-deps api worker` (api และ worker boot ไม่ผ่านถ้า `EMBEDDING_LOCAL_URL` ชี้ host ที่ไม่ใช่ loopback/ชื่อ service ใน compose) · **ระหว่างนี้ search ยังใช้ index เดิม** (mock → keyword อย่างเดียว เพราะ query ถูก embed ด้วยโมเดลที่ไม่ตรงกับ index ที่ active)
+6. **re-embed ทั้งหมด:** worker มี job `reembed_all` ตั้งเวลา 04:00 UTC ทุกวัน · job ไม่รันตอน boot และยังไม่มีปุ่ม/คำสั่งสั่งเอง → รอรอบ 04:00 UTC (หรือถ้าต้องการทันที ให้ main thread/คนเพิ่มคำสั่ง enqueue `reembed_all` `[ASK-HUMAN]`) · งานสร้าง `kb_embedding_index` ใหม่ (`local`/`bge-m3`/1024) แบบ **ยังไม่ active**, embed ทุกบทความที่ published ใต้ index นั้น แล้ว **สลับ active ใน transaction เดียว เมื่อครบทุกบทความเท่านั้น** · บทความใดล้ม = ไม่สลับ, job retry · ใช้เวลาประมาณ (จำนวน chunk × หลักร้อย ms) บน CPU `[ASSUMED]`
+7. **ตรวจผล** (ใช้ค่าจาก env ของ container เอง ไม่พิมพ์รหัสผ่าน):
+   ```bash
+   docker compose exec postgres psql -U watchtower -d watchtower -c "select provider, model, dimensions, is_active from kb_embedding_index order by created_at"
+   docker compose exec postgres psql -U watchtower -d watchtower -c "select provider, model, status, count(*), sum(cost_usd) from ai_run where agent = 'embedder' group by 1,2,3"
+   ```
+   ต้องเห็นแถว `local | bge-m3 | 1024 | t` และ `ai_run` ของ `local` ที่ `cost_usd = 0` · ใน app: ค้น KB ด้วยคำไทย/อังกฤษที่ไม่ตรงคำในบทความ (เช่น "ลืมรหัสผ่านเข้าไม่ได้") ผลต้องมี `mode: hybrid`
+8. **ถ้า embedder ล่ม:** ค้นไม่ล้ม — api รอ query embedding ไม่เกิน 1.5 วินาที (ไม่ retry) แล้วค้น keyword อย่างเดียว (`mode: keyword`) · บทความที่ publish ระหว่างนั้นถูกเก็บแบบ keyword-only และ `reembed_all` เติม vector ให้ทีหลัง
+9. **ปรับ `KB_MIN_VECTOR_SIMILARITY` (ค่าเริ่ม 0.25 `[ASSUMED]` ขึ้นกับโมเดล):** วัดด้วยชุดคำถาม TH/EN บน `examples/kb` (`evals/runner/kb-similarity/queries.json`):
+   ```bash
+   docker compose -f docker-compose.yml -f docker-compose.embedder-debug.yml --env-file D:\Works\secret\watchtower.env --profile ai up -d embedder
+   pnpm --filter @watchtower/eval-runner kb-similarity -- --url http://127.0.0.1:11434 --model bge-m3
+   docker compose --env-file D:\Works\secret\watchtower.env --profile ai up -d embedder
+   ```
+   คำสั่งแรกเปิด port ที่ `127.0.0.1:11434` ชั่วคราวเท่านั้น (ไม่มี auth) คำสั่งสุดท้ายปิดกลับ · ผลเป็นตาราง recall/noise ต่อ floor และบรรทัด `highest floor that keeps the recall: KB_MIN_VECTOR_SIMILARITY=…` · เอาค่านั้นใส่ env file แล้ว `up -d --no-deps api` · บันทึกค่าที่วัดได้ใน ADR-030 ข้อ 7 · `--fake` ตรวจเฉพาะ plumbing (ตัวเลขไม่มีความหมาย) ใช้ใน CI ได้
+10. **ย้อนกลับ:** ตั้ง `EMBEDDING_PROVIDER=mock` แล้ว `up -d --no-deps api worker` · `reembed_all` รอบถัดไปสลับ index กลับเป็น mock · ลบโมเดล: `docker compose --profile ai down embedder` แล้ว `docker volume rm <project>_embeddermodels`
+
 ## 4. Gmail push (เฉพาะตอนอยากให้เมลใหม่ไหลเข้าเอง) — container `gmail-tunnel` (ADR-020)
 Pub/Sub ต้องยิง HTTPS เข้ามาหา api จาก internet → container `gmail-tunnel` ทำครบในตัว: ตัวกรอง push-only (ปล่อยแค่ `POST /v1/inbound/gmail/push`) + Cloudflare quick tunnel (URL สุ่มใหม่ทุกครั้งที่ขึ้น) + เรียก Pub/Sub `modifyPushConfig` ชี้ subscription ไปที่ URL ใหม่เอง · audience ของ OIDC เป็นค่าคงที่ `GMAIL_PUSH_AUDIENCE` จึง**ไม่ต้อง restart api** เมื่อ URL เปลี่ยน · **ห้ามชี้ tunnel ไปที่ api ตรง ๆ**
 

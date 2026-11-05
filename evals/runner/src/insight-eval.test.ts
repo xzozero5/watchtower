@@ -9,14 +9,15 @@ import { runEval } from './eval.js';
 import { loadCases } from './load.js';
 import { createRig } from './rig.js';
 
-const PROPOSALS = fileURLToPath(new URL('../../proposals', import.meta.url));
+// The owner approved the cases on 2026-11-05; they moved from proposals into the golden set (insight_narrator.json).
+const GOLDEN = fileURLToPath(new URL('../../golden', import.meta.url));
 
 const proposed = () =>
-  loadCases([{ dir: PROPOSALS, source: 'proposal' }]).filter(
+  loadCases([{ dir: GOLDEN, source: 'golden' }]).filter(
     (item) => item.case.agent === 'insight_narrator',
   );
 
-describe('evals/proposals/insights.json (T-417, ADR-029 section 9.8)', () => {
+describe('golden insight_narrator.json (T-417, ADR-029 section 9.8)', () => {
   it('has at least 3 cases for every element narrated in wave 9a, and a nothing-changed case', () => {
     const cases = proposed().map((item) => item.case as InsightCase);
     const wave9a = NARRATED_INSIGHT_ELEMENTS.filter((key) => INSIGHT_ELEMENTS[key].wave === '9a');

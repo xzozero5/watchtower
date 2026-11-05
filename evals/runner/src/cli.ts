@@ -3,7 +3,13 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 
-import { createLocalNameFinder, createRedactor } from '@watchtower/ai';
+import {
+  createLocalEmbeddingProvider,
+  createLocalNameFinder,
+  createRedactor,
+  MockEmbeddingProvider,
+  type EmbeddingProvider,
+} from '@watchtower/ai';
 import { createDatabase } from '@watchtower/db';
 
 import { EVAL_AGENTS, EVAL_SOURCES, type EvalAgent, type EvalSource } from './case.js';
@@ -16,6 +22,8 @@ import {
   redactionGate,
   type RedactFn,
 } from './redaction-eval.js';
+import { formatSimilarityReport, kbQuerySetSchema } from './kb-similarity.js';
+import { runKbSimilarity } from './kb-similarity-run.js';
 import { formatRecord, recordReplay } from './record.js';
 import { exportReplay } from './replay.js';
 import { buildReport, compareReports, formatReport, parseBaseline } from './report.js';
@@ -66,6 +74,12 @@ Options
     latest resolved, non-seed tickets of the intent plus the redaction eval, then calls record_replay_result() as that
     person (needs ai.autonomy.promote; the database checks). Provider from AI_PROVIDER (mock by default: stored, never passed).
     Prints numbers only, no ticket text. (T-306g)
+
+  pnpm --filter @watchtower/eval-runner kb-similarity -- [--url http://127.0.0.1:11434] [--model bge-m3] [--kb-dir examples/kb] [--fake]
+    tunes KB_MIN_VECTOR_SIMILARITY (T-431, ADR-030): embeds examples/kb and a Thai/English query set
+    (evals/runner/kb-similarity/queries.json) with the local embedder and prints recall and noise per floor.
+    --fake uses made-up vectors (no embedder; only checks the plumbing, the numbers mean nothing). The host must
+    be loopback or a compose service name. Changes nothing; see docs/runbooks/local-poc.md.
 
   pnpm --filter @watchtower/eval-runner replay -- --days 30 --limit 50
     reads resolved tickets from DATABASE_URL, redacts them and writes evals/.replay/replay.json (git-ignored)
@@ -209,6 +223,37 @@ function redaction(argv: string[]): number {
   return problems.length > 0 ? 1 : 0;
 }
 
+/** Recall and noise per similarity floor of the KB search, with a real local embedder (T-431). */
+async function kbSimilarity(argv: string[]): Promise<number> {
+  const { values } = parseArgs({
+    args: argv.filter((arg) => arg !== '--'),
+    options: {
+      url: { type: 'string', default: process.env.EMBEDDING_LOCAL_URL ?? 'http://127.0.0.1:11434' },
+      model: { type: 'string', default: process.env.EMBEDDING_MODEL ?? 'bge-m3' },
+      'kb-dir': { type: 'string', default: join(ROOT, 'examples', 'kb') },
+      queries: { type: 'string', default: join(EVALS, 'runner', 'kb-similarity', 'queries.json') },
+      fake: { type: 'boolean', default: false },
+    },
+  });
+  const querySet = kbQuerySetSchema.parse(JSON.parse(readFileSync(values.queries, 'utf8')));
+  const provider: EmbeddingProvider = values.fake
+    ? new MockEmbeddingProvider(32)
+    : createLocalEmbeddingProvider({
+        url: values.url,
+        fetch: (input, init) => globalThis.fetch(input, init),
+        timeoutMs: 120_000,
+      });
+  const { report, passages } = await runKbSimilarity({
+    kbDir: values['kb-dir'],
+    querySet,
+    provider,
+    model: values.model,
+  });
+  console.log(formatSimilarityReport(values.fake ? 'fake vectors' : values.model, report));
+  console.log(`(${String(passages)} passages of ${values['kb-dir']})`);
+  return 0;
+}
+
 async function replay(argv: string[]): Promise<number> {
   const { values } = parseArgs({
     args: argv,
@@ -342,6 +387,7 @@ async function main(): Promise<number> {
     if (command === undefined || command === 'run') return await run(command === 'run' ? rest : []);
     if (command === 'simulate') return await simulate(rest);
     if (command === 'redaction') return redaction(rest);
+    if (command === 'kb-similarity') return await kbSimilarity(rest);
     if (command === 'record') return await record(rest);
     if (command === 'replay') return await replay(rest);
     console.log(USAGE);
