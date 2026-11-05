@@ -110,10 +110,15 @@ describe('replying on Gmail', () => {
       cancellable: true,
       errorCode: null,
     });
-    const hold = Date.parse(delivery.sendAt) - Date.now();
-    expect(hold).toBeGreaterThan(3_000);
-    // The hold is stamped by the database clock and read here by this process' clock.
-    expect(hold).toBeLessThanOrEqual(6_000);
+    // The hold is what was scheduled, read off the row (both stamps come from the same database clock). It
+    // is not measured against this process' clock: that runs apart from the database's under Docker
+    // Desktop (+600 ms measured, so a 5 s hold read as 5450 ms) and stretches with the load of the run.
+    const scheduled = await pool().query<{ hold_seconds: number; hold_ms: number }>(
+      `SELECT hold_seconds, (extract(epoch FROM next_attempt_at - created_at) * 1000)::int AS hold_ms
+         FROM outbound_delivery WHERE id = $1`,
+      [delivery.id],
+    );
+    expect(scheduled.rows[0]).toEqual({ hold_seconds: 5, hold_ms: 5_000 });
 
     // Staff see the delivery in the timeline; the first response is not counted yet.
     const [outbound] = (await messagesOf(agent, ticketId)).filter(
