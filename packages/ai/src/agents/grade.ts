@@ -22,6 +22,7 @@ import {
   type AgentOutcome,
 } from './common.js';
 import { stripLinks } from './assistant.js';
+import { classifyFollowUp, type FollowUp } from './follow-up.js';
 import { neutralizeTags } from './leak-check.js';
 import type { TicketTurn } from './summarize.js';
 
@@ -46,6 +47,8 @@ export interface GradeFact {
   readonly text: string;
   /** A customer message that came after the last staff reply: the only turn that may confirm a fix. */
   readonly afterReply?: boolean | undefined;
+  /** What that message says about the problem (T-301f), read from redacted text. Missing counts as ambiguous. */
+  readonly followUp?: FollowUp | undefined;
 }
 
 /** What the system knows about the customer's answer to the survey, if there was one. */
@@ -122,19 +125,30 @@ const BY_RANK: readonly ResolutionClass[] = ['assumed', 'contained', 'verified']
  *  - no staff reply: `assumed`;
  *  - the customer said it did not work (CSAT "not resolved"): `assumed`;
  *  - `verified` needs the customer's own confirmation: a CSAT "resolved", or a cited customer message
- *    that came after the last staff reply. Otherwise at most `contained`.
+ *    that came after the last staff reply AND says it is fixed (`followUp === 'confirm'`). A thank-you,
+ *    a question or any message nobody can read as "fixed" is not confirmation. Otherwise at most `contained`.
+ *  - the customer's latest message after the reply denies the fix ("still not working", a reopen request),
+ *    cited by the model or not: `assumed`, the same as a CSAT "not resolved" (T-301f).
  */
 export function capResolutionClass(input: {
   readonly claimed: ResolutionClass;
   readonly hasStaffReply: boolean;
   readonly csat: GradeCsat | null;
   readonly citedFacts: readonly GradeFact[];
+  /** Every fact the grader was given, so a denial the model did not cite still counts. */
+  readonly allFacts?: readonly GradeFact[] | undefined;
 }): ResolutionClass {
   if (!input.hasStaffReply) return 'assumed';
   if (input.csat?.resolved === false) return 'assumed';
+  const afterReply = (input.allFacts ?? input.citedFacts).filter(
+    (fact) => fact.role === 'customer' && fact.afterReply === true,
+  );
+  if (afterReply.at(-1)?.followUp === 'deny') return 'assumed';
   const confirmed =
     input.csat?.resolved === true ||
-    input.citedFacts.some((fact) => fact.role === 'customer' && fact.afterReply === true);
+    input.citedFacts.some(
+      (fact) => fact.role === 'customer' && fact.afterReply === true && fact.followUp === 'confirm',
+    );
   const ceiling: ResolutionClass = confirmed ? 'verified' : 'contained';
   return BY_RANK[Math.min(RANK[input.claimed], RANK[ceiling])] ?? 'assumed';
 }
@@ -275,12 +289,20 @@ export async function gradeResolution(
   });
   if (!decision.allowed) return { status: 'skipped', reason: decision.reason };
 
-  const facts = input.facts.slice(0, MAX_FACTS);
   const prompt = deps.prompts.latest(GRADER_PROMPT_ID);
   const session = sessionFor(deps, input.ticketId, input.session);
   let system: RedactedText;
   let user: RedactedText;
+  let facts: GradeFact[];
   try {
+    // The follow-up is read from the redacted text, the same text the model gets (N4).
+    facts = input.facts
+      .slice(0, MAX_FACTS)
+      .map((fact) =>
+        fact.role === 'customer' && fact.afterReply === true
+          ? { ...fact, followUp: classifyFollowUp(session.redact(fact.text)) }
+          : fact,
+      );
     system = renderTrustedPrompt(
       prompt,
       { language: input.locale === 'th' ? 'Thai' : 'English' },
@@ -359,6 +381,7 @@ export async function gradeResolution(
     hasStaffReply,
     csat: input.csat,
     citedFacts: classFacts,
+    allFacts: facts,
   });
 
   return {
