@@ -8,6 +8,7 @@ import { IntentsModule } from '../intents/intents.module.js';
 import { OrgsModule } from '../orgs/orgs.module.js';
 import { KbModule } from '../kb/kb.module.js';
 import { ShiftsModule } from '../shifts/shifts.module.js';
+import { StatusPageModule } from '../statuspage/statuspage.module.js';
 import { TicketsModule } from '../tickets/tickets.module.js';
 import { ToolsModule } from '../tools/tools.module.js';
 import { AssistantController } from './assistant.controller.js';
@@ -30,6 +31,7 @@ import { AssistantService } from './assistant.service.js';
     KbModule,
     OrgsModule,
     ShiftsModule,
+    StatusPageModule,
     TicketsModule,
     ToolsModule,
   ],

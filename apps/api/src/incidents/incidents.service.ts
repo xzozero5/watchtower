@@ -207,6 +207,17 @@ export class IncidentsService {
     return row;
   }
 
+  /** The id of the incident `INC-<number>` names (what the Discord command and the assistant take). */
+  async idOfNumber(number: number): Promise<string> {
+    const [row] = await this.database.db
+      .select({ id: schema.incident.id })
+      .from(schema.incident)
+      .where(eq(schema.incident.number, number))
+      .limit(1);
+    if (row === undefined) throw notFound('No such incident');
+    return row.id;
+  }
+
   async get(id: string): Promise<IncidentDetail> {
     const row = await this.getRow(id);
     const [summary] = await summarize(this.database.db, [row]);

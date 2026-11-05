@@ -37,7 +37,16 @@ describe('who the assistant works for', () => {
 
   it('needs the permission of the ordinary route behind each tool, not only the role', () => {
     const tools = toolsFor(who('agent', ['ticket.read']));
-    expect(tools).toEqual(['search_tickets', 'summarize_ticket', 'explain_sla']);
+    expect(tools).toEqual([
+      'search_tickets',
+      'summarize_ticket',
+      'explain_sla',
+      // T-402: incidents and the status page ask `ticket.read` whole.
+      'incident_search',
+      'incident_get',
+      'statuspage_status',
+      'statuspage_drafts',
+    ]);
     expect(toolsFor(who('agent', [...AGENT]))).toContain('investigate_run');
     expect(
       toolsFor(
@@ -100,10 +109,18 @@ describe('who the assistant works for', () => {
   it('has no tool that writes: the list is searches, reads, and the template run of investigate.run', () => {
     const all = new Set(Object.values(ROLE_TOOLS).flat());
     expect([...all].sort()).toEqual([
+      'alert_get',
+      'alert_search',
       'explain_sla',
+      'incident_get',
+      'incident_search',
       'investigate_run',
       'kb_search',
+      'roster_view',
       'search_tickets',
+      'shift_context',
+      'statuspage_drafts',
+      'statuspage_status',
       'summarize_ticket',
       'team_load',
       'team_status',

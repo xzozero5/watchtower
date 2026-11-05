@@ -29,5 +29,7 @@ import { StatusPublicService } from './status-public.service.js';
     // The same proof of work as the portal (ADR-007, T-207a C-3): the page mails an address a stranger typed.
     { provide: HUMAN_VERIFICATION, useClass: SelfHostedHumanVerificationProvider },
   ],
+  // T-402: the assistant reads components, drafts and maintenance windows through the staff service.
+  exports: [StatusAdminService],
 })
 export class StatusPageModule {}
