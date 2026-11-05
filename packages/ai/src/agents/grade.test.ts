@@ -135,8 +135,37 @@ describe('capResolutionClass', () => {
     label: 'x',
     text: 'works',
     afterReply: true,
+    followUp: 'confirm',
   };
   const before: GradeFact = { ...afterReply, afterReply: false };
+
+  it('does not count a thank-you or a question as confirmation, and a denial caps to assumed (T-301f)', () => {
+    const base = { hasStaffReply: true, csat: null, claimed: 'verified' as const };
+    const as = (followUp: GradeFact['followUp']): GradeFact => ({ ...afterReply, followUp });
+    expect(capResolutionClass({ ...base, citedFacts: [as('ambiguous')] })).toBe('contained');
+    expect(
+      capResolutionClass({ ...base, citedFacts: [{ ...afterReply, followUp: undefined }] }),
+    ).toBe('contained');
+    expect(capResolutionClass({ ...base, citedFacts: [as('deny')] })).toBe('assumed');
+    // A denial the model did not cite still counts, and CSAT "resolved" does not outvote it.
+    expect(capResolutionClass({ ...base, citedFacts: [], allFacts: [as('deny')] })).toBe('assumed');
+    expect(
+      capResolutionClass({
+        ...base,
+        csat: { score: 5, resolved: true },
+        citedFacts: [afterReply],
+        allFacts: [as('deny')],
+      }),
+    ).toBe('assumed');
+    // The latest message wins: denied first, then confirmed.
+    expect(
+      capResolutionClass({
+        ...base,
+        citedFacts: [afterReply],
+        allFacts: [as('deny'), as('confirm')],
+      }),
+    ).toBe('verified');
+  });
 
   it('never lets the model say verified without the customer confirming', () => {
     const base = { hasStaffReply: true, csat: null };
@@ -233,6 +262,58 @@ describe('gradeResolution', () => {
     const outcome = await gradeResolution(deps, input());
     expect(outcome.status === 'ok' && outcome.value.resolutionClass).toBe('contained');
     expect(outcome.status === 'ok' && outcome.value.modelClass).toBe('verified');
+  });
+
+  describe('customer follow-up after the answer (T-301f)', () => {
+    const turns = (follow: string) => [
+      { from: 'customer' as const, text: 'I cannot sign in' },
+      { from: 'staff' as const, text: 'Please reset your password.' },
+      { from: 'customer' as const, text: follow },
+    ];
+    const claimsVerified = pinned({
+      resolutionClass: 'verified',
+      draftVerdict: 'no_draft',
+      reasons: [{ text: 'Customer replied.', factIds: ['f2'] }],
+    });
+    const gradeWith = async (follow: string) => {
+      const { deps } = rig(claimsVerified);
+      const outcome = await gradeResolution(deps, input({ turns: turns(follow) }));
+      return outcome.status === 'ok' ? outcome.value.resolutionClass : outcome.status;
+    };
+
+    it.each([
+      ['It works now, thanks', 'verified'],
+      ['Thanks', 'contained'],
+      ['Is it working now?', 'contained'],
+      ['Still not working', 'assumed'],
+      ['ยังไม่หายครับ', 'assumed'],
+      ['Not fixed yet', 'assumed'],
+      ['Please reopen this', 'assumed'],
+    ])('a model that claims verified after %j ends as %s', async (follow, expected) => {
+      expect(await gradeWith(follow)).toBe(expected);
+    });
+
+    it('counts a denial the model did not cite', async () => {
+      const { deps } = rig(
+        pinned({
+          resolutionClass: 'verified',
+          draftVerdict: 'no_draft',
+          reasons: [{ text: 'Staff answered.', factIds: ['f3'] }],
+        }),
+      );
+      const outcome = await gradeResolution(
+        deps,
+        input({ turns: turns('still broken, same error') }),
+      );
+      expect(outcome.status === 'ok' && outcome.value.resolutionClass).toBe('assumed');
+    });
+
+    it('reads the follow-up from redacted text', async () => {
+      // The address would be a different word to the rules; the verdict must not depend on it.
+      expect(await gradeWith('still not working, call me on jane@customer.example')).toBe(
+        'assumed',
+      );
+    });
   });
 
   it('keeps an uncited violation labelled uncited, drops an uncited reason, ignores unknown ids', async () => {
