@@ -312,3 +312,40 @@ describe('0090 goes down and up again', () => {
     expect((await owner().query(`SELECT 1 FROM assistant_conversation`)).rowCount).toBe(0);
   });
 });
+
+describe('0114 assistant feedback (T-408)', () => {
+  const rate = (fields: { rating: string; reason?: string | null; kind?: string; id?: string }) =>
+    app.query(
+      `INSERT INTO assistant_feedback (user_id, target_kind, target_id, rating, reason)
+       VALUES ($1, $2, COALESCE($3::uuid, gen_random_uuid()), $4, $5)`,
+      [userId, fields.kind ?? 'message', fields.id ?? null, fields.rating, fields.reason ?? null],
+    );
+
+  it('lets the application role rate, once per person and target, with a reason only on a thumbs-down', async () => {
+    const target = '6b0a4f0e-6d1a-4c50-8f5a-2f4f0f0e0a01';
+    await rate({ rating: 'up', id: target });
+    expect(await code(rate({ rating: 'down', id: target }))).toBe('23505');
+    expect(await code(rate({ rating: 'up', reason: 'other' }))).toBe(CHECK_VIOLATION);
+    expect(await code(rate({ rating: 'down', reason: 'rude' }))).toBe(CHECK_VIOLATION);
+    expect(await code(rate({ rating: 'maybe' }))).toBe(CHECK_VIOLATION);
+    expect(await code(rate({ rating: 'down', kind: 'ticket' }))).toBe(CHECK_VIOLATION);
+    await rate({ rating: 'down', reason: 'judges_person', kind: 'insight' });
+  });
+
+  it('goes down (dropping the table) and up again', async () => {
+    const db = await createTestDatabase(adminUrl);
+    try {
+      const pool = db.owner.pool;
+      const later = await migrationsAfter('0114_assistant_feedback');
+      const reverted = await migrateDown(pool, { steps: later.length + 1 });
+      expect(reverted[reverted.length - 1]).toBe('0114_assistant_feedback');
+      expect(await code(pool.query(`SELECT 1 FROM assistant_feedback`))).toBe(UNDEFINED_TABLE);
+      // The memory table of 0112 is not touched by it.
+      expect((await pool.query(`SELECT 1 FROM assistant_memory`)).rowCount).toBe(0);
+      expect(await migrateUp(pool)).toEqual(['0114_assistant_feedback', ...later]);
+      expect((await pool.query(`SELECT 1 FROM assistant_feedback`)).rowCount).toBe(0);
+    } finally {
+      await db.cleanup();
+    }
+  });
+});

@@ -11,6 +11,8 @@ export const CLEANUP_TARGETS = [
   'assistant_conversation',
   'assistant_proposal',
   'assistant_usage',
+  'assistant_memory',
+  'assistant_feedback',
   'ai_summary',
   'ai_element_insight',
 ] as const;
@@ -75,7 +77,8 @@ interface Statement {
   readonly table: CleanupTarget;
   /** `$1` = retention days, `$2` = batch size. The row locator is `id`, or `ctid` where there is none. */
   readonly sql: string;
-  readonly retention: 'auth' | 'breakGlass' | 'assistant' | 'proposal' | 'summary' | 'insight';
+  readonly retention:
+    'auth' | 'breakGlass' | 'assistant' | 'proposal' | 'summary' | 'insight' | 'memory';
 }
 
 const batch = (table: string, locator: string, condition: string): string =>
@@ -173,6 +176,19 @@ const STATEMENTS: readonly Statement[] = [
     sql: batch('assistant_usage', 'ctid', `day < current_date - $1::int`),
   },
   {
+    table: 'assistant_memory',
+    retention: 'memory',
+    // 90 days from the day it was pinned, hard (T-400 C-7: use does not extend it). The api never returns an expired row,
+    // so this only removes what nobody can read any more. Indexed by assistant_memory_expires_idx (migration 0112).
+    sql: batch('assistant_memory', 'id', `expires_at < now() - make_interval(days => $1::int)`),
+  },
+  {
+    table: 'assistant_feedback',
+    retention: 'assistant',
+    // A rating holds no text, but it is a measure of recent answers, not a record: it follows the conversation's period.
+    sql: batch('assistant_feedback', 'id', `updated_at < now() - make_interval(days => $1::int)`),
+  },
+  {
     table: 'ai_summary',
     retention: 'summary',
     sql: batch('ai_summary', 'ctid', `generated_at < now() - make_interval(days => $1::int)`),
@@ -262,6 +278,8 @@ export async function purgeExpired(
     assistant_conversation: 0,
     assistant_proposal: 0,
     assistant_usage: 0,
+    assistant_memory: 0,
+    assistant_feedback: 0,
     ai_summary: 0,
     ai_element_insight: 0,
   };
@@ -274,6 +292,8 @@ export async function purgeExpired(
       proposal: proposalDays,
       summary: summaryDays,
       insight: insightDays,
+      // Past `expires_at` and nothing more: the 90 days are already the retention.
+      memory: 0,
     }[statement.retention];
     for (let run = 0; run < maxBatches; run += 1) {
       const result = await database.pool.query(statement.sql, [days, batchSize]);
