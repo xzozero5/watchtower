@@ -1,15 +1,16 @@
 # HANDOFF — Watchtower
 
 > สถานะล่าสุดของโปรเจกต์ session ใหม่อ่านไฟล์นี้ต่อจาก `AGENTS.md` แล้วทำงานต่อได้โดยไม่ต้องอ่านบทสนทนาเดิม
-> อัปเดตล่าสุด: 2026-11-06 05:35 (เวลากรุงเทพ) โดย Codex — T-437 continuation หลัง quota reset
+> อัปเดตล่าสุด: 2026-11-06 06:22 (เวลากรุงเทพ) โดย Codex — T-437 continuation หลัง quota reset
 > ฉบับก่อน: `docs/handoff-archive/HANDOFF-2026-11-05-pre-ai-bridge.md` · บันทึกรายชั่วโมง `logs/daily/2026-11-05.md`
 
 > ✅ **push แล้ว 2026-11-05** (`origin/main` = `e325c83`, CI run 41963960467 เขียวทั้ง 4 job) · ✅ **POC deploy แล้ว 2026-11-05 11:10** (เจ้าของ OK): backup `D:\Works\watchtower-backups\poc-20261105-1105-pre-phase3.dump` (13.5 MB) → build api/worker/web/bridge/gmail-tunnel → migrate 22 ตัวถึง 0111 → ทุก service healthy · `AI_AUTOSEND_ENABLED` ไม่ได้ตั้ง
 > ✅ **AI เปลี่ยนเป็น Codex แล้ว 2026-11-05 23:53** — `AI_PROVIDER=ai-cli`, `AI_BRIDGE_MODE=codex`, host bridge `http://host.docker.internal:4317` (PID ตรวจที่ logs/ai-bridge/host.pid) · non-secret overrides ถูก append ลง env เดิมแล้ว มี local overlay logs/ai-bridge/pinned-runtime.env ชี้ CODEX_CLI_BIN แบบ pin · API/worker image ใหม่ healthy; DB ถึง 0116; web/Gmail tunnel เดิมไม่แตะ · backup `D:\Works\watchtower-backups\poc-20261105-ai-bridge-pre-0116.dump` (13,731,374 bytes) · old Claude container หยุดไว้ rollback ได้
 
-> ✅ **2026-11-06 05:26:** push `635914d` แล้ว (รวม82commitเดิม); CI run42121519210 queued ต้องดูผลรอบถัดไป. POC api/worker/web redeploy00:21 healthy, bridgeจากapihealth200หลังpinCLI. T-437 completed; checkpoint task T-419 ready หมายถึง T-419b ที่ POเลือก (schema taskIdรับเลขเท่านั้น). งานassistantยังต้องทำต่อ
+> ✅ **2026-11-06 05:26:** push `635914d` แล้ว (รวม82commitเดิม); CI42121519210cancelledเพราะpushเอกสารใหม่; CI42121588809ของ31abb66ล้มops test2ตัว → T-438แก้แล้ว รอดูCIใหม่. POC api/worker/web redeploy00:21 healthy, bridgeจากapihealth200หลังpinCLI. T-437 completed; checkpoint task T-419 ready หมายถึง T-419b ที่ POเลือก (schema taskIdรับเลขเท่านั้น). งานassistantยังต้องทำต่อ
 
 ## Continuation (อ่านก่อนเริ่มรอบใหม่)
+- 06:22 T-438: แก้CI ops e2e testล้าสมัย (/INC-12/ชนAskAIbuttons3ตัว); mainรันlight/dark2/2, qaอิสระreviewผ่าน. ไม่มีproductchange ไม่ต้องredeploy; ดูCIล่าสุดก่อนT419b
 - เจ้าของอนุมัติ 2026-11-06: ทำงานต่อให้ครบ, deploy Docker, push Git, stop container ทิ้ง; มอบ PO ตัดสินใจ scope/default ขณะเข้านอน. คง LINE ภายหลังและ autosend ปิด
 - Automation `watchtower-checkpoint` เรียกแชตนี้ทุกชั่วโมง; runbook `docs/runbooks/codex-continuation.md`, ADR-032. `node tools/codex-continuation/cli.mjs status` อ่าน checkpoint ใน Git info. ตรวจ usage ก่อนงาน; window ที่ยังใช้ได้ให้ reset gate เป็น now ไม่ใช่วัน reset รอบถัดไป
 - [TESTED] quota 5h หมดก่อน 04:30 แล้ว heartbeat นี้กลับมาทำต่อ 05:21 โดยไม่ต้องเจ้าของส่ง continue; weekly เหลือ 68%. ไม่รับประกัน exact wake time

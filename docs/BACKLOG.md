@@ -243,3 +243,5 @@ T-152, T-175 (กำลังทำอยู่แล้ว เก็บผล),
 
 ## Continuation ของ Codex (เจ้าของ 2026-11-06)
 - [x] T-437 `backend-dev` checkpoint atomic + claim + quota gates, app heartbeat hourly, reset resume; ADR-032/runbook · unit8/8 + independent security review C-1 แก้ให้ missing reset fail closed
+
+- [x] T-438 `qa-engineer` CI regression จาก T-406: ops e2e locator INC-12 ชนปุ่ม Ask AI 3 ตัว → จำกัด incident row; targeted light/dark2/2 + independentreviewผ่าน 2026-11-06

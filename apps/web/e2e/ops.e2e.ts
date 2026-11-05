@@ -84,7 +84,10 @@ test.describe('Incident: customer update is drafted, previewed, confirmed and se
       await open(page, `/incidents?incident=${INCIDENT_ID}`);
 
       await expect(page.getByRole('heading', { name: 'Checkout is slow' })).toBeVisible();
-      await expect(page.getByRole('button', { name: /INC-12/ })).toContainText('SEV2');
+      // The incident also has "Ask AI about INC-12" buttons; select the list row itself.
+      await expect(
+        page.locator('button[id^="incident-row-"]').filter({ hasText: 'INC-12' }),
+      ).toContainText('SEV2');
       await page.getByRole('tab', { name: 'Customer updates' }).click();
 
       await page.getByLabel('Write an update').fill('We are looking into slow checkouts.');
