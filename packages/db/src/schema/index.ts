@@ -30,5 +30,7 @@ export * from './uploads.js';
 export * from './object-scan.js';
 // The AI assistant and AI summaries (T-134/T-135, migration 0090).
 export * from './assistant.js';
+// Embedded element insights (T-414, migration 0113).
+export * from './insights.js';
 // Procedures per intent: versions and simulations (T-303b, migration 0097, ADR-026).
 export * from './procedure.js';

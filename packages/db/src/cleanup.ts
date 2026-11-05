@@ -12,6 +12,7 @@ export const CLEANUP_TARGETS = [
   'assistant_proposal',
   'assistant_usage',
   'ai_summary',
+  'ai_element_insight',
 ] as const;
 export type CleanupTarget = (typeof CLEANUP_TARGETS)[number];
 
@@ -45,6 +46,11 @@ export interface CleanupOptions {
    * subjects the person saw, so it is a cache of days, not a record. `[ASSUMED]` 2 days.
    */
   readonly aiSummaryRetentionDays?: number;
+  /**
+   * How long a stored element narration (ADR-029 section 9) is kept after its `expires_at`. It is unusable once
+   * expired (the api shows the facts alone, state `none`), so this is only a short grace. `[ASSUMED]` 1 day.
+   */
+  readonly aiElementInsightRetentionDays?: number;
   /** Rows deleted per statement, so a large backlog never holds a long lock. */
   readonly batchSize?: number;
   /** Statements per table per run; a backlog bigger than `batchSize * maxBatches` finishes on the next run. */
@@ -61,6 +67,7 @@ export const DEFAULT_BREAK_GLASS_RETENTION_DAYS = 30;
 export const DEFAULT_ASSISTANT_RETENTION_DAYS = 30;
 export const DEFAULT_ASSISTANT_PROPOSAL_RETENTION_DAYS = 1;
 export const DEFAULT_AI_SUMMARY_RETENTION_DAYS = 2;
+export const DEFAULT_AI_ELEMENT_INSIGHT_RETENTION_DAYS = 1;
 const DEFAULT_BATCH_SIZE = 1000;
 const DEFAULT_MAX_BATCHES = 100;
 
@@ -68,7 +75,7 @@ interface Statement {
   readonly table: CleanupTarget;
   /** `$1` = retention days, `$2` = batch size. The row locator is `id`, or `ctid` where there is none. */
   readonly sql: string;
-  readonly retention: 'auth' | 'breakGlass' | 'assistant' | 'proposal' | 'summary';
+  readonly retention: 'auth' | 'breakGlass' | 'assistant' | 'proposal' | 'summary' | 'insight';
 }
 
 const batch = (table: string, locator: string, condition: string): string =>
@@ -170,6 +177,12 @@ const STATEMENTS: readonly Statement[] = [
     retention: 'summary',
     sql: batch('ai_summary', 'ctid', `generated_at < now() - make_interval(days => $1::int)`),
   },
+  {
+    table: 'ai_element_insight',
+    retention: 'insight',
+    // Past its own expiry (plus the grace). Indexed by ai_element_insight_expires_idx (migration 0113).
+    sql: batch('ai_element_insight', 'id', `expires_at < now() - make_interval(days => $1::int)`),
+  },
 ];
 
 function assertCount(name: string, value: number, min: number, max: number): number {
@@ -225,6 +238,12 @@ export async function purgeExpired(
     0,
     3650,
   );
+  const insightDays = assertCount(
+    'aiElementInsightRetentionDays',
+    options.aiElementInsightRetentionDays ?? DEFAULT_AI_ELEMENT_INSIGHT_RETENTION_DAYS,
+    0,
+    3650,
+  );
   const batchSize = assertCount('batchSize', options.batchSize ?? DEFAULT_BATCH_SIZE, 1, 100_000);
   const maxBatches = assertCount(
     'maxBatches',
@@ -244,6 +263,7 @@ export async function purgeExpired(
     assistant_proposal: 0,
     assistant_usage: 0,
     ai_summary: 0,
+    ai_element_insight: 0,
   };
   let more = false;
   for (const statement of STATEMENTS) {
@@ -253,6 +273,7 @@ export async function purgeExpired(
       assistant: assistantDays,
       proposal: proposalDays,
       summary: summaryDays,
+      insight: insightDays,
     }[statement.retention];
     for (let run = 0; run < maxBatches; run += 1) {
       const result = await database.pool.query(statement.sql, [days, batchSize]);

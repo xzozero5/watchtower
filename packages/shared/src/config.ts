@@ -276,6 +276,15 @@ export const phase1EnvShape = {
   CEO_STAFF_COST_USD_PER_HOUR: optionalPositiveNumber,
 } satisfies z.ZodRawShape;
 
+/** An integer setting of the insights budget (section 9.4): empty = the default of config/budgets.yaml. */
+const insightInt = (fallback: number, min: number, max?: number) =>
+  z.preprocess(
+    emptyToUndefined,
+    max === undefined
+      ? z.coerce.number().int().min(min).default(fallback)
+      : z.coerce.number().int().min(min).max(max).default(fallback),
+  );
+
 /**
  * Phase 2 (T-200). Every integration variable here is empty by default, and empty means mock: no
  * connector reaches an outside service until the owner supplies the value (`[ASK-HUMAN]`).
@@ -320,6 +329,21 @@ export const phase2EnvShape = {
     emptyToUndefined,
     z.coerce.number().int().min(1).max(365).default(30),
   ),
+  // Embedded element insights (T-414, ADR-029 section 9.4). Empty = the default in config/budgets.yaml (`insights`).
+  INSIGHT_CALLS_PER_HOUR: insightInt(6, 1, 1000),
+  INSIGHT_CALLS_PER_DAY: insightInt(60, 1, 10000),
+  INSIGHT_DAILY_TOKENS: insightInt(150_000, 1000, undefined),
+  INSIGHT_STOP_AT_DAILY_PERCENT: insightInt(60, 1, 100),
+  INSIGHT_MAX_BATCH_ELEMENTS: insightInt(4, 1, 12),
+  INSIGHT_MIN_INTERVAL_MINUTES: insightInt(30, 1, 1440),
+  INSIGHT_DEBOUNCE_MINUTES: insightInt(3, 1, 120),
+  INSIGHT_MAX_WAIT_MINUTES: insightInt(15, 1, 1440),
+  INSIGHT_VIEWED_WITHIN_HOURS: insightInt(24, 1, 168),
+  INSIGHT_NARRATION_TTL_HOURS: insightInt(6, 1, 168),
+  INSIGHT_BUILDERS_PER_TICK: insightInt(20, 1, 200),
+  INSIGHT_USER_SCOPED_CALLS_PER_DAY: insightInt(30, 0, 10000),
+  INSIGHT_USER_SCOPED_PER_USER_PER_DAY: insightInt(4, 0, 1000),
+  INSIGHT_USER_SCOPED_MIN_INTERVAL_MINUTES: insightInt(60, 1, 1440),
 } satisfies z.ZodRawShape;
 
 const MIN_PRODUCTION_SECRET_LENGTH = 32;

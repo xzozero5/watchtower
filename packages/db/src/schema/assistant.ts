@@ -128,7 +128,7 @@ export const assistantUsage = pgTable(
 export const aiSummary = pgTable(
   'ai_summary',
   {
-    kind: text('kind').notNull().$type<'brief' | 'handoff'>(),
+    kind: text('kind').notNull().$type<'brief' | 'handoff' | 'my_work'>(),
     userId: uuid('user_id')
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),

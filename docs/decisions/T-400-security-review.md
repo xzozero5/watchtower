@@ -32,3 +32,31 @@
 
 ตรวจแล้วไม่พบปัญหา (ระดับ design): staff ทุก role เป็น `orgScope 'all'` (`principal.ts`) → invariance ของ shared insight ถูก ณ วันนี้ · ref resolve ด้วย principal + ไม่ cache ข้ามผู้ใช้ · evidence/href ประกอบจาก `ref` ฝั่ง server, model อ้างได้แค่ `eN` ของ turn นี้, `stripLinks` · facts ของ insight เป็น allow-list ไม่มีข้อความอิสระ + ตรวจตัวเลขในโค้ด · ไม่มี write tool (`readOnly:false` ถูกปฏิเสธ) · masked ไม่ได้ shared insight · ไม่ stream token · prompt id `assistant_turn` เข้าเงื่อนไข `isAssistantRequest` (prefix `assistant_`)
 ตรวจไม่ได้: ความทน injection ของ model จริง `[ASK-HUMAN]` key · Caddy/Cloud Run buffer SSE `[VERIFY]` · พฤติกรรมของโค้ดที่ยังไม่เขียน
+
+## ตรวจซ้ำ 2026-11-05
+
+- **ผู้ตรวจ:** `security-reviewer` (N7) · 13:14 (เวลากรุงเทพ) · อ่าน ADR-029 ฉบับแก้รอบ 1 บน local `main` (`d0df023`) ทั้งไฟล์ · design review ไม่ได้รันโจมตี `[TESTED: อ่านเอกสาร]`
+- **ผล:** C-1…C-11 ปิดในระดับ design ทั้งหมด (C-10 ปิดด้วยคำตัดสินเจ้าของ + มาตรการชดเชย §9.9) · **P0 × 0 · P1 × 0** ใหม่ · P2 × 1, P3 × 3 (เลื่อนเป็น DoD ได้) · **ADR-029 ย้ายเป็น Accepted ได้**
+
+| C | ผล | ที่ใน ADR-029 | หมายเหตุ |
+|---|---|---|---|
+| C-1 | ปิด | §2 รูปของ permission, RBAC สองชั้น, §6 RBAC, §8 | `{all}/{anyOf}` + `evaluatePermissionRule` ร่วมกับ guard, ลบ shortcut masked, parity เทียบผล guard ต่อ role จริง |
+| C-2 | ปิด (มีข้อสังเกต C-26) | §2 Read-only ที่ DB | pool RO `default_transaction_read_only=on` + `BEGIN READ ONLY` + executor บังคับ + lint ห้าม `DatabaseService` + test `25006` |
+| C-3 | ปิด | §6 ด่าน cost/ทิศทางของ `llm1`, §8 Injection | ตัด `investigate_run` เมื่อ call เห็น untrusted, restore arg เฉพาะ typed namespace |
+| C-4 | ปิด | §4 Audit ก่อนส่งคำตอบ, §6 Audit | เขียนก่อน `reply`, ล้ม = `audit_failed`, ใช้กับ JSON path ด้วย |
+| C-5 | ปิด | §4 (1), §6 Kill switch, §11 | เลือกทำตาม ADR-023 §7 (ไม่ supersede) รวม `facts_only` และ policy ปิด agent · allow-list ไม่มี `investigate_run` |
+| C-6 | ปิด | §2 `config_lookup` output, §11 | `strict()` allow-list, `{kind, connected, lastOkAt?}`, test ไม่มี `https?://` · `autonomy_status` rule `[UNVERIFIED]` แต่ parity test ครอบ |
+| C-7 | ปิด | §3 User-pinned facts | จาก `redactedText` เท่านั้น, memory พิมพ์เองเลื่อนออก, 90 วันจาก `created_at` |
+| C-8 | ปิด | §6 Redaction | dictionary จาก `context jsonb` ทุก turn + ผู้ส่งของทุก conversation ที่ tool อ่าน, fail closed |
+| C-9 | ปิด | §1 ตัวตน, §6 ลูกค้า, §9.7 | allowlist `WORKSPACE_ROLES` + `orgScope 'all'`, walk ของ client, test grant `assistant.use` ให้ client ยัง 403 |
+| C-10 | ปิดด้วยคำตัดสินเจ้าของ | Context ("ข."), §9.1 คอลัมน์ "คน", §9.2 `personRefs`, §9.9 | ไม่ใช่ข้อเสนอเดิม (F only) แต่ residual ถูกระบุและเจ้าของรับ `[CONFIRMED 2026-11-05]` · ดู C-24, C-25 |
+| C-11 | ปิด | §9.2 `PeriodSpec`, §9.3 กันการ flood, §9.4 Tick | validate period, rate limit + cap viewed mark, single-flight บังคับ, เรียงตามผู้ดู + cap 20/tick |
+
+**§9.9 (narration รายคน):** คนเห็น = route (ตรวจทุกการอ่าน, batch เฉพาะ `rule` เท่ากัน, `.own` ไม่เห็นของคนอื่น) ถูกต้อง · placeholder + `complete:false` fail closed + `numbersSubsetOfFacts` (ตัด ratio ที่ model คิดเอง เช่น "3 เท่า") + `pii.read` + eval เคสชวนจัดอันดับ เพียงพอสำหรับ Accepted โดยมีข้อด้านล่างเป็น DoD
+
+| ID | Sev | ที่ | ปัญหา | วิธีแก้ (DoD ของ T-4xx) |
+|---|---|---|---|---|
+| C-24 | P2 | §9.9 `personToneCheck` | lexicon เลี่ยงได้ง่าย: `สุด`/`หนักสุด`/`เยอะสุด` (ไม่ใช่ `ที่สุด`), `most/least/highest/lowest/fewest`, `นำ/ตามหลัง/รั้งท้าย/ahead/behind`, "มากกว่าค่าเฉลี่ยทีม" (ref `user` ตัวเดียว ไม่เข้า (ค)), และการจัดอันดับโดยนัยจาก**ลำดับ claim** ที่เรียงคนตามโหลด | (ค) ใช้กับการเปรียบเทียบใด ๆ ที่มี ref `user` (รวมกับค่าเฉลี่ย/ทีม) · ขยาย lexicon ตามตัวอย่าง + test ต่อคำ · server เรียง claim ที่มี ref `user` ใหม่ตามลำดับที่ไม่ใช่ค่า (เช่นชื่อ) หรือจำกัด ≤ 1 claim รายคนต่อ element · เคส eval ของคำเหล่านี้ |
+| C-25 | P3 | §9.9, §9.1 | ไม่มี gate ก่อนเปิดโหมด N ของ element ที่มีคน · `home.my_work` (`self`) อาจไม่มี ref `user` ใน claim → `personToneCheck` ไม่ทำงาน | flag ต่อ element default F จนเคส §9.9 ใน golden ผ่าน · ใช้ tone check กับทุก claim ของ element ที่ `personRefs ≠ 'none'` |
+| C-26 | P3 | §2 Read-only ที่ DB | role เดียวกัน (`watchtower_app`) → `default_transaction_read_only` เป็น default ที่ session เปลี่ยนเองได้ ไม่ใช่สิทธิ์ของ DB (ป้องกันความผิดพลาดของโค้ดเรา ไม่ใช่ขอบเขตสิทธิ์) | ระบุใน ADR ว่าเป็น defense-in-depth · lint ห้าม `SET`/`set_config` ใน `assistant/tools/**` และ builder · ทบทวน role RO แยกเมื่อขึ้น GCP |
+| C-27 | P3 | §9.9 (PDPA) | ข้อมูลผลงานรายคน (pseudonymized) ไป provider ภายนอก — เจ้าของรับแล้ว แต่ ISO 27001/PDPA ต้องมีการแจ้งพนักงานและบันทึกใน ROPA ของ instance | เพิ่มข้อความใน README ops/privacy ให้ผู้ fork แจ้งพนักงาน + toggle ระดับ instance ปิดโหมด N ของ element ที่มีคน `[ASK-HUMAN]` ถ้อยคำ |
