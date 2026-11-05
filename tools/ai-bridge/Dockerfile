@@ -11,6 +11,7 @@ RUN npm install -g "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}" "@openai/c
 
 WORKDIR /app
 COPY bridge.mjs server.mjs ./
+RUN mkdir -p /home/node/.codex && chown node:node /home/node/.codex
 
 # Listens on the compose network only (the compose file publishes no port). The bearer token is
 # still required for /v1/generate; /healthz is open and says only "ok" and "online".

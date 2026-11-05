@@ -1,7 +1,7 @@
 # HANDOFF — Watchtower
 
 > สถานะล่าสุดของโปรเจกต์ session ใหม่อ่านไฟล์นี้ต่อจาก `AGENTS.md` แล้วทำงานต่อได้โดยไม่ต้องอ่านบทสนทนาเดิม
-> อัปเดตล่าสุด: 2026-11-05 23:54 (เวลากรุงเทพ) โดย Codex main thread — T-436 AI bridge และสลับ POC ไป Codex ตามคำสั่งเจ้าของ
+> อัปเดตล่าสุด: 2026-11-06 00:12 (เวลากรุงเทพ) โดย Codex main thread — T-436 AI bridge และสลับ POC ไป Codex ตามคำสั่งเจ้าของ
 > ฉบับก่อน: `docs/handoff-archive/HANDOFF-2026-11-05-pre-ai-bridge.md` · บันทึกรายชั่วโมง `logs/daily/2026-11-05.md`
 
 > ✅ **push แล้ว 2026-11-05** (`origin/main` = `e325c83`, CI run 41963960467 เขียวทั้ง 4 job) · ✅ **POC deploy แล้ว 2026-11-05 11:10** (เจ้าของ OK): backup `D:\Works\watchtower-backups\poc-20261105-1105-pre-phase3.dump` (13.5 MB) → build api/worker/web/bridge/gmail-tunnel → migrate 22 ตัวถึง 0111 → ทุก service healthy · `AI_AUTOSEND_ENABLED` ไม่ได้ตั้ง
@@ -10,7 +10,7 @@
 ## สถานะปัจจุบัน
 - **Phase:** 1 = done pending pilot · 2 = done pending live (GCP/Discord จริง) · 3 = ✅ done pending live gate (งานค้างของ PO T-306c ปิดครบ, ADR-025/026 Accepted) · LINE = feature ภายหลัง · Phase 4: ดึง T-152 (ลิงก์ "คำขอของฉัน" ทางอีเมล) + Web Push live มาทำแล้ว
 - **Build/Test บน local main `[TESTED]` (main thread รันเอง):** typecheck 18/18, lint 19/19, unit ทั้ง repo ผ่าน (web 1655, ui 809, shared 1130, ai 819, api 462, worker 193, domain 228, db 86, channels 592, connectors 146, eval-runner 25) · integration บน container ทิ้ง (หลัง merge ทุกอย่าง): db 511/511, domain 509/509, api 1394/1394, worker 364/364 · e2e: web 224 ผ่าน/32 skip (main thread รันเองหลังแก้ test ล้าสมัย 6 ตัว), full-stack 75 ผ่าน/0 ตก, stage 3 flag ON (stack ทิ้ง) 13 ผ่าน/0 ตก
-- **T-436 gate [TESTED]:** typecheck 18/18, lint 19/19 (warning useEffect เดิม 1), AI unit 998, bridge 29 + legacy 1, worker focused 35, migration integration 2 บน Postgres ทิ้ง main รันเอง · independent security review ไม่มี P0/P1/P2 ค้าง · exact Windows/Linux Codex CLI mock capture `tools=[]`; live pong ผ่าน 3 tiers และ API runtime + audit จริง
+- **T-436 gate [TESTED]:** typecheck 18/18, lint 19/19 (warning useEffect เดิม 1), unit ทุก package + boundary ผ่านแบบแบ่งรัน (nonweb17/17 tasks + web150files/1674tests ด้วย threads/maxWorkers2) · AI998, bridge29+legacy1, migration integration2 main รันบน DBทิ้ง · independent security review ไม่มี P0/P1/P2 ค้าง · exact Windows/Linux Codex mock capture `tools=[]`; live pong3tiers + API runtime/audit + classifierข้อความไทยผ่าน · Docker login volumeใหม่ writable uid1000
 - **Migration ล่าสุด:** 0116 (`ai_cli_provider`) · POC migrate 0112–0116 ใน session นี้หลัง backup; ไม่มีเลข 0100 (ข้ามเลข ไม่กระทบ migrator)
 - **Deployment:** POC local compose `watchtower`: API/worker rebuild 2026-11-05 รอบ AI bridge; bridge เป็น host process เปิดค้าง · pilot = instance ใหม่ตาม `docs/runbooks/pilot-instance.md` (เจ้าของ deploy เอง)
 - **Flag:** `AI_AUTOSEND_ENABLED` **ห้ามตั้ง** บน POC/production จนเจ้าของสั่ง (ADR-025) · ตั้งได้เฉพาะ stack ทิ้งของ e2e (`E2E_AUTOSEND_FLAG=on`)

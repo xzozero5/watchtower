@@ -470,3 +470,9 @@ snapshot สั้นสำหรับ cold start อยู่ที่ `HANDOF
 - Persistence: appendเฉพาะ non-secret configลง envเดิมภายนอก repoโดยไม่เปิดอ่าน/พิมพ์ secret; แยก overlayไม่มี secretไว้ภายนอกด้วย. หลัง rebootต้องเริ่ม host runnerใหม่; ยังไม่ติดตั้ง startup task
 - [UNVERIFIED] container subscription loginจริง/model cache bootstrapของ instanceใหม่; หลัง CLI upgradeต้องตรวจใหม่. Codexไม่มี native per-call token capใน invocationนี้ แต่มี byte/time/daily capsและ actual usage
 - เอกสาร: README/env example/runbook/ADR031/index/BACKLOG/HANDOFF + archive + daily logครบ. `.agents/`/`.codex/` ของเจ้าของไม่แตะ
+
+## 2026-11-06 00:12 (Asia/Bangkok) — Codex main — T-436 final gate
+
+- [TESTED] regression ทุก package + boundary ผ่านเมื่อแบ่งรัน: nonweb17/17 tasks และ web150files/1674tests (pool threads/maxWorkers2). Broad commandเดิมเคย timeoutจากfork startup; sequentialรอบกลาง mainหยุดหลัง8m25เพื่อแยกweb ไม่ได้อ้างว่ารอบนั้นผ่าน
+- [TESTED] Dockerใหม่ mkdir/chown Codex homeก่อนUSERnode; disposable named volumeเขียนlogin stateได้uid1000บนread-only container. Independent reviewerตรวจผ่าน ไม่มีP1/P2ใหม่; ไม่ใช้real authในการตรวจcontainer
+- [TESTED] POCใช้งานCodexต่อเนื่อง; Thai classifier syntheticผ่านและauditจริง. Codecommit fe1b28f; commitผลgate/volumeตามมา. ไม่pushเพราะmainมี80commitsเดิมค้างรอเจ้าของก่อนsession
