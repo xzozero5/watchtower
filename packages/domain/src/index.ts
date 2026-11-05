@@ -1296,3 +1296,4 @@ export {
 } from './alerts/noise.js';
 export { readOpenIncidents, summarizeIncidents, type IncidentRow } from './incidents/summary.js';
 export type { SqlExecutor } from './types.js';
+export * from './insights/index.js';
