@@ -1,11 +1,20 @@
 # HANDOFF — Watchtower
 
 > สถานะล่าสุดของโปรเจกต์ session ใหม่อ่านไฟล์นี้ต่อจาก `AGENTS.md` แล้วทำงานต่อได้โดยไม่ต้องอ่านบทสนทนาเดิม
-> อัปเดตล่าสุด: 2026-11-06 00:12 (เวลากรุงเทพ) โดย Codex main thread — T-436 AI bridge และสลับ POC ไป Codex ตามคำสั่งเจ้าของ
+> อัปเดตล่าสุด: 2026-11-06 05:35 (เวลากรุงเทพ) โดย Codex — T-437 continuation หลัง quota reset
 > ฉบับก่อน: `docs/handoff-archive/HANDOFF-2026-11-05-pre-ai-bridge.md` · บันทึกรายชั่วโมง `logs/daily/2026-11-05.md`
 
 > ✅ **push แล้ว 2026-11-05** (`origin/main` = `e325c83`, CI run 41963960467 เขียวทั้ง 4 job) · ✅ **POC deploy แล้ว 2026-11-05 11:10** (เจ้าของ OK): backup `D:\Works\watchtower-backups\poc-20261105-1105-pre-phase3.dump` (13.5 MB) → build api/worker/web/bridge/gmail-tunnel → migrate 22 ตัวถึง 0111 → ทุก service healthy · `AI_AUTOSEND_ENABLED` ไม่ได้ตั้ง
-> ✅ **AI เปลี่ยนเป็น Codex แล้ว 2026-11-05 23:53** — `AI_PROVIDER=ai-cli`, `AI_BRIDGE_MODE=codex`, host bridge `http://host.docker.internal:4317` (PID 19612) · non-secret overrides ถูก append ลง env เดิมแล้ว ไม่ต้องใช้ shell override ชั่วคราว · API/worker image ใหม่ healthy; DB ถึง 0116; web/Gmail tunnel เดิมไม่แตะ · backup `D:\Works\watchtower-backups\poc-20261105-ai-bridge-pre-0116.dump` (13,731,374 bytes) · old Claude container หยุดไว้ rollback ได้
+> ✅ **AI เปลี่ยนเป็น Codex แล้ว 2026-11-05 23:53** — `AI_PROVIDER=ai-cli`, `AI_BRIDGE_MODE=codex`, host bridge `http://host.docker.internal:4317` (PID ตรวจที่ logs/ai-bridge/host.pid) · non-secret overrides ถูก append ลง env เดิมแล้ว มี local overlay logs/ai-bridge/pinned-runtime.env ชี้ CODEX_CLI_BIN แบบ pin · API/worker image ใหม่ healthy; DB ถึง 0116; web/Gmail tunnel เดิมไม่แตะ · backup `D:\Works\watchtower-backups\poc-20261105-ai-bridge-pre-0116.dump` (13,731,374 bytes) · old Claude container หยุดไว้ rollback ได้
+
+## Continuation (อ่านก่อนเริ่มรอบใหม่)
+- เจ้าของอนุมัติ 2026-11-06: ทำงานต่อให้ครบ, deploy Docker, push Git, stop container ทิ้ง; มอบ PO ตัดสินใจ scope/default ขณะเข้านอน. คง LINE ภายหลังและ autosend ปิด
+- Automation `watchtower-checkpoint` เรียกแชตนี้ทุกชั่วโมง; runbook `docs/runbooks/codex-continuation.md`, ADR-032. `node tools/codex-continuation/cli.mjs status` อ่าน checkpoint ใน Git info. ตรวจ usage ก่อนงาน; window ที่ยังใช้ได้ให้ reset gate เป็น now ไม่ใช่วัน reset รอบถัดไป
+- [TESTED] quota 5h หมดก่อน 04:30 แล้ว heartbeat นี้กลับมาทำต่อ 05:21 โดยไม่ต้องเจ้าของส่ง continue; weekly เหลือ 68%. ไม่รับประกัน exact wake time
+- [TESTED] POC rebuild/deploy api/worker/web สำเร็จ 00:21; backup `D:/Works/watchtower-backups/poc-20261106-pre-continuation.dump` 13,746,979 bytes. migrate ไม่มี pending; 0116. หยุด test container 12 ตัว wt-a6/wt-a7/wt-main โดยไม่ลบ volume
+- Jarvis/insights ชุดใหม่ยังไม่ครบ: T-407/409/410/411/412/418/419a/419b/420/421. Phase 3 เก่าปิดแล้วไม่ได้แปลว่างานใหม่ครบ
+- PO เลือกงานถัดไป **T-419b** (dep T-406 ปิด): ปุ่มถาม AI+element chip+disabled reason; acceptance mock/context/scope + independent review. จากนั้น T-409→T-407 และ T-418→T-419a; wave 420/narration รายคนต้องผ่าน privacy/eval ก่อน
+- T-432 ต้องตรวจซ้ำ T-435 ก่อน Accepted, T-433/434 ค้าง. ไม่มี agent จากก่อน quota reset ที่ยังทำงาน: ต้องตรวจ process ก่อนทุก claim
 
 ## สถานะปัจจุบัน
 - **Phase:** 1 = done pending pilot · 2 = done pending live (GCP/Discord จริง) · 3 = ✅ done pending live gate (งานค้างของ PO T-306c ปิดครบ, ADR-025/026 Accepted) · LINE = feature ภายหลัง · Phase 4: ดึง T-152 (ลิงก์ "คำขอของฉัน" ทางอีเมล) + Web Push live มาทำแล้ว
@@ -36,13 +45,14 @@
 | Test isolation | integration config ปฏิเสธรันนอก CI ถ้าไม่ตั้ง `TEST_*` (เคยรั่วเข้า POC — ล้างแล้วด้วยอนุญาตเจ้าของ) |
 
 ## ค้าง / ติดอะไร
-- **Host bridge หลัง reboot:** ต้องเริ่มใหม่ด้วย `tools/ai-bridge/start-host.ps1 -EnvFile D:/Works/secret/watchtower.env -Mode codex -BindAddress 0.0.0.0`; มี log เฉพาะ metadata ที่ `logs/ai-bridge/`, PID ใน `host.pid`; ไม่ได้ติดตั้ง Windows startup task
+- **Host bridge หลัง reboot:** ต้องเริ่มใหม่ด้วย `tools/ai-bridge/start-host.ps1 -EnvFile D:/Works/secret/watchtower.env -OverlayFile logs/ai-bridge/pinned-runtime.env -Mode codex -BindAddress 0.0.0.0`; มี log เฉพาะ metadata ที่ `logs/ai-bridge/`, PID ใน `host.pid`; ไม่ได้ติดตั้ง Windows startup task
 - Codex container mode ต้อง login instance แยก + model catalog cache ก่อนใช้; ยังไม่ทดสอบ container subscription login จริง (ทดสอบ tools=[] ด้วย dummy auth แล้ว)
 - **Residual P3 ยอมรับไว้ก่อน (main thread):** C-4 replay ผูก alias + เชื่อตัวเลขผู้เรียก, C-6 app role ทำ gate report เขียวผ่าน DEFINER ได้, C-9 app role INSERT `ai_run` ปลอม grade ได้, C-14 web ไม่แสดง reviewers, C-16 ไม่มี DB trigger (app role เขียน `custom_fields` ตรงได้), `issue()` ของ session ตั้ง expires_at ด้วยนาฬิกา host — เหตุผล: flag ปิด + ต้องมี L0 (env) + L3 (owner approve) ก่อนส่งจริง · ทบทวนก่อนเปิด flag
 - T-302d: replay อัตโนมัติเมื่อเปลี่ยน prompt/model/procedure ยังสั่งมือ (`eval-runner record`)
 - T-305: CEO §9.2 ข้อ 2,3,5,6, ตั้งเวลา weekly brief ใน admin, e2e/axe หน้า cost ยังไม่ทำ (PO T-306c)
 - T-207 (Phase 2 QA/po review + handoff) ยังไม่ติ๊กใน BACKLOG ทั้งที่เกณฑ์ปิดถือว่าผ่าน — ให้ po ยืนยันแล้วติ๊ก
-- container `wt-main-*` (pg/redis/minio/mailpit) ค้างจาก agent ก่อนหน้า — ไม่ใช่ stack เจ้าของ ลบได้เมื่อไม่ใช้
+- container `wt-main-*`, `wt-a6-*`, `wt-a7-*` หยุดแล้ว 2026-11-06 (12 ตัว) ไม่ลบ volume
+- [TESTED] global Codex อัปเดตเป็น alpha.6 ทำให้ bridge fail closed; ติดตั้ง CLI ที่อนุมัติ alpha.5.1 แยกที่ .cache/ai-bridge-cli และ overlay CODEX_CLI_BIN แล้ว healthz200 (ไม่เปลี่ยน CLI ของแอป). Runbook ai-bridge มีวิธีเปิด
 - ไม่แก้/commit `.agents/` และ `.codex/`
 
 ## รอเจ้าของ (`[ASK-HUMAN]`)
@@ -54,7 +64,7 @@
 - [ ] ทดสอบ grader จริงต่อ prompt injection · ตัดสินดาวน์โหลด model NER ขั้น 2 · ตรวจข้อความภาษาไทย
 
 ## ขั้นต่อไป (เรียงลำดับ)
-1. ติ๊ก T-207 เมื่อ po ยืนยัน Phase 2 review
+1. ทำ T-419b ตามขอบเขตที่ PO เลือก (ถ้าไม่มี active runner), แล้ว checkpoint/test/review; งานใหม่ Jarvis ยังเปิดตาม BACKLOG
 2. หลัง pilot: T-302d replay อัตโนมัติ, T-305 ส่วนที่เหลือ, LINE
 
 ## ยังไม่ยืนยัน

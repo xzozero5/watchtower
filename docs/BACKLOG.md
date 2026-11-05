@@ -240,3 +240,6 @@
 
 ## ก่อนเปิด public / Phase 4 (po 2026-11-04)
 T-152, T-175 (กำลังทำอยู่แล้ว เก็บผล), P3 ที่เหลือของ T-125, T-146 ส่วน polish, Web Push live
+
+## Continuation ของ Codex (เจ้าของ 2026-11-06)
+- [x] T-437 `backend-dev` checkpoint atomic + claim + quota gates, app heartbeat hourly, reset resume; ADR-032/runbook · unit8/8 + independent security review C-1 แก้ให้ missing reset fail closed

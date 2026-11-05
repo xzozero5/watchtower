@@ -33,3 +33,5 @@
 - [ADR-031](ADR-031-ai-cli-bridge.md) — AI bridge เลือก Codex/Claude ผ่าน `AI_BRIDGE_MODE`, provider กลาง `ai-cli`, รองรับ legacy config, tool isolation + CLI version pin, เจ้าของเปลี่ยนไป Codex เพราะ Claude subscription หมดอายุ · Accepted 2026-11-05
 - ADR ใหม่: `ADR-00x-<slug>.md` ตาม `docs/templates/adr.template.md` แล้วเพิ่มบรรทัดที่นี่
 - Review records (security/po) เก็บเป็น `T-xxx-review.md` ในโฟลเดอร์นี้
+
+- [ADR-032](ADR-032-codex-continuation.md) — checkpoint + Codex app heartbeat ทุกชั่วโมง เคารพโควตา 5h/weekly, ไม่มี auth scraping/retry loop · Accepted 2026-11-06
