@@ -4,6 +4,7 @@ import {
   classifyTicket,
   draftReply,
   gradeResolution,
+  narrateElements,
   type AgentDeps,
   type AgentOutcome,
   type AiRunRecord,
@@ -17,9 +18,17 @@ import {
   type EvalCase,
   type EvalSource,
   type GraderCase,
+  type InsightCase,
   type KbAuthorCase,
 } from './case.js';
-import { checkClassifier, checkDrafter, checkGrader, checkKbAuthor, type Check } from './checks.js';
+import {
+  checkClassifier,
+  checkDrafter,
+  checkGrader,
+  checkInsight,
+  checkKbAuthor,
+  type Check,
+} from './checks.js';
 import { caseTicketId, type Rig } from './rig.js';
 
 export interface CaseResult {
@@ -129,6 +138,21 @@ async function kbAuthor(deps: AgentDeps, item: KbAuthorCase) {
   };
 }
 
+async function insightNarrator(deps: AgentDeps, item: InsightCase) {
+  const outcome = await narrateElements(deps, {
+    elements: item.input.elements,
+    locales: item.input.locales,
+    names: item.names ?? [],
+    scope: `eval:${item.id}`,
+  });
+  return {
+    ...(outcome.status === 'ok'
+      ? { status: 'ok' as const, reason: null }
+      : { status: outcome.status, reason: outcome.reason }),
+    checks: outcome.status === 'ok' ? checkInsight(outcome, item) : [],
+  };
+}
+
 function sum(
   runs: readonly AiRunRecord[],
 ): Pick<CaseResult, 'inputTokens' | 'outputTokens' | 'costUsd' | 'latencyMs'> {
@@ -171,6 +195,9 @@ export async function runCase(
       break;
     case 'kb_author':
       outcome = { ...(await kbAuthor(deps, item)) };
+      break;
+    case 'insight_narrator':
+      outcome = { ...(await insightNarrator(deps, item)) };
       break;
   }
   const runs = rig.drainRuns();
