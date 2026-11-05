@@ -36,9 +36,14 @@ test.describe('head: Home', () => {
     await expect(page.getByRole('region', { name: 'AI', exact: true })).toContainText(
       'Stage 2 · Draft for approval',
     );
-    await expect(page.getByRole('region', { name: 'AI', exact: true })).not.toContainText(
-      'Stage 3',
-    );
+    // Stage 3 is a real stage (ADR-025): it is counted, and none of the mock intents is on it.
+    const stages = page.getByRole('region', { name: 'AI', exact: true }).getByRole('list', {
+      name: /stage/i,
+    });
+    await expect(stages).toContainText('Stage 3 · Sends on its own');
+    await expect(stages.getByRole('listitem').filter({ hasText: 'Stage 3' })).toContainText('0');
+    // One mock intent (webhook not received) is pinned.
+    await expect(stages).toContainText('1 pinned');
   });
 
   test('a number opens the queue with that filter', async ({ page }) => {
@@ -125,15 +130,16 @@ test.describe('head: AI controls', () => {
 });
 
 test.describe('head: intents', () => {
-  test('changes an intent from stage 1 to 2 with a reason, and never offers stage 3', async ({
+  test('changes an intent from stage 1 to 2 with a reason, and stage 3 cannot be picked by hand', async ({
     page,
   }) => {
     const backend = await mockConsole(page);
     await open(page, `/admin/intents/${uuid(700)}`);
     await page.getByRole('tab', { name: 'Autonomy' }).click();
     const group = page.getByRole('radiogroup', { name: 'Stage' });
-    await expect(group.getByRole('radio')).toHaveCount(3);
-    await expect(page.getByRole('radio', { name: /Stage 3/ })).toHaveCount(0);
+    await expect(group.getByRole('radio')).toHaveCount(4);
+    // Stage 3 is shown but only the promotion flow can enter it (ADR-025).
+    await expect(group.getByRole('radio', { name: /Stage 3/ })).toBeDisabled();
     await group.getByRole('radio', { name: 'Stage 2 · Draft for approval' }).click();
     await page.getByLabel('Reason (required)').fill('eval run passed');
     await page.getByRole('button', { name: 'Change stage' }).click();

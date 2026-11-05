@@ -4,7 +4,7 @@ import { expect, type Page, test } from '@playwright/test';
 import { DRAFT_ID, makeInsight } from '../src/test/ai-fixtures';
 import { makeMessage, makeScheduledReply, makeTicket } from '../src/test/fixtures';
 
-import { type BackendOptions, type RecordedRequest, mockBackend } from './backend';
+import { APP_ORIGIN, type BackendOptions, type RecordedRequest, mockBackend } from './backend';
 
 // The email composer, the Gmail-style thread and the upload component, against the in-browser api
 // stand-in (T-171). Invented names and example domains only (N1).
@@ -66,6 +66,20 @@ test.describe('the mail as the customer wrote it', () => {
       await route.fulfill({ status: 200, contentType: 'image/png', body: PNG });
     });
     await open(page);
+    // The picture is fetched by the api's image proxy (T-175), not by the browser from the sender's host.
+    let proxied = 0;
+    await page.route('**/v1/tickets/OPS-1/messages/*/remote-image**', async (route) => {
+      proxied += 1;
+      await route.fulfill({
+        status: 200,
+        headers: {
+          'access-control-allow-origin': APP_ORIGIN,
+          'access-control-allow-credentials': 'true',
+          'content-type': 'image/png',
+        },
+        body: PNG,
+      });
+    });
 
     const frame = page.frameLocator('iframe[title^="Email from Sam Customer"]');
     // The formatting arrives (colour, bold, cell padding), the way Gmail draws it.
@@ -78,13 +92,14 @@ test.describe('the mail as the customer wrote it', () => {
     await expect(page.getByText(/remote images are hidden/)).toBeVisible();
     await expect(frame.locator('img[data-blocked]')).toHaveCount(1);
     expect(trackerHits).toBe(0);
+    expect(proxied).toBe(0);
 
     await page.getByRole('button', { name: 'Display images' }).click();
-    const picture = frame.locator('img[src^="https://tracker.example.net/"]');
+    // The CSP allows no remote host, so the picture is shown from a blob URL of what the proxy returned.
+    const picture = frame.locator('img[src^="blob:"]');
     await expect(picture).toHaveCount(1);
-    await expect(picture).toHaveAttribute('referrerpolicy', 'no-referrer');
-    // Whether the browser then fetches it depends on the page's CSP (`img-src`), which today allows no
-    // remote host: that is an owner decision (T-171 report), so only the markup is asserted here.
+    expect(proxied).toBe(1);
+    expect(trackerHits).toBe(0);
     await expect(page.getByText(/remote images are hidden/)).toBeHidden();
   });
 });
