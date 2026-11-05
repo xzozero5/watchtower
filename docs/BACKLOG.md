@@ -177,7 +177,7 @@
 - [x] T-306h `backend-dev` portal: เปิดลิงก์ "คำขอของฉัน" (T-152) หรือยืนยันอีเมลจากลิงก์ tracking = พิสูจน์กล่องอีเมล → ตั้ง `customFields.portal.requesterVerified=true` ให้ ticket ของ contact นั้น (main thread ตัดสิน) · drafter stage 2 คง `contact.verifiedAt` เดิมเพราะมีคนอนุมัติ
 - [x] T-306i `backend-dev` golden: `goldenAnswerSchema` คืน `shareable` (ป้ายในหน้า admin golden) + endpoint preview ผล scrub ก่อนติ๊ก shareable (ช่องว่างจาก web follow-up 2026-11-05)
 - [ ] T-306j `security-reviewer` ตรวจซ้ำผลแก้ T-306a C-1…C-14 + ผิวโจมตีใหม่ (preview, requesterVerified, reason 403, returnTo, watch job ต่อ event) — ก่อน ADR-025 Accepted (N7, PO T-306c)
-- [ ] T-301f `ai-engineer` `capResolutionClass`: ข้อความลูกค้าที่ปฏิเสธ ("ยังไม่หาย") ไม่นับ verified, คลุมเครือไม่นับยืนยัน (PO T-306c)
+- [x] T-301f `ai-engineer` `capResolutionClass`: ข้อความลูกค้าที่ปฏิเสธ ("ยังไม่หาย") ไม่นับ verified, คลุมเครือไม่นับยืนยัน (PO T-306c) — **ปิด 2026-11-05** (`packages/ai/src/agents/follow-up.ts`; deny = assumed, confirm เท่านั้นที่ verified) · eval เคสที่ agent เสนอ 7 ข้อรอเจ้าของอนุมัติเข้า golden
 - [ ] T-306c `po` review + เสนอ 2–3 intent → [ASK-HUMAN] เลื่อน stage
 - [ ] T-301 Grader + verified/contained/assumed resolution (§6.2, §6.4)
 - [ ] T-302 Eval set + replay runner + golden answers + KB author (§6.5, R-4.4–4.6)
