@@ -158,7 +158,7 @@ export async function startWorker(
     probe: () =>
       probeAiStatus({
         provider: config.AI_PROVIDER,
-        bridgeUrl: config.CLAUDE_CLI_BRIDGE_URL,
+        bridgeUrl: config.AI_BRIDGE_URL ?? config.CLAUDE_CLI_BRIDGE_URL,
         fetch: (input, init) => globalThis.fetch(input, init),
       }),
     store: realtimeRedis,

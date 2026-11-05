@@ -4,6 +4,8 @@
 snapshot สั้นสำหรับ cold start อยู่ที่ `HANDOFF.md` — ไฟล์นี้คือ log ต่อ task + open questions
 
 ## สถานะปัจจุบัน
+
+- **T-436 [TESTED] 2026-11-05 23:54:** POC ใช้ AI bridge / Codex แล้ว (`ai-cli`, host runner, config คงอยู่ใน env เดิม). API/worker healthy; migration 0116; redaction/guard/audit synthetic call ผ่าน. ADR-031 + `docs/runbooks/ai-bridge.md`
 | Phase | สถานะ (2026-11-05) | ค้าง |
 |---|---|---|
 | 0 Foundation | ✅ | — |
@@ -456,3 +458,15 @@ snapshot สั้นสำหรับ cold start อยู่ที่ `HANDOF
 - test: —
 - ค้าง: T-000
 - ไม่ยืนยัน: ดูหัวข้อ Open questions
+
+## 2026-11-05 23:54 (Asia/Bangkok) — Codex main — T-436 AI bridge / Codex
+
+- [CONFIRMED] เจ้าของขอเปลี่ยน Claude bridge เป็น AI bridge เลือก mode ได้ และใช้ Codex เพราะ Claude subscription หมดอายุ → ADR-031
+- ทำ: `tools/ai-bridge` + runner `pnpm ai-bridge`, mode codex/claude; canonical `ai-cli` + AI_BRIDGE config (canonical ชนะ legacy, blank fallback); legacy provider/runner ยังคง Claude และ reject mismatch; migration0116 เพิ่ม ai-cli โดยคง audit เก่า/local; API/worker/status wiring; compose service rename + alias hostnameเดิม; dedicated container login volume
+- Isolation: native executable/shell:false, allow-list child env, static sanitized model catalog + high-priority app instructions ใน temp dir, ignore user config/project instructions/MCP/plugins/hooks, CLI pin `0.166.0-alpha.5.1`, strict config, parser reject tool/failed/incomplete events + usageไม่ครบ; no body/stderr logs
+- [TESTED main] typecheck18/18, lint19/19 (warning useEffectเดิม1); AI998, bridge29+legacy1, worker focused35, model/provider17, shared/tool root1631, migrationintegration2บน DBทิ้ง; independent security agentตรวจซ้ำไม่มี P0/P1/P2ค้าง. Full pnpm testรอบแรกแพ้ fork startup timeoutใน UI เมื่อรันทุก packageขนาน → กำลังรัน gateแบบ sequential/maxWorkers2 (ไม่แก้ test/rubric)
+- [TESTED main] exact Windows+Linux Codex outbound tools=[] ผ่าน mock endpointใช้ dummy authเท่านั้น; host login live pongผ่าน3tiers (deep Astra/standard Sol/light Luna), API runtimeจริง redactor/guard/audit ai-cli ผ่านและมี ai_run; รวม4calls input31424/output20, subscriptionไม่มี meterเงินจริง
+- [TESTED deploy] backup `D:/Works/watchtower-backups/poc-20261105-ai-bridge-pre-0116.dump` 13,731,374bytes + tag old API/worker images pre-ai-bridge-20261105; migrate0112–0116; API/worker rebuild+healthy; แก้ timeoutที่ mainตั้ง60sเกิน schemaเป็น30s; bridge host PID19612 port4317, Dockerเข้าได้; หยุด Claude containerเดิม; web/Gmail tunnelไม่แตะ; autosend=false
+- Persistence: appendเฉพาะ non-secret configลง envเดิมภายนอก repoโดยไม่เปิดอ่าน/พิมพ์ secret; แยก overlayไม่มี secretไว้ภายนอกด้วย. หลัง rebootต้องเริ่ม host runnerใหม่; ยังไม่ติดตั้ง startup task
+- [UNVERIFIED] container subscription loginจริง/model cache bootstrapของ instanceใหม่; หลัง CLI upgradeต้องตรวจใหม่. Codexไม่มี native per-call token capใน invocationนี้ แต่มี byte/time/daily capsและ actual usage
+- เอกสาร: README/env example/runbook/ADR031/index/BACKLOG/HANDOFF + archive + daily logครบ. `.agents/`/`.codex/` ของเจ้าของไม่แตะ

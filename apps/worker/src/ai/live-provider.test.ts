@@ -28,7 +28,7 @@ const MODELS = {
 const fixture = readFixture('anthropic-classifier.json');
 
 function settingsFor(
-  provider: 'anthropic' | 'vertex' | 'claude-cli',
+  provider: 'anthropic' | 'vertex' | 'claude-cli' | 'ai-cli',
   extra: Record<string, string> = {},
 ) {
   return buildAiSettings(testConfig({ AI_PROVIDER: provider, ...MODELS, ...extra })).settings;
@@ -54,7 +54,8 @@ function request(settings: AiSettings, tier: LlmRequest['tier'] = 'light'): LlmR
 
 function setup(options: {
   credentials?: AiCredentials | (() => Promise<AiCredentials>);
-  kind?: 'anthropic' | 'vertex' | 'claude-cli';
+  kind?: 'anthropic' | 'vertex' | 'claude-cli' | 'ai-cli';
+  aiBridge?: { bridgeUrl?: string; token?: string };
   claudeCli?: { bridgeUrl?: string; token?: string };
   settings?: AiSettings;
   fetch?: Parameters<typeof createLiveProvider>[0]['fetch'];
@@ -76,6 +77,7 @@ function setup(options: {
     ...(options.vertexAccessToken === undefined
       ? {}
       : { vertexAccessToken: options.vertexAccessToken }),
+    ...(options.aiBridge === undefined ? {} : { aiBridge: options.aiBridge }),
     ...(options.claudeCli === undefined ? {} : { claudeCli: options.claudeCli }),
     logger,
     ...(options.now === undefined ? {} : { now: options.now }),
@@ -297,5 +299,55 @@ describe('createLiveProvider: claude-cli (ADR-017)', () => {
     await expect(noPrice.provider.generate(request(noPrice.settings))).rejects.toBeInstanceOf(
       ProviderUnavailableError,
     );
+  });
+});
+
+describe('createLiveProvider: AI bridge (ADR-031)', () => {
+  it('uses canonical bridge fields before legacy aliases and preserves the generic provider kind', async () => {
+    const sent: { url: string; init: RequestInit }[] = [];
+    const { provider, settings } = setup({
+      kind: 'ai-cli',
+      credentials: {},
+      aiBridge: { bridgeUrl: 'http://ai-bridge:4317', token: 'canonical-test-token' },
+      claudeCli: { bridgeUrl: 'http://claude-bridge:4317', token: 'legacy-test-token' },
+      fetch: (input, init) => {
+        sent.push({ url: typeof input === 'string' ? input : 'non-string', init: init ?? {} });
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              backend: 'codex',
+              text: 'answer',
+              usage: { inputTokens: 8, outputTokens: 2 },
+            }),
+          ),
+        );
+      },
+    });
+    expect(provider.kind).toBe('ai-cli');
+    await provider.generate(request(settings));
+    expect(sent[0]?.url).toBe('http://ai-bridge:4317/v1/generate');
+    expect((sent[0]?.init.headers as Record<string, string>).authorization).toBe(
+      'Bearer canonical-test-token',
+    );
+    expect(JSON.parse(sent[0]?.init.body as string)).not.toHaveProperty('backend');
+  });
+
+  it('falls back to legacy connection fields when canonical fields are absent', async () => {
+    const { provider, settings } = setup({
+      kind: 'ai-cli',
+      credentials: {},
+      claudeCli: { bridgeUrl: 'http://claude-bridge:4317', token: FAKE_KEY },
+      fetch: () =>
+        Promise.resolve(
+          new Response(
+            JSON.stringify({
+              backend: 'claude',
+              text: 'answer',
+              usage: { inputTokens: 8, outputTokens: 2 },
+            }),
+          ),
+        ),
+    });
+    await expect(provider.generate(request(settings))).resolves.toMatchObject({ text: 'answer' });
   });
 });

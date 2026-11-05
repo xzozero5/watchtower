@@ -90,20 +90,23 @@ Before you connect anything real:
 - **The AI never answers customers on its own.** Every intent stays at autonomy stage 2 or lower (draft for approval), enforced in the database.
 - **Personal data is redacted before it reaches a model, as far as patterns and known names allow.** A name typed into free text that the system doesn't know can get through. Decide whether you accept that before turning on a real provider.
 
-## AI through the Claude Code CLI (one machine)
+## AI bridge: Codex or Claude CLI (one machine)
 
-A self-hosted instance on one machine can run its AI on a Claude Code login instead of an API key ([ADR-017](docs/decisions/ADR-017-claude-cli-dev-provider.md), [ADR-019](docs/decisions/ADR-019-claude-cli-primary-ai-and-kb-folder.md)). A small bridge runs `claude -p` with every tool turned off and never logs prompts; it runs as a compose service that stays up:
+A self-hosted instance can use a subscription CLI login through the [AI bridge](docs/decisions/ADR-031-ai-cli-bridge.md). Select `AI_BRIDGE_MODE=codex` (default) or `claude`; switching requires restarting the bridge and updating model settings. It never switches vendors automatically. Redaction, audit, budgets and approval gates remain in the application.
 
 ```bash
-# env file: AI_PROVIDER=claude-cli, CLAUDE_CLI_BRIDGE_TOKEN=<16+ random characters>,
-#           CLAUDE_CODE_OAUTH_TOKEN=<from `claude setup-token`>,
-#           AI_MODEL_DEEP=sonnet AI_MODEL_STANDARD=sonnet AI_MODEL_LIGHT=sonnet,
-#           AI_MODEL_PRICES={"sonnet":{"inputUsdPerMTok":0,"outputUsdPerMTok":0}},
-#           INGEST_CLASSIFIER_TIMEOUT_MS=15000   (a CLI call takes 5-10 s)
-docker compose --env-file <path> --profile ai up -d --build claude-bridge worker
+# First log in separately on the machine that will run the bridge:
+codex login
+# In your external env file: AI_PROVIDER=ai-cli, AI_BRIDGE_MODE=codex,
+# AI_BRIDGE_TOKEN=<16+ random characters>, AI_MODEL_DEEP/STANDARD/LIGHT=<available model IDs>,
+# AI_MODEL_PRICES=<price entry for every selected model; subscription entries may be zero>.
+# Keep any agent-specific model overrides compatible with the selected backend.
+node --env-file=<external-env-path> tools/ai-bridge/server.mjs
 ```
 
-The bridge is reachable from the worker and from this machine's loopback (`127.0.0.1:4317`) only, and every call needs the bridge token. While the machine cannot reach Anthropic the bridge says so, AI work is recorded as offline and retried later, and nothing falls back to a fake answer. `pnpm claude-bridge` still runs the same bridge outside Docker. The app refuses to boot with `claude-cli` when `NODE_ENV=production` or `APP_URL` is not on this machine. Check Anthropic's terms for automated use of a subscription before relying on this.
+`pnpm ai-bridge` loads a local `.env` if present. The host listener defaults to `127.0.0.1:4317`; Docker Desktop callers use `AI_BRIDGE_URL=http://host.docker.internal:4317` and may require an explicit bind address. The container service is `ai-bridge` (`--profile ai`), reachable at `http://ai-bridge:4317` with no published port. Its dedicated `codexstate` volume needs its own login; do not mount your entire Codex home. Every generation request requires the bridge token. Production or non-loopback application URLs require explicit `AI_BRIDGE_ALLOW_REMOTE=true`.
+
+The bridge runs Codex without user config, project instructions or tools, in an empty temporary directory. Unsupported CLI isolation settings fail closed. It never logs prompts, responses or CLI stderr. Offline calls wait and retry without mock fallback. `AI_PROVIDER=claude-cli`, `CLAUDE_CLI_*` settings and `pnpm claude-bridge` remain supported for existing Claude setups; the legacy provider refuses a Codex backend. See [the runbook](docs/runbooks/ai-bridge.md) for switching and rollback.
 
 ## Gmail push on one machine (`gmail-tunnel`)
 
@@ -121,7 +124,7 @@ docker compose --env-file <path> --profile gmail-tunnel up -d --build --no-deps 
 | Customer portal, tracking links, CSAT, manual tickets, masked `dev` role | Built, tested |
 | Gmail (OAuth), push through `gmail-tunnel`, Gmail-style view and email composer | **Run against a real mailbox** on one POC instance: push, ingest, inline images. Sending HTML with Cc/Bcc from the new composer is tested against fakes; whether Gmail strips `Bcc` from what it delivers is not yet confirmed |
 | LINE Messaging API, Discord webhook, SMTP relay | Code complete, tested against fakes, **never run against the real service** |
-| AI: triage, investigation, drafts, grounded on the knowledge base | **Real calls through `claude-cli`** (Claude Code CLI, sonnet) on the POC. **The `anthropic` API path has never made a real call** |
+| AI: triage, investigation, drafts, grounded on the knowledge base | **Real calls through `ai-cli` (Codex)** on the POC; Claude mode remains supported. All three configured tiers and the audited API path passed a synthetic live smoke test. **The `anthropic` API path has never made a real call** |
 | Knowledge base, Markdown folder sync | Works, but search uses mock embeddings, so it isn't semantic search yet |
 | Image and file uploads | Built, tested with real Postgres and MinIO; EXIF/GPS stripped for JPEG and PNG only |
 | Alerts, incidents, status page (off by default), usage metrics, Client Health Score | Built, tested with simulated input |

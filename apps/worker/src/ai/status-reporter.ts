@@ -8,7 +8,7 @@ import {
 import { z } from 'zod';
 
 import type { WorkerLogger } from '../logger.js';
-import { DEFAULT_CLAUDE_CLI_BRIDGE_URL } from './runtime.js';
+import { DEFAULT_AI_BRIDGE_URL, DEFAULT_CLAUDE_CLI_BRIDGE_URL } from './runtime.js';
 
 const healthSchema = z.object({ online: z.boolean() });
 const PROBE_TIMEOUT_MS = 5000;
@@ -27,9 +27,13 @@ export interface AiStatusProbeInput {
  */
 export async function probeAiStatus(input: AiStatusProbeInput): Promise<AiStatusValue> {
   if (input.provider === 'mock') return 'disabled';
-  if (input.provider !== 'claude-cli') return 'online';
+  if (input.provider !== 'claude-cli' && input.provider !== 'ai-cli') return 'online';
   try {
-    const url = new URL('/healthz', input.bridgeUrl ?? DEFAULT_CLAUDE_CLI_BRIDGE_URL);
+    const url = new URL(
+      '/healthz',
+      input.bridgeUrl ??
+        (input.provider === 'ai-cli' ? DEFAULT_AI_BRIDGE_URL : DEFAULT_CLAUDE_CLI_BRIDGE_URL),
+    );
     const response = await input.fetch(url.toString(), {
       signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
     });

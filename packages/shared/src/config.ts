@@ -97,7 +97,7 @@ const redisUrl = z
 export const LOG_LEVELS = ['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent'] as const;
 export const NODE_ENVS = ['development', 'test', 'production'] as const;
 /** `claude-cli` is refused in production and off a loopback APP_URL unless CLAUDE_CLI_ALLOW_REMOTE=true (ADR-017, ADR-021). */
-export const AI_PROVIDERS = ['mock', 'anthropic', 'vertex', 'claude-cli'] as const;
+export const AI_PROVIDERS = ['mock', 'anthropic', 'vertex', 'claude-cli', 'ai-cli'] as const;
 /**
  * Where knowledge base embeddings come from. `[ASSUMED]` mock (deterministic, offline) or Vertex;
  * `local` is the Ollama `embedder` service of this deployment (ADR-030, owner decision 2026-11-05).
@@ -168,7 +168,11 @@ export const baseEnvShape = {
   GOOGLE_APPLICATION_CREDENTIALS: optionalString,
   AI_PROVIDER: z.enum(AI_PROVIDERS).default('mock'),
   ANTHROPIC_API_KEY: optionalString,
-  // claude-cli only (ADR-017): the host-side bridge to the local Claude Code CLI.
+  // AI bridge (ADR-031): canonical settings override the legacy Claude names when set.
+  AI_BRIDGE_URL: optionalString,
+  AI_BRIDGE_TOKEN: optionalString,
+  AI_BRIDGE_ALLOW_REMOTE: z.preprocess(emptyToUndefined, z.stringbool().optional()),
+  // Legacy Claude bridge aliases (ADR-017).
   CLAUDE_CLI_BRIDGE_URL: optionalString,
   CLAUDE_CLI_BRIDGE_TOKEN: optionalString,
   // ADR-021: opt-in per instance to run claude-cli in production / off a loopback APP_URL. Off by default.
@@ -627,12 +631,18 @@ function applyGuards(env: Readonly<Record<string, unknown>>, ctx: z.RefinementCt
   // The CLI provider routes redacted prompts through one person's Claude subscription (ADR-017).
   // It exists for a laptop: never in production, never on a deployment others can reach, unless the
   // instance owner opts in with CLAUDE_CLI_ALLOW_REMOTE=true (ADR-021).
-  if (env.AI_PROVIDER === 'claude-cli' && env.CLAUDE_CLI_ALLOW_REMOTE !== true) {
+  if (
+    (env.AI_PROVIDER === 'claude-cli' || env.AI_PROVIDER === 'ai-cli') &&
+    (env.AI_BRIDGE_ALLOW_REMOTE ?? env.CLAUDE_CLI_ALLOW_REMOTE) !== true
+  ) {
     if (env.NODE_ENV === 'production') {
-      fail('AI_PROVIDER', 'claude-cli is a dev/POC provider and must not be used in production');
+      fail(
+        'AI_PROVIDER',
+        `${env.AI_PROVIDER} is a dev/POC provider and must not be used in production`,
+      );
     }
     if (!isLoopbackUrl(text(env, 'APP_URL') ?? '')) {
-      fail('AI_PROVIDER', 'claude-cli is allowed only when APP_URL is a loopback address');
+      fail('AI_PROVIDER', `${env.AI_PROVIDER} is allowed only when APP_URL is a loopback address`);
     }
   }
   const breakGlassEmail = text(env, 'BREAK_GLASS_EMAIL');
@@ -700,8 +710,10 @@ export const CLAUDE_CLI_REMOTE_WARNING = 'claude-cli remote opt-in enabled (ADR-
 export function claudeCliRemoteWarning(config: {
   readonly AI_PROVIDER: string;
   readonly CLAUDE_CLI_ALLOW_REMOTE: boolean;
+  readonly AI_BRIDGE_ALLOW_REMOTE?: boolean | undefined;
 }): string | undefined {
-  return config.AI_PROVIDER === 'claude-cli' && config.CLAUDE_CLI_ALLOW_REMOTE
-    ? CLAUDE_CLI_REMOTE_WARNING
-    : undefined;
+  const enabled = config.AI_BRIDGE_ALLOW_REMOTE ?? config.CLAUDE_CLI_ALLOW_REMOTE;
+  if (!enabled) return undefined;
+  if (config.AI_PROVIDER === 'ai-cli') return 'ai-cli remote opt-in enabled (ADR-031)';
+  return config.AI_PROVIDER === 'claude-cli' ? CLAUDE_CLI_REMOTE_WARNING : undefined;
 }

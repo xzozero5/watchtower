@@ -30,5 +30,6 @@
 - [ADR-028](ADR-028-pdf-export.md) — PDF export ของ CEO view ด้วย pdfkit + IBM Plex Sans Thai (fontsource) ไม่มี network ไม่ใช้ headless browser (T-305d) · Accepted 2026-11-04
 - [ADR-029](ADR-029-assistant-stage1.md) — Watchtower Assistant ("Jarvis") stage 1: agent เดียว + tool อ่านอย่างเดียวครอบทุก module ตามสิทธิ์ผู้ใช้ (parity กับ GET route), context เป็น hint ที่ server resolve, path `facts_only`/`llm1`/`llm2`, SSE แบบ phase, pinned memory ที่คนสร้าง, ไม่มีลูกค้า, AI ฝังในทุก element (§9) (T-400) · **Accepted 2026-11-05**
 - [ADR-030](ADR-030-local-embeddings.md) — Embedding ของ KB ด้วยโมเดลในเครื่อง (Ollama + bge-m3, service `embedder` บน network `ai`, ดาวน์โหลดโมเดลครั้งเดียว, provider `local`, ถอยไป keyword เมื่อ embedder ล่ม) (T-430) · Proposed 2026-11-05
+- [ADR-031](ADR-031-ai-cli-bridge.md) — AI bridge เลือก Codex/Claude ผ่าน `AI_BRIDGE_MODE`, provider กลาง `ai-cli`, รองรับ legacy config, tool isolation + CLI version pin, เจ้าของเปลี่ยนไป Codex เพราะ Claude subscription หมดอายุ · Accepted 2026-11-05
 - ADR ใหม่: `ADR-00x-<slug>.md` ตาม `docs/templates/adr.template.md` แล้วเพิ่มบรรทัดที่นี่
 - Review records (security/po) เก็บเป็น `T-xxx-review.md` ในโฟลเดอร์นี้

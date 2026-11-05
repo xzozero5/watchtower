@@ -43,6 +43,7 @@ import { createLiveProvider, type AiCredentialReader } from './live-provider.js'
 import { buildAiSettings } from './settings.js';
 
 /** Where the host-side bridge is, seen from a container on Docker Desktop (ADR-017). */
+export const DEFAULT_AI_BRIDGE_URL = 'http://ai-bridge:4317';
 export const DEFAULT_CLAUDE_CLI_BRIDGE_URL = 'http://host.docker.internal:4317';
 
 /** What a test (or a later task) may replace; production uses the defaults. */
@@ -198,9 +199,12 @@ export function createAiRuntime(
       kind: live,
       settings: built.settings,
       credentials,
-      claudeCli: {
-        bridgeUrl: config.CLAUDE_CLI_BRIDGE_URL ?? DEFAULT_CLAUDE_CLI_BRIDGE_URL,
-        token: config.CLAUDE_CLI_BRIDGE_TOKEN,
+      aiBridge: {
+        bridgeUrl:
+          config.AI_BRIDGE_URL ??
+          config.CLAUDE_CLI_BRIDGE_URL ??
+          (kind === 'ai-cli' ? DEFAULT_AI_BRIDGE_URL : DEFAULT_CLAUDE_CLI_BRIDGE_URL),
+        token: config.AI_BRIDGE_TOKEN ?? config.CLAUDE_CLI_BRIDGE_TOKEN,
       },
       fetch: overrides.fetch ?? ((input, init) => globalThis.fetch(input, init)),
       ...(overrides.vertexAccessToken === undefined
@@ -253,8 +257,13 @@ export function createAiRuntime(
       if (kind === 'anthropic' && held.anthropicApiKey === undefined) {
         found.push('no Anthropic API key (ANTHROPIC_API_KEY or the credential store)');
       }
-      if (kind === 'claude-cli' && (config.CLAUDE_CLI_BRIDGE_TOKEN ?? '').trim() === '') {
-        found.push('CLAUDE_CLI_BRIDGE_TOKEN is not set (the bridge requires it)');
+      if (
+        (kind === 'claude-cli' || kind === 'ai-cli') &&
+        (config.AI_BRIDGE_TOKEN ?? config.CLAUDE_CLI_BRIDGE_TOKEN ?? '').trim() === ''
+      ) {
+        found.push(
+          'AI_BRIDGE_TOKEN or CLAUDE_CLI_BRIDGE_TOKEN is not set (the bridge requires it)',
+        );
       }
       if (kind === 'vertex') {
         if (held.vertexProjectId === undefined) found.push('no Vertex project id');

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { forbiddenFetch } from '../testing/replay-fetch.js';
 import { buildLlmRequest } from '../testing/requests.js';
-import { createCliBridgeProvider } from './claude-cli.js';
+import { createAiCliBridgeProvider, createCliBridgeProvider } from './claude-cli.js';
 import { ProviderConfigError, ProviderError, type FetchLike } from './sdk.js';
 
 // Made-up value, not a credential.
@@ -128,5 +128,49 @@ describe('claude-cli adapter (ADR-017)', () => {
     });
     const error = await provider.generate(request).catch((e: unknown) => e);
     expect(error).toMatchObject({ code: 'BridgeUnreachable', retryable: true });
+  });
+});
+
+describe('AI bridge adapter (ADR-031)', () => {
+  it('uses the generic provider kind, allows ai-bridge and maps Codex token usage', async () => {
+    const { request } = buildLlmRequest();
+    const { fetchFake, calls } = recorder(() =>
+      json({
+        backend: 'codex',
+        text: 'ok',
+        model: 'configured-model',
+        usage: { inputTokens: 20, outputTokens: 4 },
+      }),
+    );
+    const provider = createAiCliBridgeProvider({
+      bridgeUrl: 'http://ai-bridge:4317',
+      token: TOKEN,
+      fetch: fetchFake,
+    });
+    expect(provider.kind).toBe('ai-cli');
+    expect(await provider.generate(request)).toMatchObject({
+      model: 'configured-model',
+      usage: { inputTokens: 20, outputTokens: 4 },
+    });
+    expect(calls[0]?.url).toBe('http://ai-bridge:4317/v1/generate');
+    expect(JSON.parse(calls[0]?.init.body as string)).not.toHaveProperty('backend');
+  });
+
+  it('requires a backend fingerprint and refuses a Codex answer on the legacy Claude path', async () => {
+    const { request } = buildLlmRequest();
+    const answer = { text: 'ok', usage: { inputTokens: 1, outputTokens: 1 } };
+    const canonical = createAiCliBridgeProvider({
+      bridgeUrl: URL_OK,
+      token: TOKEN,
+      fetch: recorder(() => json(answer)).fetchFake,
+    });
+    await expect(canonical.generate(request)).rejects.toMatchObject({
+      code: 'BridgeModeMismatch',
+      retryable: false,
+    });
+    const { fetchFake, calls } = recorder(() => json({ ...answer, backend: 'codex' }));
+    const legacy = createCliBridgeProvider({ bridgeUrl: URL_OK, token: TOKEN, fetch: fetchFake });
+    await expect(legacy.generate(request)).rejects.toMatchObject({ code: 'BridgeModeMismatch' });
+    expect(JSON.parse(calls[0]?.init.body as string)).toHaveProperty('backend', 'claude');
   });
 });

@@ -228,7 +228,7 @@ export function loadConfig(
     ...parsed,
     INGEST_CLASSIFIER_TIMEOUT_MS:
       parsed.INGEST_CLASSIFIER_TIMEOUT_MS ??
-      (parsed.AI_PROVIDER === 'claude-cli'
+      (parsed.AI_PROVIDER === 'claude-cli' || parsed.AI_PROVIDER === 'ai-cli'
         ? CLAUDE_CLI_CLASSIFIER_TIMEOUT_MS
         : DEFAULT_CLASSIFIER_TIMEOUT_MS),
     listenPort: parsed.PORT ?? parsed.WORKER_PORT,

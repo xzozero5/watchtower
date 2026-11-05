@@ -73,7 +73,11 @@ export {
 } from './redaction/detectors.js';
 
 export { createAnthropicProvider, type AnthropicProviderConfig } from './providers/anthropic.js';
-export { createCliBridgeProvider, type CliBridgeProviderConfig } from './providers/claude-cli.js';
+export {
+  createCliBridgeProvider,
+  createAiCliBridgeProvider,
+  type CliBridgeProviderConfig,
+} from './providers/claude-cli.js';
 export {
   assertLocalEmbeddingUrl,
   DEFAULT_LOCAL_EMBEDDING_HOSTS,

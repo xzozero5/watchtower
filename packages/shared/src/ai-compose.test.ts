@@ -11,6 +11,9 @@ const envExample = readFileSync(new URL('../../../.env.example', import.meta.url
 const AI_VARIABLES = [
   'AI_PROVIDER',
   'ANTHROPIC_API_KEY',
+  'AI_BRIDGE_URL',
+  'AI_BRIDGE_TOKEN',
+  'AI_BRIDGE_ALLOW_REMOTE',
   'CLAUDE_CLI_BRIDGE_URL',
   'CLAUDE_CLI_BRIDGE_TOKEN',
   'CLAUDE_CLI_ALLOW_REMOTE',
@@ -40,9 +43,11 @@ describe('AI settings reach the containers (T-132)', () => {
     );
     expect(envExample).toMatch(/^CLAUDE_CLI_BRIDGE_URL=http:\/\/claude-bridge:4317$/m);
     expect(compose).not.toMatch(/CLAUDE_CLI_BRIDGE_PORT/);
-    const bridge = /\n {2}claude-bridge:\n([\s\S]*?)\n {2}\S/.exec(compose)?.[1] ?? '';
+    const bridge = /\n {2}ai-bridge:\n([\s\S]*?)\n {2}\S/.exec(compose)?.[1] ?? '';
     expect(bridge).toContain('read_only: true');
     expect(bridge).not.toMatch(/^ {4}ports:/m);
+    expect(bridge).toContain('aliases: [claude-bridge]');
+    expect(bridge).toContain('AI_BRIDGE_MODE: ${AI_BRIDGE_MODE:-codex}');
     expect(envExample).toMatch(/^CLAUDE_CLI_ALLOW_REMOTE=false$/m);
   });
 
@@ -83,6 +88,8 @@ describe('AI settings reach the containers (T-132)', () => {
       .filter((name) => service(name).includes('image:') || service(name).includes('build:'));
     /** The networks a service lists (compose with no list means only `default`). */
     const networksOf = (name: string): string[] => {
+      // The bridge uses an explicit network alias to preserve the legacy hostname.
+      if (/\n {4}networks:\n {6}ai:\n/.test(service(name))) return ['ai'];
       const block = /\n {4}networks:\n((?: {6}- .+\n)+)/.exec(`${service(name)}\n`)?.[1];
       return block === undefined
         ? ['default']
@@ -115,7 +122,7 @@ describe('AI settings reach the containers (T-132)', () => {
     });
 
     it('claude-bridge (and every other service) cannot reach the embedder admin API', () => {
-      expect(networksOf('claude-bridge')).toEqual(['ai']);
+      expect(networksOf('ai-bridge')).toEqual(['ai']);
       expect(members('ai')).not.toContain('embedder');
       for (const name of serviceNames.filter((n) => !['api', 'worker', 'embedder'].includes(n))) {
         expect(networksOf(name), name).not.toContain('embed');

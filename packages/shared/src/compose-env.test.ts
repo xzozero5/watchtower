@@ -74,7 +74,11 @@ const NOT_DOCUMENTED = new Set(['HOST', 'PORT', 'OTEL_SERVICE_NAME']);
  * (MIGRATION_DATABASE_URL). Variables compose substitutes (ports, POSTGRES_*, APP_DB_*, images,
  * the relay) are found by looking for `${NAME` in the compose files and need no entry here.
  */
-const READ_BY_TOOLING = new Set(['MIGRATION_DATABASE_URL']);
+const READ_BY_TOOLING = new Set([
+  'MIGRATION_DATABASE_URL',
+  // The host AI bridge runner reads this; api/worker never bind the bridge listener.
+  'AI_BRIDGE_HOST',
+]);
 
 describe('variables the code reads reach the containers', () => {
   const passed = appEnvKeys();

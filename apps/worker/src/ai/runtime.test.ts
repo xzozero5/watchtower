@@ -47,7 +47,7 @@ describe('createAiRuntime', () => {
   });
 
   it('AI_PROVIDER selects the LLM adapter: a real provider gets a runtime, never the mock (T-132)', () => {
-    for (const provider of ['mock', 'anthropic', 'vertex', 'claude-cli'] as const) {
+    for (const provider of ['mock', 'anthropic', 'vertex', 'claude-cli', 'ai-cli'] as const) {
       const config = testConfig({ AI_PROVIDER: provider });
       expect(createAiRuntime(config, database, createLogger(config))).toMatchObject({ provider });
     }
@@ -110,31 +110,34 @@ describe('createAiRuntime', () => {
     expect(vertex.problems).toEqual(['no Vertex access token source is wired in the worker']);
   });
 
-  it('claude-cli is ready only with the bridge token, models and (zero) prices; never a mock fallback', async () => {
-    const zero = { inputUsdPerMTok: 0, outputUsdPerMTok: 0 };
-    const env = {
-      AI_PROVIDER: 'claude-cli',
-      AI_MODEL_DEEP: 'opus',
-      AI_MODEL_STANDARD: 'sonnet',
-      AI_MODEL_LIGHT: 'haiku',
-      AI_MODEL_PRICES: JSON.stringify({ opus: zero, sonnet: zero, haiku: zero }),
-    };
-    const build = (extra: Record<string, string>) => {
-      const config = testConfig({ ...env, ...extra });
-      return createAiRuntime(config, database, createLogger(config), {
-        credentials: { read: () => Promise.resolve({}) },
+  it.each(['claude-cli', 'ai-cli'])(
+    '%s is ready only with the bridge token, models and (zero) prices; never a mock fallback',
+    async (provider) => {
+      const zero = { inputUsdPerMTok: 0, outputUsdPerMTok: 0 };
+      const env = {
+        AI_PROVIDER: provider,
+        AI_MODEL_DEEP: 'opus',
+        AI_MODEL_STANDARD: 'sonnet',
+        AI_MODEL_LIGHT: 'haiku',
+        AI_MODEL_PRICES: JSON.stringify({ opus: zero, sonnet: zero, haiku: zero }),
+      };
+      const build = (extra: Record<string, string>) => {
+        const config = testConfig({ ...env, ...extra });
+        return createAiRuntime(config, database, createLogger(config), {
+          credentials: { read: () => Promise.resolve({}) },
+        });
+      };
+      const noToken = await build({}).readiness();
+      expect(noToken.ready).toBe(false);
+      expect(noToken.problems).toEqual([expect.stringContaining('CLAUDE_CLI_BRIDGE_TOKEN')]);
+      await expect(
+        build({ AI_BRIDGE_TOKEN: 'canonical-test-token', CLAUDE_CLI_BRIDGE_TOKEN: '' }).readiness(),
+      ).resolves.toEqual({
+        ready: true,
+        problems: [],
       });
-    };
-    const noToken = await build({}).readiness();
-    expect(noToken.ready).toBe(false);
-    expect(noToken.problems).toEqual([expect.stringContaining('CLAUDE_CLI_BRIDGE_TOKEN')]);
-    await expect(
-      build({ CLAUDE_CLI_BRIDGE_TOKEN: 'test-token-0123456789' }).readiness(),
-    ).resolves.toEqual({
-      ready: true,
-      problems: [],
-    });
-  });
+    },
+  );
 
   it('a credential store that cannot be read is a problem, not a crash and not a silent mock', async () => {
     const config = testConfig({ AI_PROVIDER: 'anthropic' });

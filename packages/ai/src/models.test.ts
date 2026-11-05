@@ -108,7 +108,10 @@ describe('no hard-coded model names (AGENTS.md)', () => {
             const code = line
               .replace(/^\s*(\/\*\*|\*|\/\/).*$/, '')
               .replace(/claude-cli/g, 'provider-kind')
-              .replace(/claude-bridge/g, 'service-name');
+              .replace(/claude-bridge/g, 'service-name')
+              // ADR-031: these exact backend protocol values name a vendor, not a model.
+              .replace(/backend: z\.enum\(\['claude', 'codex'\]\)/g, 'backend: vendorEnum')
+              .replace(/backend: 'claude'/g, 'backend: vendor');
             if (/['"`]/.test(code) && pattern.test(code))
               hits.push(`${path.slice(root.length)}:${String(index + 1)}`);
           });

@@ -20,7 +20,14 @@ import type { RedactedText } from './redaction/redacted-text.js';
  * when `NODE_ENV=production`. `local` is an embedding-only kind (ADR-030): the Ollama `embedder`
  * service of this deployment; it is never an LLM provider.
  */
-export const PROVIDER_KINDS = ['mock', 'anthropic', 'vertex', 'claude-cli', 'local'] as const;
+export const PROVIDER_KINDS = [
+  'mock',
+  'anthropic',
+  'vertex',
+  'claude-cli',
+  'ai-cli',
+  'local',
+] as const;
 export const providerKindSchema = z.enum(PROVIDER_KINDS);
 export type ProviderKind = z.infer<typeof providerKindSchema>;
 

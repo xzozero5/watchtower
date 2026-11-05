@@ -16,13 +16,13 @@ describe('probeAiStatus (T-170)', () => {
     expect(fetch).not.toHaveBeenCalled();
   });
 
-  it('claude-cli follows the online flag of /healthz', async () => {
+  it.each(['claude-cli', 'ai-cli'])('%s follows the online flag of /healthz', async (provider) => {
     const urls: string[] = [];
     const answer = (body: unknown, status?: number) => (url: string) => {
       urls.push(url);
       return Promise.resolve(json(body, status));
     };
-    const base = { provider: 'claude-cli', bridgeUrl: 'http://claude-bridge:4317' } as const;
+    const base = { provider, bridgeUrl: 'http://claude-bridge:4317' } as const;
     expect(await probeAiStatus({ ...base, fetch: answer({ status: 'ok', online: true }) })).toBe(
       'online',
     );

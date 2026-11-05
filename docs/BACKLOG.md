@@ -227,6 +227,10 @@
 - [ ] T-434 `backend-dev` คำสั่ง enqueue `reembed_all` เอง (ตอนนี้รอรอบ 04:00 UTC เท่านั้น) + เก็บ vector ของ index เก่าระหว่าง re-embed (chunk มีคอลัมน์ vector เดียว บทความที่แก้ระหว่างนั้นเสีย vector เก่า) · จาก T-431
 - [x] T-435 `backend-dev` แก้ T-432: C-1 แยกเพดาน token ของ embedding จาก `AI_DAILY_TOKEN_CAP` · C-2 network `embed` แบบ `internal: true` (embedder + api + worker) + init ใช้ `ollama serve` ของตัวเองบน network ที่ออก internet ได้ แล้วหยุด → embedder ไม่มี egress และ admin API เข้าถึงได้เฉพาะ api/worker · P3 ที่ถูก: C-3 allow-list ชื่อ service ที่กำหนดเท่านั้น, C-4 ตัด response ระหว่างอ่าน, C-6 non-root/read_only/limit ของ init/ห้าม override image ข้าม digest, C-8 แก้ข้อความ ADR — **ปิด 2026-11-05** (เพดาน `EMBEDDING_DAILY_TOKEN_CAP` แยก [ASSUMED 5M], network `embed` internal + `embedder-init` serve ของตัวเองบน `embed-egress`, allow-list ชื่อตรงตัว, ตัด response 8 MB, non-root/read_only, ลบ `EMBEDDER_IMAGE`) · ยังไม่ยืนยันบน image จริง; C-5 ทำเป็นคำสั่งตรวจใน runbook; C-7 ไม่ได้แตะ
 
+## คำขอเจ้าของ — AI bridge (2026-11-05)
+
+- [x] T-436 `ai-engineer` เปลี่ยน Claude bridge เป็น AI bridge เลือก `codex|claude`, canonical `ai-cli` + env aliases เดิม, migration 0116, ปิด native tools + pin CLI, tests/lint/typecheck + independent security review และเปลี่ยน POC ไป Codex — ADR-031 · [TESTED] host/Linux synthetic tools=[]; live pong 3 tiers + audited API runtime ผ่าน; API/worker healthy; config คงอยู่ใน env ภายนอก repo; autosend ปิด · runbook `docs/runbooks/ai-bridge.md`
+
 ## Post-MVP / Phase 4
 - React Native app, org-private status page, LINE group chat (R-2.15), Helm chart, additional channels, Terraform ฉบับสมบูรณ์ (ADR deploy ย้ายไป T-118), generic OIDC issuer ผ่าน discovery สำหรับองค์กรที่ไม่ใช้ Google (po 2026-11-01 `[ASSUMED]`)
 

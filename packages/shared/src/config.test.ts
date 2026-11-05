@@ -594,3 +594,46 @@ describe('claudeCliRemoteWarning (ADR-021)', () => {
     ).toBeUndefined();
   });
 });
+
+describe('AI bridge config (ADR-031)', () => {
+  it('accepts ai-cli locally and applies the production and remote guard to both CLI kinds', () => {
+    for (const provider of ['ai-cli', 'claude-cli']) {
+      expect(issuesFor({ ...validEnv, AI_PROVIDER: provider }).has('AI_PROVIDER')).toBe(false);
+      expect(issuesFor({ ...productionEnv, AI_PROVIDER: provider }).get('AI_PROVIDER')).toContain(
+        'production',
+      );
+      expect(
+        issuesFor({ ...productionEnv, AI_PROVIDER: provider, AI_BRIDGE_ALLOW_REMOTE: 'true' }).has(
+          'AI_PROVIDER',
+        ),
+      ).toBe(false);
+      expect(
+        issuesFor({
+          ...productionEnv,
+          AI_PROVIDER: provider,
+          CLAUDE_CLI_ALLOW_REMOTE: 'true',
+          AI_BRIDGE_ALLOW_REMOTE: 'false',
+        }).get('AI_PROVIDER'),
+      ).toContain('production');
+      expect(
+        issuesFor({ ...productionEnv, AI_PROVIDER: provider, CLAUDE_CLI_ALLOW_REMOTE: 'true' }).has(
+          'AI_PROVIDER',
+        ),
+      ).toBe(false);
+    }
+  });
+
+  it('parses canonical settings without exposing their values in warnings', () => {
+    const config = parseEnv(schema, {
+      ...validEnv,
+      AI_PROVIDER: 'ai-cli',
+      AI_BRIDGE_URL: 'http://ai-bridge:4317',
+      AI_BRIDGE_TOKEN: 'test-token',
+      AI_BRIDGE_ALLOW_REMOTE: 'true',
+    });
+    expect(config.AI_BRIDGE_URL).toBe('http://ai-bridge:4317');
+    expect(config.AI_BRIDGE_TOKEN).toBe('test-token');
+    expect(claudeCliRemoteWarning(config)).toBe('ai-cli remote opt-in enabled (ADR-031)');
+    expect(claudeCliRemoteWarning({ ...config, AI_BRIDGE_ALLOW_REMOTE: false })).toBeUndefined();
+  });
+});

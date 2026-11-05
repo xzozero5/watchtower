@@ -1,12 +1,12 @@
-# Long-running bridge to Claude Code (ADR-019). Build context: tools/claude-cli-bridge.
-#   docker compose --profile ai up -d claude-bridge
+# Long-running AI bridge (ADR-031). Build context: tools/ai-bridge.
 # No credential is baked in: CLAUDE_CODE_OAUTH_TOKEN (from `claude setup-token`) and
 # CLAUDE_CLI_BRIDGE_TOKEN arrive as environment variables at run time.
 FROM node:22-bookworm-slim
 
 # Pinned; bump on purpose and re-check `claude -p --output-format json` (ADR-017 consequences).
 ARG CLAUDE_CODE_VERSION=2.1.316
-RUN npm install -g "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}" \
+ARG CODEX_VERSION=0.166.0-alpha.5.1
+RUN npm install -g "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}" "@openai/codex@${CODEX_VERSION}" \
  && npm cache clean --force
 
 WORKDIR /app
@@ -14,8 +14,9 @@ COPY bridge.mjs server.mjs ./
 
 # Listens on the compose network only (the compose file publishes no port). The bearer token is
 # still required for /v1/generate; /healthz is open and says only "ok" and "online".
-ENV CLAUDE_CLI_BRIDGE_HOST=0.0.0.0 \
-    CLAUDE_CLI_BRIDGE_PORT=4317 \
+ENV AI_BRIDGE_HOST=0.0.0.0 \
+    AI_BRIDGE_PORT=4317 \
+    AI_BRIDGE_MODE=codex \
     HOME=/home/node
 USER node
 EXPOSE 4317

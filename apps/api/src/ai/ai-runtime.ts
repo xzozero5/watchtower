@@ -34,6 +34,7 @@ export const AI_RUNTIME = Symbol('AI_RUNTIME');
 export const API_LLM = Symbol('API_LLM');
 
 /** Where the compose `claude-bridge` service is (ADR-019). */
+export const DEFAULT_AI_BRIDGE_URL = 'http://ai-bridge:4317';
 export const DEFAULT_CLAUDE_CLI_BRIDGE_URL = 'http://claude-bridge:4317';
 
 /**
@@ -73,6 +74,8 @@ export interface AiRuntimeOptions {
     | 'APP_ENCRYPTION_KEY'
     | 'AI_API_MAX_CONCURRENCY'
     | 'API_REPLICAS'
+    | 'AI_BRIDGE_URL'
+    | 'AI_BRIDGE_TOKEN'
     | 'CLAUDE_CLI_BRIDGE_URL'
     | 'CLAUDE_CLI_BRIDGE_TOKEN'
   >;
@@ -113,8 +116,11 @@ export function createApiAiRuntime(options: AiRuntimeOptions): AiRuntime {
   const built = buildAiSettings(config);
   const settings = built.settings;
   const problems = [...built.problems];
-  if (kind === 'claude-cli' && (config.CLAUDE_CLI_BRIDGE_TOKEN ?? '').trim() === '') {
-    problems.push('the bridge secret (CLAUDE_CLI_BRIDGE_TOKEN) is not set');
+  if (
+    (kind === 'claude-cli' || kind === 'ai-cli') &&
+    (config.AI_BRIDGE_TOKEN ?? config.CLAUDE_CLI_BRIDGE_TOKEN ?? '').trim() === ''
+  ) {
+    problems.push('the bridge secret (AI_BRIDGE_TOKEN or CLAUDE_CLI_BRIDGE_TOKEN) is not set');
   }
   if (kind === 'vertex') problems.push('no Vertex access token source is wired in the api');
 
@@ -135,9 +141,12 @@ export function createApiAiRuntime(options: AiRuntimeOptions): AiRuntime {
         kind,
         settings,
         credentials: options.credentials ?? { read: () => Promise.resolve({}) },
-        claudeCli: {
-          bridgeUrl: config.CLAUDE_CLI_BRIDGE_URL ?? DEFAULT_CLAUDE_CLI_BRIDGE_URL,
-          token: config.CLAUDE_CLI_BRIDGE_TOKEN,
+        aiBridge: {
+          bridgeUrl:
+            config.AI_BRIDGE_URL ??
+            config.CLAUDE_CLI_BRIDGE_URL ??
+            (kind === 'ai-cli' ? DEFAULT_AI_BRIDGE_URL : DEFAULT_CLAUDE_CLI_BRIDGE_URL),
+          token: config.AI_BRIDGE_TOKEN ?? config.CLAUDE_CLI_BRIDGE_TOKEN,
         },
         fetch: options.fetch ?? ((input, init) => globalThis.fetch(input, init)),
         logger,

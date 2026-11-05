@@ -22,11 +22,12 @@ const BRIDGE_HOSTS = [
   'host.docker.internal',
   // The compose service of the long-running bridge container (ADR-019); resolves only inside the network.
   'claude-bridge',
+  'ai-bridge',
 ] as const;
 const DEFAULT_TIMEOUT_MS = 190_000;
-const PROVIDER = 'claude-cli';
 
 const bridgeResponseSchema = z.object({
+  backend: z.enum(['claude', 'codex']).optional(),
   text: z.string(),
   model: z.string().min(1).optional(),
   finishReason: z.enum(['stop', 'length', 'content_filter', 'error', 'other']).optional(),
@@ -41,19 +42,19 @@ function bridgeEndpoint(value: string): string {
   try {
     url = new URL(value);
   } catch {
-    throw new ProviderConfigError('claude-cli adapter: bridgeUrl is not a valid URL');
+    throw new ProviderConfigError('AI bridge adapter: bridgeUrl is not a valid URL');
   }
   if (url.protocol !== 'http:') {
     throw new ProviderConfigError(
-      'claude-cli adapter: bridgeUrl must use http (this machine or the compose network only)',
+      'AI bridge adapter: bridgeUrl must use http (this machine or the compose network only)',
     );
   }
   if (url.username !== '' || url.password !== '') {
-    throw new ProviderConfigError('claude-cli adapter: bridgeUrl must not hold credentials');
+    throw new ProviderConfigError('AI bridge adapter: bridgeUrl must not hold credentials');
   }
   if (!(BRIDGE_HOSTS as readonly string[]).includes(url.hostname.toLowerCase())) {
     throw new ProviderConfigError(
-      'claude-cli adapter: bridgeUrl host must be localhost, 127.0.0.1, [::1], host.docker.internal or claude-bridge',
+      'AI bridge adapter: bridgeUrl host must be localhost, 127.0.0.1, [::1], host.docker.internal or ai-bridge/claude-bridge',
     );
   }
   return `${url.origin}/v1/generate`;
@@ -69,15 +70,27 @@ function bridgeEndpoint(value: string): string {
  * for this kind are normally 0 and `costUsd` in `ai_run` is 0 (not a real bill).
  */
 export function createCliBridgeProvider(config: CliBridgeProviderConfig): LlmProvider {
-  const token = requireNonEmpty(PROVIDER, 'token', config.token);
+  return createBridgeProvider(config, 'claude-cli');
+}
+
+/** Vendor-neutral bridge, selected explicitly by AI_BRIDGE_MODE on the server (ADR-031). */
+export function createAiCliBridgeProvider(config: CliBridgeProviderConfig): LlmProvider {
+  return createBridgeProvider(config, 'ai-cli');
+}
+
+function createBridgeProvider(
+  config: CliBridgeProviderConfig,
+  kind: 'claude-cli' | 'ai-cli',
+): LlmProvider {
+  const token = requireNonEmpty(kind, 'token', config.token);
   if (typeof config.fetch !== 'function') {
-    throw new ProviderConfigError('claude-cli adapter requires an injected fetch');
+    throw new ProviderConfigError('AI bridge adapter requires an injected fetch');
   }
-  const endpoint = bridgeEndpoint(requireNonEmpty(PROVIDER, 'bridgeUrl', config.bridgeUrl));
+  const endpoint = bridgeEndpoint(requireNonEmpty(kind, 'bridgeUrl', config.bridgeUrl));
   const timeoutMs = config.timeoutMs ?? DEFAULT_TIMEOUT_MS;
 
   return {
-    kind: 'claude-cli',
+    kind,
     async generate(request: LlmRequest): Promise<LlmResponse> {
       const signals = [AbortSignal.timeout(timeoutMs)];
       if (request.abortSignal !== undefined) signals.push(request.abortSignal);
@@ -87,6 +100,7 @@ export function createCliBridgeProvider(config: CliBridgeProviderConfig): LlmPro
           method: 'POST',
           headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
           body: JSON.stringify({
+            ...(kind === 'claude-cli' ? { backend: 'claude' } : {}),
             model: request.model,
             system: request.system,
             messages: request.messages.map((m) => ({ role: m.role, content: m.content })),
@@ -98,7 +112,7 @@ export function createCliBridgeProvider(config: CliBridgeProviderConfig): LlmPro
         });
       } catch (error) {
         // Not reachable, refused, aborted or timed out. The cause keeps the detail for debugging.
-        throw new ProviderError(PROVIDER, 'BridgeUnreachable', null, true, { cause: error });
+        throw new ProviderError(kind, 'BridgeUnreachable', null, true, { cause: error });
       }
       if (!response.ok) {
         let code = 'BridgeError';
@@ -111,15 +125,21 @@ export function createCliBridgeProvider(config: CliBridgeProviderConfig): LlmPro
           // keep the generic code
         }
         const status = response.status;
-        throw new ProviderError(PROVIDER, code, status, status === 429 || status >= 500);
+        throw new ProviderError(kind, code, status, status === 429 || status >= 500);
       }
       let parsed: z.infer<typeof bridgeResponseSchema>;
       try {
         parsed = bridgeResponseSchema.parse(await response.json());
       } catch (error) {
-        throw new ProviderError(PROVIDER, 'BadBridgeResponse', response.status, false, {
+        throw new ProviderError(kind, 'BadBridgeResponse', response.status, false, {
           cause: error,
         });
+      }
+      if (
+        (kind === 'ai-cli' && parsed.backend === undefined) ||
+        (kind === 'claude-cli' && parsed.backend === 'codex')
+      ) {
+        throw new ProviderError(kind, 'BridgeModeMismatch', response.status, false);
       }
       const finishReason: LlmFinishReason = parsed.finishReason ?? 'stop';
       return {
