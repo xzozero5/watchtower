@@ -1,5 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { schema, type Database } from '@watchtower/db';
+import { UNMATCHED_ORG_ID } from '@watchtower/domain';
 import {
   AUDIT_ACTIONS,
   PORTAL_CATEGORY_INTENT_HINT,
@@ -42,7 +43,7 @@ import { PortalNotifier, oneLine } from './portal-notifier.js';
  * somewhere to wait for triage. A fixed id lets every instance and every request find it without a
  * lookup by name. Staff see the organization the customer wrote in `customFields.portal.organization`.
  */
-export const UNMATCHED_ORG_ID = '00000000-0000-4000-8000-00000000a001';
+export { UNMATCHED_ORG_ID };
 const UNMATCHED_ORG_NAME = 'Unmatched portal submissions';
 
 /**

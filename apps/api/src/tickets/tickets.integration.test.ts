@@ -468,6 +468,39 @@ describe('the SLA clock', () => {
     expect(response.body.resolutionDueAt).toBe(ticket.resolutionDueAt);
   });
 
+  it('keeps customFields.portal for the portal: staff can neither write nor change requesterVerified (T-306k C-16)', async () => {
+    const portalOf = async (ticketId: string): Promise<unknown> =>
+      (
+        await pool().query<{ portal: unknown }>(
+          `SELECT custom_fields -> 'portal' AS portal FROM ticket WHERE id = $1`,
+          [ticketId],
+        )
+      ).rows[0]?.portal;
+    // Create with the key: dropped, the other keys stay.
+    const created = await fileTicket(agent, orgId, {
+      customFields: { portal: { requesterVerified: true }, note: 'x' },
+    });
+    expect(await portalOf(created.id)).toBeNull();
+    expect(created.customFields).toEqual({ note: 'x' });
+    // Update an unverified ticket with the key: still not verified.
+    const patched = await agent.client.patch<TicketDetail>(`/v1/tickets/${created.id}`, {
+      customFields: { portal: { requesterVerified: true }, note: 'y' },
+    });
+    expect(patched.status).toBe(200);
+    expect(await portalOf(created.id)).toBeNull();
+    // A ticket the portal verified: an edit keeps the portal's value, and cannot clear it either.
+    await pool().query(
+      `UPDATE ticket SET custom_fields = '{"portal":{"requesterVerified":true}}'::jsonb WHERE id = $1`,
+      [created.id],
+    );
+    await agent.client.patch<TicketDetail>(`/v1/tickets/${created.id}`, {
+      customFields: { portal: { requesterVerified: false }, other: 1 },
+    });
+    expect(await portalOf(created.id)).toEqual({ requesterVerified: true });
+    await agent.client.patch<TicketDetail>(`/v1/tickets/${created.id}`, { customFields: {} });
+    expect(await portalOf(created.id)).toEqual({ requesterVerified: true });
+  });
+
   it('recalculates the due dates from the creation time when the priority changes', async () => {
     const ticket = await fileTicket(agent, orgId, { priority: 'P3' });
     const raised = await agent.client.patch<TicketDetail>(`/v1/tickets/${ticket.id}`, {
