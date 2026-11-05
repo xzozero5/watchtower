@@ -220,10 +220,11 @@
 
 ## KB semantic search — embedding ในเครื่อง (เจ้าของ 2026-11-05: "KB จาก repo น่าจะต้องทำ semantic search ด้วย" → ทาง ก.)
 > `docs/decisions/ADR-030-local-embeddings.md` (Proposed) · hybrid search มีอยู่แล้ว ขาดแค่ embedding จริง (มีแค่ mock/vertex, claude -p ไม่มี embedding) · เจ้าของอนุมัติดาวน์โหลดโมเดลครั้งเดียว
-- [ ] T-430 `ai-engineer` service `embedder` (Ollama, profile `ai`, network `ai`, ไม่ publish port) + `embedder-init` pull โมเดล + provider `local` (timeout, retry, batch cap, host allow-list, audit) + contract test ด้วย fake HTTP
-- [ ] T-431 `ai-engineer` re-embed เป็น index ใหม่แล้วสลับ active แบบ atomic + query embedding timeout สั้น ถอยไป keyword + ชุดคำถาม TH/EN ปรับ `KB_MIN_VECTOR_SIMILARITY` + runbook · dep T-430
+- [x] T-430 `ai-engineer` service `embedder` (Ollama, profile `ai`, network `ai`, ไม่ publish port) + `embedder-init` pull โมเดล + provider `local` (timeout, retry, batch cap, host allow-list, audit) + contract test ด้วย fake HTTP — **ปิด 2026-11-05** (Ollama `0.40.14` pin digest, `embedder` + `embedder-init` network `ai` ไม่มี port, cap_drop ALL, mem 4g; provider `local` allow-list host, timeout/retry/batch 16; migration 0114 CHECK provider)
+- [x] T-431 `ai-engineer` re-embed เป็น index ใหม่แล้วสลับ active แบบ atomic + query embedding timeout สั้น ถอยไป keyword + ชุดคำถาม TH/EN ปรับ `KB_MIN_VECTOR_SIMILARITY` + runbook · dep T-430 — **ปิด 2026-11-05** (re-embed เข้า index ใหม่แล้วสลับเมื่อครบ, query timeout 1.5 s → keyword, ชุดคำถาม 18 ข้อ `kb-similarity`, runbook local-poc §3c) · ค้าง: ยังไม่เคยรันกับโมเดลจริง, คุณภาพไทยของ bge-m3 [ยังไม่ยืนยัน 70%], threshold ยัง 0.25
 - [ ] T-432 `security-reviewer` ตรวจ ADR-030 + implementation (ปลายทาง network ใหม่, redaction, host allow-list) → ADR-030 Accepted · dep T-430
 - [ ] T-433 เจ้าของ: เปิด `EMBEDDING_PROVIDER=local` บน POC ตาม runbook (pull โมเดล ~1.2 GB ครั้งเดียว, re-embed) `[ASK-HUMAN]`
+- [ ] T-434 `backend-dev` คำสั่ง enqueue `reembed_all` เอง (ตอนนี้รอรอบ 04:00 UTC เท่านั้น) + เก็บ vector ของ index เก่าระหว่าง re-embed (chunk มีคอลัมน์ vector เดียว บทความที่แก้ระหว่างนั้นเสีย vector เก่า) · จาก T-431
 
 ## Post-MVP / Phase 4
 - React Native app, org-private status page, LINE group chat (R-2.15), Helm chart, additional channels, Terraform ฉบับสมบูรณ์ (ADR deploy ย้ายไป T-118), generic OIDC issuer ผ่าน discovery สำหรับองค์กรที่ไม่ใช้ Google (po 2026-11-01 `[ASSUMED]`)
