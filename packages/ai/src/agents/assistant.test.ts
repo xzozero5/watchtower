@@ -180,6 +180,54 @@ describe('runAssistantTurn', () => {
     expect(outcome.usage.inputTokens).toBeGreaterThan(0);
   });
 
+  it('tells onPhase about each tool and then the answer step, in order, and survives a listener that throws (T-408)', async () => {
+    const heard: string[] = [];
+    const outcome = await runAssistantTurn(rig().deps, {
+      ...input({ host: host(['search_tickets']), text: 'find my tickets' }),
+      onPhase: (event) => {
+        heard.push(event.phase === 'tool' ? `tool:${event.name}:${event.status}` : event.phase);
+      },
+    });
+    expect(outcome.status).toBe('ok');
+    expect(heard).toEqual(['tool:search_tickets:running', 'tool:search_tickets:ok', 'answering']);
+
+    const broken = await runAssistantTurn(rig().deps, {
+      ...input({ host: host(['search_tickets']), text: 'find my tickets' }),
+      onPhase: () => {
+        throw new Error('listener failed');
+      },
+    });
+    expect(broken.status).toBe('ok');
+  });
+
+  it('keeps one redacted line per claim, so the claim a person pins can be found by its number (T-408)', async () => {
+    const answer = JSON.stringify({
+      claims: [
+        { text: 'First line\nwith a break.', evidenceIds: [] },
+        { text: 'Second claim.', evidenceIds: [] },
+      ],
+      proposals: [],
+    });
+    const provider: LlmProvider = {
+      kind: 'mock',
+      generate: (request) =>
+        Promise.resolve({
+          text: request.prompt.id === 'assistant_plan' ? JSON.stringify({ calls: [] }) : answer,
+          finishReason: 'stop' as const,
+          usage: { inputTokens: 5, outputTokens: 5 },
+          model: request.model,
+        }),
+    };
+    const outcome = await runAssistantTurn(
+      rig({ provider }).deps,
+      input({ host: host([]), text: 'two claims' }),
+    );
+    expect(outcome.status).toBe('ok');
+    if (outcome.status !== 'ok') return;
+    expect(outcome.claims).toHaveLength(2);
+    expect(outcome.redactedText.split('\n')).toEqual(['First line with a break.', 'Second claim.']);
+  });
+
   it('never sends a raw address to a model (N4) and restores it for the person', async () => {
     const state = rig();
     const outcome = await runAssistantTurn(

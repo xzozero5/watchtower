@@ -1,7 +1,15 @@
-import { ProviderUnavailableError, type LlmProvider, type LlmRequest } from '@watchtower/ai';
 import { describe, expect, it, vi } from 'vitest';
 
-import { isAssistantRequest, limitConcurrency } from './concurrency-limit.js';
+import { ProviderUnavailableError } from '../audited.js';
+import type { LlmProvider, LlmRequest } from '../contract.js';
+import {
+  ConcurrencyLimitError,
+  createConcurrencyLimiter,
+  isAssistantRequest,
+  limitConcurrency,
+  observeQueue,
+  warnIfSingleProcessAssumptionBroken,
+} from './concurrency-limit.js';
 
 const asRequest = (promptId: string, abortSignal?: AbortSignal): LlmRequest =>
   // eslint-disable-next-line watchtower/no-redacted-text-cast -- fixture carries only prompt metadata and a signal, no text reaches a model
@@ -208,5 +216,143 @@ describe('limitConcurrency: a request that is aborted (T-155a C-4)', () => {
       limited.generate(asRequest('claim_summary', AbortSignal.abort())),
     ).rejects.toBeInstanceOf(ProviderUnavailableError);
     expect(g.active()).toBe(0);
+  });
+});
+
+describe('createConcurrencyLimiter: queue position and refusal reasons (T-408)', () => {
+  it('tells the observer where its call is in the queue, then that it runs', async () => {
+    const g = gated();
+    const limiter = createConcurrencyLimiter({ maxConcurrent: 1 });
+    const limited = limiter.limit(g.provider);
+    const first = limited.generate(request);
+    const positions: number[] = [];
+    const second = observeQueue({ onPosition: (p) => positions.push(p) }, () =>
+      limited.generate(request),
+    );
+    const third = limited.generate(request);
+    await tick();
+    expect(positions).toEqual([1]);
+    expect(limiter.snapshot()).toMatchObject({ active: 1, queued: 2 });
+    g.release();
+    await first;
+    await tick();
+    // Granted: 0 (it runs now).
+    expect(positions).toEqual([1, 0]);
+    g.release();
+    await second;
+    g.release();
+    await third;
+  });
+
+  it('moves a waiter up when the one in front of it leaves', async () => {
+    const g = gated();
+    const limiter = createConcurrencyLimiter({ maxConcurrent: 1 });
+    const limited = limiter.limit(g.provider);
+    const first = limited.generate(request);
+    const abort = new AbortController();
+    const ahead = limited.generate(asRequest('claim_summary', abort.signal));
+    const positions: number[] = [];
+    const behind = observeQueue({ onPosition: (p) => positions.push(p) }, () =>
+      limited.generate(request),
+    );
+    await tick();
+    expect(positions).toEqual([2]);
+    abort.abort();
+    await expect(ahead).rejects.toBeInstanceOf(ConcurrencyLimitError);
+    expect(positions).toEqual([2, 1]);
+    g.release();
+    await first;
+    g.release();
+    await behind;
+  });
+
+  it('says why it refused: queue_full, wait_timeout, aborted', async () => {
+    vi.useFakeTimers();
+    try {
+      const g = gated();
+      const limiter = createConcurrencyLimiter({ maxConcurrent: 1, maxQueued: 1, maxWaitMs: 500 });
+      const limited = limiter.limit(g.provider);
+      void limited.generate(request);
+      const waiting = limited.generate(request);
+      const seen: string[] = [];
+      const observer = { onRejected: (why: string) => seen.push(why) };
+      const full = observeQueue(observer, () => limited.generate(request));
+      await expect(full).rejects.toMatchObject({ rejection: 'queue_full' });
+      expect(limiter.full()).toBe(true);
+      const timedOut = expect(waiting).rejects.toMatchObject({ rejection: 'wait_timeout' });
+      await vi.advanceTimersByTimeAsync(501);
+      await timedOut;
+      const gone = new AbortController();
+      gone.abort();
+      await expect(
+        observeQueue(observer, () => limited.generate(asRequest('x', gone.signal))),
+      ).rejects.toBeInstanceOf(ProviderUnavailableError);
+      expect(seen).toEqual(['queue_full', 'aborted']);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('frees the slot when the call that holds it is aborted by the provider', async () => {
+    const abort = new AbortController();
+    const slow: LlmProvider = {
+      kind: 'claude-cli',
+      generate: (r) =>
+        new Promise((_, reject) => {
+          r.abortSignal?.addEventListener('abort', () => {
+            reject(new Error('stopped'));
+          });
+        }),
+    };
+    const limiter = createConcurrencyLimiter({ maxConcurrent: 1 });
+    const running = limiter.limit(slow).generate(asRequest('x', abort.signal));
+    await tick();
+    expect(limiter.snapshot().active).toBe(1);
+    abort.abort();
+    await expect(running).rejects.toThrow('stopped');
+    expect(limiter.snapshot().active).toBe(0);
+  });
+
+  it('tryAcquire never waits: a slot or null, and it respects the reserved slots and the queue', async () => {
+    const g = gated();
+    const limiter = createConcurrencyLimiter({ maxConcurrent: 2, reservedSlots: 1 });
+    const a = limiter.tryAcquire();
+    expect(a).not.toBeNull();
+    // The low-priority share (one slot) is used.
+    expect(limiter.tryAcquire()).toBeNull();
+    // A call that is not low priority may use the reserved one.
+    const b = limiter.tryAcquire(false);
+    expect(b).not.toBeNull();
+    expect(limiter.tryAcquire(false)).toBeNull();
+    a?.();
+    a?.(); // releasing twice frees one slot only
+    expect(limiter.snapshot().active).toBe(1);
+    b?.();
+    expect(limiter.snapshot().active).toBe(0);
+
+    // Somebody queued: a background caller does not jump the queue.
+    const full = createConcurrencyLimiter({ maxConcurrent: 1 });
+    const limited = full.limit(g.provider);
+    const running = limited.generate(request);
+    const queued = limited.generate(request);
+    await tick();
+    expect(full.tryAcquire()).toBeNull();
+    g.release();
+    await running;
+    g.release();
+    await queued;
+    expect(full.tryAcquire()).not.toBeNull();
+  });
+});
+
+describe('warnIfSingleProcessAssumptionBroken (T-400 C-19)', () => {
+  it('stays quiet for one process and warns once for more', () => {
+    const warn = vi.fn();
+    expect(warnIfSingleProcessAssumptionBroken('api', undefined, warn)).toBe(false);
+    expect(warnIfSingleProcessAssumptionBroken('worker', 1, warn)).toBe(false);
+    expect(warn).not.toHaveBeenCalled();
+    expect(warnIfSingleProcessAssumptionBroken('api', 2, warn)).toBe(true);
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn.mock.calls[0]?.[0]).toEqual({ who: 'api', replicas: 2 });
   });
 });

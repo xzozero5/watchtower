@@ -158,7 +158,18 @@ export interface AssistantTurnInput {
   /** `dev`: show the person nothing the redactor took out of a ticket (ADR-023 section 5). */
   readonly masked: boolean;
   readonly abortSignal?: AbortSignal | undefined;
+  /** Told where the turn is (SSE `tool` and `answering` phases, ADR-029 section 4). Never throws into the turn. */
+  readonly onPhase?: ((event: AssistantTurnPhase) => void) | undefined;
 }
+
+/** What `onPhase` hears: a tool starting and ending, then the answer step beginning. Names and statuses only. */
+export type AssistantTurnPhase =
+  | {
+      readonly phase: 'tool';
+      readonly name: string;
+      readonly status: 'running' | 'ok' | 'error' | 'denied';
+    }
+  | { readonly phase: 'answering' };
 
 export interface AssistantUsage {
   readonly inputTokens: number;
@@ -316,22 +327,36 @@ export async function runAssistantTurn(
 
   // --- run the tools (the host's allow-list decides; the model's word does not) -----------------
   const facts: AssistantFact[] = [];
+  const phase = (event: AssistantTurnPhase): void => {
+    try {
+      input.onPhase?.(event);
+    } catch {
+      // A listener that fails must not fail the turn.
+    }
+  };
   for (const call of planned.calls.slice(0, input.limits.maxToolCalls)) {
     let output: unknown;
+    phase({ phase: 'tool', name: call.tool, status: 'running' });
     try {
       output = await input.host.tools.call(
         call.tool,
         restoreStrings(call.input ?? {}, planSession),
       );
-    } catch {
+    } catch (error) {
       // Denied, over budget, bad input, or the tool failed: recorded in `calls()`, shown as a gap.
+      const denied =
+        error instanceof Error &&
+        (error.name === 'ToolNotAllowedError' || error.name === 'ToolBudgetError');
+      phase({ phase: 'tool', name: call.tool, status: denied ? 'denied' : 'error' });
       continue;
     }
+    phase({ phase: 'tool', name: call.tool, status: 'ok' });
     for (const fact of input.host.facts(call.tool, output)) {
       if (facts.length < MAX_FACTS) facts.push(fact);
     }
   }
   const tools = toolRunsOf(input.host);
+  phase({ phase: 'answering' });
 
   // --- step two: the answer --------------------------------------------------------------------
   // A switch or a budget can change while the tools run: ask again before the second call.
@@ -442,7 +467,8 @@ export async function runAssistantTurn(
       claims.push(candidate);
       // Model words coming back in: placeholders it was given stay, anything else that looks like personal
       // data becomes a placeholder too, so what is stored holds nothing the redactor would have caught (N4).
-      redactedParts.push(session.fromModel(item.text));
+      // One line per claim: the caller keeps `redactedText` split on newlines to find the claim a person pins (T-408).
+      redactedParts.push(session.fromModel(item.text).replace(/\s*\n\s*/g, ' '));
     }
     if (claims.length >= input.limits.maxClaims) break;
   }
