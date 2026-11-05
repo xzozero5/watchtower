@@ -188,7 +188,9 @@ describe('host allow-list', () => {
 
 describe('configured service names (EMBEDDING_LOCAL_HOSTS)', () => {
   it('accepts exactly the names given, and still the loopback', () => {
-    expect(() => assertLocalEmbeddingUrl('http://my-embedder:11434', ['my-embedder'])).not.toThrow();
+    expect(() =>
+      assertLocalEmbeddingUrl('http://my-embedder:11434', ['my-embedder']),
+    ).not.toThrow();
     expect(() => assertLocalEmbeddingUrl('http://127.0.0.1:11434', ['my-embedder'])).not.toThrow();
     // A configured list replaces the default; it does not add to it.
     expect(() => assertLocalEmbeddingUrl('http://embedder:11434', ['my-embedder'])).toThrow(

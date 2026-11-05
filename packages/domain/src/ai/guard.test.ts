@@ -7,7 +7,12 @@ import { createAiGuard, IN_FLIGHT_TOKEN_RESERVE } from './guard.js';
 // T-114a C-6: calls in flight count against the daily cap, so concurrent calls cannot all pass a
 // nearly full budget.
 
-const caps: AiCaps = { dailyCostUsd: 100, dailyTokens: 10_000, dailyEmbeddingTokens: 5_000_000, alertPercent: 80 };
+const caps: AiCaps = {
+  dailyCostUsd: 100,
+  dailyTokens: 10_000,
+  dailyEmbeddingTokens: 5_000_000,
+  alertPercent: 80,
+};
 const gate = { checkAiAction: () => Promise.resolve({ allowed: true }) } as unknown as PolicyGate;
 const budget = (tokens: number): BudgetMonitor => ({
   check: () => Promise.resolve(evaluateBudget(caps, { costUsd: 0, tokens })),

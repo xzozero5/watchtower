@@ -454,7 +454,10 @@ describe('re-embedding against the embedding cap (T-435 C-1)', () => {
       title: 'Cap one',
       bodyMd: 'Quokka capacity notes for the embedding cap test.',
     });
-    await article({ title: 'Cap two', bodyMd: 'Numbat capacity notes for the embedding cap test.' });
+    await article({
+      title: 'Cap two',
+      bodyMd: 'Numbat capacity notes for the embedding cap test.',
+    });
     await embeddedChunks(made.articleId);
     const now = new Date();
     const llmBefore = await readAiUsage(owner(), now);

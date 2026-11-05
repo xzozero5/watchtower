@@ -13,7 +13,12 @@ import {
   utcDayStart,
 } from './budget.js';
 
-const caps = { dailyCostUsd: 10, dailyTokens: 1000, dailyEmbeddingTokens: 5_000_000, alertPercent: 80 };
+const caps = {
+  dailyCostUsd: 10,
+  dailyTokens: 1000,
+  dailyEmbeddingTokens: 5_000_000,
+  alertPercent: 80,
+};
 
 describe('evaluateBudget', () => {
   it('stops a provider that costs nothing (claude-cli priced 0) on tokens, with AI_DAILY_TOKEN_CAP empty (T-155a)', () => {
@@ -76,7 +81,12 @@ describe('resolveAiCaps', () => {
         AI_DAILY_TOKEN_CAP: 99,
         AI_BUDGET_ALERT_PERCENT: 60,
       }),
-    ).toEqual({ dailyCostUsd: 3, dailyTokens: 99, dailyEmbeddingTokens: 5_000_000, alertPercent: 60 });
+    ).toEqual({
+      dailyCostUsd: 3,
+      dailyTokens: 99,
+      dailyEmbeddingTokens: 5_000_000,
+      alertPercent: 60,
+    });
   });
 
   it('keeps the defaults in step with config/budgets.yaml (app_ai_daily)', () => {

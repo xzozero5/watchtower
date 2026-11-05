@@ -105,13 +105,17 @@ async function readCapped(response: globalThis.Response): Promise<string> {
     throw tooLarge();
   }
   if (response.body === null) return '';
-  const reader = response.body.getReader();
+  // The body type resolves loosely without the DOM lib; the shape read here is the Streams one.
+  const reader = response.body.getReader() as {
+    read(): Promise<{ done: boolean; value?: Uint8Array }>;
+    cancel(): Promise<void>;
+  };
   const decoder = new TextDecoder();
   let received = 0;
   let text = '';
   for (;;) {
     const { done, value } = await reader.read();
-    if (done) break;
+    if (done || value === undefined) break;
     received += value.byteLength;
     if (received > MAX_RESPONSE_BYTES) {
       await reader.cancel().catch(() => undefined);
@@ -122,7 +126,7 @@ async function readCapped(response: globalThis.Response): Promise<string> {
   return text + decoder.decode();
 }
 
-const retryableStatus =(status: number): boolean => status === 429 || status >= 500;
+const retryableStatus = (status: number): boolean => status === 429 || status >= 500;
 
 const delay = (ms: number): Promise<void> =>
   new Promise((resolve) => {
