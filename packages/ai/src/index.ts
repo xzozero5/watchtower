@@ -26,6 +26,8 @@ export * from './agents/assistant.js';
 export * from './agents/summary.js';
 export * from './agents/fact-block.js';
 export * from './agents/weekly-brief.js';
+export * from './agents/insight-narrate.js';
+export * from './agents/person-tone.js';
 export * from './toolkit/ports.js';
 export * from './toolkit/tools.js';
 export * from './toolkit/budget.js';

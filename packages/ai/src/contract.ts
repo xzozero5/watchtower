@@ -38,6 +38,8 @@ export const AGENT_NAMES = [
   'kb_author',
   'roster_planner',
   'personal_assistant',
+  // Narrates facts of an element into at most three cited claims per language (T-417, ADR-029 section 9).
+  'insight_narrator',
   // Drafts the steps of an intent's procedure from the text a lead wrote; a person confirms (T-303b, ADR-026).
   'procedure_compiler',
   // Knowledge base indexing and query embedding (T-107b): no prompt, one embedding call per batch.
@@ -56,6 +58,7 @@ export const DEFAULT_AGENT_TIERS: Readonly<Record<AgentName, ModelTier>> = {
   kb_author: 'standard',
   roster_planner: 'standard',
   personal_assistant: 'standard',
+  insight_narrator: 'light',
   procedure_compiler: 'standard',
   embedder: 'light',
 };

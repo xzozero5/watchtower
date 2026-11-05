@@ -471,6 +471,10 @@ export class DevMockLlmProvider implements LlmProvider {
       case 'weekly_brief':
         text = weeklyBrief(request);
         break;
+      case 'element_insight':
+        // Nothing to say: a dev mock must not invent figures about an element (N5).
+        text = '{}';
+        break;
       default:
         text = `[mock:${request.prompt.id}:${hash.slice(0, 8)}]`;
     }
