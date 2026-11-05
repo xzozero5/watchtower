@@ -218,6 +218,13 @@
 - [ ] T-421 `qa-engineer` + `security-reviewer` (แยกกัน, N7): RBAC/scope leak, batch ไม่ผสมกลุ่มผู้ดู, injection ผ่านชื่อที่ staff ตั้ง, ไม่มี push, fake bridge 5–10 s ไม่ทำให้ queue `ai` ช้า, eval hallucinated number = 0 · dep T-418, T-419
 - ภายหลัง (ไม่ใช่ stage 1): AI ใน portal ของลูกค้า — ต้องมี ADR ใหม่ + ผูก gate stage 3 ราย intent (N3) · stage 2 proactive · stage 3 action ผ่าน policy · voice
 
+## KB semantic search — embedding ในเครื่อง (เจ้าของ 2026-11-05: "KB จาก repo น่าจะต้องทำ semantic search ด้วย" → ทาง ก.)
+> `docs/decisions/ADR-030-local-embeddings.md` (Proposed) · hybrid search มีอยู่แล้ว ขาดแค่ embedding จริง (มีแค่ mock/vertex, claude -p ไม่มี embedding) · เจ้าของอนุมัติดาวน์โหลดโมเดลครั้งเดียว
+- [ ] T-430 `ai-engineer` service `embedder` (Ollama, profile `ai`, network `ai`, ไม่ publish port) + `embedder-init` pull โมเดล + provider `local` (timeout, retry, batch cap, host allow-list, audit) + contract test ด้วย fake HTTP
+- [ ] T-431 `ai-engineer` re-embed เป็น index ใหม่แล้วสลับ active แบบ atomic + query embedding timeout สั้น ถอยไป keyword + ชุดคำถาม TH/EN ปรับ `KB_MIN_VECTOR_SIMILARITY` + runbook · dep T-430
+- [ ] T-432 `security-reviewer` ตรวจ ADR-030 + implementation (ปลายทาง network ใหม่, redaction, host allow-list) → ADR-030 Accepted · dep T-430
+- [ ] T-433 เจ้าของ: เปิด `EMBEDDING_PROVIDER=local` บน POC ตาม runbook (pull โมเดล ~1.2 GB ครั้งเดียว, re-embed) `[ASK-HUMAN]`
+
 ## Post-MVP / Phase 4
 - React Native app, org-private status page, LINE group chat (R-2.15), Helm chart, additional channels, Terraform ฉบับสมบูรณ์ (ADR deploy ย้ายไป T-118), generic OIDC issuer ผ่าน discovery สำหรับองค์กรที่ไม่ใช้ Google (po 2026-11-01 `[ASSUMED]`)
 
