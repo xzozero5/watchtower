@@ -1,6 +1,10 @@
 import { PERMISSION_KEYS, type Permission } from '@watchtower/shared';
 
-import { satisfiesRequirement, type PermissionRequirement } from '../auth/permission-check.js';
+import {
+  evaluatePermissionRule,
+  evaluatePermissionRules,
+  type PermissionRule,
+} from '../auth/permission-check.js';
 
 /**
  * The parity harness of the assistant tools (ADR-029 section 2, T-400 C-1). A tool may give a person nothing that the
@@ -11,12 +15,19 @@ import { satisfiesRequirement, type PermissionRequirement } from '../auth/permis
  *  2. `leaksBeyondRoute`: every value in the output of the tool is in what the route returns to the same person.
  */
 
-export interface RouteRequirement extends PermissionRequirement {
-  readonly key: string;
-}
-
 /** A permission only a customer holds. A tool leaves it out; the assistant never serves a customer. */
 const CLIENT_ONLY = /\.(org|own)$/;
+
+/** The rules a route's decorators make (`RequirePermission` and/or `RequireAnyPermission`). */
+export function routeRules(route: {
+  readonly permissions: readonly string[];
+  readonly anyOf: readonly string[];
+}): PermissionRule[] {
+  return [
+    ...(route.permissions.length === 0 ? [] : [{ all: route.permissions as Permission[] }]),
+    ...(route.anyOf.length === 0 ? [] : [{ anyOf: route.anyOf as Permission[] }]),
+  ];
+}
 
 export interface Disagreement {
   readonly held: readonly Permission[];
@@ -24,51 +35,51 @@ export interface Disagreement {
 }
 
 /**
- * Permission sets worth trying: every role's defaults, each single permission the tool or the route names, and each
- * of those with `ticket.read.masked` (the developer's read) added or taken away.
+ * Permission sets worth trying: every role's defaults, nothing, each single permission the rules name, everything,
+ * and everything except one named permission.
  */
 export function permissionSetsToTry(
-  requirements: readonly PermissionRequirement[],
+  rules: readonly PermissionRule[],
   roleDefaults: readonly (readonly Permission[])[],
 ): (readonly Permission[])[] {
   const named = new Set<Permission>();
-  for (const requirement of requirements) {
-    for (const permission of [...(requirement.all ?? []), ...(requirement.anyOf ?? [])]) {
-      named.add(permission);
-    }
+  for (const rule of rules) {
+    for (const permission of 'all' in rule ? rule.all : rule.anyOf) named.add(permission);
   }
   const sets: (readonly Permission[])[] = [...roleDefaults, []];
   for (const permission of named) sets.push([permission]);
-  // Every permission at once, and everything except one named permission.
   sets.push(PERMISSION_KEYS);
-  for (const permission of named) sets.push(PERMISSION_KEYS.filter((other) => other !== permission));
+  for (const permission of named) {
+    sets.push(PERMISSION_KEYS.filter((other) => other !== permission));
+  }
   return sets;
 }
 
 /** The sets for which the tool says yes and the route says no. Empty means the tool is no wider than the route. */
 export function authorizationDisagreements(
-  tool: PermissionRequirement,
-  route: PermissionRequirement,
+  tool: PermissionRule,
+  route: readonly PermissionRule[],
   sets: readonly (readonly Permission[])[],
 ): Disagreement[] {
   const out: Disagreement[] = [];
   for (const held of sets) {
-    const permissions = new Set(held);
-    if (satisfiesRequirement(permissions, tool) && !satisfiesRequirement(permissions, route)) {
+    const holder = { permissions: new Set(held) };
+    if (evaluatePermissionRule(holder, tool) && !evaluatePermissionRules(holder, route)) {
       out.push({ held, reason: 'the tool lets the person in, the route does not' });
     }
   }
   return out;
 }
 
-/** What the tool asks for, less the permissions only a customer holds, must be what the route asks for. */
-export function sameAsRoute(tool: PermissionRequirement, route: PermissionRequirement): boolean {
-  const withoutClient = (list: readonly Permission[] | undefined) =>
-    (list ?? []).filter((permission) => !CLIENT_ONLY.test(permission)).toSorted();
-  return (
-    JSON.stringify(withoutClient(tool.all)) === JSON.stringify(withoutClient(route.all)) &&
-    JSON.stringify(withoutClient(tool.anyOf)) === JSON.stringify(withoutClient(route.anyOf))
-  );
+/** The tool's rule, less the permissions only a customer holds, is the rule of the route (same kind, same list). */
+export function sameAsRoute(tool: PermissionRule, route: readonly PermissionRule[]): boolean {
+  const only = route.length === 1 ? route[0] : undefined;
+  if (only === undefined) return false;
+  const list = (rule: PermissionRule): string =>
+    JSON.stringify(
+      ('all' in rule ? rule.all : rule.anyOf).filter((p) => !CLIENT_ONLY.test(p)).toSorted(),
+    );
+  return 'all' in tool === 'all' in only && list(tool) === list(only);
 }
 
 // --- output within the route's output ----------------------------------------------------------------------
@@ -105,7 +116,9 @@ export function leaksBeyondRoute(
   options: LeakOptions = {},
 ): string[] {
   const routeScalars = scalarsOf(routeOutput);
-  const numbers = new Set(routeScalars.filter((value): value is number => typeof value === 'number'));
+  const numbers = new Set(
+    routeScalars.filter((value): value is number => typeof value === 'number'),
+  );
   const strings = routeScalars
     .filter((value): value is string => typeof value === 'string')
     .map(squash);
@@ -131,7 +144,8 @@ export function leaksBeyondRoute(
         walk(item, `${path}.${String(index)}`);
       });
     } else if (typeof value === 'object' && value !== null) {
-      for (const [key, item] of Object.entries(value)) walk(item, path === '' ? key : `${path}.${key}`);
+      for (const [key, item] of Object.entries(value))
+        walk(item, path === '' ? key : `${path}.${key}`);
     }
   };
   walk(toolOutput, '');

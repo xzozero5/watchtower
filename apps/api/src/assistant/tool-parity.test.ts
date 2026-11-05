@@ -1,54 +1,50 @@
 import { DEFAULT_ROLE_PERMISSIONS, ROLES, type Permission } from '@watchtower/shared';
 import { describe, expect, it } from 'vitest';
 
-import { satisfiesRequirement } from '../auth/permission-check.js';
-import { collectRoutes } from '../testing/route-table.js';
 import {
-  ASSISTANT_TOOLS,
-  ROLE_TOOLS,
-  TOOL_PERMISSION,
-  TOOL_ROUTE,
-  toolsFor,
-} from './assistant-access.js';
+  evaluatePermissionRule,
+  evaluatePermissionRules,
+  type PermissionRule,
+} from '../auth/permission-check.js';
+import { collectRoutes } from '../testing/route-table.js';
+import { ASSISTANT_TOOLS, ROLE_TOOLS, TOOL_PERMISSION, toolsFor } from './assistant-access.js';
 import {
   authorizationDisagreements,
   leaksBeyondRoute,
   permissionSetsToTry,
+  routeRules,
   sameAsRoute,
 } from './tool-parity.js';
 
 const roleSets = ROLES.map((role) => DEFAULT_ROLE_PERMISSIONS[role]);
 
 describe('tool permission parity (T-400 C-1)', () => {
-  it('declares a permission and a GET route for every tool', () => {
+  it('declares a rule, a GET route and the personal data kinds for every tool', () => {
     for (const tool of ASSISTANT_TOOLS) {
       expect(TOOL_PERMISSION[tool], tool).toBeDefined();
-      expect(TOOL_ROUTE[tool], tool).toMatch(/^GET \/v1\//);
+      expect(TOOL_PERMISSION[tool].route, tool).toMatch(/^GET \/v1\//);
+      expect(Array.isArray(TOOL_PERMISSION[tool].piiKinds), tool).toBe(true);
     }
+    expect(TOOL_PERMISSION.search_tickets.piiKinds).toEqual(['ticket']);
+    expect(TOOL_PERMISSION.summarize_ticket.piiKinds).toEqual(['ticket']);
+    expect(TOOL_PERMISSION.team_load.piiKinds).toEqual([]);
   });
 
   it('asks what the declared GET route asks, and lets nobody in whom the route would refuse', async () => {
     const routes = new Map((await collectRoutes()).map((route) => [route.key, route]));
     for (const tool of ASSISTANT_TOOLS) {
-      const route = routes.get(TOOL_ROUTE[tool]);
-      expect(route, `${tool}: ${TOOL_ROUTE[tool]} is a route`).toBeDefined();
+      const { route: key, rule } = TOOL_PERMISSION[tool];
+      const route = routes.get(key);
+      expect(route, `${tool}: ${key} is a route`).toBeDefined();
       if (route === undefined) continue;
       expect(route.isPublic, tool).toBe(false);
-      const required = { all: route.permissions as Permission[], anyOf: route.anyOf as Permission[] };
-      // The route has the same shape of decorator (`all` / `anyOf`) as the tool, less customer-only permissions.
+      const rules = routeRules(route);
       expect(
-        sameAsRoute(
-          { all: TOOL_PERMISSION[tool].all ?? [], anyOf: TOOL_PERMISSION[tool].anyOf ?? [] },
-          required,
-        ),
-        `${tool}: declared ${JSON.stringify(TOOL_PERMISSION[tool])}, route ${JSON.stringify(required)}`,
+        sameAsRoute(rule, rules),
+        `${tool}: declared ${JSON.stringify(rule)}, route ${JSON.stringify(rules)}`,
       ).toBe(true);
-      const requirement = {
-        all: route.permissions.length === 0 ? undefined : (route.permissions as Permission[]),
-        anyOf: route.anyOf.length === 0 ? undefined : (route.anyOf as Permission[]),
-      };
-      const sets = permissionSetsToTry([TOOL_PERMISSION[tool], requirement], roleSets);
-      expect(authorizationDisagreements(TOOL_PERMISSION[tool], requirement, sets), tool).toEqual([]);
+      const sets = permissionSetsToTry([rule, ...rules], roleSets);
+      expect(authorizationDisagreements(rule, rules, sets), tool).toEqual([]);
     }
   });
 
@@ -57,51 +53,47 @@ describe('tool permission parity (T-400 C-1)', () => {
     for (const role of ROLES) {
       const principal = { role, permissions: new Set(DEFAULT_ROLE_PERMISSIONS[role]) };
       for (const tool of toolsFor(principal)) {
-        const route = routes.get(TOOL_ROUTE[tool]);
+        const route = routes.get(TOOL_PERMISSION[tool].route);
         expect(
-          route !== undefined &&
-            satisfiesRequirement(principal.permissions, {
-              all: route.permissions as Permission[],
-              anyOf: route.anyOf.length === 0 ? undefined : (route.anyOf as Permission[]),
-            }),
-          `${role} gets ${tool}, whose route ${TOOL_ROUTE[tool]} refuses them`,
+          route !== undefined && evaluatePermissionRules(principal, routeRules(route)),
+          `${role} gets ${tool}, whose route ${TOOL_PERMISSION[tool].route} refuses them`,
         ).toBe(true);
       }
     }
   });
 
   it('keeps a developer (masked read, no ticket.read) out of every tool whose route needs ticket.read', () => {
-    const dev = { role: 'dev', permissions: new Set(DEFAULT_ROLE_PERMISSIONS.dev) };
+    const dev = { role: 'dev' as const, permissions: new Set(DEFAULT_ROLE_PERMISSIONS.dev) };
     const tools = toolsFor(dev);
     expect(tools).toEqual(['search_tickets', 'summarize_ticket', 'explain_sla', 'investigate_run']);
-    // `ticket.read.masked` stands in for `ticket.read` only where the route lists both.
-    expect(satisfiesRequirement(dev.permissions, { all: ['ticket.read'] })).toBe(false);
-    expect(satisfiesRequirement(dev.permissions, { anyOf: ['ticket.read', 'ticket.read.masked'] })).toBe(
+    // `ticket.read.masked` stands in for `ticket.read` only where the rule lists both.
+    expect(evaluatePermissionRule(dev, { all: ['ticket.read'] })).toBe(false);
+    expect(evaluatePermissionRule(dev, { anyOf: ['ticket.read', 'ticket.read.masked'] })).toBe(
       true,
     );
     for (const tool of ASSISTANT_TOOLS) {
-      if (TOOL_PERMISSION[tool].all?.includes('ticket.read') === true) {
+      const rule = TOOL_PERMISSION[tool].rule;
+      if ('all' in rule && rule.all.includes('ticket.read'))
         expect(tools, tool).not.toContain(tool);
-      }
     }
     // Even a role list that named team_load for a developer would not give it to them.
     expect(ROLE_TOOLS.dev).not.toContain('team_load');
-    expect(toolsFor({ role: 'lead', permissions: new Set<Permission>(['ticket.read.masked']) })).toEqual(
-      ['search_tickets', 'summarize_ticket', 'explain_sla'],
-    );
+    expect(
+      toolsFor({ role: 'lead', permissions: new Set<Permission>(['ticket.read.masked']) }),
+    ).toEqual(['search_tickets', 'summarize_ticket', 'explain_sla']);
   });
 
   it('catches a tool that is wider than its route (the harness itself)', () => {
-    const wide = { anyOf: ['ticket.read', 'ticket.read.masked'] } as const;
-    const route = { all: ['ticket.read'] } as const;
+    const wide: PermissionRule = { anyOf: ['ticket.read', 'ticket.read.masked'] };
+    const route: PermissionRule[] = [{ all: ['ticket.read'] }];
     const found = authorizationDisagreements(
-      { anyOf: [...wide.anyOf] },
-      { all: [...route.all] },
-      permissionSetsToTry([wide, route], roleSets),
+      wide,
+      route,
+      permissionSetsToTry([wide, ...route], roleSets),
     );
     expect(found.length).toBeGreaterThan(0);
     expect(found.some((entry) => entry.held.includes('ticket.read.masked'))).toBe(true);
-    expect(sameAsRoute({ anyOf: [...wide.anyOf] }, { all: [...route.all] })).toBe(false);
+    expect(sameAsRoute(wide, route)).toBe(false);
   });
 });
 
@@ -120,9 +112,7 @@ describe('output within the route (the helper)', () => {
         route,
       ),
     ).toEqual([]);
-    expect(
-      leaksBeyondRoute({ text: 'A long message with space' }, route),
-    ).toEqual([]);
+    expect(leaksBeyondRoute({ text: 'A long message with space' }, route)).toEqual([]);
     expect(leaksBeyondRoute({ text: 'A long mess…' }, route)).toEqual([]);
   });
 

@@ -275,7 +275,8 @@ export class AssistantService {
     // The other chips (entity, selection): each ref is read with the reader of its module under this person's access.
     // One that does not exist and one that is not theirs are dropped the same way (ADR-029 section 1).
     const resolved = await this.contexts.resolve(body.context, principal);
-    if (ticketKey === undefined && resolved.entity?.kind === 'ticket') ticketKey = resolved.entity.label;
+    if (ticketKey === undefined && resolved.entity?.kind === 'ticket')
+      ticketKey = resolved.entity.label;
 
     const conversationId = await this.conversationFor(principal, body.conversationId, locale);
     // Every redactor of this message knows the staff of the instance, so a colleague's name in what the

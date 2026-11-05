@@ -50,7 +50,11 @@ export type KindReader = (ref: string, principal: Principal) => Promise<Resolved
  */
 export type KindReaders = { readonly [K in AssistantEntityKind]?: KindReader };
 
-export const KINDS_WITHOUT_READER = ['conversation', 'handoff', 'service'] as const satisfies readonly AssistantEntityKind[];
+export const KINDS_WITHOUT_READER = [
+  'conversation',
+  'handoff',
+  'service',
+] as const satisfies readonly AssistantEntityKind[];
 
 export interface ContextDrop {
   readonly kind: AssistantEntityKind;
@@ -108,7 +112,6 @@ export async function resolveContext(
   }
 
   // The same thing named twice is read once.
-  const unique = new Map<string, Promise<ResolvedRef | null>>();
   const tasks: { item: (typeof wanted)[number]; key: string }[] = [];
   for (const item of wanted) {
     const key = `${item.kind}\u0000${item.ref}`;
@@ -122,9 +125,7 @@ export async function resolveContext(
       part.map((key) => {
         const task = tasks.find((candidate) => candidate.key === key);
         if (task === undefined) return Promise.resolve(null);
-        const pending = readOne(readers[task.item.kind], task.item.ref, principal);
-        unique.set(key, pending);
-        return pending;
+        return readOne(readers[task.item.kind], task.item.ref, principal);
       }),
     );
     part.forEach((key, index) => results.set(key, settled[index] ?? null));
@@ -193,7 +194,13 @@ export class ContextResolver {
         // `ticket.read` or the masked read: `viewRow` refuses anyone else and hides what the person may not see.
         const view = await runReadOnly(database, (db) => tickets.viewRow(ref, principal, db));
         const key = keys.format(view.t.number);
-        return { kind: 'ticket', id: view.t.id, label: key, href: ticketHref(key), orgId: view.t.orgId };
+        return {
+          kind: 'ticket',
+          id: view.t.id,
+          label: key,
+          href: ticketHref(key),
+          orgId: view.t.orgId,
+        };
       },
       incident: async (ref, principal) => {
         if (!holdsAny(principal, ['ticket.read']) || !uuid.safeParse(ref).success) return null;
@@ -216,7 +223,10 @@ export class ContextResolver {
         return { kind: 'intent', id: intent.id, label: intent.name };
       },
       org: async (ref, principal) => {
-        if (!holdsAny(principal, ['ticket.read', 'ticket.read.org']) || !uuid.safeParse(ref).success) {
+        if (
+          !holdsAny(principal, ['ticket.read', 'ticket.read.org']) ||
+          !uuid.safeParse(ref).success
+        ) {
           return null;
         }
         const org = await orgs.get(ref, principal);

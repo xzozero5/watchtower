@@ -1,9 +1,4 @@
-import {
-  DEFAULT_ROLE_PERMISSIONS,
-  PERMISSIONS,
-  ROLES,
-  WORKSPACE_ROLES,
-} from '@watchtower/shared';
+import { DEFAULT_ROLE_PERMISSIONS, PERMISSIONS, ROLES, WORKSPACE_ROLES } from '@watchtower/shared';
 import { describe, expect, it } from 'vitest';
 
 import { FEATURE_PUBLIC_ROUTES } from '../public-routes.js';
@@ -287,9 +282,10 @@ describe('every route states who may call it', () => {
     }
     // The roles the guard lets through are exactly these; client and system are the rest.
     expect([...WORKSPACE_ROLES]).toEqual(['agent', 'lead', 'head', 'dev']);
-    expect(ROLES.filter((role) => !(WORKSPACE_ROLES as readonly string[]).includes(role))).toEqual(
-      ['client', 'system'],
-    );
+    expect(ROLES.filter((role) => !(WORKSPACE_ROLES as readonly string[]).includes(role))).toEqual([
+      'client',
+      'system',
+    ]);
     for (const role of ['client', 'system'] as const) {
       expect(DEFAULT_ROLE_PERMISSIONS[role]).not.toContain('assistant.use');
     }

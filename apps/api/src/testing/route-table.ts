@@ -97,4 +97,3 @@ export async function collectRoutes(): Promise<RouteInfo[]> {
   await moduleRef.close();
   return routes;
 }
-

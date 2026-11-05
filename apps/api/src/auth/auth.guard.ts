@@ -21,7 +21,7 @@ import {
   WORKSPACE_ONLY_KEY,
 } from './decorators.js';
 import { ApiHttpError, forbidden, unauthenticated } from './http-errors.js';
-import { satisfiesRequirement } from './permission-check.js';
+import { evaluatePermissionRules, type PermissionRule } from './permission-check.js';
 import { attachPrincipal, type Principal } from './principal.js';
 import { SessionService } from './session.service.js';
 import { TokenService } from './token.service.js';
@@ -89,7 +89,10 @@ export class AuthGuard implements CanActivate {
     if (
       this.reflector.getAllAndOverride<boolean | undefined>(WORKSPACE_ONLY_KEY, targets) === true &&
       // An allowlist (T-400 C-9): a role that is not listed, or a principal scoped to one organization, is out.
-      !((WORKSPACE_ROLES as readonly Role[]).includes(principal.role) && principal.orgScope.kind === 'all')
+      !(
+        (WORKSPACE_ROLES as readonly Role[]).includes(principal.role) &&
+        principal.orgScope.kind === 'all'
+      )
     ) {
       await this.deny(request, context, principal, AUDIT_ACTIONS.authzDenied, {
         required: required ?? [],
@@ -99,7 +102,11 @@ export class AuthGuard implements CanActivate {
       throw forbidden();
     }
 
-    if (!satisfiesRequirement(principal.permissions, { all: required, anyOf })) {
+    const rules: PermissionRule[] = [
+      ...(required === undefined ? [] : [{ all: required }]),
+      ...(anyOf === undefined ? [] : [{ anyOf }]),
+    ];
+    if (!evaluatePermissionRules(principal, rules)) {
       await this.deny(request, context, principal, AUDIT_ACTIONS.authzDenied, {
         required: required ?? [],
         anyOf: anyOf ?? [],

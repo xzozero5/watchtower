@@ -5,7 +5,7 @@ import type {
   ProposalKind,
 } from '@watchtower/shared';
 
-import { satisfiesRequirement, type PermissionRequirement } from '../auth/permission-check.js';
+import { evaluatePermissionRule, type PermissionRule } from '../auth/permission-check.js';
 import type { Principal } from '../auth/principal.js';
 
 /**
@@ -45,36 +45,47 @@ export const ROLE_TOOLS: Readonly<Record<string, readonly AssistantToolName[]>> 
   dev: ['search_tickets', 'summarize_ticket', 'explain_sla', 'kb_search', 'investigate_run'],
 };
 
-/**
- * What the tool asks of the person: the same shape as the decorators of the GET route that serves the same data
- * (`all` = RequirePermission, `anyOf` = RequireAnyPermission) and checked by the same evaluator as the guard
- * (`satisfiesRequirement`). No shortcut: `ticket.read.masked` satisfies only a requirement that names it (T-400 C-1).
- * A permission of the client alone (`ticket.read.org`) is left out; the client never reaches the assistant.
- */
-export const TOOL_PERMISSION: Readonly<Record<AssistantToolName, PermissionRequirement>> = {
-  search_tickets: { anyOf: ['ticket.read', 'ticket.read.masked'] },
-  summarize_ticket: { anyOf: ['ticket.read', 'ticket.read.masked'] },
-  explain_sla: { anyOf: ['ticket.read', 'ticket.read.masked'] },
-  team_load: { all: ['ticket.read'] },
-  team_status: { all: ['ticket.handle'] },
-  kb_search: { all: ['kb.read'] },
-  investigate_run: { all: ['investigate.run'] },
-};
+/** What a tool writes to the audit as personal data read (`pii.read`, `metadata.via=assistant`; T-400 C-17). */
+export const PII_KINDS = [
+  'ticket',
+  'conversation',
+  'contact',
+  'timeline',
+  'shift_overview',
+  'performance',
+] as const;
+export type PiiKind = (typeof PII_KINDS)[number];
 
-/**
- * The GET route that serves the same data as the tool (ADR-029 section 2, `toolRoute`). The parity test reads the
- * decorator of that route and fails when `TOOL_PERMISSION` is not one of the permissions the route accepts, and
- * the output of the tool must be within what the route returns to the same person. A tool without a GET route to
- * point at does not belong in the catalogue.
- */
-export const TOOL_ROUTE: Readonly<Record<AssistantToolName, string>> = {
-  search_tickets: 'GET /v1/tickets',
-  summarize_ticket: 'GET /v1/tickets/:id',
-  explain_sla: 'GET /v1/tickets/:id',
-  team_load: 'GET /v1/tickets/stats',
-  team_status: 'GET /v1/assignees',
-  kb_search: 'GET /v1/kb/search',
-  investigate_run: 'GET /v1/tickets/:id/tools',
+export interface ToolAccess {
+  /**
+   * The GET route that serves the same data (`toolRoute`). The parity test reads the decorators of that route and fails
+   * when `rule` is not what the route asks of the person, and the tool output must be within what the route returns.
+   */
+  readonly route: string;
+  /**
+   * The rule in the shape of the decorator (`all` = RequirePermission, `anyOf` = RequireAnyPermission), decided by the
+   * same evaluator as the guard (`evaluatePermissionRule`). No shortcut: `ticket.read.masked` satisfies only a rule that
+   * names it (T-400 C-1). A permission of the client alone (`ticket.read.org`) is left out.
+   */
+  readonly rule: PermissionRule;
+  /** The kinds of personal data the tool reads: each entity read becomes a `pii.read` row. Empty: none. */
+  readonly piiKinds: readonly PiiKind[];
+}
+
+const TICKET_READ: PermissionRule = { anyOf: ['ticket.read', 'ticket.read.masked'] };
+
+export const TOOL_PERMISSION: Readonly<Record<AssistantToolName, ToolAccess>> = {
+  search_tickets: { route: 'GET /v1/tickets', rule: TICKET_READ, piiKinds: ['ticket'] },
+  summarize_ticket: { route: 'GET /v1/tickets/:id', rule: TICKET_READ, piiKinds: ['ticket'] },
+  explain_sla: { route: 'GET /v1/tickets/:id', rule: TICKET_READ, piiKinds: ['ticket'] },
+  team_load: { route: 'GET /v1/tickets/stats', rule: { all: ['ticket.read'] }, piiKinds: [] },
+  team_status: { route: 'GET /v1/assignees', rule: { all: ['ticket.handle'] }, piiKinds: [] },
+  kb_search: { route: 'GET /v1/kb/search', rule: { all: ['kb.read'] }, piiKinds: [] },
+  investigate_run: {
+    route: 'GET /v1/tickets/:id/tools',
+    rule: { all: ['investigate.run'] },
+    piiKinds: ['ticket'],
+  },
 };
 
 export const ROLE_PROPOSALS: Readonly<Record<string, readonly ProposalKind[]>> = {
@@ -110,7 +121,6 @@ export const isMasked = (principal: Holder): boolean =>
 export const canUseAssistant = (principal: Holder): boolean =>
   principal.permissions.has('ticket.read') || principal.permissions.has('ticket.read.masked');
 
-
 /**
  * The permission the ordinary route asks for this change from this person. A masked reader changes a
  * ticket as a developer does (a status and a note), not as support does.
@@ -124,7 +134,7 @@ export function proposalPermission(kind: ProposalKind, principal: Holder): Permi
 /** Tools this person may use right now: on the role list and backed by a permission they hold. */
 export function toolsFor(principal: Holder): AssistantToolName[] {
   return (ROLE_TOOLS[principal.role] ?? []).filter((name) =>
-    satisfiesRequirement(principal.permissions, TOOL_PERMISSION[name]),
+    evaluatePermissionRule(principal, TOOL_PERMISSION[name].rule),
   );
 }
 

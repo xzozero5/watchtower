@@ -51,20 +51,20 @@ function deps(spy: Spy): AssistantToolDeps {
     throw new Error(`${name} must not be called by a read tool`);
   };
   const fakeDb = {
-        select: () => ({
-          from: () => ({
-            // Awaited as it is (the people of team_load), or narrowed by orderBy/limit (messages, contacts).
-            where: () =>
-              Object.assign([{ id: '3f9c5a1e-6c2b-4b7a-9e0d-0f2f6f5f1a11', name: 'Mali' }], {
-                orderBy: () => ({ limit: () => Promise.resolve([]) }),
-                limit: () => Promise.resolve([{ name: 'Jane Doe' }]),
-              }),
+    select: () => ({
+      from: () => ({
+        // Awaited as it is (the people of team_load), or narrowed by orderBy/limit (messages, contacts).
+        where: () =>
+          Object.assign([{ id: '3f9c5a1e-6c2b-4b7a-9e0d-0f2f6f5f1a11', name: 'Mali' }], {
+            orderBy: () => ({ limit: () => Promise.resolve([]) }),
+            limit: () => Promise.resolve([{ name: 'Jane Doe' }]),
           }),
-        }),
-        insert: noWrite('insert'),
-        update: noWrite('update'),
-        delete: noWrite('delete'),
-      };
+      }),
+    }),
+    insert: noWrite('insert'),
+    update: noWrite('update'),
+    delete: noWrite('delete'),
+  };
   return {
     // The database is only asked for messages and contacts; an empty answer is enough.
     database: { db: fakeDb } as never,
