@@ -332,7 +332,7 @@ export const ASSISTANT_MEMORY_LIMITS = {
   maxPerUser: 20,
   /** Rows put in a prompt. */
   maxInPrompt: 10,
-  /** Days after `last_used_at`. `[ASSUMED]` */
+  /** Days after `created_at` (use does not extend it, T-400 C-7). `[ASSUMED]` */
   ttlDays: 90,
 } as const;
 
@@ -342,9 +342,19 @@ export const assistantMemoryRefSchema = z.object({
 });
 export type AssistantMemoryRef = z.infer<typeof assistantMemoryRefSchema>;
 
+/**
+ * The one way to make a memory in stage 1 (T-400 C-7): press "remember" on a claim of an answer. The server takes the
+ * text from the redacted text of that turn and the refs from its evidence; nothing the person types is stored, so
+ * there is no body here. A memory typed by hand is not in stage 1.
+ */
 export const createAssistantMemorySchema = z.object({
-  body: z.string().trim().min(1).max(ASSISTANT_MEMORY_LIMITS.maxBodyChars),
-  refs: z.array(assistantMemoryRefSchema).max(ASSISTANT_MEMORY_LIMITS.maxRefs).default([]),
+  messageId: z.uuid(),
+  /** Which claim of that answer (0-based). */
+  claim: z
+    .number()
+    .int()
+    .min(0)
+    .max(ASSISTANT_LIMITS.maxClaims - 1),
 });
 export type CreateAssistantMemory = z.infer<typeof createAssistantMemorySchema>;
 
@@ -352,6 +362,7 @@ export const assistantMemorySchema = z.object({
   id: z.uuid(),
   body: z.string().max(ASSISTANT_MEMORY_LIMITS.maxBodyChars),
   refs: z.array(assistantMemoryRefSchema).max(ASSISTANT_MEMORY_LIMITS.maxRefs),
+  sourceMessageId: z.uuid().nullable(),
   createdAt: z.iso.datetime(),
   lastUsedAt: z.iso.datetime(),
   expiresAt: z.iso.datetime(),

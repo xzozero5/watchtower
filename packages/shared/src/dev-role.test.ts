@@ -35,6 +35,7 @@ describe('the dev role (T-137)', () => {
   it('reads masked, does the developer work and investigates; nothing else', () => {
     expect([...dev].toSorted()).toEqual(
       [
+        'assistant.use',
         'auth.session.self',
         'investigate.run',
         // T-303b: a developer reads the procedure of an intent (ADR-026).
