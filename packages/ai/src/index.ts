@@ -23,6 +23,7 @@ export * from './agents/grade-presend.js';
 export * from './agents/procedure-compiler.js';
 export * from './agents/roster-planner.js';
 export * from './agents/assistant.js';
+export * from './agents/untrusted.js';
 export * from './agents/summary.js';
 export * from './agents/fact-block.js';
 export * from './agents/weekly-brief.js';

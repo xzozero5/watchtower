@@ -23,6 +23,7 @@ import type {
 } from '../redaction/redactor.js';
 import { renderPrompt } from '../prompts.js';
 import { neutralizeTags } from './leak-check.js';
+import type { FactTrust } from './untrusted.js';
 import {
   askGuard,
   clip,
@@ -57,6 +58,10 @@ export interface AssistantFact {
   readonly text: string;
   /** Names of people the fact mentions, added to the dictionary of the answer's redactor. */
   readonly names?: readonly string[] | undefined;
+  /** What the fact points at, `{kind, id}` with the real id (ADR-029 section 2); the host builds the chip from it. */
+  readonly ref?: { readonly kind: ClaimEvidenceKind; readonly id: string } | undefined;
+  /** Who wrote the free text in `text`. A tool wraps any text that is not `system` with `wrapUntrusted` (C-14). */
+  readonly trust?: FactTrust | undefined;
 }
 
 export interface AssistantToolHost {
