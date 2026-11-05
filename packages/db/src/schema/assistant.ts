@@ -52,7 +52,14 @@ export const assistantMessage = pgTable(
       .references(() => users.id, { onDelete: 'cascade' }),
     role: text('role').notNull().$type<'user' | 'assistant'>(),
     body: text('body').notNull(),
-    context: jsonb('context').notNull().default({}).$type<{ page?: string; ticket?: string }>(),
+    context: jsonb('context')
+      .notNull()
+      .default({})
+      .$type<{ page?: string; ticket?: string; entity?: { kind: string; ref: string } }>(),
+    /** The evidence of an answer as `{kind, id}` only (ADR-029 section 3); label and href are rebuilt on read. */
+    evidence: jsonb('evidence').notNull().default([]).$type<{ kind: string; id: string }[]>(),
+    /** How the turn was answered; null for the turns before migration 0112. */
+    path: text('path').$type<'facts_only' | 'llm1' | 'llm2'>(),
     tools: jsonb('tools')
       .notNull()
       .default([])
@@ -134,4 +141,24 @@ export const aiSummary = pgTable(
     generatedAt: timestamptz('generated_at').notNull().defaultNow(),
   },
   (table) => [primaryKey({ columns: [table.kind, table.userId, table.locale] })],
+);
+
+/** What a person pinned for the assistant to remember (ADR-029 section 3, migration 0112). Redacted text only. */
+export const assistantMemory = pgTable(
+  'assistant_memory',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    body: text('body').notNull(),
+    refs: jsonb('refs').notNull().default([]).$type<{ kind: string; id: string }[]>(),
+    createdAt: timestamptz('created_at').notNull().defaultNow(),
+    lastUsedAt: timestamptz('last_used_at').notNull().defaultNow(),
+    expiresAt: timestamptz('expires_at').notNull(),
+  },
+  (table) => [
+    index('assistant_memory_user_idx').on(table.userId, table.lastUsedAt.desc()),
+    index('assistant_memory_expires_idx').on(table.expiresAt),
+  ],
 );

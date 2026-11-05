@@ -39,6 +39,7 @@ import { TICKET_KEYS, type TicketKeys } from '../tickets/ticket-keys.js';
 import { TicketReader } from '../tickets/ticket-reader.js';
 import { ToolRunner } from '../tools/tool-runner.service.js';
 import { isMasked, proposalKindsFor, startersFor } from './assistant-access.js';
+import { ContextResolver } from './context-resolver.js';
 import { AssistantProposals } from './assistant-proposals.js';
 import { buildAssistantTools } from './assistant-tools.js';
 import { NOTES } from './assistant-text.js';
@@ -97,6 +98,7 @@ export class AssistantService {
     @Inject(BriefService) private readonly brief: BriefService,
     @Inject(ToolRunner) private readonly runner: ToolRunner,
     @Inject(AssistantProposals) private readonly proposals: AssistantProposals,
+    @Inject(ContextResolver) private readonly contexts: ContextResolver,
     @Inject(StaffNames) private readonly staff: StaffNames,
     @Inject(AuditService) private readonly audit: AuditService,
     @Inject(AiStatusService) private readonly aiStatus: AiStatusService,
@@ -206,6 +208,7 @@ export class AssistantService {
     chip: string | undefined,
     text: string,
     earlier: readonly string[],
+    chipOrgIds: readonly string[] = [],
   ): Promise<{ names: string[]; complete: boolean; orgIds: string[] }> {
     const refs = [
       ...(chip === undefined ? [] : [chip]),
@@ -213,7 +216,7 @@ export class AssistantService {
       // A later turn with no ticket in it still carries what was said about the tickets before.
       ...earlier,
     ];
-    const orgIds = new Set<string>();
+    const orgIds = new Set<string>(chipOrgIds);
     for (const ref of new Set(refs)) {
       const found = await this.ticketOf(ref, principal);
       if (found !== null) orgIds.add(found.orgId);
@@ -269,11 +272,23 @@ export class AssistantService {
       ticketKey = key;
     }
 
+    // The other chips (entity, selection): each ref is read with the reader of its module under this person's access.
+    // One that does not exist and one that is not theirs are dropped the same way (ADR-029 section 1).
+    const resolved = await this.contexts.resolve(body.context, principal);
+    if (ticketKey === undefined && resolved.entity?.kind === 'ticket') ticketKey = resolved.entity.label;
+
     const conversationId = await this.conversationFor(principal, body.conversationId, locale);
     // Every redactor of this message knows the staff of the instance, so a colleague's name in what the
     // person typed, or in a ticket, is replaced before a model sees it, and before it is stored (N4).
     const earlier = await this.ticketsOfConversation(conversationId);
-    const about = await this.aboutOrgNames(principal, body.context?.ticket, body.text, earlier);
+    const about = await this.aboutOrgNames(
+      principal,
+      ticketKey,
+      body.text,
+      earlier,
+      // The organizations of every other chip too: their people go to the redactor (N4).
+      resolved.refs.flatMap((ref) => (ref.orgId == null ? [] : [ref.orgId])),
+    );
     const staff = await this.staff.list();
     // Both lists must be whole, or the redactor cannot be trusted with the text (fail closed).
     const listsWhole = about.complete && staff.complete;
@@ -391,6 +406,9 @@ export class AssistantService {
         context: {
           ...(body.context?.page === undefined ? {} : { page: body.context.page }),
           ...(ticketKey === undefined ? {} : { ticket: ticketKey }),
+          ...(resolved.entity === null
+            ? {}
+            : { entity: { kind: resolved.entity.kind, ref: resolved.entity.label } }),
         },
       });
       await tx.insert(schema.assistantMessage).values({
@@ -480,6 +498,8 @@ export class AssistantService {
         proposals: cards.map((card) => card.kind),
         masked: isMasked(principal),
         ticketIds: [...read.keys()],
+        // `context_dropped` (T-400 C-20): how many and of which kind, never the refs that were sent.
+        contextDropped: countByKind(resolved.dropped),
       },
     });
     return {
@@ -563,6 +583,12 @@ export class AssistantService {
       targetId: id,
     });
   }
+}
+
+function countByKind(dropped: readonly { kind: string }[]): Record<string, number> {
+  const counts: Record<string, number> = {};
+  for (const { kind } of dropped) counts[kind] = (counts[kind] ?? 0) + 1;
+  return counts;
 }
 
 function mapReason(reason: string): Standing {

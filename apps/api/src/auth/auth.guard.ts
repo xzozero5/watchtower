@@ -1,6 +1,12 @@
 import { Inject, Injectable, type CanActivate, type ExecutionContext } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import { AUDIT_ACTIONS, CSRF_HEADER, type Permission } from '@watchtower/shared';
+import {
+  AUDIT_ACTIONS,
+  CSRF_HEADER,
+  WORKSPACE_ROLES,
+  type Permission,
+  type Role,
+} from '@watchtower/shared';
 import type { Request, Response } from 'express';
 
 import { AuditService } from '../audit/audit.service.js';
@@ -8,8 +14,14 @@ import { APP_CONFIG, type ApiConfig } from '../config/config.js';
 import { LOGGER, type AppLogger } from '../logging/logger.js';
 import { AuthService } from './auth.service.js';
 import { cookieNames, hasDuplicateCookie, readCookie } from './cookies.js';
-import { ANY_PERMISSIONS_KEY, PERMISSIONS_KEY, PUBLIC_KEY } from './decorators.js';
+import {
+  ANY_PERMISSIONS_KEY,
+  PERMISSIONS_KEY,
+  PUBLIC_KEY,
+  WORKSPACE_ONLY_KEY,
+} from './decorators.js';
 import { ApiHttpError, forbidden, unauthenticated } from './http-errors.js';
+import { satisfiesRequirement } from './permission-check.js';
 import { attachPrincipal, type Principal } from './principal.js';
 import { SessionService } from './session.service.js';
 import { TokenService } from './token.service.js';
@@ -25,6 +37,7 @@ const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
  *  3. Otherwise the access cookie must hold a valid JWT, the session must be live and the user
  *     active (read from the database on every request, so forced logout and disabling apply at
  *     once), and the user's role must grant the permission.
+ *     A route marked `@WorkspaceOnly()` first refuses every role outside agent/lead/head/dev (403), granted or not.
  *  4. Unsafe methods must also carry the session's CSRF token in `x-csrf-token`.
  *
  * Denials of a signed-in user (403, CSRF) are written to the audit log here, because a rejected
@@ -72,10 +85,21 @@ export class AuthGuard implements CanActivate {
     const principal = await this.authenticate(request);
     attachPrincipal(request, principal);
 
-    const missing = required?.filter((permission) => !principal.permissions.has(permission)) ?? [];
-    const satisfiesAny =
-      anyOf === undefined || anyOf.some((permission) => principal.permissions.has(permission));
-    if (missing.length > 0 || !satisfiesAny) {
+    // Before any permission: a role outside the workspace is refused whatever it was granted.
+    if (
+      this.reflector.getAllAndOverride<boolean | undefined>(WORKSPACE_ONLY_KEY, targets) === true &&
+      // An allowlist (T-400 C-9): a role that is not listed, or a principal scoped to one organization, is out.
+      !((WORKSPACE_ROLES as readonly Role[]).includes(principal.role) && principal.orgScope.kind === 'all')
+    ) {
+      await this.deny(request, context, principal, AUDIT_ACTIONS.authzDenied, {
+        required: required ?? [],
+        anyOf: anyOf ?? [],
+        workspaceOnly: true,
+      });
+      throw forbidden();
+    }
+
+    if (!satisfiesRequirement(principal.permissions, { all: required, anyOf })) {
       await this.deny(request, context, principal, AUDIT_ACTIONS.authzDenied, {
         required: required ?? [],
         anyOf: anyOf ?? [],

@@ -35,7 +35,13 @@ export {
   type RotateFailure,
   type RotateResult,
 } from './credentials.js';
-export { createDatabase, type CreateDatabaseOptions, type Database } from './client.js';
+export {
+  READ_ONLY_STATEMENT_TIMEOUT_MS,
+  createDatabase,
+  withReadOnlyConnections,
+  type CreateDatabaseOptions,
+  type Database,
+} from './client.js';
 export { PG, isPgError, pgCode, pgConstraint } from './errors.js';
 export {
   PermanentOutboxError,

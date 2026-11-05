@@ -1,97 +1,17 @@
-import { RequestMethod, type Type } from '@nestjs/common';
-import { METHOD_METADATA, PATH_METADATA } from '@nestjs/common/constants.js';
-import { MetadataScanner, ModulesContainer, Reflector } from '@nestjs/core';
-import { Test } from '@nestjs/testing';
-import { DEFAULT_ROLE_PERMISSIONS, PERMISSIONS } from '@watchtower/shared';
+import {
+  DEFAULT_ROLE_PERMISSIONS,
+  PERMISSIONS,
+  ROLES,
+  WORKSPACE_ROLES,
+} from '@watchtower/shared';
 import { describe, expect, it } from 'vitest';
 
-import { AppModule } from '../app.module.js';
-import { DATABASE } from '../database/database.module.js';
-import { createLogger } from '../logging/logger.js';
 import { FEATURE_PUBLIC_ROUTES } from '../public-routes.js';
-import { REDIS } from '../redis/redis.module.js';
-import { testConfig } from '../testing/support.js';
-import { ANY_PERMISSIONS_KEY, PERMISSIONS_KEY, PUBLIC_KEY } from './decorators.js';
+import { collectRoutes } from '../testing/route-table.js';
 
 // The whole point of a deny-by-default guard is that no route can be left unprotected by
 // forgetting. This builds the real module graph (infrastructure faked, no network) and walks every
 // route of every controller. A new route fails here until it says who may call it.
-
-interface RouteInfo {
-  readonly key: string;
-  readonly controller: string;
-  readonly method: string;
-  readonly isPublic: boolean;
-  readonly permissions: readonly string[];
-  readonly anyOf: readonly string[];
-  readonly unsafe: boolean;
-}
-
-const METHODS: Record<number, string> = {
-  [RequestMethod.GET]: 'GET',
-  [RequestMethod.POST]: 'POST',
-  [RequestMethod.PUT]: 'PUT',
-  [RequestMethod.PATCH]: 'PATCH',
-  [RequestMethod.DELETE]: 'DELETE',
-  [RequestMethod.OPTIONS]: 'OPTIONS',
-  [RequestMethod.HEAD]: 'HEAD',
-  [RequestMethod.ALL]: 'ALL',
-};
-
-async function collectRoutes(): Promise<RouteInfo[]> {
-  const config = testConfig();
-  const moduleRef = await Test.createTestingModule({
-    imports: [AppModule.forRoot(config, createLogger(config))],
-  })
-    .overrideProvider(DATABASE)
-    .useValue({ db: {}, pool: {}, ping: () => Promise.resolve(), close: () => Promise.resolve() })
-    .overrideProvider(REDIS)
-    .useValue({
-      ping: () => Promise.resolve('PONG'),
-      quit: () => Promise.resolve('OK'),
-      disconnect: () => undefined,
-    })
-    .compile();
-
-  const reflector = new Reflector();
-  const scanner = new MetadataScanner();
-  const routes: RouteInfo[] = [];
-  for (const module of moduleRef.get(ModulesContainer, { strict: false }).values()) {
-    for (const wrapper of module.controllers.values()) {
-      const controller = wrapper.metatype as Type | null;
-      if (!controller) continue;
-      const prefix = (Reflect.getMetadata(PATH_METADATA, controller) as string | undefined) ?? '';
-      for (const name of scanner.getAllMethodNames(controller.prototype as object)) {
-        const handler = (controller.prototype as Record<string, unknown>)[name] as Type;
-        const path = Reflect.getMetadata(PATH_METADATA, handler) as string | undefined;
-        const verb = Reflect.getMetadata(METHOD_METADATA, handler) as number | undefined;
-        if (path === undefined || verb === undefined) continue;
-        const method = METHODS[verb] ?? String(verb);
-        const targets = [handler, controller];
-        routes.push({
-          key: `${method} /${[prefix, path]
-            .join('/')
-            .replace(/\/+/g, '/')
-            .replace(/^\/|\/$/g, '')}`,
-          controller: controller.name,
-          method,
-          isPublic: reflector.getAllAndOverride<boolean | undefined>(PUBLIC_KEY, targets) === true,
-          permissions:
-            reflector.getAllAndOverride<readonly string[] | undefined>(PERMISSIONS_KEY, targets) ??
-            [],
-          anyOf:
-            reflector.getAllAndOverride<readonly string[] | undefined>(
-              ANY_PERMISSIONS_KEY,
-              targets,
-            ) ?? [],
-          unsafe: !['GET', 'HEAD', 'OPTIONS'].includes(method),
-        });
-      }
-    }
-  }
-  await moduleRef.close();
-  return routes;
-}
 
 /** Every route that is open to anyone. Adding one is a decision; make it here, on purpose. */
 const EXPECTED_PUBLIC_ROUTES = [
@@ -345,6 +265,37 @@ describe('every route states who may call it', () => {
         'DELETE /v1/assistant/conversations/:id',
       ].sort(),
     );
+  });
+
+  // T-401 / T-400 C-9: the assistant (and, later, the insights) are for the people who work in the workspace. The
+  // refusal of a client and of a system identity is code (`@WorkspaceOnly()` in the guard), not a missing permission,
+  // so granting `assistant.use` to either changes nothing; this test is an allowlist of what may be reachable.
+  it('lets only workspace roles reach /v1/assistant/** and /v1/insights/** (allowlist)', async () => {
+    const routes = (await collectRoutes()).filter((route) =>
+      /^[A-Z]+ \/v1\/(assistant|insights)(\/|$)/.test(route.key),
+    );
+    expect(routes.length).toBeGreaterThan(0);
+    for (const route of routes) {
+      expect(route.isPublic, route.key).toBe(false);
+      expect(route.workspaceOnly, route.key).toBe(true);
+      const asked = [...route.permissions, ...route.anyOf];
+      expect(asked.length, route.key).toBeGreaterThan(0);
+      // Not even by a client-only permission.
+      for (const permission of asked) {
+        expect(/\.(org|own)$/.test(permission), `${route.key} ${permission}`).toBe(false);
+      }
+    }
+    // The roles the guard lets through are exactly these; client and system are the rest.
+    expect([...WORKSPACE_ROLES]).toEqual(['agent', 'lead', 'head', 'dev']);
+    expect(ROLES.filter((role) => !(WORKSPACE_ROLES as readonly string[]).includes(role))).toEqual(
+      ['client', 'system'],
+    );
+    for (const role of ['client', 'system'] as const) {
+      expect(DEFAULT_ROLE_PERMISSIONS[role]).not.toContain('assistant.use');
+    }
+    for (const role of WORKSPACE_ROLES) {
+      expect(DEFAULT_ROLE_PERMISSIONS[role]).toContain('assistant.use');
+    }
   });
 
   it('gives a developer nothing that reaches the customer', () => {

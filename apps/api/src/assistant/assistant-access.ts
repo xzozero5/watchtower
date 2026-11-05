@@ -5,6 +5,7 @@ import type {
   ProposalKind,
 } from '@watchtower/shared';
 
+import { satisfiesRequirement, type PermissionRequirement } from '../auth/permission-check.js';
 import type { Principal } from '../auth/principal.js';
 
 /**
@@ -44,15 +45,36 @@ export const ROLE_TOOLS: Readonly<Record<string, readonly AssistantToolName[]>> 
   dev: ['search_tickets', 'summarize_ticket', 'explain_sla', 'kb_search', 'investigate_run'],
 };
 
-/** The permission of the ordinary route that serves the same data. */
-export const TOOL_PERMISSION: Readonly<Record<AssistantToolName, Permission>> = {
-  search_tickets: 'ticket.read',
-  summarize_ticket: 'ticket.read',
-  explain_sla: 'ticket.read',
-  team_load: 'ticket.read',
-  team_status: 'ticket.handle',
-  kb_search: 'kb.read',
-  investigate_run: 'investigate.run',
+/**
+ * What the tool asks of the person: the same shape as the decorators of the GET route that serves the same data
+ * (`all` = RequirePermission, `anyOf` = RequireAnyPermission) and checked by the same evaluator as the guard
+ * (`satisfiesRequirement`). No shortcut: `ticket.read.masked` satisfies only a requirement that names it (T-400 C-1).
+ * A permission of the client alone (`ticket.read.org`) is left out; the client never reaches the assistant.
+ */
+export const TOOL_PERMISSION: Readonly<Record<AssistantToolName, PermissionRequirement>> = {
+  search_tickets: { anyOf: ['ticket.read', 'ticket.read.masked'] },
+  summarize_ticket: { anyOf: ['ticket.read', 'ticket.read.masked'] },
+  explain_sla: { anyOf: ['ticket.read', 'ticket.read.masked'] },
+  team_load: { all: ['ticket.read'] },
+  team_status: { all: ['ticket.handle'] },
+  kb_search: { all: ['kb.read'] },
+  investigate_run: { all: ['investigate.run'] },
+};
+
+/**
+ * The GET route that serves the same data as the tool (ADR-029 section 2, `toolRoute`). The parity test reads the
+ * decorator of that route and fails when `TOOL_PERMISSION` is not one of the permissions the route accepts, and
+ * the output of the tool must be within what the route returns to the same person. A tool without a GET route to
+ * point at does not belong in the catalogue.
+ */
+export const TOOL_ROUTE: Readonly<Record<AssistantToolName, string>> = {
+  search_tickets: 'GET /v1/tickets',
+  summarize_ticket: 'GET /v1/tickets/:id',
+  explain_sla: 'GET /v1/tickets/:id',
+  team_load: 'GET /v1/tickets/stats',
+  team_status: 'GET /v1/assignees',
+  kb_search: 'GET /v1/kb/search',
+  investigate_run: 'GET /v1/tickets/:id/tools',
 };
 
 export const ROLE_PROPOSALS: Readonly<Record<string, readonly ProposalKind[]>> = {
@@ -88,11 +110,6 @@ export const isMasked = (principal: Holder): boolean =>
 export const canUseAssistant = (principal: Holder): boolean =>
   principal.permissions.has('ticket.read') || principal.permissions.has('ticket.read.masked');
 
-/** A permission held, where reading a ticket is satisfied by the masked read too (the data is masked then). */
-function holds(principal: Holder, permission: Permission): boolean {
-  if (permission === 'ticket.read') return canUseAssistant(principal);
-  return principal.permissions.has(permission);
-}
 
 /**
  * The permission the ordinary route asks for this change from this person. A masked reader changes a
@@ -107,13 +124,13 @@ export function proposalPermission(kind: ProposalKind, principal: Holder): Permi
 /** Tools this person may use right now: on the role list and backed by a permission they hold. */
 export function toolsFor(principal: Holder): AssistantToolName[] {
   return (ROLE_TOOLS[principal.role] ?? []).filter((name) =>
-    holds(principal, TOOL_PERMISSION[name]),
+    satisfiesRequirement(principal.permissions, TOOL_PERMISSION[name]),
   );
 }
 
 export function proposalKindsFor(principal: Holder): ProposalKind[] {
   return (ROLE_PROPOSALS[principal.role] ?? []).filter((kind) =>
-    holds(principal, proposalPermission(kind, principal)),
+    principal.permissions.has(proposalPermission(kind, principal)),
   );
 }
 

@@ -7,7 +7,7 @@
  */
 import { z } from 'zod';
 
-import { claimSchema } from './claims.js';
+import { claimHrefSchema, claimSchema } from './claims.js';
 
 /** `[ASSUMED]` limits. The first three can be overridden by environment (see `config.ts`). */
 export const ASSISTANT_LIMITS = {
@@ -30,11 +30,19 @@ export const ASSISTANT_LIMITS = {
 export const ASSISTANT_PAGES = [
   'queue',
   'ticket',
+  'conversations',
+  'incident',
+  'alert',
+  'statuspage',
+  'kb',
+  'shift',
   'brief',
   'handoff',
+  'roster',
   'dashboard',
-  'kb',
-  'incident',
+  'reports',
+  'autonomy',
+  'admin',
   'other',
 ] as const;
 export const assistantPageSchema = z.enum(ASSISTANT_PAGES);
@@ -44,21 +52,83 @@ export const ASSISTANT_LOCALES = ['th', 'en'] as const;
 export const assistantLocaleSchema = z.enum(ASSISTANT_LOCALES);
 export type AssistantLocale = z.infer<typeof assistantLocaleSchema>;
 
+/** What a chip can point at (ADR-029 section 1). Every kind is resolved with the reader of its own module. */
+export const ASSISTANT_ENTITY_KINDS = [
+  'ticket',
+  'conversation',
+  'incident',
+  'alert',
+  'kb_article',
+  'handoff',
+  'intent',
+  'org',
+  'service',
+] as const;
+export const assistantEntityKindSchema = z.enum(ASSISTANT_ENTITY_KINDS);
+export type AssistantEntityKind = z.infer<typeof assistantEntityKindSchema>;
+
+/** An id, a number (`OPS-1234`) or a slug. A hint only: the server resolves it with the caller's own access. */
+export const assistantEntityRefSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(64)
+  .regex(/^[A-Za-z0-9][A-Za-z0-9._:-]*$/, 'expected an id, a number or a slug');
+
+/** Chips picked on a list; the server keeps the ones the person may read (ADR-029 section 1). */
+export const ASSISTANT_MAX_SELECTION = 20;
+
+export const assistantEntitySchema = z.object({
+  kind: assistantEntityKindSchema,
+  ref: assistantEntityRefSchema,
+});
+export type AssistantEntity = z.infer<typeof assistantEntitySchema>;
+
+export const assistantSelectionSchema = z.object({
+  kind: assistantEntityKindSchema,
+  refs: z.array(assistantEntityRefSchema).min(1).max(ASSISTANT_MAX_SELECTION),
+});
+export type AssistantSelection = z.infer<typeof assistantSelectionSchema>;
+
+/** The element an "Ask AI about this" button sits on (ADR-029 section 9.3). `scope`: `instance`, `user` or `org:<id>`. */
+export const assistantElementSchema = z.object({
+  key: z
+    .string()
+    .min(1)
+    .max(64)
+    .regex(
+      /^[a-z][a-z0-9_]*(\.[a-z0-9_*]+)*$/,
+      'expected an element key such as dashboard.ops.sla',
+    ),
+  scope: z.string().regex(/^(instance|user|[a-z_]{1,24}:[A-Za-z0-9-]{1,64})$/),
+  /** `d7`, `d30` ... days. */
+  period: z
+    .string()
+    .regex(/^d\d{1,3}$/)
+    .optional(),
+});
+export type AssistantElement = z.infer<typeof assistantElementSchema>;
+
+/** The `ticket` of the first release: an id or a ticket number such as `OPS-1234`. */
+export const assistantTicketRefSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(64)
+  .refine(
+    (value) =>
+      z.uuid().safeParse(value).success || /^[A-Za-z][A-Za-z0-9]{1,9}-\d{1,15}$/.test(value),
+    { message: 'expected a ticket id or a ticket number such as OPS-1234' },
+  );
+
 /** What the chips above the input send. The person removes a chip: it is not sent. No hidden context. */
 export const assistantContextSchema = z.object({
   page: assistantPageSchema.optional(),
-  /** A ticket id or number (`OPS-1234`) the person is looking at. Resolved with the person's own access. */
-  ticket: z
-    .string()
-    .trim()
-    .min(1)
-    .max(64)
-    .refine(
-      (value) =>
-        z.uuid().safeParse(value).success || /^[A-Za-z][A-Za-z0-9]{1,9}-\d{1,15}$/.test(value),
-      { message: 'expected a ticket id or a ticket number such as OPS-1234' },
-    )
-    .optional(),
+  /** A ticket id or number (`OPS-1234`) the person is looking at. Same as `entity: { kind: 'ticket' }`. */
+  ticket: assistantTicketRefSchema.optional(),
+  entity: assistantEntitySchema.optional(),
+  selection: assistantSelectionSchema.optional(),
+  element: assistantElementSchema.optional(),
 });
 export type AssistantContext = z.infer<typeof assistantContextSchema>;
 
@@ -202,3 +272,93 @@ export const assistantStartersSchema = z.object({
   }),
 });
 export type AssistantStarters = z.infer<typeof assistantStartersSchema>;
+
+// --- phase events (SSE, ADR-029 section 4) -------------------------------------------------------------
+
+/**
+ * `POST /v1/assistant/messages` with `Accept: text/event-stream` answers with these events in order:
+ * `queued`, `context`, any number of `tool`, `answering`, then `reply` or `error`. Phases, not tokens: the reply
+ * is checked (citations, links, masking) before anybody sees a word of it.
+ */
+export const ASSISTANT_PHASES = [
+  'queued',
+  'context',
+  'tool',
+  'answering',
+  'reply',
+  'error',
+] as const;
+export const assistantPhaseSchema = z.enum(ASSISTANT_PHASES);
+export type AssistantPhase = z.infer<typeof assistantPhaseSchema>;
+
+/** One ref of the context: it is a chip (`resolved`) or it was left out (`dropped`, which never says why). */
+export const assistantContextChipSchema = z.object({
+  kind: assistantEntityKindSchema,
+  /** Present only when resolved. */
+  label: z.string().max(200).optional(),
+  href: claimHrefSchema.optional(),
+  status: z.enum(['resolved', 'dropped']),
+});
+export type AssistantContextChip = z.infer<typeof assistantContextChipSchema>;
+
+export const assistantPhaseEventSchema = z.discriminatedUnion('phase', [
+  z.object({ phase: z.literal('queued'), position: z.number().int().min(0).max(100) }),
+  z.object({
+    phase: z.literal('context'),
+    chips: z.array(assistantContextChipSchema).max(ASSISTANT_MAX_SELECTION + 2),
+  }),
+  z.object({
+    phase: z.literal('tool'),
+    name: z.string().max(64),
+    status: z.enum(['running', 'ok', 'error', 'denied']),
+  }),
+  z.object({ phase: z.literal('answering') }),
+  z.object({ phase: z.literal('reply'), reply: assistantReplySchema }),
+  z.object({
+    phase: z.literal('error'),
+    state: assistantStateSchema,
+    /** A stable code (`assistant_queue_full`, `assistant_busy`, `kill_switch_on` ...). */
+    reason: z.string().max(60),
+  }),
+]);
+export type AssistantPhaseEvent = z.infer<typeof assistantPhaseEventSchema>;
+
+// --- memory (ADR-029 section 3) --------------------------------------------------------------------------
+
+export const ASSISTANT_MEMORY_LIMITS = {
+  maxBodyChars: 300,
+  maxRefs: 5,
+  /** Rows one person may keep. */
+  maxPerUser: 20,
+  /** Rows put in a prompt. */
+  maxInPrompt: 10,
+  /** Days after `last_used_at`. `[ASSUMED]` */
+  ttlDays: 90,
+} as const;
+
+export const assistantMemoryRefSchema = z.object({
+  kind: assistantEntityKindSchema,
+  id: z.string().min(1).max(64),
+});
+export type AssistantMemoryRef = z.infer<typeof assistantMemoryRefSchema>;
+
+export const createAssistantMemorySchema = z.object({
+  body: z.string().trim().min(1).max(ASSISTANT_MEMORY_LIMITS.maxBodyChars),
+  refs: z.array(assistantMemoryRefSchema).max(ASSISTANT_MEMORY_LIMITS.maxRefs).default([]),
+});
+export type CreateAssistantMemory = z.infer<typeof createAssistantMemorySchema>;
+
+export const assistantMemorySchema = z.object({
+  id: z.uuid(),
+  body: z.string().max(ASSISTANT_MEMORY_LIMITS.maxBodyChars),
+  refs: z.array(assistantMemoryRefSchema).max(ASSISTANT_MEMORY_LIMITS.maxRefs),
+  createdAt: z.iso.datetime(),
+  lastUsedAt: z.iso.datetime(),
+  expiresAt: z.iso.datetime(),
+});
+export type AssistantMemory = z.infer<typeof assistantMemorySchema>;
+
+export const assistantMemoryListSchema = z.object({
+  items: z.array(assistantMemorySchema).max(ASSISTANT_MEMORY_LIMITS.maxPerUser),
+});
+export type AssistantMemoryList = z.infer<typeof assistantMemoryListSchema>;

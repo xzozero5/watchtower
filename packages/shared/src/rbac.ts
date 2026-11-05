@@ -112,6 +112,9 @@ export const PERMISSIONS = {
   'procedure.read': 'Read the procedure of an intent and its versions',
   'procedure.author': 'Write, compile and confirm the procedure of an intent',
   'procedure.publish': 'Publish or retire a procedure version',
+  // T-401 (migration 0112_assistant_stage1, ADR-029). Every /v1/assistant route. A client and a system identity are
+  // refused in code before this is looked at, so granting it to either role does nothing.
+  'assistant.use': 'Use the AI assistant: ask questions about what your role may already read',
 } as const satisfies Record<string, string>;
 
 export type Permission = keyof typeof PERMISSIONS;
@@ -157,6 +160,7 @@ const AGENT: readonly Permission[] = [
   'alert.read',
   'alert.ack',
   'dashboard.ops.read',
+  'assistant.use',
 ];
 
 const LEAD: readonly Permission[] = [
@@ -221,6 +225,7 @@ const DEV: readonly Permission[] = [
   'investigate.run',
   'auth.session.self',
   'procedure.read',
+  'assistant.use',
 ];
 
 const CLIENT: readonly Permission[] = [
