@@ -22,6 +22,13 @@ export const CLAIM_EVIDENCE_KINDS = [
   'data',
   'repo',
   'person',
+  // ADR-029 section 5: the kinds the module tools of stage 1 add.
+  'conversation',
+  'statuspage',
+  'shift',
+  'metric',
+  'intent',
+  'config',
 ] as const;
 export const claimEvidenceKindSchema = z.enum(CLAIM_EVIDENCE_KINDS);
 export type ClaimEvidenceKind = z.infer<typeof claimEvidenceKindSchema>;
@@ -38,6 +45,11 @@ export const claimEvidenceSchema = z.object({
   label: z.string().min(1).max(200),
   /** Absent: the source has no page. The chip then shows the snippet and says there is no link. */
   href: claimHrefSchema.optional(),
+  /**
+   * What the evidence points at, `{kind, id}` with the real id (ADR-029 section 5). The server builds `href` from it,
+   * only for a page the viewer may open; a model never writes it. The history keeps this instead of label and href.
+   */
+  ref: z.object({ kind: claimEvidenceKindSchema, id: z.string().min(1).max(100) }).optional(),
   /**
    * The source answered from a fake or a sandbox, or the score behind it came from mock embeddings.
    * The web shows a `Demo` chip and never a number or `1.00` as certainty.

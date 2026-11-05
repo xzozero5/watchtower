@@ -52,6 +52,8 @@ const ADDED_LATER = [
   'ai.autonomy.owner_approve',
   // 0103 (T-175a)
   'ai.budget.read',
+  // 0112 (T-401)
+  'assistant.use',
 ] as const;
 
 let testDb: TestDatabase;

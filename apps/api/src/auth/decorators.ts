@@ -21,6 +21,7 @@ export const PUBLIC_KEY = 'wt:public';
 export const PERMISSIONS_KEY = 'wt:permissions';
 export const ANY_PERMISSIONS_KEY = 'wt:permissions-any';
 export const AUDIT_KEY = 'wt:audit';
+export const WORKSPACE_ONLY_KEY = 'wt:workspace-only';
 
 /** Name of the cookie security scheme in the OpenAPI document. */
 export const COOKIE_AUTH_SCHEME = 'cookie';
@@ -30,6 +31,13 @@ export const COOKIE_AUTH_SCHEME = 'cookie';
  * neither `@Public()` nor a permission decorator answers 403 even to a signed-in head.
  */
 export const Public = (): CustomDecorator => SetMetadata(PUBLIC_KEY, true);
+
+/**
+ * Only people who work inside the workspace (agent, lead, head, dev) may call the route. The guard refuses `client`
+ * and `system` with 403 BEFORE it looks at permissions, so granting a permission to either role (a head can, through
+ * `rbac.manage`) opens nothing. Put it on the whole controller (ADR-029 section 1: every `/v1/assistant/**`).
+ */
+export const WorkspaceOnly = (): CustomDecorator => SetMetadata(WORKSPACE_ONLY_KEY, true);
 
 const secured = (extension: readonly Permission[]) =>
   applyDecorators(

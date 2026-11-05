@@ -39,7 +39,8 @@ import {
 import {
   Audited,
   CurrentPrincipal,
-  RequireAnyPermission,
+  RequirePermission,
+  WorkspaceOnly,
   type Principal,
 } from '../auth/decorators.js';
 import type { Response } from 'express';
@@ -49,13 +50,16 @@ import { AssistantProposals } from './assistant-proposals.js';
 import { AssistantService } from './assistant.service.js';
 
 /**
- * The AI assistant (T-134, ADR-023). Staff only: `ticket.read` is not held by a client, so a client
- * gets 403 (po #34: the customer has no bubble, because an AI that answers a customer is N3's
- * business). What the assistant may do for a person is narrower than the route: the role and the
+ * The AI assistant (T-134, ADR-023, ADR-029). Workspace people only: `@WorkspaceOnly()` makes the guard refuse a
+ * client or a system identity with 403 before it looks at permissions, so even a granted `assistant.use` opens
+ * nothing for them (po #34: the customer has no bubble, because an AI that answers a customer is N3's business).
+ * Everyone else needs `assistant.use`; what the assistant reads is narrower still (each tool asks for the permission
+ * of the route that serves the same data). What the assistant may do for a person is narrower than the route: the role and the
  * permissions behind each tool and each proposal decide, and a write only runs when that same person
  * presses a proposal.
  */
 @ApiTags('assistant')
+@WorkspaceOnly()
 @Controller('v1/assistant')
 export class AssistantController {
   constructor(
@@ -64,7 +68,7 @@ export class AssistantController {
   ) {}
 
   @Get('starters')
-  @RequireAnyPermission('ticket.read', 'ticket.read.masked')
+  @RequirePermission('assistant.use')
   @ApiOperation({
     summary: 'State of the assistant and up to three starter prompts for this person',
     description:
@@ -84,7 +88,7 @@ export class AssistantController {
 
   @Post('messages')
   @HttpCode(200)
-  @RequireAnyPermission('ticket.read', 'ticket.read.masked')
+  @RequirePermission('assistant.use')
   @Audited({ action: AUDIT_ACTIONS.assistantMessage, targetType: 'assistant_conversation' })
   @ApiOperation({
     summary: 'Ask the assistant',
@@ -118,7 +122,7 @@ export class AssistantController {
 
   @Post('proposals/:id/confirm')
   @HttpCode(200)
-  @RequireAnyPermission('ticket.read', 'ticket.read.masked')
+  @RequirePermission('assistant.use')
   @Audited({ action: AUDIT_ACTIONS.assistantProposalConfirm, targetType: 'assistant_proposal' })
   @ApiOperation({
     summary: 'Press a proposal',
@@ -146,7 +150,7 @@ export class AssistantController {
 
   @Post('proposals/:id/reject')
   @HttpCode(200)
-  @RequireAnyPermission('ticket.read', 'ticket.read.masked')
+  @RequirePermission('assistant.use')
   @Audited({ action: AUDIT_ACTIONS.assistantProposalReject, targetType: 'assistant_proposal' })
   @ApiOperation({ summary: 'Decline a proposal', description: 'Closes it; nothing runs.' })
   @ApiOkResponse({ standardSchema: rejectProposalResponseSchema })
@@ -164,7 +168,7 @@ export class AssistantController {
 
   @Delete('conversations/:id')
   @HttpCode(200)
-  @RequireAnyPermission('ticket.read', 'ticket.read.masked')
+  @RequirePermission('assistant.use')
   @Audited({
     action: AUDIT_ACTIONS.assistantConversationDelete,
     targetType: 'assistant_conversation',

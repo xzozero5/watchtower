@@ -33,6 +33,7 @@ import { orgPeopleNames } from '../masking/org-names.js';
 import { toolsFor, type AssistantToolName } from './assistant-access.js';
 import { assigneeHref, ticketHref } from './assistant-hrefs.js';
 import { loadLine, memberLine, slaLine, ticketLine } from './assistant-text.js';
+import { inReadOnlyScope, runReadOnly, type ReadOnlyRunner } from './read-only.js';
 
 /** `[ASSUMED]` A person with this many open tickets, or this many past SLA, is called overloaded. */
 export const OVERLOADED_OPEN = 10;
@@ -50,6 +51,13 @@ export interface AssistantToolDeps {
   readonly embeddingMock: boolean;
   /** The tickets' own AI results were made by the mock provider. */
   readonly aiMock: boolean;
+  /**
+   * Runs a handler's own queries in `BEGIN READ ONLY` + `statement_timeout` 3 s (ADR-029 section 2, N2). Absent:
+   * `runReadOnly` on `database`. A test that fakes the database passes its own.
+   */
+  readonly readOnly?: ReadOnlyRunner;
+  /** Runs a whole handler in the read-only scope. Absent: `inReadOnlyScope`. A test with a fake database passes a pass-through. */
+  readonly readOnlyScope?: <T>(work: () => Promise<T>) => Promise<T>;
 }
 
 export interface AssistantToolEnv {
@@ -189,6 +197,8 @@ export function buildAssistantTools(
   env: AssistantToolEnv,
 ): AssistantToolHost {
   const { principal, locale, masked } = env;
+  const scopeOf: <T>(work: () => Promise<T>) => Promise<T> = deps.readOnlyScope ?? inReadOnlyScope;
+  const readOnly: ReadOnlyRunner = deps.readOnly ?? ((work) => runReadOnly(deps.database, work));
   const allowed = new Set<AssistantToolName>(toolsFor(principal));
   const registry = createToolRegistry([
     { agent: 'personal_assistant', intent: '*', tools: [...allowed] },
@@ -204,7 +214,7 @@ export function buildAssistantTools(
   const dictionary = new Set<string>();
   let incomplete = false;
   const remember = async (orgIds: readonly string[]): Promise<void> => {
-    const found = await orgPeopleNames(deps.database.db, [...new Set(orgIds)]);
+    const found = await readOnly((db) => orgPeopleNames(db, [...new Set(orgIds)]));
     for (const name of found.names) dictionary.add(name);
     if (!found.complete) incomplete = true;
   };
@@ -216,7 +226,13 @@ export function buildAssistantTools(
     toFacts: (output: z.output<O>) => readonly AssistantFact[],
   ): void {
     if (!allowed.has(name)) return;
-    registry.register(defineTool<I, O>({ ...tool, name, readOnly: true }));
+    // Every handler runs inside the read-only scope (T-400 C-2): any write under it, in any reader or service
+    // that uses its own connection, fails in the database. `investigate_run` is the one exception: the AI's own run
+    // records its budget and audit rows (ADR-016) and reaches product data only through `watchtower_ai_ro`.
+    const run = tool.execute;
+    const execute: typeof run =
+      name === 'investigate_run' ? run : (input, ...rest) => scopeOf(() => run(input, ...rest));
+    registry.register(defineTool<I, O>({ ...tool, execute, name, readOnly: true }));
     facts.set(name, toFacts);
     info.push({ name, description: tool.description, input: hint });
   }
@@ -301,17 +317,21 @@ export function buildAssistantTools(
       input: refInput,
       output: summarizeOutput,
       async execute(input) {
-        const view = await deps.reader.viewRow(input.ticket, principal);
-        const recent = await deps.database.db
-          .select({
-            direction: schema.message.direction,
-            visibility: schema.message.visibility,
-            text: schema.message.bodyText,
-          })
-          .from(schema.message)
-          .where(eq(schema.message.ticketId, view.t.id))
-          .orderBy(desc(schema.message.createdAt))
-          .limit(4);
+        // The ticket and its last messages are read in one read-only transaction.
+        const { view, recent } = await readOnly(async (db) => {
+          const found = await deps.reader.viewRow(input.ticket, principal, db);
+          const messages = await db
+            .select({
+              direction: schema.message.direction,
+              visibility: schema.message.visibility,
+              text: schema.message.bodyText,
+            })
+            .from(schema.message)
+            .where(eq(schema.message.ticketId, found.t.id))
+            .orderBy(desc(schema.message.createdAt))
+            .limit(4);
+          return { view: found, recent: messages };
+        });
         await remember([view.t.orgId]);
         return {
           ticket: await rowOf(view),
@@ -384,7 +404,7 @@ export function buildAssistantTools(
       input: refInput,
       output: slaOutput,
       async execute(input) {
-        const view = await deps.reader.viewRow(input.ticket, principal);
+        const view = await readOnly((db) => deps.reader.viewRow(input.ticket, principal, db));
         const sla = await deps.sla.view(view.t, env.now);
         await remember([view.t.orgId]);
         return { ticket: await rowOf(view), sla };
@@ -419,15 +439,17 @@ export function buildAssistantTools(
         const names = new Map(
           (owned.length === 0
             ? []
-            : await deps.database.db
-                .select({ id: schema.users.id, name: schema.users.name })
-                .from(schema.users)
-                .where(
-                  inArray(
-                    schema.users.id,
-                    owned.map((bucket) => bucket.assigneeId),
+            : await readOnly((db) =>
+                db
+                  .select({ id: schema.users.id, name: schema.users.name })
+                  .from(schema.users)
+                  .where(
+                    inArray(
+                      schema.users.id,
+                      owned.map((bucket) => bucket.assigneeId),
+                    ),
                   ),
-                )
+              )
           ).map((row) => [row.id, row.name]),
         );
         const rows = owned

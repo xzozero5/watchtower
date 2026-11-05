@@ -5,6 +5,7 @@ import type {
   ProposalKind,
 } from '@watchtower/shared';
 
+import { evaluatePermissionRule, type PermissionRule } from '../auth/permission-check.js';
 import type { Principal } from '../auth/principal.js';
 
 /**
@@ -44,15 +45,47 @@ export const ROLE_TOOLS: Readonly<Record<string, readonly AssistantToolName[]>> 
   dev: ['search_tickets', 'summarize_ticket', 'explain_sla', 'kb_search', 'investigate_run'],
 };
 
-/** The permission of the ordinary route that serves the same data. */
-export const TOOL_PERMISSION: Readonly<Record<AssistantToolName, Permission>> = {
-  search_tickets: 'ticket.read',
-  summarize_ticket: 'ticket.read',
-  explain_sla: 'ticket.read',
-  team_load: 'ticket.read',
-  team_status: 'ticket.handle',
-  kb_search: 'kb.read',
-  investigate_run: 'investigate.run',
+/** What a tool writes to the audit as personal data read (`pii.read`, `metadata.via=assistant`; T-400 C-17). */
+export const PII_KINDS = [
+  'ticket',
+  'conversation',
+  'contact',
+  'timeline',
+  'shift_overview',
+  'performance',
+] as const;
+export type PiiKind = (typeof PII_KINDS)[number];
+
+export interface ToolAccess {
+  /**
+   * The GET route that serves the same data (`toolRoute`). The parity test reads the decorators of that route and fails
+   * when `rule` is not what the route asks of the person, and the tool output must be within what the route returns.
+   */
+  readonly route: string;
+  /**
+   * The rule in the shape of the decorator (`all` = RequirePermission, `anyOf` = RequireAnyPermission), decided by the
+   * same evaluator as the guard (`evaluatePermissionRule`). No shortcut: `ticket.read.masked` satisfies only a rule that
+   * names it (T-400 C-1). A permission of the client alone (`ticket.read.org`) is left out.
+   */
+  readonly rule: PermissionRule;
+  /** The kinds of personal data the tool reads: each entity read becomes a `pii.read` row. Empty: none. */
+  readonly piiKinds: readonly PiiKind[];
+}
+
+const TICKET_READ: PermissionRule = { anyOf: ['ticket.read', 'ticket.read.masked'] };
+
+export const TOOL_PERMISSION: Readonly<Record<AssistantToolName, ToolAccess>> = {
+  search_tickets: { route: 'GET /v1/tickets', rule: TICKET_READ, piiKinds: ['ticket'] },
+  summarize_ticket: { route: 'GET /v1/tickets/:id', rule: TICKET_READ, piiKinds: ['ticket'] },
+  explain_sla: { route: 'GET /v1/tickets/:id', rule: TICKET_READ, piiKinds: ['ticket'] },
+  team_load: { route: 'GET /v1/tickets/stats', rule: { all: ['ticket.read'] }, piiKinds: [] },
+  team_status: { route: 'GET /v1/assignees', rule: { all: ['ticket.handle'] }, piiKinds: [] },
+  kb_search: { route: 'GET /v1/kb/search', rule: { all: ['kb.read'] }, piiKinds: [] },
+  investigate_run: {
+    route: 'GET /v1/tickets/:id/tools',
+    rule: { all: ['investigate.run'] },
+    piiKinds: ['ticket'],
+  },
 };
 
 export const ROLE_PROPOSALS: Readonly<Record<string, readonly ProposalKind[]>> = {
@@ -88,12 +121,6 @@ export const isMasked = (principal: Holder): boolean =>
 export const canUseAssistant = (principal: Holder): boolean =>
   principal.permissions.has('ticket.read') || principal.permissions.has('ticket.read.masked');
 
-/** A permission held, where reading a ticket is satisfied by the masked read too (the data is masked then). */
-function holds(principal: Holder, permission: Permission): boolean {
-  if (permission === 'ticket.read') return canUseAssistant(principal);
-  return principal.permissions.has(permission);
-}
-
 /**
  * The permission the ordinary route asks for this change from this person. A masked reader changes a
  * ticket as a developer does (a status and a note), not as support does.
@@ -107,13 +134,13 @@ export function proposalPermission(kind: ProposalKind, principal: Holder): Permi
 /** Tools this person may use right now: on the role list and backed by a permission they hold. */
 export function toolsFor(principal: Holder): AssistantToolName[] {
   return (ROLE_TOOLS[principal.role] ?? []).filter((name) =>
-    holds(principal, TOOL_PERMISSION[name]),
+    evaluatePermissionRule(principal, TOOL_PERMISSION[name].rule),
   );
 }
 
 export function proposalKindsFor(principal: Holder): ProposalKind[] {
   return (ROLE_PROPOSALS[principal.role] ?? []).filter((kind) =>
-    holds(principal, proposalPermission(kind, principal)),
+    principal.permissions.has(proposalPermission(kind, principal)),
   );
 }
 

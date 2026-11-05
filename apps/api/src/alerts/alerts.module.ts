@@ -59,5 +59,7 @@ import { AlertsCatalog } from './catalog.service.js';
     AlertsCatalog,
     AlertsHygiene,
   ],
+  // The assistant resolves an alert chip with the reader of the alerts screen (ADR-029).
+  exports: [AlertsReader],
 })
 export class AlertsModule {}

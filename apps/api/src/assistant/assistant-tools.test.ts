@@ -50,25 +50,27 @@ function deps(spy: Spy): AssistantToolDeps {
     spy.writes.push(name);
     throw new Error(`${name} must not be called by a read tool`);
   };
+  const fakeDb = {
+    select: () => ({
+      from: () => ({
+        // Awaited as it is (the people of team_load), or narrowed by orderBy/limit (messages, contacts).
+        where: () =>
+          Object.assign([{ id: '3f9c5a1e-6c2b-4b7a-9e0d-0f2f6f5f1a11', name: 'Mali' }], {
+            orderBy: () => ({ limit: () => Promise.resolve([]) }),
+            limit: () => Promise.resolve([{ name: 'Jane Doe' }]),
+          }),
+      }),
+    }),
+    insert: noWrite('insert'),
+    update: noWrite('update'),
+    delete: noWrite('delete'),
+  };
   return {
     // The database is only asked for messages and contacts; an empty answer is enough.
-    database: {
-      db: {
-        select: () => ({
-          from: () => ({
-            // Awaited as it is (the people of team_load), or narrowed by orderBy/limit (messages, contacts).
-            where: () =>
-              Object.assign([{ id: '3f9c5a1e-6c2b-4b7a-9e0d-0f2f6f5f1a11', name: 'Mali' }], {
-                orderBy: () => ({ limit: () => Promise.resolve([]) }),
-                limit: () => Promise.resolve([{ name: 'Jane Doe' }]),
-              }),
-          }),
-        }),
-        insert: noWrite('insert'),
-        update: noWrite('update'),
-        delete: noWrite('delete'),
-      },
-    } as never,
+    database: { db: fakeDb } as never,
+    // The read-only transaction is tested against Postgres (read-only.integration.test.ts); here it hands over the fake.
+    readOnly: (work) => work(fakeDb as never),
+    readOnlyScope: (work) => work(),
     reader: {
       viewRow: (ref: string) =>
         ref === 'OPS-404' ? Promise.reject(new Error('404')) : Promise.resolve(view(12)),
@@ -361,22 +363,22 @@ describe('what the tools say', () => {
     const many = Array.from({ length: 10_001 }, (_, index) => ({
       name: `Person ${String(index)}`,
     }));
+    const manyDb = {
+      select: () => ({
+        from: () => ({
+          where: () =>
+            Object.assign(many, {
+              orderBy: () => ({ limit: () => Promise.resolve([]) }),
+              limit: () => Promise.resolve(many),
+            }),
+        }),
+      }),
+    };
     const host = buildAssistantTools(
       {
         ...base,
-        database: {
-          db: {
-            select: () => ({
-              from: () => ({
-                where: () =>
-                  Object.assign(many, {
-                    orderBy: () => ({ limit: () => Promise.resolve([]) }),
-                    limit: () => Promise.resolve(many),
-                  }),
-              }),
-            }),
-          },
-        } as never,
+        database: { db: manyDb } as never,
+        readOnly: (work) => work(manyDb as never),
       },
       {
         principal: principal('agent'),
