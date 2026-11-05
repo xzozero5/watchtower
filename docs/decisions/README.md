@@ -28,5 +28,6 @@
 - [ADR-026](ADR-026-procedures.md) — Procedures ต่อ intent: steps Zod แบบปิด (จำกัดสิทธิ์ได้อย่างเดียว), NL→steps AI ร่างคนยืนยัน, version immutable + publish ผ่าน SECURITY DEFINER, simulation ก่อน publish, escalate เป็น proposal card (T-303a) · **Accepted 2026-11-05**
 - [ADR-027](ADR-027-local-ner.md) — ตัวหาชื่อไม่มี cue แบบ local: ขั้น 1 `REDACTION_NER=local` (compromise, อังกฤษ, default off), ขั้น 2 model ไทย ONNX รอเจ้าของอนุมัติดาวน์โหลด, เกณฑ์ recall ≥ 80% (T-153) · Accepted ขั้น 1 2026-11-04
 - [ADR-028](ADR-028-pdf-export.md) — PDF export ของ CEO view ด้วย pdfkit + IBM Plex Sans Thai (fontsource) ไม่มี network ไม่ใช้ headless browser (T-305d) · Accepted 2026-11-04
+- [ADR-029](ADR-029-assistant-stage1.md) — Watchtower Assistant ("Jarvis") stage 1: agent เดียว + tool อ่านอย่างเดียวครอบทุก module ตามสิทธิ์ผู้ใช้ (parity กับ GET route), context เป็น hint ที่ server resolve, path `facts_only`/`llm1`/`llm2`, SSE แบบ phase, pinned memory ที่คนสร้าง, ไม่มีลูกค้า (T-400) · Proposed 2026-11-05
 - ADR ใหม่: `ADR-00x-<slug>.md` ตาม `docs/templates/adr.template.md` แล้วเพิ่มบรรทัดที่นี่
 - Review records (security/po) เก็บเป็น `T-xxx-review.md` ในโฟลเดอร์นี้

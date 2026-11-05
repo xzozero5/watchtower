@@ -188,6 +188,25 @@
 - [x] T-305 CEO view + AI weekly brief + exports (§9.2), cost dashboard, roster planner (R-7.2)
 - [ ] T-306 Review + pilot stage 3 กับ 2–3 intent
 
+## Jarvis stage 1 — AI ทุกจุด รู้ทุกอย่างภายในสิทธิ์ อ่านอย่างเดียว (เจ้าของ 2026-11-05)
+> เจ้าของ `[CONFIRMED]`: ทำแค่ขั้น 1 · ทุกจุดต้องมี AI · ทุก role ใช้ได้ **ยกเว้น customer** · main thread ตัดสิน: คง `claude -p`, พิมพ์ก่อนไม่มีเสียง, proposal card เดิมคงไว้ไม่เพิ่มชนิด, ไม่เปิด audit ให้ AI, pinned memory 90 วัน · ออกแบบ `docs/decisions/ADR-029-assistant-stage1.md` (Proposed)
+> **AC (po 2026-11-05):** J1 Ctrl/⌘ K "Ask AI" + Ctrl/⌘ / + ปุ่มลอยทุก route ของ console, ไม่มีบน portal/status/csat/start/login · J2 entity awareness (ticket/incident/alert/intent/org/shift) server resolve ด้วยสิทธิ์, chip = สิ่งที่ส่งจริง, ≥ 95% eval อ้าง entity ถูก · J3 ถามข้าม ≥ 2 module ใน ≤ 4 tool call · J4 memory: สนทนา 30 วัน redacted, ดู/ลบรายอัน/ลบทั้งหมด, ไม่แชร์ข้ามคน (head ก็อ่านไม่ได้) · J5 ทุก claim มี citation หรือป้าย Uncited, href เปิดได้ด้วยสิทธิ์ผู้ดู · J6 ตาราง tool × role deny-by-default, dev masked, "หน้าจอปฏิเสธ = AI ปฏิเสธ" · J7 tool ใหม่ผ่าน redaction fail closed, ไม่คืนค่า credential (N1) · J8 audit `ai_run` + `assistant.message` + `pii.read` · J9 แสดง phase ภายใน 1 s, ปุ่ม Stop, บันทึก latency · J10 offline/kill switch/งบหมด ปิดช่องพิมพ์พร้อมเหตุผล ไม่ fallback mock · J11 30 ข้อความ/ชม., 200k token/วัน, 1 turn ต่อคน, คิวบอกตำแหน่ง · J12 TH/EN · J13 client ยิง `/v1/assistant/**` ได้ 403 ทุก endpoint (routes-policy test) · J14 ไม่มีทางที่ผลของ assistant ไหลถึงลูกค้า
+> **Metric `[ASSUMED]`:** eval ≥ 60 เคส TH/EN · citation correctness ≥ 95% · uncited ≤ 10% · RBAC/PII leak = 0 (hard gate) · 👍 ≥ 70% · latency p50 ≤ 15 s, p95 ≤ 40 s · ≥ 50% staff ใช้ ≥ 3 ครั้ง/กะ ใน 2 สัปดาห์ของ pilot
+- [ ] T-400 `architect` ADR-029 → Accepted หลัง `security-reviewer` + `po` ตรวจ (N7)
+- [ ] T-401 `backend-dev` contract shared (context entity/selection, SSE event, memory, claim kinds) + migration 0112 + permission `assistant.use` (client/system ปฏิเสธด้วยโค้ด) + resolver ref ด้วยสิทธิ์ + `runReadOnly()` + parity test harness · dep T-400
+- [ ] T-402 `ai-engineer` tool incident/alert/status page (read-only, Zod, parity test) · dep T-401
+- [ ] T-403 `ai-engineer` tool shift: `shift_context`, `roster_view`, handoff/notes · dep T-401
+- [ ] T-404 `ai-engineer` tool reports: `ops_metrics`, `ceo_metrics`, `performance_view` (reuse service เดิม) · dep T-401
+- [ ] T-405 `ai-engineer` tool `conversation_*`, `kb_get`, `ticket_timeline`, `autonomy_status`, `config_lookup` (ไม่คืนค่าลับ) · dep T-401
+- [ ] T-406 `frontend-dev` page registry ครบทุก route ของ console + entity chip + "Ask AI about this" บน row/card + starter ต่อหน้า TH/EN · route สาธารณะไม่มีค่าและไม่ import assistant · dep T-401
+- [ ] T-407 `frontend-dev` Ctrl/⌘ K "Ask AI" + UI phase/คิว/Stop (SSE) + รายการ/ลบสนทนา + pinned memory UI + 👍/👎 + e2e ทุก route (รวม portal/status/csat ไม่มี AI) · dep T-406, T-408
+- [ ] T-408 `backend-dev` SSE phase events + คิวมี position + `GET /conversations` + memory API + feedback + metric latency + `WORKER_AI_MAX_CONCURRENCY` (limiter ร่วม) · endpoint ใหม่อยู่ใน `routes-policy.test` · dep T-401
+- [ ] T-409 `ai-engineer` path `facts_only` / `llm1` / `llm2` + prompt `assistant_turn.v1` + prefetch ต่อ entity + เสนอเคส eval ใน `evals/proposals/` + metric citation ใน runner (เจ้าของอนุมัติก่อนเข้า golden, N7) · dep T-401
+- [ ] T-410 `qa-engineer` ตาราง RBAC tool × role (+ client 403), injection suite, axe, e2e offline/budget/คิวเต็ม · dep T-402…T-409
+- [ ] T-411 `security-reviewer` ตรวจ N1/N2/N4 ของ tool ใหม่, `pii.read`, ไม่มีทางออกถึงลูกค้า (J14), memory · dep T-402…T-409
+- [ ] T-412 `po` ตรวจ AC-J1…J14 + วัด metric ใน pilot · dep T-410, T-411
+- ภายหลัง (ไม่ใช่ stage 1): AI ใน portal ของลูกค้า — ต้องมี ADR ใหม่ + ผูก gate stage 3 ราย intent (N3) · stage 2 proactive · stage 3 action ผ่าน policy · voice
+
 ## Post-MVP / Phase 4
 - React Native app, org-private status page, LINE group chat (R-2.15), Helm chart, additional channels, Terraform ฉบับสมบูรณ์ (ADR deploy ย้ายไป T-118), generic OIDC issuer ผ่าน discovery สำหรับองค์กรที่ไม่ใช้ Google (po 2026-11-01 `[ASSUMED]`)
 
