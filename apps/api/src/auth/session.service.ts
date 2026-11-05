@@ -141,12 +141,20 @@ export class SessionService {
 
   async refresh(plainToken: string, meta: RequestMeta): Promise<RefreshResult> {
     const hash = hashOpaqueToken(plainToken);
-    const now = new Date();
     const next = generateOpaqueToken();
 
     // One transaction. It returns a verdict instead of throwing, so a "reuse" verdict commits the
     // revocation it wrote.
     const outcome = await this.database.db.transaction(async (tx): Promise<RefreshResult> => {
+      // The database clock decides, as it does for every request in `authenticate`: this process' clock can
+      // be behind it (Docker Desktop, a second api instance), and a session the guard has refused must not
+      // be renewable here.
+      const [clock] = await tx
+        .select({ at: sql<number>`(extract(epoch from now()) * 1000)`.mapWith(Number) })
+        .from(sql`(select 1) as t`);
+      if (!clock) throw new Error('database clock returned no row');
+      const now = new Date(clock.at);
+
       // Lock the token row: two concurrent refreshes with the same token are serialized, and
       // the second one sees the token as used, which is a replay.
       const [token] = await tx
