@@ -87,5 +87,6 @@ describe('redaction eval (T-302e)', () => {
       before.overall.falsePositives.misses,
     );
     expect(redactionGate(after, { minRecall: 1, maxFalsePositive: 0.02 })).toEqual([]);
-  });
+    // Loading the local name finder and running the corpus twice takes more than 5 s on a CI runner.
+  }, 60_000);
 });
