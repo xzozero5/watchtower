@@ -15,6 +15,6 @@ import { WeeklyBriefService } from './weekly-brief.service.js';
 @Module({
   controllers: [ReportsController, WeeklyBriefController],
   providers: [AiCostService, CeoViewService, SeedFilter, WeeklyBriefService],
-  exports: [SeedFilter],
+  exports: [SeedFilter, CeoViewService],
 })
 export class ReportsModule {}

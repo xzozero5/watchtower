@@ -12,5 +12,6 @@ import { OtherMailService } from './other-mail.service.js';
 @Module({
   controllers: [OtherMailController],
   providers: [OtherMailService],
+  exports: [OtherMailService],
 })
 export class InboundModule {}

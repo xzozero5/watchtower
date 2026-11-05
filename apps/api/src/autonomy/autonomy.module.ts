@@ -19,5 +19,6 @@ import { IntentPromotionController, PromotionDecisionController } from './promot
     PromotionDecisionController,
   ],
   providers: [AutonomyService],
+  exports: [AutonomyService],
 })
 export class AutonomyModule {}

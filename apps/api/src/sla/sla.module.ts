@@ -8,6 +8,6 @@ import { SlaService } from './sla.service.js';
 @Module({
   controllers: [SlaPoliciesController, BusinessCalendarsController],
   providers: [SlaService, SlaAdminService],
-  exports: [SlaService],
+  exports: [SlaService, SlaAdminService],
 })
 export class SlaModule {}
