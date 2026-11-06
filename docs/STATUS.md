@@ -5,6 +5,8 @@ snapshot สั้นสำหรับ cold start อยู่ที่ `HANDOF
 
 ## สถานะปัจจุบัน
 
+- **2026-11-06 21:09:** quotareset(เริ่ม1%/weekly78%); checkpoint407running PID40860. CIbfe590bf rootformat2files+workerfixtureล้ม; T444แก้main20integration/static/format+reviewผ่าน. พบPOC9หยุดก่อนheartbeat(noOOM) startcontainersเดิมกลับhealthy3HTTP200/autosendfalse ไม่เปลี่ยนconfig/migration. QA407cเติมremainingroutes; securityT411พบP2สามกลุ่มรอT445fix ยังไม่ปิด.
+
 - **2026-11-06 16:48 [TESTED]:** fullwebmock226passed/32existingskipped/exit0; public53และ407b175unit/41browser/staticผ่านก่อนหน้า. Sourcecd1142fcpushแล้ว T407bdeployb767healthyหลังbackup. Checkpoint407waiting_limit5h95%weekly77% รอ20:37:57Bangkok; ไม่มีagent/jobค้าง. Parent407ยังรอccoverage; CIHEADล่าสุดรอตรวจหลังreset.
 
 - **2026-11-06 16:44 [TESTED]:** T407b b7671097push/deploywebหลังbackup13,758,801bytes healthy/3HTTP200. 175unit+41browser/static/reviewผ่าน. PublicnoAIpartialQA12asserts/main53tests+lintผ่าน; parent407/cยังไม่ปิด. Fullwebmockกำลังรันlogfull-web-final; ไม่มีAIagents/testcontainersactive. CIHEADใหม่รอผล.
@@ -535,3 +537,7 @@ CI42190164923ของ62ce32c1เขียวครบ4jobsแล้ว(รว�
 
 ## 2026-11-06 16:16 — main + QA — T407a/T443 accepted
 Mainfrozen407a: weblint/typecheck/unit170ผ่าน; P2RetryStopแก้resetเฉพาะunavailableคงpaused/budget และreviewผ่าน. MainT443expandedsharedUIbuild/lint/typecheck/unit809/14filesผ่าน + workspace/appshell58ผ่าน; finalwebbuild(typephase)+weblint+browserEdge40/40ผ่านรวมSSEphase/queue/Stop/C22, keyboard2pxsolid, axeTH/EN/lightdarksmoke. ไม่มีdebugprobeหรือผ่อนassertion. Sharedfocus-solidเพิ่มเฉพาะfocusvariantoutline2เดิม. CSRFsessionเปลี่ยนระหว่างrepairเป็นunverifiedresidualยังไม่มีrepro ไม่อ้างfixed. ยังไม่deploy407a ณเวลานี้; codefreezeจนDockerimagecapture แล้วเริ่ม407bต่อ. Parent407ยังเปิดรอ407b/c.
+
+## 2026-11-06 21:09 — main + review — T444 CI fix
+Rootlintเป็นPrettierสองspecเท่านั้น; reviewerเทียบASTstructure/leafเท่าHEAD. Integrationseedfilterfixtureใช้เวลาปัจจุบันชิดhalf-openwindowendจนPGmicroseconds/Date-msboundaryทำให้0gradedได้. แก้fixturepinDBclockและintent/ticket/gradeย้อนหลัง4/2/1วินาทีภายในwindow คงhuman1/verified1/AI0assertเดิม. Main20integration/workerESLint/typecheck/Prettierผ่าน; reviewerN7ไม่พบลดcontract. รอบแรกclockselectbuilderผิดแก้executeSQLแล้วรันใหม่ผ่าน ไม่อ้างรอบแรกผ่าน. ไม่มีproductionchange ไม่ต้องdeploy.
+T411staticreviewพบP2: history/memoryหลังrevocation, PIIauditcatalogueไม่ครบ, ratebudgetperuser/toolไม่ถูกบังคับ. Existingunit116+AI43ผ่านแต่ไม่พิสูจน์สามacceptanceนี้. เปิดT445 ไม่ปิดT411; C26sameROroleยืนยันเป็นdefenseindepth/C27personNยังไม่เปิด.

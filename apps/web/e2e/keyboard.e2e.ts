@@ -41,12 +41,10 @@ test.describe('pane keys (docs/06-UI-SPEC.md section 14)', () => {
     await page.keyboard.press('Alt+3');
     await expect(assistant(page)).toBeFocused();
     // The focused pane is outlined with the 2px focus ring.
-    const outline = await page
-      .locator('#pane-assistant')
-      .evaluate((element) => {
-        const style = getComputedStyle(element);
-        return { width: style.outlineWidth, style: style.outlineStyle };
-      });
+    const outline = await page.locator('#pane-assistant').evaluate((element) => {
+      const style = getComputedStyle(element);
+      return { width: style.outlineWidth, style: style.outlineStyle };
+    });
     expect(outline).toEqual({ width: '2px', style: 'solid' });
   });
 

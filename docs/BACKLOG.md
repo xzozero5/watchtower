@@ -264,3 +264,6 @@ T-152, T-175 (กำลังทำอยู่แล้ว เก็บผล),
 - [x] T-442 `main` ตรวจCI11134b run42159021249 worker ai.integration.test.ts:295 expectedclassified receivedinvestigating; อีก3jobsผ่าน. rootcauseasyncinvestigationเปลี่ยนrecordก่อนassert; testแยกoutboxboundary+assertenqueue คงcontractเดิมครบ. Mainbrief+downstream20tests/lint/typecheckผ่าน, independentreviewผ่าน; รอCIrerun
 
 - [x] T-443 `main` แก้focusringที่outline-hiddenทับstyle: เพิ่มsolidเฉพาะfocusvariantที่ขอoutline2อยู่แล้วในweb/sharedUI; keyboardassert2pxsolidและauditpattern, mainUI809tests+UIbuild/lint/typecheck/webbuild/lint/browser40ผ่าน+independentreview (2026-11-06)
+
+- [x] T-444 `main` CIbfe590bf: Prettier2webspecs+seedexclusionfixturepinDBclock/timestampsinsidewindow คงassertionsเดิม; main20integration+workerstatic/formatและindependentreviewผ่าน2026-11-06 (CIrerunรอpush)
+- [ ] T-445 `backend-dev` T411findings: history/memoryrevocation, PIIauditcatalogue และper-user/tool60calls/hour; แยกboundedfix+tests/reviewก่อนปิดT411

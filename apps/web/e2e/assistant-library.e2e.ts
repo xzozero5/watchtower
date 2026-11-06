@@ -5,7 +5,9 @@ import { mockBackend } from './backend';
 
 // JSON compatibility on the original POST; assistant-stream.e2e.ts covers SSE separately.
 // Every assistant request is answered by mockBackend, with no live AI or outbound delivery.
-test('own assistant library: New chat preserves history, claim pins, feedback and explicit deletion retry', async ({ page }) => {
+test('own assistant library: New chat preserves history, claim pins, feedback and explicit deletion retry', async ({
+  page,
+}) => {
   const firstConversation = '11111111-1111-4111-8111-111111111111';
   const conversation = '22222222-2222-4222-8222-222222222222';
   const message = '33333333-3333-4333-8333-333333333333';
@@ -36,21 +38,43 @@ test('own assistant library: New chat preserves history, claim pins, feedback an
   let items: AssistantMemory[] = [];
   let deletes = 0;
   const preview = (id: string, text: string) => ({
-    id, locale: 'en', createdAt: at, updatedAt: at, messageCount: 2, preview: text,
+    id,
+    locale: 'en',
+    createdAt: at,
+    updatedAt: at,
+    messageCount: 2,
+    preview: text,
   });
   const backend = await mockBackend(page, {
     routes: {
-      'GET /v1/assistant/starters': () => ({ json: {
-        state: 'ok', reason: null, starters: [],
-        limits: { messagesPerHour: 30, remainingThisHour: 30 },
-      } }),
-      'POST /v1/assistant/messages': () => ({ json: ++turns === 1
-        ? { ...reply, conversationId: firstConversation, messageId: '55555555-5555-4555-8555-555555555555' }
-        : reply }),
-      'GET /v1/assistant/conversations': () => ({ json: { items: [
-        preview(firstConversation, 'Earlier [PERSON_1] question'),
-        ...(turns >= 2 && deletes < 2 ? [preview(conversation, 'Current [PERSON_2] question')] : []),
-      ] } }),
+      'GET /v1/assistant/starters': () => ({
+        json: {
+          state: 'ok',
+          reason: null,
+          starters: [],
+          limits: { messagesPerHour: 30, remainingThisHour: 30 },
+        },
+      }),
+      'POST /v1/assistant/messages': () => ({
+        json:
+          ++turns === 1
+            ? {
+                ...reply,
+                conversationId: firstConversation,
+                messageId: '55555555-5555-4555-8555-555555555555',
+              }
+            : reply,
+      }),
+      'GET /v1/assistant/conversations': () => ({
+        json: {
+          items: [
+            preview(firstConversation, 'Earlier [PERSON_1] question'),
+            ...(turns >= 2 && deletes < 2
+              ? [preview(conversation, 'Current [PERSON_2] question')]
+              : []),
+          ],
+        },
+      }),
       'GET /v1/assistant/memory': () => ({ json: { items } }),
       'POST /v1/assistant/memory': () => {
         items = [fact];
@@ -60,13 +84,20 @@ test('own assistant library: New chat preserves history, claim pins, feedback an
         items = [];
         return { json: { deleted: true } };
       },
-      'POST /v1/assistant/feedback': (request) => ({ json: {
-        id: '66666666-6666-4666-8666-666666666666',
-        ...(request.body as object), updatedAt: at,
-      } }),
-      [`DELETE /v1/assistant/conversations/${conversation}`]: () => ++deletes === 1
-        ? { status: 500, json: { code: 'internal_error', message: 'Mock deletion failed', statusCode: 500 } }
-        : { json: { deleted: true } },
+      'POST /v1/assistant/feedback': (request) => ({
+        json: {
+          id: '66666666-6666-4666-8666-666666666666',
+          ...(request.body as object),
+          updatedAt: at,
+        },
+      }),
+      [`DELETE /v1/assistant/conversations/${conversation}`]: () =>
+        ++deletes === 1
+          ? {
+              status: 500,
+              json: { code: 'internal_error', message: 'Mock deletion failed', statusCode: 500 },
+            }
+          : { json: { deleted: true } },
     },
   });
 
@@ -105,7 +136,10 @@ test('own assistant library: New chat preserves history, claim pins, feedback an
   await page.getByRole('combobox', { name: 'Reason', exact: true }).selectOption('misleading');
   await page.getByRole('button', { name: 'Send feedback', exact: true }).click();
   await expect(page.getByText('Feedback saved', { exact: true })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Not helpful', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByRole('button', { name: 'Not helpful', exact: true })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  );
   expect(backend.to('POST', '/v1/assistant/feedback').map((request) => request.body)).toEqual([
     { target: { kind: 'message', id: message }, rating: 'down', reason: 'misleading' },
   ]);

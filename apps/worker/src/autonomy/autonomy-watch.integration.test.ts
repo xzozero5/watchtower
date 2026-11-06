@@ -211,7 +211,10 @@ async function stage3Intent(): Promise<{ id: string; key: string }> {
   return { id, key };
 }
 
-async function ticketFor(intentId: string, options: { seed?: boolean; aiHandled?: boolean } = {}) {
+async function ticketFor(
+  intentId: string,
+  options: { seed?: boolean; aiHandled?: boolean; createdAt?: Date } = {},
+) {
   const [ticket] = await owner()
     .insert(schema.ticket)
     .values({
@@ -221,6 +224,7 @@ async function ticketFor(intentId: string, options: { seed?: boolean; aiHandled?
       intentId,
       status: 'resolved',
       aiHandled: options.aiHandled ?? true,
+      ...(options.createdAt === undefined ? {} : { createdAt: options.createdAt }),
       ...(options.seed === true ? { seedBatchId } : {}),
     })
     .returning();
@@ -560,21 +564,44 @@ describe('the gate report (ADR-025 section 6)', () => {
   });
 
   it('counts only real tickets: seed tickets are left out of every number', async () => {
+    const clockResult = await owner().execute<{ now: string }>(
+      sql`SELECT clock_timestamp() AS now`,
+    );
+    const clock = clockResult.rows[0];
+    if (clock === undefined) throw new Error('Missing fixture clock');
+    const reportAt = new Date(clock.now);
     const [intent] = await owner()
       .insert(schema.intent)
-      .values({ key: `i_${randomUUID().slice(0, 8)}`, name: 'x', autonomyStage: 2 })
+      .values({
+        key: `i_${randomUUID().slice(0, 8)}`,
+        name: 'x',
+        autonomyStage: 2,
+        createdAt: new Date(reportAt.getTime() - 4000),
+      })
       .returning();
     const intentId = intent?.id ?? '';
     for (const seed of [true, true, false]) {
-      const ticketId = await ticketFor(intentId, { seed, aiHandled: false });
+      const ticketId = await ticketFor(intentId, {
+        seed,
+        aiHandled: false,
+        createdAt: new Date(reportAt.getTime() - 2000),
+      });
       await owner()
         .insert(schema.aiResolutionGrade)
-        .values({ ticketId, cycle: 0, resolutionClass: 'verified', promptVersion: 1 });
+        .values({
+          ticketId,
+          cycle: 0,
+          resolutionClass: 'verified',
+          promptVersion: 1,
+          // Seed exclusion is independent of the half-open window's sub-millisecond end.
+          gradedAt: new Date(reportAt.getTime() - 1000),
+        });
     }
     await generateGateReport(database.db, domain.context({ actor: { type: 'user', id: headId } }), {
       intentId,
       trigger: 'on_demand',
       generatedBy: headId,
+      now: reportAt,
     });
     const [report] = await readGateReports(database.db, intentId);
     expect(report?.metrics).toMatchObject({ human: { graded: 1, verified: 1 }, ai: { graded: 0 } });
