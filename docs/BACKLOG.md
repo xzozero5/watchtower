@@ -267,3 +267,10 @@ T-152, T-175 (กำลังทำอยู่แล้ว เก็บผล),
 
 - [x] T-444 `main` CIbfe590bf: Prettier2webspecs+seedexclusionfixturepinDBclock/timestampsinsidewindow คงassertionsเดิม; main20integration+workerstatic/formatและindependentreviewผ่าน2026-11-06 (CIrerunรอpush)
 - [ ] T-445 `backend-dev` T411findings: history/memoryrevocation, PIIauditcatalogue และper-user/tool60calls/hour; แยกboundedfix+tests/reviewก่อนปิดT411
+
+- [ ] T-445a `backend-dev` ADR034: history/memory reauthorization + durablemetadata nullablemigration + unavailabletombstones/UIcopy + revocation/crossuser/sourcepurge/forgerytests
+- [ ] T-445b `backend-dev` C17 PII auditครบcatalogue (team/status/load/roster/notes) รวมno-chip และaudit-failurewithholdintegration
+- [ ] T-445c `backend-dev` per-user/toolRedis60calls/hourรวมprefetchตามADR029; 61stdeny/user-toolindependencetests
+- [ ] T-445d `ai-engineer` เชื่อม≤10pinnedfactsเข้าuser_notesอย่างปลอดภัยตามADR029หลังa; rescopeoldplaceholders/reauthorize/audit/expiry+noinvestigatetests (sourceปัจจุบันยังไม่มีการใช้นอกCRUD)
+
+- [ ] T-446 `backend-dev` fresh-intent gate report window_start==window_end จาก millisecond truncation: CI42231722087 worker365/366ผ่าน; แก้โดยคงDBtime/invariantไม่สร้างgreenก่อน28วัน พร้อม deterministic regression และPGintegration (Docker500กำลังblock)

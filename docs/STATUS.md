@@ -5,6 +5,8 @@ snapshot สั้นสำหรับ cold start อยู่ที่ `HANDOF
 
 ## สถานะปัจจุบัน
 
+- **2026-11-06 21:40:** T407c161browserrerunหลังแก้exactcopy; APItype/main35unit+webscopedlintผ่าน. T445a reviewพบP2nestedROpoolกำลังแก้, realPG/Redishold. Dockerpipeกลับแต่API500/containerstartล้ม;ไม่restartซ้ำ. CI3660c90c3jobsผ่าน/Integrationล้ม fresh-intent equal-window→T446;ยังไม่รับรองCIgreenหรือdeployใหม่.
+
 - **2026-11-06 21:09:** quotareset(เริ่ม1%/weekly78%); checkpoint407running PID40860. CIbfe590bf rootformat2files+workerfixtureล้ม; T444แก้main20integration/static/format+reviewผ่าน. พบPOC9หยุดก่อนheartbeat(noOOM) startcontainersเดิมกลับhealthy3HTTP200/autosendfalse ไม่เปลี่ยนconfig/migration. QA407cเติมremainingroutes; securityT411พบP2สามกลุ่มรอT445fix ยังไม่ปิด.
 
 - **2026-11-06 16:48 [TESTED]:** fullwebmock226passed/32existingskipped/exit0; public53และ407b175unit/41browser/staticผ่านก่อนหน้า. Sourcecd1142fcpushแล้ว T407bdeployb767healthyหลังbackup. Checkpoint407waiting_limit5h95%weekly77% รอ20:37:57Bangkok; ไม่มีagent/jobค้าง. Parent407ยังรอccoverage; CIHEADล่าสุดรอตรวจหลังreset.
@@ -541,3 +543,7 @@ Mainfrozen407a: weblint/typecheck/unit170ผ่าน; P2RetryStopแก้reset
 ## 2026-11-06 21:09 — main + review — T444 CI fix
 Rootlintเป็นPrettierสองspecเท่านั้น; reviewerเทียบASTstructure/leafเท่าHEAD. Integrationseedfilterfixtureใช้เวลาปัจจุบันชิดhalf-openwindowendจนPGmicroseconds/Date-msboundaryทำให้0gradedได้. แก้fixturepinDBclockและintent/ticket/gradeย้อนหลัง4/2/1วินาทีภายในwindow คงhuman1/verified1/AI0assertเดิม. Main20integration/workerESLint/typecheck/Prettierผ่าน; reviewerN7ไม่พบลดcontract. รอบแรกclockselectbuilderผิดแก้executeSQLแล้วรันใหม่ผ่าน ไม่อ้างรอบแรกผ่าน. ไม่มีproductionchange ไม่ต้องdeploy.
 T411staticreviewพบP2: history/memoryหลังrevocation, PIIauditcatalogueไม่ครบ, ratebudgetperuser/toolไม่ถูกบังคับ. Existingunit116+AI43ผ่านแต่ไม่พิสูจน์สามacceptanceนี้. เปิดT445 ไม่ปิดT411; C26sameROroleยืนยันเป็นdefenseindepth/C27personNยังไม่เปิด.
+
+
+### 21:33 — T407/T445 checkpoint
+[TESTED] Main API typecheck + authorization/tool unit35/35ผ่าน. Browser final160/161ผ่าน; CSATstaff exact-copy mismatchรอแก้test. [UNVERIFIED] DockerenginepipeหายหลังเคยrestorePOChealthy;restartDesktop1ครั้งแล้วยังไม่กลับ จึงholdDBmigration0117/Redisintegration/deploy. T445a/csourceWIPรอindependentreview; T445b/dpending. ไม่ส่งลูกค้าจริง/autosendปิด.
