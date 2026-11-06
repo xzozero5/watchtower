@@ -514,3 +514,7 @@ CI42159021249ของ11134b: integrationล้มworkerai.integration.test.ts:2
 DevรายงานP2prefetch9kinds/visibleentities/readRefsuncited/handoffauditแก้แล้ว; API30/AI40/audit4ผ่าน (mainยังไม่signoff). ปิดdev/reviewerทุกตัวแล้ว. Mainเริ่มdeterministicr2gateexec58277; logt409-r2-orchestratorและt409-main-*; outerstopwt-main4containersเมื่อจบ ไม่ลบvolume. Sourceยังuncommittedและไม่deploy. Pendingr2result, independenthandoff-finalreview, mockCLI32, webiconlint/typecheck, T442CIworkerfailure. T441ยังรอtypecheckgate. Runtimeembedderหยุดเก็บmodelvolume; POC9เดิมไม่เปลี่ยน.
 
 [CONFIRMED] 11:12 checkpointT409 waiting_limit: 5hใช้95% weekly61%; nextEligibleAt=15:30:19Bangkok. ไม่มีAIagentactive; deterministicr2gateยังรันได้ตามscriptและstoptestcontainersเมื่อจบ. ผลรับต่อจากlog ไม่เริ่มAIงานเพิ่มก่อนreset.
+
+## 2026-11-06 15:46 — main + independent review — T442 ปิด local
+RootcauseinsightOfรอrowมีแล้วอ่านได้หลังdownstreaminvestigationเปลี่ยนstate. แก้testดักเฉพาะinvestigateที่outboxboundaryและassertว่าenqueueจริง โดยคงclassified/intent/nextstep/summary/confidence/run/redaction/kill/budgetassertionsเดิม. Mainbrief+downstreamintegration20/20ผ่าน, workerfileeslint+typecheckผ่าน. Reviewerคนละproducerไม่พบลดcontract/P1P2. CIrerunยังรอหลังpush.
+T409deployเริ่มbackupvalidated13,758,360bytesที่poc-20261106-154549-pre-t409.dump; build3appsกำลังรัน ไม่claimhealthcomplete. ไม่มีmigrationใหม่/ไม่เปิดautosend.

@@ -11,8 +11,8 @@
 
 ## Continuation (อ่านก่อนเริ่มรอบใหม่)
 - **15:43 T409/T441 accepted:** maingate r2ผ่านbuild6/static14/AI65/shared6/APIunit116/eval2/APIintegration114/8files; mockCLI32/32,citation100%,แต่ละcaseuncited≤1; webiconlint/typecheckผ่าน. IndependentsecurityปิดP2ทั้งหมดรวมhandoffaudit. ไม่มีliveeval/ไม่แตะgolden. T409review recordในdocs/decisions.
-- **T442:** CI11134bworkerstate raceแก้เฉพาะtestoutboxboundaryโดยคงassertionsครบ; reviewerผ่าน. Mainrerunbrief+downstreaminvestigationกำลังรันexec99842/logt442-main; dev5tests+staticผ่าน. ต้องอ่านmainresultก่อนติ๊กT442.
-- **Deployment:** T409ยังไม่deploy ณ15:43; script .cache/t409-deploy.ps1พร้อมbackup+buildapiworker+health. รอT442maingateก่อนexecute. Websourceมีเพียงclaimiconsorg/serviceเพิ่ม ใช้sharedschemaใหม่ ต้องbuildwebในbatchdeployด้วย. Pushเฉพาะreviewedsourceและdocs ไม่add .agents/.codex.
+- **T442ปิด:** workerstate raceแก้testoutboxboundaryคงassertionsครบ+ตรวจenqueueจริง. Mainbrief+downstream20tests/lint/typecheckผ่าน; reviewerผ่าน. logt442-main. ยังต้องดูCIrerunหลังpush ไม่อ้างCIเขียวจากlocal.
+- **Deploymentกำลังรัน15:46:** T409commit eb7be20c; script .cache/t409-deploy.ps1 exec94892 backup D:/Works/watchtower-backups/poc-20261106-154549-pre-t409.dump 13,758,360bytes validateแล้ว → buildapi/worker/webทั้งหมด → ขึ้นwebก่อนAPIเพื่อให้รับevidencekindใหม่ได้. Logt409-deploy-main/docker-build. ยังไม่อ้างdeployผ่านจนhealthครบ. Sourcefunctionalfreezeระหว่างbuild; ยังไม่ให้devทำT407aบนworkspaceนี้.
 - **Checkpoint:** T409running PID40860+claimlocal .cache/watchtower-claim.json หลังreset(usage5h1%/weekly62%เวลา15:38). ไม่มีrunnerเก่าค้าง; r2jobก่อนพักจบและstoptestcontainersแล้ว. wt-main4containersเปิดใหม่เพื่อT442test หยุดเมื่อเลิกใช้ ไม่ลบvolume.
 - **คิวถัดไป:** T407a(SSE/palette/C22)→407b(history/memory/feedback)→407c(routee2e); T418writer→419a; T410/411/412/420/421. T419b/T418a/T432/T440ปิดแล้ว ไม่ทำซ้ำ. T433รอT434indexpreservation/manualenqueue+APIhybrid; modeldownload+calibrationพร้อมแต่embedderหยุดเก็บvolume.
 - ทำต่อในturnเดียวเมื่อมีquota งานย่อยเป็นcheckpointไม่ใช่เหตุหยุดรอheartbeat; ตรวจusageก่อนงานหนัก/หลังcheckpoint ถ้าwindowเหลือ≤5%ให้waiting_limitใช้resetจริงเฉพาะwindowที่ติด ส่วนที่ใช้ได้ให้now. Agentสูงสุด1dev+1reviewer. MainverifyN7ก่อนcommit.
@@ -84,4 +84,3 @@
 ## วันตรวจซ้ำ
 - rotate key `watchtower-pubsub-admin`: 2027-02-01 (90 วันจากสร้าง 2026-11-03)
 - ทบทวน residual P3 (C-4, C-6, C-9, C-14) ก่อนเปิด `AI_AUTOSEND_ENABLED` ที่ใด
-

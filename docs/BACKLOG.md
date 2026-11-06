@@ -257,4 +257,4 @@ T-152, T-175 (กำลังทำอยู่แล้ว เก็บผล),
 
 - [x] T-441 `main` testEnvSMTPต้องใช้TEST_SMTP_PORTให้ตรงisolationguard; regressionทุกtransportชี้disposableport1test+lint/APItypecheckผ่าน และindependentreviewผ่าน2026-11-06
 
-- [ ] T-442 `main` ตรวจCI11134b run42159021249 worker ai.integration.test.ts:295 expectedclassified receivedinvestigating; อีก3jobsผ่าน. หาrootcause/แก้พร้อมreview ไม่ลดassertionก่อนเข้าใจrace (loglocal ci-11134b-integration)
+- [x] T-442 `main` ตรวจCI11134b run42159021249 worker ai.integration.test.ts:295 expectedclassified receivedinvestigating; อีก3jobsผ่าน. rootcauseasyncinvestigationเปลี่ยนrecordก่อนassert; testแยกoutboxboundary+assertenqueue คงcontractเดิมครบ. Mainbrief+downstream20tests/lint/typecheckผ่าน, independentreviewผ่าน; รอCIrerun

@@ -6,6 +6,7 @@ import { createDatabase, enqueueOutbox, schema, type Database } from '@watchtowe
 import { createTestDatabase, type TestDatabase } from '@watchtower/db/testing';
 import { createDomain, type Domain } from '@watchtower/domain';
 import {
+  AI_JOBS,
   AUDIT_ACTIONS,
   INBOUND_QUEUES,
   INGEST_JOBS,
@@ -20,6 +21,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { createMemoryObjectStore } from '../ingest/object-store.js';
 import { createLogger } from '../logger.js';
+import { createBullmqPublisher, type BullmqPublisher } from '../outbox-relay.js';
 import { testConfig, testSealKey } from '../testing/support.js';
 import { startWorker, type RunningWorker } from '../worker.js';
 
@@ -33,6 +35,8 @@ const net = disableNetConnect();
 
 let testDb: TestDatabase;
 let worker: RunningWorker;
+let publisher: BullmqPublisher;
+const pendingInvestigations = new Set<string>();
 let appDatabase: Database;
 let domain: Domain;
 let config: ReturnType<typeof testConfig>;
@@ -64,8 +68,21 @@ beforeAll(async () => {
       return inner.generate(request);
     },
   };
+  publisher = createBullmqPublisher(parseRedisUrl(config.REDIS_URL), createLogger(config), {
+    prefix,
+  });
   worker = await startWorker(config, createLogger(config), {
     queuePrefix: prefix,
+    // This suite asserts the brief's exact persisted contract. The next job can overwrite its
+    // state/next step and add runs before our first SELECT. Observe that handoff without executing
+    // it here; investigation.integration.test.ts covers the downstream investigation and draft.
+    outboxPublisher: async (row) => {
+      if (row.queue === QUEUE_NAMES.ai && row.jobName === AI_JOBS.investigate) {
+        pendingInvestigations.add(String(row.payload.ticketId));
+        return;
+      }
+      await publisher.publish(row);
+    },
     realtimeChannel: `watchtower:realtime:${prefix}`,
     overrides: {
       ingest: { store: createMemoryObjectStore() },
@@ -95,6 +112,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await worker.close();
+  await publisher.close();
   await appDatabase.close();
   const connection = parseRedisUrl(config.REDIS_URL);
   for (const name of [QUEUE_NAMES.ingest, QUEUE_NAMES.ai]) {
@@ -179,9 +197,15 @@ async function insightOf(ticketId: string) {
   });
 }
 
+async function investigationQueued(ticketId: string): Promise<void> {
+  await waitFor('the brief to enqueue investigation', () =>
+    Promise.resolve(pendingInvestigations.has(ticketId)),
+  );
+}
+
 /**
- * Waits until the AI has stopped calling the provider. A new ticket is investigated and drafted after
- * its brief (T-108), so the work of an earlier case can still be running when the next one starts.
+ * Waits until the AI has stopped calling the provider before changing global guards or reading
+ * captured requests. Downstream investigation is held at the outbox boundary in this suite.
  */
 async function quiet(): Promise<void> {
   let last = -1;
@@ -235,6 +259,7 @@ describe('AI brief, end to end on the mock provider', () => {
 
     // 2. The summarize job ran (outbox -> BullMQ -> worker) and left the insight.
     const insight = await insightOf(ticketId);
+    await investigationQueued(ticketId);
     expect(insight).toMatchObject({
       state: 'classified',
       reasonCode: null,
@@ -292,6 +317,7 @@ describe('AI brief, end to end on the mock provider', () => {
     );
     const ticketId = created.value.ticket.id;
     const insight = await insightOf(ticketId);
+    await investigationQueued(ticketId);
     expect(insight.state).toBe('classified');
     expect(insight.intentKey).toBe('incident_report');
     expect(insight.nextStepKind).toBe('escalate_dev');
