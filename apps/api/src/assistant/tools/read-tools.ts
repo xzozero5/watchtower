@@ -1,3 +1,4 @@
+import { entityGetTools } from './entity-get.tools.js';
 import { autonomyStatusTool } from './autonomy-status.tool.js';
 import { ceoMetricsTool } from './ceo-metrics.tool.js';
 import { configLookupTool } from './config-lookup.tool.js';
@@ -14,6 +15,7 @@ import { ticketTimelineTool } from './ticket-timeline.tool.js';
  */
 export function readModuleTools(ctx: ModuleToolContext): ToolRegistrar[] {
   return [
+    ...entityGetTools(ctx),
     opsMetricsTool(ctx),
     ceoMetricsTool(ctx),
     performanceViewTool(ctx),

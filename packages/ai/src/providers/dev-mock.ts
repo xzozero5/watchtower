@@ -459,6 +459,11 @@ export class DevMockLlmProvider implements LlmProvider {
             'program’s own result, and this explanation is only a placeholder.',
         });
         break;
+      case 'assistant_turn':
+        text = request.messages.some((message) => /^\[e\d+\]/m.test(message.content))
+          ? assistantAnswer(request)
+          : assistantPlan(request);
+        break;
       case 'assistant_plan':
         text = assistantPlan(request);
         break;

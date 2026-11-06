@@ -56,8 +56,9 @@ const spy: LlmProvider = (() => {
       calls.push(request.prompt.id);
       sent.push(request.system + request.messages.map((message) => message.content).join('\n'));
       const forced =
-        request.prompt.id === 'assistant_plan'
-          ? script.plan
+        request.prompt.id === 'assistant_turn'
+          ? (script.plan ??
+            (script.answer === undefined ? undefined : JSON.stringify({ calls: [] })))
           : request.prompt.id === 'assistant_answer'
             ? script.answer
             : undefined;
@@ -168,6 +169,126 @@ describe('starters', () => {
 });
 
 describe('a message', () => {
+  it('redacts the sender of an uncited tool-read mail in the next turn without storing raw PII in context', async () => {
+    const who = await signIn(h, 'agent');
+    const sender = `UncitedSynthetic${suffix} Person`;
+    const account = await owner().query<{ id: string }>(
+      `INSERT INTO channel_account(type,name) VALUES('gmail','Synthetic C8') RETURNING id`,
+    );
+    const mail = await owner().query<{ id: string }>(
+      `INSERT INTO inbound_message(channel_account_id,provider_message_id,from_address,from_name,subject,body_text,received_at,disposition,classification)
+       VALUES($1,$2,'first@synthetic.example','First Synthetic',$4,'First body',now(),'internal','{}'),
+             ($1,$3,'uncited@synthetic.example',$5,$4,'Uncited body',now()-interval '1 minute','internal','{}') RETURNING id`,
+      [
+        account.rows[0]?.id,
+        `c8-first-${suffix}`,
+        `c8-uncited-${suffix}`,
+        `c8lookup${suffix}`,
+        sender,
+      ],
+    );
+    script.plan = JSON.stringify({
+      calls: [{ tool: 'conversation_search', input: { query: `c8lookup${suffix}` } }],
+    });
+    script.answer = JSON.stringify({
+      claims: [{ text: 'One message was found.', evidenceIds: ['e1'] }],
+      proposals: [],
+    });
+    try {
+      const first = await okReply(who, 'Search these messages');
+      expect(first.claims[0]?.evidence).toHaveLength(1);
+      expect(first.claims[0]?.evidence[0]?.ref?.id).toBe(mail.rows[0]?.id);
+      const stored = await owner().query<{
+        context: { readRefs: { kind: string; ref: string }[] };
+      }>(`SELECT context FROM assistant_message WHERE conversation_id=$1 AND role='user'`, [
+        first.conversationId,
+      ]);
+      expect(stored.rows[0]?.context.readRefs).toEqual(
+        expect.arrayContaining(mail.rows.map((row) => ({ kind: 'conversation', ref: row.id }))),
+      );
+      expect(JSON.stringify(stored.rows)).not.toContain(sender);
+      expect(JSON.stringify(stored.rows)).not.toContain('@synthetic.example');
+      script.plan = JSON.stringify({ calls: [] });
+      const before = sent.length;
+      await okReply(who, `What did ${sender} ask?`, { conversationId: first.conversationId });
+      expect(sent.slice(before).join('\n')).not.toContain(sender);
+      expect(
+        await countOf(
+          `SELECT count(*)::int n FROM assistant_message WHERE conversation_id=$1 AND body LIKE $2`,
+          [first.conversationId, `%${sender}%`],
+        ),
+      ).toBe(0);
+    } finally {
+      delete script.plan;
+      delete script.answer;
+    }
+  });
+
+  it('records audit and pii.read on both deterministic cache miss and hit, with no ai_run', async () => {
+    const who = await signIn(h, 'agent');
+    const fresh = await fileTicket(agent, orgId, { subject: 'Deterministic cache fixture' });
+    expect(
+      (await lead.client.post(`/v1/tickets/${fresh.id}/assign`, { assigneeId: who.userId })).status,
+    ).toBe(200);
+    const before = calls.length;
+    const first = await okReply(who, 'My tickets');
+    const second = await okReply(who, 'My tickets', { conversationId: first.conversationId });
+    expect(first.path).toBe('facts_only');
+    expect(second.path).toBe('facts_only');
+    expect(calls.length).toBe(before);
+    expect(second.claims[0]?.evidence[0]?.ref).toEqual({ kind: 'ticket', id: fresh.id });
+    expect(
+      await countOf(
+        `SELECT count(*)::int n FROM assistant_message WHERE conversation_id=$1 AND path='facts_only'`,
+        [first.conversationId],
+      ),
+    ).toBe(2);
+    expect(
+      await countOf(
+        `SELECT count(*)::int n FROM audit_log WHERE action='assistant.message' AND target_id=$1`,
+        [first.conversationId],
+      ),
+    ).toBe(2);
+    expect(
+      await countOf(
+        `SELECT count(*)::int n FROM audit_log WHERE action='pii.read' AND target_id=$1 AND metadata->>'conversationId'=$2`,
+        [fresh.id, first.conversationId],
+      ),
+    ).toBe(2);
+  });
+
+  it('retains stable org/selection refs for the next turn dictionary after removing chips', async () => {
+    const who = await signIn(h, 'agent');
+    const name = `SyntheticPrior${suffix} Person`;
+    const selected = await fileTicket(agent, orgId, {
+      subject: 'Prior dictionary',
+      requester: { name, email: `prior-${suffix}@example.test` },
+    });
+    const first = await okReply(who, 'Summarize this context', {
+      context: {
+        entity: { kind: 'org', ref: orgId },
+        selection: { kind: 'ticket', refs: [selected.key] },
+      },
+    });
+    const stored = await owner().query<{ context: Record<string, unknown> }>(
+      `SELECT context FROM assistant_message WHERE conversation_id=$1 AND role='user'`,
+      [first.conversationId],
+    );
+    expect(stored.rows[0]?.context).toMatchObject({
+      entity: { kind: 'org', ref: orgId },
+      selection: { kind: 'ticket', refs: [selected.key] },
+    });
+    const before = sent.length;
+    await okReply(who, `Tell me about ${name}`, { conversationId: first.conversationId });
+    expect(sent.slice(before).join('\n')).not.toContain(name);
+    expect(
+      await countOf(
+        `SELECT count(*)::int n FROM assistant_message WHERE conversation_id=$1 AND body LIKE $2`,
+        [first.conversationId, `%${name}%`],
+      ),
+    ).toBe(0);
+  });
+
   it('finds tickets with a real link, records two model calls, and stores redacted text only', async () => {
     const before = calls.length;
     const reply = await okReply(agent, 'my tickets, and my address is jane.doe@customer.example', {
@@ -176,7 +297,7 @@ describe('a message', () => {
     });
     expect(reply.state).toBe('ok');
     expect(reply.tools.map((tool) => [tool.name, tool.status])).toEqual([['search_tickets', 'ok']]);
-    expect(calls.slice(before)).toEqual(['assistant_plan', 'assistant_answer']);
+    expect(calls.slice(before)).toEqual(['assistant_turn', 'assistant_answer']);
 
     // The conversation is stored with the address replaced; the audit row has no text at all.
     const stored = await owner().query<{ role: string; body: string; ai_run_ids: string[] }>(
@@ -195,7 +316,7 @@ describe('a message', () => {
       [stored.rows.find((row) => row.role === 'assistant')?.ai_run_ids ?? []],
     );
     expect(runs.rows).toEqual([
-      { agent: 'personal_assistant', prompt_id: 'assistant_plan', ticket_id: null },
+      { agent: 'personal_assistant', prompt_id: 'assistant_turn', ticket_id: null },
       { agent: 'personal_assistant', prompt_id: 'assistant_answer', ticket_id: null },
     ]);
     const audit = await owner().query<{ metadata: Record<string, unknown>; actor_id: string }>(
@@ -1354,17 +1475,17 @@ describe('the daily budget of the system', () => {
     try {
       const who = await signIn(own, 'agent');
       const reply = await who.client.post<AssistantReply>('/v1/assistant/messages', {
-        text: 'my tickets',
+        text: 'find my tickets please',
       });
       expect(reply.body.state).toBe('ok');
-      expect(counted).toEqual(['assistant_plan', 'assistant_answer']);
+      expect(counted).toEqual(['assistant_turn', 'assistant_answer']);
       // A priced run of a real provider that fills today's cap makes the guard say stop.
       await own.db.owner.pool.query(
         `INSERT INTO ai_run (started_at, agent, provider, model, tier, prompt_id, prompt_version, prompt_hash, input_hmac, redaction, input_tokens, output_tokens, cost_usd, status)
          VALUES (now(), 'classifier', 'anthropic', 'm', 'light', 'classifier', 1, repeat('a', 64), repeat('b', 64), '{"total":0,"byKind":{}}', 400000, 200000, 5, 'ok')`,
       );
       const stopped = await who.client.post<AssistantReply>('/v1/assistant/messages', {
-        text: 'my tickets',
+        text: 'find my tickets please',
       });
       expect(stopped.body).toMatchObject({
         state: 'budget',
@@ -1383,7 +1504,7 @@ describe('the daily budget of the system', () => {
     try {
       const who = await signIn(own, 'agent');
       const reply = await who.client.post<AssistantReply>('/v1/assistant/messages', {
-        text: 'my tickets',
+        text: 'find my tickets please',
       });
       expect(reply.status).toBe(200);
       expect(reply.body).toMatchObject({

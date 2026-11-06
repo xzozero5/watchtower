@@ -60,7 +60,7 @@ const fake: LlmProvider = {
         aborted: false,
         release: () => {
           resolve({
-            text: request.prompt.id === 'assistant_plan' ? PLAN : ANSWER,
+            text: request.prompt.id === 'assistant_turn' ? PLAN : ANSWER,
             finishReason: 'stop',
             usage: { inputTokens: 30, outputTokens: 10 },
             model: request.model,

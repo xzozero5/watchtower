@@ -4,7 +4,7 @@ import {
   type FactTrust,
   type ToolDefinition,
 } from '@watchtower/ai';
-import type { ClaimEvidenceKind } from '@watchtower/shared';
+import type { ClaimEvidenceKind, AssistantEntityKind } from '@watchtower/shared';
 import { z } from 'zod';
 
 import type { Principal } from '../../auth/principal.js';
@@ -36,6 +36,7 @@ export interface OpsToolKit {
   remember(orgIds: readonly string[]): Promise<void>;
   /** Told of each ticket whose content a tool read (the audit of personal data read). */
   readonly onRead?: ((ticket: { readonly id: string; readonly key: string }) => void) | undefined;
+  readonly onReadRef?: ((ref: { kind: AssistantEntityKind; id: string }) => void) | undefined;
   readonly add: AddTool;
 }
 

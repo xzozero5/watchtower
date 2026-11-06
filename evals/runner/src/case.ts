@@ -1,5 +1,6 @@
 import { insightElementKeySchema, insightFactSchema } from '@watchtower/shared';
 import { z } from 'zod';
+import { assistantCaseSchema } from './assistant-case.js';
 
 /**
  * One eval case (PRD 6.5 step 3): an input an agent gets, and what a good answer must satisfy.
@@ -16,6 +17,7 @@ export const EVAL_AGENTS = [
   'grader',
   'kb_author',
   'insight_narrator',
+  'personal_assistant',
 ] as const;
 export const evalAgentSchema = z.enum(EVAL_AGENTS);
 export type EvalAgent = z.infer<typeof evalAgentSchema>;
@@ -27,6 +29,7 @@ export const PROMPT_OF_AGENT: Readonly<Record<EvalAgent, string>> = {
   grader: 'grader',
   kb_author: 'kb_author',
   insight_narrator: 'element_insight',
+  personal_assistant: 'assistant_turn',
 };
 
 export const EVAL_SOURCES = ['golden', 'replay', 'smoke', 'proposal'] as const;
@@ -177,7 +180,11 @@ const insightCase = z.object({
       )
       .min(1)
       .max(4),
-    locales: z.array(z.enum(['th', 'en'])).min(1).max(2).default(['th', 'en']),
+    locales: z
+      .array(z.enum(['th', 'en']))
+      .min(1)
+      .max(2)
+      .default(['th', 'en']),
   }),
   expect: z.object({
     /** Per element: what its accepted claims must satisfy (an element not listed only gets the checks above). */
@@ -207,6 +214,7 @@ export const evalCaseSchema = z.discriminatedUnion('agent', [
   graderCase,
   kbAuthorCase,
   insightCase,
+  assistantCaseSchema,
 ]);
 export type EvalCase = z.infer<typeof evalCaseSchema>;
 export type ClassifierCase = z.infer<typeof classifierCase>;

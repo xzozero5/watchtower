@@ -1,5 +1,10 @@
 import type { AssistantFact, ToolDefinition } from '@watchtower/ai';
-import type { ClaimEvidenceKind, AssistantLocale, Permission } from '@watchtower/shared';
+import type {
+  ClaimEvidenceKind,
+  AssistantEntityKind,
+  AssistantLocale,
+  Permission,
+} from '@watchtower/shared';
 import type { z } from 'zod';
 
 import { evaluatePermissionRule, type PermissionRule } from '../../auth/permission-check.js';
@@ -104,6 +109,7 @@ export interface ModuleToolContext {
   remember(orgIds: readonly string[]): Promise<void>;
   /** Told of each entity of personal data read, for `pii.read` with `via=assistant` (C-17). */
   onRead(kind: PiiKind, id: string, key?: string): void;
+  onReadRef?(kind: AssistantEntityKind, id: string): void;
   /** `OPS-12` from the number of a ticket. */
   keyOf(number: number): string;
 }

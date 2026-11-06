@@ -44,6 +44,11 @@ export const ASSISTANT_TOOLS = [
   'ticket_timeline',
   'autonomy_status',
   'config_lookup',
+  'org_get',
+  'intent_get',
+  'service_get',
+  'handoff_get',
+  'handoff_incoming_get',
 ] as const;
 export type AssistantToolName = (typeof ASSISTANT_TOOLS)[number];
 
@@ -70,6 +75,11 @@ const STAFF_TOOLS: readonly AssistantToolName[] = [
   'kb_get',
   'ticket_timeline',
   'autonomy_status',
+  'org_get',
+  'intent_get',
+  'service_get',
+  'handoff_get',
+  'handoff_incoming_get',
 ];
 
 export const ROLE_TOOLS: Readonly<Record<string, readonly AssistantToolName[]>> = {
@@ -192,6 +202,23 @@ export const TOOL_PERMISSION: Readonly<Record<AssistantToolName, ToolAccess>> = 
   autonomy_status: { route: 'GET /v1/autonomy', rule: { all: ['ticket.read'] }, piiKinds: [] },
   // The routes of an SLA policy, a queue, an intent and the workflow are `ticket.read`; an integration is
   // `integration.manage`, which the handler asks for itself.
+  org_get: {
+    route: 'GET /v1/orgs/:id',
+    rule: { anyOf: ['ticket.read', 'ticket.read.org'] },
+    piiKinds: [],
+  },
+  intent_get: { route: 'GET /v1/intents/:id', rule: { all: ['ticket.read'] }, piiKinds: [] },
+  service_get: { route: 'GET /v1/services/:id', rule: { all: ['alert.read'] }, piiKinds: [] },
+  handoff_get: {
+    route: 'GET /v1/handoffs/current',
+    rule: { all: ['handoff.write'] },
+    piiKinds: [],
+  },
+  handoff_incoming_get: {
+    route: 'GET /v1/handoffs/incoming',
+    rule: { all: ['handoff.ack'] },
+    piiKinds: [],
+  },
   config_lookup: { route: 'GET /v1/sla-policies', rule: { all: ['ticket.read'] }, piiKinds: [] },
 };
 

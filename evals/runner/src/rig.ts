@@ -112,6 +112,7 @@ export function createRig(options: RigOptions): Rig {
   const guard = createEvalGuard(options.maxCalls);
   const prompts = options.prompts ?? loadPromptCatalog();
   let current: EvalCase | undefined;
+  let mockTurn = 0;
 
   let provider: LlmProvider;
   let settings: SettingsSource;
@@ -121,7 +122,10 @@ export function createRig(options: RigOptions): Rig {
     provider = {
       kind: 'mock',
       generate(request) {
-        const answer = current?.mockAnswer;
+        const answer =
+          current?.agent === 'personal_assistant' && current.mockTurns !== undefined
+            ? current.mockTurns[mockTurn++]
+            : current?.mockAnswer;
         if (answer === undefined) return dev.generate(request);
         const text = typeof answer === 'string' ? answer : JSON.stringify(answer);
         return new MockLlmProvider({ rules: [{ promptId: request.prompt.id, text }] }).generate(
@@ -194,6 +198,7 @@ export function createRig(options: RigOptions): Rig {
     prompts,
     select(item) {
       current = item;
+      mockTurn = 0;
     },
     depsFor(item, pins) {
       return depsForNames(item.names ?? [], pins);

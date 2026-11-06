@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 
 import { HttpStatus, Inject, Injectable, Optional } from '@nestjs/common';
-import { observeQueue, runAssistantTurn, type LimitRejection } from '@watchtower/ai';
+import { factsOnlyCall, observeQueue, runAssistantTurn, type LimitRejection } from '@watchtower/ai';
 import { schema, type Database } from '@watchtower/db';
 import { evaluateBudget, readAiUsage, readSwitchState, resolveAiCaps } from '@watchtower/domain';
 import {
@@ -9,6 +9,8 @@ import {
   ASSISTANT_LIMITS,
   AUDIT_ACTIONS,
   makeClaim,
+  assistantEntitySchema,
+  type AssistantEntityKind,
   type AssistantContextChip,
   type AssistantConversationList,
   type AssistantLocale,
@@ -49,12 +51,14 @@ import { TICKET_KEYS, type TicketKeys } from '../tickets/ticket-keys.js';
 import { TicketReader } from '../tickets/ticket-reader.js';
 import { TelemetryService } from '../telemetry/telemetry.service.js';
 import { ToolRunner } from '../tools/tool-runner.service.js';
-import { isMasked, proposalKindsFor, startersFor } from './assistant-access.js';
+import { isMasked, proposalKindsFor, startersFor, toolsFor } from './assistant-access.js';
 import { ticketHref } from './assistant-hrefs.js';
-import { ContextResolver } from './context-resolver.js';
+import { ContextResolver, type ResolvedRef } from './context-resolver.js';
 import { AssistantProposals } from './assistant-proposals.js';
 import { buildAssistantTools } from './assistant-tools.js';
 import { AssistantReadServices } from './tools/read-services.js';
+import { conversationRefs, trackAssistantPiiRead } from './assistant-context-history.js';
+import { AssistantFactsCache } from './assistant-facts-cache.js';
 import { NOTES } from './assistant-text.js';
 
 type Config = Pick<
@@ -148,6 +152,7 @@ export class AssistantService {
     @Inject(ShiftNotes) private readonly shiftNotes: ShiftNotes,
     @Inject(ShiftsService) private readonly shifts: ShiftsService,
     @Inject(AssistantReadServices) private readonly modules: AssistantReadServices,
+    @Inject(AssistantFactsCache) private readonly factsCache: AssistantFactsCache,
     @Optional() @Inject(TelemetryService) private readonly telemetry?: TelemetryService,
   ) {}
 
@@ -158,6 +163,9 @@ export class AssistantService {
    * guard (it writes an audit row for every denial; a screen asking for its state must not).
    */
   private async standing(userId: string): Promise<Standing> {
+    // Policy wins over offline/budget so a deterministic read can never bypass the kill switch.
+    const switches = await readSwitchState(this.database.db);
+    if (switches.killSwitch) return { state: 'paused', reason: 'kill_switch_on' };
     if (!this.runtime.ready) {
       return {
         state: 'unavailable',
@@ -169,8 +177,6 @@ export class AssistantService {
       return { state: 'unavailable', reason: 'provider_offline' };
     }
     const db = this.database.db;
-    const switches = await readSwitchState(db);
-    if (switches.killSwitch) return { state: 'paused', reason: 'kill_switch_on' };
     const now = new Date();
     const status = evaluateBudget(resolveAiCaps(this.config), await readAiUsage(db, now));
     if (status.level === 'stop') return { state: 'budget', reason: 'budget_stop' };
@@ -353,18 +359,30 @@ export class AssistantService {
     // Every redactor of this message knows the staff of the instance, so a colleague's name in what the
     // person typed, or in a ticket, is replaced before a model sees it, and before it is stored (N4).
     const earlier = await this.ticketsOfConversation(conversationId);
+    const priorRefs = await this.refsOfConversation(conversationId, principal);
+    const dictionaryRefs = [...resolved.refs, ...priorRefs];
     const about = await this.aboutOrgNames(
       principal,
       ticketKey,
       body.text,
       earlier,
       // The organizations of every other chip too: their people go to the redactor (N4).
-      resolved.refs.flatMap((ref) => (ref.orgId == null ? [] : [ref.orgId])),
+      dictionaryRefs.flatMap((ref) => [
+        ...(ref.orgId == null ? [] : [ref.orgId]),
+        ...(ref.orgIds ?? []),
+      ]),
     );
     const staff = await this.staff.list();
     // Both lists must be whole, or the redactor cannot be trusted with the text (fail closed).
-    const listsWhole = about.complete && staff.complete;
-    const staffNames = [...staff.names, ...about.names];
+    const listsWhole =
+      about.complete &&
+      staff.complete &&
+      dictionaryRefs.every((ref) => ref.namesComplete !== false);
+    const staffNames = [
+      ...staff.names,
+      ...about.names,
+      ...dictionaryRefs.flatMap((ref) => ref.names ?? []),
+    ];
     const base = this.runtime.deps;
     const deps = {
       ...base,
@@ -372,11 +390,22 @@ export class AssistantService {
       redactorFor: (names: readonly string[]) =>
         base.redactorFor?.([...names, ...staffNames]) ?? base.redactor,
     };
+    const toolReadRefs = new Map<string, { kind: AssistantEntityKind; ref: string }>();
+    const recordReadRef = (kind: string, id: string): void => {
+      const parsed = assistantEntitySchema.safeParse({ kind, ref: id });
+      if (parsed.success) toolReadRefs.set(`${kind}:${id}`, parsed.data);
+    };
     const read = new Map<string, string>();
     // Other personal data the module tools read (a message of Other mail, a person's figures): `pii.read` as well (C-17).
     const readOther = new Map<string, { readonly kind: string; readonly id: string }>();
+    for (const ref of dictionaryRefs) {
+      if (ref.kind === 'ticket') read.set(ref.id, ref.label);
+      else readOther.set(`${ref.kind}:${ref.id}`, { kind: ref.kind, id: ref.id });
+    }
     const history = await this.history(conversationId);
     let toolNames: string[] = [];
+    let path: 'facts_only' | 'llm1' | 'llm2' | undefined;
+    let hadCustomerContent = false;
 
     const standing = await this.standing(principal.userId);
     let claims: Claim[] = [];
@@ -427,7 +456,12 @@ export class AssistantService {
       },
     };
 
-    if (standing.state === 'ok' && listsWhole) {
+    const deterministic = factsOnlyCall(body.text);
+    const allowFacts =
+      deterministic !== null &&
+      toolsFor(principal).some((name) => name === deterministic.tool) &&
+      standing.state !== 'paused';
+    if ((standing.state === 'ok' || allowFacts) && listsWhole) {
       const host = buildAssistantTools(
         {
           database: this.database,
@@ -454,9 +488,15 @@ export class AssistantService {
           now: new Date(),
           onRead: (ticket) => {
             read.set(ticket.id, ticket.key);
+            recordReadRef('ticket', ticket.id);
+          },
+          onReadRef: ({ kind, id }) => {
+            recordReadRef(kind, id);
+            trackAssistantPiiRead({ kind, id }, read, readOther);
           },
           onReadEntity: (entity) => {
             readOther.set(`${entity.kind}:${entity.id}`, entity);
+            recordReadRef(entity.kind, entity.id);
           },
         },
       );
@@ -471,6 +511,19 @@ export class AssistantService {
             today: new Date().toISOString().slice(0, 10),
             text: body.text,
             history,
+            entities: resolved.refs,
+            cacheFacts: (facts) =>
+              this.factsCache.resolve(
+                {
+                  userId: principal.userId,
+                  role: principal.role,
+                  permissions: [...principal.permissions],
+                  starter: `${deterministic?.tool ?? 'none'}:${JSON.stringify(deterministic?.input)}`,
+                  locale,
+                  promptVersion: `facts_only.v1:${base.prompts.latest('assistant_turn').ref.hash}`,
+                },
+                facts,
+              ),
             host,
             proposalKinds: proposalKindsFor(principal),
             limits: {
@@ -496,6 +549,10 @@ export class AssistantService {
           }),
         );
         if (outcome.status === 'ok') {
+          state = 'ok';
+          reason = null;
+          path = outcome.path;
+          hadCustomerContent = outcome.hadCustomerContent;
           claims = outcome.claims;
           redactedAnswer = outcome.redactedText;
           toolNames = outcome.names;
@@ -522,11 +579,12 @@ export class AssistantService {
     // Store both turns redacted. The answer is kept as the model wrote it, placeholders in: the restored
     // text (names, subjects) is for the screen and is neither stored nor sent to a model again (N4).
     const messageId = randomUUID();
-    const userBody = listsWhole
-      ? (base.redactorFor?.([...staffNames, ...toolNames]) ?? base.redactor)
-          .session({ scope: conversationId })
-          .redact(body.text)
-      : '[names_incomplete]';
+    const userBody =
+      listsWhole && reason !== 'name_match_limit'
+        ? (base.redactorFor?.([...staffNames, ...toolNames]) ?? base.redactor)
+            .session({ scope: conversationId })
+            .redact(body.text)
+        : '[names_incomplete]';
     const answerBody =
       redactedAnswer === '' ? `[${reason ?? 'no_answer'}]` : redactedAnswer.slice(0, 20_000);
     await this.database.db.transaction(async (tx) => {
@@ -536,11 +594,28 @@ export class AssistantService {
         role: 'user',
         body: userBody,
         context: {
+          ...{ readRefs: [...toolReadRefs.values()] },
           ...(body.context?.page === undefined ? {} : { page: body.context.page }),
           ...(ticketKey === undefined ? {} : { ticket: ticketKey }),
           ...(resolved.entity === null
             ? {}
-            : { entity: { kind: resolved.entity.kind, ref: resolved.entity.label } }),
+            : {
+                entity: {
+                  kind: resolved.entity.kind,
+                  ref:
+                    resolved.entity.kind === 'ticket' ? resolved.entity.label : resolved.entity.id,
+                },
+              }),
+          ...(resolved.selection.length === 0
+            ? {}
+            : {
+                selection: {
+                  kind: resolved.selection[0]?.kind,
+                  refs: resolved.selection.map((ref) =>
+                    ref.kind === 'ticket' ? ref.label : ref.id,
+                  ),
+                },
+              }),
         },
       });
       await tx.insert(schema.assistantMessage).values({
@@ -549,6 +624,7 @@ export class AssistantService {
         userId: principal.userId,
         role: 'assistant',
         body: answerBody,
+        path: path ?? null,
         evidence: evidenceOf(claims),
         tools,
         aiRunIds: runIds,
@@ -641,6 +717,9 @@ export class AssistantService {
       locale,
       tools: tools.map((tool) => `${tool.name}:${tool.status}`),
       runs: runIds.length,
+      aiRunIds: runIds,
+      path,
+      hadCustomerContent,
       proposals: cards.map((card) => card.kind),
       masked: isMasked(principal),
       ticketIds: [...read.keys()],
@@ -658,6 +737,8 @@ export class AssistantService {
       claims,
       tools,
       proposals: cards,
+      ...(path === undefined ? {} : { path }),
+      hadCustomerContent,
     };
   }
 
@@ -804,9 +885,28 @@ export class AssistantService {
     const rows = await this.database.db
       .selectDistinct({ ticket: sql<string | null>`${schema.assistantMessage.context}->>'ticket'` })
       .from(schema.assistantMessage)
-      .where(eq(schema.assistantMessage.conversationId, conversationId))
-      .limit(20);
+      .where(eq(schema.assistantMessage.conversationId, conversationId));
     return rows.flatMap((row) => (row.ticket === null ? [] : [row.ticket]));
+  }
+
+  /** All resolved context and cited refs, not just the last twenty ticket chips (C-8). */
+  private async refsOfConversation(
+    conversationId: string,
+    principal: Principal,
+  ): Promise<ResolvedRef[]> {
+    const rows = await this.database.db
+      .select({
+        context: schema.assistantMessage.context,
+        evidence: schema.assistantMessage.evidence,
+      })
+      .from(schema.assistantMessage)
+      .where(eq(schema.assistantMessage.conversationId, conversationId));
+    const refs: ResolvedRef[] = [];
+    for (const entity of conversationRefs(rows)) {
+      const result = await this.contexts.resolve({ entity }, principal);
+      refs.push(...result.refs);
+    }
+    return refs;
   }
 
   private async history(

@@ -26,7 +26,7 @@ export function testEnv(
     JWT_SECRET: 'change-me',
     APP_ENCRYPTION_KEY: 'change-me-32-bytes-base64',
     SMTP_HOST: 'localhost',
-    SMTP_PORT: '1025',
+    SMTP_PORT: process.env.TEST_SMTP_PORT ?? '1025',
     ...overrides,
   };
 }

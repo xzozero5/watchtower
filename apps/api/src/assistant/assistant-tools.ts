@@ -9,6 +9,8 @@ import {
 import { schema, type Database } from '@watchtower/db';
 import {
   MIN_SEARCH_LENGTH,
+  assistantEntitySchema,
+  type AssistantEntityKind,
   OPEN_STATUSES,
   kbSearchQuerySchema,
   slaStateSchema,
@@ -81,6 +83,7 @@ export interface AssistantToolDeps {
 }
 
 export interface AssistantToolEnv {
+  readonly onReadRef?: (ref: { kind: AssistantEntityKind; id: string }) => void;
   readonly principal: Principal;
   readonly locale: AssistantLocale;
   /** `dev`: nothing that identifies the customer goes into a fact. */
@@ -235,6 +238,7 @@ export function buildAssistantTools(
   // long as the organization is. If an organization had more people than the redactor can take, the
   // list is not complete and no text of a ticket is shown to a model or to a masked reader (fail closed).
   const dictionary = new Set<string>();
+  const ticketIds = new Map<string, string>();
   let incomplete = false;
   const remember = async (orgIds: readonly string[]): Promise<void> => {
     const found = await readOnly((db) => orgPeopleNames(db, [...new Set(orgIds)]));
@@ -263,6 +267,7 @@ export function buildAssistantTools(
   const rowOf = async (
     view: Awaited<ReturnType<TicketReader['viewRow']>>,
   ): Promise<TicketRowShape> => {
+    ticketIds.set(deps.keys.format(view.t.number), view.t.id);
     const sla = await deps.sla.view(view.t, env.now);
     env.onRead?.({ id: view.t.id, key: deps.keys.format(view.t.number) });
     return {
@@ -282,6 +287,8 @@ export function buildAssistantTools(
     extra?: Partial<AssistantFact>,
   ): AssistantFact => ({
     kind: 'ticket',
+    ref: { kind: 'ticket', id: ticketIds.get(row.key) ?? row.key },
+    trust: 'customer',
     label: row.key,
     href: ticketHref(row.key),
     text,
@@ -313,6 +320,7 @@ export function buildAssistantTools(
         await remember(page.items.flatMap((item) => ('org' in item ? [item.org.id] : [])));
         for (const item of page.items) {
           if (!('org' in item)) continue;
+          ticketIds.set(item.key, item.id);
           env.onRead?.({ id: item.id, key: item.key });
           items.push({
             key: item.key,
@@ -428,6 +436,7 @@ export function buildAssistantTools(
       output: slaOutput,
       async execute(input) {
         const view = await readOnly((db) => deps.reader.viewRow(input.ticket, principal, db));
+        ticketIds.set(deps.keys.format(view.t.number), view.t.id);
         const sla = await deps.sla.view(view.t, env.now);
         await remember([view.t.orgId]);
         return { ticket: await rowOf(view), sla };
@@ -560,6 +569,8 @@ export function buildAssistantTools(
         const result = await deps.kb.search(
           kbSearchQuerySchema.parse({ q: input.query, limit: input.limit, audience: 'staff' }),
         );
+        for (const hit of result.hits.slice(0, input.limit))
+          env.onReadRef?.({ kind: 'kb_article', id: hit.articleId });
         return {
           mode: result.mode,
           items: result.hits.slice(0, input.limit).map((hit) => ({
@@ -650,6 +661,7 @@ export function buildAssistantTools(
   // --- T-402, T-403: incident, alert, status page, shift (tools/*.tools.ts) ----------------------
   const ops: OpsToolKit = {
     principal,
+    onReadRef: env.onReadRef,
     now: env.now,
     readOnly,
     remember,
@@ -690,6 +702,7 @@ export function buildAssistantTools(
       now: env.now,
       readOnly,
       remember,
+      onReadRef: (kind, id) => env.onReadRef?.({ kind, id }),
       keyOf: (number) => deps.keys.format(number),
       onRead: (kind, id, key) => {
         if (kind === 'ticket' && key !== undefined) env.onRead?.({ id, key });
@@ -705,9 +718,19 @@ export function buildAssistantTools(
   );
   return {
     tools: scoped,
+    namesComplete: () => !incomplete,
     info,
     facts: (tool, output) => {
       const made = facts.get(tool)?.(output as never) ?? [];
+      // Track all returned sources before turn fact/citation limits discard any of them (C-8).
+      for (const fact of made)
+        if (fact.ref !== undefined) {
+          const ref = assistantEntitySchema.safeParse({
+            kind: fact.ref.kind === 'kb' ? 'kb_article' : fact.ref.kind,
+            ref: fact.ref.id,
+          });
+          if (ref.success) env.onReadRef?.({ kind: ref.data.kind, id: ref.data.ref });
+        }
       if (incomplete) {
         // The names of an organization could not all be listed: say that, show no text of a ticket.
         return made.map((fact) => ({

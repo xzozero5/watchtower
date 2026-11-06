@@ -54,7 +54,7 @@ const USAGE = `Watchtower eval runner (T-302)
 Options
   --provider mock|claude-cli     default mock (offline). claude-cli needs the bridge token and the model of each tier in the environment
   --source golden,replay,smoke,proposal   which cases (default golden,replay,smoke; smoke is skipped for a real provider)
-  --agent classifier,drafter,grader,kb_author,insight_narrator
+  --agent classifier,drafter,grader,kb_author,insight_narrator,personal_assistant
   --prompt grader=2              pin a prompt version (repeatable); the rest run at their latest
   --all-versions                 run every case at every version of its prompt
   --baseline path.json           compare with an earlier report; a case that passed and now fails is a regression

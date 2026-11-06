@@ -190,7 +190,10 @@ export function assistantAnswer(request: LlmRequest): string {
   const facts = [...raw.matchAll(/^\[(e\d+)\] [a-z]+(?: \(mock data\))?: (.*)$/gm)].map(
     (match) => ({
       id: match[1] ?? '',
-      text: (match[2] ?? '').replaceAll(/\s+/g, ' ').trim(),
+      text: (match[2] ?? '')
+        .replaceAll(/<\/?untrusted_content>/gi, '')
+        .replaceAll(/\s+/g, ' ')
+        .trim(),
     }),
   );
   const claims =
@@ -221,7 +224,10 @@ export function claimSummary(request: LlmRequest): string {
   const facts = [...raw.matchAll(/^\[(f\d+)\] [a-z]+(?: \(mock data\))?: (.*)$/gm)].map(
     (match) => ({
       id: match[1] ?? '',
-      text: (match[2] ?? '').replaceAll(/\s+/g, ' ').trim(),
+      text: (match[2] ?? '')
+        .replaceAll(/<\/?untrusted_content>/gi, '')
+        .replaceAll(/\s+/g, ' ')
+        .trim(),
     }),
   );
   return JSON.stringify({
@@ -242,7 +248,10 @@ export function weeklyBrief(request: LlmRequest): string {
     (match) => ({
       id: match[1] ?? '',
       kind: match[2] ?? '',
-      text: (match[3] ?? '').replaceAll(/\s+/g, ' ').trim(),
+      text: (match[3] ?? '')
+        .replaceAll(/<\/?untrusted_content>/gi, '')
+        .replaceAll(/\s+/g, ' ')
+        .trim(),
     }),
   );
   const summary = facts

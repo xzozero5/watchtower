@@ -28,7 +28,7 @@ const model: LlmProvider = {
   kind: 'mock',
   generate(request) {
     const text =
-      request.prompt.id === 'assistant_plan'
+      request.prompt.id === 'assistant_turn'
         ? JSON.stringify({ calls: [] })
         : JSON.stringify({
             claims: say.map((sentence) => ({ text: sentence, evidenceIds: [] })),

@@ -68,5 +68,8 @@ export function leaks(fingerprint: Fingerprint, sentence: string): boolean {
  * speak as the prompt, so the angle bracket of such a tag is replaced (SR108 P2).
  */
 export function neutralizeTags(text: string): string {
-  return text.replaceAll(/<(\/?\s*(?:ticket|evidence|report)\b)/gi, '‹$1');
+  return text.replaceAll(
+    /<(\/?\s*(?:ticket|evidence|report|untrusted_content|user_notes)\b)/gi,
+    '‹$1',
+  );
 }

@@ -50,6 +50,8 @@
   | reports | `ops_metrics`, `ceo_metrics`, `performance_view` | `dashboard.ops.read` / `ceo.view` / `anyOf(performance.read.own, performance.read.all)` |
   | autonomy | `autonomy_status` (stage ต่อ intent, ผล gate แบบ pass/fail, kill switch เปิด/ปิด) | ตาม GET ใน `autonomy.controller` — supersede ADR-023 §1 (§11) |
   | admin config | `config_lookup` (SLA policy, queue, intent, workflow, integration แบบ `{kind, connected}`) | `*.manage` ของหน้านั้น — supersede ADR-023 §1 (§11) |
+  | entity summaries (T-409) | `org_get`, `intent_get`, `service_get` | `anyOf(ticket.read,ticket.read.org)` / `ticket.read` / `alert.read`; module reader กรอง scope เดิม |
+  | handoff summaries (T-409) | `handoff_get`, `handoff_incoming_get` | `handoff.write` / `handoff.ack`; ใช้ current/incoming GET view และเขียน pii.read แม้ model ขอเองโดยไม่มี chip |
   | investigate | `investigate_run` (เดิม) | `investigate.run` |
 
   - **`config_lookup` output (C-6):** output schema เป็น **allow-list ของ field ต่อชนิด** (Zod `strict()`) ห้าม pass-through object · ห้ามมี field ที่เป็น URL/endpoint/webhook/host/secret ref/token/credential id · integration คืนได้แค่ `{kind, connected: boolean, lastOkAt?: string}` · มี test ว่า output ไม่มี key ใดของ credential store และไม่มีค่าที่ match `https?://`

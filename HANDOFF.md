@@ -1,7 +1,7 @@
 # HANDOFF — Watchtower
 
 > สถานะล่าสุดของโปรเจกต์ session ใหม่อ่านไฟล์นี้ต่อจาก `AGENTS.md` แล้วทำงานต่อได้โดยไม่ต้องอ่านบทสนทนาเดิม
-> อัปเดตล่าสุด: 2026-11-06 10:31 (เวลากรุงเทพ) โดย Codex — quota reset, full gate ผ่าน, T-409 running
+> อัปเดตล่าสุด: 2026-11-06 15:43 (เวลากรุงเทพ) โดย Codex — T409 accepted, T442 main gate
 > ฉบับก่อน: `docs/handoff-archive/HANDOFF-2026-11-05-pre-ai-bridge.md` · บันทึกรายชั่วโมง `logs/daily/2026-11-05.md`
 
 > ✅ **push แล้ว 2026-11-05** (`origin/main` = `e325c83`, CI run 41963960467 เขียวทั้ง 4 job) · ✅ **POC deploy แล้ว 2026-11-05 11:10** (เจ้าของ OK): backup `D:\Works\watchtower-backups\poc-20261105-1105-pre-phase3.dump` (13.5 MB) → build api/worker/web/bridge/gmail-tunnel → migrate 22 ตัวถึง 0111 → ทุก service healthy · `AI_AUTOSEND_ENABLED` ไม่ได้ตั้ง
@@ -10,20 +10,13 @@
 > ✅ **2026-11-06 05:26:** push `635914d` แล้ว (รวม82commitเดิม); CI42121519210cancelledเพราะpushเอกสารใหม่; CI42121588809ของ31abb66ล้มops test2ตัว → T-438แก้แล้ว รอดูCIใหม่. POC api/worker/web redeploy00:21 healthy, bridgeจากapihealth200หลังpinCLI. T-437 completed; checkpoint task T-419 ready หมายถึง T-419b ที่ POเลือก (schema taskIdรับเลขเท่านั้น). งานassistantยังต้องทำต่อ
 
 ## Continuation (อ่านก่อนเริ่มรอบใหม่)
-- **11:11 FREEZE T409 r2:** dev+reviewerปิดแล้ว ไม่มีAIagentทำต่อ. Sourceยังuncommitted (รวมnewwebiconmapping/sharedclaimsสำหรับorg/service); ห้ามrestore/ลบ. Devรายงานprefetch9kinds+visibleentityprompt+serverreadRefsuncited+handoffauditแก้แล้ว; mainยังไม่รับรองปิดP2. DevtestsAPI30/AI40/audithelper4ผ่าน, r2finalgateรอmain.
-- **Deterministic r2 gate กำลังรัน:** exec58277, logs/deploy/2026-11-06-t409-r2-orchestrator.log และ t409-main-*.log. เมื่อจบ outer scriptจะstop wt-main4containersอัตโนมัติ ไม่ลบvolume. ก่อนรันซ้ำตรวจprocess/log! Gateครอบbuilddeps/static/AI/shared/APIunit/evalunit/APIassistantintegrationรวมC12reviewertest; ยังไม่ครอบmockproposalCLI32หรือwebiconlint/typecheckใหม่. รอบก่อนr1logsเก็บt409-r1-*.logผ่าน112integration.
-- **งานรับต่อ:** อ่านr2resultก่อน; independentreviewhandoffauditล่าสุด+P2closure(ใช้QAใหม่ได้เพราะKantปิดแล้ว), mockCLI32หลังbuildrunner, webiconlint/typecheck, T441typecheck→ติ๊กเมื่อผ่าน. จากนั้นตรวจT442CIworkerstatefailureก่อนpush/deployT409. .cache/t409-deploy.ps1ยังไม่execute. อย่าclaimT409/ระบบครบจากdevreport.
-- **11:09 CIใหม่11134b:** run42159021249ล้มworkerintegration1จุด `apps/worker/src/ai/ai.integration.test.ts:295` expectedclassified receivedinvestigating; อีก3jobsผ่าน. ไม่ได้เป็นผลT409ซึ่งยังuncommitted. T442เปิดไว้, log logs/deploy/2026-11-06-ci-11134b-integration.log. ยังไม่ยืนยันrootcause ห้ามลดassertion/อ้างflakyเฉยๆ.
-- Usage5h87%weekly60%ณ11:08; dev/reviewerได้รับคำสั่งfreezeboundedpatchและreportก่อน95%. Mainr2gateยังไม่เริ่ม. .cache/t409-deploy.ps1เตรียมbackup/buildapiworker/healthไว้แล้ว **ยังไม่execute**; ต้องP2closed+gateผ่านก่อน. T441SMTPfix+1regressionreviewผ่าน/lintผ่าน แต่รอAPItypecheckรอบถัดไปก่อนปิด.
-- **10:59 T409 รอบแรก:** sourceยังไม่commit; maingateผ่าน build6/static14/AI56/shared6/APIunit107/eval2/APIintegration112/7files. Reviewerindependent4adversarialtestsผ่าน. ยังไม่ปิด: P2entityprefetch/renderContextขาด4kind และhistoricaldictต้องเก็บtool-readrefแม้ไม่cite. DevCarsonกำลังแก้สองกลุ่มนี้+regressionแล้วrefreeze; QA Kantauditต่อ. Mainfixtesting/support.tsหนึ่งบรรทัดให้SMTPใช้TEST_SMTP_PORT(เดิมhardcodePOC1025) รอreview. ห้ามdeploy/sourcecommitก่อนP2closed+mainrerungate. Gate .cache/t409-main-gate.ps1 ใช้testports45802/46802/49802/41802; wt-main4containersactiveสำหรับtestเท่านั้น.
-- **10:47 T440:** commitd2c6833pushแล้ว แก้embedderรอinit; realruntimehealthy+initidempotent+35tests/reviewผ่าน. Modelbge-m3เก็บในvolumeแล้ว runtimeหยุด10:48เพราะยังไม่เปิดprovider (ไม่ลบvolume); calibrationfloor.55 recall100%noise6%(18queries/23passages). warmCPU2distinct3queries297/596/299ms; coldอาจkeywordfallback. Debugportปิดกลับ/isolatedembedonly; ยังไม่เปิดprovider/reembed T433รอT434รักษาvector/indexเก่า+manualenqueue. POCแอปเดิมhealthy. DevT409ยังทำsource; mainห้ามcommitปน.
-- **2026-11-06 10:31:** quota resetแล้ว (5h0%/weekly46%); checkpoint T-419 completed หมายถึง419bเท่านั้น → T-409 running (PID40860, claim local .cache/watchtower-claim.json). Dev CarsonทำT409 packages/ai+API assistant+eval proposals/runner; reviewerQAตรวจgapT407read-only. Mainดูdocs/gates ไม่ซ้อนproducerfiles.
-- **[TESTED] frozen full unit ผ่าน19/19tasks** (`logs/deploy/2026-11-06-frozen-unit.log`,8m58s); static29/29tasks, targetedweb68+freeze54, browser15/15. **CI42136725422ของ3ece132เขียวครบ4jobs**: lint/typecheck/unit, integration, e2e, Docker. รอบเก่าCIถูกcancelแทนด้วยรอบใหม่ ไม่ใช่failureค้าง.
-- **Push/deploy:** origin/main3ece132รวมT419b/T418a/T432; Dockerapi/worker/webbuild+deploy07:22หลังbackup pre-419b.dump; login/ready/bridgeHTTP200. DB0116ไม่มีschemaใหม่. Autosendปิด. testcontainers12ตัวหยุดแล้ว ไม่ลบvolume.
-- **คิว:** T409→T407a(SSE/palette/C22)→407b(history/memory/feedback)→407c(routee2e), T418writer→T419a แล้วT410/T411/T412/T420/T421; embeddingT433/T434ยังค้าง. T419b/T418a/T432ปิดแล้ว ไม่ทำซ้ำ. T419a/T418writerยังไม่เสร็จ. Phase3เก่าปิดไม่ได้แปลว่างานJarvisใหม่ครบ.
-- ทำต่อในturnเดียวเมื่อยังมีquota; boundedtaskเป็นcheckpointไม่ใช่เหตุหยุดรอheartbeat. ตรวจusageหลังcheckpoint; windowเหลือ≤5%ให้waiting_limitด้วยresetจริงเฉพาะwindowที่ติด ส่วนที่ใช้ได้ให้now. ก่อนclaimตรวจactiveprocess/worktreeไม่ชน.
-- เจ้าของอนุมัติ2026-11-06ทำค้างครบ/deployหลังbackup/push/stopunusedโดยไม่ลบvolume และให้POตัดสินscope/default; LINEภายหลัง, ห้ามเปิดautosend/ส่งcustomerจริงทดสอบ. credentialใหม่blockedแล้วทำงานอิสระอื่นต่อ.
-- Automation watchtower-checkpointรายชั่วโมง (เครื่อง/appต้องเปิด); runbook docs/runbooks/codex-continuation.md/ADR032. ไม่รับประกันexactwaketime. Hostbridgeต้องpinCLIตามrunbookai-bridgeเพราะglobalCLIauto-update; authไม่อ่าน/คัดลอก.
+- **15:43 T409/T441 accepted:** maingate r2ผ่านbuild6/static14/AI65/shared6/APIunit116/eval2/APIintegration114/8files; mockCLI32/32,citation100%,แต่ละcaseuncited≤1; webiconlint/typecheckผ่าน. IndependentsecurityปิดP2ทั้งหมดรวมhandoffaudit. ไม่มีliveeval/ไม่แตะgolden. T409review recordในdocs/decisions.
+- **T442:** CI11134bworkerstate raceแก้เฉพาะtestoutboxboundaryโดยคงassertionsครบ; reviewerผ่าน. Mainrerunbrief+downstreaminvestigationกำลังรันexec99842/logt442-main; dev5tests+staticผ่าน. ต้องอ่านmainresultก่อนติ๊กT442.
+- **Deployment:** T409ยังไม่deploy ณ15:43; script .cache/t409-deploy.ps1พร้อมbackup+buildapiworker+health. รอT442maingateก่อนexecute. Websourceมีเพียงclaimiconsorg/serviceเพิ่ม ใช้sharedschemaใหม่ ต้องbuildwebในbatchdeployด้วย. Pushเฉพาะreviewedsourceและdocs ไม่add .agents/.codex.
+- **Checkpoint:** T409running PID40860+claimlocal .cache/watchtower-claim.json หลังreset(usage5h1%/weekly62%เวลา15:38). ไม่มีrunnerเก่าค้าง; r2jobก่อนพักจบและstoptestcontainersแล้ว. wt-main4containersเปิดใหม่เพื่อT442test หยุดเมื่อเลิกใช้ ไม่ลบvolume.
+- **คิวถัดไป:** T407a(SSE/palette/C22)→407b(history/memory/feedback)→407c(routee2e); T418writer→419a; T410/411/412/420/421. T419b/T418a/T432/T440ปิดแล้ว ไม่ทำซ้ำ. T433รอT434indexpreservation/manualenqueue+APIhybrid; modeldownload+calibrationพร้อมแต่embedderหยุดเก็บvolume.
+- ทำต่อในturnเดียวเมื่อมีquota งานย่อยเป็นcheckpointไม่ใช่เหตุหยุดรอheartbeat; ตรวจusageก่อนงานหนัก/หลังcheckpoint ถ้าwindowเหลือ≤5%ให้waiting_limitใช้resetจริงเฉพาะwindowที่ติด ส่วนที่ใช้ได้ให้now. Agentสูงสุด1dev+1reviewer. MainverifyN7ก่อนcommit.
+- เจ้าของอนุมัติทำค้างครบ/deployหลังbackup/push/stopunusedไม่ลบvolume และให้POตัดสินscope/default; LINEภายหลัง ห้ามเปิดautosend/ส่งcustomerจริงทดสอบ. Credentialใหม่blockedแล้วทำงานอิสระต่อ. Automationhourlyต้องเครื่อง/appเปิด; ไม่รับประกันexactwaketime.
 
 ## สถานะปัจจุบัน
 - **Phase:** 1 = done pending pilot · 2 = done pending live (GCP/Discord จริง) · 3 = ✅ done pending live gate (งานค้างของ PO T-306c ปิดครบ, ADR-025/026 Accepted) · LINE = feature ภายหลัง · Phase 4: ดึง T-152 (ลิงก์ "คำขอของฉัน" ทางอีเมล) + Web Push live มาทำแล้ว
@@ -92,4 +85,3 @@
 - rotate key `watchtower-pubsub-admin`: 2027-02-01 (90 วันจากสร้าง 2026-11-03)
 - ทบทวน residual P3 (C-4, C-6, C-9, C-14) ก่อนเปิด `AI_AUTOSEND_ENABLED` ที่ใด
 
-[CONFIRMED] 11:12 checkpointT409 waiting_limit: 5hใช้95% weekly61%; nextEligibleAt=15:30:19Bangkok. ไม่มีAIagentactive; deterministicr2gateยังรันได้ตามscriptและstoptestcontainersเมื่อจบ. ผลรับต่อจากlog ไม่เริ่มAIงานเพิ่มก่อนreset.

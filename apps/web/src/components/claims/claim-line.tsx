@@ -49,6 +49,8 @@ const KIND_ICONS: Record<ClaimEvidenceKind, LucideIcon> = {
   metric: BarChart3,
   intent: Tags,
   config: Settings,
+  org: Database,
+  service: Settings,
 };
 
 const CHIP =

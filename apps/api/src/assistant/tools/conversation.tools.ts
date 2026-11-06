@@ -70,7 +70,7 @@ export function conversationFact(row: ConversationItem, text: string) {
     text,
     trust: 'customer',
     href: HREF,
-    names: row.fromName === null ? [] : [row.fromName],
+    names: [row.fromName, row.fromAddress].filter((name): name is string => name !== null),
   });
 }
 

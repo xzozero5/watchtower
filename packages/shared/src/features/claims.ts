@@ -29,6 +29,8 @@ export const CLAIM_EVIDENCE_KINDS = [
   'metric',
   'intent',
   'config',
+  'org',
+  'service',
 ] as const;
 export const claimEvidenceKindSchema = z.enum(CLAIM_EVIDENCE_KINDS);
 export type ClaimEvidenceKind = z.infer<typeof claimEvidenceKindSchema>;

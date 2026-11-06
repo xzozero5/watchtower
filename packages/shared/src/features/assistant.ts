@@ -206,6 +206,9 @@ export const proposalCardSchema = z.object({
 export type ProposalCard = z.infer<typeof proposalCardSchema>;
 
 export const assistantReplySchema = z.object({
+  /** Present on stage-1 replies; older persisted replies may omit these fields. */
+  path: z.enum(['facts_only', 'llm1', 'llm2']).optional(),
+  hadCustomerContent: z.boolean().optional(),
   conversationId: z.uuid(),
   messageId: z.uuid(),
   state: assistantStateSchema,

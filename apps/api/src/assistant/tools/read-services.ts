@@ -1,5 +1,8 @@
 import { Inject, Injectable } from '@nestjs/common';
 
+import { AlertsCatalog } from '../../alerts/catalog.service.js';
+import { OrganizationsService } from '../../orgs/organizations.service.js';
+import { HandoffService } from '../../shifts/handoff.service.js';
 import { AutonomyService } from '../../autonomy/autonomy.service.js';
 import { CredentialsService } from '../../credentials/credentials.service.js';
 import { DashboardService } from '../../dashboard/dashboard.service.js';
@@ -19,6 +22,10 @@ import { TimelineService } from '../../tickets/timeline.service.js';
  * object so `AssistantToolDeps` takes one optional field and a test fakes what it needs.
  */
 export interface ModuleReadServices {
+  readonly organizations?: Pick<OrganizationsService, 'get'>;
+  readonly intentDetail?: Pick<IntentsService, 'get'>;
+  readonly catalog?: Pick<AlertsCatalog, 'getService'>;
+  readonly handoffs?: Pick<HandoffService, 'current' | 'incoming'>;
   readonly reader: Pick<TicketReader, 'viewRow'>;
   readonly dashboard: Pick<DashboardService, 'ops' | 'performance'>;
   readonly ceo: Pick<CeoViewService, 'read'>;
@@ -36,6 +43,10 @@ export interface ModuleReadServices {
 @Injectable()
 export class AssistantReadServices implements ModuleReadServices {
   constructor(
+    @Inject(OrganizationsService) readonly organizations: OrganizationsService,
+    @Inject(IntentsService) readonly intentDetail: IntentsService,
+    @Inject(AlertsCatalog) readonly catalog: AlertsCatalog,
+    @Inject(HandoffService) readonly handoffs: HandoffService,
     @Inject(TicketReader) readonly reader: TicketReader,
     @Inject(DashboardService) readonly dashboard: DashboardService,
     @Inject(CeoViewService) readonly ceo: CeoViewService,

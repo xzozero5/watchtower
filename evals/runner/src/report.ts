@@ -16,6 +16,8 @@ export interface SummaryRow {
   readonly inputTokens: number;
   readonly outputTokens: number;
   readonly costUsd: number | null;
+  readonly citationRecall?: number | null;
+  readonly uncitedClaims?: number;
 }
 
 export interface EvalReport {
@@ -37,11 +39,20 @@ export function summarize(results: readonly CaseResult[]): SummaryRow[] {
     const first = group[0] as CaseResult;
     const priced = group.filter((result) => result.costUsd !== null);
     const passed = group.filter((result) => result.pass).length;
+    const citations = group.flatMap((result) => result.citationMetrics ?? []);
+    const requiredRefs = citations.reduce((total, item) => total + item.requiredRefs, 0);
+    const matchedRefs = citations.reduce((total, item) => total + item.matchedRefs, 0);
     return {
       agent: first.agent,
       promptId: first.promptId,
       promptVersion: first.promptVersion,
       promptHash: first.promptHash,
+      ...(citations.length === 0
+        ? {}
+        : {
+            citationRecall: requiredRefs === 0 ? null : matchedRefs / requiredRefs,
+            uncitedClaims: citations.reduce((total, item) => total + item.uncitedClaims, 0),
+          }),
       total: group.length,
       passed,
       passRate: group.length === 0 ? 0 : passed / group.length,
@@ -178,6 +189,12 @@ export function formatReport(report: EvalReport, comparison?: Comparison): strin
       ].join(' '),
     );
   }
+  for (const row of report.summary)
+    if (row.citationRecall !== undefined) {
+      lines.push(
+        `  ${row.agent}: citation recall ${row.citationRecall === null ? 'n/a (no required refs)' : pct(row.citationRecall)}, uncited ${String(row.uncitedClaims ?? 0)}`,
+      );
+    }
   const failed = report.results.filter((result) => !result.pass);
   if (failed.length > 0) {
     lines.push('', 'failed:');

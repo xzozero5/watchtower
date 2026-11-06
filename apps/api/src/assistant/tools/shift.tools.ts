@@ -209,10 +209,13 @@ export function registerShiftTools(
         // The declared route: GET /v1/handoffs/current.
         const current = await deps.handoffs.current(principal);
         const own = current.handoff;
+        if (own !== null) kit.onReadRef?.({ kind: 'handoff', id: own.id });
         const ownItems =
           want('handoff') && own !== null ? own.items.slice(0, rows).map(itemOf) : [];
         const incomingRaw =
           holds('handoff.ack') && want('incoming') ? await deps.handoffs.incoming(principal) : null;
+        for (const handoff of incomingRaw?.handoffs ?? [])
+          kit.onReadRef?.({ kind: 'handoff', id: handoff.id });
         const incomingItems =
           incomingRaw === null
             ? []

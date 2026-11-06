@@ -18,6 +18,7 @@ import { ShiftsModule } from '../shifts/shifts.module.js';
 import { StatusPageModule } from '../statuspage/statuspage.module.js';
 import { TicketsModule } from '../tickets/tickets.module.js';
 import { ToolsModule } from '../tools/tools.module.js';
+import { AssistantFactsCache } from './assistant-facts-cache.js';
 import { AssistantController } from './assistant.controller.js';
 import { AssistantFeedbackService } from './assistant-feedback.js';
 import { AssistantMemoryService } from './assistant-memory.js';
@@ -55,6 +56,7 @@ import { AssistantReadServices } from './tools/read-services.js';
   controllers: [AssistantController],
   providers: [
     AssistantService,
+    AssistantFactsCache,
     AssistantProposals,
     AssistantMemoryService,
     AssistantFeedbackService,

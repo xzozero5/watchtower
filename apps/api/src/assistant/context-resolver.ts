@@ -15,6 +15,10 @@ import { IntentsService } from '../intents/intents.service.js';
 import { KbService } from '../kb/kb.service.js';
 import { OrganizationsService } from '../orgs/organizations.service.js';
 import { TICKET_KEYS, type TicketKeys } from '../tickets/ticket-keys.js';
+import { OtherMailService } from '../inbound/other-mail.service.js';
+import { HandoffService } from '../shifts/handoff.service.js';
+import { AlertsCatalog } from '../alerts/catalog.service.js';
+import { visibleHandoff } from './entity-readers.js';
 import { TicketReader } from '../tickets/ticket-reader.js';
 import { DATABASE } from '../database/database.module.js';
 import type { Database } from '@watchtower/db';
@@ -39,6 +43,10 @@ export interface ResolvedRef {
   readonly href?: string;
   /** The organization it belongs to, when the kind has one: its people go to the redactor (N4). */
   readonly orgId?: string | null;
+  readonly orgIds?: readonly string[];
+  readonly names?: readonly string[];
+  readonly namesComplete?: boolean;
+  readonly summaryTool?: 'handoff_get' | 'handoff_incoming_get';
 }
 
 /** Returns the ref when the caller may read it; null for "no such thing" and for "not yours", the same. */
@@ -50,11 +58,7 @@ export type KindReader = (ref: string, principal: Principal) => Promise<Resolved
  */
 export type KindReaders = { readonly [K in AssistantEntityKind]?: KindReader };
 
-export const KINDS_WITHOUT_READER = [
-  'conversation',
-  'handoff',
-  'service',
-] as const satisfies readonly AssistantEntityKind[];
+export const KINDS_WITHOUT_READER: readonly AssistantEntityKind[] = [];
 
 export interface ContextDrop {
   readonly kind: AssistantEntityKind;
@@ -188,8 +192,59 @@ export class ContextResolver {
     @Inject(KbService) kb: KbService,
     @Inject(IntentsService) intents: IntentsService,
     @Inject(OrganizationsService) orgs: OrganizationsService,
+    @Inject(OtherMailService) otherMail: OtherMailService,
+    @Inject(HandoffService) handoffs: HandoffService,
+    @Inject(AlertsCatalog) catalog: AlertsCatalog,
   ) {
     this.readers = {
+      service: async (ref, principal) => {
+        if (!holdsAny(principal, ['alert.read']) || !uuid.safeParse(ref).success) return null;
+        const service = await runReadOnly(database, () => catalog.getService(ref));
+        return { kind: 'service', id: service.id, label: service.name };
+      },
+      handoff: async (ref, principal) => {
+        if (!uuid.safeParse(ref).success) return null;
+        const handoff = await runReadOnly(database, () => visibleHandoff(handoffs, principal, ref));
+        if (handoff === null) return null;
+        const orgIds: string[] = [];
+        let namesComplete = true;
+        for (const item of handoff.items)
+          if (item.ticket !== null) {
+            try {
+              const view = await runReadOnly(database, (db) =>
+                tickets.viewRow(item.ticket?.id ?? '', principal, db),
+              );
+              orgIds.push(view.t.orgId);
+            } catch (error) {
+              if (!isRefusal(error)) throw error;
+              namesComplete = false;
+            }
+          }
+        return {
+          kind: 'handoff',
+          id: handoff.id,
+          label: 'Handoff',
+          orgIds,
+          namesComplete,
+          names: [
+            handoff.from.name,
+            ...handoff.items.flatMap((item) => item.ticket?.assignee?.name ?? []),
+          ],
+          summaryTool:
+            handoff.from.id === principal.userId ? 'handoff_get' : 'handoff_incoming_get',
+        };
+      },
+      conversation: async (ref, principal) => {
+        if (!holdsAny(principal, ['inbound.read']) || !uuid.safeParse(ref).success) return null;
+        const mail = await otherMail.get(ref);
+        return {
+          kind: 'conversation',
+          id: mail.id,
+          label: mail.subject || 'Other mail',
+          href: '/other-mail',
+          names: [mail.fromName, mail.fromAddress].filter((name): name is string => name !== null),
+        };
+      },
       ticket: async (ref, principal) => {
         // `ticket.read` or the masked read: `viewRow` refuses anyone else and hides what the person may not see.
         const view = await runReadOnly(database, (db) => tickets.viewRow(ref, principal, db));
@@ -204,8 +259,8 @@ export class ContextResolver {
       },
       incident: async (ref, principal) => {
         if (!holdsAny(principal, ['ticket.read']) || !uuid.safeParse(ref).success) return null;
-        const row = await incidents.getRow(ref);
-        return { kind: 'incident', id: row.id, label: row.title };
+        const row = await incidents.get(ref);
+        return { kind: 'incident', id: row.id, label: row.title, orgIds: row.orgIds };
       },
       alert: async (ref, principal) => {
         if (!holdsAny(principal, ['alert.read']) || !uuid.safeParse(ref).success) return null;

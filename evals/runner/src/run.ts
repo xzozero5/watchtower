@@ -29,6 +29,8 @@ import {
   checkKbAuthor,
   type Check,
 } from './checks.js';
+import { runAssistantCase } from './assistant-run.js';
+import type { assistantCitationMetrics } from './assistant-citations.js';
 import { caseTicketId, type Rig } from './rig.js';
 
 export interface CaseResult {
@@ -50,6 +52,7 @@ export interface CaseResult {
   /** Null when no call had a price (unknown, not zero). */
   readonly costUsd: number | null;
   readonly latencyMs: number;
+  readonly citationMetrics?: ReturnType<typeof assistantCitationMetrics>;
 }
 
 const statusOf = <T>(outcome: AgentOutcome<T>): Pick<CaseResult, 'status' | 'reason'> =>
@@ -182,8 +185,16 @@ export async function runCase(
   const promptId = PROMPT_OF_AGENT[item.agent];
   const prompt = deps.prompts.latest(promptId);
 
-  let outcome: { status: 'ok' | 'skipped' | 'failed'; reason: string | null; checks: Check[] };
+  let outcome: {
+    status: 'ok' | 'skipped' | 'failed';
+    reason: string | null;
+    checks: Check[];
+    citationMetrics?: ReturnType<typeof assistantCitationMetrics>;
+  };
   switch (item.agent) {
+    case 'personal_assistant':
+      outcome = await runAssistantCase(deps, item);
+      break;
     case 'classifier':
       outcome = { ...(await classifier(deps, item)) };
       break;
@@ -217,6 +228,7 @@ export async function runCase(
     status: outcome.status,
     reason: outcome.reason,
     checks,
+    ...(outcome.citationMetrics === undefined ? {} : { citationMetrics: outcome.citationMetrics }),
     calls: runs.length,
     ...sum(runs),
   };
