@@ -35,3 +35,5 @@
 - Review records (security/po) เก็บเป็น `T-xxx-review.md` ในโฟลเดอร์นี้
 
 - [ADR-032](ADR-032-codex-continuation.md) — checkpoint + Codex app heartbeat ทุกชั่วโมง เคารพโควตา 5h/weekly, ไม่มี auth scraping/retry loop · Accepted 2026-11-06
+
+- [ADR-033](ADR-033-kb-multi-index.md) — immutable KB chunks + vectorsต่อindex, active-specquery และ atomicpublish/switch; แผน T434ก่อนเปิดT433 · Acceptedแนวทาง2026-11-06 (implementationยังไม่ทดสอบ)
