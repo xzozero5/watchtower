@@ -5,6 +5,8 @@ snapshot สั้นสำหรับ cold start อยู่ที่ `HANDOF
 
 ## สถานะปัจจุบัน
 
+- **2026-11-06 15:51 [TESTED]:** T409/T441/T442commit/push62ce32c1แล้ว. Docker3appsbuild/redeploy15:49หลังbackupvalidated; POC9healthy/loginreadybridge200/online=true/autosend=false. T442main20tests+static/reviewผ่าน; CI42190164923กำลังรัน. checkpoint407running(407aSSE/C22), devwebกำลังทำ. Testcontainers4หยุดหลังใช้ ไม่ลบvolume. T433ยังไม่เปิด.
+
 - **2026-11-06 15:43 [TESTED]:** quotaresetแล้ว; T409/T441ตรวจรับ mainr2static14/APIintegration114+AI65/API116/shared6/eval2, mockCLI32/32citation100%และuncited≤1ทุกcase; webstaticผ่าน. IndependentreviewปิดP2ทุกข้อ. T442testfixreviewผ่าน mainrerunbrief+investigationกำลังรัน; T409ยังไม่deploy. Sourceกำลังcommitตามreview ไม่อ้างCIครบจนrerunจริง.
 
 - **2026-11-06 10:31 [TESTED]:** full frozen unit19/19tasksผ่าน; CI42136725422ที่3ece132เขียวครบ4jobsรวมintegration/e2e/Docker. T419bปิด checkpoint→T409runningหลังquotareset; T407gapreviewขนานread-only. Deploy/pushสำเร็จตามentry07:25; งานJarvisใหม่ยังค้างตามBACKLOG.
@@ -518,3 +520,10 @@ DevรายงานP2prefetch9kinds/visibleentities/readRefsuncited/handoffaud
 ## 2026-11-06 15:46 — main + independent review — T442 ปิด local
 RootcauseinsightOfรอrowมีแล้วอ่านได้หลังdownstreaminvestigationเปลี่ยนstate. แก้testดักเฉพาะinvestigateที่outboxboundaryและassertว่าenqueueจริง โดยคงclassified/intent/nextstep/summary/confidence/run/redaction/kill/budgetassertionsเดิม. Mainbrief+downstreamintegration20/20ผ่าน, workerfileeslint+typecheckผ่าน. Reviewerคนละproducerไม่พบลดcontract/P1P2. CIrerunยังรอหลังpush.
 T409deployเริ่มbackupvalidated13,758,360bytesที่poc-20261106-154549-pre-t409.dump; build3appsกำลังรัน ไม่claimhealthcomplete. ไม่มีmigrationใหม่/ไม่เปิดautosend.
+
+## 2026-11-06 16:12 — main + QA — T407a/T443 gate
+T407afrozen lint/typecheck/unit170/buildผ่าน; dedicatedSSEflow/queueStop/C22ผ่าน. DefaultPlaywrightbinary1248ไม่มี ใช้installedEdgeแทน(ไม่download). Browser39ผ่าน1failfocusringเดิม: runtimefocusVisible=trueแต่outline=none3px. Rootoutline-hiddenตั้ง--tw-outline-style:none; widthvariantไม่คืนsolid. แก้panes+strictkeyboardเดิม40/40ผ่าน+workspaceunit58ผ่าน; พบpatternเดียวกันsharedUIจึงขยายexplicitfocus-solidเฉพาะwidth2variantและเพิ่มassertsolid(ไม่ลด2px). SharedUIgate/rebuild/browserรอบสุดท้ายกำลังรัน รอreviewก่อนปิดT443/407a. ไม่มีliveAI/customerส่งจริง.
+CI42190164923ของ62ce32c1เขียวครบ4jobsแล้ว(รวมfullstacke2e); T409/T441/T442deploy/pushก่อนหน้าตรวจครบ.
+
+## 2026-11-06 16:16 — main + QA — T407a/T443 accepted
+Mainfrozen407a: weblint/typecheck/unit170ผ่าน; P2RetryStopแก้resetเฉพาะunavailableคงpaused/budget และreviewผ่าน. MainT443expandedsharedUIbuild/lint/typecheck/unit809/14filesผ่าน + workspace/appshell58ผ่าน; finalwebbuild(typephase)+weblint+browserEdge40/40ผ่านรวมSSEphase/queue/Stop/C22, keyboard2pxsolid, axeTH/EN/lightdarksmoke. ไม่มีdebugprobeหรือผ่อนassertion. Sharedfocus-solidเพิ่มเฉพาะfocusvariantoutline2เดิม. CSRFsessionเปลี่ยนระหว่างrepairเป็นunverifiedresidualยังไม่มีrepro ไม่อ้างfixed. ยังไม่deploy407a ณเวลานี้; codefreezeจนDockerimagecapture แล้วเริ่ม407bต่อ. Parent407ยังเปิดรอ407b/c.

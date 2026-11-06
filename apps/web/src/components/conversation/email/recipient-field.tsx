@@ -80,7 +80,7 @@ export function RecipientField({
               onClick={() => {
                 onChange(value.filter((item) => item.address !== entry.address));
               }}
-              className="inline-flex size-4 items-center justify-center rounded-full text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring"
+              className="inline-flex size-4 items-center justify-center rounded-full text-muted-foreground hover:text-foreground focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-ring"
             >
               <X aria-hidden className="size-3" />
             </button>

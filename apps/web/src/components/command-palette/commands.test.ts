@@ -18,6 +18,24 @@ const tEn: Translate = (key, values) => translate(getMessages('en'), key, values
 const tTh: Translate = (key, values) => translate(getMessages('th'), key, values);
 
 describe('buildCommands', () => {
+  it('offers Ask AI only with assistant.use and a workspace session, independent of ticket access', () => {
+    const a = { ...actions(), askAssistant: vi.fn() };
+    for (const assistantWorkspace of [true, false, undefined]) {
+      for (const permission of ['assistant.use', 'ticket.read', 'ticket.read.masked', 'none']) {
+        const commands = buildCommands(tEn, a, {
+          can: (p) => p === permission,
+          assistantWorkspace,
+        });
+        expect(commands.some((c) => c.id === 'ai.ask')).toBe(
+          assistantWorkspace === true && permission === 'assistant.use',
+        );
+      }
+    }
+    buildCommands(tEn, a, { can: () => true, assistantWorkspace: true })
+      .find((c) => c.id === 'ai.ask')
+      ?.run();
+    expect(a.askAssistant).toHaveBeenCalledOnce();
+  });
   it('translates labels into the current language', () => {
     expect(buildCommands(tEn, actions()).map((c) => c.label)).toContain('Theme: dark');
     expect(buildCommands(tTh, actions()).map((c) => c.label)).toContain('ธีม: มืด');

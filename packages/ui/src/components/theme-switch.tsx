@@ -33,7 +33,7 @@ export function ThemeSwitch({ dark, onDarkChange, label, className, ...props }: 
           onDarkChange(!dark);
         }}
         className={cn(
-          'relative inline-flex h-7 w-14 shrink-0 cursor-pointer items-center justify-between rounded-full bg-surface-muted px-2 text-muted-foreground shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--color-border)_70%,transparent)] outline-hidden focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring max-md:h-9 max-md:w-16',
+          'relative inline-flex h-7 w-14 shrink-0 cursor-pointer items-center justify-between rounded-full bg-surface-muted px-2 text-muted-foreground shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--color-border)_70%,transparent)] outline-hidden focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring max-md:h-9 max-md:w-16',
           className,
         )}
         {...props}

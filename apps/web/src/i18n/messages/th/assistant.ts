@@ -149,7 +149,7 @@ export const assistantTh: Widen<typeof assistantEn> = {
       },
       admin: {
         a: 'หน้าตั้งค่านี้ควรตรวจอะไร',
-        b: 'ใครแก้ค่าเหล่านี้ล่าสุด',
+        b: 'ตอนนี้ตั้งค่าอะไรไว้บ้าง',
       },
       other: {
         a: 'หน้านี้บอกอะไรได้บ้าง',
@@ -212,6 +212,10 @@ export const assistantTh: Widen<typeof assistantEn> = {
     you: 'คุณ',
     ai: 'AI',
     thinking: 'กำลังคิด',
+    queued: 'อยู่ในคิว · ลำดับที่ {position}',
+    context: 'กำลังตรวจบริบท',
+    tool: 'กำลังตรวจ {name}',
+    answering: 'กำลังเตรียมคำตอบ',
     ready: 'คำตอบพร้อมแล้ว',
     stopped: 'หยุดแล้ว ถามใหม่ได้เลย',
   },
@@ -248,6 +252,7 @@ export const assistantTh: Widen<typeof assistantEn> = {
     retry: 'ลองอีกครั้ง',
   },
   proposal: {
+    customerWarning: 'สร้างจากบทสนทนาที่มีข้อความลูกค้า — ตรวจก่อนกด',
     label: 'การแก้ไขที่เสนอ',
     kind: {
       assign: 'มอบหมาย ticket',

@@ -1,7 +1,7 @@
 # HANDOFF — Watchtower
 
 > สถานะล่าสุดของโปรเจกต์ session ใหม่อ่านไฟล์นี้ต่อจาก `AGENTS.md` แล้วทำงานต่อได้โดยไม่ต้องอ่านบทสนทนาเดิม
-> อัปเดตล่าสุด: 2026-11-06 15:43 (เวลากรุงเทพ) โดย Codex — T409 accepted, T442 main gate
+> อัปเดตล่าสุด: 2026-11-06 15:51 (เวลากรุงเทพ) โดย Codex — T409 deployed, T407a running
 > ฉบับก่อน: `docs/handoff-archive/HANDOFF-2026-11-05-pre-ai-bridge.md` · บันทึกรายชั่วโมง `logs/daily/2026-11-05.md`
 
 > ✅ **push แล้ว 2026-11-05** (`origin/main` = `e325c83`, CI run 41963960467 เขียวทั้ง 4 job) · ✅ **POC deploy แล้ว 2026-11-05 11:10** (เจ้าของ OK): backup `D:\Works\watchtower-backups\poc-20261105-1105-pre-phase3.dump` (13.5 MB) → build api/worker/web/bridge/gmail-tunnel → migrate 22 ตัวถึง 0111 → ทุก service healthy · `AI_AUTOSEND_ENABLED` ไม่ได้ตั้ง
@@ -10,13 +10,15 @@
 > ✅ **2026-11-06 05:26:** push `635914d` แล้ว (รวม82commitเดิม); CI42121519210cancelledเพราะpushเอกสารใหม่; CI42121588809ของ31abb66ล้มops test2ตัว → T-438แก้แล้ว รอดูCIใหม่. POC api/worker/web redeploy00:21 healthy, bridgeจากapihealth200หลังpinCLI. T-437 completed; checkpoint task T-419 ready หมายถึง T-419b ที่ POเลือก (schema taskIdรับเลขเท่านั้น). งานassistantยังต้องทำต่อ
 
 ## Continuation (อ่านก่อนเริ่มรอบใหม่)
-- **15:43 T409/T441 accepted:** maingate r2ผ่านbuild6/static14/AI65/shared6/APIunit116/eval2/APIintegration114/8files; mockCLI32/32,citation100%,แต่ละcaseuncited≤1; webiconlint/typecheckผ่าน. IndependentsecurityปิดP2ทั้งหมดรวมhandoffaudit. ไม่มีliveeval/ไม่แตะgolden. T409review recordในdocs/decisions.
-- **T442ปิด:** workerstate raceแก้testoutboxboundaryคงassertionsครบ+ตรวจenqueueจริง. Mainbrief+downstream20tests/lint/typecheckผ่าน; reviewerผ่าน. logt442-main. ยังต้องดูCIrerunหลังpush ไม่อ้างCIเขียวจากlocal.
-- **Deploymentกำลังรัน15:46:** T409commit eb7be20c; script .cache/t409-deploy.ps1 exec94892 backup D:/Works/watchtower-backups/poc-20261106-154549-pre-t409.dump 13,758,360bytes validateแล้ว → buildapi/worker/webทั้งหมด → ขึ้นwebก่อนAPIเพื่อให้รับevidencekindใหม่ได้. Logt409-deploy-main/docker-build. ยังไม่อ้างdeployผ่านจนhealthครบ. Sourcefunctionalfreezeระหว่างbuild; ยังไม่ให้devทำT407aบนworkspaceนี้.
-- **Checkpoint:** T409running PID40860+claimlocal .cache/watchtower-claim.json หลังreset(usage5h1%/weekly62%เวลา15:38). ไม่มีrunnerเก่าค้าง; r2jobก่อนพักจบและstoptestcontainersแล้ว. wt-main4containersเปิดใหม่เพื่อT442test หยุดเมื่อเลิกใช้ ไม่ลบvolume.
-- **คิวถัดไป:** T407a(SSE/palette/C22)→407b(history/memory/feedback)→407c(routee2e); T418writer→419a; T410/411/412/420/421. T419b/T418a/T432/T440ปิดแล้ว ไม่ทำซ้ำ. T433รอT434indexpreservation/manualenqueue+APIhybrid; modeldownload+calibrationพร้อมแต่embedderหยุดเก็บvolume.
-- ทำต่อในturnเดียวเมื่อมีquota งานย่อยเป็นcheckpointไม่ใช่เหตุหยุดรอheartbeat; ตรวจusageก่อนงานหนัก/หลังcheckpoint ถ้าwindowเหลือ≤5%ให้waiting_limitใช้resetจริงเฉพาะwindowที่ติด ส่วนที่ใช้ได้ให้now. Agentสูงสุด1dev+1reviewer. MainverifyN7ก่อนcommit.
-- เจ้าของอนุมัติทำค้างครบ/deployหลังbackup/push/stopunusedไม่ลบvolume และให้POตัดสินscope/default; LINEภายหลัง ห้ามเปิดautosend/ส่งcustomerจริงทดสอบ. Credentialใหม่blockedแล้วทำงานอิสระต่อ. Automationhourlyต้องเครื่อง/appเปิด; ไม่รับประกันexactwaketime.
+- **16:16 T407a/T443 accepted:** weblint/type/unit170, sharedUI809+build/lint/type, workspace58, finalwebbuild/lint/browserEdge40ผ่านรวมkeyboard2pxsolid+SSEphaseStopwarning/axe. QAปิดP2RetryStop; expandedfocusstylesreviewผ่าน. กำลังcommit/deploywebหลังbackup; ยังไม่ให้devเขียน407bจนimagebuildcaptureเสร็จ. Parent407ยังopen. ADR033เขียนแล้วสำหรับ434แต่ยังไม่implement/migrate.
+- CI42190164923ของ62ce32c1greenครบ4jobsแล้ว; T409/T441/T442deploy/pushverified. Localbrowserใช้PW_CHANNEL=msedgeเพราะPlaywrightheadless1248ไม่มี ไม่downloadใหม่. Gate .cache/t407a-main-gate.ps1 ตั้งEdgeไว้แล้ว.
+- **15:51 T409/T441/T442ปิด:** commit eb7be20c+62ce32c1 pushตรงoriginแล้ว; mainr2static14/APIintegration114/AI65/API116/shared6/eval2, mockCLI32/32citation100%uncited≤1ทุกcase, webstaticผ่าน. FinalsecurityP2closed. T442brief+downstream20tests/lint/typecheck/reviewผ่าน คงclassificationcontractครบ. CI42190164923ของ62ce32c1กำลังรัน รอจริงก่อนอ้างgreen.
+- **[TESTED] T409Dockerdeploy15:49:** backupvalidated D:/Works/watchtower-backups/poc-20261106-154549-pre-t409.dump13,758,360bytes → buildapi/worker/web3images → webขึ้นก่อนAPIworkerเพื่อรับevidencekindใหม่ → healthyครบ9services. Login/ready/bridgeHTTP200; bridgeonline=true; autosendEnabled=false. NativeDockerstderrเคยทำPSStopหยุดก่อนup (buildผ่าน) แก้/verifytimestampsแล้วupสำเร็จ; logt409-deploy-main+docker-up/web-up. ไม่มีmigrationใหม่.
+- **CheckpointT407running** (หมายถึง407a), PID40860/claimlocal .cache/watchtower-claim.json. DevJamesทำapps/web SSE/phase/queue/Stop+palettepermission+C22warning/tests. ยังไม่รวม407bmemory/history/feedback. ArchitectBoyleอ่านT434designsidecar ไม่แก้ไฟล์. Maindocs/verifyCI/deploy ไม่แตะdevscope.
+- **Resourcecleanup:** wt-main4testcontainersหยุดแล้ว; embedder/oldclaudebridgeหยุดเก็บvolume. มีเฉพาะPOC9containersrunning. Modelbge-m3download/calibrationพร้อม แต่T433providerยังไม่เปิดรอT434preserveoldindex/manualenqueue+APIhybrid.
+- **คิว:** 407a→407b→407c; T418writer→419a; T410/411/412/420/421. T419b/T418a/T432/T440ปิดแล้วไม่ทำซ้ำ. T434ต้องADRก่อนmigrationและต้องqueryด้วยactiveprovider/modelระหว่างindextransition ไม่ใช่เก็บvectorแต่ยังkeywordonly.
+- ทำต่อในturnเดียวเมื่อมีquota งานย่อยเป็นcheckpointไม่ใช่เหตุหยุดรอheartbeat. ตรวจusageก่อนงานหนัก/หลังcheckpoint windowเหลือ≤5%ให้waiting_limitด้วยresetจริงเฉพาะwindowที่ติด ส่วนที่ยังใช้ได้ใส่now. Agentสูงสุด1dev+1reviewer; MainverifyN7ก่อนcommit.
+- เจ้าของอนุมัติทำค้างครบ/deployหลังbackup/push/stopunusedไม่ลบvolume ให้POตัดสินscope/default; LINEภายหลัง ห้ามเปิดautosend/ส่งcustomerจริงทดสอบ. Credentialใหม่blockedแล้วทำงานอิสระต่อ. Automationhourlyต้องเครื่อง/appเปิด ไม่รับประกันexactwake.
 
 ## สถานะปัจจุบัน
 - **Phase:** 1 = done pending pilot · 2 = done pending live (GCP/Discord จริง) · 3 = ✅ done pending live gate (งานค้างของ PO T-306c ปิดครบ, ADR-025/026 Accepted) · LINE = feature ภายหลัง · Phase 4: ดึง T-152 (ลิงก์ "คำขอของฉัน" ทางอีเมล) + Web Push live มาทำแล้ว

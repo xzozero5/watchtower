@@ -16,6 +16,11 @@ export interface RequestOptions<Output> {
   schema: z.ZodType<Output> | null;
   /** Binary downloads use the same authentication and retry path as JSON requests. */
   responseType?: 'blob';
+  /** A checked streaming response, using the same cookies/CSRF/error handling. */
+  readResponse?: (response: Response, signal?: AbortSignal) => Promise<Output>;
+  accept?: string;
+  /** A conversational POST must never be replayed implicitly, even after auth repair. */
+  replayAfterAuth?: boolean;
   signal?: AbortSignal;
   /**
    * `false` for the sign-in and refresh endpoints: a 401 there is an answer, not a reason to
@@ -98,6 +103,26 @@ export class ApiClient {
     try {
       return await this.send(options);
     } catch (error) {
+      if (options.signal?.aborted) throw error;
+      if (error instanceof ApiRequestError && options.replayAfterAuth === false) {
+        if (error.code === 'csrf_invalid') {
+          this.acceptSession(
+            await this.send({ path: '/v1/auth/session', schema: sessionInfoSchema }),
+          );
+        } else if (error.status === 401) {
+          try {
+            await this.coordinator.refresh(startedAt);
+          } catch (refreshError) {
+            if (refreshError instanceof ApiRequestError && refreshError.status === 401) {
+              this.clearSession();
+              this.options.onSessionExpired?.();
+            }
+            throw refreshError;
+          }
+        }
+        // Auth is repaired for the person's next explicit attempt; this turn was not resent.
+        throw error;
+      }
       if (
         !(error instanceof ApiRequestError) ||
         error.status !== 401 ||
@@ -163,7 +188,9 @@ export class ApiClient {
   private async send<Output>(options: RequestOptions<Output>): Promise<Output> {
     const method = options.method ?? 'GET';
     const headers: Record<string, string> = {
-      Accept: options.responseType === 'blob' ? 'application/octet-stream' : 'application/json',
+      Accept:
+        options.accept ??
+        (options.responseType === 'blob' ? 'application/octet-stream' : 'application/json'),
     };
     // A FormData body (an upload) sets its own multipart content type, with the boundary.
     const isForm = typeof FormData !== 'undefined' && options.body instanceof FormData;
@@ -189,6 +216,7 @@ export class ApiClient {
     }
 
     if (!response.ok) throw await errorFromResponse(response);
+    if (options.readResponse) return options.readResponse(response, options.signal);
     if (options.responseType === 'blob') return (await response.blob()) as Output;
     if (options.schema === null) return undefined as Output;
 

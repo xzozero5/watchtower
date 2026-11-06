@@ -1,6 +1,11 @@
 import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import type { AssistantReply, AssistantStarters, Role } from '@watchtower/shared';
+import type {
+  AssistantReply,
+  AssistantStarters,
+  Role,
+  AssistantPhaseEvent,
+} from '@watchtower/shared';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { AssistantBubble } from '@/components/assistant/assistant-bubble';
@@ -85,6 +90,170 @@ function setup(
 }
 
 const bubble = () => screen.findByTestId('assistant-bubble');
+
+describe('T407a phase stream and customer warning', () => {
+  it.each([
+    { state: 'unavailable' as const, starterState: 'ok' as const, disabled: false },
+    { state: 'paused' as const, starterState: 'ok' as const, disabled: true },
+    { state: 'budget' as const, starterState: 'ok' as const, disabled: true },
+  ])(
+    'Retry → Stop clears transient $state while respecting starters $starterState',
+    async ({ state, disabled }) => {
+      const api = setup();
+      let calls = 0;
+      vi.stubGlobal('fetch', (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = input instanceof Request ? input.url : input.toString();
+        if (!url.endsWith('/v1/assistant/messages')) return api.fetchMock(input, init);
+        calls++;
+        if (calls === 1)
+          return Promise.resolve(
+            new Response(
+              `data: ${JSON.stringify({ phase: 'error', state, reason: 'assistant_queue_full' })}\n\n`,
+              { headers: { 'content-type': 'text/event-stream' } },
+            ),
+          );
+        return Promise.resolve(
+          new Response(new ReadableStream<Uint8Array>(), {
+            headers: { 'content-type': 'text/event-stream' },
+          }),
+        );
+      });
+      await userEvent.click(await bubble());
+      const input = await screen.findByRole('textbox', { name: 'Ask the AI assistant' });
+      await userEvent.type(input, 'check queue{Enter}');
+      const retry = await screen.findByRole('button', { name: 'Try again' });
+      await userEvent.click(retry);
+      await userEvent.click(screen.getByRole('button', { name: 'Stop' }));
+      expect(await screen.findByText('Stopped. You can ask again.')).toBeVisible();
+      expect(input).toHaveProperty('disabled', disabled);
+    },
+  );
+  it.each(['Stop', 'New chat'])(
+    'ignores a late response after %s, even if fetch ignores abort',
+    async (button) => {
+      const api = setup();
+      let resolveOld: (response: Response) => void = () => undefined;
+      let calls = 0;
+      vi.stubGlobal('fetch', (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = input instanceof Request ? input.url : input.toString();
+        if (!url.endsWith('/v1/assistant/messages')) return api.fetchMock(input, init);
+        calls++;
+        if (calls === 1)
+          return new Promise<Response>((resolve) => {
+            resolveOld = resolve;
+          });
+        return Promise.resolve(
+          new Response(JSON.stringify(reply()), {
+            headers: { 'content-type': 'application/json' },
+          }),
+        );
+      });
+      await userEvent.click(await bubble());
+      const input = await screen.findByRole('textbox', { name: 'Ask the AI assistant' });
+      await userEvent.type(input, 'old question{Enter}');
+      await userEvent.click(screen.getByRole('button', { name: button }));
+      await userEvent.type(input, 'new question{Enter}');
+      await screen.findByTestId('assistant-answer');
+      await act(async () => {
+        resolveOld(
+          new Response(
+            JSON.stringify(
+              reply({ claims: [{ text: 'STALE RESPONSE', evidence: [], uncited: true }] }),
+            ),
+            { headers: { 'content-type': 'application/json' } },
+          ),
+        );
+        await Promise.resolve();
+      });
+      expect(screen.queryByText('STALE RESPONSE')).not.toBeInTheDocument();
+      expect(screen.getAllByTestId('assistant-answer')).toHaveLength(1);
+    },
+  );
+  it('shows queue/context/tool/answering, Stop cancels, and only the next completed reply appears', async () => {
+    const api = setup();
+    let stream: ReadableStreamDefaultController<Uint8Array>;
+    const cancel = vi.fn();
+    vi.stubGlobal('fetch', (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = input instanceof Request ? input.url : input.toString();
+      if (!url.endsWith('/v1/assistant/messages')) return api.fetchMock(input, init);
+      return Promise.resolve(
+        new Response(
+          new ReadableStream<Uint8Array>({
+            start(controller) {
+              stream = controller;
+            },
+            cancel,
+          }),
+          { headers: { 'content-type': 'text/event-stream' } },
+        ),
+      );
+    });
+    const emit = async (event: AssistantPhaseEvent) => {
+      await act(async () => {
+        stream.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(event)}\n\n`));
+        await Promise.resolve();
+      });
+    };
+    await userEvent.click(await bubble());
+    const input = await screen.findByRole('textbox', { name: 'Ask the AI assistant' });
+    await userEvent.type(input, 'first{Enter}');
+    await emit({ phase: 'queued', position: 3 });
+    expect(await screen.findByText('In queue · position 3')).toBeVisible();
+    await emit({ phase: 'context', chips: [] });
+    expect(await screen.findByText('Checking context')).toBeVisible();
+    await emit({ phase: 'tool', name: 'ticket_get', status: 'running' });
+    expect(await screen.findByText('Checking ticket_get')).toBeVisible();
+    await userEvent.click(screen.getByRole('button', { name: 'Stop' }));
+    expect(await screen.findByText('Stopped. You can ask again.')).toBeVisible();
+    expect(cancel).toHaveBeenCalledOnce();
+    expect(screen.queryByTestId('assistant-answer')).not.toBeInTheDocument();
+    await userEvent.type(input, 'second{Enter}');
+    await emit({ phase: 'answering' });
+    expect(await screen.findByText('Preparing answer')).toBeVisible();
+    await emit({ phase: 'reply', reply: reply() });
+    expect(await screen.findByTestId('assistant-answer')).toBeVisible();
+    expect(cancel).toHaveBeenCalledTimes(2);
+  });
+
+  it.each(['en', 'th'] as const)(
+    'shows C22 only for customer-bearing turns (%s)',
+    async (locale) => {
+      const card = {
+        id: PROPOSAL,
+        kind: 'note' as const,
+        status: 'pending' as const,
+        target: null,
+        changes: [],
+        text: 'Review this note',
+        expiresAt: AT,
+      };
+      consoleApi({
+        overrides: {
+          'GET /v1/assistant/starters': { json: starters() },
+          'POST /v1/assistant/messages': {
+            json: reply({ hadCustomerContent: true, proposals: [card] }),
+          },
+        },
+      });
+      renderApp(
+        <AuthGate>
+          <AssistantBubble />
+        </AuthGate>,
+        { locale },
+      );
+      await userEvent.click(await bubble());
+      const input = await screen.findByRole('textbox', {
+        name: locale === 'en' ? 'Ask the AI assistant' : 'ถามผู้ช่วย AI',
+      });
+      await userEvent.type(input, 'note{Enter}');
+      expect(await screen.findByTestId('proposal-customer-warning')).toHaveTextContent(
+        locale === 'en'
+          ? 'Created from a conversation with customer text — review before confirming'
+          : 'สร้างจากบทสนทนาที่มีข้อความลูกค้า — ตรวจก่อนกด',
+      );
+    },
+  );
+});
 
 beforeEach(() => {
   localStorage.clear();
@@ -316,6 +485,7 @@ describe('AssistantBubble', () => {
     const proposal = await screen.findByTestId('assistant-proposal');
     // Server values, before -> after; focus did not jump to the button (a stray Enter cannot confirm).
     expect(within(proposal).getByText('Mana')).toBeInTheDocument();
+    expect(within(proposal).queryByTestId('proposal-customer-warning')).not.toBeInTheDocument();
     expect(within(proposal).getByRole('button', { name: 'Confirm' })).not.toHaveFocus();
     expect(api.callsTo('/v1/assistant/proposals/' + PROPOSAL + '/confirm', 'POST')).toHaveLength(0);
 

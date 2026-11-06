@@ -31,7 +31,7 @@ export interface CommandActions {
   goAdmin?: (href: string) => void;
   /** Shift screens (T-111f): My shift, Daily brief, Handoff, Notes, Lead view. */
   goTo?: (href: string) => void;
-  /** Opens the AI assistant panel ("Ask AI"). Only offered to people who can read tickets. */
+  /** Opens the AI assistant panel for a workspace session with assistant.use. */
   askAssistant?: () => void;
   /** Jumps to a field of the open ticket (UI-SPEC section 14: S / P / I). Only for people who can handle tickets. */
   focusTicketField?: (field: TicketField) => void;
@@ -42,6 +42,7 @@ export interface CommandActions {
 /** What decides which admin commands exist: the person's permissions and the current switch state. */
 export interface CommandAccess {
   can: (permission: Permission) => boolean;
+  assistantWorkspace?: boolean;
   /** The current state of the two AI switches, once known: the label says "Stop" or "Resume". */
   ai?: { killOn: boolean; capOn: boolean };
 }
@@ -295,7 +296,7 @@ export function buildCommands(
   if (!access) return base;
   const ask = actions.askAssistant;
   const assistant: Command[] =
-    ask && (access.can('ticket.read') || access.can('ticket.read.masked'))
+    ask && access.assistantWorkspace === true && access.can('assistant.use')
       ? [
           {
             id: 'ai.ask',

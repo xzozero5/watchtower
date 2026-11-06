@@ -100,7 +100,7 @@ export function Combobox(props: ComboboxProps) {
           type="button"
           disabled={props.disabled}
           className={cn(
-            '-mx-2 flex min-h-control w-[calc(100%+1rem)] items-center gap-2 rounded-md px-2 py-1 text-left text-sm transition-colors duration-(--wt-motion-duration-fast) ease-out hover:bg-surface-muted focus-visible:outline-2 focus-visible:outline-offset-0 focus-visible:outline-ring disabled:pointer-events-none data-[state=open]:bg-surface-muted',
+            '-mx-2 flex min-h-control w-[calc(100%+1rem)] items-center gap-2 rounded-md px-2 py-1 text-left text-sm transition-colors duration-(--wt-motion-duration-fast) ease-out hover:bg-surface-muted focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-offset-0 focus-visible:outline-ring disabled:pointer-events-none data-[state=open]:bg-surface-muted',
             props.className,
           )}
         >

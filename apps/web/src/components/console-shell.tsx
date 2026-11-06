@@ -26,6 +26,7 @@ import { CriticalBanner } from '@/components/notifications/critical-banner';
 import { useT } from '@/i18n/provider';
 import { useAutonomy } from '@/lib/admin/queries';
 import { requestAssistantOpen } from '@/lib/assistant/assistant-ui';
+import { isAssistantWorkspace } from '@/lib/assistant/access';
 import { adminSectionsFor, HOME_PERMISSION } from '@/lib/admin/sections';
 import { useSession } from '@/lib/auth/session';
 import { getRailExpanded, setRailExpanded, useRailExpanded } from '@/lib/rail-preference';
@@ -63,7 +64,7 @@ export function ConsoleShell({ destination, skipTo, children }: ConsoleShellProp
   const t = useT();
   const router = useRouter();
   const { ticketKeyPrefix } = useRuntimeConfig();
-  const { signOut, can } = useSession();
+  const { signOut, can, session } = useSession();
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
   // The rail shows words per the saved choice, but only where there is room (from 1024 px). In the
@@ -215,9 +216,9 @@ export function ConsoleShell({ destination, skipTo, children }: ConsoleShellProp
             setSwitchTarget({ switchKey, on });
           },
         },
-        { can, ai: { killOn, capOn } },
+        { can, assistantWorkspace: isAssistantWorkspace(session), ai: { killOn, capOn } },
       ),
-    [t, router, signOut, can, killOn, capOn, goHome, goAdmin, goTo, destination],
+    [t, router, signOut, can, session, killOn, capOn, goHome, goAdmin, goTo, destination],
   );
 
   // Owner, 2026-11-03: every page is the floating sheet on the gradient backdrop that Overview had

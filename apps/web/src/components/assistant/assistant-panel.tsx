@@ -276,6 +276,7 @@ export function AssistantPanel({ id, context, open, onClose, onClosed }: Assista
                 <ProposalCard
                   key={card.id}
                   view={view}
+                  hadCustomerContent={turn.reply.hadCustomerContent === true}
                   onConfirm={(proposalId) => {
                     void chat.confirm(proposalId);
                   }}
@@ -339,7 +340,15 @@ export function AssistantPanel({ id, context, open, onClose, onClosed }: Assista
       {chat.pending ? (
         <p role="status" className="flex items-center gap-2 text-sm text-muted-foreground">
           <Bot aria-hidden className="size-4 text-ai-accent motion-safe:animate-pulse" />
-          {t('assistant.thread.thinking')}
+          {chat.phase?.phase === 'queued'
+            ? t('assistant.thread.queued', { position: chat.phase.position })
+            : chat.phase?.phase === 'context'
+              ? t('assistant.thread.context')
+              : chat.phase?.phase === 'tool'
+                ? t('assistant.thread.tool', { name: chat.phase.name })
+                : chat.phase?.phase === 'answering'
+                  ? t('assistant.thread.answering')
+                  : t('assistant.thread.thinking')}
         </p>
       ) : null}
 

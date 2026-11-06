@@ -235,7 +235,7 @@ export function EmailComposer({
   const ccVisible = showCc || cc.length > 0;
   const bccVisible = showBcc || bcc.length > 0;
   const linkButton =
-    'rounded-sm px-1 text-xs text-link hover:underline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring';
+    'rounded-sm px-1 text-xs text-link hover:underline focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring';
 
   return (
     <div data-testid="email-composer" className="flex flex-col">
@@ -462,7 +462,7 @@ export function EmailComposer({
                   onClick={() => {
                     setQuoteOpen((open) => !open);
                   }}
-                  className="inline-flex h-5 items-center rounded-full bg-surface px-2 font-medium ring-1 ring-border ring-inset hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+                  className="inline-flex h-5 items-center rounded-full bg-surface px-2 font-medium ring-1 ring-border ring-inset hover:text-foreground focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
                 >
                   <span aria-hidden>···</span>
                   <span className="sr-only">
@@ -503,7 +503,7 @@ function RemoveRowButton({ label, onClick }: { label: string; onClick: () => voi
       aria-label={label}
       title={label}
       onClick={onClick}
-      className="mt-1.5 mr-2 grid size-6 shrink-0 place-items-center rounded-full text-muted-foreground hover:bg-surface-muted hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring"
+      className="mt-1.5 mr-2 grid size-6 shrink-0 place-items-center rounded-full text-muted-foreground hover:bg-surface-muted hover:text-foreground focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-ring"
     >
       <X aria-hidden className="size-3.5" />
     </button>

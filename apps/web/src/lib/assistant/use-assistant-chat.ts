@@ -5,14 +5,16 @@ import type {
   AssistantContext,
   AssistantLocale,
   AssistantReply,
+  AssistantPhaseEvent,
   AssistantState,
   AssistantStarters,
   ProposalCard,
 } from '@watchtower/shared';
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { useApi } from '@/lib/api/api-context';
 import { isApiError } from '@/lib/api/errors';
+import { AssistantStreamError } from '@/lib/api/assistant-stream';
 import { useUserId } from '@/lib/auth/session';
 import { ticketKeys } from '@/lib/tickets/queries';
 
@@ -64,6 +66,7 @@ export function useAssistantStarters(params: {
 
 function errorKind(error: unknown): ChatErrorKind {
   if (!isApiError(error)) return 'generic';
+  if (error.code === 'csrf_invalid') return 'generic';
   if (error.status === 403) return 'forbidden';
   if (error.status === 429) return 'rate';
   if (error.status === 404) return 'notFound';
@@ -85,6 +88,7 @@ export function useAssistantChat() {
   const [turns, setTurns] = useState<Turn[]>([]);
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+  const [phase, setPhase] = useState<AssistantPhaseEvent | null>(null);
   const [error, setError] = useState<ChatErrorKind | null>(null);
   const [stopped, setStopped] = useState(false);
   const [state, setState] = useState<AssistantState>('ok');
@@ -96,12 +100,22 @@ export function useAssistantChat() {
     context?: AssistantContext;
   } | null>(null);
   const conversation = useRef<string | null>(null);
+  useEffect(
+    () => () => {
+      abort.current?.abort();
+    },
+    [],
+  );
 
   const run = useCallback(
     async (text: string, locale: AssistantLocale, context: AssistantContext | undefined) => {
       const controller = new AbortController();
       abort.current = controller;
       setPending(true);
+      setPhase(null);
+      // A failed turn is not an availability probe. A retry/Stop clears its transient failure;
+      // paused/budget remain authoritative, and the panel still consults fresh starters when ok.
+      setState((current) => (current === 'unavailable' ? 'ok' : current));
       setError(null);
       setStopped(false);
       failed.current = { text, locale, ...(context ? { context } : {}) };
@@ -114,7 +128,13 @@ export function useAssistantChat() {
             ...(context ? { context } : {}),
           },
           controller.signal,
+          (event) => {
+            if (controller.signal.aborted || abort.current !== controller) return;
+            setPhase(event);
+            if (event.phase === 'error') setState(event.state);
+          },
         );
+        if (controller.signal.aborted || abort.current !== controller) return;
         conversation.current = reply.conversationId;
         setConversationId(reply.conversationId);
         setState(reply.state);
@@ -128,15 +148,23 @@ export function useAssistantChat() {
           return next;
         });
       } catch (caught) {
+        if (abort.current !== controller) return;
         if (controller.signal.aborted) {
           failed.current = null;
           setStopped(true);
         } else {
-          setError(errorKind(caught));
+          setError(
+            caught instanceof AssistantStreamError && caught.event.reason === 'assistant_queue_full'
+              ? 'rate'
+              : errorKind(caught),
+          );
         }
       } finally {
-        if (abort.current === controller) abort.current = null;
-        setPending(false);
+        if (abort.current === controller) {
+          abort.current = null;
+          setPending(false);
+          setPhase(null);
+        }
       }
     },
     [api],
@@ -160,10 +188,19 @@ export function useAssistantChat() {
 
   const stop = useCallback(() => {
     abort.current?.abort();
+    abort.current = null;
+    failed.current = null;
+    setPending(false);
+    setPhase(null);
+    setStopped(true);
+    setState((current) => (current === 'unavailable' ? 'ok' : current));
   }, []);
 
   const clear = useCallback(() => {
     abort.current?.abort();
+    abort.current = null;
+    setPending(false);
+    setPhase(null);
     const id = conversation.current;
     conversation.current = null;
     failed.current = null;
@@ -229,6 +266,7 @@ export function useAssistantChat() {
     turns,
     conversationId,
     pending,
+    phase,
     error,
     stopped,
     state,

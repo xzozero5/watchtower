@@ -94,7 +94,7 @@ function Pane({
       tabIndex={-1}
       className={cn(
         // Soft Beacon: from 768px each pane is a floating card on the Canvas; on a phone it fills.
-        'flex min-h-0 min-w-0 flex-col bg-surface outline-hidden focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring md:overflow-hidden md:rounded-card md:shadow-card',
+        'flex min-h-0 min-w-0 flex-col bg-surface outline-hidden focus-visible:outline-solid focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring md:overflow-hidden md:rounded-card md:shadow-card',
         className,
       )}
     >
@@ -420,7 +420,7 @@ export function Workspace() {
               setTab(pane);
             }}
             className={cn(
-              'min-h-[44px] flex-1 rounded-full px-2 text-sm transition-colors duration-(--wt-motion-duration-fast) ease-out focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring',
+              'min-h-[44px] flex-1 rounded-full px-2 text-sm transition-colors duration-(--wt-motion-duration-fast) ease-out focus-visible:outline-solid focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring',
               tab === pane
                 ? 'bg-primary-subtle font-medium text-foreground'
                 : 'text-muted-foreground',
@@ -493,7 +493,7 @@ export function Workspace() {
             aria-labelledby="pane-assistant-heading"
             tabIndex={-1}
             className={cn(
-              'flex min-h-0 min-w-0 flex-col bg-surface outline-hidden focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring lg:overflow-hidden lg:rounded-card lg:shadow-card',
+              'flex min-h-0 min-w-0 flex-col bg-surface outline-hidden focus-visible:outline-solid focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring lg:overflow-hidden lg:rounded-card lg:shadow-card',
               drawerOpen
                 ? 'animate-slide-in-right md:max-lg:fixed md:max-lg:inset-y-0 md:max-lg:right-0 md:max-lg:z-30 md:max-lg:w-[min(24rem,90vw)] md:max-lg:border-l md:max-lg:border-border md:max-lg:bg-surface md:max-lg:shadow-overlay'
                 : 'md:max-lg:hidden',

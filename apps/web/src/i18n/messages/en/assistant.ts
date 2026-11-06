@@ -150,7 +150,7 @@ export const assistantEn = {
       },
       admin: {
         a: 'What should I check on this settings page?',
-        b: 'Who changed these settings last?',
+        b: 'What are the current settings?',
       },
       other: {
         a: 'What can you tell me about this page?',
@@ -213,6 +213,10 @@ export const assistantEn = {
     you: 'You',
     ai: 'AI',
     thinking: 'Thinking',
+    queued: 'In queue · position {position}',
+    context: 'Checking context',
+    tool: 'Checking {name}',
+    answering: 'Preparing answer',
     ready: 'The answer is ready',
     stopped: 'Stopped. You can ask again.',
   },
@@ -249,6 +253,7 @@ export const assistantEn = {
     retry: 'Try again',
   },
   proposal: {
+    customerWarning: 'Created from a conversation with customer text — review before confirming',
     label: 'Suggested change',
     kind: {
       assign: 'Assign a ticket',

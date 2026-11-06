@@ -5,10 +5,12 @@ import {
   deleteConversationResponseSchema,
   rejectProposalResponseSchema,
   type AssistantMessageRequest,
+  type AssistantPhaseEvent,
   type AssistantStartersQuery,
 } from '@watchtower/shared';
 
 import type { ApiClient } from './client';
+import { readAssistantStream } from './assistant-stream';
 
 /** The AI assistant (T-134, ADR-023): `/v1/assistant/*`. Staff only; a client gets a 403. */
 export function createAssistantEndpoints(client: ApiClient) {
@@ -21,12 +23,20 @@ export function createAssistantEndpoints(client: ApiClient) {
         ...(signal ? { signal } : {}),
       }),
 
-    assistantMessage: (body: AssistantMessageRequest, signal?: AbortSignal) =>
+    assistantMessage: (
+      body: AssistantMessageRequest,
+      signal?: AbortSignal,
+      onPhase: (event: AssistantPhaseEvent) => void = () => undefined,
+    ) =>
       client.request({
         method: 'POST',
         path: '/v1/assistant/messages',
         body,
         schema: assistantReplySchema,
+        accept: 'text/event-stream',
+        replayAfterAuth: false,
+        readResponse: (response, requestSignal) =>
+          readAssistantStream(response, onPhase, requestSignal),
         ...(signal ? { signal } : {}),
       }),
 

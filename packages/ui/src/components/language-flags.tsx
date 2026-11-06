@@ -52,7 +52,7 @@ export function LanguageFlags<T extends string>({
             lang={option.value}
             aria-label={option.label}
             className={cn(
-              'inline-flex h-7 w-8 cursor-pointer items-center justify-center rounded-full outline-hidden hover:bg-surface-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring max-md:h-9 max-md:w-11',
+              'inline-flex h-7 w-8 cursor-pointer items-center justify-center rounded-full outline-hidden hover:bg-surface-muted focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring max-md:h-9 max-md:w-11',
               'data-[state=on]:bg-surface-muted data-[state=on]:ring-2 data-[state=on]:ring-primary',
             )}
           >

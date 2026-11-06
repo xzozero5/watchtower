@@ -21,7 +21,7 @@ import { splitEvidence } from './evidence-split';
 export const evidenceDomId = (id: string) => `evidence-card-${id.replace(/[^A-Za-z0-9_-]/g, '_')}`;
 
 const EVIDENCE_LINK =
-  'ml-auto inline-flex items-center gap-1 text-link hover:underline focus-visible:outline-2 focus-visible:outline-ring';
+  'ml-auto inline-flex items-center gap-1 text-link hover:underline focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-ring';
 
 function EvidenceCard({
   entry,
@@ -46,7 +46,7 @@ function EvidenceCard({
       tabIndex={-1}
       data-highlighted={highlighted ? 'true' : undefined}
       className={cn(
-        'flex flex-col gap-1.5 rounded-lg bg-surface px-4 py-3 text-sm ring-1 ring-border/70 outline-hidden ring-inset focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring',
+        'flex flex-col gap-1.5 rounded-lg bg-surface px-4 py-3 text-sm ring-1 ring-border/70 outline-hidden ring-inset focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring',
         highlighted && 'bg-ai-subtle ring-2 ring-ai-accent',
       )}
     >

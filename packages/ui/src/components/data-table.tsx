@@ -167,7 +167,7 @@ export function DataTable<Row>({
                       onClick={() => {
                         toggleSort(column.id);
                       }}
-                      className="-mx-1.5 inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs font-medium hover:bg-surface-muted hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-0 focus-visible:outline-ring"
+                      className="-mx-1.5 inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs font-medium hover:bg-surface-muted hover:text-foreground focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-offset-0 focus-visible:outline-ring"
                     >
                       {column.header}
                       <SortIcon aria-hidden className="size-3.5" />
@@ -206,7 +206,7 @@ export function DataTable<Row>({
                   onRowActivate?.(row);
                 }}
                 className={cn(
-                  'group h-row outline-hidden focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring',
+                  'group h-row outline-hidden focus-visible:outline-solid focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring',
                   onRowActivate && 'cursor-pointer',
                   selectedId === id ? 'bg-primary-subtle' : 'hover:bg-surface-muted',
                 )}

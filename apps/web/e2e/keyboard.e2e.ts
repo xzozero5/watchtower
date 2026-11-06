@@ -43,8 +43,11 @@ test.describe('pane keys (docs/06-UI-SPEC.md section 14)', () => {
     // The focused pane is outlined with the 2px focus ring.
     const outline = await page
       .locator('#pane-assistant')
-      .evaluate((element) => getComputedStyle(element).outlineWidth);
-    expect(outline).toBe('2px');
+      .evaluate((element) => {
+        const style = getComputedStyle(element);
+        return { width: style.outlineWidth, style: style.outlineStyle };
+      });
+    expect(outline).toEqual({ width: '2px', style: 'solid' });
   });
 
   test('Enter on the list and O open the ticket and move focus into the conversation', async ({

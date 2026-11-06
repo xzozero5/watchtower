@@ -179,7 +179,7 @@ function Section({
             aria-expanded={open}
             aria-controls={open ? listId : undefined}
             onClick={onToggle}
-            className="flex min-h-9 w-full items-center gap-1.5 px-4 text-left text-muted-foreground transition-colors duration-(--wt-motion-duration-fast) ease-out hover:text-foreground focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
+            className="flex min-h-9 w-full items-center gap-1.5 px-4 text-left text-muted-foreground transition-colors duration-(--wt-motion-duration-fast) ease-out hover:text-foreground focus-visible:outline-solid focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
           >
             <Chevron aria-hidden className="size-3.5 shrink-0" />
             <SectionHeading
@@ -201,7 +201,7 @@ function Section({
           aria-label={title}
           aria-activedescendant={active ? activeDescendant : undefined}
           onKeyDown={onKeyDown}
-          className="flex flex-col outline-hidden focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
+          className="flex flex-col outline-hidden focus-visible:outline-solid focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
         >
           {group.rows.map((row) => (
             <QueueRow
@@ -718,7 +718,7 @@ export function QueuePane({
             onClick={() => {
               setFilters({ ...filters, status: [] });
             }}
-            className="text-sm text-primary underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-ring"
+            className="text-sm text-primary underline-offset-2 hover:underline focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-ring"
           >
             {t(
               `queue.hidden.${hidden.allClosed ? 'closed' : 'other'}${hidden.count === 1 ? 'One' : ''}`,

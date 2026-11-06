@@ -50,7 +50,7 @@ export function SegmentedControl<T extends string>({
           disabled={option.disabled}
           aria-label={option.ariaLabel}
           className={cn(
-            'inline-flex h-7 items-center gap-1.5 rounded-full px-3 text-sm font-medium text-muted-foreground transition-colors duration-(--wt-motion-duration-fast) ease-out outline-hidden hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-0 focus-visible:outline-ring disabled:opacity-50',
+            'inline-flex h-7 items-center gap-1.5 rounded-full px-3 text-sm font-medium text-muted-foreground transition-colors duration-(--wt-motion-duration-fast) ease-out outline-hidden hover:text-foreground focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-offset-0 focus-visible:outline-ring disabled:opacity-50',
             'data-[state=on]:bg-surface data-[state=on]:text-foreground data-[state=on]:shadow-[0_0_0_1px_color-mix(in_srgb,var(--color-border)_60%,transparent)]',
           )}
         >

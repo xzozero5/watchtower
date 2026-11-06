@@ -27,7 +27,7 @@ export function HelpHint({ label, children, className }: HelpHintProps) {
           type="button"
           aria-label={label}
           className={cn(
-            'inline-flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-full text-muted-foreground outline-hidden hover:bg-surface-muted hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring max-md:size-11',
+            'inline-flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-full text-muted-foreground outline-hidden hover:bg-surface-muted hover:text-foreground focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring max-md:size-11',
             className,
           )}
         >

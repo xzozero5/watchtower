@@ -14,7 +14,7 @@ export function TabsTrigger({ className, ...props }: ComponentProps<typeof Radix
   return (
     <RadixTabs.Trigger
       className={cn(
-        'relative inline-flex h-control items-center justify-center gap-1.5 rounded-full px-3 text-sm font-medium text-muted-foreground transition-colors duration-(--wt-motion-duration-fast) ease-out outline-hidden hover:bg-surface-muted hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-0 focus-visible:outline-ring data-[state=active]:bg-primary-subtle data-[state=active]:text-foreground',
+        'relative inline-flex h-control items-center justify-center gap-1.5 rounded-full px-3 text-sm font-medium text-muted-foreground transition-colors duration-(--wt-motion-duration-fast) ease-out outline-hidden hover:bg-surface-muted hover:text-foreground focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-offset-0 focus-visible:outline-ring data-[state=active]:bg-primary-subtle data-[state=active]:text-foreground',
         className,
       )}
       {...props}

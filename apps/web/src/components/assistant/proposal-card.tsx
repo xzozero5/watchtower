@@ -21,12 +21,14 @@ export function ProposalCard({
   onConfirm,
   onReject,
   onOpen,
+  hadCustomerContent = false,
 }: {
   view: ProposalView;
   onConfirm: (id: string) => void;
   onReject: (id: string) => void;
   /** Called after a link inside the app is followed. */
   onOpen?: () => void;
+  hadCustomerContent?: boolean;
 }) {
   const t = useT();
   const { card, busy, outcome, href } = view;
@@ -59,6 +61,16 @@ export function ProposalCard({
           {t('assistant.proposal.label')}
         </TintChip>
       </div>
+
+      {hadCustomerContent ? (
+        <p
+          className="flex items-start gap-2 text-sm text-foreground"
+          data-testid="proposal-customer-warning"
+        >
+          <TriangleAlert aria-hidden className="size-4 shrink-0" />
+          {t('assistant.proposal.customerWarning')}
+        </p>
+      ) : null}
 
       {target ? (
         target.href.startsWith('/') ? (

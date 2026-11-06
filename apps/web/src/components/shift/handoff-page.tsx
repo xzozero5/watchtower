@@ -320,7 +320,7 @@ function HandoffEditor({ handoff, current }: { handoff: Handoff; current: Curren
         ref={summaryRef}
         tabIndex={-1}
         role={attempted && problemCount > 0 ? 'alert' : undefined}
-        className="outline-hidden focus-visible:outline-2 focus-visible:outline-ring"
+        className="outline-hidden focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-ring"
       >
         {attempted && problemCount > 0 ? (
           <div className="flex flex-col gap-2 rounded-card border border-danger/50 bg-surface shadow-card p-3">
