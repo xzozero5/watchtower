@@ -21,6 +21,7 @@ import { ToolsModule } from '../tools/tools.module.js';
 import { AssistantFactsCache } from './assistant-facts-cache.js';
 import { AssistantController } from './assistant.controller.js';
 import { AssistantFeedbackService } from './assistant-feedback.js';
+import { AssistantHistoryAuthorization } from './assistant-context-history.js';
 import { AssistantMemoryService } from './assistant-memory.js';
 import { AssistantProposals } from './assistant-proposals.js';
 import { ContextResolver } from './context-resolver.js';
@@ -59,6 +60,7 @@ import { AssistantReadServices } from './tools/read-services.js';
     AssistantFactsCache,
     AssistantProposals,
     AssistantMemoryService,
+    AssistantHistoryAuthorization,
     AssistantFeedbackService,
     ContextResolver,
     AssistantReadServices,

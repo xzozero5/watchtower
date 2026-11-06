@@ -52,10 +52,12 @@ export const assistantMessage = pgTable(
       .references(() => users.id, { onDelete: 'cascade' }),
     role: text('role').notNull().$type<'user' | 'assistant'>(),
     body: text('body').notNull(),
-    context: jsonb('context')
-      .notNull()
-      .default({})
-      .$type<{ page?: string; ticket?: string; entity?: { kind: string; ref: string } }>(),
+    context: jsonb('context').notNull().default({}).$type<{
+      page?: string;
+      ticket?: string;
+      entity?: { kind: string; ref: string };
+      authorization?: unknown;
+    }>(),
     /** The evidence of an answer as `{kind, id}` only (ADR-029 section 3); label and href are rebuilt on read. */
     evidence: jsonb('evidence')
       .notNull()
@@ -156,6 +158,8 @@ export const assistantMemory = pgTable(
       .references(() => users.id, { onDelete: 'cascade' }),
     body: text('body').notNull(),
     refs: jsonb('refs').notNull().default([]).$type<{ kind: string; id: string }[]>(),
+    /** ADR-034: survives source-message retention; never exposed to clients. */
+    authorization: jsonb('authorization').$type<unknown>(),
     sourceMessageId: uuid('source_message_id').references(() => assistantMessage.id, {
       onDelete: 'set null',
     }),

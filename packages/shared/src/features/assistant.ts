@@ -362,6 +362,8 @@ export const createAssistantMemorySchema = z.object({
 export type CreateAssistantMemory = z.infer<typeof createAssistantMemorySchema>;
 
 export const assistantMemorySchema = z.object({
+  /** False means an unavailable tombstone: empty body and refs, retained for Forget/Clear. */
+  available: z.boolean().optional(),
   id: z.uuid(),
   body: z.string().max(ASSISTANT_MEMORY_LIMITS.maxBodyChars),
   refs: z.array(assistantMemoryRefSchema).max(ASSISTANT_MEMORY_LIMITS.maxRefs),

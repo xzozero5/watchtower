@@ -349,3 +349,32 @@ describe('0115 assistant feedback (T-408)', () => {
     }
   });
 });
+
+describe('0117 durable private memory authorization (ADR-034)', () => {
+  it('is nullable for legacy rows and reverses without deleting memory rows', async () => {
+    const db = await createTestDatabase(adminUrl);
+    try {
+      const pool = db.owner.pool;
+      const user = await pool.query<{ id: string }>(
+        "INSERT INTO users(email, name, role) VALUES ('durable@example.com', 'Synthetic', 'agent') RETURNING id",
+      );
+      const id = user.rows[0]?.id;
+      await pool.query(
+        "INSERT INTO assistant_memory(user_id, body, expires_at) VALUES ($1, 'legacy', now() + interval '90 days')",
+        [id],
+      );
+      expect(
+        (await pool.query<{ authorization: unknown }>('SELECT authorization FROM assistant_memory'))
+          .rows[0]?.authorization,
+      ).toBeNull();
+      const later = await migrationsAfter('0117_assistant_memory_authorization');
+      await migrateDown(pool, { steps: later.length + 1 });
+      expect((await pool.query('SELECT body FROM assistant_memory')).rowCount).toBe(1);
+      expect(await code(pool.query('SELECT authorization FROM assistant_memory'))).toBe('42703');
+      expect(await migrateUp(pool)).toEqual(['0117_assistant_memory_authorization', ...later]);
+      expect((await pool.query('SELECT body FROM assistant_memory')).rowCount).toBe(1);
+    } finally {
+      await db.cleanup();
+    }
+  });
+});

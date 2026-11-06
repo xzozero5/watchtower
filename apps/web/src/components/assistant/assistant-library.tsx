@@ -143,7 +143,9 @@ export function AssistantLibrary({
                 <ul className="flex flex-col gap-2">
                   {memory.data.items.map((item) => (
                     <li key={item.id} className="flex items-start justify-between gap-2">
-                      <p className="min-w-0 break-words">{item.body}</p>
+                      <p className="min-w-0 break-words">
+                        {item.available === false ? t('assistant.library.noAccess') : item.body}
+                      </p>
                       <Button
                         size="sm"
                         disabled={action.isPending}

@@ -170,7 +170,11 @@ function deps(spy: Spy): AssistantToolDeps {
 
 function build(
   role: string,
-  options: { masked?: boolean; permissions?: readonly Permission[] } = {},
+  options: {
+    masked?: boolean;
+    permissions?: readonly Permission[];
+    enforceToolBudget?: (name: string) => Promise<void>;
+  } = {},
 ) {
   const spy: Spy = { writes: [], runs: 0, reads: [] };
   const host = buildAssistantTools(deps(spy), {
@@ -178,6 +182,7 @@ function build(
     locale: 'en',
     masked: options.masked ?? false,
     now: new Date('2026-11-02T01:00:00.000Z'),
+    enforceToolBudget: options.enforceToolBudget,
     onRead: (ticket) => {
       spy.reads.push(ticket.key);
     },
@@ -188,6 +193,26 @@ function build(
 const names = (host: { info: readonly { name: string }[] }) => host.info.map((tool) => tool.name);
 
 describe('the tools of one person', () => {
+  it('refuses an exhausted tool budget before reading another source', async () => {
+    let calls = 0;
+    const enforceToolBudget = (name: string): Promise<void> => {
+      expect(name).toBe('summarize_ticket');
+      if (++calls > 60) return Promise.reject(new Error('Tool budget exhausted'));
+      return Promise.resolve();
+    };
+    // Each host is one turn; the hourly budget is shared across those smaller turn budgets.
+    for (let i = 0; i < 60; i += 1) {
+      const { host, spy } = build('agent', { enforceToolBudget });
+      await host.tools.call('summarize_ticket', { ticket: 'OPS-12' });
+      expect(spy.reads.length).toBeGreaterThan(0);
+    }
+    const blocked = build('agent', { enforceToolBudget });
+    await expect(blocked.host.tools.call('summarize_ticket', { ticket: 'OPS-12' })).rejects.toThrow(
+      'Tool budget exhausted',
+    );
+    expect(blocked.spy.reads).toHaveLength(0);
+  });
+
   it('registers exactly the tools of the role and the permissions', () => {
     expect(names(build('agent').host)).toEqual([
       'search_tickets',

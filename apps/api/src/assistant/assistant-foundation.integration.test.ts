@@ -25,6 +25,13 @@ import { apiOrg, fileTicket, signIn, type Persona } from '../testing/ticketing.j
 import { buildAssistantTools } from './assistant-tools.js';
 import { leaksBeyondRoute } from './tool-parity.js';
 import { runReadOnly } from './read-only.js';
+import { DATABASE } from '../database/database.module.js';
+import { AuditService } from '../audit/audit.service.js';
+import { ContextResolver } from './context-resolver.js';
+import {
+  AssistantHistoryAuthorization,
+  makeAssistantAuthorization,
+} from './assistant-context-history.js';
 
 // T-401 on the real module graph and Postgres (restricted role): who may call the assistant, how refs of a context are
 // dropped, the read-only scope of tool handlers, and tool output against the GET route. The model is the dev mock.
@@ -347,5 +354,66 @@ describe('tool output within the route output (parity, agent and masked develope
       ticket: ticket.key,
     })) as { requester: string | null };
     expect(output.requester).toBeNull();
+  });
+});
+
+describe('ADR-034 concurrent real-reader reauthorization', () => {
+  it('authorizes four concurrent ticket reads and four concurrent KB reads without starving the four-connection read-only pool', async () => {
+    const article = await agent.client.post<{ id: string }>('/v1/kb/articles', {
+      title: 'Synthetic reauthorization guide',
+      bodyMd: 'Synthetic instructions.',
+      lang: 'en',
+    });
+    expect(article.status).toBe(201);
+    const principal: Principal = {
+      userId: agent.userId,
+      sessionId: 'reauthorization',
+      email: agent.email,
+      name: 'Synthetic',
+      role: 'agent',
+      orgId: null,
+      authMethod: 'dev',
+      accessExpiresAt: new Date(Date.now() + 60_000),
+      permissions: new Set(DEFAULT_ROLE_PERMISSIONS.agent),
+      orgScope: { kind: 'all' },
+    };
+    // Use the SAME database as the real ContextResolver/readers: its read-only pool has exactly four slots.
+    const appDatabase = h.app.get<Database>(DATABASE, { strict: false });
+    const contexts = h.app.get(ContextResolver, { strict: false });
+    const audit = h.app.get(AuditService, { strict: false });
+    for (const entity of [
+      { kind: 'ticket' as const, ref: ticket.id },
+      { kind: 'kb_article' as const, ref: article.body.id },
+    ]) {
+      let entered = 0;
+      let release: () => void = () => undefined;
+      const ready = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const authorization = new AssistantHistoryAuthorization(
+        appDatabase,
+        {
+          resolve: async (context, caller) => {
+            entered += 1;
+            if (entered === 4) release();
+            // With the old outer transaction, all four slots are held here before nested readers begin.
+            await ready;
+            return contexts.resolve(context, caller);
+          },
+        },
+        audit,
+      );
+      const snapshot = makeAssistantAuthorization(
+        principal,
+        [entity],
+        [entity.kind === 'ticket' ? 'summarize_ticket' : 'kb_get'],
+      );
+      expect(snapshot).not.toBeNull();
+      const results = await Promise.all(
+        Array.from({ length: 4 }, () => authorization.authorize(principal, snapshot)),
+      );
+      expect(entered).toBe(4);
+      for (const result of results) expect(result).toEqual(snapshot);
+    }
   });
 });

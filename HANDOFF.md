@@ -1,7 +1,7 @@
 # HANDOFF — Watchtower
 
 > สถานะล่าสุดของโปรเจกต์ session ใหม่อ่านไฟล์นี้ต่อจาก `AGENTS.md` แล้วทำงานต่อได้โดยไม่ต้องอ่านบทสนทนาเดิม
-> อัปเดตล่าสุด: 2026-11-06 21:38 (เวลากรุงเทพ) โดย Codex — T407/T445 running; Docker engine blocked
+> อัปเดตล่าสุด: 2026-11-06 21:46 (เวลากรุงเทพ) โดย Codex — T407/T445 running; Docker engine blocked
 > ฉบับก่อน: `docs/handoff-archive/HANDOFF-2026-11-05-pre-ai-bridge.md` · บันทึกรายชั่วโมง `logs/daily/2026-11-05.md`
 
 > ✅ **push แล้ว 2026-11-05** (`origin/main` = `e325c83`, CI run 41963960467 เขียวทั้ง 4 job) · ✅ **POC deploy แล้ว 2026-11-05 11:10** (เจ้าของ OK): backup `D:\Works\watchtower-backups\poc-20261105-1105-pre-phase3.dump` (13.5 MB) → build api/worker/web/bridge/gmail-tunnel → migrate 22 ตัวถึง 0111 → ทุก service healthy · `AI_AUTOSEND_ENABLED` ไม่ได้ตั้ง
@@ -10,14 +10,15 @@
 > ✅ **2026-11-06 05:26:** push `635914d` แล้ว (รวม82commitเดิม); CI42121519210cancelledเพราะpushเอกสารใหม่; CI42121588809ของ31abb66ล้มops test2ตัว → T-438แก้แล้ว รอดูCIใหม่. POC api/worker/web redeploy00:21 healthy, bridgeจากapihealth200หลังpinCLI. T-437 completed; checkpoint task T-419 ready หมายถึง T-419b ที่ POเลือก (schema taskIdรับเลขเท่านั้น). งานassistantยังต้องทำต่อ
 
 ## Continuation (อ่านก่อนเริ่มรอบใหม่)
-- **21:33 T407/T445 running:** owner PID40860; local token `.cache/watchtower-claim.json`. อย่า claim running ซ้ำ. อ่าน checkpoint CLI+usage ก่อนงานหนัก.
-- **T444 completed/pushed3660c90c:** format2webspecsและแก้ seed-exclusion fixture ให้นาฬิกาDBอยู่ก่อนreport cutoffแน่นอน ไม่ลด assertions. Main worker integration20/20+staticผ่าน; CIของcommitใหม่นี้ต้องตรวจเอง.
-- **T407 completed21:38:** a/bเดิมdeployแล้ว; c main161/161browser+scopedlint/format/webtypeผ่านหลังแก้CSATexactcopyโดยคงready/noAIassertions. Route32/32console/publicanonymous+staff. logs/deploy/2026-11-06-t407c-final2-browser.log exit0. เป็นmockUIgate ไม่ใช่livepilot/securityapproval.
-- **T445a source frozenรอตรวจ:** durable server authorization metadata/history filtering/memory tombstones + migration0117; source rowslegacy failclosed. Agent120unitผ่าน; main35focusedunit+APItypecheckผ่านหลังแก้Redisnamedimport. Independent reviewerกำลังตรวจ; DBmigration/integrationยังไม่รัน. UI No access TH/EN regressionกำลังทำโดยproducerเดิม. ห้ามdeploy schemaนี้ก่อนbackup+gates.
-- **T445c source WIP:**60calls/hour/user/tool callback single registry entry + production wiring. Mainunit35รวมcounterผ่าน; realRedisintegrationยังไม่รัน. T445bPIIcatalogue/T445dpromptmemoryยังไม่ทำ. ADR034เขียนก่อนimplementationแต่ยังuncommitted.
-- **Docker external block21:23:** engine namedpipeหาย/APIไม่ตอบ แต่hostbridge4317HTTP200. เปิดPOC9existingcontainersสำเร็จ20:54แล้วหายอีก; ไม่ทราบสาเหตุ. สั่งDockerDesktoprestartแบบมีขอบเขต1ครั้งแล้ว21:27;21:32ยังไม่มีenginepipe. ห้ามrestartวน. เมื่อกลับมาตรวจPOC9และstartเฉพาะexistingservices, testPG45802/Redis46802เฉพาะตอนใช้; ไม่ลบvolume. ยังไม่รับรองdeployรอบใหม่.
-- **Source state:**HEAD3660c90c; auth/migration/toolbudget/browser/ADR034ยังuncommitted. `.agents/`/`.codex/`เป็นของเจ้าของห้ามcommit. No live customer sends/autosendปิด. Lastactualwebdeployb7671097พร้อมbackupD:/Works/watchtower-backups/poc-20261106-163914-pre-t407b.dump13,758,801bytes.
-- **คิวต่อ:**T445a/cgate→445b/d→410/411/412;T418writer→419a→420/421;T434a/b/cก่อน433localenable. LINEภายหลัง. ทำงานต่อทันทีเมื่อquotaพอ ไม่รอheartbeatหลังแต่ละชิ้น.
+- **21:46:** T407closed/pushedmaina6b3c22c. T445a/csourceแยกbranch `codex/t445-authorization-gates` เพื่อให้CIตรวจPG/RedisแทนlocalDockerที่API500. ห้ามmerge/deployจนintegrationผ่าน. Main checkpointยังT407running PID40860 (CLIไม่ให้เปลี่ยนtaskก่อนcomplete; ไม่markoverallcompleted). Localtoken `.cache/watchtower-claim.json`.
+- **T407 completed:** route32/32, main10specs161/161browser+lint/format/webtypeผ่าน; publicanonymous/staffรวมCSAT/portal. a/bdeployb767เดิม. logs/deploy/2026-11-06-t407c-final2-browser.log exit0. เป็นmockUIgate ไม่ใช่livepilot/securityapproval.
+- **T445a frozen:** authorizationfingerprint/history+previewreauth/memorytombstones,nullablemigration0117,NoaccessTH/EN+Forget. Legacyfailsclosed. ReviewerปิดcodefindingsnestedROpool+preview; real4-wayticket/KBregression,previewrevocation/legacytestเตรียมแล้ว. MainAPI35unit/web6unit/APIwebtype/scopedlintผ่าน. Emptyanswerfixtureคงserverauthเพื่อรักษา409assertion. DBmigration/reversibility/integrationยังไม่รัน ห้ามticka.
+- **T445c frozen:**60/hour/user/toolRedis callbackรวมprefetch+wiring,61stcounterunitผ่าน; realRedisisolationintegrationยังไม่รัน. Reviewerไม่พบP1/P2. T445bPIIcatalogue/T445dpromptmemoryยังไม่ทำ.
+- **Docker blocked:**21:23pipeหายหลังrestorePOC9healthy20:54;restartDesktopแบบมีขอบเขต1ครั้งแล้วpipeกลับแต่API500/starttestPGRedisล้ม. 21:38API4000/login3000unavailable,hostbridge4317HTTP200. ไม่restartวน/ไม่ลบvolume. เมื่อengineกลับให้restoreexistingPOC9+verifyautosendfalse;starttestPG45802/Redis46802เฉพาะตอนใช้แล้วหยุด. ยังverifyunusedcontainerstopรอบนี้ไม่ได้.
+- **T444sourcefixpushed3660c90c:**rootstatic/e2e/composeCIผ่าน; Integrationworker365/366ล้มfreshintentwindow_start==window_end→T446. DB529/domain510ผ่านCI42231722087. Mainworkerfixture20/20ผ่านก่อนหน้า. อย่าอ้างCIgreen.
+- **T446next:**รองรับequalwindowเฉพาะinsufficient_dataด้วยreversiblemigration(ถัดจาก0117)และเลิกbackdate1s โดยคงห้ามreversed/greenสั้น28วัน; ต้องreview+deterministicregressionก่อนimplement/deploy. Diagnosisพร้อม ยังไม่มีsourceedit.
+- **Deploy:**latestwebb7671097/APIworkerT409,DB0116;backup D:/Works/watchtower-backups/poc-20261106-163914-pre-t407b.dump13,758,801bytes. BranchT445ยังไม่deploy. ไม่ส่งลูกค้าจริง/autosendปิด. `.agents/`/`.codex/`ของเจ้าของห้ามcommit.
+- **คิวต่อ:**ตรวจusage+checkpoint→CIbranchT445+T446→DB/Redisgates→mergeafterreview→backup/deployverify/push/stopunused→445b/d→410/411/412;T418writer→419a→420/421;T434a/b/cก่อน433localenable. LINEภายหลัง. ทำงานต่อเมื่อquotaพอ ไม่รอheartbeatหลังแต่ละชิ้น.
 
 ## สถานะปัจจุบัน
 - **Phase:** 1 = done pending pilot · 2 = done pending live (GCP/Discord จริง) · 3 = ✅ done pending live gate (งานค้างของ PO T-306c ปิดครบ, ADR-025/026 Accepted) · LINE = feature ภายหลัง · Phase 4: ดึง T-152 (ลิงก์ "คำขอของฉัน" ทางอีเมล) + Web Push live มาทำแล้ว

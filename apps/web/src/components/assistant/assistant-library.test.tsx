@@ -201,6 +201,27 @@ describe('assistant history, pins and feedback', () => {
     expect(deletes).toBe(2);
   });
 
+  it('hides an unavailable remembered fact and still lets its owner forget it', async () => {
+    let items: AssistantMemory[] = [
+      { ...memoryItem(), available: false, body: 'Synthetic forbidden fact' },
+    ];
+    setup({
+      'GET /v1/assistant/memory': () => ({ json: { items } }),
+      'DELETE /v1/assistant/memory/:id': () => {
+        items = [];
+        return { json: { deleted: true } };
+      },
+    });
+    await open();
+    await ask();
+    await userEvent.click(screen.getByText('Remembered facts'));
+    const memory = await screen.findByRole('region', { name: 'Remembered facts' });
+    expect(await within(memory).findByText('No access')).toBeVisible();
+    expect(screen.queryByText('Synthetic forbidden fact')).not.toBeInTheDocument();
+    await userEvent.click(within(memory).getByRole('button', { name: 'Forget' }));
+    expect(await within(memory).findByText('No remembered facts.')).toBeVisible();
+  });
+
   it('pins only a server messageId/claim, forgets individually/all, and sends feedback reason without text', async () => {
     let items: AssistantMemory[] = [];
     let feedbackAttempts = 0;

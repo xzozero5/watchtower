@@ -16,6 +16,7 @@ import { disableNetConnect } from '@watchtower/shared/testing';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { API_LLM } from '../ai/ai-runtime.js';
+import { RbacService } from '../rbac/rbac.service.js';
 import { startHarness, type Harness } from '../testing/harness.js';
 import { apiOrg, signIn, type ApiErrorBody, type Persona } from '../testing/ticketing.js';
 
@@ -104,6 +105,58 @@ describe('who can reach the new routes', () => {
 });
 
 describe('conversations (own only)', () => {
+  it('withholds revoked and legacy previews while retaining ids/counts and deletion', async () => {
+    const who = await signIn(h, 'agent');
+    const authorized = await ask(who, 'Private business preview.', ['Synthetic answer.']);
+    const legacy = await ask(who, 'Legacy business preview.', ['Synthetic legacy answer.']);
+    await owner().query(
+      "UPDATE assistant_message SET context = '{}'::jsonb WHERE conversation_id = $1 AND user_id = $2 AND role = 'user'",
+      [legacy.conversationId, who.userId],
+    );
+    const before = await who.client.get<AssistantConversationList>('/v1/assistant/conversations');
+    expect(before.status).toBe(200);
+    expect(before.body.items.find((item) => item.id === authorized.conversationId)).toMatchObject({
+      preview: 'Private business preview.',
+      messageCount: 2,
+    });
+    expect(before.body.items.find((item) => item.id === legacy.conversationId)).toMatchObject({
+      preview: null,
+      messageCount: 2,
+    });
+    const rbac = h.app.get(RbacService, { strict: false });
+    await owner().query(
+      "DELETE FROM role_permissions WHERE role = 'agent' AND permission = 'kb.read'",
+    );
+    rbac.invalidate();
+    try {
+      const revoked = await who.client.get<AssistantConversationList>(
+        '/v1/assistant/conversations',
+      );
+      expect(revoked.status).toBe(200);
+      expect(assistantConversationListSchema.parse(revoked.body)).toEqual(revoked.body);
+      for (const id of [authorized.conversationId, legacy.conversationId]) {
+        expect(revoked.body.items.find((item) => item.id === id)).toMatchObject({
+          id,
+          preview: null,
+          messageCount: 2,
+        });
+      }
+      expect(JSON.stringify(revoked.body)).not.toContain('business preview');
+      expect(
+        (await who.client.delete(`/v1/assistant/conversations/${authorized.conversationId}`))
+          .status,
+      ).toBe(200);
+      const after = await who.client.get<AssistantConversationList>('/v1/assistant/conversations');
+      expect(after.body.items.map((item) => item.id)).not.toContain(authorized.conversationId);
+      expect(after.body.items.map((item) => item.id)).toContain(legacy.conversationId);
+    } finally {
+      await owner().query(
+        "INSERT INTO role_permissions(role, permission) VALUES ('agent', 'kb.read') ON CONFLICT DO NOTHING",
+      );
+      rbac.invalidate();
+    }
+  });
+
   it('lists mine, newest first, with a redacted preview, and nobody else’s', async () => {
     const mine = await signIn(h, 'agent');
     const first = await ask(mine, 'first: mail jane.doe@customer.example please', ['One.']);
@@ -204,11 +257,15 @@ describe('memory', () => {
     expect((await remember(who, asked.rows[0]?.id ?? randomUUID(), 0)).status).toBe(404);
     // An answer that said nothing (`[budget_stop]`) has nothing to keep.
     const empty = randomUUID();
-    await owner().query(
-      `INSERT INTO assistant_message (id, conversation_id, user_id, role, body)
-         VALUES ($1, $2, $3, 'assistant', '[budget_stop]')`,
-      [empty, reply.conversationId, who.userId],
+    // Preserve the real server-owned authorization so this tests the empty-answer guard, not legacy denial.
+    const inserted = await owner().query(
+      `INSERT INTO assistant_message (id, conversation_id, user_id, role, body, context)
+         SELECT $1, conversation_id, user_id, 'assistant', '[budget_stop]', context
+           FROM assistant_message
+          WHERE id = $4 AND conversation_id = $2 AND user_id = $3 AND role = 'assistant'`,
+      [empty, reply.conversationId, who.userId, reply.messageId],
     );
+    expect(inserted.rowCount).toBe(1);
     const nothing = await remember(who, empty, 0);
     expect(nothing.status).toBe(409);
     expect(nothing.body.code).toBe('assistant_nothing_to_remember');

@@ -13,6 +13,7 @@ import { and, desc, eq, gt, sql } from 'drizzle-orm';
 import { AuditScope } from '../audit/audit-scope.js';
 import { ApiHttpError, notFound } from '../auth/http-errors.js';
 import type { Principal } from '../auth/principal.js';
+import { AssistantHistoryAuthorization, storedAuthorization } from './assistant-context-history.js';
 import { DATABASE } from '../database/database.module.js';
 
 const DAY_MS = 86_400_000;
@@ -34,16 +35,20 @@ export function clipMemoryBody(text: string): string {
     .trimEnd();
 }
 
-const toMemory = (row: typeof schema.assistantMemory.$inferSelect): AssistantMemory => ({
+const toMemory = (
+  row: typeof schema.assistantMemory.$inferSelect,
+  available = true,
+): AssistantMemory => ({
+  available,
   id: row.id,
-  body: row.body,
-  refs: row.refs
+  body: available ? row.body : '',
+  refs: (available ? row.refs : [])
     .filter((ref) => assistantEntityKindSchema.safeParse(ref.kind).success)
     .map((ref) => ({
       kind: assistantEntityKindSchema.parse(ref.kind),
       id: ref.id,
     })),
-  sourceMessageId: row.sourceMessageId,
+  sourceMessageId: available ? row.sourceMessageId : null,
   createdAt: row.createdAt.toISOString(),
   lastUsedAt: row.lastUsedAt.toISOString(),
   expiresAt: row.expiresAt.toISOString(),
@@ -58,7 +63,11 @@ const toMemory = (row: typeof schema.assistantMemory.$inferSelect): AssistantMem
  */
 @Injectable()
 export class AssistantMemoryService {
-  constructor(@Inject(DATABASE) private readonly database: Database) {}
+  constructor(
+    @Inject(DATABASE) private readonly database: Database,
+    @Inject(AssistantHistoryAuthorization)
+    private readonly authorization: AssistantHistoryAuthorization,
+  ) {}
 
   async list(principal: Principal, now: Date = new Date()): Promise<AssistantMemoryList> {
     const { assistantMemory: table } = schema;
@@ -68,7 +77,12 @@ export class AssistantMemoryService {
       .where(and(eq(table.userId, principal.userId), gt(table.expiresAt, now)))
       .orderBy(desc(table.createdAt))
       .limit(ASSISTANT_MEMORY_LIMITS.maxPerUser);
-    return { items: rows.map(toMemory) };
+    const items: AssistantMemory[] = [];
+    for (const row of rows)
+      items.push(
+        toMemory(row, (await this.authorization.authorize(principal, row.authorization)) !== null),
+      );
+    return { items };
   }
 
   async create(
@@ -79,7 +93,7 @@ export class AssistantMemoryService {
     const { assistantMessage: messages, assistantMemory: table } = schema;
     // The message must be an answer of the assistant to this person: someone else's id is no message at all.
     const [message] = await this.database.db
-      .select({ body: messages.body, evidence: messages.evidence })
+      .select({ body: messages.body, evidence: messages.evidence, context: messages.context })
       .from(messages)
       .where(
         and(
@@ -90,6 +104,11 @@ export class AssistantMemoryService {
       )
       .limit(1);
     if (message === undefined) throw notFound('No such answer');
+    const authorization = await this.authorization.authorize(
+      principal,
+      storedAuthorization(message.context),
+    );
+    if (authorization === null) throw notFound('No such answer');
     if (NO_ANSWER.test(message.body.trim())) {
       throw new ApiHttpError(
         HttpStatus.CONFLICT,
@@ -119,7 +138,11 @@ export class AssistantMemoryService {
         .where(and(live, eq(table.body, body)))
         .limit(1);
       // Pressing again on the same sentence changes nothing (and does not renew it).
-      if (same !== undefined) return { row: same, fresh: false };
+      if (same !== undefined) {
+        if ((await this.authorization.authorize(principal, same.authorization)) === null)
+          throw notFound('No such memory');
+        return { row: same, fresh: false };
+      }
       const [held] = await tx
         .select({ n: sql<string>`count(*)` })
         .from(table)
@@ -138,6 +161,7 @@ export class AssistantMemoryService {
           body,
           refs,
           sourceMessageId: input.messageId,
+          authorization,
           createdAt: now,
           lastUsedAt: now,
           // From the day it was made: using it does not move this (T-400 C-7).

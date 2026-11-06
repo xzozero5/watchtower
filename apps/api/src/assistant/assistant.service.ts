@@ -56,8 +56,15 @@ import { ticketHref } from './assistant-hrefs.js';
 import { ContextResolver, type ResolvedRef } from './context-resolver.js';
 import { AssistantProposals } from './assistant-proposals.js';
 import { buildAssistantTools } from './assistant-tools.js';
+import { assistantToolBudget } from './assistant-tool-budget.js';
 import { AssistantReadServices } from './tools/read-services.js';
-import { conversationRefs, trackAssistantPiiRead } from './assistant-context-history.js';
+import {
+  AssistantHistoryAuthorization,
+  makeAssistantAuthorization,
+  storedAuthorization,
+  conversationRefs,
+  trackAssistantPiiRead,
+} from './assistant-context-history.js';
 import { AssistantFactsCache } from './assistant-facts-cache.js';
 import { NOTES } from './assistant-text.js';
 
@@ -153,6 +160,8 @@ export class AssistantService {
     @Inject(ShiftsService) private readonly shifts: ShiftsService,
     @Inject(AssistantReadServices) private readonly modules: AssistantReadServices,
     @Inject(AssistantFactsCache) private readonly factsCache: AssistantFactsCache,
+    @Inject(AssistantHistoryAuthorization)
+    private readonly authorization: AssistantHistoryAuthorization,
     @Optional() @Inject(TelemetryService) private readonly telemetry?: TelemetryService,
   ) {}
 
@@ -402,7 +411,8 @@ export class AssistantService {
       if (ref.kind === 'ticket') read.set(ref.id, ref.label);
       else readOther.set(`${ref.kind}:${ref.id}`, { kind: ref.kind, id: ref.id });
     }
-    const history = await this.history(conversationId);
+    const authorizedHistory = await this.authorization.history(principal, conversationId);
+    const history = authorizedHistory.turns;
     let toolNames: string[] = [];
     let path: 'facts_only' | 'llm1' | 'llm2' | undefined;
     let hadCustomerContent = false;
@@ -483,6 +493,7 @@ export class AssistantService {
         },
         {
           principal,
+          enforceToolBudget: assistantToolBudget(this.limiter, principal.userId),
           locale,
           masked: isMasked(principal),
           now: new Date(),
@@ -587,6 +598,18 @@ export class AssistantService {
         : '[names_incomplete]';
     const answerBody =
       redactedAnswer === '' ? `[${reason ?? 'no_answer'}]` : redactedAnswer.slice(0, 20_000);
+    // Include dependencies of authorized history: a new answer may repeat an older business fact.
+    const authorization = makeAssistantAuthorization(
+      principal,
+      [
+        ...authorizedHistory.refs,
+        ...dictionaryRefs.map((ref) => ({ kind: ref.kind, ref: ref.id })),
+        ...toolReadRefs.values(),
+        ...conversationRefs([{ context: {}, evidence: evidenceOf(claims) }]),
+        ...(ticketKey === undefined ? [] : [{ kind: 'ticket' as const, ref: ticketKey }]),
+      ],
+      [...authorizedHistory.tools, ...tools.map((tool) => tool.name)],
+    );
     await this.database.db.transaction(async (tx) => {
       await tx.insert(schema.assistantMessage).values({
         conversationId,
@@ -594,6 +617,7 @@ export class AssistantService {
         role: 'user',
         body: userBody,
         context: {
+          authorization,
           ...{ readRefs: [...toolReadRefs.values()] },
           ...(body.context?.page === undefined ? {} : { page: body.context.page }),
           ...(ticketKey === undefined ? {} : { ticket: ticketKey }),
@@ -624,6 +648,7 @@ export class AssistantService {
         userId: principal.userId,
         role: 'assistant',
         body: answerBody,
+        context: { authorization },
         path: path ?? null,
         evidence: evidenceOf(claims),
         tools,
@@ -818,9 +843,14 @@ export class AssistantService {
         createdAt: table.createdAt,
         updatedAt: table.updatedAt,
         count: sql<string>`(SELECT count(*) FROM assistant_message m WHERE m.conversation_id = assistant_conversation.id)`,
-        preview: sql<
-          string | null
-        >`(SELECT left(m.body, 120) FROM assistant_message m WHERE m.conversation_id = assistant_conversation.id AND m.role = 'user' ORDER BY m.created_at ASC LIMIT 1)`,
+        // Body and provenance must come from the same first user row, even when timestamps tie.
+        firstUser: sql<{
+          preview: string;
+          context: unknown;
+        } | null>`(SELECT jsonb_build_object('preview', left(m.body, 120), 'context', m.context)
+             FROM assistant_message m
+            WHERE m.conversation_id = assistant_conversation.id AND m.user_id = assistant_conversation.user_id AND m.role = 'user'
+            ORDER BY m.created_at ASC LIMIT 1)`,
       })
       .from(table)
       .where(
@@ -834,16 +864,26 @@ export class AssistantService {
       )
       .orderBy(desc(table.updatedAt))
       .limit(ASSISTANT_CONVERSATION_LIST_LIMIT);
-    return {
-      items: rows.map((row) => ({
+    const items: AssistantConversationList['items'] = [];
+    for (const row of rows) {
+      let preview: string | null = null;
+      if (row.firstUser !== null) {
+        const authorization = await this.authorization.authorize(
+          principal,
+          storedAuthorization(row.firstUser.context),
+        );
+        if (authorization !== null) preview = row.firstUser.preview;
+      }
+      items.push({
         id: row.id,
         locale: row.locale === 'th' ? 'th' : 'en',
         createdAt: row.createdAt.toISOString(),
         updatedAt: row.updatedAt.toISOString(),
         messageCount: Number(row.count),
-        preview: row.preview,
-      })),
-    };
+        preview,
+      });
+    }
+    return { items };
   }
 
   private async conversationFor(
@@ -907,18 +947,6 @@ export class AssistantService {
       refs.push(...result.refs);
     }
     return refs;
-  }
-
-  private async history(
-    conversationId: string,
-  ): Promise<{ role: 'user' | 'assistant'; text: string }[]> {
-    const rows = await this.database.db
-      .select({ role: schema.assistantMessage.role, text: schema.assistantMessage.body })
-      .from(schema.assistantMessage)
-      .where(eq(schema.assistantMessage.conversationId, conversationId))
-      .orderBy(desc(schema.assistantMessage.createdAt))
-      .limit(ASSISTANT_LIMITS.historyTurns);
-    return rows.reverse();
   }
 
   async deleteConversation(principal: Principal, id: string): Promise<void> {

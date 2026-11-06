@@ -264,6 +264,7 @@ export const assistantTh: Widen<typeof assistantEn> = {
     delete: 'ลบแชท',
     working: 'กำลังบันทึกการเปลี่ยนแปลง',
     deleteError: 'ลบไม่สำเร็จ ลองอีกครั้ง',
+    noAccess: 'ไม่มีสิทธิ์เข้าถึง',
     noMemory: 'ยังไม่มีเรื่องที่จำไว้',
     count: 'จำไว้ {count} จาก {limit} เรื่อง',
     forget: 'ลืมเรื่องนี้',

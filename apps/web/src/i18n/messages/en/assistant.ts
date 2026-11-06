@@ -265,6 +265,7 @@ export const assistantEn = {
     delete: 'Delete chat',
     working: 'Saving changes',
     deleteError: 'Could not delete. Try again.',
+    noAccess: 'No access',
     noMemory: 'No remembered facts.',
     count: '{count} of {limit} facts remembered',
     forget: 'Forget',

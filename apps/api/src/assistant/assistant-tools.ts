@@ -83,6 +83,8 @@ export interface AssistantToolDeps {
 }
 
 export interface AssistantToolEnv {
+  /** Injected by the production service; the same entry point meters prefetch and model calls. */
+  readonly enforceToolBudget?: ((name: AssistantToolName) => Promise<void>) | undefined;
   readonly onReadRef?: (ref: { kind: AssistantEntityKind; id: string }) => void;
   readonly principal: Principal;
   readonly locale: AssistantLocale;
@@ -257,8 +259,10 @@ export function buildAssistantTools(
     // that uses its own connection, fails in the database. `investigate_run` is the one exception: the AI's own run
     // records its budget and audit rows (ADR-016) and reaches product data only through `watchtower_ai_ro`.
     const run = tool.execute;
-    const execute: typeof run =
-      name === 'investigate_run' ? run : (input, ...rest) => scopeOf(() => run(input, ...rest));
+    const execute: typeof run = async (input, ...rest) => {
+      await env.enforceToolBudget?.(name);
+      return name === 'investigate_run' ? run(input, ...rest) : scopeOf(() => run(input, ...rest));
+    };
     registry.register(defineTool<I, O>({ ...tool, execute, name, readOnly: true }));
     facts.set(name, toFacts);
     info.push({ name, description: tool.description, input: hint });
