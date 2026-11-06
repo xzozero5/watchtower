@@ -10,6 +10,7 @@
 > ✅ **2026-11-06 05:26:** push `635914d` แล้ว (รวม82commitเดิม); CI42121519210cancelledเพราะpushเอกสารใหม่; CI42121588809ของ31abb66ล้มops test2ตัว → T-438แก้แล้ว รอดูCIใหม่. POC api/worker/web redeploy00:21 healthy, bridgeจากapihealth200หลังpinCLI. T-437 completed; checkpoint task T-419 ready หมายถึง T-419b ที่ POเลือก (schema taskIdรับเลขเท่านั้น). งานassistantยังต้องทำต่อ
 
 ## Continuation (อ่านก่อนเริ่มรอบใหม่)
+- **07:02 แก้กระบวนการตามเจ้าของ:** ทำต่อเนื่องจนงานครบ/quotaใกล้หมด/ติดจริง; ไม่จบturnหลังงานย่อยหนึ่งชิ้นเพื่อรอheartbeat. Pushที่ค้างสำเร็จถึง0621d05แล้ว CI42133808725กำลังรัน; T419b workerกำลังทำ + POตัดสินblockersของT418/T409. checkpointT419running มีclaimlocal; ห้ามซ้อน. ไม่รอGitHubเพื่อทำlocalงานอื่น
 - **Push ค้าง 06:23:** T-438 commit4bfbbf1ผ่านtargetedtest2/2+lint/typecheck+reviewแล้ว แต่ GitHubปฏิเสธ2ครั้ง `remote: fatal error in commit_refs`. remoteยัง31abb66; ไม่force. รอบหน้าลองpushแบบปกติหลังเช็คremoteก่อน แล้วดูCIใหม่. CheckpointT419ready releasedแล้ว; ไม่มีactivework
 - 06:22 T-438: แก้CI ops e2e testล้าสมัย (/INC-12/ชนAskAIbuttons3ตัว); mainรันlight/dark2/2, qaอิสระreviewผ่าน. ไม่มีproductchange ไม่ต้องredeploy; ดูCIล่าสุดก่อนT419b
 - เจ้าของอนุมัติ 2026-11-06: ทำงานต่อให้ครบ, deploy Docker, push Git, stop container ทิ้ง; มอบ PO ตัดสินใจ scope/default ขณะเข้านอน. คง LINE ภายหลังและ autosend ปิด

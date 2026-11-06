@@ -321,3 +321,9 @@
 ## Links
 - PRD §6.1, §6.2, §6.3, §6.6 · ADR-002, 008, 011, 012, 013, 014, 016, 017, 019, 021, 023 · `docs/decisions/T-400-security-review.md` · `apps/api/src/assistant/`, `apps/api/src/assistant/assistant-access.ts` (`holds()`), `apps/api/src/incidents/incidents.controller.ts`, `apps/api/src/statuspage/status-admin.controller.ts`, `apps/api/src/shifts/shifts.controller.ts`, `packages/db/migrations/0090_assistant.sql` (`ai_summary`), `packages/ai/src/agents/assistant.ts`, `apps/api/src/ai/concurrency-limit.ts`, `tools/claude-cli-bridge/bridge.mjs` (อ่าน 2026-11-05)
 - `claude -p --output-format stream-json` — เอกสาร Claude Code CLI `[VERIFY]` · SSE ผ่าน Caddy `reverse_proxy` (flush) และ Cloud Run request timeout `[VERIFY]`
+
+### Clarification 2026-11-06 — PO ตามอำนาจที่เจ้าของมอบ
+- Aggregate fact ที่ไม่มี ref ต้องเก็บ snapshot และ claim→factId พร้อม element/scope/period/asOf/fingerprint; evidence แบบ aggregate แสดง System data/ข้อมูลจากระบบ+metric+ช่วงเวลา ห้ามสร้าง entity ref/href ปลอม. Resolve fact ไม่ได้ให้ทิ้งclaim. ประโยคทุกclaimมีevidence refใน§9.2หมายถึง provenance ที่ตรวจได้ ไม่บังคับaggregateให้มีentity
+- Person narration ทั้งworkerและreaderต้องปิดจนgolden§9.9ได้รับอนุมัติและผ่าน; ระหว่างนี้แสดงFครบ ไม่deferfeatureNเพราะเวลาหรือความยาก
+- งบperuserคงตาม§9.4: my_work4calls/dayและ60mininterval; user-scopedรวม30calls/dayในinsights60calls/day; viewedmark30pairs/h; API60req/min; ไม่batchข้ามuser
+- T409 acceptance citation recall≥90%, leak0, uncited≤1/answer; insightJ18 stricter uncited0และhallucinatednumber0. ต้องtestaggregate roundtrip/masked/permissionrevoked/goldenoff0calls/concurrentcap
