@@ -254,3 +254,7 @@ T-152, T-175 (กำลังทำอยู่แล้ว เก็บผล),
 - [x] T-439 `main` จำกัด CI test package concurrency1/Vitest workers2 โดยคงtestcasesครบ + เพิ่มcontinuation8testsเข้าCI; rosterproperty19testsผ่าน (150random+80oracle) · rootcommandตรวจจริงในlogsก่อนpush
 
 - [x] T-440 `main` แก้ fresh-volume embedder race: runtimeรอinitสำเร็จ; realimageuid1000/read-only+ThaiEnglish1024dimsผ่าน, initรอบสองไม่download, internal/noport/egressblocked, compose35testsผ่าน+independentreview. T433ยังรอcalibrationและเปิดprovider
+
+- [ ] T-441 `main` testEnvSMTPต้องใช้TEST_SMTP_PORTให้ตรงisolationguard; regressionทุกtransportชี้disposableport และindependentreviewก่อนปิด
+
+- [ ] T-442 `main` ตรวจCI11134b run42159021249 worker ai.integration.test.ts:295 expectedclassified receivedinvestigating; อีก3jobsผ่าน. หาrootcause/แก้พร้อมreview ไม่ลดassertionก่อนเข้าใจrace (loglocal ci-11134b-integration)

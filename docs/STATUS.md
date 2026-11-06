@@ -498,3 +498,15 @@ Static reviewพบP2สี่ข้อส่งdevแล้ว: dictionaryconte
 
 ## 2026-11-06 10:47 — main — T433 calibration (ยังไม่ปิด)
 [TESTED] actualbge-m3publicexamples18queries/23passages: floor.55recall100%noise6%; .60recall79%. หลังdebugrecreatecoldqueryช้า2.259s; ไม่ใช่steadywarm. Warm3distinctTH/ENที่CPU2=297/596/299ms, CPU4=104/174/109ms คืนCPU2แล้ว. คงtimeout1.5sและcoldfallback. OverlayfinallyrestoreครบPortBindings{}+embedonly. Providerยังไม่เปิด; POกำหนดT434ก่อนswitchเพื่อรักษาindexเก่า. Modelพร้อมรอ ไม่อ้างhybridinstanceผ่าน.
+
+## 2026-11-06 10:59 — main — T409 frozen gate รอบแรก
+[TESTED] build6/static14tasks, AI56/shared6/APIunit107/eval2 และAPIassistantintegration112/7filesผ่าน (124s, disposableportsเท่านั้น). Reviewerindependent4adversarialtestsรวมkill-switchduringplan/closingtags/investigate/refผ่าน. ยังไม่signoff: P2prefetch+modelcontextขาดorg/intent/handoff/service; P2dictionaryย้อนหลังไม่รู้uncitedconversationที่toolเคยอ่าน. Devแก้เฉพาะสองกลุ่มพร้อมregressionก่อนrefreeze. Cachefacts_onlyอนุญาตตามADR ไม่มีP1/P2จากstatic; mainยังต้องmockCLI32และAPIcacheaudit/revocationacceptance.
+MainพบtestfixtureSMTPยังhardcode1025แม้guardบังคับTEST_SMTP_PORT จึงแก้ใช้ตัวแปรtestจริง; eslintผ่าน รอindependentreview ไม่ได้ส่งSMTPจริงในgateAPIนี้.
+
+T441: reviewerยืนยันSMTPone-linefixไม่มีP1/P2 และAPIassistantไม่มีSMTPconsumer/sendpath (relayenqueueonly). Mainเพิ่มregressiontestEnv4transports1testผ่าน+eslintผ่าน; รอreviewtestfileก่อนติ๊ก. ไม่อ้างPGidleว่าพิสูจน์สาเหตุdelay; integration112ผ่าน124sตามจริงแล้ว.
+
+## 2026-11-06 11:09 — main — T442 CI failure (เปิด)
+CI42159021249ของ11134b: integrationล้มworkerai.integration.test.ts:295(expectedclassified/receivedinvestigating); lint/typecheck/unit + Docker + e2eผ่าน. SourceT409ยังuncommittedไม่อยู่ในCIนี้. เก็บfailedjob127700238879logแล้ว; ยังไม่ยืนยันrootcause. รอบถัดไปตรวจinsightOf/asyncpipelineก่อนแก้ ห้ามลดassertionเพื่อเขียว. Usage5h87%weekly60%; dev/reviewerfreezeก่อน95%เพื่อcheckpoint ไม่เริ่มscopeใหม่.
+
+## 2026-11-06 11:11 — main — T409 freeze r2 ก่อน quota pause
+DevรายงานP2prefetch9kinds/visibleentities/readRefsuncited/handoffauditแก้แล้ว; API30/AI40/audit4ผ่าน (mainยังไม่signoff). ปิดdev/reviewerทุกตัวแล้ว. Mainเริ่มdeterministicr2gateexec58277; logt409-r2-orchestratorและt409-main-*; outerstopwt-main4containersเมื่อจบ ไม่ลบvolume. Sourceยังuncommittedและไม่deploy. Pendingr2result, independenthandoff-finalreview, mockCLI32, webiconlint/typecheck, T442CIworkerfailure. T441ยังรอtypecheckgate. Runtimeembedderหยุดเก็บmodelvolume; POC9เดิมไม่เปลี่ยน.
