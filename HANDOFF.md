@@ -1,7 +1,7 @@
 # HANDOFF — Watchtower
 
 > สถานะล่าสุดของโปรเจกต์ session ใหม่อ่านไฟล์นี้ต่อจาก `AGENTS.md` แล้วทำงานต่อได้โดยไม่ต้องอ่านบทสนทนาเดิม
-> อัปเดตล่าสุด: 2026-11-06 21:46 (เวลากรุงเทพ) โดย Codex — T407/T445 running; Docker engine blocked
+> อัปเดตล่าสุด: 2026-11-06 21:48 (เวลากรุงเทพ) โดย Codex — T407/T445 running; Docker engine blocked
 > ฉบับก่อน: `docs/handoff-archive/HANDOFF-2026-11-05-pre-ai-bridge.md` · บันทึกรายชั่วโมง `logs/daily/2026-11-05.md`
 
 > ✅ **push แล้ว 2026-11-05** (`origin/main` = `e325c83`, CI run 41963960467 เขียวทั้ง 4 job) · ✅ **POC deploy แล้ว 2026-11-05 11:10** (เจ้าของ OK): backup `D:\Works\watchtower-backups\poc-20261105-1105-pre-phase3.dump` (13.5 MB) → build api/worker/web/bridge/gmail-tunnel → migrate 22 ตัวถึง 0111 → ทุก service healthy · `AI_AUTOSEND_ENABLED` ไม่ได้ตั้ง
@@ -10,9 +10,9 @@
 > ✅ **2026-11-06 05:26:** push `635914d` แล้ว (รวม82commitเดิม); CI42121519210cancelledเพราะpushเอกสารใหม่; CI42121588809ของ31abb66ล้มops test2ตัว → T-438แก้แล้ว รอดูCIใหม่. POC api/worker/web redeploy00:21 healthy, bridgeจากapihealth200หลังpinCLI. T-437 completed; checkpoint task T-419 ready หมายถึง T-419b ที่ POเลือก (schema taskIdรับเลขเท่านั้น). งานassistantยังต้องทำต่อ
 
 ## Continuation (อ่านก่อนเริ่มรอบใหม่)
-- **21:46:** T407closed/pushedmaina6b3c22c. T445a/csourceแยกbranch `codex/t445-authorization-gates` เพื่อให้CIตรวจPG/RedisแทนlocalDockerที่API500. ห้ามmerge/deployจนintegrationผ่าน. Main checkpointยังT407running PID40860 (CLIไม่ให้เปลี่ยนtaskก่อนcomplete; ไม่markoverallcompleted). Localtoken `.cache/watchtower-claim.json`.
+- **21:46:** T407closed/pushedmaina6b3c22c. T445a/csourceแยกbranch `codex/t445-authorization-gates` เพื่อให้CIตรวจPG/RedisแทนlocalDockerที่API500. ห้ามmerge/deployจนintegrationผ่าน. Main checkpointT407waiting_limit21:48;nextEligibleAt2026-11-06T18:51:31.000Z=2026-11-0701:51:31Bangkok;5h95%weekly92%,weeklyavailableใช้nowไม่รอweeklyreset. ไม่มีagents/localjobsค้าง. เดิมownerPID40860 (CLIไม่ให้เปลี่ยนtaskก่อนcomplete; ไม่markoverallcompleted). Localtoken `.cache/watchtower-claim.json`.
 - **T407 completed:** route32/32, main10specs161/161browser+lint/format/webtypeผ่าน; publicanonymous/staffรวมCSAT/portal. a/bdeployb767เดิม. logs/deploy/2026-11-06-t407c-final2-browser.log exit0. เป็นmockUIgate ไม่ใช่livepilot/securityapproval.
-- **T445a frozen:** authorizationfingerprint/history+previewreauth/memorytombstones,nullablemigration0117,NoaccessTH/EN+Forget. Legacyfailsclosed. ReviewerปิดcodefindingsnestedROpool+preview; real4-wayticket/KBregression,previewrevocation/legacytestเตรียมแล้ว. MainAPI35unit/web6unit/APIwebtype/scopedlintผ่าน. Emptyanswerfixtureคงserverauthเพื่อรักษา409assertion. DBmigration/reversibility/integrationยังไม่รัน ห้ามticka.
+- **T445a frozen:** authorizationfingerprint/history+previewreauth/memorytombstones,nullablemigration0117,NoaccessTH/EN+Forget. Legacyfailsclosed. ReviewerปิดcodefindingsnestedROpool+preview; real4-wayticket/KBregression,previewrevocation/legacytestเตรียมแล้ว. MainAPI35unit/web6unit/APIwebtype/scopedlintผ่าน. FinalpreviewdeltaAPItype/lintexit0. CI42236950143integrationล้มแล้ว21:48ยังไม่อ่านสาเหตุเนื่องจากlimit;รอบหน้าดูrunlatestของbranch(เอกสารpushอาจcancelrunเดิม). Emptyanswerfixtureคงserverauthเพื่อรักษา409assertion. DBmigration/reversibility/integrationยังไม่รัน ห้ามticka.
 - **T445c frozen:**60/hour/user/toolRedis callbackรวมprefetch+wiring,61stcounterunitผ่าน; realRedisisolationintegrationยังไม่รัน. Reviewerไม่พบP1/P2. T445bPIIcatalogue/T445dpromptmemoryยังไม่ทำ.
 - **Docker blocked:**21:23pipeหายหลังrestorePOC9healthy20:54;restartDesktopแบบมีขอบเขต1ครั้งแล้วpipeกลับแต่API500/starttestPGRedisล้ม. 21:38API4000/login3000unavailable,hostbridge4317HTTP200. ไม่restartวน/ไม่ลบvolume. เมื่อengineกลับให้restoreexistingPOC9+verifyautosendfalse;starttestPG45802/Redis46802เฉพาะตอนใช้แล้วหยุด. ยังverifyunusedcontainerstopรอบนี้ไม่ได้.
 - **T444sourcefixpushed3660c90c:**rootstatic/e2e/composeCIผ่าน; Integrationworker365/366ล้มfreshintentwindow_start==window_end→T446. DB529/domain510ผ่านCI42231722087. Mainworkerfixture20/20ผ่านก่อนหน้า. อย่าอ้างCIgreen.

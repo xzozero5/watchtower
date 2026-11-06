@@ -5,6 +5,8 @@ snapshot สั้นสำหรับ cold start อยู่ที่ `HANDOF
 
 ## สถานะปัจจุบัน
 
+- **2026-11-06 21:47:** T407ปิดpushmaina6b3c22c (161browser/staticผ่าน). T445source92aef072อยู่codex/t445-authorization-gates,CI42236950143กำลังตรวจ;ไม่merge/deployจนPG/Redis/migrationผ่าน. Main35API+6webunit/APIwebtype/lintและindependentreviewผ่าน; T445b/d,T446pending. DockerlocalAPI500/POCweb-apiunavailable,hostbridge200. Agentsปิดหมด/autosendปิด.
+
 - **2026-11-06 21:37:** T407c161browserrerunหลังแก้exactcopy; APItype/main35unit+webscopedlintผ่าน. T445a reviewพบP2nestedROpoolกำลังแก้, realPG/Redishold. Dockerpipeกลับแต่API500/containerstartล้ม;ไม่restartซ้ำ. CI3660c90c3jobsผ่าน/Integrationล้ม fresh-intent equal-window→T446;ยังไม่รับรองCIgreenหรือdeployใหม่.
 
 - **2026-11-06 21:09:** quotareset(เริ่ม1%/weekly78%); checkpoint407running PID40860. CIbfe590bf rootformat2files+workerfixtureล้ม; T444แก้main20integration/static/format+reviewผ่าน. พบPOC9หยุดก่อนheartbeat(noOOM) startcontainersเดิมกลับhealthy3HTTP200/autosendfalse ไม่เปลี่ยนconfig/migration. QA407cเติมremainingroutes; securityT411พบP2สามกลุ่มรอT445fix ยังไม่ปิด.
@@ -555,3 +557,7 @@ T411staticreviewพบP2: history/memoryหลังrevocation, PIIauditcatalogu
 
 ## 2026-11-06 21:46 — T445 review branch
 [TESTED] mainAPI35unit/web6unit/APIwebtype/scopedlintผ่าน; independentreviewROpool/preview/NoaccessUIปิดcodefindings. [UNVERIFIED] PG/Redis/migration0117ยังblockedDocker500. แยกcodex/t445-authorization-gatesและpushให้CIตรวจบนdisposables;ไม่merge/deploy/closeT445. Agentsfreeze/closedทั้งหมด. T446equalwindowยังpending. Quota5h93%/weekly92%,ไม่มีข้อมูลtoken/costรายagentที่เครื่องมือเปิดให้.
+
+
+## 2026-11-06 21:48 — waiting_limit
+5h95%/weekly92%; checkpointwaiting_limitจน2026-11-06T18:51:31.000Z (7พ.ย.01:51:31Bangkok);weeklyใช้nowเพราะยังเหลือ8%. T407maina6b3c22cปิดแล้ว;T445branch92aef072pushแล้วแต่CI42236950143integrationfailedยังไม่อ่านlogตอนlimit. FinalpreviewdeltaAPItype/lint0;อื่นก่อนหน้า35API/6webunit/static/reviewผ่าน. ไม่merge/deploy,T445/T446ยังเปิด,Dockerlocal500ยังไม่recover. ไม่มีagents/localjobsค้าง;heartbeatคงactive. รอบหน้าตรวจlatestbranchCIก่อนเลือกงาน.
