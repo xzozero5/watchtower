@@ -1,5 +1,7 @@
 'use client';
 
+import { AskAiElement } from '@/components/assistant/ask-ai-element';
+
 import {
   OTHER_MAIL_DISPOSITIONS,
   type OtherMailDetail,
@@ -346,6 +348,7 @@ function MailDetail({
   return (
     <article className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto rounded-card bg-surface shadow-card p-4">
       <header className="flex flex-col gap-1">
+        <AskAiElement element="conversation.pane" />
         <h2 className="text-base font-semibold">
           {mail.subject === '' ? t('otherMail.noSubject') : mail.subject}
         </h2>

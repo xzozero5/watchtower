@@ -1,5 +1,7 @@
 'use client';
 
+import { AskAiElement } from '@/components/assistant/ask-ai-element';
+
 import type { CeoExternalTile, CeoKpiKey, CeoTile, CeoView } from '@watchtower/shared';
 import {
   Button,
@@ -210,6 +212,7 @@ function KpiTiles({ view }: { view: CeoView }) {
       <h2 id="ceo-kpis" className="sr-only">
         {t('reports.ceo.title')}
       </h2>
+      <AskAiElement element="reports.ceo.figures" />
       <TileGrid>
         <Figure
           label={t('reports.ceo.kpi.volume')}

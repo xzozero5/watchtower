@@ -1,5 +1,7 @@
 'use client';
 
+import { AskAiElement } from '@/components/assistant/ask-ai-element';
+
 import type { UseQueryResult } from '@tanstack/react-query';
 import type { AutonomyState } from '@watchtower/shared';
 import { AUTONOMY_STAGES, Skeleton, StageBadge } from '@watchtower/ui';
@@ -51,6 +53,7 @@ export function AiStatus({ query }: { query: UseQueryResult<AutonomyState> }) {
 
   return (
     <div className="flex flex-col gap-3">
+      <AskAiElement element="home.status" />
       <dl className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm">
         <div className="flex items-center gap-1.5">
           <dt className="text-muted-foreground">{t('home.ai.runs')}</dt>

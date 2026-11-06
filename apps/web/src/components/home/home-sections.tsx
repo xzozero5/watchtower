@@ -1,5 +1,7 @@
 'use client';
 
+import { AskAiElement } from '@/components/assistant/ask-ai-element';
+
 import {
   OPEN_STATUSES,
   type TicketStats,
@@ -115,6 +117,7 @@ export function OpenTicketsCard({
       aria-labelledby="home-open"
       className="flex min-w-0 flex-col gap-4 rounded-card bg-surface p-5 shadow-card lg:p-6"
     >
+      <AskAiElement element="home.my_work" />
       <h2 id="home-open" className="text-title font-medium text-foreground-strong">
         {t('home.openTickets')}
       </h2>

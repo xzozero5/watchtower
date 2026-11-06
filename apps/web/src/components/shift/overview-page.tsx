@@ -1,5 +1,7 @@
 'use client';
 
+import { AskAiElement } from '@/components/assistant/ask-ai-element';
+
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import type { ShiftOverview, ShiftSession } from '@watchtower/shared';
 import { Button, TintChip, toast } from '@watchtower/ui';
@@ -83,6 +85,7 @@ function OverviewView({ data, onRefresh }: { data: ShiftOverview; onRefresh: () 
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
           <h2 className="text-lg font-semibold">{t('shift.overview.title')}</h2>
+          <AskAiElement element="shift.overview" />
           <p className="text-xs text-muted-foreground">
             {t('shift.overview.updated', { time: format.time(data.generatedAt) })}
           </p>

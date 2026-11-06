@@ -1,5 +1,7 @@
 'use client';
 
+import { AskAiElement } from '@/components/assistant/ask-ai-element';
+
 import type { WeeklyBrief } from '@watchtower/shared';
 import { Button, SectionHeading, Skeleton, TintChip } from '@watchtower/ui';
 import { FileText, Pencil } from 'lucide-react';
@@ -53,6 +55,7 @@ export function BriefBody({ brief }: { brief: WeeklyBrief }) {
         <h3 id="brief-summary" className="text-sm font-medium text-foreground-strong">
           {t('reports.brief.section.summary')}
         </h3>
+
         {content.summary.length === 0 ? (
           <p className="text-sm text-muted-foreground">{t('reports.brief.noSummary')}</p>
         ) : (
@@ -127,6 +130,7 @@ export function WeeklyBriefCard() {
 
   return (
     <section aria-labelledby="ceo-brief" className="flex flex-col gap-3">
+      <AskAiElement element="reports.ceo.brief" />
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 id="ceo-brief" className="text-title font-medium text-foreground-strong">
           <SectionHeading tone="violet" icon={FileText} plain>

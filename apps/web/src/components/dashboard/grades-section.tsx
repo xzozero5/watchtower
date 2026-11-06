@@ -1,5 +1,7 @@
 'use client';
 
+import { AskAiElement } from '@/components/assistant/ask-ai-element';
+
 import type { IntentGradeMetrics, ResolutionClass } from '@watchtower/shared';
 import {
   BarList,
@@ -14,6 +16,7 @@ import { ClipboardCheck } from 'lucide-react';
 
 import { LoadError } from '@/components/admin/admin-page';
 import { CLASS_LOOK } from '@/components/ai/ai-grade';
+import { useSession } from '@/lib/auth/session';
 import { useI18n } from '@/i18n/provider';
 import { useIntentGradeMetrics } from '@/lib/ai/grade-queries';
 import { humanizeKey } from '@/lib/ai/prose';
@@ -107,7 +110,24 @@ function IntentCard({ row }: { row: IntentGradeMetrics }) {
  * higher stage (that is the gate, T-304). Each class is a bar with an icon and its name, so the colour is
  * never the only cue. Lead and head (`metric.read`).
  */
+/** The metrics route requires metric.read; the element control follows its separate registry rule. */
 export function IntentGradesSection({ days }: { days: number }) {
+  const { can } = useSession();
+  const { t } = useI18n();
+  if (can('metric.read')) return <IntentGradeMetricsBody days={days} />;
+  return (
+    <DashboardSection
+      id="grades"
+      icon={ClipboardCheck}
+      tone="teal"
+      title={t('grade.dashboard.title')}
+    >
+      <AskAiElement element="dashboard.ops.grades" period={`d${String(days)}`} />
+    </DashboardSection>
+  );
+}
+
+function IntentGradeMetricsBody({ days }: { days: number }) {
   const { t } = useI18n();
   const query = useIntentGradeMetrics(days, true);
   const intents = query.data?.intents ?? [];
@@ -119,6 +139,7 @@ export function IntentGradesSection({ days }: { days: number }) {
       tone="teal"
       title={t('grade.dashboard.title')}
     >
+      <AskAiElement element="dashboard.ops.grades" period={`d${String(days)}`} />
       <div className="flex items-center gap-2">
         <HelpHint label={t('grade.dashboard.helpLabel')}>{t('grade.dashboard.help')}</HelpHint>
       </div>

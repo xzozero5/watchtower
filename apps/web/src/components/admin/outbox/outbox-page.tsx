@@ -1,5 +1,7 @@
 'use client';
 
+import { AskAiElement } from '@/components/assistant/ask-ai-element';
+
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   type DeadOutboxEffect,
@@ -158,6 +160,7 @@ function OutboxBody() {
         }
       />
       <AdminBody>
+        <AskAiElement element="admin.outbox" />
         <div className="flex flex-col gap-4 p-4">
           <HealthStrip
             health={health.data}
@@ -168,6 +171,7 @@ function OutboxBody() {
             <h2 id="outbox-dead-title" className="text-sm font-semibold">
               {t('outboxAdmin.dead.title')}
             </h2>
+
             {dead.isPending ? (
               <TableSkeleton rows={3} />
             ) : dead.isError ? (

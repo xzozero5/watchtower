@@ -1,5 +1,7 @@
 'use client';
 
+import { AskAiElement } from '@/components/assistant/ask-ai-element';
+
 import { Alert, HelpHint, TintChip } from '@watchtower/ui';
 import { FlaskConical, Lock, Radio } from 'lucide-react';
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -42,6 +44,7 @@ function IntegrationsBody() {
         ]}
       />
       <AdminBody className="px-4 py-4">
+        <AskAiElement element="admin.integrations" />
         <div className="mx-auto flex max-w-3xl flex-col gap-6">
           {/* The two sentences that used to sit here are one chip each, with the words in a hint. */}
           <div role="note" className="flex flex-wrap items-center gap-2">
@@ -89,6 +92,7 @@ function IntegrationsBody() {
               <h2 id="credentials-heading" className="text-base font-semibold">
                 {t('admin.integrations.credentialsHeading')}
               </h2>
+
               <HelpHint
                 label={t('admin.moreInfo', { topic: t('admin.integrations.credentialsHeading') })}
               >

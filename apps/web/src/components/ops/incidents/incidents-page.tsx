@@ -1,5 +1,7 @@
 'use client';
 
+import { AskAiElement } from '@/components/assistant/ask-ai-element';
+
 import { Button, cn, EmptyState, Kbd, SegmentedControl } from '@watchtower/ui';
 import { Plus, Siren } from 'lucide-react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
@@ -71,6 +73,7 @@ function IncidentsBody() {
     <div className="flex min-h-0 flex-1 flex-col gap-3 p-4">
       <div className="flex flex-wrap items-center gap-3">
         <h2 className="sr-only">{t('ops.incidents.title')}</h2>
+        <AskAiElement element="incidents.open" />
         <SegmentedControl
           aria-label={t('ops.incidents.scope.label')}
           value={scope}

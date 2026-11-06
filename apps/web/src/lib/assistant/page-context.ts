@@ -2,6 +2,7 @@
 
 import type {
   AssistantContext,
+  AssistantElement,
   AssistantEntity,
   AssistantPage,
   AssistantSelection,
@@ -11,6 +12,7 @@ import { useEffect, useState } from 'react';
 import { resolveLocation } from './page-registry';
 
 export interface PageContext {
+  element?: AssistantElement | null;
   page: AssistantPage;
   /** The thing open on the page, or the one an "Ask AI about this" button pinned. */
   entity: AssistantEntity | null;
@@ -24,6 +26,7 @@ export interface PageContext {
 
 /** What the person asked about from a row or a card ("Ask AI about this"). */
 export interface AskTarget {
+  element?: AssistantElement;
   entity?: AssistantEntity;
   selection?: AssistantSelection;
   label?: string;
@@ -32,6 +35,7 @@ export interface AskTarget {
 }
 
 export interface RemovedChips {
+  element?: boolean;
   page: boolean;
   entity: boolean;
   selection: boolean;
@@ -45,7 +49,7 @@ export function contextKey(context: PageContext): string {
   const selection = context.selection
     ? `${context.selection.kind}:${context.selection.refs.join(',')}`
     : '';
-  return `${context.page}|${entity}|${selection}|${String(context.pin)}`;
+  return `${JSON.stringify(context.element ?? null)}|${context.page}|${entity}|${selection}|${String(context.pin)}`;
 }
 
 const POLL_MS = 600;
@@ -66,9 +70,10 @@ export function usePageContext(
     const here = resolveLocation(pathname, window.location.search);
     return {
       page: here.page,
-      entity: pinned?.entity ?? here.entity,
+      element: pinned?.element ?? null,
+      entity: pinned?.element ? (pinned.entity ?? null) : (pinned?.entity ?? here.entity),
       selection: pinned?.selection ?? null,
-      label: pinned?.entity ? (pinned.label ?? null) : null,
+      label: pinned?.entity || pinned?.element ? (pinned.label ?? null) : null,
       pin: pinned?.pin ?? 0,
     };
   };
@@ -103,6 +108,7 @@ export function contextForRequest(
 ): AssistantContext | undefined {
   const result: AssistantContext = {};
   if (!removed.page) result.page = context.page;
+  if (!removed.element && context.element) result.element = context.element;
   if (!removed.entity && context.entity !== null) {
     result.entity = context.entity;
     // The first release read `ticket`; an older server still does.

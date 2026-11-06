@@ -1,5 +1,7 @@
 'use client';
 
+import { AskAiElement } from '@/components/assistant/ask-ai-element';
+
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { INTENT_KEY_PATTERN, type Intent } from '@watchtower/shared';
 import {
@@ -26,7 +28,6 @@ import {
 import { LoadError, RequirePermission, TableSkeleton } from '@/components/admin/admin-page';
 import { EntitySheet } from '@/components/admin/entity-sheet';
 import { AppLink } from '@/components/app-link';
-import { AskAiButton } from '@/components/assistant/ask-ai-button';
 import { FormField } from '@/components/portal/form-field';
 import { useT } from '@/i18n/provider';
 import { describeError } from '@/lib/admin/errors';
@@ -96,7 +97,12 @@ function IntentsBody() {
             </AppLink>
             <span className="font-mono text-xs text-muted-foreground">{row.key}</span>
           </span>
-          <AskAiButton entity={{ kind: 'intent', ref: row.id }} label={row.name} />
+          <AskAiElement
+            element="admin.intents"
+            entity={{ kind: 'intent', ref: row.id }}
+            scope={`intent:${row.id}`}
+            label={row.name}
+          />
         </span>
       ),
     },

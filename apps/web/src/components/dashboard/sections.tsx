@@ -1,5 +1,7 @@
 'use client';
 
+import { AskAiElement } from '@/components/assistant/ask-ai-element';
+
 import {
   DASHBOARD_AT_RISK_MINUTES,
   DASHBOARD_CFR_ATTRIBUTION_HOURS,
@@ -139,6 +141,7 @@ export function NowSection({ ops }: SectionProps) {
   });
   return (
     <DashboardSection id="now" icon={Inbox} tone="teal" title={t('dashboard.sections.now')}>
+      <AskAiElement element="dashboard.ops.now" />
       <TileGrid>
         <Figure {...tile(t('dashboard.now.open'), Inbox, 'teal', queue.open)} />
         <Figure {...tile(t('dashboard.now.unassigned'), UserRoundX, 'sky', queue.unassigned)} />
@@ -191,6 +194,7 @@ export function VolumeSection({ ops }: SectionProps) {
   const channels = Object.entries(volume.byChannel).sort(([, a], [, b]) => b - a);
   return (
     <DashboardSection id="volume" icon={Layers} tone="blue" title={t('dashboard.sections.volume')}>
+      <AskAiElement element="dashboard.ops.volume" period={`d${String(ops.window.days)}`} />
       <div className="grid gap-3 lg:grid-cols-[minmax(0,14rem)_minmax(0,1fr)]">
         <div className="flex min-w-0 flex-col gap-2">
           <Figure
@@ -250,6 +254,7 @@ export function SlaSection({ ops }: SectionProps) {
   const infoLabel = t('dashboard.sla.basisAbout');
   return (
     <DashboardSection id="sla" icon={Clock3} tone="amber" title={t('dashboard.sections.sla')}>
+      <AskAiElement element="dashboard.ops.sla" period={`d${String(ops.window.days)}`} />
       <TileGrid>
         <Figure
           label={t('dashboard.sla.firstResponse')}
@@ -318,6 +323,7 @@ export function QualitySection({ ops }: SectionProps) {
       tone="green"
       title={t('dashboard.sections.quality')}
     >
+      <AskAiElement element="dashboard.ops.quality" period={`d${String(ops.window.days)}`} />
       <TileGrid>
         <Figure
           label={t('dashboard.quality.csat')}
@@ -397,6 +403,7 @@ export function ReliabilitySection({ ops }: SectionProps) {
       tone="red"
       title={t('dashboard.sections.reliability')}
     >
+      <AskAiElement element="dashboard.ops.reliability" period={`d${String(ops.window.days)}`} />
       <TileGrid>
         <Figure
           label={t('dashboard.reliability.openIncidents')}
@@ -547,6 +554,7 @@ export function AiSection({ ops }: SectionProps) {
   if (ai.status !== 'ok') {
     return (
       <DashboardSection id="ai" icon={Bot} tone="teal" title={t('dashboard.sections.ai')}>
+        <AskAiElement element="dashboard.ops.ai" period={`d${String(ops.window.days)}`} />
         <SectionNote figure={ai} />
       </DashboardSection>
     );
@@ -554,6 +562,7 @@ export function AiSection({ ops }: SectionProps) {
   const data = ai.data;
   return (
     <DashboardSection id="ai" icon={Bot} tone="teal" title={t('dashboard.sections.ai')}>
+      <AskAiElement element="dashboard.ops.ai" period={`d${String(ops.window.days)}`} />
       <TileGrid>
         <Figure
           label={t('dashboard.ai.acceptance')}
@@ -671,6 +680,7 @@ export function TeamSection({ ops }: SectionProps) {
   const count = (n: number) => formatCount(n, locale);
   return (
     <DashboardSection id="team" icon={Users} tone="indigo" title={t('dashboard.sections.team')}>
+      <AskAiElement element="dashboard.ops.team" period={`d${String(ops.window.days)}`} />
       <TileGrid>
         <Figure
           label={t('dashboard.team.gaps')}
@@ -756,6 +766,7 @@ export function UsageSection({ ops }: SectionProps) {
       tone="purple"
       title={t('dashboard.sections.usage')}
     >
+      <AskAiElement element="dashboard.ops.usage" period={`d${String(ops.window.days)}`} />
       <TileGrid>
         <Figure
           label={t('dashboard.usage.anomalies')}
@@ -848,6 +859,7 @@ export function ServicesSection({ ops }: SectionProps) {
       tone="sky"
       title={t('dashboard.sections.services')}
     >
+      <AskAiElement element="dashboard.ops.services" period={`d${String(ops.window.days)}`} />
       {services.status !== 'ok' ? (
         <SectionNote figure={services} />
       ) : services.data.length === 0 ? (

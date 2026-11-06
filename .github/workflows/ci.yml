@@ -49,7 +49,11 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm lint
       - run: pnpm typecheck
-      - run: pnpm test
+      # A runner has few CPUs. Parallel packages each starting a Vitest pool starves the
+      # deterministic roster solver's 150-case property test (60 s), despite all cases passing.
+      # Keep the complete suite; bound both package concurrency and workers per package.
+      - run: pnpm exec turbo run test test:boundaries --concurrency=1 -- --maxWorkers=2
+      - run: node --test tools/codex-continuation/continuation.node-test.mjs
 
   integration:
     name: Integration tests

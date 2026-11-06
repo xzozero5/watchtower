@@ -1,5 +1,7 @@
 'use client';
 
+import { AskAiElement } from '@/components/assistant/ask-ai-element';
+
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import type { HandoffItem, ShiftBrief, ShiftNote } from '@watchtower/shared';
 import { Button, TintChip, toast } from '@watchtower/ui';
@@ -83,6 +85,7 @@ function BriefView({ brief, onRefresh }: { brief: ShiftBrief; onRefresh: () => v
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
           <h2 className="text-lg font-semibold">{t('shift.brief.title')}</h2>
+          <AskAiElement element="shift.brief" />
           <p className="text-xs text-muted-foreground">
             {t('shift.brief.generated', { time: format.time(brief.generatedAt) })}
           </p>

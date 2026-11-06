@@ -10,6 +10,7 @@ import { useAutonomy } from '@/lib/admin/queries';
 import { useAssistantHidden, useAssistantOpenRequests } from '@/lib/assistant/assistant-ui';
 import { usePageContext, type AskTarget } from '@/lib/assistant/page-context';
 import { useBubbleRoom } from '@/lib/assistant/use-bubble-room';
+import { isAssistantWorkspace } from '@/lib/assistant/access';
 import { useSession } from '@/lib/auth/session';
 import { useModifierShortcut } from '@/lib/use-modifier-shortcut';
 
@@ -22,8 +23,7 @@ export const ASSISTANT_SHORTCUT_KEY = '/';
  * The floating AI assistant (T-134, docs/design/less-text-ai-assistant.md section 2), mounted once in
  * the console layout so it is on every staff page and never on the public portal. It is quiet: no
  * blinking, no sound, never opens by itself. Ctrl or Cmd + / opens and closes it, also from a text
- * field, and so does the palette command "Ask AI". Only people who can read tickets (staff, and
- * `dev` with masked tickets) see it; the api refuses everyone else. While the emergency switch is on
+ * field, and so does the palette command "Ask AI". Only workspace roles with `assistant.use` see it; the api refuses everyone else. While the emergency switch is on
  * the icon is a pause sign.
  *
  * The person can hide the button (user menu); the shortcut and the palette still open the panel.
@@ -32,8 +32,8 @@ export const ASSISTANT_SHORTCUT_KEY = '/';
  */
 export function AssistantBubble() {
   const { t } = useI18n();
-  const { can } = useSession();
-  const allowed = can('ticket.read') || can('ticket.read.masked');
+  const { can, session } = useSession();
+  const allowed = isAssistantWorkspace(session) && can('assistant.use');
   const panelId = useId();
   const pathname = usePathname();
   const [open, setOpen] = useState(false);

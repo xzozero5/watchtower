@@ -1,5 +1,7 @@
 'use client';
 
+import { AskAiElement } from '@/components/assistant/ask-ai-element';
+
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { ASSIGNMENT_MODES, type AssignmentMode, type TeamQueue } from '@watchtower/shared';
 import {
@@ -147,11 +149,13 @@ function QueuesBody() {
             }}
           >
             <Plus aria-hidden className="size-4" />
+
             {t('admin.queues.new')}
           </Button>
         }
       />
       <AdminBody>
+        <AskAiElement element="admin.queues" />
         {queues.isPending ? (
           <TableSkeleton />
         ) : queues.isError ? (

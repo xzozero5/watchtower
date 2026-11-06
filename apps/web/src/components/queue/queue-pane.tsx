@@ -1,5 +1,7 @@
 'use client';
 
+import { AskAiElement } from '@/components/assistant/ask-ai-element';
+
 import { useQueryClient } from '@tanstack/react-query';
 import type { BulkAction, BulkResult } from '@watchtower/shared';
 import {
@@ -634,6 +636,12 @@ export function QueuePane({
 
   return (
     <>
+      {!isClient ? (
+        <AskAiElement
+          element="queue.list"
+          disabledReason={t('assistant.askAbout.unsupportedView')}
+        />
+      ) : null}
       {canHandle && checkedRows.length > 0 ? (
         <BulkBar
           count={checkedRows.length}

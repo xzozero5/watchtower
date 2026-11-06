@@ -1,5 +1,7 @@
 'use client';
 
+import { AskAiElement } from '@/components/assistant/ask-ai-element';
+
 import { useIsFetching, useQueryClient } from '@tanstack/react-query';
 import { OPEN_STATUSES, type TicketSummary } from '@watchtower/shared';
 import { Button, cn, Skeleton } from '@watchtower/ui';
@@ -257,6 +259,7 @@ function HomeBody() {
         <div className="grid gap-4 lg:grid-cols-2 lg:gap-5">
           {showTeam ? (
             <HomeSection id="home-team" title={t('home.team.title')} tone="green" icon={Users}>
+              <AskAiElement element="home.team" />
               <TeamNow query={team} />
             </HomeSection>
           ) : null}

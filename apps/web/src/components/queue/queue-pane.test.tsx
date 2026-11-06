@@ -33,6 +33,25 @@ const rowKeys = () =>
     .map((row) => row.getAttribute('data-ticket-key'));
 
 describe('queue rows', () => {
+  it('does not ask about a broader queue when the visible view has a search filter', async () => {
+    const api = workspaceApi();
+    const { queue } = await openQueue();
+    await within(queue).findByText('Cannot log in');
+    await userEvent.type(screen.getByRole('searchbox', { name: 'Search tickets' }), 'login{Enter}');
+    const button = within(queue).getByRole('button', { name: 'Ask AI about Queue view' });
+    expect(button).toHaveAttribute('aria-disabled', 'true');
+    expect(button).toHaveAttribute(
+      'aria-description',
+      'The assistant cannot represent this queue view, search or filters yet.',
+    );
+    const listener = vi.fn();
+    window.addEventListener('wt:assistant-open', listener);
+    await userEvent.click(button);
+    expect(listener).not.toHaveBeenCalled();
+    expect(api.callsTo('/v1/assistant/messages', 'POST')).toHaveLength(0);
+    window.removeEventListener('wt:assistant-open', listener);
+  });
+
   it('shows priority as icon + code and keeps quiet about an ordinary open ticket', async () => {
     workspaceApi();
     const { queue } = await openQueue();

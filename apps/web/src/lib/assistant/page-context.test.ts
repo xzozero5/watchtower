@@ -49,6 +49,21 @@ describe('page context', () => {
     );
   });
 
+  it('keeps element identity, scope and period in chip identity and sends only the chip left on', () => {
+    const context: PageContext = {
+      ...base,
+      element: { key: 'org.health', scope: 'org:one', period: 'd7' },
+    };
+    expect(contextForRequest(context, NONE_REMOVED)?.element).toEqual(context.element);
+    expect(contextForRequest(context, { ...NONE_REMOVED, element: true })?.element).toBeUndefined();
+    expect(contextKey(context)).not.toBe(
+      contextKey({ ...context, element: { key: 'org.health', period: 'd7', scope: 'org:two' } }),
+    );
+    expect(contextKey(context)).not.toBe(
+      contextKey({ ...context, element: { key: 'org.health', scope: 'org:one', period: 'd30' } }),
+    );
+  });
+
   it('makes a new key when the place, the thing or the press changes', () => {
     const a: PageContext = { ...base, entity: { kind: 'org', ref: 'o1' } };
     expect(contextKey(a)).toBe(contextKey({ ...a }));

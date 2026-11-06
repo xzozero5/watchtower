@@ -1,5 +1,7 @@
 'use client';
 
+import { AskAiElement } from '@/components/assistant/ask-ai-element';
+
 import type { AiCost, AiCostLine } from '@watchtower/shared';
 import {
   BarChart,
@@ -116,6 +118,7 @@ function AiCostBody() {
         <div className="mx-auto flex w-full max-w-6xl flex-col gap-4 p-4 lg:p-6">
           <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
             <WindowControl days={days} onChange={setDays} />
+            <AskAiElement element="reports.ai_cost" period={`d${String(days)}`} />
             <p className="text-sm text-muted-foreground">
               {t('reports.cost.budgetLead')}{' '}
               {can('ai.autonomy.set') ? (
@@ -260,6 +263,7 @@ function CostByDay({ cost }: { cost: AiCost }) {
           {t('reports.cost.byDay.title')}
         </SectionHeading>
       </h2>
+
       <BarChart
         data={data}
         title={t('reports.cost.byDay.title')}

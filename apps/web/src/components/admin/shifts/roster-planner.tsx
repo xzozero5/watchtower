@@ -1,5 +1,7 @@
 'use client';
 
+import { AskAiElement } from '@/components/assistant/ask-ai-element';
+
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   ROSTER_PLAN_LIMITS,
@@ -96,6 +98,7 @@ export function RosterPlannerTab({
       <section aria-label={t('rosterPlan.recent.title')} className="flex flex-col gap-2">
         <div className="flex items-center justify-between gap-2">
           <h3 className="text-sm font-semibold">{t('rosterPlan.recent.title')}</h3>
+          <AskAiElement element="roster.planner" />
           <Button
             onClick={() => {
               setPlanId(null);

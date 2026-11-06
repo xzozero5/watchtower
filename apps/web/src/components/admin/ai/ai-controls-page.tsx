@@ -1,5 +1,7 @@
 'use client';
 
+import { AskAiElement } from '@/components/assistant/ask-ai-element';
+
 import type { AiSwitch, AiSwitchKey } from '@watchtower/shared';
 import {
   AUTONOMY_STAGES,
@@ -91,6 +93,7 @@ function AiControlsBody() {
         }
       />
       <AdminBody>
+        <AskAiElement element="admin.ai" />
         {autonomy.isPending ? (
           <div role="status" aria-busy="true" className="flex flex-col gap-2 p-4">
             <span className="sr-only">{t('admin.common.loading')}</span>
@@ -168,6 +171,7 @@ function SwitchRow({
         <h2 id={titleId} className="text-sm font-semibold">
           {t(row.title)}
         </h2>
+
         <p className="mt-0.5 max-w-prose text-sm text-muted-foreground">{t(row.body)}</p>
         {state && state.reason !== '' ? (
           <p className="mt-1.5 text-sm text-muted-foreground">

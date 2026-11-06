@@ -1,7 +1,9 @@
-import type { DashboardOps } from '@watchtower/shared';
+import type { AssistantElement, DashboardOps } from '@watchtower/shared';
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import userEvent from '@testing-library/user-event';
+import { makeSession } from '@/test/fixtures';
 import { consoleApi } from '@/test/console-api';
 import { agentDashboardOps, byDay, dashboardOps, INCIDENT_OPEN } from '@/test/dashboard-fixtures';
 import { apiError } from '@/test/mock-api';
@@ -52,6 +54,45 @@ const tile = (scope: HTMLElement, label: string | RegExp) =>
   within(scope).getByText(label).closest('[data-state]') as HTMLElement;
 
 describe('Ops dashboard: structure', () => {
+  it('shows the grades element to registry-permitted staff without fetching metric.read data', async () => {
+    const api = consoleApi({
+      role: 'head',
+      overrides: {
+        'GET /v1/auth/session': {
+          json: makeSession('head', {
+            permissions: ['assistant.use', 'dashboard.ops.read', 'ai.run.read'],
+          }),
+        },
+        'GET /v1/dashboard/ops': { json: dashboardOps({}, 7) },
+        'GET /v1/assistant/starters': {
+          json: {
+            state: 'ok',
+            reason: null,
+            starters: [],
+            limits: { messagesPerHour: 30, remainingThisHour: 30 },
+          },
+        },
+      },
+    });
+    renderConsole(<DashboardPage />);
+    const button = await screen.findByRole('button', { name: 'Ask AI about Grades' });
+    await waitFor(() => {
+      expect(button).not.toHaveAttribute('aria-disabled');
+    });
+    expect(api.callsTo('/v1/ai/grades/metrics')).toHaveLength(0);
+    const listener = vi.fn();
+    window.addEventListener('wt:assistant-open', listener);
+    await userEvent.click(button);
+    expect(
+      (listener.mock.calls[0]?.[0] as CustomEvent<{ element: AssistantElement }>).detail.element,
+    ).toEqual({
+      key: 'dashboard.ops.grades',
+      scope: 'instance',
+      period: 'd7',
+    });
+    window.removeEventListener('wt:assistant-open', listener);
+  });
+
   it('lists the sections in the order of the spec, with the window control above them', async () => {
     open();
     await screen.findByRole('region', { name: 'Now' });

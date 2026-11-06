@@ -1,6 +1,10 @@
 'use client';
 
-import { assistantEntitySchema, assistantSelectionSchema } from '@watchtower/shared';
+import {
+  assistantElementSchema,
+  assistantEntitySchema,
+  assistantSelectionSchema,
+} from '@watchtower/shared';
 import { useEffect, useRef, useSyncExternalStore } from 'react';
 
 import type { AskTarget } from './page-context';
@@ -8,9 +12,11 @@ import type { AskTarget } from './page-context';
 /** An event can carry anything: only a target the contract accepts is used. */
 function isAskTarget(value: unknown): value is AskTarget {
   if (typeof value !== 'object' || value === null) return false;
-  const target = value as { entity?: unknown; selection?: unknown };
-  if (target.entity === undefined && target.selection === undefined) return false;
+  const target = value as { entity?: unknown; selection?: unknown; element?: unknown };
+  if (target.entity === undefined && target.selection === undefined && target.element === undefined)
+    return false;
   return (
+    (target.element === undefined || assistantElementSchema.safeParse(target.element).success) &&
     (target.entity === undefined || assistantEntitySchema.safeParse(target.entity).success) &&
     (target.selection === undefined || assistantSelectionSchema.safeParse(target.selection).success)
   );

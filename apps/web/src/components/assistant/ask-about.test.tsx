@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event';
 import type { AssistantReply, AssistantStarters, Role } from '@watchtower/shared';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { AskAiElement } from '@/components/assistant/ask-ai-element';
 import { AskAiButton } from '@/components/assistant/ask-ai-button';
 import { AssistantBubble } from '@/components/assistant/assistant-bubble';
 import { AuthGate } from '@/components/auth-gate';
@@ -11,6 +12,7 @@ import { entityStarters, pageStarters } from '@/lib/assistant/starters';
 import { ASSISTANT_ENTITY_KINDS, ASSISTANT_PAGES } from '@watchtower/shared';
 import { getMessages, translate } from '@/i18n';
 import { consoleApi } from '@/test/console-api';
+import { makeSession } from '@/test/fixtures';
 import { renderApp } from '@/test-utils';
 
 let pathname = '/incidents';
@@ -89,6 +91,74 @@ describe('Ask AI about this', () => {
     });
     // The name on the chip is for the eye; it is not sent.
     expect(JSON.stringify(sent)).not.toContain('INC-7');
+  });
+
+  it('shows a removable element chip and sends no incidental entity from the URL', async () => {
+    const api = consoleApi({
+      role: 'head',
+      overrides: {
+        'GET /v1/assistant/starters': { json: starters },
+        'POST /v1/assistant/messages': { json: reply },
+      },
+    });
+    window.history.replaceState(null, '', `/incidents?incident=${INCIDENT}`);
+    renderApp(
+      <AuthGate>
+        <AskAiElement element="incidents.open" />
+        <AssistantBubble />
+      </AuthGate>,
+    );
+    await userEvent.click(
+      await screen.findByRole('button', { name: 'Ask AI about Open incidents' }),
+    );
+    const group = await screen.findByRole('group', { name: 'Sent with your question' });
+    expect(within(group).getByText('Open incidents · instance')).toBeInTheDocument();
+    expect(within(group).queryByText(/Incident:/)).not.toBeInTheDocument();
+    expect(api.callsTo('/v1/assistant/messages', 'POST')).toHaveLength(0);
+    await userEvent.type(
+      screen.getByRole('textbox', { name: 'Ask the AI assistant' }),
+      'explain{Enter}',
+    );
+    await screen.findByTestId('assistant-answer');
+    expect(
+      (api.callsTo('/v1/assistant/messages', 'POST')[0]?.body as { context: unknown }).context,
+    ).toEqual({
+      page: 'incident',
+      element: { key: 'incidents.open', scope: 'instance' },
+    });
+    await userEvent.click(
+      within(group).getByRole('button', { name: 'Do not send: Open incidents' }),
+    );
+    await userEvent.type(
+      screen.getByRole('textbox', { name: 'Ask the AI assistant' }),
+      'again{Enter}',
+    );
+    await vi.waitFor(() => {
+      expect(api.callsTo('/v1/assistant/messages', 'POST')).toHaveLength(2);
+    });
+    expect(
+      (api.callsTo('/v1/assistant/messages', 'POST')[1]?.body as { context: unknown }).context,
+    ).toEqual({ page: 'incident' });
+  });
+
+  it('opens for a workspace CEO with assistant.use and no ticket permissions', async () => {
+    consoleApi({
+      role: 'head',
+      overrides: {
+        'GET /v1/auth/session': {
+          json: makeSession('head', { permissions: ['assistant.use', 'ceo.view'] }),
+        },
+        'GET /v1/assistant/starters': { json: starters },
+      },
+    });
+    renderApp(
+      <AuthGate>
+        <AskAiButton entity={{ kind: 'org', ref: INCIDENT }} label="CEO context" />
+        <AssistantBubble />
+      </AuthGate>,
+    );
+    await userEvent.click(await screen.findByRole('button', { name: 'Ask AI about CEO context' }));
+    expect(await screen.findByRole('textbox', { name: 'Ask the AI assistant' })).toBeVisible();
   });
 
   it('sends no entity once the person removes the chip', async () => {

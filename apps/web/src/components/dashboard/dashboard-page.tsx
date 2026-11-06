@@ -171,7 +171,9 @@ function DashboardBody() {
                 <QualitySection ops={ops} />
                 <ReliabilitySection ops={ops} />
                 <AiSection ops={ops} />
-                {can('metric.read') ? <IntentGradesSection days={days} /> : null}
+                {can('metric.read') || can('ai.run.read') ? (
+                  <IntentGradesSection days={days} />
+                ) : null}
                 <TeamSection ops={ops} />
                 <UsageSection ops={ops} />
                 <ServicesSection ops={ops} />

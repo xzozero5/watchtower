@@ -1,10 +1,11 @@
 'use client';
 
+import { AskAiElement } from '@/components/assistant/ask-ai-element';
+
 import type { HealthSnapshot } from '@watchtower/shared';
 import { Alert } from '@watchtower/ui';
 
 import { LoadError } from '@/components/admin/admin-page';
-import { AskAiButton } from '@/components/assistant/ask-ai-button';
 import { OpsSkeleton } from '@/components/ops/ops-bits';
 import { useI18n } from '@/i18n/provider';
 import { useSession } from '@/lib/auth/session';
@@ -31,7 +32,7 @@ export function OrgHealthCard({ orgId }: { orgId: string }) {
         <h2 id="org-health" className="text-sm font-semibold">
           {t('ops.health.title')}
         </h2>
-        <AskAiButton entity={{ kind: 'org', ref: orgId }} label={t('ops.health.title')} />
+        <AskAiElement element="org.health" scope={`org:${orgId}`} period="d30" />
       </div>
       {snapshot === null ? (
         <Alert tone="info" title={t('ops.health.none')}>

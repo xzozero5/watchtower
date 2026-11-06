@@ -1,5 +1,7 @@
 'use client';
 
+import { AskAiElement } from '@/components/assistant/ask-ai-element';
+
 import { EmptyState, Select } from '@watchtower/ui';
 import { Layers, VolumeX } from 'lucide-react';
 import { useState } from 'react';
@@ -81,6 +83,7 @@ export function NoiseReport() {
         <h2 id="alert-noise" className="text-sm font-semibold">
           {t('ops.alerts.noise.heading')}
         </h2>
+        <AskAiElement element="alerts.noise" period={`d${String(days)}`} />
         <label className="flex items-center gap-2 text-sm">
           {t('ops.alerts.noise.window')}
           <Select

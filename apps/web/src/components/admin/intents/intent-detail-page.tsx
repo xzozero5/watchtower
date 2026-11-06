@@ -1,5 +1,7 @@
 'use client';
 
+import { AskAiElement } from '@/components/assistant/ask-ai-element';
+
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { type Intent, TICKET_PRIORITIES, type TicketPriority } from '@watchtower/shared';
 import {
@@ -114,6 +116,7 @@ function IntentDetailBody({ intentId }: { intentId: string }) {
               <IntentDetailsForm intent={intent} />
             </TabsContent>
             <TabsContent value="autonomy" className="p-4">
+              <AskAiElement element="admin.intent.gate" scope={`intent:${intentId}`} />
               {autonomy.isPending ? (
                 <Skeleton className="h-24 max-w-xl" />
               ) : autonomy.isError || !state ? (

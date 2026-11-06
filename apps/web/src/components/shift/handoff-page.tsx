@@ -1,5 +1,7 @@
 'use client';
 
+import { AskAiElement } from '@/components/assistant/ask-ai-element';
+
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   type CurrentHandoff,
@@ -284,6 +286,7 @@ function HandoffEditor({ handoff, current }: { handoff: Handoff; current: Curren
               ? t('shift.handoff.heading', { shift: handoff.shiftName })
               : t('shift.handoff.headingNoShift')}
           </h2>
+          <AskAiElement element="shift.handoff" />
           <p className="text-sm text-muted-foreground">
             {t('shift.handoff.shiftLine', { range, from: handoff.from.name, to: toLabel })}
           </p>

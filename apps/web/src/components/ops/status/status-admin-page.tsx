@@ -1,5 +1,7 @@
 'use client';
 
+import { AskAiElement } from '@/components/assistant/ask-ai-element';
+
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@watchtower/ui';
 import { ExternalLink } from 'lucide-react';
 
@@ -31,6 +33,7 @@ function StatusAdminBody() {
   const { can } = useSession();
   return (
     <div className="mx-auto flex w-full max-w-4xl flex-col gap-4 p-4">
+      <AskAiElement element="statuspage.admin" />
       <p className="text-sm text-muted-foreground">
         {t('ops.statusAdmin.intro')}{' '}
         <a
@@ -78,6 +81,7 @@ function SubscribersSection() {
   return (
     <section aria-label={t('ops.statusAdmin.subscribers.title')} className="flex flex-col gap-2">
       <h2 className="text-sm font-semibold">{t('ops.statusAdmin.subscribers.title')}</h2>
+
       <IntroHint topic={t('ops.statusAdmin.subscribers.title')}>
         {t('ops.statusAdmin.subscribers.intro')}
       </IntroHint>

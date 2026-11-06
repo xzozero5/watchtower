@@ -377,6 +377,17 @@ export function AssistantPanel({ id, context, open, onClose, onClosed }: Assista
         aria-label={t('assistant.context.label')}
         role="group"
       >
+        {!removed.element && context.element ? (
+          <ContextChip
+            label={`${context.label ?? context.element.key} · ${context.element.scope}${context.element.period ? ` · ${context.element.period}` : ''}`}
+            removeLabel={t('assistant.context.remove', {
+              name: context.label ?? context.element.key,
+            })}
+            onRemove={() => {
+              setRemovedAt({ ...removed, here, element: true });
+            }}
+          />
+        ) : null}
         {pageChip ? (
           <ContextChip
             label={pageName}
