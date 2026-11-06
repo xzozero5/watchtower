@@ -287,27 +287,43 @@ export function restoreNarration(
   if (!parsed.success) return [];
   const out: Claim[] = [];
   for (const claim of parsed.data as InsightStoredClaim[]) {
+    // Aggregate provenance must resolve in the viewer's facts and must not disguise an entity ref.
+    if (
+      claim.evidence.some(
+        (item) =>
+          item.kind === 'aggregate' &&
+          !options.facts.some((fact) => fact.id === item.factId && fact.ref === undefined),
+      )
+    )
+      continue;
     if (options.masked) {
-      const names = claim.evidence.some((item) => INSIGHT_MASKED_REF_KINDS.includes(item.kind));
+      const names = claim.evidence.some(
+        (item) => item.kind !== 'aggregate' && INSIGHT_MASKED_REF_KINDS.includes(item.kind),
+      );
       if (names) continue;
       const cited = options.facts.filter((fact) =>
         claim.evidence.some((item) => item.factId === fact.id),
       );
       if (!numbersSubsetOfFacts(claim.text.replaceAll(STORED_PLACEHOLDER, ' '), cited).ok) continue;
     }
-    const people = claim.evidence.filter((item) => item.kind === 'user');
-    const distinctPeople = [...new Set(people.map((item) => item.id))];
+    const distinctPeople = [
+      ...new Set(claim.evidence.flatMap((item) => (item.kind === 'user' ? [item.id] : []))),
+    ];
     const text = claim.text.replaceAll(STORED_PLACEHOLDER, (_match, label: string, n: string) => {
       if (label !== 'PERSON') return NO_ACCESS[options.locale];
       const id = distinctPeople[Number(n) - 1];
       const ref = id === undefined ? undefined : options.resolved.get(refKey({ kind: 'user', id }));
       return ref?.allowed === true ? ref.label : NO_ACCESS[options.locale];
     });
-    const evidence = claim.evidence
-      .slice(0, 8)
-      .map((item) =>
-        evidenceFor({ kind: item.kind, id: item.id }, options.resolved, options.locale),
-      );
+    const evidence = claim.evidence.slice(0, 8).map((item) => {
+      if (item.kind === 'aggregate') {
+        const fact = options.facts.find((candidate) => candidate.id === item.factId);
+        // Checked above: absence cannot become a fabricated citation.
+        if (fact === undefined) throw new Error('Aggregate fact disappeared');
+        return metricEvidence(fact, options.locale);
+      }
+      return evidenceFor({ kind: item.kind, id: item.id }, options.resolved, options.locale);
+    });
     out.push(makeClaim(text.slice(0, 600), evidence));
   }
   return out;
@@ -322,6 +338,7 @@ export function refsOf(
   for (const fact of facts) if (fact.ref !== undefined) seen.set(refKey(fact.ref), fact.ref);
   for (const claim of stored) {
     for (const item of claim.evidence) {
+      if (item.kind === 'aggregate') continue;
       const ref = { kind: item.kind, id: item.id };
       seen.set(refKey(ref), ref);
     }

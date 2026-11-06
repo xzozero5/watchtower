@@ -1,7 +1,7 @@
 # ADR-030 — Embedding ของ KB ด้วยโมเดลที่รันในเครื่อง (Ollama + โมเดล multilingual) เพื่อให้ semantic search ใช้ได้จริง
 
-- **Status:** Proposed
-- **Date:** 2026-11-05 (เวลากรุงเทพ) · **ผู้ตัดสิน:** เจ้าของ (เลือกทาง ก. รันโมเดลเอง + อนุมัติดาวน์โหลดโมเดลหนึ่งครั้ง `[CONFIRMED 2026-11-05]`) + main thread (รายละเอียด) · รอ `security-reviewer` (N7) ก่อน Accepted
+- **Status:** Accepted 2026-11-06 — independent re-review T-432-rereview.md ไม่พบ P1/P2 ค้าง; การเปิดโมเดลจริงยังเป็น T-433 พร้อม caveats
+- **Date:** 2026-11-05 (เวลากรุงเทพ) · **ผู้ตัดสิน:** เจ้าของ (เลือกทาง ก. รันโมเดลเอง + อนุมัติดาวน์โหลดโมเดลหนึ่งครั้ง `[CONFIRMED 2026-11-05]`) + main thread (รายละเอียด) · ผ่าน `security-reviewer` (N7) ตรวจซ้ำ 2026-11-06; ไม่ถือว่า real-image/คุณภาพโมเดลผ่านแล้ว
 - **Context:**
   - KB ค้นแบบ hybrid อยู่แล้ว (`packages/domain/src/kb/search.ts`: keyword + vector ผ่าน pgvector รวมด้วย RRF, chunk + `kb_embedding_index` ที่ active ได้ทีละ index, migration 0019) `[TESTED: อ่านโค้ด 2026-11-05]`
   - provider ของ embedding มีแค่ `mock` (vector ปลอม ไม่สื่อความหมาย) และ `vertex` (`EMBEDDING_PROVIDERS` ใน `packages/shared/src/config.ts`) · POC ใช้ `claude -p` ซึ่งไม่มี embedding (Anthropic ไม่มี embedding API) → semantic search บน POC ใช้ไม่ได้จริง เหลือแต่ keyword `[ยังไม่ยืนยัน 80%: ยังไม่ได้ดูค่า env ของ POC]`

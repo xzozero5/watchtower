@@ -627,11 +627,15 @@ export type InsightFactsResult = z.infer<typeof insightFactsResultSchema>;
 // --- claims -----------------------------------------------------------------------------------------------
 
 /** Evidence as stored (not yet restored for a viewer): the fact it comes from and the thing it points at. */
-export const insightStoredEvidenceSchema = z.object({
-  kind: insightRefKindSchema,
-  id: z.string().min(1).max(100),
-  factId: insightFactSchema.shape.id,
-});
+export const insightStoredEvidenceSchema = z.union([
+  z.object({
+    kind: insightRefKindSchema,
+    id: z.string().min(1).max(100),
+    factId: insightFactSchema.shape.id,
+  }),
+  // A metric can have provenance without identifying an entity. Never invent an id or URL.
+  z.object({ kind: z.literal('aggregate'), factId: insightFactSchema.shape.id }).strict(),
+]);
 export type InsightStoredEvidence = z.infer<typeof insightStoredEvidenceSchema>;
 
 /**

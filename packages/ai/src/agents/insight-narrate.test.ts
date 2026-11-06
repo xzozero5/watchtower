@@ -128,6 +128,10 @@ describe('narrateElements: the batch', () => {
       'sla_breached',
     ]);
     expect(outcome.accepted['dashboard.ops.sla']?.en).toHaveLength(1);
+    expect(outcome.accepted['dashboard.ops.sla']?.th?.[0]?.evidence).toEqual([
+      { kind: 'aggregate', factId: 'sla_rate' },
+      { kind: 'aggregate', factId: 'sla_breached' },
+    ]);
     // "Nothing stands out" is a normal answer: no entry, no rejection.
     expect(outcome.accepted['dashboard.ops.volume']).toBeUndefined();
     expect(outcome.rejected).toEqual([]);

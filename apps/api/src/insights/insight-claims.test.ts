@@ -1,4 +1,4 @@
-import type { InsightFact } from '@watchtower/shared';
+import type { InsightFact, InsightStoredClaim } from '@watchtower/shared';
 import { describe, expect, it } from 'vitest';
 
 import {
@@ -29,6 +29,49 @@ const allowed = (label: string, href?: string): ResolvedRef => ({
   ...(href === undefined ? {} : { href }),
 });
 const denied: ResolvedRef = { allowed: false, label: '' };
+
+describe('aggregate narration provenance', () => {
+  const fact = metric('open', 12, '12 open tickets', 'เปิดอยู่ 12 รายการ');
+  const stored: InsightStoredClaim[] = [
+    { text: '12 open tickets', evidence: [{ kind: 'aggregate', factId: 'open' }] },
+  ];
+  it('round-trips a system metric without inventing an entity or link', () => {
+    for (const masked of [false, true]) {
+      const [claim] = restoreNarration(stored, {
+        facts: [fact],
+        locale: 'en',
+        resolved: new Map(),
+        masked,
+      });
+      expect(claim?.uncited).toBe(false);
+      expect(claim?.evidence).toEqual([{ kind: 'metric', label: '12 open tickets' }]);
+      expect(refsOf([fact], stored)).toEqual([]);
+    }
+  });
+  it('drops a claim when its fact is absent or no longer visible, or disguises an entity', () => {
+    for (const facts of [[], [{ ...fact, ref: { kind: 'org' as const, id: ORG } }]]) {
+      expect(
+        restoreNarration(stored, {
+          facts,
+          locale: 'en',
+          resolved: new Map(),
+          masked: true,
+        }),
+      ).toEqual([]);
+    }
+  });
+  it('rejects fabricated ids or links on aggregate evidence', () => {
+    const bad = [{ text: '12', evidence: [{ kind: 'aggregate', factId: 'open', id: ORG }] }];
+    expect(
+      restoreNarration(bad, {
+        facts: [fact],
+        locale: 'en',
+        resolved: new Map(),
+        masked: false,
+      }),
+    ).toEqual([]);
+  });
+});
 
 describe('mode F sentences by template, in the viewer language', () => {
   const facts: InsightFact[] = [
@@ -127,7 +170,7 @@ describe('restoring a stored narration', () => {
       ref: { kind: 'user', id: PERSON_A },
     },
   ];
-  const stored = [
+  const stored: InsightStoredClaim[] = [
     {
       text: '[PERSON_1] holds 3 of the 40 tickets',
       evidence: [

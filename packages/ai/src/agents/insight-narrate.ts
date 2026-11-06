@@ -251,7 +251,10 @@ export function matchesLocale(text: string, locale: InsightLocale): boolean {
 function evidenceOf(facts: readonly InsightFact[]): InsightStoredEvidence[] {
   const evidence: InsightStoredEvidence[] = [];
   for (const fact of facts) {
-    if (fact.ref === undefined) continue;
+    if (fact.ref === undefined) {
+      evidence.push({ kind: 'aggregate', factId: fact.id });
+      continue;
+    }
     evidence.push({ kind: fact.ref.kind, id: fact.ref.id, factId: fact.id });
   }
   return evidence;
