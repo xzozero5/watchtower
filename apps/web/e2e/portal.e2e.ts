@@ -63,6 +63,8 @@ test.describe('submit a request', () => {
 
     const portal = await openForm(page);
     await expect(page.getByText('Verified. You can submit your request.')).toBeVisible();
+    await expect(page.getByTestId('assistant-bubble')).toHaveCount(0);
+    await expect(page.getByTestId('assistant-panel')).toHaveCount(0);
     expect(workers.length).toBeGreaterThan(0);
 
     await fillForm(page);
@@ -73,6 +75,8 @@ test.describe('submit a request', () => {
       page.getByRole('heading', { name: 'We received your request OPS-12', level: 1 }),
     ).toBeVisible();
     await expect(page.getByText('We sent a tracking link to a***@example.com.')).toBeVisible();
+    await expect(page.getByTestId('assistant-bubble')).toHaveCount(0);
+    await expect(page.getByTestId('assistant-panel')).toHaveCount(0);
     await expect(page.getByText(/We aim to reply by .*3:00\s?PM/)).toBeVisible();
 
     const [post] = portal.to('POST', '/v1/portal/tickets');

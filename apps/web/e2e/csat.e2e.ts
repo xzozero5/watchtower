@@ -89,6 +89,8 @@ test.describe('the survey page from the email link', () => {
     const api = await mockSurveyApi(page);
     await page.goto(`/csat#token=${TOKEN}&score=4`);
     await expect(page.getByRole('heading', { name: 'How did we do?', level: 1 })).toBeVisible();
+    await expect(page.getByTestId('assistant-bubble')).toHaveCount(0);
+    await expect(page.getByTestId('assistant-panel')).toHaveCount(0);
     await expect(page.getByText('Your request OPS-12 was resolved.')).toBeVisible();
     await expect(page.getByRole('radio', { name: '4 out of 5: Happy' })).toBeChecked();
 
@@ -116,6 +118,8 @@ test.describe('the survey page from the email link', () => {
     await page.getByRole('button', { name: 'Send my answer' }).click();
 
     await expect(page.getByRole('heading', { name: 'Thank you', level: 1 })).toBeVisible();
+    await expect(page.getByTestId('assistant-bubble')).toHaveCount(0);
+    await expect(page.getByTestId('assistant-panel')).toHaveCount(0);
     expect(api.posts()).toHaveLength(1);
     expect(api.posts()[0]).toMatchObject({
       path: '/v1/csat/responses',

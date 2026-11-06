@@ -5,6 +5,8 @@ snapshot สั้นสำหรับ cold start อยู่ที่ `HANDOF
 
 ## สถานะปัจจุบัน
 
+- **2026-11-06 16:44 [TESTED]:** T407b b7671097push/deploywebหลังbackup13,758,801bytes healthy/3HTTP200. 175unit+41browser/static/reviewผ่าน. PublicnoAIpartialQA12asserts/main53tests+lintผ่าน; parent407/cยังไม่ปิด. Fullwebmockกำลังรันlogfull-web-final; ไม่มีAIagents/testcontainersactive. CIHEADใหม่รอผล.
+
 - **2026-11-06 16:36 [TESTED]:** T407b main175unit/lint/type/build + QAfilelint/type + 41browserผ่าน; staleDeleteAไม่ล้างB regressionผ่าน. กำลังcommit/backup/deployweb; parent407รอc. Source8709T407a/T443deploy16:18verifiedแล้ว; ไม่มีtestcontainersrunning/autosendปิด. CIล่าสุดยังต้องติดตามตามHEADใหม่.
 
 - **2026-11-06 16:19 [TESTED]:** T407a/T443commit8709c95eและADR033pushแล้ว. Webdeployหลังbackupvalidated13,758,499bytes healthy/3HTTP200; APIworkerเดิมT409. Devเริ่ม407bหลังimagecapture; parent407ยังไม่ปิด. CI62ce32c1green4jobs; CI8709รอผล. No testcontainersrunning/ไม่ลบvolume/autosendยังปิด.
