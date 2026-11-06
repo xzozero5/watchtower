@@ -5,6 +5,8 @@ snapshot สั้นสำหรับ cold start อยู่ที่ `HANDOF
 
 ## สถานะปัจจุบัน
 
+- **2026-11-06 07:25 [TESTED]:** push `8851e47` สำเร็จ (แทนสถานะ push failure ด้านล่าง), CI42136356817กำลังรัน. T419b controlsและT418a aggregate provenanceผ่านreviewอิสระ; static29tasks, targetedweb68+freeze54, browser15/15ผ่าน. Docker3services deployหลังbackupแล้ว web/API/bridgeHTTP200. Full frozen unitยังรันใน logs/deploy/2026-11-06-frozen-unit.log; ยังไม่อ้าง full suiteผ่าน. T409/T407/T418writer/T419aยังค้าง. Usage5h94% ณ07:24 เตรียมcheckpointเมื่อเหลือ≤5%.
+
 - **2026-11-06 T-438:** CIของ31abb66ล้มops tests light/dark เพราะ locatorINC-12ชนAskAI. แก้testจำกัดincident-row, targeted2/2และindependentreviewผ่าน; product/Dockerเดิม. commit4bfbbf1พร้อมแล้ว แต่pushถูกremote reject commit_refs2ครั้ง; remoteยัง31abb66. รอบหน้าลองpushปกติก่อนดูCIแล้วทำT419bต่อ
 
 - **2026-11-06 T-437:** checkpoint + app heartbeat hourly, quota reset กลับมาทำต่อแล้ว 05:21. PO รับอำนาจตัดสินใจ. POC api/worker/web deploy 00:21 healthy หลัง backup; test containers 12 ตัวหยุดแล้ว (ไม่ลบ volume). Jarvis/insights ใหม่ยังค้างตาม BACKLOG; ถัดไป T-419b. Push `635914d` แล้ว 05:26; CI42121519210 queued. Checkpoint T-437 completed → T-419 ready (ทำ subtask T-419b ตาม PO). BridgeถูกglobalCLIupdateจนoffline→pinlocalCLIคืน health200จากapiแล้ว.
@@ -480,3 +482,5 @@ snapshot สั้นสำหรับ cold start อยู่ที่ `HANDOF
 - [TESTED] regression ทุก package + boundary ผ่านเมื่อแบ่งรัน: nonweb17/17 tasks และ web150files/1674tests (pool threads/maxWorkers2). Broad commandเดิมเคย timeoutจากfork startup; sequentialรอบกลาง mainหยุดหลัง8m25เพื่อแยกweb ไม่ได้อ้างว่ารอบนั้นผ่าน
 - [TESTED] Dockerใหม่ mkdir/chown Codex homeก่อนUSERnode; disposable named volumeเขียนlogin stateได้uid1000บนread-only container. Independent reviewerตรวจผ่าน ไม่มีP1/P2ใหม่; ไม่ใช้real authในการตรวจcontainer
 - [TESTED] POCใช้งานCodexต่อเนื่อง; Thai classifier syntheticผ่านและauditจริง. Codecommit fe1b28f; commitผลgate/volumeตามมา. ไม่pushเพราะmainมี80commitsเดิมค้างรอเจ้าของก่อนsession
+
+[CONFIRMED] 07:26 quota5hใช้95% (weekly46%); checkpoint waiting_limit รอ reset 10:21:44 Bangkok. Heartbeatยังactive; full frozen unitยังรัน ให้ตรวจlog/processก่อนงานถัดไป ไม่เริ่มAIงานใหม่ระหว่างรอ.
