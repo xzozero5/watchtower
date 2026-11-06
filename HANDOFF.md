@@ -1,7 +1,7 @@
 # HANDOFF — Watchtower
 
 > สถานะล่าสุดของโปรเจกต์ session ใหม่อ่านไฟล์นี้ต่อจาก `AGENTS.md` แล้วทำงานต่อได้โดยไม่ต้องอ่านบทสนทนาเดิม
-> อัปเดตล่าสุด: 2026-11-06 07:25 (เวลากรุงเทพ) โดย Codex — deploy/push T-419b และ T-418a
+> อัปเดตล่าสุด: 2026-11-06 10:31 (เวลากรุงเทพ) โดย Codex — quota reset, full gate ผ่าน, T-409 running
 > ฉบับก่อน: `docs/handoff-archive/HANDOFF-2026-11-05-pre-ai-bridge.md` · บันทึกรายชั่วโมง `logs/daily/2026-11-05.md`
 
 > ✅ **push แล้ว 2026-11-05** (`origin/main` = `e325c83`, CI run 41963960467 เขียวทั้ง 4 job) · ✅ **POC deploy แล้ว 2026-11-05 11:10** (เจ้าของ OK): backup `D:\Works\watchtower-backups\poc-20261105-1105-pre-phase3.dump` (13.5 MB) → build api/worker/web/bridge/gmail-tunnel → migrate 22 ตัวถึง 0111 → ทุก service healthy · `AI_AUTOSEND_ENABLED` ไม่ได้ตั้ง
@@ -10,16 +10,13 @@
 > ✅ **2026-11-06 05:26:** push `635914d` แล้ว (รวม82commitเดิม); CI42121519210cancelledเพราะpushเอกสารใหม่; CI42121588809ของ31abb66ล้มops test2ตัว → T-438แก้แล้ว รอดูCIใหม่. POC api/worker/web redeploy00:21 healthy, bridgeจากapihealth200หลังpinCLI. T-437 completed; checkpoint task T-419 ready หมายถึง T-419b ที่ POเลือก (schema taskIdรับเลขเท่านั้น). งานassistantยังต้องทำต่อ
 
 ## Continuation (อ่านก่อนเริ่มรอบใหม่)
-- **07:25:** push ถึง `8851e47` แล้ว; CI `42136356817` กำลังรัน. T-419b/T-418a/T-432 ตรวจอิสระและ commit แล้ว; T-419a/T-418 writer ยังไม่เสร็จ. Docker api/worker/web build+deploy หลัง backup `D:/Works/watchtower-backups/poc-20261106-pre-419b.dump`; login/ready/bridge HTTP200 ทั้งสาม. Autosend ปิดตามเดิม.
-- **ผลตรวจ:** static29/29 tasksผ่าน; web targeted68 + freeze54ผ่าน; browser e2e15/15ผ่าน. Full frozen unit ยังรันที่ `logs/deploy/2026-11-06-frozen-unit.log` (exec94789); ตรวจ process/log ก่อนรันซ้ำ. รอบเก่า serial-unit มี3 availability tests failขณะworkerแก้ไฟล์ ไม่นับว่าผ่าน. CIใหม่ใช้ package concurrency1/maxWorkers2 คงทุกcase.
-- **ถัดไป:** เก็บผล full frozen unit/CI แล้ว T-409 → T-407 → T-418 → T-419a ตาม PO; ตรวจ quota และ checkpoint ก่อนเริ่ม. ทำต่อใน turn เดียวเมื่อยังมีโควตา; heartbeatไว้กู้หลัง limit/interruption ไม่ใช่เหตุให้หยุดหลังงานย่อย. ไม่ชน active runner.
-- เจ้าของอนุมัติ 2026-11-06: ทำงานต่อให้ครบ, deploy Docker, push Git, stop container ทิ้ง; มอบ PO ตัดสินใจ scope/default ขณะเข้านอน. คง LINE ภายหลังและ autosend ปิด
-- Automation `watchtower-checkpoint` เรียกแชตนี้ทุกชั่วโมง; runbook `docs/runbooks/codex-continuation.md`, ADR-032. `node tools/codex-continuation/cli.mjs status` อ่าน checkpoint ใน Git info. ตรวจ usage ก่อนงาน; window ที่ยังใช้ได้ให้ reset gate เป็น now ไม่ใช่วัน reset รอบถัดไป
-- [TESTED] quota 5h หมดก่อน 04:30 แล้ว heartbeat นี้กลับมาทำต่อ 05:21 โดยไม่ต้องเจ้าของส่ง continue; weekly เหลือ 68%. ไม่รับประกัน exact wake time
-- [TESTED] POC rebuild/deploy api/worker/web สำเร็จ 00:21; backup `D:/Works/watchtower-backups/poc-20261106-pre-continuation.dump` 13,746,979 bytes. migrate ไม่มี pending; 0116. หยุด test container 12 ตัว wt-a6/wt-a7/wt-main โดยไม่ลบ volume
-- Jarvis/insights ชุดใหม่ยังไม่ครบ: T-407/409/410/411/412/418/419a/419b/420/421. Phase 3 เก่าปิดแล้วไม่ได้แปลว่างานใหม่ครบ
-- PO เลือกงานถัดไป **T-419b** (dep T-406 ปิด): ปุ่มถาม AI+element chip+disabled reason; acceptance mock/context/scope + independent review. จากนั้น T-409→T-407 และ T-418→T-419a; wave 420/narration รายคนต้องผ่าน privacy/eval ก่อน
-- T-432 ต้องตรวจซ้ำ T-435 ก่อน Accepted, T-433/434 ค้าง. ไม่มี agent จากก่อน quota reset ที่ยังทำงาน: ต้องตรวจ process ก่อนทุก claim
+- **2026-11-06 10:31:** quota resetแล้ว (5h0%/weekly46%); checkpoint T-419 completed หมายถึง419bเท่านั้น → T-409 running (PID40860, claim local .cache/watchtower-claim.json). Dev CarsonทำT409 packages/ai+API assistant+eval proposals/runner; reviewerQAตรวจgapT407read-only. Mainดูdocs/gates ไม่ซ้อนproducerfiles.
+- **[TESTED] frozen full unit ผ่าน19/19tasks** (`logs/deploy/2026-11-06-frozen-unit.log`,8m58s); static29/29tasks, targetedweb68+freeze54, browser15/15. **CI42136725422ของ3ece132เขียวครบ4jobs**: lint/typecheck/unit, integration, e2e, Docker. รอบเก่าCIถูกcancelแทนด้วยรอบใหม่ ไม่ใช่failureค้าง.
+- **Push/deploy:** origin/main3ece132รวมT419b/T418a/T432; Dockerapi/worker/webbuild+deploy07:22หลังbackup pre-419b.dump; login/ready/bridgeHTTP200. DB0116ไม่มีschemaใหม่. Autosendปิด. testcontainers12ตัวหยุดแล้ว ไม่ลบvolume.
+- **คิว:** T409→T407, T418writer→T419a แล้วT410/T411/T412/T420/T421; embeddingT433/T434ยังค้าง. T419b/T418a/T432ปิดแล้ว ไม่ทำซ้ำ. T419a/T418writerยังไม่เสร็จ. Phase3เก่าปิดไม่ได้แปลว่างานJarvisใหม่ครบ.
+- ทำต่อในturnเดียวเมื่อยังมีquota; boundedtaskเป็นcheckpointไม่ใช่เหตุหยุดรอheartbeat. ตรวจusageหลังcheckpoint; windowเหลือ≤5%ให้waiting_limitด้วยresetจริงเฉพาะwindowที่ติด ส่วนที่ใช้ได้ให้now. ก่อนclaimตรวจactiveprocess/worktreeไม่ชน.
+- เจ้าของอนุมัติ2026-11-06ทำค้างครบ/deployหลังbackup/push/stopunusedโดยไม่ลบvolume และให้POตัดสินscope/default; LINEภายหลัง, ห้ามเปิดautosend/ส่งcustomerจริงทดสอบ. credentialใหม่blockedแล้วทำงานอิสระอื่นต่อ.
+- Automation watchtower-checkpointรายชั่วโมง (เครื่อง/appต้องเปิด); runbook docs/runbooks/codex-continuation.md/ADR032. ไม่รับประกันexactwaketime. Hostbridgeต้องpinCLIตามrunbookai-bridgeเพราะglobalCLIauto-update; authไม่อ่าน/คัดลอก.
 
 ## สถานะปัจจุบัน
 - **Phase:** 1 = done pending pilot · 2 = done pending live (GCP/Discord จริง) · 3 = ✅ done pending live gate (งานค้างของ PO T-306c ปิดครบ, ADR-025/026 Accepted) · LINE = feature ภายหลัง · Phase 4: ดึง T-152 (ลิงก์ "คำขอของฉัน" ทางอีเมล) + Web Push live มาทำแล้ว
@@ -87,5 +84,3 @@
 ## วันตรวจซ้ำ
 - rotate key `watchtower-pubsub-admin`: 2027-02-01 (90 วันจากสร้าง 2026-11-03)
 - ทบทวน residual P3 (C-4, C-6, C-9, C-14) ก่อนเปิด `AI_AUTOSEND_ENABLED` ที่ใด
-
-[CONFIRMED] 07:26 quota5hใช้95% (weekly46%); checkpoint waiting_limit รอ reset 10:21:44 Bangkok. Heartbeatยังactive; full frozen unitยังรัน ให้ตรวจlog/processก่อนงานถัดไป ไม่เริ่มAIงานใหม่ระหว่างรอ.

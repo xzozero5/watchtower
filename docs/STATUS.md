@@ -5,6 +5,8 @@ snapshot สั้นสำหรับ cold start อยู่ที่ `HANDOF
 
 ## สถานะปัจจุบัน
 
+- **2026-11-06 10:31 [TESTED]:** full frozen unit19/19tasksผ่าน; CI42136725422ที่3ece132เขียวครบ4jobsรวมintegration/e2e/Docker. T419bปิด checkpoint→T409runningหลังquotareset; T407gapreviewขนานread-only. Deploy/pushสำเร็จตามentry07:25; งานJarvisใหม่ยังค้างตามBACKLOG.
+
 - **2026-11-06 07:25 [TESTED]:** push `8851e47` สำเร็จ (แทนสถานะ push failure ด้านล่าง), CI42136356817กำลังรัน. T419b controlsและT418a aggregate provenanceผ่านreviewอิสระ; static29tasks, targetedweb68+freeze54, browser15/15ผ่าน. Docker3services deployหลังbackupแล้ว web/API/bridgeHTTP200. Full frozen unitยังรันใน logs/deploy/2026-11-06-frozen-unit.log; ยังไม่อ้าง full suiteผ่าน. T409/T407/T418writer/T419aยังค้าง. Usage5h94% ณ07:24 เตรียมcheckpointเมื่อเหลือ≤5%.
 
 - **2026-11-06 T-438:** CIของ31abb66ล้มops tests light/dark เพราะ locatorINC-12ชนAskAI. แก้testจำกัดincident-row, targeted2/2และindependentreviewผ่าน; product/Dockerเดิม. commit4bfbbf1พร้อมแล้ว แต่pushถูกremote reject commit_refs2ครั้ง; remoteยัง31abb66. รอบหน้าลองpushปกติก่อนดูCIแล้วทำT419bต่อ
