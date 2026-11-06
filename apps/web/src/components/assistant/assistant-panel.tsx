@@ -11,7 +11,7 @@ import {
   RefreshCw,
   SendHorizontal,
   Square,
-  Trash2,
+  Plus,
   Wallet,
   X,
 } from 'lucide-react';
@@ -20,7 +20,9 @@ import { useEffect, useId, useRef, useState, type KeyboardEvent } from 'react';
 import { AppLink } from '@/components/app-link';
 import { ClaimLine } from '@/components/claims/claim-line';
 import { useI18n } from '@/i18n/provider';
-import { useSession } from '@/lib/auth/session';
+import { useSession, useUserId } from '@/lib/auth/session';
+import { AssistantLibrary } from './assistant-library';
+import { AnswerFeedback, RememberClaim } from './answer-actions';
 import { ASSISTANT_SURFACE_ATTRIBUTE } from '@/lib/assistant/use-bubble-room';
 import { SIDE_BY_SIDE_QUERY, useMediaQuery } from '@/lib/use-media-query';
 import {
@@ -68,7 +70,13 @@ export interface AssistantPanelProps {
  * screen it fills the window. Esc closes it, the typed text stays. The thread is a polite `log`
  * that announces "The answer is ready" once, never token by token.
  */
-export function AssistantPanel({ id, context, open, onClose, onClosed }: AssistantPanelProps) {
+export function AssistantPanel(props: AssistantPanelProps) {
+  // Remount every subject-owned state (draft, thread, mutations, errors) on a session user change.
+  const userId = useUserId();
+  return <AssistantPanelForUser key={userId} {...props} />;
+}
+
+function AssistantPanelForUser({ id, context, open, onClose, onClosed }: AssistantPanelProps) {
   const { t, locale } = useI18n();
   const { can } = useSession();
   const titleId = useId();
@@ -173,7 +181,7 @@ export function AssistantPanel({ id, context, open, onClose, onClosed }: Assista
           <IconButton
             label={t('assistant.newChat')}
             tooltip={t('assistant.newChatTip')}
-            icon={<Trash2 />}
+            icon={<Plus />}
             onClick={() => {
               chat.clear();
               input.current?.focus();
@@ -190,7 +198,10 @@ export function AssistantPanel({ id, context, open, onClose, onClosed }: Assista
     </header>
   );
   const descriptionEl = (
-    <p className="px-4 pt-2 text-xs text-muted-foreground">{t('assistant.description')}</p>
+    <div>
+      <p className="px-4 pt-2 text-xs text-muted-foreground">{t('assistant.description')}</p>
+      <AssistantLibrary open={open} onDeleted={chat.clearIfCurrent} />
+    </div>
   );
   const threadEl = (
     <div
@@ -260,7 +271,9 @@ export function AssistantPanel({ id, context, open, onClose, onClosed }: Assista
             {turn.reply.claims.length > 0 ? (
               <ul className="flex flex-col gap-3 rounded-card bg-ai-subtle p-3 ring-1 ring-ai-accent/20 ring-inset">
                 {turn.reply.claims.map((claim, index) => (
-                  <ClaimLine key={index} claim={claim} onOpen={closeOnPhone(onClose)} />
+                  <ClaimLine key={index} claim={claim} onOpen={closeOnPhone(onClose)}>
+                    <RememberClaim messageId={turn.reply.messageId} claim={index} open={open} />
+                  </ClaimLine>
                 ))}
               </ul>
             ) : turn.reply.proposals.length === 0 && turn.reply.state === 'ok' ? (
@@ -333,6 +346,7 @@ export function AssistantPanel({ id, context, open, onClose, onClosed }: Assista
                 </Button>
               </div>
             ) : null}
+            <AnswerFeedback messageId={turn.reply.messageId} />
           </div>
         ),
       )}
@@ -491,6 +505,7 @@ export function AssistantPanel({ id, context, open, onClose, onClosed }: Assista
             onClosed();
           }}
         >
+          <AssistantLibrary open={open} onDeleted={chat.clearIfCurrent} />
           {chat.turns.length > 0 ? (
             <div className="mb-3">
               <Button
@@ -501,7 +516,7 @@ export function AssistantPanel({ id, context, open, onClose, onClosed }: Assista
                   input.current?.focus();
                 }}
               >
-                <Trash2 aria-hidden className="size-3.5" />
+                <Plus aria-hidden className="size-3.5" />
                 {t('assistant.newChat')}
               </Button>
             </div>

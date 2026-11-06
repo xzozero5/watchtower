@@ -17,6 +17,7 @@ import { isApiError } from '@/lib/api/errors';
 import { AssistantStreamError } from '@/lib/api/assistant-stream';
 import { useUserId } from '@/lib/auth/session';
 import { ticketKeys } from '@/lib/tickets/queries';
+import { assistantKeys } from './library';
 
 export type ChatErrorKind = 'generic' | 'forbidden' | 'rate' | 'notFound';
 
@@ -138,6 +139,7 @@ export function useAssistantChat() {
         conversation.current = reply.conversationId;
         setConversationId(reply.conversationId);
         setState(reply.state);
+        void queryClient.invalidateQueries({ queryKey: assistantKeys(userId).conversations });
         failed.current = null;
         setTurns((current) => [...current, { id: nextId(), kind: 'ai', reply }]);
         setProposals((current) => {
@@ -167,7 +169,7 @@ export function useAssistantChat() {
         }
       }
     },
-    [api],
+    [api, queryClient, userId],
   );
 
   const send = useCallback(
@@ -201,7 +203,6 @@ export function useAssistantChat() {
     abort.current = null;
     setPending(false);
     setPhase(null);
-    const id = conversation.current;
     conversation.current = null;
     failed.current = null;
     setConversationId(null);
@@ -210,10 +211,8 @@ export function useAssistantChat() {
     setError(null);
     setStopped(false);
     setState('ok');
-    // The server deletes the conversation with its messages and proposals; if that fails the
-    // retention job still removes it, so the person is not asked about it.
-    if (id !== null) void api.deleteAssistantConversation(id).catch(() => undefined);
-  }, [api]);
+    // New chat preserves the server's history. Deletion is an explicit library action.
+  }, []);
 
   const patch = useCallback((id: string, change: Partial<ProposalView>) => {
     setProposals((current) => {
@@ -221,6 +220,13 @@ export function useAssistantChat() {
       return existing ? { ...current, [id]: { ...existing, ...change } } : current;
     });
   }, []);
+
+  const clearIfCurrent = useCallback(
+    (id: string) => {
+      if (conversation.current === id) clear();
+    },
+    [clear],
+  );
 
   const confirm = useCallback(
     async (id: string) => {
@@ -275,6 +281,7 @@ export function useAssistantChat() {
     retry,
     stop,
     clear,
+    clearIfCurrent,
     confirm,
     reject,
   };

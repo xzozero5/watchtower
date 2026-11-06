@@ -5,6 +5,10 @@ snapshot สั้นสำหรับ cold start อยู่ที่ `HANDOF
 
 ## สถานะปัจจุบัน
 
+- **2026-11-06 16:36 [TESTED]:** T407b main175unit/lint/type/build + QAfilelint/type + 41browserผ่าน; staleDeleteAไม่ล้างB regressionผ่าน. กำลังcommit/backup/deployweb; parent407รอc. Source8709T407a/T443deploy16:18verifiedแล้ว; ไม่มีtestcontainersrunning/autosendปิด. CIล่าสุดยังต้องติดตามตามHEADใหม่.
+
+- **2026-11-06 16:19 [TESTED]:** T407a/T443commit8709c95eและADR033pushแล้ว. Webdeployหลังbackupvalidated13,758,499bytes healthy/3HTTP200; APIworkerเดิมT409. Devเริ่ม407bหลังimagecapture; parent407ยังไม่ปิด. CI62ce32c1green4jobs; CI8709รอผล. No testcontainersrunning/ไม่ลบvolume/autosendยังปิด.
+
 - **2026-11-06 15:51 [TESTED]:** T409/T441/T442commit/push62ce32c1แล้ว. Docker3appsbuild/redeploy15:49หลังbackupvalidated; POC9healthy/loginreadybridge200/online=true/autosend=false. T442main20tests+static/reviewผ่าน; CI42190164923กำลังรัน. checkpoint407running(407aSSE/C22), devwebกำลังทำ. Testcontainers4หยุดหลังใช้ ไม่ลบvolume. T433ยังไม่เปิด.
 
 - **2026-11-06 15:43 [TESTED]:** quotaresetแล้ว; T409/T441ตรวจรับ mainr2static14/APIintegration114+AI65/API116/shared6/eval2, mockCLI32/32citation100%และuncited≤1ทุกcase; webstaticผ่าน. IndependentreviewปิดP2ทุกข้อ. T442testfixreviewผ่าน mainrerunbrief+investigationกำลังรัน; T409ยังไม่deploy. Sourceกำลังcommitตามreview ไม่อ้างCIครบจนrerunจริง.

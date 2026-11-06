@@ -1,6 +1,7 @@
 'use client';
 
 import type { Claim, ClaimEvidence, ClaimEvidenceKind } from '@watchtower/shared';
+import type { ReactNode } from 'react';
 import { cn, TintChip } from '@watchtower/ui';
 import {
   AlertTriangle,
@@ -126,7 +127,15 @@ export function EvidenceChip({
  * `No evidence` (icon + words, never colour alone) and written muted: it is not shown as a fact.
  * Render it inside a `<ul>`.
  */
-export function ClaimLine({ claim, onOpen }: { claim: Claim; onOpen?: () => void }) {
+export function ClaimLine({
+  claim,
+  onOpen,
+  children,
+}: {
+  claim: Claim;
+  onOpen?: () => void;
+  children?: ReactNode;
+}) {
   const t = useT();
   const { can } = useSession();
   const canOpenOrgs = can('org.manage');
@@ -162,6 +171,7 @@ export function ClaimLine({ claim, onOpen }: { claim: Claim; onOpen?: () => void
           ))}
         </div>
       )}
+      {children}
     </li>
   );
 }
