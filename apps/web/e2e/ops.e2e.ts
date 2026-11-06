@@ -1,14 +1,20 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, type Page, test } from '@playwright/test';
 
+import { APP_ORIGIN } from './backend';
+
 import { ALERT_CRITICAL, ALERT_UNMAPPED, INCIDENT_ID, mockOps, PUBLIC_TOKEN } from './ops-backend';
 
 const WCAG_TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'];
 
 /** Staff pages: the console shell marks itself when React has taken over. */
 async function open(page: Page, path: string) {
-  await page.goto(path);
+  const response = await page.goto(path);
+  expect(response?.status()).toBe(200);
+  await expect(page).toHaveURL(new URL(path, APP_ORIGIN).href);
   await expect(page.locator('[data-hydrated="true"]')).toBeAttached();
+  await expect(page.getByText('Page not found', { exact: true })).toHaveCount(0);
+  await expect(page.getByTestId('assistant-bubble')).toBeVisible();
 }
 
 /** The colours have a short transition: axe must not read them half way (a false low-contrast hit). */

@@ -3,13 +3,18 @@ import { expect, type Page, test } from '@playwright/test';
 
 import { uuid } from '../src/test/fixtures';
 
+import { APP_ORIGIN } from './backend';
 import { mockConsole } from './console-backend';
 
 const WCAG_TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'];
 
 async function open(page: Page, path: string) {
-  await page.goto(path);
+  const response = await page.goto(path);
+  expect(response?.status()).toBe(200);
+  await expect(page).toHaveURL(new URL(path, APP_ORIGIN).href);
   await expect(page.locator('[data-hydrated="true"]')).toBeAttached();
+  await expect(page.getByText('Page not found', { exact: true })).toHaveCount(0);
+  await expect(page.getByTestId('assistant-bubble')).toBeVisible();
 }
 
 async function expectNoViolations(page: Page) {
@@ -191,18 +196,21 @@ test.describe('agent', () => {
 });
 
 test.describe('admin pages: accessibility', () => {
-  for (const path of [
-    '/admin/users',
-    '/admin/audit',
-    '/admin/orgs',
-    '/admin/sla',
-    '/admin/queues',
+  for (const { path, title } of [
+    { path: '/admin/users', title: 'Users' },
+    { path: '/admin/audit', title: 'Audit log' },
+    { path: '/admin/orgs', title: 'Organizations' },
+    { path: '/admin/sla', title: 'SLA' },
+    { path: '/admin/queues', title: 'Queues' },
   ]) {
     for (const scheme of ['light', 'dark'] as const) {
       test(`${path} (${scheme})`, async ({ page }) => {
         await page.emulateMedia({ colorScheme: scheme });
         await mockConsole(page);
         await open(page, path);
+        await expect(
+          page.getByRole('heading', { name: title, exact: true, level: 1 }),
+        ).toBeVisible();
         await expect(page.getByRole('table').first()).toBeVisible();
         await expectNoViolations(page);
       });

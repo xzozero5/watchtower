@@ -3,6 +3,8 @@ import { expect, type Page, test } from '@playwright/test';
 
 import { makeView } from '../src/test/portal-fixtures';
 
+import { makeSession } from '../src/test/fixtures';
+
 import { APP_ORIGIN } from './backend';
 import { E2E_API_URL } from './constants';
 import {
@@ -551,4 +553,33 @@ test.describe('caching and referrers', () => {
     });
     expect(stored.filter((url) => /\/portal|\/v1\//.test(url))).toEqual([]);
   });
+});
+
+// Auth may be read by a public layout; an available staff session must not mount console AI.
+test('T407c: staff session on the ready portal form has no assistant', async ({ page }) => {
+  await mockPortal(page);
+  await page.context().addCookies([{ name: 'wt_at', value: 'e2e-staff-only', url: APP_ORIGIN }]);
+  await page.route(`${E2E_API_URL}/v1/auth/session`, async (route) => {
+    await route.fulfill({
+      json: makeSession('head'),
+      headers: {
+        'access-control-allow-origin': APP_ORIGIN,
+        'access-control-allow-credentials': 'true',
+      },
+    });
+  });
+  const response = await page.goto('/portal');
+  expect(response?.status()).toBe(200);
+  await expect(page).toHaveURL(`${APP_ORIGIN}/portal`);
+  await expect(
+    page.getByRole('heading', { name: 'Contact support', exact: true, level: 1 }),
+  ).toBeVisible();
+  await expect(
+    page.getByText('Verified. You can submit your request.', { exact: true }),
+  ).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Submit request', exact: true })).toBeVisible();
+  await expect(page.getByTestId('assistant-bubble')).toHaveCount(0);
+  await expect(page.getByTestId('assistant-panel')).toHaveCount(0);
+  await page.keyboard.press('ControlOrMeta+k');
+  await expect(page.getByRole('option', { name: /Ask AI/ })).toHaveCount(0);
 });

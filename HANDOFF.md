@@ -1,7 +1,7 @@
 # HANDOFF — Watchtower
 
 > สถานะล่าสุดของโปรเจกต์ session ใหม่อ่านไฟล์นี้ต่อจาก `AGENTS.md` แล้วทำงานต่อได้โดยไม่ต้องอ่านบทสนทนาเดิม
-> อัปเดตล่าสุด: 2026-11-06 21:33 (เวลากรุงเทพ) โดย Codex — T407/T445 running; Docker engine blocked
+> อัปเดตล่าสุด: 2026-11-06 21:38 (เวลากรุงเทพ) โดย Codex — T407/T445 running; Docker engine blocked
 > ฉบับก่อน: `docs/handoff-archive/HANDOFF-2026-11-05-pre-ai-bridge.md` · บันทึกรายชั่วโมง `logs/daily/2026-11-05.md`
 
 > ✅ **push แล้ว 2026-11-05** (`origin/main` = `e325c83`, CI run 41963960467 เขียวทั้ง 4 job) · ✅ **POC deploy แล้ว 2026-11-05 11:10** (เจ้าของ OK): backup `D:\Works\watchtower-backups\poc-20261105-1105-pre-phase3.dump` (13.5 MB) → build api/worker/web/bridge/gmail-tunnel → migrate 22 ตัวถึง 0111 → ทุก service healthy · `AI_AUTOSEND_ENABLED` ไม่ได้ตั้ง
@@ -12,12 +12,12 @@
 ## Continuation (อ่านก่อนเริ่มรอบใหม่)
 - **21:33 T407/T445 running:** owner PID40860; local token `.cache/watchtower-claim.json`. อย่า claim running ซ้ำ. อ่าน checkpoint CLI+usage ก่อนงานหนัก.
 - **T444 completed/pushed3660c90c:** format2webspecsและแก้ seed-exclusion fixture ให้นาฬิกาDBอยู่ก่อนreport cutoffแน่นอน ไม่ลด assertions. Main worker integration20/20+staticผ่าน; CIของcommitใหม่นี้ต้องตรวจเอง.
-- **T407c source WIP:** registry32/32 + console/public anonymous/staff assertions. Main first116/116ผ่าน; final161cases160ผ่าน1CSATstaff exact-copy mismatch. Reviewerกำลังแก้เฉพาะtest+focusedrun. ยังไม่ปิด407c/parent407. logs/deploy/2026-11-06-t407c-final-browser.log.
+- **T407 completed21:38:** a/bเดิมdeployแล้ว; c main161/161browser+scopedlint/format/webtypeผ่านหลังแก้CSATexactcopyโดยคงready/noAIassertions. Route32/32console/publicanonymous+staff. logs/deploy/2026-11-06-t407c-final2-browser.log exit0. เป็นmockUIgate ไม่ใช่livepilot/securityapproval.
 - **T445a source frozenรอตรวจ:** durable server authorization metadata/history filtering/memory tombstones + migration0117; source rowslegacy failclosed. Agent120unitผ่าน; main35focusedunit+APItypecheckผ่านหลังแก้Redisnamedimport. Independent reviewerกำลังตรวจ; DBmigration/integrationยังไม่รัน. UI No access TH/EN regressionกำลังทำโดยproducerเดิม. ห้ามdeploy schemaนี้ก่อนbackup+gates.
 - **T445c source WIP:**60calls/hour/user/tool callback single registry entry + production wiring. Mainunit35รวมcounterผ่าน; realRedisintegrationยังไม่รัน. T445bPIIcatalogue/T445dpromptmemoryยังไม่ทำ. ADR034เขียนก่อนimplementationแต่ยังuncommitted.
 - **Docker external block21:23:** engine namedpipeหาย/APIไม่ตอบ แต่hostbridge4317HTTP200. เปิดPOC9existingcontainersสำเร็จ20:54แล้วหายอีก; ไม่ทราบสาเหตุ. สั่งDockerDesktoprestartแบบมีขอบเขต1ครั้งแล้ว21:27;21:32ยังไม่มีenginepipe. ห้ามrestartวน. เมื่อกลับมาตรวจPOC9และstartเฉพาะexistingservices, testPG45802/Redis46802เฉพาะตอนใช้; ไม่ลบvolume. ยังไม่รับรองdeployรอบใหม่.
 - **Source state:**HEAD3660c90c; auth/migration/toolbudget/browser/ADR034ยังuncommitted. `.agents/`/`.codex/`เป็นของเจ้าของห้ามcommit. No live customer sends/autosendปิด. Lastactualwebdeployb7671097พร้อมbackupD:/Works/watchtower-backups/poc-20261106-163914-pre-t407b.dump13,758,801bytes.
-- **คิวต่อ:**finish407c→T445a/cgate→445b/d→410/411/412;T418writer→419a→420/421;T434a/b/cก่อน433localenable. LINEภายหลัง. ทำงานต่อทันทีเมื่อquotaพอ ไม่รอheartbeatหลังแต่ละชิ้น.
+- **คิวต่อ:**T445a/cgate→445b/d→410/411/412;T418writer→419a→420/421;T434a/b/cก่อน433localenable. LINEภายหลัง. ทำงานต่อทันทีเมื่อquotaพอ ไม่รอheartbeatหลังแต่ละชิ้น.
 
 ## สถานะปัจจุบัน
 - **Phase:** 1 = done pending pilot · 2 = done pending live (GCP/Discord จริง) · 3 = ✅ done pending live gate (งานค้างของ PO T-306c ปิดครบ, ADR-025/026 Accepted) · LINE = feature ภายหลัง · Phase 4: ดึง T-152 (ลิงก์ "คำขอของฉัน" ทางอีเมล) + Web Push live มาทำแล้ว

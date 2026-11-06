@@ -9,14 +9,19 @@ import {
   makeIntegrationList,
 } from '../src/test/integrations-fixtures';
 
+import { APP_ORIGIN } from './backend';
 import { mockConsole } from './console-backend';
 
 const WCAG_TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'];
 const GOOGLE_URL = 'https://accounts.google.com/o/oauth2/v2/auth?client_id=e2e';
 
 async function open(page: Page, path: string) {
-  await page.goto(path);
+  const response = await page.goto(path);
+  expect(response?.status()).toBe(200);
+  await expect(page).toHaveURL(new URL(path, APP_ORIGIN).href);
   await expect(page.locator('[data-hydrated="true"]')).toBeAttached();
+  await expect(page.getByText('Page not found', { exact: true })).toHaveCount(0);
+  await expect(page.getByTestId('assistant-bubble')).toBeVisible();
 }
 
 /** The reads and writes of Admin / Integrations, in memory so a save shows in the next read. */

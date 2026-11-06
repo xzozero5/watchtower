@@ -11,9 +11,18 @@ import { mockConsole } from './console-backend';
 const WCAG_TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'];
 const AT = '2026-11-02T02:50:00.000Z';
 
-async function open(page: Page, path: string) {
-  await page.goto(path);
+async function open(page: Page, path: string, assistantAllowed = true) {
+  const response = await page.goto(path);
+  expect(response?.status()).toBe(200);
+  await expect(page).toHaveURL(new URL(path, APP_ORIGIN).href);
   await expect(page.locator('[data-hydrated="true"]')).toBeAttached();
+  await expect(page.getByText('Page not found', { exact: true })).toHaveCount(0);
+  if (assistantAllowed) {
+    await expect(page.getByTestId('assistant-bubble')).toBeVisible();
+  } else {
+    await expect(page.getByTestId('assistant-bubble')).toHaveCount(0);
+    await expect(page.getByTestId('assistant-panel')).toHaveCount(0);
+  }
 }
 
 async function expectNoViolations(page: Page) {
@@ -249,7 +258,7 @@ test.describe('ticket: investigation buttons', () => {
 
   test('a customer on the portal side never sees the section', async ({ page }) => {
     await mockBackend(page, { role: 'client' });
-    await open(page, '/');
+    await open(page, '/', false);
     await expect(page.getByRole('region', { name: 'Investigate' })).toHaveCount(0);
   });
 });

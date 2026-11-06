@@ -1,6 +1,8 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, type Page, test } from '@playwright/test';
 
+import { makeSession } from '../src/test/fixtures';
+
 import { APP_ORIGIN } from './backend';
 import { E2E_API_URL } from './constants';
 import { errorBody } from './portal-backend';
@@ -220,4 +222,37 @@ test.describe('in Thai', () => {
     await expect(page.locator('form').getByRole('radio')).toHaveCount(7);
     expect((await axe(page)).violations).toEqual([]);
   });
+});
+
+// The survey stays public even when the browser can authenticate as staff.
+test('T407c: staff session on the ready survey has no assistant', async ({ page }) => {
+  const api = await mockSurveyApi(page);
+  await page.context().addCookies([{ name: 'wt_at', value: 'e2e-staff-only', url: APP_ORIGIN }]);
+  await page.route(`${E2E_API_URL}/v1/auth/session`, async (route) => {
+    await route.fulfill({
+      json: makeSession('head'),
+      headers: {
+        'access-control-allow-origin': APP_ORIGIN,
+        'access-control-allow-credentials': 'true',
+      },
+    });
+  });
+  const response = await page.goto(`/csat#token=${TOKEN}&score=4`);
+  expect(response?.status()).toBe(200);
+  await expect(
+    page.getByRole('heading', { name: 'How did we do?', exact: true, level: 1 }),
+  ).toBeVisible();
+  await expect(
+    page.getByText(
+      'Your request OPS-12 was resolved. Tell us how it went. It takes a few seconds.',
+      { exact: true },
+    ),
+  ).toBeVisible();
+  await expect(page.getByRole('radio', { name: '4 out of 5: Happy', exact: true })).toBeChecked();
+  await expect(page).toHaveURL(`${APP_ORIGIN}/csat`);
+  expect(api.posts()).toHaveLength(0);
+  await expect(page.getByTestId('assistant-bubble')).toHaveCount(0);
+  await expect(page.getByTestId('assistant-panel')).toHaveCount(0);
+  await page.keyboard.press('ControlOrMeta+k');
+  await expect(page.getByRole('option', { name: /Ask AI/ })).toHaveCount(0);
 });

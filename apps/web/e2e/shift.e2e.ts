@@ -1,6 +1,8 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, type Page, test } from '@playwright/test';
 
+import { APP_ORIGIN } from './backend';
+
 import { handoff } from '../src/test/shift-fixtures';
 
 import { mockShift, OPEN_P1 } from './shift-backend';
@@ -11,8 +13,12 @@ const sections = (page: Page) => page.getByRole('navigation', { name: 'Shift sec
 const WCAG_TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'];
 
 async function open(page: Page, path: string) {
-  await page.goto(path);
+  const response = await page.goto(path);
+  expect(response?.status()).toBe(200);
+  await expect(page).toHaveURL(new URL(path, APP_ORIGIN).href);
   await expect(page.locator('[data-hydrated="true"]')).toBeAttached();
+  await expect(page.getByText('Page not found', { exact: true })).toHaveCount(0);
+  await expect(page.getByTestId('assistant-bubble')).toBeVisible();
 }
 
 async function expectNoViolations(page: Page) {
