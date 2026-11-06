@@ -1,7 +1,7 @@
 # HANDOFF — Watchtower
 
 > สถานะล่าสุดของโปรเจกต์ session ใหม่อ่านไฟล์นี้ต่อจาก `AGENTS.md` แล้วทำงานต่อได้โดยไม่ต้องอ่านบทสนทนาเดิม
-> อัปเดตล่าสุด: 2026-11-06 16:44 (เวลากรุงเทพ) โดย Codex — T407b deployed, public noAI partial
+> อัปเดตล่าสุด: 2026-11-06 16:48 (เวลากรุงเทพ) โดย Codex — full web suite ผ่าน, waiting_limit
 > ฉบับก่อน: `docs/handoff-archive/HANDOFF-2026-11-05-pre-ai-bridge.md` · บันทึกรายชั่วโมง `logs/daily/2026-11-05.md`
 
 > ✅ **push แล้ว 2026-11-05** (`origin/main` = `e325c83`, CI run 41963960467 เขียวทั้ง 4 job) · ✅ **POC deploy แล้ว 2026-11-05 11:10** (เจ้าของ OK): backup `D:\Works\watchtower-backups\poc-20261105-1105-pre-phase3.dump` (13.5 MB) → build api/worker/web/bridge/gmail-tunnel → migrate 22 ตัวถึง 0111 → ทุก service healthy · `AI_AUTOSEND_ENABLED` ไม่ได้ตั้ง
@@ -12,8 +12,8 @@
 ## Continuation (อ่านก่อนเริ่มรอบใหม่)
 - **16:44 T407b deployed:** commit b7671097pushแล้ว. Backupvalidated D:/Works/watchtower-backups/poc-20261106-163914-pre-t407b.dump13,758,801bytes→Dockerwebbuild/uphealthy; login/APIready/bridgeHTTP200. APIworkerT409เดิมไม่เปลี่ยน. Main175unit/lint/type/build+41browserรวมQAindependentflowผ่าน; P2DeleteAไม่clear/abortBแก้ด้วยref. Noagentsactive.
 - **407c1partial:** QAเพิ่ม12noAIassertsในexistingportal/csat/opsready-success6states. Mainอ่านdiff+ตรวจtestIdมีจริงในproduct; lint+3specs53/53ผ่าน. ยังไม่ปิด407c/parent407: ต้องconsoleทุกroute, portal/tickets/:key/myrequests,statusconfirm/unsubscribe,errorstatesและpublicstaffsessionตามAC.
-- **Full web mock suite กำลังรัน** หลังfrozen407b+publicasserts: logs/deploy/2026-11-06-full-web-final.log มีexitCodeท้ายเมื่อจบ. ก่อนรันซ้ำตรวจlog/process; ไม่มีDBจริง/model calls. Standalone/EdgeprocessจะจบตามPlaywright. Gatebrowserใช้PW_CHANNEL=msedgeเพราะheadless_shell1248ไม่มี ไม่download.
-- **CheckpointT407running PID40860** claimlocal .cache/watchtower-claim.json. อย่าclaimrunningซ้ำ; progressเขียนdocs. ถ้าquotaเหลือ≤5%pauseด้วยresetจริงของwindowที่ติด ส่วนavailableใส่now. ล่าสุด91%5h/weekly76%16:42 ก่อนclosecheckpoint. NoAIagentsactive (ปิดdev/QAหมดแล้ว). No testcontainersrunning; POC9serviceshealthy, embedder/oldclaudebridgeหยุดเก็บvolume. Autosendปิด.
+- **[TESTED] Full web mock suite จบแล้ว:** 226 passed / 32 existing skipped / exitCode0 (2.4min), logs/deploy/2026-11-06-full-web-final.log; exec37847จบแล้ว ไม่ต้องรันซ้ำโดยไม่มีchange/failureใหม่. Public3specs53/53ผ่าน, 407b175unit/41browser/staticผ่าน. Parent407cยังต้องเพิ่มassertionsตามcoveragegap ไม่ใช่แค่รันsuiteเดิม.
+- **CheckpointT407 waiting_limit16:48:** usage5h95%/weekly77%; nextEligibleAt2026-11-06T13:37:57Z=20:37:57Bangkok. NoAIagentsactive ปิดdev/QAหมดแล้ว; ไม่มีdeterministicjobค้าง. Sourcepushcd1142fcแล้ว ก่อนพักอัปเดตdocscommitใหม่. หลังresetตรวจusage/CIHEADแล้วทำ407cต่อ. POC9healthy/testcontainersหยุด/embedderและoldclaudebridgeหยุดเก็บvolume/autosendปิด.
 - **CI:** 62ce32c1ผ่าน42190164923ครบ4jobs. b7671097/HEADใหม่รอผล (อย่าอ้างgreenจากlocal). T409/T441/T442/407a/b/T443push+deployแล้ว; publicassertsonlyไม่ต้องredeploy.
 - **คิวต่อ:** 407c→410/411/412; T418writer→419a→420/421. T434a/b/cตามADR033ก่อนT433localenable; modeldownload/calibrationพร้อมแต่providerยังmock. T419b/T418a/T432/T440ปิดแล้วไม่ทำซ้ำ. ADR033Acceptedแนวทางเท่านั้น ยังไม่migrate/implement.
 - เจ้าของอนุมัติทำค้างครบ/deployหลังbackup/push/stopunusedไม่ลบvolume ให้POตัดสินscope/default; LINEภายหลัง ห้ามเปิดautosend/ส่งcustomerจริงทดสอบ. Credentialใหม่blockedแล้วทำงานอิสระต่อ. ทำต่อในturnเดียวเมื่อquotaพร้อม ไม่หยุดรอheartbeatเพราะจบงานย่อย. Automationhourlyต้องเครื่อง/appเปิด ไม่รับประกันexactwake.
