@@ -495,3 +495,6 @@ Static reviewพบP2สี่ข้อส่งdevแล้ว: dictionaryconte
 
 ## 2026-11-06 10:44 — main + QA — T-440 real embedder startup
 [TESTED] pinnedOllama0.40.14ดาวน์โหลดสำเร็จ; freshvolumeเริ่มruntimeก่อนinitทำให้restart4ครั้ง จึงเพิ่มdepends_oninitcompleted. Reviewerอิสระไม่พบP1/P2. Maincomposeconfigผ่าน, initexit0 รอบสองmodelalreadypresent, ordereduphealthy, sharedai-compose35/35ผ่าน, prettierผ่านหลังnormalizeLF. Runtimeuid1000/read-onlyตอบsyntheticไทย/อังกฤษ2vectors1024dimsfinite; memory1.299GiB/4GiB. Networkembedinternalonly ไม่มีpublishedport และpullfakeprobeออกregistryไม่ได้. ไม่อ่านsecrets/ไม่ส่งcustomerจริง. Debugoverlayเปิดloopbackเฉพาะcalibrationและมีfinallyปิดกลับ; providerยังไม่เปลี่ยน. T433ยังไม่ปิดจนcalibration/instanceenableverify. แก้indexADR030networkให้ตรงimplementation.
+
+## 2026-11-06 10:47 — main — T433 calibration (ยังไม่ปิด)
+[TESTED] actualbge-m3publicexamples18queries/23passages: floor.55recall100%noise6%; .60recall79%. หลังdebugrecreatecoldqueryช้า2.259s; ไม่ใช่steadywarm. Warm3distinctTH/ENที่CPU2=297/596/299ms, CPU4=104/174/109ms คืนCPU2แล้ว. คงtimeout1.5sและcoldfallback. OverlayfinallyrestoreครบPortBindings{}+embedonly. Providerยังไม่เปิด; POกำหนดT434ก่อนswitchเพื่อรักษาindexเก่า. Modelพร้อมรอ ไม่อ้างhybridinstanceผ่าน.
