@@ -91,3 +91,5 @@
 ## วันตรวจซ้ำ
 - rotate key `watchtower-pubsub-admin`: 2027-02-01 (90 วันจากสร้าง 2026-11-03)
 - ทบทวน residual P3 (C-4, C-6, C-9, C-14) ก่อนเปิด `AI_AUTOSEND_ENABLED` ที่ใด
+
+[CONFIRMED] 11:12 checkpointT409 waiting_limit: 5hใช้95% weekly61%; nextEligibleAt=15:30:19Bangkok. ไม่มีAIagentactive; deterministicr2gateยังรันได้ตามscriptและstoptestcontainersเมื่อจบ. ผลรับต่อจากlog ไม่เริ่มAIงานเพิ่มก่อนreset.

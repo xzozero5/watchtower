@@ -510,3 +510,5 @@ CI42159021249ของ11134b: integrationล้มworkerai.integration.test.ts:2
 
 ## 2026-11-06 11:11 — main — T409 freeze r2 ก่อน quota pause
 DevรายงานP2prefetch9kinds/visibleentities/readRefsuncited/handoffauditแก้แล้ว; API30/AI40/audit4ผ่าน (mainยังไม่signoff). ปิดdev/reviewerทุกตัวแล้ว. Mainเริ่มdeterministicr2gateexec58277; logt409-r2-orchestratorและt409-main-*; outerstopwt-main4containersเมื่อจบ ไม่ลบvolume. Sourceยังuncommittedและไม่deploy. Pendingr2result, independenthandoff-finalreview, mockCLI32, webiconlint/typecheck, T442CIworkerfailure. T441ยังรอtypecheckgate. Runtimeembedderหยุดเก็บmodelvolume; POC9เดิมไม่เปลี่ยน.
+
+[CONFIRMED] 11:12 checkpointT409 waiting_limit: 5hใช้95% weekly61%; nextEligibleAt=15:30:19Bangkok. ไม่มีAIagentactive; deterministicr2gateยังรันได้ตามscriptและstoptestcontainersเมื่อจบ. ผลรับต่อจากlog ไม่เริ่มAIงานเพิ่มก่อนreset.
