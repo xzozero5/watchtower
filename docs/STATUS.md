@@ -486,3 +486,12 @@ snapshot สั้นสำหรับ cold start อยู่ที่ `HANDOF
 - [TESTED] POCใช้งานCodexต่อเนื่อง; Thai classifier syntheticผ่านและauditจริง. Codecommit fe1b28f; commitผลgate/volumeตามมา. ไม่pushเพราะmainมี80commitsเดิมค้างรอเจ้าของก่อนsession
 
 [CONFIRMED] 07:26 quota5hใช้95% (weekly46%); checkpoint waiting_limit รอ reset 10:21:44 Bangkok. Heartbeatยังactive; full frozen unitยังรัน ให้ตรวจlog/processก่อนงานถัดไป ไม่เริ่มAIงานใหม่ระหว่างรอ.
+
+## 2026-11-06 10:35 — QA — T-407 acceptance gap audit
+Read-only reviewerคนละตัวกับผู้ผลิตยืนยันยังไม่ครบ: paletteใช้ticketpermissionแทนassistant.use, transportยังJSONไม่มีphase/queueSSE, conversationlistและpinnedmemory/feedbackUIไม่มี, C22warningต้องรอhadCustomerContentจากT409, browserroute matrixยังไม่มี. Backendมีendpointพร้อมแล้ว; StopมีAbortControllerแต่propagationยังไม่ยืนยัน. Starteradminถามauditทั้งที่toolไม่มี ต้องเปลี่ยน. แตกimplementationเป็นtransport/controls→history/memory/feedback→routee2e ไม่ติ๊กT407ก่อนครบ. Mainตรวจsourcepathsและผลgateก่อนหน้าเอง.
+
+## 2026-11-06 10:36 — QA — T-409 baseline review
+Static reviewพบP2สี่ข้อส่งdevแล้ว: dictionarycontextย้อนหลังครอบแค่ticket, factwrapperถูกneutralizeทั้งก้อน/clip, citationไม่copyfact.refทำให้persistedprovenanceหาย, killswitchระหว่างplanกับtoolsยังไม่เช็คก่อนtool. ต้องมีregressionและreviewหลังpatchsettleก่อนsignoff. ยังไม่พบanswercacheจึงไม่อ้างcacheleak; C12เป็นimplementationacceptance. C22ต้องส่งhadCustomerContentจริง. Reviewerไม่แก้ไฟล์/ไม่รันtestในbaselineaudit.
+
+## 2026-11-06 10:44 — main + QA — T-440 real embedder startup
+[TESTED] pinnedOllama0.40.14ดาวน์โหลดสำเร็จ; freshvolumeเริ่มruntimeก่อนinitทำให้restart4ครั้ง จึงเพิ่มdepends_oninitcompleted. Reviewerอิสระไม่พบP1/P2. Maincomposeconfigผ่าน, initexit0 รอบสองmodelalreadypresent, ordereduphealthy, sharedai-compose35/35ผ่าน, prettierผ่านหลังnormalizeLF. Runtimeuid1000/read-onlyตอบsyntheticไทย/อังกฤษ2vectors1024dimsfinite; memory1.299GiB/4GiB. Networkembedinternalonly ไม่มีpublishedport และpullfakeprobeออกregistryไม่ได้. ไม่อ่านsecrets/ไม่ส่งcustomerจริง. Debugoverlayเปิดloopbackเฉพาะcalibrationและมีfinallyปิดกลับ; providerยังไม่เปลี่ยน. T433ยังไม่ปิดจนcalibration/instanceenableverify. แก้indexADR030networkให้ตรงimplementation.

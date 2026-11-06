@@ -249,3 +249,5 @@ T-152, T-175 (กำลังทำอยู่แล้ว เก็บผล),
 - [x] T-418a `main` aggregate fact provenance ของ insight: StoredEvidence kind aggregate/factId, ไม่มี entity ปลอม, reader ทิ้งเมื่อ fact ไม่อยู่ใน view — ตาม PO clarification ADR-029 2026-11-06 — ปิด: AI58/API15 tests + lint/typecheck12tasks, independentsecurityไม่พบP1/P2 (livefullpathยังไม่เปิดจนT418)
 
 - [x] T-439 `main` จำกัด CI test package concurrency1/Vitest workers2 โดยคงtestcasesครบ + เพิ่มcontinuation8testsเข้าCI; rosterproperty19testsผ่าน (150random+80oracle) · rootcommandตรวจจริงในlogsก่อนpush
+
+- [x] T-440 `main` แก้ fresh-volume embedder race: runtimeรอinitสำเร็จ; realimageuid1000/read-only+ThaiEnglish1024dimsผ่าน, initรอบสองไม่download, internal/noport/egressblocked, compose35testsผ่าน+independentreview. T433ยังรอcalibrationและเปิดprovider

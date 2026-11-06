@@ -605,12 +605,16 @@ services:
     profiles: ['ai']
     image: ollama/ollama:0.40.14@sha256:ebaef4f4c5d93660e1f25f8ad085a112f51ccfb0e8458073e71793959dba91c9
     restart: unless-stopped
+    # The init owns a fresh volume until the model files belong to runtime uid 1000.
+    # Starting both concurrently makes the hardened runtime restart on permission errors.
+    depends_on:
+      embedder-init:
+        condition: service_completed_successfully
     networks:
       - embed
-    # Hardening (T-435 C-6) `[UNVERIFIED 60%]`: not run against the real image yet. Non-root, read-only
-    # root file system; HOME and the scratch space are tmpfs; the model volume (written by
-    # `embedder-init`, which chowns it to 1000) is the only writable path. If the image will not start
-    # like this, the first thing to relax is `user` (the logs say which path it could not write).
+    # Hardening (T-435 C-6) tested with the pinned image on 2026-11-06: non-root, read-only
+    # root file system; HOME and scratch are tmpfs. Init prepares the model volume for uid 1000
+    # before this service starts. Keep these restrictions when diagnosing startup failures.
     user: '1000:1000'
     read_only: true
     tmpfs:
@@ -647,8 +651,8 @@ services:
   embedder-init:
     # One-shot, like minio-init: pulls the model into the `embeddermodels` volume when it is not
     # there yet, then exits 0. This is the one-time download the owner approved (ADR-030). A later
-    # start finds the model and downloads nothing. A failed pull leaves the model missing: the
-    # embedder answers errors and search falls back to keyword only.
+    # start finds the model and downloads nothing. A failed pull blocks runtime startup:
+    # search falls back to keyword only while the embedder is unavailable.
     # It runs its OWN `ollama serve` (loopback inside this container only, so nothing else can reach
     # it) on `embed-egress`, the one network with a route to the internet and with no other service
     # on it (T-435 C-2): the download is done by this container, not by the long-running embedder.
