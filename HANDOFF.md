@@ -1,87 +1,49 @@
 # HANDOFF — Watchtower
 
-> สถานะล่าสุดของโปรเจกต์ session ใหม่อ่านไฟล์นี้ต่อจาก `AGENTS.md` แล้วทำงานต่อได้โดยไม่ต้องอ่านบทสนทนาเดิม
-> อัปเดตล่าสุด: 2026-11-07 17:52 (เวลากรุงเทพ) โดย Codex — T407/T445 running; Docker engine blocked
-> ฉบับก่อน: `docs/handoff-archive/HANDOFF-2026-11-05-pre-ai-bridge.md` · บันทึกรายชั่วโมง `logs/daily/2026-11-05.md`
-
-> ✅ **push แล้ว 2026-11-05** (`origin/main` = `e325c83`, CI run 41963960467 เขียวทั้ง 4 job) · ✅ **POC deploy แล้ว 2026-11-05 11:10** (เจ้าของ OK): backup `D:\Works\watchtower-backups\poc-20261105-1105-pre-phase3.dump` (13.5 MB) → build api/worker/web/bridge/gmail-tunnel → migrate 22 ตัวถึง 0111 → ทุก service healthy · `AI_AUTOSEND_ENABLED` ไม่ได้ตั้ง
-> ✅ **AI เปลี่ยนเป็น Codex แล้ว 2026-11-05 23:53** — `AI_PROVIDER=ai-cli`, `AI_BRIDGE_MODE=codex`, host bridge `http://host.docker.internal:4317` (PID ตรวจที่ logs/ai-bridge/host.pid) · non-secret overrides ถูก append ลง env เดิมแล้ว มี local overlay logs/ai-bridge/pinned-runtime.env ชี้ CODEX_CLI_BIN แบบ pin · API/worker image ใหม่ healthy; DB ถึง 0116; web/Gmail tunnel เดิมไม่แตะ · backup `D:\Works\watchtower-backups\poc-20261105-ai-bridge-pre-0116.dump` (13,731,374 bytes) · old Claude container หยุดไว้ rollback ได้
-
-> ✅ **2026-11-06 05:26:** push `635914d` แล้ว (รวม82commitเดิม); CI42121519210cancelledเพราะpushเอกสารใหม่; CI42121588809ของ31abb66ล้มops test2ตัว → T-438แก้แล้ว รอดูCIใหม่. POC api/worker/web redeploy00:21 healthy, bridgeจากapihealth200หลังpinCLI. T-437 completed; checkpoint task T-419 ready หมายถึง T-419b ที่ POเลือก (schema taskIdรับเลขเท่านั้น). งานassistantยังต้องทำต่อ
-
-## Continuation (อ่านก่อนเริ่มรอบใหม่)
-- **2026-11-07 17:52 running:** checkpoint T407ใช้เป็นcontinuation umbrella, ownerPID12484/localtoken.cache/watchtower-claim.json. Branch codex/t445-authorization-gates;mainT407closeda6b3c22c. ไม่claimrunningซ้ำ.
-- **CI42237267471 diagnosis:**staticผ่าน;integration/e2e/composeล้มrootเดียว migration0117 unquoted reservedidentifierauthorization. Mainแก้quoteในup/downและrawSELECT2จุดในdbassistantintegration(รักษา42703หลังdown);reviewerตรวจpatchไม่พบfinding;mainformat/db lint/typeผ่านexit0. ต้องpushและดูCIใหม่ก่อนปิดT445a/c. Dockerlocalยังไม่มีenginepipe17:51จึงไม่รันPG/Redisในเครื่อง;ไม่restartวน.
-- **T445a/csource92aef072:**authorizationfingerprint/history+previewreauth/memorytombstoneNoaccessTH/EN+Forget, migration0117nullable;60/hour/user/toolbudgetรวมprefetch. Mainก่อนหน้า35API/6webunit/APIwebtype/lintผ่าน;independentreviewROpool/preview/UIปิดcodefindings. PG/Redis/migrationreversibilityยังไม่ยืนยันเพราะCIติดmigrationparse. ห้ามmerge/deployจนผ่าน. T445bPIIcatalogue/T445dpromptmemoryยังpending.
-- **T407complete:**route32/32main161browser/staticผ่าน;a/bdeployb767เดิม. เป็นmockUIgateไม่ใช่livepilot/securitygate.
-- **T446pending:**freshintentwindowstart=endทำworkerCIล้ม;แนะนำรองรับequalityเฉพาะinsufficient_dataด้วยreversiblemigrationถัด0117+เลิกbackdate1sโดยคงห้ามreversed/greenสั้น28วัน;ยังไม่implement.
-- **Runtimeexternalblock:**POCAPI4000/web3000ล่าสุดunavailable,hostbridge4317เคย200;Dockerenginepipeหายแม้restartDesktop1ครั้งก่อนหน้าแล้ว. เมื่อengineกลับrestoreexistingPOC9/verifyautosendfalse,ทดสอบPG45802/Redis46802เฉพาะตอนใช้แล้วstopไม่ลบvolume. ไม่ใช้POCportsทดสอบ.
-- **Deploy:**webb767/APIworkerT409/DB0116;backupD:/Works/watchtower-backups/poc-20261106-163914-pre-t407b.dump13,758,801bytes. BranchT445ยังไม่merge/deploy. LINEภายหลัง/autosendปิด/ไม่ส่งลูกค้าจริง. .agents/.codexของเจ้าของห้ามcommit.
-- **คิว:**ตรวจusage+checkpoint/latestCI→แก้gate/T446→review+merge→backupdeployverify/push/stopunused→445b/d→410/411/412;418writer→419a→420/421;434a/b/cก่อน433enable. มีquotaให้ทำต่อทันที ไม่จบรอบเพราะครบหนึ่งงาน.
+> อัปเดต 2026-11-07 18:04 Bangkok โดย Codex · เจ้าของสั่ง save งาน ส่งต่อ Claude และถอด schedule แล้ว
+> ฉบับก่อน: docs/handoff-archive/HANDOFF-2026-11-07-pre-claude-handoff.md
 
 ## สถานะปัจจุบัน
-- **Phase:** 1 = done pending pilot · 2 = done pending live (GCP/Discord จริง) · 3 = ✅ done pending live gate (งานค้างของ PO T-306c ปิดครบ, ADR-025/026 Accepted) · LINE = feature ภายหลัง · Phase 4: ดึง T-152 (ลิงก์ "คำขอของฉัน" ทางอีเมล) + Web Push live มาทำแล้ว
-- **Build/Test บน local main `[TESTED]` (main thread รันเอง):** typecheck 18/18, lint 19/19, unit ทั้ง repo ผ่าน (web 1655, ui 809, shared 1130, ai 819, api 462, worker 193, domain 228, db 86, channels 592, connectors 146, eval-runner 25) · integration บน container ทิ้ง (หลัง merge ทุกอย่าง): db 511/511, domain 509/509, api 1394/1394, worker 364/364 · e2e: web 224 ผ่าน/32 skip (main thread รันเองหลังแก้ test ล้าสมัย 6 ตัว), full-stack 75 ผ่าน/0 ตก, stage 3 flag ON (stack ทิ้ง) 13 ผ่าน/0 ตก
-- **T-436 gate [TESTED]:** typecheck 18/18, lint 19/19 (warning useEffect เดิม 1), unit ทุก package + boundary ผ่านแบบแบ่งรัน (nonweb17/17 tasks + web150files/1674tests ด้วย threads/maxWorkers2) · AI998, bridge29+legacy1, migration integration2 main รันบน DBทิ้ง · independent security review ไม่มี P0/P1/P2 ค้าง · exact Windows/Linux Codex mock capture `tools=[]`; live pong3tiers + API runtime/audit + classifierข้อความไทยผ่าน · Docker login volumeใหม่ writable uid1000
-- **Migration ล่าสุด:** 0116 (`ai_cli_provider`) · POC migrate 0112–0116 ใน session นี้หลัง backup; ไม่มีเลข 0100 (ข้ามเลข ไม่กระทบ migrator)
-- **Deployment:** POC local compose `watchtower`: API/worker rebuild 2026-11-05 รอบ AI bridge; bridge เป็น host process เปิดค้าง · pilot = instance ใหม่ตาม `docs/runbooks/pilot-instance.md` (เจ้าของ deploy เอง)
-- **Flag:** `AI_AUTOSEND_ENABLED` **ห้ามตั้ง** บน POC/production จนเจ้าของสั่ง (ADR-025) · ตั้งได้เฉพาะ stack ทิ้งของ e2e (`E2E_AUTOSEND_FLAG=on`)
-- **Credential ที่มี (ชื่อเท่านั้น):** env ของเจ้าของ `D:\Works\secret\watchtower.env` (ห้ามเปิดอ่าน/พิมพ์ค่า; runner โหลดเอง) · Gmail push SA `watchtower-pubsub-admin` · Codex login เดิมบน host (ไม่คัดลอก auth); Claude subscription หมดอายุ
-- **AI config ปัจจุบัน:** deep `gpt-6-astra`, standard `gpt-6.1-sol`, light `gpt-6-luna`, grader standard (ต่างจาก drafter deep); ราคา subscription 0 ไม่ใช่ bill จริง · CLI pin `0.166.0-alpha.5.1` · ดู `docs/runbooks/ai-bridge.md`
-- **เงิน:** synthetic Codex live smoke รวม input 31,424 / output 20 tokens (4 calls รวม API audit); subscription ไม่รายงานยอดเงินจริง · build agent ไม่มี meter รวม
+- Branch **codex/t445-authorization-gates**; mainล่าสุด a6b3c22c (ปิด T407). Branchนี้มี T445a/c และ migration0117 ยังไม่ merge main และยังไม่ deploy.
+- **Automation watchtower-checkpoint ถูกลบจากแอปแล้ว** ตามคำสั่งเจ้าของ 2026-11-07. ห้ามสร้างใหม่เอง. เจ้าของจะให้ Claude รับงานต่อ.
+- Phase1 done pending pilot / Phase2 done pending live / Phase3 done pending live gate. งานassistant/Phase4ที่ค้างให้ดู BACKLOG ล่าสุด. LINE ภายหลัง.
+- **[TESTED] POCกู้กลับแล้ว:** startเฉพาะ9containersเดิม ไม่recreate/config/migrate; ทั้ง9healthy. Login3000/APIready4000/hostbridge4317HTTP200. autosend=false. ไม่มีdeployโค้ดT445ในรอบนี้.
+- Hostbridge PID35492 เปิดด้วย tools/ai-bridge/start-host.ps1, envนอกrepoและoverlay logs/ai-bridge/pinned-runtime.env, CLI pin0.166.0-alpha.5.1. อย่าสลับกลับClaude providerโดยไม่จำเป็น: เจ้าของให้Claudeทำงานพัฒนา ไม่ได้สั่งเปลี่ยนruntimeAIprovider.
+- testcontainersทั้งหมดหยุดแล้ว; รอบนี้ใช้เฉพาะwt-main-pg/wt-main-redisและstopหลังtests ไม่ลบvolume. embedder/oldclaudebridgeยังหยุด.
+- Codex weekly95% (5h13%): checkpoint waiting_limitจนweeklyreset10พ.ย.11:43:24Bangkok. เป็นquotaของCodex ไม่ใช่เหตุห้ามClaudeทำงานต่อ. ไม่มีagents/localtestsค้าง.
 
-## การตัดสินใจของเจ้าของที่มีผลอยู่ (`[CONFIRMED]`)
-- 2026-11-05: เปลี่ยน Claude bridge เป็น AI bridge เลือก Claude/Codex และใช้ Codex ตอนนี้เพราะ Claude subscription หมดอายุ — ADR-031 แทนการเลือก Claude เป็นหลักของ ADR-019; redaction/audit/budget/policy คงเดิมและ autosend ปิด
-- 2026-11-04: ใช้ `claude -p` อัตโนมัติกับข้อมูลลูกค้าได้ · ADR-021 ยอม claude-cli นอก loopback เมื่อ `CLAUDE_CLI_ALLOW_REMOTE=true` · ADR-023 residual (ชื่อลูกค้าที่พิมพ์ใน assistant ถึง model ตอน plan) = Accept · redact เฉพาะเลข passport (ที่เหลือเปิด) · ข้อความไทยตาม glossary ไปก่อน เจ้าของตรวจตอนจบ
-- 2026-11-04: เกณฑ์ปิด phase (ด้านบน) · pilot = instance ใหม่ · PDF export (ADR-028) + NER local (ADR-027) ทำใน Phase 3 · LINE เลื่อน
-- ADR-025 (stage 3): approver คนเดียวกันได้แต่ตรวจเพิ่ม (step-up + confirmKey) · grader = คนละ model vendor เดียวกันพอ · rollback: violation ทันที, อื่น ๆ ≥ 2 ใน 20 · footer AI เปิดเป็นค่าเริ่มต้น
-- golden: Accept + hook เข้ม (`evals/GOLDEN-REVIEW.md` ต้องแก้คู่กัน, guard บล็อก shell ที่แตะ `evals/golden`) · B-007 zip ใหญ่: ปฏิเสธตอน upload · weekly brief: ใน app ได้ อีเมลไม่ · T-152 + Web Push live: ทำได้เลย
-- T-436 เจ้าของสั่งสลับ POC แล้ว; **ยังไม่ push** เพราะก่อน session มี 80 commits เดิมบน main ที่ยังไม่ขึ้น origin และสถานะเดิมรอเจ้าของอนุมัติ push. Commit งานนี้ในเครื่องก่อน; ห้ามส่งทั้งชุดโดยเงียบ ๆ · deploy อื่นนอก scope ยังรอ OK ของเจ้าของ
+## อำนาจและกฎที่ต้องรักษา
+- เจ้าของอนุมัติทำงานค้างให้ครบ ให้POตัดสินscope/default, review/test, pushGit, deployDockerหลังbackup, stoptestcontainersโดยไม่ลบvolume. ไม่ต้องถามอนุมัติเดิมซ้ำ.
+- LINEภายหลัง. **ห้ามเปิด AI_AUTOSEND_ENABLED** บนPOC/prod;ห้ามส่งข้อความลูกค้าจริงเพื่อทดสอบ.
+- ห้ามอ่าน/พิมพ์secrets; env D:/Works/secret/watchtower.env ให้runnerโหลดเอง. อนุญาตอ่านเฉพาะมี/ไม่มี/ความยาว ไม่ใช่ค่า.
+- N7ผู้ตรวจคนละagentกับผู้ผลิต, mainเปิดไฟล์+รันtestเองก่อนcommit. ห้ามagentแก้golden/rubricตรวจตัวเอง. No forcepush/no-verify. .agents/.codexเป็นdirectoryของเจ้าของอย่าcommit.
+- ข้อมูลลูกค้าอนุมัติclaude-pอัตโนมัติ;redactpassportตามdecisionเดิม, แต่อย่าคลายpolicy/auditนอกADR. ภาษาTH/ENตามglossaryก่อนเจ้าของตรวจตอนเสร็จ.
 
-## ทำเสร็จรอบนี้ (2026-11-04 → 05) — รายละเอียด `docs/STATUS.md` entry 2026-11-05 07:30
-| งาน | ผล |
-| --- | --- |
-| Phase 1/2 ค้าง | T-114a, T-125a, T-155a, T-171a, T-173…T-183, T-207a ฯลฯ ปิด (ดู BACKLOG) |
-| Phase 3 | T-301a–f, T-302a–c,e,g, T-303a–f, T-304a–g, T-305a–f, T-306a,b,e–j (grader, eval/replay/golden, procedures + simulation, stage 3 gate + shadow + rollback + report, CEO view, weekly brief, PDF, roster planner, NER) |
-| Security | T-306a (1 P1 → แก้), T-306j ตรวจซ้ำ: ไม่มี P0/P1, T-306k แก้ C-15 P2 + C-16…C-19, C-11, C-2 · T-306l บั๊ก session refresh ใช้นาฬิกา host (แก้) · T-301f verified ไม่นับคำปฏิเสธ |
-| QA | T-306b e2e full-stack stage 3 (flag OFF shadow, flag ON fake-live ส่งจริง + ระงับ 6 เหตุผล, rollback ×2, eval gate + step-up) · บั๊ก B-009/B-010/B-011 แก้แล้ว |
-| Test isolation | integration config ปฏิเสธรันนอก CI ถ้าไม่ตั้ง `TEST_*` (เคยรั่วเข้า POC — ล้างแล้วด้วยอนุญาตเจ้าของ) |
+## ทำเสร็จและหลักฐาน
+- **T407ปิดบนmain a6b3c22c:** route32/32; mainbrowser10specs161/161 + lint/format/webtypeผ่าน. a/b SSE/Stop/queue/history/pins/feedback/C22ก่อนหน้าตรวจแล้วและwebdeployb7671097. เป็นmockUIgate ไม่ใช่livepilot/securityapproval.
+- **T445a/c source92aef072:** durable serverauthorizationfingerprint+source refs/tools, reauthorize modelhistory/conversationpreview/memory; legacyfailclosed, tombstoneNoaccessTH/ENแต่Forget/Clear/countยังทำงาน. ป้องกันnestedROpoolstarvationด้วยinReadOnlyScope. Toolbudget60/hour/user/toolRedisรวมprefetch. T445b/dยังไม่ทำ.
+- IndependentreviewปิดcodefindingsROpool,previewrevocationและNoaccessUI; reviewerไม่พบP1/P2ค้างในpatchที่ตรวจ. Runtimeacceptanceใหม่ยังมีด้านล่าง.
+- **Migration0117 quote fix3e33ddc1:** quote reservedidentifier "authorization" ทั้งup/downและrawSELECTtest. CI42365786279 rootstatic/unit,e2e,composehealthผ่าน; integration domain510ผ่าน / DB528ผ่าน2ล้มเพราะtest0116สมมติตัวเองเป็นlatest. ไม่ใช่0117syntaxerrorแล้ว.
+- **Patchท้ายรอบ:** packages/db/src/ai-cli-provider.integration.test.ts ใช้migrationsAfter+stepsจริงทั้ง2tests;คงunknownprovider23514/auditrollbackrefusal/count1. Reviewerตรวจแล้วไม่พบfinding. MainDBlint/type/formatผ่าน.
+- **[TESTED] MainจริงหลังDockerเปิด:** DBfocused2files **16/16ผ่าน** รวม0116rollbackและ0117nullable/reversibility; logs/deploy/2026-11-07-t445-db-focused.log exit0. APIfocused2files **5/5ผ่าน** authorizationrevocation/crossuser/forgery/legacy/purge/cap+realRedis61stdeny/user-toolisolation; logs/deploy/2026-11-07-t445-api-focused.log exit0.
+- Mainก่อนหน้าAPI35unit/web6unit/APIwebtype/scopedlintผ่าน. Fullbackendใหม่ยังต้องrunตามขั้นถัดไป.
 
-## ค้าง / ติดอะไร
-- **Host bridge หลัง reboot:** ต้องเริ่มใหม่ด้วย `tools/ai-bridge/start-host.ps1 -EnvFile D:/Works/secret/watchtower.env -OverlayFile logs/ai-bridge/pinned-runtime.env -Mode codex -BindAddress 0.0.0.0`; มี log เฉพาะ metadata ที่ `logs/ai-bridge/`, PID ใน `host.pid`; ไม่ได้ติดตั้ง Windows startup task
-- Codex container mode ต้อง login instance แยก + model catalog cache ก่อนใช้; ยังไม่ทดสอบ container subscription login จริง (ทดสอบ tools=[] ด้วย dummy auth แล้ว)
-- **Residual P3 ยอมรับไว้ก่อน (main thread):** C-4 replay ผูก alias + เชื่อตัวเลขผู้เรียก, C-6 app role ทำ gate report เขียวผ่าน DEFINER ได้, C-9 app role INSERT `ai_run` ปลอม grade ได้, C-14 web ไม่แสดง reviewers, C-16 ไม่มี DB trigger (app role เขียน `custom_fields` ตรงได้), `issue()` ของ session ตั้ง expires_at ด้วยนาฬิกา host — เหตุผล: flag ปิด + ต้องมี L0 (env) + L3 (owner approve) ก่อนส่งจริง · ทบทวนก่อนเปิด flag
-- T-302d: replay อัตโนมัติเมื่อเปลี่ยน prompt/model/procedure ยังสั่งมือ (`eval-runner record`)
-- T-305: CEO §9.2 ข้อ 2,3,5,6, ตั้งเวลา weekly brief ใน admin, e2e/axe หน้า cost ยังไม่ทำ (PO T-306c)
-- T-207 (Phase 2 QA/po review + handoff) ยังไม่ติ๊กใน BACKLOG ทั้งที่เกณฑ์ปิดถือว่าผ่าน — ให้ po ยืนยันแล้วติ๊ก
-- container `wt-main-*`, `wt-a6-*`, `wt-a7-*` หยุดแล้ว 2026-11-06 (12 ตัว) ไม่ลบ volume
-- [TESTED] global Codex อัปเดตเป็น alpha.6 ทำให้ bridge fail closed; ติดตั้ง CLI ที่อนุมัติ alpha.5.1 แยกที่ .cache/ai-bridge-cli และ overlay CODEX_CLI_BIN แล้ว healthz200 (ไม่เปลี่ยน CLI ของแอป). Runbook ai-bridge มีวิธีเปิด
-- ไม่แก้/commit `.agents/` และ `.codex/`
+## งานค้างและขั้นถัดไป
+1. ตรวจGitbranch/HEAD/statusและCIล่าสุดหลังpushpatchท้ายรอบ; อย่าทำT407/T419b/T418a/T432ซ้ำ.
+2. **T445a/c ยังไม่ติ๊ก:** รัน API assistant-memory.integration.test.ts (รวมpreviewauthorized→revoked/legacyและpin409fixture), assistant-foundation.integration.test.ts (realticket/KB4concurrentROpoolregression). จากนั้นfullintegration/rootstatic/unit/e2eตามDoD โดยmainตรวจเอง. อย่าอ้างfocused5testsครอบสองไฟล์นี้.
+3. **T446ยังไม่implement:** workerfreshintentgate report window_start==window_end millisecond truncation→tableCHECKerror. ก่อนหน้าวินิจฉัยให้รองรับequalityเฉพาะinsufficient_dataในreversiblemigrationถัด0117,เลิกbackdate1s,คงห้ามreversed/greenwindowสั้น28วัน;ต้องreviewsecurity/rollbackที่มีequalrowsและdeterministicregression. ห้ามแก้แค่sleepหรือbackdatetestเพื่อซ่อนproductionbug.
+4. เมื่อT445gatesผ่านค่อยmerge main, backupverifiedก่อนmigrate0117/deployAPIworkerweb, verifyHTTP+bridgepin+autosendfalseแล้วpush;stoptestcontainersหลังใช้. POCDBยัง0116.
+5. ต่อT445b C17PIIauditcatalogue(team_status/load/roster/notesรวมno-chip+auditfailwithhold), T445dเชื่อม<=10pinnedfactsเข้าuser_notesอย่างreauthorize/redact/neutralizeและไม่ใช้oldplaceholdermapผิดคน. ปัจจุบันmemoryมีแค่CRUDยังไม่มีผลต่อprompt. แล้ว410/411/412 reviews.
+6. คิวfeatureจากBACKLOG: T418writer→419a→420/421; T434a/b/cตามADR033ก่อนT433localembedderenable. bge-m3เคยdownload/calibratefloor.55 recall100/noise6บนpublicexamples;runtimeยังmockและembedderหยุด อย่าเปิดก่อนhybridindexgates.
 
-## รอเจ้าของ (`[ASK-HUMAN]`)
-- [ ] เลือก intent แรกสำหรับ stage 3 เมื่อมีข้อมูลจริง — po เสนอ `feature_question`, `incident_inquiry`, `workspace_config` (ไม่แนะนำ `account_access`, `billing_report`, `result_dispute`)
-- [ ] รับรอง: drafter stage 2 ใช้ `contact.verifiedAt` เดิม (เข้มน้อยกว่า gate stage 3 ที่ใช้ `requesterVerified`)
-- [ ] อนุมัติ eval เคส 7 ข้อของ T-301f เข้า `evals/golden/` (ลูกค้าปฏิเสธ/ยืนยัน TH+EN)
-- [ ] ก่อน pilot: VAPID `pnpm push:vapid --out D:\Works\secret\vapid.env` + ตั้ง `WEB_PUSH_*` · ตั้ง AI bridge/login ของ instance ใหม่ · `WEEKLY_BRIEF_RECIPIENT_DOMAINS` · grader model ต่างจาก drafter · ให้สิทธิ์ `ai.autonomy.owner_approve` ผ่าน CLI · ตั้งเตือน rotate key `watchtower-pubsub-admin` ทุก 90 วัน
-- [ ] ทดสอบ step-up ด้วย Google จริง (Google ใส่ `auth_time` เมื่อส่ง `max_age` หรือไม่ — ถ้าไม่ approve ไม่ได้เลย, fail closed)
-- [ ] ทดสอบ grader จริงต่อ prompt injection · ตัดสินดาวน์โหลด model NER ขั้น 2 · ตรวจข้อความภาษาไทย
+## วิธีรันทดสอบโดยไม่แตะPOC
+- TEST_DATABASE_URL synthetic: postgres://watchtower:watchtower@127.0.0.1:45802/watchtower (wt-main-pg)
+- TEST_REDIS_URL redis://127.0.0.1:46802 (wt-main-redis)
+- TEST_S3_ENDPOINT http://127.0.0.1:49802 (wt-main-minio), TEST_SMTP_PORT41802 (wt-main-mailpit;HTTP48802)
+- API/workerintegrationguardต้องมีTEST_*ครบ4ตัวแม้บางtestใช้แค่PG/Redis. ห้ามdefaultPOC5432/6379/9000/1025. Startเฉพาะtestcontainersที่จำเป็น. ดูdocs/runbooks/local-poc.mdและtools/e2e-stack.
+- ตัวอย่าง: pnpm --filter @watchtower/api exec vitest run --config vitest.integration.config.ts src/assistant/assistant-memory.integration.test.ts src/assistant/assistant-foundation.integration.test.ts (ตั้งTEST_*ก่อน)
+- POCbackupล่าสุด D:/Works/watchtower-backups/poc-20261106-163914-pre-t407b.dump13,758,801bytes. ต้องbackupใหม่ก่อนdeployรอบใหม่.
 
-## ขั้นต่อไป (เรียงลำดับ)
-1. ทำ T-419b ตามขอบเขตที่ PO เลือก (ถ้าไม่มี active runner), แล้ว checkpoint/test/review; งานใหม่ Jarvis ยังเปิดตาม BACKLOG
-2. หลัง pilot: T-302d replay อัตโนมัติ, T-305 ส่วนที่เหลือ, LINE
-
-## ยังไม่ยืนยัน
-- Codex JSONL ไม่รายงาน actual response model แยก; audit ใช้ requested model id (ชื่อที่ตั้งใน tier) ไม่ใช่หลักฐานว่า backend resolve alias เป็น model ใด · ต้องทบทวนก่อน stage 3; flag ยังคงปิด
-- claude-cli คืน `response_model` จริงหรือไม่ (ถ้าไม่ independence เทียบ alias) `[UNVERIFIED 50%]`
-- step-up กับ Google จริง `[UNVERIFIED 70%]` · C-17 เป็น open redirect จริงหรือไม่ `[UNVERIFIED 30%]`
-- คำว่า "ยัง" ถูกนับเป็นลูกค้าปฏิเสธกว้างไป (ลด class เท่านั้น) · grader เห็นแค่ข้อความลูกค้าแรก+ล่าสุด `[ASSUMED]`
-- T-306h: ticket ที่คนอื่นยื่นด้วยอีเมลลูกค้าก่อนลูกค้าคลิกลิงก์จะถูก verify ด้วย (คำตอบยังไปกล่องจริง) `[ASSUMED ยอมรับได้]`
-
-## วิธีเปิดระบบและทดสอบต่อ
-- `docs/runbooks/local-poc.md` §6 (integration ต้องชี้ service ทิ้ง — config ปฏิเสธถ้าไม่ตั้ง `TEST_*`) · `docs/07-TESTING.md` · `apps/web/e2e-fullstack/README.md`
-- หลัง merge ที่เพิ่ม dependency workspace ให้ `pnpm install --offline` · ก่อน integration ให้ `pnpm turbo run build --filter=@watchtower/api^... --filter=@watchtower/worker^...`
-- ห้ามพิมพ์ค่า env/credential · integration ต้องใช้ stack ทิ้ง ห้ามใช้ stack `watchtower` ของเจ้าของเป็น test DB; การสลับ POC ใน T-436 ได้รับคำสั่งเจ้าของแล้ว
-
-## วันตรวจซ้ำ
-- rotate key `watchtower-pubsub-admin`: 2027-02-01 (90 วันจากสร้าง 2026-11-03)
-- ทบทวน residual P3 (C-4, C-6, C-9, C-14) ก่อนเปิด `AI_AUTOSEND_ENABLED` ที่ใด
+## รอเจ้าของ/ก่อนpilot
+- Pilotใช้instanceใหม่;VAPIDenv,Weeklybriefrecipientdomains,Googleจริงstepup,graderคนละmodelจากdrafter,สิทธิ์ownerapprove,rotatepubsubkey90วัน ยังต้องตรวจตามSTATUS/runbook. ไม่มีcredentialใหม่ให้เดาหรือยืมkey.
+- รายละเอียดADR/PRD/decisionsเดิมดูdocs/decisions/README.md,STATUS,BACKLOG; archiveเป็นประวัติไม่ใช่สถานะruntimeปัจจุบัน.

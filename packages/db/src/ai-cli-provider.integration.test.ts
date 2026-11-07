@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { migrateDown, migrateUp } from './migrator.js';
-import { createTestDatabase, type TestDatabase } from './testing.js';
+import { createTestDatabase, migrationsAfter, type TestDatabase } from './testing.js';
 
 const adminUrl = process.env.TEST_DATABASE_URL;
 let testDb: TestDatabase;
@@ -23,9 +23,13 @@ const insertRun = (provider: string) =>
 
 describe('0116 AI CLI provider (ADR-031)', () => {
   it('reverses on an empty audit table and restores the generic provider without removing legacy/local kinds', async () => {
-    expect(await migrateDown(testDb.owner.pool, { steps: 1 })).toEqual(['0116_ai_cli_provider']);
+    const later = await migrationsAfter('0116_ai_cli_provider');
+    expect(await migrateDown(testDb.owner.pool, { steps: later.length + 1 })).toEqual([
+      ...[...later].reverse(),
+      '0116_ai_cli_provider',
+    ]);
     await expect(insertRun('ai-cli')).rejects.toMatchObject({ code: '23514' });
-    expect(await migrateUp(testDb.owner.pool)).toEqual(['0116_ai_cli_provider']);
+    expect(await migrateUp(testDb.owner.pool)).toEqual(['0116_ai_cli_provider', ...later]);
     for (const provider of ['ai-cli', 'claude-cli', 'local']) {
       await expect(insertRun(provider)).resolves.toMatchObject({ rowCount: 1 });
     }
@@ -33,7 +37,8 @@ describe('0116 AI CLI provider (ADR-031)', () => {
   });
 
   it('refuses rollback while ai-cli audit evidence exists and preserves the rows', async () => {
-    await expect(migrateDown(testDb.owner.pool, { steps: 1 })).rejects.toThrow();
+    const later = await migrationsAfter('0116_ai_cli_provider');
+    await expect(migrateDown(testDb.owner.pool, { steps: later.length + 1 })).rejects.toThrow();
     const result = await testDb.owner.pool.query<{ count: string }>(
       "SELECT count(*) FROM ai_run WHERE provider = 'ai-cli'",
     );
