@@ -364,13 +364,16 @@ describe('0117 durable private memory authorization (ADR-034)', () => {
         [id],
       );
       expect(
-        (await pool.query<{ authorization: unknown }>('SELECT authorization FROM assistant_memory'))
-          .rows[0]?.authorization,
+        (
+          await pool.query<{ authorization: unknown }>(
+            'SELECT "authorization" FROM assistant_memory',
+          )
+        ).rows[0]?.authorization,
       ).toBeNull();
       const later = await migrationsAfter('0117_assistant_memory_authorization');
       await migrateDown(pool, { steps: later.length + 1 });
       expect((await pool.query('SELECT body FROM assistant_memory')).rowCount).toBe(1);
-      expect(await code(pool.query('SELECT authorization FROM assistant_memory'))).toBe('42703');
+      expect(await code(pool.query('SELECT "authorization" FROM assistant_memory'))).toBe('42703');
       expect(await migrateUp(pool)).toEqual(['0117_assistant_memory_authorization', ...later]);
       expect((await pool.query('SELECT body FROM assistant_memory')).rowCount).toBe(1);
     } finally {

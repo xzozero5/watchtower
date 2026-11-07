@@ -266,7 +266,7 @@ T-152, T-175 (กำลังทำอยู่แล้ว เก็บผล),
 - [x] T-443 `main` แก้focusringที่outline-hiddenทับstyle: เพิ่มsolidเฉพาะfocusvariantที่ขอoutline2อยู่แล้วในweb/sharedUI; keyboardassert2pxsolidและauditpattern, mainUI809tests+UIbuild/lint/typecheck/webbuild/lint/browser40ผ่าน+independentreview (2026-11-06)
 
 - [x] T-444 `main` CIbfe590bf: Prettier2webspecs+seedexclusionfixturepinDBclock/timestampsinsidewindow คงassertionsเดิม; main20integration+workerstatic/formatและindependentreviewผ่าน2026-11-06 (CIrerunรอpush)
-- [ ] T-445 `backend-dev` T411findings: history/memoryrevocation, PIIauditcatalogue และper-user/tool60calls/hour; แยกboundedfix+tests/reviewก่อนปิดT411 — 2026-11-06 sourcea/c+NoaccessUIอยู่branchcodex/t445-authorization-gates commit92aef072; main35API/6webunit+static/reviewผ่าน, PG/Redis/migrationยังรอCI42236950143/Dockerlocal500 ห้ามปิดก่อนgate
+- [ ] T-445 `backend-dev` T411findings: history/memoryrevocation, PIIauditcatalogue และper-user/tool60calls/hour; แยกboundedfix+tests/reviewก่อนปิดT411 — 2026-11-06 sourcea/c+NoaccessUIอยู่branchcodex/t445-authorization-gates commit92aef072; main35API/6webunit+static/reviewผ่าน, PG/Redis/migrationยังรอCIหลังแก้0117quotedidentifier (CI42237267471parseล้มทั้งintegration/e2e/compose);Dockerlocalpipeหาย ห้ามปิดก่อนgate
 
 - [ ] T-445a `backend-dev` ADR034: history/memory reauthorization + durablemetadata nullablemigration + unavailabletombstones/UIcopy + revocation/crossuser/sourcepurge/forgerytests
 - [ ] T-445b `backend-dev` C17 PII auditครบcatalogue (team/status/load/roster/notes) รวมno-chip และaudit-failurewithholdintegration

@@ -561,3 +561,7 @@ T411staticreviewพบP2: history/memoryหลังrevocation, PIIauditcatalogu
 
 ## 2026-11-06 21:48 — waiting_limit
 5h95%/weekly92%; checkpointwaiting_limitจน2026-11-06T18:51:31.000Z (7พ.ย.01:51:31Bangkok);weeklyใช้nowเพราะยังเหลือ8%. T407maina6b3c22cปิดแล้ว;T445branch92aef072pushแล้วแต่CI42236950143integrationfailedยังไม่อ่านlogตอนlimit. FinalpreviewdeltaAPItype/lint0;อื่นก่อนหน้า35API/6webunit/static/reviewผ่าน. ไม่merge/deploy,T445/T446ยังเปิด,Dockerlocal500ยังไม่recover. ไม่มีagents/localjobsค้าง;heartbeatคงactive. รอบหน้าตรวจlatestbranchCIก่อนเลือกงาน.
+
+
+## 2026-11-07 17:52 — T445 CI migration fix
+[TESTED] mainอ่านlogs3jobsยืนยันrootเดียว:0117syntaxerrorauthorization;แก้quotedidentifierup/downและrawSELECTtests2จุด คงassertionsเดิม. [TESTED] Scopedformat/db lint/typeผ่านexit0; reviewerแยกตรวจไม่พบfinding. DockerlocalpipeยังหายจึงDBruntimeยังไม่ยืนยัน ไม่merge/deploy/closeT445. เริ่มquota5h0%weekly93%;PID12484claimrunningตามcheckpointเดิม.
