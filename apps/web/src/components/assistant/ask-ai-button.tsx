@@ -2,8 +2,7 @@
 
 import type { AssistantElement, AssistantEntity } from '@watchtower/shared';
 import { assistantEntityRefSchema } from '@watchtower/shared';
-import { IconButton } from '@watchtower/ui';
-import { Bot } from 'lucide-react';
+import { BirddayIcon, IconButton } from '@watchtower/ui';
 
 import { useI18n } from '@/i18n/provider';
 import { requestAssistantOpen } from '@/lib/assistant/assistant-ui';
@@ -46,8 +45,13 @@ export function AskAiButton({
       data-element={element?.key}
       aria-haspopup="dialog"
       data-testid="ask-ai-about"
-      {...(className ? { className } : {})}
-      icon={<Bot aria-hidden className="size-4 text-ai-accent" />}
+      className={className ? `group ${className}` : 'group'}
+      icon={
+        <BirddayIcon
+          aria-hidden
+          className="size-4.5 transition-transform duration-(--wt-motion-duration-fast) motion-safe:group-hover:scale-110"
+        />
+      }
       onClick={() => {
         if (disabledReason) return;
         requestAssistantOpen({

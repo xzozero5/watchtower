@@ -8,7 +8,7 @@ export const commandsEn = {
   aiResume: 'AI: Resume AI runs…',
   aiLimit: 'AI: Limit all intents to Stage 2…',
   aiUnlimit: 'AI: Remove the stage limit…',
-  askAssistant: 'Ask AI',
+  askAssistant: 'Ask Birdday (Ask AI)',
   ticketStatus: 'Ticket: change status',
   ticketPriority: 'Ticket: change priority',
   ticketAssign: 'Ticket: assign…',

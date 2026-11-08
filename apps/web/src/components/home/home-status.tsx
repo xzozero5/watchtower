@@ -5,9 +5,8 @@ import { ElementInsight } from '@/components/insights/element-insight';
 
 import type { UseQueryResult } from '@tanstack/react-query';
 import type { AutonomyState } from '@watchtower/shared';
-import { AUTONOMY_STAGES, Skeleton, StageBadge } from '@watchtower/ui';
+import { AUTONOMY_STAGES, BirddayIcon, Skeleton, StageBadge } from '@watchtower/ui';
 import {
-  Bot,
   CircleCheck,
   CircleStop,
   CircleX,
@@ -32,7 +31,27 @@ import { useSession } from '@/lib/auth/session';
 export function AiStatus({ query }: { query: UseQueryResult<AutonomyState> }) {
   const t = useT();
   const { can } = useSession();
-  if (query.isPending) return <Skeleton className="h-20" />;
+  if (query.isPending) {
+    return (
+      <div role="status" aria-busy="true" className="flex flex-col gap-3">
+        <span className="sr-only">{t('loading.label')}</span>
+        <div aria-hidden className="flex flex-wrap items-center gap-x-6 gap-y-2">
+          <Skeleton className="h-4 w-28" />
+          <Skeleton className="h-4 w-32" />
+          <Skeleton className="h-4 w-24" />
+          <Skeleton className="h-4 w-24" />
+        </div>
+        <div aria-hidden className="flex flex-wrap items-center gap-x-4 gap-y-2 pt-1">
+          {[0, 1, 2, 3].map((s) => (
+            <div key={s} className="flex items-center gap-1.5">
+              <Skeleton variant="pill" className="h-5 w-20" />
+              <Skeleton className="h-4 w-5" />
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
   if (query.isError) {
     return (
       <LoadError
@@ -165,5 +184,5 @@ export function SystemHealth({ query }: { query: UseQueryResult<ReadinessView> }
 }
 
 export function BotMark() {
-  return <Bot aria-hidden className="size-4 text-ai-accent" />;
+  return <BirddayIcon className="size-4.5" />;
 }

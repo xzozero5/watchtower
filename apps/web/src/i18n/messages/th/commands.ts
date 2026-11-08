@@ -11,7 +11,7 @@ export const commandsTh: Widen<typeof commandsEn> = {
   aiResume: 'AI: ให้ AI ทำงานต่อ…',
   aiLimit: 'AI: จำกัดทุก intent ไม่เกินขั้น 2…',
   aiUnlimit: 'AI: ยกเลิกการจำกัดขั้น…',
-  askAssistant: 'ถาม AI',
+  askAssistant: 'ถาม Birdday (Ask AI)',
   ticketStatus: 'Ticket: เปลี่ยนสถานะ',
   ticketPriority: 'Ticket: เปลี่ยนความสำคัญ',
   ticketAssign: 'Ticket: มอบหมาย…',

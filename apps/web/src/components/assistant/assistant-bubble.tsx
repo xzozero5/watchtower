@@ -1,7 +1,7 @@
 'use client';
 
-import { Button, cn } from '@watchtower/ui';
-import { Bot, CirclePause } from 'lucide-react';
+import { BirddayIcon, Button, cn } from '@watchtower/ui';
+import { CirclePause } from 'lucide-react';
 import { usePathname } from 'next/navigation';
 import { useCallback, useId, useRef, useState } from 'react';
 
@@ -89,7 +89,6 @@ export function AssistantBubble() {
   });
 
   if (!allowed) return null;
-  const Icon = paused ? CirclePause : Bot;
   const label = paused ? t('assistant.openPaused') : t('assistant.open');
   // Hidden by choice: no button, but the panel is still reachable and still closes with Esc.
   // A dialog is open: no button either, so nothing floats over the dialog.
@@ -120,11 +119,27 @@ export function AssistantBubble() {
           onClick={toggle}
           style={room.lift > 0 ? { marginBottom: room.lift } : undefined}
           className={cn(
-            'fixed right-4 bottom-[calc(4rem+env(safe-area-inset-bottom))] z-30 size-12 bg-surface text-ai-accent shadow-overlay ring-1 ring-border ring-inset md:bottom-4',
+            'group fixed right-4 bottom-[calc(4rem+env(safe-area-inset-bottom))] z-30 size-11 rounded-full border border-ai-accent/35 bg-surface shadow-overlay hover:border-ai-accent/60 hover:bg-ai-subtle motion-safe:hover:-translate-y-0.5 transition-all md:bottom-4',
             open && 'max-md:hidden',
           )}
         >
-          <Icon aria-hidden className="size-6" strokeWidth={2} />
+          <BirddayIcon
+            sleeping={paused}
+            className="size-6 transition-transform duration-(--wt-motion-duration-fast) motion-safe:group-hover:scale-110"
+          />
+          {paused ? (
+            <span
+              aria-hidden
+              className="absolute -right-0.5 -bottom-0.5 flex size-3.5 items-center justify-center rounded-full bg-surface-muted text-muted-foreground ring-2 ring-surface"
+            >
+              <CirclePause className="size-3" />
+            </span>
+          ) : (
+            <span
+              aria-hidden
+              className="absolute -right-0.5 -bottom-0.5 size-2.5 rounded-full bg-ai-accent ring-2 ring-surface"
+            />
+          )}
         </Button>
       ) : null}
     </>

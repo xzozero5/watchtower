@@ -5,10 +5,9 @@ import { ElementInsight } from '@/components/insights/element-insight';
 
 import { useIsFetching, useQueryClient } from '@tanstack/react-query';
 import { OPEN_STATUSES, type TicketSummary } from '@watchtower/shared';
-import { Button, cn, Skeleton } from '@watchtower/ui';
+import { BirddayIcon, Button, type ChipIcon, cn, Skeleton } from '@watchtower/ui';
 import {
   Activity,
-  Bot,
   Hourglass,
   Inbox,
   ListChecks,
@@ -62,6 +61,10 @@ import {
 
 const staffOnly = (items: readonly unknown[]): TicketSummary[] =>
   items.filter((item): item is TicketSummary => isStaffTicket(item as TicketSummary));
+
+const HomeAiBirdIcon: ChipIcon = ({ className, ...rest }) => (
+  <BirddayIcon {...rest} className={className} />
+);
 
 /**
  * Head home (docs/06-UI-SPEC.md section 18.2, trimmed by docs/design/ai-first-workspace.md section
@@ -232,7 +235,7 @@ function HomeBody() {
       <div className="flex flex-col gap-4 px-4 pb-6 lg:gap-5 lg:px-7">
         <div
           className={cn(
-            'grid gap-4 lg:gap-5',
+            'grid gap-4 lg:gap-5 motion-safe:animate-rise-in',
             showVolume && 'lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]',
           )}
         >
@@ -240,7 +243,13 @@ function HomeBody() {
           {showVolume ? <VolumeCard /> : null}
         </div>
 
-        <HomeSection id="home-sla" title={t('home.slaRisk')} tone="amber" icon={Hourglass}>
+        <HomeSection
+          id="home-sla"
+          title={t('home.slaRisk')}
+          tone="amber"
+          icon={Hourglass}
+          className="motion-safe:animate-rise-in"
+        >
           {slaList.isPending ? (
             <ListSkeleton />
           ) : slaList.isError ? (
@@ -257,7 +266,7 @@ function HomeBody() {
           )}
         </HomeSection>
 
-        <div className="grid gap-4 lg:grid-cols-2 lg:gap-5">
+        <div className="grid gap-4 lg:grid-cols-2 lg:gap-5 motion-safe:animate-rise-in">
           {showTeam ? (
             <HomeSection id="home-team" title={t('home.team.title')} tone="green" icon={Users}>
               <AskAiElement element="home.team" />
@@ -275,12 +284,12 @@ function HomeBody() {
           </HomeSection>
         </div>
 
-        <div className="grid gap-4 lg:grid-cols-2 lg:gap-5">
+        <div className="grid gap-4 lg:grid-cols-2 lg:gap-5 motion-safe:animate-rise-in">
           <HomeSection
             id="home-ai"
             title={t('home.ai.title')}
             tone="teal"
-            icon={Bot}
+            icon={HomeAiBirdIcon}
             aside={<BotMark />}
           >
             <AiStatus query={autonomy} />
@@ -298,7 +307,7 @@ function HomeBody() {
           </HomeSection>
         </div>
 
-        <div className="grid gap-4 md:grid-cols-3 lg:gap-5">
+        <div className="grid gap-4 md:grid-cols-3 lg:gap-5 motion-safe:animate-rise-in">
           <HomeSection id="home-status" title={t('home.byStatus')} tone="sky" icon={Layers}>
             {stats.isPending ? (
               <Skeleton className="h-5" />
@@ -322,7 +331,11 @@ function HomeBody() {
           </HomeSection>
         </div>
 
-        {showVolume ? <AiDraftsHighlight /> : null}
+        {showVolume ? (
+          <div className="motion-safe:animate-rise-in">
+            <AiDraftsHighlight />
+          </div>
+        ) : null}
       </div>
     </main>
   );

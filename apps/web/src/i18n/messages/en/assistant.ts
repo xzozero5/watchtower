@@ -3,10 +3,16 @@
  * of the claim line every AI sentence uses (T-135). ../th/assistant.ts must have the same keys.
  */
 export const assistantEn = {
-  name: 'AI assistant',
-  open: 'Open the AI assistant',
-  openPaused: 'Open the AI assistant (AI is paused)',
-  close: 'Close the AI assistant',
+  name: 'Birdday',
+  tagline: 'Cockatiel AI · Tech Ops',
+  greeting: 'Hi! Birdday is perched and ready.',
+  greetingHint:
+    'Ask about tickets, SLAs, incidents, or your shift — every sentence links to its source.',
+  expandWidth: 'Widen chat panel',
+  collapseWidth: 'Restore chat width',
+  open: 'Open Birdday (AI assistant)',
+  openPaused: 'Open Birdday (AI is paused)',
+  close: 'Close Birdday',
   description:
     'Ask about tickets and your shift. Every answer shows the pages it comes from; a change waits for your press.',
   newChat: 'New chat',
@@ -87,7 +93,7 @@ export const assistantEn = {
     noPermission: 'You do not have permission to ask about this element.',
     noScope: 'Select an item before asking about it.',
     unsupportedPeriod: 'This period is not supported by the assistant yet.',
-    label: 'Ask AI about this',
+    label: 'Ask Birdday about this',
     named: 'Ask AI about {name}',
   },
   localStarters: {
@@ -202,7 +208,7 @@ export const assistantEn = {
   },
   input: {
     label: 'Ask the AI assistant',
-    placeholder: 'Ask about a ticket, an SLA or your shift',
+    placeholder: 'Message Birdday about a ticket, SLA, or your shift…',
     send: 'Send',
     stop: 'Stop',
     hint: 'Enter to send, Shift+Enter for a new line',
@@ -211,7 +217,7 @@ export const assistantEn = {
   thread: {
     label: 'Conversation with the AI assistant',
     you: 'You',
-    ai: 'AI',
+    ai: 'Birdday',
     thinking: 'Thinking',
     queued: 'In queue · position {position}',
     context: 'Checking context',

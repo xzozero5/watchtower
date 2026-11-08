@@ -1,5 +1,5 @@
-import { Avatar, cn, IntentChip, SeverityBadge } from '@watchtower/ui';
-import { Bot, Check, UserRound } from 'lucide-react';
+import { Avatar, BirddayIcon, cn, IntentChip, SeverityBadge } from '@watchtower/ui';
+import { Check, UserRound } from 'lucide-react';
 
 import { AiStateChip } from '@/components/ai/ai-state-chip';
 import { ChannelIcon } from '@/components/ticket/channel-icon';
@@ -168,7 +168,7 @@ export function QueueRow({
         onSelect(row.key);
       }}
       className={cn(
-        'group relative mx-2 my-px flex cursor-pointer flex-col justify-center gap-1 rounded-inner px-2.5 text-left transition-[background-color,box-shadow] duration-(--wt-motion-duration-fast) ease-out hover:bg-surface-muted',
+        'group relative mx-2 my-px flex cursor-pointer flex-col justify-center gap-1 rounded-inner px-2.5 text-left transition-[background-color,box-shadow,transform] duration-(--wt-motion-duration-fast) ease-out hover:bg-surface-muted',
         compact ? 'min-h-10 py-1.5' : 'min-h-14 py-2',
         selectable && 'pl-8',
         // Soft Beacon: the open ticket is a lifted grey card in the list.
@@ -220,7 +220,7 @@ export function QueueRow({
               className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground"
             >
               <span className="inline-flex shrink-0 items-center gap-0.5 font-medium">
-                <Bot aria-hidden className="size-3" />
+                <BirddayIcon className="size-3" />
                 {t('queue.row.aiLabel')}
               </span>
               <span className="truncate">{summary}</span>

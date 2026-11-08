@@ -7,10 +7,18 @@ import {
   type AiReplyBlockReason,
   type TicketAiInsight,
 } from '@watchtower/shared';
-import { Button, IntentChip, Skeleton, StageBadge, TintChip, toast, Tooltip } from '@watchtower/ui';
+import {
+  BirddayIcon,
+  Button,
+  IntentChip,
+  Skeleton,
+  StageBadge,
+  TintChip,
+  toast,
+  Tooltip,
+} from '@watchtower/ui';
 import {
   ArrowUpRight,
-  Bot,
   Check,
   CircleCheck,
   Hourglass,
@@ -97,7 +105,7 @@ function Provenance({ insight }: { insight: TicketAiInsight }) {
       title={detail}
       className="inline-flex items-center gap-1 text-xs text-muted-foreground"
     >
-      <Bot aria-hidden className="size-3.5" />
+      <BirddayIcon className="size-3.5" />
       <span className="sr-only">{`${detail} · `}</span>
       {age}
     </time>
@@ -138,7 +146,7 @@ function Quiet({ children, status = false }: { children: string; status?: boolea
       role={status ? 'status' : undefined}
       className="mx-4 mt-3 flex items-center gap-2 text-sm text-muted-foreground"
     >
-      <Bot aria-hidden className="size-4 shrink-0" />
+      <BirddayIcon className="size-4 shrink-0" />
       {children}
     </p>
   );
@@ -323,7 +331,7 @@ export function AiBrief({
             aria-hidden
             className="inline-flex size-6 items-center justify-center rounded-full bg-tint-teal-bg text-tint-teal-icon"
           >
-            <Bot className="size-3.5" />
+            <BirddayIcon className="size-3.5" />
           </span>
           <AiStateChip
             state={insight.state}

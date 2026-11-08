@@ -10,17 +10,17 @@ import {
   type InsightState,
   type Permission,
 } from '@watchtower/shared';
-import { Button, Dialog, DialogContent, TintChip, cn, type TintId } from '@watchtower/ui';
 import {
-  Bot,
-  CirclePause,
-  Clock,
-  History,
-  Layers,
-  Sparkles,
-  ThumbsDown,
-  ThumbsUp,
-} from 'lucide-react';
+  BirddayIcon,
+  Button,
+  Dialog,
+  DialogContent,
+  Skeleton,
+  TintChip,
+  cn,
+  type TintId,
+} from '@watchtower/ui';
+import { CirclePause, Clock, History, Layers, Sparkles, ThumbsDown, ThumbsUp } from 'lucide-react';
 
 import { ClaimLine } from '@/components/claims/claim-line';
 import { useI18n } from '@/i18n/provider';
@@ -37,6 +37,10 @@ export interface ElementInsightProps {
   className?: string;
 }
 
+function FreshBirdIcon({ className }: { className?: string; 'aria-hidden'?: true }) {
+  return <BirddayIcon className={className} />;
+}
+
 const STATE_CONFIG: Record<
   InsightState,
   {
@@ -44,7 +48,7 @@ const STATE_CONFIG: Record<
     icon: ComponentType<{ className?: string; 'aria-hidden'?: true }>;
   }
 > = {
-  fresh: { tone: 'teal', icon: Bot },
+  fresh: { tone: 'teal', icon: FreshBirdIcon },
   system: { tone: 'slate', icon: Layers },
   stale: { tone: 'amber', icon: History },
   budget: { tone: 'purple', icon: CirclePause },
@@ -113,13 +117,14 @@ export function ElementInsight({
         aria-label={t('insights.elementTitle')}
         aria-busy="true"
         className={cn(
-          'flex items-center gap-2 rounded-inner bg-surface-muted/60 px-3 py-2 text-xs text-muted-foreground animate-pulse',
+          'flex items-center gap-2 rounded-inner bg-surface-muted/60 px-3 py-2 text-xs text-muted-foreground motion-safe:animate-fade-in',
           className,
         )}
       >
-        <Bot aria-hidden className="size-3.5 shrink-0" />
+        <BirddayIcon className="size-4 shrink-0" />
         <span className="sr-only">{t('insights.loading')}</span>
-        <div className="h-2.5 w-36 rounded bg-surface-muted" />
+        <Skeleton className="h-3.5 w-44" />
+        <Skeleton variant="pill" className="ml-auto h-4 w-14" />
       </div>
     );
   }
@@ -200,7 +205,7 @@ export function ElementInsight({
       data-element={key}
       data-state={state}
       className={cn(
-        'flex flex-col gap-2 rounded-inner bg-surface-muted/40 p-3 text-sm text-foreground ring-1 ring-border/50',
+        'flex flex-col gap-2 rounded-inner bg-surface-muted/40 p-3 text-sm text-foreground ring-1 ring-border/50 motion-safe:animate-fade-in',
         className,
       )}
     >

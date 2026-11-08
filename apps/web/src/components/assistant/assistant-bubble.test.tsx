@@ -273,7 +273,7 @@ describe('AssistantBubble', () => {
     expect(button).toHaveAttribute('aria-keyshortcuts', 'Control+/ Meta+/');
     expect(screen.queryByTestId('assistant-panel')).not.toBeInTheDocument();
     await userEvent.click(button);
-    expect(await screen.findByRole('dialog', { name: 'AI assistant' })).toBeVisible();
+    expect(await screen.findByRole('dialog', { name: 'Birdday' })).toBeVisible();
     expect(button).toHaveAttribute('aria-expanded', 'true');
   });
 
@@ -412,7 +412,7 @@ describe('AssistantBubble', () => {
     setup({ role: 'head', kill: true });
     const button = await bubble();
     await waitFor(() => {
-      expect(button).toHaveAttribute('aria-label', 'Open the AI assistant (AI is paused)');
+      expect(button).toHaveAttribute('aria-label', 'Open Birdday (AI is paused)');
     });
   });
 
@@ -452,7 +452,7 @@ describe('AssistantBubble', () => {
       { locale: 'th' },
     );
     await userEvent.click(await bubble());
-    expect(await screen.findByRole('dialog', { name: 'ผู้ช่วย AI' })).toBeVisible();
+    expect(await screen.findByRole('dialog', { name: 'Birdday' })).toBeVisible();
     expect(screen.getByRole('group', { name: 'ส่งไปพร้อมคำถาม' })).toBeInTheDocument();
   });
 
@@ -525,6 +525,84 @@ describe('AssistantBubble', () => {
       ),
     ).toBeInTheDocument();
   });
+
+  it('renders Birdday greeting, tagline, and BirddayAvatar in the empty state', async () => {
+    setup();
+    await userEvent.click(await bubble());
+    expect(await screen.findByRole('dialog', { name: 'Birdday' })).toBeVisible();
+    expect(screen.getByText('Cockatiel AI · Tech Ops')).toBeInTheDocument();
+    expect(screen.getByText('Hi! Birdday is perched and ready.')).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'Ask about tickets, SLAs, incidents, or your shift — every sentence links to its source.',
+      ),
+    ).toBeInTheDocument();
+    const avatars = document.querySelectorAll('[data-slot="birdday-avatar"]');
+    expect(avatars.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('toggles chat panel width on desktop via widen/restore button', async () => {
+    setup();
+    await userEvent.click(await bubble());
+    const panel = await screen.findByTestId('assistant-panel');
+    expect(panel.className).toContain('md:w-[26.5rem]');
+    expect(panel.className).not.toContain('md:w-[38rem]');
+
+    const widenBtn = screen.getByRole('button', { name: 'Widen chat panel' });
+    await userEvent.click(widenBtn);
+    expect(panel.className).toContain('md:w-[38rem]');
+
+    const restoreBtn = screen.getByRole('button', { name: 'Restore chat width' });
+    await userEvent.click(restoreBtn);
+    expect(panel.className).toContain('md:w-[26.5rem]');
+  });
+
+  it('displays live multi-step phase timeline when SSE sends multiple phases before reply', async () => {
+    const api = setup();
+    let stream: ReadableStreamDefaultController<Uint8Array>;
+    vi.stubGlobal('fetch', (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = input instanceof Request ? input.url : input.toString();
+      if (!url.endsWith('/v1/assistant/messages')) return api.fetchMock(input, init);
+      return Promise.resolve(
+        new Response(
+          new ReadableStream<Uint8Array>({
+            start(controller) {
+              stream = controller;
+            },
+          }),
+          { headers: { 'content-type': 'text/event-stream' } },
+        ),
+      );
+    });
+    const emit = async (event: AssistantPhaseEvent) => {
+      await act(async () => {
+        stream.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(event)}\n\n`));
+        await Promise.resolve();
+      });
+    };
+
+    await userEvent.click(await bubble());
+    const input = await screen.findByRole('textbox', { name: 'Ask the AI assistant' });
+    await userEvent.type(input, 'investigate issue{Enter}');
+
+    await emit({ phase: 'queued', position: 1 });
+    expect(await screen.findByText('In queue · position 1')).toBeVisible();
+
+    await emit({ phase: 'context', chips: [] });
+    expect(await screen.findByText('Checking context')).toBeVisible();
+    expect(screen.getByText('In queue · position 1')).toBeInTheDocument();
+
+    await emit({ phase: 'tool', name: 'ticket_search', status: 'running' });
+    expect(await screen.findByText('Checking ticket_search')).toBeVisible();
+    expect(screen.getByText('Checking context')).toBeInTheDocument();
+
+    await emit({ phase: 'answering' });
+    expect(await screen.findByText('Preparing answer')).toBeVisible();
+    expect(screen.getByText('Checking ticket_search')).toBeInTheDocument();
+
+    await emit({ phase: 'reply', reply: reply() });
+    expect(await screen.findByTestId('assistant-answer')).toBeVisible();
+  });
 });
 
 describe('AssistantBubble: staying out of the way', () => {
@@ -532,7 +610,7 @@ describe('AssistantBubble: staying out of the way', () => {
     setup();
     await bubble();
     requestAssistantOpen();
-    expect(await screen.findByRole('dialog', { name: 'AI assistant' })).toBeVisible();
+    expect(await screen.findByRole('dialog', { name: 'Birdday' })).toBeVisible();
   });
 
   it('hides the button by choice, and the shortcut still opens it and Esc gives focus back', async () => {
@@ -621,7 +699,7 @@ describe('AssistantBubble: below 768 px', () => {
     setup();
     const button = await bubble();
     await userEvent.click(button);
-    const sheet = await screen.findByRole('dialog', { name: 'AI assistant' });
+    const sheet = await screen.findByRole('dialog', { name: 'Birdday' });
     expect(sheet).toHaveAttribute('data-assistant-surface');
     const input = within(sheet).getByRole('textbox', { name: 'Ask the AI assistant' });
     await waitFor(() => {
@@ -656,7 +734,7 @@ describe('AssistantBubble: below 768 px', () => {
     phone();
     setup();
     await userEvent.click(await bubble());
-    await screen.findByRole('dialog', { name: 'AI assistant' });
+    await screen.findByRole('dialog', { name: 'Birdday' });
     // On a phone the button is hidden by CSS while the sheet covers the page, but it is not removed.
     expect(screen.getByTestId('assistant-bubble')).toBeInTheDocument();
   });

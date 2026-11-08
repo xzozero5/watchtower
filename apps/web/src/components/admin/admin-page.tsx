@@ -97,15 +97,49 @@ export function RequirePermission({
   return can(permission) ? <>{children}</> : <AccessDenied role={role} />;
 }
 
+const TABLE_NAME_WIDTHS = ['w-36', 'w-48', 'w-40', 'w-52', 'w-44'] as const;
+
 /** Table-shaped placeholder: five rows, announced as loading after a moment. */
 export function TableSkeleton({ rows = 5 }: { rows?: number }) {
   const t = useT();
   return (
-    <div role="status" aria-busy="true" className="flex flex-col gap-1.5 p-4">
+    <div role="status" aria-busy="true" className="flex flex-col gap-2 p-4">
       <span className="sr-only">{t('admin.common.loading')}</span>
-      {Array.from({ length: rows }, (_, index) => (
-        <Skeleton key={index} className="h-8" />
-      ))}
+      {/* Table header skeleton */}
+      <div
+        aria-hidden
+        className="flex items-center justify-between border-b border-border/60 pb-2.5 px-2"
+      >
+        <div className="flex items-center gap-3">
+          <Skeleton className="h-3 w-6" />
+          <Skeleton className="h-3 w-28" />
+        </div>
+        <div className="flex items-center gap-6">
+          <Skeleton variant="pill" className="h-4 w-16" />
+          <Skeleton className="h-3 w-20" />
+        </div>
+      </div>
+      {/* Data rows with staggered animation */}
+      {Array.from({ length: rows }, (_, index) => {
+        const widthClass = TABLE_NAME_WIDTHS[index % TABLE_NAME_WIDTHS.length] ?? 'w-40';
+        return (
+          <div
+            key={index}
+            aria-hidden
+            style={{ animationDelay: `${String(index * 60)}ms` }}
+            className="flex items-center justify-between rounded-inner border-b border-border/40 px-2 py-2.5 last:border-b-0"
+          >
+            <div className="flex items-center gap-3 min-w-0">
+              <Skeleton variant="circle" className="size-6 shrink-0" />
+              <Skeleton className={`h-4 ${widthClass}`} />
+            </div>
+            <div className="flex items-center gap-4 shrink-0">
+              <Skeleton variant="pill" className="h-5 w-16" />
+              <Skeleton className="h-3.5 w-20" />
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }

@@ -7,6 +7,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import type { BulkAction, BulkResult } from '@watchtower/shared';
 import {
   Alert,
+  BirddayIcon,
   Button,
   EmptyState,
   IconButton,
@@ -17,7 +18,6 @@ import {
 } from '@watchtower/ui';
 import {
   ArrowUp,
-  Bot,
   ChevronDown,
   ChevronRight,
   ChevronsDown,
@@ -125,10 +125,16 @@ function Outcome({ lines }: { lines: readonly string[] }) {
 
 const GROUP_ICON = { open: ChevronDown, closed: ChevronRight } as const;
 
+const AiWorkingBirdIcon: ChipIcon = ({ className, ...rest }) => (
+  <BirddayIcon {...rest} className={className} />
+);
+
+const QUEUE_SUBJECT_WIDTHS = ['w-3/5', 'w-4/5', 'w-1/2', 'w-2/3', 'w-3/4', 'w-3/5'] as const;
+
 /** Each section has its own hue and icon (docs/design/friendly-polish.md section 3). */
 const GROUP_LOOK: Record<RowGroup['id'], { tone: TintId; icon: ChipIcon }> = {
   needsYou: { tone: 'amber', icon: Hand },
-  aiWorking: { tone: 'teal', icon: Bot },
+  aiWorking: { tone: 'teal', icon: AiWorkingBirdIcon },
   waiting: { tone: 'slate', icon: Hourglass },
   done: { tone: 'green', icon: CircleCheck },
   all: { tone: 'slate', icon: Hourglass },
@@ -738,14 +744,36 @@ export function QueuePane({
         className="flex min-h-0 flex-1 flex-col overflow-y-auto"
       >
         {initialLoading ? (
-          <div role="status" className="flex flex-col">
+          <div role="status" className="flex flex-col gap-1 py-1">
             <span className="sr-only">{t('queue.loading')}</span>
-            {[0, 1, 2, 3, 4].map((index) => (
-              <div key={index} className="mx-2 flex flex-col gap-2 rounded-xl px-2.5 py-3">
-                <Skeleton className="h-3.5 w-4/5" />
-                <Skeleton className="h-3 w-3/5" />
-              </div>
-            ))}
+            {[0, 1, 2, 3, 4, 5].map((index) => {
+              const subjectWidth =
+                QUEUE_SUBJECT_WIDTHS[index % QUEUE_SUBJECT_WIDTHS.length] ?? 'w-3/5';
+              return (
+                <div
+                  key={index}
+                  aria-hidden
+                  style={{ animationDelay: `${String(index * 50)}ms` }}
+                  className="mx-2 flex flex-col justify-center gap-1.5 rounded-inner px-2.5 py-2.5"
+                >
+                  {/* Top row: ticket pill + subject + SLA pill */}
+                  <div className="flex items-center gap-2">
+                    <Skeleton variant="pill" className="h-3.5 w-12 shrink-0" />
+                    <Skeleton className={`h-3.5 ${subjectWidth}`} />
+                    <Skeleton variant="pill" className="ml-auto h-3.5 w-12 shrink-0" />
+                  </div>
+                  {/* Bottom row: severity badge + status pill + avatar */}
+                  <div className="flex items-center gap-2">
+                    <Skeleton variant="pill" className="h-3.5 w-8 shrink-0" />
+                    <Skeleton className="h-3 w-16" />
+                    <div className="ml-auto flex items-center gap-2">
+                      <Skeleton variant="pill" className="h-4 w-16 shrink-0" />
+                      <Skeleton variant="circle" className="size-4 shrink-0" />
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         ) : list.isError ? (
           <div className="p-pane">

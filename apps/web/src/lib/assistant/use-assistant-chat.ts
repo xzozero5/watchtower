@@ -34,7 +34,14 @@ export interface ProposalView {
 }
 
 export type Turn =
-  { id: string; kind: 'user'; text: string } | { id: string; kind: 'ai'; reply: AssistantReply };
+  | { id: string; kind: 'user'; text: string }
+  | { id: string; kind: 'ai'; reply: AssistantReply; elapsedMs?: number; stepsCount?: number };
+
+export interface PhaseHistoryItem {
+  id: string;
+  event: AssistantPhaseEvent;
+  at: number;
+}
 
 export const startersKey = (userId: string, page: string, ticket: string, locale: string) =>
   [userId, 'assistant', 'starters', page, ticket, locale] as const;
@@ -90,6 +97,8 @@ export function useAssistantChat() {
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const [phase, setPhase] = useState<AssistantPhaseEvent | null>(null);
+  const [phaseHistory, setPhaseHistory] = useState<PhaseHistoryItem[]>([]);
+  const [startedAt, setStartedAt] = useState<number | null>(null);
   const [error, setError] = useState<ChatErrorKind | null>(null);
   const [stopped, setStopped] = useState(false);
   const [state, setState] = useState<AssistantState>('ok');
@@ -112,6 +121,9 @@ export function useAssistantChat() {
     async (text: string, locale: AssistantLocale, context: AssistantContext | undefined) => {
       const controller = new AbortController();
       abort.current = controller;
+      const start = Date.now();
+      setStartedAt(start);
+      setPhaseHistory([]);
       setPending(true);
       setPhase(null);
       // A failed turn is not an availability probe. A retry/Stop clears its transient failure;
@@ -133,15 +145,44 @@ export function useAssistantChat() {
             if (controller.signal.aborted || abort.current !== controller) return;
             setPhase(event);
             if (event.phase === 'error') setState(event.state);
+            if (
+              event.phase === 'queued' ||
+              event.phase === 'context' ||
+              event.phase === 'tool' ||
+              event.phase === 'answering'
+            ) {
+              setPhaseHistory((prev) => {
+                const last = prev[prev.length - 1];
+                if (last) {
+                  if (last.event.phase === event.phase) {
+                    if (
+                      event.phase === 'tool' &&
+                      last.event.phase === 'tool' &&
+                      last.event.name === event.name
+                    ) {
+                      return prev;
+                    }
+                    if (event.phase !== 'tool') {
+                      return prev;
+                    }
+                  }
+                }
+                return [...prev, { id: nextId(), event, at: Date.now() }];
+              });
+            }
           },
         );
         if (controller.signal.aborted || abort.current !== controller) return;
+        const elapsedMs = Date.now() - start;
         conversation.current = reply.conversationId;
         setConversationId(reply.conversationId);
         setState(reply.state);
         void queryClient.invalidateQueries({ queryKey: assistantKeys(userId).conversations });
         failed.current = null;
-        setTurns((current) => [...current, { id: nextId(), kind: 'ai', reply }]);
+        setTurns((current) => [
+          ...current,
+          { id: nextId(), kind: 'ai', reply, elapsedMs, stepsCount: reply.tools.length },
+        ]);
         setProposals((current) => {
           const next = { ...current };
           for (const card of reply.proposals) {
@@ -166,6 +207,8 @@ export function useAssistantChat() {
           abort.current = null;
           setPending(false);
           setPhase(null);
+          setPhaseHistory([]);
+          setStartedAt(null);
         }
       }
     },
@@ -194,6 +237,8 @@ export function useAssistantChat() {
     failed.current = null;
     setPending(false);
     setPhase(null);
+    setPhaseHistory([]);
+    setStartedAt(null);
     setStopped(true);
     setState((current) => (current === 'unavailable' ? 'ok' : current));
   }, []);
@@ -203,6 +248,8 @@ export function useAssistantChat() {
     abort.current = null;
     setPending(false);
     setPhase(null);
+    setPhaseHistory([]);
+    setStartedAt(null);
     conversation.current = null;
     failed.current = null;
     setConversationId(null);
@@ -273,6 +320,8 @@ export function useAssistantChat() {
     conversationId,
     pending,
     phase,
+    phaseHistory,
+    startedAt,
     error,
     stopped,
     state,

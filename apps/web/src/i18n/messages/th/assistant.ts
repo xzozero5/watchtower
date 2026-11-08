@@ -2,10 +2,16 @@ import type { assistantEn } from '../en/assistant';
 import type { Widen } from '../types';
 
 export const assistantTh: Widen<typeof assistantEn> = {
-  name: 'ผู้ช่วย AI',
-  open: 'เปิดผู้ช่วย AI',
-  openPaused: 'เปิดผู้ช่วย AI (AI หยุดชั่วคราว)',
-  close: 'ปิดผู้ช่วย AI',
+  name: 'Birdday',
+  tagline: 'ผู้ช่วยนกค็อกคาเทล · Tech Ops',
+  greeting: 'สวัสดี! Birdday เกาะคอนพร้อมช่วยแล้ว',
+  greetingHint:
+    'ถามเรื่อง ticket, SLA, เหตุการณ์ หรือกะของคุณได้เลย — ทุกประโยคมีลิงก์อ้างอิงชัดเจน',
+  expandWidth: 'ขยายความกว้างหน้าต่างแชท',
+  collapseWidth: 'ย่อความกว้างหน้าต่างแชท',
+  open: 'เปิด Birdday (ผู้ช่วย AI)',
+  openPaused: 'เปิด Birdday (AI หยุดชั่วคราว)',
+  close: 'ปิด Birdday',
   description:
     'ถามเรื่อง ticket และกะของคุณได้ ทุกคำตอบมีลิงก์ไปหน้าที่อ้างอิง ส่วนการแก้ไขจะรอให้คุณกดยืนยันก่อน',
   newChat: 'แชทใหม่',
@@ -86,7 +92,7 @@ export const assistantTh: Widen<typeof assistantEn> = {
     noPermission: 'คุณไม่มีสิทธิ์ถามเกี่ยวกับส่วนนี้',
     noScope: 'เลือกข้อมูลก่อนถามเกี่ยวกับส่วนนี้',
     unsupportedPeriod: 'ผู้ช่วยยังไม่รองรับช่วงเวลานี้',
-    label: 'ถาม AI เรื่องนี้',
+    label: 'ถาม Birdday เรื่องนี้',
     named: 'ถาม AI เรื่อง {name}',
   },
   localStarters: {
@@ -201,7 +207,7 @@ export const assistantTh: Widen<typeof assistantEn> = {
   },
   input: {
     label: 'ถามผู้ช่วย AI',
-    placeholder: 'ถามเรื่อง ticket, SLA หรือกะของคุณ',
+    placeholder: 'คุยกับ Birdday เรื่อง ticket, SLA หรือกะของคุณ…',
     send: 'ส่ง',
     stop: 'หยุด',
     hint: 'กด Enter เพื่อส่ง Shift+Enter เพื่อขึ้นบรรทัดใหม่',
@@ -210,7 +216,7 @@ export const assistantTh: Widen<typeof assistantEn> = {
   thread: {
     label: 'บทสนทนากับผู้ช่วย AI',
     you: 'คุณ',
-    ai: 'AI',
+    ai: 'Birdday',
     thinking: 'กำลังคิด',
     queued: 'อยู่ในคิว · ลำดับที่ {position}',
     context: 'กำลังตรวจบริบท',
