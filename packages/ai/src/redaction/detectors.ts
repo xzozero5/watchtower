@@ -36,7 +36,10 @@ export interface Span {
 }
 
 /** Matches the placeholder tokens the redactor itself writes, e.g. `[EMAIL_1]`. */
-export const TOKEN_PATTERN = new RegExp(`\\[(?:${REDACTION_KINDS.join('|')})_[0-9]{1,9}\\]`, 'g');
+export const TOKEN_PATTERN = new RegExp(
+  `\\[(?:${[...REDACTION_KINDS, 'PERSON'].join('|')})_[0-9]{1,9}\\]`,
+  'g',
+);
 
 const PRIORITY = {
   LITERAL: 200,

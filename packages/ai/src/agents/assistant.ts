@@ -13,7 +13,7 @@ import { z } from 'zod';
 
 import type { AuditedResult } from '../audited.js';
 import type { ScopedTools } from '../contract.js';
-import { joinRedacted } from '../redaction/redacted-text.js';
+import { clipRedacted, joinRedacted, type RedactedText } from '../redaction/redacted-text.js';
 import { REDACTION_KINDS } from '../redaction/detectors.js';
 import type {
   RedactionReport,
@@ -140,6 +140,13 @@ const answerShape = z.object({
   proposals: z.array(z.unknown()).max(10).default([]),
 });
 
+export type AssistantUserNote =
+  | string
+  | {
+      readonly text: string;
+      readonly hadCustomerContent?: boolean | undefined;
+    };
+
 // --- input and result --------------------------------------------------------------------------
 
 export interface AssistantTurnInput {
@@ -163,6 +170,8 @@ export interface AssistantTurnInput {
   readonly text: string;
   /** Earlier turns, already redacted when they were stored. Oldest first. */
   readonly history: readonly { readonly role: 'user' | 'assistant'; readonly text: string }[];
+  /** Pinned facts from memory or earlier turns (ADR-029 §3, ADR-034 item 14). At most 10 items. */
+  readonly userNotes?: readonly AssistantUserNote[] | undefined;
   readonly host: AssistantToolHost;
   /** The proposal kinds this person may be offered (their permissions decide). */
   readonly proposalKinds: readonly ProposalKind[];
@@ -219,14 +228,16 @@ export type AssistantOutcome =
   | { readonly status: 'skipped'; readonly reason: AiInsightReason }
   | { readonly status: 'failed'; readonly reason: AiInsightReason };
 
-const MAX_FACTS = 12;
-const MAX_HISTORY_CHARS = 1200;
-const MAX_REQUEST_CHARS = 2000;
+export const MAX_FACTS = 12;
+export const MAX_HISTORY_CHARS = 1200;
+export const MAX_REQUEST_CHARS = 2000;
+export const MAX_USER_NOTES = 10;
+export const MAX_USER_NOTE_CHARS = 500;
 
 /** The tags of the prompt must not be closable from inside data. */
 const neutralize = (text: string): string =>
   neutralizeTags(text).replaceAll(
-    /<(\/?\s*(?:context|history|request|tool_results|tools)\b)/gi,
+    /<(\/?\s*(?:context|history|request|tool_results|tools|user_notes)\b)/gi,
     '‹$1',
   );
 
@@ -280,6 +291,34 @@ function renderHistory(input: AssistantTurnInput, session: RedactionSession) {
   // here. `fromModel` keeps a token that this session also issued, which would bind an old [EMAIL_1] to
   // a different person; `redactToolOutput` escapes every token-shaped piece of text instead.
   return [session.redactToolOutput('history', `<history>\n${lines.join('\n')}\n</history>`)];
+}
+
+function noteContent(note: AssistantUserNote): string {
+  return typeof note === 'string' ? note : note.text;
+}
+
+function renderUserNotes(input: AssistantTurnInput, session: RedactionSession): RedactedText[] {
+  const notes = input.userNotes?.slice(0, MAX_USER_NOTES) ?? [];
+  if (notes.length === 0) return [];
+  const lines = notes.map((note) => {
+    const singleLine = noteContent(note)
+      .replace(/\r?\n+/g, ' ')
+      .trim();
+    return clipRedacted(
+      session.redactToolOutput('user_notes', `- ${neutralize(singleLine)}`),
+      MAX_USER_NOTE_CHARS,
+    );
+  });
+  return [
+    joinRedacted(
+      [
+        session.redactToolOutput('user_notes', '<user_notes>'),
+        ...lines,
+        session.redactToolOutput('user_notes', '</user_notes>'),
+      ],
+      '\n',
+    ),
+  ];
 }
 
 function renderToolList(info: readonly AssistantToolInfo[]): string {
@@ -375,6 +414,7 @@ export async function runAssistantTurn(
   const mayInvestigate = (): boolean =>
     facts.every((fact) => fact.trust === 'system') &&
     input.history.length === 0 &&
+    (input.userNotes?.length ?? 0) === 0 &&
     (input.entities?.length ?? 0) === 0 &&
     /investigat|ตรวจสอบ|สืบค้น|วิเคราะห์สาเหตุ/i.test(input.text);
   const availableTools = input.host.info.filter(
@@ -418,6 +458,7 @@ export async function runAssistantTurn(
         [
           planSession.redactToolOutput('context', renderContext(input)),
           ...renderHistory(input, planSession),
+          ...renderUserNotes(input, planSession),
           factBlock(planSession, facts, 'e'),
           typedRequest,
         ],
@@ -534,6 +575,7 @@ export async function runAssistantTurn(
         [
           session.redactToolOutput('context', renderContext(input)),
           ...renderHistory(input, session),
+          ...renderUserNotes(input, session),
           ...results_,
           typed.redact(`<request>\n${request}\n</request>`),
         ],
@@ -609,7 +651,12 @@ export async function runAssistantTurn(
   return {
     status: 'ok',
     path: internal ? 'facts_only' : directAnswer === undefined ? 'llm2' : 'llm1',
-    hadCustomerContent: facts.some((fact) => fact.trust === 'customer'),
+    hadCustomerContent:
+      facts.some((fact) => fact.trust === 'customer') ||
+      (input.userNotes
+        ?.slice(0, MAX_USER_NOTES)
+        .some((note) => typeof note === 'string' || note.hadCustomerContent !== false) ??
+        false),
     claims,
     redactedText: redactedParts.join('\n'),
     names,
