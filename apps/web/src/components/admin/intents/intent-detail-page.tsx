@@ -1,6 +1,7 @@
 'use client';
 
 import { AskAiElement } from '@/components/assistant/ask-ai-element';
+import { ElementInsight } from '@/components/insights/element-insight';
 
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { type Intent, TICKET_PRIORITIES, type TicketPriority } from '@watchtower/shared';
@@ -113,10 +114,23 @@ function IntentDetailBody({ intentId }: { intentId: string }) {
               <TabsTrigger value="history">{t('admin.intents.tabs.history')}</TabsTrigger>
             </TabsList>
             <TabsContent value="details" className="p-4">
+              <AskAiElement element="admin.intents" scope={`intent:${intentId}`} />
+              <ElementInsight
+                element="admin.intents"
+                scope={`intent:${intentId}`}
+                period="-"
+                className="mb-4"
+              />
               <IntentDetailsForm intent={intent} />
             </TabsContent>
             <TabsContent value="autonomy" className="p-4">
               <AskAiElement element="admin.intent.gate" scope={`intent:${intentId}`} />
+              <ElementInsight
+                element="admin.intent.gate"
+                scope={`intent:${intentId}`}
+                period="-"
+                className="mb-4"
+              />
               {autonomy.isPending ? (
                 <Skeleton className="h-24 max-w-xl" />
               ) : autonomy.isError || !state ? (

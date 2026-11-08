@@ -1,6 +1,7 @@
 'use client';
 
 import { AskAiElement } from '@/components/assistant/ask-ai-element';
+import { ElementInsight } from '@/components/insights/element-insight';
 
 import { useIsFetching, useQueryClient } from '@tanstack/react-query';
 import { OPEN_STATUSES, type TicketSummary } from '@watchtower/shared';
@@ -260,6 +261,7 @@ function HomeBody() {
           {showTeam ? (
             <HomeSection id="home-team" title={t('home.team.title')} tone="green" icon={Users}>
               <AskAiElement element="home.team" />
+              <ElementInsight element="home.team" period="-" />
               <TeamNow query={team} />
             </HomeSection>
           ) : null}

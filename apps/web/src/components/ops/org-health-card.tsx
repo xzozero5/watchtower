@@ -1,6 +1,7 @@
 'use client';
 
 import { AskAiElement } from '@/components/assistant/ask-ai-element';
+import { ElementInsight } from '@/components/insights/element-insight';
 
 import type { HealthSnapshot } from '@watchtower/shared';
 import { Alert } from '@watchtower/ui';
@@ -34,6 +35,7 @@ export function OrgHealthCard({ orgId }: { orgId: string }) {
         </h2>
         <AskAiElement element="org.health" scope={`org:${orgId}`} period="d30" />
       </div>
+      <ElementInsight element="org.health" scope={`org:${orgId}`} period="d30" />
       {snapshot === null ? (
         <Alert tone="info" title={t('ops.health.none')}>
           {t('ops.health.noneBody')}

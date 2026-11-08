@@ -1,6 +1,7 @@
 'use client';
 
 import { AskAiElement } from '@/components/assistant/ask-ai-element';
+import { ElementInsight } from '@/components/insights/element-insight';
 
 import { BarChart, type BarChartDatum, HighlightCard, TrendChip } from '@watchtower/ui';
 import { Bot } from 'lucide-react';
@@ -45,6 +46,7 @@ export function VolumeCard() {
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div>
           <AskAiElement element="home.volume" period="d7" />
+          <ElementInsight element="home.volume" period="d7" className="mb-2" />
           <h2 id="home-volume" className="text-title font-medium text-foreground-strong">
             {t('home.volume')}
           </h2>

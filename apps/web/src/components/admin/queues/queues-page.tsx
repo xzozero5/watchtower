@@ -1,6 +1,7 @@
 'use client';
 
 import { AskAiElement } from '@/components/assistant/ask-ai-element';
+import { ElementInsight } from '@/components/insights/element-insight';
 
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { ASSIGNMENT_MODES, type AssignmentMode, type TeamQueue } from '@watchtower/shared';
@@ -156,6 +157,7 @@ function QueuesBody() {
       />
       <AdminBody>
         <AskAiElement element="admin.queues" />
+        <ElementInsight element="admin.queues" scope="instance" period="-" className="mx-4 mt-4" />
         {queues.isPending ? (
           <TableSkeleton />
         ) : queues.isError ? (

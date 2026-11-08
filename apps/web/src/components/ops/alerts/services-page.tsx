@@ -1,6 +1,7 @@
 'use client';
 
 import { AskAiElement } from '@/components/assistant/ask-ai-element';
+import { ElementInsight } from '@/components/insights/element-insight';
 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@watchtower/ui';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
@@ -54,6 +55,7 @@ function ServicesBody() {
       </TabsList>
       <TabsContent value="services">
         <AskAiElement element="alerts.services" />
+        <ElementInsight element="alerts.services" scope="instance" period="-" />
         <ServicesSection />
       </TabsContent>
       <TabsContent value="policies">

@@ -71,6 +71,7 @@ export function consoleApi({
       json: { windowDays: 7, from: AT, to: AT, intents: [] },
     },
     'GET /v1/shifts/overview': { json: shiftOverview() },
+    'GET /v1/insights': { json: { items: [] } },
     'GET /v1/users': { json: { users: USERS } },
     'GET /v1/queues': { json: { queues: [QUEUE, QUEUE_BILLING] } },
     'GET /v1/org-tiers': {

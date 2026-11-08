@@ -1,6 +1,7 @@
 'use client';
 
 import { AskAiElement } from '@/components/assistant/ask-ai-element';
+import { ElementInsight } from '@/components/insights/element-insight';
 
 import type { AiCost, AiCostLine } from '@watchtower/shared';
 import {
@@ -128,6 +129,7 @@ function AiCostBody() {
               ) : null}
             </p>
           </div>
+          <ElementInsight element="reports.ai_cost" period={`d${String(days)}`} />
           {query.isError && !cost ? (
             <LoadError
               message={t('reports.cost.loadError')}

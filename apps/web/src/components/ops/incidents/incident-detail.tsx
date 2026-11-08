@@ -1,6 +1,7 @@
 'use client';
 
 import { AskAiElement } from '@/components/assistant/ask-ai-element';
+import { ElementInsight } from '@/components/insights/element-insight';
 
 import { useMutation, useQueries, useQueryClient } from '@tanstack/react-query';
 import {
@@ -78,6 +79,7 @@ export function IncidentDetailView({ incidentId }: { incidentId: string }) {
     <article aria-labelledby="incident-title" className="flex flex-col gap-4 p-4">
       <header className="flex flex-col gap-2">
         <AskAiElement element="incident.detail" scope={`incident:${incident.id}`} />
+        <ElementInsight element="incident.detail" scope={`incident:${incident.id}`} period="now" />
         <div className="flex flex-wrap items-center gap-2">
           <IncidentSeverityBadge severity={incident.severity} />
           <IncidentStatusChip status={incident.status} />

@@ -1,6 +1,7 @@
 'use client';
 
 import { AskAiElement } from '@/components/assistant/ask-ai-element';
+import { ElementInsight } from '@/components/insights/element-insight';
 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@watchtower/ui';
 import { ExternalLink } from 'lucide-react';
@@ -34,6 +35,7 @@ function StatusAdminBody() {
   return (
     <div className="mx-auto flex w-full max-w-4xl flex-col gap-4 p-4">
       <AskAiElement element="statuspage.admin" />
+      <ElementInsight element="statuspage.admin" scope="instance" period="-" />
       <p className="text-sm text-muted-foreground">
         {t('ops.statusAdmin.intro')}{' '}
         <a

@@ -49,6 +49,7 @@ import { createReportEndpoints } from './report-endpoints';
 import { createShiftEndpoints } from './shift-endpoints';
 import { createRosterPlanEndpoints } from './roster-plan-endpoints';
 import { createAssistantEndpoints } from './assistant-endpoints';
+import { createInsightEndpoints } from './insight-endpoints';
 import { createGradeEndpoints } from './grade-endpoints';
 import { createToolEndpoints } from './tool-endpoints';
 import { createUploadEndpoints } from './upload-endpoints';
@@ -90,6 +91,7 @@ export function createEndpoints(client: ApiClient) {
     ...createToolEndpoints(client),
     ...createUploadEndpoints(client),
     ...createAssistantEndpoints(client),
+    ...createInsightEndpoints(client),
     ...createGradeEndpoints(client),
 
     downloadAttachment: (ref: string, messageId: string, index: number, signal?: AbortSignal) =>

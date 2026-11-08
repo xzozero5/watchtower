@@ -1,0 +1,37 @@
+export const insightsEn = {
+  state: {
+    system: 'From system',
+    paused: 'AI paused — showing system data',
+    fresh: 'AI · {n}{unit} ago',
+    stale: 'Summary predates latest data',
+    budget: 'AI summaries paused (daily budget reached)',
+    none: 'No current AI summary — showing system data',
+  },
+  units: {
+    minute: 'm',
+    hour: 'h',
+  },
+  feedback: {
+    helpful: 'Helpful',
+    notHelpful: 'Not helpful',
+    submitted: 'Feedback submitted',
+    title: 'Feedback',
+    reasonPrompt: 'Why was this summary not helpful?',
+    reasons: {
+      wrong_number: 'Incorrect numbers',
+      not_useful: 'Not useful',
+      misleading: 'Misleading',
+      judges_person: 'Judges individual performance',
+      other: 'Other',
+    },
+    submit: 'Submit',
+    cancel: 'Cancel',
+  },
+  systemData: 'Showing system data',
+  loading: 'Loading summary...',
+  error: 'Could not load summary',
+  predatesNotice: 'Summary predates latest data',
+  elementTitle: 'Element insight',
+  citations: 'Sources',
+  sample: 'Sample',
+};

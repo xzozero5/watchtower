@@ -1,6 +1,7 @@
 'use client';
 
 import { AskAiElement } from '@/components/assistant/ask-ai-element';
+import { ElementInsight } from '@/components/insights/element-insight';
 
 import type { CeoExternalTile, CeoKpiKey, CeoTile, CeoView } from '@watchtower/shared';
 import {
@@ -189,6 +190,15 @@ function CeoBody() {
 
 // --- the eight figures ------------------------------------------------------------------------------
 
+function currentIsoWeek(date = new Date()): string {
+  const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+  const dayNum = d.getUTCDay() || 7;
+  d.setUTCDate(d.getUTCDate() + 4 - dayNum);
+  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+  const weekNo = Math.ceil(((d.getTime() - yearStart.getTime()) / 86400000 + 1) / 7);
+  return `w${String(d.getUTCFullYear())}-${String(weekNo).padStart(2, '0')}`;
+}
+
 function KpiTiles({ view }: { view: CeoView }) {
   const { t, locale } = useI18n();
   const { kpis, formula } = view;
@@ -213,6 +223,7 @@ function KpiTiles({ view }: { view: CeoView }) {
         {t('reports.ceo.title')}
       </h2>
       <AskAiElement element="reports.ceo.figures" />
+      <ElementInsight element="reports.ceo.figures" period={currentIsoWeek()} />
       <TileGrid>
         <Figure
           label={t('reports.ceo.kpi.volume')}

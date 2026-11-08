@@ -1,6 +1,7 @@
 'use client';
 
 import { AskAiElement } from '@/components/assistant/ask-ai-element';
+import { ElementInsight } from '@/components/insights/element-insight';
 
 import { Button, cn, EmptyState, Kbd, SegmentedControl } from '@watchtower/ui';
 import { Plus, Siren } from 'lucide-react';
@@ -74,6 +75,7 @@ function IncidentsBody() {
       <div className="flex flex-wrap items-center gap-3">
         <h2 className="sr-only">{t('ops.incidents.title')}</h2>
         <AskAiElement element="incidents.open" />
+        <ElementInsight element="incidents.open" period="now" />
         <SegmentedControl
           aria-label={t('ops.incidents.scope.label')}
           value={scope}

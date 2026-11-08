@@ -1,6 +1,7 @@
 'use client';
 
 import { AskAiElement } from '@/components/assistant/ask-ai-element';
+import { ElementInsight } from '@/components/insights/element-insight';
 
 import type { AiSwitch, AiSwitchKey } from '@watchtower/shared';
 import {
@@ -94,6 +95,7 @@ function AiControlsBody() {
       />
       <AdminBody>
         <AskAiElement element="admin.ai" />
+        <ElementInsight element="admin.ai" scope="instance" period="-" className="mx-4 mt-2" />
         {autonomy.isPending ? (
           <div role="status" aria-busy="true" className="flex flex-col gap-2 p-4">
             <span className="sr-only">{t('admin.common.loading')}</span>

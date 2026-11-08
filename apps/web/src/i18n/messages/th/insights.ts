@@ -1,0 +1,37 @@
+export const insightsTh = {
+  state: {
+    system: 'จากระบบ',
+    paused: 'AI หยุดทำงาน — แสดงข้อมูลตรงจากระบบ',
+    fresh: 'AI · {n} {unit}ที่แล้ว',
+    stale: 'สรุปก่อนข้อมูลล่าสุด',
+    budget: 'สรุป AI พักชั่วคราว (ครบงบวันนี้)',
+    none: 'ยังไม่มีสรุป AI ล่าสุด — แสดงข้อมูลจากระบบ',
+  },
+  units: {
+    minute: 'นาที',
+    hour: 'ชม.',
+  },
+  feedback: {
+    helpful: 'เป็นประโยชน์',
+    notHelpful: 'ไม่เป็นประโยชน์',
+    submitted: 'ส่งข้อเสนอแนะแล้ว',
+    title: 'ข้อเสนอแนะ',
+    reasonPrompt: 'ทำไมสรุปนี้จึงไม่เป็นประโยชน์?',
+    reasons: {
+      wrong_number: 'ตัวเลขไม่ถูกต้อง',
+      not_useful: 'ไม่เป็นประโยชน์',
+      misleading: 'ชี้นำให้เข้าใจผิด',
+      judges_person: 'ตัดสินหรือประเมินผลงานบุคคล',
+      other: 'อื่นๆ',
+    },
+    submit: 'ส่ง',
+    cancel: 'ยกเลิก',
+  },
+  systemData: 'แสดงข้อมูลจากระบบ',
+  loading: 'กำลังโหลดสรุป...',
+  error: 'ไม่สามารถโหลดสรุปได้',
+  predatesNotice: 'สรุปก่อนข้อมูลล่าสุด',
+  elementTitle: 'สรุปข้อมูลเชิงลึก',
+  citations: 'แหล่งที่มา',
+  sample: 'ตัวอย่าง',
+};

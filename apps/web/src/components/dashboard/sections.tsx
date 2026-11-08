@@ -1,6 +1,7 @@
 'use client';
 
 import { AskAiElement } from '@/components/assistant/ask-ai-element';
+import { ElementInsight } from '@/components/insights/element-insight';
 
 import {
   DASHBOARD_AT_RISK_MINUTES,
@@ -142,6 +143,7 @@ export function NowSection({ ops }: SectionProps) {
   return (
     <DashboardSection id="now" icon={Inbox} tone="teal" title={t('dashboard.sections.now')}>
       <AskAiElement element="dashboard.ops.now" />
+      <ElementInsight element="dashboard.ops.now" period="now" />
       <TileGrid>
         <Figure {...tile(t('dashboard.now.open'), Inbox, 'teal', queue.open)} />
         <Figure {...tile(t('dashboard.now.unassigned'), UserRoundX, 'sky', queue.unassigned)} />
@@ -195,6 +197,7 @@ export function VolumeSection({ ops }: SectionProps) {
   return (
     <DashboardSection id="volume" icon={Layers} tone="blue" title={t('dashboard.sections.volume')}>
       <AskAiElement element="dashboard.ops.volume" period={`d${String(ops.window.days)}`} />
+      <ElementInsight element="dashboard.ops.volume" period={`d${String(ops.window.days)}`} />
       <div className="grid gap-3 lg:grid-cols-[minmax(0,14rem)_minmax(0,1fr)]">
         <div className="flex min-w-0 flex-col gap-2">
           <Figure
@@ -255,6 +258,7 @@ export function SlaSection({ ops }: SectionProps) {
   return (
     <DashboardSection id="sla" icon={Clock3} tone="amber" title={t('dashboard.sections.sla')}>
       <AskAiElement element="dashboard.ops.sla" period={`d${String(ops.window.days)}`} />
+      <ElementInsight element="dashboard.ops.sla" period={`d${String(ops.window.days)}`} />
       <TileGrid>
         <Figure
           label={t('dashboard.sla.firstResponse')}
@@ -324,6 +328,7 @@ export function QualitySection({ ops }: SectionProps) {
       title={t('dashboard.sections.quality')}
     >
       <AskAiElement element="dashboard.ops.quality" period={`d${String(ops.window.days)}`} />
+      <ElementInsight element="dashboard.ops.quality" period={`d${String(ops.window.days)}`} />
       <TileGrid>
         <Figure
           label={t('dashboard.quality.csat')}
@@ -404,6 +409,7 @@ export function ReliabilitySection({ ops }: SectionProps) {
       title={t('dashboard.sections.reliability')}
     >
       <AskAiElement element="dashboard.ops.reliability" period={`d${String(ops.window.days)}`} />
+      <ElementInsight element="dashboard.ops.reliability" period={`d${String(ops.window.days)}`} />
       <TileGrid>
         <Figure
           label={t('dashboard.reliability.openIncidents')}
@@ -555,6 +561,7 @@ export function AiSection({ ops }: SectionProps) {
     return (
       <DashboardSection id="ai" icon={Bot} tone="teal" title={t('dashboard.sections.ai')}>
         <AskAiElement element="dashboard.ops.ai" period={`d${String(ops.window.days)}`} />
+        <ElementInsight element="dashboard.ops.ai" period={`d${String(ops.window.days)}`} />
         <SectionNote figure={ai} />
       </DashboardSection>
     );
@@ -563,6 +570,7 @@ export function AiSection({ ops }: SectionProps) {
   return (
     <DashboardSection id="ai" icon={Bot} tone="teal" title={t('dashboard.sections.ai')}>
       <AskAiElement element="dashboard.ops.ai" period={`d${String(ops.window.days)}`} />
+      <ElementInsight element="dashboard.ops.ai" period={`d${String(ops.window.days)}`} />
       <TileGrid>
         <Figure
           label={t('dashboard.ai.acceptance')}
@@ -681,6 +689,7 @@ export function TeamSection({ ops }: SectionProps) {
   return (
     <DashboardSection id="team" icon={Users} tone="indigo" title={t('dashboard.sections.team')}>
       <AskAiElement element="dashboard.ops.team" period={`d${String(ops.window.days)}`} />
+      <ElementInsight element="dashboard.ops.team" period={`d${String(ops.window.days)}`} />
       <TileGrid>
         <Figure
           label={t('dashboard.team.gaps')}
@@ -767,6 +776,7 @@ export function UsageSection({ ops }: SectionProps) {
       title={t('dashboard.sections.usage')}
     >
       <AskAiElement element="dashboard.ops.usage" period={`d${String(ops.window.days)}`} />
+      <ElementInsight element="dashboard.ops.usage" period={`d${String(ops.window.days)}`} />
       <TileGrid>
         <Figure
           label={t('dashboard.usage.anomalies')}
@@ -860,6 +870,7 @@ export function ServicesSection({ ops }: SectionProps) {
       title={t('dashboard.sections.services')}
     >
       <AskAiElement element="dashboard.ops.services" period={`d${String(ops.window.days)}`} />
+      <ElementInsight element="dashboard.ops.services" period={`d${String(ops.window.days)}`} />
       {services.status !== 'ok' ? (
         <SectionNote figure={services} />
       ) : services.data.length === 0 ? (

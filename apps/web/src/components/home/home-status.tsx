@@ -1,6 +1,7 @@
 'use client';
 
 import { AskAiElement } from '@/components/assistant/ask-ai-element';
+import { ElementInsight } from '@/components/insights/element-insight';
 
 import type { UseQueryResult } from '@tanstack/react-query';
 import type { AutonomyState } from '@watchtower/shared';
@@ -54,6 +55,7 @@ export function AiStatus({ query }: { query: UseQueryResult<AutonomyState> }) {
   return (
     <div className="flex flex-col gap-3">
       <AskAiElement element="home.status" />
+      <ElementInsight element="home.status" period="-" />
       <dl className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm">
         <div className="flex items-center gap-1.5">
           <dt className="text-muted-foreground">{t('home.ai.runs')}</dt>

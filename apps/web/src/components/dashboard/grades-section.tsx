@@ -1,6 +1,7 @@
 'use client';
 
 import { AskAiElement } from '@/components/assistant/ask-ai-element';
+import { ElementInsight } from '@/components/insights/element-insight';
 
 import type { IntentGradeMetrics, ResolutionClass } from '@watchtower/shared';
 import {
@@ -123,6 +124,7 @@ export function IntentGradesSection({ days }: { days: number }) {
       title={t('grade.dashboard.title')}
     >
       <AskAiElement element="dashboard.ops.grades" period={`d${String(days)}`} />
+      <ElementInsight element="dashboard.ops.grades" period={`d${String(days)}`} />
     </DashboardSection>
   );
 }
@@ -140,6 +142,7 @@ function IntentGradeMetricsBody({ days }: { days: number }) {
       title={t('grade.dashboard.title')}
     >
       <AskAiElement element="dashboard.ops.grades" period={`d${String(days)}`} />
+      <ElementInsight element="dashboard.ops.grades" period={`d${String(days)}`} />
       <div className="flex items-center gap-2">
         <HelpHint label={t('grade.dashboard.helpLabel')}>{t('grade.dashboard.help')}</HelpHint>
       </div>

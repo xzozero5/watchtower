@@ -30,6 +30,7 @@ import { devHomeEn } from './devHome';
 import { errorsEn } from './errors';
 import { gradeEn } from './grade';
 import { homeEn } from './home';
+import { insightsEn } from './insights';
 import { investigateEn } from './investigate';
 import { keymapEn } from './keymap';
 import { liveEn } from './live';
@@ -97,6 +98,7 @@ export const en = {
   errors: errorsEn,
   states: statesEn,
   home: homeEn,
+  insights: insightsEn,
   grade: gradeEn,
   admin: adminEn,
   portal: portalEn,

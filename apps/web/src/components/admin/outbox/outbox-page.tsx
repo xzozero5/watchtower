@@ -1,6 +1,7 @@
 'use client';
 
 import { AskAiElement } from '@/components/assistant/ask-ai-element';
+import { ElementInsight } from '@/components/insights/element-insight';
 
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import {
@@ -161,6 +162,7 @@ function OutboxBody() {
       />
       <AdminBody>
         <AskAiElement element="admin.outbox" />
+        <ElementInsight element="admin.outbox" scope="instance" period="-" className="mx-4 mt-4" />
         <div className="flex flex-col gap-4 p-4">
           <HealthStrip
             health={health.data}
