@@ -1,49 +1,60 @@
 # HANDOFF — Watchtower
 
-> อัปเดต 2026-11-07 18:04 Bangkok โดย Codex · เจ้าของสั่ง save งาน ส่งต่อ Claude และถอด schedule แล้ว
-> ฉบับก่อน: docs/handoff-archive/HANDOFF-2026-11-07-pre-claude-handoff.md
+> สถานะล่าสุดของโปรเจกต์ session ใหม่อ่านไฟล์นี้ต่อจาก `AGENTS.md` แล้วทำงานต่อได้โดยไม่ต้องอ่านบทสนทนาเดิม
+> อัปเดตล่าสุด: 2026-11-09 00:57 (เวลากรุงเทพ) โดย Antigravity (Main + 9 Subagents)
+> กฎขนาด ≤ 40 KB — เขียนทับสถานะ ไม่ append ประวัติ · ฉบับก่อน: `docs/handoff-archive/HANDOFF-2026-11-08-pre-jarvis-wave9b-complete.md` · บันทึกรายชั่วโมงอยู่ `logs/daily/2026-11-08.md` และ `logs/daily/2026-11-09.md`
 
 ## สถานะปัจจุบัน
-- Branch **codex/t445-authorization-gates**; mainล่าสุด a6b3c22c (ปิด T407). Branchนี้มี T445a/c และ migration0117 ยังไม่ merge main และยังไม่ deploy.
-- **Automation watchtower-checkpoint ถูกลบจากแอปแล้ว** ตามคำสั่งเจ้าของ 2026-11-07. ห้ามสร้างใหม่เอง. เจ้าของจะให้ Claude รับงานต่อ.
-- Phase1 done pending pilot / Phase2 done pending live / Phase3 done pending live gate. งานassistant/Phase4ที่ค้างให้ดู BACKLOG ล่าสุด. LINE ภายหลัง.
-- **[TESTED] POCกู้กลับแล้ว:** startเฉพาะ9containersเดิม ไม่recreate/config/migrate; ทั้ง9healthy. Login3000/APIready4000/hostbridge4317HTTP200. autosend=false. ไม่มีdeployโค้ดT445ในรอบนี้.
-- Hostbridge PID35492 เปิดด้วย tools/ai-bridge/start-host.ps1, envนอกrepoและoverlay logs/ai-bridge/pinned-runtime.env, CLI pin0.166.0-alpha.5.1. อย่าสลับกลับClaude providerโดยไม่จำเป็น: เจ้าของให้Claudeทำงานพัฒนา ไม่ได้สั่งเปลี่ยนruntimeAIprovider.
-- testcontainersทั้งหมดหยุดแล้ว; รอบนี้ใช้เฉพาะwt-main-pg/wt-main-redisและstopหลังtests ไม่ลบvolume. embedder/oldclaudebridgeยังหยุด.
-- Codex weekly95% (5h13%): checkpoint waiting_limitจนweeklyreset10พ.ย.11:43:24Bangkok. เป็นquotaของCodex ไม่ใช่เหตุห้ามClaudeทำงานต่อ. ไม่มีagents/localtestsค้าง.
+- **Phase:** Phase 1–3 (`done pending pilot / live / live gate`) + **Jarvis AI Assistant Stage 1 & Embedded Element Insights Wave 9a/9b & KB Multi-Index (`T-434`) เสร็จสมบูรณ์ 100%** (เหลือเฉพาะ `T-412` วัดผล live pilot 2 สัปดาห์ และ `T-433` เปิด `EMBEDDING_PROVIDER=local` `[ASK-HUMAN]`).
+- **Build/Test (`[TESTED]` บน Main Thread):**
+  - `pnpm build` (11/11), `pnpm typecheck` (18/18), `pnpm lint` (19/19 รวม `prettier --check .`), `pnpm test:boundaries` (298/298)
+  - `pnpm exec turbo run test --concurrency=2` (11/11 packages รวม `compose-env.test.ts` 617/617)
+  - `@watchtower/db test:integration` (57 files / 556 tests ครอบคลุม up/down migrations `0001`–`0120`)
+  - Targeted integration: `@watchtower/api` assistant (`45/45`) + insights (`32/32`) + KB (`39/39`), `@watchtower/domain` KB (`75/75`) + Wave 9b (`12/12`), `@watchtower/worker` insights (`11/11`) + KB (`15/15`)
+  - Playwright E2E (`PW_CHANNEL=msedge`): `assistant-t410-gate.e2e.ts` (`5/5`) + `element-insight-axe.e2e.ts` (`2/2` light/dark)
+- **Independent Reviews (`[TESTED]` ตามกฎ N7, `P0=0, P1=0, P2=0`):**
+  - `docs/decisions/T-411-security-review.md` (`ADR-034` **Accepted**)
+  - `docs/decisions/T-421-security-review.md` (Wave 9a + 9b Security + QA Gate)
+  - `docs/decisions/T-434-security-review.md` (`ADR-033` **Accepted**)
+  - `docs/decisions/T-412-po-review.md` (`AC-J1`…`AC-J22` Code & Automated Gate `22/22 PASS`)
+- **Deployment:** Local Docker Compose POC (`D:\Works\secret\watchtower.env`) + Host AI Bridge (`127.0.0.1:4317`, mode `codex`, `tools/ai-bridge/start-host.ps1` + `logs/ai-bridge/pinned-runtime.env`). `AI_AUTOSEND_ENABLED=false`, `INSIGHT_PERSON_NARRATION_ENABLED=false`, `EMBEDDING_PROVIDER=mock`.
+- **Credential ที่มีแล้ว:** อยู่ใน `D:\Works\secret\watchtower.env` นอก repo เท่านั้น (ห้ามอ่าน/พิมพ์ค่า N1).
 
-## อำนาจและกฎที่ต้องรักษา
-- เจ้าของอนุมัติทำงานค้างให้ครบ ให้POตัดสินscope/default, review/test, pushGit, deployDockerหลังbackup, stoptestcontainersโดยไม่ลบvolume. ไม่ต้องถามอนุมัติเดิมซ้ำ.
-- LINEภายหลัง. **ห้ามเปิด AI_AUTOSEND_ENABLED** บนPOC/prod;ห้ามส่งข้อความลูกค้าจริงเพื่อทดสอบ.
-- ห้ามอ่าน/พิมพ์secrets; env D:/Works/secret/watchtower.env ให้runnerโหลดเอง. อนุญาตอ่านเฉพาะมี/ไม่มี/ความยาว ไม่ใช่ค่า.
-- N7ผู้ตรวจคนละagentกับผู้ผลิต, mainเปิดไฟล์+รันtestเองก่อนcommit. ห้ามagentแก้golden/rubricตรวจตัวเอง. No forcepush/no-verify. .agents/.codexเป็นdirectoryของเจ้าของอย่าcommit.
-- ข้อมูลลูกค้าอนุมัติclaude-pอัตโนมัติ;redactpassportตามdecisionเดิม, แต่อย่าคลายpolicy/auditนอกADR. ภาษาTH/ENตามglossaryก่อนเจ้าของตรวจตอนเสร็จ.
+## การตัดสินใจของเจ้าของที่มีผลอยู่
+- **Autonomous L2 + Clean Test Containers + Start POC (`2026-11-08` `[CONFIRMED]`):** เจ้าของสั่งให้รันงานค้างแบบขนานจนครบ, ลบ disposable test containers หลังทำเสร็จ (โดยไม่ลบ POC volumes `watchtower_*`), และเปิด POC stack หลักพร้อมทดสอบให้เจ้าของเข้ามาลองเล่นได้ทันที.
+- **Safety & Runtime Guardrails (`[CONFIRMED]`):**
+  - **ห้ามเปิด `AI_AUTOSEND_ENABLED`** บน POC/production และห้ามส่งข้อความหาลูกค้าจริง.
+  - **ห้ามเปลี่ยน runtime AI bridge** จาก Host AI Bridge (`codex` บน `:4317`) ไปเป็น provider อื่นโดยเจ้าของไม่ได้สั่ง.
+  - **ห้ามเปิด `INSIGHT_PERSON_NARRATION_ENABLED`** จนกว่าเจ้าของจะอนุมัติ `C-27` (`[ASK-HUMAN]`).
+  - **ห้ามเปิด `EMBEDDING_PROVIDER=local`** เอง (`T-433` `[ASK-HUMAN]`) — โครงสร้าง multi-index `T-434` (`0119`–`0120` + `pnpm kb:reembed`) พร้อมแล้ว.
+  - `.agents/` และ `.codex/` ใน working tree เป็น directory ของเจ้าของ **ห้าม git add / commit เด็ดขาด**.
 
-## ทำเสร็จและหลักฐาน
-- **T407ปิดบนmain a6b3c22c:** route32/32; mainbrowser10specs161/161 + lint/format/webtypeผ่าน. a/b SSE/Stop/queue/history/pins/feedback/C22ก่อนหน้าตรวจแล้วและwebdeployb7671097. เป็นmockUIgate ไม่ใช่livepilot/securityapproval.
-- **T445a/c source92aef072:** durable serverauthorizationfingerprint+source refs/tools, reauthorize modelhistory/conversationpreview/memory; legacyfailclosed, tombstoneNoaccessTH/ENแต่Forget/Clear/countยังทำงาน. ป้องกันnestedROpoolstarvationด้วยinReadOnlyScope. Toolbudget60/hour/user/toolRedisรวมprefetch. T445b/dยังไม่ทำ.
-- IndependentreviewปิดcodefindingsROpool,previewrevocationและNoaccessUI; reviewerไม่พบP1/P2ค้างในpatchที่ตรวจ. Runtimeacceptanceใหม่ยังมีด้านล่าง.
-- **Migration0117 quote fix3e33ddc1:** quote reservedidentifier "authorization" ทั้งup/downและrawSELECTtest. CI42365786279 rootstatic/unit,e2e,composehealthผ่าน; integration domain510ผ่าน / DB528ผ่าน2ล้มเพราะtest0116สมมติตัวเองเป็นlatest. ไม่ใช่0117syntaxerrorแล้ว.
-- **Patchท้ายรอบ:** packages/db/src/ai-cli-provider.integration.test.ts ใช้migrationsAfter+stepsจริงทั้ง2tests;คงunknownprovider23514/auditrollbackrefusal/count1. Reviewerตรวจแล้วไม่พบfinding. MainDBlint/type/formatผ่าน.
-- **[TESTED] MainจริงหลังDockerเปิด:** DBfocused2files **16/16ผ่าน** รวม0116rollbackและ0117nullable/reversibility; logs/deploy/2026-11-07-t445-db-focused.log exit0. APIfocused2files **5/5ผ่าน** authorizationrevocation/crossuser/forgery/legacy/purge/cap+realRedis61stdeny/user-toolisolation; logs/deploy/2026-11-07-t445-api-focused.log exit0.
-- Mainก่อนหน้าAPI35unit/web6unit/APIwebtype/scopedlintผ่าน. Fullbackendใหม่ยังต้องrunตามขั้นถัดไป.
+## ทำเสร็จใน session นี้
+| งาน | ผล | ไฟล์หลัก |
+| --- | --- | --- |
+| `T-446` | `[TESTED]` Migration `0118` รองรับ `window_start = window_end` เฉพาะ `insufficient_data` + ถอด `-1s` workaround + DB integration `5/5` | `packages/db/migrations/0118_gate_report_equal_window.sql`, `packages/domain/src/autonomy/gate-report.ts` |
+| `T-445` (`a/b/c/d`) + `T-410` + `T-411` | `[TESTED]` Re-auth history/preview/memory + Redis tool budget 60/hr + C-17 PII audit fail-closed + `<=10` `<user_notes>` + RBAC `16/16` + Injection `15/15` + E2E `5/5` (`ADR-034` Accepted) | `apps/api/src/assistant/**`, `packages/ai/src/agents/assistant.ts`, `docs/decisions/T-411-security-review.md` |
+| `T-418` + `T-419a` + `T-420` + `T-421` | `[TESTED]` Worker `insights.refresh` + `<ElementInsight>` 6 states TH/EN + ครบ 30/30 Mode `F`/`N` placements + RBAC `43×7` + Eval `35/35` hallucinated=0 | `apps/worker/src/insights/**`, `packages/domain/src/insights/**`, `apps/web/src/components/insights/**`, `docs/decisions/T-421-security-review.md` |
+| `T-412` (Code Gate) | `[TESTED]` PO ตรวจอิสระครบ `AC-J1`…`AC-J22` (`22/22 PASS`); คง `[ ]` รอวัดผลใช้งานจริงใน live pilot 2 สัปดาห์ | `docs/decisions/T-412-po-review.md` |
+| `T-434` (`a/b/c`) | `[TESTED]` Multi-index `kb_chunk_embeddings` (`0119`) + atomic lease/fencing (`0120`) + `pnpm kb:reembed` + active-spec query/pinned worker (`ADR-033` Accepted) | `packages/db/src/kb-reembed.ts`, `packages/domain/src/kb/**`, `apps/api/src/kb/kb-embedding.service.ts`, `apps/worker/src/kb/processor.ts` |
 
-## งานค้างและขั้นถัดไป
-1. ตรวจGitbranch/HEAD/statusและCIล่าสุดหลังpushpatchท้ายรอบ; อย่าทำT407/T419b/T418a/T432ซ้ำ.
-2. **T445a/c ยังไม่ติ๊ก:** รัน API assistant-memory.integration.test.ts (รวมpreviewauthorized→revoked/legacyและpin409fixture), assistant-foundation.integration.test.ts (realticket/KB4concurrentROpoolregression). จากนั้นfullintegration/rootstatic/unit/e2eตามDoD โดยmainตรวจเอง. อย่าอ้างfocused5testsครอบสองไฟล์นี้.
-3. **T446ยังไม่implement:** workerfreshintentgate report window_start==window_end millisecond truncation→tableCHECKerror. ก่อนหน้าวินิจฉัยให้รองรับequalityเฉพาะinsufficient_dataในreversiblemigrationถัด0117,เลิกbackdate1s,คงห้ามreversed/greenwindowสั้น28วัน;ต้องreviewsecurity/rollbackที่มีequalrowsและdeterministicregression. ห้ามแก้แค่sleepหรือbackdatetestเพื่อซ่อนproductionbug.
-4. เมื่อT445gatesผ่านค่อยmerge main, backupverifiedก่อนmigrate0117/deployAPIworkerweb, verifyHTTP+bridgepin+autosendfalseแล้วpush;stoptestcontainersหลังใช้. POCDBยัง0116.
-5. ต่อT445b C17PIIauditcatalogue(team_status/load/roster/notesรวมno-chip+auditfailwithhold), T445dเชื่อม<=10pinnedfactsเข้าuser_notesอย่างreauthorize/redact/neutralizeและไม่ใช้oldplaceholdermapผิดคน. ปัจจุบันmemoryมีแค่CRUDยังไม่มีผลต่อprompt. แล้ว410/411/412 reviews.
-6. คิวfeatureจากBACKLOG: T418writer→419a→420/421; T434a/b/cตามADR033ก่อนT433localembedderenable. bge-m3เคยdownload/calibratefloor.55 recall100/noise6บนpublicexamples;runtimeยังmockและembedderหยุด อย่าเปิดก่อนhybridindexgates.
+## ค้าง / ติดอะไร
+- ไม่มีงานโค้ดในเฟสปัจจุบันค้าง — เหลือเฉพาะรายการที่ต้องใช้ credential จริง / live pilot / การตัดสินใจของเจ้าของด้านล่าง.
 
-## วิธีรันทดสอบโดยไม่แตะPOC
-- TEST_DATABASE_URL synthetic: postgres://watchtower:watchtower@127.0.0.1:45802/watchtower (wt-main-pg)
-- TEST_REDIS_URL redis://127.0.0.1:46802 (wt-main-redis)
-- TEST_S3_ENDPOINT http://127.0.0.1:49802 (wt-main-minio), TEST_SMTP_PORT41802 (wt-main-mailpit;HTTP48802)
-- API/workerintegrationguardต้องมีTEST_*ครบ4ตัวแม้บางtestใช้แค่PG/Redis. ห้ามdefaultPOC5432/6379/9000/1025. Startเฉพาะtestcontainersที่จำเป็น. ดูdocs/runbooks/local-poc.mdและtools/e2e-stack.
-- ตัวอย่าง: pnpm --filter @watchtower/api exec vitest run --config vitest.integration.config.ts src/assistant/assistant-memory.integration.test.ts src/assistant/assistant-foundation.integration.test.ts (ตั้งTEST_*ก่อน)
-- POCbackupล่าสุด D:/Works/watchtower-backups/poc-20261106-163914-pre-t407b.dump13,758,801bytes. ต้องbackupใหม่ก่อนdeployรอบใหม่.
+## รอเจ้าของ (`[ASK-HUMAN]`)
+- [ ] **`T-433` เปิด Hybrid Local Embeddings (`BAAI/bge-m3`):** เมื่อพร้อมเปิดใช้งานจริง ให้รัน embedder service, รัน `pnpm kb:reembed --provider local --model BAAI/bge-m3 --dims 1024 --activate`, และสลับ `EMBEDDING_PROVIDER=local`
+- [ ] **`T-412` / `C-25` / `C-27`:** ทดลองเล่น Jarvis Assistant + Embedded Element Insights บน POC (`http://localhost:3000`), ยืนยัน retention (`C-25`), นโยบาย `INSIGHT_PERSON_NARRATION_ENABLED` (`C-27`), และเก็บผลใช้งานจริง 2 สัปดาห์ใน pilot (`T-115`)
+- [ ] **Pilot & Live Credentials (`T-115`, `T-207`, Phase 3 Stage 3 Gate):** เตรียม instance ใหม่สำหรับทีม + GCP/Discord credentials จริง + เลือก intent แรกเมื่อพร้อมเปิด shadow/live gate
 
-## รอเจ้าของ/ก่อนpilot
-- Pilotใช้instanceใหม่;VAPIDenv,Weeklybriefrecipientdomains,Googleจริงstepup,graderคนละmodelจากdrafter,สิทธิ์ownerapprove,rotatepubsubkey90วัน ยังต้องตรวจตามSTATUS/runbook. ไม่มีcredentialใหม่ให้เดาหรือยืมkey.
-- รายละเอียดADR/PRD/decisionsเดิมดูdocs/decisions/README.md,STATUS,BACKLOG; archiveเป็นประวัติไม่ใช่สถานะruntimeปัจจุบัน.
+## ขั้นต่อไป (เรียงลำดับ)
+1. เจ้าของทดสอบใช้งานจริงบน POC (`http://localhost:3000`) — ทั้ง Jarvis (`Ctrl/Cmd+J`, Ask AI chip, Memory/Pin) และ `<ElementInsight>` บนหน้า Home / Queue / Ops / Dashboard / Reports / Admin.
+2. หากเจ้าของต้องการเปิด `BAAI/bge-m3` จริง (`T-433`): เปิด profile `local-embed`, รัน `pnpm kb:reembed --activate`, และตรวจ recall/latency บน POC.
+3. เตรียมเริ่ม `T-115` Internal Pilot ตาม `docs/runbooks/` เมื่อเจ้าของพร้อม deploy instance ใหม่สำหรับทีม.
+
+## ยังไม่ยืนยัน (ห้ามเขียนเป็นข้อเท็จจริง)
+- ผลการใช้งานจริงของทีมใน pilot 2 สัปดาห์สำหรับ `T-412` (`≥ 60%` active users, `👎 < 15%`) ยังไม่เกิดขึ้นจริง `[UNVERIFIED 0%]` — โค้ดและ automated gate ผ่านครบแล้ว (`docs/decisions/T-412-po-review.md`).
+- อัตรา recall/latency ของ `BAAI/bge-m3` บน KB จริงขององค์กรหลังเปิด `T-433` ยังวัดเฉพาะชุดตัวอย่างสาธารณะใน `STATUS.md` `[VERIFY]`.
+
+## วันตรวจซ้ำ
+- ตรวจความพร้อมก่อนเริ่ม Pilot (`T-115` / `T-412` live window): 2026-11-16
+- รอบหมุน key / ตรวจทาน `ADR-021` / `ADR-034` retention: 2027-02-01

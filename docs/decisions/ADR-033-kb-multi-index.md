@@ -1,6 +1,6 @@
 # ADR-033 — KB vectors หลาย index และการสลับ index แบบ atomic
 
-- **Status:** Accepted (แนวทาง implementation; ยังไม่อ้างว่าทดสอบผ่าน)
+- **Status:** Accepted (2026-11-09 — implementation & independent security review `PASS`, `T-434-security-review.md` `[TESTED]`)
 - **Date:** 2026-11-06 (เวลากรุงเทพ) · **ผู้ตัดสิน:** main ตามอำนาจที่เจ้าของมอบให้ PO/main สำหรับ T-434
 - **Context:** T-434 ต้อง enqueue re-embed เองและรักษา active vectors ระหว่าง rebuild. [CONFIRMED: อ่าน source] replaceArticleChunks ลบ chunks เดิมทั้ง article; API คืน keyword เมื่อ configured target ต่างจาก active index. เก็บ vector เก่าอย่างเดียวจึงยังรักษา hybrid search ไม่ได้. Architectอิสระเสนอและ main ตรวจ source ที่เกี่ยวข้องแล้ว.
 

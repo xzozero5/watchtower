@@ -36,6 +36,6 @@
 
 - [ADR-032](ADR-032-codex-continuation.md) — checkpoint + Codex app heartbeat ทุกชั่วโมง เคารพโควตา 5h/weekly, ไม่มี auth scraping/retry loop · Accepted 2026-11-06
 
-- [ADR-033](ADR-033-kb-multi-index.md) — immutable KB chunks + vectorsต่อindex, active-specquery และ atomicpublish/switch; แผน T434ก่อนเปิดT433 · Acceptedแนวทาง2026-11-06 (implementationยังไม่ทดสอบ)
+- [ADR-033](ADR-033-kb-multi-index.md) — immutable KB chunks + vectors ต่อ index (`0119`), durable re-embed lease/fencing (`0120`), active-spec query, atomic publish/switch และ `pnpm kb:reembed` (T-434a/b/c) · **Accepted 2026-11-09** (`T-434-security-review.md`)
 
-- [ADR-034](ADR-034-assistant-authorized-memory.md) — server-ownedauthorizationmetadata/history+memoryrevocation/tombstone90dayprovenance · Accepted2026-11-06 (รอimplementation/tests)
+- [ADR-034](ADR-034-assistant-authorized-memory.md) — server-owned authorization metadata / history + memory revocation / tombstone 90-day provenance · **Accepted 2026-11-08** (`T-411-security-review.md`)
