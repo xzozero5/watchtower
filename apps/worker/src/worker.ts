@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import type { AddressInfo } from 'node:net';
 
+import { warnIfSingleProcessAssumptionBroken } from '@watchtower/ai';
 import { createDatabase, type OutboxPublisher } from '@watchtower/db';
 import {
   createDomain,
@@ -71,6 +72,10 @@ export async function startWorker(
   logger: WorkerLogger,
   options: StartOptions = {},
 ): Promise<RunningWorker> {
+  warnIfSingleProcessAssumptionBroken('worker', config.WORKER_REPLICAS, (fields, message) => {
+    logger.warn(fields, message);
+  });
+
   const database = createDatabase({
     url: config.DATABASE_URL,
     max: 5,
@@ -131,6 +136,14 @@ export async function startWorker(
   realtimeRedis.on('error', (error: Error) => {
     logger.error({ err: error }, 'realtime redis connection error');
   });
+  const workerRedis = new Redis({
+    ...connection,
+    connectionName: `${config.OTEL_SERVICE_NAME}-worker-ops`,
+    maxRetriesPerRequest: 2,
+  });
+  workerRedis.on('error', (error: Error) => {
+    logger.error({ err: error }, 'worker ops redis connection error');
+  });
   const realtime = createRealtimeSink(realtimeRedis, options.realtimeChannel);
   const overrides = options.overrides ?? {};
   // The AI layer (T-106e, T-132): AI_PROVIDER picks the adapter (mock by default). A real provider
@@ -186,6 +199,11 @@ export async function startWorker(
     return worker;
   };
 
+  const aiQueue = new Queue(QUEUE_NAMES.ai, { connection, ...prefixOption });
+  aiQueue.on('error', (error) => {
+    logger.error({ err: error }, 'ai queue handle error');
+  });
+
   for (const registration of PROCESSORS) {
     consume(
       registration.queue,
@@ -199,6 +217,8 @@ export async function startWorker(
         ai,
         gmail: gmailRuntime,
         overrides,
+        redis: workerRedis,
+        aiQueue,
       }),
       registration.concurrency,
     );
@@ -279,10 +299,14 @@ export async function startWorker(
       await publisher.close();
       await Promise.all(consumers.map((consumer) => consumer.close()));
       await probe.close();
+      await aiQueue.close();
       await Promise.all([...schedulers.values()].map((scheduler) => scheduler.close()));
       mailer.close();
       await realtimeRedis.quit().catch(() => {
         realtimeRedis.disconnect();
+      });
+      await workerRedis.quit().catch(() => {
+        workerRedis.disconnect();
       });
       await new Promise<void>((resolve) => {
         health.close(() => {

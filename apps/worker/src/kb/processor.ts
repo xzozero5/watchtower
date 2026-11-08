@@ -1,5 +1,5 @@
 import { assertChunkOptions, type ChunkOptions } from '@watchtower/domain';
-import { KB_JOBS, embedArticleJobSchema } from '@watchtower/shared';
+import { KB_JOBS, embedArticleJobSchema, reembedAllJobSchema } from '@watchtower/shared';
 import { UnrecoverableError, type Job } from 'bullmq';
 
 import type { WorkerConfig } from '../config.js';
@@ -47,7 +47,12 @@ export function createKbProcessor(deps: KbDeps) {
         return result;
       }
       case KB_JOBS.reembedAll: {
-        const result = await reembedAll(deps);
+        const parsed = reembedAllJobSchema.safeParse(job.data ?? {});
+        if (!parsed.success) throw new UnrecoverableError('invalid reembed_all payload');
+        const result = await reembedAll(deps, {
+          actorId: parsed.data.actorId,
+          workerId: `worker-${job.id ?? String(process.pid)}`,
+        });
         if (result.queued > 0) deps.logger.info({ ...result }, 'knowledge base re-embedded');
         if (result.failed > 0)
           throw new Error(`${String(result.failed)} articles failed; retrying`);

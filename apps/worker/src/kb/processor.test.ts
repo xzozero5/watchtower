@@ -31,3 +31,25 @@ describe('chunkOptionsFrom', () => {
     expect(() => chunkOptionsFrom(skewed)).toThrow(/Chunk sizes/);
   });
 });
+
+describe('createKbProcessor payload validation (T-434c)', () => {
+  it('accepts both manual reembed payload and cron empty object payload', async () => {
+    const { createKbProcessor } = await import('./processor.js');
+    const deps = {
+      database: {} as never,
+      ai: undefined,
+      logger: { info: () => {}, warn: () => {} },
+      chunking: { targetChars: 900, maxChars: 1400, minChars: 120, overlapChars: 120 },
+    };
+    // Mock reembedAll
+    const processor = createKbProcessor(deps);
+
+    // Invalid payload throws UnrecoverableError
+    await expect(
+      processor({
+        name: 'reembed_all',
+        data: { requestId: 'not-a-uuid' },
+      } as never),
+    ).rejects.toThrow(/invalid reembed_all payload/);
+  });
+});

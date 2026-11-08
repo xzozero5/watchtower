@@ -14,7 +14,7 @@ import {
 import { QUEUE_NAMES, parseRedisUrl, type CreateKbArticle } from '@watchtower/shared';
 import { disableNetConnect } from '@watchtower/shared/testing';
 import { Queue } from 'bullmq';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
 import { createAiRuntime } from '../ai/runtime.js';
@@ -97,6 +97,26 @@ afterAll(async () => {
 beforeEach(async () => {
   providerRequests = [];
   await setKillSwitch(false);
+  await testDb.owner.db.transaction(async (tx) => {
+    const [mockIndex] = await tx
+      .select({ id: schema.kbEmbeddingIndex.id, isActive: schema.kbEmbeddingIndex.isActive })
+      .from(schema.kbEmbeddingIndex)
+      .where(
+        and(
+          eq(schema.kbEmbeddingIndex.provider, 'mock'),
+          eq(schema.kbEmbeddingIndex.model, 'mock-embedding'),
+          eq(schema.kbEmbeddingIndex.dimensions, 16),
+        ),
+      )
+      .limit(1);
+    if (mockIndex && !mockIndex.isActive) {
+      await tx.update(schema.kbEmbeddingIndex).set({ isActive: false });
+      await tx
+        .update(schema.kbEmbeddingIndex)
+        .set({ isActive: true })
+        .where(eq(schema.kbEmbeddingIndex.id, mockIndex.id));
+    }
+  });
 });
 
 async function waitFor<T>(

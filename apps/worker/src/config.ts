@@ -47,6 +47,10 @@ const workerEnvSchema = createEnvSchema({
     emptyToUndefined,
     z.coerce.number().int().min(1).max(64).default(1),
   ),
+  /**
+   * Person narration (DoD C-25 / ADR-029 section 9.9): disabled until golden answer suite passes.
+   */
+  INSIGHT_PERSON_NARRATION_ENABLED: z.preprocess(emptyToUndefined, z.stringbool().default(false)),
   /** How often the outbox relay looks for pending jobs to hand to BullMQ (milliseconds, ADR-006). */
   OUTBOX_POLL_INTERVAL_MS: z.coerce.number().int().min(100).max(60_000).default(1000),
   /**

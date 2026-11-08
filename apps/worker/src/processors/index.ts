@@ -1,8 +1,10 @@
-import type { Database } from '@watchtower/db';
+import { schema, type Database } from '@watchtower/db';
 import type { Domain } from '@watchtower/domain';
 import { QUEUE_NAMES, type QueueName } from '@watchtower/shared';
 import { KEY_LABELS, deriveSubkey } from '@watchtower/shared/secret-box';
-import type { Processor } from 'bullmq';
+import type { Processor, Queue } from 'bullmq';
+import { eq } from 'drizzle-orm';
+import type { Redis } from 'ioredis';
 
 import type { WorkerConfig } from '../config.js';
 import { createAiPipelineProcessor } from '../ai/pipeline.js';
@@ -35,6 +37,7 @@ import { chunkOptionsFrom, createKbProcessor } from '../kb/processor.js';
 import { createCleanupProcessor } from './cleanup.js';
 import { createMaintenanceProcessor } from './maintenance.js';
 import { processSystemJob } from './system.js';
+import { createInsightsProcessor, INSIGHTS_QUEUE, markInsightDirty } from '../insights/index.js';
 
 /** What a processor may need. Add a field here only when two features want it. */
 export interface ProcessorContext {
@@ -52,6 +55,10 @@ export interface ProcessorContext {
   readonly gmail: GmailRuntime;
   /** Test doubles for the outside world (storage, provider transports, classifier). Production passes none. */
   readonly overrides: ProcessorOverrides;
+  /** Redis client for marks and background queues (T-418). */
+  readonly redis?: Redis;
+  /** Queue `ai` handle for yielding background insights when customer jobs wait (T-418). */
+  readonly aiQueue?: Queue;
 }
 
 export interface ProcessorOverrides {
@@ -75,6 +82,19 @@ export interface ProcessorRegistration {
   readonly create: (context: ProcessorContext) => Processor;
   /** Overrides `WORKER_CONCURRENCY` for this queue (for example 1 for a strictly ordered one). */
   readonly concurrency?: number;
+}
+
+async function findTicketAssignee(
+  database: Database,
+  ticketId?: string,
+): Promise<string | undefined> {
+  if (!ticketId) return undefined;
+  const [t] = await database.db
+    .select({ assigneeId: schema.ticket.assigneeId })
+    .from(schema.ticket)
+    .where(eq(schema.ticket.id, ticketId))
+    .limit(1);
+  return t?.assigneeId ?? undefined;
 }
 
 /**
@@ -118,7 +138,38 @@ export const PROCESSORS: readonly ProcessorRegistration[] = [
   },
 
   // --- inbound (T-122) ---
-  { queue: QUEUE_NAMES.ingest, create: createIngestRegistration },
+  {
+    queue: QUEUE_NAMES.ingest,
+    create: (context) => {
+      const processor = createIngestRegistration(context);
+      return async (job) => {
+        const result: unknown = await processor(job);
+        if (context.redis) {
+          try {
+            const data =
+              typeof job.data === 'object' && job.data !== null
+                ? (job.data as Record<string, unknown>)
+                : {};
+            const res =
+              typeof result === 'object' && result !== null
+                ? (result as Record<string, unknown>)
+                : {};
+            const ticketId =
+              typeof data.ticketId === 'string'
+                ? data.ticketId
+                : typeof res.ticketId === 'string'
+                  ? res.ticketId
+                  : undefined;
+            const userId = await findTicketAssignee(context.database, ticketId);
+            await markInsightDirty(context.redis, 'ticket', userId ? { userId } : undefined);
+          } catch (err) {
+            context.logger.warn({ err }, 'best-effort markInsightDirty failed for ingest');
+          }
+        }
+        return result;
+      };
+    },
+  },
 
   // --- outbound (T-122d) ---
   { queue: QUEUE_NAMES.outbound, create: createOutboundRegistration },
@@ -128,6 +179,7 @@ export const PROCESSORS: readonly ProcessorRegistration[] = [
   { queue: QUEUE_NAMES.gmail, create: createGmailRegistration, concurrency: 1 },
 
   // --- line (T-103) ---
+  // One at a time: a webhook may deliver several events in one batch; process them in order.
   { queue: QUEUE_NAMES.line, create: createLineRegistration, concurrency: 1 },
 
   // --- discord (T-104) ---
@@ -139,7 +191,27 @@ export const PROCESSORS: readonly ProcessorRegistration[] = [
   // --- ai (T-106, T-108) ---
   {
     queue: QUEUE_NAMES.ai,
-    create: createAiPipelineProcessor,
+    create: (context) => {
+      const processor = createAiPipelineProcessor(context);
+      return async (job) => {
+        const result: unknown = await processor(job);
+        if (context.redis) {
+          try {
+            const data =
+              typeof job.data === 'object' && job.data !== null
+                ? (job.data as Record<string, unknown>)
+                : {};
+            const ticketId = typeof data.ticketId === 'string' ? data.ticketId : undefined;
+            const userId = await findTicketAssignee(context.database, ticketId);
+            await markInsightDirty(context.redis, 'ticket', userId ? { userId } : undefined);
+            await markInsightDirty(context.redis, 'sla');
+          } catch (err) {
+            context.logger.warn({ err }, 'best-effort markInsightDirty failed for ai');
+          }
+        }
+        return result;
+      };
+    },
   },
 
   // --- kb (T-107) ---
@@ -164,11 +236,44 @@ export const PROCESSORS: readonly ProcessorRegistration[] = [
 
   // --- alerts (T-201d) ---
   // One at a time: two sweeps would only contend for the same alerts (the rows are locked anyway).
-  { queue: QUEUE_NAMES.alerts, create: createAlertsRegistration, concurrency: 1 },
+  {
+    queue: QUEUE_NAMES.alerts,
+    create: (context) => {
+      const processor = createAlertsRegistration(context);
+      return async (job) => {
+        const result: unknown = await processor(job);
+        if (context.redis) {
+          try {
+            await markInsightDirty(context.redis, 'alert');
+          } catch (err) {
+            context.logger.warn({ err }, 'best-effort markInsightDirty failed for alerts');
+          }
+        }
+        return result;
+      };
+    },
+    concurrency: 1,
+  },
 
   // --- incidents (T-202b) ---
   // The Discord thread of an incident, then the lines mirrored into it.
-  { queue: QUEUE_NAMES.incidents, create: createIncidentsRegistration },
+  {
+    queue: QUEUE_NAMES.incidents,
+    create: (context) => {
+      const processor = createIncidentsRegistration(context);
+      return async (job) => {
+        const result: unknown = await processor(job);
+        if (context.redis) {
+          try {
+            await markInsightDirty(context.redis, 'incident');
+          } catch (err) {
+            context.logger.warn({ err }, 'best-effort markInsightDirty failed for incidents');
+          }
+        }
+        return result;
+      };
+    },
+  },
 
   // --- statuspage (T-204c) ---
   // The double opt-in email and the notices of a published post or window.
@@ -189,4 +294,12 @@ export const PROCESSORS: readonly ProcessorRegistration[] = [
   // --- uploads (T-155) ---
   // One at a time: two ticks would scan the same files twice.
   { queue: QUEUE_NAMES.scan, create: createScanRegistration, concurrency: 1 },
+
+  // --- insights (T-418, ADR-029 section 9.4) ---
+  // Strictly one at a time, isolated from the main `ai` queue.
+  {
+    queue: INSIGHTS_QUEUE,
+    create: createInsightsProcessor,
+    concurrency: 1,
+  },
 ];

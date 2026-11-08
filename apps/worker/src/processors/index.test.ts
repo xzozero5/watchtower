@@ -7,7 +7,8 @@ import { PROCESSORS } from './index.js';
 describe('processor registry', () => {
   it('registers every declared queue exactly once, and nothing else', () => {
     const registered = PROCESSORS.map((registration) => registration.queue).toSorted();
-    expect(registered).toEqual(Object.values(QUEUE_NAMES).toSorted());
+    const expected = Object.values(QUEUE_NAMES).toSorted();
+    expect(registered).toEqual(expected);
   });
 
   it('keeps the core queues the worker has always consumed', () => {

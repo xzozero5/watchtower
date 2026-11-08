@@ -89,6 +89,12 @@ export interface AiRuntime {
    * provider sees any text (N4), and metered as `ai_run` rows of the `embedder` agent.
    */
   readonly embedder: AuditedEmbedder;
+  /** Pinned embedder for a specific (provider, model, dimensions) spec (ADR-033 §4, §5). */
+  embedderFor?(spec: {
+    readonly provider: ProviderKind;
+    readonly model: string;
+    readonly dimensions: number;
+  }): AuditedEmbedder | undefined;
   /** The provider and model settings in force (PRD section 6.7), for the embedding model among them. */
   readonly settings: SettingsSource;
   /**
@@ -226,9 +232,8 @@ export function createAiRuntime(
     sink,
     now: () => now().getTime(),
   });
-  const embedder = createAuditedEmbedder({
-    settings,
-    providers: overrides.embeddingProviders ?? {
+  const resolvedEmbeddingProviders: Partial<Record<ProviderKind, EmbeddingProvider>> =
+    overrides.embeddingProviders ?? {
       mock: new MockEmbeddingProvider(),
       // Indexing waits longer per call than a search does: a cold model takes a while to load.
       ...(config.EMBEDDING_PROVIDER === 'local'
@@ -241,13 +246,57 @@ export function createAiRuntime(
             }),
           }
         : {}),
-    },
+    };
+  const kbRedactor = createRedactor();
+  const embedder = createAuditedEmbedder({
+    settings,
+    providers: resolvedEmbeddingProviders,
     sink,
     // No name dictionary: knowledge base articles are written by staff, not by a ticket's people.
-    redactor: createRedactor(),
+    redactor: kbRedactor,
     guard,
     now: () => now().getTime(),
   });
+  const pinnedEmbedders = new Map<string, AuditedEmbedder>();
+  const embedderFor = (spec: {
+    readonly provider: ProviderKind;
+    readonly model: string;
+    readonly dimensions: number;
+  }): AuditedEmbedder | undefined => {
+    if (resolvedEmbeddingProviders[spec.provider] === undefined) return undefined;
+    if (
+      overrides.embeddingProviders === undefined &&
+      spec.provider === 'local' &&
+      (spec.model !== config.EMBEDDING_MODEL || spec.dimensions !== config.EMBEDDING_DIMENSIONS)
+    ) {
+      return undefined;
+    }
+    const key = `${spec.provider}:${spec.model}:${String(spec.dimensions)}`;
+    const cached = pinnedEmbedders.get(key);
+    if (cached !== undefined) return cached;
+    const pinned = createAuditedEmbedder({
+      settings: {
+        load: async () => {
+          const current = await settings.load();
+          return {
+            ...current,
+            embedding: {
+              provider: spec.provider,
+              model: spec.model,
+              dimensions: spec.dimensions,
+            },
+          };
+        },
+      },
+      providers: resolvedEmbeddingProviders,
+      sink,
+      redactor: kbRedactor,
+      guard,
+      now: () => now().getTime(),
+    });
+    pinnedEmbedders.set(key, pinned);
+    return pinned;
+  };
 
   const readiness = async (): Promise<AiReadiness> => {
     if (kind === 'mock') return { ready: true, problems: [] };
@@ -296,6 +345,7 @@ export function createAiRuntime(
     prompts,
     agentDeps,
     embedder,
+    embedderFor,
     settings,
     limiter,
     classifierFor: createAiClassifierFactory({ agentDeps, database, logger }),

@@ -19,6 +19,8 @@ import {
 } from '@watchtower/shared';
 import type { JobsOptions, RepeatOptions } from 'bullmq';
 
+import { INSIGHT_JOBS, INSIGHTS_QUEUE } from './insights/index.js';
+
 export interface ScheduleRegistration {
   readonly queue: QueueName;
   /** Stable id of the BullMQ job scheduler; upserting the same id again changes it in place. */
@@ -267,6 +269,20 @@ export const SCHEDULES: readonly ScheduleRegistration[] = [
     job: {
       name: SCAN_JOBS.housekeeping,
       opts: { removeOnComplete: true, removeOnFail: { age: 7 * 24 * 3600 } },
+    },
+    runAtBoot: true,
+  },
+
+  // --- insights (T-418, ADR-029 section 9.4) ---
+  {
+    queue: INSIGHTS_QUEUE,
+    id: INSIGHT_JOBS.tick,
+    // Idempotent tick every 2 minutes: sweeps dirty marks, evaluates debounce/max-wait, checks 24h viewers,
+    // verifies materiality/fingerprints, and generates narrations with concurrency 1.
+    repeat: { every: 2 * 60_000 },
+    job: {
+      name: INSIGHT_JOBS.tick,
+      opts: { removeOnComplete: true, removeOnFail: { age: 24 * 3600 } },
     },
     runAtBoot: true,
   },
