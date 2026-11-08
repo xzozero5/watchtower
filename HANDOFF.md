@@ -1,12 +1,13 @@
 # HANDOFF — Watchtower
 
 > สถานะล่าสุดของโปรเจกต์ session ใหม่อ่านไฟล์นี้ต่อจาก `AGENTS.md` แล้วทำงานต่อได้โดยไม่ต้องอ่านบทสนทนาเดิม
-> อัปเดตล่าสุด: 2026-11-09 02:07 (เวลากรุงเทพ) โดย Antigravity (Main + Parallel Subagents)
+> อัปเดตล่าสุด: 2026-11-09 02:38 (เวลากรุงเทพ) โดย Antigravity (Main + Parallel Subagents)
 > กฎขนาด ≤ 40 KB — เขียนทับสถานะ ไม่ append ประวัติ · ฉบับก่อน: `docs/handoff-archive/HANDOFF-2026-11-09-pre-birdday-ui-polish.md` · บันทึกรายชั่วโมงอยู่ `logs/daily/2026-11-08.md` และ `logs/daily/2026-11-09.md`
 
 ## สถานะปัจจุบัน
 - **Phase:** Phase 1–3 (`done pending pilot / live / live gate`) + **Jarvis/Birdday AI Assistant Stage 1, Embedded Element Insights Wave 9a/9b, KB Multi-Index (`T-434`), และ Birdday Cockatiel Persona / Claude-Style Chat UX / Lively Shimmer Skeletons (`T-447`) เสร็จสมบูรณ์ 100%** (เหลือเฉพาะ `T-412` วัดผล live pilot 2 สัปดาห์ และ `T-433` เปิด `EMBEDDING_PROVIDER=local` `[ASK-HUMAN]`).
 - **Build/Test & CI (`[TESTED]`):**
+  - GitHub Actions CI run `42514898285` **เขียวครบทั้ง 4 jobs**: `Docker Compose build, up, health` (2m54s), `Lint, typecheck, unit tests` (9m08s), `End-to-end (Playwright)` (10m45s — Web e2e + Full-stack e2e), `Integration tests` (12m52s) · Fast-forward merged เข้า `main`
   - Local gates บน Main Thread: `pnpm build` (11/11), `pnpm typecheck` (18/18), `pnpm lint` (19/19), `@watchtower/ui` (`16/16` files, `815/815` tests), `@watchtower/web` unit (`156/156` files, `1,807/1,807` tests), Playwright Edge E2E + `axe` light/dark (`52/52` passed, `0` violations)
 - **Independent Reviews (`[TESTED]` ตามกฎ N7, `P0=0, P1=0, P2=0`):**
   - `docs/decisions/T-447-review.md` (`Birdday` Persona + Claude-Style Chat + Shimmer Skeletons — `qa-engineer` + `security-reviewer` **PASS**)
