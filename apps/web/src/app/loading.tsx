@@ -13,7 +13,7 @@ export default function Loading() {
     <div
       role="status"
       aria-live="polite"
-      className="flex min-h-dvh flex-col motion-safe:animate-fade-in"
+      className="flex min-h-dvh flex-col motion-safe:animate-rise-in"
     >
       <span className="sr-only">{t('loading.label')}</span>
 

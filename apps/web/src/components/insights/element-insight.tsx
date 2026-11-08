@@ -117,7 +117,7 @@ export function ElementInsight({
         aria-label={t('insights.elementTitle')}
         aria-busy="true"
         className={cn(
-          'flex items-center gap-2 rounded-inner bg-surface-muted/60 px-3 py-2 text-xs text-muted-foreground motion-safe:animate-fade-in',
+          'flex items-center gap-2 rounded-inner bg-surface-muted/60 px-3 py-2 text-xs text-muted-foreground motion-safe:animate-rise-in',
           className,
         )}
       >
@@ -205,7 +205,7 @@ export function ElementInsight({
       data-element={key}
       data-state={state}
       className={cn(
-        'flex flex-col gap-2 rounded-inner bg-surface-muted/40 p-3 text-sm text-foreground ring-1 ring-border/50 motion-safe:animate-fade-in',
+        'flex flex-col gap-2 rounded-inner bg-surface-muted/40 p-3 text-sm text-foreground ring-1 ring-border/50 motion-safe:animate-rise-in',
         className,
       )}
     >

@@ -316,7 +316,7 @@ function AssistantPanelForUser({ id, context, open, onClose, onClosed }: Assista
 
       {chat.turns.map((turn) =>
         turn.kind === 'user' ? (
-          <div key={turn.id} className="flex flex-col items-end gap-1 motion-safe:animate-pop-in">
+          <div key={turn.id} className="flex flex-col items-end gap-1 motion-safe:animate-rise-in">
             <span className="text-[11px] font-medium text-muted-foreground">
               {t('assistant.thread.you')}
             </span>
@@ -673,7 +673,7 @@ function AssistantPanelForUser({ id, context, open, onClose, onClosed }: Assista
       data-testid="assistant-panel"
       {...{ [ASSISTANT_SURFACE_ATTRIBUTE]: '' }}
       className={cn(
-        'fixed inset-0 z-30 flex flex-col [&[hidden]]:hidden bg-surface text-foreground md:inset-auto md:right-4 md:bottom-20 md:rounded-app md:shadow-overlay md:ring-1 md:ring-border md:ring-inset motion-safe:transition-[width] duration-(--wt-motion-duration-base) ease-out motion-safe:animate-pop-in',
+        'fixed inset-0 z-30 flex flex-col [&[hidden]]:hidden bg-surface text-foreground md:inset-auto md:right-4 md:bottom-20 md:rounded-app md:shadow-overlay md:ring-1 md:ring-border md:ring-inset motion-safe:transition-[width] duration-(--wt-motion-duration-base) ease-out motion-safe:animate-rise-in',
         'md:h-[min(43rem,calc(100dvh-6.5rem))]',
         expanded ? 'md:w-[38rem] md:max-w-[calc(100vw-2rem)]' : 'md:w-[26.5rem]',
       )}

@@ -11,7 +11,7 @@ export default function Loading() {
     <div
       role="status"
       aria-live="polite"
-      className="flex min-h-0 flex-1 flex-col gap-stack p-stack motion-safe:animate-fade-in"
+      className="flex min-h-0 flex-1 flex-col gap-stack p-stack motion-safe:animate-rise-in"
     >
       <span className="sr-only">{t('loading.label')}</span>
 
