@@ -42,4 +42,6 @@ export const DENSITY_TOKENS: Readonly<Record<Density, DensityTokens>> = {
 export const MOTION_TOKENS = {
   durationFast: '120ms',
   durationBase: '180ms',
+  durationSlow: '280ms',
+  durationShimmer: '1600ms',
 } as const;

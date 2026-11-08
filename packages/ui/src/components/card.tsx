@@ -5,14 +5,26 @@ import { cn } from '../lib/cn.js';
 export interface CardProps extends HTMLAttributes<HTMLElement> {
   /** `section` when the card is a landmark region with a heading (pass `aria-labelledby`). */
   as?: 'div' | 'section' | 'article';
+  /** Adds subtle hover elevation for clickable/actionable cards (respects reduced motion). */
+  interactive?: boolean;
 }
 
 /**
  * A Soft Beacon card (docs/design/redesign-2026-11): white on the Canvas, no border, a very soft
  * shadow, 20 px corners. Layout and padding inside are the caller's.
  */
-export function Card({ as: Tag = 'div', className, ...props }: CardProps) {
-  return <Tag className={cn('rounded-card bg-surface shadow-card', className)} {...props} />;
+export function Card({ as: Tag = 'div', interactive = false, className, ...props }: CardProps) {
+  return (
+    <Tag
+      className={cn(
+        'rounded-card bg-surface shadow-card',
+        interactive &&
+          'transition-[transform,box-shadow] duration-(--wt-motion-duration-base) ease-out hover:shadow-lift motion-safe:hover:-translate-y-0.5',
+        className,
+      )}
+      {...props}
+    />
+  );
 }
 
 export interface CardHeaderProps extends Omit<HTMLAttributes<HTMLDivElement>, 'title'> {
