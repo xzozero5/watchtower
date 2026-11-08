@@ -149,6 +149,7 @@ export const kbChunk = pgTable(
       .notNull()
       .references(() => kbArticle.id, { onDelete: 'restrict' }),
     versionId: uuid('version_id').notNull(),
+    chunkSetFingerprint: text('chunk_set_fingerprint').notNull().default(''),
     ordinal: integer('ordinal').notNull(),
     section: text('section').notNull().default(''),
     text: text('text').notNull(),
@@ -163,5 +164,69 @@ export const kbChunk = pgTable(
   (table) => [
     uniqueIndex('kb_chunk_position_key').on(table.versionId, table.ordinal),
     index('kb_chunk_article_idx').on(table.articleId),
+    index('kb_chunk_fingerprint_idx').on(table.versionId, table.chunkSetFingerprint),
   ],
 );
+
+/** Multi-index vector storage per chunk (ADR-033, migration 0119). */
+export const kbChunkEmbedding = pgTable(
+  'kb_chunk_embedding',
+  {
+    chunkId: uuid('chunk_id')
+      .notNull()
+      .references(() => kbChunk.id, { onDelete: 'cascade' }),
+    indexId: uuid('index_id')
+      .notNull()
+      .references(() => kbEmbeddingIndex.id, { onDelete: 'restrict' }),
+    embedding: vectorAny('embedding').notNull(),
+    createdAt: timestamptz('created_at').notNull().defaultNow(),
+    updatedAt: timestamptz('updated_at').notNull().defaultNow(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.chunkId, table.indexId] }),
+    index('kb_chunk_embedding_index_idx').on(table.indexId),
+  ],
+);
+
+/** Completion manifest per version and chunk set fingerprint (ADR-033, migration 0119). */
+export const kbVersionChunkManifest = pgTable(
+  'kb_version_chunk_manifest',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    articleId: uuid('article_id')
+      .notNull()
+      .references(() => kbArticle.id, { onDelete: 'cascade' }),
+    versionId: uuid('version_id')
+      .notNull()
+      .references(() => kbArticleVersion.id, { onDelete: 'cascade' }),
+    chunkSetFingerprint: text('chunk_set_fingerprint').notNull().default(''),
+    chunkCount: integer('chunk_count').notNull().default(0),
+    completedIndexIds: uuid('completed_index_ids')
+      .array()
+      .notNull()
+      .default(sql`'{}'::uuid[]`),
+    createdAt: timestamptz('created_at').notNull().defaultNow(),
+    updatedAt: timestamptz('updated_at').notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('kb_version_chunk_manifest_version_key').on(
+      table.versionId,
+      table.chunkSetFingerprint,
+    ),
+    index('kb_version_chunk_manifest_article_idx').on(table.articleId),
+  ],
+);
+
+/** Re-embed durable lease, fencing and deduplication (ADR-033 §5, migration 0120). */
+export const kbReembedLease = pgTable('kb_reembed_lease', {
+  id: text('id').primaryKey(),
+  leaseToken: uuid('lease_token').notNull(),
+  targetIndexId: uuid('target_index_id')
+    .notNull()
+    .references(() => kbEmbeddingIndex.id, { onDelete: 'cascade' }),
+  workerId: text('worker_id').notNull(),
+  leasedAt: timestamptz('leased_at').notNull().defaultNow(),
+  leasedUntil: timestamptz('leased_until').notNull(),
+  renewedAt: timestamptz('renewed_at').notNull().defaultNow(),
+  completedAt: timestamptz('completed_at'),
+});

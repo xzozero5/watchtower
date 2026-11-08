@@ -32,7 +32,8 @@
     "db:seed:year": "pnpm run build && node --env-file-if-exists=../../.env dist/seed-cli.js --scenario year",
     "db:mark-seed": "pnpm run build && node --env-file-if-exists=../../.env dist/mark-seed-cli.js",
     "db:grant-owner-approval": "pnpm run build && node --env-file-if-exists=../../.env dist/owner-approval-cli.js",
-    "kb:sync": "pnpm run build && node --env-file-if-exists=../../.env dist/kb-sync-cli.js"
+    "kb:sync": "pnpm run build && node --env-file-if-exists=../../.env dist/kb-sync-cli.js",
+    "kb:reembed": "pnpm run build && node --env-file-if-exists=../../.env dist/kb-reembed-cli.js"
   },
   "dependencies": {
     "@watchtower/shared": "workspace:*",

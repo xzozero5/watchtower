@@ -94,6 +94,15 @@ export {
   type OwnerApprovalChange,
 } from './owner-approval.js';
 export {
+  KbReembedActorDisabledError,
+  KbReembedActorNotFoundError,
+  KbReembedError,
+  KbReembedPermissionDeniedError,
+  requestKbReembed,
+  type RequestKbReembedInput,
+  type RequestKbReembedResult,
+} from './kb-reembed.js';
+export {
   DEFAULT_INTENT_EXAMPLES_DIR,
   IntentSeedError,
   loadIntentDefinitions,

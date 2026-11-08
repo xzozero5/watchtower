@@ -29,6 +29,10 @@ export const KB_AUDIT_ACTIONS = {
   kbArticleBreakGlassReview: 'kb.article.break_glass_review',
   /** A live article was shown to more people (by someone who did not write it). */
   kbArticleAudienceWiden: 'kb.article.audience_widen',
+  /** Manual re-embed requested (T-434a, ADR-033). */
+  kbReembed: 'kb.reembed',
+  /** An embedding index became active (T-434c, ADR-033 §5, §6). */
+  kbEmbeddingIndexActivate: 'kb.embedding_index.activate',
 } as const satisfies Record<string, string>;
 
 /** `ticket_event.type` strings written by this feature. */
@@ -49,6 +53,36 @@ export const KB_JOBS = {
 
 export const embedArticleJobSchema = z.object({ articleId: z.uuid(), versionId: z.uuid() });
 export type EmbedArticleJob = z.infer<typeof embedArticleJobSchema>;
+
+/**
+ * Text that Postgres can store: a NUL character (U+0000) is refused by the database, so it is
+ * refused here with a 400 instead of reaching a query (and a 500 and an error log) from there.
+ */
+export const noNul = (schema: z.ZodString) =>
+  schema.refine((value) => !value.includes('\u0000'), {
+    message: 'must not contain a NUL character',
+  });
+
+export const reembedAllJobSchema = z.object({
+  requestId: z.uuid().optional(),
+  actorId: z.uuid().optional(),
+  enqueuedAt: z.iso.datetime().optional(),
+});
+export type ReembedAllJob = z.infer<typeof reembedAllJobSchema>;
+
+export const kbReembedRequestSchema = z.object({
+  actor: noNul(z.string().trim().min(1).max(320)),
+  reason: noNul(z.string().trim().max(1000)).optional(),
+});
+export type KbReembedRequest = z.infer<typeof kbReembedRequestSchema>;
+
+export const kbReembedResultSchema = z.object({
+  enqueued: z.boolean(),
+  status: z.enum(['enqueued', 'already_pending']),
+  requestId: z.uuid(),
+  outboxJobId: z.string().optional(),
+});
+export type KbReembedResult = z.infer<typeof kbReembedResultSchema>;
 
 /** Retry with backoff; the chunks are the record, so a finished job is dropped. */
 export const KB_OUTBOX_JOB_OPTIONS = {
@@ -76,15 +110,6 @@ export type KbStatus = z.infer<typeof kbStatusSchema>;
 export const KB_VISIBILITIES = ['internal', 'customer', 'orgs'] as const;
 export const kbVisibilitySchema = z.enum(KB_VISIBILITIES);
 export type KbVisibility = z.infer<typeof kbVisibilitySchema>;
-
-/**
- * Text that Postgres can store: a NUL character (U+0000) is refused by the database, so it is
- * refused here with a 400 instead of reaching a query (and a 500 and an error log) from there.
- */
-export const noNul = (schema: z.ZodString) =>
-  schema.refine((value) => !value.includes('\u0000'), {
-    message: 'must not contain a NUL character',
-  });
 
 /**
  * `sources[].ref` is free text, and a `url` source may hold any scheme. Like every text field and

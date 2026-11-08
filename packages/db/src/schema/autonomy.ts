@@ -69,7 +69,7 @@ export const seedBatch = pgTable('seed_batch', {
   note: text('note').notNull().default(''),
 });
 
-/** One report per intent and window; append-only. The report is an input to people, not the decider. */
+/** One report per intent and window; append-only. Equal window supported for insufficient_data (0118, T-446). */
 export const autonomyGateReport = pgTable(
   'autonomy_gate_report',
   {
