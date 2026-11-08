@@ -13,7 +13,7 @@ import {
   type KbTransition,
   type UpdateKbArticle,
 } from '@watchtower/shared';
-import { and, asc, eq, gt, lte } from 'drizzle-orm';
+import { and, asc, eq, gt, lte, sql } from 'drizzle-orm';
 
 import { recordAuditInTx } from '../audit.js';
 import { DomainError, badRequest, conflict, invalidTransition, notFound } from '../errors.js';
@@ -479,6 +479,10 @@ export async function transitionKbArticle(
   input: TransitionKbArticleInput,
 ): Promise<DomainResult<KbWriteResult>> {
   const fx = new Effects();
+  // ADR-033 §6: Shared advisory lock before row lock
+  await tx.execute(
+    sql`SELECT pg_advisory_xact_lock_shared(hashtext('kb_article_publish_and_switch'))`,
+  );
   const { article, current } = await lockArticle(tx, input.articleId);
   const from = article.status as KbStatus;
   if (from === input.to) {
@@ -596,6 +600,10 @@ async function publishWith(
   if (mode.kind === 'break_glass' && mode.reason.trim() === '') {
     throw badRequest('Publishing break-glass needs a reason');
   }
+  // ADR-033 §6: Shared advisory lock before row lock
+  await tx.execute(
+    sql`SELECT pg_advisory_xact_lock_shared(hashtext('kb_article_publish_and_switch'))`,
+  );
   const { article, current } = await lockArticle(tx, input.articleId);
   if (!canPublishFrom(article.status as KbStatus)) {
     throw invalidTransition(

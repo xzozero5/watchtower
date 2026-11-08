@@ -185,7 +185,8 @@ export async function searchKb(db: SearchDb, input: KbSearchInput): Promise<KbSe
 }
 
 async function searchWith(db: SearchTx, input: KbSearchInput): Promise<KbSearchOutcome> {
-  const candidates = candidateCount(input.limit, input.candidates);
+  const limit = Math.max(1, input.limit);
+  const candidates = candidateCount(limit, input.candidates);
   const perArticle = Math.max(1, input.perArticle ?? 2);
   const visible = audienceCondition(input.audience);
   const lang = input.lang === undefined ? sql`true` : sql`a.lang = ${input.lang}`;
@@ -220,10 +221,21 @@ async function searchWith(db: SearchTx, input: KbSearchInput): Promise<KbSearchO
             SELECT c.id::text AS id
               FROM kb_chunk c
               JOIN kb_article a ON a.id = c.article_id AND a.published_version_id = c.version_id
+              LEFT JOIN kb_chunk_embedding ce ON ce.chunk_id = c.id AND ce.index_id = ${embedding.indexId}::uuid
              WHERE ${visible} AND ${lang}
-               AND c.embedding_index_id = ${embedding.indexId}::uuid
-               AND c.embedding <=> ${toVector(embedding.vector)}::vector <= ${1 - minSimilarity}
-             ORDER BY c.embedding <=> ${toVector(embedding.vector)}::vector, c.id
+               AND (ce.embedding IS NOT NULL OR c.embedding_index_id = ${embedding.indexId}::uuid)
+               AND (
+                 CASE
+                   WHEN ce.embedding IS NOT NULL THEN ce.embedding
+                   WHEN c.embedding_index_id = ${embedding.indexId}::uuid THEN c.embedding
+                 END
+               ) <=> ${toVector(embedding.vector)}::vector <= ${1 - minSimilarity}
+             ORDER BY (
+               CASE
+                 WHEN ce.embedding IS NOT NULL THEN ce.embedding
+                 WHEN c.embedding_index_id = ${embedding.indexId}::uuid THEN c.embedding
+               END
+             ) <=> ${toVector(embedding.vector)}::vector, c.id
              LIMIT ${candidates}`)
         ).rows;
 

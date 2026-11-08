@@ -1506,6 +1506,10 @@ describe('searchKb', () => {
       otherIndexId,
       ids.orgBOnly?.articleId,
     ]);
+    await pool().query(
+      `UPDATE kb_chunk_embedding SET index_id = $1 WHERE chunk_id IN (SELECT id FROM kb_chunk WHERE article_id = $2)`,
+      [otherIndexId, ids.orgBOnly?.articleId],
+    );
   });
 
   const titles = (hits: { title: string }[]) => hits.map((hit) => hit.title);

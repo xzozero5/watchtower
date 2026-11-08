@@ -36,3 +36,43 @@ export {
   type DriverGroupBy,
 } from './primitives.js';
 export { SHIFT_OVERVIEW_MAX_PERSONS, buildShiftOverviewFacts } from './shift-overview.js';
+// --- Wave 9b Builders (T-420) ---
+export {
+  buildHomeStatusFacts,
+  buildQueueListFacts,
+  type QueueListOptions,
+} from './home-queue-9b.js';
+export {
+  buildDashboardOpsNowFacts,
+  buildDashboardReliabilityFacts,
+  buildDashboardServicesFacts,
+  buildDashboardQualityFacts,
+  buildDashboardAiFacts,
+  buildDashboardGradesFacts,
+  buildDashboardTeamFacts,
+  buildDashboardUsageFacts,
+} from './dashboard-9b.js';
+export {
+  buildReportsAiCostFacts,
+  buildReportsCeoFiguresFacts,
+  parseIsoWeek,
+  type ReportsAiCostOptions,
+  type ReportsCeoFiguresOptions,
+} from './reports.js';
+export {
+  buildIncidentDetailFacts,
+  buildAlertsServicesFacts,
+  buildStatuspageAdminFacts,
+  buildOrgHealthFacts,
+  type IncidentDetailOptions,
+  type OrgHealthOptions,
+} from './ops-9b.js';
+export {
+  buildAdminIntentsFacts,
+  buildAdminIntentGateFacts,
+  buildAdminAiFacts,
+  buildAdminIntegrationsFacts,
+  buildAdminOutboxFacts,
+  buildAdminQueuesFacts,
+  type AdminIntentOptions,
+} from './admin-9b.js';

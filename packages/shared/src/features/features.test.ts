@@ -36,6 +36,8 @@ const EXPECTED_FEATURES = [
   'procedure',
   // T-305e: roster planner (R-7.2).
   'roster-plan',
+  // T-418: embedded element insights (ADR-029 section 9).
+  'insights',
 ];
 
 describe('feature records', () => {

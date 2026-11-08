@@ -89,6 +89,7 @@ export const insightItemSchema = z.object({
   /** The stored AI narration the state allows, or null. */
   narration: z
     .object({
+      id: z.uuid().optional(),
       claims: z.array(claimSchema).max(3),
       generatedAt: z.iso.datetime(),
       mock: z.boolean(),

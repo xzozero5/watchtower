@@ -280,16 +280,14 @@ export async function readReportInputs(
           AND ${schema.intentAutonomyHistory.change} IN ('stage', 'promotion', 'auto_rollback')`,
     );
   const since = last?.at ? new Date(last.at) : intent.createdAt;
-  const daysAtStage = (now.getTime() - since.getTime()) / 86_400_000;
+  const daysAtStage = Math.max(0, (now.getTime() - since.getTime()) / 86_400_000);
   // The window is the stretch spent at this stage, at most the last 28 days (a long stay is not a reason to
-  // count old tickets); never empty.
+  // count old tickets). Clamped to [intent.createdAt, now]: for fresh intents, windowStart can equal now
+  // with status = 'insufficient_data' (migration 0118, T-446).
   const earliest = new Date(now.getTime() - GATE_WINDOW_DAYS * 86_400_000);
-  // Never before the intent existed (record_autonomy_gate_report refuses such a window, C-6), never empty.
+  const rawStart = Math.max(since.getTime(), earliest.getTime());
   const windowStart = new Date(
-    Math.max(
-      Math.min(Math.max(since.getTime(), earliest.getTime()), now.getTime() - 1000),
-      intent.createdAt.getTime(),
-    ),
+    Math.min(Math.max(rawStart, intent.createdAt.getTime()), now.getTime()),
   );
   const from = windowStart.toISOString();
   const to = now.toISOString();
@@ -407,9 +405,11 @@ export async function generateGateReport(
   const now = input.now ?? new Date(clock.rows[0]?.now ?? ctx.now());
   const { inputs, windowStart } = await readReportInputs(db, input.intentId, now);
   const built = buildReport(inputs);
-  // A green report must cover 28 days at the stage (a table CHECK); a shorter window cannot be green.
+  // A green report must cover 28 days at the stage (a table CHECK); a zero-width window can only be insufficient_data.
+  const zeroWindow = now.getTime() <= windowStart.getTime();
   const spansWindow = now.getTime() - windowStart.getTime() >= GATE_WINDOW_DAYS * 86_400_000;
-  const status = built.status === 'green' && !spansWindow ? 'insufficient_data' : built.status;
+  const status =
+    zeroWindow || (built.status === 'green' && !spansWindow) ? 'insufficient_data' : built.status;
   return db.transaction(async (tx) => {
     // Through record_autonomy_gate_report() (migration 0108, C-6): the application role cannot insert a report.
     const criteria = built.criteria.map((criterion) => ({

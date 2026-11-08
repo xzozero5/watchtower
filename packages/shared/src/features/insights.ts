@@ -19,6 +19,17 @@ import { z } from 'zod';
 import { PERMISSIONS, type Permission } from '../rbac.js';
 import { claimSchema, type Claim } from './claims.js';
 
+export const INSIGHTS_AUDIT_ACTIONS = {
+  insightGenerated: 'insight.generated',
+  insightNarrationRejected: 'insight.narration_rejected',
+} as const;
+
+export const INSIGHTS_TICKET_EVENTS = {} as const;
+
+export const INSIGHTS_QUEUES = {
+  insights: 'insights',
+} as const;
+
 // --- registry ---------------------------------------------------------------------------------------------
 
 /**
@@ -715,6 +726,59 @@ export const INSIGHT_TEMPLATES = {
   no_change: {
     th: 'ไม่มีการเปลี่ยนแปลงที่ต้องรายงาน',
     en: 'Nothing has changed that needs reporting',
+  },
+  // --- Wave 9b Mode F templates (T-420) ---
+  home_status: {
+    th: '{active} intent ใช้งานอยู่ ({stage3} อยู่ stage 3), kill switch {killSwitch}',
+    en: '{active} active intents ({stage3} at stage 3), kill switch is {killSwitch}',
+  },
+  queue_summary: {
+    th: 'คุณถืออยู่ {myOpen} รายการ ({myRisk} เสี่ยงผิด SLA), ค้างที่ยังไม่มอบหมาย {unassigned} รายการ',
+    en: 'You hold {myOpen} open tickets ({myRisk} at risk), {unassigned} unassigned tickets open',
+  },
+  ai_ops_summary: {
+    th: 'AI ทำงาน {runs} ครั้ง ({cost} USD), พบข้อผิดพลาด {errors} ครั้ง',
+    en: '{runs} AI runs (${cost} USD), {errors} errors',
+  },
+  ai_grades_summary: {
+    th: 'ตรวจแล้ว {graded} รายการ, ยืนยันถูกต้อง {verifiedPct}%, พบ violation {violations} ครั้ง',
+    en: '{graded} tickets graded, {verifiedPct}% verified, {violations} violations',
+  },
+  ceo_figures_summary: {
+    th: 'Ticket ทั้งหมด {tickets} รายการ (ปิดแล้ว {resolved} รายการ), {incidents} incidents ในสัปดาห์ {week}',
+    en: '{tickets} tickets ({resolved} resolved), {incidents} incidents in week {week}',
+  },
+  alerts_services_summary: {
+    th: 'ตรวจสอบ {activeServices} บริการ, มี alert เปิดอยู่ {servicesWithAlerts} บริการ',
+    en: '{activeServices} services monitored, {servicesWithAlerts} have open alerts',
+  },
+  statuspage_summary: {
+    th: '{total} คอมโพเนนต์ ({degraded} มีปัญหา), ประกาศ incident ที่ยังไม่ปิด {activePosts} รายการ',
+    en: '{total} components ({degraded} degraded), {activePosts} active incident posts',
+  },
+  admin_intents_summary: {
+    th: 'Intent อยู่ stage {stage}, มี ticket {tickets28d} รายการ ใน 28 วันล่าสุด',
+    en: 'Intent at stage {stage}, {tickets28d} tickets in last 28 days',
+  },
+  admin_gate_summary: {
+    th: 'รายงาน Gate ล่าสุด: {status} (ผ่าน {passCount} ข้อ, ไม่ผ่าน {failCount} ข้อ)',
+    en: 'Latest gate report: {status} ({passCount} passed, {failCount} failed)',
+  },
+  admin_ai_summary: {
+    th: 'Kill switch {killSwitch}, การใช้งานวันนี้: {tokens} tokens (${cost} USD)',
+    en: 'Kill switch is {killSwitch}, today: {tokens} tokens (${cost} USD)',
+  },
+  admin_integrations_summary: {
+    th: 'Integration ใช้งานอยู่ {active} รายการ, ปกติ {healthy} รายการ, พบข้อผิดพลาด {errors} รายการ',
+    en: '{active} active integrations, {healthy} healthy, {errors} with errors',
+  },
+  admin_outbox_summary: {
+    th: 'Outbox รอดำเนินการ {pending} รายการ, ล้มเหลว {failed} รายการ',
+    en: '{pending} pending outbox jobs, {failed} failed or dead-lettered',
+  },
+  admin_queues_summary: {
+    th: 'Outbox รอดำเนินการ {outboxPending} รายการ, Outbound รอส่ง {outboundScheduled} รายการ',
+    en: '{outboxPending} outbox pending, {outboundScheduled} outbound scheduled',
   },
 } as const satisfies Record<string, Record<InsightLocale, string>>;
 export type InsightTemplateId = keyof typeof INSIGHT_TEMPLATES;

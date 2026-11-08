@@ -160,4 +160,21 @@ describe('the gate report (ADR-025 section 6)', () => {
     expect(criterion(report, 'days_at_stage_2')).toBeUndefined();
     expect(report.status).toBe('green');
   });
+
+  it('fresh intent with 0 days at stage has insufficient_data and no negative windows (T-446)', () => {
+    const fresh = buildReport({
+      stage: 2,
+      daysAtStage: 0,
+      ai: { graded: 0, verified: 0, reopened: 0, violations: 0, csatN: 0, csatAvg: null },
+      human: { graded: 0, verified: 0, reopened: 0, violations: 0, csatN: 0, csatAvg: null },
+      shadowEvaluations: 0,
+      shadowDecided: 0,
+      shadowAccepted: 0,
+      replay: null,
+      reviewers: [],
+    });
+    expect(fresh.status).toBe('insufficient_data');
+    expect(criterion(fresh, 'days_at_stage_2')?.pass).toBeNull();
+    expect(fresh.metrics.daysAtStage).toBe(0);
+  });
 });
