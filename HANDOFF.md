@@ -1,23 +1,25 @@
 # HANDOFF — Watchtower
 
 > สถานะล่าสุดของโปรเจกต์ session ใหม่อ่านไฟล์นี้ต่อจาก `AGENTS.md` แล้วทำงานต่อได้โดยไม่ต้องอ่านบทสนทนาเดิม
-> อัปเดตล่าสุด: 2026-11-09 00:57 (เวลากรุงเทพ) โดย Antigravity (Main + 9 Subagents)
+> อัปเดตล่าสุด: 2026-11-09 01:28 (เวลากรุงเทพ) โดย Antigravity (Main + 9 Subagents)
 > กฎขนาด ≤ 40 KB — เขียนทับสถานะ ไม่ append ประวัติ · ฉบับก่อน: `docs/handoff-archive/HANDOFF-2026-11-08-pre-jarvis-wave9b-complete.md` · บันทึกรายชั่วโมงอยู่ `logs/daily/2026-11-08.md` และ `logs/daily/2026-11-09.md`
 
 ## สถานะปัจจุบัน
-- **Phase:** Phase 1–3 (`done pending pilot / live / live gate`) + **Jarvis AI Assistant Stage 1 & Embedded Element Insights Wave 9a/9b & KB Multi-Index (`T-434`) เสร็จสมบูรณ์ 100%** (เหลือเฉพาะ `T-412` วัดผล live pilot 2 สัปดาห์ และ `T-433` เปิด `EMBEDDING_PROVIDER=local` `[ASK-HUMAN]`).
-- **Build/Test (`[TESTED]` บน Main Thread):**
-  - `pnpm build` (11/11), `pnpm typecheck` (18/18), `pnpm lint` (19/19 รวม `prettier --check .`), `pnpm test:boundaries` (298/298)
-  - `pnpm exec turbo run test --concurrency=2` (11/11 packages รวม `compose-env.test.ts` 617/617)
-  - `@watchtower/db test:integration` (57 files / 556 tests ครอบคลุม up/down migrations `0001`–`0120`)
-  - Targeted integration: `@watchtower/api` assistant (`45/45`) + insights (`32/32`) + KB (`39/39`), `@watchtower/domain` KB (`75/75`) + Wave 9b (`12/12`), `@watchtower/worker` insights (`11/11`) + KB (`15/15`)
-  - Playwright E2E (`PW_CHANNEL=msedge`): `assistant-t410-gate.e2e.ts` (`5/5`) + `element-insight-axe.e2e.ts` (`2/2` light/dark)
+- **Phase:** Phase 1–3 (`done pending pilot / live / live gate`) + **Jarvis AI Assistant Stage 1 & Embedded Element Insights Wave 9a/9b & KB Multi-Index (`T-434`) เสร็จสมบูรณ์ 100% บน `main`** (เหลือเฉพาะ `T-412` วัดผล live pilot 2 สัปดาห์ และ `T-433` เปิด `EMBEDDING_PROVIDER=local` `[ASK-HUMAN]`).
+- **Build/Test & CI (`[TESTED]`):**
+  - Branch `main` (`a6e19aab` + docs commit ปิดท้าย) · **GitHub Actions CI `42508724802` เขียวครบทั้ง 4 jobs** (`End-to-end` 8m33s, `Integration tests` 12m44s, `Lint/typecheck/unit` 8m38s, `Docker Compose` 2m51s)
+  - Local gates บน Main Thread: `pnpm build` (11/11), `pnpm typecheck` (18/18), `pnpm lint` (19/19), `pnpm test:boundaries` (298/298), `turbo run test` (11/11 รวม `compose-env` 617/617), `@watchtower/db test:integration` (57 files / 556 tests `0001`–`0120`), Playwright Edge (`7/7`)
 - **Independent Reviews (`[TESTED]` ตามกฎ N7, `P0=0, P1=0, P2=0`):**
   - `docs/decisions/T-411-security-review.md` (`ADR-034` **Accepted**)
   - `docs/decisions/T-421-security-review.md` (Wave 9a + 9b Security + QA Gate)
   - `docs/decisions/T-434-security-review.md` (`ADR-033` **Accepted**)
   - `docs/decisions/T-412-po-review.md` (`AC-J1`…`AC-J22` Code & Automated Gate `22/22 PASS`)
-- **Deployment:** Local Docker Compose POC (`D:\Works\secret\watchtower.env`) + Host AI Bridge (`127.0.0.1:4317`, mode `codex`, `tools/ai-bridge/start-host.ps1` + `logs/ai-bridge/pinned-runtime.env`). `AI_AUTOSEND_ENABLED=false`, `INSIGHT_PERSON_NARRATION_ENABLED=false`, `EMBEDDING_PROVIDER=mock`.
+- **Deployment (`[TESTED]`):**
+  - **Pre-deploy Verified Backup:** `D:\Works\watchtower-backups\poc-20261109-005819-pre-deploy.dump` (`13,783,670 bytes`, `Format: CUSTOM`, 2,794 TOC entries ตรวจด้วย `pg_restore -l` ก่อน migrate)
+  - **Main POC Stack Running & Healthy (9 containers):** `postgres`, `redis`, `minio`, `mailpit`, `api`, `worker`, `web`, `caddy`, `gmail-tunnel` (`wt-*` test containers ถูกลบออกทั้งหมดแล้วโดยไม่แตะ `watchtower_*` volumes)
+  - **Database Migrations Applied:** `0117_assistant_memory_authorization`, `0118_gate_report_equal_window`, `0119_kb_chunk_embeddings` (backfilled 293 KB chunks), `0120_kb_reembed_lease`
+  - **Host AI Bridge Running (Detached):** `PID 37148` (`mode: codex`, `http://127.0.0.1:4317/healthz` → `200`, Redis `watchtower:ai:status` → `online`)
+  - **Live Smoke Tests Passed:** `:4000/health` `200`, `:4000/health/ready` `200`, `:4100/health/ready` `200`, `:3000/health` `200`, `:3000/login` `200`, `:8080/health` `200`, `/v1/insights` unauthenticated `401`, `AI_AUTOSEND_ENABLED=false`, `INSIGHT_PERSON_NARRATION_ENABLED=false`, `EMBEDDING_PROVIDER=mock`.
 - **Credential ที่มีแล้ว:** อยู่ใน `D:\Works\secret\watchtower.env` นอก repo เท่านั้น (ห้ามอ่าน/พิมพ์ค่า N1).
 
 ## การตัดสินใจของเจ้าของที่มีผลอยู่

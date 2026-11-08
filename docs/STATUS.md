@@ -5,7 +5,7 @@ snapshot สั้นสำหรับ cold start อยู่ที่ `HANDOF
 
 ## สถานะปัจจุบัน
 
-- **2026-11-09 00:56 [TESTED]:** ปิดครบทั้ง 4 Waves (`T-446`, `T-445`+`a/b/c/d`, `T-410`, `T-411`, `T-418`, `T-419a`, `T-420`, `T-421`, `T-434`+`a/b/c`, และ `T-412` Code & Automated Gate 22/22 `PASS` รอ live pilot 2 สัปดาห์). ผู้ตรวจอิสระ N7 (`0ea6fef5` security, `758d9644` QA, `502488a1` PO) รับรอง `PASS` ครบ (`P0=0, P1=0, P2=0`). Full gates บน main ผ่าน 100% (`pnpm build` 11/11, `pnpm typecheck` 18/18, `pnpm lint` 19/19, `turbo run test` 11/11 รวม `compose-env` 617/617, DB integration 57 files 556/556 `0001`–`0120`, Playwright Edge `7/7`). กำลัง commit แยก scope → push ตรวจ CI → merge `main` → ลบ test containers 12 ตัว → backup + deploy POC (`0117`–`0120`).
+- **2026-11-09 01:28 [TESTED]:** Merge เข้า `main` (`a6e19aab`) + GitHub Actions CI `42508724802` เขียวครบทั้ง 4 jobs (`End-to-end`, `Integration tests`, `Lint/typecheck/unit`, `Docker Compose`) + ลบ test containers `wt-*` ครบทุกตัวโดยไม่แตะ POC volumes + สำรองฐานข้อมูล POC ที่ `D:\Works\watchtower-backups\poc-20261109-005819-pre-deploy.dump` (`13,783,670 bytes`) + deploy POC stack หลักครบ 9 containers `Healthy` (migrations `0117`–`0120_kb_reembed_lease` applied, `kb_chunk_embedding` backfilled 293 แถว) + Host AI Bridge detached `PID 37148` (`:4317/healthz` 200, Redis `watchtower:ai:status` = `online`, `AI_AUTOSEND_ENABLED=false`, `INSIGHT_PERSON_NARRATION_ENABLED=false`). พร้อมให้เจ้าของเข้ามาทดสอบที่ `http://localhost:3000`.
 
 - **2026-11-07 18:04:** เจ้าของส่งต่อClaude;ลบscheduleแล้ว. Branchcodex/t445-authorization-gatesเตรียมpushpatch0116;mainT407ปิด. MainDB16/API5focusedผ่าน;fullgates/T446ยังค้าง ไม่merge/deploy. POC9healthy/HTTPloginAPIbridge200/autosendfalse;testcontainersหยุดไม่ลบvolume. อ่านHANDOFFใหม่ก่อนทำต่อ.
 
