@@ -27,7 +27,15 @@ describe('tool permission parity (T-400 C-1)', () => {
     }
     expect(TOOL_PERMISSION.search_tickets.piiKinds).toEqual(['ticket']);
     expect(TOOL_PERMISSION.summarize_ticket.piiKinds).toEqual(['ticket']);
-    expect(TOOL_PERMISSION.team_load.piiKinds).toEqual([]);
+    expect(TOOL_PERMISSION.team_load.piiKinds).toEqual(['performance']);
+    expect(TOOL_PERMISSION.team_status.piiKinds).toEqual(['shift_overview']);
+    expect(TOOL_PERMISSION.shift_context.piiKinds).toEqual([
+      'ticket',
+      'shift_overview',
+      'handoff',
+      'shift_note',
+    ]);
+    expect(TOOL_PERMISSION.roster_view.piiKinds).toEqual(['roster']);
   });
 
   it('asks what the declared GET route asks, and lets nobody in whom the route would refuse', async () => {

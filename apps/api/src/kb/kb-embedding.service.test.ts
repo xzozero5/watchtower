@@ -111,4 +111,20 @@ describe('KbEmbeddingService with the local embedder (T-431)', () => {
   it('refuses at boot a local provider without the model or size', () => {
     expect(() => build({ EMBEDDING_MODEL: '' })).toThrow(/EMBEDDING_MODEL/);
   });
+
+  it('routes query embedding to active index spec when configured target is local but DB active index is mock (ADR-033 §3)', async () => {
+    state.active = {
+      id: 'mock-index-1',
+      provider: 'mock',
+      model: 'mock-embedding',
+      dimensions: 16,
+    };
+    const fetchStub = vi.fn();
+    vi.stubGlobal('fetch', fetchStub);
+    const result = await build().embedQuery('test search');
+    expect(result).toBeDefined();
+    expect(result?.indexId).toBe('mock-index-1');
+    expect(result?.vector).toHaveLength(16);
+    expect(fetchStub).not.toHaveBeenCalled();
+  });
 });

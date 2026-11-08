@@ -539,7 +539,7 @@ describe('facts: ref, trust, untrusted wrapping and size (C-14)', () => {
     const found = await run(role('agent'), 'ticket_timeline', { ticket: 'OPS-12' });
     expect(found[0]?.trust).toBe('customer');
     expect(found[0]?.text).toContain('<untrusted_content>');
-    expect(found[0]?.ref).toEqual({ kind: 'ticket', id: 'OPS-12' });
+    expect(found[0]?.ref).toEqual({ kind: 'ticket', id: ID });
     expect(found[1]?.trust).toBe('system');
     expect(found[1]?.text).toContain('from open to resolved');
     expect(found[1]?.text).not.toContain('hunter2');

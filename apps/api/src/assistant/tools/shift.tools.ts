@@ -8,7 +8,7 @@ import type { ShiftNotes } from '../../shifts/shift-notes.service.js';
 import type { ShiftsService } from '../../shifts/shifts.service.js';
 import type { TicketKeys } from '../../tickets/ticket-keys.js';
 import type { TicketReader } from '../../tickets/ticket-reader.js';
-import { cut, cutNullable, MAX_LIST, makeFact, type OpsToolKit } from './ops-tool-kit.js';
+import { cut, MAX_LIST, makeFact, type OpsToolKit } from './ops-tool-kit.js';
 
 /**
  * `shift_context` and `roster_view` (T-403, ADR-029 section 2). They read through the services the shift routes call
@@ -38,8 +38,8 @@ const SECTION_ROWS = 6;
 const itemShape = z.object({
   id: z.uuid(),
   kind: z.string().max(20),
-  title: z.string().max(300),
-  nextAction: z.string().max(300).nullable(),
+  title: z.string().max(4000),
+  nextAction: z.string().max(4000).nullable(),
   ticketKey: z.string().max(40).nullable(),
   priority: z.string().max(4).nullable(),
   ticketStatus: z.string().max(40).nullable(),
@@ -74,8 +74,8 @@ export const shiftContextOutput = z.object({
       id: z.uuid(),
       status: z.enum(['draft', 'confirmed']),
       to: z.string().max(200).nullable(),
-      notes: z.string().max(1000),
-      messageForNext: z.string().max(600),
+      notes: z.string().max(4000),
+      messageForNext: z.string().max(4000),
       itemTotal: z.number().int().min(0),
       items: z.array(itemShape).max(20),
     })
@@ -98,7 +98,7 @@ export const shiftContextOutput = z.object({
             id: z.uuid(),
             author: z.string().max(200),
             audience: z.string().max(20),
-            body: z.string().max(600),
+            body: z.string().max(4000),
             createdAt: z.string().max(40),
             read: z.boolean(),
           }),
@@ -141,8 +141,8 @@ function itemOf(item: HandoffItem): ItemShape {
   return {
     id: item.id,
     kind: item.kind,
-    title: cut(item.title, 300),
-    nextAction: cutNullable(item.nextAction, 300),
+    title: item.title.slice(0, 4000),
+    nextAction: item.nextAction === null ? null : item.nextAction.slice(0, 4000),
     ticketKey: item.ticket?.key ?? null,
     priority: item.ticket?.priority ?? null,
     ticketStatus: item.ticket?.status ?? null,
@@ -209,13 +209,18 @@ export function registerShiftTools(
         // The declared route: GET /v1/handoffs/current.
         const current = await deps.handoffs.current(principal);
         const own = current.handoff;
-        if (own !== null) kit.onReadRef?.({ kind: 'handoff', id: own.id });
+        if (own !== null) {
+          kit.onReadRef?.({ kind: 'handoff', id: own.id });
+          kit.onReadEntity?.({ kind: 'handoff', id: own.id });
+        }
         const ownItems =
           want('handoff') && own !== null ? own.items.slice(0, rows).map(itemOf) : [];
         const incomingRaw =
           holds('handoff.ack') && want('incoming') ? await deps.handoffs.incoming(principal) : null;
-        for (const handoff of incomingRaw?.handoffs ?? [])
+        for (const handoff of incomingRaw?.handoffs ?? []) {
           kit.onReadRef?.({ kind: 'handoff', id: handoff.id });
+          kit.onReadEntity?.({ kind: 'handoff', id: handoff.id });
+        }
         const incomingItems =
           incomingRaw === null
             ? []
@@ -234,7 +239,13 @@ export function registerShiftTools(
                 shiftNoteQuerySchema.parse({ box: 'inbox', limit: rows }),
               )
             : null;
+        for (const note of noteRaw?.items.slice(0, rows) ?? []) {
+          kit.onReadEntity?.({ kind: 'shift_note', id: note.id });
+        }
         const status = holds('shift.clock') ? await deps.shifts.status(principal) : null;
+        if (status?.session?.id !== undefined) {
+          kit.onReadEntity?.({ kind: 'shift_overview', id: status.session.id });
+        }
 
         await rememberTickets(
           [...ownItems, ...incomingItems].flatMap((item) =>
@@ -262,8 +273,8 @@ export function registerShiftTools(
                   id: own.id,
                   status: own.status,
                   to: own.to === null ? null : cut(own.to.name, 200),
-                  notes: cut(own.notes, 1000),
-                  messageForNext: cut(own.messageForNext, 600),
+                  notes: own.notes.slice(0, 4000),
+                  messageForNext: own.messageForNext.slice(0, 4000),
                   itemTotal: own.items.length,
                   items: ownItems,
                 },
@@ -284,7 +295,7 @@ export function registerShiftTools(
                     id: note.id,
                     author: cut(note.author.name, 200),
                     audience: note.audience,
-                    body: cut(note.body, 600),
+                    body: note.body.slice(0, 4000),
                     createdAt: note.createdAt,
                     read: note.readAt !== null,
                   })),
@@ -373,17 +384,21 @@ export function registerShiftTools(
           userId: holds('roster.manage') ? input.userId : undefined,
         });
         const roster = await deps.shifts.roster(principal, query);
+        const entries = roster.entries.slice(0, MAX_LIST).map((entry) => ({
+          id: entry.id,
+          shiftName: cut(entry.shiftName, 200),
+          onCall: entry.onCall,
+          userName: cut(entry.userName, 200),
+          workDate: entry.workDate,
+          startsAt: entry.startsAt,
+          endsAt: entry.endsAt,
+        }));
+        for (const entry of entries) {
+          kit.onReadEntity?.({ kind: 'roster', id: entry.id });
+        }
         return {
           timezone: roster.timezone,
-          entries: roster.entries.slice(0, MAX_LIST).map((entry) => ({
-            id: entry.id,
-            shiftName: cut(entry.shiftName, 200),
-            onCall: entry.onCall,
-            userName: cut(entry.userName, 200),
-            workDate: entry.workDate,
-            startsAt: entry.startsAt,
-            endsAt: entry.endsAt,
-          })),
+          entries,
           total: roster.entries.length,
         };
       },

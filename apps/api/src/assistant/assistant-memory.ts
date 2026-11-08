@@ -139,8 +139,25 @@ export class AssistantMemoryService {
         .limit(1);
       // Pressing again on the same sentence changes nothing (and does not renew it).
       if (same !== undefined) {
-        if ((await this.authorization.authorize(principal, same.authorization)) === null)
-          throw notFound('No such memory');
+        const currentAuth = await this.authorization.authorize(principal, same.authorization);
+        if (currentAuth !== null) {
+          return { row: same, fresh: false };
+        }
+        // C-5: Tombstone / legacy authorization recovery
+        // If the existing row had revoked/null/old authorization, re-authorize it with the current fresh authorization.
+        const [revived] = await tx
+          .update(table)
+          .set({
+            refs,
+            sourceMessageId: input.messageId,
+            authorization,
+            lastUsedAt: now,
+          })
+          .where(eq(table.id, same.id))
+          .returning();
+        if (revived !== undefined) {
+          return { row: revived, fresh: false };
+        }
         return { row: same, fresh: false };
       }
       const [held] = await tx

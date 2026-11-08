@@ -97,6 +97,11 @@ async function storeNarration(fields: {
   });
 }
 
+async function currentFingerprint(): Promise<string> {
+  const facts = await buildAlertsNoiseFacts({ executor: executor(), days: 7 });
+  return factsFingerprint(facts.facts, INSIGHT_ELEMENTS['alerts.noise'].materiality);
+}
+
 function principalOf(persona: Persona, role: Role, permissions?: readonly Permission[]): Principal {
   return {
     userId: persona.userId,
@@ -340,11 +345,6 @@ describe('state selection: narration, fingerprint and expiry', () => {
   const claim = (factId: string, text: string) => [
     { text, evidence: [{ kind: 'service', id: '00000000-0000-4000-8000-000000000001', factId }] },
   ];
-
-  async function currentFingerprint(): Promise<string> {
-    const facts = await buildAlertsNoiseFacts({ executor: executor(), days: 7 });
-    return factsFingerprint(facts.facts, INSIGHT_ELEMENTS['alerts.noise'].materiality);
-  }
 
   it('is system for an F element, whatever is stored', async () => {
     const items = await insights(lead, ['dashboard.ops.sla']);
@@ -600,4 +600,230 @@ describe('budget state', () => {
       await own.close();
     }
   }, 120_000);
+
+  it('narration.id matches ai_element_insight.id so feedback target is found (P0 wiring)', async () => {
+    const fp = await currentFingerprint();
+    await storeNarration({
+      element: 'alerts.noise',
+      period: 'd7',
+      locale: 'en',
+      fingerprint: fp,
+      claims: [
+        {
+          text: '2 alerts were noise',
+          evidence: [
+            { kind: 'service', id: '00000000-0000-4000-8000-000000000001', factId: 'noise' },
+          ],
+        },
+      ],
+      expiresInMinutes: 60,
+    });
+    const row = await owner().query<{ id: string }>(
+      `SELECT id FROM ai_element_insight WHERE element = 'alerts.noise' AND scope_key = 'instance' AND period = 'd7' AND locale = 'en' LIMIT 1`,
+    );
+    const items = await insights(lead, ['alerts.noise']);
+    const item = items[0];
+    expect(item?.narration).toBeDefined();
+    expect(item?.narration?.id).toBe(row.rows[0]?.id);
+  });
+
+  it('auto-pauses narration when 7-day negative feedback is >50% with >=20 votes (AC-J21)', async () => {
+    const fp = await currentFingerprint();
+    await storeNarration({
+      element: 'alerts.noise',
+      period: 'd7',
+      locale: 'en',
+      fingerprint: fp,
+      claims: [
+        {
+          text: '2 alerts were noise',
+          evidence: [
+            { kind: 'service', id: '00000000-0000-4000-8000-000000000001', factId: 'noise' },
+          ],
+        },
+      ],
+      expiresInMinutes: 60,
+    });
+    const row = await owner().query<{ id: string }>(
+      `SELECT id FROM ai_element_insight WHERE element = 'alerts.noise' AND scope_key = 'instance' AND period = 'd7' AND locale = 'en' LIMIT 1`,
+    );
+    const targetId = row.rows[0]?.id;
+    for (let i = 0; i < 20; i++) {
+      const u = await owner().query<{ id: string }>(
+        `INSERT INTO users (email, name, role) VALUES ($1, $2, 'agent') RETURNING id`,
+        [`voter_${sentinel}_${String(i)}@example.com`, `Voter ${String(i)}`],
+      );
+      await owner().query(
+        `INSERT INTO assistant_feedback (user_id, target_kind, target_id, element, rating, created_at, updated_at)
+         VALUES ($1, 'insight', $2, 'alerts.noise', 'down', clock_timestamp(), clock_timestamp())`,
+        [u.rows[0]?.id, targetId],
+      );
+    }
+    const items = await insights(lead, ['alerts.noise']);
+    const item = items[0];
+    expect(item?.state).toBe('paused');
+    expect(item?.narration).toBeNull();
+  });
+
+  it('R-1: auto-pauses when user switches to down via updatedAt within 7 days even with older createdAt and unlinked targetId', async () => {
+    const fp = await currentFingerprint();
+    await storeNarration({
+      element: 'alerts.noise',
+      period: 'd7',
+      locale: 'en',
+      fingerprint: fp,
+      claims: [
+        {
+          text: '2 alerts were noise',
+          evidence: [
+            { kind: 'service', id: '00000000-0000-4000-8000-000000000001', factId: 'noise' },
+          ],
+        },
+      ],
+      expiresInMinutes: 60,
+    });
+    // Insert 20 feedback entries with createdAt 10 days ago, but updatedAt now, with random targetId
+    for (let i = 0; i < 20; i++) {
+      const u = await owner().query<{ id: string }>(
+        `INSERT INTO users (email, name, role) VALUES ($1, $2, 'agent') RETURNING id`,
+        [`voter_r1_${sentinel}_${String(i)}@example.com`, `Voter R1 ${String(i)}`],
+      );
+      await owner().query(
+        `INSERT INTO assistant_feedback (user_id, target_kind, target_id, element, rating, created_at, updated_at)
+         VALUES ($1, 'insight', gen_random_uuid(), 'alerts.noise', 'down', clock_timestamp() - interval '10 days', clock_timestamp())`,
+        [u.rows[0]?.id],
+      );
+    }
+    const items = await insights(lead, ['alerts.noise']);
+    const item = items[0];
+    expect(item?.state).toBe('paused');
+    expect(item?.narration).toBeNull();
+  });
+
+  it('R-4: returns mode F and state system when INSIGHT_PERSON_NARRATION_ENABLED is false for person element', async () => {
+    // Lead reads shift.overview (element.mode = 'N', personRefs = 'others')
+    const items = await insights(lead, ['shift.overview']);
+    const item = items[0];
+    expect(item?.element).toBe('shift.overview');
+    expect(item?.mode).toBe('F');
+    expect(item?.state).toBe('system');
+    expect(item?.stateLabel).toBe('From system');
+    expect(item?.narration).toBeNull();
+    expect(item?.facts.length).toBeGreaterThan(0);
+  });
+
+  it('Wave 9b: wires all mode F and mode N elements through GET /v1/insights (T-420)', async () => {
+    const items = await insights(head, [
+      'home.status',
+      'home.volume',
+      'queue.list',
+      'dashboard.ops.now',
+      'statuspage.admin',
+      'admin.ai',
+      'admin.queues',
+    ]);
+    const byElement = new Map(items.map((it) => [it.element, it]));
+
+    // home.status (mode F)
+    const homeStatus = byElement.get('home.status');
+    expect(homeStatus).toBeDefined();
+    expect(homeStatus?.mode).toBe('F');
+    expect(homeStatus?.state).toBe('system');
+    expect(homeStatus?.facts.some((f) => f.id === 'active_intents')).toBe(true);
+
+    // home.volume (mode N)
+    const homeVolume = byElement.get('home.volume');
+    expect(homeVolume).toBeDefined();
+    expect(homeVolume?.facts.some((f) => f.id === 'window_days')).toBe(true);
+
+    // queue.list (mode F)
+    const queueList = byElement.get('queue.list');
+    expect(queueList).toBeDefined();
+    expect(queueList?.mode).toBe('F');
+    expect(queueList?.state).toBe('system');
+    expect(queueList?.facts.some((f) => f.id === 'my_open')).toBe(true);
+
+    // dashboard.ops.now (mode N)
+    const dashNow = byElement.get('dashboard.ops.now');
+    expect(dashNow).toBeDefined();
+    expect(dashNow?.facts.some((f) => f.id === 'open_tickets')).toBe(true);
+
+    // statuspage.admin (mode F)
+    const statusAdmin = byElement.get('statuspage.admin');
+    expect(statusAdmin).toBeDefined();
+    expect(statusAdmin?.mode).toBe('F');
+    expect(statusAdmin?.state).toBe('system');
+    expect(statusAdmin?.facts.some((f) => f.id === 'total_components')).toBe(true);
+
+    // admin.ai (mode F)
+    const adminAi = byElement.get('admin.ai');
+    expect(adminAi).toBeDefined();
+    expect(adminAi?.mode).toBe('F');
+    expect(adminAi?.state).toBe('system');
+    expect(adminAi?.facts.some((f) => f.id === 'kill_switch')).toBe(true);
+
+    // admin.queues (mode F)
+    const adminQueues = byElement.get('admin.queues');
+    expect(adminQueues).toBeDefined();
+    expect(adminQueues?.mode).toBe('F');
+    expect(adminQueues?.state).toBe('system');
+    expect(adminQueues?.facts.some((f) => f.id === 'outbox_pending')).toBe(true);
+  });
+
+  it('C-1: reports.ai_cost resolves intent ref UUID without 22P02 PostgresError', async () => {
+    let intentKey: string;
+    const [existingIntent] = await owner()
+      .query<{ id: string; key: string }>('SELECT id, key FROM intent LIMIT 1')
+      .then((res) => res.rows);
+    let intentId = existingIntent?.id;
+    if (!existingIntent) {
+      const [inserted] = await owner()
+        .query<{ id: string; key: string }>(
+          `INSERT INTO intent (key, name, description) VALUES ('billing_inquiry', 'Billing Inquiry', 'Billing questions') RETURNING id, key`,
+        )
+        .then((res) => res.rows);
+      intentId = inserted?.id;
+      intentKey = inserted?.key ?? 'billing_inquiry';
+    } else {
+      intentKey = existingIntent.key;
+    }
+
+    await owner().query(
+      `INSERT INTO ai_run (
+        started_at, agent, intent, provider, model, tier,
+        prompt_id, prompt_version, prompt_hash, input_hmac,
+        cost_usd, input_tokens, output_tokens, status, redaction
+      ) VALUES (
+        NOW(), 'investigator', $1, 'mock', 'mock-model', 'standard',
+        'test_investigate', 1, $2, $3,
+        '1.2500', 500, 100, 'ok', '{"total": 0, "byKind": {}}'::jsonb
+      )`,
+      [intentKey, 'c'.repeat(64), 'c'.repeat(64)],
+    );
+
+    const items = await insights(head, ['reports.ai_cost'], '&period=d7');
+    expect(items).toHaveLength(1);
+    const costItem = items[0];
+    expect(costItem?.element).toBe('reports.ai_cost');
+
+    // Intent driver fact is present
+    const intentDriverFact = costItem?.facts.find((f) => f.id.startsWith('cost_intent_'));
+    expect(intentDriverFact).toBeDefined();
+
+    // Intent evidence chip must be resolved from the valid UUID intent
+    const allEvidence = costItem?.claims.flatMap((c) => c.evidence) ?? [];
+    const intentChip = allEvidence.find((e) => e.kind === 'intent');
+    expect(intentChip).toBeDefined();
+    expect(intentChip?.ref).toEqual({
+      kind: 'intent',
+      id: intentId,
+    });
+    expect(intentChip?.label).not.toBe('No access');
+    expect(intentChip?.label).toBeTruthy();
+
+    // Top agent is a metric fact without ref (does not map to schema.service)
+    const topAgentFact = costItem?.facts.find((f) => f.id === 'top_agent_runs');
+    expect(topAgentFact).toBeDefined();
+    expect(topAgentFact?.value).toBe(1);
+  });
 });

@@ -359,6 +359,33 @@ describe('memory', () => {
       (await owner().query(`SELECT 1 FROM assistant_memory WHERE id = $1`, [fresh.id])).rowCount,
     ).toBe(1);
   });
+
+  it('C-5: Re-pins tombstoned/unauthorized memory row when re-remembered from a valid fresh turn', async () => {
+    const who = await signIn(h, 'agent');
+    const firstReply = await ask(who, 'initial fact', ['Crucial fact about database resilience.']);
+    const memRes = await remember(who, firstReply.messageId, 0);
+    expect(memRes.status).toBe(201);
+    const memoryId = memRes.body.id;
+
+    // Simulate tombstone by invalidating authorization (e.g. legacy null)
+    await owner().query(`UPDATE assistant_memory SET "authorization" = NULL WHERE id = $1`, [
+      memoryId,
+    ]);
+
+    // Verify it is now unavailable/unauthorized in list
+    const beforeList = await who.client.get<AssistantMemoryList>('/v1/assistant/memory');
+    expect(beforeList.body.items.find((i) => i.id === memoryId)?.available).toBe(false);
+
+    // Ask again in a new turn with same sentence and re-pin it
+    const freshReply = await ask(who, 'repeat fact', ['Crucial fact about database resilience.']);
+    const repinRes = await remember(who, freshReply.messageId, 0);
+    expect(repinRes.status).toBe(201);
+    expect(repinRes.body.id).toBe(memoryId);
+
+    // Memory is now revived and available again!
+    const afterList = await who.client.get<AssistantMemoryList>('/v1/assistant/memory');
+    expect(afterList.body.items.find((i) => i.id === memoryId)?.available).toBe(true);
+  });
 });
 
 describe('feedback', () => {

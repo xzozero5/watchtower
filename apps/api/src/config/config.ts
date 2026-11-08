@@ -53,6 +53,13 @@ const apiEnvSchema = createEnvSchema({
    * `[ASSUMED]` one replica): more than one logs a warning at boot. Not used for anything else.
    */
   API_REPLICAS: z.preprocess(emptyToUndefined, z.coerce.number().int().min(1).max(64).default(1)),
+  /**
+   * Person narration (DoD C-25 / ADR-029 section 9.9): disabled until golden answer suite passes.
+   */
+  INSIGHT_PERSON_NARRATION_ENABLED: z.preprocess(
+    emptyToUndefined,
+    z.stringbool().default(false),
+  ),
   /** Lifetime of the access JWT. Short on purpose: refresh renews it. */
   ACCESS_TOKEN_TTL_SECONDS: seconds(900, 60, 3600),
   /** Lifetime of one refresh token (idle limit); every use issues a new one. */

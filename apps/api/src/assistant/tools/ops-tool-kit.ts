@@ -8,7 +8,7 @@ import type { ClaimEvidenceKind, AssistantEntityKind } from '@watchtower/shared'
 import { z } from 'zod';
 
 import type { Principal } from '../../auth/principal.js';
-import type { AssistantToolName } from '../assistant-access.js';
+import type { AssistantToolName, PiiKind } from '../assistant-access.js';
 import type { ReadOnlyRunner } from '../read-only.js';
 
 /** `[ASSUMED]` (ADR-029 section 2): a list tool returns at most this many rows. */
@@ -37,6 +37,8 @@ export interface OpsToolKit {
   /** Told of each ticket whose content a tool read (the audit of personal data read). */
   readonly onRead?: ((ticket: { readonly id: string; readonly key: string }) => void) | undefined;
   readonly onReadRef?: ((ref: { kind: AssistantEntityKind; id: string }) => void) | undefined;
+  readonly onReadEntity?:
+    ((read: { readonly kind: PiiKind; readonly id: string }) => void) | undefined;
   readonly add: AddTool;
 }
 

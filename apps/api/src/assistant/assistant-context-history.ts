@@ -2,11 +2,12 @@ import { createHash } from 'node:crypto';
 import { Inject, Injectable } from '@nestjs/common';
 import { schema, type Database } from '@watchtower/db';
 import { ASSISTANT_LIMITS } from '@watchtower/shared';
-import { and, desc, eq } from 'drizzle-orm';
+import { and, desc, eq, or } from 'drizzle-orm';
 import { z } from 'zod';
 import type { Principal } from '../auth/principal.js';
 import { DATABASE } from '../database/database.module.js';
 import { AuditService } from '../audit/audit.service.js';
+import { inboxCondition } from '../shifts/shift-notes.service.js';
 import { ContextResolver } from './context-resolver.js';
 import { toolsFor } from './assistant-access.js';
 import { inReadOnlyScope } from './read-only.js';
@@ -57,11 +58,17 @@ export function conversationRefs(
   return [...wanted.values()];
 }
 
+const piiRefSchema = z.strictObject({
+  kind: z.string().min(1).max(64),
+  id: z.string().min(1).max(200),
+});
+
 /** Private provenance only: never spread request context into this snapshot. */
 const authorizationSchema = z.strictObject({
   version: z.literal(1),
   fingerprint: z.string().regex(/^[a-f0-9]{64}$/),
   refs: z.array(assistantEntitySchema).max(400),
+  piiRefs: z.array(piiRefSchema).max(400).optional(),
   tools: z.array(z.string().min(1).max(64)).max(40),
 });
 export type AssistantAuthorization = z.infer<typeof authorizationSchema>;
@@ -87,11 +94,15 @@ export function makeAssistantAuthorization(
   principal: Principal,
   refs: readonly AssistantEntity[],
   tools: readonly string[],
+  piiRefs?: readonly { kind: string; id: string }[],
 ): AssistantAuthorization | null {
   const parsed = authorizationSchema.safeParse({
     version: 1,
     fingerprint: authorizationFingerprint(principal),
     refs: [...new Map(refs.map((ref) => [`${ref.kind}:${ref.ref}`, ref])).values()],
+    ...(piiRefs && piiRefs.length > 0
+      ? { piiRefs: [...new Map(piiRefs.map((r) => [`${r.kind}:${r.id}`, r])).values()] }
+      : {}),
     tools: [...new Set(tools)].sort(),
   });
   return parsed.success ? parsed.data : null;
@@ -136,6 +147,35 @@ export class AssistantHistoryAuthorization {
             metadata: { via: 'assistant', purpose: 'reauthorization' },
           });
         }
+      }
+      for (const pii of parsed.data.piiRefs ?? []) {
+        if (pii.kind === 'shift_note') {
+          const [found] = await this.database.db
+            .select({ id: schema.shiftNote.id })
+            .from(schema.shiftNote)
+            .where(
+              and(
+                eq(schema.shiftNote.id, pii.id),
+                or(
+                  eq(schema.shiftNote.authorId, principal.userId),
+                  inboxCondition(principal.userId, new Date()),
+                ),
+              ),
+            )
+            .limit(1);
+          if (found === undefined) return null;
+        }
+        await this.audit.recordPiiRead({
+          actor: { type: 'user', id: principal.userId },
+          targetType:
+            pii.kind === 'conversation'
+              ? 'inbound_message'
+              : pii.kind === 'roster'
+                ? 'roster_entry'
+                : pii.kind,
+          targetId: pii.id,
+          metadata: { via: 'assistant', purpose: 'reauthorization' },
+        });
       }
       return parsed.data;
     } catch {

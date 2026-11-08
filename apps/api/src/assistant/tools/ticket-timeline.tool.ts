@@ -36,7 +36,7 @@ const message = z.strictObject({
   ticketKey: z.string().max(40),
   from: z.enum(['customer', 'staff', 'note']),
   senderName: z.string().max(300).nullable(),
-  text: z.string().max(2000),
+  text: z.string().max(4000),
   createdAt: z.iso.datetime(),
 });
 const event = z.strictObject({
@@ -52,6 +52,7 @@ const event = z.strictObject({
 });
 
 export const ticketTimelineOutput = z.strictObject({
+  ticketId: z.string().optional(),
   entries: z.array(z.discriminatedUnion('kind', [message, event])).max(MAX_LIST),
   nextCursor: z.string().max(500).nullable(),
 });
@@ -73,7 +74,7 @@ function entryOf(entry: TimelineEntry): TicketTimelineOutput['entries'][number] 
             ? 'customer'
             : 'staff',
       senderName: entry.sender.name === null ? null : cutAtWord(entry.sender.name, 300),
-      text: cutAtWord(entry.bodyText.replaceAll(/\s+/g, ' ').trim(), 2000),
+      text: entry.bodyText.replaceAll(/\s+/g, ' ').trim().slice(0, 4000),
       createdAt: entry.createdAt,
     };
   }
@@ -94,6 +95,7 @@ function entryOf(entry: TimelineEntry): TicketTimelineOutput['entries'][number] 
 export function ticketTimelineFacts(output: TicketTimelineOutput) {
   return output.entries.map((entry) => {
     const href = ticketHref(entry.ticketKey);
+    const targetTicketId = output.ticketId ?? entry.ticketKey;
     if (entry.kind === 'event') {
       const change =
         entry.statusFrom !== null && entry.statusTo !== null
@@ -101,7 +103,7 @@ export function ticketTimelineFacts(output: TicketTimelineOutput) {
           : '';
       return toolFact({
         kind: 'ticket',
-        id: entry.ticketKey,
+        id: targetTicketId,
         label: entry.ticketKey,
         text: plain(
           `${entry.ticketKey} event ${entry.type}${change} by ${entry.actor}${entry.actorName === null ? '' : ` ${entry.actorName}`} at ${entry.createdAt}.`,
@@ -113,7 +115,7 @@ export function ticketTimelineFacts(output: TicketTimelineOutput) {
     }
     return toolFact({
       kind: entry.from === 'note' ? 'note' : 'ticket',
-      id: entry.from === 'note' ? entry.id : entry.ticketKey,
+      id: entry.from === 'note' ? entry.id : targetTicketId,
       label: entry.ticketKey,
       text: untrusted(
         entry.text,
@@ -147,6 +149,7 @@ export function ticketTimelineTool(ctx: ModuleToolContext): ToolRegistrar {
           ctx.onRead('ticket', view.t.id, ctx.keyOf(view.t.number));
           ctx.onRead('timeline', view.t.id);
           return {
+            ticketId: view.t.id,
             entries: page.entries.slice(0, input.limit).map(entryOf),
             nextCursor: page.nextCursor,
           };

@@ -1,15 +1,24 @@
 import { randomUUID } from 'node:crypto';
 
 import { HttpStatus, Inject, Injectable, Optional } from '@nestjs/common';
-import { factsOnlyCall, observeQueue, runAssistantTurn, type LimitRejection } from '@watchtower/ai';
+import {
+  factsOnlyCall,
+  observeQueue,
+  runAssistantTurn,
+  MAX_USER_NOTES,
+  type AssistantUserNote,
+  type LimitRejection,
+} from '@watchtower/ai';
 import { schema, type Database } from '@watchtower/db';
 import { evaluateBudget, readAiUsage, readSwitchState, resolveAiCaps } from '@watchtower/domain';
 import {
   ASSISTANT_CONVERSATION_LIST_LIMIT,
   ASSISTANT_LIMITS,
+  ASSISTANT_MEMORY_LIMITS,
   AUDIT_ACTIONS,
   makeClaim,
   assistantEntitySchema,
+  type AssistantEntity,
   type AssistantEntityKind,
   type AssistantContextChip,
   type AssistantConversationList,
@@ -24,7 +33,7 @@ import {
   type Claim,
   type ProposalCard,
 } from '@watchtower/shared';
-import { and, desc, eq, gt, gte, sql } from 'drizzle-orm';
+import { and, desc, eq, gt, gte, inArray, sql } from 'drizzle-orm';
 
 import { AI_RUNTIME, type AiRuntime } from '../ai/ai-runtime.js';
 import { AiStatusService } from '../ai/ai-status.service.js';
@@ -51,7 +60,13 @@ import { TICKET_KEYS, type TicketKeys } from '../tickets/ticket-keys.js';
 import { TicketReader } from '../tickets/ticket-reader.js';
 import { TelemetryService } from '../telemetry/telemetry.service.js';
 import { ToolRunner } from '../tools/tool-runner.service.js';
-import { isMasked, proposalKindsFor, startersFor, toolsFor } from './assistant-access.js';
+import {
+  PII_KINDS,
+  isMasked,
+  proposalKindsFor,
+  startersFor,
+  toolsFor,
+} from './assistant-access.js';
 import { ticketHref } from './assistant-hrefs.js';
 import { ContextResolver, type ResolvedRef } from './context-resolver.js';
 import { AssistantProposals } from './assistant-proposals.js';
@@ -85,6 +100,36 @@ const THAI = /[฀-๿]/;
 /** Tickets named in what the person typed whose organizations' people are given to the redactor. */
 const MAX_TYPED_TICKETS = 5;
 const TICKET_REF_IN_TEXT = /\b[A-Za-z][A-Za-z0-9]{1,9}-\d{1,15}\b/g;
+
+/** Refs that hold customer personal data or ticket content (ADR-029 C-17, ADR-034 item 14). */
+const CUSTOMER_CONTENT_REFS = new Set<string>([
+  'ticket',
+  'conversation',
+  'contact',
+  'timeline',
+  'handoff',
+  'shift_note',
+  ...PII_KINDS,
+]);
+
+/** Tools whose output carries customer personal data or ticket content. */
+const CUSTOMER_CONTENT_TOOLS = new Set<string>([
+  'search_tickets',
+  'summarize_ticket',
+  'explain_sla',
+  'investigate_run',
+  'incident_get',
+  'shift_context',
+  'roster_view',
+  'performance_view',
+  'conversation_search',
+  'conversation_get',
+  'ticket_timeline',
+  'handoff_get',
+  'handoff_incoming_get',
+  'team_load',
+  'team_status',
+]);
 
 /** Thai in the text means a Thai screen when the web did not say. */
 export function localeOf(requested: AssistantLocale | undefined, text: string): AssistantLocale {
@@ -250,10 +295,10 @@ export class AssistantService {
   private async ticketOf(
     ref: string,
     principal: Principal,
-  ): Promise<{ key: string; orgId: string } | null> {
+  ): Promise<{ id: string; key: string; orgId: string } | null> {
     try {
       const view = await this.reader.viewRow(ref, principal);
-      return { key: this.keys.format(view.t.number), orgId: view.t.orgId };
+      return { id: view.t.id, key: this.keys.format(view.t.number), orgId: view.t.orgId };
     } catch {
       return null;
     }
@@ -332,10 +377,12 @@ export class AssistantService {
 
     // The chip is the person's own claim about where they are: it is checked with their access.
     let ticketKey: string | undefined;
+    let ticketContextId: string | undefined;
     if (body.context?.ticket !== undefined) {
-      const key = await this.ticketKeyOf(body.context.ticket, principal);
-      if (key === null) throw notFound('No such ticket');
-      ticketKey = key;
+      const ticket = await this.ticketOf(body.context.ticket, principal);
+      if (ticket === null) throw notFound('No such ticket');
+      ticketKey = ticket.key;
+      ticketContextId = ticket.id;
     }
 
     const conversationId = await this.conversationFor(principal, body.conversationId, locale);
@@ -369,7 +416,8 @@ export class AssistantService {
     // person typed, or in a ticket, is replaced before a model sees it, and before it is stored (N4).
     const earlier = await this.ticketsOfConversation(conversationId);
     const priorRefs = await this.refsOfConversation(conversationId, principal);
-    const dictionaryRefs = [...resolved.refs, ...priorRefs];
+    const activeMemories = await this.loadActiveMemories(principal);
+    const dictionaryRefs = [...resolved.refs, ...priorRefs, ...activeMemories.resolvedRefs];
     const about = await this.aboutOrgNames(
       principal,
       ticketKey,
@@ -410,6 +458,64 @@ export class AssistantService {
     for (const ref of dictionaryRefs) {
       if (ref.kind === 'ticket') read.set(ref.id, ref.label);
       else readOther.set(`${ref.kind}:${ref.id}`, { kind: ref.kind, id: ref.id });
+    }
+
+    const auditedPii = new Set<string>();
+    const auditAbort = new AbortController();
+    const auditState = { failed: false };
+    const recordPiiAudit = async (entry: {
+      readonly kind: string;
+      readonly id: string;
+    }): Promise<void> => {
+      const key = `${entry.kind}:${entry.id}`;
+      if (auditedPii.has(key)) return;
+      try {
+        const targetType =
+          entry.kind === 'conversation'
+            ? 'inbound_message'
+            : entry.kind === 'roster'
+              ? 'roster_entry'
+              : entry.kind;
+        await this.audit.recordPiiRead({
+          actor: { type: 'user', id: principal.userId },
+          targetType,
+          targetId: entry.id,
+          metadata: { via: 'assistant', conversationId },
+        });
+        auditedPii.add(key);
+      } catch (error) {
+        auditState.failed = true;
+        auditAbort.abort();
+        this.logger.error(
+          { err: error, kind: entry.kind, id: entry.id },
+          'PII audit write failed; withholding data',
+        );
+        throw error;
+      }
+    };
+
+    // Pre-audit PII in resolved context chips and active memories before invoking the model turn (T-445b, T-445d / C-17).
+    // Fail closed immediately if audit fails: no PII enters LLM prompt or leaves in response.
+    const preAuditRefs: { kind: string; id: string }[] = [
+      ...resolved.refs,
+      ...activeMemories.piiRefs,
+    ];
+    if (ticketContextId !== undefined) {
+      preAuditRefs.push({ kind: 'ticket', id: ticketContextId });
+    }
+    for (const ref of preAuditRefs) {
+      if (ref.kind === 'ticket' || PII_KINDS.some((kind) => kind === ref.kind)) {
+        try {
+          await recordPiiAudit({ kind: ref.kind, id: ref.id });
+        } catch {
+          this.logger.error({ ref }, 'Context chip or memory PII audit failed; failing closed');
+          throw new ApiHttpError(
+            HttpStatus.SERVICE_UNAVAILABLE,
+            'assistant_audit_failed',
+            'The answer could not be recorded, so it was not sent',
+          );
+        }
+      }
     }
     const authorizedHistory = await this.authorization.history(principal, conversationId);
     const history = authorizedHistory.turns;
@@ -509,6 +615,7 @@ export class AssistantService {
             readOther.set(`${entity.kind}:${entity.id}`, entity);
             recordReadRef(entity.kind, entity.id);
           },
+          onPiiAudit: recordPiiAudit,
         },
       );
       try {
@@ -522,6 +629,9 @@ export class AssistantService {
             today: new Date().toISOString().slice(0, 10),
             text: body.text,
             history,
+            ...(activeMemories.userNotes.length === 0
+              ? {}
+              : { userNotes: activeMemories.userNotes }),
             entities: resolved.refs,
             cacheFacts: (facts) =>
               this.factsCache.resolve(
@@ -543,7 +653,7 @@ export class AssistantService {
               maxProposals: ASSISTANT_LIMITS.maxProposals,
             },
             masked: isMasked(principal),
-            ...(signal === undefined ? {} : { abortSignal: signal }),
+            abortSignal: signal ? AbortSignal.any([auditAbort.signal, signal]) : auditAbort.signal,
             onPhase: (event) => {
               if (event.phase === 'tool') {
                 if (event.status === 'running') clock.toolsAt ??= performance.now();
@@ -563,7 +673,7 @@ export class AssistantService {
           state = 'ok';
           reason = null;
           path = outcome.path;
-          hadCustomerContent = outcome.hadCustomerContent;
+          hadCustomerContent = outcome.hadCustomerContent || activeMemories.hasCustomerContent;
           claims = outcome.claims;
           redactedAnswer = outcome.redactedText;
           toolNames = outcome.names;
@@ -603,14 +713,38 @@ export class AssistantService {
       principal,
       [
         ...authorizedHistory.refs,
+        ...activeMemories.authorizationRefs,
         ...dictionaryRefs.map((ref) => ({ kind: ref.kind, ref: ref.id })),
         ...toolReadRefs.values(),
         ...conversationRefs([{ context: {}, evidence: evidenceOf(claims) }]),
         ...(ticketKey === undefined ? [] : [{ kind: 'ticket' as const, ref: ticketKey }]),
       ],
-      [...authorizedHistory.tools, ...tools.map((tool) => tool.name)],
+      [
+        ...authorizedHistory.tools,
+        ...activeMemories.authorizationTools,
+        ...tools.map((tool) => tool.name),
+      ],
+      [...readOther.values()],
     );
+    if (auditState.failed || (state === 'unavailable' && reason === 'audit_failed')) {
+      throw new ApiHttpError(
+        HttpStatus.SERVICE_UNAVAILABLE,
+        'assistant_audit_failed',
+        'The answer could not be recorded, so it was not sent',
+      );
+    }
     await this.database.db.transaction(async (tx) => {
+      if (activeMemories.usedIds.length > 0) {
+        await tx
+          .update(schema.assistantMemory)
+          .set({ lastUsedAt: sql`clock_timestamp()` })
+          .where(
+            and(
+              eq(schema.assistantMemory.userId, principal.userId),
+              inArray(schema.assistantMemory.id, [...activeMemories.usedIds]),
+            ),
+          );
+      }
       await tx.insert(schema.assistantMessage).values({
         conversationId,
         userId: principal.userId,
@@ -725,33 +859,45 @@ export class AssistantService {
     };
 
     for (const entity of readOther.values()) {
-      await this.audit.recordPiiRead({
-        actor: { type: 'user', id: principal.userId },
-        targetType: entity.kind === 'conversation' ? 'inbound_message' : entity.kind,
-        targetId: entity.id,
-        metadata: { via: 'assistant', conversationId },
-      });
+      if (!auditedPii.has(`${entity.kind}:${entity.id}`)) {
+        try {
+          await recordPiiAudit(entity);
+        } catch {
+          throw new ApiHttpError(
+            HttpStatus.SERVICE_UNAVAILABLE,
+            'assistant_audit_failed',
+            'The answer could not be recorded, so it was not sent',
+          );
+        }
+      }
     }
 
     // The audit row goes in BEFORE the reply leaves (T-400 C-4): the interceptor writes after the handler, which is too late
     // for a stream, so the service writes it, in one transaction with the `pii.read` rows of what was read, and tells the
     // interceptor it is done. If it cannot be written the person gets no answer (an error, never a reply without a record).
-    await this.auditBeforeReply(principal, conversationId, read, {
-      state,
-      reason,
-      locale,
-      tools: tools.map((tool) => `${tool.name}:${tool.status}`),
-      runs: runIds.length,
-      aiRunIds: runIds,
-      path,
-      hadCustomerContent,
-      proposals: cards.map((card) => card.kind),
-      masked: isMasked(principal),
-      ticketIds: [...read.keys()],
-      // `context_dropped` (T-400 C-20): how many and of which kind, never the refs that were sent.
-      contextDropped: countByKind(resolved.dropped),
-      latencyMs: timings,
-    });
+    await this.auditBeforeReply(
+      principal,
+      conversationId,
+      read,
+      readOther,
+      {
+        state,
+        reason,
+        locale,
+        tools: tools.map((tool) => `${tool.name}:${tool.status}`),
+        runs: runIds.length,
+        aiRunIds: runIds,
+        path,
+        hadCustomerContent,
+        proposals: cards.map((card) => card.kind),
+        masked: isMasked(principal),
+        ticketIds: [...read.keys()],
+        // `context_dropped` (T-400 C-20): how many and of which kind, never the refs that were sent.
+        contextDropped: countByKind(resolved.dropped),
+        latencyMs: timings,
+      },
+      auditedPii,
+    );
     this.observe(timings, state);
     return {
       conversationId,
@@ -776,7 +922,9 @@ export class AssistantService {
     principal: Principal,
     conversationId: string,
     read: ReadonlyMap<string, string>,
+    readOther: ReadonlyMap<string, { readonly kind: string; readonly id: string }>,
     metadata: Record<string, unknown>,
+    auditedPii: Set<string>,
   ): Promise<void> {
     const scope = AuditScope.current();
     const actor = { type: 'user' as const, id: principal.userId };
@@ -786,17 +934,43 @@ export class AssistantService {
         // Tickets whose content the assistant read for this person are personal data read (PRD 8.2): one
         // `pii.read` row each, like the ticket page, so the log says who looked at which ticket.
         for (const [ticketId] of read) {
-          await this.audit.record(
-            {
-              actor,
-              action: 'pii.read',
-              targetType: 'ticket',
-              targetId: ticketId,
-              metadata: { via: 'assistant', conversationId },
-              ...request,
-            },
-            tx,
-          );
+          if (!auditedPii.has(`ticket:${ticketId}`)) {
+            await this.audit.record(
+              {
+                actor,
+                action: 'pii.read',
+                targetType: 'ticket',
+                targetId: ticketId,
+                metadata: { via: 'assistant', conversationId },
+                ...request,
+              },
+              tx,
+            );
+            auditedPii.add(`ticket:${ticketId}`);
+          }
+        }
+        for (const [, entry] of readOther) {
+          const key = `${entry.kind}:${entry.id}`;
+          if (!auditedPii.has(key)) {
+            const targetType =
+              entry.kind === 'conversation'
+                ? 'inbound_message'
+                : entry.kind === 'roster'
+                  ? 'roster_entry'
+                  : entry.kind;
+            await this.audit.record(
+              {
+                actor,
+                action: 'pii.read',
+                targetType,
+                targetId: entry.id,
+                metadata: { via: 'assistant', conversationId },
+                ...request,
+              },
+              tx,
+            );
+            auditedPii.add(key);
+          }
         }
         await this.audit.record(
           {
@@ -947,6 +1121,102 @@ export class AssistantService {
       refs.push(...result.refs);
     }
     return refs;
+  }
+
+  /**
+   * Pinned facts of this person that are still active and authorized (T-445d, ADR-029 section 3, ADR-034).
+   * Up to 10 items, latest first. Anything revoked, expired or forged is dropped silently.
+   */
+  private async loadActiveMemories(principal: Principal): Promise<{
+    readonly userNotes: readonly AssistantUserNote[];
+    readonly usedIds: readonly string[];
+    readonly resolvedRefs: readonly ResolvedRef[];
+    readonly piiRefs: readonly { readonly kind: string; readonly id: string }[];
+    readonly authorizationRefs: readonly AssistantEntity[];
+    readonly authorizationTools: readonly string[];
+    readonly hasCustomerContent: boolean;
+  }> {
+    const { assistantMemory: table } = schema;
+    const candidates = await this.database.db
+      .select()
+      .from(table)
+      .where(and(eq(table.userId, principal.userId), sql`${table.expiresAt} > clock_timestamp()`))
+      .orderBy(desc(table.createdAt))
+      .limit(ASSISTANT_MEMORY_LIMITS.maxPerUser);
+
+    const userNotes: AssistantUserNote[] = [];
+    const usedIds: string[] = [];
+    const authRefs: AssistantEntity[] = [];
+    const authTools: string[] = [];
+    const piiRefs: { kind: string; id: string }[] = [];
+    const entitiesToResolve = new Map<string, AssistantEntity>();
+    let hasCustomerContent = false;
+
+    for (const row of candidates) {
+      if (userNotes.length >= MAX_USER_NOTES) break;
+      const authorized = await this.authorization.authorize(principal, row.authorization);
+      if (authorized === null) continue;
+
+      let memoryCustomerContent = false;
+      for (const ref of row.refs) {
+        if (CUSTOMER_CONTENT_REFS.has(ref.kind)) memoryCustomerContent = true;
+        const parsed = assistantEntitySchema.safeParse({ kind: ref.kind, ref: ref.id });
+        if (parsed.success) {
+          entitiesToResolve.set(`${parsed.data.kind}:${parsed.data.ref}`, parsed.data);
+        }
+        if (ref.kind === 'ticket' || PII_KINDS.some((kind) => kind === ref.kind)) {
+          piiRefs.push({ kind: ref.kind, id: ref.id });
+        }
+      }
+
+      for (const entity of authorized.refs) {
+        if (CUSTOMER_CONTENT_REFS.has(entity.kind)) memoryCustomerContent = true;
+        entitiesToResolve.set(`${entity.kind}:${entity.ref}`, entity);
+        if (entity.kind === 'ticket' || PII_KINDS.some((kind) => kind === entity.kind)) {
+          piiRefs.push({ kind: entity.kind, id: entity.ref });
+        }
+        authRefs.push(entity);
+      }
+
+      for (const tool of authorized.tools) {
+        if (CUSTOMER_CONTENT_TOOLS.has(tool)) memoryCustomerContent = true;
+        authTools.push(tool);
+      }
+
+      userNotes.push({
+        text: row.body,
+        hadCustomerContent: memoryCustomerContent,
+      });
+      usedIds.push(row.id);
+      if (memoryCustomerContent) hasCustomerContent = true;
+    }
+
+    const resolvedRefs: ResolvedRef[] = [];
+    for (const entity of entitiesToResolve.values()) {
+      const result = await this.contexts.resolve({ entity }, principal);
+      resolvedRefs.push(...result.refs);
+    }
+
+    // Canonical UUID normalization: map ticket keys (e.g. OPS-1) to resolved UUIDs for pii.read
+    const normalizedPiiRefs: { kind: string; id: string }[] = piiRefs.map((ref) => {
+      if (ref.kind === 'ticket') {
+        const found = resolvedRefs.find(
+          (r) => r.kind === 'ticket' && (r.id === ref.id || r.label === ref.id),
+        );
+        if (found) return { kind: 'ticket', id: found.id };
+      }
+      return ref;
+    });
+
+    return {
+      userNotes,
+      usedIds,
+      resolvedRefs,
+      piiRefs: normalizedPiiRefs,
+      authorizationRefs: authRefs,
+      authorizationTools: authTools,
+      hasCustomerContent,
+    };
   }
 
   async deleteConversation(principal: Principal, id: string): Promise<void> {

@@ -31,6 +31,18 @@ export function parseScopeKey(key: string): ParsedScopeKey | null {
   return isRowScope(kind) && UUID.test(id) ? { kind, id } : null;
 }
 
+/** Extracts the row id from a scope key (e.g. `org:<uuid>`, `incident:<uuid>`), ensuring kind matches if provided. */
+export function parseRowId(scopeKey: string, expectedKind?: RowScope): string {
+  const parsed = parseScopeKey(scopeKey);
+  if (parsed === null || !('id' in parsed)) {
+    throw new Error(`expected row scope key, got: ${scopeKey}`);
+  }
+  if (expectedKind !== undefined && parsed.kind !== expectedKind) {
+    throw new Error(`expected scope kind ${expectedKind}, got ${parsed.kind} in ${scopeKey}`);
+  }
+  return parsed.id;
+}
+
 /**
  * The scope key an element is read under. Left out by the client: an `instance` or `user` element uses its own, a
  * row scope needs to be named. Named: it must be of the kind the element has.

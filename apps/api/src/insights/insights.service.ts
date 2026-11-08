@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { schema, type Database } from '@watchtower/db';
+import { schema, withReadOnlyConnections, type Database } from '@watchtower/db';
 import {
   evaluateBudget,
   factsFingerprint,
@@ -26,10 +26,9 @@ import {
   type InsightsQuery,
   type InsightsResponse,
 } from '@watchtower/shared';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, gte, sql } from 'drizzle-orm';
 
 import { AiStatusService } from '../ai/ai-status.service.js';
-import { runReadOnly } from '../assistant/read-only.js';
 import { AuditService } from '../audit/audit.service.js';
 import { RateLimiter } from '../auth/rate-limiter.js';
 import type { Principal } from '../auth/principal.js';
@@ -65,6 +64,7 @@ interface Candidate {
 }
 
 interface StoredNarration {
+  readonly id?: string | undefined;
   readonly claims: unknown;
   readonly fingerprint: string;
   readonly generatedAt: Date;
@@ -157,7 +157,9 @@ export class InsightsService {
     if (ready.length === 0) return { items: [] };
 
     const needsStanding = ready.some(
-      ({ candidate }) => INSIGHT_ELEMENTS[candidate.key].mode === 'N',
+      ({ candidate }) =>
+        INSIGHT_ELEMENTS[candidate.key].mode === 'N' ||
+        (candidate.key === 'home.my_work' && this.config.INSIGHT_PERSON_NARRATION_ENABLED),
     );
     const standing: Standing = needsStanding
       ? await this.standing()
@@ -165,6 +167,9 @@ export class InsightsService {
 
     const stored = await Promise.all(
       ready.map(({ candidate }) => this.storedNarration(principal, candidate, locale)),
+    );
+    const feedbackPausedList = await Promise.all(
+      ready.map(({ candidate }) => this.isFeedbackPaused(candidate)),
     );
     const storedClaims = stored.map((row) => {
       const parsed = insightStoredClaimsSchema.safeParse(row?.claims);
@@ -181,6 +186,7 @@ export class InsightsService {
     for (const [index, { candidate, result }] of ready.entries()) {
       const element = INSIGHT_ELEMENTS[candidate.key];
       const row = stored[index] ?? null;
+      const elementFeedbackPaused = feedbackPausedList[index] ?? false;
       const item = this.compose({
         candidate,
         facts: result,
@@ -190,10 +196,19 @@ export class InsightsService {
         resolved,
         masked: view === 'masked',
         standing,
+        elementFeedbackPaused,
         now,
       });
       items.push(item.item);
-      if (element.mode === 'N') await this.leaveMarks(principal, candidate, locale, item.state);
+      const allowPersonNarration =
+        this.config.INSIGHT_PERSON_NARRATION_ENABLED || element.personRefs === 'none';
+      if (
+        allowPersonNarration &&
+        (element.mode === 'N' ||
+          (candidate.key === 'home.my_work' && this.config.INSIGHT_PERSON_NARRATION_ENABLED))
+      ) {
+        await this.leaveMarks(principal, candidate, locale, item.state);
+      }
       if (element.piiKind !== undefined && result.facts.some((fact) => fact.ref?.kind === 'user')) {
         piiKinds.set(element.piiKind, [...(piiKinds.get(element.piiKind) ?? []), candidate.key]);
       }
@@ -251,8 +266,15 @@ export class InsightsService {
     const owner = element.scope === 'user' ? principal.userId : '';
     const key = [candidate.source, candidate.scopeKey, candidate.period, view, owner].join('|');
     return this.facts.get(key, () =>
-      runReadOnly(this.database, (db) =>
-        builder({ executor: db, view, period: candidate.period, subjectUserId: principal.userId }),
+      withReadOnlyConnections(() =>
+        builder({
+          executor: this.database.db,
+          view,
+          period: candidate.period,
+          subjectUserId: principal.userId,
+          scopeKey: candidate.scopeKey,
+          orgScope: principal.orgScope,
+        }),
       ),
     );
   }
@@ -265,11 +287,14 @@ export class InsightsService {
     locale: InsightLocale,
   ): Promise<StoredNarration | null> {
     const element = INSIGHT_ELEMENTS[candidate.key];
-    if (element.mode !== 'N') return null;
+    if (element.mode !== 'N' && candidate.key !== 'home.my_work') return null;
+    if (!this.config.INSIGHT_PERSON_NARRATION_ENABLED && element.personRefs !== 'none') {
+      return null;
+    }
     if (element.scope === 'user') {
       // `home.my_work`: the viewer's own row of `ai_summary`; nobody else's is ever read.
-      const [row] = await runReadOnly(this.database, (db) =>
-        db
+      const [row] = await withReadOnlyConnections(() =>
+        this.database.db
           .select()
           .from(schema.aiSummary)
           .where(
@@ -292,8 +317,8 @@ export class InsightsService {
         mock: row.mock,
       };
     }
-    const [row] = await runReadOnly(this.database, (db) =>
-      db
+    const [row] = await withReadOnlyConnections(() =>
+      this.database.db
         .select()
         .from(schema.aiElementInsight)
         .where(
@@ -309,6 +334,7 @@ export class InsightsService {
     return row === undefined
       ? null
       : {
+          id: row.id,
           claims: row.claims,
           fingerprint: row.factsFingerprint,
           generatedAt: row.generatedAt,
@@ -317,10 +343,33 @@ export class InsightsService {
         };
   }
 
+  /** AC-J21 (R-1): 7-day negative feedback check querying assistant_feedback directly on updatedAt. */
+  private async isFeedbackPaused(candidate: Candidate): Promise<boolean> {
+    if (candidate.key === 'home.my_work') return false;
+    const [stats] = await withReadOnlyConnections(() =>
+      this.database.db
+        .select({
+          total: sql<number>`count(*)::int`,
+          down: sql<number>`count(*) filter (where ${schema.assistantFeedback.rating} = 'down')::int`,
+        })
+        .from(schema.assistantFeedback)
+        .where(
+          and(
+            eq(schema.assistantFeedback.targetKind, 'insight'),
+            eq(schema.assistantFeedback.element, candidate.source),
+            gte(schema.assistantFeedback.updatedAt, sql`clock_timestamp() - interval '7 days'`),
+          ),
+        ),
+    );
+    const total = stats?.total ?? 0;
+    const down = stats?.down ?? 0;
+    return total >= 20 && down / total > 0.5;
+  }
+
   /**
-   * Whether narration may be shown or made right now, without a model call: the kill switch, a provider the worker
-   * reports offline, and the insights share of the daily AI budget (`INSIGHT_STOP_AT_DAILY_PERCENT` of the caps).
-   * `[UNVERIFIED]` the per-agent policy switch of `insight_narrator` is not read here (no api reader for it yet).
+   * 2-Layer Insight Narrator Budget Gate (R-2, ADR-029 section 9.4):
+   * Layer 1 (App-wide): total app usage must not reach daily cap or stop level, and < INSIGHT_STOP_AT_DAILY_PERCENT.
+   * Layer 2 (Narrator-specific): insight_narrator agent usage today <= 30% of caps and INSIGHT_DAILY_TOKENS.
    */
   private async standing(): Promise<Standing> {
     const db = this.database.db;
@@ -328,14 +377,43 @@ export class InsightsService {
     const offline =
       this.config.AI_PROVIDER !== 'mock' && (await this.aiStatus.status()).status === 'offline';
     const caps = resolveAiCaps(this.config);
-    const usage = await readAiUsage(db, new Date());
-    const percent = Math.max(
-      (usage.tokens / caps.dailyTokens) * 100,
-      (usage.costUsd / caps.dailyCostUsd) * 100,
+    const now = new Date();
+    const startOfDay = new Date(
+      Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()),
     );
-    const budgetOpen =
-      evaluateBudget(caps, usage).level !== 'stop' &&
-      percent < this.config.INSIGHT_STOP_AT_DAILY_PERCENT;
+
+    // Layer 1: App-wide daily cap (INSIGHT_STOP_AT_DAILY_PERCENT, default 60%)
+    const appUsage = await readAiUsage(db, now);
+    const appPercent = this.config.INSIGHT_STOP_AT_DAILY_PERCENT / 100;
+    const appCapTokens = Math.floor(caps.dailyTokens * appPercent);
+    const appCapCostUsd = caps.dailyCostUsd * appPercent;
+    const appBudgetOpen =
+      evaluateBudget(caps, appUsage).level !== 'stop' &&
+      appUsage.tokens < appCapTokens &&
+      appUsage.costUsd < appCapCostUsd;
+
+    // Layer 2: agent-specific cap (<= 30% of caps and INSIGHT_DAILY_TOKENS)
+    const [narratorDaily] = await db
+      .select({
+        tokens: sql<number>`coalesce(sum(${schema.aiRun.inputTokens} + ${schema.aiRun.outputTokens}), 0)::int`,
+        cost: sql<string | null>`coalesce(sum(${schema.aiRun.costUsd}), 0)::numeric(10, 4)`,
+      })
+      .from(schema.aiRun)
+      .where(
+        and(eq(schema.aiRun.agent, 'insight_narrator'), gte(schema.aiRun.createdAt, startOfDay)),
+      );
+
+    const narratorTokens = narratorDaily?.tokens ?? 0;
+    const narratorCostUsd = Number(narratorDaily?.cost ?? 0);
+    const narratorCapTokens = Math.min(
+      this.config.INSIGHT_DAILY_TOKENS,
+      Math.floor(caps.dailyTokens * 0.3),
+    );
+    const narratorCapCostUsd = caps.dailyCostUsd * 0.3;
+    const narratorBudgetOpen =
+      narratorTokens < narratorCapTokens && narratorCostUsd < narratorCapCostUsd;
+
+    const budgetOpen = appBudgetOpen && narratorBudgetOpen;
     return { paused: switches.killSwitch || offline, budgetOpen };
   }
 
@@ -350,6 +428,7 @@ export class InsightsService {
     readonly resolved: ReadonlyMap<string, ResolvedRef>;
     readonly masked: boolean;
     readonly standing: Standing;
+    readonly elementFeedbackPaused: boolean;
     readonly now: Date;
   }): { readonly item: InsightItem; readonly state: InsightState } {
     const { candidate, facts, row, locale, resolved, now } = input;
@@ -370,10 +449,19 @@ export class InsightsService {
     // A developer whose stored claims all named a customer or a number the masked facts lack reads the facts only.
     const maskedNoClaims = input.masked && row !== null && narrationClaims.length === 0;
 
+    const allowPersonNarration =
+      this.config.INSIGHT_PERSON_NARRATION_ENABLED || element.personRefs === 'none';
+    let effectiveMode = element.mode;
+    if (!allowPersonNarration) {
+      effectiveMode = 'F';
+    } else if (candidate.key === 'home.my_work' && row !== null) {
+      effectiveMode = 'N';
+    }
+    const paused = input.standing.paused || input.elementFeedbackPaused;
     const state = selectInsightState({
-      mode: element.mode,
+      mode: effectiveMode,
       maskedNoClaims,
-      paused: input.standing.paused,
+      paused,
       narration: row === null ? null : { expiresAt: row.expiresAt, fingerprintMatches },
       budgetOpen: input.standing.budgetOpen,
       now,
@@ -386,7 +474,7 @@ export class InsightsService {
         element: candidate.key,
         scope: candidate.scopeKey,
         period: candidate.period,
-        mode: element.mode,
+        mode: effectiveMode,
         state,
         stateLabel: insightStateLabel(state, locale, generatedAt ?? undefined, now),
         asOf: facts.asOf,
@@ -398,6 +486,7 @@ export class InsightsService {
                 claims: narrationClaims,
                 generatedAt: row.generatedAt.toISOString(),
                 mock: row.mock,
+                ...(row.id === undefined ? {} : { id: row.id }),
               }
             : null,
       },

@@ -360,6 +360,7 @@ describe('tool output within the route output (parity, agent and masked develope
 describe('ADR-034 concurrent real-reader reauthorization', () => {
   it('authorizes four concurrent ticket reads and four concurrent KB reads without starving the four-connection read-only pool', async () => {
     const article = await agent.client.post<{ id: string }>('/v1/kb/articles', {
+      slug: `synthetic-guide-${suffix}`,
       title: 'Synthetic reauthorization guide',
       bodyMd: 'Synthetic instructions.',
       lang: 'en',

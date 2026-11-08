@@ -15,8 +15,9 @@ export const entityGetInput = z.strictObject({ id: z.uuid() });
 export const entityGetOutput = z.strictObject({
   id: z.uuid(),
   label: z.string().min(1).max(200),
-  text: z.string().max(1200),
+  text: z.string().max(8000),
   names: z.array(z.string()).max(1000),
+  hasCustomerItems: z.boolean().optional(),
 });
 
 /** The missing entity summaries; deliberately project no URLs, integration fields or write capability. */
@@ -138,6 +139,7 @@ export function entityGetTools(ctx: ModuleToolContext): ToolRegistrar[] {
               const handoff = await visibleHandoff(handoffs, ctx.principal, id, view);
               if (handoff === null) throw notFound('No such handoff');
               ctx.onReadRef?.('handoff', handoff.id);
+              ctx.onRead('handoff', handoff.id);
               // The context resolver supplies the complete org dictionary before this call; the tool
               // also remembers every linked ticket it can read if invoked by the model without a chip.
               const orgIds: string[] = [];
@@ -158,6 +160,7 @@ export function entityGetTools(ctx: ModuleToolContext): ToolRegistrar[] {
                 text: untrusted(
                   `${handoff.notes} ${handoff.messageForNext} ${handoff.items.map((item) => `${item.title}: ${item.nextAction ?? ''}`).join('; ')}`,
                 ),
+                hasCustomerItems: handoff.items.length > 0,
               };
             },
           },
@@ -169,7 +172,7 @@ export function entityGetTools(ctx: ModuleToolContext): ToolRegistrar[] {
               label: row.label,
               text: row.text,
               names: row.names,
-              trust: 'staff',
+              trust: row.hasCustomerItems ? 'customer' : 'staff',
             }),
           ],
         );

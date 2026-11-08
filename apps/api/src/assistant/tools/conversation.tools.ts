@@ -8,7 +8,6 @@ import { z } from 'zod';
 
 import {
   MAX_LIST,
-  cutAtWord,
   toolFact,
   untrusted,
   type ModuleToolContext,
@@ -25,10 +24,10 @@ const item = z.strictObject({
   id: z.uuid(),
   channel: z.string().max(20),
   disposition: otherMailDispositionSchema,
-  fromName: z.string().max(300).nullable(),
+  fromName: z.string().max(1000).nullable(),
   fromAddress: z.string().max(320).nullable(),
-  subject: z.string().max(1000),
-  snippet: z.string().max(1000),
+  subject: z.string().max(4000),
+  snippet: z.string().max(4000),
   receivedAt: z.iso.datetime(),
 });
 type ConversationItem = z.infer<typeof item>;
@@ -42,7 +41,7 @@ export const conversationSearchOutput = z.strictObject({ items: z.array(item).ma
 
 export const conversationGetInput = z.strictObject({ id: z.uuid() });
 export const conversationGetOutput = z.strictObject({
-  conversation: item.extend({ bodyText: z.string().max(4000) }),
+  conversation: item.extend({ bodyText: z.string().max(8000) }),
 });
 
 const HREF = '/other-mail';
@@ -51,10 +50,10 @@ const itemOf = (row: OtherMailItem): ConversationItem => ({
   id: row.id,
   channel: row.channel,
   disposition: row.disposition,
-  fromName: row.fromName === null ? null : cutAtWord(row.fromName, 300),
+  fromName: row.fromName === null ? null : row.fromName.slice(0, 1000),
   fromAddress: row.fromAddress,
-  subject: cutAtWord(row.subject, 1000),
-  snippet: cutAtWord(row.snippet, 1000),
+  subject: row.subject.slice(0, 4000),
+  snippet: row.snippet.slice(0, 4000),
   receivedAt: row.receivedAt,
 });
 
@@ -138,7 +137,7 @@ export function conversationGetTool(ctx: ModuleToolContext): ToolRegistrar {
           const detail = await ctx.services.otherMail.get(input.id);
           ctx.onRead('conversation', detail.id);
           return {
-            conversation: { ...itemOf(detail), bodyText: cutAtWord(detail.bodyText, 4000) },
+            conversation: { ...itemOf(detail), bodyText: detail.bodyText.slice(0, 8000) },
           };
         },
       },

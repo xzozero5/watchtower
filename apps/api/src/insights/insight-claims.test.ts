@@ -288,3 +288,103 @@ describe('restoring a stored narration', () => {
     expect(refs).toEqual([{ kind: 'user', id: PERSON_A }]);
   });
 });
+
+describe('Wave 9b Mode F templates (T-420)', () => {
+  it('renders home.status template in TH and EN', () => {
+    const facts: InsightFact[] = [
+      metric('active_intents', 15, '15 active intents'),
+      metric('stage_3_intents', 4, '4 stage 3 intents'),
+      {
+        id: 'kill_switch',
+        kind: 'state',
+        value: 'enabled',
+        display: { th: 'Kill switch เปิดอยู่', en: 'Kill switch is active' },
+      },
+    ];
+    const en = templateClaims('home.status', facts, 'en', new Map());
+    expect(en[0]?.text).toBe('15 active intents (4 at stage 3), kill switch is active');
+
+    const th = templateClaims('home.status', facts, 'th', new Map());
+    expect(th[0]?.text).toBe('15 intent ใช้งานอยู่ (4 อยู่ stage 3), kill switch เปิดอยู่');
+  });
+
+  it('renders admin.intent.gate status in localized terms', () => {
+    const factsPass: InsightFact[] = [
+      { id: 'gate_status', kind: 'state', value: 'pass', display: { th: 'ผ่าน', en: 'pass' } },
+      metric('criteria_pass', 7, '7 passed'),
+      metric('criteria_fail', 0, '0 failed'),
+    ];
+    const en = templateClaims('admin.intent.gate', factsPass, 'en', new Map());
+    expect(en[0]?.text).toBe('Latest gate report: pass (7 passed, 0 failed)');
+
+    const th = templateClaims('admin.intent.gate', factsPass, 'th', new Map());
+    expect(th[0]?.text).toBe('รายงาน Gate ล่าสุด: ผ่าน (ผ่าน 7 ข้อ, ไม่ผ่าน 0 ข้อ)');
+  });
+
+  it('renders queue.list summary with at_risk and breached sum', () => {
+    const facts: InsightFact[] = [
+      metric('my_open', 5, '5 held'),
+      metric('my_at_risk', 1, '1 risk'),
+      metric('my_breached', 2, '2 breached'),
+      metric('unassigned_open', 8, '8 unassigned'),
+    ];
+    const en = templateClaims('queue.list', facts, 'en', new Map());
+    expect(en[0]?.text).toBe('You hold 5 open tickets (3 at risk), 8 unassigned tickets open');
+    const th = templateClaims('queue.list', facts, 'th', new Map());
+    expect(th[0]?.text).toBe(
+      'คุณถืออยู่ 5 รายการ (3 เสี่ยงผิด SLA), ค้างที่ยังไม่มอบหมาย 8 รายการ',
+    );
+  });
+
+  it('renders admin.ai summary with cost formatted', () => {
+    const facts: InsightFact[] = [
+      {
+        id: 'kill_switch',
+        kind: 'state',
+        value: 'disabled',
+        display: { th: 'ปิด', en: 'inactive' },
+      },
+      metric('tokens_today', 45000, '45k tokens'),
+      metric('cost_today_usd', 1.25, '$1.25 USD'),
+    ];
+    const en = templateClaims('admin.ai', facts, 'en', new Map());
+    expect(en[0]?.text).toBe('Kill switch is inactive, today: 45,000 tokens ($1.25 USD)');
+    const th = templateClaims('admin.ai', facts, 'th', new Map());
+    expect(th[0]?.text).toBe('Kill switch ปิดอยู่, การใช้งานวันนี้: 45,000 tokens ($1.25 USD)');
+  });
+
+  it('renders dashboard.ops.ai with cost_usd and error counts correctly', () => {
+    const facts: InsightFact[] = [
+      metric('total_runs', 50, '50 runs'),
+      metric('cost_usd', 12.5, '$12.5 USD'),
+      metric('error_count', 2, '2 errors'),
+      metric('fallback_count', 1, '1 fallback'),
+    ];
+    const en = templateClaims('dashboard.ops.ai', facts, 'en', new Map());
+    expect(en[0]?.text).toContain('$12.5 USD');
+    expect(en[0]?.text).toContain('3 errors');
+
+    const th = templateClaims('dashboard.ops.ai', facts, 'th', new Map());
+    expect(th[0]?.text).toContain('12.5 USD');
+    expect(th[0]?.text).toContain('3 ครั้ง');
+  });
+
+  it('renders admin.intent.gate with insufficient_data translated to pure Thai without raw English token', () => {
+    const facts: InsightFact[] = [
+      {
+        id: 'gate_status',
+        kind: 'state',
+        value: 'insufficient_data',
+        display: { th: 'ข้อมูลยังไม่เพียงพอ', en: 'insufficient data' },
+      },
+      metric('criteria_pass', 2, '2 passed'),
+      metric('criteria_fail', 1, '1 failed'),
+    ];
+    const en = templateClaims('admin.intent.gate', facts, 'en', new Map());
+    expect(en[0]?.text).toBe('Latest gate report: insufficient data (2 passed, 1 failed)');
+
+    const th = templateClaims('admin.intent.gate', facts, 'th', new Map());
+    expect(th[0]?.text).toBe('รายงาน Gate ล่าสุด: ข้อมูลยังไม่เพียงพอ (ผ่าน 2 ข้อ, ไม่ผ่าน 1 ข้อ)');
+    expect(th[0]?.text).not.toContain('insufficient_data');
+  });
+});

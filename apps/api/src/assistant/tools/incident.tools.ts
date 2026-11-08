@@ -160,6 +160,7 @@ export function registerIncidentTools(
         else throw new Error('give the incident as INC-12 or its id');
         const detail: IncidentDetail = await deps.incidents.get(id);
         await kit.remember(detail.orgIds);
+        kit.onReadEntity?.({ kind: 'timeline', id: detail.id });
 
         // The linked tickets are read with the reader of tickets, under the person's own scope: one they may not read is left out.
         const linked = await Promise.all(

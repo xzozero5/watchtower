@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from 'node:async_hooks';
 import {
   createToolRegistry,
   defineTool,
@@ -32,7 +33,7 @@ import type { TicketKeys } from '../tickets/ticket-keys.js';
 import type { TicketReader } from '../tickets/ticket-reader.js';
 import type { ToolRunner } from '../tools/tool-runner.service.js';
 import { orgPeopleNames } from '../masking/org-names.js';
-import { toolsFor, type AssistantToolName, type PiiKind } from './assistant-access.js';
+import { PII_KINDS, toolsFor, type AssistantToolName, type PiiKind } from './assistant-access.js';
 import { assigneeHref, ticketHref } from './assistant-hrefs.js';
 import { loadLine, memberLine, slaLine, ticketLine } from './assistant-text.js';
 import { inReadOnlyScope, runReadOnly, type ReadOnlyRunner } from './read-only.js';
@@ -96,6 +97,9 @@ export interface AssistantToolEnv {
   /** Told of each other entity of personal data a module tool read (not a ticket), for `pii.read` (C-17). */
   readonly onReadEntity?:
     ((read: { readonly kind: PiiKind; readonly id: string }) => void) | undefined;
+  /** Immediately records a PII read audit row; fails closed if recording throws (T-445b). */
+  readonly onPiiAudit?:
+    ((read: { readonly kind: PiiKind; readonly id: string }) => Promise<void>) | undefined;
 }
 
 const cut = (text: string, max: number): string =>
@@ -108,7 +112,7 @@ const refInput = z.strictObject({ ticket: ticketRefSchema });
 
 const ticketRow = z.object({
   key: z.string().max(40),
-  subject: z.string().max(300),
+  subject: z.string().max(4000),
   status: z.string().max(40),
   priority: z.string().max(4),
   org: z.string().max(300),
@@ -248,6 +252,19 @@ export function buildAssistantTools(
     if (!found.complete) incomplete = true;
   };
 
+  const toolPiiAuditStorage = new AsyncLocalStorage<Array<{ kind: PiiKind; id: string }>>();
+
+  const recordReadTicket = (ticket: { readonly id: string; readonly key: string }): void => {
+    ticketIds.set(ticket.key, ticket.id);
+    toolPiiAuditStorage.getStore()?.push({ kind: 'ticket', id: ticket.id });
+    env.onRead?.(ticket);
+  };
+
+  const recordReadEntity = (read: { readonly kind: PiiKind; readonly id: string }): void => {
+    toolPiiAuditStorage.getStore()?.push(read);
+    env.onReadEntity?.(read);
+  };
+
   function add<I extends z.ZodType, O extends z.ZodType>(
     name: AssistantToolName,
     tool: Omit<ToolDefinition<I, O>, 'name' | 'readOnly'>,
@@ -261,7 +278,25 @@ export function buildAssistantTools(
     const run = tool.execute;
     const execute: typeof run = async (input, ...rest) => {
       await env.enforceToolBudget?.(name);
-      return name === 'investigate_run' ? run(input, ...rest) : scopeOf(() => run(input, ...rest));
+      const callPiiReads: { kind: PiiKind; id: string }[] = [];
+      const output = await toolPiiAuditStorage.run(callPiiReads, async () => {
+        return name === 'investigate_run'
+          ? run(input, ...rest)
+          : scopeOf(() => run(input, ...rest));
+      });
+      // OUTSIDE read-only scope (T-445b): audit every PII read entity before returning to host/LLM.
+      // If audit recording fails, throw immediately so the tool output is withheld.
+      if (env.onPiiAudit !== undefined) {
+        const seen = new Set<string>();
+        for (const item of callPiiReads) {
+          const key = `${item.kind}:${item.id}`;
+          if (!seen.has(key)) {
+            seen.add(key);
+            await env.onPiiAudit(item);
+          }
+        }
+      }
+      return output;
     };
     registry.register(defineTool<I, O>({ ...tool, execute, name, readOnly: true }));
     facts.set(name, toFacts);
@@ -271,12 +306,12 @@ export function buildAssistantTools(
   const rowOf = async (
     view: Awaited<ReturnType<TicketReader['viewRow']>>,
   ): Promise<TicketRowShape> => {
-    ticketIds.set(deps.keys.format(view.t.number), view.t.id);
+    const key = deps.keys.format(view.t.number);
     const sla = await deps.sla.view(view.t, env.now);
-    env.onRead?.({ id: view.t.id, key: deps.keys.format(view.t.number) });
+    recordReadTicket({ id: view.t.id, key });
     return {
-      key: deps.keys.format(view.t.number),
-      subject: cut(view.t.subject, 300),
+      key,
+      subject: view.t.subject.slice(0, 4000),
       status: view.t.status,
       priority: view.t.priority,
       org: cut(view.orgName, 300),
@@ -324,8 +359,7 @@ export function buildAssistantTools(
         await remember(page.items.flatMap((item) => ('org' in item ? [item.org.id] : [])));
         for (const item of page.items) {
           if (!('org' in item)) continue;
-          ticketIds.set(item.key, item.id);
-          env.onRead?.({ id: item.id, key: item.key });
+          recordReadTicket({ id: item.id, key: item.key });
           items.push({
             key: item.key,
             subject: cut(item.subject, 300),
@@ -502,6 +536,9 @@ export function buildAssistantTools(
           .sort((a, b) => b.open - a.open || a.name.localeCompare(b.name))
           .slice(0, 8);
         const unassigned = stats.byAssignee.find((bucket) => bucket.assigneeId === null);
+        for (const row of rows) {
+          recordReadEntity({ kind: 'performance', id: row.userId });
+        }
         return { rows, unassignedOpen: unassigned?.open ?? 0 };
       },
     },
@@ -539,15 +576,18 @@ export function buildAssistantTools(
       output: statusOutput,
       async execute() {
         const list = await deps.brief.assignees({});
-        const members = [...list.assignees]
+        const top = [...list.assignees]
           .sort((a, b) => Number(b.onShift) - Number(a.onShift) || a.name.localeCompare(b.name))
-          .slice(0, 10)
-          .map((member) => ({
-            name: member.name,
-            role: member.role,
-            onShift: member.onShift,
-            openTickets: member.openTickets,
-          }));
+          .slice(0, 10);
+        for (const member of top) {
+          recordReadEntity({ kind: 'shift_overview', id: member.id });
+        }
+        const members = top.map((member) => ({
+          name: member.name,
+          role: member.role,
+          onShift: member.onShift,
+          openTickets: member.openTickets,
+        }));
         return { members };
       },
     },
@@ -611,7 +651,7 @@ export function buildAssistantTools(
         const subject = await deps.runner.ticketSubject(input.ticket, principal);
         if (subject.kind !== 'ticket') throw new Error('not a ticket');
         const key = deps.keys.format((await deps.reader.viewRow(input.ticket, principal)).t.number);
-        env.onRead?.({ id: subject.ticketId, key });
+        recordReadTicket({ id: subject.ticketId, key });
         await remember([subject.orgId]);
         // Only a template the AI may run for this ticket (ADR-016); never one made for a person's button.
         const templateId = await deps.runner.aiTemplateOf(subject);
@@ -665,11 +705,17 @@ export function buildAssistantTools(
   // --- T-402, T-403: incident, alert, status page, shift (tools/*.tools.ts) ----------------------
   const ops: OpsToolKit = {
     principal,
-    onReadRef: env.onReadRef,
+    onReadRef: (ref) => {
+      if (PII_KINDS.some((k: string) => k === ref.kind)) {
+        toolPiiAuditStorage.getStore()?.push({ kind: ref.kind as PiiKind, id: ref.id });
+      }
+      env.onReadRef?.(ref);
+    },
     now: env.now,
     readOnly,
     remember,
-    onRead: env.onRead,
+    onRead: recordReadTicket,
+    onReadEntity: recordReadEntity,
     add,
   };
   if (deps.incidents !== undefined) {
@@ -706,11 +752,15 @@ export function buildAssistantTools(
       now: env.now,
       readOnly,
       remember,
-      onReadRef: (kind, id) => env.onReadRef?.({ kind, id }),
+      onReadRef: (kind, id) => {
+        if (PII_KINDS.some((k: string) => k === kind))
+          recordReadEntity({ kind: kind as PiiKind, id });
+        env.onReadRef?.({ kind, id });
+      },
       keyOf: (number) => deps.keys.format(number),
       onRead: (kind, id, key) => {
-        if (kind === 'ticket' && key !== undefined) env.onRead?.({ id, key });
-        else env.onReadEntity?.({ kind, id });
+        if (kind === 'ticket' && key !== undefined) recordReadTicket({ id, key });
+        else recordReadEntity({ kind, id });
       },
     };
     for (const register of readModuleTools(context)) register(add);

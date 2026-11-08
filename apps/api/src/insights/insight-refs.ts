@@ -52,12 +52,16 @@ export function mayOpenRef(viewer: Principal, ref: InsightRef): boolean {
 
 type Names = ReadonlyMap<string, string>;
 
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 async function namesOf(
   database: Pick<Database, 'pool'>,
   refs: readonly InsightRef[],
 ): Promise<Map<string, string>> {
   const ids = (kind: InsightRefKind): string[] => [
-    ...new Set(refs.filter((ref) => ref.kind === kind).map((ref) => ref.id)),
+    ...new Set(
+      refs.filter((ref) => ref.kind === kind && UUID_REGEX.test(ref.id)).map((ref) => ref.id),
+    ),
   ];
   const out = new Map<string, string>();
   await runReadOnly(database, async (db) => {

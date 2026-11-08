@@ -106,6 +106,9 @@ export const PII_KINDS = [
   'timeline',
   'shift_overview',
   'performance',
+  'handoff',
+  'shift_note',
+  'roster',
 ] as const;
 export type PiiKind = (typeof PII_KINDS)[number];
 
@@ -131,8 +134,16 @@ export const TOOL_PERMISSION: Readonly<Record<AssistantToolName, ToolAccess>> = 
   search_tickets: { route: 'GET /v1/tickets', rule: TICKET_READ, piiKinds: ['ticket'] },
   summarize_ticket: { route: 'GET /v1/tickets/:id', rule: TICKET_READ, piiKinds: ['ticket'] },
   explain_sla: { route: 'GET /v1/tickets/:id', rule: TICKET_READ, piiKinds: ['ticket'] },
-  team_load: { route: 'GET /v1/tickets/stats', rule: { all: ['ticket.read'] }, piiKinds: [] },
-  team_status: { route: 'GET /v1/assignees', rule: { all: ['ticket.handle'] }, piiKinds: [] },
+  team_load: {
+    route: 'GET /v1/tickets/stats',
+    rule: { all: ['ticket.read'] },
+    piiKinds: ['performance'],
+  },
+  team_status: {
+    route: 'GET /v1/assignees',
+    rule: { all: ['ticket.handle'] },
+    piiKinds: ['shift_overview'],
+  },
   kb_search: { route: 'GET /v1/kb/search', rule: { all: ['kb.read'] }, piiKinds: [] },
   investigate_run: {
     route: 'GET /v1/tickets/:id/tools',
@@ -162,12 +173,12 @@ export const TOOL_PERMISSION: Readonly<Record<AssistantToolName, ToolAccess>> = 
   shift_context: {
     route: 'GET /v1/handoffs/current',
     rule: { all: ['handoff.write'] },
-    piiKinds: ['ticket'],
+    piiKinds: ['ticket', 'shift_overview', 'handoff', 'shift_note'],
   },
   roster_view: {
     route: 'GET /v1/roster',
     rule: { anyOf: ['shift.clock', 'roster.manage'] },
-    piiKinds: [],
+    piiKinds: ['roster'],
   },
   // T-404 (reports). `performance_view` is served by the same dashboard route; the handler also asks for
   // `performance.read.own` or `.all` and ignores a userId when only `.own` is held (C-16).
@@ -212,12 +223,12 @@ export const TOOL_PERMISSION: Readonly<Record<AssistantToolName, ToolAccess>> = 
   handoff_get: {
     route: 'GET /v1/handoffs/current',
     rule: { all: ['handoff.write'] },
-    piiKinds: [],
+    piiKinds: ['ticket', 'handoff'],
   },
   handoff_incoming_get: {
     route: 'GET /v1/handoffs/incoming',
     rule: { all: ['handoff.ack'] },
-    piiKinds: [],
+    piiKinds: ['ticket', 'handoff'],
   },
   config_lookup: { route: 'GET /v1/sla-policies', rule: { all: ['ticket.read'] }, piiKinds: [] },
 };

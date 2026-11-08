@@ -1,6 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import {
   MockEmbeddingProvider,
+  assertLocalEmbeddingUrl,
   createAuditedEmbedder,
   createLocalEmbeddingProvider,
   parseLocalEmbeddingHosts,
@@ -8,6 +9,7 @@ import {
   embeddingSettings,
   mockSettings,
   type AuditedEmbedder,
+  type ProviderKind,
 } from '@watchtower/ai';
 import type { Database } from '@watchtower/db';
 import {
@@ -38,100 +40,178 @@ export interface QueryEmbedding {
   readonly indexId: string;
 }
 
+interface ImmutableSpecKey {
+  readonly provider: ProviderKind;
+  readonly model: string;
+  readonly dimensions: number;
+}
+
 /**
- * Turns a search query into a vector for the hybrid search (T-107c). It goes through the same
- * audited embedder as the worker: the guard (kill switch, daily budget) first, PII redaction before
- * the provider sees the text (N4), and an `ai_run` row for the call.
+ * Turns a search query into a vector for hybrid search (T-107c, ADR-033 §3).
  *
- * Search never fails because of it: when there is no vector (nothing is indexed yet, the provider
- * is not wired in the api, the model in settings is not the one the chunks were embedded with, the
- * guard said no, or the provider failed) it answers `undefined` and the caller searches by keyword
- * only, and says so (`mode: 'keyword'`). A vector from a different model than the stored ones
- * would rank nonsense, so it is never used.
+ * It routes embedding through the active embedding index recorded in the database, pinning the
+ * spec per request and using an AuditedEmbedder configured immutably for that spec.
  *
- * `EMBEDDING_PROVIDER` is `mock` or `local` (the Ollama `embedder` service, ADR-030); any other
- * value stops the boot. The local call has a short timeout and no retry.
+ * Search never fails because of an embedding issue: when there is no vector (nothing is indexed yet,
+ * the provider is not available, the guard refused, or the call timed out) it answers `undefined`
+ * and the caller searches by keyword only (`mode: 'keyword'`).
  */
 @Injectable()
 export class KbEmbeddingService {
-  private readonly embedder: AuditedEmbedder;
-  private readonly wanted: ReturnType<typeof embeddingSettings>;
+  private readonly embedderCache = new Map<string, AuditedEmbedder>();
+  private readonly sink: ReturnType<typeof createAiRunRecorder>;
+  private readonly guard: ReturnType<typeof createAiGuard>;
+  private readonly prices: ReturnType<typeof embeddingSettings>['prices'];
 
   constructor(
     @Inject(DATABASE) private readonly database: Database,
-    @Inject(APP_CONFIG) config: ApiConfig,
+    @Inject(APP_CONFIG) private readonly config: ApiConfig,
     @Inject(LOGGER) private readonly logger: AppLogger,
   ) {
-    // Only mock and local are wired. Anything else stops the boot with a clear message instead of
-    // being ignored in silence (N5): live embedding over the internet is the owner's decision.
     assertKbEmbeddingProvider(config.EMBEDDING_PROVIDER);
+    if (config.EMBEDDING_PROVIDER === 'local') {
+      const allowedHosts = parseLocalEmbeddingHosts(config.EMBEDDING_LOCAL_HOSTS);
+      assertLocalEmbeddingUrl(config.EMBEDDING_LOCAL_URL, allowedHosts);
+    }
     const db = database.db;
     const caps = resolveAiCaps(config);
-    this.wanted = embeddingSettings(config);
-    const wanted = this.wanted;
-    this.embedder = createAuditedEmbedder({
+    this.prices = embeddingSettings(config).prices;
+    this.sink = createAiRunRecorder({ db });
+    this.guard = createAiGuard({
+      policyGate: createPolicyGate({ db }),
+      db,
+      caps,
+      budget: createBudgetMonitor({
+        db,
+        caps,
+        onEvent: (notice) => {
+          this.logger.warn(
+            { dimension: notice.dimension, level: notice.level },
+            'AI daily budget finding',
+          );
+        },
+      }),
+    });
+  }
+
+  private getOrCreateEmbedder(spec: ImmutableSpecKey): AuditedEmbedder | undefined {
+    const cacheKey = `${spec.provider}:${spec.model}:${String(spec.dimensions)}`;
+    const cached = this.embedderCache.get(cacheKey);
+    if (cached !== undefined) return cached;
+
+    const providers: Parameters<typeof createAuditedEmbedder>[0]['providers'] = {
+      mock: new MockEmbeddingProvider(),
+    };
+
+    if (spec.provider === 'local') {
+      // Local model is only available if it matches the configured local model and dimensions
+      if (
+        spec.model !== this.config.EMBEDDING_MODEL ||
+        spec.dimensions !== this.config.EMBEDDING_DIMENSIONS
+      ) {
+        return undefined;
+      }
+      try {
+        const allowedHosts = parseLocalEmbeddingHosts(this.config.EMBEDDING_LOCAL_HOSTS);
+        providers.local = createLocalEmbeddingProvider({
+          url: this.config.EMBEDDING_LOCAL_URL,
+          allowedHosts,
+          fetch: (input, init) => globalThis.fetch(input, init),
+          timeoutMs: QUERY_EMBED_TIMEOUT_MS,
+          maxRetries: 0,
+        });
+      } catch {
+        // If local configuration is incomplete/disallowed, fallback to keyword
+        return undefined;
+      }
+    } else if (spec.provider !== 'mock') {
+      // Other unconfigured providers fallback to keyword
+      return undefined;
+    }
+
+    const embedder = createAuditedEmbedder({
       settings: {
         load: () =>
           Promise.resolve({
             ...mockSettings(),
-            embedding: wanted.embedding,
-            prices: wanted.prices,
+            embedding: {
+              provider: spec.provider,
+              model: spec.model,
+              dimensions: spec.dimensions,
+            },
+            prices: this.prices,
           }),
       },
-      providers: {
-        mock: new MockEmbeddingProvider(),
-        ...(config.EMBEDDING_PROVIDER === 'local'
-          ? {
-              local: createLocalEmbeddingProvider({
-                url: config.EMBEDDING_LOCAL_URL,
-                allowedHosts: parseLocalEmbeddingHosts(config.EMBEDDING_LOCAL_HOSTS),
-                fetch: (input, init) => globalThis.fetch(input, init),
-                timeoutMs: QUERY_EMBED_TIMEOUT_MS,
-                maxRetries: 0,
-              }),
-            }
-          : {}),
-      },
-      sink: createAiRunRecorder({ db }),
+      providers,
+      sink: this.sink,
       redactor: createRedactor(),
-      guard: createAiGuard({
-        policyGate: createPolicyGate({ db }),
-        db,
-        caps,
-        budget: createBudgetMonitor({
-          db,
-          caps,
-          onEvent: (notice) => {
-            this.logger.warn(
-              { dimension: notice.dimension, level: notice.level },
-              'AI daily budget finding',
-            );
-          },
-        }),
-      }),
+      guard: this.guard,
     });
+
+    this.embedderCache.set(cacheKey, embedder);
+    return embedder;
   }
 
   async embedQuery(query: string): Promise<QueryEmbedding | undefined> {
     try {
       const index = await readActiveEmbeddingIndex(this.database.db);
       if (index === undefined) return undefined;
-      const wanted = this.wanted.embedding;
-      if (
-        index.provider !== wanted.provider ||
-        index.model !== wanted.model ||
-        index.dimensions !== wanted.dimensions
-      ) {
+
+      // Pin active index spec and ID per request (ADR-033 §3)
+      const pinned: ImmutableSpecKey & { readonly indexId: string } = {
+        indexId: index.id,
+        provider: index.provider as ProviderKind,
+        model: index.model,
+        dimensions: index.dimensions,
+      };
+
+      const embedder = this.getOrCreateEmbedder(pinned);
+      if (embedder === undefined) {
+        this.logger.warn(
+          { provider: pinned.provider, model: pinned.model },
+          'embedder unavailable for active index spec; searching by keyword only',
+        );
         return undefined;
       }
-      const outcome = await this.embedder.embed({
+
+      const outcome = await embedder.embed({
         texts: [query],
         scope: `kb-query:${randomUUID()}`,
         action: 'kb_query',
       });
+
       if (outcome.status !== 'ok') return undefined;
+
+      // Strict outcome verification against pinned spec
+      if (
+        outcome.provider !== pinned.provider ||
+        outcome.model !== pinned.model ||
+        outcome.dimensions !== pinned.dimensions
+      ) {
+        this.logger.warn(
+          {
+            outcome: {
+              provider: outcome.provider,
+              model: outcome.model,
+              dimensions: outcome.dimensions,
+            },
+            pinned,
+          },
+          'embedding outcome mismatched pinned spec',
+        );
+        return undefined;
+      }
+
       const vector = outcome.embeddings[0];
-      return vector === undefined ? undefined : { vector, indexId: index.id };
+      if (
+        vector === undefined ||
+        vector.length !== pinned.dimensions ||
+        !vector.every(Number.isFinite)
+      ) {
+        return undefined;
+      }
+
+      return { vector, indexId: pinned.indexId };
     } catch (error) {
       this.logger.warn(
         { error: safeErrorLabel(error) },

@@ -219,6 +219,270 @@ function sentencesFor(
       }
       break;
     }
+    // --- Wave 9b Mode F & Mode N elements (T-420) ---
+    case 'home.status': {
+      const active = num(byId.get('active_intents'));
+      const stage3 = num(byId.get('stage_3_intents'));
+      const killSwitchVal = byId.get('kill_switch')?.value;
+      const killSwitch =
+        locale === 'th'
+          ? killSwitchVal === 'enabled'
+            ? 'เปิดอยู่'
+            : 'ปิดอยู่'
+          : killSwitchVal === 'enabled'
+            ? 'active'
+            : 'inactive';
+      out.push({
+        templateId: 'home_status',
+        params: { active, stage3, killSwitch },
+        from: ['active_intents', 'stage_3_intents', 'kill_switch'],
+      });
+      break;
+    }
+    case 'queue.list': {
+      const myOpen = num(byId.get('my_open'));
+      const myRisk = num(byId.get('my_at_risk')) + num(byId.get('my_breached'));
+      const unassigned = num(byId.get('unassigned_open'));
+      out.push({
+        templateId: 'queue_summary',
+        params: { myOpen, myRisk, unassigned },
+        from: ['my_open', 'my_at_risk', 'my_breached', 'unassigned_open'],
+      });
+      break;
+    }
+    case 'home.volume':
+      out.push(...deltaSentences(byId, locale), ...driverSentences(facts, locale, resolved));
+      break;
+    case 'dashboard.ops.now': {
+      const open = byId.get('open_tickets');
+      if (open !== undefined) {
+        out.push({
+          templateId: 'open_count',
+          params: { count: num(open) },
+          from: ['open_tickets'],
+        });
+      }
+      const risk = num(byId.get('at_risk_sla')) + num(byId.get('breached_sla'));
+      if (risk > 0) {
+        out.push({
+          templateId: 'sla_at_risk',
+          params: { count: risk },
+          from: ['at_risk_sla', 'breached_sla'],
+        });
+      }
+      const openIncidents = num(byId.get('open_incidents'));
+      if (openIncidents > 0) {
+        out.push({
+          templateId: 'incidents_open',
+          params: { count: openIncidents },
+          from: ['open_incidents'],
+        });
+      }
+      break;
+    }
+    case 'dashboard.ops.reliability': {
+      const openInc = num(byId.get('open_incidents'));
+      if (openInc > 0) {
+        out.push({
+          templateId: 'incidents_open',
+          params: { count: openInc },
+          from: ['open_incidents'],
+        });
+      }
+      out.push(...driverSentences(facts, locale, resolved));
+      break;
+    }
+    case 'dashboard.ops.services': {
+      const activeServices = num(byId.get('total_services'));
+      const servicesWithAlerts = num(byId.get('services_with_alerts'));
+      out.push({
+        templateId: 'alerts_services_summary',
+        params: { activeServices, servicesWithAlerts },
+        from: ['total_services', 'services_with_alerts'],
+      });
+      out.push(...driverSentences(facts, locale, resolved));
+      break;
+    }
+    case 'dashboard.ops.quality':
+      out.push(...driverSentences(facts, locale, resolved));
+      break;
+    case 'dashboard.ops.ai': {
+      const runs = num(byId.get('total_runs'));
+      const costVal = byId.get('cost_usd')?.value;
+      const cost = typeof costVal === 'number' ? costVal : Number(costVal ?? 0);
+      const errors = num(byId.get('error_count')) + num(byId.get('fallback_count'));
+      out.push({
+        templateId: 'ai_ops_summary',
+        params: { runs, cost, errors },
+        from: ['total_runs', 'cost_usd', 'error_count', 'fallback_count'],
+      });
+      break;
+    }
+    case 'dashboard.ops.grades': {
+      const graded = num(byId.get('total_graded'));
+      const verifiedPct = num(byId.get('verified_pct'));
+      const violations = num(byId.get('violation_count'));
+      out.push({
+        templateId: 'ai_grades_summary',
+        params: { graded, verifiedPct, violations },
+        from: ['total_graded', 'verified_pct', 'violation_count'],
+      });
+      break;
+    }
+    case 'dashboard.ops.team':
+      out.push(...driverSentences(facts, locale, resolved));
+      break;
+    case 'dashboard.ops.usage':
+      out.push(...driverSentences(facts, locale, resolved));
+      break;
+    case 'reports.ai_cost': {
+      const runs = num(byId.get('total_runs'));
+      const cost = Number(byId.get('cost_usd')?.value ?? 0).toFixed(2);
+      out.push({
+        templateId: 'ai_ops_summary',
+        params: { runs, cost, errors: 0 },
+        from: ['total_runs', 'cost_usd'],
+      });
+      out.push(...driverSentences(facts, locale, resolved));
+      break;
+    }
+    case 'reports.ceo.figures': {
+      const tickets = num(byId.get('total_tickets'));
+      const resolvedCount = num(byId.get('resolved_tickets'));
+      const incidents = num(byId.get('incidents_count'));
+      const week = num(byId.get('week_number'));
+      out.push({
+        templateId: 'ceo_figures_summary',
+        params: { tickets, resolved: resolvedCount, incidents, week },
+        from: ['total_tickets', 'resolved_tickets', 'incidents_count', 'week_number'],
+      });
+      break;
+    }
+    case 'incident.detail':
+      out.push(...driverSentences(facts, locale, resolved));
+      break;
+    case 'alerts.services': {
+      const activeServices = num(byId.get('total_services'));
+      const servicesWithAlerts = num(byId.get('services_with_alerts'));
+      out.push({
+        templateId: 'alerts_services_summary',
+        params: { activeServices, servicesWithAlerts },
+        from: ['total_services', 'services_with_alerts'],
+      });
+      out.push(...driverSentences(facts, locale, resolved));
+      break;
+    }
+    case 'statuspage.admin': {
+      const total = num(byId.get('total_components'));
+      const degraded = num(byId.get('non_operational_components'));
+      const activePosts = num(byId.get('active_posts'));
+      out.push({
+        templateId: 'statuspage_summary',
+        params: { total, degraded, activePosts },
+        from: ['total_components', 'non_operational_components', 'active_posts'],
+      });
+      break;
+    }
+    case 'org.health': {
+      const open = byId.get('open_tickets');
+      if (open !== undefined) {
+        out.push({
+          templateId: 'open_count',
+          params: { count: num(open) },
+          from: ['open_tickets'],
+        });
+      }
+      const risk = num(byId.get('at_risk')) + num(byId.get('breached'));
+      if (risk > 0) {
+        out.push({
+          templateId: 'sla_at_risk',
+          params: { count: risk },
+          from: ['at_risk', 'breached'],
+        });
+      }
+      break;
+    }
+    case 'admin.intents': {
+      const stage = num(byId.get('autonomy_stage'));
+      const tickets28d = num(byId.get('tickets_28d'));
+      out.push({
+        templateId: 'admin_intents_summary',
+        params: { stage, tickets28d },
+        from: ['autonomy_stage', 'tickets_28d'],
+      });
+      break;
+    }
+    case 'admin.intent.gate': {
+      const statusVal = String(byId.get('gate_status')?.value ?? 'none');
+      const statusLabels: Record<string, Record<InsightLocale, string>> = {
+        green: { th: 'ผ่าน', en: 'green' },
+        red: { th: 'ไม่ผ่าน', en: 'red' },
+        insufficient_data: { th: 'ข้อมูลยังไม่เพียงพอ', en: 'insufficient data' },
+        pass: { th: 'ผ่าน', en: 'pass' },
+        fail: { th: 'ไม่ผ่าน', en: 'fail' },
+        hold: { th: 'รอดำเนินการ', en: 'hold' },
+        none: { th: 'ยังไม่มี', en: 'none' },
+      };
+      const status = statusLabels[statusVal]?.[locale] ?? statusVal;
+      const passCount = num(byId.get('criteria_pass'));
+      const failCount = num(byId.get('criteria_fail'));
+      out.push({
+        templateId: 'admin_gate_summary',
+        params: { status, passCount, failCount },
+        from: ['gate_status', 'criteria_pass', 'criteria_fail'],
+      });
+      break;
+    }
+    case 'admin.ai': {
+      const killSwitchVal = byId.get('kill_switch')?.value;
+      const killSwitch =
+        locale === 'th'
+          ? killSwitchVal === 'enabled'
+            ? 'เปิดอยู่'
+            : 'ปิดอยู่'
+          : killSwitchVal === 'enabled'
+            ? 'active'
+            : 'inactive';
+      const tokens = num(byId.get('tokens_today'));
+      const cost = Number(byId.get('cost_today_usd')?.value ?? 0).toFixed(2);
+      out.push({
+        templateId: 'admin_ai_summary',
+        params: { killSwitch, tokens, cost },
+        from: ['kill_switch', 'tokens_today', 'cost_today_usd'],
+      });
+      break;
+    }
+    case 'admin.integrations': {
+      const active = num(byId.get('active_accounts'));
+      const healthy = num(byId.get('healthy_accounts'));
+      const errors = num(byId.get('error_accounts'));
+      out.push({
+        templateId: 'admin_integrations_summary',
+        params: { active, healthy, errors },
+        from: ['active_accounts', 'healthy_accounts', 'error_accounts'],
+      });
+      break;
+    }
+    case 'admin.outbox': {
+      const pending = num(byId.get('pending_jobs'));
+      const failed = num(byId.get('failed_jobs'));
+      out.push({
+        templateId: 'admin_outbox_summary',
+        params: { pending, failed },
+        from: ['pending_jobs', 'failed_jobs'],
+      });
+      break;
+    }
+    case 'admin.queues': {
+      const outboxPending = num(byId.get('outbox_pending'));
+      const outboundScheduled = num(byId.get('outbound_scheduled'));
+      out.push({
+        templateId: 'admin_queues_summary',
+        params: { outboxPending, outboundScheduled },
+        from: ['outbox_pending', 'outbound_scheduled'],
+      });
+      break;
+    }
     default:
       break;
   }
@@ -304,17 +568,33 @@ export function restoreNarration(
       const cited = options.facts.filter((fact) =>
         claim.evidence.some((item) => item.factId === fact.id),
       );
-      if (!numbersSubsetOfFacts(claim.text.replaceAll(STORED_PLACEHOLDER, ' '), cited).ok) continue;
+      if (
+        !numbersSubsetOfFacts(
+          claim.text.replaceAll(STORED_PLACEHOLDER, ' ').replaceAll(PERSON_PLACEHOLDER, ' '),
+          cited,
+        ).ok
+      )
+        continue;
     }
     const distinctPeople = [
       ...new Set(claim.evidence.flatMap((item) => (item.kind === 'user' ? [item.id] : []))),
     ];
-    const text = claim.text.replaceAll(STORED_PLACEHOLDER, (_match, label: string, n: string) => {
-      if (label !== 'PERSON') return NO_ACCESS[options.locale];
-      const id = distinctPeople[Number(n) - 1];
-      const ref = id === undefined ? undefined : options.resolved.get(refKey({ kind: 'user', id }));
-      return ref?.allowed === true ? ref.label : NO_ACCESS[options.locale];
-    });
+    const text = claim.text
+      .replaceAll(PERSON_PLACEHOLDER, (_match, token: string) => {
+        const letter = token.slice('person_'.length);
+        const index = letter.charCodeAt(0) - 97;
+        const id = distinctPeople[index];
+        const ref =
+          id === undefined ? undefined : options.resolved.get(refKey({ kind: 'user', id }));
+        return ref?.allowed === true ? ref.label : NO_ACCESS[options.locale];
+      })
+      .replaceAll(STORED_PLACEHOLDER, (_match, label: string, n: string) => {
+        if (label !== 'PERSON') return NO_ACCESS[options.locale];
+        const id = distinctPeople[Number(n) - 1];
+        const ref =
+          id === undefined ? undefined : options.resolved.get(refKey({ kind: 'user', id }));
+        return ref?.allowed === true ? ref.label : NO_ACCESS[options.locale];
+      });
     const evidence = claim.evidence.slice(0, 8).map((item) => {
       if (item.kind === 'aggregate') {
         const fact = options.facts.find((candidate) => candidate.id === item.factId);
