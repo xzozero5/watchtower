@@ -141,9 +141,9 @@ export const PROCESSORS: readonly ProcessorRegistration[] = [
   {
     queue: QUEUE_NAMES.ingest,
     create: (context) => {
-      const processor = createIngestRegistration(context);
-      return async (job) => {
-        const result: unknown = await processor(job);
+      const processor: Processor = createIngestRegistration(context);
+      return async (job, token, signal) => {
+        const result: unknown = await processor(job, token, signal);
         if (context.redis) {
           try {
             const data =
@@ -193,8 +193,8 @@ export const PROCESSORS: readonly ProcessorRegistration[] = [
     queue: QUEUE_NAMES.ai,
     create: (context) => {
       const processor = createAiPipelineProcessor(context);
-      return async (job) => {
-        const result: unknown = await processor(job);
+      return async (job, token, signal) => {
+        const result: unknown = await processor(job, token, signal);
         if (context.redis) {
           try {
             const data =
@@ -239,9 +239,9 @@ export const PROCESSORS: readonly ProcessorRegistration[] = [
   {
     queue: QUEUE_NAMES.alerts,
     create: (context) => {
-      const processor = createAlertsRegistration(context);
-      return async (job) => {
-        const result: unknown = await processor(job);
+      const processor: Processor = createAlertsRegistration(context);
+      return async (job, token, signal) => {
+        const result: unknown = await processor(job, token, signal);
         if (context.redis) {
           try {
             await markInsightDirty(context.redis, 'alert');
@@ -260,9 +260,9 @@ export const PROCESSORS: readonly ProcessorRegistration[] = [
   {
     queue: QUEUE_NAMES.incidents,
     create: (context) => {
-      const processor = createIncidentsRegistration(context);
-      return async (job) => {
-        const result: unknown = await processor(job);
+      const processor: Processor = createIncidentsRegistration(context);
+      return async (job, token, signal) => {
+        const result: unknown = await processor(job, token, signal);
         if (context.redis) {
           try {
             await markInsightDirty(context.redis, 'incident');
