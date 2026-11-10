@@ -5,7 +5,7 @@ snapshot สั้นสำหรับ cold start อยู่ที่ `HANDOF
 
 ## สถานะปัจจุบัน
 
-- **2026-11-11 [TESTED]: T-448 local acceptanceผ่าน** — composer pending guards + E2Eแยกบริการ + accountquota pause5%/reset/resumeจริง. Fullunit19tasks cache0, lint19/typecheck18/build11ผ่าน; browser284pass32skip/fullstack70pass+1knownexpectedfailureB003+19skip. Source commits ce7f56dd/043cd017; CIตรวจหลังpush ไม่merge/deploy. รายงาน docs/qa/2026-11-11-workflow-recovery.md.
+- **2026-11-11 [TESTED]: T-448 local acceptanceผ่าน** — composer pending guards + E2Eแยกบริการ + accountquota pause5%/reset/resumeจริง. Fullunit19tasks cache0, lint19/typecheck18/build11ผ่าน; browser284pass32skip/fullstack70pass+1knownexpectedfailureB003+19skip. Source commits ce7f56dd/043cd017; [TESTED] sourceCI42921797797ที่0db32624ผ่านครบ4jobs ไม่merge/deploy. รายงาน docs/qa/2026-11-11-workflow-recovery.md.
 
 - **2026-11-09 02:06 [TESTED]:** ปิด **`T-447`** (ธีมนกค็อกคาเทล **Birdday** `<BirddayAvatar />` + `<BirddayIcon />` ทั่วจุด AI ของแอป, หน้าต่างแชทสไตล์ Claude พร้อม live multi-step phase timeline + elapsed timer + expandable width + auto-growing composer card, และ directional pearl shimmer `<Skeleton />` + structured route/table/shift/queue skeletons + lively micro-interactions): ผ่าน `@watchtower/ui` `815/815`, `@watchtower/web` unit `1,807/1,807`, Playwright E2E + `axe` light/dark `52/52` (`0` violations), และ independent reviews N7 ทั้ง `qa-engineer` + `security-reviewer` `PASS` (`docs/decisions/T-447-review.md`).
 
@@ -613,3 +613,7 @@ T411staticreviewพบP2: history/memoryหลังrevocation, PIIauditcatalogu
 - [TESTED] Freshaccountprimary100%/weekly85%หลังreset, runnerเดิมไม่มี; syncclaimowner44408 admittedtrue/runningใหม่ ไม่รันfulltestsซ้ำ เป็นautomaticresumeจริงจากpause01:19/5%
 - [TESTED] fullunit19/19tasks cache0 14m46.112s(web1811tests), build11/lint19/typecheck18ผ่านตามcacheในQAreport; E2Ebrowser284pass32skip/fullstack70pass+1expectedB003+19skip; independentreviewไม่มีP0/P1/P2
 - เริ่มfinaldocs/commit/pushbranchตามDoD ไม่merge/deploy ไม่ส่งข้อความจริง; CIยังไม่อ้างผ่าน
+
+## 2026-11-11 06:29 (Asia/Bangkok) — Codex main — ปิดT-448/sourceCIผ่าน
+- [TESTED] Pushbranchcodex/workflow-recoveryสำเร็จ sourcecommitsce7f56dd/043cd017/docs0db32624. CI42921797797ที่0db32624เขียวครบ4jobs รวมintegration/E2E/Composeและstatic/fullunit. ไม่มีmerge/deploy/ข้อความจริง
+- [TESTED] Actualpause01:19ที่primary5% → heartbeatรอไม่ทำซ้ำ → fresh100%/weekly85%06:12ผ่านgate/claimใหม่/ทำงานต่อ. Acceptanceครบ เตรียมcompletecheckpointและลบheartbeatหลังpushเอกสารสรุป ไม่อ้างCIของdocsfollowupว่าเขียวล่วงหน้า
