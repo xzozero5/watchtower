@@ -1,7 +1,7 @@
 import { defineConfig, devices } from '@playwright/test';
 
 // Full-stack e2e (T-009): a real browser against the real web, api and worker, Postgres, Redis and
-// Mailpit. Nothing is mocked. `e2e-fullstack/global-setup.ts` brings the stack up (from source, on
+// Mailpit. External integrations and AI use test adapters; browser, web, API, worker and database are real. `e2e-fullstack/global-setup.ts` brings the stack up (from source, on
 // loopback ports of its own, with a throwaway database) or, with E2E_STACK=external, points at a
 // stack that is already running, for example `docker compose up`. See apps/web/e2e-fullstack/README.md.
 //

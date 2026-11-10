@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { atomicWrite, date, execute, read, withLock } from './continuation.mjs';
+import { quotaDecision, readQuota, synchronizeQuota } from './quota.mjs';
 
 const now = '2026-11-06T00:00:00.000Z';
 const five = '2026-11-06T05:00:00.000Z';
@@ -193,4 +194,159 @@ test('CLI emits only safe metadata and rejects arbitrary payloads', (t) => {
   );
   assert.equal(rejected.status, 1);
   assert.equal(`${rejected.stdout}${rejected.stderr}`.includes('sensitive-sentinel'), false);
+});
+
+function quota(used = 94, weeklyUsed = 20) {
+  return {
+    rateLimitsByLimitId: {
+      codex: {
+        limitId: 'codex',
+        primary: { usedPercent: used, windowDurationMins: 300, resetsAt: Date.parse(five) / 1000 },
+        secondary: {
+          usedPercent: weeklyUsed,
+          windowDurationMins: 10080,
+          resetsAt: Date.parse(week) / 1000,
+        },
+      },
+    },
+  };
+}
+
+test('account quota threshold is inclusive and checks each applicable window', () => {
+  assert.equal(quotaDecision(quota(94.99), now, now).action, 'continue');
+  assert.equal(quotaDecision(quota(95), now, now).action, 'pause');
+  assert.equal(quotaDecision(quota(100), now, now).action, 'pause');
+  assert.equal(quotaDecision(quota(20, 95), now, now).nextEligibleAt, week);
+  assert.equal(quotaDecision(quota(95, 95), now, now).nextEligibleAt, week);
+});
+
+test('quota never substitutes context tokens, missing buckets or stale observations', () => {
+  for (const value of [
+    null,
+    {},
+    { token_count: 1, model_context_window: 200000 },
+    { rateLimits: quota().rateLimitsByLimitId.codex, rateLimitsByLimitId: {} },
+  ]) {
+    assert.equal(quotaDecision(value, now, now).action, 'blocked');
+  }
+  assert.equal(quotaDecision(quota(), now, five).action, 'blocked');
+  assert.equal(quotaDecision(quota(), five, now).action, 'blocked');
+  for (const invalid of [-1, 101, '95', null, NaN]) {
+    assert.equal(quotaDecision(quota(invalid), now, now).action, 'blocked');
+  }
+  const missing = quota();
+  delete missing.rateLimitsByLimitId.codex.secondary;
+  assert.equal(quotaDecision(missing, now, now).action, 'blocked');
+  missing.rateLimitsByLimitId.codex.secondary = null;
+  assert.equal(quotaDecision(missing, now, now).action, 'continue');
+  missing.rateLimitsByLimitId.codex.primary.resetsAt = Date.parse(now) / 1000;
+  assert.equal(quotaDecision(missing, now, now).action, 'blocked');
+});
+
+test('threshold checkpoints pause and only a fresh available read resumes exactly one runner', (t) => {
+  const file = fixture(t);
+  const task = 'T-448';
+  const running = synchronizeQuota(
+    file,
+    quotaDecision(quota(20), now, now),
+    { task, ownerPid: process.pid },
+    now,
+  );
+  assert.equal(running.state, 'running');
+  assert.throws(() => synchronizeQuota(file, quotaDecision(quota(95), now, now), { task }, now));
+  const paused = synchronizeQuota(
+    file,
+    quotaDecision(quota(95), now, now),
+    { task, claimToken: running.claimToken },
+    now,
+  );
+  assert.equal(paused.state, 'waiting_limit');
+  assert.equal(paused.nextEligibleAt, five); // Weekly is available, do not wait a week.
+  assert.equal(
+    synchronizeQuota(file, quotaDecision(quota(20), now, now), { task }, now).state,
+    'waiting_limit',
+  );
+  // Passing the timer does not refresh account quota.
+  assert.equal(
+    synchronizeQuota(file, quotaDecision(quota(20), now, now), { task }, five).state,
+    'blocked',
+  );
+  const reset = quota(1);
+  reset.rateLimitsByLimitId.codex.primary.resetsAt = Date.parse(five) / 1000 + 18000;
+  const resumed = synchronizeQuota(
+    file,
+    quotaDecision(reset, five, five),
+    { task, ownerPid: process.pid },
+    five,
+  );
+  assert.equal(resumed.state, 'running');
+  assert.throws(() =>
+    synchronizeQuota(file, quotaDecision(reset, five, five), { task, ownerPid: process.pid }, five),
+  );
+  const current = synchronizeQuota(
+    file,
+    quotaDecision(reset, five, five),
+    { task, ownerPid: process.pid, claimToken: resumed.claimToken },
+    five,
+  );
+  assert.equal(current.claimToken, resumed.claimToken);
+  assert.throws(() =>
+    synchronizeQuota(file, quotaDecision(reset, five, five), { task: 'T-449' }, five),
+  );
+  execute(file, 'complete', { 'claim-token': resumed.claimToken }, five);
+  assert.equal(
+    synchronizeQuota(file, quotaDecision(reset, five, five), { task }, five).state,
+    'completed',
+  );
+});
+
+test('unknown quota preserves checkpoints and cannot release an active owner', (t) => {
+  const file = fixture(t);
+  const task = 'T-448';
+  const running = execute(
+    file,
+    'checkpoint',
+    { task, state: 'running', 'owner-pid': String(process.pid) },
+    now,
+  );
+  const unknown = quotaDecision({}, now, now);
+  assert.throws(() => synchronizeQuota(file, unknown, { task }, now));
+  assert.deepEqual(read(file), running);
+  assert.equal(
+    synchronizeQuota(file, unknown, { task, claimToken: running.claimToken }, now).state,
+    'blocked',
+  );
+});
+
+test('RPC quota reader handshakes and invokes only the read endpoint without exposing raw data', async () => {
+  const fake = `
+    import { createInterface } from 'node:readline';
+    let step = 0;
+    createInterface({input:process.stdin}).on('line', line => {
+      const msg = JSON.parse(line);
+      if(step === 0 && msg.method === 'initialize') {
+        step++; console.log(JSON.stringify({id:1,result:{userAgent:'private-sentinel'}}));
+      } else if(step === 1 && msg.method === 'initialized') step++;
+      else if(step === 2 && msg.method === 'account/rateLimits/read') {
+        step++; console.log(JSON.stringify({id:2,result:${JSON.stringify(quota())}}));
+      } else process.exit(19);
+    });`;
+  const result = await readQuota({
+    executable: process.execPath,
+    args: ['--input-type=module', '-e', fake],
+  });
+  assert.deepEqual(result.response, quota());
+  assert.equal(JSON.stringify(result).includes('private-sentinel'), false);
+  const unavailable = `process.stdout.write('{"id":1,"error":{"message":"private-sentinel"}}\\n'); setInterval(()=>{},100);`;
+  await assert.rejects(readQuota({ executable: process.execPath, args: ['-e', unavailable] }), {
+    message: 'Account quota unavailable',
+  });
+  await assert.rejects(
+    readQuota({
+      executable: process.execPath,
+      args: ['-e', 'setInterval(()=>{},100)'],
+      timeoutMs: 50,
+    }),
+    { message: 'Account quota unavailable' },
+  );
 });

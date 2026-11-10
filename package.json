@@ -30,7 +30,8 @@
     "ai-bridge": "node --env-file-if-exists=.env tools/ai-bridge/server.mjs",
     "claude-bridge": "node --env-file-if-exists=.env tools/claude-cli-bridge/server.mjs",
     "format": "prettier --write .",
-    "push-filter": "node tools/push-only-filter/server.mjs"
+    "push-filter": "node tools/push-only-filter/server.mjs",
+    "e2e:local": "node tools/e2e-stack/local.mjs"
   },
   "devDependencies": {
     "@eslint/js": "catalog:",

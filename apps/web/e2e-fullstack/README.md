@@ -1,7 +1,16 @@
 # Full-stack e2e (T-009)
 
-A real browser against the real web, api and worker with Postgres, Redis and Mailpit. Nothing is
-mocked (the UI tests in `../e2e/` mock the api; these do not). It covers:
+A real browser against the real web, API and worker with Postgres, Redis and Mailpit.
+External integrations and AI use test adapters (see below); the UI tests in `../e2e/` also mock the API.
+It covers:
+
+For an isolated local run, use `pnpm e2e:local` from the repository root with Docker running.
+It creates disposable Postgres, Redis and Mailpit containers on random loopback ports, builds,
+runs both browser suites, then removes only its own containers and their anonymous volumes.
+It never reuses the POC services or caller-provided E2E URLs. On Windows it defaults to Edge;
+set `PW_CHANNEL` or `PW_EXECUTABLE_PATH` to select another installed browser.
+Logs and Playwright output remain local for inspection. Forced process termination or power loss
+may require removing the printed `wt-local-<run>-*` containers manually after checking ownership.
 
 | File                           | Scenarios                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | ------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
