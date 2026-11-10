@@ -63,6 +63,7 @@ export function RichEditor({
   onImageFiles,
   handleRef,
   describedBy,
+  disabled = false,
 }: {
   label: string;
   placeholder: string;
@@ -72,6 +73,7 @@ export function RichEditor({
   onImageFiles?: ImageFilesHandler;
   handleRef?: Ref<RichEditorHandle>;
   describedBy?: string;
+  disabled?: boolean;
 }) {
   const { t } = useI18n();
   const ref = useRef<HTMLDivElement>(null);
@@ -89,6 +91,7 @@ export function RichEditor({
   };
 
   const insertHtml = (html: string) => {
+    if (disabled) return;
     ref.current?.focus();
     command('insertHTML', sanitizeEmailHtml(html, { styles: false }).html);
     emit();
@@ -100,6 +103,7 @@ export function RichEditor({
     },
     insertHtml,
     insertImage: (src, uploadId, alt) => {
+      if (disabled) return;
       ref.current?.focus();
       command(
         'insertHTML',
@@ -110,12 +114,17 @@ export function RichEditor({
   }));
 
   const run = (name: string, value?: string) => {
+    if (disabled) return;
     ref.current?.focus();
     command(name, value);
     emit();
   };
 
   const onPaste = (event: ClipboardEvent<HTMLDivElement>) => {
+    if (disabled) {
+      event.preventDefault();
+      return;
+    }
     const files = Array.from(event.clipboardData.files).filter((file) =>
       file.type.startsWith('image/'),
     );
@@ -131,6 +140,10 @@ export function RichEditor({
   };
 
   const onDrop = (event: DragEvent<HTMLDivElement>) => {
+    if (disabled) {
+      event.preventDefault();
+      return;
+    }
     const files = Array.from(event.dataTransfer.files).filter((file) =>
       file.type.startsWith('image/'),
     );
@@ -193,7 +206,8 @@ export function RichEditor({
         aria-label={label}
         aria-describedby={describedBy}
         aria-keyshortcuts="Control+Enter Meta+Enter"
-        contentEditable
+        contentEditable={!disabled}
+        aria-disabled={disabled}
         suppressContentEditableWarning
         spellCheck
         data-placeholder={placeholder}
@@ -240,7 +254,7 @@ export function RichEditor({
           aria-disabled={onImageFiles ? undefined : true}
           className="text-muted-foreground"
           onClick={() => {
-            if (!onImageFiles) return;
+            if (!onImageFiles || disabled) return;
             const input = document.createElement('input');
             input.type = 'file';
             input.accept = 'image/png,image/jpeg,image/gif,image/webp';

@@ -8,6 +8,7 @@ import { resetPreferencesCache } from '@/lib/preferences';
 import { renderWorkspace } from '@/test-utils';
 import { DELIVERY_ID, makeMessage, makeScheduledReply, makeTicket, uuid } from '@/test/fixtures';
 import { apiError } from '@/test/mock-api';
+import type { MockResult } from '@/test/mock-api';
 import { workspaceApi } from '@/test/scenarios';
 
 vi.mock('next/navigation', () => ({
@@ -180,6 +181,49 @@ describe('undo send, held by the server', () => {
     expect(await screen.findByText('Reply sent.')).toBeVisible();
     expect(screen.queryByTestId('pending-send')).toBeNull();
   });
+});
+
+describe('pending composer transaction', () => {
+  it.each(['success', 'failure'] as const)(
+    'freezes the draft and modes until %s',
+    async (outcome) => {
+      const user = userEvent.setup();
+      let finish!: (response: MockResult) => void;
+      const api = workspaceApi({
+        tickets: [portalTicket],
+        overrides: {
+          'POST /v1/tickets/:id/replies': () =>
+            new Promise((resolve) => {
+              finish = resolve;
+            }),
+        },
+      });
+      const box = await openComposer('OPS-2');
+      await user.type(box, 'Preserve this draft');
+      await user.click(screen.getByRole('button', { name: 'Send reply' }));
+      await waitFor(() => {
+        expect(api.callsTo('/v1/tickets/OPS-2/replies', 'POST')).toHaveLength(1);
+      });
+      expect(box).toBeDisabled();
+      expect(screen.getByRole('radio', { name: 'Internal note' })).toBeDisabled();
+      await user.keyboard('n');
+      expect(screen.queryByRole('textbox', { name: 'Internal note' })).toBeNull();
+      finish(
+        outcome === 'failure'
+          ? apiError(500, 'internal')
+          : {
+              status: 201,
+              json: {
+                message: makeMessage(61, portalTicket, { direction: 'outbound', delivery: null }),
+                ticket: portalTicket,
+              },
+            },
+      );
+      await waitFor(() => expect(box).toBeEnabled());
+      expect(box).toHaveValue(outcome === 'failure' ? 'Preserve this draft' : '');
+      expect(screen.getByRole('radio', { name: 'Internal note' })).toBeEnabled();
+    },
+  );
 });
 
 describe('a reply in the timeline', () => {

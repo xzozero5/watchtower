@@ -6,6 +6,7 @@ import { resetClaimedTokens } from '@/lib/portal/tracking-token';
 import { renderApp } from '@/test-utils';
 import { uuid } from '@/test/fixtures';
 import { apiError, mockApi, type MockHandler } from '@/test/mock-api';
+import type { MockResult } from '@/test/mock-api';
 import { makeView } from '@/test/portal-fixtures';
 
 import { TrackingPage } from './tracking-page';
@@ -36,6 +37,47 @@ function openTracking(routes: Record<string, MockHandler> = {}, locale?: 'th') {
 }
 
 describe('portal tracking page', () => {
+  it.each(['success', 'failure'] as const)(
+    'freezes the pending reply until %s and preserves a failed draft',
+    async (outcome) => {
+      const user = userEvent.setup();
+      let finish!: (response: MockResult) => void;
+      const api = openTracking({
+        'POST /v1/portal/tickets/:key/replies': () =>
+          new Promise((resolve) => {
+            finish = resolve;
+          }),
+      });
+      const box = await screen.findByLabelText('Your message');
+      await user.type(box, 'Preserve this reply');
+      await user.click(screen.getByRole('button', { name: 'Send reply' }));
+      await waitFor(() => {
+        expect(api.callsTo('/v1/portal/tickets/OPS-12/replies', 'POST')).toHaveLength(1);
+      });
+      expect(box).toBeDisabled();
+      finish(
+        outcome === 'failure'
+          ? apiError(500, 'internal')
+          : {
+              status: 201,
+              json: {
+                message: {
+                  id: uuid(99),
+                  from: 'customer',
+                  authorName: null,
+                  body: 'Preserve this reply',
+                  createdAt: '2026-11-05T05:00:00.000Z',
+                },
+                status: 'in_progress',
+                statusLabel: 'In progress',
+              },
+            },
+      );
+      await waitFor(() => expect(box).toBeEnabled());
+      expect(box).toHaveValue(outcome === 'failure' ? 'Preserve this reply' : '');
+    },
+  );
+
   const followLink = (token: string) => {
     act(() => {
       window.history.replaceState(null, '', `/portal/tickets/OPS-12#token=${token}`);

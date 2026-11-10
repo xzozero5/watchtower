@@ -134,6 +134,7 @@ export function EmailComposer({
   onImageFiles,
   localImages,
   describedBy,
+  disabled = false,
 }: {
   ticketKey: string;
   ticketSubject: string;
@@ -153,6 +154,7 @@ export function EmailComposer({
   /** Upload id to the object URL its picture is shown with while editing (for the preview). */
   localImages?: ReadonlyMap<string, string>;
   describedBy?: string;
+  disabled?: boolean;
 }) {
   const { t, locale } = useI18n();
   const defaults = useMemo(
@@ -398,6 +400,7 @@ export function EmailComposer({
       ) : (
         <>
           <RichEditor
+            disabled={disabled}
             label={label}
             placeholder={placeholder}
             initialHtml={editorHtml}

@@ -127,6 +127,7 @@ export function ReplyForm({
       >
         <PortalPasteZone state={attachments} disabled={sending}>
           <Textarea
+            disabled={sending}
             id={id}
             name="body"
             rows={5}

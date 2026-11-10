@@ -225,6 +225,8 @@ export function Composer({
   const viaLine = 'channel' in ticket && ticket.channel === 'line';
   const quota = useLineQuota(isStaff && mode === 'reply' && viaLine);
   const mutation = mode === 'reply' ? reply : note;
+  // The two modes share one draft/upload transaction. Neither may change while a send is pending.
+  const sending = reply.isPending || note.isPending;
 
   // A reply on an email ticket is written in the email tool (recipients, subject, rich text, signature).
   const emailMode = mode === 'reply' && isStaff && ticketChannel === 'gmail';
@@ -259,7 +261,7 @@ export function Composer({
   // already there), and the send is recorded as an edit of that draft.
   useEffect(() => {
     const receive = () => {
-      if (!isStaff || ticketChannel !== 'gmail') return;
+      if (!isStaff || ticketChannel !== 'gmail' || sending) return;
       const handoff = draftHandoff.take(ticket.key);
       if (!handoff) return;
       fromDraftId.current = handoff.draftId;
@@ -277,7 +279,7 @@ export function Composer({
     return draftHandoff.subscribe((key) => {
       if (key === ticket.key) receive();
     });
-  }, [ticket.key, isStaff, ticketChannel]);
+  }, [ticket.key, isStaff, ticketChannel, sending]);
 
   const body = emailMode ? (emailDraft?.text ?? '') : bodies[mode];
 
@@ -292,6 +294,7 @@ export function Composer({
   }, [body, mode]);
 
   const focusComposer = (target: Mode) => {
+    if (sending) return;
     setMode(target);
     setFocusTick((tick) => tick + 1);
   };
@@ -311,7 +314,7 @@ export function Composer({
   );
 
   const quote = (text: string) => {
-    if (!replyAllowed) return;
+    if (!replyAllowed || sending) return;
     setMode('reply');
     if (emailMode && emailEditorRef.current) {
       emailEditorRef.current.insertHtml(`<blockquote>${textToHtml(text)}</blockquote><p><br></p>`);
@@ -329,6 +332,7 @@ export function Composer({
   useImperativeHandle(handleRef, () => ({
     quote,
     focus: (target) => {
+      if (sending) return;
       if (target === 'reply' && replyAllowed) setMode('reply');
       if (target === 'note' && canNote) setMode('note');
       setFocusTick((tick) => tick + 1);
@@ -380,6 +384,7 @@ export function Composer({
   };
 
   const insertTemplate = (key: string) => {
+    if (sending) return;
     const template = templates.find((entry) => entry.key === key);
     if (!template) return;
     const { text } = renderTemplate(template.body, values);
@@ -398,11 +403,7 @@ export function Composer({
 
   const recipientsOk = !emailMode || (emailDraft?.to.length ?? 0) > 0;
   const canSend =
-    body.trim() !== '' &&
-    unresolved.length === 0 &&
-    recipientsOk &&
-    !upload.busy &&
-    !mutation.isPending;
+    body.trim() !== '' && unresolved.length === 0 && recipientsOk && !upload.busy && !sending;
 
   const submit = (confirmedDomains: readonly string[] = []) => {
     if (!canSend) return;
@@ -522,237 +523,243 @@ export function Composer({
       data-sticky-footer=""
       className="shrink-0 border-t border-border p-3"
     >
-      <div
-        data-mode={mode}
-        className={cn(
-          'rounded-card border transition-colors duration-(--wt-motion-duration-fast) ease-out focus-within:outline-solid focus-within:outline-2 focus-within:outline-offset-1 focus-within:outline-ring',
-          isNote
-            ? 'border-dashed border-border-strong bg-surface-muted'
-            : // Soft Beacon: a quiet grey well; the dashed outline stays the note's own sign.
-              'border-border bg-surface-muted',
-        )}
-      >
-        <div className="flex flex-wrap items-center gap-2 px-2 pt-2">
-          {replyAllowed && canNote ? (
-            <SegmentedControl
-              aria-label={t('composer.modeGroup')}
-              value={mode}
-              onValueChange={(value) => {
-                setMode(value);
-                setSent(null);
-              }}
-              options={[
-                {
-                  value: 'reply',
-                  label: t('composer.modes.reply'),
-                  icon: <MessageCircle aria-hidden className="size-3.5" />,
-                },
-                {
-                  value: 'note',
-                  label: t('composer.modes.noteShort'),
-                  ariaLabel: t('composer.modes.note'),
-                  icon: <Lock aria-hidden className="size-3.5" />,
-                },
-              ]}
-            />
-          ) : (
-            <span className="inline-flex h-7 items-center gap-1.5 px-1 text-sm font-medium">
-              <ModeIcon aria-hidden className="size-3.5" />
-              {modeLabel}
-            </span>
-          )}
-          {noOutbound && canReply ? (
-            <span
-              data-testid="reply-off"
-              aria-disabled="true"
-              className="inline-flex h-7 items-center gap-1.5 rounded-full px-2 text-sm font-medium text-muted-foreground line-through opacity-60"
-            >
-              <MessageCircle aria-hidden className="size-3.5" />
-              {t('composer.modes.reply')}
-              <span className="sr-only">{t('composer.noOutbound.off')}</span>
-            </span>
-          ) : null}
-          {isNote ? (
-            <p className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
-              <Lock aria-hidden className="size-3.5" />
-              {t('composer.noteBanner')}
-            </p>
-          ) : null}
-          {onClose ? (
-            <Tooltip content={t('composer.close')}>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                aria-label={t('composer.close')}
-                className="ml-auto size-7 rounded-full"
-                onClick={onClose}
-              >
-                <X aria-hidden className="size-4" />
-              </Button>
-            </Tooltip>
-          ) : null}
-        </div>
-
-        {emailMode ? (
-          <EmailComposer
-            key={emailResetKey}
-            ticketKey={ticket.key}
-            ticketSubject={ticket.subject}
-            requesterAddress={staffTicket?.requester?.email ?? null}
-            requesterName={staffTicket?.requester?.name ?? null}
-            entries={timelineEntries}
-            self={session?.user.email ?? null}
-            senderName={session?.user.name ?? ''}
-            label={t('composer.fields.reply')}
-            placeholder={placeholder}
-            editorRef={emailEditorRef}
-            onChange={setEmailDraft}
-            onKeyDown={onKeyDown}
-            describedBy={hintId}
-            localImages={pictureUrls}
-            onImageFiles={(files) => {
-              expectPictures.current += files.filter((file) =>
-                file.type.startsWith('image/'),
-              ).length;
-              upload.add(files);
-            }}
-          />
-        ) : (
-          <AttachmentDropZone upload={upload} disabled={!isStaff}>
-            <label htmlFor={textareaId} className="sr-only">
-              {t(isNote ? 'composer.fields.note' : 'composer.fields.reply')}
-            </label>
-            <textarea
-              ref={textareaRef}
-              id={textareaId}
-              value={body}
-              rows={MIN_ROWS}
-              placeholder={placeholder}
-              onChange={(event) => {
-                setBody(event.target.value);
-              }}
-              onKeyDown={onKeyDown}
-              aria-describedby={isNote ? undefined : hintId}
-              aria-keyshortcuts="Control+Enter Meta+Enter"
-              className="block w-full resize-none bg-transparent px-3 py-2 text-sm leading-normal text-foreground outline-hidden placeholder:text-muted-foreground"
-            />
-          </AttachmentDropZone>
-        )}
-
-        {emailMode && fromDraft ? (
-          <p
-            data-testid="ai-draft-note"
-            className="flex items-center gap-1.5 px-3 pb-1 text-xs text-muted-foreground"
-          >
-            <PenLine aria-hidden className="size-3.5 text-ai-accent" />
-            {t('email.compose.fromAiDraft')}
-          </p>
-        ) : null}
-
+      <fieldset disabled={sending} className="min-w-0 border-0 p-0" aria-busy={sending}>
         <div
-          role="group"
-          aria-label={t('composer.toolbar.label')}
-          className="flex flex-wrap items-center gap-1 px-2 pb-2"
+          data-mode={mode}
+          className={cn(
+            'rounded-card border transition-colors duration-(--wt-motion-duration-fast) ease-out focus-within:outline-solid focus-within:outline-2 focus-within:outline-offset-1 focus-within:outline-ring',
+            isNote
+              ? 'border-dashed border-border-strong bg-surface-muted'
+              : // Soft Beacon: a quiet grey well; the dashed outline stays the note's own sign.
+                'border-border bg-surface-muted',
+          )}
         >
-          {showTemplates ? (
-            <Combobox
-              id={`${ids}-template`}
-              listLabel={t('composer.template.label')}
-              searchPlaceholder={t('composer.toolbar.templateSearch')}
-              emptyText={t('details.noMatches')}
-              selectedText={t('details.selected')}
-              disabled={templates.length === 0}
-              options={templates.map((template) => ({ value: template.key, label: template.name }))}
-              value=""
-              onValueChange={insertTemplate}
-              className="mx-0 h-control w-auto text-muted-foreground hover:text-foreground"
-            >
-              <FileText aria-hidden className="size-4" />
-              <span className="sr-only">
-                {templates.length === 0
-                  ? t('composer.template.none')
-                  : t('composer.template.choose')}
+          <div className="flex flex-wrap items-center gap-2 px-2 pt-2">
+            {replyAllowed && canNote ? (
+              <SegmentedControl
+                aria-label={t('composer.modeGroup')}
+                value={mode}
+                onValueChange={(value) => {
+                  setMode(value);
+                  setSent(null);
+                }}
+                options={[
+                  {
+                    value: 'reply',
+                    label: t('composer.modes.reply'),
+                    icon: <MessageCircle aria-hidden className="size-3.5" />,
+                  },
+                  {
+                    value: 'note',
+                    label: t('composer.modes.noteShort'),
+                    ariaLabel: t('composer.modes.note'),
+                    icon: <Lock aria-hidden className="size-3.5" />,
+                  },
+                ]}
+              />
+            ) : (
+              <span className="inline-flex h-7 items-center gap-1.5 px-1 text-sm font-medium">
+                <ModeIcon aria-hidden className="size-3.5" />
+                {modeLabel}
               </span>
-            </Combobox>
-          ) : null}
-
-          <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
-            {showVia && 'channel' in ticket ? (
-              <Tooltip content={t('outbound.viaTip')}>
-                <span
-                  data-testid="send-via"
-                  className="inline-flex h-7 items-center gap-1.5 text-xs text-muted-foreground"
+            )}
+            {noOutbound && canReply ? (
+              <span
+                data-testid="reply-off"
+                aria-disabled="true"
+                className="inline-flex h-7 items-center gap-1.5 rounded-full px-2 text-sm font-medium text-muted-foreground line-through opacity-60"
+              >
+                <MessageCircle aria-hidden className="size-3.5" />
+                {t('composer.modes.reply')}
+                <span className="sr-only">{t('composer.noOutbound.off')}</span>
+              </span>
+            ) : null}
+            {isNote ? (
+              <p className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+                <Lock aria-hidden className="size-3.5" />
+                {t('composer.noteBanner')}
+              </p>
+            ) : null}
+            {onClose ? (
+              <Tooltip content={t('composer.close')}>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  aria-label={t('composer.close')}
+                  className="ml-auto size-7 rounded-full"
+                  onClick={onClose}
                 >
-                  <ChannelIcon channel={ticket.channel} />
-                  {t('outbound.via', { channel: t(`channel.${ticket.channel}`) })}
-                </span>
+                  <X aria-hidden className="size-4" />
+                </Button>
               </Tooltip>
             ) : null}
-            {showStatus ? (
-              <DropdownMenu>
-                <Tooltip content={t('composer.setStatus.label')}>
-                  <DropdownMenuTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      className="gap-1 rounded-full px-2 text-muted-foreground"
-                      aria-label={`${t('composer.setStatus.label')}: ${nextStatus ? t(statusKey(nextStatus)) : t('composer.setStatus.keep')}`}
-                    >
-                      <Flag aria-hidden className="size-4" />
-                      {nextStatus ? <span aria-hidden>{t(statusKey(nextStatus))}</span> : null}
-                      <ChevronDown aria-hidden className="size-3.5" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                </Tooltip>
-                <DropdownMenuContent align="end" side="top">
-                  <DropdownMenuRadioGroup
-                    value={nextStatus}
-                    onValueChange={(value) => {
-                      const match = nextOptions.find((status) => status === value);
-                      setNextStatus(match ?? '');
-                    }}
-                  >
-                    <DropdownMenuRadioItem value="">
-                      {t('composer.setStatus.keep')}
-                    </DropdownMenuRadioItem>
-                    {nextOptions.map((status) => (
-                      <DropdownMenuRadioItem key={status} value={status}>
-                        {t(statusKey(status))}
-                      </DropdownMenuRadioItem>
-                    ))}
-                  </DropdownMenuRadioGroup>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            ) : null}
-            <Button
-              type="submit"
-              variant="primary"
-              disabled={!canSend}
-              className="gap-1.5 rounded-full px-4"
-              aria-label={submitLabel}
-              aria-keyshortcuts="Control+Enter Meta+Enter"
+          </div>
+
+          {emailMode ? (
+            <EmailComposer
+              key={emailResetKey}
+              ticketKey={ticket.key}
+              ticketSubject={ticket.subject}
+              requesterAddress={staffTicket?.requester?.email ?? null}
+              requesterName={staffTicket?.requester?.name ?? null}
+              entries={timelineEntries}
+              self={session?.user.email ?? null}
+              senderName={session?.user.name ?? ''}
+              label={t('composer.fields.reply')}
+              placeholder={placeholder}
+              editorRef={emailEditorRef}
+              onChange={setEmailDraft}
+              disabled={sending}
+              onKeyDown={onKeyDown}
+              describedBy={hintId}
+              localImages={pictureUrls}
+              onImageFiles={(files) => {
+                expectPictures.current += files.filter((file) =>
+                  file.type.startsWith('image/'),
+                ).length;
+                upload.add(files);
+              }}
+            />
+          ) : (
+            <AttachmentDropZone upload={upload} disabled={!isStaff || sending}>
+              <label htmlFor={textareaId} className="sr-only">
+                {t(isNote ? 'composer.fields.note' : 'composer.fields.reply')}
+              </label>
+              <textarea
+                ref={textareaRef}
+                id={textareaId}
+                value={body}
+                rows={MIN_ROWS}
+                placeholder={placeholder}
+                onChange={(event) => {
+                  setBody(event.target.value);
+                }}
+                onKeyDown={onKeyDown}
+                aria-describedby={isNote ? undefined : hintId}
+                aria-keyshortcuts="Control+Enter Meta+Enter"
+                className="block w-full resize-none bg-transparent px-3 py-2 text-sm leading-normal text-foreground outline-hidden placeholder:text-muted-foreground"
+              />
+            </AttachmentDropZone>
+          )}
+
+          {emailMode && fromDraft ? (
+            <p
+              data-testid="ai-draft-note"
+              className="flex items-center gap-1.5 px-3 pb-1 text-xs text-muted-foreground"
             >
-              <SubmitIcon aria-hidden className="size-4" />
-              <span aria-hidden>
-                {mutation.isPending
-                  ? t('composer.sending')
-                  : isNote
-                    ? t('composer.submit.note')
-                    : t('composer.submit.reply')}
-                {!isNote && !mutation.isPending && nextStatus
-                  ? ` · ${t(statusKey(nextStatus))}`
-                  : ''}
-              </span>
-            </Button>
+              <PenLine aria-hidden className="size-3.5 text-ai-accent" />
+              {t('email.compose.fromAiDraft')}
+            </p>
+          ) : null}
+
+          <div
+            role="group"
+            aria-label={t('composer.toolbar.label')}
+            className="flex flex-wrap items-center gap-1 px-2 pb-2"
+          >
+            {showTemplates ? (
+              <Combobox
+                id={`${ids}-template`}
+                listLabel={t('composer.template.label')}
+                searchPlaceholder={t('composer.toolbar.templateSearch')}
+                emptyText={t('details.noMatches')}
+                selectedText={t('details.selected')}
+                disabled={templates.length === 0}
+                options={templates.map((template) => ({
+                  value: template.key,
+                  label: template.name,
+                }))}
+                value=""
+                onValueChange={insertTemplate}
+                className="mx-0 h-control w-auto text-muted-foreground hover:text-foreground"
+              >
+                <FileText aria-hidden className="size-4" />
+                <span className="sr-only">
+                  {templates.length === 0
+                    ? t('composer.template.none')
+                    : t('composer.template.choose')}
+                </span>
+              </Combobox>
+            ) : null}
+
+            <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
+              {showVia && 'channel' in ticket ? (
+                <Tooltip content={t('outbound.viaTip')}>
+                  <span
+                    data-testid="send-via"
+                    className="inline-flex h-7 items-center gap-1.5 text-xs text-muted-foreground"
+                  >
+                    <ChannelIcon channel={ticket.channel} />
+                    {t('outbound.via', { channel: t(`channel.${ticket.channel}`) })}
+                  </span>
+                </Tooltip>
+              ) : null}
+              {showStatus ? (
+                <DropdownMenu>
+                  <Tooltip content={t('composer.setStatus.label')}>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        className="gap-1 rounded-full px-2 text-muted-foreground"
+                        aria-label={`${t('composer.setStatus.label')}: ${nextStatus ? t(statusKey(nextStatus)) : t('composer.setStatus.keep')}`}
+                      >
+                        <Flag aria-hidden className="size-4" />
+                        {nextStatus ? <span aria-hidden>{t(statusKey(nextStatus))}</span> : null}
+                        <ChevronDown aria-hidden className="size-3.5" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                  </Tooltip>
+                  <DropdownMenuContent align="end" side="top">
+                    <DropdownMenuRadioGroup
+                      value={nextStatus}
+                      onValueChange={(value) => {
+                        const match = nextOptions.find((status) => status === value);
+                        setNextStatus(match ?? '');
+                      }}
+                    >
+                      <DropdownMenuRadioItem value="">
+                        {t('composer.setStatus.keep')}
+                      </DropdownMenuRadioItem>
+                      {nextOptions.map((status) => (
+                        <DropdownMenuRadioItem key={status} value={status}>
+                          {t(statusKey(status))}
+                        </DropdownMenuRadioItem>
+                      ))}
+                    </DropdownMenuRadioGroup>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              ) : null}
+              <Button
+                type="submit"
+                variant="primary"
+                disabled={!canSend}
+                className="gap-1.5 rounded-full px-4"
+                aria-label={submitLabel}
+                aria-keyshortcuts="Control+Enter Meta+Enter"
+              >
+                <SubmitIcon aria-hidden className="size-4" />
+                <span aria-hidden>
+                  {mutation.isPending
+                    ? t('composer.sending')
+                    : isNote
+                      ? t('composer.submit.note')
+                      : t('composer.submit.reply')}
+                  {!isNote && !mutation.isPending && nextStatus
+                    ? ` · ${t(statusKey(nextStatus))}`
+                    : ''}
+                </span>
+              </Button>
+            </div>
           </div>
         </div>
-      </div>
 
-      {isStaff ? (
-        <div className="px-1 pt-2">
-          <AttachmentPicker upload={upload} hideHint disabled={mutation.isPending} />
-        </div>
-      ) : null}
+        {isStaff ? (
+          <div className="px-1 pt-2">
+            <AttachmentPicker upload={upload} hideHint disabled={mutation.isPending} />
+          </div>
+        ) : null}
+      </fieldset>
 
       {isNote ? null : (
         <div className="mt-1.5 flex items-center justify-between gap-3 px-1 text-xs text-muted-foreground">
