@@ -18,3 +18,6 @@
 ## Links
 - [Codex resume](https://learn.chatgpt.com/docs/developer-commands?surface=cli) (อ่าน 2026-11-06)
 - [Goals lifecycle](https://developers.openai.com/cookbook/examples/codex/using_goals_in_codex) (อ่าน 2026-11-06)
+
+## Amendment 2026-11-11 (T-448)
+ใช้ read-only `account/rateLimits/read` ของ signed-in Codex app-server ผ่าน stdio เป็นแหล่ง account quota แทนเครื่องมือ `get_usage_limits` ที่ไม่มีใน session นี้; freshness 60 วินาที, threshold remaining ≤5%, unknown fail closed, fresh quota + reset gate + PID/claim token ก่อน resume และไม่ใช้ context token events. ใช้ heartbeat เดิมตามแนวทางนี้ ชื่อปัจจุบัน `watchtower-quota-checkpoint` ผูกแชตงาน ไม่เพิ่ม daemon. ตรวจทุก safe boundary; ไม่รับประกัน interrupt กลาง turn หรือปลุกเมื่อแอปปิด. อ่าน official docs https://learn.chatgpt.com/docs/app-server วันที่ 2026-11-11. ผลทดสอบและข้อจำกัดจริงอยู่ STATUS/HANDOFF.

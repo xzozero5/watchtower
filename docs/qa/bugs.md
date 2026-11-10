@@ -113,3 +113,8 @@ P3 cosmetic or rare, P4 polish. Developers fix; QA verifies. Do not edit an entr
 ## Closed
 
 (none)
+
+## ตรวจซ้ำ 2026-11-11 — T-448
+
+- **B-005 ปิด [TESTED] (P2):** staff/Gmail/portal composer เปลี่ยน draft ขณะส่งได้แล้ว success ล้างข้อความใหม่; staff ยังเปลี่ยน reply/note เพื่อส่งซ้อนด้วย uploads ชุดเดียวกันได้ Repro ใช้ deferred POST; ก่อนแก้ unit ใหม่4fail หลังแก้ unit55/55 และ browser6/6ผ่าน ใช้ transaction freeze ระหว่างpending, failureคงdraftและปลดล็อก, successค่อยล้าง รายงาน `docs/qa/2026-11-11-workflow-recovery.md`
+- B-003 Gmail auto-ack ยังเป็น expected failure เดิม ไม่ถือเป็น featureผ่านจากsummaryของPlaywright

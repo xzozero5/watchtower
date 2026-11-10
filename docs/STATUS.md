@@ -5,6 +5,8 @@ snapshot สั้นสำหรับ cold start อยู่ที่ `HANDOF
 
 ## สถานะปัจจุบัน
 
+- **2026-11-11 [TESTED]: T-448 local acceptanceผ่าน** — composer pending guards + E2Eแยกบริการ + accountquota pause5%/reset/resumeจริง. Fullunit19tasks cache0, lint19/typecheck18/build11ผ่าน; browser284pass32skip/fullstack70pass+1knownexpectedfailureB003+19skip. Source commits ce7f56dd/043cd017; CIตรวจหลังpush ไม่merge/deploy. รายงาน docs/qa/2026-11-11-workflow-recovery.md.
+
 - **2026-11-09 02:06 [TESTED]:** ปิด **`T-447`** (ธีมนกค็อกคาเทล **Birdday** `<BirddayAvatar />` + `<BirddayIcon />` ทั่วจุด AI ของแอป, หน้าต่างแชทสไตล์ Claude พร้อม live multi-step phase timeline + elapsed timer + expandable width + auto-growing composer card, และ directional pearl shimmer `<Skeleton />` + structured route/table/shift/queue skeletons + lively micro-interactions): ผ่าน `@watchtower/ui` `815/815`, `@watchtower/web` unit `1,807/1,807`, Playwright E2E + `axe` light/dark `52/52` (`0` violations), และ independent reviews N7 ทั้ง `qa-engineer` + `security-reviewer` `PASS` (`docs/decisions/T-447-review.md`).
 
 - **2026-11-09 01:28 [TESTED]:** Merge เข้า `main` (`a6e19aab`) + GitHub Actions CI `42508724802` เขียวครบทั้ง 4 jobs (`End-to-end`, `Integration tests`, `Lint/typecheck/unit`, `Docker Compose`) + ลบ test containers `wt-*` ครบทุกตัวโดยไม่แตะ POC volumes + สำรองฐานข้อมูล POC ที่ `D:\Works\watchtower-backups\poc-20261109-005819-pre-deploy.dump` (`13,783,670 bytes`) + deploy POC stack หลักครบ 9 containers `Healthy` (migrations `0117`–`0120_kb_reembed_lease` applied, `kb_chunk_embedding` backfilled 293 แถว) + Host AI Bridge detached `PID 37148` (`:4317/healthz` 200, Redis `watchtower:ai:status` = `online`, `AI_AUTOSEND_ENABLED=false`, `INSIGHT_PERSON_NARRATION_ENABLED=false`). พร้อมให้เจ้าของเข้ามาทดสอบที่ `http://localhost:3000`.
@@ -593,3 +595,21 @@ T411staticreviewพบP2: history/memoryหลังrevocation, PIIauditcatalogu
   4. **Wave 4 (`T-434a/b/c` -> `T-434`):** สร้าง multi-index `kb_chunk_embeddings` + active index pointer (`0119`) + atomic lease/fencing (`0120`), manual CLI `pnpm kb:reembed` (`packages/db/src/kb-reembed.ts`), query-time active-spec embedder + FTS fallback (`kb-embedding.service.ts`), และ worker pinned embedder + fencing check (`apps/worker/src/kb/processor.ts`) (`ADR-033` **Accepted**).
 - **ผล test (`[TESTED]` บน main thread):** `pnpm build` (11/11), `pnpm typecheck` (18/18), `pnpm lint` (19/19), `pnpm test:boundaries` (298/298), `turbo run test` (11/11 รวม `compose-env` 617/617), `@watchtower/db test:integration` (57 files / 556 tests `0001`-`0120`), API/Domain/Worker integration suites (assistant `45/45`, insights `32/32`+`11/11`, KB `39/39`+`75/75`+`15/15`), Playwright Edge (`7/7`).
 - **ค้าง / ไม่ยืนยัน:** `T-412` คง `[ ]` รอวัดผลใช้งานจริงใน live pilot 2 สัปดาห์ + เจ้าของยืนยัน `C-25`/`C-27` `[ASK-HUMAN]`; `T-433` คง `[ ]` รอเจ้าของสั่งเปิด `EMBEDDING_PROVIDER=local` + รัน `pnpm kb:reembed --activate` บน instance จริง `[ASK-HUMAN]`.
+
+## 2026-11-11 01:11 (Asia/Bangkok) — Codex main — T-448 กำลังตรวจรับ
+- ทดลอง workflow synthetic: pending draft/mode repro4failก่อนแก้, fix+unit55/55, independent42/42+quota13/13, browser284pass/32existing-skips (pending6/6) ผ่าน. build11/typecheck18ผ่าน มีcache. Fullstack/fullunit/lintยังรัน ไม่ปิดtaskก่อนผลจบ. Source reviewไม่มีP0/P1/P2หลังแก้launcher/tree/claim. รายงาน docs/qa/2026-11-11-workflow-recovery.md. ไม่มีdeploy/ข้อความจริง. โควตาอ่านaccountจริงและheartbeatตั้งแล้ว; ยังไม่เคยรอresetบัญชีจริง.
+
+
+## 2026-11-11 01:17 (Asia/Bangkok) — Codex main — T-448 E2Eจบ
+- [TESTED] e2e:local exit0/cleanupครบ: browser284pass32skip; fullstack70ordinarypass+1knownexpectedfailure B003+19skip. lint19/typecheck18ผ่านพร้อมcacheตามQAreport; SIGINTfaultinjectionexit1/childdead/ownedcontainersremovedผ่าน. Fullunitยังรัน อย่าปิดtaskหรือcommitก่อนจบ. ภาพรวมและคำสั่งต่ออยู่HANDOFF/QAreport ไม่มีdeploy.
+
+## 2026-11-11 01:19 (Asia/Bangkok) — Codex main — T-448 quota pauseจริง
+- [TESTED] account/rateLimits/read primaryremaining5%, weekly85%; synchronizeQuotaเปลี่ยนwaiting_limitและreleaseclaimจริง nextEligibleAt2026-11-10T23:00:12Z (วันนี้06:00:12กรุงเทพ). หยุดงานหนักตามคำขอ ไม่ใช่contextlimit. HeartbeatACTIVEรอfreshreadหลังreset ไม่รับประกันเวลาเริ่มถ้าapp/เครื่องปิด. Unitเดิมยังรัน(session93452/unit-session.log) ไม่เริ่มชุดซ้ำ. E2E/lint/typecheck/reviewผ่านตามรายงาน แต่fullunit/commit/pushยังค้าง จึงไม่ปิดT448.
+
+## 2026-11-11 02:11 (Asia/Bangkok) — Codex heartbeat — T-448 รอquota
+- [TESTED] Fullunitเดิมจบ19/19tasks(cache0),14m46.112s. Freshaccountquota3%/weekly85%ยังพักจนresetgateผ่านและfreshreadยืนยัน>5%. ไม่เริ่มงานหนัก/ไม่commit/push. Heartbeatยังมีประโยชน์สำหรับresumeหลังreset.
+
+## 2026-11-11 06:14 (Asia/Bangkok) — Codex heartbeat — T-448 resumeจริง/localacceptanceผ่าน
+- [TESTED] Freshaccountprimary100%/weekly85%หลังreset, runnerเดิมไม่มี; syncclaimowner44408 admittedtrue/runningใหม่ ไม่รันfulltestsซ้ำ เป็นautomaticresumeจริงจากpause01:19/5%
+- [TESTED] fullunit19/19tasks cache0 14m46.112s(web1811tests), build11/lint19/typecheck18ผ่านตามcacheในQAreport; E2Ebrowser284pass32skip/fullstack70pass+1expectedB003+19skip; independentreviewไม่มีP0/P1/P2
+- เริ่มfinaldocs/commit/pushbranchตามDoD ไม่merge/deploy ไม่ส่งข้อความจริง; CIยังไม่อ้างผ่าน
