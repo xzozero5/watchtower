@@ -329,3 +329,10 @@
 - Person narration ทั้งworkerและreaderต้องปิดจนgolden§9.9ได้รับอนุมัติและผ่าน; ระหว่างนี้แสดงFครบ ไม่deferfeatureNเพราะเวลาหรือความยาก
 - งบperuserคงตาม§9.4: my_work4calls/dayและ60mininterval; user-scopedรวม30calls/dayในinsights60calls/day; viewedmark30pairs/h; API60req/min; ไม่batchข้ามuser
 - T409 acceptance citation recall≥90%, leak0, uncited≤1/answer; insightJ18 stricter uncited0และhallucinatednumber0. ต้องtestaggregate roundtrip/masked/permissionrevoked/goldenoff0calls/concurrentcap
+
+## Presentation amendment — เจ้าของ 2026-11-11 (T-451)
+[CONFIRMED] เจ้าของเห็นว่าโลโก้นกอยู่หลายจุดเกินไปและเล็กเกินไป ต้องการ AI summary ที่อ่านก่อนแล้วถามต่อจากบริบทนั้นได้
+- Summary-first: ย้าย contextual Ask control ที่จับคู่ ElementInsight ไปท้าย summary ผ่าน shared composition โดยคง element/scope/period/entity/disabledreason และ RBAC เดิม ทุก non-X element ยังเข้าถึง capability เดิมได้ ถ้ายังไม่มี summary ให้ labelled compact fallback ตามจริง ไม่สร้าง summary ปลอม
+- ลด mascot repetition: ไม่ใช้ tiny bird เป็นปุ่มทั่วไป/row action/state badge/provenance/loading decoration ใช้ neutral semantic icon แทน มาสคอตเก็บที่ assistant identity และ ticket AI brief header ในขนาดอ่านออก ~32–40px; คง global entry/shortcut และ customer exclusions
+- CTA ข้อความ 'ถามต่อ' เปิด assistant พร้อม context ที่ตรวจได้ ไม่ auto-send และไม่ส่งข้อความ summary/PII เข้า request โดยพลการ ไม่เพิ่ม model calls/prefetch/budget หรือเปลี่ยน narration/fact/citation/authorization policies
+- เป็นการแก้ presentation ของ §1/§9.6 ตามคำขอเจ้าของ ไม่ยกเลิก 30-element coverage หรือ autonomy/read-only gates; tests ตรวจ scope/period, fresh/stale/system/empty/error, disabled/RBAC, keyboard/a11y และ synthetic screenshots
