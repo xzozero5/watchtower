@@ -5,6 +5,8 @@ snapshot สั้นสำหรับ cold start อยู่ที่ `HANDOF
 
 ## สถานะปัจจุบัน
 
+- **2026-11-11 [TESTED]: T451summary-firstUI deploylocalแล้ว** mainruntimecb506cf3/sourceCI43003199367/mainCI43005062353เขียว4jobs; 255unit/exactartifact8browser+axe0/independentreviewผ่าน POC9healthy. ลดtinybirdซ้ำและถามต่อท้ายsummary contextเดิม รายงานdocs/qa/2026-11-11-contextual-ai.md.
+
 - **2026-11-11 [TESTED]: T449merge/deploylocalเสร็จ** mainfb3e1a29/CI42948052133เขียว4jobs, POC9healthy/webimage7c11a23d, exactartifact6/6tests+independentreviewผ่าน; hostCodexbridgeกลับonline. **T451กำลังทำ** summary-first contextualfollowupตามเจ้าของ ดูHANDOFFก่อนแก้source/รันbuild.
 
 - **2026-11-11 [TESTED]: T-448 local acceptanceผ่าน** — composer pending guards + E2Eแยกบริการ + accountquota pause5%/reset/resumeจริง. Fullunit19tasks cache0, lint19/typecheck18/build11ผ่าน; browser284pass32skip/fullstack70pass+1knownexpectedfailureB003+19skip. Source commits ce7f56dd/043cd017; [TESTED] sourceCI42921797797ที่0db32624ผ่านครบ4jobs ไม่merge/deploy. รายงาน docs/qa/2026-11-11-workflow-recovery.md.
@@ -625,3 +627,9 @@ T411staticreviewพบP2: history/memoryหลังrevocation, PIIauditcatalogu
 
 ## 2026-11-11 11:55 (Asia/Bangkok) — Codex heartbeat — ปิดT449/resumeT451
 - [TESTED] mainCI42948052133successครบ4jobs ไม่ใช่pendingแล้ว; deploy+independentpostreviewผ่าน สรุปT449ครบ. PartialT4514ไฟล์unit54/54ผ่าน ยังไม่featurecomplete. Freshquota100%/weekly69%, ownerเก่าไม่มีแล้ว completeT449และclaimT451owner45548admittedtrue ไม่รันtestsเดิมซ้ำ. Agentcontextual_aiทำsourceต่อ mainปิดdocsT449แยกไม่เอาpartialsourceเข้าmain.
+
+## 2026-11-11 12:07 (Asia/Bangkok) — T451 source ready / quota pause
+- [TESTED] main196/196unit+visualQAdesktop/mobile; producerbuild11/unit196/browser8รวมaxe0lightdark/scopedlintผ่าน. เดิมaxe4failแก้accessiblelabelให้มีvisibletext, browser2failfixturechipแก้ให้ตรวจscopeperiodครบ, lint5errorsแก้safequery/Stringไม่ลดassert. Source/testsหยุดแก้แล้ว ยังไม่commit/CI/deploy. Primary4%จริง→waiting_limit/releaseclaim nextEligible16:53:27กรุงเทพ; heartbeatACTIVEต่อหลังfreshreadreset. Diff/source/artifactpathsอยู่HANDOFF.
+
+## 2026-11-11 17:50 (Asia/Bangkok) — ปิดT451/deployแล้ว
+- [TESTED] maincb506cf3+sourceCI43003199367/mainCI43005062353green4jobs. local255unit/staticและfinalDockerexactartifact8browser/axe0ผ่าน; independentreview+postdeployPASS. POC9healthy/5health200/APIworkerIDsและflagsproviderเดิม. Backupverified13876511bytes243tables/rollbackพร้อม ไม่มีcustomerwrite/LLMcall. รายงานdocs/qa/2026-11-11-contextual-ai.md; currentruntime120.../OCIrevisioncb506cf3

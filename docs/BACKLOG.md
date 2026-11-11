@@ -284,4 +284,4 @@ T-152, T-175 (กำลังทำอยู่แล้ว เก็บผล),
 - [x] T-449 main merge workflow-recovery เข้าmainและdeploylocalตามเจ้าของ2026-11-11: verifiedbackup/rollbackimage/cleantrackedbuildcontext/web-onlyrecreate/read-onlysmoke/independentreview/health+flags; ไม่ส่งข้อความจริง
 
 - [ ] T-450 infra ป้องกันowner/localcacheเข้าDockerbuildcontext: .dockerignore exclude.agents/.codex/.cacheและartifactignoredอื่น พร้อมboundarytest; ระหว่างนี้ใช้clean gitarchive snapshotตามT449 ไม่ส่งownerdataเข้าDocker
-- [~] T-451 frontend-dev contextual summary-first Ask follow-up; ลดtiny/repeatedBirddayicons เก็บmascotidentity32–40px; คง30elements/RBAC/context/state/budgets + tests/a11y/screenshots ตามADR029amendment2026-11-11
+- [x] T-451 frontend-dev contextual summary-first Ask follow-up; ลดtiny/repeatedBirddayicons เก็บmascotidentity32–40px; คง30elements/RBAC/context/state/budgets + tests/a11y/screenshots ตามADR029amendment2026-11-11

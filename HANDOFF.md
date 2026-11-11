@@ -1,38 +1,37 @@
 # HANDOFF — Watchtower
 
-> อัปเดตล่าสุด 2026-11-11 11:55 (Asia/Bangkok) โดย Codex main · ก่อนdeploy: docs/handoff-archive/HANDOFF-2026-11-11-pre-t449-deploy.md
+> อัปเดตล่าสุด 2026-11-11 17:50 (Asia/Bangkok) โดย Codex main · ก่อนdeploy: docs/handoff-archive/HANDOFF-2026-11-11-pre-t449-deploy.md
 
 ## สถานะปัจจุบัน
-- [TESTED] T449 merge/deploy localเสร็จ: mainfb3e1a29, mainCI42948052133ผ่าน4jobs; POCwebใหม่healthy9containers ผู้ใช้เปิดhttp://localhost:3000ได้
-- งานปัจจุบัน T451: เจ้าของต้องการลดนกที่ซ้ำ/เล็ก ทำsummary-firstแล้วถามต่อในบริบทนั้น ไม่ใช่tinybirdbuttonsทุกsection
-- Agentcontextual_aiกำลังimplement source/tests/i18n; mainดูdocs/ADR/merge/deploy เท่านั้น อย่าNextbuildชนagent
-- Partialก่อนresume4ไฟล์ AskAiButton/AskAiElement/TH/EN เพิ่มfollow-up presentationและneutralmessageicon; unit54/54ผ่าน(contextual-ai-batch1.log) ยังไม่ใช่featureเสร็จ
-- ส่วนที่ต้องทำ: ElementInsight.followUp/footer+fallbackจริง/callersคงscopeperiodpermissions/AiBrieffollowup+mascotidentity32–40px/ลดdecorations/tests+screenshots+review แล้วmerge/deploylocalเมื่อgatesผ่าน
+- [TESTED] T451เสร็จและdeploylocalแล้ว: main runtime sourcecb506cf3; sourceCI43003199367และmainCI43005062353เขียวครบ4jobsทั้งคู่
+- UIsummary-first: ถามต่อท้ายsummaryพร้อมcontextเดิม, ลดtinybirdซ้ำตามrow/loading/state/provenance, identitybrief32/panel40/bubble32px; bubbleเป็นXเมื่อเปิดpanelและไม่มีheroavatarซ้ำ
+- [TESTED] Main255/255affectedunit, lint/typecheck/formatผ่าน, exactartifactbrowser8/8รวม2visualcapturesและaxe0lightdark; independentreview+postdeployPASS ไม่มีP0/P1/P2ค้าง
+- Runtimewebimage120cdc8dc9fb1e60a90699010b3d4cc2daf757d51e23b1a5ca6fcec1d604154e /BUILD_IDD61Q1tYWpzMvbTWyyi-ET /OCIrevisioncb506cf308bdd9dbfcbdab78a9f2fd279077beda
+- POC9healthy, web/API/worker/proxy/bridgehealth200, APIworkerIDs/imagesเดิม flags/providerเดิม; ไม่มีmigration/login/ข้อความจริง/LLMgenerationtest
+- รายงานT451 docs/qa/2026-11-11-contextual-ai.md; รายงานmerge/deployรอบก่อนT449 docs/qa/2026-11-11-local-deploy.md
 
-## กติกา/การอนุมัติ
-- เจ้าของอนุมัติmerge mainและdeploylocalแล้ว2026-11-11; T451เป็นการปรับUIต่อเนื่องในแอปที่deploy ไม่ต้องส่งข้อความจริงเพื่อทดสอบ
+## Backup / rollback
+- Freshverifiedbackupนอกrepo D:/Works/watchtower-backups/watchtower-20261111-103637-pre-t451-final-deploy.dump (13876511bytes/243tabledata pg_restore-lผ่าน; ไม่ได้ซ้อมrestoreรอบนี้/ไม่รวมMinIOattachments)
+- Rollbackimagewatchtower/web:rollback-t451 คือเว็บก่อนT451; ปัจจุบันtaggit-cb506cf3และlocalตรงcandidateที่ทดสอบ
+- ใช้clean gitarchivebuildcontextเสมอเพื่อกันowner/localcache T450dockerignoreถาวรยังเป็นbacklog; smokecontainerที่งานสร้างลบแล้ว
+
+## กติกา/การอนุมัติที่ยังมีผล
+- เจ้าของอนุมัติmerge/deploylocalและปรับUIsummary-firstแล้ว2026-11-11; ไม่ส่งข้อความจริงเพื่อทดสอบ
 - ห้ามเปิดAI_AUTOSEND_ENABLED/INSIGHT_PERSON_NARRATION_ENABLED/EMBEDDING_PROVIDER=local หรือเปลี่ยนCodexprovider/credentialsเอง
-- .agents/.codexเป็นของเจ้าของ ห้ามadd/commit; Dockerbuildใช้clean gitarchive เพื่อไม่ส่งowner/localcacheเข้าcontext
-- ADR029ท้ายไฟล์amendpresentationตามเจ้าของแล้ว คง30-elementcapability/RBAC/citations/state/budgets/read-only ไม่เพิ่มmodelcallsหรือauto-send
+- .agents/.codexเป็นของเจ้าของ ห้ามadd/commit/readเพื่อทำbuildcontext; sourcebundleใช้trackedarchiveเท่านั้น
+- ADR029amendpresentationคง36non-Xregistrycapabilityตามinventoryจริง/RBAC/citations/states/budgets/read-only ไม่เพิ่มmodelcalls/auto-send
 
-## Deployปัจจุบัน (T449)
-- Webimage sha256:7c11a23d9dbc26a9218105966c3fcb7c36479f0f3fea68280d7fa3e0e8f30cff, BUILD_ID VHR-QKl9sBCLUBQ4DW0Op, aliaswatchtower/web:git-fb3e1a29
-- Exactimagereplica6/6composerpendingtestsผ่าน+independentpostreviewPASS; web/API/worker/proxyhealth200; APIworkerIDs/config/flagsเดิม ไม่migrateDB
-- Backupverifiedpg_dumpcustom+pg_restore-l: D:/Works/watchtower-backups/watchtower-20261111-024454-pre-t449-deploy.dump (13862043bytes/243tabledata); rollbackimagewatchtower/web:rollback-t449
-- Hostbridgeofflineตั้งแต่ก่อนdeploy เปิดrunnerเดิมCodex+pinnedoverlayกลับPID5228 host/API/workerhealth200/online ไม่มีgenerationtest
-- รายงาน docs/qa/2026-11-11-local-deploy.md; T450follow-updockerignoreยังค้าง การใช้archiveป้องกันเฉพาะรอบนี้
+## Tests / pitfalls
+- CIแรก36f07485ล้ม3unitfiles แก้exactaccessible-name selectors/reorderliteralpropsโดยไม่แตะinventoryrubric; พบactualfollowupremount/focusclicklost แก้stableframe+deferredregression fail-before/afterpass; currentcb506cf3CIgreenครบแล้ว ห้ามนำfirstcandidate1647...กลับมาใช้แทนfinalimage120...
+- Localignoredlogs t451-main-final-unit.log,t451-main-lint-final.log,t451-main-typecheck-final.log,t451-fixed-image-browser.log,t451-fixed-ci-watch.log,t451-main-ci-watch.log
+- ภาพfinal .cache/t451-image-final/{summary,assistant}-{1440,390}.png; before .cache/t451-before/; visualcapturesต้องตั้งUI_SHOTS ปกติCIskip2captures ไม่ใช่functionalpasses
+- Known B003Gmailautoack expectedfailureเดิม/optionalstage3ONruns/externalจริงไม่อยู่ในผลUIนี้
 
-## Quota/continuation
-- [TESTED] 11:53freshprimary100%/weekly69% ไม่มีrunnerเก่า; checkpointT449เดิมownerหมดอายุ→completeแล้วnewT451runningowner45548 (finiteclaimowner1h ไม่ใช่scheduler/LLMdaemon)
-- Heartbeatwatchtower-quota-checkpointACTIVEทุกชั่วโมงสำหรับT451จนเสร็จ อ่านfreshquotaทุกsafe boundary; ≤5%/unknownsave+pause; agentหยุดที่≤10%เพื่อreserveให้main
-- CheckpointGitcommoninfoใช้ร่วมworktrees ห้ามreclaimliveowner/printclaimtoken; actualguardไม่interruptmodelturnกลางทาง
-- ก่อนทำซ้ำตรวจlogs/process ผลunit54และmainCIเดิมจบแล้ว ไม่รันซ้ำโดยไม่มีchange
+## ค้าง / ขั้นต่อไป
+- ไม่มีงานT449/T451ค้าง; sourcepush/main/deploy/CIครบ เอกสารสรุปfollow-upไม่เปลี่ยนruntimecodeและไม่อ้างCIของdocsheadว่าเขียวล่วงหน้า
+- หลังpushเอกสารนี้completecheckpointT451/releaseowner31996และลบheartbeatwatchtower-quota-checkpoint เพราะงานที่เจ้าของอนุมัติครบแล้ว
+- งานถัดไปที่ยังไม่อนุมัติ: T450Dockerignoreguard; T433localembeddings/C27personnarration/C25retention/pilotT412รอownerตามเดิม
+- quota guard/runbookใช้ต่อได้ในงานใหม่ ทุกsafe boundaryfreshcheck≤5%/unknownsave+pause ไม่ใช้contextwindowเป็นaccountquota
 
-## ขั้นต่อไป
-1. ปิดdocsT449/commitเฉพาะdocsและfastforwardmain โดยห้ามเอาpartialT451sourceเข้าmain
-2. รับT451implementation ตรวจsource/testเอง+reviewคนละagent+visualQA จากนั้นcommit/push/CI/cleanarchivebuild/deploylocalตามscope
-3. T451เสร็จแล้วcompletecheckpoint/releaseowner/ลบheartbeat
-
-## รอเจ้าของ/ข้อจำกัดเดิม
-- T433localembeddings/C27personnarration/C25retention/pilotT412ยังรอowner; B003Gmailautoackknownfailureเดิม
-- Externalจริง/optionalstage3ONrunsไม่ใช่ผลทดสอบงานUIนี้
+## วันตรวจซ้ำ
+- Pilotreadiness2026-11-16; key/retentionreview2027-02-01ตามรอบเดิม
