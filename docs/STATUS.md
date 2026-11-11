@@ -5,6 +5,8 @@ snapshot สั้นสำหรับ cold start อยู่ที่ `HANDOF
 
 ## สถานะปัจจุบัน
 
+- **2026-11-11 [TESTED]: T449merge/deploylocalเสร็จ** mainfb3e1a29/CI42948052133เขียว4jobs, POC9healthy/webimage7c11a23d, exactartifact6/6tests+independentreviewผ่าน; hostCodexbridgeกลับonline. **T451กำลังทำ** summary-first contextualfollowupตามเจ้าของ ดูHANDOFFก่อนแก้source/รันbuild.
+
 - **2026-11-11 [TESTED]: T-448 local acceptanceผ่าน** — composer pending guards + E2Eแยกบริการ + accountquota pause5%/reset/resumeจริง. Fullunit19tasks cache0, lint19/typecheck18/build11ผ่าน; browser284pass32skip/fullstack70pass+1knownexpectedfailureB003+19skip. Source commits ce7f56dd/043cd017; [TESTED] sourceCI42921797797ที่0db32624ผ่านครบ4jobs ไม่merge/deploy. รายงาน docs/qa/2026-11-11-workflow-recovery.md.
 
 - **2026-11-09 02:06 [TESTED]:** ปิด **`T-447`** (ธีมนกค็อกคาเทล **Birdday** `<BirddayAvatar />` + `<BirddayIcon />` ทั่วจุด AI ของแอป, หน้าต่างแชทสไตล์ Claude พร้อม live multi-step phase timeline + elapsed timer + expandable width + auto-growing composer card, และ directional pearl shimmer `<Skeleton />` + structured route/table/shift/queue skeletons + lively micro-interactions): ผ่าน `@watchtower/ui` `815/815`, `@watchtower/web` unit `1,807/1,807`, Playwright E2E + `axe` light/dark `52/52` (`0` violations), และ independent reviews N7 ทั้ง `qa-engineer` + `security-reviewer` `PASS` (`docs/decisions/T-447-review.md`).
@@ -617,3 +619,9 @@ T411staticreviewพบP2: history/memoryหลังrevocation, PIIauditcatalogu
 ## 2026-11-11 06:29 (Asia/Bangkok) — Codex main — ปิดT-448/sourceCIผ่าน
 - [TESTED] Pushbranchcodex/workflow-recoveryสำเร็จ sourcecommitsce7f56dd/043cd017/docs0db32624. CI42921797797ที่0db32624เขียวครบ4jobs รวมintegration/E2E/Composeและstatic/fullunit. ไม่มีmerge/deploy/ข้อความจริง
 - [TESTED] Actualpause01:19ที่primary5% → heartbeatรอไม่ทำซ้ำ → fresh100%/weekly85%06:12ผ่านgate/claimใหม่/ทำงานต่อ. Acceptanceครบ เตรียมcompletecheckpointและลบheartbeatหลังpushเอกสารสรุป ไม่อ้างCIของdocsfollowupว่าเขียวล่วงหน้า
+
+## 2026-11-11 09:49 (Asia/Bangkok) — Codex main — T449 deployed pendingCI/review
+- เจ้าของอนุมัติmerge/deployแล้ว. mainfb3e1a29pushสำเร็จ; verifiedbackup13862043bytes243tables, cleanarchivebuild, web-onlyuphealthy; exactartifactpendingE2E6/6, 4HTTP200, 9healthy, APIworkerIDs/flags/providerคงเดิม. BaselinehostbridgeofflineเปิดCodexrunnerเดิมกลับhost/APIhealth200 ไม่มีgeneration. รอmainCI42948052133+independentpostreviewก่อนปิด รายงานdocs/qa/2026-11-11-local-deploy.md.
+
+## 2026-11-11 11:55 (Asia/Bangkok) — Codex heartbeat — ปิดT449/resumeT451
+- [TESTED] mainCI42948052133successครบ4jobs ไม่ใช่pendingแล้ว; deploy+independentpostreviewผ่าน สรุปT449ครบ. PartialT4514ไฟล์unit54/54ผ่าน ยังไม่featurecomplete. Freshquota100%/weekly69%, ownerเก่าไม่มีแล้ว completeT449และclaimT451owner45548admittedtrue ไม่รันtestsเดิมซ้ำ. Agentcontextual_aiทำsourceต่อ mainปิดdocsT449แยกไม่เอาpartialsourceเข้าmain.

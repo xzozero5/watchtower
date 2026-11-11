@@ -1,38 +1,38 @@
 # HANDOFF — Watchtower
 
-> อัปเดตล่าสุด 2026-11-11 06:29 (Asia/Bangkok) — Codex main; ฉบับก่อน: docs/handoff-archive/HANDOFF-2026-11-11-pre-workflow-recovery.md
+> อัปเดตล่าสุด 2026-11-11 11:55 (Asia/Bangkok) โดย Codex main · ก่อนdeploy: docs/handoff-archive/HANDOFF-2026-11-11-pre-t449-deploy.md
 
 ## สถานะปัจจุบัน
-- T-448 เสร็จ: แก้ composer pending, เพิ่ม E2E แยกบริการ และ account quota checkpoint/resume; branch codex/workflow-recovery ไม่ merge/deploy
-- [TESTED] Source CI 0db32624 / run42921797797 เขียวครบ4jobs: lint/typecheck/unit, integration, browser/fullstack E2E, Docker Compose build/up/health. ผลCIนี้ยืนยันsourcecommitดังกล่าว; commitเอกสารสรุปภายหลังไม่ได้เปลี่ยนโค้ด
-- [TESTED] Local fullunit19/19tasks cache0 (web1811tests), build11/lint19/typecheck18ผ่านตามcacheในQAreport; browser284pass32skip, fullstack70ordinarypass+1expectedfailureB003+19skip
-- [TESTED] Independent review ไม่มีP0/P1/P2ค้าง, targetedunit55/55, reviewer42/42, quota13/13; SIGINTprocess-tree/ownedcontainercleanupผ่าน
-- ผลทดสอบและข้อจำกัด: docs/qa/2026-11-11-workflow-recovery.md; phase1–3ยังdone pending pilot/livegateตามฉบับก่อน ไม่ถือผลนี้เป็นproduction signoff
+- [TESTED] T449 merge/deploy localเสร็จ: mainfb3e1a29, mainCI42948052133ผ่าน4jobs; POCwebใหม่healthy9containers ผู้ใช้เปิดhttp://localhost:3000ได้
+- งานปัจจุบัน T451: เจ้าของต้องการลดนกที่ซ้ำ/เล็ก ทำsummary-firstแล้วถามต่อในบริบทนั้น ไม่ใช่tinybirdbuttonsทุกsection
+- Agentcontextual_aiกำลังimplement source/tests/i18n; mainดูdocs/ADR/merge/deploy เท่านั้น อย่าNextbuildชนagent
+- Partialก่อนresume4ไฟล์ AskAiButton/AskAiElement/TH/EN เพิ่มfollow-up presentationและneutralmessageicon; unit54/54ผ่าน(contextual-ai-batch1.log) ยังไม่ใช่featureเสร็จ
+- ส่วนที่ต้องทำ: ElementInsight.followUp/footer+fallbackจริง/callersคงscopeperiodpermissions/AiBrieffollowup+mascotidentity32–40px/ลดdecorations/tests+screenshots+review แล้วmerge/deploylocalเมื่อgatesผ่าน
 
-## การตัดสินใจของเจ้าของที่มีผลอยู่
-- ห้ามเปิด AI_AUTOSEND_ENABLED, INSIGHT_PERSON_NARRATION_ENABLED หรือ EMBEDDING_PROVIDER=local บนPOC; ห้ามเปลี่ยนHostAIBridgecodex:4317/ใช้credentialใหม่เอง
-- .agents/ และ .codex/ เป็นของเจ้าของ ห้ามgitadd/commit
-- งานนี้ไม่มีdeploy/merge/ข้อความจริง ไม่ใช้POCเป็นtestservices; disposablecontainerscleanupครบ
-- accountquota≤5%พักพร้อมcheckpoint; resumeต้องfreshquota>5%+resetgate ไม่ใช้contextwindowเป็นaccountquota
+## กติกา/การอนุมัติ
+- เจ้าของอนุมัติmerge mainและdeploylocalแล้ว2026-11-11; T451เป็นการปรับUIต่อเนื่องในแอปที่deploy ไม่ต้องส่งข้อความจริงเพื่อทดสอบ
+- ห้ามเปิดAI_AUTOSEND_ENABLED/INSIGHT_PERSON_NARRATION_ENABLED/EMBEDDING_PROVIDER=local หรือเปลี่ยนCodexprovider/credentialsเอง
+- .agents/.codexเป็นของเจ้าของ ห้ามadd/commit; Dockerbuildใช้clean gitarchive เพื่อไม่ส่งowner/localcacheเข้าcontext
+- ADR029ท้ายไฟล์amendpresentationตามเจ้าของแล้ว คง30-elementcapability/RBAC/citations/state/budgets/read-only ไม่เพิ่มmodelcallsหรือauto-send
 
-## ทำเสร็จ
-| งาน | ผล / ไฟล์ |
-| --- | --- |
-| Composerpending | ล็อกeditor/mode/recipients/subject/attachments/shortcuts; failureคงdraft — apps/web/src/components/conversation/, portal/reply-form.tsx, e2e/composer-pending.e2e.ts |
-| E2Elocal | pnpm e2e:local สร้างdisposableinfra/build/browser/fullstack/cleanup — tools/e2e-stack/local.mjs |
-| Quotaguard | freshaccountRPC/threshold/unknownfailclosed/PIDtokenclaim — tools/codex-continuation/quota*.mjs |
-| Actualpause/resume | 01:19primary5%พักจริง;06:12heartbeatfresh100%/weekly85%→claimใหม่และทำต่อจากlogsเดิม ไม่รันซ้ำ |
+## Deployปัจจุบัน (T449)
+- Webimage sha256:7c11a23d9dbc26a9218105966c3fcb7c36479f0f3fea68280d7fa3e0e8f30cff, BUILD_ID VHR-QKl9sBCLUBQ4DW0Op, aliaswatchtower/web:git-fb3e1a29
+- Exactimagereplica6/6composerpendingtestsผ่าน+independentpostreviewPASS; web/API/worker/proxyhealth200; APIworkerIDs/config/flagsเดิม ไม่migrateDB
+- Backupverifiedpg_dumpcustom+pg_restore-l: D:/Works/watchtower-backups/watchtower-20261111-024454-pre-t449-deploy.dump (13862043bytes/243tabledata); rollbackimagewatchtower/web:rollback-t449
+- Hostbridgeofflineตั้งแต่ก่อนdeploy เปิดrunnerเดิมCodex+pinnedoverlayกลับPID5228 host/API/workerhealth200/online ไม่มีgenerationtest
+- รายงาน docs/qa/2026-11-11-local-deploy.md; T450follow-updockerignoreยังค้าง การใช้archiveป้องกันเฉพาะรอบนี้
 
-## ค้าง / ขั้นต่อไป
-- ไม่มีงานโค้ดT448ค้าง SourcepushและCIผ่านแล้ว; หลังpushเอกสารสรุปให้completecheckpoint/releaseowner44408และลบheartbeatwatchtower-quota-checkpoint เพราะงานที่อนุมัติครบแล้ว
-- Localignoredlogs: unit-session.log, e2e-local-session.log, lint-session.log, typecheck-session.log, interruption-session.log, ci-watch-session.log
-- งานใหม่ใช้runbook docs/runbooks/codex-continuation.md; ตรวจGitcommoninfo checkpointก่อนclaim ห้ามพิมพ์claimtokenหรือreclaimliveowner
-- T407checkpointเก่าที่docsปิดแล้วเก็บsnapshot .T-407-20261111.archiveก่อนcomplete/สร้างT448 ไม่ทับงานactive
+## Quota/continuation
+- [TESTED] 11:53freshprimary100%/weekly69% ไม่มีrunnerเก่า; checkpointT449เดิมownerหมดอายุ→completeแล้วnewT451runningowner45548 (finiteclaimowner1h ไม่ใช่scheduler/LLMdaemon)
+- Heartbeatwatchtower-quota-checkpointACTIVEทุกชั่วโมงสำหรับT451จนเสร็จ อ่านfreshquotaทุกsafe boundary; ≤5%/unknownsave+pause; agentหยุดที่≤10%เพื่อreserveให้main
+- CheckpointGitcommoninfoใช้ร่วมworktrees ห้ามreclaimliveowner/printclaimtoken; actualguardไม่interruptmodelturnกลางทาง
+- ก่อนทำซ้ำตรวจlogs/process ผลunit54และmainCIเดิมจบแล้ว ไม่รันซ้ำโดยไม่มีchange
 
-## รอเจ้าของ / ยังไม่ยืนยัน
-- T433localembeddings/C27personnarrationยังรออนุมัติ; T412/C25/pilotรอretentiondecisionและผลใช้งานจริง2สัปดาห์
-- B003Gmailautoackknownfailureเดิมยังไม่ปิด externalจริง/optionalstage3ONrunsไม่อยู่ในผลนี้
-- guardไม่หยุดกลางmodelturn; เครื่อง/appต้องเปิด schedulerอาจปลุกช้า ไม่รับประกันเวลาwake/power-losscleanup
+## ขั้นต่อไป
+1. ปิดdocsT449/commitเฉพาะdocsและfastforwardmain โดยห้ามเอาpartialT451sourceเข้าmain
+2. รับT451implementation ตรวจsource/testเอง+reviewคนละagent+visualQA จากนั้นcommit/push/CI/cleanarchivebuild/deploylocalตามscope
+3. T451เสร็จแล้วcompletecheckpoint/releaseowner/ลบheartbeat
 
-## วันตรวจซ้ำ
-- Pilotreadiness2026-11-16; key/retentionreview2027-02-01ตามรอบเดิม
+## รอเจ้าของ/ข้อจำกัดเดิม
+- T433localembeddings/C27personnarration/C25retention/pilotT412ยังรอowner; B003Gmailautoackknownfailureเดิม
+- Externalจริง/optionalstage3ONrunsไม่ใช่ผลทดสอบงานUIนี้

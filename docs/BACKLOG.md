@@ -280,3 +280,8 @@ T-152, T-175 (กำลังทำอยู่แล้ว เก็บผล),
 
 ## ทดลอง workflow และ quota recovery (เจ้าของ 2026-11-11)
 - [x] T-448 `main` ทดลอง workflow ด้วย synthetic data, แก้ composer draft/mode ระหว่าง pending, เพิ่ม delayed success/failure browser regression, `pnpm e2e:local` disposable infra/build/browser/fullstack/cleanup, ต่อ quota guard T-437 ด้วย fresh account quota/≤5%/checkpoint/reset/claim และ heartbeat; ปิด local acceptance 2026-11-11: independent review + static/unit/E2E ผ่าน, pause5%/reset100%/resumeจริงผ่าน; report docs/qa/2026-11-11-workflow-recovery.md ไม่มี deploy/ข้อความจริง (CIตรวจแยกหลังpush)
+
+- [x] T-449 main merge workflow-recovery เข้าmainและdeploylocalตามเจ้าของ2026-11-11: verifiedbackup/rollbackimage/cleantrackedbuildcontext/web-onlyrecreate/read-onlysmoke/independentreview/health+flags; ไม่ส่งข้อความจริง
+
+- [ ] T-450 infra ป้องกันowner/localcacheเข้าDockerbuildcontext: .dockerignore exclude.agents/.codex/.cacheและartifactignoredอื่น พร้อมboundarytest; ระหว่างนี้ใช้clean gitarchive snapshotตามT449 ไม่ส่งownerdataเข้าDocker
+- [~] T-451 frontend-dev contextual summary-first Ask follow-up; ลดtiny/repeatedBirddayicons เก็บmascotidentity32–40px; คง30elements/RBAC/context/state/budgets + tests/a11y/screenshots ตามADR029amendment2026-11-11
