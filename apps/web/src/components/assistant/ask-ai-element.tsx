@@ -23,6 +23,7 @@ export interface AskAiElementProps {
   entity?: AssistantEntity;
   /** A visible view that the assistant contract cannot represent must not become a broader query. */
   disabledReason?: string;
+  presentation?: 'icon' | 'follow-up';
 }
 
 /** Uses the route's registry rule, including F and reused AI; never starts narration or sends a question. */
@@ -33,6 +34,7 @@ export function AskAiElement({
   label,
   entity,
   disabledReason,
+  presentation,
 }: AskAiElementProps) {
   const { can, session } = useSession();
   const { t, locale } = useI18n();
@@ -77,6 +79,7 @@ export function AskAiElement({
           : (disabledReason ?? unavailableReason);
   return (
     <AskAiButton
+      presentation={presentation}
       {...(entity ? { entity } : {})}
       element={target}
       label={label ?? t(`assistant.elements.${key}` as MessageKey)}

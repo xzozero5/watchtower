@@ -14,6 +14,7 @@ import { PERMISSIONS } from '@watchtower/shared';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { ElementInsight } from './element-insight';
+import { AskAiElement } from '@/components/assistant/ask-ai-element';
 import { makeSession, uuid } from '@/test/fixtures';
 import { mockApi } from '@/test/mock-api';
 import { renderApp } from '@/test-utils';
@@ -131,6 +132,111 @@ function resolveLocalModule(fromFile: string, specifier: string): string | null 
 }
 
 describe('ElementInsight component (T-419a)', () => {
+  it('keeps its follow-up available while loading, then shows the honest empty fallback', async () => {
+    let release!: () => void;
+    const pending = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    setupApi({
+      'GET /v1/insights': async () => {
+        await pending;
+        return { json: { items: [] } };
+      },
+    });
+    renderApp(
+      <ElementInsight
+        element="dashboard.ops.volume"
+        period="d7"
+        followUp={<button>Ask a follow-up</button>}
+      />,
+    );
+    expect(screen.getByRole('button', { name: 'Ask a follow-up' })).toBeVisible();
+    expect(screen.queryByTestId('element-insight')).not.toBeInTheDocument();
+    release();
+    await waitFor(() => expect(screen.getByTestId('insight-follow-up-fallback')).toBeVisible());
+  });
+
+  it('keeps its follow-up when the summary request fails without fabricating content', async () => {
+    setupApi({ 'GET /v1/insights': { status: 500, json: {} } });
+    renderApp(
+      <ElementInsight
+        element="dashboard.ops.volume"
+        period="d7"
+        followUp={<button>Ask a follow-up</button>}
+      />,
+    );
+    await waitFor(() => expect(screen.getByTestId('insight-follow-up-fallback')).toBeVisible());
+    expect(screen.getByRole('button', { name: 'Ask a follow-up' })).toBeVisible();
+    expect(screen.queryByTestId('element-insight')).not.toBeInTheDocument();
+  });
+
+  it('keeps a denied summary action disabled under the same permission rule', () => {
+    grants.delete('dashboard.ops.read');
+    setupApi();
+    renderApp(
+      <ElementInsight
+        element="dashboard.ops.volume"
+        period="d7"
+        followUp={
+          <AskAiElement element="dashboard.ops.volume" period="d7" presentation="follow-up" />
+        }
+      />,
+    );
+    expect(
+      screen.getByRole('button', { name: 'Ask AI about Volume · Ask a follow-up' }),
+    ).toHaveAttribute('aria-disabled', 'true');
+    expect(screen.queryByTestId('element-insight')).not.toBeInTheDocument();
+  });
+
+  it('does not expose even a supplied follow-up on a customer surface or excluded element', () => {
+    userRole = 'client';
+    setupApi();
+    const view = renderApp(
+      <ElementInsight element="dashboard.ops.volume" followUp={<button>Ask a follow-up</button>} />,
+    );
+    expect(screen.queryByRole('button', { name: 'Ask a follow-up' })).not.toBeInTheDocument();
+    userRole = 'head';
+    const excluded = (Object.keys(INSIGHT_ELEMENTS) as InsightElementKey[]).find(
+      (key) => INSIGHT_ELEMENTS[key].mode === 'X',
+    );
+    expect(excluded).toBeDefined();
+    if (excluded)
+      view.rerender(
+        <ElementInsight element={excluded} followUp={<button>Ask a follow-up</button>} />,
+      );
+    expect(screen.queryByRole('button', { name: 'Ask a follow-up' })).not.toBeInTheDocument();
+  });
+  it('places the follow-up after the cited summary without repeating a mascot', async () => {
+    setupApi({
+      'GET /v1/insights': { json: { items: [makeItem('dashboard.ops.volume', 'fresh')] } },
+    });
+    const { container } = renderApp(
+      <ElementInsight
+        element="dashboard.ops.volume"
+        period="d7"
+        followUp={<button>Ask a follow-up</button>}
+      />,
+    );
+    const summary = await screen.findByText('AI generated narration claim with citation');
+    const button = screen.getByRole('button', { name: 'Ask a follow-up' });
+    expect(summary.compareDocumentPosition(button) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.getByTestId('element-insight')).toContainElement(button);
+    expect(container.querySelector('[data-slot="birdday-icon"]')).toBeNull();
+  });
+
+  it('keeps only the follow-up when no summary exists, without inventing a summary card', async () => {
+    setupApi({ 'GET /v1/insights': { json: { items: [] } } });
+    renderApp(
+      <ElementInsight
+        element="dashboard.ops.volume"
+        period="d7"
+        followUp={<button>Ask a follow-up</button>}
+      />,
+    );
+    await waitFor(() => expect(screen.getByTestId('insight-follow-up-fallback')).toBeVisible());
+    expect(screen.getByRole('button', { name: 'Ask a follow-up' })).toBeVisible();
+    expect(screen.queryByTestId('element-insight')).not.toBeInTheDocument();
+  });
   describe('AC-J17 exact copy for all 6 states in Thai', () => {
     const states: { state: InsightState; minutesAgo?: number; expectedText: string }[] = [
       { state: 'fresh', minutesAgo: 5, expectedText: 'AI · 5 นาทีที่แล้ว' },

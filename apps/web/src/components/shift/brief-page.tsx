@@ -85,7 +85,6 @@ function BriefView({ brief, onRefresh }: { brief: ShiftBrief; onRefresh: () => v
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
           <h2 className="text-lg font-semibold">{t('shift.brief.title')}</h2>
-          <AskAiElement element="shift.brief" />
           <p className="text-xs text-muted-foreground">
             {t('shift.brief.generated', { time: format.time(brief.generatedAt) })}
           </p>
@@ -131,8 +130,11 @@ function BriefView({ brief, onRefresh }: { brief: ShiftBrief; onRefresh: () => v
               dataAsOf: format.time(brief.aiSummary.dataAsOf),
             })}
           </p>
+          <AskAiElement element="shift.brief" presentation="follow-up" />
         </section>
-      ) : null}
+      ) : (
+        <AskAiElement element="shift.brief" presentation="follow-up" />
+      )}
 
       <ShiftSection
         id="brief-handoff"

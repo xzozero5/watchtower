@@ -94,8 +94,13 @@ function AiControlsBody() {
         }
       />
       <AdminBody>
-        <AskAiElement element="admin.ai" />
-        <ElementInsight element="admin.ai" scope="instance" period="-" className="mx-4 mt-2" />
+        <ElementInsight
+          element="admin.ai"
+          scope="instance"
+          period="-"
+          className="mx-4 mt-2"
+          followUp={<AskAiElement presentation="follow-up" element="admin.ai" />}
+        />
         {autonomy.isPending ? (
           <div role="status" aria-busy="true" className="flex flex-col gap-2 p-4">
             <span className="sr-only">{t('admin.common.loading')}</span>

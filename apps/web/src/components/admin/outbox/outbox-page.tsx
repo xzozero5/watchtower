@@ -161,8 +161,13 @@ function OutboxBody() {
         }
       />
       <AdminBody>
-        <AskAiElement element="admin.outbox" />
-        <ElementInsight element="admin.outbox" scope="instance" period="-" className="mx-4 mt-4" />
+        <ElementInsight
+          element="admin.outbox"
+          scope="instance"
+          period="-"
+          className="mx-4 mt-4"
+          followUp={<AskAiElement presentation="follow-up" element="admin.outbox" />}
+        />
         <div className="flex flex-col gap-4 p-4">
           <HealthStrip
             health={health.data}

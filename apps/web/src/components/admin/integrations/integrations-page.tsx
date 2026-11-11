@@ -45,8 +45,13 @@ function IntegrationsBody() {
         ]}
       />
       <AdminBody className="px-4 py-4">
-        <AskAiElement element="admin.integrations" />
-        <ElementInsight element="admin.integrations" scope="instance" period="-" className="mb-4" />
+        <ElementInsight
+          element="admin.integrations"
+          scope="instance"
+          period="-"
+          className="mb-4"
+          followUp={<AskAiElement presentation="follow-up" element="admin.integrations" />}
+        />
         <div className="mx-auto flex max-w-3xl flex-col gap-6">
           {/* The two sentences that used to sit here are one chip each, with the words in a hint. */}
           <div role="note" className="flex flex-wrap items-center gap-2">

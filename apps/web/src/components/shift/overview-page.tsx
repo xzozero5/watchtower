@@ -86,8 +86,12 @@ function OverviewView({ data, onRefresh }: { data: ShiftOverview; onRefresh: () 
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
           <h2 className="text-lg font-semibold">{t('shift.overview.title')}</h2>
-          <AskAiElement element="shift.overview" />
-          <ElementInsight element="shift.overview" period="now" className="my-2" />
+          <ElementInsight
+            element="shift.overview"
+            period="now"
+            className="my-2"
+            followUp={<AskAiElement presentation="follow-up" element="shift.overview" />}
+          />
           <p className="text-xs text-muted-foreground">
             {t('shift.overview.updated', { time: format.time(data.generatedAt) })}
           </p>

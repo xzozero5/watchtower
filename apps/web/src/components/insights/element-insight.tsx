@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import type { ComponentType } from 'react';
+import type { ComponentType, ReactNode } from 'react';
 import {
   INSIGHT_ELEMENTS,
   insightStateLabel,
@@ -10,16 +10,7 @@ import {
   type InsightState,
   type Permission,
 } from '@watchtower/shared';
-import {
-  BirddayIcon,
-  Button,
-  Dialog,
-  DialogContent,
-  Skeleton,
-  TintChip,
-  cn,
-  type TintId,
-} from '@watchtower/ui';
+import { Button, Dialog, DialogContent, Skeleton, TintChip, cn, type TintId } from '@watchtower/ui';
 import { CirclePause, Clock, History, Layers, Sparkles, ThumbsDown, ThumbsUp } from 'lucide-react';
 
 import { ClaimLine } from '@/components/claims/claim-line';
@@ -35,10 +26,8 @@ export interface ElementInsightProps {
   period?: string;
   insightId?: string;
   className?: string;
-}
-
-function FreshBirdIcon({ className }: { className?: string; 'aria-hidden'?: true }) {
-  return <BirddayIcon className={className} />;
+  /** Context-bound action shown after the summary, or alone when no summary is available. */
+  followUp?: ReactNode;
 }
 
 const STATE_CONFIG: Record<
@@ -48,7 +37,7 @@ const STATE_CONFIG: Record<
     icon: ComponentType<{ className?: string; 'aria-hidden'?: true }>;
   }
 > = {
-  fresh: { tone: 'teal', icon: FreshBirdIcon },
+  fresh: { tone: 'teal', icon: Sparkles },
   system: { tone: 'slate', icon: Layers },
   stale: { tone: 'amber', icon: History },
   budget: { tone: 'purple', icon: CirclePause },
@@ -67,6 +56,7 @@ export function ElementInsight({
   period,
   insightId,
   className,
+  followUp,
 }: ElementInsightProps) {
   const { can, session } = useSession();
   const { t, locale } = useI18n();
@@ -109,7 +99,14 @@ export function ElementInsight({
     enabled: isAllowed,
   });
 
-  if (!isAllowed) return null;
+  const fallback = followUp ? (
+    <div data-testid="insight-follow-up-fallback" className={cn('flex justify-start', className)}>
+      {followUp}
+    </div>
+  ) : null;
+
+  if (!isAssistantWorkspace(session) || entry.mode === 'X') return null;
+  if (!isAllowed) return fallback;
 
   if (isLoading) {
     return (
@@ -117,20 +114,22 @@ export function ElementInsight({
         aria-label={t('insights.elementTitle')}
         aria-busy="true"
         className={cn(
-          'flex items-center gap-2 rounded-inner bg-surface-muted/60 px-3 py-2 text-xs text-muted-foreground motion-safe:animate-rise-in',
+          'flex flex-col gap-2 rounded-inner bg-surface-muted/60 px-3 py-2 text-xs text-muted-foreground motion-safe:animate-rise-in',
           className,
         )}
       >
-        <BirddayIcon className="size-4 shrink-0" />
         <span className="sr-only">{t('insights.loading')}</span>
-        <Skeleton className="h-3.5 w-44" />
-        <Skeleton variant="pill" className="ml-auto h-4 w-14" />
+        <div className="flex items-center gap-2">
+          <Skeleton className="h-3.5 w-44" />
+          <Skeleton variant="pill" className="ml-auto h-4 w-14" />
+        </div>
+        {followUp}
       </div>
     );
   }
 
   // Load failure or omitted due to permissions / missing data: do not display (card remains intact)
-  if (isError || !item) return null;
+  if (isError || !item) return fallback;
 
   const state = item.state;
   const config = STATE_CONFIG[state];
@@ -371,6 +370,11 @@ export function ElementInsight({
           </ul>
         </div>
       )}
+      {followUp ? (
+        <div data-testid="insight-follow-up" className="flex border-t border-border/50 pt-2">
+          {followUp}
+        </div>
+      ) : null}
     </aside>
   );
 }

@@ -130,7 +130,6 @@ export function WeeklyBriefCard() {
 
   return (
     <section aria-labelledby="ceo-brief" className="flex flex-col gap-3">
-      <AskAiElement element="reports.ceo.brief" />
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 id="ceo-brief" className="text-title font-medium text-foreground-strong">
           <SectionHeading tone="violet" icon={FileText} plain>
@@ -186,8 +185,12 @@ export function WeeklyBriefCard() {
             <BriefBadges brief={brief} />
           </header>
           <BriefBody brief={brief} />
+          <AskAiElement element="reports.ceo.brief" presentation="follow-up" />
         </article>
       )}
+      {brief === null ? (
+        <AskAiElement element="reports.ceo.brief" presentation="follow-up" />
+      ) : null}
     </section>
   );
 }

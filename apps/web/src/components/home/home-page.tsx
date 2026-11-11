@@ -5,7 +5,7 @@ import { ElementInsight } from '@/components/insights/element-insight';
 
 import { useIsFetching, useQueryClient } from '@tanstack/react-query';
 import { OPEN_STATUSES, type TicketSummary } from '@watchtower/shared';
-import { BirddayIcon, Button, type ChipIcon, cn, Skeleton } from '@watchtower/ui';
+import { Button, type ChipIcon, cn, Skeleton } from '@watchtower/ui';
 import {
   Activity,
   Hourglass,
@@ -16,6 +16,7 @@ import {
   UserRoundX,
   Users,
   Layers,
+  Sparkles,
 } from 'lucide-react';
 import { useMemo } from 'react';
 
@@ -63,7 +64,7 @@ const staffOnly = (items: readonly unknown[]): TicketSummary[] =>
   items.filter((item): item is TicketSummary => isStaffTicket(item as TicketSummary));
 
 const HomeAiBirdIcon: ChipIcon = ({ className, ...rest }) => (
-  <BirddayIcon {...rest} className={className} />
+  <Sparkles {...rest} className={className} />
 );
 
 /**
@@ -269,8 +270,11 @@ function HomeBody() {
         <div className="grid gap-4 lg:grid-cols-2 lg:gap-5 motion-safe:animate-rise-in">
           {showTeam ? (
             <HomeSection id="home-team" title={t('home.team.title')} tone="green" icon={Users}>
-              <AskAiElement element="home.team" />
-              <ElementInsight element="home.team" period="-" />
+              <ElementInsight
+                element="home.team"
+                period="-"
+                followUp={<AskAiElement presentation="follow-up" element="home.team" />}
+              />
               <TeamNow query={team} />
             </HomeSection>
           ) : null}

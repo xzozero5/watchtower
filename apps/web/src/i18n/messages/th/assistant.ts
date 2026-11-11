@@ -88,6 +88,7 @@ export const assistantTh: Widen<typeof assistantEn> = {
     roster: { planner: 'วางแผนตารางกะ' },
   },
   askAbout: {
+    followUp: 'ถามต่อ',
     unsupportedView: 'ผู้ช่วยยังไม่รองรับมุมมองคิว คำค้น และตัวกรองนี้',
     noPermission: 'คุณไม่มีสิทธิ์ถามเกี่ยวกับส่วนนี้',
     noScope: 'เลือกข้อมูลก่อนถามเกี่ยวกับส่วนนี้',

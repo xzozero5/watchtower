@@ -18,6 +18,8 @@ import {
   CloudOff,
   Check,
   Maximize2,
+  MessageCircle,
+  LoaderCircle,
   Minimize2,
   RefreshCw,
   SendHorizontal,
@@ -198,7 +200,7 @@ function AssistantPanelForUser({ id, context, open, onClose, onClosed }: Assista
   const headerEl = (
     <header className="flex items-center justify-between gap-2 border-b border-border px-4 py-3">
       <div className="flex min-w-0 items-center gap-2.5">
-        <BirddayAvatar size="sm" state={chat.pending ? 'thinking' : closed ? 'paused' : 'idle'} />
+        <BirddayAvatar size="md" state={chat.pending ? 'thinking' : closed ? 'paused' : 'idle'} />
         <div className="flex min-w-0 flex-col">
           <h2 id={titleId} className="truncate text-sm font-semibold text-foreground">
             {t('assistant.name')}
@@ -268,7 +270,6 @@ function AssistantPanelForUser({ id, context, open, onClose, onClosed }: Assista
       {empty && !closed ? (
         <div className="flex flex-col items-center gap-4 py-4 text-center">
           <div className="flex flex-col items-center gap-2 px-2">
-            <BirddayAvatar size="lg" state="idle" />
             <p className="text-base font-semibold text-foreground">{t('assistant.greeting')}</p>
             <p className="max-w-xs text-xs text-muted-foreground leading-relaxed">
               {t('assistant.greetingHint')}
@@ -327,7 +328,7 @@ function AssistantPanelForUser({ id, context, open, onClose, onClosed }: Assista
         ) : (
           <div key={turn.id} className="flex flex-col gap-2" data-testid="assistant-answer">
             <div className="flex items-center gap-2">
-              <BirddayAvatar size="xs" state="idle" />
+              <MessageCircle aria-hidden className="size-4 text-muted-foreground" />
               <span className="text-xs font-semibold text-foreground-strong">
                 {t('assistant.thread.ai')}
               </span>
@@ -442,7 +443,10 @@ function AssistantPanelForUser({ id, context, open, onClose, onClosed }: Assista
         >
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-2">
-              <BirddayAvatar size="xs" state="thinking" />
+              <LoaderCircle
+                aria-hidden
+                className="size-4 text-muted-foreground motion-safe:animate-spin"
+              />
               <span className="font-medium text-foreground">
                 {chat.phase?.phase === 'queued'
                   ? t('assistant.thread.queued', { position: chat.phase.position })

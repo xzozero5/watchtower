@@ -45,8 +45,12 @@ export function VolumeCard() {
     >
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div>
-          <AskAiElement element="home.volume" period="d7" />
-          <ElementInsight element="home.volume" period="d7" className="mb-2" />
+          <ElementInsight
+            element="home.volume"
+            period="d7"
+            className="mb-2"
+            followUp={<AskAiElement presentation="follow-up" element="home.volume" period="d7" />}
+          />
           <h2 id="home-volume" className="text-title font-medium text-foreground-strong">
             {t('home.volume')}
           </h2>

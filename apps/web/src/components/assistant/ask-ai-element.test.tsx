@@ -30,6 +30,22 @@ beforeEach(() => {
 });
 
 describe('element ask controls', () => {
+  it('offers a readable follow-up without sending a question or changing its target', async () => {
+    const listener = vi.fn();
+    window.addEventListener('wt:assistant-open', listener);
+    const { container } = renderApp(
+      <AskAiElement element="dashboard.ops.volume" period="d30" presentation="follow-up" />,
+    );
+    const button = screen.getByRole('button', { name: 'Ask AI about Volume · Ask a follow-up' });
+    expect(button).toHaveTextContent('Ask a follow-up');
+    expect(container.querySelector('[data-slot="birdday-icon"]')).toBeNull();
+    await userEvent.click(button);
+    expect((listener.mock.calls[0]?.[0] as CustomEvent).detail).toEqual({
+      element: { key: 'dashboard.ops.volume', scope: 'instance', period: 'd30' },
+      label: 'Volume',
+    });
+    window.removeEventListener('wt:assistant-open', listener);
+  });
   it.each(INSIGHT_ELEMENT_KEYS)('%s follows registry visibility and permission rules', (key) => {
     const entry = INSIGHT_ELEMENTS[key];
     renderApp(

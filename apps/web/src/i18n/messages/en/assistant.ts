@@ -89,6 +89,7 @@ export const assistantEn = {
     roster: { planner: 'Roster planner' },
   },
   askAbout: {
+    followUp: 'Ask a follow-up',
     unsupportedView: 'The assistant cannot represent this queue view, search or filters yet.',
     noPermission: 'You do not have permission to ask about this element.',
     noScope: 'Select an item before asking about it.',

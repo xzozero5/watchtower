@@ -156,8 +156,13 @@ function QueuesBody() {
         }
       />
       <AdminBody>
-        <AskAiElement element="admin.queues" />
-        <ElementInsight element="admin.queues" scope="instance" period="-" className="mx-4 mt-4" />
+        <ElementInsight
+          element="admin.queues"
+          scope="instance"
+          period="-"
+          className="mx-4 mt-4"
+          followUp={<AskAiElement presentation="follow-up" element="admin.queues" />}
+        />
         {queues.isPending ? (
           <TableSkeleton />
         ) : queues.isError ? (

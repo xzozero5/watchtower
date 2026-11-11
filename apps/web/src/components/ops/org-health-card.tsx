@@ -33,9 +33,20 @@ export function OrgHealthCard({ orgId }: { orgId: string }) {
         <h2 id="org-health" className="text-sm font-semibold">
           {t('ops.health.title')}
         </h2>
-        <AskAiElement element="org.health" scope={`org:${orgId}`} period="d30" />
       </div>
-      <ElementInsight element="org.health" scope={`org:${orgId}`} period="d30" />
+      <ElementInsight
+        element="org.health"
+        scope={`org:${orgId}`}
+        period="d30"
+        followUp={
+          <AskAiElement
+            element="org.health"
+            scope={`org:${orgId}`}
+            period="d30"
+            presentation="follow-up"
+          />
+        }
+      />
       {snapshot === null ? (
         <Alert tone="info" title={t('ops.health.none')}>
           {t('ops.health.noneBody')}

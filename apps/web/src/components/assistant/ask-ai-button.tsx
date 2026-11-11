@@ -2,7 +2,8 @@
 
 import type { AssistantElement, AssistantEntity } from '@watchtower/shared';
 import { assistantEntityRefSchema } from '@watchtower/shared';
-import { BirddayIcon, IconButton } from '@watchtower/ui';
+import { Button, IconButton } from '@watchtower/ui';
+import { MessageCircle } from 'lucide-react';
 
 import { useI18n } from '@/i18n/provider';
 import { requestAssistantOpen } from '@/lib/assistant/assistant-ui';
@@ -16,6 +17,7 @@ export interface AskAiButtonProps {
   /** What the person calls it (`INC-12`, the intent name). Shown on the chip and in the button's name; never sent. */
   label: string;
   className?: string;
+  presentation?: 'icon' | 'follow-up';
 }
 
 /**
@@ -30,36 +32,51 @@ export function AskAiButton({
   disabledReason,
   label,
   className,
+  presentation = 'icon',
 }: AskAiButtonProps) {
   const { t } = useI18n();
   const { can, session } = useSession();
   if (!isAssistantWorkspace(session) || (!element && !can('assistant.use'))) return null;
   if (entity && !assistantEntityRefSchema.safeParse(entity.ref).success) return null;
   const name = t('assistant.askAbout.named', { name: label });
+  const controls = {
+    'aria-disabled': disabledReason ? true : undefined,
+    'aria-description': disabledReason,
+    'data-element': element?.key,
+    'aria-haspopup': 'dialog' as const,
+    'data-testid': 'ask-ai-about',
+    onClick: () => {
+      if (disabledReason) return;
+      requestAssistantOpen({
+        ...(entity ? { entity } : {}),
+        ...(element ? { element } : {}),
+        label,
+      });
+    },
+  };
+  if (presentation === 'follow-up') {
+    return (
+      <Button
+        {...controls}
+        type="button"
+        variant="ghost"
+        size="sm"
+        aria-label={`${name} · ${t('assistant.askAbout.followUp')}`}
+        title={disabledReason ?? t('assistant.askAbout.label')}
+        className={className}
+      >
+        <MessageCircle aria-hidden className="size-4" />
+        {t('assistant.askAbout.followUp')}
+      </Button>
+    );
+  }
   return (
     <IconButton
+      {...controls}
       label={name}
       tooltip={disabledReason ?? t('assistant.askAbout.label')}
-      aria-disabled={disabledReason ? true : undefined}
-      aria-description={disabledReason}
-      data-element={element?.key}
-      aria-haspopup="dialog"
-      data-testid="ask-ai-about"
       className={className ? `group ${className}` : 'group'}
-      icon={
-        <BirddayIcon
-          aria-hidden
-          className="size-4.5 transition-transform duration-(--wt-motion-duration-fast) motion-safe:group-hover:scale-110"
-        />
-      }
-      onClick={() => {
-        if (disabledReason) return;
-        requestAssistantOpen({
-          ...(entity ? { entity } : {}),
-          ...(element ? { element } : {}),
-          label,
-        });
-      }}
+      icon={<MessageCircle aria-hidden className="size-4" />}
     />
   );
 }

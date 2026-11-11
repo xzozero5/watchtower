@@ -78,8 +78,18 @@ export function IncidentDetailView({ incidentId }: { incidentId: string }) {
   return (
     <article aria-labelledby="incident-title" className="flex flex-col gap-4 p-4">
       <header className="flex flex-col gap-2">
-        <AskAiElement element="incident.detail" scope={`incident:${incident.id}`} />
-        <ElementInsight element="incident.detail" scope={`incident:${incident.id}`} period="now" />
+        <ElementInsight
+          element="incident.detail"
+          scope={`incident:${incident.id}`}
+          period="now"
+          followUp={
+            <AskAiElement
+              presentation="follow-up"
+              element="incident.detail"
+              scope={`incident:${incident.id}`}
+            />
+          }
+        />
         <div className="flex flex-wrap items-center gap-2">
           <IncidentSeverityBadge severity={incident.severity} />
           <IncidentStatusChip status={incident.status} />

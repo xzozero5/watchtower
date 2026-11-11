@@ -5,7 +5,7 @@ import { ElementInsight } from '@/components/insights/element-insight';
 
 import type { UseQueryResult } from '@tanstack/react-query';
 import type { AutonomyState } from '@watchtower/shared';
-import { AUTONOMY_STAGES, BirddayIcon, Skeleton, StageBadge } from '@watchtower/ui';
+import { AUTONOMY_STAGES, Skeleton, StageBadge } from '@watchtower/ui';
 import {
   CircleCheck,
   CircleStop,
@@ -14,6 +14,7 @@ import {
   Minus,
   ShieldCheck,
   ShieldOff,
+  Sparkles,
 } from 'lucide-react';
 
 import { LoadError } from '@/components/admin/admin-page';
@@ -73,8 +74,11 @@ export function AiStatus({ query }: { query: UseQueryResult<AutonomyState> }) {
 
   return (
     <div className="flex flex-col gap-3">
-      <AskAiElement element="home.status" />
-      <ElementInsight element="home.status" period="-" />
+      <ElementInsight
+        element="home.status"
+        period="-"
+        followUp={<AskAiElement presentation="follow-up" element="home.status" />}
+      />
       <dl className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm">
         <div className="flex items-center gap-1.5">
           <dt className="text-muted-foreground">{t('home.ai.runs')}</dt>
@@ -184,5 +188,5 @@ export function SystemHealth({ query }: { query: UseQueryResult<ReadinessView> }
 }
 
 export function BotMark() {
-  return <BirddayIcon className="size-4.5" />;
+  return <Sparkles className="size-4.5" />;
 }

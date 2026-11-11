@@ -7,7 +7,6 @@ import { useQueryClient } from '@tanstack/react-query';
 import type { BulkAction, BulkResult } from '@watchtower/shared';
 import {
   Alert,
-  BirddayIcon,
   Button,
   EmptyState,
   IconButton,
@@ -26,6 +25,7 @@ import {
   Hand,
   Hourglass,
   SearchX,
+  Sparkles,
 } from 'lucide-react';
 import {
   type KeyboardEvent,
@@ -126,7 +126,7 @@ function Outcome({ lines }: { lines: readonly string[] }) {
 const GROUP_ICON = { open: ChevronDown, closed: ChevronRight } as const;
 
 const AiWorkingBirdIcon: ChipIcon = ({ className, ...rest }) => (
-  <BirddayIcon {...rest} className={className} />
+  <Sparkles {...rest} className={className} />
 );
 
 const QUEUE_SUBJECT_WIDTHS = ['w-3/5', 'w-4/5', 'w-1/2', 'w-2/3', 'w-3/4', 'w-3/5'] as const;
@@ -645,11 +645,19 @@ export function QueuePane({
     <>
       {!isClient ? (
         <>
-          <AskAiElement
+          <ElementInsight
             element="queue.list"
-            disabledReason={t('assistant.askAbout.unsupportedView')}
+            scope="user"
+            period="-"
+            className="mb-2"
+            followUp={
+              <AskAiElement
+                presentation="follow-up"
+                element="queue.list"
+                disabledReason={t('assistant.askAbout.unsupportedView')}
+              />
+            }
           />
-          <ElementInsight element="queue.list" scope="user" period="-" className="mb-2" />
         </>
       ) : null}
       {canHandle && checkedRows.length > 0 ? (

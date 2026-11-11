@@ -1,6 +1,7 @@
 'use client';
 
 import { BirddayIcon, Button, cn } from '@watchtower/ui';
+import { X } from 'lucide-react';
 import { CirclePause } from 'lucide-react';
 import { usePathname } from 'next/navigation';
 import { useCallback, useId, useRef, useState } from 'react';
@@ -123,10 +124,14 @@ export function AssistantBubble() {
             open && 'max-md:hidden',
           )}
         >
-          <BirddayIcon
-            sleeping={paused}
-            className="size-6 transition-transform duration-(--wt-motion-duration-fast) motion-safe:group-hover:scale-110"
-          />
+          {open ? (
+            <X aria-hidden className="size-5" />
+          ) : (
+            <BirddayIcon
+              sleeping={paused}
+              className="size-8 transition-transform duration-(--wt-motion-duration-fast) motion-safe:group-hover:scale-110"
+            />
+          )}
           {paused ? (
             <span
               aria-hidden

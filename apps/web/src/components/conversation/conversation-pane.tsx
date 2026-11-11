@@ -78,11 +78,6 @@ function TicketActions({ ticket, trailing }: { ticket: TicketItem; trailing?: Re
             .catch(() => undefined);
         }}
       />
-      <AskAiElement
-        element="ticket.workspace"
-        entity={{ kind: 'ticket', ref: ticket.key }}
-        label={ticket.key}
-      />
       {canResolve ? (
         <Button
           variant="secondary"
@@ -279,6 +274,14 @@ export function ConversationPane({
             onOpenEvidence={(id) => onOpenEvidence?.(id)}
             onWriteMyself={() => dockRef.current?.open('reply')}
           />
+        ) : !isClient ? (
+          <div className="mx-4 mt-3">
+            <AskAiElement
+              element="ticket.workspace"
+              entity={{ kind: 'ticket', ref: data.key }}
+              label={data.key}
+            />
+          </div>
         ) : null}
 
         {/* The grader's verdict on a resolved ticket (T-301d). A client never sees it; the api redacts it for a developer. */}

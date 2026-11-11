@@ -34,8 +34,12 @@ function StatusAdminBody() {
   const { can } = useSession();
   return (
     <div className="mx-auto flex w-full max-w-4xl flex-col gap-4 p-4">
-      <AskAiElement element="statuspage.admin" />
-      <ElementInsight element="statuspage.admin" scope="instance" period="-" />
+      <ElementInsight
+        element="statuspage.admin"
+        scope="instance"
+        period="-"
+        followUp={<AskAiElement presentation="follow-up" element="statuspage.admin" />}
+      />
       <p className="text-sm text-muted-foreground">
         {t('ops.statusAdmin.intro')}{' '}
         <a

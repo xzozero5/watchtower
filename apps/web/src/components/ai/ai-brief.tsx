@@ -8,7 +8,7 @@ import {
   type TicketAiInsight,
 } from '@watchtower/shared';
 import {
-  BirddayIcon,
+  BirddayAvatar,
   Button,
   IntentChip,
   Skeleton,
@@ -19,6 +19,7 @@ import {
 } from '@watchtower/ui';
 import {
   ArrowUpRight,
+  Clock,
   Check,
   CircleCheck,
   Hourglass,
@@ -27,11 +28,13 @@ import {
   PenLine,
   RefreshCw,
   Send,
+  Sparkles,
   TriangleAlert,
 } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 
 import { AiStateChip } from '@/components/ai/ai-state-chip';
+import { AskAiElement } from '@/components/assistant/ask-ai-element';
 import { usePreferences } from '@/lib/preferences';
 import { useStatusMove } from '@/components/ticket/use-status-move';
 import { WaitingCustomerConfirm } from '@/components/ticket/waiting-customer-confirm';
@@ -105,7 +108,7 @@ function Provenance({ insight }: { insight: TicketAiInsight }) {
       title={detail}
       className="inline-flex items-center gap-1 text-xs text-muted-foreground"
     >
-      <BirddayIcon className="size-3.5" />
+      <Clock aria-hidden className="size-3.5" />
       <span className="sr-only">{`${detail} · `}</span>
       {age}
     </time>
@@ -140,15 +143,26 @@ function Progress({ progress }: { progress: AiProgress }) {
 }
 
 /** One line for the cases where there is no card/** One line for the cases where there is no card: loading, unavailable, not looked at. */
-function Quiet({ children, status = false }: { children: string; status?: boolean }) {
+function Quiet({
+  children,
+  status = false,
+  followUp,
+}: {
+  children: string;
+  status?: boolean;
+  followUp?: ReactNode;
+}) {
   return (
-    <p
-      role={status ? 'status' : undefined}
-      className="mx-4 mt-3 flex items-center gap-2 text-sm text-muted-foreground"
-    >
-      <BirddayIcon className="size-4 shrink-0" />
-      {children}
-    </p>
+    <>
+      <p
+        role={status ? 'status' : undefined}
+        className="mx-4 mt-3 flex items-center gap-2 text-sm text-muted-foreground"
+      >
+        <Sparkles aria-hidden className="size-4 shrink-0" />
+        {children}
+      </p>
+      {followUp ? <div className="mx-4 mt-2">{followUp}</div> : null}
+    </>
   );
 }
 
@@ -204,19 +218,28 @@ export function AiBrief({
   const { session } = useSession();
   // The raw intent key is for people who tune intents, in a tooltip (docs/design/less-text-ai-assistant.md 4).
   const seesIntentKey = session?.user.role === 'lead' || session?.user.role === 'head';
+  const followUp = (
+    <AskAiElement
+      element="ticket.workspace"
+      entity={{ kind: 'ticket', ref: ticket.key }}
+      label={ticket.key}
+      presentation="follow-up"
+    />
+  );
 
   if (query.isPending) {
     return (
       <div role="status" className="mx-4 mt-3">
         <span className="sr-only">{t('ai.brief.loading')}</span>
         <Skeleton className="h-24 w-full" />
+        {followUp}
       </div>
     );
   }
-  if (query.isError) return <Quiet>{t('ai.brief.unavailable')}</Quiet>;
+  if (query.isError) return <Quiet followUp={followUp}>{t('ai.brief.unavailable')}</Quiet>;
 
   const insight = query.data;
-  if (!hasBrief(insight)) return <Quiet>{t('ai.brief.none')}</Quiet>;
+  if (!hasBrief(insight)) return <Quiet followUp={followUp}>{t('ai.brief.none')}</Quiet>;
 
   const { intent, nextStep, evidence, report, progress } = insight;
   // T-147: nothing can be sent to the customer on this ticket, so no reply, no draft and no A/E/R.
@@ -327,12 +350,7 @@ export function AiBrief({
           className="absolute inset-y-0 left-0 w-1 bg-linear-to-b from-ai-accent to-ai-accent/20"
         />
         <header className="flex flex-wrap items-center gap-x-2 gap-y-1">
-          <span
-            aria-hidden
-            className="inline-flex size-6 items-center justify-center rounded-full bg-tint-teal-bg text-tint-teal-icon"
-          >
-            <BirddayIcon className="size-3.5" />
-          </span>
+          <BirddayAvatar size="sm" state="idle" />
           <AiStateChip
             state={insight.state}
             intentMatched={intent !== undefined || ticket.intent != null}
@@ -546,6 +564,9 @@ export function AiBrief({
         ) : null}
 
         {report ? <AiReportDetails report={report} evidence={evidence} /> : null}
+        <div className="flex border-t border-ai-accent/15 pt-2" data-testid="ai-brief-follow-up">
+          {followUp}
+        </div>
       </section>
 
       <WaitingCustomerConfirm

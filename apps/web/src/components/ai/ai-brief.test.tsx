@@ -38,6 +38,58 @@ async function openTicket(options: Parameters<typeof renderWorkspace>[0] = {}) {
 }
 
 describe('the AI brief', () => {
+  it.each(['loading', 'error', 'none', 'phone'] as const)(
+    'keeps a ticket-bound follow-up with no automatic send when the brief is %s',
+    async (state) => {
+      let release!: () => void;
+      const pending = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const ticket = state === 'phone' ? makeTicket(1, { channel: 'phone' }) : ticket1;
+      const insight = makeInsight({ state: state === 'none' ? 'none' : 'draft_ready' });
+      const api = workspaceApi({
+        tickets: [ticket],
+        ai: { 'OPS-1': insight },
+        overrides: {
+          'GET /v1/assistant/starters': {
+            json: {
+              state: 'ok',
+              reason: null,
+              starters: [],
+              limits: { messagesPerHour: 30, remainingThisHour: 30 },
+            },
+          },
+          'GET /v1/tickets/:id/ai':
+            state === 'loading'
+              ? async () => {
+                  await pending;
+                  return { json: insight };
+                }
+              : state === 'error'
+                ? () => apiError(503, 'unavailable')
+                : { json: insight },
+        },
+      });
+      const { conversation } = await openTicket();
+      const button = await within(conversation).findByRole('button', {
+        name: 'Ask AI about OPS-1 · Ask a follow-up',
+      });
+      if (state === 'error') await within(conversation).findByText('AI brief unavailable');
+      if (state === 'phone') await within(conversation).findByTestId('ai-brief');
+      const listener = vi.fn();
+      window.addEventListener('wt:assistant-open', listener);
+      await waitFor(() => expect(button).not.toHaveAttribute('aria-disabled'));
+      await userEvent.click(button);
+      expect((listener.mock.calls[0]?.[0] as CustomEvent).detail).toMatchObject({
+        entity: { kind: 'ticket', ref: 'OPS-1' },
+        element: { key: 'ticket.workspace' },
+        label: 'OPS-1',
+      });
+      expect(api.callsTo('/v1/assistant/messages', 'POST')).toHaveLength(0);
+      window.removeEventListener('wt:assistant-open', listener);
+      release();
+    },
+  );
   it('shows what is happening, intent with confidence and reason, the next step and provenance', async () => {
     workspaceApi({ tickets: [ticket1], ai: { 'OPS-1': makeInsight() } });
     const { conversation } = await openTicket();

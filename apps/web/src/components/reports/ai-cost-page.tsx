@@ -119,7 +119,6 @@ function AiCostBody() {
         <div className="mx-auto flex w-full max-w-6xl flex-col gap-4 p-4 lg:p-6">
           <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
             <WindowControl days={days} onChange={setDays} />
-            <AskAiElement element="reports.ai_cost" period={`d${String(days)}`} />
             <p className="text-sm text-muted-foreground">
               {t('reports.cost.budgetLead')}{' '}
               {can('ai.autonomy.set') ? (
@@ -129,7 +128,17 @@ function AiCostBody() {
               ) : null}
             </p>
           </div>
-          <ElementInsight element="reports.ai_cost" period={`d${String(days)}`} />
+          <ElementInsight
+            element="reports.ai_cost"
+            period={`d${String(days)}`}
+            followUp={
+              <AskAiElement
+                element="reports.ai_cost"
+                period={`d${String(days)}`}
+                presentation="follow-up"
+              />
+            }
+          />
           {query.isError && !cost ? (
             <LoadError
               message={t('reports.cost.loadError')}

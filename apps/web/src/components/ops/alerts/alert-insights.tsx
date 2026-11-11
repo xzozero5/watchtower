@@ -84,8 +84,17 @@ export function NoiseReport() {
         <h2 id="alert-noise" className="text-sm font-semibold">
           {t('ops.alerts.noise.heading')}
         </h2>
-        <AskAiElement element="alerts.noise" period={`d${String(days)}`} />
-        <ElementInsight element="alerts.noise" period={`d${String(days)}`} />
+        <ElementInsight
+          element="alerts.noise"
+          period={`d${String(days)}`}
+          followUp={
+            <AskAiElement
+              presentation="follow-up"
+              element="alerts.noise"
+              period={`d${String(days)}`}
+            />
+          }
+        />
         <label className="flex items-center gap-2 text-sm">
           {t('ops.alerts.noise.window')}
           <Select

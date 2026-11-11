@@ -1,5 +1,5 @@
-import { Avatar, BirddayIcon, cn, IntentChip, SeverityBadge } from '@watchtower/ui';
-import { Check, UserRound } from 'lucide-react';
+import { Avatar, cn, IntentChip, SeverityBadge } from '@watchtower/ui';
+import { Check, UserRound, Sparkles } from 'lucide-react';
 
 import { AiStateChip } from '@/components/ai/ai-state-chip';
 import { ChannelIcon } from '@/components/ticket/channel-icon';
@@ -220,7 +220,7 @@ export function QueueRow({
               className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground"
             >
               <span className="inline-flex shrink-0 items-center gap-0.5 font-medium">
-                <BirddayIcon className="size-3" />
+                <Sparkles className="size-3" />
                 {t('queue.row.aiLabel')}
               </span>
               <span className="truncate">{summary}</span>

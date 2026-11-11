@@ -114,22 +114,34 @@ function IntentDetailBody({ intentId }: { intentId: string }) {
               <TabsTrigger value="history">{t('admin.intents.tabs.history')}</TabsTrigger>
             </TabsList>
             <TabsContent value="details" className="p-4">
-              <AskAiElement element="admin.intents" scope={`intent:${intentId}`} />
               <ElementInsight
                 element="admin.intents"
                 scope={`intent:${intentId}`}
                 period="-"
                 className="mb-4"
+                followUp={
+                  <AskAiElement
+                    presentation="follow-up"
+                    element="admin.intents"
+                    scope={`intent:${intentId}`}
+                  />
+                }
               />
               <IntentDetailsForm intent={intent} />
             </TabsContent>
             <TabsContent value="autonomy" className="p-4">
-              <AskAiElement element="admin.intent.gate" scope={`intent:${intentId}`} />
               <ElementInsight
                 element="admin.intent.gate"
                 scope={`intent:${intentId}`}
                 period="-"
                 className="mb-4"
+                followUp={
+                  <AskAiElement
+                    presentation="follow-up"
+                    element="admin.intent.gate"
+                    scope={`intent:${intentId}`}
+                  />
+                }
               />
               {autonomy.isPending ? (
                 <Skeleton className="h-24 max-w-xl" />

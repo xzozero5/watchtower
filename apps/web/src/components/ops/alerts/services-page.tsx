@@ -54,8 +54,12 @@ function ServicesBody() {
         ))}
       </TabsList>
       <TabsContent value="services">
-        <AskAiElement element="alerts.services" />
-        <ElementInsight element="alerts.services" scope="instance" period="-" />
+        <ElementInsight
+          element="alerts.services"
+          scope="instance"
+          period="-"
+          followUp={<AskAiElement presentation="follow-up" element="alerts.services" />}
+        />
         <ServicesSection />
       </TabsContent>
       <TabsContent value="policies">

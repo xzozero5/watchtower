@@ -222,8 +222,11 @@ function KpiTiles({ view }: { view: CeoView }) {
       <h2 id="ceo-kpis" className="sr-only">
         {t('reports.ceo.title')}
       </h2>
-      <AskAiElement element="reports.ceo.figures" />
-      <ElementInsight element="reports.ceo.figures" period={currentIsoWeek()} />
+      <ElementInsight
+        element="reports.ceo.figures"
+        period={currentIsoWeek()}
+        followUp={<AskAiElement presentation="follow-up" element="reports.ceo.figures" />}
+      />
       <TileGrid>
         <Figure
           label={t('reports.ceo.kpi.volume')}
