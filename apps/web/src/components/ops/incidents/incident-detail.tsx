@@ -84,8 +84,8 @@ export function IncidentDetailView({ incidentId }: { incidentId: string }) {
           period="now"
           followUp={
             <AskAiElement
-              presentation="follow-up"
               element="incident.detail"
+              presentation="follow-up"
               scope={`incident:${incident.id}`}
             />
           }

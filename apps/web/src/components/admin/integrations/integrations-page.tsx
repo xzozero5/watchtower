@@ -50,7 +50,7 @@ function IntegrationsBody() {
           scope="instance"
           period="-"
           className="mb-4"
-          followUp={<AskAiElement presentation="follow-up" element="admin.integrations" />}
+          followUp={<AskAiElement element="admin.integrations" presentation="follow-up" />}
         />
         <div className="mx-auto flex max-w-3xl flex-col gap-6">
           {/* The two sentences that used to sit here are one chip each, with the words in a hint. */}

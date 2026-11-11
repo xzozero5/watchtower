@@ -38,7 +38,7 @@ function StatusAdminBody() {
         element="statuspage.admin"
         scope="instance"
         period="-"
-        followUp={<AskAiElement presentation="follow-up" element="statuspage.admin" />}
+        followUp={<AskAiElement element="statuspage.admin" presentation="follow-up" />}
       />
       <p className="text-sm text-muted-foreground">
         {t('ops.statusAdmin.intro')}{' '}

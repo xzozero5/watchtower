@@ -90,7 +90,7 @@ function OverviewView({ data, onRefresh }: { data: ShiftOverview; onRefresh: () 
             element="shift.overview"
             period="now"
             className="my-2"
-            followUp={<AskAiElement presentation="follow-up" element="shift.overview" />}
+            followUp={<AskAiElement element="shift.overview" presentation="follow-up" />}
           />
           <p className="text-xs text-muted-foreground">
             {t('shift.overview.updated', { time: format.time(data.generatedAt) })}

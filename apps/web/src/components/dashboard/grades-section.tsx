@@ -128,8 +128,8 @@ export function IntentGradesSection({ days }: { days: number }) {
         period={`d${String(days)}`}
         followUp={
           <AskAiElement
-            presentation="follow-up"
             element="dashboard.ops.grades"
+            presentation="follow-up"
             period={`d${String(days)}`}
           />
         }
@@ -155,8 +155,8 @@ function IntentGradeMetricsBody({ days }: { days: number }) {
         period={`d${String(days)}`}
         followUp={
           <AskAiElement
-            presentation="follow-up"
             element="dashboard.ops.grades"
+            presentation="follow-up"
             period={`d${String(days)}`}
           />
         }

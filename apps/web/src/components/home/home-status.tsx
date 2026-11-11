@@ -77,7 +77,7 @@ export function AiStatus({ query }: { query: UseQueryResult<AutonomyState> }) {
       <ElementInsight
         element="home.status"
         period="-"
-        followUp={<AskAiElement presentation="follow-up" element="home.status" />}
+        followUp={<AskAiElement element="home.status" presentation="follow-up" />}
       />
       <dl className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm">
         <div className="flex items-center gap-1.5">

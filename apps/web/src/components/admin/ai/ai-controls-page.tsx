@@ -99,7 +99,7 @@ function AiControlsBody() {
           scope="instance"
           period="-"
           className="mx-4 mt-2"
-          followUp={<AskAiElement presentation="follow-up" element="admin.ai" />}
+          followUp={<AskAiElement element="admin.ai" presentation="follow-up" />}
         />
         {autonomy.isPending ? (
           <div role="status" aria-busy="true" className="flex flex-col gap-2 p-4">

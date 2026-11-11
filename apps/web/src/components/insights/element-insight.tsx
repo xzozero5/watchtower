@@ -99,37 +99,65 @@ export function ElementInsight({
     enabled: isAllowed,
   });
 
-  const fallback = followUp ? (
-    <div data-testid="insight-follow-up-fallback" className={cn('flex justify-start', className)}>
-      {followUp}
-    </div>
-  ) : null;
-
-  if (!isAssistantWorkspace(session) || entry.mode === 'X') return null;
-  if (!isAllowed) return fallback;
-
-  if (isLoading) {
+  // Keep the action in one keyed slot under the same DOM parent. Replacing the loading root
+  // or moving the action into a new footer would discard a focused / pointer-down button.
+  const frame = (content: ReactNode, options: { state?: InsightState; loading?: boolean } = {}) => {
+    const hasSummary = options.state !== undefined;
+    if (!content && !followUp) return null;
     return (
-      <div
-        aria-label={t('insights.elementTitle')}
-        aria-busy="true"
+      <aside
+        role={hasSummary ? undefined : 'none'}
+        aria-label={hasSummary ? t('insights.elementTitle') : undefined}
+        aria-busy={options.loading || undefined}
+        data-testid={hasSummary ? 'element-insight' : undefined}
+        data-element={hasSummary ? key : undefined}
+        data-state={options.state}
         className={cn(
-          'flex flex-col gap-2 rounded-inner bg-surface-muted/60 px-3 py-2 text-xs text-muted-foreground motion-safe:animate-rise-in',
+          'flex flex-col gap-2',
+          hasSummary
+            ? 'rounded-inner bg-surface-muted/40 p-3 text-sm text-foreground ring-1 ring-border/50 motion-safe:animate-rise-in'
+            : options.loading
+              ? 'rounded-inner bg-surface-muted/60 px-3 py-2 text-xs text-muted-foreground motion-safe:animate-rise-in'
+              : undefined,
           className,
         )}
       >
+        <div key="content" className={content ? 'flex flex-col gap-2' : 'hidden'}>
+          {content}
+        </div>
+        <div
+          key="follow-up"
+          data-testid={hasSummary ? 'insight-follow-up' : 'insight-follow-up-fallback'}
+          className={
+            followUp
+              ? cn('flex justify-start', hasSummary && 'border-t border-border/50 pt-2')
+              : 'hidden'
+          }
+        >
+          {followUp}
+        </div>
+      </aside>
+    );
+  };
+
+  if (!isAssistantWorkspace(session) || entry.mode === 'X') return null;
+  if (!isAllowed) return frame(null);
+
+  if (isLoading) {
+    return frame(
+      <>
         <span className="sr-only">{t('insights.loading')}</span>
         <div className="flex items-center gap-2">
           <Skeleton className="h-3.5 w-44" />
           <Skeleton variant="pill" className="ml-auto h-4 w-14" />
         </div>
-        {followUp}
-      </div>
+      </>,
+      { loading: true },
     );
   }
 
   // Load failure or omitted due to permissions / missing data: do not display (card remains intact)
-  if (isError || !item) return fallback;
+  if (isError || !item) return frame(null);
 
   const state = item.state;
   const config = STATE_CONFIG[state];
@@ -197,17 +225,8 @@ export function ElementInsight({
       : systemClaims;
   const secondaryClaims = state === 'stale' ? narrationClaims : [];
 
-  return (
-    <aside
-      aria-label={t('insights.elementTitle')}
-      data-testid="element-insight"
-      data-element={key}
-      data-state={state}
-      className={cn(
-        'flex flex-col gap-2 rounded-inner bg-surface-muted/40 p-3 text-sm text-foreground ring-1 ring-border/50 motion-safe:animate-rise-in',
-        className,
-      )}
-    >
+  return frame(
+    <>
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           <span data-testid="insight-state-badge" data-state={state}>
@@ -370,11 +389,7 @@ export function ElementInsight({
           </ul>
         </div>
       )}
-      {followUp ? (
-        <div data-testid="insight-follow-up" className="flex border-t border-border/50 pt-2">
-          {followUp}
-        </div>
-      ) : null}
-    </aside>
+    </>,
+    { state },
   );
 }

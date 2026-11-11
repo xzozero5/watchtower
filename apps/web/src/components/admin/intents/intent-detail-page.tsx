@@ -121,8 +121,8 @@ function IntentDetailBody({ intentId }: { intentId: string }) {
                 className="mb-4"
                 followUp={
                   <AskAiElement
-                    presentation="follow-up"
                     element="admin.intents"
+                    presentation="follow-up"
                     scope={`intent:${intentId}`}
                   />
                 }
@@ -137,8 +137,8 @@ function IntentDetailBody({ intentId }: { intentId: string }) {
                 className="mb-4"
                 followUp={
                   <AskAiElement
-                    presentation="follow-up"
                     element="admin.intent.gate"
+                    presentation="follow-up"
                     scope={`intent:${intentId}`}
                   />
                 }

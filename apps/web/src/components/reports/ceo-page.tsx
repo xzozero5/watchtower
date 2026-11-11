@@ -225,7 +225,7 @@ function KpiTiles({ view }: { view: CeoView }) {
       <ElementInsight
         element="reports.ceo.figures"
         period={currentIsoWeek()}
-        followUp={<AskAiElement presentation="follow-up" element="reports.ceo.figures" />}
+        followUp={<AskAiElement element="reports.ceo.figures" presentation="follow-up" />}
       />
       <TileGrid>
         <Figure

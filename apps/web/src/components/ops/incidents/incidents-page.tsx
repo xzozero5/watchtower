@@ -77,7 +77,7 @@ function IncidentsBody() {
         <ElementInsight
           element="incidents.open"
           period="now"
-          followUp={<AskAiElement presentation="follow-up" element="incidents.open" />}
+          followUp={<AskAiElement element="incidents.open" presentation="follow-up" />}
         />
         <SegmentedControl
           aria-label={t('ops.incidents.scope.label')}

@@ -38,7 +38,9 @@ describe('queue rows', () => {
     const { queue } = await openQueue();
     await within(queue).findByText('Cannot log in');
     await userEvent.type(screen.getByRole('searchbox', { name: 'Search tickets' }), 'login{Enter}');
-    const button = within(queue).getByRole('button', { name: 'Ask AI about Queue view' });
+    const button = within(queue).getByRole('button', {
+      name: 'Ask AI about Queue view · Ask a follow-up',
+    });
     expect(button).toHaveAttribute('aria-disabled', 'true');
     expect(button).toHaveAttribute(
       'aria-description',

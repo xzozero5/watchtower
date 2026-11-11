@@ -273,7 +273,7 @@ function HomeBody() {
               <ElementInsight
                 element="home.team"
                 period="-"
-                followUp={<AskAiElement presentation="follow-up" element="home.team" />}
+                followUp={<AskAiElement element="home.team" presentation="follow-up" />}
               />
               <TeamNow query={team} />
             </HomeSection>

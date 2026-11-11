@@ -120,7 +120,7 @@ export function OpenTicketsCard({
     >
       <ElementInsight
         element="home.my_work"
-        followUp={<AskAiElement presentation="follow-up" element="home.my_work" />}
+        followUp={<AskAiElement element="home.my_work" presentation="follow-up" />}
       />
       <h2 id="home-open" className="text-title font-medium text-foreground-strong">
         {t('home.openTickets')}

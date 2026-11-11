@@ -89,8 +89,8 @@ export function NoiseReport() {
           period={`d${String(days)}`}
           followUp={
             <AskAiElement
-              presentation="follow-up"
               element="alerts.noise"
+              presentation="follow-up"
               period={`d${String(days)}`}
             />
           }

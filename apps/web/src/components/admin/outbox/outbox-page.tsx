@@ -166,7 +166,7 @@ function OutboxBody() {
           scope="instance"
           period="-"
           className="mx-4 mt-4"
-          followUp={<AskAiElement presentation="follow-up" element="admin.outbox" />}
+          followUp={<AskAiElement element="admin.outbox" presentation="follow-up" />}
         />
         <div className="flex flex-col gap-4 p-4">
           <HealthStrip

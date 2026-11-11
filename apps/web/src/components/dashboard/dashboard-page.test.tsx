@@ -75,7 +75,9 @@ describe('Ops dashboard: structure', () => {
       },
     });
     renderConsole(<DashboardPage />);
-    const button = await screen.findByRole('button', { name: 'Ask AI about Grades' });
+    const button = await screen.findByRole('button', {
+      name: 'Ask AI about Grades · Ask a follow-up',
+    });
     await waitFor(() => {
       expect(button).not.toHaveAttribute('aria-disabled');
     });

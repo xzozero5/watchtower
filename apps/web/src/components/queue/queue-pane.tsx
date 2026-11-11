@@ -652,8 +652,8 @@ export function QueuePane({
             className="mb-2"
             followUp={
               <AskAiElement
-                presentation="follow-up"
                 element="queue.list"
+                presentation="follow-up"
                 disabledReason={t('assistant.askAbout.unsupportedView')}
               />
             }

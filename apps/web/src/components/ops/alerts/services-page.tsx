@@ -58,7 +58,7 @@ function ServicesBody() {
           element="alerts.services"
           scope="instance"
           period="-"
-          followUp={<AskAiElement presentation="follow-up" element="alerts.services" />}
+          followUp={<AskAiElement element="alerts.services" presentation="follow-up" />}
         />
         <ServicesSection />
       </TabsContent>

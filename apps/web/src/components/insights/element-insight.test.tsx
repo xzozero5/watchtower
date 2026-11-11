@@ -1,4 +1,5 @@
-import { screen, waitFor } from '@testing-library/react';
+import { act, screen, waitFor } from '@testing-library/react';
+import { useQueryClient, type QueryClient } from '@tanstack/react-query';
 import userEvent from '@testing-library/user-event';
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
@@ -19,6 +20,7 @@ import { makeSession, uuid } from '@/test/fixtures';
 import { mockApi } from '@/test/mock-api';
 import { renderApp } from '@/test-utils';
 import type * as SessionModule from '@/lib/auth/session';
+import { insightKeys } from '@/lib/insights/use-insight';
 
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: vi.fn(), replace: vi.fn(), refresh: vi.fn() }),
@@ -132,6 +134,91 @@ function resolveLocalModule(fromFile: string, specifier: string): string | null 
 }
 
 describe('ElementInsight component (T-419a)', () => {
+  it('retains the same focused follow-up and its context as a deferred summary changes state', async () => {
+    let release!: () => void;
+    const pending = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let phase: 'initial' | 'fresh' | 'system' | 'empty' | 'error' = 'initial';
+    const api = setupApi({
+      'GET /v1/assistant/starters': {
+        json: {
+          state: 'ok',
+          reason: null,
+          starters: [],
+          limits: { messagesPerHour: 30, remainingThisHour: 30 },
+        },
+      },
+      'GET /v1/insights': async () => {
+        if (phase === 'initial') await pending;
+        if (phase === 'error') return { status: 500, json: {} };
+        return {
+          json: {
+            items:
+              phase === 'empty'
+                ? []
+                : [makeItem('dashboard.ops.volume', phase === 'system' ? 'system' : 'fresh')],
+          },
+        };
+      },
+    });
+    let client: QueryClient | undefined;
+    function Probe() {
+      client = useQueryClient();
+      return (
+        <ElementInsight
+          element="dashboard.ops.volume"
+          period="d7"
+          followUp={
+            <AskAiElement element="dashboard.ops.volume" period="d7" presentation="follow-up" />
+          }
+        />
+      );
+    }
+    renderApp(<Probe />);
+    const name = 'Ask AI about Volume · Ask a follow-up';
+    const button = screen.getByRole('button', { name });
+    await waitFor(() => expect(button).not.toHaveAttribute('aria-disabled'));
+    button.focus();
+    expect(button).toHaveFocus();
+    phase = 'fresh';
+    await act(async () => {
+      release();
+      await pending;
+    });
+    await screen.findByText('AI generated narration claim with citation');
+    expect(screen.getByRole('button', { name })).toBe(button);
+    expect(button).toHaveFocus();
+    if (!client) throw new Error('Missing query client');
+    const queryClient = client;
+    const listener = vi.fn();
+    window.addEventListener('wt:assistant-open', listener);
+    for (const state of ['system', 'empty', 'error', 'fresh'] as const) {
+      phase = state;
+      await act(async () => {
+        await queryClient.refetchQueries({ queryKey: insightKeys(uuid(900)).root });
+      });
+      await waitFor(() => {
+        if (state === 'empty' || state === 'error') {
+          expect(screen.queryByTestId('element-insight')).not.toBeInTheDocument();
+        } else {
+          expect(screen.getByTestId('element-insight')).toHaveAttribute('data-state', state);
+        }
+      });
+      expect(screen.getByRole('button', { name })).toBe(button);
+      expect(button).toHaveFocus();
+      if (state === 'empty' || state === 'error')
+        expect(screen.queryByTestId('element-insight')).not.toBeInTheDocument();
+      await userEvent.click(button);
+      expect((listener.mock.calls.at(-1)?.[0] as CustomEvent).detail).toEqual({
+        element: { key: 'dashboard.ops.volume', scope: 'instance', period: 'd7' },
+        label: 'Volume',
+      });
+    }
+    expect(listener).toHaveBeenCalledTimes(4);
+    expect(api.callsTo('/v1/assistant/messages', 'POST')).toHaveLength(0);
+    window.removeEventListener('wt:assistant-open', listener);
+  });
   it('keeps its follow-up available while loading, then shows the honest empty fallback', async () => {
     let release!: () => void;
     const pending = new Promise<void>((resolve) => {

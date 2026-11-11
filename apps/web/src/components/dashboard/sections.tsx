@@ -145,7 +145,7 @@ export function NowSection({ ops }: SectionProps) {
       <ElementInsight
         element="dashboard.ops.now"
         period="now"
-        followUp={<AskAiElement presentation="follow-up" element="dashboard.ops.now" />}
+        followUp={<AskAiElement element="dashboard.ops.now" presentation="follow-up" />}
       />
       <TileGrid>
         <Figure {...tile(t('dashboard.now.open'), Inbox, 'teal', queue.open)} />
@@ -204,8 +204,8 @@ export function VolumeSection({ ops }: SectionProps) {
         period={`d${String(ops.window.days)}`}
         followUp={
           <AskAiElement
-            presentation="follow-up"
             element="dashboard.ops.volume"
+            presentation="follow-up"
             period={`d${String(ops.window.days)}`}
           />
         }
@@ -274,8 +274,8 @@ export function SlaSection({ ops }: SectionProps) {
         period={`d${String(ops.window.days)}`}
         followUp={
           <AskAiElement
-            presentation="follow-up"
             element="dashboard.ops.sla"
+            presentation="follow-up"
             period={`d${String(ops.window.days)}`}
           />
         }
@@ -353,8 +353,8 @@ export function QualitySection({ ops }: SectionProps) {
         period={`d${String(ops.window.days)}`}
         followUp={
           <AskAiElement
-            presentation="follow-up"
             element="dashboard.ops.quality"
+            presentation="follow-up"
             period={`d${String(ops.window.days)}`}
           />
         }
@@ -443,8 +443,8 @@ export function ReliabilitySection({ ops }: SectionProps) {
         period={`d${String(ops.window.days)}`}
         followUp={
           <AskAiElement
-            presentation="follow-up"
             element="dashboard.ops.reliability"
+            presentation="follow-up"
             period={`d${String(ops.window.days)}`}
           />
         }
@@ -604,8 +604,8 @@ export function AiSection({ ops }: SectionProps) {
           period={`d${String(ops.window.days)}`}
           followUp={
             <AskAiElement
-              presentation="follow-up"
               element="dashboard.ops.ai"
+              presentation="follow-up"
               period={`d${String(ops.window.days)}`}
             />
           }
@@ -622,8 +622,8 @@ export function AiSection({ ops }: SectionProps) {
         period={`d${String(ops.window.days)}`}
         followUp={
           <AskAiElement
-            presentation="follow-up"
             element="dashboard.ops.ai"
+            presentation="follow-up"
             period={`d${String(ops.window.days)}`}
           />
         }
@@ -750,8 +750,8 @@ export function TeamSection({ ops }: SectionProps) {
         period={`d${String(ops.window.days)}`}
         followUp={
           <AskAiElement
-            presentation="follow-up"
             element="dashboard.ops.team"
+            presentation="follow-up"
             period={`d${String(ops.window.days)}`}
           />
         }
@@ -846,8 +846,8 @@ export function UsageSection({ ops }: SectionProps) {
         period={`d${String(ops.window.days)}`}
         followUp={
           <AskAiElement
-            presentation="follow-up"
             element="dashboard.ops.usage"
+            presentation="follow-up"
             period={`d${String(ops.window.days)}`}
           />
         }
@@ -949,8 +949,8 @@ export function ServicesSection({ ops }: SectionProps) {
         period={`d${String(ops.window.days)}`}
         followUp={
           <AskAiElement
-            presentation="follow-up"
             element="dashboard.ops.services"
+            presentation="follow-up"
             period={`d${String(ops.window.days)}`}
           />
         }
